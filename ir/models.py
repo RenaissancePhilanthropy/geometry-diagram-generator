@@ -21,13 +21,30 @@ class GeoObject(BaseModel):
     constructor: Constructor | None = None
 
 
+class StringLiteral(BaseModel):
+    """A quoted string literal argument in a predicate.
+
+    Distinct from a plain str, which is an object name reference.
+    Example: Orientation(L1, "horizontal") → StringLiteral(value="horizontal")
+    """
+    value: str
+
+
 class Predicate(BaseModel):
     """A predicate (constraint) applied to geometric objects.
 
-    Examples: Parallel(L1, L2), SetX(A, -200), SetAngle(AEF, 0.75)
+    arg types:
+      str           — object name reference, rendered unquoted: L1
+      float         — numeric value, rendered as integer when whole: -200
+      StringLiteral — quoted string literal: "horizontal"
+
+    Examples:
+      Parallel(L1, L2)               → args=["L1", "L2"]
+      SetX(A, -200)                  → args=["A", -200.0]
+      Orientation(L1, "horizontal")  → args=["L1", StringLiteral("horizontal")]
     """
     name: str
-    args: list[str | float]  # object names or numeric values
+    args: list[str | float | StringLiteral]
 
 
 class Diagram(BaseModel):

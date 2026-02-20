@@ -1,10 +1,17 @@
 from collections import defaultdict
 
-from .models import Diagram
+from .models import Diagram, StringLiteral
 
 
-def _fmt_arg(arg: str | float) -> str:
-    """Format a predicate argument. Whole-number floats render without decimal."""
+def _fmt_arg(arg: str | float | StringLiteral) -> str:
+    """Format a predicate argument.
+
+    str           → unquoted object reference: L1
+    float         → integer when whole (-200), decimal otherwise (0.75)
+    StringLiteral → double-quoted string: "horizontal"
+    """
+    if isinstance(arg, StringLiteral):
+        return f'"{arg.value}"'
     if isinstance(arg, float) and arg == int(arg):
         return str(int(arg))
     return str(arg)

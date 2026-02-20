@@ -2,7 +2,7 @@
 
 import pytest
 
-from ir import Constructor, Diagram, GeoObject, Predicate, to_substance
+from ir import Constructor, Diagram, GeoObject, Predicate, StringLiteral, to_substance
 
 
 # ---------------------------------------------------------------------------
@@ -330,3 +330,68 @@ def test_circle_with_on_circle():
     assert "Circle c := CircleR(O, R)" in ls
     assert "OnCircle(c, P)" in ls
     assert "AutoLabel O, R, P" in ls
+
+
+# ---------------------------------------------------------------------------
+# 11. Layout hint predicates (StringLiteral args)
+# ---------------------------------------------------------------------------
+
+def test_orientation():
+    diagram = Diagram(
+        objects=[
+            GeoObject(type="Line", name="L1", constructor=Constructor(name="Line", args=["A", "B"])),
+        ],
+        predicates=[Predicate(name="Orientation", args=["L1", StringLiteral(value="horizontal")])],
+    )
+    ls = lines(to_substance(diagram))
+    assert 'Orientation(L1, "horizontal")' in ls
+
+
+def test_separation():
+    diagram = Diagram(
+        objects=[
+            GeoObject(type="Line", name="L1", constructor=Constructor(name="Line", args=["A", "B"])),
+            GeoObject(type="Line", name="L2", constructor=Constructor(name="Line", args=["C", "D"])),
+        ],
+        predicates=[Predicate(name="Separation", args=["L1", "L2", StringLiteral(value="wide")])],
+    )
+    ls = lines(to_substance(diagram))
+    assert 'Separation(L1, L2, "wide")' in ls
+
+
+def test_length_class():
+    diagram = Diagram(
+        objects=[
+            GeoObject(type="Segment", name="AB", constructor=Constructor(name="Segment", args=["A", "B"])),
+        ],
+        predicates=[Predicate(name="LengthClass", args=["AB", StringLiteral(value="short")])],
+    )
+    ls = lines(to_substance(diagram))
+    assert 'LengthClass(AB, "short")' in ls
+
+
+def test_anchor():
+    diagram = Diagram(
+        objects=[GeoObject(type="Point", name="A")],
+        predicates=[Predicate(name="Anchor", args=["A", StringLiteral(value="topLeft")])],
+    )
+    ls = lines(to_substance(diagram))
+    assert 'Anchor(A, "topLeft")' in ls
+
+
+def test_string_literal_not_confused_with_object_ref():
+    """StringLiteral renders with quotes; plain str renders without."""
+    diagram = Diagram(
+        objects=[
+            GeoObject(type="Point", name="A"),
+            GeoObject(type="Line", name="L1", constructor=Constructor(name="Line", args=["A", "B"])),
+        ],
+        predicates=[
+            Predicate(name="Orientation", args=["L1", StringLiteral(value="vertical")]),
+            Predicate(name="Parallel", args=["L1", "L1"]),  # plain str refs, no quotes
+        ],
+    )
+    substance = to_substance(diagram)
+    assert '"vertical"' in substance
+    assert 'Parallel(L1, L1)' in substance
+    assert '"L1"' not in substance  # object refs must never be quoted
