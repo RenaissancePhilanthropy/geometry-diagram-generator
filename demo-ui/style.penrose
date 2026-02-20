@@ -32,6 +32,22 @@ const {
     labelPadding = 30.0
     minSegmentLength = 80.0
     minLineLength = 200.0
+    diag = min(canvas.width, canvas.height)
+
+    -- Length targets as fractions of canvas
+    lenShort  = 0.25 * diag
+    lenMedium = 0.42 * diag
+    lenLong   = 0.60 * diag
+  
+    -- Separation targets as fractions of canvas
+    sepTight  = 0.10 * diag
+    sepMedium = 0.18 * diag
+    sepWide   = 0.28 * diag
+  
+    -- Anchor margin as a fraction of canvas
+    anchorMargin = 0.08 * diag
+  
+    hintWeight = 1.0
 }
 
 layout = [shape, label]
@@ -1059,4 +1075,126 @@ where MaxAngle(a, n) {
 forall Angle a
 where SetAngle(a, n) {
   ensure angleBetween(a.p - a.q, a.r - a.q) == n
+}
+
+
+
+
+forall Linelike l
+where Orientation(l, "horizontal") {
+  -- equivalent to Horizontal(l), but keeps everything in the hint system
+  ensure l.start[1] == l.end[1]
+}
+
+forall Linelike l
+where Orientation(l, "vertical") {
+  ensure l.start[0] == l.end[0]
+}
+
+-- Optional: "free" does nothing (can omit entirely)
+forall Linelike l
+where Orientation(l, "free") { }
+
+forall Linelike l
+where LengthClass(l, "long") {
+  encourage greaterThan(norm(l.vec), const.lenLong)
+}
+
+forall Linelike l
+where LengthClass(l, "medium") {
+  encourage greaterThan(norm(l.vec), const.lenShort)
+  encourage lessThan(norm(l.vec), const.lenLong)
+}
+
+forall Linelike l
+where LengthClass(l, "short") {
+  encourage lessThan(norm(l.vec), const.lenMedium)
+}
+
+
+
+forall Linelike l1, l2
+where Separation(l1, l2, "tight") {
+  l2mid = [ (l2.start[0] + l2.end[0]) / 2.0, (l2.start[1] + l2.end[1]) / 2.0 ]
+  d = abs(signedDistanceLine(l1.start, l1.end, l2mid))
+  encourage equal(d, const.sepTight)
+}
+
+forall Linelike l1, l2
+where Separation(l1, l2, "medium") {
+  l2mid = [ (l2.start[0] + l2.end[0]) / 2.0, (l2.start[1] + l2.end[1]) / 2.0 ]
+  d = abs(signedDistanceLine(l1.start, l1.end, l2mid))
+  encourage equal(d, const.sepMedium)
+}
+
+forall Linelike l1, l2
+where Separation(l1, l2, "wide") {
+  l2mid = [ (l2.start[0] + l2.end[0]) / 2.0, (l2.start[1] + l2.end[1]) / 2.0 ]
+  d = abs(signedDistanceLine(l1.start, l1.end, l2mid))
+  encourage greaterThan(d, const.sepWide)
+}
+
+-- Anchor: soft layout hints for points.
+-- Uses `nearVec` objective to pull p.vec toward a target canvas location.
+-- Assumes you have `const.anchorMargin` defined (e.g., 70.0).
+
+forall Point p
+where Anchor(p, "center") {
+  encourage nearVec(p.vec, [0.0, 0.0], 0.0)
+}
+
+forall Point p
+where Anchor(p, "top") {
+  tx = 0.0
+  ty = canvas.height / 2.0 - const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "bottom") {
+  tx = 0.0
+  ty = -canvas.height / 2.0 + const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "left") {
+  tx = -canvas.width / 2.0 + const.anchorMargin
+  ty = 0.0
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "right") {
+  tx = canvas.width / 2.0 - const.anchorMargin
+  ty = 0.0
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "topLeft") {
+  tx = -canvas.width / 2.0 + const.anchorMargin
+  ty = canvas.height / 2.0 - const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "topRight") {
+  tx = canvas.width / 2.0 - const.anchorMargin
+  ty = canvas.height / 2.0 - const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "bottomLeft") {
+  tx = -canvas.width / 2.0 + const.anchorMargin
+  ty = -canvas.height / 2.0 + const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+forall Point p
+where Anchor(p, "bottomRight") {
+  tx = canvas.width / 2.0 - const.anchorMargin
+  ty = -canvas.height / 2.0 + const.anchorMargin
+  encourage nearVec(p.vec, [tx, ty], 0.0)
 }

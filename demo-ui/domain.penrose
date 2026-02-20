@@ -281,3 +281,21 @@ predicate Tangent(Line, Circle)
 predicate Secant(Line, Circle)
 
 predicate Centered(Shape)
+
+-- ~~~~~~~~~~~~~~~~ LAYOUT HINT PREDICATES ~~~~~~~~~~~~~~~~
+-- These are layout hints (aesthetic priors), not geometric axioms.
+-- The second/third argument uses Penrose’s built-in literal type `String`. :contentReference[oaicite:2]{index=2}
+
+predicate Orientation(Linelike, String)
+-- Expected values (convention): "horizontal" | "vertical" | "free"
+
+predicate Separation(Linelike, Linelike, String)
+-- Expected values (convention): "tight" | "medium" | "wide"
+
+predicate LengthClass(Linelike, String)
+-- Expected values (convention): "short" | "medium" | "long"
+
+predicate Anchor(Point, String)
+-- Expected values (convention): "topLeft" | "top" | "topRight" |
+--                              "left" | "center" | "right" |
+--                              "bottomLeft" | "bottom" | "bottomRight"
