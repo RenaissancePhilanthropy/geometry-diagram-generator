@@ -1,17 +1,27 @@
 import os
-from pydantic_ai import Agent
+from pathlib import Path
+
 from pydantic_ai.ui.ag_ui.app import AGUIApp
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
+from strategies.raw_code import RawCodeStrategy
+
 load_dotenv()  # Load environment variables from .env file
 
-agent = Agent(
-    'anthropic:claude-sonnet-4-6',
-    instructions='Be concise, reply with one sentence.',
-)
+domain = Path('demo-ui/geometry.domain').read_text()
+
+strategy = RawCodeStrategy()
+agent = strategy.build_agent(domain)
+
+
+@agent.tool_plain
+def render_diagram(substance: str) -> str:
+    """Render a Penrose diagram with the given substance code on the frontend."""
+    return 'ok'
+
 
 agui_app = AGUIApp(agent)
 

@@ -1,100 +1,80 @@
-import { compile, optimize, toSVG, showError } from '@penrose/core'
-import style from '../geometry.style?raw'
-import domain from '../geometry.domain?raw'
+import { compile, optimize, showError, toSVG } from "@penrose/core";
+import style from "../geometry.style?raw";
+import domain from "../geometry.domain?raw";
 
 // ---------------------------------------------------------------------------
-// Penrose diagram
+// Penrose diagram rendering
 // ---------------------------------------------------------------------------
 
-const substance = `
-Point A, B, C, D, E, F, G, H
-SetX(A, -200)
-SetX(B, 200)
-SetY(A, -100)
-
-SetX(C, -200)
-SetX(D, 200)
-SetY(C, 100)
-
-SetY(H, -150)
-SetY(G, 150)
-
-Line L1 := Line(A, B)
-Line L2 := Line(C, D)
-Line T := Line(G, H)
-Parallel(L1, L2)
-Horizontal(L1)
-EqualLength(L1, L2)
-
-On(E, L1)
-On(F, L2)
-On(E, T)
-On(F, T)
-
-Angle AEF := InteriorAngle(A, E, F)
-Angle DFE := InteriorAngle(D, F, E)
-Angle BEF := InteriorAngle(B, E, F)
-Angle CFE := InteriorAngle(C, F, E)
-EqualAngleMarker(AEF, DFE)
-EqualAngleMarker(BEF, CFE)
-SetAngle(AEF, 0.75)
-
-AutoLabel A, B, C, D, E, F, G, H
-`
-
-const compiled = await compile({ substance, style, domain, variation: 'test' })
-if (compiled.isErr()) {
-  console.error(showError(compiled.error))
-} else {
-  const optimized = optimize(compiled.value)
-  if (optimized.isErr()) {
-    console.error(showError(optimized.error))
-  } else {
-    document.getElementById('penrose').appendChild(await toSVG(optimized.value))
+async function renderSubstance(substance) {
+  console.log("Rendering substance:", substance);
+  const compiled = await compile({
+    substance,
+    style,
+    domain,
+    variation: "penrose",
+  });
+  if (compiled.isErr()) {
+    console.error(showError(compiled.error));
+    addBubble("error", "Diagram error: " + showError(compiled.error));
+    return;
   }
+  const optimized = optimize(compiled.value);
+  if (optimized.isErr()) {
+    console.error(showError(optimized.error));
+    addBubble("error", "Layout error: " + showError(optimized.error));
+    return;
+  }
+  const penroseEl = document.getElementById("penrose");
+  penroseEl.innerHTML = "";
+  penroseEl.appendChild(await toSVG(optimized.value));
 }
 
 // ---------------------------------------------------------------------------
 // Chat UI
 // ---------------------------------------------------------------------------
 
-const chat = document.getElementById('chat')
-const input = document.getElementById('input')
-const sendBtn = document.getElementById('send-btn')
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send-btn");
 
-const threadId = crypto.randomUUID()
-const history = [] // { id, role, content }
+const threadId = crypto.randomUUID();
+const history = []; // { id, role, content }
 
-function addBubble(role, text = '') {
-  const el = document.createElement('div')
-  el.className = `msg ${role}`
-  el.textContent = text
-  chat.appendChild(el)
-  el.scrollIntoView({ block: 'end' })
-  return el
+function addBubble(role, text = "") {
+  const el = document.createElement("div");
+  el.className = `msg ${role}`;
+  el.textContent = text;
+  chat.appendChild(el);
+  el.scrollIntoView({ block: "end" });
+  return el;
 }
 
 async function send() {
-  const text = input.value.trim()
-  if (!text) return
+  const text = input.value.trim();
+  if (!text) return;
 
-  input.value = ''
-  input.style.height = ''
-  sendBtn.disabled = true
+  input.value = "";
+  input.style.height = "";
+  sendBtn.disabled = true;
 
-  const userMsgId = crypto.randomUUID()
-  history.push({ id: userMsgId, role: 'user', content: text })
-  addBubble('user', text)
+  const userMsgId = crypto.randomUUID();
+  history.push({ id: userMsgId, role: "user", content: text });
+  addBubble("user", text);
 
-  const assistantBubble = addBubble('assistant thinking', '…')
-  let assistantMsgId = null
-  let assistantText = ''
-  let started = false
+  const assistantBubble = addBubble("assistant thinking", "…");
+  let assistantMsgId = null;
+  let assistantText = "";
+  let started = false;
+
+  // Tool call tracking for render_diagram
+  let inRenderCall = false;
+  let toolCallArgs = "";
 
   try {
-    const res = await fetch('/api/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("/api/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         threadId,
         runId: crypto.randomUUID(),
@@ -104,84 +84,119 @@ async function send() {
         context: [],
         forwardedProps: {},
       }),
-    })
+    });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
 
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
 
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop()
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
 
       for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const raw = line.slice(6).trim()
-        if (!raw) continue
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
 
-        let evt
-        try { evt = JSON.parse(raw) } catch { continue }
+        let evt;
+        try {
+          evt = JSON.parse(raw);
+        } catch {
+          continue;
+        }
 
         switch (evt.type) {
-          case 'TEXT_MESSAGE_START':
-            assistantMsgId = evt.messageId
-            assistantText = ''
+          case "TEXT_MESSAGE_START":
+            assistantMsgId = evt.messageId;
+            assistantText = "";
             if (!started) {
-              assistantBubble.classList.remove('thinking')
-              assistantBubble.textContent = ''
-              started = true
+              assistantBubble.classList.remove("thinking");
+              assistantBubble.textContent = "";
+              started = true;
             }
-            break
+            break;
 
-          case 'TEXT_MESSAGE_CONTENT':
+          case "TEXT_MESSAGE_CONTENT":
             if (evt.messageId === assistantMsgId) {
-              assistantText += evt.delta
-              assistantBubble.textContent = assistantText
-              assistantBubble.scrollIntoView({ block: 'end' })
+              assistantText += evt.delta;
+              assistantBubble.textContent = assistantText;
+              assistantBubble.scrollIntoView({ block: "end" });
             }
-            break
+            break;
 
-          case 'TEXT_MESSAGE_END':
+          case "TEXT_MESSAGE_END":
             if (assistantMsgId) {
-              history.push({ id: assistantMsgId, role: 'assistant', content: assistantText })
-              assistantMsgId = null
+              history.push({
+                id: assistantMsgId,
+                role: "assistant",
+                content: assistantText,
+              });
+              assistantMsgId = null;
             }
-            break
+            break;
 
-          case 'RUN_ERROR':
-            assistantBubble.remove()
-            addBubble('error', `Error: ${evt.message}`)
-            break
+          case "TOOL_CALL_START":
+            if (evt.toolCallName === "render_diagram") {
+              inRenderCall = true;
+              toolCallArgs = "";
+            }
+            break;
+
+          case "TOOL_CALL_ARGS":
+            if (inRenderCall) toolCallArgs += evt.delta;
+            break;
+
+          case "TOOL_CALL_END":
+            if (inRenderCall) {
+              inRenderCall = false;
+              try {
+                const { substance } = JSON.parse(toolCallArgs);
+                await renderSubstance(substance);
+              } catch (e) {
+                console.error(
+                  "Failed to parse render_diagram args",
+                  e,
+                  toolCallArgs,
+                );
+              }
+            }
+            break;
+
+          case "RUN_ERROR":
+            assistantBubble.remove();
+            addBubble("error", `Error: ${evt.message}`);
+            break;
         }
       }
     }
 
-    if (!started) assistantBubble.remove()
+    if (!started) assistantBubble.remove();
   } catch (err) {
-    assistantBubble.remove()
-    addBubble('error', `Failed to reach agent: ${err.message}`)
+    assistantBubble.remove();
+    addBubble("error", `Failed to reach agent: ${err.message}`);
   } finally {
-    sendBtn.disabled = false
-    input.focus()
+    sendBtn.disabled = false;
+    input.focus();
   }
 }
 
-sendBtn.addEventListener('click', send)
+sendBtn.addEventListener("click", send);
 
-input.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    send()
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send();
   }
-})
+});
 
-input.addEventListener('input', () => {
-  input.style.height = 'auto'
-  input.style.height = Math.min(input.scrollHeight, 128) + 'px'
-})
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 128) + "px";
+});
