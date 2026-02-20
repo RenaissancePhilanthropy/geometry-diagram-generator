@@ -19,9 +19,13 @@ Rules for generating substance code:
 - Declare all objects before using them in predicates.
 - Group bare declarations by type (e.g. "Point A, B, C").
 - Use constructor syntax for derived objects (e.g. "Line L := Line(A, B)").
-- Include an AutoLabel directive for any points or objects that should be labelled.
+- Include a final AutoLabel directive for all points you create.
 - Do not include markdown formatting or code fences in the substance string passed \
 to render_diagram — pass raw Penrose substance syntax only.
+- NEVER use dot notation (e.g. "obj.field") — substance has no property access syntax. \
+Predicate arguments must be declared object names, numeric literals, or quoted string literals only.
+- Do not invent predicates, types, or constructors that are not in the domain file.
+- Remember to use radians, not degrees, for any angle measures.
 """
 
 
