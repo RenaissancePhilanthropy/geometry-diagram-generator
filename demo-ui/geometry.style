@@ -742,10 +742,23 @@ with Point p; Point q; Point r; Point s {
     }
   ensure vdist(p.icon.center, q.icon.center) == vdist(r.icon.center, s.icon.center)
   ensure vdist(p.icon.center, s.icon.center) == vdist(q.icon.center, r.icon.center)
+  
+  ensure greaterThan(vdist(p.icon.center, q.icon.center), 5.0, 0.0)
+  ensure greaterThan(vdist(p.icon.center, s.icon.center), 5.0, 0.0)
+  ensure greaterThan(vdist(q.icon.center, r.icon.center), 5.0, 0.0)
+  ensure greaterThan(vdist(r.icon.center, s.icon.center), 5.0, 0.0)
+  ensure greaterThan(vdist(r.icon.center, p.icon.center), 7.0, 0.0)
+  ensure greaterThan(vdist(q.icon.center, s.icon.center), 7.0, 0.0)
 
+  ensure equal(r.icon.center[0], q.icon.center[0] + (s.icon.center[0] - p.icon.center[0]))
+  ensure equal(r.icon.center[1], q.icon.center[1] + (s.icon.center[1] - p.icon.center[1]))
+  
+  ensure isConvex([p.icon.center, q.icon.center, r.icon.center, s.icon.center], true)
   ensure perpendicular(p.icon.center, q.icon.center, r.icon.center)
-  ensure perpendicular(q.icon.center, s.icon.center, r.icon.center)
-
+  ensure perpendicular(q.icon.center, r.icon.center, s.icon.center)
+  ensure equal(vdist(p.icon.center, r.icon.center), vdist(q.icon.center, s.icon.center))
+  ensure greaterThan(cross2D(q.icon.center - p.icon.center, r.icon.center - p.icon.center), 0.0, 0.0)
+  ensure greaterThan(cross2D(r.icon.center - p.icon.center, s.icon.center - p.icon.center), 0.0, 0.0)
   -- R.icon above P.icon
 }
 
