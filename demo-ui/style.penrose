@@ -108,7 +108,7 @@ where In(p, P) {
 
 forall Point p, q, r
 where Collinear(p, q, r) {
-  ensure collinearOrdered(p.icon.center, q.icon.center, r.icon.center) 
+  ensure collinear(p.icon.center, q.icon.center, r.icon.center) 
   encourage notTooClose(p.icon, r.icon, const.repelWeight)
 }
 
@@ -231,6 +231,12 @@ where Parallel(l1, l2) {
   ensure 10000 == dot(normalize(l1.vec), normalize(l2.vec)) * 10000
 }
 
+forall Linelike l1, l2
+where Perpendicular (l1, l2) {
+  -- the dot product of the unit vectors of Perpendicular lines is 0
+  ensure abs(dot(normalize(l1.vec), normalize(l2.vec))) < 0.00001
+}
+
 forall Linelike l
 where Horizontal(l) {
   ensure l.start[1] == l.end[1]
@@ -246,6 +252,20 @@ where SetY(p, y) {
   ensure p.vec[1] == y
 }
 
+forall Point a, b, c
+where Between(a, b, c) {
+  ensure collinearOrdered(a, b, c)
+}
+
+forall Point a, b
+where Distinct(a, b) {
+  ensure disjoint(a, b, const.repelWeight)
+}
+
+forall Point a, b, c
+where NonCollinear(a, b, c) {
+  ensure abs(cross2D(q - p, r - p)) > 0.1 
+}
 
 --Segment
 forall Segment e
@@ -648,6 +668,7 @@ with Triangle T {
     style : "solid"
   }
 
+
   -- TODO make it so that predicates can reference other predicates. 3/4 of these are copy-pasted from the Collinear predicate
   ensure collinear(T.PQ.start, T.icon.start, T.PQ.end)
   ensure collinear(T.QR.start, T.icon2.start, T.QR.end)  
@@ -666,6 +687,29 @@ with Triangle T {
   encourage repelPt(const.repelWeight, T.RP.start, T.icon3.start)
   encourage repelPt(const.repelWeight, T.RP.end, T.icon3.start)
 
+}
+
+forall Triangle T
+where T := Triangle(p, q, r); Equilateral(T)
+with Point p; Point r; Point q {
+  ensure vdist(p.vec, r.vec) == vdist(p.vec, q.vec)
+  ensure vdist(p.vec, r.vec) == vdist(r.vec, q.vec)
+}
+
+forall Triangle T
+where T := Triangle(A, B, C); Isosceles (T)
+with Point A; Point B; Point C {
+  scalar dAB = vdist(A.vec, B.vec)
+  scalar dAC = vdist(A.vec, C.vec)
+  scalar dBC = vdist(B.vec, C.vec)
+
+
+  -- error for each option
+  scalar e1 = abs(dAB - dAC)
+  scalar e2 = abs(dAB - dBC)
+  
+  -- FLEXIBLE: encourage one option to become true (whichever is easier)
+  ensure min(e1, e2) < 0.1
 }
 
 --Rectangle
@@ -926,6 +970,46 @@ where s1 has label; s2 has label {
 forall Shape s
 where Centered(s) {
   override s.vec = (0, 0)
+}
+
+
+forall Line L; Circle C; Point P; Point Q; Point O; Point R
+where L := Line(P, Q); C := CircleR(O, R); Tangent(L, C) {
+
+  vec2 v = Q.vec - P.vec
+  vec2 w = O.vec - P.vec
+
+  scalar r = vdist(O.vec, R.vec)
+  scalar d = abs(cross2D(v, w)) / vdist(P.vec, Q.vec)
+
+  -- Tangent to the infinite line
+  ensure equal(d, r)
+
+  -- Also make the tangency point lie on the drawn segment PQ
+  scalar t = dot(w, v) / dot(v, v)
+  scalar margin = 0.05
+  ensure t > 0 + margin
+  ensure t < 1 - margin
+}
+
+forall Line L; Circle C; Point P; Point Q; Point O; Point R
+where L := Line(P, Q); C := CircleR(O, R); Secant(L, C) {
+
+  vec2 v = Q.vec - P.vec
+  vec2 w = O.vec - P.vec
+
+  scalar r = vdist(O.vec, R.vec)
+  scalar d = abs(cross2D(v, w)) / vdist(P.vec, Q.vec)
+
+  -- Secant to the infinite line
+  scalar eps = 0.1
+  ensure d < r - eps
+
+  -- Ensure the intersection chord happens on the drawn segment
+  scalar t = dot(w, v) / dot(v, v)
+  scalar margin = 0.1
+  ensure t > 0 + margin
+  ensure t < 1 - margin
 }
 
 global {

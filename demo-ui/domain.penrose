@@ -175,9 +175,14 @@ predicate Parallel(Linelike, Linelike) -- This predicate makes two lines paralle
 -- lineCD := Line(C, D)
 -- Parallel(lineAB, lineCD)
 -- AutoLabel A, B, C, D
+predicate Perpendicular(Linelike, Linelike)
 predicate Horizontal(Linelike)
 predicate SetX(Point, Number)
 predicate SetY(Point, Number)
+
+predicate Between(Point, Point, Point)
+predicate Distinct(Point, Point)
+predicate NonCollinear(Point, Point, Point)
 
 -- Angles
 predicate Acute(Angle) -- This predicate makes an angle acute. Example usage: 
@@ -269,5 +274,10 @@ predicate Circumcenter(Point, Triangle) -- This predicate makes a point be the c
 -- triangleABC := Triangle(A, B, C)
 -- Circumcenter(D, triangleABC)
 -- AutoLabel A, B, C, D
+predicate Equilateral(Triangle)
+predicate Isosceles(Triangle)
+
+predicate Tangent(Line, Circle)
+predicate Secant(Line, Circle)
 
 predicate Centered(Shape)
