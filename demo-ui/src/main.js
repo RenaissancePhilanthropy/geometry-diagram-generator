@@ -1,6 +1,6 @@
 import { compile, optimize, toSVG, showError } from '@penrose/core'
-import style from '../style.penrose?raw'
-import domain from '../domain.penrose?raw'
+import style from '../geometry.style?raw'
+import domain from '../geometry.domain?raw'
 
 // ---------------------------------------------------------------------------
 // Penrose diagram
