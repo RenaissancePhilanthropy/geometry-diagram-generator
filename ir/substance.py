@@ -1,6 +1,7 @@
 from collections import defaultdict
 
-from .models import Diagram, StringLiteral
+from .emitter import DiagramLike, SubstanceEmitter
+from .models import StringLiteral
 
 
 def _fmt_arg(arg: str | float | StringLiteral) -> str:
@@ -17,32 +18,45 @@ def _fmt_arg(arg: str | float | StringLiteral) -> str:
     return str(arg)
 
 
-def to_substance(diagram: Diagram) -> str:
-    """Convert a Diagram to a Penrose substance string."""
-    lines: list[str] = []
+class PenroseEmitter(SubstanceEmitter):
+    """Emits standard Penrose substance code from any DiagramLike.
 
-    # Pass 1: bare declarations grouped by type, preserving insertion order.
-    bare_by_type: dict[str, list[str]] = defaultdict(list)
-    for obj in diagram.objects:
-        if obj.constructor is None:
-            bare_by_type[obj.type].append(obj.name)
+    Performs four passes in order:
+    1. Bare declarations grouped by type:   Point A, B, C
+    2. Constructor declarations:            Line L1 := Line(A, B)
+    3. Predicates:                          Parallel(L1, L2)
+    4. AutoLabel:                           AutoLabel A, B, C
+    """
 
-    for type_name, names in bare_by_type.items():
-        lines.append(f"{type_name} {', '.join(names)}")
+    def emit(self, diagram: DiagramLike) -> str:
+        lines: list[str] = []
 
-    # Pass 2: constructor / function declarations.
-    for obj in diagram.objects:
-        if obj.constructor is not None:
-            args_str = ", ".join(obj.constructor.args)
-            lines.append(f"{obj.type} {obj.name} := {obj.constructor.name}({args_str})")
+        # Pass 1: bare declarations grouped by type, preserving insertion order.
+        bare_by_type: dict[str, list[str]] = defaultdict(list)
+        for obj in diagram.objects:
+            if obj.constructor is None:
+                bare_by_type[obj.type].append(obj.name)
+        for type_name, names in bare_by_type.items():
+            lines.append(f"{type_name} {', '.join(names)}")
 
-    # Predicates.
-    for pred in diagram.predicates:
-        args_str = ", ".join(_fmt_arg(a) for a in pred.args)
-        lines.append(f"{pred.name}({args_str})")
+        # Pass 2: constructor / function declarations.
+        for obj in diagram.objects:
+            if obj.constructor is not None:
+                args_str = ", ".join(obj.constructor.args)
+                lines.append(f"{obj.type} {obj.name} := {obj.constructor.name}({args_str})")
 
-    # AutoLabel.
-    if diagram.auto_label:
-        lines.append(f"AutoLabel {', '.join(diagram.auto_label)}")
+        # Pass 3: predicates.
+        for pred in diagram.predicates:
+            args_str = ", ".join(_fmt_arg(a) for a in pred.args)
+            lines.append(f"{pred.name}({args_str})")
 
-    return "\n".join(lines)
+        # Pass 4: AutoLabel.
+        if diagram.auto_label:
+            lines.append(f"AutoLabel {', '.join(diagram.auto_label)}")
+
+        return "\n".join(lines)
+
+
+def to_substance(diagram: DiagramLike) -> str:
+    """Convert a Diagram (or any DiagramLike) to a Penrose substance string."""
+    return PenroseEmitter().emit(diagram)

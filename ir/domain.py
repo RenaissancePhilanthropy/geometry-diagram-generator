@@ -22,7 +22,7 @@ _COMMENT_RE = re.compile(r'--[^\n]*')
 _TYPE_RE = re.compile(r'^type\s+(\w+)(?:\s*<:\s*(\w+))?', re.MULTILINE)
 _CTOR_RE = re.compile(r'^constructor\s+(\w+)\s*\(([^)]*)\)', re.MULTILINE)
 _FUNC_RE = re.compile(r'^function\s+(\w+)\s*\(([^)]*)\)', re.MULTILINE)
-_PRED_RE = re.compile(r'^predicate\s+(\w+)\s*\(([^)]*)\)', re.MULTILINE)
+_PRED_RE = re.compile(r'^(symmetric\s+)?predicate\s+(\w+)\s*\(([^)]*)\)', re.MULTILINE)
 
 
 def _strip_comments(text: str) -> str:
@@ -61,7 +61,7 @@ def parse_domain(text: str) -> DomainInfo:
         info.constructors[m.group(1)] = _parse_param_types(m.group(2))
 
     for m in _PRED_RE.finditer(clean):
-        info.predicates[m.group(1)] = _parse_param_types(m.group(2))
+        info.predicates[m.group(2)] = _parse_param_types(m.group(3))
 
     return info
 

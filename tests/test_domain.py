@@ -19,7 +19,7 @@ type Segment <: Linelike
 constructor Line(Point p, Point q)
 constructor Segment(Point p, Point q)
 
-predicate Parallel(Linelike, Linelike)
+symmetric predicate Parallel(Linelike, Linelike)
 predicate SetX(Point, Number)
 predicate Orientation(Linelike, String)
 predicate On(Point, Linelike)
