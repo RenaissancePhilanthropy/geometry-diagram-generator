@@ -5,6 +5,9 @@ from pydantic_ai import Agent
 from logging import getLogger
 
 
+DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
+#DEFAULT_AGENT_MODEL = "openai-responses:gpt-5.1-codex-mini"
+
 class SubstanceStrategy(ABC):
     """Abstract base class for substance generation strategies."""
 

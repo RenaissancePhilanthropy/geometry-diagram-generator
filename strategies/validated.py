@@ -11,7 +11,7 @@ from util.svg_checks import (
     checks_from_diagram,
     run_checks,
 )
-from .base import SubstanceStrategy
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .structured import INSTRUCTIONS_TEMPLATE
 
 _MAX_VARIATIONS = 5
@@ -36,7 +36,7 @@ class   ValidatedStrategy(SubstanceStrategy):
         emitter = PenroseEmitter()
 
         agent = Agent(
-            'anthropic:claude-sonnet-4-6',
+            DEFAULT_AGENT_MODEL,
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
 
@@ -50,26 +50,44 @@ class   ValidatedStrategy(SubstanceStrategy):
             last_variation = f"v-0"
             last_failures: list[str] = []
 
+            failure_list = set()
+
             for i in range(_MAX_VARIATIONS):
                 variation = f"v-{i}"
                 try:
                     svg = render_svg(substance, variation=variation)
                 except RuntimeError as e:
+                    self.logger.debug(f"Rendering failed for variation '{variation}': {e}")
                     raise ModelRetry(str(e)) from e
 
                 failures = run_checks(svg, diagram, all_checks)
                 last_variation = variation
                 last_failures = failures
 
+                if failures: 
+                    self.logger.debug(
+                        f"Checks failed for variation '{variation}':\n{failure_list}"
+                    )
+                    failure_list.update(failures)
                 if not failures:
-                    break
+                    # All checks passed, return this variation
+                    self.logger.debug(
+                        f"All checks passed for variation '{variation}'."
+                    )
+                    return json.dumps({"substance": substance, "variation": variation})
 
             if last_failures:
-                print(
-                    f"ValidatedStrategy: all {_MAX_VARIATIONS} variations failed checks "
-                    f"({last_failures!r}), using last one ({last_variation})"
+                failure_list = "\n".join(f"- {f}" for f in failure_list)
+                self.logger.debug(
+                    f"All {_MAX_VARIATIONS} variations failed checks for substance:\n{substance}"
                 )
-
-            return json.dumps({"substance": substance, "variation": last_variation})
+                self.logger.warning(
+                    f"All {_MAX_VARIATIONS} variations failed checks. Last variation '{last_variation}' failures:\n{failure_list}"
+                )
+                raise ModelRetry(
+                    f"All {_MAX_VARIATIONS} rendered variations failed visual checks. "
+                    f"Please revise the diagram to fix these issues:\n{failure_list}"
+                    f"\nNote that you will need to revise the substance to fix these issues. Rethink what constraints you have added and which you have not."
+                )
 
         return agent

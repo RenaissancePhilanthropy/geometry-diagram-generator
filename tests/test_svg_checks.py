@@ -248,3 +248,223 @@ class TestChecksFromDiagram:
         )
         checks = checks_from_diagram(diagram)
         assert run_checks(_svg(""), diagram, checks) == []
+
+
+# ---------------------------------------------------------------------------
+# Perpendicular predicate check
+# ---------------------------------------------------------------------------
+
+class TestPerpendicularCheck:
+    def _diagram(self):
+        return Diagram(
+            objects=[
+                GeoObject(type="Point", name="A"),
+                GeoObject(type="Point", name="B"),
+                GeoObject(type="Point", name="C"),
+                GeoObject(type="Point", name="D"),
+                GeoObject(type="Line", name="L1", constructor=Constructor(name="Line", args=["A", "B"])),
+                GeoObject(type="Line", name="L2", constructor=Constructor(name="Line", args=["C", "D"])),
+            ],
+            predicates=[Predicate(name="Perpendicular", args=["L1", "L2"])],
+        )
+
+    def test_passes_for_perpendicular_lines(self):
+        # L1 horizontal, L2 vertical → perpendicular
+        svg = _svg(
+            _circle("A", 100, 200) + _circle("B", 300, 200) +
+            _circle("C", 200, 100) + _circle("D", 200, 400)
+        )
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_fails_for_parallel_lines(self):
+        # Both horizontal → 0° apart, not 90°
+        svg = _svg(
+            _circle("A", 100, 200) + _circle("B", 300, 200) +
+            _circle("C", 100, 300) + _circle("D", 300, 300)
+        )
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "Perpendicular" in failures[0]
+
+    def test_skips_when_points_missing(self):
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(_svg(""), diagram, checks) == []
+
+
+# ---------------------------------------------------------------------------
+# Collinear predicate check
+# ---------------------------------------------------------------------------
+
+class TestCollinearCheck:
+    def _diagram(self, p1="A", p2="B", p3="C"):
+        return Diagram(
+            objects=[
+                GeoObject(type="Point", name="A"),
+                GeoObject(type="Point", name="B"),
+                GeoObject(type="Point", name="C"),
+            ],
+            predicates=[Predicate(name="Collinear", args=[p1, p2, p3])],
+        )
+
+    def test_passes_for_collinear_points(self):
+        # A, B, C all on y=200 horizontal line
+        svg = _svg(_circle("A", 100, 200) + _circle("B", 200, 200) + _circle("C", 300, 200))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_fails_for_non_collinear_points(self):
+        # Triangle: A(100,400), B(200,100), C(300,400)
+        svg = _svg(_circle("A", 100, 400) + _circle("B", 200, 100) + _circle("C", 300, 400))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "Collinear" in failures[0]
+
+    def test_skips_when_points_missing(self):
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(_svg(""), diagram, checks) == []
+
+
+# ---------------------------------------------------------------------------
+# NonCollinear predicate check
+# ---------------------------------------------------------------------------
+
+class TestNonCollinearCheck:
+    def _diagram(self, p1="A", p2="B", p3="C"):
+        return Diagram(
+            objects=[
+                GeoObject(type="Point", name="A"),
+                GeoObject(type="Point", name="B"),
+                GeoObject(type="Point", name="C"),
+            ],
+            predicates=[Predicate(name="NonCollinear", args=[p1, p2, p3])],
+        )
+
+    def test_passes_for_non_collinear_points(self):
+        # Triangle: A(100,400), B(200,100), C(300,400)
+        svg = _svg(_circle("A", 100, 400) + _circle("B", 200, 100) + _circle("C", 300, 400))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_fails_for_collinear_points(self):
+        # All on y=200
+        svg = _svg(_circle("A", 100, 200) + _circle("B", 200, 200) + _circle("C", 300, 200))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "NonCollinear" in failures[0]
+
+    def test_skips_when_points_missing(self):
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(_svg(""), diagram, checks) == []
+
+
+# ---------------------------------------------------------------------------
+# EqualLength predicate check
+# ---------------------------------------------------------------------------
+
+class TestEqualLengthCheck:
+    def _diagram(self):
+        return Diagram(
+            objects=[
+                GeoObject(type="Point", name="A"),
+                GeoObject(type="Point", name="B"),
+                GeoObject(type="Point", name="C"),
+                GeoObject(type="Point", name="D"),
+                GeoObject(type="Segment", name="S1", constructor=Constructor(name="Segment", args=["A", "B"])),
+                GeoObject(type="Segment", name="S2", constructor=Constructor(name="Segment", args=["C", "D"])),
+            ],
+            predicates=[Predicate(name="EqualLength", args=["S1", "S2"])],
+        )
+
+    def test_passes_for_equal_length_segments(self):
+        # S1: A(100,200)→B(300,200) = 200px; S2: C(100,300)→D(300,300) = 200px
+        svg = _svg(
+            _circle("A", 100, 200) + _circle("B", 300, 200) +
+            _circle("C", 100, 300) + _circle("D", 300, 300)
+        )
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_fails_for_very_different_lengths(self):
+        # S1: 200px, S2: 20px
+        svg = _svg(
+            _circle("A", 100, 200) + _circle("B", 300, 200) +
+            _circle("C", 100, 300) + _circle("D", 120, 300)
+        )
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "EqualLength" in failures[0]
+
+    def test_passes_for_segments_within_tolerance(self):
+        # S1: 200px, S2: 195px → 2.5% difference, within 15% tolerance
+        svg = _svg(
+            _circle("A", 100, 200) + _circle("B", 300, 200) +
+            _circle("C", 100, 300) + _circle("D", 295, 300)
+        )
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_skips_when_points_missing(self):
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(_svg(""), diagram, checks) == []
+
+
+# ---------------------------------------------------------------------------
+# Horizontal predicate check
+# ---------------------------------------------------------------------------
+
+class TestHorizontalCheck:
+    def _diagram(self):
+        return Diagram(
+            objects=[
+                GeoObject(type="Point", name="A"),
+                GeoObject(type="Point", name="B"),
+                GeoObject(type="Line", name="L1", constructor=Constructor(name="Line", args=["A", "B"])),
+            ],
+            predicates=[Predicate(name="Horizontal", args=["L1"])],
+        )
+
+    def test_passes_for_horizontal_line(self):
+        svg = _svg(_circle("A", 100, 200) + _circle("B", 300, 200))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(svg, diagram, checks) == []
+
+    def test_fails_for_vertical_line(self):
+        svg = _svg(_circle("A", 200, 100) + _circle("B", 200, 400))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "Horizontal" in failures[0]
+
+    def test_fails_for_diagonal_line(self):
+        # 45° diagonal
+        svg = _svg(_circle("A", 100, 100) + _circle("B", 300, 300))
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        failures = run_checks(svg, diagram, checks)
+        assert len(failures) == 1
+        assert "Horizontal" in failures[0]
+
+    def test_skips_when_points_missing(self):
+        diagram = self._diagram()
+        checks = checks_from_diagram(diagram)
+        assert run_checks(_svg(""), diagram, checks) == []

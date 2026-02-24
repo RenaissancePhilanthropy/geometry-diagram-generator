@@ -73,6 +73,7 @@ def render_svg(substance: str, substance_name: Optional[str] = None, *, variatio
                 f"Failed to render {substance_name}: Process exited with code "
                 f"{result.returncode}. {details}"
             )
+            logger.debug(f"Roger rendering failed for substance:\n{substance}")
             logger.warning(f"Roger rendering failed: {details}")
             raise RuntimeError(error_message)
 

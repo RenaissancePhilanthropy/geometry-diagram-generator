@@ -245,24 +245,215 @@ def _parallel_factory(pred, diagram: DiagramLike) -> CheckFn | None:
                 f"Parallel({name1}, {name2}): lines are {angle_deg:.1f}° apart "
                 f"(tolerance {_PARALLEL_ANGLE_TOLERANCE_DEG}°)"
             )
-        
-        # Check that lines are non-degenerate (length > epsilon) and not rendered on top of each other
-        x1, y1 = geom.point_positions.get(name1.split('.')[0], (0, 0))
-        x2, y2 = geom.point_positions.get(name2.split('.')[0], (0, 0))
-        distance = math.hypot(x2 - x1, y2 - y1)
-        if distance < 1e-6:
-            return (
-                f"Parallel({name1}, {name2}): lines are too close together, may be rendered on top of each other"
-            )
-        
-        if cross < 1e-6:
-            return (
-                f"Parallel({name1}, {name2}): lines are too close together, may be rendered on top of each other"
-            )
-        
         return None
 
     return check
 
 
 PREDICATE_CHECKS["Parallel"] = _parallel_factory
+
+
+# ---------------------------------------------------------------------------
+# Perpendicular predicate check
+# ---------------------------------------------------------------------------
+
+def _perpendicular_factory(pred, diagram: DiagramLike) -> CheckFn | None:
+    """Generate a check verifying two Linelike objects are perpendicular."""
+    if len(pred.args) < 2:
+        return None
+    name1, name2 = str(pred.args[0]), str(pred.args[1])
+
+    def check(svg: str, _diagram: DiagramLike) -> str | None:
+        geom = extract_geometry(svg)
+        d1 = _resolve_line_direction(name1, diagram, geom)
+        d2 = _resolve_line_direction(name2, diagram, geom)
+        if d1 is None or d2 is None:
+            return None  # can't resolve geometry, skip
+        # cross product magnitude = |sin(angle between lines)|; for 90° this should be ~1
+        cross = abs(d1[0] * d2[1] - d1[1] * d2[0])
+        angle_deg = math.degrees(math.asin(min(cross, 1.0)))  # angle from parallel, in [0°, 90°]
+        angle_from_90_deg = abs(90.0 - angle_deg)
+        if angle_from_90_deg > _PARALLEL_ANGLE_TOLERANCE_DEG:
+            return (
+                f"Perpendicular({name1}, {name2}): lines deviate {angle_from_90_deg:.1f}° "
+                f"from perpendicular (tolerance {_PARALLEL_ANGLE_TOLERANCE_DEG}°)"
+            )
+        return None
+
+    return check
+
+
+PREDICATE_CHECKS["Perpendicular"] = _perpendicular_factory
+
+
+# ---------------------------------------------------------------------------
+# Collinear / NonCollinear predicate checks
+# ---------------------------------------------------------------------------
+
+_COLLINEAR_ANGLE_TOLERANCE_DEG = 10.0
+_NONCOLLINEAR_MIN_ANGLE_DEG = 5.0
+
+
+def _three_point_cross(
+    p1: str, p2: str, p3: str, geom: SVGGeometry
+) -> tuple[float, float] | None:
+    """Return (cross_product, max_edge_length) for points p1, p2, p3, or None if any missing."""
+    pos = geom.point_positions
+    if p1 not in pos or p2 not in pos or p3 not in pos:
+        return None
+    ax, ay = pos[p1]
+    bx, by = pos[p2]
+    cx, cy = pos[p3]
+    # Vectors from A
+    abx, aby = bx - ax, by - ay
+    acx, acy = cx - ax, cy - ay
+    cross = abx * acy - aby * acx  # signed cross product
+    max_edge = max(math.hypot(abx, aby), math.hypot(acx, acy), math.hypot(cx - bx, cy - by))
+    return abs(cross), max_edge
+
+
+def _collinear_factory(pred, _diagram: DiagramLike) -> CheckFn | None:
+    """Generate a check verifying three points are collinear."""
+    if len(pred.args) < 3:
+        return None
+    p1, p2, p3 = str(pred.args[0]), str(pred.args[1]), str(pred.args[2])
+
+    def check(svg: str, _diagram: DiagramLike) -> str | None:
+        geom = extract_geometry(svg)
+        result = _three_point_cross(p1, p2, p3, geom)
+        if result is None:
+            return None  # can't resolve, skip
+        cross_mag, max_edge = result
+        if max_edge < 1e-6:
+            return None  # degenerate triangle, skip
+        # cross_mag / max_edge ≈ sin(angle of deviation from collinearity)
+        angle_deg = math.degrees(math.asin(min(cross_mag / max_edge, 1.0)))
+        if angle_deg > _COLLINEAR_ANGLE_TOLERANCE_DEG:
+            return (
+                f"Collinear({p1}, {p2}, {p3}): points deviate {angle_deg:.1f}° "
+                f"from collinear (tolerance {_COLLINEAR_ANGLE_TOLERANCE_DEG}°)"
+            )
+        return None
+
+    return check
+
+
+PREDICATE_CHECKS["Collinear"] = _collinear_factory
+
+
+def _noncollinear_factory(pred, _diagram: DiagramLike) -> CheckFn | None:
+    """Generate a check verifying three points are NOT collinear."""
+    if len(pred.args) < 3:
+        return None
+    p1, p2, p3 = str(pred.args[0]), str(pred.args[1]), str(pred.args[2])
+
+    def check(svg: str, _diagram: DiagramLike) -> str | None:
+        geom = extract_geometry(svg)
+        result = _three_point_cross(p1, p2, p3, geom)
+        if result is None:
+            return None  # can't resolve, skip
+        cross_mag, max_edge = result
+        if max_edge < 1e-6:
+            return None  # degenerate, skip
+        angle_deg = math.degrees(math.asin(min(cross_mag / max_edge, 1.0)))
+        if angle_deg < _NONCOLLINEAR_MIN_ANGLE_DEG:
+            return (
+                f"NonCollinear({p1}, {p2}, {p3}): points are nearly collinear "
+                f"(deviation only {angle_deg:.1f}°, minimum {_NONCOLLINEAR_MIN_ANGLE_DEG}°)"
+            )
+        return None
+
+    return check
+
+
+PREDICATE_CHECKS["NonCollinear"] = _noncollinear_factory
+
+
+# ---------------------------------------------------------------------------
+# EqualLength predicate check
+# ---------------------------------------------------------------------------
+
+_EQUAL_LENGTH_RELATIVE_TOLERANCE = 0.15
+
+
+def _resolve_line_length(
+    line_name: str,
+    diagram: DiagramLike,
+    geom: SVGGeometry,
+) -> float | None:
+    """Return the rendered pixel length of a named Linelike object.
+
+    Tries two sources:
+      1. Direct <line> element in the SVG (geom.line_endpoints).
+      2. Constructor args — Segment(A, B) → use rendered positions of A and B.
+    """
+    if line_name in geom.line_endpoints:
+        x1, y1, x2, y2 = geom.line_endpoints[line_name]
+        return math.hypot(x2 - x1, y2 - y1)
+    for obj in diagram.objects:
+        if obj.name == line_name and obj.constructor and len(obj.constructor.args) >= 2:
+            p1, p2 = obj.constructor.args[0], obj.constructor.args[1]
+            if p1 in geom.point_positions and p2 in geom.point_positions:
+                x1, y1 = geom.point_positions[p1]
+                x2, y2 = geom.point_positions[p2]
+                return math.hypot(x2 - x1, y2 - y1)
+    return None
+
+
+def _equal_length_factory(pred, diagram: DiagramLike) -> CheckFn | None:
+    """Generate a check verifying two Linelike objects have equal rendered length."""
+    if len(pred.args) < 2:
+        return None
+    name1, name2 = str(pred.args[0]), str(pred.args[1])
+
+    def check(svg: str, _diagram: DiagramLike) -> str | None:
+        geom = extract_geometry(svg)
+        len1 = _resolve_line_length(name1, diagram, geom)
+        len2 = _resolve_line_length(name2, diagram, geom)
+        if len1 is None or len2 is None:
+            return None  # can't resolve, skip
+        if len1 < 1e-6 or len2 < 1e-6:
+            return None  # degenerate segment, skip
+        ratio = abs(len1 - len2) / max(len1, len2)
+        if ratio > _EQUAL_LENGTH_RELATIVE_TOLERANCE:
+            return (
+                f"EqualLength({name1}, {name2}): lengths differ by {ratio * 100:.1f}% "
+                f"({len1:.1f}px vs {len2:.1f}px, tolerance {_EQUAL_LENGTH_RELATIVE_TOLERANCE * 100:.0f}%)"
+            )
+        return None
+
+    return check
+
+
+PREDICATE_CHECKS["EqualLength"] = _equal_length_factory
+
+
+# ---------------------------------------------------------------------------
+# Horizontal predicate check
+# ---------------------------------------------------------------------------
+
+def _horizontal_factory(pred, diagram: DiagramLike) -> CheckFn | None:
+    """Generate a check verifying a Linelike object is approximately horizontal."""
+    if len(pred.args) < 1:
+        return None
+    name = str(pred.args[0])
+
+    def check(svg: str, _diagram: DiagramLike) -> str | None:
+        geom = extract_geometry(svg)
+        direction = _resolve_line_direction(name, diagram, geom)
+        if direction is None:
+            return None  # can't resolve, skip
+        dx, dy = direction
+        # Angle from horizontal = atan2(|dy|, |dx|)
+        angle_deg = math.degrees(math.atan2(abs(dy), abs(dx)))
+        if angle_deg > _PARALLEL_ANGLE_TOLERANCE_DEG:
+            return (
+                f"Horizontal({name}): line is {angle_deg:.1f}° from horizontal "
+                f"(tolerance {_PARALLEL_ANGLE_TOLERANCE_DEG}°)"
+            )
+        return None
+
+    return check
+
+
+PREDICATE_CHECKS["Horizontal"] = _horizontal_factory

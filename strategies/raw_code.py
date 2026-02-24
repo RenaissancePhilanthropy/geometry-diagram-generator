@@ -1,6 +1,6 @@
 from pydantic_ai import Agent
 
-from .base import SubstanceStrategy
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 
 INSTRUCTIONS_TEMPLATE = """\
 You are a helpful geometry diagram assistant. When a user asks you to draw or \
@@ -32,7 +32,7 @@ Predicate arguments must be declared object names, numeric literals, or quoted s
 class RawCodeStrategy(SubstanceStrategy):
     def build_agent(self, domain: str) -> Agent:
         agent = Agent(
-            'anthropic:claude-sonnet-4-6',
+            DEFAULT_AGENT_MODEL,
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
 

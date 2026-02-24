@@ -168,21 +168,22 @@ predicate EqualLength(Linelike, Linelike) -- This predicate makes two segments h
 -- segmentCD := Segment(C, D)
 -- EqualLength(segmentAB, segmentCD)
 -- AutoLabel A, B, C, D
-predicate Parallel(Linelike, Linelike) -- This predicate makes two lines parallel. Example usage: 
+symmetric predicate Parallel(Linelike, Linelike) -- This predicate makes two lines parallel. Example usage: 
 -- Point A, B, C, D
 -- Line lineAB, lineCD
 -- lineAB := Line(A, B)
 -- lineCD := Line(C, D)
 -- Parallel(lineAB, lineCD)
 -- AutoLabel A, B, C, D
-predicate Perpendicular(Linelike, Linelike)
-predicate Horizontal(Linelike)
+symmetric predicate Perpendicular(Linelike, Linelike) -- Similar for perpendicular lines
+predicate Horizontal(Linelike) -- Causes a line to be horizontal
+predicate MinLength(Linelike, Number) -- Gives a line or segment a minimum length
 predicate SetX(Point, Number)
 predicate SetY(Point, Number)
 
 predicate Between(Point, Point, Point)
-predicate Distinct(Point, Point)
-predicate NonCollinear(Point, Point, Point)
+symmetric predicate Distinct(Point, Point) -- Enforce that two points have a minimum distance between them
+predicate NonCollinear(Point, Point, Point) -- This predicate makes the three points not on the same line
 
 -- Angles
 predicate Acute(Angle) -- This predicate makes an angle acute. Example usage: 
@@ -284,7 +285,6 @@ predicate Centered(Shape)
 
 -- ~~~~~~~~~~~~~~~~ LAYOUT HINT PREDICATES ~~~~~~~~~~~~~~~~
 -- These are layout hints (aesthetic priors), not geometric axioms.
--- The second/third argument uses Penrose’s built-in literal type `String`. :contentReference[oaicite:2]{index=2}
 
 predicate Orientation(Linelike, String)
 -- Expected values (convention): "horizontal" | "vertical" | "free"

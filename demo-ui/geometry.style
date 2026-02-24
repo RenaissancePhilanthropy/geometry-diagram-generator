@@ -267,6 +267,11 @@ where Horizontal(l) {
   ensure l.start[1] == l.end[1]
 }
 
+forall Linelike l
+where MinLength(l, n) {
+  ensure vdist(l.start, l.end) > n
+}
+
 forall Point p
 where SetX(p, x) {
   ensure p.vec[0] == x
