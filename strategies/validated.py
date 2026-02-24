@@ -18,7 +18,7 @@ _MAX_VARIATIONS = 5
 _GENERAL_CHECKS: list[CheckFn] = [check_no_collapsed_points, check_elements_in_bounds]
 
 
-class   ValidatedStrategy(SubstanceStrategy):
+class ValidatedStrategy(SubstanceStrategy):
     """Like StructuredStrategy, but runs roger server-side to validate the rendered SVG.
 
     Tries up to _MAX_VARIATIONS seeds. For each, runs general checks (collapsed
@@ -30,13 +30,13 @@ class   ValidatedStrategy(SubstanceStrategy):
     re-render with the exact same seed.
     """
 
-    def build_agent(self, domain: str) -> Agent:
+    def build_agent(self, domain: str, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         domain_info = parse_domain(domain)
         DiagramModel = build_diagram_model(domain_info)
         emitter = PenroseEmitter()
 
         agent = Agent(
-            DEFAULT_AGENT_MODEL,
+            model,
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
 

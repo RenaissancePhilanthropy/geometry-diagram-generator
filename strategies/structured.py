@@ -34,13 +34,13 @@ Guidelines for building diagrams:
 
 
 class StructuredStrategy(SubstanceStrategy):
-    def build_agent(self, domain: str) -> Agent:
+    def build_agent(self, domain: str, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         domain_info = parse_domain(domain)
         DiagramModel = build_diagram_model(domain_info)
         emitter = PenroseEmitter()
 
         agent = Agent(
-            DEFAULT_AGENT_MODEL,
+            model,
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
 

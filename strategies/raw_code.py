@@ -30,9 +30,9 @@ Predicate arguments must be declared object names, numeric literals, or quoted s
 
 
 class RawCodeStrategy(SubstanceStrategy):
-    def build_agent(self, domain: str) -> Agent:
+    def build_agent(self, domain: str, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         agent = Agent(
-            DEFAULT_AGENT_MODEL,
+            model,
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
 
