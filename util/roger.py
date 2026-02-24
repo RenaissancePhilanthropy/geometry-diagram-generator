@@ -9,7 +9,7 @@ import os
 import tempfile
 from typing import Optional
 
-def render_svg(substance: str, substance_name: Optional[str] = None) -> str:
+def render_svg(substance: str, substance_name: Optional[str] = None, *, variation: Optional[str] = None) -> str:
     """
     Renders an SVG from a substance string using @penrose/roger.
 
@@ -39,18 +39,23 @@ def render_svg(substance: str, substance_name: Optional[str] = None) -> str:
         substance_file = Path(temp_substance_file.name)
 
     try:
+        cmd = [
+            "npx",
+            "@penrose/roger",
+            "trio",
+            "--path",
+            str(demo_ui_dir),
+        ]
+        if variation is not None:
+            cmd += ["--variation", variation]
+        cmd += [
+            "--trio",
+            style_file,
+            domain_file,
+            substance_file.name,
+        ]
         result = subprocess.run(
-            [
-                "npx",
-                "@penrose/roger",
-                "trio",
-                "--path",
-                str(demo_ui_dir),
-                "--trio",
-                style_file,
-                domain_file,
-                substance_file.name,
-            ],
+            cmd,
             cwd=project_root,
             capture_output=True,
             text=True,

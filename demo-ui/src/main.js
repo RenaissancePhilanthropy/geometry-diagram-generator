@@ -6,13 +6,13 @@ import domain from "../geometry.domain?raw";
 // Penrose diagram rendering
 // ---------------------------------------------------------------------------
 
-async function renderSubstance(substance) {
+async function renderSubstance(substance, variation = "penrose") {
   console.log("Rendering substance:", substance);
   const compiled = await compile({
     substance,
     style,
     domain,
-    variation: "penrose",
+    variation,
   });
   if (compiled.isErr()) {
     console.error(showError(compiled.error));
@@ -150,7 +150,12 @@ async function send() {
           case "TOOL_CALL_RESULT":
             if (evt.toolCallId === renderCallId) {
               renderCallId = null;
-              await renderSubstance(evt.content);
+              try {
+                const data = JSON.parse(evt.content);
+                await renderSubstance(data.substance, data.variation);
+              } catch {
+                await renderSubstance(evt.content);
+              }
             }
             break;
 

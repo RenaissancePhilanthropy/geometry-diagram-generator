@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from strategies.raw_code import RawCodeStrategy
 from strategies.structured import StructuredStrategy
+from strategies.validated import ValidatedStrategy
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -17,6 +18,8 @@ domain = Path('demo-ui/geometry.domain').read_text()
 _strategy_name = os.getenv('SUBSTANCE_STRATEGY', 'raw_code')
 if _strategy_name == 'structured':
     strategy = StructuredStrategy()
+elif _strategy_name == 'validated':
+    strategy = ValidatedStrategy()
 else:
     strategy = RawCodeStrategy()
 
