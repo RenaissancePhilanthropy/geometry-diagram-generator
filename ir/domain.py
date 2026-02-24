@@ -84,6 +84,45 @@ def _validate_semantics(diagram, info: DomainInfo) -> None:
     """Validate arg counts and type compatibility across the whole diagram."""
     obj_types: dict[str, str] = {obj.name: obj.type for obj in diagram.objects}
 
+    # Duplicate object names
+    seen: dict[str, int] = {}
+    for i, obj in enumerate(diagram.objects):
+        if obj.name in seen:
+            raise ValueError(
+                f"Duplicate object name '{obj.name}' (objects[{seen[obj.name]}] and objects[{i}])"
+            )
+        seen[obj.name] = i
+
+    # Undeclared refs in constructors
+    for obj in diagram.objects:
+        if obj.constructor:
+            for arg in obj.constructor.args:
+                if arg not in obj_types:
+                    raise ValueError(
+                        f"Constructor {obj.constructor.name} references undeclared object '{arg}'"
+                    )
+
+    # Coerce plain strings to StringLiteral for String-typed predicate params so
+    # the emitter renders them quoted and the undeclared-ref check below ignores them.
+    for pred in diagram.predicates:
+        params = info.predicates.get(pred.name, [])
+        for i, arg in enumerate(pred.args):
+            if isinstance(arg, str) and i < len(params) and params[i] == 'String':
+                pred.args[i] = StringLiteral(value=arg)
+
+    # Undeclared refs in predicates
+    for pred in diagram.predicates:
+        for arg in pred.args:
+            if isinstance(arg, str) and arg not in obj_types:
+                raise ValueError(
+                    f"Predicate {pred.name} references undeclared object '{arg}'"
+                )
+
+    # Undeclared refs in auto_label
+    for name in diagram.auto_label:
+        if name not in obj_types:
+            raise ValueError(f"auto_label references undeclared object '{name}'")
+
     def check_args(label: str, params: list[str], args: list) -> None:
         if len(args) != len(params):
             raise ValueError(
@@ -100,17 +139,16 @@ def _validate_semantics(diagram, info: DomainInfo) -> None:
                     raise ValueError(
                         f"{label} arg {i + 1}: expected {expected}, got Number"
                     )
-            else:  # str — object reference
+            else:  # str — object reference, guaranteed declared by checks above
                 if expected in ('Number', 'String'):
                     raise ValueError(
                         f"{label} arg {i + 1}: expected {expected}, got object reference '{arg}'"
                     )
-                if arg in obj_types:
-                    actual = obj_types[arg]
-                    if not is_subtype(actual, expected, info.type_parents):
-                        raise ValueError(
-                            f"{label} arg {i + 1}: expected {expected} (or subtype), got {actual}"
-                        )
+                actual = obj_types[arg]
+                if not is_subtype(actual, expected, info.type_parents):
+                    raise ValueError(
+                        f"{label} arg {i + 1}: expected {expected} (or subtype), got {actual}"
+                    )
 
     for obj in diagram.objects:
         if obj.constructor is not None:

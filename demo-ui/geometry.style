@@ -245,6 +245,15 @@ where Parallel(l1, l2) {
   -- the dot product of the unit vectors of parallel lines is 1
   -- HACK: scaling to 10000s for convergence
   ensure 10000 == dot(normalize(l1.vec), normalize(l2.vec)) * 10000
+
+  a1 = l1.icon.start
+  a2 = l2.icon.start
+
+  d = normalize(l1.vec)
+  n = rot90(d)  -- 90° normal
+
+  -- distinct: perpendicular separation > eps
+  ensure greaterThan(abs(dot(a2 - a1, n)), 10.0, 0.0)
 }
 
 forall Linelike l1, l2
@@ -270,7 +279,7 @@ where SetY(p, y) {
 
 forall Point a, b, c
 where Between(a, b, c) {
-  ensure collinearOrdered(a, b, c)
+  ensure collinearOrdered(a.vec, b.vec, c.vec)
 }
 
 forall Point a, b
@@ -278,9 +287,9 @@ where Distinct(a, b) {
   ensure disjoint(a, b, const.repelWeight)
 }
 
-forall Point a, b, c
-where NonCollinear(a, b, c) {
-  ensure abs(cross2D(q - p, r - p)) > 0.1 
+forall Point p, q, r
+where NonCollinear(p, q, r) {
+  ensure abs(cross2D(q.vec - p.vec, r.vec - p.vec)) > 0.1 
 }
 
 --Segment
@@ -564,6 +573,9 @@ with Point p; Point q; Point r {
   ensure norm(p.vec - q.vec) > const.minSegmentLength
   ensure norm(q.vec - r.vec) > const.minSegmentLength
   ensure norm(r.vec - p.vec) > const.minSegmentLength
+
+  ensure abs(cross2D(q.vec - p.vec, r.vec - p.vec)) > 0.1 
+  
   ensure disjoint(t.icon, p.text) in label
   ensure disjoint(t.icon, q.text) in label
   ensure disjoint(t.icon, r.text) in label
@@ -1110,13 +1122,13 @@ where Orientation(l, "free") { }
 
 forall Linelike l
 where LengthClass(l, "long") {
-  encourage greaterThan(norm(l.vec), const.lenLong)
+  ensure greaterThan(norm(l.vec), const.lenLong)
 }
 
 forall Linelike l
 where LengthClass(l, "medium") {
-  encourage greaterThan(norm(l.vec), const.lenShort)
-  encourage lessThan(norm(l.vec), const.lenLong)
+  ensure greaterThan(norm(l.vec), const.lenShort)
+  ensure lessThan(norm(l.vec), const.lenLong)
 }
 
 forall Linelike l

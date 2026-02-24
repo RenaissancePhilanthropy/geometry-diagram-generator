@@ -31,7 +31,14 @@ Predicate arguments must be declared object names, numeric literals, or quoted s
 
 class RawCodeStrategy(SubstanceStrategy):
     def build_agent(self, domain: str) -> Agent:
-        return Agent(
+        agent = Agent(
             'anthropic:claude-sonnet-4-6',
             instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
         )
+
+        @agent.tool_plain
+        def render_diagram(substance: str) -> str:
+            """Render a Penrose diagram with the given substance code on the frontend."""
+            return substance
+
+        return agent

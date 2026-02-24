@@ -16,13 +16,13 @@ async function renderSubstance(substance) {
   });
   if (compiled.isErr()) {
     console.error(showError(compiled.error));
-    addBubble("error", "Diagram error: " + showError(compiled.error));
+    //addBubble("error", "Diagram error: " + showError(compiled.error));
     return;
   }
   const optimized = optimize(compiled.value);
   if (optimized.isErr()) {
     console.error(showError(optimized.error));
-    addBubble("error", "Layout error: " + showError(optimized.error));
+    //addBubble("error", "Layout error: " + showError(optimized.error));
     return;
   }
   const penroseEl = document.getElementById("penrose");
@@ -68,8 +68,7 @@ async function send() {
   let started = false;
 
   // Tool call tracking for render_diagram
-  let inRenderCall = false;
-  let toolCallArgs = "";
+  let renderCallId = null;
 
   try {
     const res = await fetch("/api/", {
@@ -144,28 +143,14 @@ async function send() {
 
           case "TOOL_CALL_START":
             if (evt.toolCallName === "render_diagram") {
-              inRenderCall = true;
-              toolCallArgs = "";
+              renderCallId = evt.toolCallId;
             }
             break;
 
-          case "TOOL_CALL_ARGS":
-            if (inRenderCall) toolCallArgs += evt.delta;
-            break;
-
-          case "TOOL_CALL_END":
-            if (inRenderCall) {
-              inRenderCall = false;
-              try {
-                const { substance } = JSON.parse(toolCallArgs);
-                await renderSubstance(substance);
-              } catch (e) {
-                console.error(
-                  "Failed to parse render_diagram args",
-                  e,
-                  toolCallArgs,
-                );
-              }
+          case "TOOL_CALL_RESULT":
+            if (evt.toolCallId === renderCallId) {
+              renderCallId = null;
+              await renderSubstance(evt.content);
             }
             break;
 

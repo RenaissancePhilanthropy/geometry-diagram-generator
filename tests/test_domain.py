@@ -187,6 +187,7 @@ class TestSemanticValidation:
     def test_wrong_arg_count_constructor(self, Model):
         with pytest.raises(ValidationError, match="expects 2 argument"):
             Model(objects=[
+                {"type": "Point", "name": "A"},
                 {"type": "Line", "name": "L", "constructor": {"name": "Line", "args": ["A"]}},  # needs 2
             ])
 
@@ -251,6 +252,20 @@ class TestSemanticValidation:
         )
         assert d.predicates[0].args[1].value == "horizontal"
 
+    def test_plain_string_coerced_to_string_literal(self, Model):
+        # LLMs naturally output plain strings; they should be auto-coerced for String params
+        d = Model(
+            objects=[
+                {"type": "Point", "name": "A"},
+                {"type": "Point", "name": "B"},
+                {"type": "Line", "name": "L", "constructor": {"name": "Line", "args": ["A", "B"]}},
+            ],
+            predicates=[{"name": "Orientation", "args": ["L", "horizontal"]}],
+        )
+        from ir.models import StringLiteral
+        assert isinstance(d.predicates[0].args[1], StringLiteral)
+        assert d.predicates[0].args[1].value == "horizontal"
+
     def test_string_literal_where_number_rejected(self, Model):
         # SetX expects (Point, Number); passing StringLiteral where Number expected
         with pytest.raises(ValidationError, match="Number"):
@@ -270,10 +285,41 @@ class TestSemanticValidation:
                 predicates=[{"name": "SetX", "args": ["A", "B"]}],
             )
 
-    def test_undeclared_object_reference_skips_type_check(self, Model):
-        # If object name isn't in diagram.objects, we skip type checking (not in scope yet)
-        d = Model(predicates=[{"name": "Parallel", "args": ["L1", "L2"]}])
-        assert len(d.predicates) == 1
+    def test_undeclared_object_reference_rejected(self, Model):
+        with pytest.raises(ValidationError, match="undeclared"):
+            Model(predicates=[{"name": "Parallel", "args": ["L1", "L2"]}])
+
+    def test_duplicate_object_name_rejected(self, Model):
+        with pytest.raises(ValidationError, match="Duplicate"):
+            Model(objects=[
+                {"type": "Point", "name": "A"},
+                {"type": "Point", "name": "A"},
+            ])
+
+    def test_undeclared_constructor_arg_rejected(self, Model):
+        with pytest.raises(ValidationError, match="undeclared"):
+            Model(objects=[
+                # B is not declared, so Line(A, B) should fail
+                {"type": "Point", "name": "A"},
+                {"type": "Line", "name": "L", "constructor": {"name": "Line", "args": ["A", "B"]}},
+            ])
+
+    def test_undeclared_auto_label_rejected(self, Model):
+        with pytest.raises(ValidationError, match="undeclared"):
+            Model(
+                objects=[{"type": "Point", "name": "A"}],
+                auto_label=["A", "Z"],  # Z not declared
+            )
+
+    def test_valid_auto_label_accepted(self, Model):
+        d = Model(
+            objects=[
+                {"type": "Point", "name": "A"},
+                {"type": "Point", "name": "B"},
+            ],
+            auto_label=["A", "B"],
+        )
+        assert d.auto_label == ["A", "B"]
 
     def test_empty_diagram_valid(self, Model):
         d = Model()
