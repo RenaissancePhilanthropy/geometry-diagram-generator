@@ -8,6 +8,9 @@ import subprocess
 import os
 import tempfile
 from typing import Optional
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 def render_svg(substance: str, substance_name: Optional[str] = None, *, variation: Optional[str] = None) -> str:
     """
@@ -27,6 +30,8 @@ def render_svg(substance: str, substance_name: Optional[str] = None, *, variatio
     demo_ui_dir = project_root / "demo-ui"
     style_file = "geometry.style"
     domain_file = "geometry.domain"
+
+    logger.debug(f"Rendering substance '{substance_name}' with variation '{variation}'")
 
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -68,6 +73,7 @@ def render_svg(substance: str, substance_name: Optional[str] = None, *, variatio
                 f"Failed to render {substance_name}: Process exited with code "
                 f"{result.returncode}. {details}"
             )
+            logger.warning(f"Roger rendering failed: {details}")
             raise RuntimeError(error_message)
 
         combined_output = (result.stdout or "") + (result.stderr or "")
@@ -79,6 +85,7 @@ def render_svg(substance: str, substance_name: Optional[str] = None, *, variatio
                 f"Failed to render {substance_name}: roger produced no SVG output. "
                 f"Output: {details}"
             )
+            logger.warning(f"Roger output with no SVG: {details}")
             raise RuntimeError(error_message)
 
         svg_content = combined_output[start:end + len("</svg>")]
@@ -87,4 +94,4 @@ def render_svg(substance: str, substance_name: Optional[str] = None, *, variatio
         try:
             os.remove(substance_file)
         except OSError:
-            pass
+            logger.warning(f"Failed to remove temporary file {substance_file}")

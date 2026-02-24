@@ -18,8 +18,11 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Callable
+from logging import getLogger
 
 from ir.emitter import DiagramLike
+
+logger = getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Core types
@@ -37,6 +40,7 @@ def run_checks(svg: str, diagram: DiagramLike, checks: list[CheckFn]) -> list[st
         result = check(svg, diagram)
         if result is not None:
             failures.append(result)
+    logger.debug(f"Completed {len(checks)} checks with {len(failures)} failures")
     return failures
 
 
@@ -93,7 +97,7 @@ def extract_geometry(svg: str) -> SVGGeometry:
                 geom.point_positions[name] = (float(elem.get('cx', 0)),
                                               float(elem.get('cy', 0)))
             except (ValueError, TypeError):
-                pass
+                logger.warning(f"Failed to extract point position for '{name}'")
         elif tag == 'line':
             # Segment pattern: <line title="`NAME`.icon"> directly on the element
             try:
@@ -102,7 +106,7 @@ def extract_geometry(svg: str) -> SVGGeometry:
                                              float(elem.get('x2', 0)),
                                              float(elem.get('y2', 0)))
             except (ValueError, TypeError):
-                pass
+                logger.warning(f"Failed to extract line endpoints for '{name}'")
         elif tag == 'g':
             # Line pattern: <g title="`NAME`.icon"><line ...> — title is on the group
             for child in elem:
@@ -113,7 +117,7 @@ def extract_geometry(svg: str) -> SVGGeometry:
                                                      float(child.get('x2', 0)),
                                                      float(child.get('y2', 0)))
                     except (ValueError, TypeError):
-                        pass
+                        logger.warning(f"Failed to extract line endpoints for '{name}' in group")
                     break
 
     return geom

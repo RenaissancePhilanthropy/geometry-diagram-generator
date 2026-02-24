@@ -6,12 +6,15 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 from dotenv import load_dotenv
+from logging import basicConfig, INFO
 
 from strategies.raw_code import RawCodeStrategy
 from strategies.structured import StructuredStrategy
 from strategies.validated import ValidatedStrategy
 
 load_dotenv()  # Load environment variables from .env file
+
+basicConfig(level=INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 domain = Path('demo-ui/geometry.domain').read_text()
 
