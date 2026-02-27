@@ -195,6 +195,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "httpx" },
     { name = "pydantic-ai-slim", extra = ["ag-ui", "anthropic", "openai", "web"] },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -208,6 +209,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = "==0.83.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-ai-slim", extras = ["ag-ui", "anthropic", "openai", "web", "ag-ui"], specifier = ">=1.63.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },

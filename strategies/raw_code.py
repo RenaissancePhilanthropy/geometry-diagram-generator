@@ -1,44 +1,56 @@
-from pydantic_ai import Agent
+import json
 
+from pydantic_ai import Agent, ModelRetry
+
+from util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 
-INSTRUCTIONS_TEMPLATE = """\
+INSTRUCTIONS = """\
 You are a helpful geometry diagram assistant. When a user asks you to draw or \
-create a geometry diagram, generate valid Penrose substance code and call the \
-render_diagram tool. Then briefly explain what you drew.
+create a geometry diagram, generate TikZ code using the tkz-euclide package \
+and call the render_diagram tool. Then briefly explain what you drew.
 
-The following is the Penrose domain file that defines all available types, \
-constructors, functions, and predicates you can use in substance code:
+Your TikZ code will be placed inside \\begin{tikzpicture}...\\end{tikzpicture} \
+automatically. Do NOT include \\documentclass, \\usepackage, \\begin{document}, \
+or \\begin{tikzpicture} in your code.
 
---- BEGIN DOMAIN ---
-{domain}
---- END DOMAIN ---
+Available packages: tikz, tkz-euclide, tkz-elements.
 
-Rules for generating substance code:
-- Only use types, constructors, functions, and predicates defined in the domain above.
-- Declare all objects before using them in predicates.
-- Group bare declarations by type (e.g. "Point A, B, C").
-- Use constructor syntax for derived objects (e.g. "Line L := Line(A, B)").
-- Include a final AutoLabel directive for all points you create.
-- Do not include markdown formatting or code fences in the substance string passed \
-to render_diagram — pass raw Penrose substance syntax only.
-- NEVER use dot notation (e.g. "obj.field") — substance has no property access syntax. \
-Predicate arguments must be declared object names, numeric literals, or quoted string literals only.
-- Do not invent predicates, types, or constructors that are not in the domain file.
-- Remember to use radians, not degrees, for any angle measures.
+For complex diagrams requiring computed coordinates, you can use the tkzelements \
+parameter to provide a tkz-elements Lua block that runs before the tikzpicture. \
+Leave tkzelements empty for simple diagrams.
+
+Common tkz-euclide patterns:
+- Define points:        \\tkzDefPoint(x,y){A}
+- Draw segment:         \\tkzDrawSegment(A,B)
+- Draw line:            \\tkzDrawLine(A,B)
+- Draw polygon:         \\tkzDrawPolygon(A,B,C)
+- Draw circle:          \\tkzDrawCircle(O,A)
+- Mark right angle:     \\tkzMarkRightAngle(A,B,C)
+- Mark angle:           \\tkzMarkAngle[size=0.5](B,A,C)
+- Label points:         \\tkzLabelPoints[below](A,B)   \\tkzLabelPoints[above](C)
+- Label a point:        \\tkzLabelPoint[right](A){$A$}
+- Draw tick marks:      \\tkzMarkSegment[mark=|](A,B)
+- Midpoint:             \\tkzDefMidPoint(A,B) \\tkzGetPoint{M}
+- Intersection:         \\tkzInterLL(A,B)(C,D) \\tkzGetPoint{P}
+- Circumcircle center:  \\tkzCircumCenter(A,B,C) \\tkzGetPoint{O}
+
+Use coordinates in cm (e.g. (0,0), (3,0), (1.5,2.6)). Keep diagrams compact \
+(roughly 4×4 cm) so they render at a readable size. Always label key points.
 """
 
 
 class RawCodeStrategy(SubstanceStrategy):
-    def build_agent(self, domain: str, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(
-            model,
-            instructions=INSTRUCTIONS_TEMPLATE.format(domain=domain),
-        )
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
+        agent = Agent(model, instructions=INSTRUCTIONS)
 
-        @agent.tool_plain
-        def render_diagram(substance: str) -> str:
-            """Render a Penrose diagram with the given substance code on the frontend."""
-            return substance
+        @agent.tool_plain(retries=3)
+        def render_diagram(tikz: str, tkzelements: str = "") -> str:
+            """Render a geometry diagram using TikZ/tkz-euclide code."""
+            try:
+                svg = render_tikz(tikz, tkzelements=tkzelements or None)
+            except RuntimeError as e:
+                raise ModelRetry(str(e)) from e
+            return json.dumps({"svg": svg})
 
         return agent

@@ -18,6 +18,6 @@ class SubstanceStrategy(ABC):
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
     @abstractmethod
-    def build_agent(self, domain: str, model: str = DEFAULT_AGENT_MODEL) -> Agent:
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Build and return a configured agent for this strategy."""
         ...

@@ -1,35 +1,3 @@
-import { compile, optimize, showError, toSVG } from "@penrose/core";
-import style from "../geometry.style?raw";
-import domain from "../geometry.domain?raw";
-
-// ---------------------------------------------------------------------------
-// Penrose diagram rendering
-// ---------------------------------------------------------------------------
-
-async function renderSubstance(substance, variation = "penrose") {
-  console.log("Rendering substance:", substance);
-  const compiled = await compile({
-    substance,
-    style,
-    domain,
-    variation,
-  });
-  if (compiled.isErr()) {
-    console.error(showError(compiled.error));
-    //addBubble("error", "Diagram error: " + showError(compiled.error));
-    return;
-  }
-  const optimized = optimize(compiled.value);
-  if (optimized.isErr()) {
-    console.error(showError(optimized.error));
-    //addBubble("error", "Layout error: " + showError(optimized.error));
-    return;
-  }
-  const penroseEl = document.getElementById("penrose");
-  penroseEl.innerHTML = "";
-  penroseEl.appendChild(await toSVG(optimized.value));
-}
-
 // ---------------------------------------------------------------------------
 // Chat UI
 // ---------------------------------------------------------------------------
@@ -152,9 +120,11 @@ async function send() {
               renderCallId = null;
               try {
                 const data = JSON.parse(evt.content);
-                await renderSubstance(data.substance, data.variation);
-              } catch {
-                await renderSubstance(evt.content);
+                if (data.svg) {
+                  document.getElementById("penrose").innerHTML = data.svg;
+                }
+              } catch (e) {
+                console.error("Failed to parse render result:", e);
               }
             }
             break;

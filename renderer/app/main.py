@@ -24,6 +24,7 @@ class RenderReq(BaseModel):
 TEMPLATE = r"""
 \documentclass[dvisvgm,border=0pt]{{standalone}}
 \usepackage{{tikz}}
+\usepackage{{luacode}}
 \usepackage{{tkz-euclide}}
 \usepackage{{tkz-elements}}
 \begin{{document}}
