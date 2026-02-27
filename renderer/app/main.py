@@ -27,6 +27,7 @@ TEMPLATE = r"""
 \usepackage{{luacode}}
 \usepackage{{tkz-euclide}}
 \usepackage{{tkz-elements}}
+\usepackage{{amsmath}}
 \begin{{document}}
 {tkzelements_block}
 \begin{{tikzpicture}}

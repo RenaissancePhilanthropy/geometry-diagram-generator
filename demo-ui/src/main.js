@@ -1,4 +1,38 @@
 // ---------------------------------------------------------------------------
+// Markdown + MathJax rendering
+// ---------------------------------------------------------------------------
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+// Protect math expressions from markdown processing by replacing them with
+// unique placeholders before parsing, then restoring them afterwards.
+function renderMarkdown(text) {
+  const mathBlocks = [];
+
+  // Replacement helper — stores the match and returns a placeholder.
+  const protect = (match) => {
+    const id = mathBlocks.length;
+    mathBlocks.push(match);
+    return `\x02MATH${id}\x03`;
+  };
+
+  // Order matters: display math before inline to avoid partial matches.
+  let safe = text
+    .replace(/\$\$[\s\S]*?\$\$/g, protect)        // $$...$$
+    .replace(/\\\[[\s\S]*?\\\]/g, protect)          // \[...\]
+    .replace(/\$[^$\n]+?\$/g, protect)              // $...$
+    .replace(/\\\([\s\S]*?\\\)/g, protect);         // \(...\)
+
+  // Parse markdown.
+  let html = marked.parse(safe, { breaks: true });
+
+  // Restore math expressions.
+  html = html.replace(/\x02MATH(\d+)\x03/g, (_, i) => mathBlocks[Number(i)]);
+
+  return DOMPurify.sanitize(html);
+}
+
+// ---------------------------------------------------------------------------
 // Chat UI
 // ---------------------------------------------------------------------------
 
@@ -85,7 +119,7 @@ async function send() {
             assistantText = "";
             if (!started) {
               assistantBubble.classList.remove("thinking");
-              assistantBubble.textContent = "";
+              assistantBubble.innerHTML = "";
               started = true;
             }
             break;
@@ -93,7 +127,7 @@ async function send() {
           case "TEXT_MESSAGE_CONTENT":
             if (evt.messageId === assistantMsgId) {
               assistantText += evt.delta;
-              assistantBubble.textContent = assistantText;
+              assistantBubble.innerHTML = renderMarkdown(assistantText);
               assistantBubble.scrollIntoView({ block: "end" });
             }
             break;
@@ -106,6 +140,10 @@ async function send() {
                 content: assistantText,
               });
               assistantMsgId = null;
+              // Typeset math now that the full message is available.
+              if (window.MathJax?.typesetPromise) {
+                MathJax.typesetPromise([assistantBubble]).catch(console.error);
+              }
             }
             break;
 
