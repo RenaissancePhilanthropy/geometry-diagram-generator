@@ -40,7 +40,6 @@ def static_diagram():
             GeoObject(type="Line", name="L2", constructor=Constructor(name="Line", args=["C", "D"])),
         ],
         predicates=[Predicate(name="Parallel", args=["L1", "L2"])],
-        auto_label=["A", "B", "C", "D"],
     )
 
 
@@ -57,7 +56,6 @@ def dynamic_diagram(DomainModel):
             {"type": "Line", "name": "L2", "constructor": {"name": "Line", "args": ["C", "D"]}},
         ],
         predicates=[{"name": "Parallel", "args": ["L1", "L2"]}],
-        auto_label=["A", "B", "C", "D"],
     )
 
 

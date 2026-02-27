@@ -304,25 +304,7 @@ class TestSemanticValidation:
                 {"type": "Line", "name": "L", "constructor": {"name": "Line", "args": ["A", "B"]}},
             ])
 
-    def test_undeclared_auto_label_rejected(self, Model):
-        with pytest.raises(ValidationError, match="undeclared"):
-            Model(
-                objects=[{"type": "Point", "name": "A"}],
-                auto_label=["A", "Z"],  # Z not declared
-            )
-
-    def test_valid_auto_label_accepted(self, Model):
-        d = Model(
-            objects=[
-                {"type": "Point", "name": "A"},
-                {"type": "Point", "name": "B"},
-            ],
-            auto_label=["A", "B"],
-        )
-        assert d.auto_label == ["A", "B"]
-
     def test_empty_diagram_valid(self, Model):
         d = Model()
         assert d.objects == []
         assert d.predicates == []
-        assert d.auto_label == []

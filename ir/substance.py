@@ -25,7 +25,7 @@ class PenroseEmitter(SubstanceEmitter):
     1. Bare declarations grouped by type:   Point A, B, C
     2. Constructor declarations:            Line L1 := Line(A, B)
     3. Predicates:                          Parallel(L1, L2)
-    4. AutoLabel:                           AutoLabel A, B, C
+    4. AutoLabel all points:               AutoLabel A, B, C
     """
 
     def emit(self, diagram: DiagramLike) -> str:
@@ -50,9 +50,10 @@ class PenroseEmitter(SubstanceEmitter):
             args_str = ", ".join(_fmt_arg(a) for a in pred.args)
             lines.append(f"{pred.name}({args_str})")
 
-        # Pass 4: AutoLabel.
-        if diagram.auto_label:
-            lines.append(f"AutoLabel {', '.join(diagram.auto_label)}")
+        # Pass 4: AutoLabel all points.
+        point_names = [obj.name for obj in diagram.objects if obj.type == "Point"]
+        if point_names:
+            lines.append(f"AutoLabel {', '.join(point_names)}")
 
         return "\n".join(lines)
 

@@ -1,0 +1,14 @@
+- id: right-triangle
+  prompt: "Draw a right triangle ABC with the right angle at B"
+
+- id: midpoint
+  prompt: "Draw a segment AB and mark its midpoint M"
+
+- id: circumscribed-circle
+  prompt: "Draw a triangle with its circumscribed circle"
+
+- id: triangle-proportionality
+  prompt: "Draw a diagram demonstrating the triangle proportionality theorem."
+
+- id: transversal-parallel
+  prompt: "Draw a transversal intersecting two parallel lines, and label two opposite interior angles."

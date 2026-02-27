@@ -180,9 +180,16 @@ predicate Horizontal(Linelike) -- Causes a line to be horizontal
 predicate MinLength(Linelike, Number) -- Gives a line or segment a minimum length
 predicate SetX(Point, Number)
 predicate SetY(Point, Number)
+predicate XLessThan(Point, Number)
+predicate YLessThan(Point, Number)
+predicate XGreaterThan(Point, Number)
+predicate YGreaterThan(Point, Number)
 
 predicate Between(Point, Point, Point)
 symmetric predicate Distinct(Point, Point) -- Enforce that two points have a minimum distance between them
+predicate MinDist(Point, Point, Number)
+symmetric predicate SameX(Point, Point)
+symmetric predicate SameY(Point, Point)
 predicate NonCollinear(Point, Point, Point) -- This predicate makes the three points not on the same line
 
 -- Angles
@@ -201,6 +208,7 @@ predicate Obtuse(Angle) -- This predicate makes an angle obtuse. Example usage:
 predicate MinAngle(Angle, Number) -- Make an angle be at least a certain size
 predicate MaxAngle(Angle, Number) -- Make an angle be at most a certain size
 predicate SetAngle(Angle, Number) -- Make an angle exactly a specific size
+predicate TurnAngle(Point, Point, Point, Number) -- Make an angle a specififc size using Points directly
 predicate RightMarked(Angle) -- This predicate makes an angle right and marks it with a square. Example usage: 
 -- Point A, B, C
 -- Angle angleABC
@@ -236,6 +244,7 @@ predicate EqualAngle(Angle, Angle) -- This predicate makes two angles have equal
 -- angleDEF := InteriorAngle(D, E, F)
 -- EqualAngle(angleABC, angleDEF)
 -- AutoLabel A, B, C, D, E, F
+predicate CCW(Point, Point, Point)
 
 -- Polygons/Shapes
 predicate Parallelogram(Quadrilateral) -- This predicate makes a quadrilateral a parallelogram. Example usage: 
@@ -285,6 +294,7 @@ predicate Centered(Shape)
 
 -- ~~~~~~~~~~~~~~~~ LAYOUT HINT PREDICATES ~~~~~~~~~~~~~~~~
 -- These are layout hints (aesthetic priors), not geometric axioms.
+-- The second/third argument uses Penrose’s built-in literal type `String`.
 
 predicate Orientation(Linelike, String)
 -- Expected values (convention): "horizontal" | "vertical" | "free"

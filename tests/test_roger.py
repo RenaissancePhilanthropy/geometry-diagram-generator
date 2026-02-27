@@ -57,7 +57,6 @@ def test_ir_pipeline():
             GeoObject(type="Point", name="B"),
             GeoObject(type="Segment", name="AB", constructor=Constructor(name="Segment", args=["A", "B"])),
         ],
-        auto_label=["A", "B"],
     )
     substance = to_substance(diagram)
     svg = render_svg(substance, "ir-pipeline")

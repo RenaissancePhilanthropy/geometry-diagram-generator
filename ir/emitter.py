@@ -7,7 +7,6 @@ class DiagramLike(Protocol):
     """Structural protocol satisfied by both static Diagram and dynamic domain models."""
     objects: list
     predicates: list
-    auto_label: list[str]
 
 
 class SubstanceEmitter(ABC):

@@ -50,7 +50,7 @@ const {
     hintWeight = 1.0
 }
 
-layout = [shape, label]
+layout = [points, shape, label]
 
 --Plane
 forall Plane p {
@@ -131,7 +131,7 @@ where Collinear(p, q, r) {
 forall Point p
 with Linelike l
 where On(p, l) {
-  ensure signedDistance(l.icon, p.vec) == 0
+  ensure signedDistance(l.icon, p.vec) == 0  in shape
 }
 
 forall Point p
@@ -146,8 +146,8 @@ forall Linelike l {
   l.color = Colors.black
 
   l.icon = Line {
-    start : (?, ?)
-    end : (?, ?)
+    start : (? in shape, ? in shape)
+    end : (? in shape, ? in shape)
     strokeColor : l.color
     strokeWidth : const.strokeWidth
     style : "solid"
@@ -217,7 +217,7 @@ with Point p; Point q {
   }
 
   -- edge case
-  ensure norm(l.vec) > const.minLineLength
+  ensure norm(l.vec) > const.minLineLength in shape
 
   -- labeling
   ensure disjoint(l.icon, p.text) in label
@@ -244,7 +244,7 @@ forall Linelike l1, l2
 where Parallel(l1, l2) {
   -- the dot product of the unit vectors of parallel lines is 1
   -- HACK: scaling to 10000s for convergence
-  ensure 10000 == dot(normalize(l1.vec), normalize(l2.vec)) * 10000
+  ensure 10000 == dot(normalize(l1.vec), normalize(l2.vec)) * 10000 in shape
 
   a1 = l1.icon.start
   a2 = l2.icon.start
@@ -253,34 +253,58 @@ where Parallel(l1, l2) {
   n = rot90(d)  -- 90° normal
 
   -- distinct: perpendicular separation > eps
-  ensure greaterThan(abs(dot(a2 - a1, n)), 10.0, 0.0)
+  ensure greaterThan(abs(dot(a2 - a1, n)), 10.0, 0.0) in shape
 }
 
 forall Linelike l1, l2
 where Perpendicular (l1, l2) {
   -- the dot product of the unit vectors of Perpendicular lines is 0
-  ensure abs(dot(normalize(l1.vec), normalize(l2.vec))) < 0.00001
+  ensure abs(dot(normalize(l1.vec), normalize(l2.vec))) < 0.00001 in shape
 }
 
 forall Linelike l
 where Horizontal(l) {
-  ensure l.start[1] == l.end[1]
+  ensure l.start[1] == l.end[1] in shape
 }
 
 forall Linelike l
 where MinLength(l, n) {
-  ensure vdist(l.start, l.end) > n
+  ensure vdist(l.start, l.end) > n in shape
 }
 
 forall Point p
 where SetX(p, x) {
-  ensure p.vec[0] == x
+  ensure equal(p.vec[0], x) in points
+  encourage equal(p.vec[0], x) in shape
 }
 
 forall Point p
 where SetY(p, y) {
-  ensure p.vec[1] == y
+  ensure equal(p.vec[1], y) in points
+  encourage equal(p.vec[1], y) in shape
 }
+
+forall Point p
+where XLessThan (p, x) {
+  ensure lessThan(p.vec[0], x)
+}
+
+forall Point p
+where YLessThan (p, y) {
+  ensure lessThan(p.vec[1], y)
+}
+
+forall Point p
+where XGreaterThan  (p, x) {
+  ensure greaterThan(p.vec[0], x)
+}
+
+forall Point p
+where YGreaterThan  (p, y) {
+  ensure greaterThan(p.vec[1], y)
+}
+
+
 
 forall Point a, b, c
 where Between(a, b, c) {
@@ -289,8 +313,24 @@ where Between(a, b, c) {
 
 forall Point a, b
 where Distinct(a, b) {
-  ensure disjoint(a, b, const.repelWeight)
+  ensure disjoint(a.icon, b.icon, const.repelWeight)
 }
+
+forall Point a, b
+where MinDist(a, b, n) {
+  ensure greaterThan(vdist(a.vec, b.vec), n)
+}
+
+forall Point a, b
+where SameX(a, b) {
+  ensure equal(a.vec[0], b.vec[0])
+}
+
+forall Point a, b
+where SameY(a, b) {
+  ensure equal(a.vec[1], b.vec[1])
+}
+
 
 forall Point p, q, r
 where NonCollinear(p, q, r) {
@@ -317,7 +357,7 @@ with Point p; Point q {
   q.icon above e.icon
 
   -- edge case
-  ensure norm(e.vec) > const.minSegmentLength
+  ensure norm(e.vec) > const.minSegmentLength in shape
 
   -- labeling
   ensure disjoint(p.text, e.icon) in label
@@ -330,7 +370,7 @@ forall Segment e; Plane p {
 
 forall Linelike s, t
 where EqualLength(s, t) {
-  ensure vdist(s.icon.start, s.icon.end) == vdist(t.icon.start, t.icon.end)
+  ensure vdist(s.icon.start, s.icon.end) == vdist(t.icon.start, t.icon.end) in shape
 }
 
 --TODO eventually this should also provide an equal length marker since it is bisecting the segment
@@ -355,7 +395,7 @@ with Segment s2; Point p {
     fillColor : Colors.none
   }
 
-  ensure perpendicular(s.icon.start, s.icon.end, s2.icon.end)
+  ensure perpendicular(s.icon.start, s.icon.end, s2.icon.end) in shape
 }
 
 forall Segment s
@@ -438,7 +478,7 @@ with Point p; Point q; Point r {
   theta.radius = const.thetaRadius
   -- encourage the angle to be bigger than 10
   angle = angleBetween(theta.q - theta.p, theta.q - theta.r) 
-  ensure angle > 10/180 * MathPI()
+  ensure angle > 10/180 * MathPI() in shape
   theta.side1 below p.icon, q.icon
   theta.side2 below q.icon, r.icon
 }
@@ -499,7 +539,15 @@ where EqualAngle(a, b) {
   weight = 100
   angleA = angleBetween(a.p - a.q, a.r - a.q) * weight
   angleB = angleBetween(b.p - b.q, b.r - b.q) * weight
-  ensure angleA == angleB 
+  ensure angleA == angleB in shape
+}
+
+forall Point a, b, c
+where CCW(a, b, c) {
+  u = b.vec - a.vec
+  v = c.vec - b.vec
+  -- sin(theta) = cross/(|u||v|)
+  ensure greaterThan(cross2D(u, v), 0.05 * norm(u) * norm(v), 0.0)
 }
 
 forall Angle a
@@ -507,7 +555,7 @@ where RightUnmarked(a) {
   -- ensure perpendicular(a.p, a.q, a.r)
   vec2 u = a.p - a.q
   vec2 v = a.r - a.q
-  ensure dot(u, v) == 0
+  ensure dot(u, v) == 0 in shape
 }
 
 forall Angle a
@@ -522,17 +570,17 @@ where RightMarked(a) {
   }
   vec2 u = a.p - a.q
   vec2 v = a.r - a.q
-  ensure dot(u, v) == 0
+  ensure dot(u, v) == 0 in shape
 }
 
 forall Angle a
 where Acute(a) {
-  ensure inRange(angleBetween(a.p - a.q, a.r - a.q), 0, MathPI()/2)
+  ensure inRange(angleBetween(a.p - a.q, a.r - a.q), 0, MathPI()/2) in shape
 }
 
 forall Angle a
 where Obtuse(a) {
-  ensure inRange(angleBetween(a.p - a.q, a.r - a.q), MathPI()/2, MathPI())
+  ensure inRange(angleBetween(a.p - a.q, a.r - a.q), MathPI()/2, MathPI()) in shape
 }
 
 
@@ -575,11 +623,11 @@ with Point p; Point q; Point r {
     fillColor: none()
     strokeColor: none()
   }
-  ensure norm(p.vec - q.vec) > const.minSegmentLength
-  ensure norm(q.vec - r.vec) > const.minSegmentLength
-  ensure norm(r.vec - p.vec) > const.minSegmentLength
+  ensure norm(p.vec - q.vec) > const.minSegmentLength in shape
+  ensure norm(q.vec - r.vec) > const.minSegmentLength in shape
+  ensure norm(r.vec - p.vec) > const.minSegmentLength in shape
 
-  ensure abs(cross2D(q.vec - p.vec, r.vec - p.vec)) > 0.1 
+  ensure abs(cross2D(q.vec - p.vec, r.vec - p.vec)) > 0.1  in shape
   
   ensure disjoint(t.icon, p.text) in label
   ensure disjoint(t.icon, q.text) in label
@@ -627,15 +675,15 @@ with Triangle T {
   p.icon above T.RP
   T.icon = Circle {
     center : p.vec
-    r : ?
+    r : ? in shape
     strokeWidth : const.strokeWidth
     strokeColor : clr
     fillColor : Colors.none
     strokeStyle: "dashed"
   }
-  ensure norm(T.PQ.start - p.vec) == T.icon.r
-  ensure norm(T.QR.start - p.vec) == T.icon.r
-  ensure norm(T.RP.start - p.vec) == T.icon.r
+  ensure norm(T.PQ.start - p.vec) == T.icon.r in shape
+  ensure norm(T.QR.start - p.vec) == T.icon.r in shape
+  ensure norm(T.RP.start - p.vec) == T.icon.r in shape
   encourage repelPt(const.repelWeight, T.PQ.start, T.QR.start)
   encourage repelPt(const.repelWeight, T.QR.start, T.RP.start)
 }
@@ -680,21 +728,21 @@ where Orthocenter(p, T)
 with Triangle T {
   clr = setOpacity(Colors.darkpurple, 0.6)
   T.icon = Line {
-    start : (?, ?)
+    start : (? in shape, ? in shape)
     end : p.vec
     strokeColor : clr
     strokeWidth : const.strokeWidth
     style : "solid"
   }
   T.icon2 = Line {
-    start : (?, ?)
+    start : (? in shape, ? in shape)
     end : p.vec
     strokeColor : clr
     strokeWidth : const.strokeWidth
     style : "solid"
   }
   T.icon3 = Line {
-    start : (?, ?)
+    start : (? in shape, ? in shape)
     end : p.vec
     strokeColor : clr
     strokeWidth : const.strokeWidth
@@ -704,29 +752,29 @@ with Triangle T {
 
   -- TODO make it so that predicates can reference other predicates. 3/4 of these are copy-pasted from the Collinear predicate
   ensure collinear(T.PQ.start, T.icon.start, T.PQ.end)
-  ensure collinear(T.QR.start, T.icon2.start, T.QR.end)  
-  ensure collinear(T.RP.start, T.icon3.start, T.RP.end)
+  ensure collinear(T.QR.start, T.icon2.start, T.QR.end)   in shape
+  ensure collinear(T.RP.start, T.icon3.start, T.RP.end) in shape
 
-  ensure perpendicular(T.PQ.start, T.icon.start, p.vec)
-  ensure perpendicular(T.QR.start, T.icon2.start, p.vec)  
-  ensure perpendicular(T.RP.start, T.icon3.start, p.vec)
+  ensure perpendicular(T.PQ.start, T.icon.start, p.vec) in shape
+  ensure perpendicular(T.QR.start, T.icon2.start, p.vec)   in shape
+  ensure perpendicular(T.RP.start, T.icon3.start, p.vec) in shape
 
-  encourage repelPt(const.repelWeight, T.PQ.start, T.icon.start)
-  encourage repelPt(const.repelWeight, T.PQ.end, T.icon.start)
+  encourage repelPt(const.repelWeight, T.PQ.start, T.icon.start) in shape
+  encourage repelPt(const.repelWeight, T.PQ.end, T.icon.start) in shape
 
-  encourage repelPt(const.repelWeight, T.QR.start, T.icon2.start)
-  encourage repelPt(const.repelWeight, T.QR.end, T.icon2.start)
+  encourage repelPt(const.repelWeight, T.QR.start, T.icon2.start) in shape
+  encourage repelPt(const.repelWeight, T.QR.end, T.icon2.start) in shape
 
-  encourage repelPt(const.repelWeight, T.RP.start, T.icon3.start)
-  encourage repelPt(const.repelWeight, T.RP.end, T.icon3.start)
+  encourage repelPt(const.repelWeight, T.RP.start, T.icon3.start) in shape
+  encourage repelPt(const.repelWeight, T.RP.end, T.icon3.start) in shape
 
 }
 
 forall Triangle T
 where T := Triangle(p, q, r); Equilateral(T)
 with Point p; Point r; Point q {
-  ensure vdist(p.vec, r.vec) == vdist(p.vec, q.vec)
-  ensure vdist(p.vec, r.vec) == vdist(r.vec, q.vec)
+  ensure vdist(p.vec, r.vec) == vdist(p.vec, q.vec) in shape
+  ensure vdist(p.vec, r.vec) == vdist(r.vec, q.vec) in shape
 }
 
 forall Triangle T
@@ -742,7 +790,7 @@ with Point A; Point B; Point C {
   scalar e2 = abs(dAB - dBC)
   
   -- FLEXIBLE: encourage one option to become true (whichever is easier)
-  ensure min(e1, e2) < 0.1
+  ensure min(e1, e2) < 0.1 in shape
 }
 
 --Rectangle
@@ -760,22 +808,22 @@ with Point p; Point q; Point r; Point s {
   ensure vdist(p.icon.center, q.icon.center) == vdist(r.icon.center, s.icon.center)
   ensure vdist(p.icon.center, s.icon.center) == vdist(q.icon.center, r.icon.center)
   
-  ensure greaterThan(vdist(p.icon.center, q.icon.center), 5.0, 0.0)
-  ensure greaterThan(vdist(p.icon.center, s.icon.center), 5.0, 0.0)
-  ensure greaterThan(vdist(q.icon.center, r.icon.center), 5.0, 0.0)
-  ensure greaterThan(vdist(r.icon.center, s.icon.center), 5.0, 0.0)
-  ensure greaterThan(vdist(r.icon.center, p.icon.center), 7.0, 0.0)
-  ensure greaterThan(vdist(q.icon.center, s.icon.center), 7.0, 0.0)
+  ensure greaterThan(vdist(p.icon.center, q.icon.center), 5.0, 0.0) in shape
+  ensure greaterThan(vdist(p.icon.center, s.icon.center), 5.0, 0.0) in shape
+  ensure greaterThan(vdist(q.icon.center, r.icon.center), 5.0, 0.0) in shape
+  ensure greaterThan(vdist(r.icon.center, s.icon.center), 5.0, 0.0) in shape
+  ensure greaterThan(vdist(r.icon.center, p.icon.center), 7.0, 0.0) in shape
+  ensure greaterThan(vdist(q.icon.center, s.icon.center), 7.0, 0.0) in shape
 
-  ensure equal(r.icon.center[0], q.icon.center[0] + (s.icon.center[0] - p.icon.center[0]))
-  ensure equal(r.icon.center[1], q.icon.center[1] + (s.icon.center[1] - p.icon.center[1]))
+  ensure equal(r.icon.center[0], q.icon.center[0] + (s.icon.center[0] - p.icon.center[0])) in shape
+  ensure equal(r.icon.center[1], q.icon.center[1] + (s.icon.center[1] - p.icon.center[1])) in shape
   
-  ensure isConvex([p.icon.center, q.icon.center, r.icon.center, s.icon.center], true)
-  ensure perpendicular(p.icon.center, q.icon.center, r.icon.center)
-  ensure perpendicular(q.icon.center, r.icon.center, s.icon.center)
-  ensure equal(vdist(p.icon.center, r.icon.center), vdist(q.icon.center, s.icon.center))
-  ensure greaterThan(cross2D(q.icon.center - p.icon.center, r.icon.center - p.icon.center), 0.0, 0.0)
-  ensure greaterThan(cross2D(r.icon.center - p.icon.center, s.icon.center - p.icon.center), 0.0, 0.0)
+  ensure isConvex([p.icon.center, q.icon.center, r.icon.center, s.icon.center], true) in shape
+  ensure perpendicular(p.icon.center, q.icon.center, r.icon.center) in shape
+  ensure perpendicular(q.icon.center, r.icon.center, s.icon.center) in shape
+  ensure equal(vdist(p.icon.center, r.icon.center), vdist(q.icon.center, s.icon.center)) in shape
+  ensure greaterThan(cross2D(q.icon.center - p.icon.center, r.icon.center - p.icon.center), 0.0, 0.0) in shape
+  ensure greaterThan(cross2D(r.icon.center - p.icon.center, s.icon.center - p.icon.center), 0.0, 0.0) in shape
   -- R.icon above P.icon
 }
 
@@ -826,12 +874,12 @@ with Point p; Point q; Point r; Point s {
   ensure disjoint(r.text, Q.labelContainer) in label
   ensure disjoint(s.text, Q.labelContainer) in label
   -- ensure all sides are visible
-  ensure norm(Q.p - Q.q) > const.minSegmentLength
-  ensure norm(Q.q - Q.r) > const.minSegmentLength
-  ensure norm(Q.r - Q.s) > const.minSegmentLength
-  ensure norm(Q.s - Q.p) > const.minSegmentLength
-  ensure norm(Q.r - Q.p) > const.minSegmentLength
-  ensure norm(Q.s - Q.q) > const.minSegmentLength
+  ensure norm(Q.p - Q.q) > const.minSegmentLength in shape
+  ensure norm(Q.q - Q.r) > const.minSegmentLength in shape
+  ensure norm(Q.r - Q.s) > const.minSegmentLength in shape
+  ensure norm(Q.s - Q.p) > const.minSegmentLength in shape
+  ensure norm(Q.r - Q.p) > const.minSegmentLength in shape
+  ensure norm(Q.s - Q.q) > const.minSegmentLength in shape
 }
 
 --FUNCTIONS
@@ -876,17 +924,17 @@ with Angle a; Point p {
   angleA = angleBetween(a.p - a.q, s.end - a.q) * weight
   angleB = angleBetween(s.end - a.q, a.r - a.q) * weight
   bigAngle = angleBetween(a.q - a.p, a.q - a.r) * weight
-  ensure angleA == angleB 
+  ensure angleA == angleB  in shape
   -- HACK: make sure the angle itself is not zero
-  ensure bigAngle > 15/180 * MathPI() * weight 
+  ensure bigAngle > 15/180 * MathPI() * weight  in shape
   -- HACK: make sure the bisector end point is between angle end points. Might be too specific
-  ensure inRange(s.end[0], a.p[0], a.r[0])
-  ensure inRange(s.end[1], a.p[1], a.r[1])
+  ensure inRange(s.end[0], a.p[0], a.r[0]) in shape
+  ensure inRange(s.end[1], a.p[1], a.r[1]) in shape
 }
 
 forall Circle c {
   c.radius = const.circleRadius
-  c.vec = (?, ?)
+  c.vec = (? in shape, ? in shape)
 
   c.icon = Circle {
     center : c.vec
@@ -932,9 +980,9 @@ with Circle c; Point p, q {
 
   p.icon above c.icon
   q.icon above c.icon
-  ensure norm(p.vec - c.vec) == c.radius
-  ensure norm(q.vec - c.vec) == c.radius
-  ensure norm(q.vec - p.vec) > const.minSegmentLength
+  ensure norm(p.vec - c.vec) == c.radius in shape
+  ensure norm(q.vec - c.vec) == c.radius in shape
+  ensure norm(q.vec - p.vec) > const.minSegmentLength in shape
 }
 
 forall Segment s
@@ -956,7 +1004,7 @@ with Circle c; Point p {
     style : "solid"
   }
   p.icon above c.icon
-  ensure norm(c.vec - p.vec) == c.radius
+  ensure norm(c.vec - p.vec) == c.radius in shape
 }
 
 forall Segment s
@@ -985,14 +1033,14 @@ with Circle c; Point p, q {
 
   p.icon above c.icon
   q.icon above c.icon
-  ensure norm(midpoint(p.vec, q.vec) - c.icon.center) == 0
-  ensure c.icon.r * 2 == norm(s.vec)
+  ensure norm(midpoint(p.vec, q.vec) - c.icon.center) == 0 in shape
+  ensure c.icon.r * 2 == norm(s.vec) in shape
 }
 
 forall Point p
 where OnCircle(c, p)
 with Circle c {
-  ensure norm(c.vec - p.vec) == c.radius
+  ensure norm(c.vec - p.vec) * 5 == c.radius * 5 in shape
 }
 
 forall Point p
@@ -1004,7 +1052,7 @@ with Circle c {
 forall Point p
 where CircleCenter(c, p)
 with Circle c {
-  ensure norm(p.vec - c.vec) == 0
+  ensure norm(p.vec - c.vec) == 0 in shape
 }
 
 forall Shape s1, s2
@@ -1029,13 +1077,13 @@ where L := Line(P, Q); C := CircleR(O, R); Tangent(L, C) {
   scalar d = abs(cross2D(v, w)) / vdist(P.vec, Q.vec)
 
   -- Tangent to the infinite line
-  ensure equal(d, r)
+  ensure equal(d, r) in shape
 
   -- Also make the tangency point lie on the drawn segment PQ
   scalar t = dot(w, v) / dot(v, v)
   scalar margin = 0.05
-  ensure t > 0 + margin
-  ensure t < 1 - margin
+  ensure t > 0 + margin in shape
+  ensure t < 1 - margin in shape
 }
 
 forall Line L; Circle C; Point P; Point Q; Point O; Point R
@@ -1049,13 +1097,13 @@ where L := Line(P, Q); C := CircleR(O, R); Secant(L, C) {
 
   -- Secant to the infinite line
   scalar eps = 0.1
-  ensure d < r - eps
+  ensure d < r - eps in shape
 
   -- Ensure the intersection chord happens on the drawn segment
   scalar t = dot(w, v) / dot(v, v)
   scalar margin = 0.1
-  ensure t > 0 + margin
-  ensure t < 1 - margin
+  ensure t > 0 + margin in shape
+  ensure t < 1 - margin in shape
 }
 
 global {
@@ -1094,31 +1142,38 @@ with Segment s2; Point p1, p2 {
 
 forall Angle a
 where MinAngle(a, n) {
-  ensure greaterThan(angleBetween(a.p - a.q, a.r - a.q), n)
+  ensure greaterThan(angleBetween(a.p - a.q, a.r - a.q), n) in shape
 }
 
 forall Angle a
 where MaxAngle(a, n) {
-  ensure lessThan(angleBetween(a.p - a.q, a.r - a.q), n)
+  ensure lessThan(angleBetween(a.p - a.q, a.r - a.q), n) in shape
 }
 
 forall Angle a
 where SetAngle(a, n) {
-  ensure angleBetween(a.p - a.q, a.r - a.q) == n
+  weight = 200
+  ensure angleBetween(a.p - a.q, a.r - a.q)  * weight == n * weight in shape
 }
 
+forall Point a, b, c
+where TurnAngle(a, b, c, t) {
+  u = b.vec - a.vec
+  v = c.vec - b.vec
+  ensure angleFrom(u, v) == t in shape
+}
 
 
 
 forall Linelike l
 where Orientation(l, "horizontal") {
   -- equivalent to Horizontal(l), but keeps everything in the hint system
-  ensure l.start[1] == l.end[1]
+  ensure l.start[1] == l.end[1] in shape
 }
 
 forall Linelike l
 where Orientation(l, "vertical") {
-  ensure l.start[0] == l.end[0]
+  ensure l.start[0] == l.end[0] in shape
 }
 
 -- Optional: "free" does nothing (can omit entirely)
@@ -1127,13 +1182,13 @@ where Orientation(l, "free") { }
 
 forall Linelike l
 where LengthClass(l, "long") {
-  ensure greaterThan(norm(l.vec), const.lenLong)
+  ensure greaterThan(norm(l.vec), const.lenLong) in shape
 }
 
 forall Linelike l
 where LengthClass(l, "medium") {
-  ensure greaterThan(norm(l.vec), const.lenShort)
-  ensure lessThan(norm(l.vec), const.lenLong)
+  ensure greaterThan(norm(l.vec), const.lenShort) in shape
+  ensure lessThan(norm(l.vec), const.lenLong) in shape
 }
 
 forall Linelike l
@@ -1227,4 +1282,21 @@ where Anchor(p, "bottomRight") {
   tx = canvas.width / 2.0 - const.anchorMargin
   ty = -canvas.height / 2.0 + const.anchorMargin
   encourage nearVec(p.vec, [tx, ty], 0.0)
+}
+
+
+forall Circle c; Segment s; Point o, r; Point p, q
+where c := CircleR(o, r); s := Segment(p, q); OnCircle(c, p); OnCircle(c, q) {
+
+  u = unit(p.vec - o.vec)
+  v = unit(q.vec - o.vec)
+
+  -- minimize -dot(u,v) == maximize dot(u,v) == smaller central angle
+  encourage maximal(dot(u, v)) in [points, shape]
+}
+
+
+-- Soft floor to prevent coincident vertices
+forall Point p; Point q {
+  encourage vdist(p.vec, q.vec) > 2.0 in [points, shape]
 }

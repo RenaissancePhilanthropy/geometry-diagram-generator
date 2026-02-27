@@ -118,11 +118,6 @@ def _validate_semantics(diagram, info: DomainInfo) -> None:
                     f"Predicate {pred.name} references undeclared object '{arg}'"
                 )
 
-    # Undeclared refs in auto_label
-    for name in diagram.auto_label:
-        if name not in obj_types:
-            raise ValueError(f"auto_label references undeclared object '{name}'")
-
     def check_args(label: str, params: list[str], args: list) -> None:
         if len(args) != len(params):
             raise ValueError(
@@ -217,7 +212,6 @@ def build_diagram_model(domain_info: DomainInfo) -> type:
         __base__=_DiagramBase,
         objects=(list[_GeoObject], Field(default_factory=list)),
         predicates=(list[_Predicate], Field(default_factory=list)),
-        auto_label=(list[str], Field(default_factory=list)),
     )
 
     return DomainDiagram

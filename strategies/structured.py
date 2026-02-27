@@ -19,17 +19,19 @@ constructors, functions, and predicates you can use:
 
 Guidelines for building diagrams:
 - Declare bare objects (no constructor) as GeoObject entries with only type and name.
+- All objects that are used in predicates must be declared as GeoObject entries. No objects except those declared in the objects list can be used in predicates.
 - Use constructor entries for derived objects (e.g. Line L1 from points A, B).
 - Only reference names that have been declared in the objects list.
-- Include auto_label for all points you create so they appear labelled.
 - Remember to use radians, not degrees, for any angle measures.
 - Use either Collinear or Between, not both, to express collinearity. Between implies a stricter ordering that may not always hold.
 - Consider adding extra predicates to enforce implicit geometric relationships (e.g. using NonCollinear to enforce that three points are not collinear when they form a polygon).
-- Use MinAngle and MaxAngle to constrain angles and improve layout, but avoid over-constraining which can make it impossible to find a valid rendering.
+- Use MinAngle and MaxAngle to constrain angles and improve layout, but avoid over-constraining.
 - MinLength and LengthClass are useful for constraining relative lengths.
 - Parallel is for lines that should have some separation, Collinear is better for lines that should overlap.
-- Consider using SetX, SetY, Anchor (use rarely!), Separation, and Orientation predicates to specify the layout of the diagram, so that it looks nice when rendered. They are not mandatory and should be used sparingly.
-- You can also use MinAngle and MaxAngle predicates to constrain the range of angles in the diagram, which can help ensure a nice layout.
+- Use SetX, SetY, CCW, Anchor, Separation, and Orientation predicates to specify the layout of the diagram, so that it looks nice when rendered.
+- You can also use TurnAngle, MinAngle and MaxAngle predicates to constrain the range of angles in the diagram, which can help ensure a nice layout.
+- It's better to use more predicates to constrain the layout of the diagram and ensure it looks nice, but avoid over-constraining which can make it impossible to render. A handful of SetX and SetY predicates can go a long way to improving the layout, though.
+- Don't add angle/length markers if not implied by the request.
 """
 
 

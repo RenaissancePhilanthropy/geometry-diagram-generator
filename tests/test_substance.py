@@ -36,7 +36,7 @@ def test_bare_points():
         ]
     )
     result = to_substance(diagram)
-    assert result == "Point A, B, C"
+    assert result == "Point A, B, C\nAutoLabel A, B, C"
 
 
 def test_bare_mixed_types():
@@ -166,14 +166,13 @@ def test_numeric_float_formatting():
 def test_auto_label():
     diagram = Diagram(
         objects=[GeoObject(type="Point", name="A"), GeoObject(type="Point", name="B")],
-        auto_label=["A", "B"],
     )
     ls = lines(to_substance(diagram))
     assert "AutoLabel A, B" in ls
 
 
-def test_no_auto_label_when_empty():
-    diagram = Diagram(objects=[GeoObject(type="Point", name="A")])
+def test_no_auto_label_when_no_points():
+    diagram = Diagram()
     assert "AutoLabel" not in to_substance(diagram)
 
 
@@ -237,7 +236,6 @@ PARALLEL_LINES_DIAGRAM = Diagram(
         Predicate(name="EqualAngleMarker", args=["BEF", "CFE"]),
         Predicate(name="SetAngle", args=["AEF", 0.75]),
     ],
-    auto_label=["A", "B", "C", "D", "E", "F", "G", "H"],
 )
 
 
@@ -298,7 +296,6 @@ def test_simple_triangle():
             ),
         ],
         predicates=[Predicate(name="Equilateral", args=["T"])],
-        auto_label=["A", "B", "C"],
     )
     ls = lines(to_substance(diagram))
     assert "Point A, B, C" in ls
@@ -324,7 +321,6 @@ def test_circle_with_on_circle():
             ),
         ],
         predicates=[Predicate(name="OnCircle", args=["c", "P"])],
-        auto_label=["O", "R", "P"],
     )
     ls = lines(to_substance(diagram))
     assert "Circle c := CircleR(O, R)" in ls

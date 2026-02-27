@@ -51,4 +51,3 @@ class Diagram(BaseModel):
     """A complete geometry diagram in JSON IR form."""
     objects: list[GeoObject] = []
     predicates: list[Predicate] = []
-    auto_label: list[str] = []
