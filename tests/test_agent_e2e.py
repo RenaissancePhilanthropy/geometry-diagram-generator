@@ -6,6 +6,7 @@ system behavior, not just the scaffolding.
 
 Requirements:
   - TikZ renderer Docker container running on localhost:8001
+    - RUN_LLM_TESTS=true in environment
   - ANTHROPIC_API_KEY set in environment
 
 Each test takes 10-30s (one LLM call + one render).
@@ -17,7 +18,7 @@ import asyncio
 import pytest
 
 from strategies.raw_code import RawCodeStrategy
-from tests.availability import api_key_available, renderer_available
+from tests.availability import api_key_available, llm_tests_enabled, renderer_available
 from util.svg_checks import run_svg_checks
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
 from tests.agent_helpers import (
@@ -31,6 +32,10 @@ pytestmark = [
     pytest.mark.skipif(
         not renderer_available(),
         reason="TikZ renderer container not running on localhost:8001",
+    ),
+    pytest.mark.skipif(
+        not llm_tests_enabled(),
+        reason="RUN_LLM_TESTS is not enabled",
     ),
     pytest.mark.skipif(
         not api_key_available(),

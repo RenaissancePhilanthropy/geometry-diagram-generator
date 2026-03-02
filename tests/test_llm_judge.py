@@ -2,7 +2,7 @@
 Tests for util/llm_judge.py.
 
 Pure-logic tests (no API): _parse_visual_response
-Live API tests (ANTHROPIC_API_KEY required): judge_tikz_code against known inputs
+Live API tests (RUN_LLM_TESTS=true + ANTHROPIC_API_KEY required): judge_tikz_code against known inputs
 
 The mocked tests from the original version are removed — they only verified
 Python dict plumbing and provided no signal about whether the judge actually works.
@@ -13,7 +13,7 @@ import asyncio
 
 import pytest
 
-from tests.availability import api_key_available
+from tests.availability import api_key_available, llm_tests_enabled
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +67,8 @@ def test_parse_visual_response_includes_reasoning_text():
 # ---------------------------------------------------------------------------
 
 _SKIP_LIVE = pytest.mark.skipif(
-    not api_key_available(),
-    reason="ANTHROPIC_API_KEY not set",
+    not llm_tests_enabled() or not api_key_available(),
+    reason="Live tests disabled (set RUN_LLM_TESTS=true and ANTHROPIC_API_KEY)",
 )
 
 # Known-good: right triangle ABC with correct perpendicular coordinates at B

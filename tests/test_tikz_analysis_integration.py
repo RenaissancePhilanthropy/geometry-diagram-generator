@@ -6,7 +6,7 @@ Real LLM output can differ in spacing, ordering, multi-line formatting, and
 which construction idioms the model chooses. These tests verify the analysis
 module works on actual agent output.
 
-Requires: Docker + ANTHROPIC_API_KEY.
+Requires: Docker + RUN_LLM_TESTS=true + ANTHROPIC_API_KEY.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import asyncio
 import pytest
 
 from strategies.raw_code import RawCodeStrategy
-from tests.availability import api_key_available, renderer_available
+from tests.availability import api_key_available, llm_tests_enabled, renderer_available
 from util.tikz_analysis import (
     extract_defined_points,
     extract_draw_commands,
@@ -30,6 +30,10 @@ pytestmark = [
     pytest.mark.skipif(
         not renderer_available(),
         reason="TikZ renderer container not running on localhost:8001",
+    ),
+    pytest.mark.skipif(
+        not llm_tests_enabled(),
+        reason="RUN_LLM_TESTS is not enabled",
     ),
     pytest.mark.skipif(
         not api_key_available(),
