@@ -1,14 +1,125 @@
+# Evaluation scenarios for geometry diagram generation.
+#
+# Each scenario has:
+#   id: unique slug used in filenames and reports
+#   prompt: the user-facing prompt sent to the agent
+#   expected_properties (optional): deterministic checks run against the
+#     extracted TikZ coordinates. See util/tikz_analysis.validate_geometric_property
+#     for supported property types.
+#
+# Tiers:
+#   1 - Basic constructions (should succeed on virtually every run)
+#   2 - Intermediate (require specific constructions)
+#   3 - Advanced (complex multi-step diagrams)
+
+# ---------------------------------------------------------------------------
+# Tier 1 — Basic
+# ---------------------------------------------------------------------------
+
 - id: right-triangle
   prompt: "Draw a right triangle ABC with the right angle at B"
+  expected_properties:
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
 
 - id: midpoint
   prompt: "Draw a segment AB and mark its midpoint M"
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+
+- id: equilateral-triangle
+  prompt: "Draw an equilateral triangle ABC with all sides equal"
+  expected_properties:
+    - name: equal_sides
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, A]]
+
+- id: isosceles-triangle
+  prompt: "Draw an isosceles triangle ABC where AB equals AC"
+  expected_properties:
+    - name: AB_equals_AC
+      type: equal_lengths
+      args: [[A, B], [A, C]]
+
+- id: square
+  prompt: "Draw a square ABCD, labeling all four vertices"
+  expected_properties:
+    - name: right_angle_at_A
+      type: right_angle
+      args: [D, A, B]
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+
+- id: perpendicular-bisector
+  prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M"
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+
+# ---------------------------------------------------------------------------
+# Tier 2 — Intermediate
+# ---------------------------------------------------------------------------
 
 - id: circumscribed-circle
   prompt: "Draw a triangle with its circumscribed circle"
 
-- id: triangle-proportionality
-  prompt: "Draw a diagram demonstrating the triangle proportionality theorem."
+- id: inscribed-circle
+  prompt: "Draw a triangle ABC with its inscribed circle (incircle)"
+
+- id: angle-bisector
+  prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC"
+
+- id: altitude
+  prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H"
+  expected_properties:
+    - name: altitude_perpendicular
+      type: right_angle
+      args: [C, H, A]
+
+- id: median
+  prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC"
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, B, C]
 
 - id: transversal-parallel
-  prompt: "Draw a transversal intersecting two parallel lines, and label two opposite interior angles."
+  prompt: "Draw a transversal intersecting two parallel lines, and label two opposite interior angles"
+
+- id: exterior-angle
+  prompt: "Draw a triangle ABC and mark an exterior angle at vertex C"
+
+# ---------------------------------------------------------------------------
+# Tier 3 — Advanced
+# ---------------------------------------------------------------------------
+
+- id: triangle-proportionality
+  prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC"
+  expected_properties:
+    - name: DE_parallel_to_BC
+      type: parallel
+      args: [[D, E], [B, C]]
+
+- id: similar-triangles
+  prompt: "Draw two similar triangles side by side, with corresponding sides marked"
+
+- id: tangent-to-circle
+  prompt: "Draw a circle with center O and a tangent line from an external point P, marking the point of tangency T"
+
+- id: pythagorean-theorem
+  prompt: "Draw a right triangle with squares constructed on each of the three sides to illustrate the Pythagorean theorem"
+  expected_properties:
+    - name: right_angle_at_C
+      type: right_angle
+      args: [A, C, B]
+
+- id: cyclic-quadrilateral
+  prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O"
+
+- id: euler-line
+  prompt: "Draw a triangle showing three triangle centers: the circumcenter, centroid, and orthocenter, indicating that they are collinear on the Euler line"

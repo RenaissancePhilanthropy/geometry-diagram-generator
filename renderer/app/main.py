@@ -108,6 +108,10 @@ async def render(req: RenderReq):
     await queue.put((req, fut))
     return await fut
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.on_event("startup")
 async def _startup():
     async def worker():
