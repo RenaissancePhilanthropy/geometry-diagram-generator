@@ -309,22 +309,72 @@ def _dist(p1: tuple[float, float], p2: tuple[float, float]) -> float:
     return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
 
+def _angle_at_vertex(
+    a: tuple[float, float],
+    vertex: tuple[float, float],
+    c: tuple[float, float],
+) -> float:
+    """Unsigned angle ∠AVC at vertex, in radians [0, π]."""
+    va = _vec(vertex, a)
+    vc = _vec(vertex, c)
+    mag_a = math.sqrt(va[0] ** 2 + va[1] ** 2)
+    mag_c = math.sqrt(vc[0] ** 2 + vc[1] ** 2)
+    if mag_a < 1e-12 or mag_c < 1e-12:
+        return 0.0
+    cos_angle = _dot(va, vc) / (mag_a * mag_c)
+    return math.acos(max(-1.0, min(1.0, cos_angle)))
+
+
+def _validate_label_present(tikz: str, point_name: str) -> bool:
+    """Return True if a label for point_name exists in the TikZ source."""
+    for label in extract_labels(tikz):
+        if label["type"] == "label_points" and point_name in label["points"]:
+            return True
+        if label["type"] == "label_point" and label["point"] == point_name:
+            return True
+    return False
+
+
+def _validate_mark_present(tikz: str, mark_type: str, vertex: str) -> bool:
+    """Return True if a mark of mark_type exists with the given vertex."""
+    for mark in extract_marks(tikz):
+        if mark["type"] != mark_type:
+            continue
+        # Right-angle and angle marks have an explicit "vertex" key
+        if mark.get("vertex") == vertex:
+            return True
+        # Segment marks use "from"/"to"
+        if mark.get("from") == vertex or mark.get("to") == vertex:
+            return True
+    return False
+
+
 def validate_geometric_property(
     coords: dict[str, tuple[float, float]],
     property_type: str,
     args: list,
     tolerance: float = 1e-4,
+    tikz: str | None = None,
 ) -> bool | None:
     """
     Validate a geometric property given a resolved coordinate map.
 
     property_type values:
-      - "right_angle": args = [A, vertex, C] — angle at vertex is 90°
-      - "midpoint": args = [M, A, B] — M is the midpoint of AB
-      - "collinear": args = [A, B, C] — three points are collinear
-      - "equal_lengths": args = [[P1,P2], [P3,P4], ...] — all segments equal
-      - "parallel": args = [[A,B], [C,D]] — lines AB and CD are parallel
-      - "perpendicular": args = [[A,B], [C,D]] — lines AB and CD are perpendicular
+      - "right_angle":     args = [A, vertex, C] — angle at vertex is 90°
+      - "midpoint":        args = [M, A, B] — M is the midpoint of AB
+      - "collinear":       args = [A, B, C] — three points are collinear
+      - "equal_lengths":   args = [[P1,P2], [P3,P4], ...] — all segments equal
+      - "parallel":        args = [[A,B], [C,D]] — lines AB and CD are parallel
+      - "perpendicular":   args = [[A,B], [C,D]] — lines AB and CD are perpendicular
+      - "point_on_line":   args = [P, A, B] — P lies on line through A,B
+      - "point_on_segment": args = [P, A, B] — P lies on segment AB (between A and B)
+      - "point_on_circle": args = [P, O, R] — P lies on circle centered at O through R
+      - "tangent":         args = [[L1,L2], O, T] — line tangent to circle(center=O) at T
+      - "angle_equal":     args = [[A,B,C], [D,E,F]] — ∠ABC == ∠DEF
+      - "angle_bisector":  args = [D, A, B, C] — AD bisects ∠BAC
+      - "intersects":      args = [[A,B], [C,D], P] — lines AB and CD intersect at P
+      - "label_present":   args = ["A"] — label for point A exists (requires tikz=)
+      - "mark_present":    args = ["right_angle", "B"] — mark at vertex B (requires tikz=)
 
     Returns True/False if the property can be checked, None if any required
     coordinates are missing.
@@ -389,7 +439,137 @@ def validate_geometric_property(
             v2 = _vec(c, d)
             return abs(_dot(v1, v2)) <= tolerance
 
+        elif property_type == "point_on_line":
+            p_name, a_name, b_name = args
+            p = coords[p_name]
+            a = coords[a_name]
+            b = coords[b_name]
+            area = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+            return abs(area) <= tolerance
+
+        elif property_type == "point_on_segment":
+            p_name, a_name, b_name = args
+            p = coords[p_name]
+            a = coords[a_name]
+            b = coords[b_name]
+            # Collinear check
+            area = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+            if abs(area) > tolerance:
+                return False
+            # Between check: dist(A,P) + dist(P,B) ≈ dist(A,B)
+            return abs(_dist(a, p) + _dist(p, b) - _dist(a, b)) <= tolerance
+
+        elif property_type == "point_on_circle":
+            p_name, o_name, r_name = args
+            p = coords[p_name]
+            o = coords[o_name]
+            r = coords[r_name]
+            return abs(_dist(o, p) - _dist(o, r)) <= tolerance
+
+        elif property_type == "tangent":
+            # args = [[L1, L2], O, T]
+            (l1_name, l2_name), o_name, t_name = args
+            l1 = coords[l1_name]
+            l2 = coords[l2_name]
+            o = coords[o_name]
+            t = coords[t_name]
+            # T must lie on line L1L2
+            area = (l2[0] - l1[0]) * (t[1] - l1[1]) - (l2[1] - l1[1]) * (t[0] - l1[0])
+            if abs(area) > tolerance:
+                return False
+            # OT must be perpendicular to line L1L2
+            v_line = _vec(l1, l2)
+            v_ot = _vec(o, t)
+            return abs(_dot(v_line, v_ot)) <= tolerance
+
+        elif property_type == "angle_equal":
+            # args = [[A, B, C], [D, E, F]]
+            (a_name, b_name, c_name), (d_name, e_name, f_name) = args
+            a1 = _angle_at_vertex(coords[a_name], coords[b_name], coords[c_name])
+            a2 = _angle_at_vertex(coords[d_name], coords[e_name], coords[f_name])
+            return abs(a1 - a2) <= tolerance
+
+        elif property_type == "angle_bisector":
+            # args = [D, A, B, C] — AD bisects ∠BAC
+            d_name, a_name, b_name, c_name = args
+            a = coords[a_name]
+            b = coords[b_name]
+            c = coords[c_name]
+            d = coords[d_name]
+            angle_bad = _angle_at_vertex(b, a, d)
+            angle_dac = _angle_at_vertex(d, a, c)
+            return abs(angle_bad - angle_dac) <= tolerance
+
+        elif property_type == "intersects":
+            # args = [[A, B], [C, D], P]
+            (a_name, b_name), (c_name, d_name), p_name = args
+            result = _inter_ll(
+                coords[a_name], coords[b_name],
+                coords[c_name], coords[d_name],
+            )
+            if result is None:
+                return False  # Lines are parallel — no intersection
+            p = coords[p_name]
+            return abs(result[0] - p[0]) <= tolerance and abs(result[1] - p[1]) <= tolerance
+
+        elif property_type == "label_present":
+            if tikz is None:
+                return None
+            point_name = args[0]
+            return _validate_label_present(tikz, point_name)
+
+        elif property_type == "mark_present":
+            if tikz is None:
+                return None
+            mark_type, vertex = args[0], args[1]
+            return _validate_mark_present(tikz, mark_type, vertex)
+
     except KeyError:
         return None  # A required coordinate is not in the map
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Scenario-level checks
+# ---------------------------------------------------------------------------
+
+def validate_required_labels(tikz: str, required: list[str]) -> dict[str, Any]:
+    """
+    Check that all required point labels appear in the TikZ source.
+    Returns {"passed": bool, "missing": list[str]}.
+    """
+    labeled: set[str] = set()
+    for label in extract_labels(tikz):
+        if label["type"] == "label_points":
+            labeled.update(label["points"])
+        elif label["type"] == "label_point":
+            labeled.add(label["point"])
+    missing = [name for name in required if name not in labeled]
+    return {"passed": len(missing) == 0, "missing": missing}
+
+
+def validate_required_entities(tikz: str, required: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Check that all required draw entities appear in the TikZ source.
+
+    Each entry in `required` is a dict with at least "type" (matching
+    extract_draw_commands types: polygon, segment, line, circle), and
+    optionally "args" — a dict of key-value pairs that must match the
+    extracted command dict.
+
+    Returns {"passed": bool, "missing": list[dict]}.
+    """
+    commands = extract_draw_commands(tikz)
+    missing: list[dict[str, Any]] = []
+    for entity in required:
+        entity_type = entity.get("type")
+        entity_args = entity.get("args", {})
+        found = any(
+            cmd["type"] == entity_type
+            and all(cmd.get(k) == v for k, v in entity_args.items())
+            for cmd in commands
+        )
+        if not found:
+            missing.append(entity)
+    return {"passed": len(missing) == 0, "missing": missing}

@@ -3,6 +3,9 @@
 # Each scenario has:
 #   id: unique slug used in filenames and reports
 #   prompt: the user-facing prompt sent to the agent
+#   required_labels (optional): point names that must be labeled in the TikZ output
+#   required_entities (optional): draw commands that must appear; each entry has
+#     "type" (polygon, segment, line, circle) and optional "args" dict of field matchers
 #   expected_properties (optional): deterministic checks run against the
 #     extracted TikZ coordinates. See util/tikz_analysis.validate_geometric_property
 #     for supported property types.
@@ -17,35 +20,46 @@
 # ---------------------------------------------------------------------------
 
 - id: right-triangle
-  prompt: "Draw a right triangle ABC with the right angle at B"
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
   expected_properties:
     - name: right_angle_at_B
       type: right_angle
       args: [A, B, C]
+    - name: right_angle_marked_at_B
+      type: mark_present
+      args: [right_angle, B]
 
 - id: midpoint
-  prompt: "Draw a segment AB and mark its midpoint M"
+  prompt: "Draw a segment AB and mark its midpoint M. Label points A, B, and M."
+  required_labels: [A, B, M]
   expected_properties:
     - name: M_is_midpoint
       type: midpoint
       args: [M, A, B]
+    - name: M_between_A_and_B
+      type: point_on_segment
+      args: [M, A, B]
 
 - id: equilateral-triangle
-  prompt: "Draw an equilateral triangle ABC with all sides equal"
+  prompt: "Draw an equilateral triangle ABC with all sides equal. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
   expected_properties:
     - name: equal_sides
       type: equal_lengths
       args: [[A, B], [B, C], [C, A]]
 
 - id: isosceles-triangle
-  prompt: "Draw an isosceles triangle ABC where AB equals AC"
+  prompt: "Draw an isosceles triangle ABC where AB equals AC. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
   expected_properties:
     - name: AB_equals_AC
       type: equal_lengths
       args: [[A, B], [A, C]]
 
 - id: square
-  prompt: "Draw a square ABCD, labeling all four vertices"
+  prompt: "Draw a square ABCD, labeling all four vertices A, B, C, and D in order."
+  required_labels: [A, B, C, D]
   expected_properties:
     - name: right_angle_at_A
       type: right_angle
@@ -53,9 +67,19 @@
     - name: right_angle_at_B
       type: right_angle
       args: [A, B, C]
+    - name: right_angle_at_C
+      type: right_angle
+      args: [B, C, D]
+    - name: right_angle_at_D
+      type: right_angle
+      args: [C, D, A]
+    - name: all_sides_equal
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, D], [D, A]]
 
 - id: perpendicular-bisector
-  prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M"
+  prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M. Label points A, B, and M."
+  required_labels: [A, B, M]
   expected_properties:
     - name: M_is_midpoint
       type: midpoint
@@ -66,63 +90,139 @@
 # ---------------------------------------------------------------------------
 
 - id: circumscribed-circle
-  prompt: "Draw a triangle with its circumscribed circle"
+  prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
+  required_labels: [A, B, C, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]
 
 - id: inscribed-circle
-  prompt: "Draw a triangle ABC with its inscribed circle (incircle)"
+  prompt: "Draw a triangle ABC with its inscribed circle (incircle). Label the incenter I and all three vertices A, B, and C."
+  required_labels: [A, B, C, I]
+  required_entities:
+    - type: circle
 
 - id: angle-bisector
-  prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC"
+  prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC, meeting BC at point D. Label all four points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: D_on_BC
+      type: point_on_line
+      args: [D, B, C]
+    - name: AD_bisects_angle_BAC
+      type: angle_bisector
+      args: [D, A, B, C]
 
 - id: altitude
-  prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H"
+  prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H. Label all four points A, B, C, and H."
+  required_labels: [A, B, C, H]
   expected_properties:
     - name: altitude_perpendicular
       type: right_angle
       args: [C, H, A]
+    - name: H_on_AB
+      type: point_on_line
+      args: [H, A, B]
 
 - id: median
-  prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC"
+  prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC. Label all four points A, B, C, and M."
+  required_labels: [A, B, C, M]
   expected_properties:
     - name: M_is_midpoint
       type: midpoint
       args: [M, B, C]
 
 - id: transversal-parallel
-  prompt: "Draw a transversal intersecting two parallel lines, and label two opposite interior angles"
+  prompt: "Draw two parallel lines, one through points A and B and another through points C and D. Draw a transversal line intersecting them. Label points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: AB_parallel_to_CD
+      type: parallel
+      args: [[A, B], [C, D]]
 
 - id: exterior-angle
-  prompt: "Draw a triangle ABC and mark an exterior angle at vertex C"
+  prompt: "Draw a triangle ABC and extend side BC beyond C to a point D, forming the exterior angle ACD. Label all four points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: B_C_D_collinear
+      type: collinear
+      args: [B, C, D]
 
 # ---------------------------------------------------------------------------
 # Tier 3 — Advanced
 # ---------------------------------------------------------------------------
 
 - id: triangle-proportionality
-  prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC"
+  prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC. Label all five points A, B, C, D, and E."
+  required_labels: [A, B, C, D, E]
   expected_properties:
     - name: DE_parallel_to_BC
       type: parallel
       args: [[D, E], [B, C]]
+    - name: D_on_AB
+      type: point_on_line
+      args: [D, A, B]
+    - name: E_on_AC
+      type: point_on_line
+      args: [E, A, C]
 
 - id: similar-triangles
-  prompt: "Draw two similar triangles side by side, with corresponding sides marked"
+  prompt: "Draw two similar triangles ABC and DEF side by side, with corresponding sides marked to show the similarity. Label all six vertices A, B, C, D, E, and F."
+  required_labels: [A, B, C, D, E, F]
+  expected_properties:
+    - name: angle_A_equals_angle_D
+      type: angle_equal
+      args: [[B, A, C], [E, D, F]]
+    - name: angle_B_equals_angle_E
+      type: angle_equal
+      args: [[A, B, C], [D, E, F]]
 
 - id: tangent-to-circle
-  prompt: "Draw a circle with center O and a tangent line from an external point P, marking the point of tangency T"
+  prompt: "Draw a circle with center O and a tangent line from an external point P, touching the circle at point T. Label the center O, the external point P, and the tangency point T."
+  required_labels: [O, P, T]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: tangent_at_T
+      type: tangent
+      args: [[P, T], O, T]
 
 - id: pythagorean-theorem
-  prompt: "Draw a right triangle with squares constructed on each of the three sides to illustrate the Pythagorean theorem"
+  prompt: "Draw a right triangle ABC with the right angle at C. Construct squares on each of the three sides to illustrate the Pythagorean theorem. Label the vertices A, B, and C."
+  required_labels: [A, B, C]
   expected_properties:
     - name: right_angle_at_C
       type: right_angle
       args: [A, C, B]
+    - name: right_angle_marked_at_C
+      type: mark_present
+      args: [right_angle, C]
 
 - id: cyclic-quadrilateral
-  prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O"
+  prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Label all five points A, B, C, D, and O."
+  required_labels: [A, B, C, D, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: A_on_circle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circle
+      type: point_on_circle
+      args: [C, O, B]
+    - name: D_on_circle
+      type: point_on_circle
+      args: [D, O, B]
 
 - id: euler-line
-  prompt: "Draw a triangle showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line"
+  prompt: "Draw a triangle ABC showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line. Label all six points A, B, C, O, G, and H."
+  required_labels: [A, B, C, O, G, H]
   expected_properties:
     - name: euler_line_collinear
       type: collinear

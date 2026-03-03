@@ -47,7 +47,12 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
-from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
+from util.tikz_analysis import (
+    resolve_all_coordinates,
+    validate_geometric_property,
+    validate_required_labels,
+    validate_required_entities,
+)
 from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
@@ -62,6 +67,15 @@ _SUPPORTED_PROPERTY_TYPES = {
     "equal_lengths",
     "parallel",
     "perpendicular",
+    "point_on_line",
+    "point_on_segment",
+    "point_on_circle",
+    "tangent",
+    "angle_equal",
+    "angle_bisector",
+    "intersects",
+    "label_present",
+    "mark_present",
 }
 
 
@@ -126,11 +140,45 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 }
             )
 
+        # required_labels
+        required_labels = raw.get("required_labels", [])
+        if required_labels is None:
+            required_labels = []
+        if not isinstance(required_labels, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'required_labels' must be a list when provided"
+            )
+        for i, label in enumerate(required_labels, start=1):
+            if not isinstance(label, str) or not label.strip():
+                raise ValueError(
+                    f"{where} ({scenario_id}) required_labels[{i}]: must be a non-empty string"
+                )
+
+        # required_entities
+        required_entities = raw.get("required_entities", [])
+        if required_entities is None:
+            required_entities = []
+        if not isinstance(required_entities, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'required_entities' must be a list when provided"
+            )
+        for i, entity in enumerate(required_entities, start=1):
+            if not isinstance(entity, dict):
+                raise ValueError(
+                    f"{where} ({scenario_id}) required_entities[{i}]: expected mapping/object"
+                )
+            if "type" not in entity or not isinstance(entity["type"], str):
+                raise ValueError(
+                    f"{where} ({scenario_id}) required_entities[{i}]: 'type' must be a string"
+                )
+
         normalized.append(
             {
                 "id": scenario_id,
                 "prompt": prompt,
                 "expected_properties": normalized_props,
+                "required_labels": list(required_labels),
+                "required_entities": list(required_entities),
             }
         )
 
@@ -253,11 +301,24 @@ async def run_scenario(
                 coords,
                 prop["type"],
                 prop["args"],
+                tikz=tikz_code,
             )
             tikz_check_results[prop["name"]] = {
                 "passed": prop_result,
                 "type": prop["type"],
             }
+
+        required_labels = scenario.get("required_labels", [])
+        if required_labels:
+            tikz_check_results["required_labels"] = validate_required_labels(
+                tikz_code, required_labels
+            )
+
+        required_entities = scenario.get("required_entities", [])
+        if required_entities:
+            tikz_check_results["required_entities"] = validate_required_entities(
+                tikz_code, required_entities
+            )
 
         record["tikz_checks"] = tikz_check_results if tikz_check_results else None
 

@@ -13,6 +13,8 @@ from util.tikz_analysis import (
     extract_marks,
     resolve_all_coordinates,
     validate_geometric_property,
+    validate_required_labels,
+    validate_required_entities,
 )
 
 
@@ -333,3 +335,303 @@ def test_validate_unknown_property_returns_none():
     coords = {"A": (0.0, 0.0), "B": (1.0, 0.0)}
     result = validate_geometric_property(coords, "nonexistent_property", ["A", "B"])
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# point_on_line
+# ---------------------------------------------------------------------------
+
+def test_validate_point_on_line_true():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (2.0, 0.0)}
+    assert validate_geometric_property(coords, "point_on_line", ["P", "A", "B"]) is True
+
+
+def test_validate_point_on_line_false():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (2.0, 1.0)}
+    assert validate_geometric_property(coords, "point_on_line", ["P", "A", "B"]) is False
+
+
+def test_validate_point_on_line_outside_segment_still_true():
+    # point_on_line does not require P to be between A and B
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (10.0, 0.0)}
+    assert validate_geometric_property(coords, "point_on_line", ["P", "A", "B"]) is True
+
+
+# ---------------------------------------------------------------------------
+# point_on_segment
+# ---------------------------------------------------------------------------
+
+def test_validate_point_on_segment_true():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (2.0, 0.0)}
+    assert validate_geometric_property(coords, "point_on_segment", ["P", "A", "B"]) is True
+
+
+def test_validate_point_on_segment_false_outside():
+    # Collinear but beyond B
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (6.0, 0.0)}
+    assert validate_geometric_property(coords, "point_on_segment", ["P", "A", "B"]) is False
+
+
+def test_validate_point_on_segment_false_off_line():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0), "P": (2.0, 1.0)}
+    assert validate_geometric_property(coords, "point_on_segment", ["P", "A", "B"]) is False
+
+
+# ---------------------------------------------------------------------------
+# point_on_circle
+# ---------------------------------------------------------------------------
+
+def test_validate_point_on_circle_true():
+    # Circle centered at O(0,0), radius 5 (through R=(5,0)), P=(0,5) is on it
+    coords = {"O": (0.0, 0.0), "R": (5.0, 0.0), "P": (0.0, 5.0)}
+    assert validate_geometric_property(coords, "point_on_circle", ["P", "O", "R"]) is True
+
+
+def test_validate_point_on_circle_false():
+    coords = {"O": (0.0, 0.0), "R": (5.0, 0.0), "P": (3.0, 0.0)}
+    assert validate_geometric_property(coords, "point_on_circle", ["P", "O", "R"]) is False
+
+
+# ---------------------------------------------------------------------------
+# tangent
+# ---------------------------------------------------------------------------
+
+def test_validate_tangent_true():
+    # Circle center O(0,0), tangent point T(0,5), tangent line is horizontal through T
+    # Line defined by L1=(-1, 5) and L2=(1, 5); OT is vertical, line is horizontal → perpendicular
+    coords = {
+        "O": (0.0, 0.0),
+        "T": (0.0, 5.0),
+        "L1": (-1.0, 5.0),
+        "L2": (1.0, 5.0),
+    }
+    assert validate_geometric_property(coords, "tangent", [["L1", "L2"], "O", "T"]) is True
+
+
+def test_validate_tangent_false_not_perpendicular():
+    # Line L1L2 is not perpendicular to OT
+    coords = {
+        "O": (0.0, 0.0),
+        "T": (0.0, 5.0),
+        "L1": (0.0, 5.0),
+        "L2": (1.0, 6.0),  # diagonal, not horizontal
+    }
+    assert validate_geometric_property(coords, "tangent", [["L1", "L2"], "O", "T"]) is False
+
+
+def test_validate_tangent_false_t_not_on_line():
+    # T is not on line L1L2
+    coords = {
+        "O": (0.0, 0.0),
+        "T": (3.0, 5.0),   # off the horizontal line y=0
+        "L1": (-1.0, 0.0),
+        "L2": (1.0, 0.0),
+    }
+    assert validate_geometric_property(coords, "tangent", [["L1", "L2"], "O", "T"]) is False
+
+
+# ---------------------------------------------------------------------------
+# angle_equal
+# ---------------------------------------------------------------------------
+
+def test_validate_angle_equal_true():
+    # Two right angles should be equal
+    coords = {
+        "A": (0.0, 1.0), "B": (0.0, 0.0), "C": (1.0, 0.0),  # ∠ABC = 90°
+        "D": (0.0, 2.0), "E": (0.0, 0.0), "F": (2.0, 0.0),  # ∠DEF = 90°
+    }
+    assert validate_geometric_property(
+        coords, "angle_equal", [["A", "B", "C"], ["D", "E", "F"]]
+    ) is True
+
+
+def test_validate_angle_equal_false():
+    # 60° vs 90°
+    import math
+    coords = {
+        "A": (1.0, 0.0), "B": (0.0, 0.0), "C": (0.5, math.sqrt(3) / 2),  # ≈ 60°
+        "D": (0.0, 1.0), "E": (0.0, 0.0), "F": (1.0, 0.0),               # 90°
+    }
+    assert validate_geometric_property(
+        coords, "angle_equal", [["A", "B", "C"], ["D", "E", "F"]]
+    ) is False
+
+
+# ---------------------------------------------------------------------------
+# angle_bisector
+# ---------------------------------------------------------------------------
+
+def test_validate_angle_bisector_true():
+    # ∠BAC where A=(0,0), B=(1,0), C=(0,1). Bisector direction is (1,1).
+    # D = (1,1) lies on the bisector of ∠BAC
+    coords = {
+        "A": (0.0, 0.0),
+        "B": (1.0, 0.0),
+        "C": (0.0, 1.0),
+        "D": (1.0, 1.0),
+    }
+    assert validate_geometric_property(coords, "angle_bisector", ["D", "A", "B", "C"]) is True
+
+
+def test_validate_angle_bisector_false():
+    # D = (2,1) does not bisect ∠BAC (not on bisector ray from A)
+    coords = {
+        "A": (0.0, 0.0),
+        "B": (1.0, 0.0),
+        "C": (0.0, 1.0),
+        "D": (2.0, 1.0),
+    }
+    assert validate_geometric_property(coords, "angle_bisector", ["D", "A", "B", "C"]) is False
+
+
+# ---------------------------------------------------------------------------
+# intersects
+# ---------------------------------------------------------------------------
+
+def test_validate_intersects_true():
+    # Lines A(0,0)-B(2,2) and C(0,2)-D(2,0) meet at P(1,1)
+    coords = {
+        "A": (0.0, 0.0), "B": (2.0, 2.0),
+        "C": (0.0, 2.0), "D": (2.0, 0.0),
+        "P": (1.0, 1.0),
+    }
+    assert validate_geometric_property(
+        coords, "intersects", [["A", "B"], ["C", "D"], "P"]
+    ) is True
+
+
+def test_validate_intersects_false_wrong_point():
+    coords = {
+        "A": (0.0, 0.0), "B": (2.0, 2.0),
+        "C": (0.0, 2.0), "D": (2.0, 0.0),
+        "P": (0.0, 0.0),  # wrong point
+    }
+    assert validate_geometric_property(
+        coords, "intersects", [["A", "B"], ["C", "D"], "P"]
+    ) is False
+
+
+def test_validate_intersects_parallel_lines():
+    # Parallel lines never intersect
+    coords = {
+        "A": (0.0, 0.0), "B": (4.0, 0.0),
+        "C": (0.0, 1.0), "D": (4.0, 1.0),
+        "P": (2.0, 0.5),
+    }
+    assert validate_geometric_property(
+        coords, "intersects", [["A", "B"], ["C", "D"], "P"]
+    ) is False
+
+
+# ---------------------------------------------------------------------------
+# label_present
+# ---------------------------------------------------------------------------
+
+def test_validate_label_present_batch():
+    tikz = r"\tkzLabelPoints[below](A,B,C)"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "label_present", ["A"], tikz=tikz) is True
+    assert validate_geometric_property(coords, "label_present", ["B"], tikz=tikz) is True
+    assert validate_geometric_property(coords, "label_present", ["D"], tikz=tikz) is False
+
+
+def test_validate_label_present_individual():
+    tikz = r"\tkzLabelPoint[right](M){$M$}"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "label_present", ["M"], tikz=tikz) is True
+    assert validate_geometric_property(coords, "label_present", ["A"], tikz=tikz) is False
+
+
+def test_validate_label_present_no_tikz_returns_none():
+    coords: dict = {}
+    assert validate_geometric_property(coords, "label_present", ["A"]) is None
+
+
+# ---------------------------------------------------------------------------
+# mark_present
+# ---------------------------------------------------------------------------
+
+def test_validate_mark_present_right_angle():
+    tikz = r"\tkzMarkRightAngle(A,B,C)"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "mark_present", ["right_angle", "B"], tikz=tikz) is True
+
+
+def test_validate_mark_present_missing():
+    tikz = r"\tkzMarkRightAngle(A,B,C)"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "mark_present", ["right_angle", "X"], tikz=tikz) is False
+
+
+def test_validate_mark_present_no_tikz_returns_none():
+    coords: dict = {}
+    assert validate_geometric_property(coords, "mark_present", ["right_angle", "B"]) is None
+
+
+# ---------------------------------------------------------------------------
+# validate_required_labels
+# ---------------------------------------------------------------------------
+
+def test_validate_required_labels_all_present():
+    tikz = r"\tkzLabelPoints[below](A,B,C)"
+    result = validate_required_labels(tikz, ["A", "B", "C"])
+    assert result["passed"] is True
+    assert result["missing"] == []
+
+
+def test_validate_required_labels_some_missing():
+    tikz = r"\tkzLabelPoints[below](A,B)"
+    result = validate_required_labels(tikz, ["A", "B", "C"])
+    assert result["passed"] is False
+    assert "C" in result["missing"]
+
+
+def test_validate_required_labels_empty_required():
+    tikz = r""
+    result = validate_required_labels(tikz, [])
+    assert result["passed"] is True
+
+
+def test_validate_required_labels_mixed_commands():
+    tikz = r"""
+\tkzLabelPoints[below](A,B)
+\tkzLabelPoint[right](C){$C$}
+"""
+    result = validate_required_labels(tikz, ["A", "B", "C"])
+    assert result["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# validate_required_entities
+# ---------------------------------------------------------------------------
+
+def test_validate_required_entities_circle_found():
+    tikz = r"\tkzDrawCircle(O,A)"
+    result = validate_required_entities(tikz, [{"type": "circle"}])
+    assert result["passed"] is True
+    assert result["missing"] == []
+
+
+def test_validate_required_entities_missing():
+    tikz = r"\tkzDrawSegment(A,B)"
+    result = validate_required_entities(tikz, [{"type": "circle"}])
+    assert result["passed"] is False
+    assert len(result["missing"]) == 1
+
+
+def test_validate_required_entities_with_args_match():
+    tikz = r"\tkzDrawCircle(O,A)"
+    result = validate_required_entities(tikz, [{"type": "circle", "args": {"center": "O"}}])
+    assert result["passed"] is True
+
+
+def test_validate_required_entities_with_args_no_match():
+    tikz = r"\tkzDrawCircle(O,A)"
+    result = validate_required_entities(tikz, [{"type": "circle", "args": {"center": "X"}}])
+    assert result["passed"] is False
+
+
+def test_validate_required_entities_empty_required():
+    tikz = r""
+    result = validate_required_entities(tikz, [])
+    assert result["passed"] is True
