@@ -4,6 +4,7 @@ Eval runner for geometry-tikz-demo strategies.
 Usage:
     python -m evals.run [--scenarios PATH] [--strategies S [S ...]]
                         [--model MODEL] [--output DIR] [--repeats N]
+                        [--max-concurrency N]
                         [--llm-judge] [--no-llm-judge]
                         [--visual-judge] [--judge-model MODEL]
 
@@ -48,67 +49,92 @@ from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
 from util.svg_checks import run_svg_checks
+from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
 }
 
-
-# ---------------------------------------------------------------------------
-# Message history helpers
-# ---------------------------------------------------------------------------
-
-def _extract_tool_return(messages, tool_name: str) -> str | None:
-    """Return the content of the last successful ToolReturnPart for tool_name."""
-    from pydantic_ai.messages import ModelRequest, ToolReturnPart
-
-    for msg in reversed(messages):
-        if not isinstance(msg, ModelRequest):
-            continue
-        for part in reversed(msg.parts):
-            if isinstance(part, ToolReturnPart) and part.tool_name == tool_name:
-                content = part.content
-                if isinstance(content, str):
-                    return content
-                if isinstance(content, list):
-                    return "".join(
-                        c if isinstance(c, str) else getattr(c, "text", "")
-                        for c in content
-                    )
-    return None
+_SUPPORTED_PROPERTY_TYPES = {
+    "right_angle",
+    "midpoint",
+    "collinear",
+    "equal_lengths",
+    "parallel",
+    "perpendicular",
+}
 
 
-def _extract_tool_call_args(messages, tool_name: str) -> dict | None:
-    """Return the args dict of the last ToolCallPart for tool_name."""
-    from pydantic_ai.messages import ModelResponse, ToolCallPart
+def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
+    """Validate scenario YAML shape and return normalized list of scenarios."""
+    if not isinstance(raw_scenarios, list):
+        raise ValueError("Scenario file must be a YAML list of scenario objects")
 
-    for msg in reversed(messages):
-        if not isinstance(msg, ModelResponse):
-            continue
-        for part in reversed(msg.parts):
-            if isinstance(part, ToolCallPart) and part.tool_name == tool_name:
-                args = part.args
-                if isinstance(args, dict):
-                    return args
-                if isinstance(args, str):
-                    try:
-                        return json.loads(args)
-                    except json.JSONDecodeError:
-                        return None
-    return None
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
 
+    for idx, raw in enumerate(raw_scenarios, start=1):
+        where = f"scenario #{idx}"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{where}: expected mapping/object, got {type(raw).__name__}")
 
-def _count_tool_calls(messages, tool_name: str) -> int:
-    from pydantic_ai.messages import ModelResponse, ToolCallPart
+        scenario_id = raw.get("id")
+        prompt = raw.get("prompt")
 
-    count = 0
-    for msg in messages:
-        if not isinstance(msg, ModelResponse):
-            continue
-        for part in msg.parts:
-            if isinstance(part, ToolCallPart) and part.tool_name == tool_name:
-                count += 1
-    return count
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            raise ValueError(f"{where}: 'id' must be a non-empty string")
+        if scenario_id in seen_ids:
+            raise ValueError(f"{where}: duplicate id '{scenario_id}'")
+        seen_ids.add(scenario_id)
+
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError(f"{where} ({scenario_id}): 'prompt' must be a non-empty string")
+
+        expected_properties = raw.get("expected_properties", [])
+        if expected_properties is None:
+            expected_properties = []
+        if not isinstance(expected_properties, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'expected_properties' must be a list when provided"
+            )
+
+        normalized_props: list[dict[str, Any]] = []
+        for pidx, prop in enumerate(expected_properties, start=1):
+            prop_where = f"{where} ({scenario_id}) expected_properties[{pidx}]"
+            if not isinstance(prop, dict):
+                raise ValueError(f"{prop_where}: expected mapping/object")
+
+            name = prop.get("name")
+            prop_type = prop.get("type")
+            args = prop.get("args")
+
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError(f"{prop_where}: 'name' must be a non-empty string")
+            if not isinstance(prop_type, str) or prop_type not in _SUPPORTED_PROPERTY_TYPES:
+                supported = ", ".join(sorted(_SUPPORTED_PROPERTY_TYPES))
+                raise ValueError(
+                    f"{prop_where}: unsupported 'type'={prop_type!r}; supported: {supported}"
+                )
+            if not isinstance(args, list):
+                raise ValueError(f"{prop_where}: 'args' must be a list")
+
+            normalized_props.append(
+                {
+                    "name": name,
+                    "type": prop_type,
+                    "args": args,
+                }
+            )
+
+        normalized.append(
+            {
+                "id": scenario_id,
+                "prompt": prompt,
+                "expected_properties": normalized_props,
+            }
+        )
+
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -171,18 +197,18 @@ async def run_scenario(
     record["input_tokens"] = usage.input_tokens
     record["output_tokens"] = usage.output_tokens
 
-    total_tool_calls = _count_tool_calls(messages, "render_diagram")
+    total_tool_calls = count_tool_calls(messages, "render_diagram")
     record["tool_calls"] = total_tool_calls
     record["retries"] = max(0, total_tool_calls - 1)
 
     # Extract the tool call args (TikZ source code)
-    tool_args = _extract_tool_call_args(messages, "render_diagram")
+    tool_args = extract_tool_call_args(messages, "render_diagram")
     if tool_args is not None:
         record["tikz_code"] = tool_args.get("tikz")
         record["tkzelements_code"] = tool_args.get("tkzelements") or None
 
     # Extract SVG from the tool return JSON
-    tool_return = _extract_tool_return(messages, "render_diagram")
+    tool_return = extract_tool_return(messages, "render_diagram")
     if tool_return is None:
         record["error"] = "No render_diagram tool return found in message history"
         return record
@@ -358,6 +384,12 @@ async def main() -> None:
         help="Number of times to run each strategy/scenario combination",
     )
     parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=1,
+        help="Max number of concurrent scenario runs (default: 1)",
+    )
+    parser.add_argument(
         "--llm-judge",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -378,11 +410,14 @@ async def main() -> None:
 
     if args.repeats < 1:
         raise ValueError("--repeats must be >= 1")
+    if args.max_concurrency < 1:
+        raise ValueError("--max-concurrency must be >= 1")
 
     # Load scenarios
     scenarios_path = Path(args.scenarios)
     with scenarios_path.open() as f:
-        scenarios = yaml.safe_load(f)
+        raw_scenarios = yaml.safe_load(f)
+    scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
 
     # Build run ID and output path
@@ -394,6 +429,7 @@ async def main() -> None:
     total = len(args.strategies) * len(scenarios) * args.repeats
     print(f"Running {total} evals  (run_id={run_id})")
     print(f"Output: {output_path}")
+    print(f"Max concurrency: {args.max_concurrency}")
     if args.llm_judge:
         print(f"LLM judge: on  (model: {args.judge_model})")
     if args.visual_judge:
@@ -401,25 +437,40 @@ async def main() -> None:
     print()
 
     all_records = []
+    semaphore = asyncio.Semaphore(args.max_concurrency)
+
+    async def _run_bounded(
+        scenario: dict[str, Any],
+        strategy_name: str,
+        repeat_index: int,
+    ) -> dict[str, Any]:
+        async with semaphore:
+            return await run_scenario(
+                scenario,
+                strategy_name,
+                args.model,
+                repeat_index,
+                svg_output_dir,
+                llm_judge=args.llm_judge,
+                visual_judge=args.visual_judge,
+                judge_model=args.judge_model,
+            )
+
     for strategy_name in args.strategies:
         print(f"Strategy: {strategy_name}  model: {args.model}")
-        for scenario in scenarios:
-            for repeat_index in range(1, args.repeats + 1):
-                record = await run_scenario(
-                    scenario,
-                    strategy_name,
-                    args.model,
-                    repeat_index,
-                    svg_output_dir,
-                    llm_judge=args.llm_judge,
-                    visual_judge=args.visual_judge,
-                    judge_model=args.judge_model,
-                )
-                record["run_id"] = run_id
-                record["timestamp"] = datetime.now(timezone.utc).isoformat()
-                _print_record(record)
-                _append_jsonl(output_path, record)
-                all_records.append(record)
+        tasks = [
+            asyncio.create_task(_run_bounded(scenario, strategy_name, repeat_index))
+            for scenario in scenarios
+            for repeat_index in range(1, args.repeats + 1)
+        ]
+
+        for finished in asyncio.as_completed(tasks):
+            record = await finished
+            record["run_id"] = run_id
+            record["timestamp"] = datetime.now(timezone.utc).isoformat()
+            _print_record(record)
+            _append_jsonl(output_path, record)
+            all_records.append(record)
 
     _print_summary(all_records)
     print(f"\nResults written to {output_path}")

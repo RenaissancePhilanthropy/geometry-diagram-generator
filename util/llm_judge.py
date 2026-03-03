@@ -127,77 +127,39 @@ async def judge_rendered_diagram(
       score, geometric_accuracy, labeling, completeness, visual_quality, reasoning
     """
     try:
-        import base64
         import cairosvg
-    except ImportError as e:
+    except Exception as e:
         raise ImportError(
-            "cairosvg is required for visual judging. "
-            "Install it with: pip install cairosvg"
+            "cairosvg and libcairo are required for visual judging."
         ) from e
 
-    png_data = cairosvg.svg2png(bytestring=svg.encode("utf-8"))
+    png_data = cairosvg.svg2png(bytestring=svg.encode("utf-8"), background_color="white")
 
     if not isinstance(png_data, bytes) or len(png_data) == 0:
         raise ValueError("Failed to convert SVG to PNG for visual judging.")
 
-    png_b64 = base64.standard_b64encode(png_data).decode("ascii")
+    from pydantic_ai.messages import BinaryContent
 
-    from pydantic_ai.messages import ImageUrl
-    from anthropic import Anthropic
-
-    client = Anthropic()
-
-    user_content: list = [
-        {
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": png_b64,
-            },
-        },
-        {
-            "type": "text",
-            "text": f"User prompt: {prompt}",
-        },
-    ]
-    if tikz_code:
-        user_content.append({
-            "type": "text",
-            "text": f"\nTikZ source (for reference):\n```\n{tikz_code}\n```",
-        })
-
-    # Use the Anthropic client directly for vision (pydantic-ai image support)
-    response = client.messages.create(
-        model=model.replace("anthropic:", ""),
-        system=_VISUAL_REVIEW_SYSTEM,
-        max_tokens=512,
-        messages=[{"role": "user", "content": user_content}],
+    agent: Agent[None, _VisualJudgeResult] = Agent(
+        model,
+        system_prompt=_VISUAL_REVIEW_SYSTEM,
+        output_type=_VisualJudgeResult,
     )
 
-    # Parse structured response from free-form last text (best-effort)
-    text = response.content[-1].text if response.content else ""
-    return _parse_visual_response(text)
+    user_content: list = [
+        BinaryContent(data=png_data, media_type="image/png"),
+        f"User prompt: {prompt}",
+    ]
+    if tikz_code:
+        user_content.append(f"\nTikZ source (for reference):\n```\n{tikz_code}\n```")
 
-
-def _parse_visual_response(text: str) -> dict:
-    """Parse a visual judge response, extracting scores from free-form text."""
-    import re
-
-    def _extract_score(pattern: str) -> int | None:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            try:
-                return max(1, min(5, int(m.group(1))))
-            except ValueError:
-                return None
-        return None
-
+    result = await agent.run(user_content)
+    data = result.output
     return {
-        "score": _extract_score(r"overall[^:]*:\s*(\d)") or _extract_score(r"score[^:]*:\s*(\d)") or 3,
-        "geometric_accuracy": _extract_score(r"geometric[^:]*:\s*(\d)") or 3,
-        "labeling": _extract_score(r"labeling[^:]*:\s*(\d)") or 3,
-        "completeness": _extract_score(r"completeness[^:]*:\s*(\d)") or 3,
-        "visual_quality": _extract_score(r"visual[^:]*:\s*(\d)") or 3,
-        "reasoning": text[:300].strip(),
+        "score": data.score,
+        "geometric_accuracy": data.geometric_accuracy,
+        "labeling": data.labeling,
+        "completeness": data.completeness,
+        "visual_quality": data.visual_quality,
+        "reasoning": data.reasoning,
     }

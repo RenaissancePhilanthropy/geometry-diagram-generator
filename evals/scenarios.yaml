@@ -122,4 +122,8 @@
   prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O"
 
 - id: euler-line
-  prompt: "Draw a triangle showing three triangle centers: the circumcenter, centroid, and orthocenter, indicating that they are collinear on the Euler line"
+  prompt: "Draw a triangle showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line"
+  expected_properties:
+    - name: euler_line_collinear
+      type: collinear
+      args: [O, G, H]

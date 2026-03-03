@@ -9,10 +9,16 @@ wheels/
 # Virtual environments
 .venv
 
+# Node.js dependencies
 node_modules/
 
+# Local environment
 .env
 .claude/
 demo-ui/pnpm-workspace.yaml
 
+# Evals results
 evals/results/
+
+# macOS files
+.DS_Store
