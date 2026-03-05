@@ -19,5 +19,18 @@ class SubstanceStrategy(ABC):
 
     @abstractmethod
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        """Build and return a configured agent for this strategy."""
+        """Build and return a configured agent for this strategy.
+
+        Used by the web app (AGUIApp) which needs a single Agent object.
+        Multi-agent strategies should return the primary/draft agent here.
+        """
         ...
+
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL):
+        """Run the strategy end-to-end and return an AgentRunResult.
+
+        Override this method to implement multi-agent orchestration.
+        The default delegates to build_agent().run(prompt).
+        """
+        agent = self.build_agent(model=model)
+        return await agent.run(prompt)

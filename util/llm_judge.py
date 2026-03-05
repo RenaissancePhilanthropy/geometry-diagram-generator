@@ -10,6 +10,8 @@ Provides two evaluation modes:
 """
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
@@ -72,6 +74,42 @@ class _VisualJudgeResult(BaseModel):
     visual_quality: int
     score: int
     reasoning: str
+
+
+_LABEL_TO_KEY = {
+    "geometric accuracy": "geometric_accuracy",
+    "labeling": "labeling",
+    "completeness": "completeness",
+    "visual quality": "visual_quality",
+    "overall score": "score",
+}
+
+_SCORE_PATTERN = re.compile(
+    r"(" + "|".join(re.escape(k) for k in _LABEL_TO_KEY) + r")\s*:\s*(\d+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_visual_response(text: str) -> dict:
+    """Parse a free-text judge response into a structured scores dict.
+
+    Extracts scores for geometric_accuracy, labeling, completeness,
+    visual_quality, and overall score. Missing scores default to 3.
+    All scores are clamped to [1, 5].
+    """
+    scores: dict[str, int] = {}
+    for match in _SCORE_PATTERN.finditer(text):
+        label = match.group(1).lower()
+        key = _LABEL_TO_KEY[label]
+        value = max(1, min(5, int(match.group(2))))
+        scores[key] = value
+
+    defaults = ["geometric_accuracy", "labeling", "completeness", "visual_quality", "score"]
+    for key in defaults:
+        scores.setdefault(key, 3)
+
+    scores["reasoning"] = text
+    return scores
 
 
 async def judge_tikz_code(

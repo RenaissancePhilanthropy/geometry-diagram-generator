@@ -47,6 +47,8 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
+from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
+from strategies.plan_and_code import PlanAndCodeStrategy
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -58,6 +60,8 @@ from util.message_helpers import extract_tool_return, extract_tool_call_args, co
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
+    "raw_code_with_revise": RawCodeWithReviseStrategy,
+    "plan_and_code": PlanAndCodeStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
@@ -227,11 +231,10 @@ async def run_scenario(
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
     strategy = strategy_cls()
-    agent = strategy.build_agent(model=model)
 
     start = time.monotonic()
     try:
-        result = await agent.run(scenario["prompt"])
+        result = await strategy.run(scenario["prompt"], model=model)
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
