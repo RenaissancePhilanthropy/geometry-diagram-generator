@@ -1,16 +1,17 @@
 [project]
-name = "geometry-penrose-demo"
+name = "geometry-tikz-demo"
 version = "0.1.0"
-description = "Add your description here"
+description = "Generate geometry diagrams in TikZ using LLMs."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic==0.83.0",
+    "anthropic==0.84.0",
     "cairosvg>=2.8.2",
     "httpx>=0.27",
-    "pydantic-ai-slim[ag-ui,anthropic,openai,web,ag-ui]>=1.63.0",
-    "python-dotenv>=1.2.1",
+    "pydantic-ai-slim[ag-ui,anthropic,openai,web,ag-ui]>=1.66.0",
+    "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    "sympy>=1.14.0",
 ]
 
 [dependency-groups]

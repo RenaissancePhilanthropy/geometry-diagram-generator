@@ -227,3 +227,12 @@
     - name: euler_line_collinear
       type: collinear
       args: [O, G, H]
+
+- id: transversal-angles
+  prompt: "Draw two parallel lines cut by a transversal, creating eight angles. Label the points of intersection and indicate which angles are corresponding, alternate interior, and alternate exterior."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: AB_parallel_to_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+  
