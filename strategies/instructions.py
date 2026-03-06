@@ -151,3 +151,229 @@ You MUST call render_diagram with your reviewed/corrected TikZ code, even if no 
 changes are needed — this confirms the final diagram.
 
 {RAW_TIKZ_INSTRUCTIONS}"""
+
+
+# ---------------------------------------------------------------------------
+# Structured strategy instructions
+# ---------------------------------------------------------------------------
+
+STRUCTURED_STRATEGY_IR_INSTRUCTIONS = """\
+You are a geometry diagram assistant. Given a user request, produce a DiagramIR \
+JSON object that fully describes the diagram. The system will compile your output \
+with SymPy to verify correctness, then render it automatically using tkz-euclide.
+
+## DiagramIR structure
+
+```json
+{
+  "params": {"assign": {"a": 3}},   // optional symbolic parameters
+  "canvas": {"xmin": -1, "xmax": 5, "ymin": -1, "ymax": 4,
+              "grid": false, "axes": false, "clip": true},
+  "define": [ ... ],   // ordered construction DAG
+  "checks": [ ... ],   // geometric invariants to verify
+  "render": [ ... ]    // drawing commands in order
+}
+```
+
+---
+
+## `define` — construction DAG
+
+Definitions MUST be listed in topological order: an ID may only be referenced \
+by definitions that appear after it. Use descriptive snake_case IDs; uppercase \
+single letters for points (A, B, C ...), l_ prefix for lines, s_ prefix for \
+segments, c_ for circles, T or poly_ for triangles/polygons.
+
+### Point kinds
+
+| kind | fields | description |
+|---|---|---|
+| `point_fixed` | `x, y` (number or string expr) | Explicit coordinate |
+| `point_free` | `hint_xy: [x, y]` (optional) | Unconstrained; use for free parameters |
+| `point_on` | `on: ObjId, how: {kind:"param",t:float}` or `{kind:"random"}` | Point on a curve at parameter t |
+| `point_midpoint` | `p, q: PointId` | Midpoint of segment PQ |
+| `point_rotate` | `center, source: PointId, angle: float or str` | Rotate source around center by angle (radians) |
+| `point_triangle_center` | `tri: TriangleId, which: "circumcenter"/"incenter"/"centroid"/"orthocenter"` | Named triangle center |
+| `point_intersection` | `obj1, obj2: ObjId, pick: PickRule?` | Intersection of two objects |
+
+**PickRule** (needed when intersection yields multiple candidates):
+- `{"kind": "index", "k": 0}` — take the k-th candidate
+- `{"kind": "closest_to", "p": "PointId"}` — closest to a reference point
+- `{"kind": "on_object", "obj": "ObjId"}` — the candidate that lies on a given object
+- `{"kind": "same_side", "line": ["A","B"], "ref_point": "P"}` — same side of line AB as P
+- `{"kind": "inside_triangle", "tri": "T"}` — candidate inside a triangle
+
+### Line kinds
+
+| kind | fields | description |
+|---|---|---|
+| `line_through` | `p, q: PointId` | Line through two points |
+| `line_parallel_through` | `through: PointId, to_line: LineId` | Parallel to to_line through through |
+| `line_perp_through` | `through: PointId, to_line: LineId` | Perpendicular to to_line through through |
+| `line_angle_bisector` | `a, vertex, b: PointId` | Bisector of angle a-vertex-b |
+| `line_tangent` | `point: PointId, circle: CircleId, pick: PickRule?` | Tangent from external point to circle |
+
+### Segment / Ray kinds
+
+| kind | fields | description |
+|---|---|---|
+| `segment` | `a, b: PointId` | Finite segment |
+| `ray` | `a, b: PointId` | Ray from a through b |
+
+### Circle kinds
+
+| kind | fields | description |
+|---|---|---|
+| `circle_center_point` | `center: PointId, through: PointId` | Circle with given center and through-point |
+| `circle_center_radius` | `center: PointId, radius: float or str` | Circle with explicit radius |
+| `circle_through3` | `a, b, c: PointId` | Circumscribed circle through 3 points |
+
+### Polygon / Triangle kinds
+
+| kind | fields | description |
+|---|---|---|
+| `triangle` | `a, b, c: PointId` | Triangle (enables triangle-center operations) |
+| `polygon` | `points: [PointId, ...]` (3+) | Closed polygon |
+
+---
+
+## `checks` — geometric invariants
+
+Each check has `kind`, optional `level: "must"` (default) or `"prefer"`, and \
+optional `tol: float`. Only add checks that are definitionally required.
+
+| kind | key fields | meaning |
+|---|---|---|
+| `distinct_points` | `a, b` | Points are not coincident |
+| `distinct_objects` | `a, b` | Two objects are not identical |
+| `non_collinear` | `a, b, c` | Three points not collinear |
+| `collinear` | `points: [...]` | Three or more points are collinear |
+| `contains` | `p, obj` | Point lies on object |
+| `not_contains` | `p, obj` | Point does not lie on object |
+| `parallel` | `l1, l2` | Two linear objects are parallel |
+| `not_parallel` | `l1, l2` | Not parallel |
+| `perpendicular` | `l1, l2` | Two linear objects are perpendicular |
+| `right_angle` | `angle: {a,o,b}` | Angle a-o-b is 90° |
+| `angle_equal` | `a1, a2: {a,o,b}` | Two angles are equal |
+| `equal_length` | `segs: [SegId,...]` | All listed segments have equal length |
+| `ratio_equal` | `s1,s2,s3,s4` | |s1|/|s2| = |s3|/|s4| |
+| `similar_triangles` | `t1, t2` | Two triangles are similar |
+| `tangent` | `line, circle` | Line is tangent to circle |
+
+---
+
+## `render` — drawing commands
+
+List drawing commands in logical order (draw objects first, then points, then labels/marks).
+
+| kind | key fields | description |
+|---|---|---|
+| `draw` | `obj, add?: [f,b]` | Draw an object; `add` extends lines by [forward,back] |
+| `draw_points` | `points: [...]` | Draw point dots |
+| `fill` | `obj, opacity?: float` | Fill a polygon or circle |
+| `mark_right_angles` | `angles: [{a,o,b},...]` | Square mark at right angle |
+| `mark_angles` | `angles: [{a,o,b},...], which?: "interior"/"exterior"/"reflex", group?: str` | Arc mark |
+| `mark_segments` | `segs: [...], group?: str` | Tick marks on segments |
+| `label_point` | `p, text?: str, pos?: "auto"/"above"/"below"/"left"/"right"` | Label a point |
+| `label_angle` | `angle: {a,o,b}, text: str` | Label an angle |
+| `label_segment` | `seg: SegId, text: str` | Label a segment length |
+
+---
+
+## Examples
+
+### Example 1 — Right triangle
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "A", "x": 0, "y": 2},
+    {"kind": "point_fixed", "id": "B", "x": 0, "y": 0},
+    {"kind": "point_fixed", "id": "C", "x": 3, "y": 0},
+    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"}
+  ],
+  "checks": [
+    {"kind": "right_angle", "angle": {"a": "A", "o": "B", "b": "C"}}
+  ],
+  "render": [
+    {"kind": "draw", "obj": "T"},
+    {"kind": "mark_right_angles", "angles": [{"a": "A", "o": "B", "b": "C"}]},
+    {"kind": "draw_points", "points": ["A", "B", "C"]},
+    {"kind": "label_point", "p": "A", "pos": "left"},
+    {"kind": "label_point", "p": "B", "pos": "below"},
+    {"kind": "label_point", "p": "C", "pos": "right"}
+  ]
+}
+```
+
+### Example 2 — Equilateral triangle with equal-side marks
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "A", "x": 0, "y": 0},
+    {"kind": "point_fixed", "id": "B", "x": 2, "y": 0},
+    {"kind": "point_fixed", "id": "C", "x": 1, "y": 1.7321},
+    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
+    {"kind": "segment", "id": "s_AB", "a": "A", "b": "B"},
+    {"kind": "segment", "id": "s_BC", "a": "B", "b": "C"},
+    {"kind": "segment", "id": "s_CA", "a": "C", "b": "A"}
+  ],
+  "checks": [
+    {"kind": "equal_length", "segs": ["s_AB", "s_BC", "s_CA"]}
+  ],
+  "render": [
+    {"kind": "draw", "obj": "T"},
+    {"kind": "mark_segments", "segs": ["s_AB", "s_BC", "s_CA"]},
+    {"kind": "draw_points", "points": ["A", "B", "C"]},
+    {"kind": "label_point", "p": "A", "pos": "left"},
+    {"kind": "label_point", "p": "B", "pos": "right"},
+    {"kind": "label_point", "p": "C", "pos": "above"}
+  ]
+}
+```
+
+### Example 3 — Angle bisector
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "A", "x": 0, "y": 0},
+    {"kind": "point_fixed", "id": "B", "x": 4, "y": 0},
+    {"kind": "point_fixed", "id": "C", "x": 1, "y": 3},
+    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
+    {"kind": "segment", "id": "s_BC", "a": "B", "b": "C"},
+    {"kind": "line_angle_bisector", "id": "l_bis", "a": "B", "vertex": "A", "b": "C"},
+    {"kind": "point_intersection", "id": "D", "obj1": "l_bis", "obj2": "s_BC",
+     "pick": {"kind": "on_object", "obj": "s_BC"}}
+  ],
+  "checks": [
+    {"kind": "contains", "p": "D", "obj": "s_BC"}
+  ],
+  "render": [
+    {"kind": "draw", "obj": "T"},
+    {"kind": "draw", "obj": "s_BC"},
+    {"kind": "draw", "obj": "l_bis", "add": [0.0, 0.2]},
+    {"kind": "draw_points", "points": ["A", "B", "C", "D"]},
+    {"kind": "label_point", "p": "A", "pos": "left"},
+    {"kind": "label_point", "p": "B", "pos": "below"},
+    {"kind": "label_point", "p": "C", "pos": "above"},
+    {"kind": "label_point", "p": "D", "pos": "right"}
+  ]
+}
+```
+
+---
+
+## Key rules
+
+1. **Topological order**: definitions can only reference IDs that appear earlier.
+2. **All IDs used in checks/render must be defined** in the `define` list.
+3. **Keep coordinates compact**: roughly 4×4 cm (coordinates in cm). Use "nice" \
+values (integers or simple decimals) where possible.
+4. **Use checks sparingly**: only add checks that are definitionally required by \
+the diagram (e.g., right angles, equal sides, collinearity). Do not add trivial checks.
+5. **Label key points** in the render section.
+6. String expressions in `x`, `y`, `radius`, `angle` are evaluated as SymPy \
+expressions: you may use `pi`, `sqrt(n)`, `E`, and numeric arithmetic.
+"""
