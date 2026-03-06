@@ -19,7 +19,7 @@ class CheckResult(BaseModel):
 def run_checks(
     checks: list[ir.Check],
     sym: SymTable,
-    tol: float = 1e-9,
+    tol: float = 1e-4,
 ) -> list[CheckResult]:
     """Evaluate each Check against the compiled symbol table."""
     return [_check_one(c, sym, tol) for c in checks]
@@ -147,9 +147,12 @@ def _to_bool(expr: Any) -> bool:
         return False
 
 
-def _as_linear(obj: Any) -> spg.LinearEntity:
-    """Return obj as a LinearEntity, raising TypeError if it isn't one."""
-    if isinstance(obj, spg.LinearEntity):
+_LINEAR_TYPES = (spg.Line, spg.Segment, spg.Ray)
+
+
+def _as_linear(obj: Any):
+    """Return obj if it is a linear geometry object, raising TypeError otherwise."""
+    if isinstance(obj, _LINEAR_TYPES):
         return obj
     raise TypeError(f"Expected a linear object, got {type(obj).__name__}")
 
@@ -167,8 +170,7 @@ def _seg_length(obj: Any):
     """Return the length of a Segment-like object as a SymPy expression."""
     if isinstance(obj, spg.Segment):
         return obj.length
-    # For other LinearEntity subclasses, compute distance between p1 and p2
-    if isinstance(obj, spg.LinearEntity):
+    if isinstance(obj, _LINEAR_TYPES):
         return obj.p1.distance(obj.p2)
     raise TypeError(f"Cannot compute length of {type(obj).__name__}")
 

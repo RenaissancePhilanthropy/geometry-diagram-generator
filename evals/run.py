@@ -49,6 +49,7 @@ from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from strategies.plan_and_code import PlanAndCodeStrategy
+from strategies.structured import StructureStrategy, StructuredRunResult
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -62,6 +63,7 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
     "raw_code_with_revise": RawCodeWithReviseStrategy,
     "plan_and_code": PlanAndCodeStrategy,
+    "structured": StructureStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
@@ -242,37 +244,42 @@ async def run_scenario(
 
     record["duration_s"] = round(time.monotonic() - start, 2)
 
-    messages = result.all_messages()
-    usage = result.usage()
+    # StructuredRunResult: TikZ and SVG are produced deterministically (no tool calls).
+    if isinstance(result, StructuredRunResult):
+        record["tikz_code"] = result.tikz
+        svg = result.svg
+    else:
+        messages = result.all_messages()
+        usage = result.usage()
 
-    record["input_tokens"] = usage.input_tokens
-    record["output_tokens"] = usage.output_tokens
+        record["input_tokens"] = usage.input_tokens
+        record["output_tokens"] = usage.output_tokens
 
-    total_tool_calls = count_tool_calls(messages, "render_diagram")
-    record["tool_calls"] = total_tool_calls
-    record["retries"] = max(0, total_tool_calls - 1)
+        total_tool_calls = count_tool_calls(messages, "render_diagram")
+        record["tool_calls"] = total_tool_calls
+        record["retries"] = max(0, total_tool_calls - 1)
 
-    # Extract the tool call args (TikZ source code)
-    tool_args = extract_tool_call_args(messages, "render_diagram")
-    if tool_args is not None:
-        record["tikz_code"] = tool_args.get("tikz")
-        record["tkzelements_code"] = tool_args.get("tkzelements") or None
+        # Extract the tool call args (TikZ source code)
+        tool_args = extract_tool_call_args(messages, "render_diagram")
+        if tool_args is not None:
+            record["tikz_code"] = tool_args.get("tikz")
+            record["tkzelements_code"] = tool_args.get("tkzelements") or None
 
-    # Extract SVG from the tool return JSON
-    tool_return = extract_tool_return(messages, "render_diagram")
-    if tool_return is None:
-        record["error"] = "No render_diagram tool return found in message history"
-        return record
+        # Extract SVG from the tool return JSON
+        tool_return = extract_tool_return(messages, "render_diagram")
+        if tool_return is None:
+            record["error"] = "No render_diagram tool return found in message history"
+            return record
 
-    try:
-        tool_data = json.loads(tool_return)
-        svg = tool_data.get("svg")
-    except (json.JSONDecodeError, TypeError):
-        svg = None
+        try:
+            tool_data = json.loads(tool_return)
+            svg = tool_data.get("svg")
+        except (json.JSONDecodeError, TypeError):
+            svg = None
 
-    if not svg:
-        record["error"] = "No SVG found in render_diagram tool return"
-        return record
+        if not svg:
+            record["error"] = "No SVG found in render_diagram tool return"
+            return record
 
     record["generation_success"] = True
     record["svg_rendered"] = True
