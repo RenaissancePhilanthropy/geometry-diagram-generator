@@ -53,16 +53,20 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
 
     # --- Phase 4: canvas / init ---
     lines: list[str] = []
-    canvas = diagram.canvas or ir.Canvas()
+    canvas = diagram.canvas  # may be None
+    if canvas is not None:
+        xmin, xmax, ymin, ymax = canvas.xmin, canvas.xmax, canvas.ymin, canvas.ymax
+    else:
+        xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
     lines.append(
-        f"\\tkzInit[xmin={canvas.xmin},xmax={canvas.xmax},"
-        f"ymin={canvas.ymin},ymax={canvas.ymax}]"
+        f"\\tkzInit[xmin={xmin:.4g},xmax={xmax:.4g},"
+        f"ymin={ymin:.4g},ymax={ymax:.4g}]"
     )
-    if canvas.clip:
+    if canvas is None or canvas.clip:
         lines.append("\\tkzClip")
-    if canvas.grid:
+    if canvas is not None and canvas.grid:
         lines.append("\\tkzGrid")
-    if canvas.axes:
+    if canvas is not None and canvas.axes:
         lines.append("\\tkzAxeXY")
     lines.append("")
 
@@ -254,6 +258,32 @@ def _merge_opts(base: str, extra_bracket: str) -> str:
 # ---------------------------------------------------------------------------
 # Geometric helpers
 # ---------------------------------------------------------------------------
+
+_BOUNDS_PADDING = 0.8
+
+
+def _compute_bounds(
+    coords: dict[str, tuple[float, float]],
+    helpers: dict[str, tuple[float, float]],
+    sym: SymTable,
+) -> tuple[float, float, float, float]:
+    """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
+    all_pts = list(coords.values()) + list(helpers.values())
+    for obj in sym.values():
+        if isinstance(obj, spg.Circle):
+            cx, cy = _f(obj.center.x), _f(obj.center.y)
+            r = _f(obj.radius)
+            all_pts.extend([(cx - r, cy - r), (cx + r, cy + r)])
+    if not all_pts:
+        return (-5.0, 5.0, -5.0, 5.0)
+    xs, ys = zip(*all_pts)
+    return (
+        min(xs) - _BOUNDS_PADDING,
+        max(xs) + _BOUNDS_PADDING,
+        min(ys) - _BOUNDS_PADDING,
+        max(ys) + _BOUNDS_PADDING,
+    )
+
 
 def _f(expr) -> float:
     """Convert a SymPy expression to float."""
