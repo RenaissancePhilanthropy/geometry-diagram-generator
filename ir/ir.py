@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Dict, List, Literal, Optional, Tuple, Union
+from typing import Annotated, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict
 
 # -----------------------
@@ -104,7 +104,7 @@ class PickClosestTo(PickBase):
 
 class PickSameSide(PickBase):
     kind: Literal["same_side"] = "same_side"
-    line: Tuple[PointId, PointId]  # oriented line through (a,b)
+    line: List[PointId]  # oriented line through (a,b), expects exactly 2 elements
     ref_point: PointId
 
 
@@ -137,7 +137,7 @@ class PointFixed(DefBase):
 
 class PointFree(DefBase):
     kind: Literal["point_free"] = "point_free"
-    hint_xy: Optional[Tuple[float, float]] = None  # soft preferred location; compiler may ignore
+    hint_xy: Optional[List[float]] = None  # soft preferred location [x, y]; compiler may ignore
 
 
 class PointOn(DefBase):
@@ -342,7 +342,7 @@ class SimilarTriangles(CheckBase):
     t1: TriangleId
     t2: TriangleId
     # Optional correspondence for labeling/ratios; compiler can validate consistency
-    correspond: Optional[List[Tuple[PointId, PointId]]] = None
+    correspond: Optional[List[List[PointId]]] = None  # each inner list is [t1_vertex, t2_vertex]
 
 
 class RatioEqual(CheckBase):
@@ -410,7 +410,7 @@ class Draw(RenderBase):
     kind: Literal["draw"] = "draw"
     obj: ObjId
     # Optional for infinite lines: tkzDrawLine add=... style, etc.
-    add: Optional[Tuple[float, float]] = None  # (forward, backward) extensions
+    add: Optional[List[float]] = None  # [forward, backward] extensions
 
 
 class DrawPoints(RenderBase):

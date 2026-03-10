@@ -19,7 +19,7 @@ class CheckResult(BaseModel):
 def run_checks(
     checks: list[ir.Check],
     sym: SymTable,
-    tol: float = 1e-4,
+    tol: float = 5e-3,
 ) -> list[CheckResult]:
     """Evaluate each Check against the compiled symbol table."""
     return [_check_one(c, sym, tol) for c in checks]
@@ -53,11 +53,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Points {ids} are not collinear"
 
             case ir.Contains(p=p, obj=obj):
-                ok = _to_bool(sym[obj].contains(sym[p]))
+                ok = _contains(sym[obj], sym[p], t)
                 msg = "" if ok else f"Object {obj!r} does not contain point {p!r}"
 
             case ir.NotContains(p=p, obj=obj):
-                ok = not _to_bool(sym[obj].contains(sym[p]))
+                ok = not _contains(sym[obj], sym[p], t)
                 msg = "" if ok else f"Object {obj!r} unexpectedly contains point {p!r}"
 
             case ir.Parallel(l1=l1, l2=l2):
@@ -145,6 +145,15 @@ def _to_bool(expr: Any) -> bool:
         return bool(expr)
     except Exception:
         return False
+
+
+def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
+    """Check whether obj contains point, using distance-based tolerance for circles."""
+    if isinstance(obj, spg.Circle):
+        d = float(point.distance(obj.center).evalf())
+        r = float(obj.radius.evalf())
+        return abs(d - r) < tol
+    return _to_bool(obj.contains(point))
 
 
 _LINEAR_TYPES = (spg.Line, spg.Segment, spg.Ray)

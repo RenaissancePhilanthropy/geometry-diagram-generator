@@ -45,6 +45,10 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
             cx, cy = coords[stmt.center]
             r = _f(circ.radius)
             helpers[f"_rt_{stmt.id}"] = (cx + r, cy)
+        # Circumcenter helper for CircleThrough3 (center is computed, not a named point)
+        elif isinstance(stmt, ir.CircleThrough3):
+            circ = sym[stmt.id]
+            helpers[f"_cc_{stmt.id}"] = (_f(circ.center.x), _f(circ.center.y))
         # Two points for Ray (anchor already named, need direction point)
         elif isinstance(stmt, ir.Ray):
             # sym object is spg.Ray; p2 is the direction point (= sym[stmt.b])
@@ -224,8 +228,8 @@ def _circle_pts(circle_id: str, stmt_by_id: dict, helpers: dict) -> tuple[str, s
             return c, t
         case ir.CircleCenterRadius(center=c):
             return c, f"_rt_{circle_id}"
-        case ir.CircleThrough3(a=a, b=b, c=c):
-            return a, b  # use first two defining points (center is circumcenter)
+        case ir.CircleThrough3(a=a):
+            return f"_cc_{circle_id}", a  # circumcenter helper + first defining point
         case _:
             raise ValueError(f"Unknown circle def kind {stmt.kind!r}")
 

@@ -192,7 +192,7 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 | `point_free` | `hint_xy: [x, y]` (optional) | Unconstrained; use for free parameters |
 | `point_on` | `on: ObjId, how: {kind:"param",t:float}` or `{kind:"random"}` | Point on a curve at parameter t |
 | `point_midpoint` | `p, q: PointId` | Midpoint of segment PQ |
-| `point_rotate` | `center, source: PointId, angle: float or str` | Rotate source around center by angle (radians) |
+| `point_rotate` | `center, source: PointId, angle: float or str` | Rotate source around center by angle (radians, positive = counter-clockwise) |
 | `point_triangle_center` | `tri: TriangleId, which: "circumcenter"/"incenter"/"centroid"/"orthocenter"` | Named triangle center |
 | `point_intersection` | `obj1, obj2: ObjId, pick: PickRule?` | Intersection of two objects |
 
@@ -363,6 +363,37 @@ List drawing commands in logical order (draw objects first, then points, then la
 }
 ```
 
+### Example 4 — Square on a triangle side (using point_rotate)
+
+To build a square **outward** from edge PQ: rotate P around Q by −π/2 and rotate Q around P by +π/2.
+The resulting points P1, Q1 complete the square on the exterior side of PQ.
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "A", "x": 0, "y": 3},
+    {"kind": "point_fixed", "id": "B", "x": 4, "y": 0},
+    {"kind": "point_fixed", "id": "C", "x": 0, "y": 0},
+    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
+    {"kind": "point_rotate", "id": "A1", "center": "B", "source": "A", "angle": "-pi/2"},
+    {"kind": "point_rotate", "id": "B1", "center": "A", "source": "B", "angle": "pi/2"},
+    {"kind": "polygon", "id": "sq_AB", "points": ["A", "B", "A1", "B1"]}
+  ],
+  "checks": [
+    {"kind": "right_angle", "angle": {"a": "A", "o": "C", "b": "B"}}
+  ],
+  "render": [
+    {"kind": "draw", "obj": "T"},
+    {"kind": "draw", "obj": "sq_AB"},
+    {"kind": "fill", "obj": "sq_AB", "opacity": 0.15},
+    {"kind": "draw_points", "points": ["A", "B", "C"]},
+    {"kind": "label_point", "p": "A", "pos": "left"},
+    {"kind": "label_point", "p": "B", "pos": "right"},
+    {"kind": "label_point", "p": "C", "pos": "below"}
+  ]
+}
+```
+
 ---
 
 ## Key rules
@@ -376,4 +407,9 @@ the diagram (e.g., right angles, equal sides, collinearity). Do not add trivial 
 5. **Label key points** in the render section.
 6. String expressions in `x`, `y`, `radius`, `angle` are evaluated as SymPy \
 expressions: you may use `pi`, `sqrt(n)`, `E`, and numeric arithmetic.
+7. **Prefer construction primitives over hardcoded coordinates**: use `point_on` \
+to place points on circles/lines, `point_rotate` to build rotated copies, \
+`point_intersection` for intersections, `point_midpoint` for midpoints. Only \
+use `point_fixed` for the initial anchor points of a construction. Hardcoding \
+derived coordinates bypasses SymPy verification and is error-prone.
 """
