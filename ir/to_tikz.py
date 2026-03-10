@@ -143,9 +143,7 @@ def _emit_op(
         case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
             sopts = _style_str(style or group, styles)
             for angle in angles:
-                a, o, b = angle.a, angle.o, angle.b
-                if which == "exterior":
-                    a, b = b, a
+                a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, which)
                 out.append(f"\\tkzMarkAngle[size=0.5]{sopts}({a},{o},{b})")
 
         case ir.MarkSegments(segs=segs, group=group, style=style):
@@ -165,7 +163,8 @@ def _emit_op(
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             sopts = f"[pos={pos}]" if pos is not None else ""
-            out.append(f"\\tkzLabelAngle{sopts}({angle.a},{angle.o},{angle.b}){{${text}$}}")
+            a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, "interior")
+            out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${text}$}}")
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             a, b = _seg_pts(seg_id, stmt_by_id)
@@ -258,6 +257,27 @@ def _merge_opts(base: str, extra_bracket: str) -> str:
 # ---------------------------------------------------------------------------
 # Geometric helpers
 # ---------------------------------------------------------------------------
+
+def _orient_angle(
+    a: str, o: str, b: str,
+    sym: SymTable,
+    which: str,
+) -> tuple[str, str, str]:
+    """Return (a, o, b) or (b, o, a) so \\tkzMarkAngle / \\tkzLabelAngle traces the correct arc.
+
+    \\tkzMarkAngle(A,O,B) draws counterclockwise from ray OA to ray OB.
+    The 2D cross product (A-O) x (B-O) tells us which arc that is:
+      cross > 0 → CCW sweep is the small (interior) arc
+      cross < 0 → CCW sweep is the large (exterior/reflex) arc
+    """
+    oa = sym[a] - sym[o]
+    ob = sym[b] - sym[o]
+    cross = float((oa.x * ob.y - oa.y * ob.x).evalf())
+    want_small = (which == "interior")
+    if (want_small and cross < 0) or (not want_small and cross > 0):
+        return b, o, a
+    return a, o, b
+
 
 _BOUNDS_PADDING = 0.8
 

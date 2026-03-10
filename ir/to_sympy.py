@@ -103,7 +103,10 @@ def _compile_one(
 
         case ir.PointIntersection(obj1=obj1_id, obj2=obj2_id, pick=pick):
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
-            candidates = obj1.intersection(obj2)
+            raw = obj1.intersection(obj2)
+            # SymPy may return the geometry object itself (not a list) when objects
+            # are identical (e.g. two equal circles → Circle, not []).
+            candidates = raw if isinstance(raw, list) else []
             points = [c for c in candidates if isinstance(c, spg.Point)]
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
