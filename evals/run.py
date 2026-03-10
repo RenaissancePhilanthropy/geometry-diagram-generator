@@ -82,7 +82,12 @@ _SUPPORTED_PROPERTY_TYPES = {
     "intersects",
     "label_present",
     "mark_present",
+    "equidistant_from_sides",
 }
+
+# Tolerance for geometric checks. Relaxed from 1e-4 to handle LLM-chosen
+# coordinates that are approximate (3 decimal places → ~0.001 rounding error).
+_TIKZ_CHECK_TOLERANCE = 0.01
 
 
 def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
@@ -178,9 +183,11 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                     f"{where} ({scenario_id}) required_entities[{i}]: 'type' must be a string"
                 )
 
+        tier = raw.get("tier")
         normalized.append(
             {
                 "id": scenario_id,
+                "tier": tier,
                 "prompt": prompt,
                 "expected_properties": normalized_props,
                 "required_labels": list(required_labels),
@@ -208,6 +215,7 @@ async def run_scenario(
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
         "scenario_id": scenario["id"],
+        "tier": scenario.get("tier"),
         "strategy": strategy_name,
         "model": model,
         "user_prompt": scenario["prompt"],
@@ -312,10 +320,12 @@ async def run_scenario(
                 prop["type"],
                 prop["args"],
                 tikz=tikz_code,
+                tolerance=_TIKZ_CHECK_TOLERANCE,
             )
             tikz_check_results[prop["name"]] = {
                 "passed": prop_result,
                 "type": prop["type"],
+                "skipped": prop_result is None,
             }
 
         required_labels = scenario.get("required_labels", [])
@@ -378,6 +388,25 @@ def _append_jsonl(path: Path, record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+def _tikz_check_summary(record: dict) -> str:
+    """Return a compact tikz check summary string like 'TIK:3/4(1skip)'."""
+    tc = record.get("tikz_checks") or {}
+    if not tc:
+        return ""
+    total = len(tc)
+    passed = sum(
+        1 for v in tc.values()
+        if isinstance(v, dict) and v.get("passed") is True
+    )
+    skipped = sum(
+        1 for v in tc.values()
+        if isinstance(v, dict) and v.get("skipped") is True
+    )
+    if skipped:
+        return f" TIK:{passed}/{total}({skipped}skip)"
+    return f" TIK:{passed}/{total}"
+
+
 def _print_record(record: dict) -> None:
     status = "OK " if record["generation_success"] else "ERR"
     svg = "SVG:ok  " if record["svg_rendered"] else "SVG:fail"
@@ -389,9 +418,10 @@ def _print_record(record: dict) -> None:
     duration = f"{record['duration_s']:.1f}s" if record["duration_s"] is not None else "?"
     repeat = f"r{record.get('repeat_index', 1):03d}"
     error = f" [{record['error'][:60]}]" if record.get("error") else ""
+    tik_str = _tikz_check_summary(record)
     print(
         f"  [{status}] {record['scenario_id']:<25} {repeat} {svg} {checks} "
-        f"{duration:>7}{judge_str}{error}"
+        f"{duration:>7}{judge_str}{tik_str}{error}"
     )
 
 
@@ -414,9 +444,27 @@ def _print_summary(records: list[dict]) -> None:
         judge_scores = [r["llm_judge_score"] for r in recs if r.get("llm_judge_score") is not None]
         judge_str = f"  judge:{sum(judge_scores)/len(judge_scores):.1f}/5" if judge_scores else ""
 
+        # Tikz check aggregation
+        tik_total = sum(len(r.get("tikz_checks") or {}) for r in recs)
+        tik_pass = sum(
+            sum(1 for v in (r.get("tikz_checks") or {}).values()
+                if isinstance(v, dict) and v.get("passed") is True)
+            for r in recs
+        )
+        tik_skip = sum(
+            sum(1 for v in (r.get("tikz_checks") or {}).values()
+                if isinstance(v, dict) and v.get("skipped") is True)
+            for r in recs
+        )
+        tik_str = ""
+        if tik_total:
+            tik_str = f"  tik:{tik_pass}/{tik_total}"
+            if tik_skip:
+                tik_str += f"({tik_skip}skip)"
+
         print(
             f"  {strategy:<12}  gen:{gen_ok}/{n}  svg:{svg_ok}/{n}  "
-            f"svgchk:{svg_chk_ok}/{n}  retries:{retry_rate:.1f}{judge_str}  avg:{avg_s:.1f}s"
+            f"svgchk:{svg_chk_ok}/{n}  retries:{retry_rate:.1f}{judge_str}{tik_str}  avg:{avg_s:.1f}s"
         )
 
 

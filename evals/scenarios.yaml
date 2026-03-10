@@ -20,6 +20,7 @@
 # ---------------------------------------------------------------------------
 
 - id: right-triangle
+  tier: 1
   prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -31,6 +32,7 @@
       args: [right_angle, B]
 
 - id: midpoint
+  tier: 1
   prompt: "Draw a segment AB and mark its midpoint M. Label points A, B, and M."
   required_labels: [A, B, M]
   expected_properties:
@@ -42,6 +44,7 @@
       args: [M, A, B]
 
 - id: equilateral-triangle
+  tier: 1
   prompt: "Draw an equilateral triangle ABC with all sides equal. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -50,6 +53,7 @@
       args: [[A, B], [B, C], [C, A]]
 
 - id: isosceles-triangle
+  tier: 1
   prompt: "Draw an isosceles triangle ABC where AB equals AC. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -58,6 +62,7 @@
       args: [[A, B], [A, C]]
 
 - id: square
+  tier: 1
   prompt: "Draw a square ABCD, labeling all four vertices A, B, C, and D in order."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -78,18 +83,23 @@
       args: [[A, B], [B, C], [C, D], [D, A]]
 
 - id: perpendicular-bisector
+  tier: 1
   prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M. Label points A, B, and M."
   required_labels: [A, B, M]
   expected_properties:
     - name: M_is_midpoint
       type: midpoint
       args: [M, A, B]
+    - name: right_angle_at_M
+      type: mark_present
+      args: [right_angle, M]
 
 # ---------------------------------------------------------------------------
 # Tier 2 — Intermediate
 # ---------------------------------------------------------------------------
 
 - id: circumscribed-circle
+  tier: 2
   prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
   required_labels: [A, B, C, O]
   required_entities:
@@ -103,12 +113,18 @@
       args: [C, O, B]
 
 - id: inscribed-circle
+  tier: 2
   prompt: "Draw a triangle ABC with its inscribed circle (incircle). Label the incenter I and all three vertices A, B, and C."
   required_labels: [A, B, C, I]
   required_entities:
     - type: circle
+  expected_properties:
+    - name: I_equidistant_from_sides
+      type: equidistant_from_sides
+      args: [I, A, B, C]
 
 - id: angle-bisector
+  tier: 2
   prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC, meeting BC at point D. Label all four points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -120,6 +136,7 @@
       args: [D, A, B, C]
 
 - id: altitude
+  tier: 2
   prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H. Label all four points A, B, C, and H."
   required_labels: [A, B, C, H]
   expected_properties:
@@ -131,6 +148,7 @@
       args: [H, A, B]
 
 - id: median
+  tier: 2
   prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC. Label all four points A, B, C, and M."
   required_labels: [A, B, C, M]
   expected_properties:
@@ -139,6 +157,7 @@
       args: [M, B, C]
 
 - id: transversal-parallel
+  tier: 2
   prompt: "Draw two parallel lines, one through points A and B and another through points C and D. Draw a transversal line intersecting them. Label points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -147,6 +166,7 @@
       args: [[A, B], [C, D]]
 
 - id: exterior-angle
+  tier: 2
   prompt: "Draw a triangle ABC and extend side BC beyond C to a point D, forming the exterior angle ACD. Label all four points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -159,6 +179,7 @@
 # ---------------------------------------------------------------------------
 
 - id: triangle-proportionality
+  tier: 3
   prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC. Label all five points A, B, C, D, and E."
   required_labels: [A, B, C, D, E]
   expected_properties:
@@ -173,6 +194,7 @@
       args: [E, A, C]
 
 - id: similar-triangles
+  tier: 3
   prompt: "Draw two similar triangles ABC and DEF side by side, with corresponding sides marked to show the similarity. Label all six vertices A, B, C, D, E, and F."
   required_labels: [A, B, C, D, E, F]
   expected_properties:
@@ -184,6 +206,7 @@
       args: [[A, B, C], [D, E, F]]
 
 - id: tangent-to-circle
+  tier: 3
   prompt: "Draw a circle with center O and a tangent line from an external point P, touching the circle at point T. Label the center O, the external point P, and the tangency point T."
   required_labels: [O, P, T]
   required_entities:
@@ -194,6 +217,7 @@
       args: [[P, T], O, T]
 
 - id: pythagorean-theorem
+  tier: 3
   prompt: "Draw a right triangle ABC with the right angle at C. Construct squares on each of the three sides to illustrate the Pythagorean theorem. Label the vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -205,30 +229,36 @@
       args: [right_angle, C]
 
 - id: cyclic-quadrilateral
+  tier: 3
   prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Label all five points A, B, C, D, and O."
   required_labels: [A, B, C, D, O]
   required_entities:
     - type: circle
   expected_properties:
-    - name: A_on_circle
-      type: point_on_circle
-      args: [A, O, B]
-    - name: C_on_circle
-      type: point_on_circle
-      args: [C, O, B]
-    - name: D_on_circle
-      type: point_on_circle
-      args: [D, O, B]
+    - name: all_equidistant_from_O
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C], [O, D]]
 
 - id: euler-line
+  tier: 3
   prompt: "Draw a triangle ABC showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line. Label all six points A, B, C, O, G, and H."
   required_labels: [A, B, C, O, G, H]
   expected_properties:
     - name: euler_line_collinear
       type: collinear
       args: [O, G, H]
+    - name: O_is_circumcenter
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C]]
+    - name: H_altitude_from_C
+      type: perpendicular
+      args: [[C, H], [A, B]]
+    - name: H_altitude_from_A
+      type: perpendicular
+      args: [[A, H], [B, C]]
 
 - id: transversal-angles
+  tier: 3
   prompt: "Draw two parallel lines cut by a transversal, creating eight angles. Label the points of intersection and indicate which angles are corresponding, alternate interior, and alternate exterior."
   required_labels: [A, B, C, D]
   expected_properties:

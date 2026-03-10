@@ -635,3 +635,179 @@ def test_validate_required_entities_empty_required():
     tikz = r""
     result = validate_required_entities(tikz, [])
     assert result["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# New computed point extraction tests
+# ---------------------------------------------------------------------------
+
+def test_extract_coordinate_command():
+    tikz = r"\coordinate (P) at (1.5, 2.5)"
+    from util.tikz_analysis import extract_defined_points
+    pts = extract_defined_points(tikz)
+    assert "P" in pts
+    assert pts["P"] == pytest.approx((1.5, 2.5))
+
+
+def test_extract_orthocenter_command():
+    tikz = r"\tkzOrthoCenter(A,B,C) \tkzGetPoint{H}"
+    computed = extract_computed_points(tikz)
+    assert "H" in computed
+    assert computed["H"]["type"] == "orthocenter"
+    assert computed["H"]["args"] == ["A", "B", "C"]
+
+
+def test_extract_centroid_command():
+    tikz = r"\tkzCentroid(A,B,C) \tkzGetPoint{G}"
+    computed = extract_computed_points(tikz)
+    assert "G" in computed
+    assert computed["G"]["type"] == "centroid"
+    assert computed["G"]["args"] == ["A", "B", "C"]
+
+
+def test_extract_triangle_center_in():
+    tikz = r"\tkzDefTriangleCenter[in](A,B,C) \tkzGetPoint{I}"
+    computed = extract_computed_points(tikz)
+    assert "I" in computed
+    assert computed["I"]["type"] == "incenter"
+    assert computed["I"]["args"] == ["A", "B", "C"]
+
+
+def test_extract_triangle_center_ortho():
+    tikz = r"\tkzDefTriangleCenter[ortho](A,B,C) \tkzGetPoint{H}"
+    computed = extract_computed_points(tikz)
+    assert "H" in computed
+    assert computed["H"]["type"] == "orthocenter"
+
+
+def test_extract_projection_command():
+    tikz = r"\tkzDefPointBy[projection=onto A--B](C) \tkzGetPoint{H}"
+    computed = extract_computed_points(tikz)
+    assert "H" in computed
+    assert computed["H"]["type"] == "projection"
+    assert computed["H"]["args"] == ["C", "A", "B"]
+
+
+def test_extract_symmetry_command():
+    tikz = r"\tkzDefPointBy[symmetry=center M](A) \tkzGetPoint{Ap}"
+    computed = extract_computed_points(tikz)
+    assert "Ap" in computed
+    assert computed["Ap"]["type"] == "symmetry"
+    assert computed["Ap"]["args"] == ["A", "M"]
+
+
+# ---------------------------------------------------------------------------
+# New coordinate resolution tests
+# ---------------------------------------------------------------------------
+
+def test_resolve_centroid():
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint(6,0){B}
+\tkzDefPoint(3,6){C}
+\tkzCentroid(A,B,C) \tkzGetPoint{G}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "G" in coords
+    assert coords["G"] == pytest.approx((3.0, 2.0))
+
+
+def test_resolve_orthocenter():
+    # Right triangle: A(0,0), B(4,0), C(0,3) → orthocenter at A(0,0)
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint(4,0){B}
+\tkzDefPoint(0,3){C}
+\tkzOrthoCenter(A,B,C) \tkzGetPoint{H}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "H" in coords
+    assert coords["H"] == pytest.approx((0.0, 0.0), abs=1e-6)
+
+
+def test_resolve_projection_foot_of_altitude():
+    # C(0,3) projected onto AB where A(0,0), B(4,0) → foot at (0,0)
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint(4,0){B}
+\tkzDefPoint(0,3){C}
+\tkzDefPointBy[projection=onto A--B](C) \tkzGetPoint{H}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "H" in coords
+    assert coords["H"] == pytest.approx((0.0, 0.0), abs=1e-6)
+
+
+def test_resolve_projection_onto_diagonal():
+    # Project P(0,1) onto line from A(0,0) to B(2,2)
+    # Projection of (0,1) onto y=x: t = (0*2 + 1*2)/(4+4) = 2/8 = 0.25 → (0.5, 0.5)
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint(2,2){B}
+\tkzDefPoint(0,1){P}
+\tkzDefPointBy[projection=onto A--B](P) \tkzGetPoint{F}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "F" in coords
+    assert coords["F"] == pytest.approx((0.5, 0.5), abs=1e-6)
+
+
+def test_resolve_incenter():
+    # Equilateral triangle: incenter = centroid = (2, 2*sqrt(3)/3)
+    # Using 3-4-5 right triangle A(0,0), B(4,0), C(0,3): incenter at (1,1)
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint(4,0){B}
+\tkzDefPoint(0,3){C}
+\tkzDefTriangleCenter[in](A,B,C) \tkzGetPoint{I}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "I" in coords
+    # For 3-4-5 triangle: sides are 3, 4, 5. Inradius = (3+4-5)/2 = 1. Incenter at (1,1).
+    assert coords["I"] == pytest.approx((1.0, 1.0), abs=1e-6)
+
+
+def test_resolve_symmetry():
+    # Reflection of A(1,0) across M(3,0) → (5,0)
+    tikz = r"""
+\tkzDefPoint(1,0){A}
+\tkzDefPoint(3,0){M}
+\tkzDefPointBy[symmetry=center M](A) \tkzGetPoint{Ap}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "Ap" in coords
+    assert coords["Ap"] == pytest.approx((5.0, 0.0))
+
+
+# ---------------------------------------------------------------------------
+# equidistant_from_sides check
+# ---------------------------------------------------------------------------
+
+def test_equidistant_from_sides_incenter():
+    # 3-4-5 right triangle, incenter at (1,1)
+    coords = {
+        "I": (1.0, 1.0),
+        "A": (0.0, 0.0),
+        "B": (4.0, 0.0),
+        "C": (0.0, 3.0),
+    }
+    result = validate_geometric_property(coords, "equidistant_from_sides", ["I", "A", "B", "C"])
+    assert result is True
+
+
+def test_equidistant_from_sides_wrong_point():
+    # Centroid is NOT equidistant from all sides in a non-equilateral triangle
+    coords = {
+        "G": (4/3, 1.0),  # centroid of 3-4-5 triangle
+        "A": (0.0, 0.0),
+        "B": (4.0, 0.0),
+        "C": (0.0, 3.0),
+    }
+    result = validate_geometric_property(coords, "equidistant_from_sides", ["G", "A", "B", "C"])
+    assert result is False
+
+
+def test_equidistant_missing_coordinate_returns_none():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0)}
+    result = validate_geometric_property(coords, "equidistant_from_sides", ["I", "A", "B", "C"])
+    assert result is None

@@ -18,13 +18,19 @@ from typing import Any
 _DEF_POINT_RE = re.compile(
     r"\\tkzDefPoint\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*\{(\w+)\}"
 )
+_COORDINATE_RE = re.compile(
+    r"\\coordinate\s*\((\w+)\)\s*at\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
+)
 
 
 def extract_defined_points(tikz: str) -> dict[str, tuple[float, float]]:
-    """Extract explicitly defined points from \\tkzDefPoint(x,y){Name} commands."""
+    """Extract explicitly defined points from \\tkzDefPoint(x,y){Name} and \\coordinate(name) at (x,y) commands."""
     points: dict[str, tuple[float, float]] = {}
     for m in _DEF_POINT_RE.finditer(tikz):
         x, y, name = float(m.group(1)), float(m.group(2)), m.group(3)
+        points[name] = (x, y)
+    for m in _COORDINATE_RE.finditer(tikz):
+        name, x, y = m.group(1), float(m.group(2)), float(m.group(3))
         points[name] = (x, y)
     return points
 
@@ -41,6 +47,24 @@ _CIRCUM_CENTER_RE = re.compile(
 _INTER_LL_RE = re.compile(
     r"\\tkzInterLL\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)"
 )
+_ORTHO_CENTER_RE = re.compile(
+    r"\\tkzOrthoCenter\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
+)
+_CENTROID_RE = re.compile(
+    r"\\tkzCentroid\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
+)
+# \tkzDefTriangleCenter[in](A,B,C) or [circum] or [ortho] etc.
+_TRIANGLE_CENTER_RE = re.compile(
+    r"\\tkzDefTriangleCenter\s*\[(\w+)\]\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
+)
+# \tkzDefPointBy[projection=onto A--B](C) — projection of last arg onto the line
+_PROJECTION_RE = re.compile(
+    r"\\tkzDefPointBy\s*\[projection=onto\s+(\w+)--(\w+)\]\s*\((\w+)\)"
+)
+# \tkzDefPointBy[symmetry=center A](B) — reflection of B across A
+_SYMMETRY_CENTER_RE = re.compile(
+    r"\\tkzDefPointBy\s*\[symmetry=center\s+(\w+)\]\s*\((\w+)\)"
+)
 
 
 def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
@@ -54,7 +78,8 @@ def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
     # Pair each computation command with the following \\tkzGetPoint
     # by scanning positionally through the source.
     tokens = list(re.finditer(
-        r"(\\tkzDefMidPoint|\\tkzCircumCenter|\\tkzInterLL|\\tkzGetPoint)\b",
+        r"(\\tkzDefMidPoint|\\tkzCircumCenter|\\tkzInterLL|\\tkzGetPoint"
+        r"|\\tkzOrthoCenter|\\tkzCentroid|\\tkzDefTriangleCenter|\\tkzDefPointBy)\b",
         tikz,
     ))
 
@@ -84,6 +109,53 @@ def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
                     "type": "inter_ll",
                     "args": [m.group(1), m.group(2), m.group(3), m.group(4)],
                 }
+
+        elif cmd == "\\tkzOrthoCenter":
+            m = _ORTHO_CENTER_RE.match(rest)
+            if m:
+                pending = {
+                    "type": "orthocenter",
+                    "args": [m.group(1), m.group(2), m.group(3)],
+                }
+
+        elif cmd == "\\tkzCentroid":
+            m = _CENTROID_RE.match(rest)
+            if m:
+                pending = {
+                    "type": "centroid",
+                    "args": [m.group(1), m.group(2), m.group(3)],
+                }
+
+        elif cmd == "\\tkzDefTriangleCenter":
+            m = _TRIANGLE_CENTER_RE.match(rest)
+            if m:
+                kind = m.group(1).lower()
+                if kind in ("in", "circum", "ortho"):
+                    type_map = {"in": "incenter", "circum": "circumcenter", "ortho": "orthocenter"}
+                    pending = {
+                        "type": type_map[kind],
+                        "args": [m.group(2), m.group(3), m.group(4)],
+                    }
+                elif kind == "centroid":
+                    pending = {
+                        "type": "centroid",
+                        "args": [m.group(2), m.group(3), m.group(4)],
+                    }
+
+        elif cmd == "\\tkzDefPointBy":
+            m = _PROJECTION_RE.match(rest)
+            if m:
+                pending = {
+                    "type": "projection",
+                    "args": [m.group(3), m.group(1), m.group(2)],  # project point, line_a, line_b
+                }
+            else:
+                m = _SYMMETRY_CENTER_RE.match(rest)
+                if m:
+                    pending = {
+                        "type": "symmetry",
+                        "args": [m.group(2), m.group(1)],  # point to reflect, center
+                    }
 
         elif cmd == "\\tkzGetPoint":
             m = _GET_POINT_RE.match(rest)
@@ -207,8 +279,86 @@ def extract_labels(tikz: str) -> list[dict[str, Any]]:
 # Coordinate resolution
 # ---------------------------------------------------------------------------
 
+def _dist(p1: tuple[float, float], p2: tuple[float, float]) -> float:
+    return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
+
+
 def _midpoint(p1: tuple[float, float], p2: tuple[float, float]) -> tuple[float, float]:
     return ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2)
+
+
+def _centroid(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+) -> tuple[float, float]:
+    """Centroid of triangle ABC = average of the three vertices."""
+    return ((a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3)
+
+
+def _projection(
+    p: tuple[float, float],
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Orthogonal projection of P onto line AB (foot of perpendicular)."""
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    denom = dx * dx + dy * dy
+    if denom < 1e-12:
+        return None
+    t = ((p[0] - ax) * dx + (p[1] - ay) * dy) / denom
+    return (ax + t * dx, ay + t * dy)
+
+
+def _orthocenter(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Orthocenter of triangle ABC = intersection of altitudes."""
+    # Altitude from A perpendicular to BC, altitude from B perpendicular to CA
+    # Foot of altitude from A onto BC (any point on altitude from A: A and A + perp-to-BC)
+    # Altitude through A in direction perpendicular to BC: direction = (-(cy-by), cx-bx)
+    # Parameterize: A + t*(perp_BC) and B + s*(perp_CA)
+    # Intersection via _inter_ll using two points on each altitude
+    ax, ay = a
+    bx, by = b
+    cx, cy = c
+    # Direction perpendicular to BC
+    perp_bc = (-(cy - by), cx - bx)
+    # Direction perpendicular to CA
+    perp_ca = (-(ay - cy), ax - cx)
+    a2 = (ax + perp_bc[0], ay + perp_bc[1])
+    b2 = (bx + perp_ca[0], by + perp_ca[1])
+    return _inter_ll(a, a2, b, b2)
+
+
+def _incenter(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+) -> tuple[float, float]:
+    """Incenter of triangle ABC = weighted average of vertices by opposite side lengths."""
+    la = _dist(b, c)  # side opposite A
+    lb = _dist(a, c)  # side opposite B
+    lc = _dist(a, b)  # side opposite C
+    total = la + lb + lc
+    if total < 1e-12:
+        return a
+    return (
+        (la * a[0] + lb * b[0] + lc * c[0]) / total,
+        (la * a[1] + lb * b[1] + lc * c[1]) / total,
+    )
+
+
+def _symmetry(
+    p: tuple[float, float],
+    center: tuple[float, float],
+) -> tuple[float, float]:
+    """Reflection of P across center point: 2*center - P."""
+    return (2 * center[0] - p[0], 2 * center[1] - p[1])
 
 
 def _circumcenter(
@@ -285,6 +435,34 @@ def resolve_all_coordinates(tikz: str) -> dict[str, tuple[float, float]]:
                     if result is not None:
                         coords[name] = result
                         resolved_any = True
+                elif t == "centroid" and len(args) == 3:
+                    pts = [coords[a] for a in args]
+                    coords[name] = _centroid(*pts)
+                    resolved_any = True
+                elif t == "orthocenter" and len(args) == 3:
+                    pts = [coords[a] for a in args]
+                    result = _orthocenter(*pts)
+                    if result is not None:
+                        coords[name] = result
+                        resolved_any = True
+                elif t == "incenter" and len(args) == 3:
+                    pts = [coords[a] for a in args]
+                    coords[name] = _incenter(*pts)
+                    resolved_any = True
+                elif t == "projection" and len(args) == 3:
+                    # args = [point_to_project, line_a, line_b]
+                    p = coords[args[0]]
+                    a, b = coords[args[1]], coords[args[2]]
+                    result = _projection(p, a, b)
+                    if result is not None:
+                        coords[name] = result
+                        resolved_any = True
+                elif t == "symmetry" and len(args) == 2:
+                    # args = [point, center]
+                    p = coords[args[0]]
+                    c = coords[args[1]]
+                    coords[name] = _symmetry(p, c)
+                    resolved_any = True
             except KeyError:
                 pass  # Dependency not yet resolved — try next pass
         if not resolved_any:
@@ -301,12 +479,23 @@ def _dot(v1: tuple[float, float], v2: tuple[float, float]) -> float:
     return v1[0] * v2[0] + v1[1] * v2[1]
 
 
+def _point_to_line_distance(
+    p: tuple[float, float],
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> float:
+    """Perpendicular distance from point P to line through A and B."""
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    denom = math.sqrt(dx * dx + dy * dy)
+    if denom < 1e-12:
+        return _dist(p, a)
+    return abs((p[0] - ax) * dy - (p[1] - ay) * dx) / denom
+
+
 def _vec(p_from: tuple[float, float], p_to: tuple[float, float]) -> tuple[float, float]:
     return (p_to[0] - p_from[0], p_to[1] - p_from[1])
-
-
-def _dist(p1: tuple[float, float], p2: tuple[float, float]) -> float:
-    return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
 
 def _angle_at_vertex(
@@ -523,6 +712,17 @@ def validate_geometric_property(
                 return None
             mark_type, vertex = args[0], args[1]
             return _validate_mark_present(tikz, mark_type, vertex)
+
+        elif property_type == "equidistant_from_sides":
+            # args = [P, A, B, C] — P is equidistant from lines AB, BC, CA
+            p = coords[args[0]]
+            a = coords[args[1]]
+            b = coords[args[2]]
+            c = coords[args[3]]
+            d1 = _point_to_line_distance(p, a, b)
+            d2 = _point_to_line_distance(p, b, c)
+            d3 = _point_to_line_distance(p, c, a)
+            return abs(d1 - d2) <= tolerance and abs(d2 - d3) <= tolerance
 
     except KeyError:
         return None  # A required coordinate is not in the map
