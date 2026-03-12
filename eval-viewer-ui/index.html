@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eval Viewer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Nav */
+    #nav {
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #nav .brand { font-weight: 600; color: #fff; font-size: 15px; }
+    #nav .breadcrumb { color: #888; font-size: 13px; }
+
+    /* Main content */
+    #app { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #1e1e1e;
+      border-bottom: 2px solid #333;
+      color: #aaa;
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td { padding: 8px 12px; border-bottom: 1px solid #222; vertical-align: middle; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #1a1a1a; }
+
+    /* Gate status badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-pass { background: #14532d; color: #86efac; }
+    .badge-soft_pass { background: #713f12; color: #fde68a; }
+    .badge-fail { background: #450a0a; color: #fca5a5; }
+    .badge-null { background: #1e1e1e; color: #888; }
+
+    /* Filters bar */
+    .filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filters label { color: #888; font-size: 12px; }
+    .filters select, .filters input {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    /* Record detail layout */
+    .record-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .record-layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 10px 14px;
+      background: #222;
+      border-bottom: 1px solid #333;
+      font-weight: 600;
+      font-size: 13px;
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-body { padding: 14px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #333; }
+    .tab-btn {
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #888;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: #ccc; }
+    .tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    .tab-pane { display: none; padding: 14px; }
+    .tab-pane.active { display: block; }
+
+    /* Code editors */
+    textarea.code-editor {
+      width: 100%;
+      background: #0d0d0d;
+      color: #d4d4d4;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-family: 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 10px;
+      resize: vertical;
+      min-height: 300px;
+    }
+    textarea.code-editor:focus { outline: 1px solid #60a5fa; }
+
+    /* Buttons */
+    .btn {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: #1e3a5f; color: #6b7280; cursor: not-allowed; }
+
+    /* SVG preview */
+    .svg-preview {
+      background: #fff;
+      border-radius: 4px;
+      padding: 8px;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .svg-preview svg { max-width: 100%; height: auto; }
+    .svg-placeholder { color: #888; font-size: 13px; }
+
+    /* Check results */
+    .check-list { display: flex; flex-direction: column; gap: 4px; }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .check-item.pass { background: #0f2e1a; }
+    .check-item.fail { background: #2d0a0a; }
+    .check-item.skip { background: #1a1a1a; }
+    .check-icon { font-size: 14px; flex-shrink: 0; line-height: 1.4; }
+    .check-name { font-weight: 500; }
+    .check-msg { color: #888; margin-top: 1px; }
+
+    /* Metadata grid */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 4px 12px;
+      font-size: 13px;
+    }
+    .meta-key { color: #888; }
+    .meta-val { color: #e0e0e0; word-break: break-word; }
+
+    /* Error box */
+    .error-box {
+      background: #2d0a0a;
+      border: 1px solid #7f1d1d;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #fca5a5;
+      white-space: pre-wrap;
+      font-family: ui-monospace, monospace;
+      margin-top: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #444;
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Heading */
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #fff; }
+    h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #ccc; }
+
+    /* Prompt block */
+    .prompt-text {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #ccc;
+      line-height: 1.5;
+    }
+
+    /* Navigation arrows */
+    .record-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .record-nav .nav-info { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div id="nav">
+    <span class="brand">Eval Viewer</span>
+    <span class="breadcrumb" id="breadcrumb"></span>
+  </div>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

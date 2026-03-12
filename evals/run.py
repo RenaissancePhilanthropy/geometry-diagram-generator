@@ -301,6 +301,7 @@ async def run_scenario(
         "repeat_index": repeat_index,
         "svg_path": None,
         "tikz_code": None,
+        "diagram_ir": None,
         "tkzelements_code": None,
         "generation_success": False,
         "svg_rendered": False,
@@ -339,6 +340,7 @@ async def run_scenario(
     # StructuredRunResult: TikZ and SVG are produced deterministically (no tool calls).
     if isinstance(result, StructuredRunResult):
         record["tikz_code"] = result.tikz
+        record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
         svg = result.svg
     else:
         messages = result.all_messages()

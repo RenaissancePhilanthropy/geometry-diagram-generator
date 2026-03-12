@@ -21,7 +21,15 @@ uv run python -m pytest tests/test_compile_defs.py -v
 uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structured --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
 ```
 
-**Note:** The TikZ renderer container (`docker run -p 8001:8001 tikz-renderer`), the main server (`uvicorn main:app`), and the UI dev server (`cd demo-ui && pnpm dev`) are typically managed by the user, not started by Claude Code.
+**Note:** The TikZ renderer container (`docker run -p 8001:8001 tikz-renderer`), the main server (`uvicorn main:app`), the UI dev server (`cd demo-ui && pnpm dev`), and the eval viewer (see below) are typically managed by the user, not started by Claude Code.
+
+```bash
+# Start the eval viewer backend (port 8002; requires renderer container on port 8001 for re-rendering)
+uv run python eval_viewer.py
+
+# Start the eval viewer frontend dev server (proxies /api to localhost:8002)
+cd eval-viewer-ui && pnpm dev
+```
 
 ## Architecture
 
