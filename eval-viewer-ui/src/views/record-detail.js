@@ -1,4 +1,5 @@
 import { gateBadge, checkBadge } from '../components/badges.js'
+import { renderDiff } from '../components/diff.js'
 
 export async function renderRecordDetail(container, { runId, index, navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading…</p>'
@@ -19,7 +20,10 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
   }
 
   const hasIR = record.diagram_ir != null
-  let currentSvgSource = record.svg_path ? `svg-from-file` : null
+
+  // Originals for diff comparison
+  const originalIR = hasIR ? JSON.stringify(record.diagram_ir, null, 2) : ''
+  const originalTikZ = record.tikz_code || ''
 
   // Build layout
   container.innerHTML = `
@@ -60,22 +64,26 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
 
           ${hasIR ? `
           <div class="tab-pane active" id="tab-ir">
-            <textarea id="ir-editor" class="code-editor" style="min-height:360px">${escapeHtml(JSON.stringify(record.diagram_ir, null, 2))}</textarea>
-            <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+            <textarea id="ir-editor" class="code-editor" style="min-height:360px">${escapeHtml(originalIR)}</textarea>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" id="btn-compile">Recompile &amp; Render</button>
+              <button class="btn" id="btn-ir-diff" style="background:#2a2a2a;color:#ccc">Show Diff</button>
               <span id="compile-spinner" style="display:none"><span class="spinner"></span></span>
             </div>
             <div id="compile-error" style="display:none"></div>
+            <div id="ir-diff-container" style="display:none"></div>
           </div>
           ` : ''}
 
           <div class="tab-pane ${hasIR ? '' : 'active'}" id="tab-tikz">
-            <textarea id="tikz-editor" class="code-editor" style="min-height:360px">${escapeHtml(record.tikz_code || '')}</textarea>
-            <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+            <textarea id="tikz-editor" class="code-editor" style="min-height:360px">${escapeHtml(originalTikZ)}</textarea>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" id="btn-render">Re-render</button>
+              <button class="btn" id="btn-tikz-diff" style="background:#2a2a2a;color:#ccc">Show Diff</button>
               <span id="render-spinner" style="display:none"><span class="spinner"></span></span>
             </div>
             <div id="render-error" style="display:none"></div>
+            <div id="tikz-diff-container" style="display:none"></div>
           </div>
         </div>
       </div>
@@ -122,6 +130,16 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     })
   })
 
+  // Diff toggles
+  setupDiffToggle('btn-ir-diff', 'ir-diff-container', () => [
+    originalIR,
+    document.getElementById('ir-editor').value,
+  ])
+  setupDiffToggle('btn-tikz-diff', 'tikz-diff-container', () => [
+    originalTikZ,
+    document.getElementById('tikz-editor').value,
+  ])
+
   // Compile IR button
   if (hasIR) {
     document.getElementById('btn-compile').addEventListener('click', async () => {
@@ -153,10 +171,13 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
         if (!res.ok) {
           showError(errBox, data.error || 'Compilation failed')
         } else {
-          // Update TikZ editor with generated code (read from result)
+          // Update TikZ editor with generated code
           document.getElementById('tikz-editor').value = data.tikz_code || ''
           setSvgContent(data.svg, 'recompiled from IR')
           document.getElementById('checks-container').innerHTML = renderCheckResults(data.checks || [])
+          // Refresh diff panels if currently visible
+          refreshDiffIfVisible('ir-diff-container', originalIR, document.getElementById('ir-editor').value)
+          refreshDiffIfVisible('tikz-diff-container', originalTikZ, data.tikz_code || '')
         }
       } catch (e) {
         showError(errBox, `Request failed: ${e.message}`)
@@ -199,6 +220,35 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
   })
 }
 
+function setupDiffToggle(btnId, containerId, getTexts) {
+  const btn = document.getElementById(btnId)
+  const container = document.getElementById(containerId)
+  if (!btn || !container) return
+
+  let shown = false
+  btn.addEventListener('click', () => {
+    shown = !shown
+    if (shown) {
+      const [oldText, newText] = getTexts()
+      container.innerHTML = renderDiff(oldText, newText)
+      container.style.display = 'block'
+      btn.textContent = 'Hide Diff'
+      btn.style.color = '#60a5fa'
+    } else {
+      container.style.display = 'none'
+      btn.textContent = 'Show Diff'
+      btn.style.color = '#ccc'
+    }
+  })
+}
+
+function refreshDiffIfVisible(containerId, oldText, newText) {
+  const container = document.getElementById(containerId)
+  if (container && container.style.display !== 'none') {
+    container.innerHTML = renderDiff(oldText, newText)
+  }
+}
+
 async function loadSvgFromFile(runId, index) {
   const container = document.getElementById('svg-container')
   const label = document.getElementById('svg-source-label')
@@ -221,7 +271,6 @@ function setSvgContent(svgString, sourceLabel) {
     return
   }
   container.innerHTML = svgString
-  // Make SVGs responsive
   const svgEl = container.querySelector('svg')
   if (svgEl) {
     svgEl.style.maxWidth = '100%'
@@ -242,23 +291,20 @@ function renderAllChecks(record) {
   if (record.tikz_checks) {
     const items = Object.entries(record.tikz_checks).map(([name, result]) => {
       if (typeof result !== 'object') return null
-      const passed = result.passed
-      const skipped = result.skipped
-      return checkItem(name, passed, skipped, result.error || '')
+      return checkItem(name, result.passed, result.skipped, result.error || '')
     }).filter(Boolean)
     if (items.length) sections.push(`<h3>TikZ Checks</h3><div class="check-list">${items.join('')}</div>`)
   }
 
   if (record.svg_checks) {
     const failures = record.svg_checks.failures || []
-    const passed = record.svg_checks.passed
-    sections.push(`<h3 style="margin-top:12px">SVG Checks</h3><div class="check-list">${checkItem('svg', passed, false, failures.join(', '))}</div>`)
+    sections.push(`<h3 style="margin-top:12px">SVG Checks</h3><div class="check-list">${checkItem('svg', record.svg_checks.passed, false, failures.join(', '))}</div>`)
   }
 
   if (record.expected_point_checks) {
-    const items = Object.entries(record.expected_point_checks).map(([name, result]) => {
-      return checkItem(name, result.passed, false, result.message || '')
-    })
+    const items = Object.entries(record.expected_point_checks).map(([name, result]) =>
+      checkItem(name, result.passed, false, result.message || '')
+    )
     if (items.length) sections.push(`<h3 style="margin-top:12px">Point Checks</h3><div class="check-list">${items.join('')}</div>`)
   }
 

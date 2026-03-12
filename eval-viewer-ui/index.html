@@ -228,6 +228,51 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Diff view */
+    .diff-view {
+      font-family: 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    .diff-line {
+      display: flex;
+      align-items: baseline;
+      white-space: pre;
+    }
+    .diff-line-equal { color: #aaa; }
+    .diff-line-add { background: #0d2818; color: #86efac; }
+    .diff-line-remove { background: #2d0a0a; color: #fca5a5; }
+    .diff-line-hunk {
+      color: #555;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      border-top: 1px solid #222;
+      border-bottom: 1px solid #222;
+    }
+    .diff-gutter {
+      min-width: 36px;
+      padding: 0 6px;
+      color: #555;
+      text-align: right;
+      user-select: none;
+      flex-shrink: 0;
+      border-right: 1px solid #222;
+    }
+    .diff-line-add .diff-gutter { color: #4ade80; opacity: 0.5; }
+    .diff-line-remove .diff-gutter { color: #f87171; opacity: 0.5; }
+    .diff-prefix {
+      padding: 0 6px;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .diff-content { padding-right: 12px; }
+
     /* Heading */
     h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #fff; }
     h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #ccc; }

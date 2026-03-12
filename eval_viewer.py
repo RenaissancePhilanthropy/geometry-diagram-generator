@@ -125,7 +125,7 @@ async def get_svg(request: Request) -> Response:
     svg_path = records[index].get("svg_path")
     if not svg_path:
         return JSONResponse({"error": "No SVG for this record"}, status_code=404)
-    full_path = RESULTS_DIR / svg_path
+    full_path = Path(svg_path)
     if not full_path.exists():
         return JSONResponse({"error": "SVG file not found on disk"}, status_code=404)
     svg_content = full_path.read_text()
