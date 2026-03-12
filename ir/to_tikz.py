@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import sympy as sp
@@ -59,19 +60,19 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
     lines: list[str] = []
     canvas = diagram.canvas  # may be None
     if canvas is not None:
-        xmin, xmax, ymin, ymax = canvas.xmin, canvas.xmax, canvas.ymin, canvas.ymax
+        xmin, xmax, ymin, ymax = _effective_canvas_bounds(canvas)
     else:
         xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
     lines.append(
-        f"\\tkzInit[xmin={xmin:.4g},xmax={xmax:.4g},"
-        f"ymin={ymin:.4g},ymax={ymax:.4g}]"
+        f"\\tkzInit[xmin={_fmt_num(xmin)},xmax={_fmt_num(xmax)},"
+        f"ymin={_fmt_num(ymin)},ymax={_fmt_num(ymax)}]"
     )
     if canvas is None or canvas.clip:
         lines.append("\\tkzClip")
     if canvas is not None and canvas.grid:
-        lines.append("\\tkzGrid")
+        lines.extend(_emit_grid(canvas, xmin, xmax, ymin, ymax))
     if canvas is not None and canvas.axes:
-        lines.append("\\tkzAxeXY")
+        lines.extend(_emit_axes(canvas, xmin, xmax, ymin, ymax))
     lines.append("")
 
     # --- Phase 5: emit \tkzDefPoint for all named points and helpers ---
@@ -284,6 +285,7 @@ def _orient_angle(
 
 
 _BOUNDS_PADDING = 0.8
+_TICK_HALF_LENGTH = 0.05
 
 
 def _compute_bounds(
@@ -307,6 +309,126 @@ def _compute_bounds(
         min(ys) - _BOUNDS_PADDING,
         max(ys) + _BOUNDS_PADDING,
     )
+
+
+def _effective_canvas_bounds(canvas: ir.Canvas) -> tuple[float, float, float, float]:
+    """Return canvas bounds, expanding to include the origin when axes are requested."""
+    xmin, xmax, ymin, ymax = canvas.xmin, canvas.xmax, canvas.ymin, canvas.ymax
+    if canvas.axes:
+        xmin = min(xmin, 0.0)
+        xmax = max(xmax, 0.0)
+        ymin = min(ymin, 0.0)
+        ymax = max(ymax, 0.0)
+    return xmin, xmax, ymin, ymax
+
+
+def _emit_grid(
+    canvas: ir.Canvas,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+) -> list[str]:
+    step = canvas.grid_step if canvas.grid_step > 0 else 1.0
+    grid_xmin = _round_down_to_step(xmin, step)
+    grid_xmax = _round_up_to_step(xmax, step)
+    grid_ymin = _round_down_to_step(ymin, step)
+    grid_ymax = _round_up_to_step(ymax, step)
+    return [
+        (
+            f"\\draw[gray!35,thin,step={_fmt_num(step)}] "
+            f"({_fmt_num(grid_xmin)},{_fmt_num(grid_ymin)}) grid "
+            f"({_fmt_num(grid_xmax)},{_fmt_num(grid_ymax)});"
+        )
+    ]
+
+
+def _emit_axes(
+    canvas: ir.Canvas,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+) -> list[str]:
+    lines: list[str] = []
+    has_x_axis = ymin <= 0 <= ymax
+    has_y_axis = xmin <= 0 <= xmax
+
+    if has_x_axis:
+        x_axis = f"\\draw[->,thick] ({_fmt_num(xmin)},0) -- ({_fmt_num(xmax)},0)"
+        if canvas.show_axis_labels:
+            x_axis += " node[right] {$x$}"
+        lines.append(x_axis + ";")
+
+    if has_y_axis:
+        y_axis = f"\\draw[->,thick] (0,{_fmt_num(ymin)}) -- (0,{_fmt_num(ymax)})"
+        if canvas.show_axis_labels:
+            y_axis += " node[above] {$y$}"
+        lines.append(y_axis + ";")
+
+    if canvas.show_ticks or canvas.show_tick_labels:
+        tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+        if has_x_axis:
+            for x in _tick_values(xmin, xmax, tick_step):
+                if canvas.show_ticks:
+                    lines.append(
+                        f"\\draw ({_fmt_num(x)},{_fmt_num(_TICK_HALF_LENGTH)}) -- "
+                        f"({_fmt_num(x)},{_fmt_num(-_TICK_HALF_LENGTH)});"
+                    )
+                if canvas.show_tick_labels:
+                    lines.append(
+                        f"\\node[below, font=\\small] at ({_fmt_num(x)},0) "
+                        f"{{{_fmt_label_num(x)}}};"
+                    )
+        if has_y_axis:
+            for y in _tick_values(ymin, ymax, tick_step):
+                if canvas.show_ticks:
+                    lines.append(
+                        f"\\draw ({_fmt_num(_TICK_HALF_LENGTH)},{_fmt_num(y)}) -- "
+                        f"({_fmt_num(-_TICK_HALF_LENGTH)},{_fmt_num(y)});"
+                    )
+                if canvas.show_tick_labels:
+                    lines.append(
+                        f"\\node[left, font=\\small] at (0,{_fmt_num(y)}) "
+                        f"{{{_fmt_label_num(y)}}};"
+                    )
+
+    return lines
+
+
+def _tick_values(lo: float, hi: float, step: float) -> list[float]:
+    if step <= 0:
+        return []
+    start = math.ceil(lo / step)
+    end = math.floor(hi / step)
+    values: list[float] = []
+    for multiple in range(start, end + 1):
+        value = multiple * step
+        if abs(value) <= 1e-9:
+            continue
+        values.append(value)
+    return values
+
+
+def _round_down_to_step(value: float, step: float) -> float:
+    return math.floor(value / step) * step
+
+
+def _round_up_to_step(value: float, step: float) -> float:
+    return math.ceil(value / step) * step
+
+
+def _fmt_num(value: float) -> str:
+    if abs(value) <= 1e-9:
+        value = 0.0
+    return f"{value:g}"
+
+
+def _fmt_label_num(value: float) -> str:
+    rounded = round(value)
+    if abs(value - rounded) <= 1e-9:
+        return str(int(rounded))
+    return _fmt_num(value)
 
 
 def _f(expr) -> float:

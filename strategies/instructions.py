@@ -124,6 +124,7 @@ render_diagram.
 # ---------------------------------------------------------------------------
 
 REVISION_PROMPT = "Please review the diagram you just drew and render a corrected version."
+STRUCTURED_REFINE_PROMPT = "Please polish the deterministic TikZ draft and render the final version."
 
 _REVISION_CHECKLIST = """\
 - Are all requested points present and correctly labeled?
@@ -153,6 +154,30 @@ changes are needed — this confirms the final diagram.
 {RAW_TIKZ_INSTRUCTIONS}"""
 
 
+STRUCTURED_REFINE_INSTRUCTIONS = f"""\
+You are refining a geometry diagram that was already generated from a verified \
+structured construction pipeline.
+
+Your goal is to improve presentation without changing the verified geometry.
+
+You MAY improve:
+- label placement
+- angle, right-angle, and segment-equality marks
+- visual spacing and readability
+- explanatory annotations requested by the prompt
+
+You MUST preserve:
+- all named geometric points and their coordinates
+- all requested labels
+- visible grid/axes if they are already present
+- the actual geometric construction
+
+Do not rename points. Do not move points. Do not remove the grid or axes.
+Call render_diagram with your reviewed TikZ, even if you only make minor changes.
+
+{RAW_TIKZ_INSTRUCTIONS}"""
+
+
 # ---------------------------------------------------------------------------
 # Structured strategy instructions
 # ---------------------------------------------------------------------------
@@ -168,7 +193,9 @@ with SymPy to verify correctness, then render it automatically using tkz-euclide
 {
   "params": {"assign": {"a": 3}},   // optional symbolic parameters
   "canvas": {"xmin": -1, "xmax": 5, "ymin": -1, "ymax": 4,
-              "grid": false, "axes": false, "clip": true},
+              "grid": false, "grid_step": 1, "axes": false, "tick_step": 1,
+              "show_ticks": false, "show_tick_labels": false,
+              "show_axis_labels": false, "clip": true},
   "define": [ ... ],   // ordered construction DAG
   "checks": [ ... ],   // geometric invariants to verify
   "render": [ ... ]    // drawing commands in order
@@ -277,6 +304,59 @@ List drawing commands in logical order (draw objects first, then points, then la
 | `label_point` | `p, text?: str, pos?: "auto"/"above"/"below"/"left"/"right"` | Label a point |
 | `label_angle` | `angle: {a,o,b}, text: str` | Label an angle |
 | `label_segment` | `seg: SegId, text: str` | Label a segment length |
+
+---
+
+## Canonical construction patterns
+
+### Coordinate-grid diagram
+
+- Use `canvas.grid = true` and `canvas.axes = true`.
+- For classroom-style coordinate-plane diagrams, also set:
+  - `canvas.grid_step = 1`
+  - `canvas.tick_step = 1`
+  - `canvas.show_ticks = true`
+  - `canvas.show_tick_labels = true`
+  - `canvas.show_axis_labels = true`
+- Use `point_fixed` for all prompted coordinates.
+- Use the exact lattice coordinates from the prompt.
+- Choose canvas bounds that show the full figure and the origin.
+- If you want coordinate-style point labels, keep the point ID unchanged and use
+  `label_point.text`, for example `A\\,(0,0)`.
+
+### Perpendicular bisector
+
+- Define segment `AB`.
+- Define midpoint `M`.
+- Define `l_AB` as a line through `A` and `B`.
+- Define `l_perp = line_perp_through(through=M, to_line=l_AB)`.
+- Draw the bisector as a line with `{"kind": "draw", "obj": "l_perp", "add": [...]}`.
+- Mark the right angle at `M`.
+- Do not replace a required line with a short segment unless the prompt explicitly
+  asks for a finite segment.
+
+### Incircle
+
+- Define triangle `T`.
+- Define side lines `l_AB`, `l_BC`, and `l_CA`.
+- Define the incenter with `point_triangle_center(tri="T", which="incenter")`.
+- Define perpendicular helper lines through the incenter to the side lines.
+- Intersect those perpendiculars with the corresponding side lines to get tangency points.
+- Define the incircle as `circle_center_point(center=I, through=Ta)`.
+- Prefer must-checks that verify:
+  - tangency points lie on the side lines
+  - the radii to tangency points are perpendicular to those side lines
+  - the inradii are equal
+- Do not rely on `contains(I, T)` as the main must-check for an incircle prompt.
+
+### Circumcircle
+
+- Prefer `circle_through3` or a computed circumcenter over hard-coded center coordinates.
+
+### Triangle-center diagrams
+
+- Prefer `point_triangle_center` for `circumcenter`, `centroid`, `orthocenter`, and `incenter`.
+- Do not hard-code center coordinates when the center identity is part of the prompt.
 
 ---
 
@@ -412,4 +492,9 @@ to place points on circles/lines, `point_rotate` to build rotated copies, \
 `point_intersection` for intersections, `point_midpoint` for midpoints. Only \
 use `point_fixed` for the initial anchor points of a construction. Hardcoding \
 derived coordinates bypasses SymPy verification and is error-prone.
+8. **When the prompt specifies exact coordinates, use those exact coordinates**.
+9. **When a line is semantically required, use a line object**.
+10. **Do not use extra helper labels in place of required named points**.
+11. If you add coordinate-style labels, **the underlying point name must remain the
+required point name**.
 """

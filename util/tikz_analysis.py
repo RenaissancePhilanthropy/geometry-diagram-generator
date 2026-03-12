@@ -259,6 +259,16 @@ _LABEL_POINTS_RE = re.compile(
 _LABEL_POINT_RE = re.compile(
     r"\\tkzLabelPoint(?:\[[^\]]*\])?\s*\((\w+)\)\s*\{([^}]+)\}"
 )
+_TKZ_GRID_RE = re.compile(r"\\tkzGrid\b")
+_TKZ_AXES_RE = re.compile(r"\\tkzAxeXY\b")
+_RAW_GRID_RE = re.compile(
+    r"\\draw(?:\[[^\]]*\])?\s*\([^)]*\)\s*grid\s*\([^)]*\)"
+)
+_RAW_AXIS_DRAW_RE = re.compile(
+    r"\\draw(?:\[[^\]]*->?[^\]]*\])?\s*"
+    r"\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*--\s*"
+    r"\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
+)
 
 
 def extract_labels(tikz: str) -> list[dict[str, Any]]:
@@ -273,6 +283,41 @@ def extract_labels(tikz: str) -> list[dict[str, Any]]:
         labels.append({"type": "label_point", "point": m.group(1), "text": m.group(2)})
 
     return labels
+
+
+# ---------------------------------------------------------------------------
+# Canvas extraction
+# ---------------------------------------------------------------------------
+
+def _raw_axes_present(tikz: str) -> bool:
+    """Return True for common raw TikZ x/y axes through the origin."""
+    has_horizontal = False
+    has_vertical = False
+
+    for match in _RAW_AXIS_DRAW_RE.finditer(tikz):
+        x1, y1, x2, y2 = (float(match.group(i)) for i in range(1, 5))
+        if abs(y1 - y2) <= 1e-9 and min(x1, x2) <= 0 <= max(x1, x2) and abs(y1) <= 1e-9:
+            has_horizontal = True
+        if abs(x1 - x2) <= 1e-9 and min(y1, y2) <= 0 <= max(y1, y2) and abs(x1) <= 1e-9:
+            has_vertical = True
+        if has_horizontal and has_vertical:
+            return True
+
+    return False
+
+
+def extract_canvas_features(tikz: str) -> dict[str, bool]:
+    """
+    Extract visible canvas features from TikZ code.
+
+    Currently detects:
+      - grid via \\tkzGrid or a common raw-TikZ `grid` draw command
+      - axes via \\tkzAxeXY or common raw-TikZ arrowed axes through the origin
+    """
+    return {
+        "grid": bool(_TKZ_GRID_RE.search(tikz) or _RAW_GRID_RE.search(tikz)),
+        "axes": bool(_TKZ_AXES_RE.search(tikz) or _raw_axes_present(tikz)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +792,61 @@ def validate_required_labels(tikz: str, required: list[str]) -> dict[str, Any]:
             labeled.add(label["point"])
     missing = [name for name in required if name not in labeled]
     return {"passed": len(missing) == 0, "missing": missing}
+
+
+def validate_required_canvas(tikz: str, required_canvas: dict[str, bool]) -> dict[str, Any]:
+    """
+    Check that required visible canvas features are present.
+
+    Returns {"passed": bool, "missing": list[str], "features": dict[str, bool]}.
+    """
+    features = extract_canvas_features(tikz)
+    missing = [
+        feature
+        for feature, required in required_canvas.items()
+        if required and not features.get(feature, False)
+    ]
+    return {
+        "passed": len(missing) == 0,
+        "missing": missing,
+        "features": features,
+    }
+
+
+def validate_expected_points(
+    coords: dict[str, tuple[float, float]],
+    expected_points: dict[str, list[float] | tuple[float, float]],
+    tolerance: float = 1e-4,
+) -> dict[str, Any]:
+    """
+    Check that named points resolve to the expected coordinates.
+
+    Returns:
+      {"passed": bool, "missing": list[str], "mismatches": {name: {...}}}
+    """
+    missing: list[str] = []
+    mismatches: dict[str, dict[str, list[float]]] = {}
+
+    for name, expected in expected_points.items():
+        if name not in coords:
+            missing.append(name)
+            continue
+        expected_xy = (float(expected[0]), float(expected[1]))
+        actual_xy = coords[name]
+        if (
+            abs(actual_xy[0] - expected_xy[0]) > tolerance
+            or abs(actual_xy[1] - expected_xy[1]) > tolerance
+        ):
+            mismatches[name] = {
+                "expected": [expected_xy[0], expected_xy[1]],
+                "actual": [actual_xy[0], actual_xy[1]],
+            }
+
+    return {
+        "passed": len(missing) == 0 and len(mismatches) == 0,
+        "missing": missing,
+        "mismatches": mismatches,
+    }
 
 
 def validate_required_entities(tikz: str, required: list[dict[str, Any]]) -> dict[str, Any]:

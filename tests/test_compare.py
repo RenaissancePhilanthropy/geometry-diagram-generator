@@ -15,6 +15,7 @@ import pytest
 from evals.compare import (
     _avg_judge_score,
     _avg_retries,
+    _gate_pass_rate,
     _success_rate,
     _svg_check_rate,
     _tikz_check_pass_rate,
@@ -37,6 +38,10 @@ def _record(
     svg_checks_passed=True,
     tikz_checks=None,
     llm_judge_score=None,
+    visual_judge_score=None,
+    gate_status="pass",
+    benchmark="scenarios_core",
+    tier=2,
     retries=0,
     duration_s=5.0,
 ) -> dict:
@@ -50,6 +55,10 @@ def _record(
         "svg_checks": {"passed": svg_checks_passed, "failures": []} if svg_rendered else None,
         "tikz_checks": tikz_checks,
         "llm_judge_score": llm_judge_score,
+        "visual_judge_score": visual_judge_score,
+        "gate_status": gate_status,
+        "benchmark": benchmark,
+        "tier": tier,
         "retries": retries,
         "duration_s": duration_s,
     }
@@ -124,6 +133,19 @@ def test_avg_judge_score_all_none():
     assert _avg_judge_score(records) is None
 
 
+def test_gate_pass_rate():
+    records = [
+        _record(gate_status="pass"),
+        _record(gate_status="soft_pass"),
+        _record(gate_status="fail"),
+    ]
+    assert _gate_pass_rate(records) == pytest.approx(1 / 3)
+
+
+def test_gate_pass_rate_empty():
+    assert _gate_pass_rate([]) == 0.0
+
+
 # ---------------------------------------------------------------------------
 # _tikz_check_pass_rate
 # ---------------------------------------------------------------------------
@@ -163,6 +185,8 @@ def test_compare_runs_overall_success_rate():
     comparison = compare_runs(baseline, candidate)
     assert comparison["overall"]["baseline_success"] == 0.5
     assert comparison["overall"]["candidate_success"] == 1.0
+    assert comparison["overall"]["baseline_gate"] == 1.0
+    assert comparison["overall"]["candidate_gate"] == 1.0
 
 
 def test_compare_runs_per_scenario_judge_delta():
@@ -177,6 +201,7 @@ def test_compare_runs_per_scenario_judge_delta():
     comparison = compare_runs(baseline, candidate)
     rt = comparison["scenarios"]["right-triangle"]
     assert rt["judge_delta"] == pytest.approx(-1.0)
+    assert rt["baseline_gate"] == 1.0
     mid = comparison["scenarios"]["midpoint"]
     assert mid["judge_delta"] == pytest.approx(0.0)
 
@@ -196,6 +221,22 @@ def test_compare_runs_scenario_missing_in_candidate():
     assert mid["candidate_judge"] is None
 
 
+def test_compare_runs_groups_by_tier_and_benchmark():
+    baseline = [
+        _record(scenario_id="a", benchmark="scenarios_core", tier=2, llm_judge_score=4),
+        _record(scenario_id="b", benchmark="scenarios_stress", tier=3, llm_judge_score=5),
+    ]
+    candidate = [
+        _record(scenario_id="a", benchmark="scenarios_core", tier=2, llm_judge_score=5),
+        _record(scenario_id="b", benchmark="scenarios_stress", tier=3, llm_judge_score=4),
+    ]
+    comparison = compare_runs(baseline, candidate)
+    assert "2" in comparison["tiers"]
+    assert "3" in comparison["tiers"]
+    assert "scenarios_core" in comparison["benchmarks"]
+    assert comparison["benchmarks"]["scenarios_core"]["baseline"]["judge_pass"] == pytest.approx(4.0)
+
+
 # ---------------------------------------------------------------------------
 # detect_regressions
 # ---------------------------------------------------------------------------
@@ -203,6 +244,14 @@ def test_compare_runs_scenario_missing_in_candidate():
 def test_detect_regressions_flags_large_drop():
     baseline = [_record(scenario_id="right-triangle", llm_judge_score=5)]
     candidate = [_record(scenario_id="right-triangle", llm_judge_score=3)]
+    comparison = compare_runs(baseline, candidate)
+    regressions = detect_regressions(comparison, threshold=0.5)
+    assert "right-triangle" in regressions
+
+
+def test_detect_regressions_flags_gate_drop():
+    baseline = [_record(scenario_id="right-triangle", gate_status="pass", llm_judge_score=5)]
+    candidate = [_record(scenario_id="right-triangle", gate_status="fail", llm_judge_score=5)]
     comparison = compare_runs(baseline, candidate)
     regressions = detect_regressions(comparison, threshold=0.5)
     assert "right-triangle" in regressions

@@ -6,6 +6,7 @@ No Docker or renderer required — pure Python logic.
 import pytest
 
 from util.tikz_analysis import (
+    extract_canvas_features,
     extract_defined_points,
     extract_computed_points,
     extract_draw_commands,
@@ -13,6 +14,8 @@ from util.tikz_analysis import (
     extract_marks,
     resolve_all_coordinates,
     validate_geometric_property,
+    validate_expected_points,
+    validate_required_canvas,
     validate_required_labels,
     validate_required_entities,
 )
@@ -601,6 +604,12 @@ def test_validate_required_labels_mixed_commands():
     assert result["passed"] is True
 
 
+def test_validate_required_labels_coordinate_style_label():
+    tikz = r"\tkzLabelPoint[below](A){$A\,(0,0)$}"
+    result = validate_required_labels(tikz, ["A"])
+    assert result["passed"] is True
+
+
 # ---------------------------------------------------------------------------
 # validate_required_entities
 # ---------------------------------------------------------------------------
@@ -811,3 +820,54 @@ def test_equidistant_missing_coordinate_returns_none():
     coords = {"A": (0.0, 0.0), "B": (4.0, 0.0)}
     result = validate_geometric_property(coords, "equidistant_from_sides", ["I", "A", "B", "C"])
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Canvas feature extraction / validation
+# ---------------------------------------------------------------------------
+
+def test_extract_canvas_features_tkz_grid_and_axes():
+    tikz = r"""
+\tkzInit[xmin=-1,xmax=5,ymin=-1,ymax=5]
+\tkzGrid
+\tkzAxeXY
+"""
+    features = extract_canvas_features(tikz)
+    assert features == {"grid": True, "axes": True}
+
+
+def test_extract_canvas_features_raw_tikz_grid_and_axes():
+    tikz = r"""
+\draw[step=1cm,gray!40] (-2,-2) grid (2,2);
+\draw[->] (-2,0) -- (2,0);
+\draw[->] (0,-2) -- (0,2);
+"""
+    features = extract_canvas_features(tikz)
+    assert features == {"grid": True, "axes": True}
+
+
+def test_validate_required_canvas_missing_axes():
+    tikz = r"\tkzGrid"
+    result = validate_required_canvas(tikz, {"grid": True, "axes": True})
+    assert result["passed"] is False
+    assert result["missing"] == ["axes"]
+
+
+# ---------------------------------------------------------------------------
+# Expected-point validation
+# ---------------------------------------------------------------------------
+
+def test_validate_expected_points_passes():
+    coords = {"A": (0.0, 0.0), "B": (4.0, 0.0)}
+    result = validate_expected_points(coords, {"A": [0, 0], "B": [4, 0]}, tolerance=1e-4)
+    assert result["passed"] is True
+    assert result["missing"] == []
+    assert result["mismatches"] == {}
+
+
+def test_validate_expected_points_reports_missing_and_mismatch():
+    coords = {"A": (0.0, 0.0), "B": (4.1, 0.0)}
+    result = validate_expected_points(coords, {"A": [0, 0], "B": [4, 0], "C": [1, 1]}, tolerance=1e-4)
+    assert result["passed"] is False
+    assert result["missing"] == ["C"]
+    assert "B" in result["mismatches"]

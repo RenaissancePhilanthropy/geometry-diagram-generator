@@ -1,0 +1,154 @@
+- id: similar-triangles
+  tier: 3
+  tags: [triangle, similarity, core]
+  prompt: "Draw two similar triangles ABC and DEF side by side, with corresponding sides marked to show the similarity. Label all six vertices A, B, C, D, E, and F."
+  required_labels: [A, B, C, D, E, F]
+  expected_properties:
+    - name: angle_A_equals_angle_D
+      type: angle_equal
+      args: [[B, A, C], [E, D, F]]
+    - name: angle_B_equals_angle_E
+      type: angle_equal
+      args: [[A, B, C], [D, E, F]]
+
+- id: transversal-parallel
+  tier: 2
+  tags: [parallel-lines, transversal, core]
+  prompt: "Draw two parallel lines, one through points A and B and another through points C and D. Draw a transversal line intersecting them. Label points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: AB_parallel_to_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+
+- id: transversal-angles
+  tier: 3
+  tags: [parallel-lines, transversal, annotation-heavy, core]
+  prompt: "Draw two parallel lines AB and CD cut by a transversal, meeting AB at point G and CD at point H. Label A, B, C, D, G, and H, and indicate one pair each of corresponding, alternate interior, and alternate exterior angles."
+  required_labels: [A, B, C, D, G, H]
+  expected_properties:
+    - name: AB_parallel_to_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+    - name: G_on_AB
+      type: point_on_line
+      args: [G, A, B]
+    - name: H_on_CD
+      type: point_on_line
+      args: [H, C, D]
+
+- id: angle-bisector
+  tier: 2
+  tags: [triangle, core]
+  prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC, meeting BC at point D. Label all four points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: D_on_BC
+      type: point_on_line
+      args: [D, B, C]
+    - name: AD_bisects_angle_BAC
+      type: angle_bisector
+      args: [D, A, B, C]
+
+- id: altitude
+  tier: 2
+  tags: [triangle, core]
+  prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H. Label all four points A, B, C, and H."
+  required_labels: [A, B, C, H]
+  expected_properties:
+    - name: altitude_perpendicular
+      type: right_angle
+      args: [C, H, A]
+    - name: H_on_AB
+      type: point_on_line
+      args: [H, A, B]
+
+- id: circumscribed-circle
+  tier: 2
+  tags: [circle, core, smoke]
+  prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
+  required_labels: [A, B, C, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]
+
+- id: inscribed-circle
+  tier: 2
+  tags: [circle, core]
+  prompt: "Draw a triangle ABC with its inscribed circle (incircle). Label the incenter I and all three vertices A, B, and C."
+  required_labels: [A, B, C, I]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: I_equidistant_from_sides
+      type: equidistant_from_sides
+      args: [I, A, B, C]
+
+- id: tangent-to-circle
+  tier: 3
+  tags: [circle, tangent, core]
+  prompt: "Draw a circle with center O and a tangent line from an external point P, touching the circle at point T. Label the center O, the external point P, and the tangency point T."
+  required_labels: [O, P, T]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: tangent_at_T
+      type: tangent
+      args: [[P, T], O, T]
+    - name: tangent_marked_at_T
+      type: mark_present
+      args: [right_angle, T]
+
+- id: grid-right-triangle
+  tier: 2
+  tags: [grid, lattice, triangle, core]
+  prompt: "On a visible coordinate grid with axes, plot A at (0,0), B at (4,0), and C at (0,3). Draw triangle ABC, mark the right angle at A, and label all three points."
+  required_labels: [A, B, C]
+  required_canvas:
+    grid: true
+    axes: true
+  expected_points:
+    A: [0, 0]
+    B: [4, 0]
+    C: [0, 3]
+  coordinate_tolerance: 0.0001
+  expected_properties:
+    - name: right_angle_at_A
+      type: right_angle
+      args: [B, A, C]
+    - name: right_angle_marked_at_A
+      type: mark_present
+      args: [right_angle, A]
+
+- id: grid-midpoint-bisector
+  tier: 2
+  tags: [grid, lattice, bisector, core]
+  prompt: "On a visible coordinate grid with axes, plot A at (-3,-1) and B at (1,3). Draw segment AB, mark its midpoint M, draw the perpendicular bisector through M, and label A, B, and M."
+  required_labels: [A, B, M]
+  required_canvas:
+    grid: true
+    axes: true
+  required_entities:
+    - type: segment
+    - type: line
+  expected_points:
+    A: [-3, -1]
+    B: [1, 3]
+    M: [-1, 1]
+  coordinate_tolerance: 0.0001
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+    - name: M_between_A_and_B
+      type: point_on_segment
+      args: [M, A, B]
+    - name: right_angle_marked_at_M
+      type: mark_present
+      args: [right_angle, M]

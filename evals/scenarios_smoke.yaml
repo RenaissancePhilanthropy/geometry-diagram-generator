@@ -1,0 +1,62 @@
+- id: right-triangle
+  tier: 1
+  tags: [triangle, right-angle, smoke]
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+    - name: right_angle_marked_at_B
+      type: mark_present
+      args: [right_angle, B]
+
+- id: midpoint
+  tier: 1
+  tags: [segment, midpoint, smoke]
+  prompt: "Draw a segment AB and mark its midpoint M. Label points A, B, and M."
+  required_labels: [A, B, M]
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+    - name: M_between_A_and_B
+      type: point_on_segment
+      args: [M, A, B]
+
+- id: square
+  tier: 1
+  tags: [quadrilateral, smoke]
+  prompt: "Draw a square ABCD, labeling all four vertices A, B, C, and D in order."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: right_angle_at_A
+      type: right_angle
+      args: [D, A, B]
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+    - name: right_angle_at_C
+      type: right_angle
+      args: [B, C, D]
+    - name: right_angle_at_D
+      type: right_angle
+      args: [C, D, A]
+    - name: all_sides_equal
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, D], [D, A]]
+
+- id: circumscribed-circle
+  tier: 2
+  tags: [circle, core, smoke]
+  prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
+  required_labels: [A, B, C, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]

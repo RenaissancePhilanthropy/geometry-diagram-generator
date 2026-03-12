@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import io
 import sys
+from pathlib import Path
+
+import yaml
 
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
 
@@ -188,3 +191,86 @@ def test_print_summary_aggregates():
     output = _capture(_print_summary, records)
     assert "raw_code" in output
     assert "gen:2/3" in output
+    assert "gate:" in output
+
+
+# ---------------------------------------------------------------------------
+# Scenario validation and gate status
+# ---------------------------------------------------------------------------
+
+def test_validate_scenarios_accepts_grid_metadata():
+    from evals.run import _validate_scenarios
+
+    scenarios = _validate_scenarios([{
+        "id": "grid-right-triangle",
+        "tier": 2,
+        "tags": ["grid", "core"],
+        "prompt": "Draw a triangle on a grid.",
+        "required_canvas": {"grid": True, "axes": True},
+        "expected_points": {"A": [0, 0], "B": [4, 0], "C": [0, 3]},
+        "coordinate_tolerance": 1e-4,
+        "expected_properties": [{"name": "right", "type": "right_angle", "args": ["B", "A", "C"]}],
+    }])
+    assert scenarios[0]["required_canvas"] == {"grid": True, "axes": True}
+    assert scenarios[0]["expected_points"]["B"] == [4.0, 0.0]
+
+
+def test_finalize_gate_status_pass():
+    from evals.run import _finalize_gate_status
+
+    record = _base_record(
+        tikz_checks={"right_angle": {"passed": True, "type": "right_angle", "skipped": False}},
+        canvas_checks={"passed": True, "missing": [], "features": {"grid": True, "axes": True}},
+        expected_point_checks={"passed": True, "missing": [], "mismatches": {}},
+    )
+    _finalize_gate_status(record)
+    assert record["deterministic_pass"] is True
+    assert record["gate_status"] == "pass"
+    assert record["gate_failures"] == []
+
+
+def test_finalize_gate_status_soft_pass_on_skipped_check():
+    from evals.run import _finalize_gate_status
+
+    record = _base_record(
+        tikz_checks={"transversal": {"passed": None, "type": "parallel", "skipped": True}},
+    )
+    _finalize_gate_status(record)
+    assert record["deterministic_pass"] is None
+    assert record["gate_status"] == "soft_pass"
+
+
+def test_finalize_gate_status_fail_on_expected_point_mismatch():
+    from evals.run import _finalize_gate_status
+
+    record = _base_record(
+        expected_point_checks={
+            "passed": False,
+            "missing": [],
+            "mismatches": {"A": {"expected": [0.0, 0.0], "actual": [1.0, 0.0]}},
+        },
+    )
+    _finalize_gate_status(record)
+    assert record["deterministic_pass"] is False
+    assert record["gate_status"] == "fail"
+    assert "point:A:mismatch" in record["gate_failures"]
+
+
+def test_finalize_gate_status_fail_on_generation_failure():
+    from evals.run import _finalize_gate_status
+
+    record = _base_record(generation_success=False, svg_rendered=False, svg_checks=None)
+    _finalize_gate_status(record)
+    assert record["gate_status"] == "fail"
+    assert "generation" in record["gate_failures"]
+
+
+def test_core_scenarios_include_grid_cases():
+    from evals.run import _validate_scenarios
+
+    path = Path("evals/scenarios_core.yaml")
+    scenarios = _validate_scenarios(yaml.safe_load(path.read_text()))
+    ids = {scenario["id"] for scenario in scenarios}
+    assert "grid-right-triangle" in ids
+    assert "grid-midpoint-bisector" in ids
+    assert "similar-triangles" in ids

@@ -16,7 +16,9 @@ Result fields:
     repeat_index, svg_path,
   tikz_code, tkzelements_code,
   generation_success, svg_rendered, svg_checks,
-  tikz_checks, tool_calls, retries, input_tokens,
+  tikz_checks, canvas_checks, expected_point_checks,
+  deterministic_pass, gate_status, gate_failures,
+  tool_calls, retries, input_tokens,
   output_tokens, duration_s, error,
   llm_judge_score, llm_judge_reasoning,
   human_score, human_notes
@@ -50,9 +52,12 @@ from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from strategies.plan_and_code import PlanAndCodeStrategy
 from strategies.structured import StructureStrategy, StructuredRunResult
+from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
+    validate_expected_points,
+    validate_required_canvas,
     validate_required_labels,
     validate_required_entities,
 )
@@ -64,6 +69,7 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code_with_revise": RawCodeWithReviseStrategy,
     "plan_and_code": PlanAndCodeStrategy,
     "structured": StructureStrategy,
+    "structured_plus_refine": StructuredPlusRefineStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
@@ -88,6 +94,8 @@ _SUPPORTED_PROPERTY_TYPES = {
 # Tolerance for geometric checks. Relaxed from 1e-4 to handle LLM-chosen
 # coordinates that are approximate (3 decimal places → ~0.001 rounding error).
 _TIKZ_CHECK_TOLERANCE = 0.01
+_DEFAULT_POINT_TOLERANCE = 1e-4
+_CANVAS_FEATURES = {"grid", "axes"}
 
 
 def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
@@ -183,15 +191,83 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                     f"{where} ({scenario_id}) required_entities[{i}]: 'type' must be a string"
                 )
 
+        tags = raw.get("tags", [])
+        if tags is None:
+            tags = []
+        if not isinstance(tags, list):
+            raise ValueError(f"{where} ({scenario_id}): 'tags' must be a list when provided")
+        for i, tag in enumerate(tags, start=1):
+            if not isinstance(tag, str) or not tag.strip():
+                raise ValueError(
+                    f"{where} ({scenario_id}) tags[{i}]: must be a non-empty string"
+                )
+
+        required_canvas = raw.get("required_canvas", {})
+        if required_canvas is None:
+            required_canvas = {}
+        if not isinstance(required_canvas, dict):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'required_canvas' must be an object when provided"
+            )
+        normalized_canvas: dict[str, bool] = {}
+        for key, value in required_canvas.items():
+            if key not in _CANVAS_FEATURES:
+                supported = ", ".join(sorted(_CANVAS_FEATURES))
+                raise ValueError(
+                    f"{where} ({scenario_id}): unsupported required_canvas key {key!r}; "
+                    f"supported: {supported}"
+                )
+            if not isinstance(value, bool):
+                raise ValueError(
+                    f"{where} ({scenario_id}) required_canvas[{key!r}]: must be a boolean"
+                )
+            normalized_canvas[key] = value
+
+        expected_points = raw.get("expected_points", {})
+        if expected_points is None:
+            expected_points = {}
+        if not isinstance(expected_points, dict):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'expected_points' must be an object when provided"
+            )
+        normalized_points: dict[str, list[float]] = {}
+        for name, coords in expected_points.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError(
+                    f"{where} ({scenario_id}) expected_points: point names must be non-empty strings"
+                )
+            if (
+                not isinstance(coords, list)
+                or len(coords) != 2
+                or not all(isinstance(v, (int, float)) for v in coords)
+            ):
+                raise ValueError(
+                    f"{where} ({scenario_id}) expected_points[{name!r}]: "
+                    "must be a 2-item numeric list"
+                )
+            normalized_points[name] = [float(coords[0]), float(coords[1])]
+
+        coordinate_tolerance = raw.get("coordinate_tolerance", _DEFAULT_POINT_TOLERANCE)
+        if not isinstance(coordinate_tolerance, (int, float)) or coordinate_tolerance <= 0:
+            raise ValueError(
+                f"{where} ({scenario_id}): 'coordinate_tolerance' must be a positive number"
+            )
+
         tier = raw.get("tier")
+        if tier is not None and (not isinstance(tier, int) or tier < 1):
+            raise ValueError(f"{where} ({scenario_id}): 'tier' must be a positive integer")
         normalized.append(
             {
                 "id": scenario_id,
                 "tier": tier,
+                "tags": list(tags),
                 "prompt": prompt,
                 "expected_properties": normalized_props,
                 "required_labels": list(required_labels),
                 "required_entities": list(required_entities),
+                "required_canvas": normalized_canvas,
+                "expected_points": normalized_points,
+                "coordinate_tolerance": float(coordinate_tolerance),
             }
         )
 
@@ -208,6 +284,7 @@ async def run_scenario(
     model: str,
     repeat_index: int,
     svg_output_dir: Path,
+    benchmark: str,
     llm_judge: bool = False,
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
@@ -215,7 +292,9 @@ async def run_scenario(
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
         "scenario_id": scenario["id"],
+        "benchmark": benchmark,
         "tier": scenario.get("tier"),
+        "tags": scenario.get("tags", []),
         "strategy": strategy_name,
         "model": model,
         "user_prompt": scenario["prompt"],
@@ -227,6 +306,11 @@ async def run_scenario(
         "svg_rendered": False,
         "svg_checks": None,
         "tikz_checks": None,
+        "canvas_checks": None,
+        "expected_point_checks": None,
+        "deterministic_pass": None,
+        "gate_status": "fail",
+        "gate_failures": [],
         "tool_calls": 0,
         "retries": 0,
         "input_tokens": None,
@@ -342,6 +426,18 @@ async def run_scenario(
 
         record["tikz_checks"] = tikz_check_results if tikz_check_results else None
 
+        required_canvas = scenario.get("required_canvas", {})
+        if required_canvas:
+            record["canvas_checks"] = validate_required_canvas(tikz_code, required_canvas)
+
+        expected_points = scenario.get("expected_points", {})
+        if expected_points:
+            record["expected_point_checks"] = validate_expected_points(
+                coords,
+                expected_points,
+                tolerance=scenario.get("coordinate_tolerance", _DEFAULT_POINT_TOLERANCE),
+            )
+
     # LLM judge (code review)
     if llm_judge and tikz_code:
         try:
@@ -375,7 +471,80 @@ async def run_scenario(
             record["visual_judge_score"] = None
             record["visual_judge_reasoning"] = f"Visual judge error: {e}"
 
+    _finalize_gate_status(record)
     return record
+
+
+# ---------------------------------------------------------------------------
+# Gate helpers
+# ---------------------------------------------------------------------------
+
+def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
+    """Return (failures, skipped, had_checks) across deterministic checks."""
+    failures: list[str] = []
+    skipped: list[str] = []
+    had_checks = False
+
+    for name, result in (record.get("tikz_checks") or {}).items():
+        if not isinstance(result, dict):
+            continue
+        had_checks = True
+        passed = result.get("passed")
+        if passed is False:
+            failures.append(name)
+        elif result.get("skipped") is True or passed is None:
+            skipped.append(name)
+
+    canvas_checks = record.get("canvas_checks")
+    if isinstance(canvas_checks, dict):
+        had_checks = True
+        if not canvas_checks.get("passed", False):
+            missing = canvas_checks.get("missing") or ["required_canvas"]
+            failures.extend(f"canvas:{name}" for name in missing)
+
+    expected_point_checks = record.get("expected_point_checks")
+    if isinstance(expected_point_checks, dict):
+        had_checks = True
+        failures.extend(f"point:{name}:missing" for name in expected_point_checks.get("missing", []))
+        failures.extend(
+            f"point:{name}:mismatch"
+            for name in sorted((expected_point_checks.get("mismatches") or {}).keys())
+        )
+
+    return failures, skipped, had_checks
+
+
+def _finalize_gate_status(record: dict) -> None:
+    """Populate deterministic_pass, gate_status, and gate_failures."""
+    failures, skipped, had_checks = _collect_check_outcomes(record)
+
+    if failures:
+        record["deterministic_pass"] = False
+    elif skipped:
+        record["deterministic_pass"] = None
+    else:
+        record["deterministic_pass"] = True if had_checks or record.get("tikz_code") else None
+
+    gate_failures: list[str] = []
+    if not record.get("generation_success"):
+        gate_failures.append("generation")
+    if not record.get("svg_rendered"):
+        gate_failures.append("svg_render")
+    svg_checks = record.get("svg_checks")
+    if svg_checks and not svg_checks.get("passed", False):
+        for failure in svg_checks.get("failures", []):
+            gate_failures.append(f"svg:{failure}")
+    gate_failures.extend(failures)
+    record["gate_failures"] = gate_failures
+
+    if gate_failures:
+        record["gate_status"] = "fail"
+    elif skipped:
+        record["gate_status"] = "soft_pass"
+    elif record.get("svg_rendered"):
+        record["gate_status"] = "pass"
+    else:
+        record["gate_status"] = "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +576,13 @@ def _tikz_check_summary(record: dict) -> str:
     return f" TIK:{passed}/{total}"
 
 
+def _gate_summary(record: dict) -> str:
+    status = record.get("gate_status")
+    if not status:
+        return ""
+    return f" G:{status}"
+
+
 def _print_record(record: dict) -> None:
     status = "OK " if record["generation_success"] else "ERR"
     svg = "SVG:ok  " if record["svg_rendered"] else "SVG:fail"
@@ -419,9 +595,10 @@ def _print_record(record: dict) -> None:
     repeat = f"r{record.get('repeat_index', 1):03d}"
     error = f" [{record['error'][:60]}]" if record.get("error") else ""
     tik_str = _tikz_check_summary(record)
+    gate_str = _gate_summary(record)
     print(
         f"  [{status}] {record['scenario_id']:<25} {repeat} {svg} {checks} "
-        f"{duration:>7}{judge_str}{tik_str}{error}"
+        f"{duration:>7}{judge_str}{tik_str}{gate_str}{error}"
     )
 
 
@@ -438,11 +615,22 @@ def _print_summary(records: list[dict]) -> None:
         gen_ok = sum(1 for r in recs if r["generation_success"])
         svg_ok = sum(1 for r in recs if r["svg_rendered"])
         svg_chk_ok = sum(1 for r in recs if (r.get("svg_checks") or {}).get("passed"))
+        gate_ok = sum(1 for r in recs if r.get("gate_status") == "pass")
+        gate_soft = sum(1 for r in recs if r.get("gate_status") == "soft_pass")
         avg_s = sum(r["duration_s"] for r in recs if r["duration_s"]) / max(n, 1)
         retry_rate = sum(r.get("retries", 0) for r in recs) / max(n, 1)
 
         judge_scores = [r["llm_judge_score"] for r in recs if r.get("llm_judge_score") is not None]
         judge_str = f"  judge:{sum(judge_scores)/len(judge_scores):.1f}/5" if judge_scores else ""
+        gate_judge_scores = [
+            r["llm_judge_score"]
+            for r in recs
+            if r.get("gate_status") == "pass" and r.get("llm_judge_score") is not None
+        ]
+        gate_judge_str = (
+            f"  judge(pass):{sum(gate_judge_scores)/len(gate_judge_scores):.1f}/5"
+            if gate_judge_scores else ""
+        )
 
         # Tikz check aggregation
         tik_total = sum(len(r.get("tikz_checks") or {}) for r in recs)
@@ -464,7 +652,9 @@ def _print_summary(records: list[dict]) -> None:
 
         print(
             f"  {strategy:<12}  gen:{gen_ok}/{n}  svg:{svg_ok}/{n}  "
-            f"svgchk:{svg_chk_ok}/{n}  retries:{retry_rate:.1f}{judge_str}{tik_str}  avg:{avg_s:.1f}s"
+            f"svgchk:{svg_chk_ok}/{n}  gate:{gate_ok}/{n}"
+            f" soft:{gate_soft}/{n}  retries:{retry_rate:.1f}"
+            f"{judge_str}{gate_judge_str}{tik_str}  avg:{avg_s:.1f}s"
         )
 
 
@@ -476,7 +666,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Run geometry diagram evals")
     parser.add_argument(
         "--scenarios",
-        default="evals/scenarios.yaml",
+        default="evals/scenarios_core.yaml",
         help="Path to scenarios YAML file",
     )
     parser.add_argument(
@@ -538,6 +728,7 @@ async def main() -> None:
         raw_scenarios = yaml.safe_load(f)
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
+    benchmark = scenarios_path.stem
 
     # Build run ID and output path
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -570,6 +761,7 @@ async def main() -> None:
                 args.model,
                 repeat_index,
                 svg_output_dir,
+                benchmark,
                 llm_judge=args.llm_judge,
                 visual_judge=args.visual_judge,
                 judge_model=args.judge_model,

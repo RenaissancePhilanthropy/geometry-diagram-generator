@@ -1,26 +1,11 @@
-# Evaluation scenarios for geometry diagram generation.
-#
-# Each scenario has:
-#   id: unique slug used in filenames and reports
-#   prompt: the user-facing prompt sent to the agent
-#   required_labels (optional): point names that must be labeled in the TikZ output
-#   required_entities (optional): draw commands that must appear; each entry has
-#     "type" (polygon, segment, line, circle) and optional "args" dict of field matchers
-#   expected_properties (optional): deterministic checks run against the
-#     extracted TikZ coordinates. See util/tikz_analysis.validate_geometric_property
-#     for supported property types.
-#
-# Tiers:
-#   1 - Basic constructions (should succeed on virtually every run)
-#   2 - Intermediate (require specific constructions)
-#   3 - Advanced (complex multi-step diagrams)
-
-# ---------------------------------------------------------------------------
-# Tier 1 — Basic
-# ---------------------------------------------------------------------------
+# Combined scenario set for geometry diagram generation.
+# Use `evals/scenarios_core.yaml` for the default curated benchmark,
+# `evals/scenarios_smoke.yaml` for quick regressions, and
+# `evals/scenarios_stress.yaml` for broader coverage.
 
 - id: right-triangle
   tier: 1
+  tags: [triangle, right-angle, smoke]
   prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -33,6 +18,7 @@
 
 - id: midpoint
   tier: 1
+  tags: [segment, midpoint, smoke]
   prompt: "Draw a segment AB and mark its midpoint M. Label points A, B, and M."
   required_labels: [A, B, M]
   expected_properties:
@@ -45,6 +31,7 @@
 
 - id: equilateral-triangle
   tier: 1
+  tags: [triangle]
   prompt: "Draw an equilateral triangle ABC with all sides equal. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -54,6 +41,7 @@
 
 - id: isosceles-triangle
   tier: 1
+  tags: [triangle]
   prompt: "Draw an isosceles triangle ABC where AB equals AC. Label all three vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -63,6 +51,7 @@
 
 - id: square
   tier: 1
+  tags: [quadrilateral, smoke]
   prompt: "Draw a square ABCD, labeling all four vertices A, B, C, and D in order."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -84,8 +73,11 @@
 
 - id: perpendicular-bisector
   tier: 1
+  tags: [segment, bisector]
   prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M. Label points A, B, and M."
   required_labels: [A, B, M]
+  required_entities:
+    - type: line
   expected_properties:
     - name: M_is_midpoint
       type: midpoint
@@ -94,12 +86,9 @@
       type: mark_present
       args: [right_angle, M]
 
-# ---------------------------------------------------------------------------
-# Tier 2 — Intermediate
-# ---------------------------------------------------------------------------
-
 - id: circumscribed-circle
   tier: 2
+  tags: [circle, core, smoke]
   prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
   required_labels: [A, B, C, O]
   required_entities:
@@ -114,6 +103,7 @@
 
 - id: inscribed-circle
   tier: 2
+  tags: [circle, core]
   prompt: "Draw a triangle ABC with its inscribed circle (incircle). Label the incenter I and all three vertices A, B, and C."
   required_labels: [A, B, C, I]
   required_entities:
@@ -125,6 +115,7 @@
 
 - id: angle-bisector
   tier: 2
+  tags: [triangle, core]
   prompt: "Draw a triangle ABC and the angle bisector from vertex A to side BC, meeting BC at point D. Label all four points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -137,6 +128,7 @@
 
 - id: altitude
   tier: 2
+  tags: [triangle, core]
   prompt: "Draw a triangle ABC and the altitude from vertex C to side AB, marking the foot H. Label all four points A, B, C, and H."
   required_labels: [A, B, C, H]
   expected_properties:
@@ -149,6 +141,7 @@
 
 - id: median
   tier: 2
+  tags: [triangle]
   prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC. Label all four points A, B, C, and M."
   required_labels: [A, B, C, M]
   expected_properties:
@@ -158,6 +151,7 @@
 
 - id: transversal-parallel
   tier: 2
+  tags: [parallel-lines, transversal, core]
   prompt: "Draw two parallel lines, one through points A and B and another through points C and D. Draw a transversal line intersecting them. Label points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -167,6 +161,7 @@
 
 - id: exterior-angle
   tier: 2
+  tags: [triangle]
   prompt: "Draw a triangle ABC and extend side BC beyond C to a point D, forming the exterior angle ACD. Label all four points A, B, C, and D."
   required_labels: [A, B, C, D]
   expected_properties:
@@ -174,12 +169,9 @@
       type: collinear
       args: [B, C, D]
 
-# ---------------------------------------------------------------------------
-# Tier 3 — Advanced
-# ---------------------------------------------------------------------------
-
 - id: triangle-proportionality
   tier: 3
+  tags: [triangle, theorem]
   prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC. Label all five points A, B, C, D, and E."
   required_labels: [A, B, C, D, E]
   expected_properties:
@@ -195,6 +187,7 @@
 
 - id: similar-triangles
   tier: 3
+  tags: [triangle, similarity, core]
   prompt: "Draw two similar triangles ABC and DEF side by side, with corresponding sides marked to show the similarity. Label all six vertices A, B, C, D, E, and F."
   required_labels: [A, B, C, D, E, F]
   expected_properties:
@@ -207,6 +200,7 @@
 
 - id: tangent-to-circle
   tier: 3
+  tags: [circle, tangent, core]
   prompt: "Draw a circle with center O and a tangent line from an external point P, touching the circle at point T. Label the center O, the external point P, and the tangency point T."
   required_labels: [O, P, T]
   required_entities:
@@ -215,9 +209,13 @@
     - name: tangent_at_T
       type: tangent
       args: [[P, T], O, T]
+    - name: tangent_marked_at_T
+      type: mark_present
+      args: [right_angle, T]
 
 - id: pythagorean-theorem
   tier: 3
+  tags: [triangle, theorem]
   prompt: "Draw a right triangle ABC with the right angle at C. Construct squares on each of the three sides to illustrate the Pythagorean theorem. Label the vertices A, B, and C."
   required_labels: [A, B, C]
   expected_properties:
@@ -230,6 +228,7 @@
 
 - id: cyclic-quadrilateral
   tier: 3
+  tags: [circle, quadrilateral]
   prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Label all five points A, B, C, D, and O."
   required_labels: [A, B, C, D, O]
   required_entities:
@@ -241,6 +240,7 @@
 
 - id: euler-line
   tier: 3
+  tags: [triangle-centers]
   prompt: "Draw a triangle ABC showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line. Label all six points A, B, C, O, G, and H."
   required_labels: [A, B, C, O, G, H]
   expected_properties:
@@ -259,10 +259,64 @@
 
 - id: transversal-angles
   tier: 3
-  prompt: "Draw two parallel lines cut by a transversal, creating eight angles. Label the points of intersection and indicate which angles are corresponding, alternate interior, and alternate exterior."
-  required_labels: [A, B, C, D]
+  tags: [parallel-lines, transversal, annotation-heavy, core]
+  prompt: "Draw two parallel lines AB and CD cut by a transversal, meeting AB at point G and CD at point H. Label A, B, C, D, G, and H, and indicate one pair each of corresponding, alternate interior, and alternate exterior angles."
+  required_labels: [A, B, C, D, G, H]
   expected_properties:
     - name: AB_parallel_to_CD
       type: parallel
       args: [[A, B], [C, D]]
-  
+    - name: G_on_AB
+      type: point_on_line
+      args: [G, A, B]
+    - name: H_on_CD
+      type: point_on_line
+      args: [H, C, D]
+
+- id: grid-right-triangle
+  tier: 2
+  tags: [grid, lattice, triangle, core]
+  prompt: "On a visible coordinate grid with axes, plot A at (0,0), B at (4,0), and C at (0,3). Draw triangle ABC, mark the right angle at A, and label all three points."
+  required_labels: [A, B, C]
+  required_canvas:
+    grid: true
+    axes: true
+  expected_points:
+    A: [0, 0]
+    B: [4, 0]
+    C: [0, 3]
+  coordinate_tolerance: 0.0001
+  expected_properties:
+    - name: right_angle_at_A
+      type: right_angle
+      args: [B, A, C]
+    - name: right_angle_marked_at_A
+      type: mark_present
+      args: [right_angle, A]
+
+- id: grid-midpoint-bisector
+  tier: 2
+  tags: [grid, lattice, bisector, core]
+  prompt: "On a visible coordinate grid with axes, plot A at (-3,-1) and B at (1,3). Draw segment AB, mark its midpoint M, draw the perpendicular bisector through M, and label A, B, and M."
+  required_labels: [A, B, M]
+  required_canvas:
+    grid: true
+    axes: true
+  required_entities:
+    - type: segment
+    - type: line
+  expected_points:
+    A: [-3, -1]
+    B: [1, 3]
+    M: [-1, 1]
+  coordinate_tolerance: 0.0001
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+    - name: M_between_A_and_B
+      type: point_on_segment
+      args: [M, A, B]
+    - name: right_angle_marked_at_M
+      type: mark_present
+      args: [right_angle, M]

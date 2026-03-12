@@ -35,7 +35,12 @@ class Canvas(BaseModel):
     ymin: float = -5
     ymax: float = 5
     grid: bool = False
+    grid_step: float = 1.0
     axes: bool = False
+    tick_step: float = 1.0
+    show_ticks: bool = False
+    show_tick_labels: bool = False
+    show_axis_labels: bool = False
     clip: bool = True
 
 

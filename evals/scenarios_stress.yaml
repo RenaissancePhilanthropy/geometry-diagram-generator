@@ -1,0 +1,162 @@
+- id: right-triangle
+  tier: 1
+  tags: [triangle, right-angle, smoke]
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+    - name: right_angle_marked_at_B
+      type: mark_present
+      args: [right_angle, B]
+
+- id: midpoint
+  tier: 1
+  tags: [segment, midpoint, smoke]
+  prompt: "Draw a segment AB and mark its midpoint M. Label points A, B, and M."
+  required_labels: [A, B, M]
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+    - name: M_between_A_and_B
+      type: point_on_segment
+      args: [M, A, B]
+
+- id: equilateral-triangle
+  tier: 1
+  tags: [triangle]
+  prompt: "Draw an equilateral triangle ABC with all sides equal. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: equal_sides
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, A]]
+
+- id: isosceles-triangle
+  tier: 1
+  tags: [triangle]
+  prompt: "Draw an isosceles triangle ABC where AB equals AC. Label all three vertices A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: AB_equals_AC
+      type: equal_lengths
+      args: [[A, B], [A, C]]
+
+- id: square
+  tier: 1
+  tags: [quadrilateral, smoke]
+  prompt: "Draw a square ABCD, labeling all four vertices A, B, C, and D in order."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: right_angle_at_A
+      type: right_angle
+      args: [D, A, B]
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+    - name: right_angle_at_C
+      type: right_angle
+      args: [B, C, D]
+    - name: right_angle_at_D
+      type: right_angle
+      args: [C, D, A]
+    - name: all_sides_equal
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, D], [D, A]]
+
+- id: perpendicular-bisector
+  tier: 1
+  tags: [segment, bisector]
+  prompt: "Draw a segment AB and its perpendicular bisector through the midpoint M. Label points A, B, and M."
+  required_labels: [A, B, M]
+  required_entities:
+    - type: line
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, A, B]
+    - name: right_angle_at_M
+      type: mark_present
+      args: [right_angle, M]
+
+- id: median
+  tier: 2
+  tags: [triangle]
+  prompt: "Draw a triangle ABC and the median from vertex A to the midpoint M of BC. Label all four points A, B, C, and M."
+  required_labels: [A, B, C, M]
+  expected_properties:
+    - name: M_is_midpoint
+      type: midpoint
+      args: [M, B, C]
+
+- id: exterior-angle
+  tier: 2
+  tags: [triangle]
+  prompt: "Draw a triangle ABC and extend side BC beyond C to a point D, forming the exterior angle ACD. Label all four points A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: B_C_D_collinear
+      type: collinear
+      args: [B, C, D]
+
+- id: triangle-proportionality
+  tier: 3
+  tags: [triangle, theorem]
+  prompt: "Draw a diagram demonstrating the triangle proportionality theorem. A line DE parallel to BC divides the triangle, with D on AB and E on AC. Label all five points A, B, C, D, and E."
+  required_labels: [A, B, C, D, E]
+  expected_properties:
+    - name: DE_parallel_to_BC
+      type: parallel
+      args: [[D, E], [B, C]]
+    - name: D_on_AB
+      type: point_on_line
+      args: [D, A, B]
+    - name: E_on_AC
+      type: point_on_line
+      args: [E, A, C]
+
+- id: pythagorean-theorem
+  tier: 3
+  tags: [triangle, theorem]
+  prompt: "Draw a right triangle ABC with the right angle at C. Construct squares on each of the three sides to illustrate the Pythagorean theorem. Label the vertices A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: right_angle_at_C
+      type: right_angle
+      args: [A, C, B]
+    - name: right_angle_marked_at_C
+      type: mark_present
+      args: [right_angle, C]
+
+- id: cyclic-quadrilateral
+  tier: 3
+  tags: [circle, quadrilateral]
+  prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Label all five points A, B, C, D, and O."
+  required_labels: [A, B, C, D, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: all_equidistant_from_O
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C], [O, D]]
+
+- id: euler-line
+  tier: 3
+  tags: [triangle-centers]
+  prompt: "Draw a triangle ABC showing three triangle centers: the circumcenter O, centroid G, and orthocenter H, indicating that they are collinear on the Euler line. Label all six points A, B, C, O, G, and H."
+  required_labels: [A, B, C, O, G, H]
+  expected_properties:
+    - name: euler_line_collinear
+      type: collinear
+      args: [O, G, H]
+    - name: O_is_circumcenter
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C]]
+    - name: H_altitude_from_C
+      type: perpendicular
+      args: [[C, H], [A, B]]
+    - name: H_altitude_from_A
+      type: perpendicular
+      args: [[A, H], [B, C]]
