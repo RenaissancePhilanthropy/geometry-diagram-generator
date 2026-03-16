@@ -22,3 +22,6 @@ evals/results/
 
 # macOS files
 .DS_Store
+
+# Git worktrees
+.worktrees/
