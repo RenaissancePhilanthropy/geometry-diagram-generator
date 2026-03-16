@@ -54,6 +54,8 @@ user prompt that generated it. Evaluate the diagram on four dimensions (1-5):
 4. visual_quality: Is the diagram clear, well-proportioned, and readable?
    Are elements too small, too large, or overlapping?
 
+Be harsh but fair in your evaluation. Correctness should be most heavily weighted, but poor visual quality can also reduce the overall score.
+
 Also give an overall score (1-5) and a one-sentence reasoning string.
 """
 

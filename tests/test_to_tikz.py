@@ -1,8 +1,23 @@
 from __future__ import annotations
 
-from ir.ir import Canvas, DiagramIR, Draw, LabelPoint, PointFixed, Triangle
+from ir.ir import (
+    AnglePoints,
+    Canvas,
+    DiagramIR,
+    Draw,
+    LabelAngle,
+    LabelPoint,
+    LineThrough,
+    MarkAngles,
+    MarkSegments,
+    PointFixed,
+    PointIntersection,
+    Segment,
+    Triangle,
+)
+from ir.checks import check_render_angles
 from ir.to_sympy import compile_defs
-from ir.to_tikz import ir_to_tikz
+from ir.to_tikz import _style_str, ir_to_tikz
 
 
 def _compile_tikz(diagram: DiagramIR) -> str:
@@ -68,3 +83,241 @@ def test_ir_to_tikz_label_point_text_preserves_point_name():
     tikz = _compile_tikz(diagram)
 
     assert r"\tkzLabelPoint[below](A){$A\,(0,0)$}" in tikz
+
+
+# ---------------------------------------------------------------------------
+# Helpers for angle tests — a simple triangle with three named vertices
+# ---------------------------------------------------------------------------
+
+def _triangle_diagram(*render_ops) -> DiagramIR:
+    """Return a minimal DiagramIR with points A(0,0), B(4,0), C(2,3)."""
+    return DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+        ],
+        render=list(render_ops),
+    )
+
+
+# ---------------------------------------------------------------------------
+# _style_str unit tests
+# ---------------------------------------------------------------------------
+
+def test_style_str_returns_empty_for_unknown_key():
+    assert _style_str("custom_style", {}) == ""
+
+
+def test_style_str_color_fallback_for_known_names():
+    assert _style_str("red", {}) == "[color=red]"
+    assert _style_str("blue", {}) == "[color=blue]"
+    assert _style_str("green", {}) == "[color=green]"
+
+
+def test_style_str_dict_lookup_takes_precedence():
+    styles = {"red": {"color": "red", "thick": True}}
+    assert _style_str("red", styles) == "[color=red,thick]"
+
+
+def test_style_str_returns_empty_for_none():
+    assert _style_str(None, {}) == ""
+
+
+# ---------------------------------------------------------------------------
+# MarkAngles TikZ output tests
+# ---------------------------------------------------------------------------
+
+def test_mark_angles_color_style():
+    diagram = _triangle_diagram(
+        MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")], style="red"),
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkAngle[size=0.5,color=red]" in tikz
+
+
+def test_mark_angles_no_style_emits_size_only():
+    diagram = _triangle_diagram(
+        MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")]),
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkAngle[size=0.5]" in tikz
+    assert "color" not in tikz
+
+
+def test_mark_angles_style_from_styles_dict():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")], style="alpha")],
+        styles={"alpha": {"color": "blue", "thick": True}},
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkAngle[size=0.5,color=blue,thick]" in tikz
+
+
+# ---------------------------------------------------------------------------
+# LabelAngle TikZ output tests
+# ---------------------------------------------------------------------------
+
+def test_label_angle_color_style():
+    diagram = _triangle_diagram(
+        LabelAngle(angle=AnglePoints(a="B", o="A", b="C"), text="x", style="blue"),
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzLabelAngle[color=blue]" in tikz
+    assert "{$x$}" in tikz
+
+
+def test_label_angle_no_style():
+    diagram = _triangle_diagram(
+        LabelAngle(angle=AnglePoints(a="B", o="A", b="C"), text=r"\alpha"),
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzLabelAngle(" in tikz
+    assert "color" not in tikz
+
+
+# ---------------------------------------------------------------------------
+# MarkSegments TikZ output tests
+# ---------------------------------------------------------------------------
+
+def test_mark_segments_different_groups_get_different_marks():
+    # Two groups of equal segments should receive escalating tick marks.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=4, y=0),
+            PointFixed(id="D", x=6, y=0),
+            Segment(id="s1", p="A", q="B"),
+            Segment(id="s2", p="C", q="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="alpha"),
+            MarkSegments(segs=["s2"], group="beta"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=|" in tikz
+    assert "mark=||" in tikz
+
+
+def test_mark_segments_single_group_gets_single_tick():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            Segment(id="s1", p="A", q="B"),
+        ],
+        render=[MarkSegments(segs=["s1"], group="alpha")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "[mark=|]" in tikz
+
+
+def test_mark_segments_style_overrides_group_mark():
+    # An explicit style entry should take precedence over group auto-assignment.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=4, y=0),
+            PointFixed(id="D", x=6, y=0),
+            Segment(id="s1", p="A", q="B"),
+            Segment(id="s2", p="C", q="D"),
+        ],
+        styles={"alpha": {"mark": "|||"}},
+        render=[
+            MarkSegments(segs=["s1"], group="alpha"),
+            MarkSegments(segs=["s2"], group="beta"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=|||" in tikz   # style dict entry honoured for alpha
+    assert "mark=|]" in tikz    # beta gets first auto-assigned symbol
+
+
+# ---------------------------------------------------------------------------
+# check_render_angles tests
+# ---------------------------------------------------------------------------
+
+def _transversal_diagram(*render_ops) -> DiagramIR:
+    """Two parallel lines cut by a transversal: A,B on line AB; C,D on line CD;
+    P1,P2 on transversal; G = intersection of transversal & AB; H = intersection
+    of transversal & CD."""
+    return DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=6, y=3),
+            PointFixed(id="C", x=0, y=0),
+            PointFixed(id="D", x=6, y=0),
+            PointFixed(id="P1", x=1, y=5),
+            PointFixed(id="P2", x=5, y=-2),
+            LineThrough(id="l_AB", p="A", q="B"),
+            LineThrough(id="l_CD", p="C", q="D"),
+            LineThrough(id="l_t", p="P1", q="P2"),
+            PointIntersection(id="G", obj1="l_t", obj2="l_AB"),
+            PointIntersection(id="H", obj1="l_t", obj2="l_CD"),
+        ],
+        render=list(render_ops),
+    )
+
+
+def test_check_render_angles_valid():
+    # G is on l_AB (so A,G and B,G are valid) and on l_t (so P1,G and P2,G are valid)
+    diagram = _transversal_diagram(
+        MarkAngles(angles=[AnglePoints(a="B", o="G", b="P1")]),
+    )
+    assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_invalid_foreign_point():
+    # H is on l_CD and l_t; B is only on l_AB — not connected to H
+    diagram = _transversal_diagram(
+        MarkAngles(angles=[AnglePoints(a="B", o="H", b="P1")]),
+    )
+    errors = check_render_angles(diagram)
+    assert len(errors) == 1
+    assert "'B'" in errors[0]
+    assert "'H'" in errors[0]
+
+
+def test_check_render_angles_intersection_inherits_both_lines():
+    # G is on l_t, so P1 and G are a valid pair via l_t
+    # G is on l_AB, so A and G are a valid pair via l_AB
+    diagram = _transversal_diagram(
+        MarkAngles(angles=[AnglePoints(a="A", o="G", b="P2")]),
+    )
+    assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_valid_segment():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Segment(id="AB", a="A", b="B"),
+            Segment(id="AC", a="A", b="C"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")])],
+    )
+    assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_triangle_vertices():
+    # Triangle edges are inferred: A-B, B-C, A-C
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")])],
+    )
+    assert check_render_angles(diagram) == []

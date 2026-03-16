@@ -184,6 +184,84 @@ def _seg_length(obj: Any):
     raise TypeError(f"Cannot compute length of {type(obj).__name__}")
 
 
+# ---------------------------------------------------------------------------
+# Render-op angle validation (no SymPy required)
+# ---------------------------------------------------------------------------
+
+def check_render_angles(diagram: ir.DiagramIR) -> list[str]:
+    """Validate that angle triples in render ops use points connected through
+    the diagram's linear definitions.
+
+    For mark_angles / mark_right_angles / label_angle, the triple {a, o, b}
+    must have both `a` and `b` on a line/segment/ray that passes through `o`.
+    Returns a list of error strings (empty = all valid).
+    """
+    pairs = _build_linear_pairs(diagram)
+    errors: list[str] = []
+    for op in diagram.render:
+        match op:
+            case ir.MarkAngles(angles=angles) | ir.MarkRightAngles(angles=angles):
+                for angle in angles:
+                    _validate_triple(angle, op.kind, pairs, errors)
+            case ir.LabelAngle(angle=angle):
+                _validate_triple(angle, "label_angle", pairs, errors)
+    return errors
+
+
+def _build_linear_pairs(diagram: ir.DiagramIR) -> set[frozenset]:
+    """Return the set of {p, q} pairs that share a linear object in the diagram."""
+    pts_on: dict[str, set[str]] = {}  # obj_id -> set of point ids on that obj
+
+    for stmt in diagram.define:
+        match stmt:
+            case ir.LineThrough(id=oid, p=p, q=q):
+                pts_on.setdefault(oid, set()).update([p, q])
+            case ir.Segment(id=oid, a=a, b=b):
+                pts_on.setdefault(oid, set()).update([a, b])
+            case ir.Ray(id=oid, a=a, b=b):
+                pts_on.setdefault(oid, set()).update([a, b])
+            case ir.PointIntersection(id=pid, obj1=o1, obj2=o2):
+                pts_on.setdefault(o1, set()).add(pid)
+                pts_on.setdefault(o2, set()).add(pid)
+            case ir.PointOn(id=pid, on=obj):
+                pts_on.setdefault(obj, set()).add(pid)
+            case ir.PointMidpoint(id=pid, p=p, q=q):
+                pts_on.setdefault(f"__mid_{pid}", set()).update([pid, p, q])
+            case ir.Triangle(id=oid, a=a, b=b, c=c):
+                pts_on[f"{oid}__ab"] = {a, b}
+                pts_on[f"{oid}__bc"] = {b, c}
+                pts_on[f"{oid}__ac"] = {a, c}
+            case ir.Polygon(id=oid, points=pts):
+                for i, pt in enumerate(pts):
+                    nxt = pts[(i + 1) % len(pts)]
+                    pts_on[f"{oid}__{i}"] = {pt, nxt}
+
+    pairs: set[frozenset] = set()
+    for obj_pts in pts_on.values():
+        pts_list = list(obj_pts)
+        for i in range(len(pts_list)):
+            for j in range(i + 1, len(pts_list)):
+                pairs.add(frozenset([pts_list[i], pts_list[j]]))
+    return pairs
+
+
+def _validate_triple(
+    angle: ir.AnglePoints,
+    kind: str,
+    pairs: set[frozenset],
+    errors: list[str],
+) -> None:
+    a, o, b = angle.a, angle.o, angle.b
+    if frozenset([a, o]) not in pairs:
+        errors.append(
+            f"{kind}: point {a!r} does not lie on any line/segment/ray through vertex {o!r}"
+        )
+    if frozenset([b, o]) not in pairs:
+        errors.append(
+            f"{kind}: point {b!r} does not lie on any line/segment/ray through vertex {o!r}"
+        )
+
+
 def _angle_at(a: spg.Point2D, vertex: spg.Point2D, b: spg.Point2D) -> float:
     """Unsigned angle at vertex in configuration a-vertex-b (radians, [0, π])."""
     vax = float((a.x - vertex.x).evalf())

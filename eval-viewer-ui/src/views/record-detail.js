@@ -40,6 +40,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
         <div class="panel" style="margin-bottom:16px">
           <div class="panel-header">
             ${record.scenario_id || '—'}
+            <span style="margin-left:8px;font-size:11px;color:#888">${record.benchmark || ''}${record.tier != null ? ` · tier ${record.tier}` : ''}${(record.tags || []).length ? ` · ${record.tags.join(', ')}` : ''}</span>
             <span style="margin-left:auto">${gateBadge(record.gate_status)}</span>
           </div>
           <div class="panel-body">
@@ -47,13 +48,20 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
               <span class="meta-key">Strategy</span><span class="meta-val">${record.strategy || '—'}</span>
               <span class="meta-key">Model</span><span class="meta-val">${record.model || '—'}</span>
               <span class="meta-key">Repeat</span><span class="meta-val">${record.repeat_index ?? '—'}</span>
+              <span class="meta-key">Timestamp</span><span class="meta-val" style="font-size:12px">${record.timestamp ? new Date(record.timestamp).toLocaleString() : '—'}</span>
               <span class="meta-key">Duration</span><span class="meta-val">${record.duration_s != null ? record.duration_s.toFixed(2) + 's' : '—'}</span>
-              <span class="meta-key">LLM Judge</span><span class="meta-val">${record.llm_judge_score != null ? record.llm_judge_score + '/5' : '—'}</span>
+              ${record.input_tokens != null ? `<span class="meta-key">Tokens</span><span class="meta-val">${record.input_tokens.toLocaleString()} in / ${(record.output_tokens ?? 0).toLocaleString()} out</span>` : ''}
+              ${record.tool_calls > 0 ? `<span class="meta-key">Tool calls</span><span class="meta-val">${record.tool_calls}${record.retries > 0 ? ` (${record.retries} retr${record.retries === 1 ? 'y' : 'ies'})` : ''}</span>` : ''}
+              <span class="meta-key">Generated</span><span class="meta-val">${statusDot(record.generation_success)} SVG: ${statusDot(record.svg_rendered)} Checks: ${statusDot(record.deterministic_pass)}</span>
               <span class="meta-key">Gate failures</span><span class="meta-val" style="color:#fca5a5">${(record.gate_failures || []).join(', ') || 'none'}</span>
+              ${record.error ? `<span class="meta-key">Error</span><span class="meta-val" style="color:#fca5a5;font-size:12px">${escapeHtml(record.error)}</span>` : ''}
             </div>
             <div class="prompt-text">${escapeHtml(record.user_prompt || '')}</div>
           </div>
         </div>
+
+        <!-- Judge scores -->
+        ${renderJudgePanel(record)}
 
         <!-- Editors -->
         <div class="panel">
@@ -291,7 +299,8 @@ function renderAllChecks(record) {
   if (record.tikz_checks) {
     const items = Object.entries(record.tikz_checks).map(([name, result]) => {
       if (typeof result !== 'object') return null
-      return checkItem(name, result.passed, result.skipped, result.error || '')
+      const label = result.type ? `${name} <span style="color:#555;font-size:11px">${result.type}</span>` : name
+      return checkItem(label, result.passed, result.skipped, result.error || '', /*rawLabel=*/true)
     }).filter(Boolean)
     if (items.length) sections.push(`<h3>TikZ Checks</h3><div class="check-list">${items.join('')}</div>`)
   }
@@ -302,10 +311,16 @@ function renderAllChecks(record) {
   }
 
   if (record.expected_point_checks) {
-    const items = Object.entries(record.expected_point_checks).map(([name, result]) =>
-      checkItem(name, result.passed, false, result.message || '')
-    )
-    if (items.length) sections.push(`<h3 style="margin-top:12px">Point Checks</h3><div class="check-list">${items.join('')}</div>`)
+    const epc = record.expected_point_checks
+    const parts = []
+    if (epc.missing && epc.missing.length) parts.push(`missing: ${epc.missing.join(', ')}`)
+    if (epc.mismatches) {
+      for (const [pt, info] of Object.entries(epc.mismatches)) {
+        parts.push(`${pt}: expected (${info.expected}), got (${info.actual}), err=${info.error?.toFixed(4)}`)
+      }
+    }
+    const msg = parts.join('; ')
+    sections.push(`<h3 style="margin-top:12px">Point Checks</h3><div class="check-list">${checkItem('expected points', epc.passed, false, msg)}</div>`)
   }
 
   if (!sections.length) return '<p style="color:#888;font-size:12px">No checks available.</p>'
@@ -323,18 +338,76 @@ function renderCheckResults(checks) {
   return `<h3>IR Checks</h3><div class="check-list">${items.join('')}</div>`
 }
 
-function checkItem(name, passed, skipped, message) {
+function checkItem(name, passed, skipped, message, rawLabel = false) {
   const cls = skipped ? 'skip' : passed ? 'pass' : 'fail'
   const icon = skipped ? '⊘' : passed ? '✓' : '✗'
+  const nameHtml = rawLabel ? name : escapeHtml(String(name))
   return `
     <div class="check-item ${cls}">
       <span class="check-icon">${icon}</span>
       <div>
-        <div class="check-name">${escapeHtml(String(name))}</div>
+        <div class="check-name">${nameHtml}</div>
         ${message ? `<div class="check-msg">${escapeHtml(String(message))}</div>` : ''}
       </div>
     </div>
   `
+}
+
+function statusDot(val) {
+  if (val === true) return '<span style="color:#86efac">✓</span>'
+  if (val === false) return '<span style="color:#fca5a5">✗</span>'
+  return '<span style="color:#555">—</span>'
+}
+
+function renderJudgePanel(record) {
+  const hasLLM = record.llm_judge_score != null
+  const hasVisual = record.visual_judge_score != null
+  if (!hasLLM && !hasVisual) return ''
+
+  const details = record.llm_judge_details || {}
+  const subScores = ['geometric_accuracy', 'labeling', 'completeness', 'likely_renders']
+
+  return `
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-header">Judge Scores</div>
+      <div class="panel-body">
+        ${hasLLM ? `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+              <span style="font-weight:600;font-size:13px;color:#ccc">LLM Judge</span>
+              <span style="font-size:18px;font-weight:700;color:${scoreColor(record.llm_judge_score)}">${record.llm_judge_score}/5</span>
+            </div>
+            ${subScores.filter(k => details[k] != null).length ? `
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                ${subScores.filter(k => details[k] != null).map(k => `
+                  <span style="background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:2px 8px;font-size:11px">
+                    <span style="color:#888">${k.replace(/_/g, ' ')}</span>
+                    <span style="color:${scoreColor(details[k])};font-weight:600;margin-left:4px">${details[k]}</span>
+                  </span>
+                `).join('')}
+              </div>
+            ` : ''}
+            ${record.llm_judge_reasoning ? `<div style="font-size:12px;color:#aaa;line-height:1.5;border-left:2px solid #333;padding-left:10px">${escapeHtml(record.llm_judge_reasoning)}</div>` : ''}
+          </div>
+        ` : ''}
+        ${hasVisual ? `
+          <div ${hasLLM ? 'style="border-top:1px solid #222;padding-top:10px"' : ''}>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+              <span style="font-weight:600;font-size:13px;color:#ccc">Visual Judge</span>
+              <span style="font-size:18px;font-weight:700;color:${scoreColor(record.visual_judge_score)}">${record.visual_judge_score}/5</span>
+            </div>
+            ${record.visual_judge_reasoning ? `<div style="font-size:12px;color:#aaa;line-height:1.5;border-left:2px solid #333;padding-left:10px">${escapeHtml(record.visual_judge_reasoning)}</div>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `
+}
+
+function scoreColor(score) {
+  if (score >= 4) return '#86efac'
+  if (score >= 3) return '#fde68a'
+  return '#fca5a5'
 }
 
 function escapeHtml(str) {

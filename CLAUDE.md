@@ -12,10 +12,10 @@ uv sync
 source .venv/bin/activate
 
 # Run tests
-uv run python -m pytest tests/
+.venv/bin/python -m pytest tests/
 
 # Run a single test file
-uv run python -m pytest tests/test_compile_defs.py -v
+.venv/bin/python -m pytest tests/test_compile_defs.py -v
 
 # Run evals
 uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structured --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results

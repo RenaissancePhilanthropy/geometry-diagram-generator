@@ -83,8 +83,18 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
     lines.append("")
 
     # --- Phase 6: emit render ops ---
+    # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
+    _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
+    _styles = diagram.styles or {}
+    seg_groups: list[str] = []
     for op in diagram.render:
-        chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles)
+        if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
+            if op.group not in seg_groups:
+                seg_groups.append(op.group)
+    group_marks = {g: _MARK_SYMBOLS[i % len(_MARK_SYMBOLS)] for i, g in enumerate(seg_groups)}
+
+    for op in diagram.render:
+        chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks)
         lines.extend(chunk)
 
     return "\n".join(lines)
@@ -100,6 +110,7 @@ def _emit_op(
     stmt_by_id: dict[str, Any],
     helpers: dict[str, tuple[float, float]],
     styles: dict[str, dict],
+    group_marks: dict[str, str] | None = None,
 ) -> list[str]:
     out: list[str] = []
     match op:
@@ -149,12 +160,15 @@ def _emit_op(
             sopts = _style_str(style or group, styles)
             for angle in angles:
                 a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, which)
-                out.append(f"\\tkzMarkAngle[size=0.5]{sopts}({a},{o},{b})")
+                merged = _merge_opts("size=0.5", sopts)
+                out.append(f"\\tkzMarkAngle[{merged}]({a},{o},{b})")
 
         case ir.MarkSegments(segs=segs, group=group, style=style):
             mark_key = style or group
             if mark_key and mark_key in styles:
                 sopts = _style_str(mark_key, styles)
+            elif group and group_marks and group in group_marks:
+                sopts = f"[mark={group_marks[group]}]"
             else:
                 sopts = "[mark=|]"
             for seg_id in segs:
@@ -167,7 +181,13 @@ def _emit_op(
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
-            sopts = f"[pos={pos}]" if pos is not None else ""
+            opts_parts = []
+            if pos is not None:
+                opts_parts.append(f"pos={pos}")
+            color_opts = _style_str(style, styles)
+            if color_opts:
+                opts_parts.append(color_opts.strip("[]"))
+            sopts = f"[{','.join(opts_parts)}]" if opts_parts else ""
             a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, "interior")
             out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${text}$}}")
 
@@ -239,16 +259,32 @@ def _circle_pts(circle_id: str, stmt_by_id: dict, helpers: dict) -> tuple[str, s
 # Style helpers
 # ---------------------------------------------------------------------------
 
+_TIKZ_COLOR_NAMES = {
+    "red", "blue", "green", "orange", "purple", "cyan", "magenta",
+    "yellow", "black", "white", "brown", "gray", "grey",
+    "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
+}
+
+
 def _style_str(style_key: str | None, styles: dict) -> str:
-    """Return a TikZ option string like '[color=red,thick]' or '' if no style."""
-    if not style_key or style_key not in styles:
+    """Return a TikZ option string like '[color=red,thick]' or '' if no style.
+
+    If style_key is found in the styles dict, format its entries as TikZ options.
+    If not found but the key is a recognized TikZ color name, return '[color=<name>]'
+    so that LLM-generated style values like "red" work without a populated styles dict.
+    """
+    if not style_key:
         return ""
-    opts = ",".join(
-        (k if v is True else f"{k}={v}")
-        for k, v in styles[style_key].items()
-        if v is not False
-    )
-    return f"[{opts}]" if opts else ""
+    if style_key in styles:
+        opts = ",".join(
+            (k if v is True else f"{k}={v}")
+            for k, v in styles[style_key].items()
+            if v is not False
+        )
+        return f"[{opts}]" if opts else ""
+    if style_key in _TIKZ_COLOR_NAMES:
+        return f"[color={style_key}]"
+    return ""
 
 
 def _merge_opts(base: str, extra_bracket: str) -> str:

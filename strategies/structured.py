@@ -11,7 +11,7 @@ from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
 from strategies.prompt_hints import augment_structured_prompt
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
-from ir.checks import run_checks, CheckResult
+from ir.checks import run_checks, check_render_angles, CheckResult
 from ir.to_tikz import ir_to_tikz
 from ir.errors import IRCompileError
 from util.tikz_renderer import render_tikz
@@ -117,6 +117,13 @@ class StructureStrategy(SubstanceStrategy):
                 logger.warning("Attempt %d check failures:\n%s", attempt + 1, msgs)
                 continue
 
+            angle_errors = check_render_angles(diagram_ir)
+            if angle_errors:
+                msgs = "\n".join(f"  - {e}" for e in angle_errors)
+                last_error = f"Invalid angle triples in render ops:\n{msgs}"
+                logger.warning("Attempt %d angle triple errors:\n%s", attempt + 1, msgs)
+                continue
+
             for r in results:
                 if not r.passed and r.check.level == "prefer":
                     logger.warning("Preferred check not satisfied: %s", r.message)
@@ -173,6 +180,10 @@ async def _run_pipeline_once(prompt: str, model: str) -> str:
     if must_failures:
         msgs = "; ".join(r.message for r in must_failures)
         raise ModelRetry(f"Geometric checks failed: {msgs}")
+
+    angle_errors = check_render_angles(diagram_ir)
+    if angle_errors:
+        raise ModelRetry(f"Invalid angle triples: {'; '.join(angle_errors)}")
 
     try:
         tikz = ir_to_tikz(diagram_ir, sym)

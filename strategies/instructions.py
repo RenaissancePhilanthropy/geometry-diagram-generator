@@ -299,11 +299,13 @@ List drawing commands in logical order (draw objects first, then points, then la
 | `draw_points` | `points: [...]` | Draw point dots |
 | `fill` | `obj, opacity?: float` | Fill a polygon or circle |
 | `mark_right_angles` | `angles: [{a,o,b},...]` | Square mark at right angle |
-| `mark_angles` | `angles: [{a,o,b},...], which?: "interior"/"exterior"/"reflex", group?: str` | Arc mark |
+| `mark_angles` | `angles: [{a,o,b},...], which?: "interior"/"exterior"/"reflex", group?: str, style?: color` | Arc mark (see angle notation below) |
 | `mark_segments` | `segs: [...], group?: str` | Tick marks on segments |
 | `label_point` | `p, text?: str, pos?: "auto"/"above"/"below"/"left"/"right"` | Label a point |
-| `label_angle` | `angle: {a,o,b}, text: str` | Label an angle |
+| `label_angle` | `angle: {a,o,b}, text: str, style?: color` | Label an angle (see angle notation below) |
 | `label_segment` | `seg: SegId, text: str` | Label a segment length |
+
+**Angle notation `{a, o, b}`:** The angle at vertex `o` between rays `o→a` and `o→b`. Both `a` and `b` must be points that lie on a line, segment, or ray passing through `o` in the diagram. Do not use points from unrelated lines — if `o` is an intersection of line CD and the transversal, `a` and `b` must come from those two lines, not from some other line like AB.
 
 ---
 
