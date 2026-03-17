@@ -193,8 +193,8 @@ def test_mark_segments_different_groups_get_different_marks():
             PointFixed(id="B", x=2, y=0),
             PointFixed(id="C", x=4, y=0),
             PointFixed(id="D", x=6, y=0),
-            Segment(id="s1", p="A", q="B"),
-            Segment(id="s2", p="C", q="D"),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
         ],
         render=[
             MarkSegments(segs=["s1"], group="alpha"),
@@ -211,7 +211,7 @@ def test_mark_segments_single_group_gets_single_tick():
         define=[
             PointFixed(id="A", x=0, y=0),
             PointFixed(id="B", x=2, y=0),
-            Segment(id="s1", p="A", q="B"),
+            Segment(id="s1", a="A", b="B"),
         ],
         render=[MarkSegments(segs=["s1"], group="alpha")],
     )
@@ -227,8 +227,8 @@ def test_mark_segments_style_overrides_group_mark():
             PointFixed(id="B", x=2, y=0),
             PointFixed(id="C", x=4, y=0),
             PointFixed(id="D", x=6, y=0),
-            Segment(id="s1", p="A", q="B"),
-            Segment(id="s2", p="C", q="D"),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
         ],
         styles={"alpha": {"mark": "|||"}},
         render=[
