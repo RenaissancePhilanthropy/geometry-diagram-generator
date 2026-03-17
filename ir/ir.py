@@ -60,7 +60,60 @@ class PointOnParam(PointOnMethod):
     t: float
 
 
-PointOnHow = Annotated[Union[PointOnRandom, PointOnParam], Field(discriminator="kind")]
+
+# -----------------------
+# Spatial constraints for PointOnIntent
+# -----------------------
+
+class SpatialConstraintBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: str
+
+
+class SameSideConstraint(SpatialConstraintBase):
+    """Point must be on the same side of the given line as ref."""
+    kind: Literal["same_side"] = "same_side"
+    line: List[PointId]  # exactly 2 point IDs defining the line
+    ref: PointId
+
+
+class NotNearConstraint(SpatialConstraintBase):
+    """Point must be at least min_dist away from the given reference point."""
+    kind: Literal["not_near"] = "not_near"
+    point: PointId
+    min_dist: float = 0.5
+
+
+class ArcBetweenConstraint(SpatialConstraintBase):
+    """For circles: point must be on the arc from from_point to to_point (CCW).
+    NOTE: enforcement is not yet implemented — accepted in schema but currently no-ops.
+    Do NOT document this constraint to the LLM until it is implemented."""
+    kind: Literal["arc_between"] = "arc_between"
+    from_point: PointId
+    to_point: PointId
+
+
+class BeyondConstraint(SpatialConstraintBase):
+    """Point must be beyond ref_point along the object's natural parameterization.
+    NOTE: enforcement is not yet implemented — accepted in schema but currently no-ops.
+    Do NOT document this constraint to the LLM until it is implemented."""
+    kind: Literal["beyond"] = "beyond"
+    ref: PointId
+
+
+SpatialConstraint = Annotated[
+    Union[SameSideConstraint, NotNearConstraint, ArcBetweenConstraint, BeyondConstraint],
+    Field(discriminator="kind")
+]
+
+
+class PointOnIntent(PointOnMethod):
+    """Constraint-based placement: compiler samples until all constraints are satisfied."""
+    kind: Literal["intent"] = "intent"
+    constraints: List[SpatialConstraint]
+
+
+PointOnHow = Annotated[Union[PointOnRandom, PointOnParam, PointOnIntent], Field(discriminator="kind")]
 
 
 # -----------------------

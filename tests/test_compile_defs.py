@@ -21,7 +21,8 @@ from ir.ir import (
     LineAngleBisector, LineTangent,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
     Triangle, Polygon,
-    PointOnParam, PointOnRandom,
+    PointOnParam, PointOnRandom, PointOnIntent,
+    SameSideConstraint, NotNearConstraint,
     PickIndex, PickClosestTo, PickOnObject,
 )
 from ir.to_sympy import compile_defs
@@ -636,3 +637,49 @@ def test_params_assign():
     sym = compile_defs(diag)
     assert sym["P"].x == sp.Integer(3)
     assert sym["P"].y == sp.Integer(4)
+
+
+# ---------------------------------------------------------------------------
+# 12. PointOnIntent — constraint-based placement
+# ---------------------------------------------------------------------------
+
+def test_point_on_intent_same_side():
+    """PointOnIntent with same_side constraint: point on circle must be
+    on the same side of the x-axis as reference point ref=(0,1)."""
+    canvas = Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5)
+    sym = compile_defs(DiagramIR(
+        canvas=canvas,
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="R", x=2, y=0),
+            PointFixed(id="L", x=-2, y=0),
+            LineThrough(id="x_axis", p="R", q="L"),
+            CircleCenterPoint(id="c", center="O", through="R"),
+            PointFixed(id="ref", x=0, y=1),  # above x-axis
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                SameSideConstraint(line=["R", "L"], ref="ref"),
+            ])),
+        ]
+    ), rng=Random(1))
+    P = sym["P"]
+    # P should be on the upper semicircle (y > 0)
+    assert float(P.y) > 0
+
+
+def test_point_on_intent_not_near():
+    """PointOnIntent with not_near constraint."""
+    canvas = Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5)
+    sym = compile_defs(DiagramIR(
+        canvas=canvas,
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="s", a="A", b="B"),
+            PointOn(id="D", on="s", how=PointOnIntent(constraints=[
+                NotNearConstraint(point="A", min_dist=1.5),
+            ])),
+        ]
+    ), rng=Random(0))
+    D = sym["D"]
+    d = math.sqrt(float(D.x)**2 + float(D.y)**2)
+    assert d > 1.5

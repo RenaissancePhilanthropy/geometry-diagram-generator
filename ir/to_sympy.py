@@ -89,7 +89,7 @@ def _compile_one(
 
         case ir.PointOn(on=on_id, how=how):
             obj = ref(on_id)
-            return _point_on_object(obj, how, rng, did)
+            return _point_on_object(obj, how, sym, rng, did)
 
         case ir.PointMidpoint(p=p_id, q=q_id):
             return spg.Segment(ref(p_id), ref(q_id)).midpoint
@@ -335,6 +335,7 @@ def _apply_pick(
 def _point_on_object(
     obj: Any,
     how: ir.PointOnHow,
+    sym: SymTable,
     rng: Random,
     def_id: str,
 ) -> spg.Point:
@@ -345,6 +346,8 @@ def _point_on_object(
         case ir.PointOnRandom():
             t = _sample_param(obj, rng)
             return _eval_param(obj, t, def_id)
+        case ir.PointOnIntent(constraints=constraints):
+            return _point_on_intent(obj, constraints, sym, rng, def_id)
         case _:
             raise IRCompileError(def_id, f"unhandled PointOnHow kind: {how.kind!r}")
 
@@ -371,6 +374,61 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
         apt = obj.arbitrary_point(sym_t)
         return spg.Point(apt.x.subs(sym_t, sp.S(t)), apt.y.subs(sym_t, sp.S(t)))
     raise IRCompileError(def_id, f"cannot place point on object of type {type(obj).__name__}")
+
+
+def _point_on_intent(
+    obj: Any,
+    constraints: list[ir.SpatialConstraint],
+    sym: SymTable,
+    rng: Random,
+    def_id: str,
+    max_attempts: int = 200,
+) -> spg.Point:
+    """Sample points on obj until all constraints are satisfied."""
+    constraint_failures: dict[str, int] = {}
+    for _ in range(max_attempts):
+        t = _sample_param(obj, rng)
+        candidate = _eval_param(obj, t, def_id)
+        ok = True
+        for c in constraints:
+            if not _check_spatial_constraint(c, candidate, sym):
+                constraint_failures[c.kind] = constraint_failures.get(c.kind, 0) + 1
+                ok = False
+                break
+        if ok:
+            return candidate
+    most_failed = max(constraint_failures, key=lambda k: constraint_failures[k], default="unknown")
+    raise IRCompileError(
+        def_id,
+        f"Could not satisfy all constraints after {max_attempts} attempts; "
+        f"most blocking: {most_failed!r}"
+    )
+
+
+def _check_spatial_constraint(
+    constraint: ir.SpatialConstraint,
+    candidate: spg.Point,
+    sym: SymTable,
+) -> bool:
+    match constraint:
+        case ir.SameSideConstraint(line=line_pts, ref=ref_id):
+            a, b, ref = sym[line_pts[0]], sym[line_pts[1]], sym[ref_id]
+            sign_ref = float((_cross_sign(a, b, ref)).evalf())
+            sign_cand = float((_cross_sign(a, b, candidate)).evalf())
+            return (sign_ref * sign_cand) > 0
+
+        case ir.NotNearConstraint(point=pt_id, min_dist=min_d):
+            ref_pt = sym[pt_id]
+            return float(candidate.distance(ref_pt).evalf()) >= min_d
+
+        case ir.ArcBetweenConstraint():
+            return True  # TODO: implement full arc check
+
+        case ir.BeyondConstraint():
+            return True  # TODO: implement for segment parameterization
+
+        case _:
+            return True
 
 
 def _angle_bisector_line(
