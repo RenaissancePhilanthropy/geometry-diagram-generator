@@ -15,7 +15,7 @@ from ir.ir import (
     Canvas, Params,
     DiagramIR,
     PointFixed, PointFree, PointOn, PointMidpoint, PointRotate,
-    PointTriangleCenter, PointIntersection,
+    PointTriangleCenter, PointIntersection, PointBetween,
     Segment, Ray,
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
     LineAngleBisector, LineTangent,
@@ -24,7 +24,6 @@ from ir.ir import (
     PointOnParam, PointOnRandom,
     PickIndex, PickClosestTo, PickOnObject,
 )
-from ir.ir import PointFoot
 from ir.to_sympy import compile_defs
 from ir.errors import UndefinedRefError, IntersectionError, PickError, ExprEvalError
 
@@ -131,6 +130,49 @@ def test_polygon():
 # ---------------------------------------------------------------------------
 # 2. Derived points
 # ---------------------------------------------------------------------------
+
+def test_point_between_float_ratio():
+    """ratio=0.25 → 1/4 of the way from A to B."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointBetween(id="D", a="A", b="B", ratio=0.25),
+    )
+    assert approx(sym["D"].x, 1.0)
+    assert approx(sym["D"].y, 0.0)
+
+
+def test_point_between_string_ratio():
+    """'1:2' → 1/(1+2) = 1/3 from A to B."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=3, y=0),
+        PointBetween(id="D", a="A", b="B", ratio="1:2"),
+    )
+    assert approx(sym["D"].x, 1.0)
+    assert approx(sym["D"].y, 0.0)
+
+
+def test_point_between_default_midpoint():
+    """ratio=None defaults to 0.5 (midpoint)."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointBetween(id="M", a="A", b="B"),
+    )
+    assert approx(sym["M"].x, 2.0)
+    assert approx(sym["M"].y, 0.0)
+
+
+def test_point_between_diagonal():
+    """Works for non-axis-aligned segments."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=4),
+        PointBetween(id="D", a="A", b="B", ratio=0.5),
+    )
+    assert approx(sym["D"].x, 2.0)
+    assert approx(sym["D"].y, 2.0)
 
 def test_point_midpoint():
     sym = _compile(
@@ -525,46 +567,3 @@ def test_params_assign():
     sym = compile_defs(diag)
     assert sym["P"].x == sp.Integer(3)
     assert sym["P"].y == sp.Integer(4)
-
-
-# ---------------------------------------------------------------------------
-# 11. PointFoot
-# ---------------------------------------------------------------------------
-
-def test_point_foot_onto_line():
-    """Foot of perpendicular from C=(1,3) to x-axis should be (1,0)."""
-    sym = _compile(
-        PointFixed(id="A", x=0, y=0),
-        PointFixed(id="B", x=4, y=0),
-        PointFixed(id="C", x=1, y=3),
-        LineThrough(id="l_AB", p="A", q="B"),
-        PointFoot(id="H", source="C", onto="l_AB"),
-    )
-    assert approx(sym["H"].x, 1.0)
-    assert approx(sym["H"].y, 0.0)
-
-
-def test_point_foot_onto_segment():
-    """Foot should work when onto is a Segment."""
-    sym = _compile(
-        PointFixed(id="A", x=0, y=0),
-        PointFixed(id="B", x=4, y=0),
-        PointFixed(id="C", x=2, y=3),
-        Segment(id="s_AB", a="A", b="B"),
-        PointFoot(id="H", source="C", onto="s_AB"),
-    )
-    assert approx(sym["H"].x, 2.0)
-    assert approx(sym["H"].y, 0.0)
-
-
-def test_point_foot_onto_ray():
-    """Foot should work when onto is a Ray."""
-    sym = _compile(
-        PointFixed(id="O", x=0, y=0),
-        PointFixed(id="D", x=1, y=0),
-        PointFixed(id="C", x=3, y=4),
-        Ray(id="ray", a="O", b="D"),
-        PointFoot(id="H", source="C", onto="ray"),
-    )
-    assert approx(sym["H"].x, 3.0)
-    assert approx(sym["H"].y, 0.0)

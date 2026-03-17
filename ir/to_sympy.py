@@ -94,22 +94,11 @@ def _compile_one(
         case ir.PointMidpoint(p=p_id, q=q_id):
             return spg.Segment(ref(p_id), ref(q_id)).midpoint
 
-        case ir.PointFoot(source=source_id, onto=onto_id):
-            source_pt = ref(source_id)
-            onto_obj = ref(onto_id)
-            # Project onto the underlying infinite line (works for Line/Segment/Ray)
-            if isinstance(onto_obj, spg.Line):
-                line = onto_obj
-            elif isinstance(onto_obj, (spg.Segment, spg.Ray)):
-                line = spg.Line(onto_obj.p1, onto_obj.p2)
-            else:
-                raise IRCompileError(did, f"point_foot: 'onto' must be a line/segment/ray, got {type(onto_obj).__name__}")
-            perp = line.perpendicular_line(source_pt)
-            candidates = line.intersection(perp)
-            pts = [c for c in candidates if isinstance(c, spg.Point)]
-            if not pts:
-                raise IntersectionError(did, f"no foot from {source_id!r} onto {onto_id!r}")
-            return pts[0]
+        case ir.PointBetween(a=a_id, b=b_id, ratio=ratio):
+            a = ref(a_id)
+            b = ref(b_id)
+            t = sp.S(_parse_between_ratio(ratio))
+            return spg.Point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))
 
         case ir.PointRotate(center=center_id, source=source_id, angle=angle):
             return ref(source_id).rotate(ev(angle), ref(center_id))
@@ -210,6 +199,23 @@ def _eval_expr(
         return sp.sympify(raw, locals={"pi": sp.pi, "sqrt": sp.sqrt, "E": sp.E, **params})
     except Exception as exc:
         raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
+
+
+def _parse_between_ratio(ratio: float | str | None) -> float:
+    """Convert a ratio spec to a float t in [0, 1]."""
+    if ratio is None:
+        return 0.5
+    if isinstance(ratio, (int, float)):
+        return float(ratio)
+    # Parse "m:n" string
+    parts = str(ratio).split(":")
+    if len(parts) == 2:
+        try:
+            m, n = float(parts[0]), float(parts[1])
+            return m / (m + n)
+        except (ValueError, ZeroDivisionError):
+            pass
+    raise IRCompileError("<parse_ratio>", f"Cannot parse ratio {ratio!r}; expected float or 'M:N'")
 
 
 def _resolve(sym: SymTable, ref_id: str, *, def_id: str) -> Any:

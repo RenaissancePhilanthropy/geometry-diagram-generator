@@ -220,12 +220,16 @@ class PointMidpoint(DefBase):
     q: PointId
 
 
-class PointFoot(DefBase):
-    """Foot of the perpendicular from `source` to the line containing `onto`.
-    Works for line/segment/ray — always projects onto the infinite line."""
-    kind: Literal["point_foot"] = "point_foot"
-    source: PointId
-    onto: ObjId
+class PointBetween(DefBase):
+    """A point on the segment from `a` to `b` at position given by `ratio`.
+
+    ratio: float 0-1 (fraction from a toward b), or string "m:n" (m parts
+           from a, n parts toward b). Defaults to 0.5 (midpoint).
+    """
+    kind: Literal["point_between"] = "point_between"
+    a: PointId
+    b: PointId
+    ratio: Optional[Union[float, str]] = None
 
 
 class PointTriangleCenter(DefBase):
@@ -272,7 +276,7 @@ class PointIntersection(DefBase):
 
 DefStmt = Annotated[
     Union[
-        PointFixed, PointFree, PointOn, PointMidpoint, PointRotate, PointFoot,
+        PointFixed, PointFree, PointOn, PointMidpoint, PointBetween, PointRotate,
         PointTriangleCenter, PointIntersection,
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
