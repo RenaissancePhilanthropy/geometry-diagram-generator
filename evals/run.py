@@ -318,7 +318,7 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
 
     match ptype:
         case "right_angle":
-            a, o, b = args[0]
+            a, o, b = args[0], args[1], args[2]
             A, O, B = pt(a), pt(o), pt(b)
             va = (A[0] - O[0], A[1] - O[1])
             vb = (B[0] - O[0], B[1] - O[1])
@@ -341,11 +341,11 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
             return ok, "" if ok else f"|MA|={d_ma:.4f} ≠ |MB|={d_mb:.4f}"
 
         case "collinear":
-            pts = [pt(n) for n in args[0]]
+            pts = [pt(n) for n in args]
             (x1, y1), (x2, y2), (x3, y3) = pts[0], pts[1], pts[2]
             cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
             ok = abs(cross) < tol
-            return ok, "" if ok else f"Points {args[0]} are not collinear (cross={cross:.4f})"
+            return ok, "" if ok else f"Points {args} are not collinear (cross={cross:.4f})"
 
         case "equal_lengths":
             d1 = dist(pt(args[0][0]), pt(args[0][1]))
@@ -373,7 +373,7 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
 
         case "point_on_line" | "point_on_segment":
             P = pt(args[0])
-            A, B = pt(args[1][0]), pt(args[1][1])
+            A, B = pt(args[1]), pt(args[2])
             dx, dy = B[0] - A[0], B[1] - A[1]
             length = math.sqrt(dx**2 + dy**2)
             if length < 1e-12:
@@ -466,6 +466,8 @@ async def run_scenario(
         except Exception:
             pass
         record["ir_diagnostics"] = ir_diagnostics_data
+        record["input_tokens"] = result.input_tokens
+        record["output_tokens"] = result.output_tokens
 
         sympy_property_checks: list[dict] = []
         if result.sym_table is not None and scenario.get("expected_properties"):

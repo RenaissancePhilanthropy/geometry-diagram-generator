@@ -34,6 +34,8 @@ class StructuredRunResult:
     tikz: str
     svg: str
     sym_table: dict | None = None  # SymPy symbol table float coords, runtime-only
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class StructureStrategy(SubstanceStrategy):
@@ -74,6 +76,8 @@ class StructureStrategy(SubstanceStrategy):
         Returns a StructuredRunResult with diagram_ir, tikz, and svg.
         """
         last_error: str = ""
+        total_input_tokens: int = 0
+        total_output_tokens: int = 0
 
         for attempt in range(MAX_RETRIES):
             user_prompt = prompt
@@ -91,6 +95,9 @@ class StructureStrategy(SubstanceStrategy):
                 output_type=DiagramIR,
             )
             response = await ir_agent.run(user_prompt)
+            usage = response.usage()
+            total_input_tokens += usage.input_tokens or 0
+            total_output_tokens += usage.output_tokens or 0
             diagram_ir = response.output
             logger.info(
                 "Attempt %d: DiagramIR has %d defs, %d checks, %d render ops",
@@ -154,7 +161,14 @@ class StructureStrategy(SubstanceStrategy):
                 for k, v in sym.items()
                 if isinstance(v, spg.Point)
             }
-            return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float)
+            return StructuredRunResult(
+                diagram_ir=diagram_ir,
+                tikz=tikz,
+                svg=svg,
+                sym_table=sym_float,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+            )
 
         raise RuntimeError(
             f"StructureStrategy failed after {MAX_RETRIES} attempts. "

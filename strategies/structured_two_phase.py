@@ -38,13 +38,17 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
         model: str = "anthropic:claude-sonnet-4-6",
     ) -> StructuredRunResult:
         last_error: str | None = None
+        total_input_tokens: int = 0
+        total_output_tokens: int = 0
 
         for phase1_attempt in range(MAX_PHASE1_RETRIES):
             planner_prompt = prompt
             if phase1_attempt > 0 and last_error:
                 planner_prompt += f"\n\nPrevious plan led to: {last_error}\nRevise your plan."
 
-            plan = await self._generate_plan(planner_prompt, model)
+            plan, plan_usage = await self._generate_plan(planner_prompt, model)
+            total_input_tokens += plan_usage[0]
+            total_output_tokens += plan_usage[1]
 
             for phase2_attempt in range(MAX_PHASE2_RETRIES):
                 constructor_prompt = self._build_constructor_prompt(prompt, plan)
@@ -52,8 +56,12 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
                     constructor_prompt += f"\n\nPrevious attempt failed: {last_error}\nCorrect the DiagramIR."
 
                 try:
-                    diagram = await self._generate_diagram(constructor_prompt, model)
+                    diagram, diag_usage = await self._generate_diagram(constructor_prompt, model)
+                    total_input_tokens += diag_usage[0]
+                    total_output_tokens += diag_usage[1]
                     result = await _run_ir_pipeline(diagram)
+                    result.input_tokens = total_input_tokens
+                    result.output_tokens = total_output_tokens
                     return result
                 except Exception as exc:
                     last_error = str(exc)
@@ -65,23 +73,25 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
             f"Last error: {last_error}"
         )
 
-    async def _generate_plan(self, prompt: str, model: str) -> ConstructionPlan:
+    async def _generate_plan(self, prompt: str, model: str) -> tuple[ConstructionPlan, tuple[int, int]]:
         agent = Agent(
             model=model,
             output_type=ConstructionPlan,
             instructions=TWO_PHASE_PLANNER_INSTRUCTIONS,
         )
         result = await agent.run(prompt)
-        return result.output
+        usage = result.usage()
+        return result.output, (usage.input_tokens or 0, usage.output_tokens or 0)
 
-    async def _generate_diagram(self, prompt: str, model: str) -> DiagramIR:
+    async def _generate_diagram(self, prompt: str, model: str) -> tuple[DiagramIR, tuple[int, int]]:
         agent = Agent(
             model=model,
             output_type=DiagramIR,
             instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
         )
         result = await agent.run(prompt)
-        return result.output
+        usage = result.usage()
+        return result.output, (usage.input_tokens or 0, usage.output_tokens or 0)
 
     def _build_constructor_prompt(self, original_prompt: str, plan: ConstructionPlan) -> str:
         plan_text = "\n".join(

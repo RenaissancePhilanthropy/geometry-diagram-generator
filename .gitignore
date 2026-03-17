@@ -25,3 +25,6 @@ evals/results/
 
 # Git worktrees
 .worktrees/
+
+# Superpowers plans
+docs/superpowers/
