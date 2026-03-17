@@ -47,6 +47,7 @@ load_dotenv()
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
+from evals.ir_diagnostics import classify_ir
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
@@ -275,6 +276,118 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# SymPy property validation helpers
+# ---------------------------------------------------------------------------
+
+def _validate_properties_sympy(
+    expected_properties: list[dict],
+    sym_float: dict,
+    tol: float = 5e-3,
+) -> list[dict]:
+    """Validate scenario expected_properties against a float-coords symbol table.
+    sym_float maps point_id -> (x, y) float tuples.
+    Returns list of {name, type, passed, message} dicts.
+    """
+    import math
+    results = []
+    for prop in expected_properties:
+        name = prop.get("name", "")
+        ptype = prop.get("type", "")
+        args = prop.get("args", [])
+        try:
+            passed, msg = _check_sympy_property(ptype, args, sym_float, tol)
+        except Exception as exc:
+            passed, msg = False, f"Error: {exc}"
+        results.append({"name": name, "type": ptype, "passed": passed, "message": msg})
+    return results
+
+
+def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -> tuple[bool, str]:
+    import math
+
+    def pt(name: str) -> tuple[float, float]:
+        p = sym_float.get(name)
+        if p is None:
+            raise KeyError(f"Point {name!r} not in symbol table")
+        return p
+
+    def dist(a: tuple, b: tuple) -> float:
+        return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
+
+    match ptype:
+        case "right_angle":
+            a, o, b = args[0]
+            A, O, B = pt(a), pt(o), pt(b)
+            va = (A[0] - O[0], A[1] - O[1])
+            vb = (B[0] - O[0], B[1] - O[1])
+            dot = va[0]*vb[0] + va[1]*vb[1]
+            mag_a = math.sqrt(va[0]**2 + va[1]**2)
+            mag_b = math.sqrt(vb[0]**2 + vb[1]**2)
+            if mag_a < 1e-12 or mag_b < 1e-12:
+                return False, "Degenerate angle"
+            cos_v = max(-1.0, min(1.0, dot / (mag_a * mag_b)))
+            ang = math.acos(cos_v)
+            ok = abs(ang - math.pi / 2) < tol
+            return ok, "" if ok else f"angle={math.degrees(ang):.2f}° (expected 90°)"
+
+        case "midpoint":
+            m_id, a_id, b_id = args[0], args[1], args[2]
+            M, A, B = pt(m_id), pt(a_id), pt(b_id)
+            d_ma = dist(M, A)
+            d_mb = dist(M, B)
+            ok = abs(d_ma - d_mb) < tol
+            return ok, "" if ok else f"|MA|={d_ma:.4f} ≠ |MB|={d_mb:.4f}"
+
+        case "collinear":
+            pts = [pt(n) for n in args[0]]
+            (x1, y1), (x2, y2), (x3, y3) = pts[0], pts[1], pts[2]
+            cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
+            ok = abs(cross) < tol
+            return ok, "" if ok else f"Points {args[0]} are not collinear (cross={cross:.4f})"
+
+        case "equal_lengths":
+            d1 = dist(pt(args[0][0]), pt(args[0][1]))
+            d2 = dist(pt(args[1][0]), pt(args[1][1]))
+            ok = abs(d1 - d2) < tol
+            return ok, "" if ok else f"|{args[0]}|={d1:.4f} ≠ |{args[1]}|={d2:.4f}"
+
+        case "parallel":
+            A, B = pt(args[0][0]), pt(args[0][1])
+            C, D = pt(args[1][0]), pt(args[1][1])
+            v1 = (B[0] - A[0], B[1] - A[1])
+            v2 = (D[0] - C[0], D[1] - C[1])
+            cross = v1[0]*v2[1] - v1[1]*v2[0]
+            ok = abs(cross) < tol
+            return ok, "" if ok else "Lines are not parallel"
+
+        case "perpendicular":
+            A, B = pt(args[0][0]), pt(args[0][1])
+            C, D = pt(args[1][0]), pt(args[1][1])
+            v1 = (B[0] - A[0], B[1] - A[1])
+            v2 = (D[0] - C[0], D[1] - C[1])
+            dot = v1[0]*v2[0] + v1[1]*v2[1]
+            ok = abs(dot) < tol
+            return ok, "" if ok else f"Lines not perpendicular (dot={dot:.4f})"
+
+        case "point_on_line" | "point_on_segment":
+            P = pt(args[0])
+            A, B = pt(args[1][0]), pt(args[1][1])
+            dx, dy = B[0] - A[0], B[1] - A[1]
+            length = math.sqrt(dx**2 + dy**2)
+            if length < 1e-12:
+                return False, "Degenerate line"
+            cross = abs((P[0] - A[0]) * dy - (P[1] - A[1]) * dx) / length
+            ok = cross < tol
+            return ok, "" if ok else f"{args[0]} not on line (dist={cross:.4f})"
+
+        case "label_present" | "mark_present":
+            return True, "(skipped: rendering-only check)"
+
+        case _:
+            return True, f"(skipped: unsupported type {ptype!r})"
+
+
+# ---------------------------------------------------------------------------
 # Per-scenario runner
 # ---------------------------------------------------------------------------
 
@@ -318,6 +431,8 @@ async def run_scenario(
         "output_tokens": None,
         "duration_s": None,
         "error": None,
+        "ir_diagnostics": None,
+        "sympy_property_checks": [],
         "llm_judge_score": None,
         "llm_judge_reasoning": None,
         "human_score": None,
@@ -342,6 +457,21 @@ async def run_scenario(
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
         svg = result.svg
+
+        ir_diagnostics_data = None
+        try:
+            ir_diagnostics_data = classify_ir(result.diagram_ir).to_dict()
+        except Exception:
+            pass
+        record["ir_diagnostics"] = ir_diagnostics_data
+
+        sympy_property_checks: list[dict] = []
+        if result.sym_table is not None and scenario.get("expected_properties"):
+            sympy_property_checks = _validate_properties_sympy(
+                scenario["expected_properties"],
+                result.sym_table,
+            )
+        record["sympy_property_checks"] = sympy_property_checks
     else:
         messages = result.all_messages()
         usage = result.usage()
@@ -442,20 +572,24 @@ async def run_scenario(
 
     # LLM judge (code review)
     if llm_judge and tikz_code:
-        try:
-            from util.llm_judge import judge_tikz_code
-            judge_result = await judge_tikz_code(
-                prompt=scenario["prompt"],
-                tikz_code=tikz_code,
-                tkzelements_code=record["tkzelements_code"],
-                model=judge_model,
-            )
-            record["llm_judge_score"] = judge_result["score"]
-            record["llm_judge_reasoning"] = judge_result["reasoning"]
-            record["llm_judge_details"] = judge_result
-        except Exception as e:
+        if strategy_name not in ("structured",):
+            try:
+                from util.llm_judge import judge_tikz_code
+                judge_result = await judge_tikz_code(
+                    prompt=scenario["prompt"],
+                    tikz_code=tikz_code,
+                    tkzelements_code=record["tkzelements_code"],
+                    model=judge_model,
+                )
+                record["llm_judge_score"] = judge_result["score"]
+                record["llm_judge_reasoning"] = judge_result["reasoning"]
+                record["llm_judge_details"] = judge_result
+            except Exception as e:
+                record["llm_judge_score"] = None
+                record["llm_judge_reasoning"] = f"Judge error: {e}"
+        else:
             record["llm_judge_score"] = None
-            record["llm_judge_reasoning"] = f"Judge error: {e}"
+            record["llm_judge_reasoning"] = "(skipped for structured strategy)"
 
     # Visual judge (SVG → image → LLM)
     if visual_judge:

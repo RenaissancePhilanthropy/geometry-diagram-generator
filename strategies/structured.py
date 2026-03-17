@@ -4,6 +4,8 @@ import json
 import logging
 from dataclasses import dataclass
 
+import sympy.geometry as spg
+
 from pydantic_ai import Agent, ModelRetry
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
@@ -32,6 +34,7 @@ class StructuredRunResult:
     diagram_ir: DiagramIR
     tikz: str
     svg: str
+    sym_table: dict | None = None  # SymPy symbol table float coords, runtime-only
 
 
 class StructureStrategy(SubstanceStrategy):
@@ -148,7 +151,12 @@ class StructureStrategy(SubstanceStrategy):
                 continue
 
             logger.info("Rendered SVG (%d chars)", len(svg))
-            return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg)
+            sym_float = {
+                k: (float(v.x), float(v.y))
+                for k, v in sym.items()
+                if isinstance(v, spg.Point)
+            }
+            return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float)
 
         raise RuntimeError(
             f"StructureStrategy failed after {MAX_RETRIES} attempts. "
