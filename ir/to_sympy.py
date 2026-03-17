@@ -94,6 +94,23 @@ def _compile_one(
         case ir.PointMidpoint(p=p_id, q=q_id):
             return spg.Segment(ref(p_id), ref(q_id)).midpoint
 
+        case ir.PointFoot(source=source_id, onto=onto_id):
+            source_pt = ref(source_id)
+            onto_obj = ref(onto_id)
+            # Project onto the underlying infinite line (works for Line/Segment/Ray)
+            if isinstance(onto_obj, spg.Line):
+                line = onto_obj
+            elif isinstance(onto_obj, (spg.Segment, spg.Ray)):
+                line = spg.Line(onto_obj.p1, onto_obj.p2)
+            else:
+                raise IRCompileError(did, f"point_foot: 'onto' must be a line/segment/ray, got {type(onto_obj).__name__}")
+            perp = line.perpendicular_line(source_pt)
+            candidates = line.intersection(perp)
+            pts = [c for c in candidates if isinstance(c, spg.Point)]
+            if not pts:
+                raise IntersectionError(did, f"no foot from {source_id!r} onto {onto_id!r}")
+            return pts[0]
+
         case ir.PointRotate(center=center_id, source=source_id, angle=angle):
             return ref(source_id).rotate(ev(angle), ref(center_id))
 

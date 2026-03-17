@@ -220,6 +220,14 @@ class PointMidpoint(DefBase):
     q: PointId
 
 
+class PointFoot(DefBase):
+    """Foot of the perpendicular from `source` to the line containing `onto`.
+    Works for line/segment/ray — always projects onto the infinite line."""
+    kind: Literal["point_foot"] = "point_foot"
+    source: PointId
+    onto: ObjId
+
+
 class PointTriangleCenter(DefBase):
     """Named center of a triangle. Maps to Triangle(a,b,c).<which> in SymPy."""
     kind: Literal["point_triangle_center"] = "point_triangle_center"
@@ -264,7 +272,7 @@ class PointIntersection(DefBase):
 
 DefStmt = Annotated[
     Union[
-        PointFixed, PointFree, PointOn, PointMidpoint, PointRotate,
+        PointFixed, PointFree, PointOn, PointMidpoint, PointRotate, PointFoot,
         PointTriangleCenter, PointIntersection,
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
