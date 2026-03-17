@@ -393,5 +393,60 @@ def main() -> None:
     sys.exit(1 if regressions else 0)
 
 
+def compare_runs_with_taxonomy(
+    records_a: list[dict],
+    records_b: list[dict],
+    label_a: str = "A",
+    label_b: str = "B",
+) -> str:
+    """Compare two sets of eval records with failure-mode breakdown.
+
+    Each record must have: scenario_id, gate_status, ir_diagnostics (dict or None).
+    Returns a formatted text table.
+    """
+    def _group(records):
+        by_scenario: dict[str, list] = defaultdict(list)
+        for r in records:
+            by_scenario[r["scenario_id"]].append(r)
+        return by_scenario
+
+    group_a = _group(records_a)
+    group_b = _group(records_b)
+    scenarios = sorted(set(group_a) | set(group_b))
+
+    header = (
+        f"{'Scenario':<30} {label_a+' pass':<12} {label_b+' pass':<12} "
+        f"{'hardcoded':<12} {'parametric':<12} {'missing_pick':<12}"
+    )
+    lines = [header, "-" * 90]
+
+    for s in scenarios:
+        ra = group_a.get(s, [])
+        rb = group_b.get(s, [])
+
+        def pass_rate(records):
+            if not records:
+                return "N/A"
+            passing = sum(1 for r in records if r.get("gate_status") == "pass")
+            return f"{passing}/{len(records)}"
+
+        def avg_diag(records, key):
+            vals = [
+                r.get("ir_diagnostics", {}).get(key, 0)
+                for r in records
+                if r.get("ir_diagnostics")
+            ]
+            return f"{sum(vals)/len(vals):.1f}" if vals else "N/A"
+
+        lines.append(
+            f"{s:<30} {pass_rate(ra):<12} {pass_rate(rb):<12} "
+            f"{avg_diag(rb, 'hardcoded_count'):<12} "
+            f"{avg_diag(rb, 'parametric_count'):<12} "
+            f"{avg_diag(rb, 'missing_pick_count'):<12}"
+        )
+
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     main()
