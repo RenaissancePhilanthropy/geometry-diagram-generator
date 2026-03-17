@@ -10,7 +10,6 @@ from pydantic_ai import Agent, ModelRetry
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
-from strategies.prompt_hints import augment_structured_prompt
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
 from ir.checks import run_checks, check_render_angles, CheckResult
@@ -75,13 +74,12 @@ class StructureStrategy(SubstanceStrategy):
         Returns a StructuredRunResult with diagram_ir, tikz, and svg.
         """
         last_error: str = ""
-        hint_prompt = augment_structured_prompt(prompt)
 
         for attempt in range(MAX_RETRIES):
-            user_prompt = hint_prompt
+            user_prompt = prompt
             if attempt > 0:
                 user_prompt = (
-                    f"{hint_prompt}\n\n"
+                    f"{prompt}\n\n"
                     f"Previous attempt failed: {last_error}\n"
                     f"Please produce a corrected DiagramIR."
                 )
@@ -175,7 +173,7 @@ async def _run_pipeline_once(prompt: str, model: str) -> str:
         instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
         output_type=DiagramIR,
     )
-    response = await ir_agent.run(augment_structured_prompt(prompt))
+    response = await ir_agent.run(prompt)
     diagram_ir = response.output
 
     try:
