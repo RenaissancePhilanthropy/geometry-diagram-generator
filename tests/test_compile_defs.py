@@ -14,7 +14,7 @@ import sympy.geometry as spg
 from ir.ir import (
     Canvas, Params,
     DiagramIR,
-    PointFixed, PointFree, PointOn, PointMidpoint, PointRotate, PointReflect,
+    PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointRotate, PointReflect,
     PointTriangleCenter, PointIntersection, PointBetween,
     Segment, Ray,
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
@@ -27,6 +27,7 @@ from ir.ir import (
 )
 from ir.to_sympy import compile_defs
 from ir.errors import UndefinedRefError, IntersectionError, PickError, ExprEvalError
+from ir.auto_checks import generate_auto_checks, run_auto_checks
 
 # Import the scenario registry populated at module load time
 import ir.test_scenarios as _ts
@@ -683,3 +684,40 @@ def test_point_on_intent_not_near():
     D = sym["D"]
     d = math.sqrt(float(D.x)**2 + float(D.y)**2)
     assert d > 1.5
+
+
+# ---------------------------------------------------------------------------
+# 13. Auto-checks
+# ---------------------------------------------------------------------------
+
+def test_auto_checks_intersection_contains():
+    """Auto-checks for PointIntersection verify containment on both parents."""
+    diag = DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointFixed(id="C", x=2, y=-2),
+        PointFixed(id="D", x=2, y=2),
+        Segment(id="s_AB", a="A", b="B"),
+        Segment(id="s_CD", a="C", b="D"),
+        PointIntersection(id="I", obj1="s_AB", obj2="s_CD"),
+    ])
+    sym = compile_defs(diag)
+    checks = generate_auto_checks(diag)
+    # Should have 2 contains checks (I on s_AB and I on s_CD)
+    assert len([c for c in checks if c.kind == "contains"]) == 2
+    results = run_auto_checks(diag, sym)
+    assert all(r.passed for r in results), [r.message for r in results if not r.passed]
+
+
+def test_auto_checks_foot_contains():
+    """Auto-checks for PointFoot verify foot lies on the target line."""
+    diag = DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointFixed(id="C", x=2, y=3),
+        LineThrough(id="l_AB", p="A", q="B"),
+        PointFoot(id="H", source="C", onto="l_AB"),
+    ])
+    sym = compile_defs(diag)
+    results = run_auto_checks(diag, sym)
+    assert all(r.passed for r in results)
