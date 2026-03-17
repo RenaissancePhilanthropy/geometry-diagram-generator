@@ -162,6 +162,52 @@ class StructureStrategy(SubstanceStrategy):
         )
 
 
+async def _run_ir_pipeline(
+    diagram_ir: DiagramIR,
+    renderer=None,
+) -> StructuredRunResult:
+    """Run the compile → check → tikz → render pipeline on a pre-built DiagramIR.
+
+    Raises on failure so the caller can handle retries.
+    """
+    try:
+        sym = compile_defs(diagram_ir)
+    except IRCompileError as e:
+        raise RuntimeError(f"IR compilation failed: {e}") from e
+
+    results: list[CheckResult] = run_checks(diagram_ir.checks, sym)
+    must_failures = [r for r in results if not r.passed and r.check.level == "must"]
+    if must_failures:
+        msgs = "\n".join(f"  - {r.message}" for r in must_failures)
+        raise RuntimeError(f"Geometric checks failed:\n{msgs}")
+
+    angle_errors = check_render_angles(diagram_ir)
+    if angle_errors:
+        msgs = "\n".join(f"  - {e}" for e in angle_errors)
+        raise RuntimeError(f"Invalid angle triples in render ops:\n{msgs}")
+
+    for r in results:
+        if not r.passed and r.check.level == "prefer":
+            logger.warning("Preferred check not satisfied: %s", r.message)
+
+    try:
+        tikz = ir_to_tikz(diagram_ir, sym)
+    except Exception as e:
+        raise RuntimeError(f"TikZ generation failed: {e}") from e
+
+    try:
+        svg = render_tikz(tikz)
+    except RuntimeError as e:
+        raise RuntimeError(f"TikZ rendering failed: {e}") from e
+
+    sym_float = {
+        k: (float(v.x), float(v.y))
+        for k, v in sym.items()
+        if isinstance(v, spg.Point)
+    }
+    return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float)
+
+
 async def _run_pipeline_once(prompt: str, model: str) -> str:
     """Run the full IR pipeline for a single attempt.
 

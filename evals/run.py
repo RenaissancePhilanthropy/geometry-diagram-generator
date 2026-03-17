@@ -54,6 +54,7 @@ from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from strategies.plan_and_code import PlanAndCodeStrategy
 from strategies.structured import StructureStrategy, StructuredRunResult
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
+from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -71,6 +72,7 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "plan_and_code": PlanAndCodeStrategy,
     "structured": StructureStrategy,
     "structured_plus_refine": StructuredPlusRefineStrategy,
+    "structured_two_phase": StructuredTwoPhaseStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
