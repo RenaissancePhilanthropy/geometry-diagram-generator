@@ -103,6 +103,20 @@ def _compile_one(
         case ir.PointRotate(center=center_id, source=source_id, angle=angle):
             return ref(source_id).rotate(ev(angle), ref(center_id))
 
+        case ir.PointReflect(source=source_id, across=across_id):
+            source_pt = ref(source_id)
+            across_obj = ref(across_id)
+            if isinstance(across_obj, spg.Point):
+                # Point symmetry: 2*center - source
+                return spg.Point(2 * across_obj.x - source_pt.x, 2 * across_obj.y - source_pt.y)
+            elif isinstance(across_obj, spg.Line):
+                return source_pt.reflect(across_obj)           # Point.reflect(Line) — NOT Line.reflect(Point)
+            elif isinstance(across_obj, (spg.Segment, spg.Ray)):
+                line = spg.Line(across_obj.p1, across_obj.p2)
+                return source_pt.reflect(line)                 # Point.reflect(Line) — NOT Line.reflect(Point)
+            else:
+                raise IRCompileError(did, f"point_reflect: 'across' must be a point or linear object, got {type(across_obj).__name__}")
+
         case ir.PointTriangleCenter(tri=tri_id, which=which):
             tri = ref(tri_id)
             return getattr(tri, which)

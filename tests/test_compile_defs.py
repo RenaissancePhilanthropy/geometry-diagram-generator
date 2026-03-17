@@ -14,7 +14,7 @@ import sympy.geometry as spg
 from ir.ir import (
     Canvas, Params,
     DiagramIR,
-    PointFixed, PointFree, PointOn, PointMidpoint, PointRotate,
+    PointFixed, PointFree, PointOn, PointMidpoint, PointRotate, PointReflect,
     PointTriangleCenter, PointIntersection, PointBetween,
     Segment, Ray,
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
@@ -556,7 +556,48 @@ def test_scenario_compiles(scenario_id: str, diagram: DiagramIR):
 
 
 # ---------------------------------------------------------------------------
-# 10. Params
+# 10. PointReflect
+# ---------------------------------------------------------------------------
+
+def test_point_reflect_across_point():
+    """Reflection of A=(1,2) across O=(3,3) should be (5,4)."""
+    sym = _compile(
+        PointFixed(id="A", x=1, y=2),
+        PointFixed(id="O", x=3, y=3),
+        PointReflect(id="A_prime", source="A", across="O"),
+    )
+    assert approx(sym["A_prime"].x, 5.0)
+    assert approx(sym["A_prime"].y, 4.0)
+
+
+def test_point_reflect_across_line():
+    """Reflection of A=(2,0) across the y-axis (x=0) should be (-2,0)."""
+    sym = _compile(
+        PointFixed(id="A", x=2, y=0),
+        PointFixed(id="P", x=0, y=0),
+        PointFixed(id="Q", x=0, y=1),
+        LineThrough(id="y_axis", p="P", q="Q"),
+        PointReflect(id="A_prime", source="A", across="y_axis"),
+    )
+    assert approx(sym["A_prime"].x, -2.0)
+    assert approx(sym["A_prime"].y, 0.0)
+
+
+def test_point_reflect_across_segment():
+    """Reflection across a segment should use the underlying line."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=2),
+        PointFixed(id="P", x=0, y=0),
+        PointFixed(id="Q", x=4, y=0),
+        Segment(id="seg", a="P", b="Q"),
+        PointReflect(id="A_prime", source="A", across="seg"),
+    )
+    assert approx(sym["A_prime"].x, 0.0)
+    assert approx(sym["A_prime"].y, -2.0)
+
+
+# ---------------------------------------------------------------------------
+# 11. Params
 # ---------------------------------------------------------------------------
 
 def test_params_assign():

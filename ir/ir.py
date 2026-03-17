@@ -263,6 +263,13 @@ class PointRotate(DefBase):
     angle: Union[int, float, str]  # radians; str allows symbolic (e.g. "pi/2")
 
 
+class PointReflect(DefBase):
+    """Reflection of `source` across a point (point symmetry) or line/segment/ray (mirror)."""
+    kind: Literal["point_reflect"] = "point_reflect"
+    source: PointId
+    across: ObjId  # a PointId (point reflection) or LineId/SegmentId/RayId (mirror)
+
+
 class PointIntersection(DefBase):
     """
     Intersection of two objects intended to yield a single point.
@@ -276,7 +283,7 @@ class PointIntersection(DefBase):
 
 DefStmt = Annotated[
     Union[
-        PointFixed, PointFree, PointOn, PointMidpoint, PointBetween, PointRotate,
+        PointFixed, PointFree, PointOn, PointMidpoint, PointBetween, PointRotate, PointReflect,
         PointTriangleCenter, PointIntersection,
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
