@@ -227,6 +227,8 @@ def _build_linear_pairs(diagram: ir.DiagramIR) -> set[frozenset]:
                 pts_on.setdefault(obj, set()).add(pid)
             case ir.PointMidpoint(id=pid, p=p, q=q):
                 pts_on.setdefault(f"__mid_{pid}", set()).update([pid, p, q])
+            case ir.PointFoot(id=pid, onto=obj):
+                pts_on.setdefault(obj, set()).add(pid)
             case ir.PointBetween(id=pid, a=a, b=b):
                 # PointBetween lies on the virtual segment a-b
                 pts_on.setdefault(f"__between_{pid}", set()).update([pid, a, b])
