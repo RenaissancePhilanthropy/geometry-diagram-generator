@@ -222,6 +222,9 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 | `point_rotate` | `center, source: PointId, angle: float or str` | Rotate source around center by angle (radians, positive = counter-clockwise) |
 | `point_triangle_center` | `tri: TriangleId, which: "circumcenter"/"incenter"/"centroid"/"orthocenter"` | Named triangle center |
 | `point_intersection` | `obj1, obj2: ObjId, pick: PickRule?` | Intersection of two objects |
+| `point_foot` | `source: PointId, onto: ObjId` (line/segment/ray) | Foot of perpendicular from source onto the line containing onto |
+| `point_between` | `a, b: PointId, ratio: float 0–1 or "m:n"` (default 0.5) | Point on segment from a to b at given fraction |
+| `point_reflect` | `source: PointId, across: ObjId` (point or line/segment/ray) | Reflection of source across a point (symmetry) or line (mirror) |
 
 **PickRule** (needed when intersection yields multiple candidates):
 - `{"kind": "index", "k": 0}` — take the k-th candidate
@@ -499,4 +502,12 @@ derived coordinates bypasses SymPy verification and is error-prone.
 10. **Do not use extra helper labels in place of required named points**.
 11. If you add coordinate-style labels, **the underlying point name must remain the
 required point name**.
+12. Prefer `point_foot` over the 3-step pattern `line_perp_through` + `point_intersection`:
+    use `{"kind": "point_foot", "id": "H", "source": "C", "onto": "l_AB"}`
+    to drop a perpendicular from C to line l_AB.
+13. Prefer `point_between` over `point_on` with a parametric `t`:
+    use `{"kind": "point_between", "id": "D", "a": "A", "b": "B", "ratio": 0.6}`
+    to place D 60% of the way from A to B along that segment.
+14. Prefer `point_reflect` over `point_rotate(angle=pi)` for point symmetry,
+    and over manual coordinate computation for mirror reflections.
 """
