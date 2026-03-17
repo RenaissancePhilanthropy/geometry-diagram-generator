@@ -130,7 +130,7 @@ def _compile_one(
             points = [c for c in candidates if isinstance(c, spg.Point)]
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
-            return _apply_pick(points, pick, sym, did)
+            return _apply_pick(points, pick, sym, did, canvas=canvas)
 
         # --- Lines ---
         case ir.LineThrough(p=p_id, q=q_id):
@@ -245,12 +245,37 @@ def _apply_pick(
     pick: ir.PickRule | None,
     sym: SymTable,
     def_id: str,
+    canvas: ir.Canvas | None = None,
 ) -> spg.Point2D:
     """Select one point from candidates using the pick rule."""
     if pick is None:
         if len(points) == 1:
             return points[0]
-        raise PickError(def_id, f"ambiguous: {len(points)} intersection candidates, no pick rule")
+        # Auto-pick heuristic: prefer in-canvas, then closest to centroid of
+        # previously-defined points. Known limitation: when both candidates are
+        # in-bounds (e.g. two intersections of a vertical line with a circle),
+        # the centroid tiebreaker picks the closest one to the current construction
+        # center of mass — this is arbitrary and may not match the LLM's intent.
+        # If the intended candidate matters, always provide an explicit pick rule.
+        candidates = list(points)
+        if canvas is not None:
+            in_bounds = [
+                p for p in points
+                if float(canvas.xmin) <= float(p.x) <= float(canvas.xmax)
+                and float(canvas.ymin) <= float(p.y) <= float(canvas.ymax)
+            ]
+            if len(in_bounds) == 1:
+                return in_bounds[0]
+            if in_bounds:
+                candidates = in_bounds
+        # Pick closest to centroid of previously-defined points
+        existing_pts = [v for v in sym.values() if isinstance(v, spg.Point)]
+        if existing_pts:
+            cx = sum(float(p.x) for p in existing_pts) / len(existing_pts)
+            cy = sum(float(p.y) for p in existing_pts) / len(existing_pts)
+            centroid = spg.Point(sp.Float(cx), sp.Float(cy))
+            return min(candidates, key=lambda p: float(p.distance(centroid).evalf()))
+        return candidates[0]
 
     match pick:
         case ir.PickIndex(k=k):

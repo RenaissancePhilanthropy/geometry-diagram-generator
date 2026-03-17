@@ -526,15 +526,43 @@ def test_no_intersection_parallel_lines():
 
 
 def test_ambiguous_pick_no_rule():
-    with pytest.raises(PickError):
-        _compile(
+    # With auto-pick heuristic, no PickError is raised; one of the two
+    # candidates is returned deterministically via centroid tiebreaker.
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        CircleCenterRadius(id="c", center="O", radius=1),
+        PointFixed(id="L", x=-2, y=0),
+        PointFixed(id="R", x=2, y=0),
+        LineThrough(id="l", p="L", q="R"),
+        PointIntersection(id="P", obj1="l", obj2="c"),  # no pick, uses auto-pick
+    )
+    P = sym["P"]
+    assert isinstance(P, spg.Point)
+    assert approx(P.y, 0.0)
+    assert abs(abs(float(P.x)) - 1.0) < 1e-9
+
+
+def test_auto_pick_line_circle_no_pick_rule():
+    """With no pick rule and 2 intersection candidates, auto-pick should resolve
+    to one candidate without raising PickError."""
+    canvas = Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5)
+    sym = compile_defs(DiagramIR(
+        canvas=canvas,
+        define=[
             PointFixed(id="O", x=0, y=0),
-            CircleCenterRadius(id="c", center="O", radius=1),
-            PointFixed(id="L", x=-2, y=0),
             PointFixed(id="R", x=2, y=0),
-            LineThrough(id="l", p="L", q="R"),
-            PointIntersection(id="P", obj1="l", obj2="c"),  # no pick, 2 candidates
-        )
+            CircleCenterPoint(id="c", center="O", through="R"),
+            PointFixed(id="P", x=0, y=-3),
+            PointFixed(id="Q", x=0, y=3),
+            LineThrough(id="l", p="P", q="Q"),
+            # No pick rule — should use auto-pick heuristic
+            PointIntersection(id="T", obj1="c", obj2="l"),
+        ]
+    ))
+    T = sym["T"]
+    # Should be one of (0, 2) or (0, -2)
+    assert approx(T.x, 0.0)
+    assert abs(abs(float(T.y)) - 2.0) < 1e-9
 
 
 def test_bad_expr():
