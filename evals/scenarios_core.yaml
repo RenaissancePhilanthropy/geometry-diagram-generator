@@ -152,3 +152,43 @@
     - name: right_angle_marked_at_M
       type: mark_present
       args: [right_angle, M]
+
+- id: two-tangent-lines
+  tier: 2
+  tags: [circle, tangent, core]
+  prompt: "Draw a circle with center O and two tangent lines from an external point P, touching the circle at points T1 and T2. Label O, P, T1, and T2."
+  required_labels: [O, P, T1, T2]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: PT1_equals_PT2
+      type: equal_lengths
+      args: [[P, T1], [P, T2]]
+    - name: right_angle_at_T1
+      type: right_angle
+      args: [P, T1, O]
+    - name: right_angle_at_T2
+      type: right_angle
+      args: [P, T2, O]
+    - name: T1_on_circle
+      type: point_on_circle
+      args: [T1, O, T2]
+
+- id: angle-bisectors-incenter
+  tier: 2
+  tags: [triangle, bisector, core]
+  prompt: "Draw triangle ABC with all three angle bisectors meeting at the incenter I. Label A, B, C, and I."
+  required_labels: [A, B, C, I]
+  expected_properties:
+    - name: AI_bisects_BAC
+      type: angle_bisector
+      args: [I, A, B, C]
+    - name: BI_bisects_ABC
+      type: angle_bisector
+      args: [I, B, A, C]
+    - name: CI_bisects_ACB
+      type: angle_bisector
+      args: [I, C, A, B]
+    - name: I_equidistant
+      type: equidistant_from_sides
+      args: [I, A, B, C]

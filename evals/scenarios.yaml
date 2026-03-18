@@ -168,6 +168,9 @@
     - name: B_C_D_collinear
       type: collinear
       args: [B, C, D]
+    - name: D_beyond_C
+      type: not_between
+      args: [D, B, C]
 
 - id: triangle-proportionality
   tier: 3
@@ -225,6 +228,10 @@
     - name: right_angle_marked_at_C
       type: mark_present
       args: [right_angle, C]
+  structural_checks:
+    - name: three_squares
+      type: polygon_count
+      args: {min: 3, sides: 4}
 
 - id: cyclic-quadrilateral
   tier: 3
@@ -256,6 +263,9 @@
     - name: H_altitude_from_A
       type: perpendicular
       args: [[A, H], [B, C]]
+    - name: G_is_centroid
+      type: centroid
+      args: [G, A, B, C]
 
 - id: transversal-angles
   tier: 3
@@ -320,3 +330,90 @@
     - name: right_angle_marked_at_M
       type: mark_present
       args: [right_angle, M]
+
+- id: two-tangent-lines
+  tier: 2
+  tags: [circle, tangent]
+  prompt: "Draw a circle with center O and two tangent lines from an external point P, touching the circle at points T1 and T2. Label O, P, T1, and T2."
+  required_labels: [O, P, T1, T2]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: PT1_equals_PT2
+      type: equal_lengths
+      args: [[P, T1], [P, T2]]
+    - name: right_angle_at_T1
+      type: right_angle
+      args: [P, T1, O]
+    - name: right_angle_at_T2
+      type: right_angle
+      args: [P, T2, O]
+    - name: T1_on_circle
+      type: point_on_circle
+      args: [T1, O, T2]
+
+- id: angle-bisectors-incenter
+  tier: 2
+  tags: [triangle, bisector]
+  prompt: "Draw triangle ABC with all three angle bisectors meeting at the incenter I. Label A, B, C, and I."
+  required_labels: [A, B, C, I]
+  expected_properties:
+    - name: AI_bisects_BAC
+      type: angle_bisector
+      args: [I, A, B, C]
+    - name: BI_bisects_ABC
+      type: angle_bisector
+      args: [I, B, A, C]
+    - name: CI_bisects_ACB
+      type: angle_bisector
+      args: [I, C, A, B]
+    - name: I_equidistant
+      type: equidistant_from_sides
+      args: [I, A, B, C]
+
+- id: nine-point-circle
+  tier: 3
+  tags: [triangle, circle, triangle-centers]
+  prompt: "Draw triangle ABC with the nine-point circle. Show the midpoints of each side: D on BC, E on AC, F on AB. Label the nine-point center N and all seven points A, B, C, D, E, F, N."
+  required_labels: [A, B, C, D, E, F, N]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: D_midpoint_BC
+      type: midpoint
+      args: [D, B, C]
+    - name: E_midpoint_AC
+      type: midpoint
+      args: [E, A, C]
+    - name: F_midpoint_AB
+      type: midpoint
+      args: [F, A, B]
+    - name: D_on_nine_point_circle
+      type: point_on_circle
+      args: [D, N, E]
+    - name: F_on_nine_point_circle
+      type: point_on_circle
+      args: [F, N, E]
+
+- id: napoleon-theorem
+  tier: 3
+  tags: [triangle, theorem, construction]
+  prompt: "Draw triangle ABC. On each side, construct an equilateral triangle pointing outward: triangle on BC with outer vertex P, on CA with outer vertex Q, on AB with outer vertex R. Find the centroids G1 (of triangle on BC), G2 (of triangle on CA), G3 (of triangle on AB). Label A, B, C, P, Q, R, G1, G2, G3 and show that G1, G2, G3 form an equilateral triangle."
+  required_labels: [A, B, C, G1, G2, G3]
+  expected_properties:
+    - name: G1G2G3_equilateral
+      type: equal_lengths
+      args: [[G1, G2], [G2, G3], [G3, G1]]
+    - name: G1_opposite_A_from_BC
+      type: opposite_side
+      args: [G1, A, B, C]
+    - name: G2_opposite_B_from_CA
+      type: opposite_side
+      args: [G2, B, C, A]
+    - name: G3_opposite_C_from_AB
+      type: opposite_side
+      args: [G3, C, A, B]
+  structural_checks:
+    - name: outer_triangles
+      type: polygon_count
+      args: {min: 4, sides: 3}

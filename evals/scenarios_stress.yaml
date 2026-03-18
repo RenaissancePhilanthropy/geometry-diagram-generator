@@ -129,6 +129,10 @@
     - name: right_angle_marked_at_C
       type: mark_present
       args: [right_angle, C]
+  structural_checks:
+    - name: three_squares
+      type: polygon_count
+      args: {min: 3, sides: 4}
 
 - id: cyclic-quadrilateral
   tier: 3
@@ -160,3 +164,29 @@
     - name: H_altitude_from_A
       type: perpendicular
       args: [[A, H], [B, C]]
+    - name: G_is_centroid
+      type: centroid
+      args: [G, A, B, C]
+
+- id: napoleon-theorem
+  tier: 3
+  tags: [triangle, theorem, construction]
+  prompt: "Draw triangle ABC. On each side, construct an equilateral triangle pointing outward: triangle on BC with outer vertex P, on CA with outer vertex Q, on AB with outer vertex R. Find the centroids G1 (of triangle on BC), G2 (of triangle on CA), G3 (of triangle on AB). Label A, B, C, P, Q, R, G1, G2, G3 and show that G1, G2, G3 form an equilateral triangle."
+  required_labels: [A, B, C, G1, G2, G3]
+  expected_properties:
+    - name: G1G2G3_equilateral
+      type: equal_lengths
+      args: [[G1, G2], [G2, G3], [G3, G1]]
+    - name: G1_opposite_A_from_BC
+      type: opposite_side
+      args: [G1, A, B, C]
+    - name: G2_opposite_B_from_CA
+      type: opposite_side
+      args: [G2, B, C, A]
+    - name: G3_opposite_C_from_AB
+      type: opposite_side
+      args: [G3, C, A, B]
+  structural_checks:
+    - name: outer_triangles
+      type: polygon_count
+      args: {min: 4, sides: 3}

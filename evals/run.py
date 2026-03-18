@@ -92,6 +92,10 @@ _SUPPORTED_PROPERTY_TYPES = {
     "label_present",
     "mark_present",
     "equidistant_from_sides",
+    "centroid",
+    "opposite_side",
+    "same_side",
+    "not_between",
 }
 
 # Tolerance for geometric checks. Relaxed from 1e-4 to handle LLM-chosen
@@ -256,6 +260,32 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 f"{where} ({scenario_id}): 'coordinate_tolerance' must be a positive number"
             )
 
+        # structural_checks: check structural properties of IR/TikZ (e.g. polygon count)
+        structural_checks = raw.get("structural_checks", [])
+        if structural_checks is None:
+            structural_checks = []
+        if not isinstance(structural_checks, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'structural_checks' must be a list when provided"
+            )
+        normalized_structural: list[dict[str, Any]] = []
+        for sidx, sc in enumerate(structural_checks, start=1):
+            sc_where = f"{where} ({scenario_id}) structural_checks[{sidx}]"
+            if not isinstance(sc, dict):
+                raise ValueError(f"{sc_where}: expected mapping/object")
+            sc_name = sc.get("name")
+            sc_type = sc.get("type")
+            sc_args = sc.get("args", {})
+            if not isinstance(sc_name, str) or not sc_name.strip():
+                raise ValueError(f"{sc_where}: 'name' must be a non-empty string")
+            if sc_type not in ("polygon_count",):
+                raise ValueError(
+                    f"{sc_where}: unsupported 'type'={sc_type!r}; supported: polygon_count"
+                )
+            if not isinstance(sc_args, dict):
+                raise ValueError(f"{sc_where}: 'args' must be an object")
+            normalized_structural.append({"name": sc_name, "type": sc_type, "args": sc_args})
+
         tier = raw.get("tier")
         if tier is not None and (not isinstance(tier, int) or tier < 1):
             raise ValueError(f"{where} ({scenario_id}): 'tier' must be a positive integer")
@@ -266,6 +296,7 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 "tags": list(tags),
                 "prompt": prompt,
                 "expected_properties": normalized_props,
+                "structural_checks": normalized_structural,
                 "required_labels": list(required_labels),
                 "required_entities": list(required_entities),
                 "required_canvas": normalized_canvas,
@@ -382,6 +413,137 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
             ok = cross < tol
             return ok, "" if ok else f"{args[0]} not on line (dist={cross:.4f})"
 
+        case "point_on_circle":
+            # args: [P, O, R_point] — P on circle centered at O with radius dist(O, R_point)
+            P = pt(args[0])
+            O = pt(args[1])
+            R = pt(args[2])
+            r = dist(O, R)
+            d = dist(P, O)
+            ok = abs(d - r) < tol
+            return ok, "" if ok else f"dist({args[0]}, {args[1]})={d:.4f}, radius={r:.4f}"
+
+        case "tangent":
+            # args: [[L1, L2], O, T] — line L1-L2 tangent to circle centered O at point T
+            # Tangency condition: perpendicular distance from center O to line = radius dist(O, T)
+            L1, L2 = pt(args[0][0]), pt(args[0][1])
+            O = pt(args[1])
+            T = pt(args[2])
+            r = dist(O, T)
+            dx, dy = L2[0] - L1[0], L2[1] - L1[1]
+            mag_L = math.sqrt(dx**2 + dy**2)
+            if mag_L < 1e-12:
+                return False, "Degenerate tangent line"
+            d_center = abs(dx * (L1[1] - O[1]) - dy * (L1[0] - O[0])) / mag_L
+            ok = abs(d_center - r) < tol
+            return ok, "" if ok else f"dist(center, line)={d_center:.4f} ≠ radius={r:.4f}"
+
+        case "angle_bisector":
+            # args: [D, A, B, C] — ray AD bisects angle BAC
+            D, A, B, C = pt(args[0]), pt(args[1]), pt(args[2]), pt(args[3])
+            # angle BAD vs angle DAC
+            def _angle(o, v1, v2):
+                a = (v1[0] - o[0], v1[1] - o[1])
+                b = (v2[0] - o[0], v2[1] - o[1])
+                dot_ab = a[0]*b[0] + a[1]*b[1]
+                mag_a = math.sqrt(a[0]**2 + a[1]**2)
+                mag_b = math.sqrt(b[0]**2 + b[1]**2)
+                if mag_a < 1e-12 or mag_b < 1e-12:
+                    raise ValueError("Degenerate angle")
+                return math.acos(max(-1.0, min(1.0, dot_ab / (mag_a * mag_b))))
+            ang_bad = _angle(A, B, D)
+            ang_dac = _angle(A, D, C)
+            ok = abs(ang_bad - ang_dac) < tol
+            return ok, "" if ok else (
+                f"angle BAD={math.degrees(ang_bad):.2f}° ≠ angle DAC={math.degrees(ang_dac):.2f}°"
+            )
+
+        case "intersects":
+            # args: [[A, B], [C, D], P] — P lies on both lines AB and CD
+            A, B = pt(args[0][0]), pt(args[0][1])
+            C, D = pt(args[1][0]), pt(args[1][1])
+            P = pt(args[2])
+            def _on_line(p, a, b):
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                length = math.sqrt(dx**2 + dy**2)
+                if length < 1e-12:
+                    return 0.0
+                return abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / length
+            d1 = _on_line(P, A, B)
+            d2 = _on_line(P, C, D)
+            ok = d1 < tol and d2 < tol
+            return ok, "" if ok else f"P not at intersection: d_to_AB={d1:.4f}, d_to_CD={d2:.4f}"
+
+        case "equidistant_from_sides":
+            # args: [I, A, B, C] — I equidistant from sides AB, BC, CA
+            I = pt(args[0])
+            A, B, C = pt(args[1]), pt(args[2]), pt(args[3])
+            def _pt_to_line_dist(p, a, b):
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                length = math.sqrt(dx**2 + dy**2)
+                if length < 1e-12:
+                    return 0.0
+                return abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / length
+            d_ab = _pt_to_line_dist(I, A, B)
+            d_bc = _pt_to_line_dist(I, B, C)
+            d_ca = _pt_to_line_dist(I, C, A)
+            ok = abs(d_ab - d_bc) < tol and abs(d_bc - d_ca) < tol
+            return ok, "" if ok else (
+                f"distances to sides not equal: AB={d_ab:.4f}, BC={d_bc:.4f}, CA={d_ca:.4f}"
+            )
+
+        case "centroid":
+            # args: [G, A, B, C] — G is centroid of triangle ABC
+            G = pt(args[0])
+            A, B, C = pt(args[1]), pt(args[2]), pt(args[3])
+            cx = (A[0] + B[0] + C[0]) / 3
+            cy = (A[1] + B[1] + C[1]) / 3
+            d = math.sqrt((G[0] - cx)**2 + (G[1] - cy)**2)
+            ok = d < tol
+            return ok, "" if ok else f"{args[0]} not at centroid: dist={d:.4f}"
+
+        case "opposite_side":
+            # args: [P, Q, A, B] — P and Q on opposite sides of line AB
+            P = pt(args[0])
+            Q = pt(args[1])
+            A = pt(args[2])
+            B = pt(args[3])
+            dx, dy = B[0] - A[0], B[1] - A[1]
+            cross_p = dx * (P[1] - A[1]) - dy * (P[0] - A[0])
+            cross_q = dx * (Q[1] - A[1]) - dy * (Q[0] - A[0])
+            ok = cross_p * cross_q < -tol
+            return ok, "" if ok else (
+                f"{args[0]} and {args[1]} not on opposite sides of line {args[2]}-{args[3]}"
+            )
+
+        case "same_side":
+            # args: [P, Q, A, B] — P and Q on same side of line AB
+            P = pt(args[0])
+            Q = pt(args[1])
+            A = pt(args[2])
+            B = pt(args[3])
+            dx, dy = B[0] - A[0], B[1] - A[1]
+            cross_p = dx * (P[1] - A[1]) - dy * (P[0] - A[0])
+            cross_q = dx * (Q[1] - A[1]) - dy * (Q[0] - A[0])
+            ok = cross_p * cross_q > tol
+            return ok, "" if ok else (
+                f"{args[0]} and {args[1]} not on same side of line {args[2]}-{args[3]}"
+            )
+
+        case "not_between":
+            # args: [D, B, C] — D is on line BC but NOT between B and C
+            D = pt(args[0])
+            B = pt(args[1])
+            C = pt(args[2])
+            dx, dy = C[0] - B[0], C[1] - B[1]
+            length_sq = dx**2 + dy**2
+            if length_sq < 1e-24:
+                return False, "Degenerate segment"
+            # project D onto BC: t = dot(D-B, C-B) / |C-B|^2
+            t = ((D[0] - B[0]) * dx + (D[1] - B[1]) * dy) / length_sq
+            ok = t < -tol or t > 1 + tol
+            return ok, "" if ok else f"{args[0]} is between {args[1]} and {args[2]} (t={t:.4f})"
+
         case "label_present" | "mark_present":
             return True, "(skipped: rendering-only check)"
 
@@ -435,6 +597,7 @@ async def run_scenario(
         "error": None,
         "ir_diagnostics": None,
         "sympy_property_checks": [],
+        "structural_checks": None,
         "llm_judge_score": None,
         "llm_judge_reasoning": None,
         "human_score": None,
@@ -611,6 +774,15 @@ async def run_scenario(
             record["visual_judge_score"] = None
             record["visual_judge_reasoning"] = f"Visual judge error: {e}"
 
+    # Structural checks (polygon count, etc.)
+    structural_check_defs = scenario.get("structural_checks", [])
+    if structural_check_defs:
+        record["structural_checks"] = _run_structural_checks(
+            structural_check_defs,
+            record.get("diagram_ir"),
+            record.get("tikz_code"),
+        )
+
     _finalize_gate_status(record)
     return record
 
@@ -618,6 +790,60 @@ async def run_scenario(
 # ---------------------------------------------------------------------------
 # Gate helpers
 # ---------------------------------------------------------------------------
+
+def _run_structural_checks(
+    structural_checks: list[dict],
+    diagram_ir: dict | None,
+    tikz_code: str | None,
+) -> dict[str, dict]:
+    """Run structural checks against the IR (preferred) or TikZ code.
+
+    Currently supports: polygon_count — assert at least N polygons with a given side count.
+    Returns a dict mapping check name -> {"passed": bool, "message": str}.
+    """
+    results: dict[str, dict] = {}
+    for check in structural_checks:
+        name = check["name"]
+        ctype = check["type"]
+        args = check.get("args", {})
+        try:
+            if ctype == "polygon_count":
+                min_count = int(args.get("min", 1))
+                sides = args.get("sides")  # None means any polygon
+                count = 0
+                if diagram_ir is not None:
+                    # Count Polygon and Triangle defs in IR
+                    for defn in diagram_ir.get("define", []):
+                        kind = defn.get("kind")
+                        if kind == "polygon":
+                            pts = defn.get("points", [])
+                            n = len(pts)
+                            if sides is None or n == sides:
+                                count += 1
+                        elif kind == "triangle":
+                            n = 3
+                            if sides is None or n == sides:
+                                count += 1
+                elif tikz_code is not None:
+                    # Fallback: count \tkzDrawPolygon / \tkzFillPolygon in TikZ
+                    import re as _re
+                    for m in _re.finditer(r'\\tkz(?:Draw|Fill)Polygon\(([^)]*)\)', tikz_code):
+                        pts = [p.strip() for p in m.group(1).split(",") if p.strip()]
+                        n = len(pts)
+                        if sides is None or n == sides:
+                            count += 1
+                ok = count >= min_count
+                msg = "" if ok else (
+                    f"expected at least {min_count} polygon(s) with "
+                    f"{'any' if sides is None else sides} sides, found {count}"
+                )
+                results[name] = {"passed": ok, "message": msg}
+            else:
+                results[name] = {"passed": True, "message": f"(skipped: unknown type {ctype!r})"}
+        except Exception as exc:
+            results[name] = {"passed": False, "message": f"Error: {exc}"}
+    return results
+
 
 def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
     """Return (failures, skipped, had_checks) across deterministic checks."""
@@ -650,6 +876,13 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
             f"point:{name}:mismatch"
             for name in sorted((expected_point_checks.get("mismatches") or {}).keys())
         )
+
+    structural_checks = record.get("structural_checks")
+    if isinstance(structural_checks, dict):
+        had_checks = True
+        for name, result in structural_checks.items():
+            if isinstance(result, dict) and result.get("passed") is False:
+                failures.append(f"structural:{name}")
 
     return failures, skipped, had_checks
 

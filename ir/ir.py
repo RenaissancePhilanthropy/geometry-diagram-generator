@@ -466,6 +466,24 @@ class Tangent(CheckBase):
     circle: CircleId
 
 
+class OppositeSide(CheckBase):
+    """Points p and q are on opposite sides of the line through line_a and line_b."""
+    kind: Literal["opposite_side"] = "opposite_side"
+    p: PointId
+    q: PointId
+    line_a: PointId
+    line_b: PointId
+
+
+class SameSide(CheckBase):
+    """Points p and q are on the same side of the line through line_a and line_b."""
+    kind: Literal["same_side"] = "same_side"
+    p: PointId
+    q: PointId
+    line_a: PointId
+    line_b: PointId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -476,6 +494,7 @@ Check = Annotated[
         EqualLength, RatioEqual,
         SimilarTriangles,
         Tangent,
+        OppositeSide, SameSide,
     ],
     Field(discriminator="kind")
 ]

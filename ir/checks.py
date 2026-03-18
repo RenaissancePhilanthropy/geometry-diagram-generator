@@ -123,6 +123,35 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Line {line!r} not tangent to {circle!r}: dist={d:.4f}, r={r:.4f}"
                 )
 
+            case ir.OppositeSide(p=p, q=q, line_a=line_a, line_b=line_b):
+                pa = sym[p]
+                qa = sym[q]
+                la = sym[line_a]
+                lb = sym[line_b]
+                # cross product sign: (lb - la) x (pt - la)
+                dx = float((lb.x - la.x).evalf())
+                dy = float((lb.y - la.y).evalf())
+                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
+                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                ok = cross_p * cross_q < -t
+                msg = "" if ok else (
+                    f"Points {p!r} and {q!r} are not on opposite sides of line {line_a!r}-{line_b!r}"
+                )
+
+            case ir.SameSide(p=p, q=q, line_a=line_a, line_b=line_b):
+                pa = sym[p]
+                qa = sym[q]
+                la = sym[line_a]
+                lb = sym[line_b]
+                dx = float((lb.x - la.x).evalf())
+                dy = float((lb.y - la.y).evalf())
+                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
+                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                ok = cross_p * cross_q > t
+                msg = "" if ok else (
+                    f"Points {p!r} and {q!r} are not on the same side of line {line_a!r}-{line_b!r}"
+                )
+
             case _:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True
