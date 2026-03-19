@@ -264,6 +264,7 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 |---|---|---|
 | `triangle` | `a, b, c: PointId` | Triangle (enables triangle-center operations) |
 | `polygon` | `points: [PointId, ...]` (3+) | Closed polygon |
+| `polygon_exterior` | `a, b: PointId, ref: PointId, sides: int (≥3, default 4)` | Regular polygon on edge (a,b), placed on the **opposite side** from `ref`. Use for squares/equilateral triangles on the outside of an existing edge. The compiler auto-computes rotation direction; vertex sub-points are registered as `{id}_v2`, `{id}_v3`, … (v0=a, v1=b). |
 
 ---
 
@@ -289,6 +290,8 @@ optional `tol: float`. Only add checks that are definitionally required.
 | `ratio_equal` | `s1,s2,s3,s4` | |s1|/|s2| = |s3|/|s4| |
 | `similar_triangles` | `t1, t2` | Two triangles are similar |
 | `tangent` | `line, circle` | Line is tangent to circle |
+| `opposite_side` | `p, q, line_a, line_b` | Points `p` and `q` are on opposite sides of the line through `line_a`→`line_b` |
+| `same_side` | `p, q, line_a, line_b` | Points `p` and `q` are on the same side of the line through `line_a`→`line_b` |
 
 ---
 
@@ -312,146 +315,54 @@ List drawing commands in logical order (draw objects first, then points, then la
 
 ---
 
-## Canonical construction patterns
+## Construction toolkit
 
-### Coordinate-grid diagram
+Choose primitives by **what you need to accomplish**, not by the diagram name.
 
-- Use `canvas.grid = true` and `canvas.axes = true`.
-- For classroom-style coordinate-plane diagrams, also set:
-  - `canvas.grid_step = 1`
-  - `canvas.tick_step = 1`
-  - `canvas.show_ticks = true`
-  - `canvas.show_tick_labels = true`
-  - `canvas.show_axis_labels = true`
-- Use `point_fixed` for all prompted coordinates.
-- Use the exact lattice coordinates from the prompt.
-- Choose canvas bounds that show the full figure and the origin.
-- If you want coordinate-style point labels, keep the point ID unchanged and use
-  `label_point.text`, for example `A\\,(0,0)`.
+| When you need… | Use… |
+|---|---|
+| The foot of a perpendicular from a point to a line | `point_foot` |
+| A perpendicular line through a point | `line_perp_through` |
+| A parallel line through a point | `line_parallel_through` |
+| An angle bisector line | `line_angle_bisector` |
+| The point where an angle bisector meets the opposite side | `line_angle_bisector` then `point_intersection` with the side (use `pick: on_object`) |
+| A midpoint | `point_midpoint` |
+| A point at a given fraction along a segment | `point_between` (ratio 0–1); use ratio > 1 to extend beyond the endpoint |
+| A triangle center (circumcenter, incenter, centroid, orthocenter) | `point_triangle_center` (requires a `triangle` def first) |
+| A circumscribed circle | `circle_through3` — one step, no center needed; or `point_triangle_center(which="circumcenter")` + `circle_center_point` if you need to label the center |
+| An inscribed circle | `point_triangle_center(which="incenter")` to get center I; `point_foot` from I onto a side to get a tangent point T; `circle_center_point(center=I, through=T)` |
+| A circle of given radius | `circle_center_radius` |
+| A tangent line from external point to circle | `line_tangent` (add `pick` if 2 tangents exist) |
+| A regular polygon on an edge (square, equilateral triangle, …) | `polygon_exterior` — set `ref` to any point inside the main figure; the polygon is placed on the **opposite** side |
+| An intersection of two objects | `point_intersection`; add a `pick` rule whenever 2+ candidates are possible |
+| A reflection | `point_reflect` (works for point symmetry or mirror across a line) |
+| A rotation | `point_rotate` (angle in radians, positive = CCW) |
+| A point on a circle or line at a specific position | `point_on` with `{kind:"param", t:float}` |
 
-### Perpendicular bisector
+**Coordinate-grid diagrams:** set `canvas.grid=true, axes=true, grid_step=1, tick_step=1, show_ticks=true, show_tick_labels=true, show_axis_labels=true`. Use `point_fixed` for all prompted coordinates. Include the origin in canvas bounds.
 
-- Define segment `AB`.
-- Define midpoint `M`.
-- Define `l_AB` as a line through `A` and `B`.
-- Define `l_perp = line_perp_through(through=M, to_line=l_AB)`.
-- Draw the bisector as a line with `{"kind": "draw", "obj": "l_perp", "add": [...]}`.
-- Mark the right angle at `M`.
-- Do not replace a required line with a short segment unless the prompt explicitly
-  asks for a finite segment.
+---
 
-### Incircle
+## Common pitfalls
 
-- Define triangle `T`.
-- Define side lines `l_AB`, `l_BC`, and `l_CA`.
-- Define the incenter with `point_triangle_center(tri="T", which="incenter")`.
-- Define perpendicular helper lines through the incenter to the side lines.
-- Intersect those perpendiculars with the corresponding side lines to get tangency points.
-- Define the incircle as `circle_center_point(center=I, through=Ta)`.
-- Prefer must-checks that verify:
-  - tangency points lie on the side lines
-  - the radii to tangency points are perpendicular to those side lines
-  - the inradii are equal
-- Do not rely on `contains(I, T)` as the main must-check for an incircle prompt.
+1. **Don't hardcode derived points.** If a point is geometrically determined (midpoint, foot, center, intersection), use the appropriate primitive — not `point_fixed` with manually computed coordinates. Hardcoded coordinates bypass SymPy verification and break on slight changes.
 
-### Circumcircle
+2. **Add `pick` rules when intersections are ambiguous.** A line and circle can intersect at 2 points; two circles at 2 points. Without a `pick` rule the compiler picks arbitrarily. Use `on_object` when the correct point lies on a specific segment, `same_side` when you know which side of a line it is on, or `closest_to` for proximity.
 
-- Prefer `circle_through3` or a computed circumcenter over hard-coded center coordinates.
+3. **Match line vs. segment to the diagram's semantics.** A "perpendicular bisector" is an infinite line (`line_perp_through`); draw it with `add` to extend it visually. A "median" connects two named points and is a segment. Don't substitute one for the other.
 
-### Triangle-center diagrams
+4. **Angle triples must use connected points.** In `mark_right_angles`, `mark_angles`, and `label_angle`, both arm points `a` and `b` must lie on a line/segment/ray that passes through vertex `o` in your `define` list. Using an unrelated point as an arm silently produces a wrong mark.
 
-- Prefer `point_triangle_center` for `circumcenter`, `centroid`, `orthocenter`, and `incenter`.
-- Do not hard-code center coordinates when the center identity is part of the prompt.
+5. **Every ID in `checks` and `render` must appear in `define`.** If you reference `l_perp` in a check, it must have a definition earlier in the `define` list.
 
 ---
 
 ## Examples
 
-### Example 1 — Right triangle
+### Example 1 — Triangle with derived construction (anchor → derive → check → render)
 
-```json
-{
-  "define": [
-    {"kind": "point_fixed", "id": "A", "x": 0, "y": 2},
-    {"kind": "point_fixed", "id": "B", "x": 0, "y": 0},
-    {"kind": "point_fixed", "id": "C", "x": 3, "y": 0},
-    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"}
-  ],
-  "checks": [
-    {"kind": "right_angle", "angle": {"a": "A", "o": "B", "b": "C"}}
-  ],
-  "render": [
-    {"kind": "draw", "obj": "T"},
-    {"kind": "mark_right_angles", "angles": [{"a": "A", "o": "B", "b": "C"}]},
-    {"kind": "draw_points", "points": ["A", "B", "C"]},
-    {"kind": "label_point", "p": "A", "pos": "left"},
-    {"kind": "label_point", "p": "B", "pos": "below"},
-    {"kind": "label_point", "p": "C", "pos": "right"}
-  ]
-}
-```
-
-### Example 2 — Equilateral triangle with equal-side marks
-
-```json
-{
-  "define": [
-    {"kind": "point_fixed", "id": "A", "x": 0, "y": 0},
-    {"kind": "point_fixed", "id": "B", "x": 2, "y": 0},
-    {"kind": "point_fixed", "id": "C", "x": 1, "y": 1.7321},
-    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
-    {"kind": "segment", "id": "s_AB", "a": "A", "b": "B"},
-    {"kind": "segment", "id": "s_BC", "a": "B", "b": "C"},
-    {"kind": "segment", "id": "s_CA", "a": "C", "b": "A"}
-  ],
-  "checks": [
-    {"kind": "equal_length", "segs": ["s_AB", "s_BC", "s_CA"]}
-  ],
-  "render": [
-    {"kind": "draw", "obj": "T"},
-    {"kind": "mark_segments", "segs": ["s_AB", "s_BC", "s_CA"]},
-    {"kind": "draw_points", "points": ["A", "B", "C"]},
-    {"kind": "label_point", "p": "A", "pos": "left"},
-    {"kind": "label_point", "p": "B", "pos": "right"},
-    {"kind": "label_point", "p": "C", "pos": "above"}
-  ]
-}
-```
-
-### Example 3 — Angle bisector
-
-```json
-{
-  "define": [
-    {"kind": "point_fixed", "id": "A", "x": 0, "y": 0},
-    {"kind": "point_fixed", "id": "B", "x": 4, "y": 0},
-    {"kind": "point_fixed", "id": "C", "x": 1, "y": 3},
-    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
-    {"kind": "segment", "id": "s_BC", "a": "B", "b": "C"},
-    {"kind": "line_angle_bisector", "id": "l_bis", "a": "B", "vertex": "A", "b": "C"},
-    {"kind": "point_intersection", "id": "D", "obj1": "l_bis", "obj2": "s_BC",
-     "pick": {"kind": "on_object", "obj": "s_BC"}}
-  ],
-  "checks": [
-    {"kind": "contains", "p": "D", "obj": "s_BC"}
-  ],
-  "render": [
-    {"kind": "draw", "obj": "T"},
-    {"kind": "draw", "obj": "s_BC"},
-    {"kind": "draw", "obj": "l_bis", "add": [0.0, 0.2]},
-    {"kind": "draw_points", "points": ["A", "B", "C", "D"]},
-    {"kind": "label_point", "p": "A", "pos": "left"},
-    {"kind": "label_point", "p": "B", "pos": "below"},
-    {"kind": "label_point", "p": "C", "pos": "above"},
-    {"kind": "label_point", "p": "D", "pos": "right"}
-  ]
-}
-```
-
-### Example 4 — Square on a triangle side (using point_rotate)
-
-To build a square **outward** from edge PQ: rotate P around Q by −π/2 and rotate Q around P by +π/2.
-The resulting points P1, Q1 complete the square on the exterior side of PQ.
+This shows the general construction pattern: fix anchor points, derive new objects, \
+add checks for required properties, then draw everything.
 
 ```json
 {
@@ -460,21 +371,52 @@ The resulting points P1, Q1 complete the square on the exterior side of PQ.
     {"kind": "point_fixed", "id": "B", "x": 4, "y": 0},
     {"kind": "point_fixed", "id": "C", "x": 0, "y": 0},
     {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
-    {"kind": "point_rotate", "id": "A1", "center": "B", "source": "A", "angle": "-pi/2"},
-    {"kind": "point_rotate", "id": "B1", "center": "A", "source": "B", "angle": "pi/2"},
-    {"kind": "polygon", "id": "sq_AB", "points": ["A", "B", "A1", "B1"]}
+    {"kind": "line_through", "id": "l_AB", "p": "A", "q": "B"},
+    {"kind": "point_foot", "id": "H", "source": "C", "onto": "l_AB"},
+    {"kind": "segment", "id": "s_alt", "a": "C", "b": "H"}
   ],
   "checks": [
-    {"kind": "right_angle", "angle": {"a": "A", "o": "C", "b": "B"}}
+    {"kind": "right_angle", "angle": {"a": "C", "o": "H", "b": "A"}}
   ],
   "render": [
     {"kind": "draw", "obj": "T"},
-    {"kind": "draw", "obj": "sq_AB"},
-    {"kind": "fill", "obj": "sq_AB", "opacity": 0.15},
-    {"kind": "draw_points", "points": ["A", "B", "C"]},
+    {"kind": "draw", "obj": "s_alt"},
+    {"kind": "mark_right_angles", "angles": [{"a": "C", "o": "H", "b": "A"}]},
+    {"kind": "draw_points", "points": ["A", "B", "C", "H"]},
     {"kind": "label_point", "p": "A", "pos": "left"},
     {"kind": "label_point", "p": "B", "pos": "right"},
-    {"kind": "label_point", "p": "C", "pos": "below"}
+    {"kind": "label_point", "p": "C", "pos": "below"},
+    {"kind": "label_point", "p": "H", "pos": "above"}
+  ]
+}
+```
+
+### Example 2 — Regular polygon on an edge (using polygon_exterior)
+
+`polygon_exterior` attaches a regular polygon to any edge, automatically on the \
+exterior side. Set `ref` to any point on the interior side — the polygon goes opposite. \
+Vertex sub-points `{id}_v2`, `{id}_v3`, … are available for labels or checks.
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "A", "x": 0, "y": 0},
+    {"kind": "point_fixed", "id": "B", "x": 3, "y": 0},
+    {"kind": "point_fixed", "id": "C", "x": 1.5, "y": 2.6},
+    {"kind": "triangle", "id": "T", "a": "A", "b": "B", "c": "C"},
+    {"kind": "polygon_exterior", "id": "sq", "a": "A", "b": "B", "ref": "C", "sides": 4}
+  ],
+  "checks": [
+    {"kind": "opposite_side", "p": "sq_v2", "q": "C", "line_a": "A", "line_b": "B"}
+  ],
+  "render": [
+    {"kind": "draw", "obj": "T"},
+    {"kind": "draw", "obj": "sq"},
+    {"kind": "fill", "obj": "sq", "opacity": 0.15},
+    {"kind": "draw_points", "points": ["A", "B", "C"]},
+    {"kind": "label_point", "p": "A", "pos": "below"},
+    {"kind": "label_point", "p": "B", "pos": "below"},
+    {"kind": "label_point", "p": "C", "pos": "above"}
   ]
 }
 ```
@@ -483,33 +425,29 @@ The resulting points P1, Q1 complete the square on the exterior side of PQ.
 
 ## Key rules
 
+**Structural:**
 1. **Topological order**: definitions can only reference IDs that appear earlier.
 2. **All IDs used in checks/render must be defined** in the `define` list.
-3. **Keep coordinates compact**: roughly 4×4 cm (coordinates in cm). Use "nice" \
-values (integers or simple decimals) where possible.
-4. **Use checks sparingly**: only add checks that are definitionally required by \
-the diagram (e.g., right angles, equal sides, collinearity). Do not add trivial checks.
-5. **Label key points** in the render section.
-6. String expressions in `x`, `y`, `radius`, `angle` are evaluated as SymPy \
+3. String expressions in `x`, `y`, `radius`, `angle` are evaluated as SymPy \
 expressions: you may use `pi`, `sqrt(n)`, `E`, and numeric arithmetic.
-7. **Prefer construction primitives over hardcoded coordinates**: use `point_on` \
-to place points on circles/lines, `point_rotate` to build rotated copies, \
-`point_intersection` for intersections, `point_midpoint` for midpoints. Only \
-use `point_fixed` for the initial anchor points of a construction. Hardcoding \
-derived coordinates bypasses SymPy verification and is error-prone.
-8. **When the prompt specifies exact coordinates, use those exact coordinates**.
-9. **When a line is semantically required, use a line object**.
-10. **Do not use extra helper labels in place of required named points**.
-11. If you add coordinate-style labels, **the underlying point name must remain the
-required point name**.
-12. Prefer `point_foot` over the 3-step pattern `line_perp_through` + `point_intersection`:
-    use `{"kind": "point_foot", "id": "H", "source": "C", "onto": "l_AB"}`
-    to drop a perpendicular from C to line l_AB.
-13. Prefer `point_between` over `point_on` with a parametric `t`:
-    use `{"kind": "point_between", "id": "D", "a": "A", "b": "B", "ratio": 0.6}`
-    to place D 60% of the way from A to B along that segment.
-14. Prefer `point_reflect` over `point_rotate(angle=pi)` for point symmetry,
-    and over manual coordinate computation for mirror reflections.
+
+**Coordinates:**
+4. **Keep coordinates compact**: roughly 4×4 cm. Use integers or simple decimals.
+5. **When the prompt specifies exact coordinates, use those exact coordinates.**
+
+**Construction preferences:**
+6. **Prefer construction primitives over hardcoded coordinates.** Only use `point_fixed` \
+for the initial anchor points of a construction. Derive everything else.
+7. Prefer `point_foot` over `line_perp_through` + `point_intersection` for dropping a perpendicular.
+8. Prefer `point_between` over `point_on` with a parametric `t`.
+9. Prefer `point_reflect` over `point_rotate(angle=pi)` for reflections.
+10. Prefer `polygon_exterior` over manual `point_rotate` calls when building regular polygons on edges.
+
+**Semantic:**
+11. **Use checks sparingly**: only add checks that are definitionally required.
+12. **Label key points** in the render section.
+13. **Use a line object when the diagram semantically requires an infinite line.**
+14. **Point names must match the names required by the prompt** — do not rename required points.
 """
 
 

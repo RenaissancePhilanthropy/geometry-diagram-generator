@@ -61,6 +61,17 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
     canvas = diagram.canvas  # may be None
     if canvas is not None:
         xmin, xmax, ymin, ymax = _effective_canvas_bounds(canvas)
+        # Expand only when computed points fall outside the LLM's canvas bounds,
+        # so derived geometry (e.g. polygon_exterior vertices) isn't clipped.
+        for px, py in list(coords.values()) + list(helpers.values()):
+            if px < xmin:
+                xmin = px - _BOUNDS_PADDING
+            if px > xmax:
+                xmax = px + _BOUNDS_PADDING
+            if py < ymin:
+                ymin = py - _BOUNDS_PADDING
+            if py > ymax:
+                ymax = py + _BOUNDS_PADDING
     else:
         xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
     lines.append(
@@ -211,6 +222,11 @@ def _poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
             return [a, b, c]
         case ir.Polygon(points=pts):
             return list(pts)
+        case ir.PolygonExterior(a=a, b=b, sides=sides):
+            verts = [a, b]
+            for i in range(2, sides):
+                verts.append(f"{obj_id}_v{i}")
+            return verts
         case _:
             raise ValueError(f"Cannot get polygon vertices for {stmt.kind!r}")
 

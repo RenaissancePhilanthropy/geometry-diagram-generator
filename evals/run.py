@@ -812,12 +812,16 @@ def _run_structural_checks(
                 sides = args.get("sides")  # None means any polygon
                 count = 0
                 if diagram_ir is not None:
-                    # Count Polygon and Triangle defs in IR
+                    # Count Polygon, PolygonExterior, and Triangle defs in IR
                     for defn in diagram_ir.get("define", []):
                         kind = defn.get("kind")
                         if kind == "polygon":
                             pts = defn.get("points", [])
                             n = len(pts)
+                            if sides is None or n == sides:
+                                count += 1
+                        elif kind == "polygon_exterior":
+                            n = defn.get("sides", 4)
                             if sides is None or n == sides:
                                 count += 1
                         elif kind == "triangle":

@@ -7,11 +7,18 @@ from ir.ir import (
     Draw,
     LabelAngle,
     LabelPoint,
+    LineAngleBisector,
+    LineParallelThrough,
+    LinePerpendicularThrough,
+    LineTangent,
     LineThrough,
     MarkAngles,
+    MarkRightAngles,
     MarkSegments,
     PointFixed,
     PointIntersection,
+    PointOn,
+    PointOnParam,
     Segment,
     Triangle,
 )
@@ -319,5 +326,60 @@ def test_check_render_angles_triangle_vertices():
             Triangle(id="T", a="A", b="B", c="C"),
         ],
         render=[MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")])],
+    )
+    assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_line_perp_through():
+    # Typical perpendicular bisector: M is midpoint of A-B, perp line through M,
+    # P_up is a point on the perp line.
+    # Angle triple (A, M, P_up) must be valid:
+    #   {A,M} via midpoint virtual segment; {M,P_up} via perp line (new fix).
+    from ir.ir import PointMidpoint
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            LineThrough(id="l_AB", p="A", q="B"),
+            PointMidpoint(id="M", p="A", q="B"),
+            LinePerpendicularThrough(id="perp", through="M", to_line="l_AB"),
+            PointOn(id="P_up", on="perp", how=PointOnParam(t=0.5)),
+        ],
+        render=[MarkRightAngles(angles=[AnglePoints(a="A", o="M", b="P_up")])],
+    )
+    assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_line_parallel_through():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=1, y=2),
+            LineThrough(id="l_AB", p="A", q="B"),
+            LineParallelThrough(id="l_par", through="C", to_line="l_AB"),
+            PointOn(id="D", on="l_par", how=PointOnParam(t=0.5)),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="B", o="A", b="D")])],
+    )
+    # A is only on l_AB; D is only on l_par → {A,D} not a valid pair
+    errors = check_render_angles(diagram)
+    assert len(errors) == 1
+
+
+def test_check_render_angles_line_angle_bisector():
+    # V is vertex of the bisector (registered on bis), D is a point on bis.
+    # Angle triple (V, D_other, ...) — test valid case: (V, D, ...) where V-D share bis.
+    # Also test that V connects to A via a segment for a full angle triple (A, V, D).
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=2),
+            PointFixed(id="V", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            Segment(id="VA", a="V", b="A"),
+            LineAngleBisector(id="bis", a="A", vertex="V", b="B"),
+            PointOn(id="D", on="bis", how=PointOnParam(t=0.5)),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="A", o="V", b="D")])],
     )
     assert check_render_angles(diagram) == []

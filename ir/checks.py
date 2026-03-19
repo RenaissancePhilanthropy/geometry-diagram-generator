@@ -269,6 +269,14 @@ def _build_linear_pairs(diagram: ir.DiagramIR) -> set[frozenset]:
                 for i, pt in enumerate(pts):
                     nxt = pts[(i + 1) % len(pts)]
                     pts_on[f"{oid}__{i}"] = {pt, nxt}
+            case ir.LinePerpendicularThrough(id=oid, through=p):
+                pts_on.setdefault(oid, set()).add(p)
+            case ir.LineParallelThrough(id=oid, through=p):
+                pts_on.setdefault(oid, set()).add(p)
+            case ir.LineAngleBisector(id=oid, vertex=v):
+                pts_on.setdefault(oid, set()).add(v)
+            case ir.LineTangent(id=oid, point=p):
+                pts_on.setdefault(oid, set()).add(p)
 
     pairs: set[frozenset] = set()
     for obj_pts in pts_on.values():

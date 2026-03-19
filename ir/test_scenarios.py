@@ -13,7 +13,7 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
     LineAngleBisector, LineTangent,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
-    Triangle, Polygon,
+    Triangle, Polygon, PolygonExterior,
     PointOnParam, PointOnRandom,
     PickOnObject, PickIndex, PickClosestTo,
     Collinear, EqualLength, RightAngle, Tangent,
@@ -418,25 +418,16 @@ _test("tangent-to-circle", DiagramIR(
     ],
 ))
 
-# 17. pythagorean-theorem — right triangle at C; squares on each side via PointRotate
+# 17. pythagorean-theorem — right triangle at C; squares on each side via PolygonExterior
 _test("pythagorean-theorem", DiagramIR(
     define=[
         PointFixed(id="A", x=0, y=3),
         PointFixed(id="B", x=4, y=0),
         PointFixed(id="C", x=0, y=0),
         Triangle(id="T", a="A", b="B", c="C"),
-        # Square on AB (hypotenuse): rotate A around B by -pi/2, rotate B around A by pi/2
-        PointRotate(id="A1", center="B", source="A", angle=-math.pi/2),
-        PointRotate(id="B1", center="A", source="B", angle=math.pi/2),
-        Polygon(id="sq_AB", points=["A","B","A1","B1"]),
-        # Square on AC (leg)
-        PointRotate(id="A2", center="C", source="A", angle=math.pi/2),
-        PointRotate(id="C2", center="A", source="C", angle=-math.pi/2),
-        Polygon(id="sq_AC", points=["A","C","A2","C2"]),
-        # Square on BC (leg)
-        PointRotate(id="B3", center="C", source="B", angle=-math.pi/2),
-        PointRotate(id="C3", center="B", source="C", angle=math.pi/2),
-        Polygon(id="sq_BC", points=["B","C","B3","C3"]),
+        PolygonExterior(id="sq_AB", a="A", b="B", ref="C", sides=4),
+        PolygonExterior(id="sq_AC", a="A", b="C", ref="B", sides=4),
+        PolygonExterior(id="sq_BC", a="B", b="C", ref="A", sides=4),
     ],
     checks=[
         RightAngle(angle=AnglePoints(a="A", o="C", b="B")),

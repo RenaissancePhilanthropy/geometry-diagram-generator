@@ -20,7 +20,7 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
     LineAngleBisector, LineTangent,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
-    Triangle, Polygon,
+    Triangle, Polygon, PolygonExterior,
     PointOnParam, PointOnRandom, PointOnIntent,
     SameSideConstraint, NotNearConstraint,
     PickIndex, PickClosestTo, PickOnObject,
@@ -175,6 +175,17 @@ def test_point_between_diagonal():
     )
     assert approx(sym["D"].x, 2.0)
     assert approx(sym["D"].y, 2.0)
+
+
+def test_point_between_fraction_string_ratio():
+    """'1/3' fraction string → 1/3 of the way from A to B."""
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=3, y=0),
+        PointBetween(id="D", a="A", b="B", ratio="1/3"),
+    )
+    assert approx(sym["D"].x, 1.0)
+    assert approx(sym["D"].y, 0.0)
 
 def test_point_midpoint():
     sym = _compile(
@@ -580,8 +591,13 @@ def test_bad_expr():
 def test_scenario_compiles(scenario_id: str, diagram: DiagramIR):
     sym = compile_defs(diagram)
     assert isinstance(sym, dict)
-    assert len(sym) == len(diagram.define), (
-        f"{scenario_id}: expected {len(diagram.define)} objects, got {len(sym)}"
+    # sym may have more entries than define when primitives register sub-points
+    # (e.g. PolygonExterior registers {id}_v{i} for each vertex)
+    assert len(sym) >= len(diagram.define), (
+        f"{scenario_id}: expected at least {len(diagram.define)} objects, got {len(sym)}"
+    )
+    assert all(stmt.id in sym for stmt in diagram.define), (
+        f"{scenario_id}: not all define IDs are in sym"
     )
 
 
@@ -721,3 +737,129 @@ def test_auto_checks_foot_contains():
     sym = compile_defs(diag)
     results = run_auto_checks(diag, sym)
     assert all(r.passed for r in results)
+
+
+# ---------------------------------------------------------------------------
+# PolygonExterior
+# ---------------------------------------------------------------------------
+
+def _cross_sign_float(ax, ay, bx, by, px, py) -> float:
+    """Sign of cross product (b-a) x (p-a)."""
+    return (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+
+
+class TestPolygonExterior:
+    """Verify PolygonExterior places the polygon on the exterior side of the edge."""
+
+    def _square_on_edge(self, a, b, ref):
+        """Compile a square on edge a-b, exterior to ref point."""
+        stmts = [
+            PointFixed(id="A", x=a[0], y=a[1]),
+            PointFixed(id="B", x=b[0], y=b[1]),
+            PointFixed(id="C", x=ref[0], y=ref[1]),
+            PolygonExterior(id="sq", a="A", b="B", ref="C", sides=4),
+        ]
+        return compile_defs(DiagramIR(define=stmts))
+
+    def test_square_returns_polygon(self):
+        sym = self._square_on_edge((0, 0), (1, 0), (0.5, 1))
+        assert isinstance(sym["sq"], spg.Polygon)
+
+    def test_square_has_four_vertices(self):
+        sym = self._square_on_edge((0, 0), (1, 0), (0.5, 1))
+        assert len(sym["sq"].vertices) == 4
+
+    def test_sub_points_registered(self):
+        sym = self._square_on_edge((0, 0), (1, 0), (0.5, 1))
+        for i in range(4):
+            assert f"sq_v{i}" in sym, f"sq_v{i} not in sym"
+        assert isinstance(sym["sq_v2"], spg.Point)
+        assert isinstance(sym["sq_v3"], spg.Point)
+
+    def test_exterior_vertices_opposite_side_from_ref(self):
+        """New vertices (v2, v3) must be on opposite side of edge AB from ref C."""
+        a, b, ref = (0.0, 0.0), (1.0, 0.0), (0.5, 1.0)
+        sym = self._square_on_edge(a, b, ref)
+        ax, ay = a
+        bx, by = b
+        ref_sign = _cross_sign_float(ax, ay, bx, by, ref[0], ref[1])
+        for i in (2, 3):
+            vx = float(sym[f"sq_v{i}"].x.evalf())
+            vy = float(sym[f"sq_v{i}"].y.evalf())
+            v_sign = _cross_sign_float(ax, ay, bx, by, vx, vy)
+            assert ref_sign * v_sign < 0, f"sq_v{i} is on same side as ref (wrong side)"
+
+    def test_exterior_opposite_winding_ccw(self):
+        """Works for CCW-wound triangle: ref below edge."""
+        a, b, ref = (0.0, 0.0), (1.0, 0.0), (0.5, -1.0)
+        sym = self._square_on_edge(a, b, ref)
+        ax, ay = a
+        bx, by = b
+        ref_sign = _cross_sign_float(ax, ay, bx, by, ref[0], ref[1])
+        for i in (2, 3):
+            vx = float(sym[f"sq_v{i}"].x.evalf())
+            vy = float(sym[f"sq_v{i}"].y.evalf())
+            v_sign = _cross_sign_float(ax, ay, bx, by, vx, vy)
+            assert ref_sign * v_sign < 0, f"sq_v{i} is on same side as ref (wrong side)"
+
+    def test_pythagorean_all_squares_exterior(self):
+        """All three squares on the Pythagorean right triangle are on the exterior."""
+        stmts = [
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=0),
+            PolygonExterior(id="sq_AB", a="A", b="B", ref="C", sides=4),
+            PolygonExterior(id="sq_AC", a="A", b="C", ref="B", sides=4),
+            PolygonExterior(id="sq_BC", a="B", b="C", ref="A", sides=4),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        for sq_id, (ax, ay), (bx, by), (refx, refy) in [
+            ("sq_AB", (0, 3), (4, 0), (0, 0)),
+            ("sq_AC", (0, 3), (0, 0), (4, 0)),
+            ("sq_BC", (4, 0), (0, 0), (0, 3)),
+        ]:
+            ref_sign = _cross_sign_float(ax, ay, bx, by, refx, refy)
+            for i in (2, 3):
+                vx = float(sym[f"{sq_id}_v{i}"].x.evalf())
+                vy = float(sym[f"{sq_id}_v{i}"].y.evalf())
+                v_sign = _cross_sign_float(ax, ay, bx, by, vx, vy)
+                assert ref_sign * v_sign < 0, (
+                    f"{sq_id}_v{i} is on same side as ref — square is interior, not exterior"
+                )
+
+    def test_ref_on_line_raises(self):
+        from ir.errors import IRCompileError
+        stmts = [
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=1, y=0),  # C is on line AB
+            PolygonExterior(id="sq", a="A", b="B", ref="C", sides=4),
+        ]
+        with pytest.raises(IRCompileError):
+            compile_defs(DiagramIR(define=stmts))
+
+    def test_sides_less_than_3_raises(self):
+        from ir.errors import IRCompileError
+        stmts = [
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=0.5, y=1),
+            PolygonExterior(id="sq", a="A", b="B", ref="C", sides=2),
+        ]
+        with pytest.raises(IRCompileError):
+            compile_defs(DiagramIR(define=stmts))
+
+    def test_equilateral_triangle_exterior(self):
+        """polygon_exterior with sides=3 builds an equilateral triangle exterior to ref."""
+        stmts = [
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=1, y=math.sqrt(3)),  # equilateral triangle above edge
+            PolygonExterior(id="tri_ext", a="A", b="B", ref="C", sides=3),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert isinstance(sym["tri_ext"], spg.Polygon)
+        assert len(sym["tri_ext"].vertices) == 3
+        # v2 should be below the x-axis (opposite from C which is above)
+        v2y = float(sym["tri_ext_v2"].y.evalf())
+        assert v2y < 0, f"Exterior triangle vertex should be below x-axis, got y={v2y}"

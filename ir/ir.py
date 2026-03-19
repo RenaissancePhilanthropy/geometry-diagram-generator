@@ -266,6 +266,24 @@ class Polygon(DefBase):
     points: List[PointId]  # 3 or more, closed automatically
 
 
+class PolygonExterior(DefBase):
+    """Regular polygon built on edge (a, b), placed on the opposite side from ref.
+
+    The compiler auto-computes the correct rotation direction so the polygon is
+    always on the exterior side of the edge relative to the reference point. Use
+    this instead of manual point_rotate when you need squares or equilateral
+    triangles on triangle sides — it eliminates rotation-sign errors.
+
+    sides=4 → square, sides=3 → equilateral triangle.
+    Vertex sub-points are registered as {id}_v2, {id}_v3, ... (v0=a, v1=b).
+    """
+    kind: Literal["polygon_exterior"] = "polygon_exterior"
+    a: PointId    # first edge endpoint (polygon vertex 0)
+    b: PointId    # second edge endpoint (polygon vertex 1)
+    ref: PointId  # reference point — polygon is placed on the OPPOSITE side
+    sides: int = 4  # number of sides (4=square, 3=equilateral triangle)
+
+
 class PointMidpoint(DefBase):
     """Midpoint of segment PQ. Semantic sugar over PointOn(param=0.5)."""
     kind: Literal["point_midpoint"] = "point_midpoint"
@@ -350,7 +368,7 @@ DefStmt = Annotated[
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
-        Triangle, Polygon,
+        Triangle, Polygon, PolygonExterior,
     ],
     Field(discriminator="kind")
 ]

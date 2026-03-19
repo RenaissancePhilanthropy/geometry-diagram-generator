@@ -51,6 +51,13 @@ def compile_defs(
     for stmt in diagram.define:
         obj = _compile_one(stmt, sym, params, canvas, rng)
         sym[stmt.id] = obj
+        # PolygonExterior: also register its computed vertices as sub-points
+        # v0=a, v1=b are already in sym; register v2..v_{n-1}
+        if isinstance(stmt, ir.PolygonExterior) and isinstance(obj, spg.Polygon):
+            for i, vertex in enumerate(obj.vertices):
+                sub_id = f"{stmt.id}_v{i}"
+                if sub_id not in sym:
+                    sym[sub_id] = vertex
 
     return sym
 
@@ -209,6 +216,34 @@ def _compile_one(
         case ir.Polygon(points=point_ids):
             return spg.Polygon(*[ref(pid) for pid in point_ids])
 
+        case ir.PolygonExterior(a=a_id, b=b_id, ref=ref_id, sides=sides):
+            a_pt = ref(a_id)
+            b_pt = ref(b_id)
+            ref_pt = ref(ref_id)
+            if sides < 3:
+                raise IRCompileError(did, f"polygon_exterior requires sides >= 3, got {sides}")
+            cross = _cross_sign(a_pt, b_pt, ref_pt)
+            cross_val = float(cross.evalf())
+            if abs(cross_val) < 1e-10:
+                raise IRCompileError(
+                    did, f"ref point {ref_id!r} is on line {a_id!r}-{b_id!r}; cannot determine exterior side"
+                )
+            # We want the polygon on the OPPOSITE side from ref.
+            # If ref is left of a→b (cross > 0), rotate counterclockwise (+) to reach the right.
+            # If ref is right of a→b (cross < 0), rotate clockwise (-) to reach the left.
+            rot = sp.Rational(1, 1) if cross_val > 0 else sp.Rational(-1, 1)
+            step = sp.Rational(2, 1) * sp.pi / sides
+            rot_angle = rot * step
+            # Build vertices: start from a and b, then generate n-2 more
+            # by rotating the last edge endpoint around the previous vertex
+            vertices = [a_pt, b_pt]
+            for _ in range(sides - 2):
+                prev2 = vertices[-2]
+                prev1 = vertices[-1]
+                new_v = prev2.rotate(rot_angle, prev1)
+                vertices.append(new_v)
+            return spg.Polygon(*vertices)
+
         case _:
             raise IRCompileError(did, f"unhandled definition kind: {stmt.kind!r}")
 
@@ -246,7 +281,14 @@ def _parse_between_ratio(ratio: float | str | None) -> float:
             return m / (m + n)
         except (ValueError, ZeroDivisionError):
             pass
-    raise IRCompileError("<parse_ratio>", f"Cannot parse ratio {ratio!r}; expected float or 'M:N'")
+    # Parse "a/b" fraction string
+    parts = str(ratio).split("/")
+    if len(parts) == 2:
+        try:
+            return float(parts[0]) / float(parts[1])
+        except (ValueError, ZeroDivisionError):
+            pass
+    raise IRCompileError("<parse_ratio>", f"Cannot parse ratio {ratio!r}; expected float, 'M:N', or 'a/b'")
 
 
 def _resolve(sym: SymTable, ref_id: str, *, def_id: str) -> Any:
