@@ -307,7 +307,7 @@ List drawing commands in logical order (draw objects first, then points, then la
 | `mark_right_angles` | `angles: [{a,o,b},...]` | Square mark at right angle |
 | `mark_angles` | `angles: [{a,o,b},...], which?: "interior"/"exterior"/"reflex", group?: str, style?: color` | Arc mark (see angle notation below) |
 | `mark_segments` | `segs: [...], group?: str` | Tick marks on segments |
-| `label_point` | `p, text?: str, pos?: "auto"/"above"/"below"/"left"/"right"` | Label a point |
+| `label_point` | `p, text?: str, pos?: "auto"/"above"/"below"/"left"/"right"/"above left"/"above right"/"below left"/"below right"` | Label a point |
 | `label_angle` | `angle: {a,o,b}, text: str, style?: color` | Label an angle (see angle notation below) |
 | `label_segment` | `seg: SegId, text: str` | Label a segment length |
 
