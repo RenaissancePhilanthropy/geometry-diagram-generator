@@ -1217,7 +1217,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
 
             # must-check failed → repair
             state.repair_count += 1
-            if state.repair_count > MAX_REPAIR_CYCLES:
+            if state.repair_count >= MAX_REPAIR_CYCLES:
                 raise RuntimeError(
                     f"ProgressiveToolsStrategy failed: check failures after "
                     f"{MAX_REPAIR_CYCLES} repair cycles."
