@@ -220,3 +220,122 @@ def test_handle_add_point_intersection_with_pick():
     r = json.loads(handle_add_point_intersection(state, "P", "c1", "c2", pick=pick))
     assert r["status"] == "registered"
     assert state.defs[-1].pick.kind == "closest_to"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Construction tool handlers — linear, circles, composites + remove
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import (
+    handle_add_segment, handle_add_ray, handle_add_line_through,
+    handle_add_line_parallel_through, handle_add_line_perp_through,
+    handle_add_line_angle_bisector, handle_add_line_tangent,
+    handle_add_circle_center_point, handle_add_circle_center_radius,
+    handle_add_circle_through3,
+    handle_add_triangle, handle_add_polygon, handle_add_polygon_exterior,
+    handle_remove_definition,
+)
+
+
+def test_handle_add_segment():
+    state = _state_with_points()
+    r = json.loads(handle_add_segment(state, "s1", "A", "B"))
+    assert r["status"] == "registered"
+    assert state.defs[-1].kind == "segment"
+
+
+def test_handle_add_line_through():
+    state = _state_with_points()
+    r = json.loads(handle_add_line_through(state, "l1", "A", "B"))
+    assert r["status"] == "registered"
+    # IR field is p/q — check via model_dump
+    assert state.defs[-1].kind == "line_through"
+    data = state.defs[-1].model_dump()
+    assert data["p"] == "A" and data["q"] == "B"
+
+
+def test_handle_add_line_parallel_through():
+    state = _state_with_points()
+    handle_add_line_through(state, "l1", "A", "B")
+    handle_add_point_fixed(state, "C", "0", "2")
+    r = json.loads(handle_add_line_parallel_through(state, "l2", through="C", parallel_to="l1"))
+    assert r["status"] == "registered"
+    data = state.defs[-1].model_dump()
+    assert data["to_line"] == "l1"   # IR field name
+
+
+def test_handle_add_circle_center_radius():
+    state = _state_with_points()
+    r = json.loads(handle_add_circle_center_radius(state, "c1", center="A", radius="3"))
+    assert r["status"] == "registered"
+    assert state.defs[-1].kind == "circle_center_radius"
+
+
+def test_handle_add_triangle():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_add_point_fixed(state, "C", "2", "3")
+    r = json.loads(handle_add_triangle(state, "T", "A", "B", "C"))
+    assert r["status"] == "registered"
+
+
+def test_handle_add_polygon():
+    state = DiagramState()
+    for name, x, y in [("A","0","0"),("B","4","0"),("C","4","4"),("D","0","4")]:
+        handle_add_point_fixed(state, name, x, y)
+    r = json.loads(handle_add_polygon(state, "sq", ["A","B","C","D"]))
+    assert r["status"] == "registered"
+    assert state.defs[-1].kind == "polygon"
+
+
+def test_handle_add_line_tangent_with_pick():
+    state = _state_with_points()
+    handle_add_circle_center_radius(state, "c1", "A", "3")
+    pick = {"kind": "index", "k": 0}
+    r = json.loads(handle_add_line_tangent(state, "lt", from_point="B", to_circle="c1", pick=pick))
+    assert r["status"] == "registered"
+    data = state.defs[-1].model_dump()
+    assert data["point"] == "B"    # IR field is 'point'
+    assert data["circle"] == "c1"  # IR field is 'circle'
+
+
+def test_handle_remove_definition():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_add_segment(state, "s1", "A", "B")
+    r = json.loads(handle_remove_definition(state, "A"))
+    assert set(r["removed"]) == {"A", "s1"}
+    assert len(state.defs) == 1
+    assert state.defs[0].id == "B"
+
+
+def test_handle_remove_nonexistent():
+    state = DiagramState()
+    r = json.loads(handle_remove_definition(state, "X"))
+    assert "error" in r
+
+
+def test_handle_add_polygon_exterior_remapping():
+    """v1/v2/ref_point tool args must map to a/b/ref IR fields."""
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "2", "0")
+    handle_add_point_fixed(state, "R", "1", "3")
+    r = json.loads(handle_add_polygon_exterior(state, "sq", v1="A", v2="B", sides=4, ref_point="R"))
+    assert r["status"] == "registered"
+    data = state.defs[-1].model_dump()
+    assert data["a"] == "A"   # IR field is 'a', not 'v1'
+    assert data["b"] == "B"   # IR field is 'b', not 'v2'
+    assert data["ref"] == "R" # IR field is 'ref', not 'ref_point'
+
+
+def test_handle_add_line_perp_through_remapping():
+    """perp_to tool arg must map to to_line IR field."""
+    state = _state_with_points()
+    handle_add_line_through(state, "l1", "A", "B")
+    handle_add_point_fixed(state, "C", "2", "3")
+    r = json.loads(handle_add_line_perp_through(state, "lp", through="C", perp_to="l1"))
+    assert r["status"] == "registered"
+    data = state.defs[-1].model_dump()
+    assert data["to_line"] == "l1"  # IR field is 'to_line', not 'perp_to'
