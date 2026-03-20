@@ -636,3 +636,56 @@ def test_handle_label_segment():
     handle_finalize_construction(state)
     r = json.loads(handle_label_segment(state, "s1", text="4"))
     assert r["status"] == "registered"
+
+
+# ---------------------------------------------------------------------------
+# Task 11: Agent builders and ProgressiveToolsStrategy.run()
+# ---------------------------------------------------------------------------
+from unittest.mock import AsyncMock, MagicMock, patch
+from strategies.progressive_tools import ProgressiveToolsStrategy
+from ir import ir
+
+
+@pytest.mark.asyncio
+async def test_run_calls_four_agents():
+    """Verify run() invokes 4 agent.run() calls in sequence."""
+    strategy = ProgressiveToolsStrategy()
+
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.usage.return_value = mock_usage
+        # Simulate side effects per phase
+        if call_count == 1:  # canvas phase — set canvas
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:  # construction phase — set sym + flag
+            strategy._last_state._construction_finalized = True
+            strategy._last_state.sym = {}
+        elif call_count == 3:  # checks phase — set flag
+            strategy._last_state._checks_finalized = True
+        elif call_count == 4:  # render phase — set flag + tikz/svg
+            strategy._last_state._render_finalized = True
+            strategy._last_state._tikz = "\\tkzInit"
+            strategy._last_state._svg = "<svg/>"
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        result = await strategy.run("draw a triangle", model="anthropic:claude-sonnet-4-6")
+
+    assert call_count == 4
+    assert isinstance(result, ProgressiveToolsRunResult)
+    assert result.input_tokens == 40   # 10 * 4
+    assert result.output_tokens == 20  # 5 * 4

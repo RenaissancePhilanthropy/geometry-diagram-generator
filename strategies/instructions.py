@@ -451,6 +451,35 @@ for the initial anchor points of a construction. Derive everything else.
 """
 
 
+PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS = """\
+You are setting up the canvas for a geometry diagram.
+Call init_diagram() once to configure the coordinate space, then stop.
+Choose bounds that comfortably contain all objects in the diagram.
+"""
+
+PROGRESSIVE_TOOLS_PHASE2_INSTRUCTIONS = """\
+You are constructing a geometric diagram step by step using tool calls.
+Add all required points, lines, circles, and composite shapes.
+Each object must reference only previously defined IDs.
+When you have added all objects, call finalize_construction() to compile.
+"""
+
+PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX = """\
+Your previous construction failed geometric checks. Revise it to fix the issues below.
+"""
+
+PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS = """\
+You are adding geometric checks to a completed construction.
+Add checks for the key geometric properties the diagram must satisfy.
+When done, call finalize_checks() to run and validate them.
+"""
+
+PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS = """\
+You are adding drawing and labeling commands to a verified geometric construction.
+Draw all relevant objects, label points, and mark any notable angles or segments.
+When finished, call finalize_render() to produce the SVG.
+"""
+
 TWO_PHASE_PLANNER_INSTRUCTIONS = """\
 You are a geometry construction planner. Given a user request for a geometric diagram,
 produce a step-by-step construction plan in natural language.
