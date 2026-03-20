@@ -465,7 +465,10 @@ When you have added all objects, call finalize_construction() to compile.
 """
 
 PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX = """\
-Your previous construction failed geometric checks. Revise it to fix the issues below.
+Your previous construction failed geometric checks. The existing definitions are preserved.
+Use remove_definition() to remove incorrect objects, then re-add corrected versions.
+Only fix what is broken — do not rebuild from scratch.
+Failed checks:
 """
 
 PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS = """\

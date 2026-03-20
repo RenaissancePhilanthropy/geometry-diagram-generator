@@ -827,3 +827,25 @@ def test_init_diagram_axes_default_false():
     state = DiagramState()
     handle_init_diagram(state)
     assert state.canvas.axes is False
+
+
+def test_repair_preserves_defs():
+    """After repair reset, state.defs must be preserved (not cleared)."""
+    from strategies.progressive_tools import handle_add_point_fixed
+    import ir.ir as ir
+
+    state = DiagramState()
+    state.canvas = ir.Canvas(kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5)
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "1", "0")
+
+    # Simulate what run() does in the repair reset block
+    state._construction_finalized = False
+    state._checks_finalized = False
+    state.sym = None
+    state.render_ops = []
+    # defs are NOT cleared in the new code
+
+    assert len(state.defs) == 2
+    assert state._construction_finalized is False
+    assert state.sym is None

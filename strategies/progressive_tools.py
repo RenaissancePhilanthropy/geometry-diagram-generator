@@ -1231,13 +1231,15 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             repair_context = (
                 "The previous construction failed the following checks:\n"
                 + "\n".join(f"  - {m}" for m in failed_msgs)
-                + "\nRevise the construction to fix these issues."
+                + "\n\nThe existing definitions are still loaded. "
+                + "Use remove_definition() to remove incorrect objects, then re-add corrected ones. "
+                + "Do NOT rebuild everything from scratch — only fix what's broken."
             )
             # Reset for repair
             state._construction_finalized = False
             state._checks_finalized = False
             state.sym = None
-            state.defs = []
+            # NOTE: state.defs is preserved — agent uses remove_definition() to fix specific objects
             state.render_ops = []
 
         # Phase 4: Presentation
