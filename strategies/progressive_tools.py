@@ -1133,9 +1133,8 @@ def _state_summary(state: DiagramState) -> str:
         lines.append(f"Defined objects ({len(state.defs)}):")
         for d in state.defs:
             if state.sym and d.id in state.sym:
-                import sympy.geometry as _spg
                 obj = state.sym[d.id]
-                if isinstance(obj, _spg.Point):
+                if isinstance(obj, spg.Point):
                     lines.append(f"  {d.id} ({d.kind}): ({float(obj.x):.3f}, {float(obj.y):.3f})")
                     continue
             lines.append(f"  {d.id} ({d.kind})")
@@ -1235,6 +1234,8 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             # Reset for repair
             state._construction_finalized = False
             state.sym = None
+            state.defs = []
+            state.render_ops = []
 
         # Phase 4: Presentation
         presentation_agent = _build_presentation_agent(state, model)
