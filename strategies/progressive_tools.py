@@ -1252,9 +1252,11 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
         _accumulate(resp)
 
         if not state._render_finalized:
-            raise RuntimeError(
-                "Presentation agent did not call finalize_render(). Aborting."
-            )
+            # Agent forgot to call finalize_render() — attempt auto-finalize
+            auto_result = handle_finalize_render(state)
+            data = json.loads(auto_result)
+            if data.get("status") == "error":
+                raise RuntimeError(f"Auto-finalize_render failed: {data['error']}")
 
         return ProgressiveToolsRunResult(
             tikz=state._tikz,

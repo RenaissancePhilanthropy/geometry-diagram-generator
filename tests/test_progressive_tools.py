@@ -706,6 +706,56 @@ async def test_run_calls_four_agents():
     assert result.output_tokens == 20  # 5 * 4
 
 
+@pytest.mark.asyncio
+async def test_run_auto_finalizes_render():
+    """If presentation agent forgets finalize_render, strategy auto-finalizes."""
+    strategy = ProgressiveToolsStrategy()
+
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 10
+        mock_usage.output_tokens = 5
+        resp.usage.return_value = mock_usage
+        if call_count == 1:  # canvas
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:  # construction
+            strategy._last_state._construction_finalized = True
+            strategy._last_state.sym = {}
+        elif call_count == 3:  # checks
+            strategy._last_state._checks_finalized = True
+        elif call_count == 4:  # presentation — does NOT call finalize_render
+            # Agent adds some render ops but forgets to finalize
+            pass  # _render_finalized stays False
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        # Also mock handle_finalize_render to avoid renderer dependency
+        with patch("strategies.progressive_tools.handle_finalize_render") as mock_finalize:
+            def fake_finalize(state):
+                state._render_finalized = True
+                state._tikz = "\\tkzInit"
+                state._svg = "<svg/>"
+                return json.dumps({"status": "ok", "tikz_length": 100, "svg_length": 50})
+            mock_finalize.side_effect = fake_finalize
+
+            result = await strategy.run("draw a midpoint", model="anthropic:claude-sonnet-4-6")
+
+    assert isinstance(result, ProgressiveToolsRunResult)
+    assert result.tikz == "\\tkzInit"
+    assert result.svg == "<svg/>"
+
+
 def test_eval_harness_handles_progressive_tools_result():
     """ProgressiveToolsRunResult must not fall into the AgentRunResult else-branch."""
     result = ProgressiveToolsRunResult(
