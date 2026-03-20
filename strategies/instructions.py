@@ -455,6 +455,8 @@ PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS = """\
 You are setting up the canvas for a geometry diagram.
 Call init_diagram() once to configure the coordinate space, then stop.
 Choose bounds that comfortably contain all objects in the diagram.
+Use axes=True for diagrams that involve a coordinate grid or axes.
+Use grid=True together with axes=True for grid paper diagrams.
 """
 
 PROGRESSIVE_TOOLS_PHASE2_INSTRUCTIONS = """\
@@ -462,6 +464,15 @@ You are constructing a geometric diagram step by step using tool calls.
 Add all required points, lines, circles, and composite shapes.
 Each object must reference only previously defined IDs.
 When you have added all objects, call finalize_construction() to compile.
+
+For complex constructions, prefer high-level tools over manual coordinates:
+- add_point_triangle_center() for circumcenter, incenter, centroid, orthocenter
+- add_polygon_exterior() for equilateral triangles or squares built on edges
+- add_circle_through3() for circumscribed circles
+- add_point_foot() for altitude feet (perpendicular from a point to a line)
+- add_line_angle_bisector() for angle bisectors
+- add_point_intersection() for intersection points
+These produce exact symbolic results, avoiding floating-point coordinate errors.
 """
 
 PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX = """\
