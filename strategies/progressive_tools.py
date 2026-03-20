@@ -107,3 +107,28 @@ class ProgressiveToolsRunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     repair_cycles: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Canvas tool handler
+# ---------------------------------------------------------------------------
+
+def handle_init_diagram(
+    state: DiagramState,
+    grid: bool = False,
+    xmin: float = -5,
+    xmax: float = 5,
+    ymin: float = -5,
+    ymax: float = 5,
+) -> str:
+    """Tool handler for init_diagram. Sets state.canvas and returns JSON summary."""
+    state.canvas = ir.Canvas(
+        kind="cartesian",
+        xmin=xmin, xmax=xmax,
+        ymin=ymin, ymax=ymax,
+        grid=grid,
+    )
+    return json.dumps({
+        "status": "ok",
+        "canvas": {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax, "grid": grid},
+    })

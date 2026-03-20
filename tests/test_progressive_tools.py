@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import fields
+import json
 import pytest
 from strategies.progressive_tools import DiagramState, ProgressiveToolsRunResult
 from ir.ir import PointFixed, Segment, Triangle
@@ -88,3 +89,33 @@ def test_cascade_remove_resets_all_phase_flags():
     assert state._construction_finalized is False
     assert state._checks_finalized is False
     assert state._render_finalized is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Canvas tool handler tests
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import handle_init_diagram
+
+
+def test_handle_init_diagram_basic():
+    state = DiagramState()
+    result = json.loads(handle_init_diagram(state, grid=False, xmin=-5, xmax=5, ymin=-5, ymax=5))
+    assert result["status"] == "ok"
+    assert state.canvas is not None
+    assert state.canvas.grid is False
+    assert state.canvas.xmin == -5
+
+
+def test_handle_init_diagram_defaults():
+    state = DiagramState()
+    result = json.loads(handle_init_diagram(state, grid=True))
+    assert state.canvas.grid is True
+    assert state.canvas.xmin == -5  # default
+
+
+def test_handle_init_diagram_idempotent():
+    state = DiagramState()
+    handle_init_diagram(state, grid=False)
+    result = json.loads(handle_init_diagram(state, grid=True))
+    # Second call overwrites
+    assert state.canvas.grid is True
