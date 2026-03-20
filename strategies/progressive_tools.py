@@ -7,8 +7,12 @@ from dataclasses import dataclass, field
 from pydantic import TypeAdapter
 from pydantic_ai import Agent
 
+import sympy.geometry as spg
+
 from ir import ir
-from ir.to_sympy import SymTable
+from ir.errors import IRCompileError
+from ir.ir import DiagramIR
+from ir.to_sympy import SymTable, compile_defs
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 
 logger = logging.getLogger(__name__)
@@ -390,3 +394,39 @@ def handle_remove_definition(state: DiagramState, id: str) -> str:
         return json.dumps({"error": f"ID '{id}' not found in construction"})
     removed = cascade_remove(state, id)
     return json.dumps({"removed": removed})
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Finalize construction handler
+# ---------------------------------------------------------------------------
+
+def handle_finalize_construction(state: DiagramState) -> str:
+    """Compile all accumulated defs via SymPy. Returns compiled object summary."""
+    transient_ir = DiagramIR(canvas=state.canvas, define=state.defs)
+    try:
+        sym = compile_defs(transient_ir)
+    except IRCompileError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+    except Exception as e:
+        return json.dumps({"status": "error", "error": f"Compilation failed: {e}"})
+
+    state.sym = sym
+    state._construction_finalized = True
+
+    # Build human-readable summary of compiled objects
+    compiled = []
+    for def_stmt in state.defs:
+        obj = sym.get(def_stmt.id)
+        entry: dict = {"id": def_stmt.id, "kind": def_stmt.kind}
+        if isinstance(obj, spg.Point):
+            entry["coordinates"] = [float(obj.x), float(obj.y)]
+        elif isinstance(obj, spg.Segment):
+            entry["length"] = float(obj.length)
+        elif isinstance(obj, spg.Circle):
+            entry["center"] = [float(obj.center.x), float(obj.center.y)]
+            entry["radius"] = float(obj.radius)
+        elif isinstance(obj, (spg.Triangle, spg.Polygon)):
+            entry["vertices"] = [[float(v.x), float(v.y)] for v in obj.vertices]
+        compiled.append(entry)
+
+    return json.dumps({"status": "ok", "compiled": compiled})

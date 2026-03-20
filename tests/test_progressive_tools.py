@@ -339,3 +339,45 @@ def test_handle_add_line_perp_through_remapping():
     assert r["status"] == "registered"
     data = state.defs[-1].model_dump()
     assert data["to_line"] == "l1"  # IR field is 'to_line', not 'perp_to'
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: finalize_construction handler
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import handle_finalize_construction
+
+
+def test_handle_finalize_construction_success():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_add_point_fixed(state, "C", "2", "3")
+    handle_add_triangle(state, "T", "A", "B", "C")
+    r = json.loads(handle_finalize_construction(state))
+    assert r["status"] == "ok"
+    assert state.sym is not None
+    assert state._construction_finalized is True
+    # Compiled summary includes all object IDs
+    compiled_ids = {item["id"] for item in r["compiled"]}
+    assert {"A", "B", "C", "T"} <= compiled_ids
+
+
+def test_handle_finalize_construction_compile_error():
+    state = DiagramState()
+    # Segment referencing nonexistent point B
+    handle_add_point_fixed(state, "A", "0", "0")
+    from ir.ir import Segment
+    state.defs.append(Segment(id="s1", a="A", b="MISSING"))
+    r = json.loads(handle_finalize_construction(state))
+    assert r["status"] == "error"
+    assert "error" in r
+    assert state.sym is None
+    assert state._construction_finalized is False
+
+
+def test_handle_finalize_construction_includes_coordinates():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "3", "4")
+    r = json.loads(handle_finalize_construction(state))
+    compiled = {item["id"]: item for item in r["compiled"]}
+    assert compiled["A"]["coordinates"] == pytest.approx([3.0, 4.0])
