@@ -619,7 +619,6 @@ async def run_scenario(
 
     record["duration_s"] = round(time.monotonic() - start, 2)
 
-    # StructuredRunResult: TikZ and SVG are produced deterministically (no tool calls).
     if isinstance(result, ProgressiveToolsRunResult):
         record["tikz_code"] = result.tikz
         svg = result.svg
