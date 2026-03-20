@@ -1283,6 +1283,9 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 for r in (state._last_check_results or [])
                 if not r["passed"] and r["level"] == "must"
             ]
+            # Repair instructions appear in both repair_context (user prompt) and
+            # PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX (system prompt) for emphasis.
+            # Keep both in sync if changing repair guidance.
             repair_context = (
                 "The previous construction failed the following checks:\n"
                 + "\n".join(f"  - {m}" for m in failed_msgs)
@@ -1311,6 +1314,10 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
         if not state._render_finalized:
             # Agent forgot to call finalize_render() — attempt auto-finalize
             auto_result = handle_finalize_render(state)
+            logger.warning(
+                "Presentation agent did not call finalize_render(); auto-finalizing. "
+                "tool_calls count is inflated by 1 for this run."
+            )
             data = json.loads(auto_result)
             if data.get("status") == "error":
                 raise RuntimeError(f"Auto-finalize_render failed: {data['error']}")
