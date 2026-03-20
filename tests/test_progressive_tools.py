@@ -751,9 +751,49 @@ async def test_run_auto_finalizes_render():
 
             result = await strategy.run("draw a midpoint", model="anthropic:claude-sonnet-4-6")
 
+            mock_finalize.assert_called_once_with(strategy._last_state)
+
     assert isinstance(result, ProgressiveToolsRunResult)
     assert result.tikz == "\\tkzInit"
     assert result.svg == "<svg/>"
+
+
+@pytest.mark.asyncio
+async def test_run_auto_finalize_raises_on_error():
+    """If auto-finalize_render fails, run() raises RuntimeError."""
+    strategy = ProgressiveToolsStrategy()
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 1
+        mock_usage.output_tokens = 1
+        resp.usage.return_value = mock_usage
+        if call_count == 1:
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:
+            strategy._last_state._construction_finalized = True
+            strategy._last_state.sym = {}
+        elif call_count == 3:
+            strategy._last_state._checks_finalized = True
+        # call_count == 4: presentation agent — does nothing
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        with patch("strategies.progressive_tools.handle_finalize_render") as mock_finalize:
+            mock_finalize.return_value = json.dumps({"status": "error", "error": "sym is None"})
+
+            with pytest.raises(RuntimeError, match="Auto-finalize_render failed"):
+                await strategy.run("draw something", model="anthropic:claude-sonnet-4-6")
 
 
 def test_eval_harness_handles_progressive_tools_result():
