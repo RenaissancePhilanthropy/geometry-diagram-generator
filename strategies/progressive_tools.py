@@ -126,6 +126,7 @@ class ProgressiveToolsRunResult:
 def handle_init_diagram(
     state: DiagramState,
     grid: bool = False,
+    axes: bool = False,
     xmin: float = -5,
     xmax: float = 5,
     ymin: float = -5,
@@ -137,10 +138,11 @@ def handle_init_diagram(
         xmin=xmin, xmax=xmax,
         ymin=ymin, ymax=ymax,
         grid=grid,
+        axes=axes,
     )
     return json.dumps({
         "status": "ok",
-        "canvas": {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax, "grid": grid},
+        "canvas": {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax, "grid": grid, "axes": axes},
     })
 
 
@@ -766,11 +768,12 @@ def _build_canvas_agent(state: DiagramState, model: str) -> Agent:
     @agent.tool_plain
     def init_diagram(
         grid: bool = False,
+        axes: bool = False,
         xmin: float = -5, xmax: float = 5,
         ymin: float = -5, ymax: float = 5,
     ) -> str:
-        """Initialize the diagram canvas. Call this once to set up the coordinate space."""
-        return handle_init_diagram(state, grid=grid, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
+        """Initialize the diagram canvas. Call this once to set up the coordinate space. Use axes=True to draw coordinate axis lines."""
+        return handle_init_diagram(state, grid=grid, axes=axes, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
 
     return agent
 
@@ -1127,7 +1130,7 @@ def _state_summary(state: DiagramState) -> str:
     lines = []
     if state.canvas:
         lines.append(f"Canvas: xmin={state.canvas.xmin}, xmax={state.canvas.xmax}, "
-                     f"ymin={state.canvas.ymin}, ymax={state.canvas.ymax}, grid={state.canvas.grid}")
+                     f"ymin={state.canvas.ymin}, ymax={state.canvas.ymax}, grid={state.canvas.grid}, axes={state.canvas.axes}")
     if state.defs:
         lines.append(f"Defined objects ({len(state.defs)}):")
         for d in state.defs:

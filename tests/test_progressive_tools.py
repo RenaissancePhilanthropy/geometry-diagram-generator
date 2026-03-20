@@ -4,7 +4,7 @@ import json
 import pytest
 from strategies.progressive_tools import DiagramState, ProgressiveToolsRunResult
 from ir.ir import PointFixed, Segment, Triangle
-from strategies.progressive_tools import cascade_remove, def_references
+from strategies.progressive_tools import cascade_remove, def_references, handle_init_diagram
 
 
 def test_diagram_state_defaults():
@@ -709,3 +709,16 @@ def test_eval_harness_handles_progressive_tools_result():
     assert hasattr(result, "input_tokens")
     assert hasattr(result, "output_tokens")
     assert hasattr(result, "repair_cycles")
+
+
+def test_init_diagram_with_axes():
+    state = DiagramState()
+    handle_init_diagram(state, axes=True)
+    assert state.canvas is not None
+    assert state.canvas.axes is True
+
+
+def test_init_diagram_axes_default_false():
+    state = DiagramState()
+    handle_init_diagram(state)
+    assert state.canvas.axes is False
