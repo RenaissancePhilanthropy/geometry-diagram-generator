@@ -119,3 +119,104 @@ def test_handle_init_diagram_idempotent():
     result = json.loads(handle_init_diagram(state, grid=True))
     # Second call overwrites
     assert state.canvas.grid is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Construction tool handlers — points
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import (
+    handle_add_point_fixed,
+    handle_add_point_free,
+    handle_add_point_midpoint,
+    handle_add_point_between,
+    handle_add_point_foot,
+    handle_add_point_rotate,
+    handle_add_point_reflect,
+    handle_add_point_triangle_center,
+    handle_add_point_on,
+    handle_add_point_intersection,
+)
+
+
+def _state_with_points():
+    """Helper: state with A=(0,0) and B=(4,0)."""
+    s = DiagramState()
+    handle_add_point_fixed(s, "A", "0", "0")
+    handle_add_point_fixed(s, "B", "4", "0")
+    return s
+
+
+def test_handle_add_point_fixed_registers():
+    state = DiagramState()
+    r = json.loads(handle_add_point_fixed(state, "A", "1", "2"))
+    assert r["id"] == "A"
+    assert r["status"] == "registered"
+    assert len(state.defs) == 1
+    assert state.defs[0].kind == "point_fixed"
+
+
+def test_handle_add_point_fixed_duplicate_error():
+    state = _state_with_points()
+    r = json.loads(handle_add_point_fixed(state, "A", "0", "0"))
+    assert "error" in r
+    assert len(state.defs) == 2  # unchanged
+
+
+def test_handle_add_point_free_no_hint():
+    state = DiagramState()
+    r = json.loads(handle_add_point_free(state, "P"))
+    assert r["status"] == "registered"
+    assert state.defs[0].hint_xy is None
+
+
+def test_handle_add_point_free_with_hint():
+    state = DiagramState()
+    r = json.loads(handle_add_point_free(state, "P", hint_xy=[1.0, 2.0]))
+    assert state.defs[0].hint_xy == [1.0, 2.0]
+
+
+def test_handle_add_point_midpoint():
+    state = _state_with_points()
+    r = json.loads(handle_add_point_midpoint(state, "M", "A", "B"))
+    assert r["status"] == "registered"
+    assert state.defs[2].kind == "point_midpoint"
+
+
+def test_handle_add_point_triangle_center():
+    state = DiagramState()
+    # add triangle dependency
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_add_point_fixed(state, "C", "2", "3")
+    from strategies.progressive_tools import handle_add_triangle
+    handle_add_triangle(state, "T", "A", "B", "C")
+    r = json.loads(handle_add_point_triangle_center(state, "O", "T", "circumcenter"))
+    assert r["status"] == "registered"
+    assert state.defs[-1].kind == "point_triangle_center"
+    assert state.defs[-1].which == "circumcenter"
+
+
+def test_handle_add_point_intersection_no_pick():
+    state = DiagramState()
+    handle_add_point_fixed(state, "O1", "-1", "0")
+    handle_add_point_fixed(state, "O2", "1", "0")
+    from strategies.progressive_tools import handle_add_circle_center_radius
+    handle_add_circle_center_radius(state, "c1", "O1", "2")
+    handle_add_circle_center_radius(state, "c2", "O2", "2")
+    r = json.loads(handle_add_point_intersection(state, "P", "c1", "c2"))
+    assert r["status"] == "registered"
+    assert state.defs[-1].kind == "point_intersection"
+    assert state.defs[-1].pick is None
+
+
+def test_handle_add_point_intersection_with_pick():
+    state = DiagramState()
+    handle_add_point_fixed(state, "O1", "-1", "0")
+    handle_add_point_fixed(state, "O2", "1", "0")
+    from strategies.progressive_tools import handle_add_circle_center_radius
+    handle_add_circle_center_radius(state, "c1", "O1", "2")
+    handle_add_circle_center_radius(state, "c2", "O2", "2")
+    pick = {"kind": "closest_to", "p": "O1"}
+    r = json.loads(handle_add_point_intersection(state, "P", "c1", "c2", pick=pick))
+    assert r["status"] == "registered"
+    assert state.defs[-1].pick.kind == "closest_to"

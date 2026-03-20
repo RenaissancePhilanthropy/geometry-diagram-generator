@@ -132,3 +132,123 @@ def handle_init_diagram(
         "status": "ok",
         "canvas": {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax, "grid": grid},
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Construction tool handlers — utilities
+# ---------------------------------------------------------------------------
+
+def _check_unique_id(state: DiagramState, id: str) -> str | None:
+    """Return error JSON if ID already exists, else None."""
+    if any(d.id == id for d in state.defs):
+        return json.dumps({"error": f"ID '{id}' is already in use. Choose a different ID."})
+    return None
+
+
+def _registered(id: str) -> str:
+    return json.dumps({"id": id, "status": "registered"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Construction tool handlers — points
+# ---------------------------------------------------------------------------
+
+def handle_add_point_fixed(state: DiagramState, id: str, x: str, y: str) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointFixed(id=id, x=x, y=y))
+    return _registered(id)
+
+
+def handle_add_point_free(
+    state: DiagramState,
+    id: str,
+    hint_xy: list[float] | None = None,
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointFree(id=id, hint_xy=hint_xy))
+    return _registered(id)
+
+
+def handle_add_point_on(state: DiagramState, id: str, on: str, how: dict) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    try:
+        how_obj = TypeAdapter(ir.PointOnHow).validate_python(how)
+    except Exception as e:
+        return json.dumps({"error": f"Invalid 'how' argument: {e}"})
+    state.defs.append(ir.PointOn(id=id, on=on, how=how_obj))
+    return _registered(id)
+
+
+def handle_add_point_midpoint(state: DiagramState, id: str, p: str, q: str) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointMidpoint(id=id, p=p, q=q))
+    return _registered(id)
+
+
+def handle_add_point_between(
+    state: DiagramState, id: str, a: str, b: str, ratio: str | float
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointBetween(id=id, a=a, b=b, ratio=ratio))
+    return _registered(id)
+
+
+def handle_add_point_foot(state: DiagramState, id: str, source: str, onto: str) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointFoot(id=id, source=source, onto=onto))
+    return _registered(id)
+
+
+def handle_add_point_rotate(
+    state: DiagramState, id: str, center: str, source: str, angle: str | float
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointRotate(id=id, center=center, source=source, angle=angle))
+    return _registered(id)
+
+
+def handle_add_point_reflect(
+    state: DiagramState, id: str, source: str, across: str
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointReflect(id=id, source=source, across=across))
+    return _registered(id)
+
+
+def handle_add_point_triangle_center(
+    state: DiagramState,
+    id: str,
+    tri: str,
+    which: str,
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    state.defs.append(ir.PointTriangleCenter(id=id, tri=tri, which=which))
+    return _registered(id)
+
+
+def handle_add_point_intersection(
+    state: DiagramState,
+    id: str,
+    obj1: str,
+    obj2: str,
+    pick: dict | None = None,
+) -> str:
+    if err := _check_unique_id(state, id):
+        return err
+    pick_obj = None
+    if pick is not None:
+        try:
+            pick_obj = TypeAdapter(ir.PickRule).validate_python(pick)
+        except Exception as e:
+            return json.dumps({"error": f"Invalid pick rule: {e}"})
+    state.defs.append(ir.PointIntersection(id=id, obj1=obj1, obj2=obj2, pick=pick_obj))
+    return _registered(id)
