@@ -430,3 +430,58 @@ def handle_finalize_construction(state: DiagramState) -> str:
         compiled.append(entry)
 
     return json.dumps({"status": "ok", "compiled": compiled})
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Check tool filtering
+# ---------------------------------------------------------------------------
+
+_LINEAR_KINDS = {"segment", "ray", "line_through", "line_parallel_through",
+                 "line_perp_through", "line_angle_bisector", "line_tangent"}
+_CIRCLE_KINDS = {"circle_center_point", "circle_center_radius", "circle_through3"}
+_POINT_KINDS = {
+    "point_fixed", "point_free", "point_on", "point_midpoint", "point_between",
+    "point_foot", "point_rotate", "point_reflect", "point_triangle_center",
+    "point_intersection",
+}
+_CLOSED_SHAPE_KINDS = {"triangle", "polygon", "polygon_exterior"} | _CIRCLE_KINDS
+
+
+def check_tool_names_for_state(state: DiagramState) -> list[str]:
+    """Return the names of check tools applicable to the current construction."""
+    kinds = [d.kind for d in state.defs]
+    point_count = sum(1 for k in kinds if k in _POINT_KINDS)
+    linear_count = sum(1 for k in kinds if k in _LINEAR_KINDS)
+    segment_count = sum(1 for k in kinds if k == "segment")
+    circle_count = sum(1 for k in kinds if k in _CIRCLE_KINDS)
+    triangle_count = sum(1 for k in kinds if k == "triangle")
+    has_line_tangent = any(k == "line_tangent" for k in kinds)
+    has_any_object = len(state.defs) > 0
+
+    tools: list[str] = []
+
+    if point_count >= 2:
+        tools.append("add_distinct_points_check")
+    type_counts: dict[str, int] = {}
+    for k in kinds:
+        type_counts[k] = type_counts.get(k, 0) + 1
+    if any(v >= 2 for v in type_counts.values()):
+        tools.append("add_distinct_objects_check")
+    if point_count >= 3:
+        tools += ["add_collinear_check", "add_non_collinear_check"]
+    if linear_count >= 2:
+        tools += ["add_parallel_check", "add_not_parallel_check", "add_perpendicular_check"]
+    if circle_count >= 1 and has_line_tangent:
+        tools.append("add_tangent_check")
+    if has_any_object and point_count >= 1:
+        tools += ["add_contains_check", "add_not_contains_check"]
+    if point_count >= 3:
+        tools += ["add_right_angle_check", "add_angle_equal_check"]
+    if segment_count >= 2:
+        tools += ["add_equal_length_check", "add_ratio_equal_check"]
+    if triangle_count >= 2:
+        tools.append("add_similar_triangles_check")
+    if linear_count >= 1 and point_count >= 2:
+        tools += ["add_same_side_check", "add_opposite_side_check"]
+
+    return tools

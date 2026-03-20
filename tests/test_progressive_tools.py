@@ -362,6 +362,79 @@ def test_handle_finalize_construction_success():
     assert {"A", "B", "C", "T"} <= compiled_ids
 
 
+# ---------------------------------------------------------------------------
+# check_tool_names_for_state tests
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import check_tool_names_for_state
+
+
+def _state_with_triangle():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_add_point_fixed(state, "C", "2", "3")
+    handle_add_triangle(state, "T", "A", "B", "C")
+    handle_finalize_construction(state)
+    return state
+
+
+def test_check_tools_three_points():
+    state = _state_with_triangle()
+    tools = check_tool_names_for_state(state)
+    assert "add_distinct_points_check" in tools
+    assert "add_collinear_check" in tools
+    assert "add_non_collinear_check" in tools
+
+
+def test_check_tools_no_segments_no_equal_length():
+    state = _state_with_triangle()
+    tools = check_tool_names_for_state(state)
+    # Triangle exists but no segment defs
+    assert "add_equal_length_check" not in tools
+
+
+def test_check_tools_with_segments():
+    state = _state_with_triangle()
+    handle_add_segment(state, "s1", "A", "B")
+    handle_add_segment(state, "s2", "B", "C")
+    handle_finalize_construction(state)
+    tools = check_tool_names_for_state(state)
+    assert "add_equal_length_check" in tools
+    assert "add_ratio_equal_check" in tools
+
+
+def test_check_tools_tangent_requires_line_tangent_def():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "5", "0")
+    handle_add_circle_center_radius(state, "c1", "A", "2")
+    handle_add_line_through(state, "l1", "A", "B")  # a line, but not line_tangent kind
+    handle_finalize_construction(state)
+    tools = check_tool_names_for_state(state)
+    assert "add_tangent_check" not in tools  # no line_tangent def
+
+
+def test_check_tools_tangent_with_line_tangent_def():
+    state = DiagramState()
+    handle_add_point_fixed(state, "P", "5", "0")
+    handle_add_point_fixed(state, "O", "0", "0")
+    handle_add_circle_center_radius(state, "c1", "O", "2")
+    handle_add_line_tangent(state, "lt", from_point="P", to_circle="c1")
+    handle_finalize_construction(state)
+    tools = check_tool_names_for_state(state)
+    assert "add_tangent_check" in tools
+
+
+def test_check_tools_two_linear_objects():
+    state = _state_with_triangle()
+    handle_add_segment(state, "s1", "A", "B")
+    handle_add_segment(state, "s2", "B", "C")
+    handle_finalize_construction(state)
+    tools = check_tool_names_for_state(state)
+    assert "add_parallel_check" in tools
+    assert "add_perpendicular_check" in tools
+
+
 def test_handle_finalize_construction_compile_error():
     state = DiagramState()
     # Segment referencing nonexistent point B
