@@ -118,7 +118,7 @@ class ProgressiveToolsRunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     repair_cycles: int = 0
-    tool_calls: int = 0
+    tool_calls: int = 0  # total handler invocations, including auto-finalize if triggered
 
 
 # ---------------------------------------------------------------------------
