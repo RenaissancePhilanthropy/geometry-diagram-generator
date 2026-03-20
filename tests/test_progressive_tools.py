@@ -630,6 +630,21 @@ def test_handle_label_point():
     assert r["status"] == "registered"
 
 
+def test_label_point_compound_position():
+    """LabelPoint should accept compound positions like 'above left'."""
+    state = DiagramState()
+    state.canvas = ir.Canvas(kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5)
+    # Set up a point
+    handle_add_point_fixed(state, "A", "0", "0")
+    # Use compound position — should not raise
+    result = handle_label_point(state, "A", "A", "above left")
+    data = json.loads(result)
+    assert data["status"] == "registered"
+    # Verify the render op was stored correctly
+    assert len(state.render_ops) == 1
+    assert state.render_ops[0].pos == "above left"
+
+
 def test_handle_label_segment():
     state = _state_with_triangle()
     handle_add_segment(state, "s1", "A", "B")

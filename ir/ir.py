@@ -557,7 +557,10 @@ class LabelPoint(RenderBase):
     kind: Literal["label_point"] = "label_point"
     p: PointId
     text: Optional[str] = None
-    pos: Literal["auto", "above", "below", "left", "right"] = "auto"
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right"
+    ] = "auto"
 
 
 class LabelAngle(RenderBase):

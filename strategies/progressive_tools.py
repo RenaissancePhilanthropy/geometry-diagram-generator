@@ -1100,7 +1100,7 @@ def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
     if "label_point" in available_tools:
         @agent.tool_plain
         def label_point(id: str, text: str | None = None, position: str = "auto") -> str:
-            """Label a point. position: auto|above|below|left|right."""
+            """Label a point. position: auto|above|below|left|right|above left|above right|below left|below right."""
             return handle_label_point(state, id, text, position)
 
     if "label_angle" in available_tools:
