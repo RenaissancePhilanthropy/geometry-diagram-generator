@@ -33,6 +33,7 @@ class DiagramState:
     _construction_finalized: bool = field(default=False, repr=False)
     _checks_finalized: bool = field(default=False, repr=False)
     _render_finalized: bool = field(default=False, repr=False)
+    _last_check_results: list[dict] = field(default_factory=list, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -485,3 +486,154 @@ def check_tool_names_for_state(state: DiagramState) -> list[str]:
         tools += ["add_same_side_check", "add_opposite_side_check"]
 
     return tools
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Check tool handlers
+# ---------------------------------------------------------------------------
+
+from ir.checks import run_checks, CheckResult
+
+
+def _add_check(state: DiagramState, check: ir.Check) -> str:
+    state.checks.append(check)
+    return json.dumps({"status": "registered", "check": check.kind})
+
+
+def handle_add_distinct_points_check(
+    state: DiagramState, p: str, q: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.DistinctPoints(a=p, b=q, level=level))
+
+
+def handle_add_distinct_objects_check(
+    state: DiagramState, a: str, b: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.DistinctObjects(a=a, b=b, level=level))
+
+
+def handle_add_collinear_check(
+    state: DiagramState, points: list[str], level: str = "must"
+) -> str:
+    return _add_check(state, ir.Collinear(points=points, level=level))
+
+
+def handle_add_non_collinear_check(
+    state: DiagramState, p: str, q: str, r: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.NonCollinear(a=p, b=q, c=r, level=level))
+
+
+def handle_add_parallel_check(
+    state: DiagramState, l1: str, l2: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.Parallel(l1=l1, l2=l2, level=level))
+
+
+def handle_add_not_parallel_check(
+    state: DiagramState, l1: str, l2: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.NotParallel(l1=l1, l2=l2, level=level))
+
+
+def handle_add_perpendicular_check(
+    state: DiagramState, l1: str, l2: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.Perpendicular(l1=l1, l2=l2, level=level))
+
+
+def handle_add_contains_check(
+    state: DiagramState, obj: str, point: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.Contains(obj=obj, p=point, level=level))
+
+
+def handle_add_not_contains_check(
+    state: DiagramState, obj: str, point: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.NotContains(obj=obj, p=point, level=level))
+
+
+def handle_add_right_angle_check(
+    state: DiagramState, a: str, vertex: str, b: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.RightAngle(angle=ir.AnglePoints(a=a, o=vertex, b=b), level=level))
+
+
+def handle_add_angle_equal_check(
+    state: DiagramState,
+    a1: str, v1: str, b1: str,
+    a2: str, v2: str, b2: str,
+    level: str = "must",
+) -> str:
+    angle1 = ir.AnglePoints(a=a1, o=v1, b=b1)
+    angle2 = ir.AnglePoints(a=a2, o=v2, b=b2)
+    return _add_check(state, ir.AngleEqual(a1=angle1, a2=angle2, level=level))
+
+
+def handle_add_equal_length_check(
+    state: DiagramState, segments: list[str], level: str = "must"
+) -> str:
+    return _add_check(state, ir.EqualLength(segs=segments, level=level))
+
+
+def handle_add_ratio_equal_check(
+    state: DiagramState,
+    s1: str, s2: str, s3: str, s4: str,
+    level: str = "must",
+) -> str:
+    return _add_check(state, ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4, level=level))
+
+
+def handle_add_similar_triangles_check(
+    state: DiagramState, tri1: str, tri2: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.SimilarTriangles(t1=tri1, t2=tri2, level=level))
+
+
+def handle_add_tangent_check(
+    state: DiagramState, line: str, circle: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.Tangent(line=line, circle=circle, level=level))
+
+
+def handle_add_same_side_check(
+    state: DiagramState, line_a: str, line_b: str, p: str, q: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.SameSide(line_a=line_a, line_b=line_b, p=p, q=q, level=level))
+
+
+def handle_add_opposite_side_check(
+    state: DiagramState, line_a: str, line_b: str, p: str, q: str, level: str = "must"
+) -> str:
+    return _add_check(state, ir.OppositeSide(line_a=line_a, line_b=line_b, p=p, q=q, level=level))
+
+
+def handle_finalize_checks(state: DiagramState) -> str:
+    """Run all accumulated checks. Returns results JSON.
+
+    Sets state._checks_finalized = True only if no must-level failures.
+    prefer-level failures are reported but do not block advancement.
+    Also stores results in state._last_check_results for use by repair loop.
+    """
+    if state.sym is None:
+        return json.dumps({"status": "error", "error": "Construction not finalized yet."})
+
+    results: list[CheckResult] = run_checks(state.checks, state.sym)
+    must_failures = [r for r in results if not r.passed and r.check.level == "must"]
+    all_must_passed = len(must_failures) == 0
+
+    if all_must_passed:
+        state._checks_finalized = True
+
+    result_list = [
+        {
+            "check": r.check.kind,
+            "passed": r.passed,
+            "level": r.check.level,
+            "message": r.message,
+        }
+        for r in results
+    ]
+    state._last_check_results = result_list
+    return json.dumps({"all_passed": all_must_passed, "results": result_list})

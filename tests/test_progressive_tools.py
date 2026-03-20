@@ -454,3 +454,63 @@ def test_handle_finalize_construction_includes_coordinates():
     r = json.loads(handle_finalize_construction(state))
     compiled = {item["id"]: item for item in r["compiled"]}
     assert compiled["A"]["coordinates"] == pytest.approx([3.0, 4.0])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Check tool handlers and finalize_checks
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import (
+    handle_add_distinct_points_check,
+    handle_add_non_collinear_check,
+    handle_add_equal_length_check,
+    handle_add_contains_check,
+    handle_add_parallel_check,
+    handle_add_perpendicular_check,
+    handle_finalize_checks,
+)
+
+
+def test_handle_add_distinct_points_check():
+    state = _state_with_triangle()
+    r = json.loads(handle_add_distinct_points_check(state, "A", "B", level="must"))
+    assert r["status"] == "registered"
+    assert len(state.checks) == 1
+    assert state.checks[0].kind == "distinct_points"
+
+
+def test_handle_finalize_checks_all_pass():
+    state = _state_with_triangle()
+    handle_add_non_collinear_check(state, "A", "B", "C", level="must")
+    r = json.loads(handle_finalize_checks(state))
+    assert r["all_passed"] is True
+    assert state._checks_finalized is True
+    assert all(item["passed"] for item in r["results"])
+
+
+def test_handle_finalize_checks_must_fail():
+    state = DiagramState()
+    # Collinear points — A, B, C on x-axis
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "2", "0")
+    handle_add_point_fixed(state, "C", "4", "0")
+    handle_finalize_construction(state)
+    handle_add_non_collinear_check(state, "A", "B", "C", level="must")
+    r = json.loads(handle_finalize_checks(state))
+    assert r["all_passed"] is False
+    failed = [item for item in r["results"] if not item["passed"]]
+    assert len(failed) == 1
+    assert "non_collinear" in failed[0]["check"]
+    assert state._checks_finalized is False  # must failure does NOT set flag
+
+
+def test_handle_finalize_checks_prefer_fail_does_not_block():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "2", "0")
+    handle_add_point_fixed(state, "C", "4", "0")
+    handle_finalize_construction(state)
+    handle_add_non_collinear_check(state, "A", "B", "C", level="prefer")
+    r = json.loads(handle_finalize_checks(state))
+    # prefer failure does NOT set all_passed to False for phase advancement
+    assert r["all_passed"] is True
+    assert state._checks_finalized is True
