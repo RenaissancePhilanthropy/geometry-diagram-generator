@@ -514,3 +514,125 @@ def test_handle_finalize_checks_prefer_fail_does_not_block():
     # prefer failure does NOT set all_passed to False for phase advancement
     assert r["all_passed"] is True
     assert state._checks_finalized is True
+
+
+# ---------------------------------------------------------------------------
+# Task 9: presentation_tool_names_for_state
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import presentation_tool_names_for_state
+
+
+def test_presentation_tools_always_available():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "draw" in tools
+    assert "draw_points" in tools
+    assert "finalize_render" in tools
+
+
+def test_presentation_tools_fill_with_closed_shape():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "fill" in tools   # triangle is a closed shape
+
+
+def test_presentation_tools_no_fill_without_closed_shape():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_add_point_fixed(state, "B", "4", "0")
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "fill" not in tools
+
+
+def test_presentation_tools_mark_segments_with_segment():
+    state = _state_with_triangle()
+    handle_add_segment(state, "s1", "A", "B")
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "mark_segments" in tools
+    assert "label_segment" in tools
+
+
+def test_presentation_tools_angles_with_three_points():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "mark_angles" in tools
+    assert "mark_right_angles" in tools
+    assert "label_angle" in tools
+
+
+def test_presentation_tools_label_point_with_any_point():
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_finalize_construction(state)
+    tools = presentation_tool_names_for_state(state)
+    assert "label_point" in tools
+
+
+# ---------------------------------------------------------------------------
+# Task 10: Presentation tool handlers
+# ---------------------------------------------------------------------------
+from strategies.progressive_tools import (
+    handle_draw, handle_draw_points, handle_fill,
+    handle_mark_angles, handle_mark_right_angles,
+    handle_mark_segments, handle_label_point,
+    handle_label_angle, handle_label_segment,
+)
+
+
+def test_handle_draw_registers_render_op():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    r = json.loads(handle_draw(state, "T"))
+    assert r["status"] == "registered"
+    assert len(state.render_ops) == 1
+    assert state.render_ops[0].kind == "draw"
+
+
+def test_handle_draw_points():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    r = json.loads(handle_draw_points(state, ["A", "B", "C"]))
+    assert r["status"] == "registered"
+    assert state.render_ops[0].kind == "draw_points"
+
+
+def test_handle_fill():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    r = json.loads(handle_fill(state, "T", opacity=0.3))
+    assert r["status"] == "registered"
+
+
+def test_handle_mark_angles():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    r = json.loads(handle_mark_angles(state, "A", "B", "C"))
+    assert r["status"] == "registered"
+
+
+def test_handle_mark_segments():
+    state = _state_with_triangle()
+    handle_add_segment(state, "s1", "A", "B")
+    handle_finalize_construction(state)
+    r = json.loads(handle_mark_segments(state, ["s1"]))
+    assert r["status"] == "registered"
+
+
+def test_handle_label_point():
+    state = _state_with_triangle()
+    handle_finalize_construction(state)
+    r = json.loads(handle_label_point(state, "A", text="A", position="above"))
+    assert r["status"] == "registered"
+
+
+def test_handle_label_segment():
+    state = _state_with_triangle()
+    handle_add_segment(state, "s1", "A", "B")
+    handle_finalize_construction(state)
+    r = json.loads(handle_label_segment(state, "s1", text="4"))
+    assert r["status"] == "registered"
