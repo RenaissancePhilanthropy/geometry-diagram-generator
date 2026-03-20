@@ -94,6 +94,8 @@ def cascade_remove(state: DiagramState, target_id: str) -> list[str]:
     state.defs = [d for d in state.defs if d.id not in to_remove]
     state.sym = None  # symbol table is now stale
     state._construction_finalized = False
+    state._checks_finalized = False
+    state._render_finalized = False
     return removed_ordered
 
 

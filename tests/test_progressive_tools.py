@@ -74,3 +74,17 @@ def test_cascade_remove_clears_sym():
     state.sym = {"A": object()}  # fake sym table
     cascade_remove(state, "A")
     assert state.sym is None
+
+
+def test_cascade_remove_resets_all_phase_flags():
+    state = DiagramState()
+    state.defs = [PointFixed(id="A", x="0", y="0")]
+    state.sym = {"A": object()}
+    state._construction_finalized = True
+    state._checks_finalized = True
+    state._render_finalized = True
+    cascade_remove(state, "A")
+    assert state.sym is None
+    assert state._construction_finalized is False
+    assert state._checks_finalized is False
+    assert state._render_finalized is False
