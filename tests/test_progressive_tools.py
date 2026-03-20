@@ -689,3 +689,23 @@ async def test_run_calls_four_agents():
     assert isinstance(result, ProgressiveToolsRunResult)
     assert result.input_tokens == 40   # 10 * 4
     assert result.output_tokens == 20  # 5 * 4
+
+
+def test_eval_harness_handles_progressive_tools_result():
+    """ProgressiveToolsRunResult must not fall into the AgentRunResult else-branch."""
+    result = ProgressiveToolsRunResult(
+        tikz="\\tkzInit",
+        svg="<svg/>",
+        input_tokens=100,
+        output_tokens=50,
+        repair_cycles=1,
+    )
+    # Verify it is NOT an instance of StructuredRunResult (different branch)
+    from strategies.structured import StructuredRunResult
+    assert not isinstance(result, StructuredRunResult)
+    # Verify it has the fields the harness will read
+    assert hasattr(result, "tikz")
+    assert hasattr(result, "svg")
+    assert hasattr(result, "input_tokens")
+    assert hasattr(result, "output_tokens")
+    assert hasattr(result, "repair_cycles")

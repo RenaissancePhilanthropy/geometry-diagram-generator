@@ -55,6 +55,7 @@ from strategies.plan_and_code import PlanAndCodeStrategy
 from strategies.structured import StructureStrategy, StructuredRunResult
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
+from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -73,6 +74,7 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "structured": StructureStrategy,
     "structured_plus_refine": StructuredPlusRefineStrategy,
     "structured_two_phase": StructuredTwoPhaseStrategy,
+    "progressive_tools": ProgressiveToolsStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
@@ -618,7 +620,16 @@ async def run_scenario(
     record["duration_s"] = round(time.monotonic() - start, 2)
 
     # StructuredRunResult: TikZ and SVG are produced deterministically (no tool calls).
-    if isinstance(result, StructuredRunResult):
+    if isinstance(result, ProgressiveToolsRunResult):
+        record["tikz_code"] = result.tikz
+        svg = result.svg
+        record["input_tokens"] = result.input_tokens
+        record["output_tokens"] = result.output_tokens
+        record["retries"] = result.repair_cycles
+        # No diagram_ir or sym_table available for this strategy
+        record["ir_diagnostics"] = None
+        record["sympy_property_checks"] = []
+    elif isinstance(result, StructuredRunResult):
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
         svg = result.svg
