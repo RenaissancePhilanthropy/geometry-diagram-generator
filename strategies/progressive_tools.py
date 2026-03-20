@@ -39,6 +39,7 @@ class DiagramState:
     _last_check_results: list[dict] = field(default_factory=list, repr=False)
     _tikz: str = field(default="", repr=False)
     _svg: str = field(default="", repr=False)
+    _tool_call_count: int = field(default=0, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ class ProgressiveToolsRunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     repair_cycles: int = 0
+    tool_calls: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,7 @@ def handle_init_diagram(
     ymax: float = 5,
 ) -> str:
     """Tool handler for init_diagram. Sets state.canvas and returns JSON summary."""
+    state._tool_call_count += 1
     state.canvas = ir.Canvas(
         kind="cartesian",
         xmin=xmin, xmax=xmax,
@@ -166,6 +169,7 @@ def _registered(id: str) -> str:
 # ---------------------------------------------------------------------------
 
 def handle_add_point_fixed(state: DiagramState, id: str, x: str, y: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointFixed(id=id, x=x, y=y))
@@ -177,6 +181,7 @@ def handle_add_point_free(
     id: str,
     hint_xy: list[float] | None = None,
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointFree(id=id, hint_xy=hint_xy))
@@ -184,6 +189,7 @@ def handle_add_point_free(
 
 
 def handle_add_point_on(state: DiagramState, id: str, on: str, how: dict) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     try:
@@ -195,6 +201,7 @@ def handle_add_point_on(state: DiagramState, id: str, on: str, how: dict) -> str
 
 
 def handle_add_point_midpoint(state: DiagramState, id: str, p: str, q: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointMidpoint(id=id, p=p, q=q))
@@ -204,6 +211,7 @@ def handle_add_point_midpoint(state: DiagramState, id: str, p: str, q: str) -> s
 def handle_add_point_between(
     state: DiagramState, id: str, a: str, b: str, ratio: str | float
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointBetween(id=id, a=a, b=b, ratio=ratio))
@@ -211,6 +219,7 @@ def handle_add_point_between(
 
 
 def handle_add_point_foot(state: DiagramState, id: str, source: str, onto: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointFoot(id=id, source=source, onto=onto))
@@ -220,6 +229,7 @@ def handle_add_point_foot(state: DiagramState, id: str, source: str, onto: str) 
 def handle_add_point_rotate(
     state: DiagramState, id: str, center: str, source: str, angle: str | float
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointRotate(id=id, center=center, source=source, angle=angle))
@@ -229,6 +239,7 @@ def handle_add_point_rotate(
 def handle_add_point_reflect(
     state: DiagramState, id: str, source: str, across: str
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointReflect(id=id, source=source, across=across))
@@ -241,6 +252,7 @@ def handle_add_point_triangle_center(
     tri: str,
     which: str,
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     state.defs.append(ir.PointTriangleCenter(id=id, tri=tri, which=which))
@@ -254,6 +266,7 @@ def handle_add_point_intersection(
     obj2: str,
     pick: dict | None = None,
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id):
         return err
     pick_obj = None
@@ -271,12 +284,14 @@ def handle_add_point_intersection(
 # ---------------------------------------------------------------------------
 
 def handle_add_segment(state: DiagramState, id: str, a: str, b: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.Segment(id=id, a=a, b=b))
     return _registered(id)
 
 
 def handle_add_ray(state: DiagramState, id: str, a: str, b: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.Ray(id=id, a=a, b=b))
     return _registered(id)
@@ -284,6 +299,7 @@ def handle_add_ray(state: DiagramState, id: str, a: str, b: str) -> str:
 
 def handle_add_line_through(state: DiagramState, id: str, a: str, b: str) -> str:
     """Note: IR fields are p/q, not a/b."""
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.LineThrough(id=id, p=a, q=b))
     return _registered(id)
@@ -293,6 +309,7 @@ def handle_add_line_parallel_through(
     state: DiagramState, id: str, through: str, parallel_to: str
 ) -> str:
     """parallel_to → IR field to_line."""
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.LineParallelThrough(id=id, through=through, to_line=parallel_to))
     return _registered(id)
@@ -302,6 +319,7 @@ def handle_add_line_perp_through(
     state: DiagramState, id: str, through: str, perp_to: str
 ) -> str:
     """perp_to → IR field to_line."""
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.LinePerpendicularThrough(id=id, through=through, to_line=perp_to))
     return _registered(id)
@@ -310,6 +328,7 @@ def handle_add_line_perp_through(
 def handle_add_line_angle_bisector(
     state: DiagramState, id: str, a: str, vertex: str, b: str
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.LineAngleBisector(id=id, a=a, vertex=vertex, b=b))
     return _registered(id)
@@ -323,6 +342,7 @@ def handle_add_line_tangent(
     pick: dict | None = None,
 ) -> str:
     """from_point → IR 'point'; to_circle → IR 'circle'."""
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     pick_obj = None
     if pick is not None:
@@ -341,6 +361,7 @@ def handle_add_line_tangent(
 def handle_add_circle_center_point(
     state: DiagramState, id: str, center: str, through: str
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.CircleCenterPoint(id=id, center=center, through=through))
     return _registered(id)
@@ -349,6 +370,7 @@ def handle_add_circle_center_point(
 def handle_add_circle_center_radius(
     state: DiagramState, id: str, center: str, radius: str | float
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.CircleCenterRadius(id=id, center=center, radius=radius))
     return _registered(id)
@@ -357,6 +379,7 @@ def handle_add_circle_center_radius(
 def handle_add_circle_through3(
     state: DiagramState, id: str, a: str, b: str, c: str
 ) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.CircleThrough3(id=id, a=a, b=b, c=c))
     return _registered(id)
@@ -367,12 +390,14 @@ def handle_add_circle_through3(
 # ---------------------------------------------------------------------------
 
 def handle_add_triangle(state: DiagramState, id: str, a: str, b: str, c: str) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.Triangle(id=id, a=a, b=b, c=c))
     return _registered(id)
 
 
 def handle_add_polygon(state: DiagramState, id: str, vertices: list[str]) -> str:
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.Polygon(id=id, points=vertices))
     return _registered(id)
@@ -387,6 +412,7 @@ def handle_add_polygon_exterior(
     ref_point: str,
 ) -> str:
     """v1→IR a, v2→IR b, ref_point→IR ref."""
+    state._tool_call_count += 1
     if err := _check_unique_id(state, id): return err
     state.defs.append(ir.PolygonExterior(id=id, a=v1, b=v2, sides=sides, ref=ref_point))
     return _registered(id)
@@ -398,6 +424,7 @@ def handle_add_polygon_exterior(
 
 def handle_remove_definition(state: DiagramState, id: str) -> str:
     """Remove a definition and all transitively dependent definitions."""
+    state._tool_call_count += 1
     if not any(d.id == id for d in state.defs):
         return json.dumps({"error": f"ID '{id}' not found in construction"})
     removed = cascade_remove(state, id)
@@ -410,6 +437,7 @@ def handle_remove_definition(state: DiagramState, id: str) -> str:
 
 def handle_finalize_construction(state: DiagramState) -> str:
     """Compile all accumulated defs via SymPy. Returns compiled object summary."""
+    state._tool_call_count += 1
     transient_ir = DiagramIR(canvas=state.canvas, define=state.defs)
     try:
         sym = compile_defs(transient_ir)
@@ -509,60 +537,70 @@ def _add_check(state: DiagramState, check: ir.Check) -> str:
 def handle_add_distinct_points_check(
     state: DiagramState, p: str, q: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.DistinctPoints(a=p, b=q, level=level))
 
 
 def handle_add_distinct_objects_check(
     state: DiagramState, a: str, b: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.DistinctObjects(a=a, b=b, level=level))
 
 
 def handle_add_collinear_check(
     state: DiagramState, points: list[str], level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.Collinear(points=points, level=level))
 
 
 def handle_add_non_collinear_check(
     state: DiagramState, p: str, q: str, r: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.NonCollinear(a=p, b=q, c=r, level=level))
 
 
 def handle_add_parallel_check(
     state: DiagramState, l1: str, l2: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.Parallel(l1=l1, l2=l2, level=level))
 
 
 def handle_add_not_parallel_check(
     state: DiagramState, l1: str, l2: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.NotParallel(l1=l1, l2=l2, level=level))
 
 
 def handle_add_perpendicular_check(
     state: DiagramState, l1: str, l2: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.Perpendicular(l1=l1, l2=l2, level=level))
 
 
 def handle_add_contains_check(
     state: DiagramState, obj: str, point: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.Contains(obj=obj, p=point, level=level))
 
 
 def handle_add_not_contains_check(
     state: DiagramState, obj: str, point: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.NotContains(obj=obj, p=point, level=level))
 
 
 def handle_add_right_angle_check(
     state: DiagramState, a: str, vertex: str, b: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.RightAngle(angle=ir.AnglePoints(a=a, o=vertex, b=b), level=level))
 
 
@@ -572,6 +610,7 @@ def handle_add_angle_equal_check(
     a2: str, v2: str, b2: str,
     level: str = "must",
 ) -> str:
+    state._tool_call_count += 1
     angle1 = ir.AnglePoints(a=a1, o=v1, b=b1)
     angle2 = ir.AnglePoints(a=a2, o=v2, b=b2)
     return _add_check(state, ir.AngleEqual(a1=angle1, a2=angle2, level=level))
@@ -580,6 +619,7 @@ def handle_add_angle_equal_check(
 def handle_add_equal_length_check(
     state: DiagramState, segments: list[str], level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.EqualLength(segs=segments, level=level))
 
 
@@ -588,30 +628,35 @@ def handle_add_ratio_equal_check(
     s1: str, s2: str, s3: str, s4: str,
     level: str = "must",
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4, level=level))
 
 
 def handle_add_similar_triangles_check(
     state: DiagramState, tri1: str, tri2: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.SimilarTriangles(t1=tri1, t2=tri2, level=level))
 
 
 def handle_add_tangent_check(
     state: DiagramState, line: str, circle: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.Tangent(line=line, circle=circle, level=level))
 
 
 def handle_add_same_side_check(
     state: DiagramState, line_a: str, line_b: str, p: str, q: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.SameSide(line_a=line_a, line_b=line_b, p=p, q=q, level=level))
 
 
 def handle_add_opposite_side_check(
     state: DiagramState, line_a: str, line_b: str, p: str, q: str, level: str = "must"
 ) -> str:
+    state._tool_call_count += 1
     return _add_check(state, ir.OppositeSide(line_a=line_a, line_b=line_b, p=p, q=q, level=level))
 
 
@@ -622,6 +667,7 @@ def handle_finalize_checks(state: DiagramState) -> str:
     prefer-level failures are reported but do not block advancement.
     Also stores results in state._last_check_results for use by repair loop.
     """
+    state._tool_call_count += 1
     if state.sym is None:
         return json.dumps({"status": "error", "error": "Construction not finalized yet."})
 
@@ -679,11 +725,13 @@ def _render_op_registered(kind: str) -> str:
 
 
 def handle_draw(state: DiagramState, obj_id: str) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.Draw(obj=obj_id))
     return _render_op_registered("draw")
 
 
 def handle_draw_points(state: DiagramState, ids: list[str]) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.DrawPoints(points=ids))
     return _render_op_registered("draw_points")
 
@@ -691,6 +739,7 @@ def handle_draw_points(state: DiagramState, ids: list[str]) -> str:
 def handle_fill(
     state: DiagramState, obj_id: str, opacity: float = 1.0
 ) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.Fill(obj=obj_id, opacity=opacity))
     return _render_op_registered("fill")
 
@@ -703,6 +752,7 @@ def handle_mark_angles(
     which: str = "interior",
     group: str | None = None,
 ) -> str:
+    state._tool_call_count += 1
     angle = ir.AnglePoints(a=a, o=vertex, b=b)
     state.render_ops.append(ir.MarkAngles(angles=[angle], which=which, group=group))
     return _render_op_registered("mark_angles")
@@ -711,6 +761,7 @@ def handle_mark_angles(
 def handle_mark_right_angles(
     state: DiagramState, a: str, vertex: str, b: str
 ) -> str:
+    state._tool_call_count += 1
     angle = ir.AnglePoints(a=a, o=vertex, b=b)
     state.render_ops.append(ir.MarkRightAngles(angles=[angle]))
     return _render_op_registered("mark_right_angles")
@@ -721,6 +772,7 @@ def handle_mark_segments(
     seg_ids: list[str],
     group: str | None = None,
 ) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.MarkSegments(segs=seg_ids, group=group))
     return _render_op_registered("mark_segments")
 
@@ -731,6 +783,7 @@ def handle_label_point(
     text: str | None = None,
     position: str = "auto",
 ) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.LabelPoint(p=id, text=text or id, pos=position))
     return _render_op_registered("label_point")
 
@@ -741,6 +794,7 @@ def handle_label_angle(
     text: str,
     position: float = 0.5,
 ) -> str:
+    state._tool_call_count += 1
     angle = ir.AnglePoints(a=a, o=vertex, b=b)
     state.render_ops.append(ir.LabelAngle(angle=angle, text=text))
     return _render_op_registered("label_angle")
@@ -752,6 +806,7 @@ def handle_label_segment(
     text: str,
     pos: float = 0.5,
 ) -> str:
+    state._tool_call_count += 1
     state.render_ops.append(ir.LabelSegment(seg=seg_id, text=text, pos=pos))
     return _render_op_registered("label_segment")
 
@@ -1266,6 +1321,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             input_tokens=total_input,
             output_tokens=total_output,
             repair_cycles=state.repair_count,
+            tool_calls=state._tool_call_count,
         )
 
 
@@ -1275,6 +1331,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
 
 def handle_finalize_render(state: DiagramState) -> str:
     """Assemble DiagramIR, generate TikZ, render to SVG."""
+    state._tool_call_count += 1
     if state.sym is None:
         return json.dumps({"status": "error", "error": "Construction not finalized. Call finalize_construction() first."})
     diagram = DiagramIR(

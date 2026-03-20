@@ -849,3 +849,13 @@ def test_repair_preserves_defs():
     assert len(state.defs) == 2
     assert state._construction_finalized is False
     assert state.sym is None
+
+
+def test_tool_call_count_increments():
+    """Each tool call handler increments state._tool_call_count."""
+    state = DiagramState()
+    assert state._tool_call_count == 0
+    handle_init_diagram(state)
+    assert state._tool_call_count == 1
+    handle_add_point_fixed(state, "A", "0", "0")
+    assert state._tool_call_count == 2
