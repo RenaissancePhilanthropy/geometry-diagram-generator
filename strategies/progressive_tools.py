@@ -10,10 +10,13 @@ from pydantic_ai import Agent
 import sympy.geometry as spg
 
 from ir import ir
+from ir.checks import run_checks, CheckResult
 from ir.errors import IRCompileError
 from ir.ir import DiagramIR
 from ir.to_sympy import SymTable, compile_defs
+from ir.to_tikz import ir_to_tikz
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from util.tikz_renderer import render_tikz
 
 logger = logging.getLogger(__name__)
 
@@ -494,7 +497,6 @@ def check_tool_names_for_state(state: DiagramState) -> list[str]:
 # Phase 3: Check tool handlers
 # ---------------------------------------------------------------------------
 
-from ir.checks import run_checks, CheckResult
 
 
 def _add_check(state: DiagramState, check: ir.Check) -> str:
@@ -751,9 +753,6 @@ def handle_label_segment(
     state.render_ops.append(ir.LabelSegment(seg=seg_id, text=text, pos=pos))
     return _render_op_registered("label_segment")
 
-
-from ir.to_tikz import ir_to_tikz
-from util.tikz_renderer import render_tikz
 
 
 # ---------------------------------------------------------------------------
@@ -1216,7 +1215,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
 
             # must-check failed → repair
             state.repair_count += 1
-            if state.repair_count >= MAX_REPAIR_CYCLES:
+            if state.repair_count > MAX_REPAIR_CYCLES:
                 raise RuntimeError(
                     f"ProgressiveToolsStrategy failed: check failures after "
                     f"{MAX_REPAIR_CYCLES} repair cycles."
@@ -1233,6 +1232,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             )
             # Reset for repair
             state._construction_finalized = False
+            state._checks_finalized = False
             state.sym = None
             state.defs = []
             state.render_ops = []
