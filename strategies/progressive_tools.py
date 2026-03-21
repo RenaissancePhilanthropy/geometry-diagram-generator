@@ -902,7 +902,7 @@ def handle_label_segment(
 
 def _build_canvas_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS, history_processors=[compress_tool_history])
+    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS)
 
     @agent.tool_plain
     def init_diagram(
@@ -932,7 +932,6 @@ def _build_construction_agent(
         model,
         instructions=instructions,
         model_settings=ModelSettings(parallel_tool_calls=True),
-        history_processors=[compress_tool_history],
     )
 
     @agent.tool_plain
@@ -1071,7 +1070,7 @@ def _build_construction_agent(
 
 def _build_checks_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS, history_processors=[compress_tool_history])
+    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS)
 
     available_tools = check_tool_names_for_state(state)
 
@@ -1201,7 +1200,6 @@ def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
         model,
         instructions=PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS,
         model_settings=ModelSettings(parallel_tool_calls=True),
-        history_processors=[compress_tool_history],
     )
 
     available_tools = presentation_tool_names_for_state(state)
@@ -1321,12 +1319,20 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             u = response.usage()
             total_input += u.input_tokens or 0
             total_output += u.output_tokens or 0
-            phase_traces[phase_name] = response.all_messages_json()
+            raw = response.all_messages_json()
+            phase_traces[phase_name] = json.loads(raw) if isinstance(raw, (bytes, str)) else raw
             phase_usage[phase_name] = {
                 "input_tokens": u.input_tokens or 0,
                 "output_tokens": u.output_tokens or 0,
                 "requests": u.requests or 0,
             }
+            # Update partial metrics so they're available on failure
+            self._partial_input_tokens = total_input
+            self._partial_output_tokens = total_output
+            self._partial_tool_calls = state._tool_call_count
+            self._partial_phase_traces = phase_traces
+            self._partial_phase_usage = phase_usage
+            self._partial_repair_cycles = state.repair_count
 
         # Phase 1: Canvas
         canvas_agent = _build_canvas_agent(state, model)
@@ -1348,7 +1354,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"Build the geometry for this diagram.\n\n"
                 f"Current state:\n{_state_summary(state)}\n\n"
                 f"Request: {prompt}\n\n"
-                f"When done adding all objects, finalization is automatic."
+                f"When done adding all objects, call finalize_construction()."
             )
             resp = await construction_agent.run(construction_prompt)
             construction_key = "construction" if state.repair_count == 0 else f"construction_r{state.repair_count}"
@@ -1367,7 +1373,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"Add geometric checks for the diagram you just constructed.\n\n"
                 f"Current state:\n{_state_summary(state)}\n\n"
                 f"Request: {prompt}\n\n"
-                f"When done adding checks, finalization is automatic."
+                f"When done adding checks, call finalize_checks()."
             )
             resp = await checks_agent.run(checks_prompt)
             checks_key = "checks" if state.repair_count == 0 else f"checks_r{state.repair_count}"

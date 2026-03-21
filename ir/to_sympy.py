@@ -229,10 +229,11 @@ def _compile_one(
                     did, f"ref point {ref_id!r} is on line {a_id!r}-{b_id!r}; cannot determine exterior side"
                 )
             # We want the polygon on the OPPOSITE side from ref.
-            # If ref is left of a→b (cross > 0), rotate counterclockwise (+) to reach the right.
-            # If ref is right of a→b (cross < 0), rotate clockwise (-) to reach the left.
+            # rot > 0 puts the polygon to the right of a→b; rot < 0 puts it to the left.
+            # The rotation angle is the interior angle of a regular n-gon: (n-2)π/n.
+            # Rotating prev2 around prev1 by this angle produces the correct next vertex.
             rot = sp.Rational(1, 1) if cross_val > 0 else sp.Rational(-1, 1)
-            step = sp.Rational(2, 1) * sp.pi / sides
+            step = sp.Rational(sides - 2, sides) * sp.pi
             rot_angle = rot * step
             # Build vertices: start from a and b, then generate n-2 more
             # by rotating the last edge endpoint around the previous vertex

@@ -615,6 +615,13 @@ async def run_scenario(
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
+        if isinstance(strategy, ProgressiveToolsStrategy):
+            record["input_tokens"] = getattr(strategy, "_partial_input_tokens", None)
+            record["output_tokens"] = getattr(strategy, "_partial_output_tokens", None)
+            record["tool_calls"] = getattr(strategy, "_partial_tool_calls", None)
+            record["phase_traces"] = getattr(strategy, "_partial_phase_traces", None)
+            record["phase_usage"] = getattr(strategy, "_partial_phase_usage", None)
+            record["retries"] = getattr(strategy, "_partial_repair_cycles", None)
         return record
 
     record["duration_s"] = round(time.monotonic() - start, 2)
@@ -942,6 +949,21 @@ def _finalize_gate_status(record: dict) -> None:
 # Output helpers
 # ---------------------------------------------------------------------------
 
+def _externalize_traces(record: dict, traces_dir: Path) -> None:
+    """Write phase_traces to a separate JSON file and replace with a relative path."""
+    traces = record.get("phase_traces")
+    if not traces:
+        return
+    scenario_id = record.get("scenario_id", "unknown")
+    repeat = record.get("repeat_index", 1)
+    traces_dir.mkdir(parents=True, exist_ok=True)
+    trace_file = traces_dir / f"{scenario_id}_r{repeat:03d}.json"
+    with trace_file.open("w") as f:
+        json.dump(traces, f)
+    # Store relative path (relative to the traces_dir's parent, i.e. output_dir)
+    record["phase_traces"] = str(trace_file.relative_to(traces_dir.parent.parent))
+
+
 def _append_jsonl(path: Path, record: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
@@ -1126,6 +1148,7 @@ async def main() -> None:
     output_dir = Path(args.output)
     output_path = output_dir / f"{run_id}.jsonl"
     svg_output_dir = output_dir / run_id / "svgs"
+    traces_output_dir = output_dir / run_id / "traces"
 
     total = len(args.strategies) * len(scenarios) * args.repeats
     print(f"Running {total} evals  (run_id={run_id})")
@@ -1170,6 +1193,7 @@ async def main() -> None:
             record = await finished
             record["run_id"] = run_id
             record["timestamp"] = datetime.now(timezone.utc).isoformat()
+            _externalize_traces(record, traces_output_dir)
             _print_record(record)
             _append_jsonl(output_path, record)
             all_records.append(record)

@@ -863,3 +863,34 @@ class TestPolygonExterior:
         # v2 should be below the x-axis (opposite from C which is above)
         v2y = float(sym["tri_ext_v2"].y.evalf())
         assert v2y < 0, f"Exterior triangle vertex should be below x-axis, got y={v2y}"
+        # All edges must be equal length (actually equilateral)
+        verts = [(float(sym[f"tri_ext_v{i}"].x.evalf()), float(sym[f"tri_ext_v{i}"].y.evalf())) for i in range(3)]
+        edge_lengths = [math.hypot(verts[(i+1)%3][0]-verts[i][0], verts[(i+1)%3][1]-verts[i][1]) for i in range(3)]
+        assert abs(edge_lengths[0] - 2.0) < 1e-9, f"Edge 0 length {edge_lengths[0]} != 2"
+        assert abs(edge_lengths[1] - edge_lengths[0]) < 1e-9, f"Edges not equal: {edge_lengths}"
+        assert abs(edge_lengths[2] - edge_lengths[0]) < 1e-9, f"Edges not equal: {edge_lengths}"
+
+    def test_pentagon_exterior(self):
+        """polygon_exterior with sides=5 builds a regular pentagon exterior to ref."""
+        stmts = [
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="ref", x=1, y=1),  # ref above edge
+            PolygonExterior(id="pent", a="A", b="B", ref="ref", sides=5),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert isinstance(sym["pent"], spg.Polygon)
+        assert len(sym["pent"].vertices) == 5
+        # All sub-points registered
+        for i in range(5):
+            assert f"pent_v{i}" in sym
+        # All edges must be equal length (regular pentagon)
+        verts = [(float(sym[f"pent_v{i}"].x.evalf()), float(sym[f"pent_v{i}"].y.evalf())) for i in range(5)]
+        edge_len = math.hypot(verts[1][0]-verts[0][0], verts[1][1]-verts[0][1])
+        for i in range(1, 5):
+            l = math.hypot(verts[(i+1)%5][0]-verts[i][0], verts[(i+1)%5][1]-verts[i][1])
+            assert abs(l - edge_len) < 1e-9, f"Pentagon edge {i} length {l} != {edge_len}"
+        # Vertices v2..v4 should be below the x-axis (opposite side from ref)
+        for i in range(2, 5):
+            vy = float(sym[f"pent_v{i}"].y.evalf())
+            assert vy < 0, f"pent_v{i} should be below x-axis, got y={vy}"

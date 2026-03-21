@@ -463,7 +463,7 @@ PROGRESSIVE_TOOLS_PHASE2_INSTRUCTIONS = """\
 You are constructing a geometric diagram step by step using tool calls.
 Add all required points, lines, circles, and composite shapes.
 Each object must reference only previously defined IDs.
-When you are done adding all objects, simply stop — finalization is automatic. You may still call finalize_construction() explicitly if you prefer.
+When you have added all objects, call finalize_construction() to compile.
 
 For complex constructions, prefer high-level tools over manual coordinates:
 - add_point_triangle_center() for circumcenter, incenter, centroid, orthocenter
@@ -487,7 +487,7 @@ Failed checks:
 PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS = """\
 You are adding geometric checks to a completed construction.
 Add checks for the key geometric properties the diagram must satisfy.
-When you are done adding checks, simply stop — finalization is automatic. You may still call finalize_checks() explicitly if you prefer.
+When done, call finalize_checks() to run and validate them.
 """
 
 PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS = """\
