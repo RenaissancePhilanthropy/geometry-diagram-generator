@@ -626,6 +626,7 @@ async def run_scenario(
         record["output_tokens"] = result.output_tokens
         record["retries"] = result.repair_cycles
         record["tool_calls"] = result.tool_calls
+        record["skipped_render_ids"] = result.skipped_render_ids
         # No diagram_ir or sym_table available for this strategy
         record["ir_diagnostics"] = None
         record["sympy_property_checks"] = []

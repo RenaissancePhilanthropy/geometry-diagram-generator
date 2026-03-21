@@ -119,6 +119,7 @@ class DiagramState:
     _tikz: str = field(default="", repr=False)
     _svg: str = field(default="", repr=False)
     _tool_call_count: int = field(default=0, repr=False)
+    _render_warnings: list[str] = field(default_factory=list, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +199,7 @@ class ProgressiveToolsRunResult:
     output_tokens: int = 0
     repair_cycles: int = 0
     tool_calls: int = 0  # total handler invocations, including auto-finalize if triggered
+    skipped_render_ids: list[str] = field(default_factory=list)  # render ops skipped due to undefined IDs
     # per-phase observability
     phase_traces: dict = field(default_factory=dict)   # phase_name → all_messages_json()
     phase_usage: dict = field(default_factory=dict)    # phase_name → {"input_tokens": N, "output_tokens": N}
@@ -1437,6 +1439,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             output_tokens=total_output,
             repair_cycles=state.repair_count,
             tool_calls=state._tool_call_count,
+            skipped_render_ids=state._render_warnings,
             phase_traces=phase_traces,
             phase_usage=phase_usage,
         )
@@ -1458,7 +1461,9 @@ def handle_finalize_render(state: DiagramState) -> str:
         render=state.render_ops,
     )
     try:
-        tikz = ir_to_tikz(diagram, state.sym)
+        render_warnings: list[str] = []
+        tikz = ir_to_tikz(diagram, state.sym, warnings=render_warnings)
+        state._render_warnings = render_warnings
     except Exception as e:
         return json.dumps({"status": "error", "error": f"TikZ generation failed: {e}"})
     try:

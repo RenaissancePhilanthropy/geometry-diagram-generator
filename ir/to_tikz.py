@@ -13,7 +13,7 @@ from ir.to_sympy import SymTable
 logger = logging.getLogger(__name__)
 
 
-def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
+def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None = None) -> str:
     """
     Compile a DiagramIR + resolved SymTable to a tkz-euclide TikZ body string.
     The returned string is intended to be placed inside a tikzpicture environment
@@ -108,7 +108,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
     group_marks = {g: _MARK_SYMBOLS[i % len(_MARK_SYMBOLS)] for i, g in enumerate(seg_groups)}
 
     for op in diagram.render:
-        chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks)
+        chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)
         lines.extend(chunk)
 
     return "\n".join(lines)
@@ -125,12 +125,16 @@ def _emit_op(
     helpers: dict[str, tuple[float, float]],
     styles: dict[str, dict],
     group_marks: dict[str, str] | None = None,
+    warnings: list[str] | None = None,
 ) -> list[str]:
     out: list[str] = []
     match op:
         case ir.Draw(obj=obj_id, add=add, style=style):
             if obj_id not in sym:
-                logger.warning(f"Skipping render op Draw for undefined object '{obj_id}'")
+                msg = f"Skipping render op Draw for undefined object '{obj_id}'"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
                 return out
             sym_obj = sym[obj_id]
             sopts = _style_str(style, styles)
@@ -160,7 +164,10 @@ def _emit_op(
 
         case ir.Fill(obj=obj_id, opacity=opacity, style=style):
             if obj_id not in sym:
-                logger.warning(f"Skipping render op Fill for undefined object '{obj_id}'")
+                msg = f"Skipping render op Fill for undefined object '{obj_id}'"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
                 return out
             sym_obj = sym[obj_id]
             fill_opts = f"[fill=blue!20,opacity={opacity}]"
@@ -176,7 +183,10 @@ def _emit_op(
             for angle in angles:
                 if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
                     missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
-                    logger.warning(f"Skipping render op MarkRightAngles for undefined object(s) {missing!r}")
+                    msg = f"Skipping render op MarkRightAngles for undefined object(s) {missing!r}"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
                     continue
                 out.append(f"\\tkzMarkRightAngle{sopts}({angle.a},{angle.o},{angle.b})")
 
@@ -185,7 +195,10 @@ def _emit_op(
             for angle in angles:
                 if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
                     missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
-                    logger.warning(f"Skipping render op MarkAngles for undefined object(s) {missing!r}")
+                    msg = f"Skipping render op MarkAngles for undefined object(s) {missing!r}"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
                     continue
                 a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, which)
                 merged = _merge_opts("size=0.5", sopts)
@@ -201,14 +214,20 @@ def _emit_op(
                 sopts = "[mark=|]"
             for seg_id in segs:
                 if seg_id not in stmt_by_id:
-                    logger.warning(f"Skipping render op MarkSegments for undefined object '{seg_id}'")
+                    msg = f"Skipping render op MarkSegments for undefined object '{seg_id}'"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
                     continue
                 a, b = _seg_pts(seg_id, stmt_by_id)
                 out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
             if p not in sym:
-                logger.warning(f"Skipping render op LabelPoint for undefined object '{p}'")
+                msg = f"Skipping render op LabelPoint for undefined object '{p}'"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
                 return out
             label = text if text is not None else p
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
@@ -217,7 +236,10 @@ def _emit_op(
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
                 missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
-                logger.warning(f"Skipping render op LabelAngle for undefined object(s) {missing!r}")
+                msg = f"Skipping render op LabelAngle for undefined object(s) {missing!r}"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
                 return out
             opts_parts = []
             if pos is not None:
@@ -231,7 +253,10 @@ def _emit_op(
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
-                logger.warning(f"Skipping render op LabelSegment for undefined object '{seg_id}'")
+                msg = f"Skipping render op LabelSegment for undefined object '{seg_id}'"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
                 return out
             a, b = _seg_pts(seg_id, stmt_by_id)
             sopts = f"[pos={pos}]" if pos is not None else ""

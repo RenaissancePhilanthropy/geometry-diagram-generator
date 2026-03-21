@@ -399,8 +399,11 @@ def test_ir_to_tikz_skips_draw_with_missing_id():
         render=[Draw(obj="AM")],
     )
     sym = compile_defs(diagram)
-    tikz = ir_to_tikz(diagram, sym)
+    warnings: list[str] = []
+    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
     assert "AM" not in tikz
+    assert len(warnings) == 1
+    assert "AM" in warnings[0]
 
 
 def test_ir_to_tikz_valid_draw_still_works():
