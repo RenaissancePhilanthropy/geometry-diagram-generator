@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -8,6 +9,8 @@ import sympy.geometry as spg
 
 import ir.ir as ir
 from ir.to_sympy import SymTable
+
+logger = logging.getLogger(__name__)
 
 
 def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable) -> str:
@@ -126,6 +129,9 @@ def _emit_op(
     out: list[str] = []
     match op:
         case ir.Draw(obj=obj_id, add=add, style=style):
+            if obj_id not in sym:
+                logger.warning(f"Skipping render op Draw for undefined object '{obj_id}'")
+                return out
             sym_obj = sym[obj_id]
             sopts = _style_str(style, styles)
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
@@ -153,6 +159,9 @@ def _emit_op(
             out.append(f"\\tkzDrawPoints{sopts}({','.join(points)})")
 
         case ir.Fill(obj=obj_id, opacity=opacity, style=style):
+            if obj_id not in sym:
+                logger.warning(f"Skipping render op Fill for undefined object '{obj_id}'")
+                return out
             sym_obj = sym[obj_id]
             fill_opts = f"[fill=blue!20,opacity={opacity}]"
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
@@ -170,6 +179,10 @@ def _emit_op(
         case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
             sopts = _style_str(style or group, styles)
             for angle in angles:
+                if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
+                    missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+                    logger.warning(f"Skipping render op MarkAngles for undefined object(s) {missing!r}")
+                    continue
                 a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, which)
                 merged = _merge_opts("size=0.5", sopts)
                 out.append(f"\\tkzMarkAngle[{merged}]({a},{o},{b})")
@@ -183,6 +196,9 @@ def _emit_op(
             else:
                 sopts = "[mark=|]"
             for seg_id in segs:
+                if seg_id not in stmt_by_id:
+                    logger.warning(f"Skipping render op MarkSegments for undefined object '{seg_id}'")
+                    continue
                 a, b = _seg_pts(seg_id, stmt_by_id)
                 out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
@@ -192,6 +208,10 @@ def _emit_op(
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
+            if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
+                missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+                logger.warning(f"Skipping render op LabelAngle for undefined object(s) {missing!r}")
+                return out
             opts_parts = []
             if pos is not None:
                 opts_parts.append(f"pos={pos}")
@@ -203,6 +223,9 @@ def _emit_op(
             out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${text}$}}")
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
+            if seg_id not in stmt_by_id:
+                logger.warning(f"Skipping render op LabelSegment for undefined object '{seg_id}'")
+                return out
             a, b = _seg_pts(seg_id, stmt_by_id)
             sopts = f"[pos={pos}]" if pos is not None else ""
             out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${text}$}}")

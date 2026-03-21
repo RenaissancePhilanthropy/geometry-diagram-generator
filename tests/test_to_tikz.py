@@ -22,6 +22,7 @@ from ir.ir import (
     Segment,
     Triangle,
 )
+import sympy.geometry as spg
 from ir.checks import check_render_angles
 from ir.to_sympy import compile_defs
 from ir.to_tikz import _style_str, ir_to_tikz
@@ -383,3 +384,35 @@ def test_check_render_angles_line_angle_bisector():
         render=[MarkAngles(angles=[AnglePoints(a="A", o="V", b="D")])],
     )
     assert check_render_angles(diagram) == []
+
+
+# ---------------------------------------------------------------------------
+# Guard tests: render ops referencing undefined IDs should skip, not crash
+# ---------------------------------------------------------------------------
+
+def test_ir_to_tikz_skips_draw_with_missing_id():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+        ],
+        render=[Draw(obj="AM")],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "AM" not in tikz
+
+
+def test_ir_to_tikz_valid_draw_still_works():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[Draw(obj="AB")],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\tkzDrawSegment" in tikz
+    assert "(A,B)" in tikz
