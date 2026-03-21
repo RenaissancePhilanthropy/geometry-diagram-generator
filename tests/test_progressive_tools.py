@@ -982,3 +982,30 @@ def test_compress_tool_history_error_in_summary():
     # Verify summary part is a UserPromptPart (not TextPart)
     assert isinstance(result[1].parts[0], UserPromptPart)
     assert "error" in summary_text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Task 2: parallel_tool_calls tests
+# ---------------------------------------------------------------------------
+
+
+def test_construction_agent_has_parallel_tool_calls():
+    """_build_construction_agent enables parallel_tool_calls in ModelSettings."""
+    from strategies.progressive_tools import _build_construction_agent
+    state = DiagramState()
+    agent = _build_construction_agent(state, "test")
+    assert hasattr(agent, 'model_settings')
+    assert agent.model_settings is not None
+    assert agent.model_settings.get('parallel_tool_calls') is True
+
+
+def test_presentation_agent_has_parallel_tool_calls():
+    """_build_presentation_agent enables parallel_tool_calls in ModelSettings."""
+    from strategies.progressive_tools import _build_presentation_agent
+    state = DiagramState()
+    handle_add_point_fixed(state, "A", "0", "0")
+    handle_finalize_construction(state)
+    agent = _build_presentation_agent(state, "test")
+    assert hasattr(agent, 'model_settings')
+    assert agent.model_settings is not None
+    assert agent.model_settings.get('parallel_tool_calls') is True

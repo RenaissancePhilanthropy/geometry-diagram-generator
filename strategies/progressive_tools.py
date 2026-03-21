@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from pydantic import TypeAdapter
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 import sympy.geometry as spg
 
@@ -923,7 +924,12 @@ def _build_construction_agent(
     if repair_context:
         instructions = PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX + "\n\n" + instructions
 
-    agent = Agent(model, instructions=instructions, history_processors=[compress_tool_history])
+    agent = Agent(
+        model,
+        instructions=instructions,
+        model_settings=ModelSettings(parallel_tool_calls=True),
+        history_processors=[compress_tool_history],
+    )
 
     @agent.tool_plain
     def add_point_fixed(id: str, x: str, y: str) -> str:
@@ -1187,7 +1193,12 @@ def _build_checks_agent(state: DiagramState, model: str) -> Agent:
 
 def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS, history_processors=[compress_tool_history])
+    agent = Agent(
+        model,
+        instructions=PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS,
+        model_settings=ModelSettings(parallel_tool_calls=True),
+        history_processors=[compress_tool_history],
+    )
 
     available_tools = presentation_tool_names_for_state(state)
 

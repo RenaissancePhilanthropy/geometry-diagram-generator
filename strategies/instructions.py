@@ -473,6 +473,8 @@ For complex constructions, prefer high-level tools over manual coordinates:
 - add_line_angle_bisector() for angle bisectors
 - add_point_intersection() for intersection points
 These produce exact symbolic results, avoiding floating-point coordinate errors.
+
+You may call multiple tools in a single turn when the objects don't depend on each other (e.g., you can add several independent fixed points at once).
 """
 
 PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX = """\
@@ -492,6 +494,8 @@ PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS = """\
 You are adding drawing and labeling commands to a verified geometric construction.
 Draw all relevant objects, label points, and mark any notable angles or segments.
 When finished, call finalize_render() to produce the SVG.
+
+You may call multiple draw/label tools in a single turn.
 """
 
 TWO_PHASE_PLANNER_INSTRUCTIONS = """\
