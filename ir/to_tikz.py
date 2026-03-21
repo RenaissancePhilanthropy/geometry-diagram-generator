@@ -174,6 +174,10 @@ def _emit_op(
         case ir.MarkRightAngles(angles=angles, style=style):
             sopts = _style_str(style, styles)
             for angle in angles:
+                if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
+                    missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+                    logger.warning(f"Skipping render op MarkRightAngles for undefined object(s) {missing!r}")
+                    continue
                 out.append(f"\\tkzMarkRightAngle{sopts}({angle.a},{angle.o},{angle.b})")
 
         case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
@@ -203,6 +207,9 @@ def _emit_op(
                 out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
+            if p not in sym:
+                logger.warning(f"Skipping render op LabelPoint for undefined object '{p}'")
+                return out
             label = text if text is not None else p
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from pydantic import TypeAdapter
 from pydantic_ai import Agent
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.settings import ModelSettings
 
 import sympy.geometry as spg
@@ -35,8 +36,6 @@ def compress_tool_history(messages: list) -> list:
     Keeps: first user message, last 2 exchange rounds, summary of all older rounds.
     Called by pydantic-ai as a history_processor before each API request.
     """
-    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
-
     if len(messages) <= 3:
         return messages
 
@@ -1315,19 +1314,16 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
         state = DiagramState()
         self._last_state = state  # expose for testing
 
-        def _accumulate(response) -> None:
-            nonlocal total_input, total_output
-            usage = response.usage()
-            total_input += usage.input_tokens or 0
-            total_output += usage.output_tokens or 0
-
         def _capture(response, phase_name: str) -> None:
-            _accumulate(response)
-            phase_traces[phase_name] = response.all_messages_json()
+            nonlocal total_input, total_output
             u = response.usage()
+            total_input += u.input_tokens or 0
+            total_output += u.output_tokens or 0
+            phase_traces[phase_name] = response.all_messages_json()
             phase_usage[phase_name] = {
                 "input_tokens": u.input_tokens or 0,
                 "output_tokens": u.output_tokens or 0,
+                "requests": u.requests or 0,
             }
 
         # Phase 1: Canvas
