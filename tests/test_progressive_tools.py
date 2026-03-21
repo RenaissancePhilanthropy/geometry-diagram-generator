@@ -928,6 +928,8 @@ def test_compress_tool_history_registered_ids_in_summary():
     # Find the summary message (index 1 in output)
     summary_msg = result[1]
     summary_text = summary_msg.parts[0].content
+    # Verify summary part is a UserPromptPart (not TextPart)
+    assert isinstance(result[1].parts[0], UserPromptPart)
     # The first 3 exchanges (P0, P1, P2) should appear in summary; P3, P4 are kept verbatim
     assert "P0" in summary_text
     assert "P1" in summary_text
@@ -977,4 +979,6 @@ def test_compress_tool_history_error_in_summary():
 
     result = compress_tool_history(messages)
     summary_text = result[1].parts[0].content
+    # Verify summary part is a UserPromptPart (not TextPart)
+    assert isinstance(result[1].parts[0], UserPromptPart)
     assert "error" in summary_text.lower()

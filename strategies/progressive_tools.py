@@ -21,6 +21,7 @@ from util.tikz_renderer import render_tikz
 logger = logging.getLogger(__name__)
 
 MAX_REPAIR_CYCLES = 2
+KEEP_RECENT = 2
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ def compress_tool_history(messages: list) -> list:
     Keeps: first user message, last 2 exchange rounds, summary of all older rounds.
     Called by pydantic-ai as a history_processor before each API request.
     """
-    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, TextPart
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
 
     if len(messages) <= 3:
         return messages
@@ -54,7 +55,6 @@ def compress_tool_history(messages: list) -> list:
         else:
             i += 1
 
-    KEEP_RECENT = 2
     if len(exchanges) <= KEEP_RECENT:
         return messages
 
@@ -96,7 +96,7 @@ def compress_tool_history(messages: list) -> list:
         parts.append(f"{len(errors)} error(s): {'; '.join(errors[:3])}")
 
     summary_text = "Previously completed: " + (". ".join(parts) if parts else "no tracked operations") + "."
-    summary_msg = ModelRequest(parts=[TextPart(content=summary_text)])
+    summary_msg = ModelRequest(parts=[UserPromptPart(content=summary_text)])
 
     kept_rest = [msg for idx, msg in enumerate(rest) if idx not in compress_indices]
     return [first, summary_msg] + kept_rest
