@@ -1336,15 +1336,16 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"Build the geometry for this diagram.\n\n"
                 f"Current state:\n{_state_summary(state)}\n\n"
                 f"Request: {prompt}\n\n"
-                f"When done adding all objects, call finalize_construction()."
+                f"When done adding all objects, finalization is automatic."
             )
             resp = await construction_agent.run(construction_prompt)
             _accumulate(resp)
 
             if not state._construction_finalized:
-                raise RuntimeError(
-                    "Construction agent did not call finalize_construction(). Aborting."
-                )
+                logger.warning("Construction agent did not call finalize_construction(); auto-finalizing.")
+                auto_result = json.loads(handle_finalize_construction(state))
+                if auto_result.get("status") == "error":
+                    raise RuntimeError(f"Auto-finalize_construction failed: {auto_result.get('error')}")
 
             # Phase 3: Checks
             state.checks = []  # clear from any previous repair cycle
@@ -1353,10 +1354,15 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"Add geometric checks for the diagram you just constructed.\n\n"
                 f"Current state:\n{_state_summary(state)}\n\n"
                 f"Request: {prompt}\n\n"
-                f"When done adding checks, call finalize_checks()."
+                f"When done adding checks, finalization is automatic."
             )
             resp = await checks_agent.run(checks_prompt)
             _accumulate(resp)
+
+            if not state._checks_finalized and not state._last_check_results:
+                # Agent didn't call finalize_checks at all — auto-finalize
+                logger.warning("Checks agent did not call finalize_checks(); auto-finalizing.")
+                handle_finalize_checks(state)
 
             if state._checks_finalized:
                 break  # all must-checks passed, advance to phase 4

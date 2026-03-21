@@ -1009,3 +1009,105 @@ def test_presentation_agent_has_parallel_tool_calls():
     assert hasattr(agent, 'model_settings')
     assert agent.model_settings is not None
     assert agent.model_settings.get('parallel_tool_calls') is True
+
+
+@pytest.mark.asyncio
+async def test_auto_finalize_construction_when_not_called():
+    """If construction agent doesn't call finalize_construction, run() auto-finalizes."""
+    from unittest.mock import MagicMock, patch
+    from strategies.progressive_tools import ProgressiveToolsStrategy
+    from ir import ir
+
+    strategy = ProgressiveToolsStrategy()
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 10
+        mock_usage.output_tokens = 5
+        resp.usage.return_value = mock_usage
+        if call_count == 1:  # canvas
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:  # construction — does NOT call finalize_construction
+            pass  # _construction_finalized stays False
+        elif call_count == 3:  # checks
+            strategy._last_state._checks_finalized = True
+        elif call_count == 4:  # presentation
+            strategy._last_state._render_finalized = True
+            strategy._last_state._tikz = "\\tkzInit"
+            strategy._last_state._svg = "<svg/>"
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        with patch("strategies.progressive_tools.handle_finalize_construction") as mock_finalize:
+            def fake_finalize(state):
+                state._construction_finalized = True
+                state.sym = {}
+                return json.dumps({"status": "ok", "compiled": []})
+            mock_finalize.side_effect = fake_finalize
+
+            result = await strategy.run("draw a triangle", model="anthropic:claude-sonnet-4-6")
+
+            mock_finalize.assert_called_once_with(strategy._last_state)
+
+    assert isinstance(result, ProgressiveToolsRunResult)
+
+
+@pytest.mark.asyncio
+async def test_auto_finalize_checks_when_not_called():
+    """If checks agent doesn't call finalize_checks, run() auto-finalizes."""
+    from unittest.mock import MagicMock, patch
+    from strategies.progressive_tools import ProgressiveToolsStrategy
+    from ir import ir
+
+    strategy = ProgressiveToolsStrategy()
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 10
+        mock_usage.output_tokens = 5
+        resp.usage.return_value = mock_usage
+        if call_count == 1:  # canvas
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:  # construction
+            strategy._last_state._construction_finalized = True
+            strategy._last_state.sym = {}
+        elif call_count == 3:  # checks — does NOT call finalize_checks
+            pass  # _checks_finalized stays False, _last_check_results stays []
+        elif call_count == 4:  # presentation
+            strategy._last_state._render_finalized = True
+            strategy._last_state._tikz = "\\tkzInit"
+            strategy._last_state._svg = "<svg/>"
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        with patch("strategies.progressive_tools.handle_finalize_checks") as mock_finalize:
+            def fake_finalize(state):
+                state._checks_finalized = True
+                state._last_check_results = []
+            mock_finalize.side_effect = fake_finalize
+
+            result = await strategy.run("draw a triangle", model="anthropic:claude-sonnet-4-6")
+
+            mock_finalize.assert_called_once_with(strategy._last_state)
+
+    assert isinstance(result, ProgressiveToolsRunResult)
