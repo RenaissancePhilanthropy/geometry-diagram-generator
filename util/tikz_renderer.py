@@ -13,6 +13,16 @@ logger = getLogger(__name__)
 _DEFAULT_RENDERER_URL = "http://localhost:8001"
 
 
+def check_renderer_health(renderer_url: str | None = None) -> bool:
+    """Return True if the renderer container is reachable, False otherwise."""
+    url = renderer_url or os.getenv("TIKZ_RENDERER_URL", _DEFAULT_RENDERER_URL)
+    try:
+        response = httpx.get(f"{url}/health", timeout=2.0)
+        return response.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
 def render_tikz(
     tikz: str,
     *,

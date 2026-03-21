@@ -56,6 +56,7 @@ from strategies.structured import StructureStrategy, StructuredRunResult
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
+from util.tikz_renderer import check_renderer_health
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -1159,6 +1160,12 @@ async def main() -> None:
     if args.visual_judge:
         print(f"Visual judge: on")
     print()
+
+    renderer_url = os.getenv("TIKZ_RENDERER_URL", "http://localhost:8001")
+    if not check_renderer_health(renderer_url):
+        print(f"ERROR: TikZ renderer is not reachable at {renderer_url}.")
+        print("Start it with: docker run -p 8001:8001 tikz-renderer")
+        sys.exit(1)
 
     all_records = []
     semaphore = asyncio.Semaphore(args.max_concurrency)
