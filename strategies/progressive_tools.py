@@ -20,7 +20,7 @@ from util.tikz_renderer import render_tikz
 
 logger = logging.getLogger(__name__)
 
-MAX_REPAIR_CYCLES = 3
+MAX_REPAIR_CYCLES = 2
 
 
 @dataclass
