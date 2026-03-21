@@ -629,6 +629,8 @@ async def run_scenario(
         # No diagram_ir or sym_table available for this strategy
         record["ir_diagnostics"] = None
         record["sympy_property_checks"] = []
+        record["phase_traces"] = result.phase_traces
+        record["phase_usage"] = result.phase_usage
     elif isinstance(result, StructuredRunResult):
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")

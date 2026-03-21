@@ -199,6 +199,9 @@ class ProgressiveToolsRunResult:
     output_tokens: int = 0
     repair_cycles: int = 0
     tool_calls: int = 0  # total handler invocations, including auto-finalize if triggered
+    # per-phase observability
+    phase_traces: dict = field(default_factory=dict)   # phase_name → all_messages_json()
+    phase_usage: dict = field(default_factory=dict)    # phase_name → {"input_tokens": N, "output_tokens": N}
 
 
 # ---------------------------------------------------------------------------
@@ -1307,6 +1310,8 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
     ) -> ProgressiveToolsRunResult:
         total_input = 0
         total_output = 0
+        phase_traces: dict = {}
+        phase_usage: dict = {}
         state = DiagramState()
         self._last_state = state  # expose for testing
 
@@ -1316,11 +1321,20 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             total_input += usage.input_tokens or 0
             total_output += usage.output_tokens or 0
 
+        def _capture(response, phase_name: str) -> None:
+            _accumulate(response)
+            phase_traces[phase_name] = response.all_messages_json()
+            u = response.usage()
+            phase_usage[phase_name] = {
+                "input_tokens": u.input_tokens or 0,
+                "output_tokens": u.output_tokens or 0,
+            }
+
         # Phase 1: Canvas
         canvas_agent = _build_canvas_agent(state, model)
         canvas_prompt = f"Set up the canvas for this geometry diagram:\n{prompt}"
         resp = await canvas_agent.run(canvas_prompt)
-        _accumulate(resp)
+        _capture(resp, "canvas")
         if state.canvas is None:
             state.canvas = ir.Canvas(
                 kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
@@ -1339,7 +1353,8 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"When done adding all objects, finalization is automatic."
             )
             resp = await construction_agent.run(construction_prompt)
-            _accumulate(resp)
+            construction_key = "construction" if state.repair_count == 0 else f"construction_r{state.repair_count}"
+            _capture(resp, construction_key)
 
             if not state._construction_finalized:
                 logger.warning("Construction agent did not call finalize_construction(); auto-finalizing.")
@@ -1357,7 +1372,8 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
                 f"When done adding checks, finalization is automatic."
             )
             resp = await checks_agent.run(checks_prompt)
-            _accumulate(resp)
+            checks_key = "checks" if state.repair_count == 0 else f"checks_r{state.repair_count}"
+            _capture(resp, checks_key)
 
             if not state._checks_finalized and not state._last_check_results:
                 # Agent didn't call finalize_checks at all — auto-finalize
@@ -1405,7 +1421,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             f"When done, call finalize_render() to generate the SVG."
         )
         resp = await presentation_agent.run(presentation_prompt)
-        _accumulate(resp)
+        _capture(resp, "presentation")
 
         if not state._render_finalized:
             # Agent forgot to call finalize_render() — attempt auto-finalize
@@ -1425,6 +1441,8 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             output_tokens=total_output,
             repair_cycles=state.repair_count,
             tool_calls=state._tool_call_count,
+            phase_traces=phase_traces,
+            phase_usage=phase_usage,
         )
 
 

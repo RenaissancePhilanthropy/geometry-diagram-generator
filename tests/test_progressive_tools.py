@@ -1111,3 +1111,54 @@ async def test_auto_finalize_checks_when_not_called():
             mock_finalize.assert_called_once_with(strategy._last_state)
 
     assert isinstance(result, ProgressiveToolsRunResult)
+
+
+@pytest.mark.asyncio
+async def test_run_captures_phase_traces():
+    """run() populates phase_traces and phase_usage for each phase."""
+    from unittest.mock import MagicMock, patch
+    from strategies.progressive_tools import ProgressiveToolsStrategy
+    from ir import ir
+
+    strategy = ProgressiveToolsStrategy()
+    call_count = 0
+
+    async def fake_agent_run(prompt, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        mock_usage = MagicMock()
+        mock_usage.input_tokens = 10
+        mock_usage.output_tokens = 5
+        resp.usage.return_value = mock_usage
+        resp.all_messages_json.return_value = [{"phase": call_count}]
+        if call_count == 1:  # canvas
+            strategy._last_state.canvas = ir.Canvas(
+                kind="cartesian", xmin=-5, xmax=5, ymin=-5, ymax=5
+            )
+        elif call_count == 2:  # construction
+            strategy._last_state._construction_finalized = True
+            strategy._last_state.sym = {}
+        elif call_count == 3:  # checks
+            strategy._last_state._checks_finalized = True
+        elif call_count == 4:  # presentation
+            strategy._last_state._render_finalized = True
+            strategy._last_state._tikz = "\\tkzInit"
+            strategy._last_state._svg = "<svg/>"
+        return resp
+
+    with patch("strategies.progressive_tools.Agent") as MockAgent:
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.run = fake_agent_run
+        MockAgent.return_value = mock_agent_instance
+
+        result = await strategy.run("draw a triangle", model="anthropic:claude-sonnet-4-6")
+
+    assert isinstance(result, ProgressiveToolsRunResult)
+    assert set(result.phase_traces.keys()) == {"canvas", "construction", "checks", "presentation"}
+    assert set(result.phase_usage.keys()) == {"canvas", "construction", "checks", "presentation"}
+    for key in ("canvas", "construction", "checks", "presentation"):
+        assert "input_tokens" in result.phase_usage[key]
+        assert "output_tokens" in result.phase_usage[key]
+        assert result.phase_usage[key]["input_tokens"] == 10
+        assert result.phase_usage[key]["output_tokens"] == 5
