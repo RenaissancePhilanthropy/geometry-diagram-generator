@@ -23,6 +23,85 @@ logger = logging.getLogger(__name__)
 MAX_REPAIR_CYCLES = 2
 
 
+# ---------------------------------------------------------------------------
+# History compression
+# ---------------------------------------------------------------------------
+
+def compress_tool_history(messages: list) -> list:
+    """Compress old tool call/response pairs into a summary to reduce O(N²) token cost.
+
+    Keeps: first user message, last 2 exchange rounds, summary of all older rounds.
+    Called by pydantic-ai as a history_processor before each API request.
+    """
+    from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, TextPart
+
+    if len(messages) <= 3:
+        return messages
+
+    first = messages[0]
+    rest = messages[1:]
+
+    # Identify (response_index, request_index) exchange pairs in rest[]
+    exchanges = []
+    i = 0
+    while i < len(rest):
+        msg = rest[i]
+        if (isinstance(msg, ModelResponse)
+                and any(isinstance(p, ToolCallPart) for p in msg.parts)):
+            if i + 1 < len(rest) and isinstance(rest[i + 1], ModelRequest):
+                exchanges.append((i, i + 1))
+            i += 2
+        else:
+            i += 1
+
+    KEEP_RECENT = 2
+    if len(exchanges) <= KEEP_RECENT:
+        return messages
+
+    to_compress = exchanges[:-KEEP_RECENT]
+    compress_indices = set()
+    for resp_i, req_i in to_compress:
+        compress_indices.add(resp_i)
+        compress_indices.add(req_i)
+
+    registered_ids: list[str] = []
+    errors: list[str] = []
+    ok_count = 0
+
+    for _resp_i, req_i in to_compress:
+        req_msg = rest[req_i]
+        for part in req_msg.parts:
+            if isinstance(part, ToolReturnPart):
+                try:
+                    data = json.loads(part.content)
+                    items = data if isinstance(data, list) else [data]
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("status") == "registered" and "id" in item:
+                            registered_ids.append(item["id"])
+                        elif item.get("status") == "ok":
+                            ok_count += 1
+                        elif "error" in item:
+                            errors.append(item["error"])
+                except Exception:
+                    pass
+
+    parts = []
+    if registered_ids:
+        parts.append(f"Registered: {', '.join(registered_ids)}")
+    if ok_count:
+        parts.append(f"{ok_count} operation(s) succeeded")
+    if errors:
+        parts.append(f"{len(errors)} error(s): {'; '.join(errors[:3])}")
+
+    summary_text = "Previously completed: " + (". ".join(parts) if parts else "no tracked operations") + "."
+    summary_msg = ModelRequest(parts=[TextPart(content=summary_text)])
+
+    kept_rest = [msg for idx, msg in enumerate(rest) if idx not in compress_indices]
+    return [first, summary_msg] + kept_rest
+
+
 @dataclass
 class DiagramState:
     """Accumulated diagram state across all 4 phases."""
@@ -818,7 +897,7 @@ def handle_label_segment(
 
 def _build_canvas_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS)
+    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE1_INSTRUCTIONS, history_processors=[compress_tool_history])
 
     @agent.tool_plain
     def init_diagram(
@@ -844,7 +923,7 @@ def _build_construction_agent(
     if repair_context:
         instructions = PROGRESSIVE_TOOLS_PHASE2_REPAIR_PREFIX + "\n\n" + instructions
 
-    agent = Agent(model, instructions=instructions)
+    agent = Agent(model, instructions=instructions, history_processors=[compress_tool_history])
 
     @agent.tool_plain
     def add_point_fixed(id: str, x: str, y: str) -> str:
@@ -982,7 +1061,7 @@ def _build_construction_agent(
 
 def _build_checks_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS)
+    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE3_INSTRUCTIONS, history_processors=[compress_tool_history])
 
     available_tools = check_tool_names_for_state(state)
 
@@ -1108,7 +1187,7 @@ def _build_checks_agent(state: DiagramState, model: str) -> Agent:
 
 def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS
-    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS)
+    agent = Agent(model, instructions=PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS, history_processors=[compress_tool_history])
 
     available_tools = presentation_tool_names_for_state(state)
 

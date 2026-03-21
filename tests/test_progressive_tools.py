@@ -859,3 +859,122 @@ def test_tool_call_count_increments():
     assert state._tool_call_count == 1
     handle_add_point_fixed(state, "A", "0", "0")
     assert state._tool_call_count == 2
+
+
+# --- History Compression Tests ---
+
+from pydantic_ai.messages import (
+    ModelRequest, ModelResponse,
+    TextPart, ToolCallPart, ToolReturnPart, UserPromptPart,
+)
+from strategies.progressive_tools import compress_tool_history
+
+
+def _make_tool_exchange(tool_name: str, tool_call_id: str, return_content: str):
+    """Build a (ModelResponse with ToolCallPart, ModelRequest with ToolReturnPart) pair."""
+    response = ModelResponse(parts=[ToolCallPart(tool_name=tool_name, tool_call_id=tool_call_id)])
+    request = ModelRequest(parts=[ToolReturnPart(tool_name=tool_name, content=return_content, tool_call_id=tool_call_id)])
+    return response, request
+
+
+def _make_messages_with_n_exchanges(n: int):
+    """Build a message list: initial UserPromptPart request + n tool exchanges."""
+    initial = ModelRequest(parts=[UserPromptPart(content="draw a triangle")])
+    messages = [initial]
+    for i in range(n):
+        resp, req = _make_tool_exchange(
+            tool_name="add_point_fixed",
+            tool_call_id=f"tc{i}",
+            return_content=json.dumps({"id": f"P{i}", "status": "registered"}),
+        )
+        messages.append(resp)
+        messages.append(req)
+    return messages
+
+
+def test_compress_tool_history_empty():
+    """Empty list returns empty."""
+    assert compress_tool_history([]) == []
+
+
+def test_compress_tool_history_short_no_compression():
+    """3 or fewer messages returned as-is."""
+    messages = _make_messages_with_n_exchanges(1)
+    # 1 initial + 2 exchange = 3 messages — at the threshold, no compression
+    assert len(messages) == 3
+    result = compress_tool_history(messages)
+    assert result is messages
+
+
+def test_compress_tool_history_two_exchanges_no_compression():
+    """Exactly 2 exchange rounds — at KEEP_RECENT limit, returned as-is."""
+    messages = _make_messages_with_n_exchanges(2)
+    result = compress_tool_history(messages)
+    assert result is messages
+
+
+def test_compress_tool_history_long_compresses():
+    """With 5 exchange rounds, oldest rounds are compressed into a summary."""
+    messages = _make_messages_with_n_exchanges(5)
+    original_len = len(messages)
+    result = compress_tool_history(messages)
+    assert len(result) < original_len
+
+
+def test_compress_tool_history_registered_ids_in_summary():
+    """Summary mentions registered IDs from compressed exchanges."""
+    messages = _make_messages_with_n_exchanges(5)
+    result = compress_tool_history(messages)
+    # Find the summary message (index 1 in output)
+    summary_msg = result[1]
+    summary_text = summary_msg.parts[0].content
+    # The first 3 exchanges (P0, P1, P2) should appear in summary; P3, P4 are kept verbatim
+    assert "P0" in summary_text
+    assert "P1" in summary_text
+    assert "P2" in summary_text
+
+
+def test_compress_tool_history_preserves_first_message():
+    """First message is always at index 0 in output."""
+    messages = _make_messages_with_n_exchanges(5)
+    first = messages[0]
+    result = compress_tool_history(messages)
+    assert result[0] is first
+
+
+def test_compress_tool_history_preserves_recent_exchanges():
+    """Last 2 exchanges are kept verbatim (not replaced by summary)."""
+    messages = _make_messages_with_n_exchanges(4)
+    # last 2 exchanges are messages[-4], messages[-3], messages[-2], messages[-1]
+    last_4 = messages[-4:]
+    result = compress_tool_history(messages)
+    # The tail of the result should contain the last 4 messages verbatim
+    assert result[-4:] == last_4
+
+
+def test_compress_tool_history_error_in_summary():
+    """Errors from tool returns appear in the summary text."""
+    initial = ModelRequest(parts=[UserPromptPart(content="draw something")])
+    messages = [initial]
+    # 3 error exchanges + 2 more to push them into compression
+    for i in range(3):
+        resp, req = _make_tool_exchange(
+            tool_name="add_point_fixed",
+            tool_call_id=f"tc{i}",
+            return_content=json.dumps({"error": f"ID 'P{i}' already in use"}),
+        )
+        messages.append(resp)
+        messages.append(req)
+    # 2 more valid exchanges (kept verbatim)
+    for i in range(3, 5):
+        resp, req = _make_tool_exchange(
+            tool_name="add_point_fixed",
+            tool_call_id=f"tc{i}",
+            return_content=json.dumps({"id": f"Q{i}", "status": "registered"}),
+        )
+        messages.append(resp)
+        messages.append(req)
+
+    result = compress_tool_history(messages)
+    summary_text = result[1].parts[0].content
+    assert "error" in summary_text.lower()
