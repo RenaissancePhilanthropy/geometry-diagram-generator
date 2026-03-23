@@ -16,9 +16,8 @@ from ir.checks import run_checks, CheckResult
 from ir.errors import IRCompileError
 from ir.ir import DiagramIR
 from ir.to_sympy import SymTable, compile_defs
-from ir.to_tikz import ir_to_tikz
+from ir.renderer import Renderer, TikZRenderer
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from util.tikz_renderer import render_tikz
 
 logger = logging.getLogger(__name__)
 
@@ -1194,7 +1193,7 @@ def _build_checks_agent(state: DiagramState, model: str) -> Agent:
     return agent
 
 
-def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
+def _build_presentation_agent(state: DiagramState, model: str, renderer: Renderer | None = None) -> Agent:
     from strategies.instructions import PROGRESSIVE_TOOLS_PHASE4_INSTRUCTIONS
     agent = Agent(
         model,
@@ -1267,7 +1266,7 @@ def _build_presentation_agent(state: DiagramState, model: str) -> Agent:
     @agent.tool_plain
     def finalize_render() -> str:
         """Generate TikZ and render to SVG. Call this when done adding presentation."""
-        return handle_finalize_render(state)
+        return handle_finalize_render(state, renderer=renderer)
 
     return agent
 
@@ -1305,7 +1304,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
         return _build_construction_agent(DiagramState(), model)
 
     async def run(
-        self, prompt: str, model: str = DEFAULT_AGENT_MODEL
+        self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer: Renderer | None = None
     ) -> ProgressiveToolsRunResult:
         total_input = 0
         total_output = 0
@@ -1417,7 +1416,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
             state.render_ops = []
 
         # Phase 4: Presentation
-        presentation_agent = _build_presentation_agent(state, model)
+        presentation_agent = _build_presentation_agent(state, model, renderer=renderer)
         presentation_prompt = (
             f"Add drawing and labeling commands for the completed diagram.\n\n"
             f"Current state:\n{_state_summary(state)}\n\n"
@@ -1429,7 +1428,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
 
         if not state._render_finalized:
             # Agent forgot to call finalize_render() — attempt auto-finalize
-            auto_result = handle_finalize_render(state)
+            auto_result = handle_finalize_render(state, renderer=renderer)
             logger.warning(
                 "Presentation agent did not call finalize_render(); auto-finalizing. "
                 "tool_calls count is inflated by 1 for this run."
@@ -1455,7 +1454,7 @@ class ProgressiveToolsStrategy(SubstanceStrategy):
 # Phase 4: finalize_render (kept after class to avoid forward-reference issues)
 # ---------------------------------------------------------------------------
 
-def handle_finalize_render(state: DiagramState) -> str:
+def handle_finalize_render(state: DiagramState, renderer: Renderer | None = None) -> str:
     """Assemble DiagramIR, generate TikZ, render to SVG."""
     state._tool_call_count += 1
     if state.sym is None:
@@ -1466,16 +1465,15 @@ def handle_finalize_render(state: DiagramState) -> str:
         checks=state.checks,
         render=state.render_ops,
     )
+    _renderer = renderer if renderer is not None else TikZRenderer()
     try:
         render_warnings: list[str] = []
-        tikz = ir_to_tikz(diagram, state.sym, warnings=render_warnings)
+        render_result = _renderer.render(diagram, state.sym, warnings=render_warnings)
         state._render_warnings = render_warnings
     except Exception as e:
-        return json.dumps({"status": "error", "error": f"TikZ generation failed: {e}"})
-    try:
-        svg = render_tikz(tikz)
-    except RuntimeError as e:
         return json.dumps({"status": "error", "error": f"Render failed: {e}"})
+    tikz = render_result.intermediate
+    svg = render_result.output
 
     state._render_finalized = True
     state._tikz = tikz

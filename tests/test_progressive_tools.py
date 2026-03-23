@@ -742,7 +742,7 @@ async def test_run_auto_finalizes_render():
 
         # Also mock handle_finalize_render to avoid renderer dependency
         with patch("strategies.progressive_tools.handle_finalize_render") as mock_finalize:
-            def fake_finalize(state):
+            def fake_finalize(state, renderer=None):
                 state._render_finalized = True
                 state._tikz = "\\tkzInit"
                 state._svg = "<svg/>"
@@ -751,7 +751,7 @@ async def test_run_auto_finalizes_render():
 
             result = await strategy.run("draw a midpoint", model="anthropic:claude-sonnet-4-6")
 
-            mock_finalize.assert_called_once_with(strategy._last_state)
+            mock_finalize.assert_called_once_with(strategy._last_state, renderer=None)
 
     assert isinstance(result, ProgressiveToolsRunResult)
     assert result.tikz == "\\tkzInit"
