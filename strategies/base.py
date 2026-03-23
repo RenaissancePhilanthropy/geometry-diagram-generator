@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
 
 from logging import getLogger
+
+
+if TYPE_CHECKING:
+    from ir.renderer import Renderer
 
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
@@ -26,11 +33,21 @@ class SubstanceStrategy(ABC):
         """
         ...
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL):
+    async def run(
+        self,
+        prompt: str,
+        model: str = DEFAULT_AGENT_MODEL,
+        renderer: "Renderer | None" = None,
+    ):
         """Run the strategy end-to-end and return an AgentRunResult.
 
         Override this method to implement multi-agent orchestration.
         The default delegates to build_agent().run(prompt).
+
+        Args:
+            prompt: The user's diagram request.
+            model: LLM model identifier.
+            renderer: Optional renderer for IR-based strategies. Raw strategies ignore this.
         """
         agent = self.build_agent(model=model)
         return await agent.run(prompt)
