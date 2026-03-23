@@ -13,9 +13,8 @@ from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
 from ir.checks import run_checks, check_render_angles, CheckResult
-from ir.to_tikz import ir_to_tikz
+from ir.renderer import Renderer, TikZRenderer
 from ir.errors import IRCompileError
-from util.tikz_renderer import render_tikz
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +57,7 @@ class StructureStrategy(SubstanceStrategy):
 
         The tool runs the full IR pipeline internally, retrying on failures.
         """
+        _renderer = TikZRenderer()  # build_agent always uses the default TikZ renderer
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
         @agent.tool_plain(retries=MAX_RETRIES)
@@ -66,15 +66,16 @@ class StructureStrategy(SubstanceStrategy):
 
             Returns JSON with an SVG field on success.
             """
-            return await _run_pipeline_once(request, model)
+            return await _run_pipeline_once(request, model, renderer=_renderer)
 
         return agent
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL) -> StructuredRunResult:
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer: Renderer | None = None) -> StructuredRunResult:
         """Run the full IR pipeline with retry on failure.
 
         Returns a StructuredRunResult with diagram_ir, tikz, and svg.
         """
+        _renderer = renderer if renderer is not None else TikZRenderer()
         last_error: str = ""
         total_input_tokens: int = 0
         total_output_tokens: int = 0
@@ -136,26 +137,19 @@ class StructureStrategy(SubstanceStrategy):
                 if not r.passed and r.check.level == "prefer":
                     logger.warning("Preferred check not satisfied: %s", r.message)
 
-            # Step 4: Generate TikZ deterministically
+            # Step 4+5: Render — code generation + compilation via renderer
             try:
-                tikz = ir_to_tikz(diagram_ir, sym)
+                render_result = _renderer.render(diagram_ir, sym)
             except Exception as e:
-                last_error = f"TikZ generation failed: {e}"
-                logger.warning("Attempt %d tikz generation error: %s", attempt + 1, e)
-                continue
-
-            logger.info("Generated TikZ (%d chars)", len(tikz))
-            logger.debug("TikZ:\n%s", tikz)
-
-            # Step 5: Render to SVG
-            try:
-                svg = render_tikz(tikz)
-            except RuntimeError as e:
-                last_error = f"TikZ rendering failed: {e}"
+                last_error = f"Rendering failed: {e}"
                 logger.warning("Attempt %d render error: %s", attempt + 1, e)
                 continue
 
-            logger.info("Rendered SVG (%d chars)", len(svg))
+            tikz = render_result.intermediate
+            svg = render_result.output
+            logger.info("Rendered %s (%d chars), intermediate=%d chars",
+                        render_result.format, len(svg), len(tikz))
+            logger.debug("Intermediate:\n%s", tikz)
             sym_float = {
                 k: (float(v.x), float(v.y))
                 for k, v in sym.items()
@@ -204,16 +198,14 @@ async def _run_ir_pipeline(
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)
 
+    _renderer = renderer if renderer is not None else TikZRenderer()
     try:
-        tikz = ir_to_tikz(diagram_ir, sym)
+        render_result = _renderer.render(diagram_ir, sym)
     except Exception as e:
-        raise RuntimeError(f"TikZ generation failed: {e}") from e
+        raise RuntimeError(f"Rendering failed: {e}") from e
 
-    try:
-        svg = render_tikz(tikz)
-    except RuntimeError as e:
-        raise RuntimeError(f"TikZ rendering failed: {e}") from e
-
+    tikz = render_result.intermediate
+    svg = render_result.output
     sym_float = {
         k: (float(v.x), float(v.y))
         for k, v in sym.items()
@@ -222,7 +214,7 @@ async def _run_ir_pipeline(
     return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float)
 
 
-async def _run_pipeline_once(prompt: str, model: str) -> str:
+async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None = None) -> str:
     """Run the full IR pipeline for a single attempt.
 
     Used by build_agent's generate_diagram tool. Raises ModelRetry on failure
@@ -251,14 +243,10 @@ async def _run_pipeline_once(prompt: str, model: str) -> str:
     if angle_errors:
         raise ModelRetry(f"Invalid angle triples: {'; '.join(angle_errors)}")
 
+    _renderer = renderer if renderer is not None else TikZRenderer()
     try:
-        tikz = ir_to_tikz(diagram_ir, sym)
+        render_result = _renderer.render(diagram_ir, sym)
     except Exception as e:
-        raise ModelRetry(f"TikZ generation failed: {e}") from e
+        raise ModelRetry(f"Rendering failed: {e}") from e
 
-    try:
-        svg = render_tikz(tikz)
-    except RuntimeError as e:
-        raise ModelRetry(f"TikZ rendering failed: {e}") from e
-
-    return json.dumps({"svg": svg})
+    return json.dumps({"svg": render_result.output})
