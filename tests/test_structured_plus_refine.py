@@ -61,7 +61,7 @@ def test_refinement_constraints_reject_removed_axes():
 def test_strategy_falls_back_when_refinement_breaks_constraints(monkeypatch):
     base = StructuredRunResult(diagram_ir=None, tikz=_ORIGINAL_TIKZ, svg="<svg>base</svg>")
 
-    async def fake_structured_run(self, prompt: str, model: str):
+    async def fake_structured_run(self, prompt: str, model: str, renderer=None):
         return base
 
     async def fake_refine(self, prompt: str, tikz: str, model: str):
@@ -79,7 +79,7 @@ def test_strategy_falls_back_when_refinement_breaks_constraints(monkeypatch):
 def test_strategy_accepts_safe_refinement(monkeypatch):
     base = StructuredRunResult(diagram_ir=None, tikz=_ORIGINAL_TIKZ, svg="<svg>base</svg>")
 
-    async def fake_structured_run(self, prompt: str, model: str):
+    async def fake_structured_run(self, prompt: str, model: str, renderer=None):
         return base
 
     async def fake_refine(self, prompt: str, tikz: str, model: str):
@@ -96,7 +96,7 @@ def test_strategy_accepts_safe_refinement(monkeypatch):
 def test_strategy_falls_back_when_refinement_returns_none(monkeypatch):
     base = StructuredRunResult(diagram_ir=None, tikz=_ORIGINAL_TIKZ, svg="<svg>base</svg>")
 
-    async def fake_structured_run(self, prompt: str, model: str):
+    async def fake_structured_run(self, prompt: str, model: str, renderer=None):
         return base
 
     async def fake_refine(self, prompt: str, tikz: str, model: str):

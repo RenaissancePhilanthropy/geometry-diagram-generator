@@ -5,6 +5,7 @@ import logging
 
 from pydantic_ai import Agent
 
+from ir.renderer import Renderer
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.instructions import STRUCTURED_REFINE_INSTRUCTIONS, STRUCTURED_REFINE_PROMPT
 from strategies.stages import register_render_tool
@@ -117,8 +118,8 @@ class StructuredPlusRefineStrategy(SubstanceStrategy):
 
         return tool_args["tikz"], svg
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL) -> StructuredRunResult:
-        base_result = await StructureStrategy().run(prompt, model=model)
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer: Renderer | None = None) -> StructuredRunResult:
+        base_result = await StructureStrategy().run(prompt, model=model, renderer=renderer)
 
         try:
             refined = await self._run_refinement(prompt, base_result.tikz, model)
