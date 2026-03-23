@@ -45,8 +45,7 @@ class StructureStrategy(SubstanceStrategy):
         LLM → DiagramIR (structured output)
         → compile_defs (SymPy resolution + coordinate extraction)
         → run_checks (geometric invariant validation)
-        → ir_to_tikz (deterministic TikZ generation)
-        → render_tikz (SVG rendering)
+        → Renderer.render() (TikZ generation + SVG compilation)
 
     On compilation, check, or render failures the LLM is re-prompted with the
     error description for up to MAX_RETRIES attempts.
@@ -172,7 +171,7 @@ class StructureStrategy(SubstanceStrategy):
 
 async def _run_ir_pipeline(
     diagram_ir: DiagramIR,
-    renderer=None,
+    renderer: "Renderer | None" = None,
 ) -> StructuredRunResult:
     """Run the compile → check → tikz → render pipeline on a pre-built DiagramIR.
 
