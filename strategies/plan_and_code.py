@@ -150,7 +150,7 @@ class PlanAndCodeStrategy(SubstanceStrategy):
 
         return agent
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL):
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Run plan then code stages via programmatic agent hand-off."""
         plan, _ = await run_plan(prompt, model=model)
         return await run_code_from_plan(plan, prompt, model=model)

@@ -25,7 +25,7 @@ class RawCodeWithReviseStrategy(SubstanceStrategy):
         register_render_tool(agent)
         return agent
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL):
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Run draft then mandatory revision via programmatic agent hand-off."""
         draft = await run_draft(prompt, model=model)
         return await run_revision(
