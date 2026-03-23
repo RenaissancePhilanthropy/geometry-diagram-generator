@@ -9,7 +9,7 @@ and are injected at the call site (evals, eval_viewer, main.py).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ir.ir import DiagramIR
 from ir.to_sympy import SymTable

@@ -5,10 +5,6 @@ NOTE: Tests that call TikZRenderer.render() require the renderer Docker containe
 """
 from __future__ import annotations
 
-import pytest
-
-from ir.ir import DiagramIR, PointFixed, Triangle, Draw
-from ir.to_sympy import compile_defs
 from ir.renderer import Renderer, RenderResult, TikZRenderer
 
 
