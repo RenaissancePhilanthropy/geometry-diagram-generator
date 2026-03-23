@@ -29,7 +29,7 @@ from ir.errors import IRCompileError
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
 from ir.checks import run_checks
-from ir.to_tikz import ir_to_tikz
+from ir.renderer import TikZRenderer
 from util.tikz_renderer import render_tikz
 
 load_dotenv()
@@ -163,27 +163,18 @@ async def compile_ir(request: Request) -> JSONResponse:
     # Run checks
     check_results = run_checks(diagram.checks, sym)
 
-    # Generate TikZ
+    # Generate TikZ and render to SVG
     try:
-        tikz_code = ir_to_tikz(diagram, sym)
+        render_result = TikZRenderer().render(diagram, sym)
     except Exception as e:
-        return JSONResponse(
-            {"error": str(e), "stage": "tikz_gen"},
-            status_code=400,
-        )
-
-    # Render to SVG
-    try:
-        svg = render_tikz(tikz_code)
-    except RuntimeError as e:
         return JSONResponse(
             {"error": str(e), "stage": "render"},
             status_code=400,
         )
 
     return JSONResponse({
-        "tikz_code": tikz_code,
-        "svg": svg,
+        "tikz_code": render_result.intermediate,
+        "svg": render_result.output,
         "checks": [r.model_dump(mode="json") for r in check_results],
     })
 
