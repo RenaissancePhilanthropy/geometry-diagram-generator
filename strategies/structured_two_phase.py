@@ -14,6 +14,7 @@ from pydantic_ai import Agent
 from ir.ir import DiagramIR
 from ir.plan import ConstructionPlan
 from strategies.base import SubstanceStrategy
+from ir.renderer import Renderer
 from strategies.structured import StructuredRunResult, _run_ir_pipeline
 from strategies.instructions import (
     STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
@@ -36,6 +37,7 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
         self,
         prompt: str,
         model: str = "anthropic:claude-sonnet-4-6",
+        renderer: Renderer | None = None,
     ) -> StructuredRunResult:
         last_error: str | None = None
         total_input_tokens: int = 0
@@ -59,7 +61,7 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
                     diagram, diag_usage = await self._generate_diagram(constructor_prompt, model)
                     total_input_tokens += diag_usage[0]
                     total_output_tokens += diag_usage[1]
-                    result = await _run_ir_pipeline(diagram)
+                    result = await _run_ir_pipeline(diagram, renderer=renderer)
                     result.input_tokens = total_input_tokens
                     result.output_tokens = total_output_tokens
                     return result
