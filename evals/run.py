@@ -57,6 +57,7 @@ from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
 from util.tikz_renderer import check_renderer_health
+from ir.renderer import TikZRenderer
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -612,7 +613,8 @@ async def run_scenario(
 
     start = time.monotonic()
     try:
-        result = await strategy.run(scenario["prompt"], model=model)
+        renderer = TikZRenderer()
+        result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
