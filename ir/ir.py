@@ -171,10 +171,71 @@ class PickInsideTriangle(PickBase):
     tri: TriangleId
 
 
+class PickBetween(PickBase):
+    """Candidate lies strictly between points a and b (on segment AB)."""
+    kind: Literal["between"] = "between"
+    a: PointId
+    b: PointId
+
+
+class PickBeyond(PickBase):
+    """Candidate is on the far side of past_point from from_point."""
+    kind: Literal["beyond"] = "beyond"
+    from_point: PointId
+    past_point: PointId
+
+
+class PickInterior(PickBase):
+    """Candidate lies inside the given polygon."""
+    kind: Literal["interior"] = "interior"
+    polygon: PolygonId
+
+
+class PickExterior(PickBase):
+    """Candidate lies outside the given polygon."""
+    kind: Literal["exterior"] = "exterior"
+    polygon: PolygonId
+
+
+class PickOppositeSide(PickBase):
+    """Candidate is on the opposite side of the directed line from ref_point."""
+    kind: Literal["opposite_side"] = "opposite_side"
+    line_through: List[PointId]  # exactly 2 elements
+    ref_point: PointId
+
+
+class PickUpperOfLine(PickBase):
+    """Candidate is to the left of directed line A→B (positive cross-product side)."""
+    kind: Literal["upper_of_line"] = "upper_of_line"
+    a: PointId
+    b: PointId
+
+
+class PickLowerOfLine(PickBase):
+    """Candidate is to the right of directed line A→B (negative cross-product side)."""
+    kind: Literal["lower_of_line"] = "lower_of_line"
+    a: PointId
+    b: PointId
+
+
+class PickChain(PickBase):
+    """Apply rules as sequential filters; each rule narrows the candidate set."""
+    kind: Literal["chain"] = "chain"
+    rules: List["PickRule"]  # forward reference resolved by model_rebuild() below
+
+
 PickRule = Annotated[
-    Union[PickIndex, PickOnObject, PickClosestTo, PickSameSide, PickInsideTriangle],
+    Union[
+        PickIndex, PickOnObject, PickClosestTo, PickSameSide, PickInsideTriangle,
+        PickBetween, PickBeyond, PickInterior, PickExterior,
+        PickOppositeSide, PickUpperOfLine, PickLowerOfLine,
+        PickChain,
+    ],
     Field(discriminator="kind")
 ]
+
+# PickChain.rules references PickRule — rebuild to resolve the forward reference.
+PickChain.model_rebuild()
 
 
 # -----------------------
