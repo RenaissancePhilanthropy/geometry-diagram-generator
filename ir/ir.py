@@ -205,14 +205,14 @@ class PickOppositeSide(PickBase):
 
 
 class PickUpperOfLine(PickBase):
-    """Candidate is to the left of directed line A→B (positive cross-product side)."""
+    """Candidate is above the directed line A→B (positive cross-product side)."""
     kind: Literal["upper_of_line"] = "upper_of_line"
     a: PointId
     b: PointId
 
 
 class PickLowerOfLine(PickBase):
-    """Candidate is to the right of directed line A→B (negative cross-product side)."""
+    """Candidate is below the directed line A→B (negative cross-product side)."""
     kind: Literal["lower_of_line"] = "lower_of_line"
     a: PointId
     b: PointId
