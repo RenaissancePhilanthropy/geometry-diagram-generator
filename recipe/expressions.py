@@ -6,7 +6,6 @@ and a recipe-layer exception type.
 from __future__ import annotations
 
 from typing import Any
-import sympy as sp
 
 from ir.to_sympy import _eval_expr
 from ir.errors import ExprEvalError
@@ -26,7 +25,7 @@ def eval_expr(
 
     Args:
         raw: A numeric literal or expression string (e.g. "length(A, B) * 2").
-        params: Named parameter substitutions (e.g. {"r": sp.S(3)}).
+        params: Named parameter substitutions (e.g. {"r": sympy.S(3)}).
         sym: Optional SymTable (dict mapping IDs to SymPy geometry objects).
              Required for length(), radius(), angle() calls.
 
