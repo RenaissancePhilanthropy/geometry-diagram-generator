@@ -258,12 +258,91 @@ def _eval_expr(
     params: dict[str, Any],
     *,
     def_id: str,
+    sym: "SymTable | None" = None,
 ) -> sp.Basic:
-    """Evaluate a numeric or string expression to a SymPy value."""
+    """Evaluate a numeric or string expression to a SymPy value.
+
+    Supports geometric functions length(A,B), radius(c), angle(A,B,C)
+    when sym is provided. Raises ExprEvalError if a geometric function
+    is called but sym is None.
+    """
     if isinstance(raw, (int, float)):
         return sp.S(raw)
+
+    import math as _math
+
+    def _resolve_geo(arg: Any, label: str) -> Any:
+        """Resolve a geo-function argument to an object in sym.
+
+        sympify passes arguments as either SymPy Symbol objects (for
+        unrecognised names) or as the value already bound in locals_map
+        (for names that clash with SymPy builtins like Q or E).  We
+        handle both cases: if arg is already a geometry object (i.e. it
+        came through locals_map), return it directly; otherwise coerce
+        to str and look it up in sym.
+        """
+        if sym is None:
+            raise ExprEvalError(def_id, f"{label}() requires sym table (not available here)")
+        # If arg is already a geometry object from sym, return it directly.
+        if isinstance(arg, (spg.Point, spg.Circle, spg.Line, spg.Segment, spg.Ray,
+                            spg.Triangle, spg.Polygon)):
+            return arg
+        key = str(arg)
+        obj = sym.get(key)
+        if obj is None:
+            raise ExprEvalError(def_id, f"{label}(): unknown id {key!r}")
+        return obj
+
+    def _length(a_arg: Any, b_arg: Any) -> sp.Basic:
+        if sym is None:
+            raise ExprEvalError(def_id, "length() requires sym table (not available here)")
+        a_pt = _resolve_geo(a_arg, "length")
+        b_pt = _resolve_geo(b_arg, "length")
+        return sp.Float(float(a_pt.distance(b_pt).evalf()))
+
+    def _radius(c_arg: Any) -> sp.Basic:
+        if sym is None:
+            raise ExprEvalError(def_id, "radius() requires sym table (not available here)")
+        c_obj = _resolve_geo(c_arg, "radius")
+        if not hasattr(c_obj, "radius"):
+            raise ExprEvalError(def_id, f"radius(): {c_arg!r} is not a circle")
+        return sp.Float(float(c_obj.radius.evalf()))
+
+    def _angle(a_arg: Any, vertex_arg: Any, b_arg: Any) -> sp.Basic:
+        """Non-reflex angle at vertex (degrees)."""
+        if sym is None:
+            raise ExprEvalError(def_id, "angle() requires sym table (not available here)")
+        a_pt = _resolve_geo(a_arg, "angle")
+        v_pt = _resolve_geo(vertex_arg, "angle")
+        b_pt = _resolve_geo(b_arg, "angle")
+        va_x = float((a_pt.x - v_pt.x).evalf())
+        va_y = float((a_pt.y - v_pt.y).evalf())
+        vb_x = float((b_pt.x - v_pt.x).evalf())
+        vb_y = float((b_pt.y - v_pt.y).evalf())
+        dot = va_x * vb_x + va_y * vb_y
+        mag_a = _math.hypot(va_x, va_y)
+        mag_b = _math.hypot(vb_x, vb_y)
+        if mag_a < 1e-12 or mag_b < 1e-12:
+            raise ExprEvalError(def_id, "angle(): degenerate angle — vertex coincides with a leg point")
+        cos_theta = max(-1.0, min(1.0, dot / (mag_a * mag_b)))
+        return sp.Float(_math.degrees(_math.acos(cos_theta)))
+
+    locals_map: dict[str, Any] = {
+        "pi": sp.pi,
+        "sqrt": sp.sqrt,
+        "E": sp.E,
+        "length": _length,
+        "radius": _radius,
+        "angle": _angle,
+        **params,
+    }
+    # Populate sym entries into locals so SymPy resolves identifier names
+    # (including those that clash with SymPy builtins like Q, E, S) to the
+    # geometry objects rather than SymPy internal objects.
+    if sym is not None:
+        locals_map.update(sym)
     try:
-        return sp.sympify(raw, locals={"pi": sp.pi, "sqrt": sp.sqrt, "E": sp.E, **params})
+        return sp.sympify(raw, locals=locals_map)
     except Exception as exc:
         raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
 
