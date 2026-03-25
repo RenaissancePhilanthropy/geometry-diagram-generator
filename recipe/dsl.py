@@ -1,0 +1,441 @@
+# recipe/dsl.py
+"""RecipeDSL Pydantic schema — the high-level geometry DSL.
+
+LLMs generate RecipeDSL JSON; the lowering pass compiles it to DiagramIR.
+IDs starting with '__' are reserved for lowering intermediates and are
+rejected at parse time.
+"""
+from __future__ import annotations
+
+from typing import Annotated, Any, Literal, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# ---------------------------------------------------------------------------
+# Shared validators
+# ---------------------------------------------------------------------------
+
+def _reject_reserved_id(id_: str) -> str:
+    if id_.startswith("__"):
+        raise ValueError(f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}")
+    return id_
+
+
+# ---------------------------------------------------------------------------
+# Base
+# ---------------------------------------------------------------------------
+
+class DSLOpBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: str
+    id: str
+    visible: bool = True  # set False to suppress from auto_draw_all
+
+    @field_validator("id")
+    @classmethod
+    def id_not_reserved(cls, v: str) -> str:
+        return _reject_reserved_id(v)
+
+
+# ---------------------------------------------------------------------------
+# Foundation ops
+# ---------------------------------------------------------------------------
+
+class TriangleOp(DSLOpBase):
+    """Triangle defined by angles/sides (abstract) or vertices (grid)."""
+    op: Literal["triangle"] = "triangle"
+    vertices: list[str]  # exactly 3 names for the vertices
+    spec: dict[str, Any]  # keys: angle_A/B/C, side_AB/BC/CA, right_angle_at
+
+
+class CircleOp(DSLOpBase):
+    """Circle from center + radius or center + through-point."""
+    op: Literal["circle"] = "circle"
+    center: str
+    radius: Optional[Union[int, float, str]] = None
+    through: Optional[str] = None
+
+    @model_validator(mode="after")
+    def radius_or_through(self) -> "CircleOp":
+        if self.radius is None and self.through is None:
+            raise ValueError("CircleOp requires either 'radius' or 'through'")
+        return self
+
+
+class PolygonOp(DSLOpBase):
+    """Polygon from existing named vertices."""
+    op: Literal["polygon"] = "polygon"
+    vertices: list[str]  # 3 or more
+
+
+class PointOp(DSLOpBase):
+    """Explicit point with coordinates (grid mode)."""
+    op: Literal["point"] = "point"
+    coords: list[float]  # [x, y]
+
+
+class PointExternalOp(DSLOpBase):
+    """Point outside a circle at a given direction and distance ratio."""
+    op: Literal["point_external"] = "point_external"
+    relative_to: str   # circle id
+    direction: str     # "left", "right", "above", "below", or angle in degrees as str
+    distance_ratio: float  # multiple of radius
+
+
+class CanvasOp(DSLOpBase):
+    """Set canvas bounds (maps to DiagramIR.canvas, not a def statement)."""
+    op: Literal["canvas"] = "canvas"
+    x_range: list[float]  # [xmin, xmax]
+    y_range: list[float]  # [ymin, ymax]
+    grid: bool = False
+    axes: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Derived ops (IR passthroughs)
+# ---------------------------------------------------------------------------
+
+class MidpointOp(DSLOpBase):
+    op: Literal["midpoint"] = "midpoint"
+    of: list[str]  # exactly [P, Q]
+
+
+class IntersectionOp(DSLOpBase):
+    op: Literal["intersection"] = "intersection"
+    of: list[str]  # exactly [obj1, obj2]
+    selector: Optional[dict[str, Any]] = None  # PickRule dict for disambiguation
+
+
+class PerpendicularOp(DSLOpBase):
+    op: Literal["perpendicular"] = "perpendicular"
+    to_line: Union[str, list[str]]  # line id OR [A, B] point pair (avoids forced LineThroughOp)
+    through: str
+
+
+class ParallelOp(DSLOpBase):
+    op: Literal["parallel"] = "parallel"
+    to_line: Union[str, list[str]]  # line id OR [A, B] point pair
+    through: str
+
+
+class LineThroughOp(DSLOpBase):
+    op: Literal["line_through"] = "line_through"
+    points: list[str]  # exactly [A, B]
+
+
+class SegmentOp(DSLOpBase):
+    op: Literal["segment"] = "segment"
+    endpoints: list[str]  # exactly [A, B]
+
+
+class RayOp(DSLOpBase):
+    op: Literal["ray"] = "ray"
+    from_: str = Field(alias="from")
+    through: str
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ReflectionOp(DSLOpBase):
+    op: Literal["reflection"] = "reflection"
+    point: str    # source
+    over: str     # axis (line id or point id)
+
+
+class RotationOp(DSLOpBase):
+    op: Literal["rotation"] = "rotation"
+    point: str    # source
+    center: str
+    angle: Union[int, float, str]  # degrees; lowering converts to radians
+
+
+class PointOnSegmentOp(DSLOpBase):
+    op: Literal["point_on_segment"] = "point_on_segment"
+    segment: list[str]  # [A, B]
+    ratio: Optional[Union[float, str]] = None  # 0–1 or "m:n"
+
+
+class TangentLineOp(DSLOpBase):
+    op: Literal["tangent_line"] = "tangent_line"
+    circle: str
+    at: Optional[str] = None          # point on the circle → tangent at that point
+    from_point: Optional[str] = None  # external point → tangent lines from there
+    selector: Optional[dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def _validate_exactly_one_point(self) -> "TangentLineOp":
+        if (self.at is None) == (self.from_point is None):
+            raise ValueError("tangent_line requires exactly one of 'at' or 'from_point'")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Composite ops
+# ---------------------------------------------------------------------------
+
+class AltitudeOp(DSLOpBase):
+    """Altitude from vertex to opposite side.
+
+    id resolves to the altitude *line* (the perpendicular).
+    foot is a separately-named point on the base.
+
+    Preferred: specify `triangle` (triangle id) — lowering infers the opposite side.
+    Fallback: specify `to_side` ([P, Q]) — explicit base points for non-triangle cases.
+    """
+    op: Literal["altitude"] = "altitude"
+    from_vertex: str
+    triangle: Optional[str] = None    # preferred: triangle id; lowering infers opposite side
+    to_side: Optional[list[str]] = None  # explicit 2-point base, for non-triangle cases
+    foot: str
+
+    @model_validator(mode="after")
+    def _validate_base(self) -> "AltitudeOp":
+        if self.triangle is None and self.to_side is None:
+            raise ValueError("altitude requires either 'triangle' or 'to_side'")
+        if self.triangle is not None and self.to_side is not None:
+            raise ValueError("altitude: specify 'triangle' or 'to_side', not both")
+        return self
+
+
+class CircumcircleOp(DSLOpBase):
+    """Circumscribed circle of a triangle."""
+    op: Literal["circumcircle"] = "circumcircle"
+    of: str    # triangle id
+    center: str  # name for circumcenter point
+
+
+class IncircleOp(DSLOpBase):
+    """Inscribed circle of a triangle."""
+    op: Literal["incircle"] = "incircle"
+    of: str    # triangle id
+    center: str  # name for incenter point
+
+
+class PerpendicularBisectorOp(DSLOpBase):
+    """Perpendicular bisector of a segment."""
+    op: Literal["perpendicular_bisector"] = "perpendicular_bisector"
+    of: list[str]   # [P, Q]
+    mid: str        # name for midpoint
+
+
+class AngleBisectorOp(DSLOpBase):
+    """Angle bisector line at a vertex."""
+    op: Literal["angle_bisector"] = "angle_bisector"
+    vertex: str
+    ray1_toward: str
+    ray2_toward: str
+
+
+class CentroidOp(DSLOpBase):
+    """Centroid of a triangle."""
+    op: Literal["centroid"] = "centroid"
+    of: str  # triangle id
+
+
+class MedianOp(DSLOpBase):
+    """Median from vertex to midpoint of opposite side.
+
+    Preferred: specify `triangle` (triangle id) — lowering infers the opposite side.
+    Fallback: specify `to_side` ([P, Q]) — explicit base points for non-triangle cases.
+    """
+    op: Literal["median"] = "median"
+    from_vertex: str
+    triangle: Optional[str] = None    # preferred: triangle id
+    to_side: Optional[list[str]] = None  # explicit 2-point base
+    mid: str
+
+    @model_validator(mode="after")
+    def _validate_base(self) -> "MedianOp":
+        if self.triangle is None and self.to_side is None:
+            raise ValueError("median requires either 'triangle' or 'to_side'")
+        if self.triangle is not None and self.to_side is not None:
+            raise ValueError("median: specify 'triangle' or 'to_side', not both")
+        return self
+
+
+class PolygonExteriorOp(DSLOpBase):
+    """Regular polygon on exterior of an edge (e.g., square on segment)."""
+    op: Literal["polygon_exterior"] = "polygon_exterior"
+    base: list[str]   # [P, Q] — edge
+    ref_point: str    # polygon placed on opposite side from this point
+    n: int            # number of sides (3=equilateral triangle, 4=square)
+    vertices: list[str]  # names for the computed vertices (v2..v_{n-1})
+
+
+class RegularPolygonOp(DSLOpBase):
+    """Regular polygon computed from center, radius, and start angle.
+
+    Lowering emits N point_fixed defs (named by `vertices`) then a polygon def.
+    """
+    op: Literal["regular_polygon"] = "regular_polygon"
+    center: str
+    radius: Union[int, float, str]
+    start_angle: Union[int, float, str] = 0  # degrees; 0 = first vertex at rightmost
+    vertices: list[str]  # exactly N names, one per vertex
+
+
+class PointAlongOp(DSLOpBase):
+    """Point at a given distance along a line from a reference point.
+
+    Lowering computes the unit vector from `from_` toward `toward`,
+    then places the result at from_ + distance * unit_vector.
+    """
+    op: Literal["point_along"] = "point_along"
+    on: str                        # line/segment/ray id (for context; may be unused in lowering)
+    from_: str = Field(alias="from")
+    distance: Union[int, float, str]
+    toward: str                    # named point indicating direction of travel
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class ExtendSegmentOp(DSLOpBase):
+    """Point beyond a specified endpoint of a segment by a given extra distance.
+
+    Lowering emits a PointFixed computed beyond `beyond` in the direction away from
+    the other endpoint.
+    """
+    op: Literal["extend_segment"] = "extend_segment"
+    segment: list[str]              # [A, B]
+    beyond: str                     # which endpoint to extend beyond (must be A or B)
+    by: Union[int, float, str]      # extra distance beyond that endpoint
+
+
+class PointFootOp(DSLOpBase):
+    """Foot of perpendicular from a point onto a line.
+
+    Projects `source` onto `onto` without constructing a named altitude line.
+    Equivalent to IR's `point_foot` directly.
+    """
+    op: Literal["point_foot"] = "point_foot"
+    source: str   # the point to project
+    onto: str     # line/segment id
+
+
+class CircleThrough3Op(DSLOpBase):
+    """Circumcircle through three arbitrary points (not necessarily a named triangle)."""
+    op: Literal["circle_through_3"] = "circle_through_3"
+    through: list[str]  # exactly 3 point IDs
+    center: str         # name for the circumcenter point
+
+
+# ---------------------------------------------------------------------------
+# DSLOp discriminated union
+# ---------------------------------------------------------------------------
+
+DSLOp = Annotated[
+    Union[
+        # Foundation
+        TriangleOp, CircleOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
+        # Derived
+        MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
+        LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,
+        PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
+        # Composite
+        AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
+        AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
+        # Foundation (continued)
+        RegularPolygonOp,
+        # Derived (continued)
+        PointAlongOp, ExtendSegmentOp,
+    ],
+    Field(discriminator="op")
+]
+
+
+# ---------------------------------------------------------------------------
+# Annotation models (typed; LLM errors caught at parse time)
+# ---------------------------------------------------------------------------
+
+class MarkAngle(BaseModel):
+    """Mark an angle arc at `vertex` between rays toward `a` and `b`."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_angle"] = "mark_angle"
+    a: str
+    vertex: str
+    b: str
+    group: Optional[int] = None  # tick-group for equal-angle marking
+
+
+class MarkRightAngle(BaseModel):
+    """Mark a right-angle square at `vertex`."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_right_angle"] = "mark_right_angle"
+    a: str
+    vertex: str
+    b: str
+
+
+class MarkEqualLengths(BaseModel):
+    """Mark equal-length tick marks on a group of segments."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_equal_lengths"] = "mark_equal_lengths"
+    segments: list[list[str]]   # [[A,B],[C,D], ...]
+    group: Optional[int] = None
+
+
+class MarkParallel(BaseModel):
+    """Mark parallel arrow marks on a group of segments."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_parallel"] = "mark_parallel"
+    segments: list[list[str]]
+    group: Optional[int] = None
+
+
+class LabelSegment(BaseModel):
+    """Place a text label at the midpoint of a segment."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_segment"] = "label_segment"
+    endpoints: list[str]  # [A, B]
+    text: str
+
+
+AnnotationMark = Annotated[
+    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel],
+    Field(discriminator="kind")
+]
+
+# Pre-structured for future union extension; discriminator is inert with a single member.
+AnnotationLabel = Annotated[
+    Union[LabelSegment],
+    Field(discriminator="kind")
+]
+
+
+# ---------------------------------------------------------------------------
+# Annotations
+# ---------------------------------------------------------------------------
+
+class DSLAnnotations(BaseModel):
+    model_config = ConfigDict(extra="allow")  # allow extra annotation keys for future use
+    auto_draw_all: bool = True
+    auto_label_points: bool = True
+    auto_mark_right_angles: bool = False
+    marks: list[AnnotationMark] = Field(default_factory=list)
+    labels: list[AnnotationLabel] = Field(default_factory=list)
+    styles: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Top-level RecipeDSL
+# ---------------------------------------------------------------------------
+
+class RecipeDSL(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["abstract", "grid", "mixed"] = "abstract"
+    construction: list[DSLOp]
+    annotations: DSLAnnotations = Field(default_factory=DSLAnnotations)
+    checks: list[dict[str, Any]] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_reserved_ids(cls, data: Any) -> Any:
+        """Reject any construction op whose id starts with '__'."""
+        construction = data.get("construction", [])
+        for op in construction:
+            if isinstance(op, dict):
+                id_ = op.get("id", "")
+                if isinstance(id_, str) and id_.startswith("__"):
+                    raise ValueError(
+                        f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}"
+                    )
+        return data
