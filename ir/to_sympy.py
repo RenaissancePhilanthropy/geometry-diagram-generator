@@ -450,6 +450,102 @@ def _apply_pick(
                 raise PickError(def_id, f"no candidate inside triangle {tri_id!r}")
             return inside[0]
 
+        case ir.PickBetween(a=a_id, b=b_id):
+            a_pt = _resolve(sym, a_id, def_id=def_id)
+            b_pt = _resolve(sym, b_id, def_id=def_id)
+            seg = spg.Segment(a_pt, b_pt)
+            between = [p for p in points if seg.contains(p)]
+            if not between:
+                raise PickError(def_id, f"no candidate lies between {a_id!r} and {b_id!r}")
+            return between[0]
+
+        case ir.PickBeyond(from_point=from_id, past_point=past_id):
+            from_pt = _resolve(sym, from_id, def_id=def_id)
+            past_pt = _resolve(sym, past_id, def_id=def_id)
+            def _is_beyond(p: spg.Point) -> bool:
+                dx_dir = float((past_pt.x - from_pt.x).evalf())
+                dy_dir = float((past_pt.y - from_pt.y).evalf())
+                dx_p   = float((p.x - past_pt.x).evalf())
+                dy_p   = float((p.y - past_pt.y).evalf())
+                return dx_dir * dx_p + dy_dir * dy_p > 0
+            beyond = [p for p in points if _is_beyond(p)]
+            if not beyond:
+                raise PickError(def_id, f"no candidate beyond {past_id!r} from {from_id!r}")
+            return beyond[0]
+
+        case ir.PickInterior(polygon=poly_id):
+            poly = _resolve(sym, poly_id, def_id=def_id)
+            inside = [p for p in points if poly.encloses_point(p)]
+            if not inside:
+                raise PickError(def_id, f"no candidate inside polygon {poly_id!r}")
+            return inside[0]
+
+        case ir.PickExterior(polygon=poly_id):
+            poly = _resolve(sym, poly_id, def_id=def_id)
+            outside = [p for p in points if not poly.encloses_point(p) and not poly.contains(p)]
+            if not outside:
+                raise PickError(def_id, f"no candidate outside polygon {poly_id!r}")
+            return outside[0]
+
+        case ir.PickOppositeSide() as pick_rule:
+            a_id, b_id = pick_rule.line_through[0], pick_rule.line_through[1]
+            ref_id = pick_rule.ref_point
+            a_pt = _resolve(sym, a_id, def_id=def_id)
+            b_pt = _resolve(sym, b_id, def_id=def_id)
+            ref_pt = _resolve(sym, ref_id, def_id=def_id)
+            ref_sign = float(_cross_sign(a_pt, b_pt, ref_pt).evalf())
+            opposite = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) * ref_sign < 0]
+            if not opposite:
+                raise PickError(def_id, f"no candidate on opposite side of ({a_id},{b_id}) from {ref_id!r}")
+            return opposite[0]
+
+        case ir.PickUpperOfLine(a=a_id, b=b_id):
+            a_pt = _resolve(sym, a_id, def_id=def_id)
+            b_pt = _resolve(sym, b_id, def_id=def_id)
+            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]
+            if not upper:
+                raise PickError(def_id, f"no candidate above directed line {a_id!r}→{b_id!r}")
+            return upper[0]
+
+        case ir.PickLowerOfLine(a=a_id, b=b_id):
+            a_pt = _resolve(sym, a_id, def_id=def_id)
+            b_pt = _resolve(sym, b_id, def_id=def_id)
+            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]
+            if not lower:
+                raise PickError(def_id, f"no candidate below directed line {a_id!r}→{b_id!r}")
+            return lower[0]
+
+        case ir.PickChain(rules=rules):
+            _FILTER_KINDS = frozenset({
+                "between", "beyond", "interior", "exterior",
+                "opposite_side", "upper_of_line", "lower_of_line",
+                "same_side",
+            })
+
+            def _chain_apply(pts: list[spg.Point2D], rule: ir.PickRule) -> list[spg.Point2D]:
+                if rule.kind in _FILTER_KINDS:
+                    survivors = []
+                    for p in pts:
+                        try:
+                            _apply_pick([p], rule, sym, def_id, canvas=canvas)
+                            survivors.append(p)
+                        except PickError:
+                            pass
+                    return survivors
+                else:
+                    return [_apply_pick(pts, rule, sym, def_id, canvas=canvas)]
+
+            remaining = list(points)
+            for rule in rules:
+                if not remaining:
+                    break
+                remaining = _chain_apply(remaining, rule)
+                if not remaining:
+                    raise PickError(def_id, f"pick_chain: rule {rule.kind!r} eliminated all candidates")
+            if not remaining:
+                raise PickError(def_id, "pick_chain: all rules eliminated all candidates")
+            return remaining[0]
+
         case _:
             raise PickError(def_id, f"unhandled pick kind: {pick.kind!r}")
 
