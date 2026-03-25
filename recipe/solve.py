@@ -39,14 +39,6 @@ def solve_triangle(
     """
     v0, v1, v2 = vertices[0], vertices[1], vertices[2]
 
-    # Helper: side key for two vertices (order-independent)
-    def _side(*names: str) -> str:
-        return "side_" + "".join(names)
-
-    # Helper: angle key for vertex
-    def _ang(name: str) -> str:
-        return "angle_" + name
-
     # -------------------------------------------------------------------
     # Attempt each supported combination in priority order
     # -------------------------------------------------------------------
@@ -99,6 +91,10 @@ def solve_triangle(
         if len(side_key) != 2:
             raise SpecError(f"Unexpected side key {side_key!r}; expected two vertex names")
         sv0, sv1 = side_key[0], side_key[1]
+        if sv0 not in vertices or sv1 not in vertices:
+            raise SpecError(
+                f"Side key {side_key!r} references vertices not in {vertices}"
+            )
         # Law of sines: side / sin(opposite_angle) = constant
         # Use the given side to derive the other two
         opp_angle = all_angles.get(
@@ -182,9 +178,9 @@ def _aas_via_law_of_sines(
             raise SpecError(f"Missing angle for vertex {vc!r}")
         sides[(va, vb)] = k * math.sin(math.radians(opp))
 
-    ab = sides.get((v0, v1)) or sides.get((v1, v0))
-    bc = sides.get((v1, v2)) or sides.get((v2, v1))
-    ca = sides.get((v2, v0)) or sides.get((v0, v2))
+    ab = sides[(v0, v1)]
+    bc = sides[(v1, v2)]
+    ca = sides[(v2, v0)]
     return _sss(v0, v1, v2, ab, bc, ca)
 
 
@@ -201,7 +197,6 @@ def _sas(
     opp = math.sqrt(s0**2 + s1**2 - 2*s0*s1*math.cos(math.radians(ang_val)))
     # Determine which sides are v0-v1, v1-v2, v2-v0
     # ang_vertex is one of {v0, v1, v2}; ov0 and ov1 are the other two
-    verts = [v0, v1, v2]
     side_dict: dict[frozenset, float] = {
         frozenset({ang_vertex, ov0}): s0,
         frozenset({ang_vertex, ov1}): s1,
