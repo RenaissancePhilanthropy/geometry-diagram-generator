@@ -1,0 +1,26 @@
+name: equilateral_on_segment
+description: "Equilateral triangle constructed on the exterior of a segment"
+tags: [polygon, equilateral, exterior, intermediate]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: polygon_exterior
+      id: eq_tri
+      base: [B, C]
+      ref_point: A
+      n: 3
+      vertices: [eq_v2]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "n=3 for equilateral triangle; only one extra vertex (v2) needed"

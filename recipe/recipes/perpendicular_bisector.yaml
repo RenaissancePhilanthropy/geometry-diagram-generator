@@ -1,0 +1,22 @@
+name: perpendicular_bisector
+description: "Line perpendicular to a segment at its midpoint"
+tags: [triangle, perpendicular, midpoint, basic]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: perpendicular_bisector
+      id: pb_AB
+      of: [A, B]
+      mid: M_AB
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true

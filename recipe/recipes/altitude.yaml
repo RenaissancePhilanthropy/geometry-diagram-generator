@@ -1,0 +1,26 @@
+name: altitude
+description: "Drop a perpendicular from a vertex to the opposite side, creating a foot point"
+tags: [triangle, perpendicular, foot, basic]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: altitude
+      id: alt_A
+      from_vertex: A
+      triangle: T
+      foot: H
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    auto_mark_right_angles: true
+notes:
+  - "For obtuse triangles, H may lie outside segment BC (on the line extension)"

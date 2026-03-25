@@ -1,0 +1,45 @@
+name: euler_line
+description: "Euler line through circumcenter, centroid, and orthocenter of a triangle"
+tags: [triangle, circumcenter, centroid, orthocenter, advanced]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 50
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: circumcircle
+      id: cc
+      of: T
+      center: O
+    - op: centroid
+      id: G
+      of: T
+    - op: altitude
+      id: alt_A
+      from_vertex: A
+      triangle: T
+      foot: H_A
+    - op: altitude
+      id: alt_B
+      from_vertex: B
+      triangle: T
+      foot: H_B
+    - op: intersection
+      id: Orth
+      of: [alt_A, alt_B]
+    - op: line_through
+      id: euler
+      points: [O, G]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "The orthocenter is the intersection of any two altitudes"
+  - "O, G, Orth are collinear (Euler's theorem) — use collinear check to verify"
+  - "For equilateral triangles, all three coincide at the same point"

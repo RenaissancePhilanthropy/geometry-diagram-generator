@@ -1,0 +1,27 @@
+name: square_on_segment
+description: "Square constructed on the exterior of a triangle edge"
+tags: [polygon, square, exterior, intermediate]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: polygon_exterior
+      id: sq
+      base: [A, B]
+      ref_point: C
+      n: 4
+      vertices: [sq_v2, sq_v3]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "ref_point C tells the lowering which side is 'interior'; the square is placed on the opposite side"
+  - "vertices list names v2 and v3 (v0=A, v1=B are the base edge)"

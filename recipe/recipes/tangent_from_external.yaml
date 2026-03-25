@@ -1,0 +1,40 @@
+name: tangent_from_external
+description: "Tangent lines from an external point to a circle"
+tags: [circle, tangent, external-point, intermediate]
+context: "Given a circle c with center O and an external point P."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: point
+    id: P
+    coords: [4, 0]
+  - op: circle
+    id: c
+    center: O
+    radius: 2
+example:
+  mode: grid
+  construction:
+    - op: tangent_line
+      id: t1
+      circle: c
+      from_point: P
+      selector:
+        kind: upper_of_line
+        a: O
+        b: P
+    - op: tangent_line
+      id: t2
+      circle: c
+      from_point: P
+      selector:
+        kind: lower_of_line
+        a: O
+        b: P
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "Use upper_of_line and lower_of_line selectors to get both tangent lines distinctly"
+  - "P must be strictly outside the circle (distance from O > radius)"

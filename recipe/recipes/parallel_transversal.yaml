@@ -1,0 +1,38 @@
+name: parallel_transversal
+description: "Two parallel lines cut by a transversal, showing angle relationships"
+tags: [parallel, transversal, angle, intermediate]
+context: "Given two points A and B defining a reference line."
+setup:
+  - op: point
+    id: A
+    coords: [0, 0]
+  - op: point
+    id: B
+    coords: [4, 0]
+example:
+  mode: grid
+  construction:
+    - op: line_through
+      id: L1
+      points: [A, B]
+    - op: point
+      id: C
+      coords: [0, 2]
+    - op: parallel
+      id: L2
+      to_line: L1
+      through: C
+    - op: point
+      id: D
+      coords: [2, -1]
+    - op: point
+      id: E
+      coords: [3, 3]
+    - op: line_through
+      id: Trans
+      points: [D, E]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "L1 and L2 are parallel; Trans is the transversal cutting both"

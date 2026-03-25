@@ -1,0 +1,221 @@
+# recipe/catalog.py
+"""Recipe catalog loader and prompt builders.
+
+Recipes are YAML files in recipe/recipes/. Each file has:
+  name, description, tags, context, setup, example, notes
+
+`setup` (list of DSL op dicts): prerequisite objects for the recipe; NOT sent to LLM.
+`example` (dict with 'construction' key): the pattern being taught; sent to LLM.
+`context` (str): one-sentence prose describing what's given; sent to LLM.
+`notes` (list of str): non-obvious caveats; sent to LLM if non-empty.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel
+
+
+_RECIPES_DIR = Path(__file__).parent / "recipes"
+
+
+# ---------------------------------------------------------------------------
+# Data models
+# ---------------------------------------------------------------------------
+
+class RecipeSummary(BaseModel):
+    """One-liner entry for the selection catalog."""
+    id: str
+    name: str
+    description: str
+    tags: list[str] = []
+
+
+class Recipe(BaseModel):
+    """Full recipe loaded from YAML."""
+    name: str
+    description: str
+    tags: list[str] = []
+    context: str
+    setup: list[dict[str, Any]] = []   # DSL op dicts; NOT sent to LLM
+    example: dict[str, Any]            # RecipeDSL fragment; sent to LLM
+    notes: list[str] = []
+
+
+class RecipeSelection(BaseModel):
+    """Output from the recipe selection model."""
+    selected_recipes: list[str] = []
+    unmatched_concepts: list[str] = []
+    confidence: str = "high"  # "high" | "medium" | "low"
+
+
+# ---------------------------------------------------------------------------
+# Catalog loading
+# ---------------------------------------------------------------------------
+
+def _load_all_recipes() -> dict[str, Recipe]:
+    """Load all YAML files from recipes/ directory."""
+    recipes: dict[str, Recipe] = {}
+    for path in sorted(_RECIPES_DIR.glob("*.yaml")):
+        with path.open() as f:
+            data = yaml.safe_load(f)
+        recipe = Recipe.model_validate(data)
+        recipes[recipe.name] = recipe
+    return recipes
+
+
+_RECIPE_CACHE: dict[str, Recipe] | None = None
+
+
+def _get_cache() -> dict[str, Recipe]:
+    global _RECIPE_CACHE
+    if _RECIPE_CACHE is None:
+        _RECIPE_CACHE = _load_all_recipes()
+    return _RECIPE_CACHE
+
+
+def load_catalog() -> list[RecipeSummary]:
+    """Return catalog as a flat list of RecipeSummary objects."""
+    return [
+        RecipeSummary(
+            id=r.name,
+            name=r.name.replace("_", " ").title(),
+            description=r.description,
+            tags=r.tags,
+        )
+        for r in _get_cache().values()
+    ]
+
+
+def load_recipe(name: str) -> Recipe:
+    """Load a full recipe by name. Raises KeyError if not found."""
+    cache = _get_cache()
+    if name not in cache:
+        raise KeyError(f"Recipe {name!r} not found. Available: {sorted(cache.keys())}")
+    return cache[name]
+
+
+# ---------------------------------------------------------------------------
+# Prompt builders
+# ---------------------------------------------------------------------------
+
+def build_selection_prompt(user_request: str, catalog: list[RecipeSummary]) -> str:
+    """Build the prompt for the recipe selection model."""
+    catalog_text = "\n".join(
+        f"- {entry.id}: {entry.description} [tags: {', '.join(entry.tags)}]"
+        for entry in catalog
+    )
+    return (
+        "You are selecting geometry construction recipes relevant to a user's request.\n\n"
+        f"User request: {user_request}\n\n"
+        "Available recipes:\n"
+        f"{catalog_text}\n\n"
+        "Select the recipes most relevant to this request. "
+        "For each selected recipe, the ID must exactly match one of the available recipe IDs above.\n\n"
+        "Respond with JSON only:\n"
+        '{"selected_recipes": [...], "unmatched_concepts": [...], "confidence": "high"|"medium"|"low"}'
+    )
+
+
+def build_generation_prompt(
+    user_request: str,
+    recipes: list[Recipe],
+    dsl_docs: str,
+) -> str:
+    """Build the prompt for the DSL generation model.
+
+    The `setup` field of each recipe is NOT included (it's for tests only).
+    The `context` + `example` of each recipe IS included.
+    """
+    sections: list[str] = []
+
+    sections.append(
+        "You are a geometry diagram assistant. Generate a RecipeDSL JSON object "
+        "that describes the requested diagram.\n\n"
+        f"DSL Reference:\n{dsl_docs}"
+    )
+
+    if recipes:
+        sections.append("## Relevant Construction Examples\n")
+        for recipe in recipes:
+            example_json = json.dumps(recipe.example, indent=2)
+            notes_text = ""
+            if recipe.notes:
+                notes_text = "\nNotes:\n" + "\n".join(f"- {n}" for n in recipe.notes)
+            sections.append(
+                f"### {recipe.name.replace('_', ' ').title()}\n"
+                f"Context: {recipe.context}\n"
+                f"Example construction:\n```json\n{example_json}\n```"
+                f"{notes_text}"
+            )
+
+    sections.append(f"## User Request\n{user_request}")
+    sections.append(
+        "## Output\nRespond with a valid RecipeDSL JSON object only. "
+        "Do not include markdown fences or explanations."
+    )
+
+    return "\n\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
+# DSL documentation string (sent to LLM in every generation prompt)
+# ---------------------------------------------------------------------------
+
+DSL_DOCS = """\
+RecipeDSL is a JSON object with these top-level fields:
+- mode: "abstract" (default) or "grid"
+- construction: ordered list of ops (each has "op" and "id")
+- annotations: optional batch flags and explicit marks/labels
+
+## Foundation ops
+- triangle: {op, id, vertices:[A,B,C], spec:{angle_A, angle_B, side_AB, ...}}
+  Spec options: angle_A/B/C (degrees), side_AB/BC/CA, right_angle_at
+  Supported: AAS (2 angles + 1 side), SAS, SSS, ASA, right_angle_at + 2 sides
+  NOT supported: SSA (ambiguous)
+- circle: {op, id, center, radius} or {op, id, center, through}
+- polygon: {op, id, vertices:[...]}
+- point: {op, id, coords:[x, y]}  (grid mode)
+
+## Composite ops (auto-expand to multiple IR definitions)
+- altitude: {op, id, from_vertex, triangle:<tri_id>, foot}  # preferred; or to_side:[P,Q]
+  id = the altitude line; foot = the foot point on the base
+- circumcircle: {op, id, of:<triangle_id>, center}
+- incircle: {op, id, of:<triangle_id>, center}
+- perpendicular_bisector: {op, id, of:[P,Q], mid}
+- angle_bisector: {op, id, vertex, ray1_toward, ray2_toward}
+- centroid: {op, id, of:<triangle_id>}
+- median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
+- polygon_exterior: {op, id, base:[P,Q], ref_point, n, vertices:[v2,...]}
+  n=4 for square, n=3 for equilateral triangle
+
+## Derived ops (direct IR mapping)
+- midpoint: {op, id, of:[P,Q]}
+- intersection: {op, id, of:[obj1,obj2], selector:{kind,...}}
+- perpendicular: {op, id, to_line, through}
+- parallel: {op, id, to_line, through}
+- line_through: {op, id, points:[A,B]}
+- segment: {op, id, endpoints:[A,B]}
+- reflection: {op, id, point, over}
+- rotation: {op, id, point, center, angle}  (angle in degrees)
+- point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
+- tangent_line: {op, id, circle, from_point, selector:{kind,...}}
+
+## Selectors (for intersection, tangent_line)
+Kinds: index(k), on_object(obj), closest_to(p), same_side(line:[A,B], ref_point),
+       between(a,b), beyond(from_point, past_point), interior(polygon),
+       exterior(polygon), opposite_side(line_through:[A,B], ref_point),
+       upper_of_line(a,b), lower_of_line(a,b), chain(rules:[...])
+
+## Annotations
+- auto_draw_all: true (default) — draw all non-implicit objects
+- auto_label_points: true (default) — label all named points
+- auto_mark_right_angles: false (default) — add right-angle marks
+
+## ID rules
+- All IDs must be unique
+- IDs starting with __ are reserved (used internally during lowering)
+"""

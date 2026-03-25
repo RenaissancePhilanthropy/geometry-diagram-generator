@@ -1,0 +1,22 @@
+name: incircle
+description: "Inscribed circle tangent to all three sides of a triangle"
+tags: [triangle, circle, incenter, basic]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: incircle
+      id: ic
+      of: T
+      center: I
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true

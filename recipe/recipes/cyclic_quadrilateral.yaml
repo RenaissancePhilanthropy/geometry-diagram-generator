@@ -1,0 +1,36 @@
+name: cyclic_quadrilateral
+description: "Quadrilateral with all four vertices on a circle"
+tags: [circle, polygon, cyclic, intermediate]
+context: "Given a circle c with center O."
+setup:
+  - op: point
+    id: O
+    coords: [2, 2]
+  - op: circle
+    id: c
+    center: O
+    radius: 2
+example:
+  mode: grid
+  construction:
+    - op: point
+      id: P1
+      coords: [4, 2]
+    - op: point
+      id: P2
+      coords: [2, 4]
+    - op: point
+      id: P3
+      coords: [0, 2]
+    - op: point
+      id: P4
+      coords: [2, 0]
+    - op: polygon
+      id: quad
+      vertices: [P1, P2, P3, P4]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "Points are on circle c (radius 2, center O=(2,2)) — P1,P2,P3,P4 are at distance 2 from O"
+  - "Opposite angles of a cyclic quadrilateral sum to 180 degrees"
