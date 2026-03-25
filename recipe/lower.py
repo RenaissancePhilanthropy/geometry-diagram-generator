@@ -9,7 +9,7 @@ are computed using recipe.solve.solve_triangle (basic trig only).
 from __future__ import annotations
 
 import math
-from typing import Any, Union
+from typing import Any
 
 from pydantic import TypeAdapter
 
@@ -371,7 +371,7 @@ class _Lowerer:
             side_c = math.hypot(ax - bx, ay - by)  # AB (opposite C)
             s = (side_a + side_b + side_c) / 2
             area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
-            inradius: Union[float, str] = round(area / s, 10)
+            inradius: float | str = round(area / s, 10)
         else:
             # Fallback: Heron's formula as string expression (derived triangle)
             a, b, c = a_id, b_id, c_id
@@ -435,10 +435,10 @@ class _Lowerer:
         if len(op.through) != 3:
             raise LoweringError(f"circle_through_3: expected exactly 3 points, got {len(op.through)}")
         a, b, c = op.through
+        # Triangle must precede its circumcenter in the definition DAG
+        self._defs.append(Triangle(id=f"__{op.id}_tri", a=a, b=b, c=c))
         self._defs.append(PointTriangleCenter(id=op.center,
                                               tri=f"__{op.id}_tri", which="circumcenter"))
-        # Emit a temporary Triangle def so the circumcenter can reference it
-        self._defs.insert(-1, Triangle(id=f"__{op.id}_tri", a=a, b=b, c=c))
         self._defs.append(CircleCenterPoint(id=op.id, center=op.center, through=a))
         self._point_ids.append(op.center)
         self._drawable.add(op.id)
@@ -475,7 +475,7 @@ class _Lowerer:
     # Annotation expansion
     # ------------------------------------------------------------------
 
-    def _apply_annotations(self, ann: DSLAnnotations, dsl_ops: list = None) -> None:
+    def _apply_annotations(self, ann: DSLAnnotations, dsl_ops: list | None = None) -> None:
         if ann.auto_draw_all:
             # Build set of explicitly hidden op IDs
             hidden_ids: set[str] = set()
