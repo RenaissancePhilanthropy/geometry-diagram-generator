@@ -633,6 +633,21 @@ async def run_scenario(
             record["phase_traces"] = getattr(strategy, "_partial_phase_traces", None)
             record["phase_usage"] = getattr(strategy, "_partial_phase_usage", None)
             record["retries"] = getattr(strategy, "_partial_repair_cycles", None)
+        if isinstance(strategy, RecipeStrategy):
+            record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
+            record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
+            partial_meta = getattr(strategy, "_partial_recipe_metadata", None)
+            if partial_meta is not None:
+                record["recipe_metadata"] = {
+                    "selected_recipes": partial_meta.selected_recipes,
+                    "unmatched_concepts": partial_meta.unmatched_concepts,
+                    "selection_input_tokens": partial_meta.selection_input_tokens,
+                    "selection_output_tokens": partial_meta.selection_output_tokens,
+                    "attempt_traces": [
+                        {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                        for t in partial_meta.attempt_traces
+                    ],
+                }
         return record
 
     record["duration_s"] = round(time.monotonic() - start, 2)
@@ -678,6 +693,10 @@ async def run_scenario(
                 "unmatched_concepts": result.recipe_metadata.unmatched_concepts,
                 "selection_input_tokens": result.recipe_metadata.selection_input_tokens,
                 "selection_output_tokens": result.recipe_metadata.selection_output_tokens,
+                "attempt_traces": [
+                    {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                    for t in result.recipe_metadata.attempt_traces
+                ],
             }
         else:
             record["recipe_metadata"] = None

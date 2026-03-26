@@ -35,11 +35,20 @@ call the generate_diagram tool with their request, then briefly explain what was
 
 
 @dataclass
+class RecipeAttemptTrace:
+    attempt: int
+    dsl_json: dict | None  # model_dump() of the RecipeDSL the LLM produced
+    error: str | None       # error message if this attempt failed
+    stage: str              # "lowering", "ir_pipeline", or "success"
+
+
+@dataclass
 class RecipeMetadata:
     selected_recipes: list[str] = field(default_factory=list)
     unmatched_concepts: list[str] = field(default_factory=list)
     selection_input_tokens: int = 0
     selection_output_tokens: int = 0
+    attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
 
 
 class RecipeStrategy(SubstanceStrategy):
@@ -132,10 +141,15 @@ class RecipeStrategy(SubstanceStrategy):
         else:
             generation_prompt = build_generation_prompt(prompt, [], DSL_DOCS)
 
+        # Expose partial metadata on self so the eval harness can access it even on failure
+        self._partial_recipe_metadata = recipe_metadata
+
         # --- Step 2: Retry loop ---
         last_error: str = ""
         total_input_tokens: int = recipe_metadata.selection_input_tokens
         total_output_tokens: int = recipe_metadata.selection_output_tokens
+        self._partial_input_tokens = total_input_tokens
+        self._partial_output_tokens = total_output_tokens
 
         for attempt in range(MAX_RETRIES):
             user_message = generation_prompt
@@ -155,6 +169,8 @@ class RecipeStrategy(SubstanceStrategy):
             usage = response.usage()
             total_input_tokens += usage.input_tokens or 0
             total_output_tokens += usage.output_tokens or 0
+            self._partial_input_tokens = total_input_tokens
+            self._partial_output_tokens = total_output_tokens
             dsl = response.output
             logger.info(
                 "Attempt %d: RecipeDSL has %d construction ops",
@@ -168,6 +184,12 @@ class RecipeStrategy(SubstanceStrategy):
             except (LoweringError, pydantic.ValidationError) as e:
                 last_error = f"Lowering failed: {e}"
                 logger.warning("Attempt %d lowering error: %s", attempt + 1, e)
+                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                    attempt=attempt + 1,
+                    dsl_json=dsl.model_dump(),
+                    error=last_error,
+                    stage="lowering",
+                ))
                 continue
 
             # IR pipeline
@@ -176,8 +198,20 @@ class RecipeStrategy(SubstanceStrategy):
             except RuntimeError as e:
                 last_error = str(e)
                 logger.warning("Attempt %d IR pipeline error: %s", attempt + 1, e)
+                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                    attempt=attempt + 1,
+                    dsl_json=dsl.model_dump(),
+                    error=last_error,
+                    stage="ir_pipeline",
+                ))
                 continue
 
+            recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                attempt=attempt + 1,
+                dsl_json=dsl.model_dump(),
+                error=None,
+                stage="success",
+            ))
             return StructuredRunResult(
                 diagram_ir=result.diagram_ir,
                 tikz=result.tikz,
