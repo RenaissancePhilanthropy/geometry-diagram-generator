@@ -334,6 +334,9 @@ class _Lowerer:
         self._defs.append(LineThrough(id=base_id, p=p, q=q))
         self._defs.append(LinePerpendicularThrough(id=op.id, through=op.from_vertex, to_line=base_id))
         self._defs.append(PointFoot(id=op.foot, source=op.from_vertex, onto=base_id))
+        # Segment from vertex to foot — creates the {from_vertex, foot} linear pair so
+        # mark_right_angles validation can confirm the foot lies on the altitude.
+        self._defs.append(Segment(id=f"__{op.id}_seg", a=op.from_vertex, b=op.foot))
         self._point_ids.append(op.foot)
         self._drawable.add(op.id)
         # Right-angle triple: corner is foot, arms are from_vertex and one base point
