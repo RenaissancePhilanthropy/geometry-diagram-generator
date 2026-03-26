@@ -53,6 +53,7 @@ from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from strategies.plan_and_code import PlanAndCodeStrategy
 from strategies.structured import StructureStrategy, StructuredRunResult
+from strategies.recipe import RecipeStrategy
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
@@ -69,6 +70,11 @@ from util.tikz_analysis import (
 from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
+class _RecipeNoRecipesStrategy(RecipeStrategy):
+    def __init__(self) -> None:
+        super().__init__(use_recipes=False)
+
+
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
     "raw_code_with_revise": RawCodeWithReviseStrategy,
@@ -77,6 +83,8 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "structured_plus_refine": StructuredPlusRefineStrategy,
     "structured_two_phase": StructuredTwoPhaseStrategy,
     "progressive_tools": ProgressiveToolsStrategy,
+    "recipe": RecipeStrategy,
+    "recipe_no_recipes": _RecipeNoRecipesStrategy,
 }
 
 _SUPPORTED_PROPERTY_TYPES = {
@@ -663,6 +671,16 @@ async def run_scenario(
                 result.sym_table,
             )
         record["sympy_property_checks"] = sympy_property_checks
+
+        if result.recipe_metadata is not None:
+            record["recipe_metadata"] = {
+                "selected_recipes": result.recipe_metadata.selected_recipes,
+                "unmatched_concepts": result.recipe_metadata.unmatched_concepts,
+                "selection_input_tokens": result.recipe_metadata.selection_input_tokens,
+                "selection_output_tokens": result.recipe_metadata.selection_output_tokens,
+            }
+        else:
+            record["recipe_metadata"] = None
     else:
         messages = result.all_messages()
         usage = result.usage()
