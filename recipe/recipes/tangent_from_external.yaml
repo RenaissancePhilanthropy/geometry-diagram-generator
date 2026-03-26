@@ -1,5 +1,5 @@
 name: tangent_from_external
-description: "Tangent lines from an external point to a circle"
+description: "Tangent lines from an external point to a circle, shown as segments to the touch points"
 tags: [circle, tangent, external-point, intermediate]
 context: "Given a circle c with center O and an external point P."
 setup:
@@ -24,6 +24,14 @@ example:
         kind: upper_of_line
         a: O
         b: P
+      visible: false
+    - op: intersection
+      id: T1
+      of: [t1, c]
+      selector:
+        kind: upper_of_line
+        a: O
+        b: P
     - op: tangent_line
       id: t2
       circle: c
@@ -32,9 +40,25 @@ example:
         kind: lower_of_line
         a: O
         b: P
+      visible: false
+    - op: intersection
+      id: T2
+      of: [t2, c]
+      selector:
+        kind: lower_of_line
+        a: O
+        b: P
+    - op: segment
+      id: seg_t1
+      endpoints: [P, T1]
+    - op: segment
+      id: seg_t2
+      endpoints: [P, T2]
   annotations:
     auto_draw_all: true
     auto_label_points: true
 notes:
-  - "Use upper_of_line and lower_of_line selectors to get both tangent lines distinctly"
+  - "Use upper_of_line and lower_of_line selectors to disambiguate the two tangent lines"
+  - "Marking the tangent lines as visible: false avoids drawing infinite lines; segments P→T1 and P→T2 are drawn instead"
   - "P must be strictly outside the circle (distance from O > radius)"
+  - "OT1 and OT2 are perpendicular to the tangent segments at the touch points"

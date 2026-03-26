@@ -539,10 +539,10 @@ You will receive:
 - A catalog of available recipes (id, description, tags)
 
 Output JSON only:
-{"selected": ["recipe_id", ...], "unmatched_concepts": ["concept", ...]}
+{"selected_recipes": ["recipe_id", ...], "unmatched_concepts": ["concept", ...]}
 
 Rules:
-- "selected": IDs of relevant recipes. 0–3 is ideal; include more only if clearly applicable. \
+- "selected_recipes": IDs of relevant recipes. 0–3 is ideal; include more only if clearly applicable. \
 Each ID must exactly match a catalog entry.
 - "unmatched_concepts": geometric concepts present in the request that no catalog recipe covers. \
 The generation model will handle these from the DSL reference alone.

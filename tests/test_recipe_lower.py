@@ -497,3 +497,73 @@ def test_visible_false_excluded_from_auto_draw():
     ir = lower_to_ir(dsl)
     draw_ids = [r.obj for r in ir.render if isinstance(r, Draw)]
     assert "aux_line" not in draw_ids
+
+
+# ---------------------------------------------------------------------------
+# Marks and labels lowering
+# ---------------------------------------------------------------------------
+
+def test_mark_angle_lowered():
+    """marks: [{kind: mark_angle, ...}] → MarkAngles render op."""
+    from ir.ir import MarkAngles
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 3]},
+    ], annotations={"marks": [{"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C"}]})
+    ir = lower_to_ir(dsl)
+    mark_ops = [r for r in ir.render if isinstance(r, MarkAngles)]
+    assert len(mark_ops) == 1
+    assert mark_ops[0].angles[0].a == "B"
+    assert mark_ops[0].angles[0].o == "A"
+    assert mark_ops[0].angles[0].b == "C"
+
+
+def test_mark_right_angle_lowered():
+    """marks: [{kind: mark_right_angle, ...}] → MarkRightAngles render op."""
+    from ir.ir import MarkRightAngles
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 3]},
+    ], annotations={"marks": [{"kind": "mark_right_angle", "a": "B", "vertex": "A", "b": "C"}]})
+    ir = lower_to_ir(dsl)
+    mark_ops = [r for r in ir.render if isinstance(r, MarkRightAngles)]
+    assert len(mark_ops) == 1
+    assert mark_ops[0].angles[0].o == "A"
+
+
+def test_mark_equal_lengths_lowered():
+    """marks: [{kind: mark_equal_lengths, ...}] → MarkSegments + implicit segment defs."""
+    from ir.ir import MarkSegments, Segment
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 3]},
+        {"op": "point", "id": "D", "coords": [3, 3]},
+    ], annotations={"marks": [{"kind": "mark_equal_lengths", "segments": [["A", "B"], ["C", "D"]], "group": 1}]})
+    ir = lower_to_ir(dsl)
+    seg_marks = [r for r in ir.render if isinstance(r, MarkSegments)]
+    assert len(seg_marks) == 1
+    assert len(seg_marks[0].segs) == 2
+    # Each seg_id should correspond to a Segment def
+    def_ids = {d.id for d in ir.define}
+    for seg_id in seg_marks[0].segs:
+        assert seg_id in def_ids
+
+
+def test_label_segment_lowered():
+    """labels: [{kind: label_segment, ...}] → LabelSegment render op."""
+    from ir.ir import LabelSegment
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "segment", "id": "s1", "endpoints": ["A", "B"]},
+    ], annotations={"labels": [{"kind": "label_segment", "endpoints": ["A", "B"], "text": "5cm"}]})
+    ir = lower_to_ir(dsl)
+    label_ops = [r for r in ir.render if isinstance(r, LabelSegment)]
+    assert len(label_ops) == 1
+    assert label_ops[0].text == "5cm"
+    # Should reuse the existing segment, not create a duplicate
+    seg_defs = [d for d in ir.define if hasattr(d, 'a') and hasattr(d, 'b') and {getattr(d,'a'), getattr(d,'b')} == {"A","B"}]
+    assert len(seg_defs) == 1

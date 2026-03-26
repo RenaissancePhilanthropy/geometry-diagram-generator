@@ -1,7 +1,7 @@
 name: parallel_transversal
-description: "Two parallel lines cut by a transversal, showing angle relationships"
+description: "Two parallel lines AB and CD cut by a transversal EF"
 tags: [parallel, transversal, angle, intermediate]
-context: "Given two points A and B defining a reference line."
+context: "Given points A, B on the first line and C, D on the second line."
 setup:
   - op: point
     id: A
@@ -9,30 +9,34 @@ setup:
   - op: point
     id: B
     coords: [4, 0]
+  - op: point
+    id: C
+    coords: [0, 2]
+  - op: point
+    id: D
+    coords: [4, 2]
 example:
   mode: grid
   construction:
     - op: line_through
       id: L1
       points: [A, B]
-    - op: point
-      id: C
-      coords: [0, 2]
     - op: parallel
       id: L2
       to_line: L1
       through: C
     - op: point
-      id: D
+      id: E
       coords: [2, -1]
     - op: point
-      id: E
+      id: F
       coords: [3, 3]
     - op: line_through
       id: Trans
-      points: [D, E]
+      points: [E, F]
   annotations:
     auto_draw_all: true
     auto_label_points: true
 notes:
-  - "L1 and L2 are parallel; Trans is the transversal cutting both"
+  - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"
+  - "D is placed at (4,2) to lie on L2, giving the standard 'parallel lines AB and CD' naming"

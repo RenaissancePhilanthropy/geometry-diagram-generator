@@ -180,15 +180,31 @@ def _compile_one(
                 if len(tangents) == 1:
                     return tangents[0]
                 raise PickError(did, f"ambiguous: {len(tangents)} tangent lines, no pick rule")
-            # For tangents, PickIndex is the natural pick; convert to point pick via index
+            # For tangents, PickIndex is the natural pick; spatial picks use touch point
             match pick:
                 case ir.PickIndex(k=k):
                     if k >= len(tangents):
                         raise PickError(did, f"index {k} out of range for {len(tangents)} tangent lines")
                     return tangents[k]
+                case ir.PickUpperOfLine(a=a_id, b=b_id) | ir.PickLowerOfLine(a=a_id, b=b_id):
+                    a_pt = _resolve(sym, a_id, def_id=did)
+                    b_pt = _resolve(sym, b_id, def_id=did)
+                    sign_target = 1 if isinstance(pick, ir.PickUpperOfLine) else -1
+
+                    def _touch_point(t_line):
+                        pts = t_line.intersection(circle)
+                        return pts[0] if pts else None
+
+                    candidates = [
+                        t for t in tangents
+                        if (tp := _touch_point(t)) is not None
+                        and float(_cross_sign(a_pt, b_pt, tp).evalf()) * sign_target > 0
+                    ]
+                    direction = "upper" if sign_target > 0 else "lower"
+                    if not candidates:
+                        raise PickError(did, f"no {direction} tangent relative to {a_id}→{b_id}")
+                    return candidates[0]
                 case _:
-                    # For other pick rules, pick based on which tangent's foot is closest etc.
-                    # Default to first tangent for now; more sophisticated dispatch can be added.
                     return tangents[0]
 
         # --- Segments / Rays ---

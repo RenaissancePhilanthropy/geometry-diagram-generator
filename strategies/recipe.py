@@ -106,11 +106,18 @@ class RecipeStrategy(SubstanceStrategy):
             selected_ids: list[str] = []
             unmatched_concepts: list[str] = []
             try:
-                parsed = json.loads(raw_text)
+                # Strip markdown code fences if the model wrapped its output
+                text = raw_text.strip()
+                if text.startswith("```"):
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.strip()
+                parsed = json.loads(text)
                 selected_ids = parsed.get("selected_recipes", parsed.get("selected", []))
                 unmatched_concepts = parsed.get("unmatched_concepts", [])
             except (json.JSONDecodeError, AttributeError):
-                logger.warning("Recipe selection JSON parse failed; treating as empty selection")
+                logger.warning("Recipe selection JSON parse failed; treating as empty selection. Raw: %r", raw_text[:200])
 
             recipes: list[Recipe] = []
             for rid in selected_ids:

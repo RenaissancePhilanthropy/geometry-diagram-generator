@@ -23,6 +23,7 @@ from ir.ir import (
     Triangle, Polygon, PolygonExterior,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     Draw, DrawPoints, LabelPoint, MarkRightAngles,
+    MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
     RenderOp, DefStmt, PickRule,
 )
 from recipe.dsl import (
@@ -34,6 +35,8 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
+    MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel,
+    LabelSegment as DSLLabelSegment,
 )
 from recipe.solve import solve_triangle
 
@@ -502,6 +505,42 @@ class _Lowerer:
             for triple in self._right_angle_triples:
                 a, vertex, b = triple
                 self._renders.append(MarkRightAngles(angles=[AnglePoints(a=a, o=vertex, b=b)]))
+
+        for mark in ann.marks:
+            if isinstance(mark, MarkAngle):
+                self._renders.append(MarkAngles(
+                    angles=[AnglePoints(a=mark.a, o=mark.vertex, b=mark.b)],
+                    group=str(mark.group) if mark.group is not None else None,
+                ))
+            elif isinstance(mark, MarkRightAngle):
+                self._renders.append(MarkRightAngles(
+                    angles=[AnglePoints(a=mark.a, o=mark.vertex, b=mark.b)],
+                ))
+            elif isinstance(mark, (MarkEqualLengths, MarkParallel)):
+                seg_ids: list[str] = []
+                for pair in mark.segments:
+                    p, q = pair[0], pair[1]
+                    seg_id = self._ensure_segment(p, q)
+                    seg_ids.append(seg_id)
+                group_str = str(mark.group) if mark.group is not None else None
+                if isinstance(mark, MarkParallel):
+                    group_str = f"parallel_{group_str}" if group_str else "parallel"
+                self._renders.append(MarkSegments(segs=seg_ids, group=group_str))
+
+        for label in ann.labels:
+            if isinstance(label, DSLLabelSegment):
+                p, q = label.endpoints[0], label.endpoints[1]
+                seg_id = self._ensure_segment(p, q)
+                self._renders.append(IRLabelSegment(seg=seg_id, text=label.text))
+
+    def _ensure_segment(self, p: str, q: str) -> str:
+        """Return the id of a Segment def for endpoints (p, q), creating one if needed."""
+        for d in self._defs:
+            if isinstance(d, Segment) and {d.a, d.b} == {p, q}:
+                return d.id
+        seg_id = f"__mark_seg_{p}_{q}"
+        self._defs.append(Segment(id=seg_id, a=p, b=q))
+        return seg_id
 
     # ------------------------------------------------------------------
     # Canvas

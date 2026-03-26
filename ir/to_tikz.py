@@ -146,7 +146,7 @@ def _emit_op(
                 out.append(f"\\tkzDrawSegment{sopts}({a},{b})")
             elif isinstance(sym_obj, spg.Line):
                 p1, p2 = _line_pts(obj_id, stmt_by_id, helpers)
-                add_opt = f"add={add[0]} and {add[1]}" if add else "add=1 and 1"
+                add_opt = f"add={add[0]} and {add[1]}" if add else "add=20 and 20"
                 opts = _merge_opts(add_opt, sopts)
                 out.append(f"\\tkzDrawLine[{opts}]({p1},{p2})")
             elif isinstance(sym_obj, spg.Ray):
