@@ -16,7 +16,7 @@ from pydantic import TypeAdapter
 from ir.ir import (
     DiagramIR, Canvas, Params,
     PointFixed, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
-    PointReflect, PointRotate, PointIntersection,
+    PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
@@ -177,6 +177,14 @@ class _Lowerer:
                     ref=op.ref_point, sides=op.n,
                 ))
                 self._drawable.add(op.id)
+                # Emit point aliases for user-given vertex names so they can be
+                # referenced in annotations, marks, and other ops.
+                # Base points occupy indices 0..len(base)-1; new vertices start after.
+                base_count = len(op.base)
+                for i, vname in enumerate(op.vertices or []):
+                    auto_name = f"{op.id}_v{base_count + i}"
+                    self._add(PointAlias(id=vname, ref=auto_name))
+                    self._point_ids.append(vname)
             case _:
                 raise LoweringError(f"Unhandled DSL op type: {type(op).__name__}")
 

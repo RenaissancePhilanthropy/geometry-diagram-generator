@@ -156,6 +156,9 @@ def _compile_one(
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
             return _apply_pick(points, pick, sym, did, canvas=canvas)
 
+        case ir.PointAlias(ref=ref_id):
+            return ref(ref_id)
+
         # --- Lines ---
         case ir.LineThrough(p=p_id, q=q_id):
             return spg.Line(ref(p_id), ref(q_id))

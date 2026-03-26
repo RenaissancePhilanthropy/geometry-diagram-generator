@@ -421,10 +421,20 @@ class PointIntersection(DefBase):
     pick: Optional[PickRule] = None
 
 
+class PointAlias(DefBase):
+    """A point that is the same as another named point.
+
+    Used by the recipe lowerer to expose user-friendly names for auto-generated
+    sub-points (e.g., polygon_exterior vertex names -> {id}_v{i}).
+    """
+    kind: Literal["point_alias"] = "point_alias"
+    ref: PointId
+
+
 DefStmt = Annotated[
     Union[
         PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointBetween, PointRotate, PointReflect,
-        PointTriangleCenter, PointIntersection,
+        PointTriangleCenter, PointIntersection, PointAlias,
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
