@@ -28,15 +28,46 @@ example:
     - op: point
       id: E
       coords: [2, -1]
+      visible: false
     - op: point
       id: F
       coords: [3, 3]
+      visible: false
     - op: line_through
       id: Trans
       points: [E, F]
+    - op: intersection
+      id: G
+      of: [L1, Trans]
+    - op: intersection
+      id: H
+      of: [L2, Trans]
   annotations:
     auto_draw_all: true
     auto_label_points: true
+    marks:
+      - kind: mark_angle
+        a: B
+        vertex: G
+        b: H
+        group: 1
+      - kind: mark_angle
+        a: D
+        vertex: H
+        b: F
+        group: 1
+      - kind: mark_angle
+        a: H
+        vertex: G
+        b: A
+        group: 2
+      - kind: mark_angle
+        a: G
+        vertex: H
+        b: D
+        group: 2
 notes:
   - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"
   - "D is placed at (4,2) to lie on L2, giving the standard 'parallel lines AB and CD' naming"
+  - "Transversal guide points (E, F) should be visible: false — only intersection points G, H should appear"
+  - "Angle pairs must mark BOTH intersections with the same group number (e.g. one mark_angle at G and one at H)"

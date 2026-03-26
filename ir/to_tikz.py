@@ -192,6 +192,21 @@ def _emit_op(
 
         case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
             sopts = _style_str(style or group, styles)
+            # Map numeric groups to tkz-euclide arc options for visual differentiation.
+            # group "1" → 1 arc (default), "2" → arc=ll, "3" → arc=lll
+            # group "4"+ → color cycle for further differentiation
+            _ARC_OPTS = {"2": "arc=ll", "3": "arc=lll"}
+            _COLOR_CYCLE = ["blue", "red", "teal", "purple", "orange"]
+            if not sopts and group:
+                g = str(group)
+                if g in _ARC_OPTS:
+                    sopts = f"[{_ARC_OPTS[g]}]"
+                else:
+                    try:
+                        idx = (int(g) - 4) % len(_COLOR_CYCLE)
+                        sopts = f"[color={_COLOR_CYCLE[idx]}]"
+                    except (ValueError, TypeError):
+                        pass
             for angle in angles:
                 if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
                     missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]

@@ -562,6 +562,9 @@ Key rules:
 - If recipe examples are provided, follow their patterns closely.
 - If no recipes are provided, reason from the DSL quick-reference below.
 - Keep diagrams compact and legible.
+- Points used only to define lines (not labeled intersections) should have visible: false.
+- When marking angle pairs (corresponding, alternate interior, etc.), always assign the same
+  group number to both angles and mark BOTH intersection points — never just one.
 
 """ + """\
 ## DSL Quick Reference
