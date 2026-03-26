@@ -24,12 +24,15 @@ _TOL = 1e-9
 def solve_triangle(
     vertices: list[str],
     spec: dict[str, Any],
+    *,
+    center: tuple[float, float] | list[float] | None = None,
 ) -> dict[str, tuple[float, float]]:
     """Solve triangle spec to concrete (x, y) coordinates.
 
     Args:
         vertices: List of 3 vertex name strings, e.g. ["A","B","C"].
         spec: Dict with angle/side constraints (see spec combinations).
+        center: Optional (x, y) target for the centroid. Defaults to (2, 2).
 
     Returns:
         Dict mapping vertex name → (x, y) float pair.
@@ -45,88 +48,100 @@ def solve_triangle(
 
     # right_angle_at + two adjacent sides
     if "right_angle_at" in spec:
-        return _solve_right_angle_at(vertices, spec)
+        result = _solve_right_angle_at(vertices, spec)
+    else:
+        # Collect what's given
+        angles = {k[len("angle_"):]: v for k, v in spec.items() if k.startswith("angle_")}
+        sides_raw = {k[len("side_"):]: v for k, v in spec.items() if k.startswith("side_")}
 
-    # Collect what's given
-    angles = {k[len("angle_"):]: v for k, v in spec.items() if k.startswith("angle_")}
-    sides_raw = {k[len("side_"):]: v for k, v in spec.items() if k.startswith("side_")}
+        # Normalise side keys: sort the two vertex names alphabetically
+        # so "AB" and "BA" are the same key internally.
+        # We keep original keys but resolve lookups both ways.
+        def _get_side(a: str, b: str) -> float | None:
+            for key in (a+b, b+a):
+                if key in sides_raw:
+                    return float(sides_raw[key])
+            return None
 
-    # Normalise side keys: sort the two vertex names alphabetically
-    # so "AB" and "BA" are the same key internally.
-    # We keep original keys but resolve lookups both ways.
-    def _get_side(a: str, b: str) -> float | None:
-        for key in (a+b, b+a):
-            if key in sides_raw:
-                return float(sides_raw[key])
-        return None
+        n_angles = len(angles)
+        n_sides  = len(sides_raw)
 
-    n_angles = len(angles)
-    n_sides  = len(sides_raw)
+        # --- SSS ---
+        if n_sides == 3 and n_angles == 0:
+            ab = _get_side(v0, v1)
+            bc = _get_side(v1, v2)
+            ca = _get_side(v2, v0)
+            if None in (ab, bc, ca):
+                raise SpecError(f"SSS spec requires side_{v0}{v1}, side_{v1}{v2}, side_{v2}{v0}")
+            result = _sss(v0, v1, v2, ab, bc, ca)
 
-    # --- SSS ---
-    if n_sides == 3 and n_angles == 0:
-        ab = _get_side(v0, v1)
-        bc = _get_side(v1, v2)
-        ca = _get_side(v2, v0)
-        if None in (ab, bc, ca):
-            raise SpecError(f"SSS spec requires side_{v0}{v1}, side_{v1}{v2}, side_{v2}{v0}")
-        return _sss(v0, v1, v2, ab, bc, ca)
-
-    # --- AAS: two angles + one side ---
-    if n_angles == 2 and n_sides == 1:
-        # Infer third angle
-        given_angles = list(angles.items())
-        n0, a0 = given_angles[0]
-        n1, a1 = given_angles[1]
-        a_third = 180.0 - float(a0) - float(a1)
-        if a_third <= _TOL:
-            raise SpecError(f"Angles sum to ≥180°: {a0} + {a1} = {float(a0)+float(a1)}")
-        all_angles = {n0: float(a0), n1: float(a1)}
-        for v in vertices:
-            if v not in all_angles:
-                all_angles[v] = a_third
-        # Which side?
-        side_key, side_val = list(sides_raw.items())[0]
-        # Identify the two vertices of this side
-        if len(side_key) != 2:
-            raise SpecError(f"Unexpected side key {side_key!r}; expected two vertex names")
-        sv0, sv1 = side_key[0], side_key[1]
-        if sv0 not in vertices or sv1 not in vertices:
-            raise SpecError(
-                f"Side key {side_key!r} references vertices not in {vertices}"
+        # --- AAS: two angles + one side ---
+        elif n_angles == 2 and n_sides == 1:
+            # Infer third angle
+            given_angles = list(angles.items())
+            n0, a0 = given_angles[0]
+            n1, a1 = given_angles[1]
+            a_third = 180.0 - float(a0) - float(a1)
+            if a_third <= _TOL:
+                raise SpecError(f"Angles sum to ≥180°: {a0} + {a1} = {float(a0)+float(a1)}")
+            all_angles = {n0: float(a0), n1: float(a1)}
+            for v in vertices:
+                if v not in all_angles:
+                    all_angles[v] = a_third
+            # Which side?
+            side_key, side_val = list(sides_raw.items())[0]
+            # Identify the two vertices of this side
+            if len(side_key) != 2:
+                raise SpecError(f"Unexpected side key {side_key!r}; expected two vertex names")
+            sv0, sv1 = side_key[0], side_key[1]
+            if sv0 not in vertices or sv1 not in vertices:
+                raise SpecError(
+                    f"Side key {side_key!r} references vertices not in {vertices}"
+                )
+            # Law of sines: side / sin(opposite_angle) = constant
+            # Use the given side to derive the other two
+            opp_angle = all_angles.get(
+                next(v for v in vertices if v != sv0 and v != sv1), None
             )
-        # Law of sines: side / sin(opposite_angle) = constant
-        # Use the given side to derive the other two
-        opp_angle = all_angles.get(
-            next(v for v in vertices if v != sv0 and v != sv1), None
-        )
-        if opp_angle is None:
-            raise SpecError(f"Cannot find angle opposite to side {side_key}")
-        return _aas_via_law_of_sines(v0, v1, v2, all_angles, sv0, sv1, float(side_val), opp_angle)
+            if opp_angle is None:
+                raise SpecError(f"Cannot find angle opposite to side {side_key}")
+            result = _aas_via_law_of_sines(v0, v1, v2, all_angles, sv0, sv1, float(side_val), opp_angle)
 
-    # --- ASA: two angles + enclosed side ---
-    # (same data shape as AAS — handled above)
+        # --- ASA: two angles + enclosed side ---
+        # (same data shape as AAS — handled above)
 
-    # --- SAS vs SSA: one angle + two sides ---
-    if n_angles == 1 and n_sides == 2:
-        ang_vertex, ang_val = list(angles.items())[0]
-        ang_val = float(ang_val)
-        # Find the two sides meeting at ang_vertex
-        other_verts = [v for v in vertices if v != ang_vertex]
-        s1 = _get_side(ang_vertex, other_verts[0])
-        s2 = _get_side(ang_vertex, other_verts[1])
-        if None in (s1, s2):
-            # One or both sides don't meet ang_vertex → SSA (ambiguous)
+        # --- SAS vs SSA: one angle + two sides ---
+        elif n_angles == 1 and n_sides == 2:
+            ang_vertex, ang_val = list(angles.items())[0]
+            ang_val = float(ang_val)
+            # Find the two sides meeting at ang_vertex
+            other_verts = [v for v in vertices if v != ang_vertex]
+            s1 = _get_side(ang_vertex, other_verts[0])
+            s2 = _get_side(ang_vertex, other_verts[1])
+            if None in (s1, s2):
+                # One or both sides don't meet ang_vertex → SSA (ambiguous)
+                raise SpecError(
+                    "SSA (two sides + non-included angle) is ambiguous; "
+                    "use AAS, SAS, SSS, or ASA instead"
+                )
+            result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
+
+        else:
             raise SpecError(
-                "SSA (two sides + non-included angle) is ambiguous; "
-                "use AAS, SAS, SSS, or ASA instead"
+                f"Cannot determine triangle from spec {spec!r}. "
+                "Supported: AAS, SAS, SSS, ASA, right_angle_at+two_sides."
             )
-        return _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
 
-    raise SpecError(
-        f"Cannot determine triangle from spec {spec!r}. "
-        "Supported: AAS, SAS, SSS, ASA, right_angle_at+two_sides."
-    )
+    # Apply custom centroid placement if requested
+    if center is not None:
+        cx_target, cy_target = float(center[0]), float(center[1])
+        xs = [p[0] for p in result.values()]
+        ys = [p[1] for p in result.values()]
+        dx = cx_target - sum(xs) / 3
+        dy = cy_target - sum(ys) / 3
+        result = {k: (x + dx, y + dy) for k, (x, y) in result.items()}
+
+    return result
 
 
 # ---------------------------------------------------------------------------

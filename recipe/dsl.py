@@ -46,6 +46,7 @@ class TriangleOp(DSLOpBase):
     op: Literal["triangle"] = "triangle"
     vertices: list[str]  # exactly 3 names for the vertices
     spec: dict[str, Any]  # keys: angle_A/B/C, side_AB/BC/CA, right_angle_at
+    center: Optional[list[float]] = None  # [x, y] centroid target; default (2, 2)
 
 
 class CircleOp(DSLOpBase):

@@ -567,3 +567,34 @@ def test_label_segment_lowered():
     # Should reuse the existing segment, not create a duplicate
     seg_defs = [d for d in ir.define if hasattr(d, 'a') and hasattr(d, 'b') and {getattr(d,'a'), getattr(d,'b')} == {"A","B"}]
     assert len(seg_defs) == 1
+
+
+def test_triangle_center_places_centroid():
+    """Triangle with center:[x,y] has centroid at the requested location."""
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "t1", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}, "center": [0, 0]},
+    ])
+    ir = lower_to_ir(dsl)
+    coords = {d.id: (d.x, d.y) for d in ir.define if hasattr(d, 'x') and hasattr(d, 'y')}
+    xs = [coords["A"][0], coords["B"][0], coords["C"][0]]
+    ys = [coords["A"][1], coords["B"][1], coords["C"][1]]
+    assert abs(sum(xs)/3 - 0.0) < 1e-6
+    assert abs(sum(ys)/3 - 0.0) < 1e-6
+
+
+def test_two_triangles_with_centers_non_overlapping():
+    """Two triangles with different centers are spatially separated."""
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "t1", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 3}, "center": [2, 2]},
+        {"op": "triangle", "id": "t2", "vertices": ["D", "E", "F"],
+         "spec": {"angle_D": 50, "angle_E": 70, "side_DE": 5}, "center": [8, 2]},
+    ])
+    ir = lower_to_ir(dsl)
+    coords = {d.id: (d.x, d.y) for d in ir.define if hasattr(d, 'x') and hasattr(d, 'y')}
+    t1_xs = [coords["A"][0], coords["B"][0], coords["C"][0]]
+    t2_xs = [coords["D"][0], coords["E"][0], coords["F"][0]]
+    # Centroids should be ~2 and ~8 apart — no overlap
+    assert abs(sum(t1_xs)/3 - 2.0) < 1e-6
+    assert abs(sum(t2_xs)/3 - 8.0) < 1e-6

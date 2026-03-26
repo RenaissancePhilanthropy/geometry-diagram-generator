@@ -194,7 +194,7 @@ class _Lowerer:
 
     def _lower_triangle(self, op: TriangleOp) -> None:
         try:
-            coords = solve_triangle(op.vertices, op.spec)
+            coords = solve_triangle(op.vertices, op.spec, center=op.center)
         except Exception as e:
             raise LoweringError(f"Triangle '{op.id}': {e}") from e
 

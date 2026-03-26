@@ -578,7 +578,7 @@ Key rules:
 ### Commonly used ops
 | op | required fields | notes |
 |---|---|---|
-| triangle | vertices:[A,B,C], spec:{...} | spec keys: angle_A/B/C (deg), side_AB/BC/CA, right_angle_at |
+| triangle | vertices:[A,B,C], spec:{...} | spec keys: angle_A/B/C (deg), side_AB/BC/CA, right_angle_at; optional center:[x,y] for centroid placement (default [2,2]) |
 | circle | center, radius OR through | explicit radius or through-point |
 | segment | endpoints:[A,B] | finite segment |
 | line_through | points:[A,B] | infinite line |
