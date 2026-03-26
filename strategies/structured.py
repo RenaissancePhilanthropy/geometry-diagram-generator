@@ -35,6 +35,7 @@ class StructuredRunResult:
     sym_table: dict | None = None  # SymPy symbol table float coords, runtime-only
     input_tokens: int = 0
     output_tokens: int = 0
+    recipe_metadata: "RecipeMetadata | None" = None
 
 
 class StructureStrategy(SubstanceStrategy):

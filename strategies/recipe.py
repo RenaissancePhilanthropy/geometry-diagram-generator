@@ -1,0 +1,187 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, field
+
+import pydantic
+from pydantic_ai import Agent
+
+from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from strategies.structured import StructuredRunResult, _run_ir_pipeline
+from strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
+from recipe.catalog import (
+    load_catalog,
+    load_recipe,
+    build_selection_prompt,
+    build_generation_prompt,
+    DSL_DOCS,
+    Recipe,
+)
+from recipe.dsl import RecipeDSL
+from recipe.lower import lower_to_ir, LoweringError
+from ir.renderer import TikZRenderer, Renderer
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+_SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
+
+_BUILD_AGENT_INSTRUCTIONS = """\
+You are a geometry diagram assistant. When the user asks you to draw a diagram, \
+call the generate_diagram tool with their request, then briefly explain what was drawn.
+"""
+
+
+@dataclass
+class RecipeMetadata:
+    selected_recipes: list[str] = field(default_factory=list)
+    unmatched_concepts: list[str] = field(default_factory=list)
+    selection_input_tokens: int = 0
+    selection_output_tokens: int = 0
+
+
+class RecipeStrategy(SubstanceStrategy):
+    """
+    Recipe-based geometry diagram strategy.
+
+    Pipeline:
+        (Optional) cheap model selects relevant recipes from catalog
+        → Main model generates RecipeDSL JSON using selected recipes + DSL docs
+        → lower_to_ir(dsl) compiles RecipeDSL to DiagramIR
+        → compile_defs → run_checks → Renderer.render()
+
+    On lowering, check, or render failures the main model is re-prompted with
+    the error description for up to MAX_RETRIES attempts.
+    """
+
+    def __init__(self, use_recipes: bool = True) -> None:
+        super().__init__()
+        self.use_recipes = use_recipes
+
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
+        """Return a conversational agent with a generate_diagram tool."""
+        _renderer = TikZRenderer()
+        _strategy = self
+        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
+
+        @agent.tool_plain(retries=MAX_RETRIES)
+        async def generate_diagram(request: str) -> str:
+            """Generate a geometry diagram from the user's request.
+
+            Returns JSON with an SVG field on success.
+            """
+            result = await _strategy.run(request, model, renderer=_renderer)
+            return json.dumps({"svg": result.svg})
+
+        return agent
+
+    async def run(
+        self,
+        prompt: str,
+        model: str = DEFAULT_AGENT_MODEL,
+        renderer: Renderer | None = None,
+    ) -> StructuredRunResult:
+        """Run the full recipe pipeline with retry on failure."""
+        _renderer = renderer if renderer is not None else TikZRenderer()
+
+        # --- Step 1: Recipe selection (optional) ---
+        recipe_metadata = RecipeMetadata()
+
+        if self.use_recipes:
+            catalog = load_catalog()
+            selection_prompt = build_selection_prompt(prompt, catalog)
+            selector_agent: Agent[None, str] = Agent(
+                _SELECTOR_MODEL,
+                instructions=RECIPE_SELECTION_SYSTEM,
+                output_type=str,
+            )
+            sel_response = await selector_agent.run(selection_prompt)
+            sel_usage = sel_response.usage()
+            recipe_metadata.selection_input_tokens = sel_usage.input_tokens or 0
+            recipe_metadata.selection_output_tokens = sel_usage.output_tokens or 0
+
+            raw_text = sel_response.output
+            selected_ids: list[str] = []
+            unmatched_concepts: list[str] = []
+            try:
+                parsed = json.loads(raw_text)
+                selected_ids = parsed.get("selected_recipes", parsed.get("selected", []))
+                unmatched_concepts = parsed.get("unmatched_concepts", [])
+            except (json.JSONDecodeError, AttributeError):
+                logger.warning("Recipe selection JSON parse failed; treating as empty selection")
+
+            recipes: list[Recipe] = []
+            for rid in selected_ids:
+                try:
+                    recipes.append(load_recipe(rid))
+                    recipe_metadata.selected_recipes.append(rid)
+                except KeyError:
+                    logger.warning("Selected recipe %r not found in catalog; skipping", rid)
+
+            recipe_metadata.unmatched_concepts = unmatched_concepts
+            generation_prompt = build_generation_prompt(prompt, recipes, DSL_DOCS)
+        else:
+            generation_prompt = build_generation_prompt(prompt, [], DSL_DOCS)
+
+        # --- Step 2: Retry loop ---
+        last_error: str = ""
+        total_input_tokens: int = recipe_metadata.selection_input_tokens
+        total_output_tokens: int = recipe_metadata.selection_output_tokens
+
+        for attempt in range(MAX_RETRIES):
+            user_message = generation_prompt
+            if attempt > 0:
+                user_message = (
+                    f"{generation_prompt}\n\n"
+                    f"Previous attempt failed: {last_error}\n"
+                    f"Please produce a corrected RecipeDSL."
+                )
+
+            gen_agent: Agent[None, RecipeDSL] = Agent(
+                model,
+                instructions=RECIPE_GENERATION_SYSTEM,
+                output_type=RecipeDSL,
+            )
+            response = await gen_agent.run(user_message)
+            usage = response.usage()
+            total_input_tokens += usage.input_tokens or 0
+            total_output_tokens += usage.output_tokens or 0
+            dsl = response.output
+            logger.info(
+                "Attempt %d: RecipeDSL has %d construction ops",
+                attempt + 1,
+                len(dsl.construction),
+            )
+
+            # Lowering
+            try:
+                diagram_ir = lower_to_ir(dsl)
+            except (LoweringError, pydantic.ValidationError) as e:
+                last_error = f"Lowering failed: {e}"
+                logger.warning("Attempt %d lowering error: %s", attempt + 1, e)
+                continue
+
+            # IR pipeline
+            try:
+                result = await _run_ir_pipeline(diagram_ir, _renderer)
+            except RuntimeError as e:
+                last_error = str(e)
+                logger.warning("Attempt %d IR pipeline error: %s", attempt + 1, e)
+                continue
+
+            return StructuredRunResult(
+                diagram_ir=result.diagram_ir,
+                tikz=result.tikz,
+                svg=result.svg,
+                sym_table=result.sym_table,
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                recipe_metadata=recipe_metadata,
+            )
+
+        raise RuntimeError(
+            f"RecipeStrategy failed after {MAX_RETRIES} attempts. "
+            f"Last error: {last_error}"
+        )
