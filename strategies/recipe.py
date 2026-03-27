@@ -177,6 +177,7 @@ class RecipeStrategy(SubstanceStrategy):
                 attempt + 1,
                 len(dsl.construction),
             )
+            logger.debug("Attempt %d DSL: %s", attempt + 1, dsl.model_dump_json(indent=2))
 
             # Lowering
             try:
@@ -191,6 +192,14 @@ class RecipeStrategy(SubstanceStrategy):
                     stage="lowering",
                 ))
                 continue
+
+            logger.debug(
+                "Attempt %d lowered IR: %d render ops, %d styles: %s",
+                attempt + 1,
+                len(diagram_ir.render),
+                len(diagram_ir.styles),
+                [op.kind for op in diagram_ir.render],
+            )
 
             # IR pipeline
             try:

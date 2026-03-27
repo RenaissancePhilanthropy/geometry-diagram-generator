@@ -28,3 +28,6 @@ evals/results/
 
 # Superpowers plans
 docs/superpowers/
+
+# Temporary files
+tmp/

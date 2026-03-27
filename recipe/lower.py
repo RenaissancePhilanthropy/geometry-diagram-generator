@@ -37,6 +37,7 @@ from recipe.dsl import (
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel,
     LabelSegment as DSLLabelSegment,
+    DrawObj,
 )
 from recipe.solve import solve_triangle
 
@@ -68,6 +69,9 @@ class _Lowerer:
         self._right_angle_triples: list[tuple[str, str, str]] = []  # (a, vertex, b)
         # Resolved coordinate floats for auto-canvas computation (keyed by point id)
         self._coord_floats: dict[str, tuple[float, float]] = {}
+        # Named + inline styles to forward to DiagramIR.styles
+        self._styles: dict[str, dict[str, Any]] = {}
+        self._inline_style_counter: int = 0
 
     # ------------------------------------------------------------------
     # Entry point
@@ -83,6 +87,7 @@ class _Lowerer:
             checks=self._checks,
             render=self._renders,
             canvas=canvas,
+            styles=self._styles,
         )
 
     # ------------------------------------------------------------------
@@ -489,7 +494,41 @@ class _Lowerer:
     # Annotation expansion
     # ------------------------------------------------------------------
 
+    def _resolve_style(self, style: str | dict | None) -> str | None:
+        """Resolve a DrawObj.style to a StyleId string suitable for RenderBase.style.
+
+        - None → None
+        - str → returned as-is (named style ref or bare TikZ color name)
+        - dict → registered in self._styles under an auto-generated key, key returned
+        """
+        if style is None:
+            return None
+        if isinstance(style, str):
+            return style
+        self._inline_style_counter += 1
+        key = f"__style_{self._inline_style_counter}"
+        self._styles[key] = style
+        return key
+
     def _apply_annotations(self, ann: DSLAnnotations, dsl_ops: list | None = None) -> None:
+        import warnings
+
+        # Copy named styles from annotations into the IR styles dict
+        for name, props in ann.styles.items():
+            self._styles[name] = props
+
+        # Warn when auto_draw_all is off but no explicit draws were provided
+        if not ann.auto_draw_all and not ann.draws:
+            warnings.warn(
+                "auto_draw_all is false but no explicit draws provided — "
+                "nothing will be drawn. Did you forget to add draws?",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Collect object IDs that have explicit draws so auto_draw_all can skip them
+        explicit_draw_obj_ids: set[str] = {d.obj for d in ann.draws if d.obj is not None}
+
         if ann.auto_draw_all:
             # Build set of explicitly hidden op IDs
             hidden_ids: set[str] = set()
@@ -501,6 +540,8 @@ class _Lowerer:
                 if not obj_id.startswith("__"):
                     if obj_id in hidden_ids:
                         continue  # explicitly hidden — do not auto-draw
+                    if obj_id in explicit_draw_obj_ids:
+                        continue  # explicit draw takes precedence (preserves style)
                     self._renders.append(Draw(obj=obj_id))
             # Emit a single DrawPoints for all non-implicit points
             non_implicit = [pid for pid in self._point_ids if not pid.startswith("__")]
@@ -543,6 +584,15 @@ class _Lowerer:
                 p, q = label.endpoints[0], label.endpoints[1]
                 seg_id = self._ensure_segment(p, q)
                 self._renders.append(IRLabelSegment(seg=seg_id, text=label.text))
+
+        # Explicit draws (with optional per-element styles)
+        for draw_obj in ann.draws:
+            style_key = self._resolve_style(draw_obj.style)
+            if draw_obj.endpoints is not None:
+                seg_id = self._ensure_segment(draw_obj.endpoints[0], draw_obj.endpoints[1])
+                self._renders.append(Draw(obj=seg_id, style=style_key))
+            else:
+                self._renders.append(Draw(obj=draw_obj.obj, style=style_key))
 
     def _ensure_segment(self, p: str, q: str) -> str:
         """Return the id of a Segment def for endpoints (p, q), creating one if needed."""

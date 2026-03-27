@@ -70,6 +70,12 @@ Key rules:
 - auto_mark_right_angles: false (default) — add right-angle square marks automatically
 - marks: list of explicit mark objects (mark_angle, mark_right_angle, mark_equal_lengths, mark_parallel)
 - labels: list of explicit label objects (label_segment)
+- styles: named TikZ style definitions, e.g. {"highlight": {"color": "red", "thick": true}}
+- draws: list of explicit draw objects — use when you need per-element styling
+  Each entry: {"obj": "<id>", "style": "red"} OR {"obj": "<id>", "style": {"color": "red", "thick": true}}
+  Shorthand: {"endpoints": ["A","B"], "style": "..."} draws the segment [A,B] without needing a named segment op
+  NOTE: When auto_draw_all is true, objects in "draws" are NOT also auto-drawn — "draws" takes precedence.
+  WARNING: When auto_draw_all is false, you MUST provide explicit draws for every element you want visible.
 
 ### Selector dict (for intersection, tangent_line)
 Selector "kind" values: upper_of_line, lower_of_line, pick_index (k), on_object (obj),
@@ -126,6 +132,12 @@ RECIPE_DSL_QUICK_REF = """\
 - auto_mark_right_angles: false — auto right-angle marks (default: false)
 - marks: [mark_angle | mark_right_angle | mark_equal_lengths | mark_parallel]
 - labels: [label_segment]
+- styles: {"name": {"color": "red", "thick": true, ...}} — named TikZ style definitions
+- draws: explicit draw list for per-element styling
+  {obj: "<id>", style?: "red" | {"color":"red","thick":true}}
+  {endpoints: ["A","B"], style?: "..."} — draws segment [A,B] without a named segment op
+  Objects in "draws" are not auto-drawn even when auto_draw_all is true.
+  When auto_draw_all is false, EVERY visible element must appear in "draws".
 
 ### Selectors
 selector dicts use "kind" values: upper_of_line, lower_of_line, pick_index (k),

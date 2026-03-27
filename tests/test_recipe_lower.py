@@ -598,3 +598,150 @@ def test_two_triangles_with_centers_non_overlapping():
     # Centroids should be ~2 and ~8 apart — no overlap
     assert abs(sum(t1_xs)/3 - 2.0) < 1e-6
     assert abs(sum(t2_xs)/3 - 8.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Explicit draws and per-element styling
+# ---------------------------------------------------------------------------
+
+def _tri_dsl(**ann_kwargs):
+    """Helper: 3-4-5 right triangle DSL with custom annotation kwargs."""
+    from recipe.dsl import DrawObj
+    ann = DSLAnnotations(**ann_kwargs)
+    return RecipeDSL(
+        construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"side_AB": 3, "side_BC": 4, "side_CA": 5}},
+        ],
+        annotations=ann,
+    )
+
+
+def test_explicit_draw_with_style_string():
+    """draws list with a style string produces a styled Draw render op."""
+    from recipe.dsl import DrawObj
+    dsl = _tri_dsl(
+        auto_draw_all=False,
+        auto_label_points=False,
+        draws=[DrawObj(obj="T", style="red")],
+    )
+    ir = lower_to_ir(dsl)
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    assert len(draw_ops) == 1
+    assert draw_ops[0].obj == "T"
+    assert draw_ops[0].style == "red"
+
+
+def test_explicit_draw_with_inline_style_dict():
+    """Inline style dict is registered in DiagramIR.styles and referenced by auto-key."""
+    from recipe.dsl import DrawObj
+    dsl = _tri_dsl(
+        auto_draw_all=False,
+        auto_label_points=False,
+        draws=[DrawObj(obj="T", style={"color": "red", "thick": True})],
+    )
+    ir = lower_to_ir(dsl)
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    assert len(draw_ops) == 1
+    style_key = draw_ops[0].style
+    assert style_key is not None
+    assert style_key in ir.styles
+    assert ir.styles[style_key]["color"] == "red"
+    assert ir.styles[style_key]["thick"] is True
+
+
+def test_explicit_draw_vertex_pair_shorthand():
+    """draws with endpoints auto-creates a segment def and draws it styled."""
+    from recipe.dsl import DrawObj
+    dsl = _tri_dsl(
+        auto_draw_all=False,
+        auto_label_points=False,
+        draws=[DrawObj(endpoints=["A", "C"], style="blue")],
+    )
+    ir = lower_to_ir(dsl)
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    assert len(draw_ops) == 1
+    seg_id = draw_ops[0].obj
+    seg_def = next((d for d in ir.define if d.id == seg_id), None)
+    assert seg_def is not None
+    assert seg_def.kind == "segment"
+    assert {seg_def.a, seg_def.b} == {"A", "C"}
+    assert draw_ops[0].style == "blue"
+
+
+def test_empty_draws_with_auto_draw_all_false_warns():
+    """auto_draw_all=false with no explicit draws emits a UserWarning."""
+    import warnings
+    dsl = _tri_dsl(auto_draw_all=False, auto_label_points=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        lower_to_ir(dsl)
+    assert len(w) == 1
+    assert issubclass(w[0].category, UserWarning)
+    assert "nothing will be drawn" in str(w[0].message).lower()
+
+
+def test_named_styles_forwarded_to_ir_styles():
+    """annotations.styles are forwarded into DiagramIR.styles."""
+    from recipe.dsl import DrawObj
+    dsl = RecipeDSL(
+        construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"side_AB": 3, "side_BC": 4, "side_CA": 5}},
+        ],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            styles={"highlight": {"color": "red", "thick": True}},
+            draws=[DrawObj(obj="T", style="highlight")],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    assert "highlight" in ir.styles
+    assert ir.styles["highlight"]["color"] == "red"
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    assert len(draw_ops) == 1
+    assert draw_ops[0].style == "highlight"
+
+
+def test_vertex_pair_shorthand_reuses_existing_segment():
+    """If a segment [A,B] already exists in construction, draws reuses it."""
+    from recipe.dsl import DrawObj
+    dsl = RecipeDSL(
+        construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"side_AB": 3, "side_BC": 4, "side_CA": 5}},
+            {"op": "segment", "id": "s_AB", "endpoints": ["A", "B"]},
+        ],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            draws=[DrawObj(endpoints=["A", "B"], style="green")],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    assert len(draw_ops) == 1
+    assert draw_ops[0].obj == "s_AB"  # reuses existing, not __mark_seg_A_B
+
+
+def test_auto_draw_all_with_explicit_draw_deduplicates():
+    """When auto_draw_all=true, objects in explicit draws are not auto-drawn."""
+    from recipe.dsl import DrawObj
+    dsl = RecipeDSL(
+        construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"side_AB": 3, "side_BC": 4, "side_CA": 5}},
+        ],
+        annotations=DSLAnnotations(
+            auto_draw_all=True,
+            auto_label_points=False,
+            draws=[DrawObj(obj="T", style="red")],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    draw_ops = [r for r in ir.render if r.kind == "draw"]
+    # T should appear exactly once (from explicit draws, not auto-draw)
+    t_draws = [r for r in draw_ops if r.obj == "T"]
+    assert len(t_draws) == 1
+    assert t_draws[0].style == "red"

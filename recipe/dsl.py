@@ -401,6 +401,33 @@ AnnotationLabel = Annotated[
 ]
 
 
+class DrawObj(BaseModel):
+    """Explicit draw directive for a single element.
+
+    Use ``obj`` to reference an existing construction ID (triangle, segment, etc.)
+    or ``endpoints`` as a vertex-pair shorthand — the lowerer auto-creates the
+    segment def via ``_ensure_segment``.
+
+    ``style`` accepts:
+    - a string: a named key into ``annotations.styles``, or a bare TikZ color
+      name like ``"red"`` that ``_style_str`` in ``to_tikz.py`` recognises.
+    - a dict: inline TikZ style properties, e.g. ``{"color": "red", "thick": True}``.
+      The lowerer registers these in ``DiagramIR.styles`` under an auto-generated key.
+    """
+    model_config = ConfigDict(extra="forbid")
+    obj: Optional[str] = None
+    endpoints: Optional[list[str]] = None
+    style: Optional[Union[str, dict[str, Any]]] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self) -> "DrawObj":
+        if self.obj is None and self.endpoints is None:
+            raise ValueError("DrawObj requires either 'obj' or 'endpoints'")
+        if self.obj is not None and self.endpoints is not None:
+            raise ValueError("DrawObj: specify 'obj' or 'endpoints', not both")
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Annotations
 # ---------------------------------------------------------------------------
@@ -410,6 +437,7 @@ class DSLAnnotations(BaseModel):
     auto_draw_all: bool = True
     auto_label_points: bool = True
     auto_mark_right_angles: bool = False
+    draws: list[DrawObj] = Field(default_factory=list)
     marks: list[AnnotationMark] = Field(default_factory=list)
     labels: list[AnnotationLabel] = Field(default_factory=list)
     styles: dict[str, Any] = Field(default_factory=dict)
