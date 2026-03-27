@@ -164,25 +164,25 @@ def _base_record(**overrides) -> dict:
 
 
 def test_print_record_ok():
-    from evals.run import _print_record
+    from evals.reporting import _print_record
     output = _capture(_print_record, _base_record(generation_success=True))
     assert "[OK ]" in output
 
 
 def test_print_record_err():
-    from evals.run import _print_record
+    from evals.reporting import _print_record
     output = _capture(_print_record, _base_record(generation_success=False, svg_rendered=False, svg_checks=None))
     assert "[ERR]" in output
 
 
 def test_print_record_shows_judge_score():
-    from evals.run import _print_record
+    from evals.reporting import _print_record
     output = _capture(_print_record, _base_record(llm_judge_score=4))
     assert "J:4/5" in output
 
 
 def test_print_summary_aggregates():
-    from evals.run import _print_summary
+    from evals.reporting import _print_summary
     records = [
         _base_record(generation_success=True, svg_rendered=True),
         _base_record(generation_success=True, svg_rendered=True),
@@ -199,7 +199,7 @@ def test_print_summary_aggregates():
 # ---------------------------------------------------------------------------
 
 def test_validate_scenarios_accepts_grid_metadata():
-    from evals.run import _validate_scenarios
+    from evals.scenarios import _validate_scenarios
 
     scenarios = _validate_scenarios([{
         "id": "grid-right-triangle",
@@ -266,7 +266,7 @@ def test_finalize_gate_status_fail_on_generation_failure():
 
 
 def test_core_scenarios_include_grid_cases():
-    from evals.run import _validate_scenarios
+    from evals.scenarios import _validate_scenarios
 
     path = Path("evals/scenarios_core.yaml")
     scenarios = _validate_scenarios(yaml.safe_load(path.read_text()))

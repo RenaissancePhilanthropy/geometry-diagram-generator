@@ -220,4 +220,4 @@ app = Starlette(routes=routes)
 
 
 if __name__ == "__main__":
-    uvicorn.run("eval_viewer:app", host="0.0.0.0", port=8002, reload=True)
+    uvicorn.run("evals.eval_viewer:app", host="0.0.0.0", port=8002, reload=True)

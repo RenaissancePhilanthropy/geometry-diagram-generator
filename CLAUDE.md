@@ -25,7 +25,7 @@ uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structu
 
 ```bash
 # Start the eval viewer backend (port 8002; requires renderer container on port 8001 for re-rendering)
-uv run python eval_viewer.py
+uv run python evals/eval_viewer.py
 
 # Start the eval viewer frontend dev server (proxies /api to localhost:8002)
 cd eval-viewer-ui && pnpm dev

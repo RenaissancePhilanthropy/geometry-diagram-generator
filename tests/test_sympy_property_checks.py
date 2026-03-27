@@ -6,7 +6,7 @@ Verifies flat-list arg format (as used in scenarios.yaml) works correctly for al
 import math
 import pytest
 
-from evals.run import _check_sympy_property
+from evals.sympy_checks import _check_sympy_property
 
 TOL = 5e-3
 
