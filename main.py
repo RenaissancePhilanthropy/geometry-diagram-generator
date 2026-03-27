@@ -7,13 +7,23 @@ from starlette.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from logging import basicConfig, INFO
 
-from strategies.raw_code import RawCodeStrategy
-
 load_dotenv()  # Load environment variables from .env file
 
 basicConfig(level=INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-agent = RawCodeStrategy().build_agent()
+strategy_name = os.environ.get("STRATEGY", "raw_code")
+
+if strategy_name == "raw_code":
+    from strategies.raw_code import RawCodeStrategy
+    agent = RawCodeStrategy().build_agent()
+elif strategy_name == "structured":
+    from strategies.structured import StructureStrategy
+    agent = StructureStrategy().build_agent()
+elif strategy_name == "recipe":
+    from strategies.recipe import RecipeStrategy
+    agent = RecipeStrategy().build_agent()
+else:
+    raise ValueError(f"Unknown STRATEGY: {strategy_name!r}. Supported: raw_code, structured, recipe")
 
 agui_app = AGUIApp(agent)
 

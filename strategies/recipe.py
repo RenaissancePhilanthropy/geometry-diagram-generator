@@ -30,7 +30,7 @@ _SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
-call the generate_diagram tool with their request, then briefly explain what was drawn.
+call the render_diagram tool with their request, then briefly explain what was drawn.
 """
 
 
@@ -70,13 +70,13 @@ class RecipeStrategy(SubstanceStrategy):
         self.use_recipes = use_recipes
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        """Return a conversational agent with a generate_diagram tool."""
+        """Return a conversational agent with a render_diagram tool."""
         _renderer = TikZRenderer()
         _strategy = self
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
         @agent.tool_plain(retries=MAX_RETRIES)
-        async def generate_diagram(request: str) -> str:
+        async def render_diagram(request: str) -> str:
             """Generate a geometry diagram from the user's request.
 
             Returns JSON with an SVG field on success.

@@ -22,7 +22,7 @@ MAX_RETRIES = 3
 
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
-call the generate_diagram tool with their request, then briefly explain what was drawn.
+call the render_diagram tool with their request, then briefly explain what was drawn.
 """
 
 
@@ -61,7 +61,7 @@ class StructureStrategy(SubstanceStrategy):
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
         @agent.tool_plain(retries=MAX_RETRIES)
-        async def generate_diagram(request: str) -> str:
+        async def render_diagram(request: str) -> str:
             """Generate a geometry diagram from the user's request.
 
             Returns JSON with an SVG field on success.
