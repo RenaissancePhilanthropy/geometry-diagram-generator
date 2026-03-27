@@ -693,7 +693,7 @@ async def test_run_calls_four_agents():
             strategy._last_state._svg = "<svg/>"
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
@@ -735,13 +735,13 @@ async def test_run_auto_finalizes_render():
             pass  # _render_finalized stays False
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
 
         # Also mock handle_finalize_render to avoid renderer dependency
-        with patch("strategies.progressive_tools.handle_finalize_render") as mock_finalize:
+        with patch("strategies.progressive_tools.strategy.handle_finalize_render") as mock_finalize:
             def fake_finalize(state, renderer=None):
                 state._render_finalized = True
                 state._tikz = "\\tkzInit"
@@ -784,12 +784,12 @@ async def test_run_auto_finalize_raises_on_error():
         # call_count == 4: presentation agent — does nothing
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
 
-        with patch("strategies.progressive_tools.handle_finalize_render") as mock_finalize:
+        with patch("strategies.progressive_tools.strategy.handle_finalize_render") as mock_finalize:
             mock_finalize.return_value = json.dumps({"status": "error", "error": "sym is None"})
 
             with pytest.raises(RuntimeError, match="Auto-finalize_render failed"):
@@ -1043,12 +1043,12 @@ async def test_auto_finalize_construction_when_not_called():
             strategy._last_state._svg = "<svg/>"
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
 
-        with patch("strategies.progressive_tools.handle_finalize_construction") as mock_finalize:
+        with patch("strategies.progressive_tools.strategy.handle_finalize_construction") as mock_finalize:
             def fake_finalize(state):
                 state._construction_finalized = True
                 state.sym = {}
@@ -1095,12 +1095,12 @@ async def test_auto_finalize_checks_when_not_called():
             strategy._last_state._svg = "<svg/>"
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
 
-        with patch("strategies.progressive_tools.handle_finalize_checks") as mock_finalize:
+        with patch("strategies.progressive_tools.strategy.handle_finalize_checks") as mock_finalize:
             def fake_finalize(state):
                 state._checks_finalized = True
                 state._last_check_results = []
@@ -1147,7 +1147,7 @@ async def test_run_captures_phase_traces():
             strategy._last_state._svg = "<svg/>"
         return resp
 
-    with patch("strategies.progressive_tools.Agent") as MockAgent:
+    with patch("strategies.progressive_tools.strategy.Agent") as MockAgent:
         mock_agent_instance = MagicMock()
         mock_agent_instance.run = fake_agent_run
         MockAgent.return_value = mock_agent_instance
