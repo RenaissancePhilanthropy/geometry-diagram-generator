@@ -15,6 +15,10 @@ from ir.to_sympy import compile_defs
 from ir.checks import run_checks, check_render_angles, CheckResult
 from ir.renderer import Renderer, TikZRenderer
 from ir.errors import IRCompileError
+from ir.queries import (
+    query_coordinate, query_distance, query_angle,
+    query_length, query_radius, query_area, query_perimeter, list_objects,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,11 @@ MAX_RETRIES = 3
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
 call the render_diagram tool with their request, then briefly explain what was drawn.
+
+After a diagram is rendered, you can answer questions about its geometric properties \
+(coordinates, distances, angles, lengths, areas, etc.) by calling query_diagram with \
+the appropriate query_type and args. To see available object IDs, call query_diagram \
+with query_type="list_objects" and args={}.
 """
 
 
@@ -33,9 +42,37 @@ class StructuredRunResult:
     tikz: str
     svg: str
     sym_table: dict | None = None  # SymPy symbol table float coords, runtime-only
+    sym_full: dict | None = None   # full SymPy SymTable for querying
     input_tokens: int = 0
     output_tokens: int = 0
     recipe_metadata: "RecipeMetadata | None" = None
+
+
+def _dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
+    """Dispatch a query_type + args to the appropriate ir.queries function."""
+    try:
+        match query_type:
+            case "coordinate":
+                result = query_coordinate(sym, args["point"])
+            case "distance":
+                result = query_distance(sym, args["a"], args["b"])
+            case "angle":
+                result = query_angle(sym, args["a"], args["vertex"], args["b"])
+            case "length":
+                result = query_length(sym, args["segment"])
+            case "radius":
+                result = query_radius(sym, args["circle"])
+            case "area":
+                result = query_area(sym, args["object"])
+            case "perimeter":
+                result = query_perimeter(sym, args["object"])
+            case "list_objects":
+                result = list_objects(sym)
+            case _:
+                result = {"error": f"Unknown query type: {query_type!r}"}
+        return json.dumps(result)
+    except (KeyError, TypeError, ValueError) as e:
+        return json.dumps({"error": str(e)})
 
 
 class StructureStrategy(SubstanceStrategy):
@@ -53,11 +90,10 @@ class StructureStrategy(SubstanceStrategy):
     """
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        """Return a conversational agent with a generate_diagram tool.
-
-        The tool runs the full IR pipeline internally, retrying on failures.
-        """
+        """Return a conversational agent with render_diagram and query_diagram tools."""
         _renderer = TikZRenderer()  # build_agent always uses the default TikZ renderer
+        _last_sym: dict = {}  # persisted across tool calls within this agent
+
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
         @agent.tool_plain(retries=MAX_RETRIES)
@@ -66,7 +102,28 @@ class StructureStrategy(SubstanceStrategy):
 
             Returns JSON with an SVG field on success.
             """
-            return await _run_pipeline_once(request, model, renderer=_renderer)
+            nonlocal _last_sym
+            result_json, sym = await _run_pipeline_once(request, model, renderer=_renderer)
+            _last_sym = sym
+            return result_json
+
+        @agent.tool_plain
+        async def query_diagram(query_type: str, args: dict[str, str]) -> str:
+            """Query a geometric property of the current diagram.
+
+            query_type and args:
+              coordinate  {"point": "A"}           → x, y coords
+              distance    {"a": "A", "b": "B"}     → distance between points
+              angle       {"a": "A", "vertex": "B", "b": "C"} → angle in degrees
+              length      {"segment": "seg_AB"}    → segment length
+              radius      {"circle": "c1"}         → circle radius
+              area        {"object": "tri_ABC"}    → area
+              perimeter   {"object": "tri_ABC"}    → perimeter
+              list_objects {}                       → all objects and their types
+            """
+            if not _last_sym:
+                return json.dumps({"error": "No diagram has been rendered yet. Please generate a diagram first."})
+            return _dispatch_query(_last_sym, query_type, args)
 
         return agent
 
@@ -160,6 +217,7 @@ class StructureStrategy(SubstanceStrategy):
                 tikz=tikz,
                 svg=svg,
                 sym_table=sym_float,
+                sym_full=sym,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
             )
@@ -211,14 +269,15 @@ async def _run_ir_pipeline(
         for k, v in sym.items()
         if isinstance(v, spg.Point)
     }
-    return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float)
+    return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float, sym_full=sym)
 
 
-async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None = None) -> str:
+async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None = None) -> tuple[str, dict]:
     """Run the full IR pipeline for a single attempt.
 
-    Used by build_agent's generate_diagram tool. Raises ModelRetry on failure
+    Used by build_agent's render_diagram tool. Raises ModelRetry on failure
     so the outer agent can retry with the error context.
+    Returns a tuple of (result_json, sym) where sym is the full SymPy symbol table.
     """
     ir_agent = Agent(
         model,
@@ -249,4 +308,4 @@ async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None 
     except Exception as e:
         raise ModelRetry(f"Rendering failed: {e}") from e
 
-    return json.dumps({"svg": render_result.output})
+    return json.dumps({"svg": render_result.output}), sym
