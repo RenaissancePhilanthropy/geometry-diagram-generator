@@ -6,7 +6,11 @@ import math
 import pytest
 import sympy.geometry as spg
 
-from ir.queries import query_coordinate, query_distance, query_angle, query_length, query_radius, query_area, query_perimeter, list_objects
+from ir.queries import (
+    query_coordinate, query_distance, query_angle,
+    query_length, query_radius, query_area, query_perimeter,
+    list_objects,
+)
 
 
 # -- Fixtures: a right triangle A(0,0) B(3,0) C(3,4) with a circle --
@@ -56,6 +60,10 @@ class TestQueryDistance:
         with pytest.raises(KeyError, match="Z"):
             query_distance(right_triangle_sym, "A", "Z")
 
+    def test_non_point_second_arg_raises(self, right_triangle_sym):
+        with pytest.raises(TypeError, match="not a Point"):
+            query_distance(right_triangle_sym, "A", "seg_AB")
+
 
 class TestQueryAngle:
     def test_right_angle(self, right_triangle_sym):
@@ -103,8 +111,15 @@ class TestQueryArea:
         assert result == {"area": pytest.approx(6.0)}
 
     def test_non_polygon_raises(self, right_triangle_sym):
-        with pytest.raises(TypeError, match="Triangle or Polygon"):
+        with pytest.raises(TypeError, match="not a Polygon"):
             query_area(right_triangle_sym, "A")
+
+    def test_polygon_area(self, right_triangle_sym):
+        # A unit square has area 1.0
+        sq = spg.Polygon(spg.Point(0,0), spg.Point(1,0), spg.Point(1,1), spg.Point(0,1))
+        sym = {"sq": sq}
+        result = query_area(sym, "sq")
+        assert result == {"area": pytest.approx(1.0)}
 
 
 class TestQueryPerimeter:
@@ -114,8 +129,15 @@ class TestQueryPerimeter:
         assert result == {"perimeter": pytest.approx(12.0)}
 
     def test_non_polygon_raises(self, right_triangle_sym):
-        with pytest.raises(TypeError, match="Triangle or Polygon"):
+        with pytest.raises(TypeError, match="not a Polygon"):
             query_perimeter(right_triangle_sym, "circ")
+
+    def test_polygon_perimeter(self, right_triangle_sym):
+        # A unit square has perimeter 4.0
+        sq = spg.Polygon(spg.Point(0,0), spg.Point(1,0), spg.Point(1,1), spg.Point(0,1))
+        sym = {"sq": sq}
+        result = query_perimeter(sym, "sq")
+        assert result == {"perimeter": pytest.approx(4.0)}
 
 
 class TestListObjects:

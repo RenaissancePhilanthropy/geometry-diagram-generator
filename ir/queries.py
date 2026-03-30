@@ -64,15 +64,15 @@ def query_radius(sym: SymTable, circle_id: str) -> dict:
 
 def query_area(sym: SymTable, obj_id: str) -> dict:
     obj = _get(sym, obj_id)
-    if not isinstance(obj, (spg.Triangle, spg.Polygon)):
-        raise TypeError(f"{obj_id!r} is not a Triangle or Polygon (got {type(obj).__name__})")
+    if not isinstance(obj, spg.Polygon):
+        raise TypeError(f"{obj_id!r} is not a Polygon (got {type(obj).__name__})")
     return {"area": float(abs(obj.area.evalf()))}
 
 
 def query_perimeter(sym: SymTable, obj_id: str) -> dict:
     obj = _get(sym, obj_id)
-    if not isinstance(obj, (spg.Triangle, spg.Polygon)):
-        raise TypeError(f"{obj_id!r} is not a Triangle or Polygon (got {type(obj).__name__})")
+    if not isinstance(obj, spg.Polygon):
+        raise TypeError(f"{obj_id!r} is not a Polygon (got {type(obj).__name__})")
     return {"perimeter": float(obj.perimeter.evalf())}
 
 
