@@ -71,7 +71,7 @@ def _dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
             case _:
                 result = {"error": f"Unknown query type: {query_type!r}"}
         return json.dumps(result)
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
         return json.dumps({"error": str(e)})
 
 
@@ -92,7 +92,7 @@ class StructureStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
         _renderer = TikZRenderer()  # build_agent always uses the default TikZ renderer
-        _last_sym: dict = {}  # persisted across tool calls within this agent
+        _last_sym: dict | None = None  # persisted across tool calls within this agent
 
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
@@ -121,7 +121,7 @@ class StructureStrategy(SubstanceStrategy):
               perimeter   {"object": "tri_ABC"}    → perimeter
               list_objects {}                       → all objects and their types
             """
-            if not _last_sym:
+            if _last_sym is None:
                 return json.dumps({"error": "No diagram has been rendered yet. Please generate a diagram first."})
             return _dispatch_query(_last_sym, query_type, args)
 
