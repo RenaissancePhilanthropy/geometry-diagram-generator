@@ -9,7 +9,7 @@ import pydantic
 from pydantic_ai import Agent
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from strategies.structured import StructuredRunResult, _run_ir_pipeline
+from strategies.structured import StructuredRunResult, _run_ir_pipeline, _dispatch_query
 from strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from recipe.catalog import (
     load_catalog,
@@ -31,6 +31,11 @@ _SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
 call the render_diagram tool with their request, then briefly explain what was drawn.
+
+After a diagram is rendered, you can answer questions about its geometric properties \
+(coordinates, distances, angles, lengths, areas, etc.) by calling query_diagram with \
+the appropriate query_type and args. To see available object IDs, call query_diagram \
+with query_type="list_objects" and args={}.
 """
 
 
@@ -70,9 +75,11 @@ class RecipeStrategy(SubstanceStrategy):
         self.use_recipes = use_recipes
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        """Return a conversational agent with a render_diagram tool."""
+        """Return a conversational agent with render_diagram and query_diagram tools."""
         _renderer = TikZRenderer()
         _strategy = self
+        _last_sym: dict | None = None
+
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
         @agent.tool_plain(retries=MAX_RETRIES)
@@ -81,8 +88,28 @@ class RecipeStrategy(SubstanceStrategy):
 
             Returns JSON with an SVG field on success.
             """
+            nonlocal _last_sym
             result = await _strategy.run(request, model, renderer=_renderer)
+            _last_sym = result.sym_full
             return json.dumps({"svg": result.svg})
+
+        @agent.tool_plain
+        async def query_diagram(query_type: str, args: dict[str, str]) -> str:
+            """Query a geometric property of the current diagram.
+
+            query_type and args:
+              coordinate  {"point": "A"}           → x, y coords
+              distance    {"a": "A", "b": "B"}     → distance between points
+              angle       {"a": "A", "vertex": "B", "b": "C"} → angle in degrees
+              length      {"segment": "seg_AB"}    → segment length
+              radius      {"circle": "c1"}         → circle radius
+              area        {"object": "tri_ABC"}    → area
+              perimeter   {"object": "tri_ABC"}    → perimeter
+              list_objects {}                       → all objects and their types
+            """
+            if _last_sym is None:
+                return json.dumps({"error": "No diagram has been rendered yet."})
+            return _dispatch_query(_last_sym, query_type, args)
 
         return agent
 
@@ -226,6 +253,7 @@ class RecipeStrategy(SubstanceStrategy):
                 tikz=result.tikz,
                 svg=result.svg,
                 sym_table=result.sym_table,
+                sym_full=result.sym_full,
                 input_tokens=total_input_tokens,
                 output_tokens=total_output_tokens,
                 recipe_metadata=recipe_metadata,
