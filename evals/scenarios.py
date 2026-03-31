@@ -213,6 +213,30 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 raise ValueError(f"{sc_where}: 'args' must be an object")
             normalized_structural.append({"name": sc_name, "type": sc_type, "args": sc_args})
 
+        # queries: optional list of follow-up questions for query_diagram eval
+        queries = raw.get("queries", [])
+        if queries is None:
+            queries = []
+        if not isinstance(queries, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'queries' must be a list when provided"
+            )
+        normalized_queries: list[dict[str, Any]] = []
+        for qidx, q in enumerate(queries, start=1):
+            q_where = f"{where} ({scenario_id}) queries[{qidx}]"
+            if not isinstance(q, dict):
+                raise ValueError(f"{q_where}: expected mapping/object")
+
+            question = q.get("question")
+            if not isinstance(question, str) or not question.strip():
+                raise ValueError(f"{q_where}: 'question' must be a non-empty string")
+
+            normalized_queries.append({
+                "question": question,
+                "expected_tool_call": q.get("expected_tool_call"),
+                "expected_answer": q.get("expected_answer"),
+            })
+
         tier = raw.get("tier")
         if tier is not None and (not isinstance(tier, int) or tier < 1):
             raise ValueError(f"{where} ({scenario_id}): 'tier' must be a positive integer")
@@ -229,6 +253,7 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 "required_canvas": normalized_canvas,
                 "expected_points": normalized_points,
                 "coordinate_tolerance": float(coordinate_tolerance),
+                "queries": normalized_queries,
             }
         )
 
