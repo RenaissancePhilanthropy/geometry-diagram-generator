@@ -1,12 +1,12 @@
 # tests/test_dispatch_query.py
-"""Tests for _dispatch_query — the query_diagram tool dispatcher."""
+"""Tests for dispatch_query — the query_diagram tool dispatcher."""
 from __future__ import annotations
 
 import json
 import pytest
 import sympy.geometry as spg
 
-from strategies.structured import _dispatch_query
+from strategies.structured import dispatch_query
 
 
 @pytest.fixture
@@ -26,46 +26,46 @@ def simple_sym():
 
 class TestDispatchQuery:
     def test_coordinate(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "coordinate", {"point": "A"}))
+        result = json.loads(dispatch_query(simple_sym, "coordinate", {"point": "A"}))
         assert result == {"x": 0.0, "y": 0.0}
 
     def test_distance(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "distance", {"a": "A", "b": "B"}))
+        result = json.loads(dispatch_query(simple_sym, "distance", {"a": "A", "b": "B"}))
         assert result["distance"] == pytest.approx(3.0)
 
     def test_angle(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "angle", {"a": "A", "vertex": "B", "b": "C"}))
+        result = json.loads(dispatch_query(simple_sym, "angle", {"a": "A", "vertex": "B", "b": "C"}))
         assert result["angle_degrees"] == pytest.approx(90.0)
 
     def test_length(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "length", {"segment": "seg_AB"}))
+        result = json.loads(dispatch_query(simple_sym, "length", {"segment": "seg_AB"}))
         assert result["length"] == pytest.approx(3.0)
 
     def test_radius(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "radius", {"circle": "circ"}))
+        result = json.loads(dispatch_query(simple_sym, "radius", {"circle": "circ"}))
         assert result["radius"] == pytest.approx(2.0)
 
     def test_area(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "area", {"object": "tri_ABC"}))
+        result = json.loads(dispatch_query(simple_sym, "area", {"object": "tri_ABC"}))
         assert result["area"] == pytest.approx(6.0)
 
     def test_perimeter(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "perimeter", {"object": "tri_ABC"}))
+        result = json.loads(dispatch_query(simple_sym, "perimeter", {"object": "tri_ABC"}))
         assert result["perimeter"] == pytest.approx(12.0)
 
     def test_list_objects(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "list_objects", {}))
+        result = json.loads(dispatch_query(simple_sym, "list_objects", {}))
         assert result["A"] == "Point"
         assert result["seg_AB"] == "Segment"
 
     def test_unknown_query_type(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "foobar", {}))
+        result = json.loads(dispatch_query(simple_sym, "foobar", {}))
         assert "error" in result
 
     def test_missing_object_returns_error(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "coordinate", {"point": "Z"}))
+        result = json.loads(dispatch_query(simple_sym, "coordinate", {"point": "Z"}))
         assert "error" in result
 
     def test_type_mismatch_returns_error(self, simple_sym):
-        result = json.loads(_dispatch_query(simple_sym, "radius", {"circle": "A"}))
+        result = json.loads(dispatch_query(simple_sym, "radius", {"circle": "A"}))
         assert "error" in result

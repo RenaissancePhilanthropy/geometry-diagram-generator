@@ -9,7 +9,7 @@ import pydantic
 from pydantic_ai import Agent
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from strategies.structured import StructuredRunResult, _run_ir_pipeline, _dispatch_query
+from strategies.structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
 from strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from recipe.catalog import (
     load_catalog,
@@ -109,7 +109,7 @@ class RecipeStrategy(SubstanceStrategy):
             """
             if _last_sym is None:
                 return json.dumps({"error": "No diagram has been rendered yet."})
-            return _dispatch_query(_last_sym, query_type, args)
+            return dispatch_query(_last_sym, query_type, args)
 
         return agent
 

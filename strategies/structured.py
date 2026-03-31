@@ -48,7 +48,7 @@ class StructuredRunResult:
     recipe_metadata: "RecipeMetadata | None" = None
 
 
-def _dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
+def dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
     """Dispatch a query_type + args to the appropriate ir.queries function."""
     try:
         match query_type:
@@ -123,7 +123,7 @@ class StructureStrategy(SubstanceStrategy):
             """
             if _last_sym is None:
                 return json.dumps({"error": "No diagram has been rendered yet. Please generate a diagram first."})
-            return _dispatch_query(_last_sym, query_type, args)
+            return dispatch_query(_last_sym, query_type, args)
 
         return agent
 
