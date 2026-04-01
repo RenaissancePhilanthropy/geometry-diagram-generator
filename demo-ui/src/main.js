@@ -36,7 +36,6 @@ function renderMarkdown(text) {
 // Debug panel
 // ---------------------------------------------------------------------------
 
-const debugPanel = document.getElementById("debug");
 const debugBlocks = document.getElementById("debug-blocks");
 const debugBtn = document.getElementById("debug-btn");
 const debugClear = document.getElementById("debug-clear");
@@ -50,11 +49,6 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function truncate(str, max = 300) {
-  if (str.length <= max) return str;
-  return str.slice(0, max) + `… [+${str.length - max} chars]`;
 }
 
 function prettyJson(raw) {
@@ -74,7 +68,7 @@ function renderBlock(b) {
   }
 
   if (b.type === "text") {
-    const preview = truncate(b.content || "…");
+    const preview = b.content || "…";
     return `<div class="db db-text">
       <div class="db-label">text</div>
       <div class="db-content">${escapeHtml(preview)}</div>
@@ -84,9 +78,9 @@ function renderBlock(b) {
   if (b.type === "tool_call") {
     const statusIcon = b.status === "ok" ? " ✓" : b.status === "error" ? " ✗" : " …";
     const argsDisplay = b.argsParsed != null
-      ? truncate(JSON.stringify(b.argsParsed, null, 2))
-      : truncate(b.argsRaw || "");
-    const resultDisplay = b.result != null ? truncate(prettyJson(b.result)) : null;
+      ? JSON.stringify(b.argsParsed, null, 2)
+      : (b.argsRaw || "");
+    const resultDisplay = b.result != null ? prettyJson(b.result) : null;
 
     return `<div class="db db-tool status-${escapeHtml(b.status)}">
       <div class="db-label"><span class="db-tool-name">${escapeHtml(b.name)}</span>${statusIcon}</div>
