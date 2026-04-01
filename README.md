@@ -1,4 +1,4 @@
-# geometry-tikz-demo
+# geometry-diagram-generator
 
 Generate geometric diagrams as SVGs from natural language using an LLM pipeline. The LLM describes geometry in a structured intermediate representation (IR); SymPy does the math; TikZ/LaTeX renders the result.
 
@@ -21,11 +21,11 @@ User request
   → SymPy geometry objects       ← source of truth for coordinates
   → Geometric validation
   → TikZ code
-  → lualatex + dvisvgm (Docker)
+  → lualatex (with tkz-euclide and tkz-elements) + dvisvgm (Docker)
   → SVG
 ```
 
-The LLM never picks coordinates directly. It describes *what* to construct (midpoints, intersections, circumcenters, etc.); the compiler resolves positions from SymPy.
+The LLM avoids picking coordinates directly. It describes *what* to construct (midpoints, intersections, circumcenters, etc.); the compiler resolves positions from SymPy.
 
 ## Strategies
 

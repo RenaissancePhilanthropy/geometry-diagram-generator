@@ -22,10 +22,22 @@ from util.tikz_renderer import render_tikz
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples")
 
 
+def add_white_background(svg: str) -> str:
+    """Insert a white rect covering the full viewBox, for dark-mode readability."""
+    import re
+    m = re.search(r"viewBox='([^']+)'", svg)
+    if not m:
+        return svg
+    x, y, w, h = m.group(1).split()
+    rect = f"<rect x='{x}' y='{y}' width='{w}' height='{h}' fill='white'/>"
+    # Insert immediately after the opening <g id='page1'> tag
+    return svg.replace("<g id='page1'>", f"<g id='page1'>{rect}", 1)
+
+
 def save(name: str, svg: str) -> None:
     svg_path = os.path.join(OUT, f"{name}.svg")
     with open(svg_path, "w") as f:
-        f.write(svg)
+        f.write(add_white_background(svg))
     print(f"  Saved {svg_path}")
 
 
