@@ -28,6 +28,12 @@ _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
 call the render_diagram tool with their request, then briefly explain what was drawn.
 
+When modifying a previously rendered diagram, pass a complete, self-contained description \
+of the desired diagram to render_diagram — not just the change. The system has the \
+previous diagram's specification available, but your request should describe the full \
+intended result (e.g. "right triangle with legs 3 and 4, now with the hypotenuse labeled" \
+rather than just "label the hypotenuse").
+
 After a diagram is rendered, you can answer questions about its geometric properties \
 (coordinates, distances, angles, lengths, areas, etc.) by calling query_diagram with \
 the appropriate query_type and args. To see available object IDs, call query_diagram \
@@ -110,6 +116,7 @@ class StructureStrategy(SubstanceStrategy):
         """Return a conversational agent with render_diagram and query_diagram tools."""
         _renderer = TikZRenderer()  # build_agent always uses the default TikZ renderer
         _last_sym: dict | None = None  # persisted across tool calls within this agent
+        _last_ir: DiagramIR | None = None  # last successful IR for edit context
 
         agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
 
@@ -119,9 +126,12 @@ class StructureStrategy(SubstanceStrategy):
 
             Returns JSON with an SVG field on success.
             """
-            nonlocal _last_sym
-            result_json, sym = await _run_pipeline_once(request, model, renderer=_renderer)
+            nonlocal _last_sym, _last_ir
+            result_json, sym, diagram_ir = await _run_pipeline_once(
+                request, model, renderer=_renderer, previous_ir=_last_ir
+            )
             _last_sym = sym
+            _last_ir = diagram_ir
             return result_json
 
         @agent.tool_plain
@@ -289,19 +299,37 @@ async def _run_ir_pipeline(
     return StructuredRunResult(diagram_ir=diagram_ir, tikz=tikz, svg=svg, sym_table=sym_float, sym_full=sym)
 
 
-async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None = None) -> tuple[str, dict]:
+async def _run_pipeline_once(
+    prompt: str,
+    model: str,
+    renderer: Renderer | None = None,
+    previous_ir: DiagramIR | None = None,
+) -> tuple[str, dict, DiagramIR]:
     """Run the full IR pipeline for a single attempt.
 
     Used by build_agent's render_diagram tool. Raises ModelRetry on failure
     so the outer agent can retry with the error context.
-    Returns a tuple of (result_json, sym) where sym is the full SymPy symbol table.
+    Returns a tuple of (result_json, sym, diagram_ir).
     """
+    if previous_ir is not None:
+        full_prompt = (
+            f"{prompt}\n\n"
+            "---\n"
+            "The user previously had this diagram rendered successfully. Use it as the "
+            "starting point and apply the requested modifications. Preserve all properties "
+            "(angles, lengths, positions, labels, etc.) that the user did not ask to change.\n\n"
+            f"Previous DiagramIR:\n{previous_ir.model_dump_json(indent=2)}\n"
+            "---"
+        )
+    else:
+        full_prompt = prompt
+
     ir_agent = Agent(
         model,
         instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
         output_type=DiagramIR,
     )
-    response = await ir_agent.run(prompt)
+    response = await ir_agent.run(full_prompt)
     diagram_ir = response.output
 
     try:
@@ -325,4 +353,4 @@ async def _run_pipeline_once(prompt: str, model: str, renderer: Renderer | None 
     except Exception as e:
         raise ModelRetry(f"Rendering failed: {e}") from e
 
-    return json.dumps({"svg": render_result.output}), sym
+    return json.dumps({"svg": render_result.output}), sym, diagram_ir
