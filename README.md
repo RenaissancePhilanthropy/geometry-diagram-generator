@@ -6,8 +6,8 @@ Generate geometric diagrams as SVGs from natural language using an LLM pipeline.
 
 <table>
 <tr>
-<td align="center"><img src="docs/examples/right_triangle.svg" width="220"/><br/>Right triangle</td>
-<td align="center"><img src="docs/examples/circumscribed_circle.svg" width="220"/><br/>Circumscribed circle</td>
+<td align="center"><img src="docs/examples/pythagorean_theorem.svg" width="220"/><br/>Pythagorean theorem</td>
+<td align="center"><img src="docs/examples/triangle_circles.svg" width="220"/><br/>Circumscribed circle</td>
 <td align="center"><img src="docs/examples/euler_line.svg" width="220"/><br/>Euler line</td>
 </tr>
 </table>

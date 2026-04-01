@@ -179,7 +179,10 @@ def _emit_op(
                     warnings.append(msg)
                 return out
             sym_obj = sym[obj_id]
-            fill_opts = f"[fill=blue!20,opacity={opacity}]"
+            if style and style in styles:
+                fill_opts = _style_str(style, styles)
+            else:
+                fill_opts = f"[fill=blue!20,opacity={opacity}]"
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = _poly_verts(obj_id, stmt_by_id)
                 out.append(f"\\tkzFillPolygon{fill_opts}({','.join(verts)})")
