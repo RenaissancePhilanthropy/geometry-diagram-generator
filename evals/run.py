@@ -20,6 +20,7 @@ Result fields:
   deterministic_pass, gate_status, gate_failures,
   tool_calls, retries, input_tokens,
   output_tokens, duration_s, error,
+  query_results,
   llm_judge_score, llm_judge_reasoning,
   human_score, human_notes
 """
@@ -28,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import sys
@@ -35,6 +37,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
 import yaml
@@ -105,6 +109,114 @@ _DEFAULT_POINT_TOLERANCE = 1e-4
 # Per-scenario runner
 # ---------------------------------------------------------------------------
 
+async def _run_query_phase(
+    queries: list[dict],
+    sym: dict,
+    model: str,
+) -> list[dict[str, Any]]:
+    """Run follow-up query eval against a pre-computed SymPy symbol table.
+
+    For each query, builds a fresh Agent with query_diagram pre-loaded,
+    sends the question, and checks whether the tool was called correctly.
+    Checks the LAST query_diagram tool call (one agent per query, so this
+    is the relevant call even if the LLM also calls list_objects first).
+    """
+    from pydantic_ai import Agent
+    from strategies.structured import dispatch_query
+    from ir.queries import list_objects as _list_objects
+
+    _QUERY_EVAL_INSTRUCTIONS = (
+        "You are a geometry assistant. A diagram has already been rendered. "
+        "The user will ask about properties of the current diagram. "
+        "Use the query_diagram tool to answer their question, then report "
+        "the result clearly."
+    )
+
+    objects_info = json.dumps(_list_objects(sym))
+    results: list[dict[str, Any]] = []
+
+    for query_def in queries:
+        question = query_def["question"]
+        expected_tc = query_def.get("expected_tool_call") or {}
+        expected_answer = query_def.get("expected_answer")
+
+        qr: dict[str, Any] = {
+            "question": question,
+            "tool_called": False,
+            "tool_call_args": None,
+            "query_type_match": None,
+            "tool_return": None,
+            "answer_match": None,
+            "answer_error": None,
+            "error": None,
+        }
+
+        try:
+            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS)
+
+            @agent.tool_plain
+            async def query_diagram(query_type: str, args: dict[str, str]) -> str:
+                """Query a geometric property of the current diagram.
+
+                query_type and args:
+                  coordinate  {"point": "A"}           -> x, y coords
+                  distance    {"a": "A", "b": "B"}     -> distance between points
+                  angle       {"a": "A", "vertex": "B", "b": "C"} -> angle in degrees
+                  length      {"segment": "seg_AB"}    -> segment length
+                  radius      {"circle": "c1"}         -> circle radius
+                  area        {"object": "tri_ABC"}    -> area
+                  perimeter   {"object": "tri_ABC"}    -> perimeter
+                  list_objects {}                       -> all objects and their types
+                """
+                return dispatch_query(sym, query_type, args)
+
+            context_msg = (
+                f"The following objects exist in the diagram: {objects_info}. "
+                f"User question: {question}"
+            )
+
+            agent_result = await agent.run(context_msg)
+            messages = agent_result.all_messages()
+
+            tc_count = count_tool_calls(messages, "query_diagram")
+            qr["tool_called"] = tc_count > 0
+
+            if tc_count > 0:
+                tc_args = extract_tool_call_args(messages, "query_diagram")
+                qr["tool_call_args"] = tc_args
+
+                if tc_args and expected_tc.get("query_type"):
+                    qr["query_type_match"] = (
+                        tc_args.get("query_type") == expected_tc["query_type"]
+                    )
+
+                tool_ret = extract_tool_return(messages, "query_diagram")
+                if tool_ret:
+                    qr["tool_return"] = tool_ret
+                    if expected_answer:
+                        try:
+                            ret_data = json.loads(tool_ret)
+                            key = expected_answer.get("key")
+                            if key and key in ret_data:
+                                actual = ret_data[key]
+                                if expected_answer.get("value") is not None:
+                                    tol = expected_answer.get("tolerance", 0.5)
+                                    qr["answer_match"] = (
+                                        abs(actual - expected_answer["value"]) < tol
+                                    )
+                                else:
+                                    qr["answer_match"] = True
+                        except (json.JSONDecodeError, TypeError, KeyError) as e:
+                            qr["answer_error"] = str(e)
+
+        except Exception as e:
+            qr["error"] = str(e)
+
+        results.append(qr)
+
+    return results
+
+
 async def run_scenario(
     scenario: dict,
     strategy_name: str,
@@ -148,6 +260,7 @@ async def run_scenario(
         "ir_diagnostics": None,
         "sympy_property_checks": [],
         "structural_checks": None,
+        "query_results": [],
         "llm_judge_score": None,
         "llm_judge_reasoning": None,
         "human_score": None,
@@ -238,6 +351,23 @@ async def run_scenario(
             }
         else:
             record["recipe_metadata"] = None
+
+        # Query eval phase — test follow-up questions via query_diagram tool
+        queries = scenario.get("queries", [])
+        if queries:
+            if result.sym_full is not None:
+                record["query_results"] = await _run_query_phase(
+                    queries, result.sym_full, model
+                )
+            else:
+                logger.warning(
+                    "Scenario %s has queries but sym_full is None — skipping query phase",
+                    scenario["id"],
+                )
+                record["query_results"] = [
+                    {"question": q["question"], "tool_called": False, "error": "sym_full unavailable"}
+                    for q in queries
+                ]
     else:
         messages = result.all_messages()
         usage = result.usage()
@@ -486,6 +616,17 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
         for name, result in structural_checks.items():
             if isinstance(result, dict) and result.get("passed") is False:
                 failures.append(f"structural:{name}")
+
+    query_results = record.get("query_results", [])
+    if query_results:
+        had_checks = True
+        for qidx, qr in enumerate(query_results):
+            if qr.get("error"):
+                failures.append(f"query:{qidx}:error")
+            elif not qr.get("tool_called"):
+                failures.append(f"query:{qidx}:tool_not_called")
+            elif qr.get("query_type_match") is False:
+                failures.append(f"query:{qidx}:wrong_query_type")
 
     return failures, skipped, had_checks
 
