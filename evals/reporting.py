@@ -65,9 +65,16 @@ def _print_record(record: dict) -> None:
     error = f" [{record['error'][:60]}]" if record.get("error") else ""
     tik_str = _tikz_check_summary(record)
     gate_str = _gate_summary(record)
+    query_str = ""
+    qr_list = record.get("query_results", [])
+    if qr_list:
+        q_total = len(qr_list)
+        q_called = sum(1 for q in qr_list if q.get("tool_called"))
+        q_type = sum(1 for q in qr_list if q.get("query_type_match"))
+        query_str = f" Q:{q_called}/{q_total} QT:{q_type}/{q_total}"
     print(
         f"  [{status}] {record['scenario_id']:<25} {repeat} {svg} {checks} "
-        f"{duration:>7}{judge_str}{tik_str}{gate_str}{error}"
+        f"{duration:>7}{judge_str}{tik_str}{gate_str}{error}{query_str}"
     )
 
 
@@ -119,9 +126,23 @@ def _print_summary(records: list[dict]) -> None:
             if tik_skip:
                 tik_str += f"({tik_skip}skip)"
 
+        # Query eval aggregation
+        q_total = sum(len(r.get("query_results", [])) for r in recs)
+        q_called = sum(
+            sum(1 for q in r.get("query_results", []) if q.get("tool_called"))
+            for r in recs
+        )
+        q_type = sum(
+            sum(1 for q in r.get("query_results", []) if q.get("query_type_match"))
+            for r in recs
+        )
+        q_str = ""
+        if q_total:
+            q_str = f"  query:{q_called}/{q_total} qtype:{q_type}/{q_total}"
+
         print(
             f"  {strategy:<12}  gen:{gen_ok}/{n}  svg:{svg_ok}/{n}  "
             f"svgchk:{svg_chk_ok}/{n}  gate:{gate_ok}/{n}"
             f" soft:{gate_soft}/{n}  retries:{retry_rate:.1f}"
-            f"{judge_str}{gate_judge_str}{tik_str}  avg:{avg_s:.1f}s"
+            f"{judge_str}{gate_judge_str}{tik_str}  avg:{avg_s:.1f}s{q_str}"
         )

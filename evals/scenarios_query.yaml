@@ -1,0 +1,70 @@
+# Query-focused eval scenarios.
+# Each scenario renders a diagram, then tests follow-up questions
+# via the query_diagram tool.
+#
+# Use with: uv run python -m evals.run --scenarios evals/scenarios_query.yaml --strategies structured
+
+- id: right-triangle-angle-query
+  tier: 1
+  tags: [triangle, query]
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: right_angle_at_B
+      type: right_angle
+      args: [A, B, C]
+  queries:
+    - question: "What is the angle at vertex B?"
+      expected_tool_call:
+        query_type: angle
+
+    - question: "What is the distance from A to C?"
+      expected_tool_call:
+        query_type: distance
+
+- id: right-triangle-coordinate-query
+  tier: 1
+  tags: [triangle, query]
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices."
+  required_labels: [A, B, C]
+  queries:
+    - question: "What are the coordinates of point B?"
+      expected_tool_call:
+        query_type: coordinate
+
+- id: equilateral-area-query
+  tier: 1
+  tags: [triangle, query]
+  prompt: "Draw an equilateral triangle ABC with all sides equal. Label all three vertices."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: equal_sides
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, A]]
+  queries:
+    - question: "What is the area of triangle ABC?"
+      expected_tool_call:
+        query_type: area
+
+- id: circle-radius-query
+  tier: 1
+  tags: [circle, query]
+  prompt: "Draw a circle centered at point O with a point A on the circle. Label both points."
+  required_labels: [O, A]
+  queries:
+    - question: "What is the radius of the circle?"
+      expected_tool_call:
+        query_type: radius
+      expected_answer:
+        key: radius
+        tolerance: 0.5
+
+- id: recipe-triangle-angle-query
+  tier: 1
+  tags: [triangle, query, recipe]
+  prompt: "Draw a right triangle ABC with the right angle at B. Label all three vertices."
+  required_labels: [A, B, C]
+  queries:
+    - question: "What is the angle at vertex B?"
+      expected_tool_call:
+        query_type: angle
