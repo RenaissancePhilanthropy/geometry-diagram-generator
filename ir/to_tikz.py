@@ -97,17 +97,26 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     lines.append("")
 
     # --- Phase 6: emit render ops ---
+    # Sort by z-layer so fills are always behind outlines/marks, and labels always on top.
+    _Z_ORDER = {
+        "fill": 0,
+        "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
+        "draw_points": 2,
+        "label_point": 3, "label_angle": 3, "label_segment": 3,
+    }
+    sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
+
     # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
-    for op in diagram.render:
+    for op in sorted_ops:
         if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
     group_marks = {g: _MARK_SYMBOLS[i % len(_MARK_SYMBOLS)] for i, g in enumerate(seg_groups)}
 
-    for op in diagram.render:
+    for op in sorted_ops:
         chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)
         lines.extend(chunk)
 

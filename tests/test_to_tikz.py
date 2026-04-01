@@ -5,6 +5,8 @@ from ir.ir import (
     Canvas,
     DiagramIR,
     Draw,
+    DrawPoints,
+    Fill,
     LabelAngle,
     LabelPoint,
     LineAngleBisector,
@@ -419,3 +421,30 @@ def test_ir_to_tikz_valid_draw_still_works():
     tikz = ir_to_tikz(diagram, sym)
     assert "\\tkzDrawSegment" in tikz
     assert "(A,B)" in tikz
+
+
+def test_fill_rendered_before_labels():
+    # Render ops are given in a pathological order: label first, then fill.
+    # The fix should sort them so the fill (background) always precedes labels.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            LabelPoint(p="A", pos="below"),
+            LabelPoint(p="B", pos="below"),
+            LabelPoint(p="C", pos="above"),
+            Fill(obj="T", opacity=0.2),
+            Draw(obj="T"),
+            DrawPoints(points=["A", "B", "C"]),
+        ],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+
+    fill_pos = tikz.index("\\tkzFillPolygon")
+    label_pos = tikz.index("\\tkzLabelPoint")
+    assert fill_pos < label_pos, "Fill must appear before labels in TikZ output"
