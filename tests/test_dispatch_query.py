@@ -53,10 +53,25 @@ class TestDispatchQuery:
         result = json.loads(dispatch_query(simple_sym, "perimeter", {"object": "tri_ABC"}))
         assert result["perimeter"] == pytest.approx(12.0)
 
+    def test_angle_ray_keys(self, simple_sym):
+        result = json.loads(dispatch_query(simple_sym, "angle", {"ray1": "A", "vertex": "B", "ray2": "C"}))
+        assert result["angle_degrees"] == pytest.approx(90.0)
+
+    def test_distance_point_keys(self, simple_sym):
+        result = json.loads(dispatch_query(simple_sym, "distance", {"point1": "A", "point2": "B"}))
+        assert result["distance"] == pytest.approx(3.0)
+
     def test_list_objects(self, simple_sym):
         result = json.loads(dispatch_query(simple_sym, "list_objects", {}))
         assert result["A"] == "Point"
         assert result["seg_AB"] == "Segment"
+
+    def test_list_objects_hides_internal(self, simple_sym):
+        sym = dict(simple_sym)
+        sym["__mark_seg_A_B"] = spg.Segment(sym["A"], sym["B"])
+        result = json.loads(dispatch_query(sym, "list_objects", {}))
+        assert "__mark_seg_A_B" not in result
+        assert "A" in result  # normal objects still present
 
     def test_unknown_query_type(self, simple_sym):
         result = json.loads(dispatch_query(simple_sym, "foobar", {}))

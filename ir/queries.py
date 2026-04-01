@@ -77,4 +77,8 @@ def query_perimeter(sym: SymTable, obj_id: str) -> dict:
 
 
 def list_objects(sym: SymTable) -> dict[str, str]:
-    return {obj_id: type(obj).__name__.removesuffix("2D") for obj_id, obj in sym.items()}
+    return {
+        obj_id: type(obj).__name__.removesuffix("2D")
+        for obj_id, obj in sym.items()
+        if not obj_id.startswith("__")
+    }

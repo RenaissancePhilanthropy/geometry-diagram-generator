@@ -160,8 +160,8 @@ async def _run_query_phase(
 
                 query_type and args:
                   coordinate  {"point": "A"}           -> x, y coords
-                  distance    {"a": "A", "b": "B"}     -> distance between points
-                  angle       {"a": "A", "vertex": "B", "b": "C"} -> angle in degrees
+                  distance    {"a": "A", "b": "B"}     -> distance between points (use for side lengths too)
+                  angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
                   length      {"segment": "seg_AB"}    -> segment length
                   radius      {"circle": "c1"}         -> circle radius
                   area        {"object": "tri_ABC"}    -> area

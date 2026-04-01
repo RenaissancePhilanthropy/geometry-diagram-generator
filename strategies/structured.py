@@ -48,6 +48,14 @@ class StructuredRunResult:
     recipe_metadata: "RecipeMetadata | None" = None
 
 
+def _arg(args: dict[str, str], *keys: str) -> str:
+    """Return the first value found among the given keys, or raise KeyError."""
+    for k in keys:
+        if k in args:
+            return args[k]
+    raise KeyError(f"Missing required arg — expected one of: {', '.join(keys)}")
+
+
 def dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
     """Dispatch a query_type + args to the appropriate ir.queries function."""
     try:
@@ -55,9 +63,18 @@ def dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
             case "coordinate":
                 result = query_coordinate(sym, args["point"])
             case "distance":
-                result = query_distance(sym, args["a"], args["b"])
+                result = query_distance(
+                    sym,
+                    _arg(args, "a", "point1", "from"),
+                    _arg(args, "b", "point2", "to"),
+                )
             case "angle":
-                result = query_angle(sym, args["a"], args["vertex"], args["b"])
+                result = query_angle(
+                    sym,
+                    _arg(args, "ray1", "a", "point1", "from"),
+                    args["vertex"],
+                    _arg(args, "ray2", "b", "point2", "to"),
+                )
             case "length":
                 result = query_length(sym, args["segment"])
             case "radius":
@@ -113,8 +130,8 @@ class StructureStrategy(SubstanceStrategy):
 
             query_type and args:
               coordinate  {"point": "A"}           → x, y coords
-              distance    {"a": "A", "b": "B"}     → distance between points
-              angle       {"a": "A", "vertex": "B", "b": "C"} → angle in degrees
+              distance    {"a": "A", "b": "B"}     → distance between points (use for side lengths too)
+              angle       {"ray1": "A", "vertex": "B", "ray2": "C"} → angle in degrees
               length      {"segment": "seg_AB"}    → segment length
               radius      {"circle": "c1"}         → circle radius
               area        {"object": "tri_ABC"}    → area
