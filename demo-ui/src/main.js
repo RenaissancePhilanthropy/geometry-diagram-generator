@@ -33,6 +33,152 @@ function renderMarkdown(text) {
 }
 
 // ---------------------------------------------------------------------------
+// Debug panel
+// ---------------------------------------------------------------------------
+
+const debugPanel = document.getElementById("debug");
+const debugBlocks = document.getElementById("debug-blocks");
+const debugBtn = document.getElementById("debug-btn");
+const debugClear = document.getElementById("debug-clear");
+
+// blocks: array of { type: "run"|"text"|"tool_call", ... }
+const blocks = [];
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function truncate(str, max = 300) {
+  if (str.length <= max) return str;
+  return str.slice(0, max) + `… [+${str.length - max} chars]`;
+}
+
+function prettyJson(raw) {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+function renderBlock(b) {
+  if (b.type === "run") {
+    return `<div class="db db-run">
+      <div class="db-label">run</div>
+      <div class="db-content">${escapeHtml(b.status)}${b.error ? ": " + escapeHtml(b.error) : ""}</div>
+    </div>`;
+  }
+
+  if (b.type === "text") {
+    const preview = truncate(b.content || "…");
+    return `<div class="db db-text">
+      <div class="db-label">text</div>
+      <div class="db-content">${escapeHtml(preview)}</div>
+    </div>`;
+  }
+
+  if (b.type === "tool_call") {
+    const statusIcon = b.status === "ok" ? " ✓" : b.status === "error" ? " ✗" : " …";
+    const argsDisplay = b.argsParsed != null
+      ? truncate(JSON.stringify(b.argsParsed, null, 2))
+      : truncate(b.argsRaw || "");
+    const resultDisplay = b.result != null ? truncate(prettyJson(b.result)) : null;
+
+    return `<div class="db db-tool status-${escapeHtml(b.status)}">
+      <div class="db-label"><span class="db-tool-name">${escapeHtml(b.name)}</span>${statusIcon}</div>
+      ${argsDisplay ? `<div class="db-section">args</div><div class="db-content">${escapeHtml(argsDisplay)}</div>` : ""}
+      ${resultDisplay != null ? `<div class="db-section">result</div><div class="db-content">${escapeHtml(resultDisplay)}</div>` : ""}
+    </div>`;
+  }
+
+  return "";
+}
+
+function renderDebug() {
+  const atBottom =
+    debugBlocks.scrollHeight - debugBlocks.scrollTop - debugBlocks.clientHeight < 40;
+  debugBlocks.innerHTML = blocks.map(renderBlock).join("");
+  if (atBottom) debugBlocks.scrollTop = debugBlocks.scrollHeight;
+}
+
+function debugEvent(evt) {
+  switch (evt.type) {
+    case "RUN_STARTED":
+      blocks.push({ type: "run", status: "started" });
+      break;
+    case "RUN_FINISHED":
+      blocks.push({ type: "run", status: "finished" });
+      break;
+    case "RUN_ERROR":
+      blocks.push({ type: "run", status: "error", error: evt.message });
+      break;
+
+    case "TEXT_MESSAGE_START":
+      blocks.push({ type: "text", messageId: evt.messageId, content: "" });
+      break;
+    case "TEXT_MESSAGE_CONTENT": {
+      const tb = blocks.findLast((b) => b.type === "text" && b.messageId === evt.messageId);
+      if (tb) tb.content += evt.delta;
+      break;
+    }
+
+    case "TOOL_CALL_START":
+      blocks.push({
+        type: "tool_call",
+        toolCallId: evt.toolCallId,
+        name: evt.toolCallName,
+        argsRaw: "",
+        argsParsed: null,
+        result: null,
+        status: "calling",
+      });
+      break;
+    case "TOOL_CALL_ARGS": {
+      const tc = blocks.findLast((b) => b.type === "tool_call" && b.toolCallId === evt.toolCallId);
+      if (tc) tc.argsRaw += evt.delta;
+      break;
+    }
+    case "TOOL_CALL_END": {
+      const tc = blocks.findLast((b) => b.type === "tool_call" && b.toolCallId === evt.toolCallId);
+      if (tc) {
+        try { tc.argsParsed = JSON.parse(tc.argsRaw); } catch { /* keep raw */ }
+      }
+      break;
+    }
+    case "TOOL_CALL_RESULT": {
+      const tc = blocks.findLast((b) => b.type === "tool_call" && b.toolCallId === evt.toolCallId);
+      if (tc) {
+        tc.result = evt.content;
+        try {
+          const parsed = JSON.parse(evt.content);
+          tc.status = parsed.error != null ? "error" : "ok";
+        } catch {
+          tc.status = "ok";
+        }
+      }
+      break;
+    }
+  }
+  renderDebug();
+}
+
+// Toggle
+let debugVisible = false;
+debugBtn.addEventListener("click", () => {
+  debugVisible = !debugVisible;
+  document.body.classList.toggle("debug-open", debugVisible);
+});
+
+debugClear.addEventListener("click", () => {
+  blocks.length = 0;
+  renderDebug();
+});
+
+// ---------------------------------------------------------------------------
 // Chat UI
 // ---------------------------------------------------------------------------
 
@@ -112,6 +258,9 @@ async function send() {
         } catch {
           continue;
         }
+
+        // Feed every event to the debug accumulator.
+        debugEvent(evt);
 
         switch (evt.type) {
           case "TEXT_MESSAGE_START":
