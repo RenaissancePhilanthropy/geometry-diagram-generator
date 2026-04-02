@@ -48,6 +48,7 @@ Key rules:
 | op | required fields | notes |
 |---|---|---|
 | triangle | vertices:[A,B,C], spec:{...} | spec keys: angle_A/B/C (deg), side_AB/BC/CA, right_angle_at; optional center:[x,y] for centroid placement (default [2,2]) |
+| regular_polygon | center, radius, vertices:[...], start_angle?, star? | N equally-spaced points on a circle + polygon; star:true connects every 2nd vertex (star polygon, e.g. pentagram) — requires odd N ≥ 5 |
 | circle | center, radius OR through | explicit radius or through-point |
 | segment | endpoints:[A,B] | finite segment |
 | line_through | points:[A,B] | infinite line |
@@ -96,6 +97,7 @@ RECIPE_DSL_QUICK_REF = """\
 | op | key fields |
 |---|---|
 | triangle | vertices:[A,B,C], spec:{angle_A/B/C (deg), side_AB/BC/CA, right_angle_at} |
+| regular_polygon | center, radius, vertices:[...], start_angle?, star? | N equally-spaced points on circle + polygon; star:true for star shape (odd N ≥ 5) |
 | circle | center, radius OR through |
 | polygon | vertices:[A,B,...] |
 | point | coords:[x,y]  (grid mode only) |

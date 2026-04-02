@@ -81,7 +81,7 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 | kind | fields | description |
 |---|---|---|
 | `triangle` | `a, b, c: PointId` | Triangle (enables triangle-center operations) |
-| `polygon` | `points: [PointId, ...]` (3+) | Closed polygon |
+| `polygon` | `points: [PointId, ...]` (3+) | Closed polygon. To draw a star, list vertices in star-winding order (e.g. for a pentagram with points A–E, use `[A, C, E, B, D]`). |
 | `polygon_exterior` | `a, b: PointId, ref: PointId, sides: int (≥3, default 4)` | Regular polygon on edge (a,b), placed on the **opposite side** from `ref`. Use for squares/equilateral triangles on the outside of an existing edge. The compiler auto-computes rotation direction; vertex sub-points are registered as `{id}_v2`, `{id}_v3`, … (v0=a, v1=b). |
 
 ---

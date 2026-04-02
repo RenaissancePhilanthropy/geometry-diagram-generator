@@ -266,12 +266,25 @@ class RegularPolygonOp(DSLOpBase):
     """Regular polygon computed from center, radius, and start angle.
 
     Lowering emits N point_fixed defs (named by `vertices`) then a polygon def.
+    Set star=True to connect every 2nd vertex (star polygon, e.g. pentagram {5/2}).
+    Requires an odd number of vertices >= 5.
     """
     op: Literal["regular_polygon"] = "regular_polygon"
     center: str
     radius: Union[int, float, str]
     start_angle: Union[int, float, str] = 0  # degrees; 0 = first vertex at rightmost
     vertices: list[str]  # exactly N names, one per vertex
+    star: bool = False  # True → connect every 2nd vertex (star polygon)
+
+    @model_validator(mode="after")
+    def _check_star_valid(self) -> "RegularPolygonOp":
+        if self.star:
+            n = len(self.vertices)
+            if n < 5 or n % 2 == 0:
+                raise ValueError(
+                    f"star=True requires an odd number of vertices >= 5 (got {n})"
+                )
+        return self
 
 
 class PointAlongOp(DSLOpBase):

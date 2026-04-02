@@ -243,7 +243,11 @@ class _Lowerer:
             self._defs.append(PointFixed(id=vid, x=x, y=y))
             self._point_ids.append(vid)
             self._coord_floats[vid] = (x, y)
-        self._defs.append(Polygon(id=op.id, points=list(op.vertices)))
+        if op.star:
+            reordered = [op.vertices[(i * 2) % n] for i in range(n)]
+        else:
+            reordered = list(op.vertices)
+        self._defs.append(Polygon(id=op.id, points=reordered))
         self._drawable.add(op.id)
 
     def _lower_point_external(self, op: PointExternalOp) -> None:

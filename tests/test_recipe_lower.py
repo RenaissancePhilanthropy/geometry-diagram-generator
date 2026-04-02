@@ -442,6 +442,53 @@ def test_polygon_exterior_lowering():
     assert sq_def.sides == 4
 
 
+def test_regular_polygon_star_lowering_reorders_vertices():
+    """star=True produces a Polygon with every-2nd-vertex winding."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0, 0]),
+        RegularPolygonOp(id="star", center="O", radius=3, start_angle=90,
+                         vertices=["A","B","C","D","E"], star=True),
+    ], mode="grid")
+    ir = lower_to_ir(dsl)
+    poly = next(d for d in ir.define if d.id == "star")
+    assert poly.kind == "polygon"
+    assert poly.points == ["A", "C", "E", "B", "D"]
+
+
+def test_regular_polygon_no_star_lowering_sequential():
+    """star=False (default) produces a Polygon with sequential vertex order."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0, 0]),
+        RegularPolygonOp(id="pent", center="O", radius=3, start_angle=90,
+                         vertices=["A","B","C","D","E"]),
+    ], mode="grid")
+    ir = lower_to_ir(dsl)
+    poly = next(d for d in ir.define if d.id == "pent")
+    assert poly.kind == "polygon"
+    assert poly.points == ["A", "B", "C", "D", "E"]
+
+
+def test_regular_polygon_star_point_coords_unchanged():
+    """star=True does not alter the computed coordinates of the vertices."""
+    import math
+    dsl_star = _dsl([
+        PointOp(id="O", coords=[0, 0]),
+        RegularPolygonOp(id="star", center="O", radius=3, start_angle=0,
+                         vertices=["A","B","C","D","E"], star=True),
+    ], mode="grid")
+    dsl_conv = _dsl([
+        PointOp(id="O", coords=[0, 0]),
+        RegularPolygonOp(id="pent", center="O", radius=3, start_angle=0,
+                         vertices=["A","B","C","D","E"]),
+    ], mode="grid")
+    ir_star = lower_to_ir(dsl_star)
+    ir_conv = lower_to_ir(dsl_conv)
+    # Point coords should be identical — only the Polygon winding differs
+    pts_star = {d.id: (d.x, d.y) for d in ir_star.define if d.kind == "point_fixed" and d.id in list("ABCDE")}
+    pts_conv = {d.id: (d.x, d.y) for d in ir_conv.define if d.kind == "point_fixed" and d.id in list("ABCDE")}
+    assert pts_star == pts_conv
+
+
 def test_multiple_triangles_circumcircle():
     """Circumcircle expansion correctly finds vertices of the referenced triangle."""
     dsl = RecipeDSL(construction=[
