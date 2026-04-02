@@ -160,6 +160,21 @@ def test_regular_polygon_op():
     assert op.op == "regular_polygon"
     assert len(op.vertices) == 6
 
+def test_regular_polygon_star_valid():
+    op = RegularPolygonOp(id="star", center="O", radius=3, start_angle=90,
+                          vertices=["A","B","C","D","E"], star=True)
+    assert op.star is True
+
+def test_regular_polygon_star_rejects_even_n():
+    with pytest.raises(ValidationError):
+        RegularPolygonOp(id="star", center="O", radius=3,
+                         vertices=["A","B","C","D","E","F"], star=True)
+
+def test_regular_polygon_star_rejects_small_n():
+    with pytest.raises(ValidationError):
+        RegularPolygonOp(id="star", center="O", radius=3,
+                         vertices=["A","B","C"], star=True)
+
 def test_point_along_op():
     op = PointAlongOp(**{"op": "point_along", "id": "D", "from": "A", "on": "line1",
                          "distance": 2, "toward": "B"})
