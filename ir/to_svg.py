@@ -1,0 +1,1106 @@
+"""Direct SVG renderer for DiagramIR.
+
+Converts a compiled DiagramIR + SymTable directly to an SVG string,
+bypassing TikZ/LaTeX entirely.  All geometric coordinates come from the
+SymPy symbol table; no Docker container is required.
+
+Y-axis convention
+-----------------
+SymPy uses a math-style coordinate system (y increases upward).
+SVG uses a screen coordinate system (y increases downward).
+We handle this by placing all geometry inside a ``<g transform="scale(1,-1)">``
+group and then placing text elements outside that group (or applying a
+counter-flip transform to each text element) so labels appear upright.
+"""
+from __future__ import annotations
+
+import logging
+import math
+import re
+import xml.etree.ElementTree as ET
+from typing import Any
+
+import sympy.geometry as spg
+
+import ir.ir as ir
+from ir.to_sympy import SymTable
+from ir.render_util import (
+    BOUNDS_PADDING,
+    circle_center_through,
+    compute_bounds,
+    effective_canvas_bounds,
+    extract_coords,
+    fmt_label_num,
+    fmt_num,
+    line_endpoints,
+    orient_angle,
+    poly_verts,
+    round_down_to_step,
+    round_up_to_step,
+    second_line_point,
+    seg_endpoints,
+    synthesize_helpers,
+    sympy_to_float,
+    tick_values,
+)
+
+logger = logging.getLogger(__name__)
+
+# SVG canvas dimensions in pixels (geometry is mapped into this space)
+_SVG_SIZE = 500
+_POINT_RADIUS = 2.5        # px — radius of drawn points
+_TICK_LEN = 6              # px — half-length of segment tick marks
+_RA_SIZE = 8               # px — size of right-angle square leg
+_ANGLE_ARC_R = 20          # px — radius of angle arc marks
+_FONT_SIZE = 14            # px
+_LABEL_OFFSET = 12         # px — label distance from geometry
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+def ir_to_svg(
+    diagram: ir.DiagramIR,
+    sym: SymTable,
+    warnings: list[str] | None = None,
+) -> str:
+    """Compile a DiagramIR + resolved SymTable to an SVG string."""
+
+    # --- Extract coordinates and helper points ---
+    coords = extract_coords(sym)
+    stmt_by_id: dict[str, Any] = {stmt.id: stmt for stmt in diagram.define}
+    helpers = synthesize_helpers(diagram, sym, coords)
+
+    # --- Compute viewport bounds (in geometry/SymPy space) ---
+    canvas = diagram.canvas
+    if canvas is not None:
+        xmin, xmax, ymin, ymax = effective_canvas_bounds(canvas)
+        for px, py in list(coords.values()) + list(helpers.values()):
+            if px < xmin:
+                xmin = px - BOUNDS_PADDING
+            if px > xmax:
+                xmax = px + BOUNDS_PADDING
+            if py < ymin:
+                ymin = py - BOUNDS_PADDING
+            if py > ymax:
+                ymax = py + BOUNDS_PADDING
+    else:
+        xmin, xmax, ymin, ymax = compute_bounds(coords, helpers, sym)
+
+    geo_w = xmin if xmin == xmax else xmax - xmin
+    geo_h = ymin if ymin == ymax else ymax - ymin
+    if geo_w == 0:
+        geo_w = 1.0
+    if geo_h == 0:
+        geo_h = 1.0
+
+    # Scale: map geometry units → SVG pixels
+    # Keep aspect ratio; add a small pixel margin
+    _MARGIN = 20  # px
+    usable = _SVG_SIZE - 2 * _MARGIN
+    scale = usable / max(geo_w, geo_h)
+    svg_w = geo_w * scale + 2 * _MARGIN
+    svg_h = geo_h * scale + 2 * _MARGIN
+
+    def gx(x: float) -> float:
+        """Geometry x → SVG x."""
+        return (x - xmin) * scale + _MARGIN
+
+    def gy(y: float) -> float:
+        """Geometry y → SVG y (flipped: high y = low pixel row)."""
+        return svg_h - ((y - ymin) * scale + _MARGIN)
+
+    def gxy(x: float, y: float) -> tuple[float, float]:
+        return gx(x), gy(y)
+
+    def pt(pid: str) -> tuple[float, float]:
+        """Look up a point by id in coords+helpers, return SVG (px, py)."""
+        if pid in coords:
+            return gxy(*coords[pid])
+        if pid in helpers:
+            return gxy(*helpers[pid])
+        raise KeyError(f"Point {pid!r} not found in coords or helpers")
+
+    # --- Build SVG root ---
+    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    svg = ET.Element("svg", {
+        "xmlns": "http://www.w3.org/2000/svg",
+        "width": fmt_num(svg_w),
+        "height": fmt_num(svg_h),
+        "viewBox": f"0 0 {fmt_num(svg_w)} {fmt_num(svg_h)}",
+    })
+
+    # White background
+    ET.SubElement(svg, "rect", {
+        "x": "0", "y": "0",
+        "width": fmt_num(svg_w), "height": fmt_num(svg_h),
+        "fill": "white",
+    })
+
+    # Optional grid
+    if canvas is not None and canvas.grid:
+        _append_grid(svg, canvas, xmin, xmax, ymin, ymax, gxy)
+
+    # Optional axes
+    if canvas is not None and canvas.axes:
+        _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale)
+
+    # --- Render ops (z-sorted) ---
+    _Z_ORDER = {
+        "fill": 0,
+        "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
+        "draw_points": 2,
+        "label_point": 3, "label_angle": 3, "label_segment": 3,
+    }
+    sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
+
+    # Pre-compute group → tick-count for MarkSegments
+    _styles = diagram.styles or {}
+    seg_groups: list[str] = []
+    for op in sorted_ops:
+        if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
+            if op.group not in seg_groups:
+                seg_groups.append(op.group)
+    group_tick_counts = {g: (i % 3) + 1 for i, g in enumerate(seg_groups)}
+
+    for op in sorted_ops:
+        _emit_svg_op(
+            op, svg, sym, stmt_by_id, coords, helpers, _styles,
+            group_tick_counts, pt, gxy, scale, xmin, xmax, ymin, ymax,
+            warnings=warnings,
+        )
+
+    # --- Serialise ---
+    return ET.tostring(svg, encoding="unicode", xml_declaration=False)
+
+
+# ---------------------------------------------------------------------------
+# Per-op SVG emitters
+# ---------------------------------------------------------------------------
+
+def _emit_svg_op(
+    op: Any,
+    svg: ET.Element,
+    sym: SymTable,
+    stmt_by_id: dict,
+    coords: dict,
+    helpers: dict,
+    styles: dict,
+    group_tick_counts: dict,
+    pt,
+    gxy,
+    scale: float,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    warnings: list[str] | None = None,
+) -> None:
+    match op:
+        case ir.Draw(obj=obj_id, add=add, style=style):
+            if obj_id not in sym:
+                _warn(warnings, f"Skipping Draw for undefined object '{obj_id}'")
+                return
+            sym_obj = sym[obj_id]
+            attrs = _stroke_attrs(style, styles)
+
+            if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+                verts = poly_verts(obj_id, stmt_by_id)
+                pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
+                el = ET.SubElement(svg, "polygon", {"points": pts_str, "fill": "none", **attrs})
+
+            elif isinstance(sym_obj, spg.Segment):
+                a, b = seg_endpoints(obj_id, stmt_by_id)
+                x1, y1 = pt(a)
+                x2, y2 = pt(b)
+                ET.SubElement(svg, "line", {
+                    "x1": f"{x1:.2f}", "y1": f"{y1:.2f}",
+                    "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
+                    **attrs,
+                })
+
+            elif isinstance(sym_obj, spg.Line):
+                p1_id, p2_id = line_endpoints(obj_id, stmt_by_id, helpers)
+                x1, y1 = _geo_coord(p1_id, coords, helpers)
+                x2, y2 = _geo_coord(p2_id, coords, helpers)
+                sx1, sy1, sx2, sy2 = _clip_line_to_bounds(
+                    x1, y1, x2, y2, xmin, xmax, ymin, ymax
+                )
+                if sx1 is not None:
+                    px1, py1 = gxy(sx1, sy1)
+                    px2, py2 = gxy(sx2, sy2)
+                    ET.SubElement(svg, "line", {
+                        "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
+                        "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
+                        **attrs,
+                    })
+
+            elif isinstance(sym_obj, spg.Ray):
+                stmt = stmt_by_id[obj_id]
+                ax, ay = _geo_coord(stmt.a, coords, helpers)
+                bx, by = _geo_coord(stmt.b, coords, helpers)
+                # Extend ray to canvas edge
+                sx1, sy1, sx2, sy2 = _clip_ray_to_bounds(
+                    ax, ay, bx, by, xmin, xmax, ymin, ymax
+                )
+                if sx1 is not None:
+                    px1, py1 = gxy(sx1, sy1)
+                    px2, py2 = gxy(sx2, sy2)
+                    ET.SubElement(svg, "line", {
+                        "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
+                        "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
+                        **attrs,
+                    })
+
+            elif isinstance(sym_obj, spg.Circle):
+                cx_g = sympy_to_float(sym_obj.center.x)
+                cy_g = sympy_to_float(sym_obj.center.y)
+                r_g = sympy_to_float(sym_obj.radius)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                r_s = r_g * scale
+                ET.SubElement(svg, "circle", {
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
+                    "fill": "none",
+                    **attrs,
+                })
+
+        case ir.DrawPoints(points=points, style=style):
+            fill = _color_from_style(style, styles) or "black"
+            for pid in points:
+                if pid not in coords and pid not in helpers:
+                    _warn(warnings, f"Skipping DrawPoints for undefined point '{pid}'")
+                    continue
+                px, py = pt(pid)
+                ET.SubElement(svg, "circle", {
+                    "cx": f"{px:.2f}", "cy": f"{py:.2f}",
+                    "r": str(_POINT_RADIUS),
+                    "fill": fill,
+                })
+
+        case ir.Fill(obj=obj_id, opacity=opacity, style=style):
+            if obj_id not in sym:
+                _warn(warnings, f"Skipping Fill for undefined object '{obj_id}'")
+                return
+            sym_obj = sym[obj_id]
+            fill_color, fill_opacity = _fill_attrs(style, styles, opacity)
+
+            if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+                verts = poly_verts(obj_id, stmt_by_id)
+                pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
+                ET.SubElement(svg, "polygon", {
+                    "points": pts_str,
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
+
+            elif isinstance(sym_obj, spg.Circle):
+                cx_g = sympy_to_float(sym_obj.center.x)
+                cy_g = sympy_to_float(sym_obj.center.y)
+                r_g = sympy_to_float(sym_obj.radius)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                r_s = r_g * scale
+                ET.SubElement(svg, "circle", {
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
+
+        case ir.MarkRightAngles(angles=angles, style=style):
+            stroke = _color_from_style(style, styles) or "black"
+            for angle in angles:
+                missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+                if missing:
+                    _warn(warnings, f"Skipping MarkRightAngles for undefined {missing!r}")
+                    continue
+                _append_right_angle_mark(svg, angle.a, angle.o, angle.b, pt, stroke)
+
+        case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
+            stroke = _color_from_style(style or group, styles)
+            if stroke is None:
+                _COLOR_CYCLE = ["black", "blue", "red", "teal", "purple", "orange"]
+                try:
+                    idx = (int(str(group)) - 1) % len(_COLOR_CYCLE) if group else 0
+                    stroke = _COLOR_CYCLE[idx]
+                except (ValueError, TypeError):
+                    stroke = "black"
+            n_arcs = 1
+            if group:
+                try:
+                    n_arcs = min(int(str(group)), 3)
+                except (ValueError, TypeError):
+                    pass
+            for angle in angles:
+                missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+                if missing:
+                    _warn(warnings, f"Skipping MarkAngles for undefined {missing!r}")
+                    continue
+                a, o, b = orient_angle(angle.a, angle.o, angle.b, sym, which)
+                _append_angle_arc(svg, a, o, b, pt, stroke, n_arcs)
+
+        case ir.MarkSegments(segs=segs, group=group, style=style):
+            stroke = _color_from_style(style or group, styles) or "black"
+            n_ticks = 1
+            if group and group in group_tick_counts:
+                n_ticks = group_tick_counts[group]
+            for seg_id in segs:
+                if seg_id not in stmt_by_id:
+                    _warn(warnings, f"Skipping MarkSegments for undefined '{seg_id}'")
+                    continue
+                a, b = seg_endpoints(seg_id, stmt_by_id)
+                _append_seg_ticks(svg, a, b, pt, stroke, n_ticks)
+
+        case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
+            if p not in sym:
+                _warn(warnings, f"Skipping LabelPoint for undefined '{p}'")
+                return
+            label = text if text is not None else p
+            px, py = pt(p)
+            ox, oy = _label_offset(pos, _LABEL_OFFSET)
+            color = _color_from_style(style, styles) or "black"
+            _append_label(svg, px + ox, py + oy, label, color, anchor=_pos_to_anchor(pos))
+
+        case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
+            missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
+            if missing:
+                _warn(warnings, f"Skipping LabelAngle for undefined {missing!r}")
+                return
+            a_id, o_id, b_id = orient_angle(angle.a, angle.o, angle.b, sym, "interior")
+            ox_g, oy_g = coords.get(o_id, helpers.get(o_id, (0, 0)))
+            ax_g, ay_g = coords.get(a_id, helpers.get(a_id, (0, 0)))
+            bx_g, by_g = coords.get(b_id, helpers.get(b_id, (0, 0)))
+            # Place label along bisector direction
+            da = math.atan2(ay_g - oy_g, ax_g - ox_g)
+            db = math.atan2(by_g - oy_g, bx_g - ox_g)
+            bisector_angle = (da + db) / 2
+            lx, ly = gxy(ox_g, oy_g)
+            lx += math.cos(bisector_angle) * _LABEL_OFFSET * 1.5
+            # In SVG space y is flipped, so negate sin component
+            ly -= math.sin(bisector_angle) * _LABEL_OFFSET * 1.5
+            color = _color_from_style(style, styles) or "black"
+            _append_label(svg, lx, ly, text or "", color, anchor="middle")
+
+        case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
+            if seg_id not in stmt_by_id:
+                _warn(warnings, f"Skipping LabelSegment for undefined '{seg_id}'")
+                return
+            a, b = seg_endpoints(seg_id, stmt_by_id)
+            ax, ay = pt(a)
+            bx, by = pt(b)
+            # Midpoint, offset perpendicular
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            dx, dy = bx - ax, by - ay
+            mag = math.hypot(dx, dy) or 1
+            # Perpendicular (rotated 90° CCW in screen coords)
+            nx, ny = -dy / mag, dx / mag
+            t_frac = pos if isinstance(pos, (int, float)) else 0.5
+            # For string pos values, place at midpoint offset
+            lx = mx + nx * _LABEL_OFFSET
+            ly = my + ny * _LABEL_OFFSET
+            color = _color_from_style(style, styles) or "black"
+            _append_label(svg, lx, ly, text or "", color, anchor="middle")
+
+
+# ---------------------------------------------------------------------------
+# Mark helpers
+# ---------------------------------------------------------------------------
+
+def _append_right_angle_mark(
+    svg: ET.Element,
+    a_id: str,
+    o_id: str,
+    b_id: str,
+    pt,
+    stroke: str,
+) -> None:
+    """Draw a small square at vertex o between rays oa and ob."""
+    ox, oy = pt(o_id)
+    ax, ay = pt(a_id)
+    bx, by = pt(b_id)
+
+    def unit(dx: float, dy: float) -> tuple[float, float]:
+        m = math.hypot(dx, dy) or 1
+        return dx / m, dy / m
+
+    ux, uy = unit(ax - ox, ay - oy)
+    vx, vy = unit(bx - ox, by - oy)
+    s = _RA_SIZE
+    # Four corners of the square
+    p1 = (ox + ux * s, oy + uy * s)
+    p2 = (ox + ux * s + vx * s, oy + uy * s + vy * s)
+    p3 = (ox + vx * s, oy + vy * s)
+    d = (
+        f"M {p1[0]:.2f} {p1[1]:.2f} "
+        f"L {p2[0]:.2f} {p2[1]:.2f} "
+        f"L {p3[0]:.2f} {p3[1]:.2f}"
+    )
+    ET.SubElement(svg, "path", {
+        "d": d,
+        "stroke": stroke,
+        "stroke-width": "1.5",
+        "fill": "none",
+    })
+
+
+def _append_angle_arc(
+    svg: ET.Element,
+    a_id: str,
+    o_id: str,
+    b_id: str,
+    pt,
+    stroke: str,
+    n_arcs: int,
+) -> None:
+    """Draw n_arcs concentric arcs at vertex o from ray oa to ray ob.
+
+    orient_angle() has already ensured that the CCW sweep from a→b in SymPy
+    (y-up) math coords traces the requested arc (interior/exterior).  In SVG
+    pixel coords (y-down) that same CCW sweep becomes CW, so:
+      - angles computed from pixel coords are negated relative to math angles
+      - diff_svg = 2π − diff_math, flipping large/small
+      - the correct draw direction is sweep=0 (CCW in SVG = CW visually = CCW in math)
+      - large_arc must be flipped: 0 when diff_svg > π (i.e. the complement ≤ π)
+    """
+    ox, oy = pt(o_id)
+    ax, ay = pt(a_id)
+    bx, by = pt(b_id)
+
+    # Angles in SVG pixel space (y-down), so negated vs. math space
+    angle_a = math.atan2(ay - oy, ax - ox)
+    angle_b = math.atan2(by - oy, bx - ox)
+
+    # diff_svg = 2π − diff_math, so large when the math interior arc is small
+    diff = (angle_b - angle_a) % (2 * math.pi)
+    # We want large_arc=0 when the intended arc ≤ 180° (diff_svg > π → complement ≤ π)
+    large_arc = 0 if diff > math.pi else 1
+
+    for i in range(n_arcs):
+        r = _ANGLE_ARC_R + i * 5
+        sx = ox + r * math.cos(angle_a)
+        sy = oy + r * math.sin(angle_a)
+        ex = ox + r * math.cos(angle_b)
+        ey = oy + r * math.sin(angle_b)
+        # sweep=0 (CCW in SVG pixel space) corresponds to CCW in math space = interior
+        d = f"M {sx:.2f} {sy:.2f} A {r:.2f} {r:.2f} 0 {large_arc} 0 {ex:.2f} {ey:.2f}"
+        ET.SubElement(svg, "path", {
+            "d": d,
+            "stroke": stroke,
+            "stroke-width": "1.5",
+            "fill": "none",
+        })
+
+
+def _append_seg_ticks(
+    svg: ET.Element,
+    a_id: str,
+    b_id: str,
+    pt,
+    stroke: str,
+    n_ticks: int,
+) -> None:
+    """Draw n_ticks perpendicular tick marks at the midpoint of segment AB."""
+    ax, ay = pt(a_id)
+    bx, by = pt(b_id)
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    dx, dy = bx - ax, by - ay
+    mag = math.hypot(dx, dy) or 1
+    # Perpendicular direction
+    nx, ny = -dy / mag, dx / mag
+    # Tick spacing along the segment direction
+    spacing = 4  # px between multiple ticks
+    along_x, along_y = dx / mag, dy / mag
+
+    for i in range(n_ticks):
+        offset = (i - (n_ticks - 1) / 2) * spacing
+        tx = mx + along_x * offset
+        ty = my + along_y * offset
+        ET.SubElement(svg, "line", {
+            "x1": f"{tx - nx * _TICK_LEN:.2f}",
+            "y1": f"{ty - ny * _TICK_LEN:.2f}",
+            "x2": f"{tx + nx * _TICK_LEN:.2f}",
+            "y2": f"{ty + ny * _TICK_LEN:.2f}",
+            "stroke": stroke,
+            "stroke-width": "1.5",
+        })
+
+
+# ---------------------------------------------------------------------------
+# Label helpers
+# ---------------------------------------------------------------------------
+
+def _append_label(
+    svg: ET.Element,
+    x: float,
+    y: float,
+    text: str,
+    color: str,
+    anchor: str = "middle",
+) -> None:
+    """Append a <text> element with LaTeX-to-SVG tspan conversion."""
+    el = ET.SubElement(svg, "text", {
+        "x": f"{x:.2f}",
+        "y": f"{y:.2f}",
+        "font-family": "serif",
+        "font-size": str(_FONT_SIZE),
+        "fill": color,
+        "text-anchor": anchor,
+        "dominant-baseline": "central",
+    })
+    _build_tspans(el, text)
+
+
+def _build_tspans(parent: ET.Element, text: str) -> None:
+    """Parse LaTeX math markup and populate parent with text/tspan children."""
+    # Strip outer $...$ delimiters
+    stripped = text.strip()
+    if stripped.startswith("$") and stripped.endswith("$") and len(stripped) > 1:
+        stripped = stripped[1:-1]
+
+    # Apply command substitutions (Greek letters, symbols)
+    segments = _parse_latex(stripped)
+    for seg in segments:
+        kind = seg["kind"]
+        content = seg["content"]
+        if kind == "text":
+            _append_text_run(parent, content)
+        elif kind == "sub":
+            _append_tspan(parent, content, baseline_shift="sub", font_size="70%")
+        elif kind == "sup":
+            _append_tspan(parent, content, baseline_shift="super", font_size="70%")
+        elif kind == "overline":
+            _append_tspan(parent, content, text_decoration="overline")
+
+
+def _append_text_run(parent: ET.Element, text: str) -> None:
+    """Append characters from a plain-text run, italicising lone letters."""
+    # Split into italic (single letter) and upright (everything else) runs
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch.isalpha() and (i == 0 or not text[i - 1].isalpha()) and (i + 1 >= len(text) or not text[i + 1].isalpha()):
+            # Single isolated letter → italic
+            span = ET.SubElement(parent, "tspan", {"font-style": "italic"})
+            span.text = ch
+        else:
+            # Append to parent directly
+            if len(parent) == 0:
+                parent.text = (parent.text or "") + ch
+            else:
+                last = parent[-1]
+                last.tail = (last.tail or "") + ch
+        i += 1
+
+
+def _append_tspan(
+    parent: ET.Element,
+    content: str,
+    baseline_shift: str | None = None,
+    font_size: str | None = None,
+    text_decoration: str | None = None,
+) -> None:
+    attrs: dict[str, str] = {}
+    if baseline_shift:
+        attrs["baseline-shift"] = baseline_shift
+    if font_size:
+        attrs["font-size"] = font_size
+    if text_decoration:
+        attrs["text-decoration"] = text_decoration
+    span = ET.SubElement(parent, "tspan", attrs)
+    span.text = content
+
+
+# ---------------------------------------------------------------------------
+# LaTeX parser
+# ---------------------------------------------------------------------------
+
+# Greek letters and common symbols → Unicode
+_LATEX_UNICODE: dict[str, str] = {
+    # Lowercase Greek
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ",
+    "epsilon": "ε", "varepsilon": "ε", "zeta": "ζ", "eta": "η",
+    "theta": "θ", "vartheta": "ϑ", "iota": "ι", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ",
+    "pi": "π", "varpi": "ϖ", "rho": "ρ", "varrho": "ϱ",
+    "sigma": "σ", "varsigma": "ς", "tau": "τ", "upsilon": "υ",
+    "phi": "φ", "varphi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω",
+    # Uppercase Greek
+    "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ",
+    "Xi": "Ξ", "Pi": "Π", "Sigma": "Σ", "Upsilon": "Υ",
+    "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
+    # Geometry symbols
+    "triangle": "△", "angle": "∠", "perp": "⊥", "parallel": "∥",
+    "sim": "∼", "cong": "≅",
+    # Math symbols
+    "degree": "°", "infty": "∞", "cdot": "·", "times": "×",
+    "leq": "≤", "geq": "≥", "neq": "≠", "approx": "≈",
+    "pm": "±", "sqrt": "√",
+    # Formatting that becomes invisible/plain
+    "left": "", "right": "", ",": " ", ";": " ", "!": "",
+    "text": "",  # \text{...} handled below
+}
+
+
+def _parse_latex(s: str) -> list[dict]:
+    """Parse a LaTeX string (without outer $) into a list of segments.
+
+    Each segment is a dict with keys:
+      - ``kind``: "text" | "sub" | "sup" | "overline"
+      - ``content``: the (already-converted) string content
+    """
+    segments: list[dict] = []
+    i = 0
+    current_text = ""
+
+    def flush():
+        nonlocal current_text
+        if current_text:
+            segments.append({"kind": "text", "content": current_text})
+            current_text = ""
+
+    while i < len(s):
+        ch = s[i]
+
+        if ch == "\\":
+            # LaTeX command
+            i += 1
+            # Read command name (letters only, or a single non-letter)
+            if i < len(s) and s[i].isalpha():
+                j = i
+                while j < len(s) and s[j].isalpha():
+                    j += 1
+                cmd = s[i:j]
+                i = j
+                # Check for \overline{...}
+                if cmd == "overline" and i < len(s) and s[i] == "{":
+                    inner, i = _read_braced(s, i)
+                    flush()
+                    segments.append({"kind": "overline", "content": _apply_substitutions(inner)})
+                elif cmd == "text" and i < len(s) and s[i] == "{":
+                    # \text{...} → plain text (upright)
+                    inner, i = _read_braced(s, i)
+                    current_text += inner
+                else:
+                    current_text += _LATEX_UNICODE.get(cmd, cmd)
+            else:
+                if i < len(s):
+                    current_text += _LATEX_UNICODE.get(s[i], s[i])
+                    i += 1
+
+        elif ch == "_":
+            flush()
+            i += 1
+            if i < len(s) and s[i] == "{":
+                inner, i = _read_braced(s, i)
+            elif i < len(s):
+                inner = s[i]
+                i += 1
+            else:
+                inner = ""
+            segments.append({"kind": "sub", "content": _apply_substitutions(inner)})
+
+        elif ch == "^":
+            flush()
+            i += 1
+            if i < len(s) and s[i] == "{":
+                inner, i = _read_braced(s, i)
+            elif i < len(s):
+                inner = s[i]
+                i += 1
+            else:
+                inner = ""
+            segments.append({"kind": "sup", "content": _apply_substitutions(inner)})
+
+        elif ch in "{}":
+            i += 1  # skip bare braces
+
+        else:
+            current_text += ch
+            i += 1
+
+    flush()
+    return segments
+
+
+def _read_braced(s: str, i: int) -> tuple[str, int]:
+    """Read {content} starting at s[i] (where s[i]=='{'). Return (content, new_i)."""
+    assert s[i] == "{"
+    depth = 0
+    j = i
+    start = i + 1
+    while j < len(s):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return s[start:j], j + 1
+        j += 1
+    return s[start:], len(s)
+
+
+def _apply_substitutions(s: str) -> str:
+    """Apply Unicode substitutions to a short string (e.g. inside sub/sup)."""
+    result = ""
+    i = 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            i += 1
+            j = i
+            while j < len(s) and s[j].isalpha():
+                j += 1
+            cmd = s[i:j]
+            result += _LATEX_UNICODE.get(cmd, cmd)
+            i = j
+        else:
+            result += s[i]
+            i += 1
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Grid and axes
+# ---------------------------------------------------------------------------
+
+def _append_grid(
+    svg: ET.Element,
+    canvas: ir.Canvas,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    gxy,
+) -> None:
+    step = canvas.grid_step if canvas.grid_step > 0 else 1.0
+    gxmin = round_down_to_step(xmin, step)
+    gxmax = round_up_to_step(xmax, step)
+    gymin = round_down_to_step(ymin, step)
+    gymax = round_up_to_step(ymax, step)
+
+    x = gxmin
+    while x <= gxmax + 1e-9:
+        px1, py1 = gxy(x, gymin)
+        px2, py2 = gxy(x, gymax)
+        ET.SubElement(svg, "line", {
+            "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
+            "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
+            "stroke": "#ccc", "stroke-width": "0.5",
+        })
+        x += step
+
+    y = gymin
+    while y <= gymax + 1e-9:
+        px1, py1 = gxy(gxmin, y)
+        px2, py2 = gxy(gxmax, y)
+        ET.SubElement(svg, "line", {
+            "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
+            "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
+            "stroke": "#ccc", "stroke-width": "0.5",
+        })
+        y += step
+
+
+def _append_axes(
+    svg: ET.Element,
+    canvas: ir.Canvas,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    gxy,
+    scale: float,
+) -> None:
+    has_x = ymin <= 0 <= ymax
+    has_y = xmin <= 0 <= xmax
+
+    def arrow_line(x1, y1, x2, y2):
+        ET.SubElement(svg, "line", {
+            "x1": f"{x1:.2f}", "y1": f"{y1:.2f}",
+            "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
+            "stroke": "black", "stroke-width": "1.5",
+            "marker-end": "url(#arrow)",
+        })
+
+    # Ensure arrow marker is defined
+    _ensure_arrow_marker(svg)
+
+    if has_x:
+        px1, py1 = gxy(xmin, 0)
+        px2, py2 = gxy(xmax, 0)
+        arrow_line(px1, py1, px2, py2)
+        if canvas.show_axis_labels:
+            ET.SubElement(svg, "text", {
+                "x": f"{px2 + 8:.2f}", "y": f"{py2:.2f}",
+                "font-family": "serif", "font-size": str(_FONT_SIZE),
+                "font-style": "italic", "dominant-baseline": "central",
+            }).text = "x"
+
+    if has_y:
+        px1, py1 = gxy(0, ymin)
+        px2, py2 = gxy(0, ymax)
+        arrow_line(px1, py1, px2, py2)
+        if canvas.show_axis_labels:
+            ET.SubElement(svg, "text", {
+                "x": f"{px2:.2f}", "y": f"{py2 - 8:.2f}",
+                "font-family": "serif", "font-size": str(_FONT_SIZE),
+                "font-style": "italic", "text-anchor": "middle",
+            }).text = "y"
+
+    tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+    TICK_PX = 5
+
+    if (canvas.show_ticks or canvas.show_tick_labels) and has_x:
+        for x in tick_values(xmin, xmax, tick_step):
+            px, py = gxy(x, 0)
+            if canvas.show_ticks:
+                ET.SubElement(svg, "line", {
+                    "x1": f"{px:.2f}", "y1": f"{py - TICK_PX:.2f}",
+                    "x2": f"{px:.2f}", "y2": f"{py + TICK_PX:.2f}",
+                    "stroke": "black", "stroke-width": "1",
+                })
+            if canvas.show_tick_labels:
+                ET.SubElement(svg, "text", {
+                    "x": f"{px:.2f}", "y": f"{py + TICK_PX + 4:.2f}",
+                    "font-family": "sans-serif", "font-size": "11",
+                    "text-anchor": "middle", "dominant-baseline": "hanging",
+                }).text = fmt_label_num(x)
+
+    if (canvas.show_ticks or canvas.show_tick_labels) and has_y:
+        for y in tick_values(ymin, ymax, tick_step):
+            px, py = gxy(0, y)
+            if canvas.show_ticks:
+                ET.SubElement(svg, "line", {
+                    "x1": f"{px - TICK_PX:.2f}", "y1": f"{py:.2f}",
+                    "x2": f"{px + TICK_PX:.2f}", "y2": f"{py:.2f}",
+                    "stroke": "black", "stroke-width": "1",
+                })
+            if canvas.show_tick_labels:
+                ET.SubElement(svg, "text", {
+                    "x": f"{px - TICK_PX - 3:.2f}", "y": f"{py:.2f}",
+                    "font-family": "sans-serif", "font-size": "11",
+                    "text-anchor": "end", "dominant-baseline": "central",
+                }).text = fmt_label_num(y)
+
+
+def _ensure_arrow_marker(svg: ET.Element) -> None:
+    """Add an arrowhead marker to <defs> if not already present."""
+    defs = svg.find("{http://www.w3.org/2000/svg}defs")
+    if defs is None:
+        defs = svg.find("defs")
+    if defs is None:
+        defs = ET.SubElement(svg, "defs")
+        # Insert defs before other elements
+        svg.remove(defs)
+        svg.insert(0, defs)
+    # Check if arrow marker already exists
+    for child in defs:
+        if child.get("id") == "arrow":
+            return
+    marker = ET.SubElement(defs, "marker", {
+        "id": "arrow",
+        "markerWidth": "8", "markerHeight": "8",
+        "refX": "6", "refY": "3",
+        "orient": "auto",
+    })
+    ET.SubElement(marker, "path", {
+        "d": "M0,0 L0,6 L8,3 z",
+        "fill": "black",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Line / ray clipping
+# ---------------------------------------------------------------------------
+
+def _clip_line_to_bounds(
+    x1: float, y1: float, x2: float, y2: float,
+    xmin: float, xmax: float, ymin: float, ymax: float,
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """Clip an infinite line (defined by two points) to the bounding box.
+
+    Returns (cx1, cy1, cx2, cy2) or (None, None, None, None) if no intersection.
+    Uses parametric line-clipping (Cohen-Sutherland-like parameter approach).
+    """
+    dx = x2 - x1
+    dy = y2 - y1
+    t_vals: list[float] = []
+
+    # Collect all t values where the line crosses a box edge
+    for edge_val, is_x, sign in [
+        (xmin, True, 1), (xmax, True, -1),
+        (ymin, False, 1), (ymax, False, -1),
+    ]:
+        denom = dx if is_x else dy
+        if abs(denom) > 1e-12:
+            t = ((edge_val - (x1 if is_x else y1)) / denom)
+            t_vals.append(t)
+
+    if len(t_vals) < 2:
+        return None, None, None, None
+
+    t_vals.sort()
+    # Take the two widest t values that stay within the box
+    candidates = []
+    for t in t_vals:
+        px = x1 + t * dx
+        py = y1 + t * dy
+        if xmin - 1e-9 <= px <= xmax + 1e-9 and ymin - 1e-9 <= py <= ymax + 1e-9:
+            candidates.append((t, px, py))
+
+    if len(candidates) < 2:
+        return None, None, None, None
+
+    (_, ax, ay), (_, bx, by) = candidates[0], candidates[-1]
+    return ax, ay, bx, by
+
+
+def _clip_ray_to_bounds(
+    ox: float, oy: float, dx_: float, dy_: float,
+    xmin: float, xmax: float, ymin: float, ymax: float,
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """Clip a ray (from origin in direction (dx_, dy_)) to the bounding box.
+
+    Returns (ox, oy, ex, ey) — the ray starts at its origin and ends at
+    the first box edge it hits (or None if the origin is outside).
+    """
+    dx = dx_ - ox
+    dy = dy_ - oy
+    t_max = float("inf")
+
+    for edge_val, is_x in [
+        (xmin, True), (xmax, True),
+        (ymin, False), (ymax, False),
+    ]:
+        denom = dx if is_x else dy
+        if abs(denom) > 1e-12:
+            t = (edge_val - (ox if is_x else oy)) / denom
+            if t > 0:
+                t_max = min(t_max, t)
+
+    if t_max == float("inf"):
+        return None, None, None, None
+
+    ex = ox + t_max * dx
+    ey = oy + t_max * dy
+    return ox, oy, ex, ey
+
+
+# ---------------------------------------------------------------------------
+# Style helpers
+# ---------------------------------------------------------------------------
+
+_CSS_COLOR_NAMES = {
+    "red", "blue", "green", "orange", "purple", "cyan", "magenta",
+    "yellow", "black", "white", "brown", "gray", "grey",
+    "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
+}
+
+# Map TikZ thickness keywords to stroke-width values
+_STROKE_WIDTHS = {"thin": "0.75", "thick": "2.5", "very thick": "3.5", "ultra thick": "5"}
+
+
+def _color_from_style(style_key: str | None, styles: dict) -> str | None:
+    """Extract a CSS color string from a style key, or None if not found."""
+    if not style_key:
+        return None
+    if style_key in styles:
+        d = styles[style_key]
+        return d.get("color") or d.get("fill") or None
+    if style_key in _CSS_COLOR_NAMES:
+        return style_key
+    return None
+
+
+def _stroke_attrs(style_key: str | None, styles: dict) -> dict[str, str]:
+    """Return SVG attribute dict for stroke styling."""
+    attrs: dict[str, str] = {"stroke": "black", "stroke-width": "1.5"}
+    if not style_key:
+        return attrs
+    if style_key in styles:
+        d = styles[style_key]
+        if "color" in d:
+            attrs["stroke"] = str(d["color"])
+        if "thick" in d and d["thick"] is True:
+            attrs["stroke-width"] = "2.5"
+        if "thin" in d and d["thin"] is True:
+            attrs["stroke-width"] = "0.75"
+        if "dashed" in d and d["dashed"] is True:
+            attrs["stroke-dasharray"] = "6,3"
+        if "dotted" in d and d["dotted"] is True:
+            attrs["stroke-dasharray"] = "2,3"
+        return attrs
+    if style_key in _CSS_COLOR_NAMES:
+        attrs["stroke"] = style_key
+    return attrs
+
+
+def _fill_attrs(
+    style_key: str | None,
+    styles: dict,
+    opacity: float,
+) -> tuple[str, float]:
+    """Return (fill_color, fill_opacity) for a Fill op."""
+    if style_key and style_key in styles:
+        d = styles[style_key]
+        color = d.get("fill") or d.get("color") or "blue"
+        op = d.get("opacity", opacity)
+        return str(color), float(op)
+    return "blue", opacity
+
+
+# ---------------------------------------------------------------------------
+# Label positioning
+# ---------------------------------------------------------------------------
+
+def _label_offset(pos: str | None, dist: float) -> tuple[float, float]:
+    """Return (dx, dy) pixel offset for a given position keyword."""
+    if not pos or pos == "auto":
+        return 0.0, -dist
+    pos_l = pos.lower()
+    dx, dy = 0.0, 0.0
+    if "above" in pos_l:
+        dy = -dist
+    if "below" in pos_l:
+        dy = dist
+    if "left" in pos_l:
+        dx = -dist
+    if "right" in pos_l:
+        dx = dist
+    if dx == 0 and dy == 0:
+        dy = -dist  # default: above
+    return dx, dy
+
+
+def _pos_to_anchor(pos: str | None) -> str:
+    """Map TikZ position keyword to SVG text-anchor."""
+    if not pos or pos == "auto":
+        return "middle"
+    pos_l = pos.lower()
+    if "left" in pos_l and "right" not in pos_l:
+        return "end"
+    if "right" in pos_l and "left" not in pos_l:
+        return "start"
+    return "middle"
+
+
+# ---------------------------------------------------------------------------
+# Internal utilities
+# ---------------------------------------------------------------------------
+
+def _geo_coord(
+    pid: str,
+    coords: dict[str, tuple[float, float]],
+    helpers: dict[str, tuple[float, float]],
+) -> tuple[float, float]:
+    if pid in coords:
+        return coords[pid]
+    if pid in helpers:
+        return helpers[pid]
+    raise KeyError(f"Point {pid!r} not in coords or helpers")
+
+
+def _warn(warnings: list[str] | None, msg: str) -> None:
+    logger.warning(msg)
+    if warnings is not None:
+        warnings.append(msg)

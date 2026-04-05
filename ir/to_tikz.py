@@ -9,8 +9,46 @@ import sympy.geometry as spg
 
 import ir.ir as ir
 from ir.to_sympy import SymTable
+from ir.render_util import (
+    BOUNDS_PADDING,
+    circle_center_through,
+    compute_bounds,
+    effective_canvas_bounds,
+    extract_coords,
+    fmt_label_num,
+    fmt_num,
+    line_endpoints,
+    orient_angle,
+    poly_verts,
+    round_down_to_step,
+    round_up_to_step,
+    second_line_point,
+    seg_endpoints,
+    synthesize_helpers,
+    sympy_to_float,
+    tick_values,
+)
 
 logger = logging.getLogger(__name__)
+
+# Private aliases so internal callers keep working unchanged
+_f = sympy_to_float
+_fmt_num = fmt_num
+_fmt_label_num = fmt_label_num
+_compute_bounds = compute_bounds
+_effective_canvas_bounds = effective_canvas_bounds
+_orient_angle = orient_angle
+_second_line_point = second_line_point
+_poly_verts = poly_verts
+_seg_pts = seg_endpoints
+_line_pts = line_endpoints
+_circle_pts = circle_center_through
+_tick_values = tick_values
+_round_down_to_step = round_down_to_step
+_round_up_to_step = round_up_to_step
+
+_BOUNDS_PADDING = BOUNDS_PADDING
+_TICK_HALF_LENGTH = 0.05
 
 
 def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None = None) -> str:
@@ -20,44 +58,13 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     (the renderer wraps it automatically).
     """
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
-    coords: dict[str, tuple[float, float]] = {}
-    for def_id, obj in sym.items():
-        if isinstance(obj, spg.Point):
-            coords[def_id] = (_f(obj.x), _f(obj.y))
+    coords = extract_coords(sym)
 
     # --- Phase 2: index DefStmts by id ---
     stmt_by_id: dict[str, Any] = {stmt.id: stmt for stmt in diagram.define}
 
     # --- Phase 3: synthesize helper points ---
-    # helpers: name -> (x, y) for points that don't have IR ids but are needed for drawing
-    helpers: dict[str, tuple[float, float]] = {}
-
-    for stmt in diagram.define:
-        line_obj = sym.get(stmt.id)
-        # Second anchor point for non-LineThrough line types
-        if isinstance(stmt, ir.LineParallelThrough):
-            helpers[f"_lp_{stmt.id}"] = _second_line_point(line_obj, sym[stmt.through])
-        elif isinstance(stmt, ir.LinePerpendicularThrough):
-            helpers[f"_lp_{stmt.id}"] = _second_line_point(line_obj, sym[stmt.through])
-        elif isinstance(stmt, ir.LineAngleBisector):
-            helpers[f"_lp_{stmt.id}"] = _second_line_point(line_obj, sym[stmt.vertex])
-        elif isinstance(stmt, ir.LineTangent):
-            helpers[f"_lp_{stmt.id}"] = _second_line_point(line_obj, sym[stmt.point])
-        # Through-point for CircleCenterRadius (no explicit through-point in IR)
-        elif isinstance(stmt, ir.CircleCenterRadius):
-            circ = sym[stmt.id]
-            cx, cy = coords[stmt.center]
-            r = _f(circ.radius)
-            helpers[f"_rt_{stmt.id}"] = (cx + r, cy)
-        # Circumcenter helper for CircleThrough3 (center is computed, not a named point)
-        elif isinstance(stmt, ir.CircleThrough3):
-            circ = sym[stmt.id]
-            helpers[f"_cc_{stmt.id}"] = (_f(circ.center.x), _f(circ.center.y))
-        # Two points for Ray (anchor already named, need direction point)
-        elif isinstance(stmt, ir.Ray):
-            # sym object is spg.Ray; p2 is the direction point (= sym[stmt.b])
-            # stmt.b is already a named point, so nothing extra needed
-            pass
+    helpers = synthesize_helpers(diagram, sym, coords)
 
     # --- Phase 4: canvas / init ---
     lines: list[str] = []
@@ -293,68 +300,7 @@ def _emit_op(
 
 
 # ---------------------------------------------------------------------------
-# Object vertex / endpoint helpers
-# ---------------------------------------------------------------------------
-
-def _poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
-    """Return the ordered vertex point-IDs for a Triangle or Polygon DefStmt."""
-    stmt = stmt_by_id[obj_id]
-    match stmt:
-        case ir.Triangle(a=a, b=b, c=c):
-            return [a, b, c]
-        case ir.Polygon(points=pts):
-            return list(pts)
-        case ir.PolygonExterior(a=a, b=b, sides=sides):
-            verts = [a, b]
-            for i in range(2, sides):
-                verts.append(f"{obj_id}_v{i}")
-            return verts
-        case _:
-            raise ValueError(f"Cannot get polygon vertices for {stmt.kind!r}")
-
-
-def _seg_pts(seg_id: str, stmt_by_id: dict) -> tuple[str, str]:
-    """Return (a, b) endpoint IDs for a Segment DefStmt."""
-    stmt = stmt_by_id[seg_id]
-    if not isinstance(stmt, ir.Segment):
-        raise ValueError(f"Expected Segment def for {seg_id!r}, got {stmt.kind!r}")
-    return stmt.a, stmt.b
-
-
-def _line_pts(line_id: str, stmt_by_id: dict, helpers: dict) -> tuple[str, str]:
-    """Return two point names to use when drawing a Line."""
-    stmt = stmt_by_id[line_id]
-    match stmt:
-        case ir.LineThrough(p=p, q=q):
-            return p, q
-        case ir.LineParallelThrough(through=t):
-            return t, f"_lp_{line_id}"
-        case ir.LinePerpendicularThrough(through=t):
-            return t, f"_lp_{line_id}"
-        case ir.LineAngleBisector(vertex=v):
-            return v, f"_lp_{line_id}"
-        case ir.LineTangent(point=p):
-            return p, f"_lp_{line_id}"
-        case _:
-            raise ValueError(f"Unknown line def kind {stmt.kind!r}")
-
-
-def _circle_pts(circle_id: str, stmt_by_id: dict, helpers: dict) -> tuple[str, str]:
-    """Return (center_name, through_name) for drawing a Circle."""
-    stmt = stmt_by_id[circle_id]
-    match stmt:
-        case ir.CircleCenterPoint(center=c, through=t):
-            return c, t
-        case ir.CircleCenterRadius(center=c):
-            return c, f"_rt_{circle_id}"
-        case ir.CircleThrough3(a=a):
-            return f"_cc_{circle_id}", a  # circumcenter helper + first defining point
-        case _:
-            raise ValueError(f"Unknown circle def kind {stmt.kind!r}")
-
-
-# ---------------------------------------------------------------------------
-# Style helpers
+# Style helpers (TikZ-specific)
 # ---------------------------------------------------------------------------
 
 _TIKZ_COLOR_NAMES = {
@@ -394,67 +340,8 @@ def _merge_opts(base: str, extra_bracket: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Geometric helpers
+# Grid / axis emitters (TikZ-specific)
 # ---------------------------------------------------------------------------
-
-def _orient_angle(
-    a: str, o: str, b: str,
-    sym: SymTable,
-    which: str,
-) -> tuple[str, str, str]:
-    """Return (a, o, b) or (b, o, a) so \\tkzMarkAngle / \\tkzLabelAngle traces the correct arc.
-
-    \\tkzMarkAngle(A,O,B) draws counterclockwise from ray OA to ray OB.
-    The 2D cross product (A-O) x (B-O) tells us which arc that is:
-      cross > 0 → CCW sweep is the small (interior) arc
-      cross < 0 → CCW sweep is the large (exterior/reflex) arc
-    """
-    oa = sym[a] - sym[o]
-    ob = sym[b] - sym[o]
-    cross = float((oa.x * ob.y - oa.y * ob.x).evalf())
-    want_small = (which == "interior")
-    if (want_small and cross < 0) or (not want_small and cross > 0):
-        return b, o, a
-    return a, o, b
-
-
-_BOUNDS_PADDING = 0.8
-_TICK_HALF_LENGTH = 0.05
-
-
-def _compute_bounds(
-    coords: dict[str, tuple[float, float]],
-    helpers: dict[str, tuple[float, float]],
-    sym: SymTable,
-) -> tuple[float, float, float, float]:
-    """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
-    all_pts = list(coords.values()) + list(helpers.values())
-    for obj in sym.values():
-        if isinstance(obj, spg.Circle):
-            cx, cy = _f(obj.center.x), _f(obj.center.y)
-            r = _f(obj.radius)
-            all_pts.extend([(cx - r, cy - r), (cx + r, cy + r)])
-    if not all_pts:
-        return (-5.0, 5.0, -5.0, 5.0)
-    xs, ys = zip(*all_pts)
-    return (
-        min(xs) - _BOUNDS_PADDING,
-        max(xs) + _BOUNDS_PADDING,
-        min(ys) - _BOUNDS_PADDING,
-        max(ys) + _BOUNDS_PADDING,
-    )
-
-
-def _effective_canvas_bounds(canvas: ir.Canvas) -> tuple[float, float, float, float]:
-    """Return canvas bounds, expanding to include the origin when axes are requested."""
-    xmin, xmax, ymin, ymax = canvas.xmin, canvas.xmax, canvas.ymin, canvas.ymax
-    if canvas.axes:
-        xmin = min(xmin, 0.0)
-        xmax = max(xmax, 0.0)
-        ymin = min(ymin, 0.0)
-        ymax = max(ymax, 0.0)
-    return xmin, xmax, ymin, ymax
-
 
 def _emit_grid(
     canvas: ir.Canvas,
@@ -528,66 +415,3 @@ def _emit_axes(
                     )
 
     return lines
-
-
-def _tick_values(lo: float, hi: float, step: float) -> list[float]:
-    if step <= 0:
-        return []
-    start = math.ceil(lo / step)
-    end = math.floor(hi / step)
-    values: list[float] = []
-    for multiple in range(start, end + 1):
-        value = multiple * step
-        if abs(value) <= 1e-9:
-            continue
-        values.append(value)
-    return values
-
-
-def _round_down_to_step(value: float, step: float) -> float:
-    return math.floor(value / step) * step
-
-
-def _round_up_to_step(value: float, step: float) -> float:
-    return math.ceil(value / step) * step
-
-
-def _fmt_num(value: float) -> str:
-    if abs(value) <= 1e-9:
-        value = 0.0
-    return f"{value:g}"
-
-
-def _fmt_label_num(value: float) -> str:
-    rounded = round(value)
-    if abs(value - rounded) <= 1e-9:
-        return str(int(rounded))
-    return _fmt_num(value)
-
-
-def _f(expr) -> float:
-    """Convert a SymPy expression to float."""
-    try:
-        return float(expr.evalf())
-    except Exception:
-        return float(expr)
-
-
-def _second_line_point(
-    line: spg.Line,
-    anchor: spg.Point,
-) -> tuple[float, float]:
-    """
-    Return coordinates of a second distinct point on `line`, offset from `anchor`.
-    Uses the line's direction vector to step by 1 unit from anchor.
-    """
-    # Direction vector from line's two defining points
-    p1, p2 = line.p1, line.p2
-    dx = _f(p2.x) - _f(p1.x)
-    dy = _f(p2.y) - _f(p1.y)
-    mag = (dx ** 2 + dy ** 2) ** 0.5
-    if mag < 1e-12:
-        # Degenerate direction; fall back to p2
-        return (_f(p2.x), _f(p2.y))
-    ax, ay = _f(anchor.x), _f(anchor.y)
-    return (ax + dx / mag, ay + dy / mag)

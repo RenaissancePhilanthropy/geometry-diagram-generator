@@ -70,7 +70,7 @@ from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
 from util.tikz_renderer import check_renderer_health
-from ir.renderer import TikZRenderer
+from ir.renderer import Renderer, TikZRenderer, SVGRenderer
 from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
@@ -224,6 +224,7 @@ async def run_scenario(
     repeat_index: int,
     svg_output_dir: Path,
     benchmark: str,
+    renderer: Renderer | None = None,
     llm_judge: bool = False,
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
@@ -272,7 +273,6 @@ async def run_scenario(
 
     start = time.monotonic()
     try:
-        renderer = TikZRenderer()
         result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
@@ -731,6 +731,12 @@ async def main() -> None:
         default=DEFAULT_AGENT_MODEL,
         help="Model to use for LLM-as-judge evaluation",
     )
+    parser.add_argument(
+        "--renderer",
+        choices=["tikz", "svg"],
+        default="tikz",
+        help="Renderer backend: 'tikz' (default, requires Docker) or 'svg' (direct, no Docker needed)",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -763,11 +769,17 @@ async def main() -> None:
         print(f"Visual judge: on")
     print()
 
-    renderer_url = os.getenv("TIKZ_RENDERER_URL", "http://localhost:8001")
-    if not check_renderer_health(renderer_url):
-        print(f"ERROR: TikZ renderer is not reachable at {renderer_url}.")
-        print("Start it with: docker run -p 8001:8001 tikz-renderer")
-        sys.exit(1)
+    if args.renderer == "svg":
+        renderer: Renderer = SVGRenderer()
+        print("Renderer: svg (direct, no Docker)")
+    else:
+        renderer_url = os.getenv("TIKZ_RENDERER_URL", "http://localhost:8001")
+        if not check_renderer_health(renderer_url):
+            print(f"ERROR: TikZ renderer is not reachable at {renderer_url}.")
+            print("Start it with: docker run -p 8001:8001 tikz-renderer")
+            sys.exit(1)
+        renderer = TikZRenderer(renderer_url)
+        print(f"Renderer: tikz ({renderer_url})")
 
     all_records = []
     semaphore = asyncio.Semaphore(args.max_concurrency)
@@ -785,6 +797,7 @@ async def main() -> None:
                 repeat_index,
                 svg_output_dir,
                 benchmark,
+                renderer=renderer,
                 llm_judge=args.llm_judge,
                 visual_judge=args.visual_judge,
                 judge_model=args.judge_model,
