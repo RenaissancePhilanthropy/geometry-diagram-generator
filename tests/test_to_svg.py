@@ -430,6 +430,193 @@ def test_draw_undefined_object_skips_with_warning():
 
 
 # ---------------------------------------------------------------------------
+# Element metadata (data-* attributes)
+# ---------------------------------------------------------------------------
+
+def test_draw_triangle_has_metadata():
+    svg = _compile_svg(_basic_triangle_diagram())
+    root = _parse(svg)
+    polygons = _findall(root, "polygon")
+    draw_poly = next(p for p in polygons if p.get("data-type") == "triangle")
+    assert draw_poly.get("data-ir-id") == "T"
+    assert draw_poly.get("data-vertices") == "A,B,C"
+
+
+def test_draw_polygon_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=4, y=3),
+            PointFixed(id="D", x=0, y=3),
+            Polygon(id="R", points=["A", "B", "C", "D"]),
+        ],
+        render=[Draw(obj="R")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    polygons = _findall(root, "polygon")
+    assert len(polygons) == 1
+    assert polygons[0].get("data-type") == "polygon"
+    assert polygons[0].get("data-ir-id") == "R"
+    assert polygons[0].get("data-vertices") == "A,B,C,D"
+
+
+def test_draw_segment_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=4),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[Draw(obj="AB")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    lines = _findall(root, "line")
+    assert len(lines) == 1
+    assert lines[0].get("data-ir-id") == "AB"
+    assert lines[0].get("data-type") == "segment"
+    assert lines[0].get("data-endpoints") == "A,B"
+
+
+def test_draw_circle_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x=3, y=0),
+            CircleCenterPoint(id="C", center="O", through="P"),
+        ],
+        render=[Draw(obj="C")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    circles = [c for c in _findall(root, "circle") if c.get("data-type") == "circle"]
+    assert len(circles) == 1
+    assert circles[0].get("data-ir-id") == "C"
+    assert circles[0].get("data-center") == "O"
+
+
+def test_draw_points_have_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=4),
+        ],
+        render=[DrawPoints(points=["A", "B"])],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    circles = _findall(root, "circle")
+    assert len(circles) == 2
+    ids = {c.get("data-ir-id") for c in circles}
+    assert ids == {"A", "B"}
+    for c in circles:
+        assert c.get("data-type") == "point"
+
+
+def test_fill_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[Fill(obj="T", opacity=0.3)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    polygons = _findall(root, "polygon")
+    assert polygons[0].get("data-ir-id") == "T"
+    assert polygons[0].get("data-role") == "fill"
+
+
+def test_label_point_has_metadata():
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=1, y=1)],
+        render=[LabelPoint(p="A", text="A")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) == 1
+    assert texts[0].get("data-role") == "label-point"
+    assert texts[0].get("data-for") == "A"
+
+
+def test_mark_right_angle_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            PointFixed(id="C", x=0, y=4),
+        ],
+        render=[MarkRightAngles(angles=[AnglePoints(a="A", o="B", b="C")])],
+    )
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    root = _parse(svg_str)
+    paths = _findall(root, "path")
+    assert len(paths) >= 1
+    assert paths[0].get("data-role") == "mark-right-angle"
+    assert paths[0].get("data-angle") == "A,B,C"
+
+
+def test_mark_angle_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="B", x=0, y=3),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="A", o="O", b="B")], which="interior", group="2")],
+    )
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    root = _parse(svg_str)
+    paths = _findall(root, "path")
+    assert all(p.get("data-role") == "mark-angle" for p in paths)
+    assert all(p.get("data-angle") == "A,O,B" for p in paths)
+    assert all(p.get("data-group") == "2" for p in paths)
+
+
+def test_mark_segment_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["AB"], group="1")],
+    )
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    tick_lines = [l for l in lines if l.get("data-role") == "mark-segment"]
+    assert len(tick_lines) >= 1
+    assert tick_lines[0].get("data-segment") == "AB"
+
+
+def test_label_segment_has_metadata():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[LabelSegment(seg="AB", text="c")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) == 1
+    assert texts[0].get("data-role") == "label-segment"
+    assert texts[0].get("data-for") == "AB"
+
+
+# ---------------------------------------------------------------------------
 # LaTeX label conversion
 # ---------------------------------------------------------------------------
 
