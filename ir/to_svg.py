@@ -208,13 +208,24 @@ def _emit_svg_op(
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = poly_verts(obj_id, stmt_by_id)
                 pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
-                el = ET.SubElement(svg, "polygon", {"points": pts_str, "fill": "none", **attrs})
+                geo_type = "triangle" if len(verts) == 3 else "polygon"
+                ET.SubElement(svg, "polygon", {
+                    "data-ir-id": obj_id,
+                    "data-type": geo_type,
+                    "data-vertices": ",".join(verts),
+                    "points": pts_str,
+                    "fill": "none",
+                    **attrs,
+                })
 
             elif isinstance(sym_obj, spg.Segment):
                 a, b = seg_endpoints(obj_id, stmt_by_id)
                 x1, y1 = pt(a)
                 x2, y2 = pt(b)
                 ET.SubElement(svg, "line", {
+                    "data-ir-id": obj_id,
+                    "data-type": "segment",
+                    "data-endpoints": f"{a},{b}",
                     "x1": f"{x1:.2f}", "y1": f"{y1:.2f}",
                     "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
                     **attrs,
@@ -231,6 +242,9 @@ def _emit_svg_op(
                     px1, py1 = gxy(sx1, sy1)
                     px2, py2 = gxy(sx2, sy2)
                     ET.SubElement(svg, "line", {
+                        "data-ir-id": obj_id,
+                        "data-type": "line",
+                        "data-endpoints": f"{p1_id},{p2_id}",
                         "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
                         "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
                         **attrs,
@@ -248,6 +262,9 @@ def _emit_svg_op(
                     px1, py1 = gxy(sx1, sy1)
                     px2, py2 = gxy(sx2, sy2)
                     ET.SubElement(svg, "line", {
+                        "data-ir-id": obj_id,
+                        "data-type": "ray",
+                        "data-endpoints": f"{stmt.a},{stmt.b}",
                         "x1": f"{px1:.2f}", "y1": f"{py1:.2f}",
                         "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
                         **attrs,
@@ -259,7 +276,12 @@ def _emit_svg_op(
                 r_g = sympy_to_float(sym_obj.radius)
                 cx_s, cy_s = gxy(cx_g, cy_g)
                 r_s = r_g * scale
+                # Recover center point id from the DefStmt
+                center_id = _circle_center_id(obj_id, stmt_by_id)
                 ET.SubElement(svg, "circle", {
+                    "data-ir-id": obj_id,
+                    "data-type": "circle",
+                    **({"data-center": center_id} if center_id else {}),
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
                     "fill": "none",
                     **attrs,
@@ -273,6 +295,8 @@ def _emit_svg_op(
                     continue
                 px, py = pt(pid)
                 ET.SubElement(svg, "circle", {
+                    "data-ir-id": pid,
+                    "data-type": "point",
                     "cx": f"{px:.2f}", "cy": f"{py:.2f}",
                     "r": str(_POINT_RADIUS),
                     "fill": fill,
@@ -289,6 +313,8 @@ def _emit_svg_op(
                 verts = poly_verts(obj_id, stmt_by_id)
                 pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
                 ET.SubElement(svg, "polygon", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
                     "points": pts_str,
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
@@ -302,6 +328,8 @@ def _emit_svg_op(
                 cx_s, cy_s = gxy(cx_g, cy_g)
                 r_s = r_g * scale
                 ET.SubElement(svg, "circle", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
@@ -315,7 +343,13 @@ def _emit_svg_op(
                 if missing:
                     _warn(warnings, f"Skipping MarkRightAngles for undefined {missing!r}")
                     continue
-                _append_right_angle_mark(svg, angle.a, angle.o, angle.b, pt, stroke)
+                _append_right_angle_mark(
+                    svg, angle.a, angle.o, angle.b, pt, stroke,
+                    extra_attrs={
+                        "data-role": "mark-right-angle",
+                        "data-angle": f"{angle.a},{angle.o},{angle.b}",
+                    },
+                )
 
         case ir.MarkAngles(angles=angles, group=group, which=which, style=style):
             stroke = _color_from_style(style or group, styles)
@@ -338,7 +372,13 @@ def _emit_svg_op(
                     _warn(warnings, f"Skipping MarkAngles for undefined {missing!r}")
                     continue
                 a, o, b = orient_angle(angle.a, angle.o, angle.b, sym, which)
-                _append_angle_arc(svg, a, o, b, pt, stroke, n_arcs)
+                arc_attrs: dict[str, str] = {
+                    "data-role": "mark-angle",
+                    "data-angle": f"{angle.a},{angle.o},{angle.b}",
+                }
+                if group:
+                    arc_attrs["data-group"] = str(group)
+                _append_angle_arc(svg, a, o, b, pt, stroke, n_arcs, extra_attrs=arc_attrs)
 
         case ir.MarkSegments(segs=segs, group=group, style=style):
             stroke = _color_from_style(style or group, styles) or "black"
@@ -350,7 +390,13 @@ def _emit_svg_op(
                     _warn(warnings, f"Skipping MarkSegments for undefined '{seg_id}'")
                     continue
                 a, b = seg_endpoints(seg_id, stmt_by_id)
-                _append_seg_ticks(svg, a, b, pt, stroke, n_ticks)
+                tick_attrs: dict[str, str] = {
+                    "data-role": "mark-segment",
+                    "data-segment": seg_id,
+                }
+                if group:
+                    tick_attrs["data-group"] = str(group)
+                _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=tick_attrs)
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
             if p not in sym:
@@ -360,7 +406,11 @@ def _emit_svg_op(
             px, py = pt(p)
             ox, oy = _label_offset(pos, _LABEL_OFFSET)
             color = _color_from_style(style, styles) or "black"
-            _append_label(svg, px + ox, py + oy, label, color, anchor=_pos_to_anchor(pos))
+            _append_label(
+                svg, px + ox, py + oy, label, color,
+                anchor=_pos_to_anchor(pos),
+                extra_attrs={"data-role": "label-point", "data-for": p},
+            )
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
@@ -380,7 +430,14 @@ def _emit_svg_op(
             # In SVG space y is flipped, so negate sin component
             ly -= math.sin(bisector_angle) * _LABEL_OFFSET * 1.5
             color = _color_from_style(style, styles) or "black"
-            _append_label(svg, lx, ly, text or "", color, anchor="middle")
+            _append_label(
+                svg, lx, ly, text or "", color,
+                anchor="middle",
+                extra_attrs={
+                    "data-role": "label-angle",
+                    "data-for": f"{angle.a},{angle.o},{angle.b}",
+                },
+            )
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -400,7 +457,11 @@ def _emit_svg_op(
             lx = mx + nx * _LABEL_OFFSET
             ly = my + ny * _LABEL_OFFSET
             color = _color_from_style(style, styles) or "black"
-            _append_label(svg, lx, ly, text or "", color, anchor="middle")
+            _append_label(
+                svg, lx, ly, text or "", color,
+                anchor="middle",
+                extra_attrs={"data-role": "label-segment", "data-for": seg_id},
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +475,7 @@ def _append_right_angle_mark(
     b_id: str,
     pt,
     stroke: str,
+    extra_attrs: dict[str, str] | None = None,
 ) -> None:
     """Draw a small square at vertex o between rays oa and ob."""
     ox, oy = pt(o_id)
@@ -437,6 +499,7 @@ def _append_right_angle_mark(
         f"L {p3[0]:.2f} {p3[1]:.2f}"
     )
     ET.SubElement(svg, "path", {
+        **(extra_attrs or {}),
         "d": d,
         "stroke": stroke,
         "stroke-width": "1.5",
@@ -452,6 +515,7 @@ def _append_angle_arc(
     pt,
     stroke: str,
     n_arcs: int,
+    extra_attrs: dict[str, str] | None = None,
 ) -> None:
     """Draw n_arcs concentric arcs at vertex o from ray oa to ray ob.
 
@@ -485,6 +549,7 @@ def _append_angle_arc(
         # sweep=0 (CCW in SVG pixel space) corresponds to CCW in math space = interior
         d = f"M {sx:.2f} {sy:.2f} A {r:.2f} {r:.2f} 0 {large_arc} 0 {ex:.2f} {ey:.2f}"
         ET.SubElement(svg, "path", {
+            **(extra_attrs or {}),
             "d": d,
             "stroke": stroke,
             "stroke-width": "1.5",
@@ -499,6 +564,7 @@ def _append_seg_ticks(
     pt,
     stroke: str,
     n_ticks: int,
+    extra_attrs: dict[str, str] | None = None,
 ) -> None:
     """Draw n_ticks perpendicular tick marks at the midpoint of segment AB."""
     ax, ay = pt(a_id)
@@ -517,6 +583,7 @@ def _append_seg_ticks(
         tx = mx + along_x * offset
         ty = my + along_y * offset
         ET.SubElement(svg, "line", {
+            **(extra_attrs or {}),
             "x1": f"{tx - nx * _TICK_LEN:.2f}",
             "y1": f"{ty - ny * _TICK_LEN:.2f}",
             "x2": f"{tx + nx * _TICK_LEN:.2f}",
@@ -537,9 +604,11 @@ def _append_label(
     text: str,
     color: str,
     anchor: str = "middle",
+    extra_attrs: dict[str, str] | None = None,
 ) -> None:
     """Append a <text> element with LaTeX-to-SVG tspan conversion."""
     el = ET.SubElement(svg, "text", {
+        **(extra_attrs or {}),
         "x": f"{x:.2f}",
         "y": f"{y:.2f}",
         "font-family": "serif",
@@ -1087,6 +1156,19 @@ def _pos_to_anchor(pos: str | None) -> str:
 # ---------------------------------------------------------------------------
 # Internal utilities
 # ---------------------------------------------------------------------------
+
+def _circle_center_id(circle_id: str, stmt_by_id: dict) -> str | None:
+    """Return the named center point ID for a circle DefStmt, if available."""
+    stmt = stmt_by_id.get(circle_id)
+    if stmt is None:
+        return None
+    if isinstance(stmt, ir.CircleCenterPoint):
+        return stmt.center
+    if isinstance(stmt, ir.CircleCenterRadius):
+        return stmt.center
+    # CircleThrough3 has no named center point
+    return None
+
 
 def _geo_coord(
     pid: str,
