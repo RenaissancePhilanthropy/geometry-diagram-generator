@@ -46,6 +46,25 @@ class Renderer(ABC):
         ...
 
 
+class SVGRenderer(Renderer):
+    """Renders DiagramIR → SVG directly from SymPy geometry, no LaTeX needed."""
+
+    def render(
+        self,
+        diagram: DiagramIR,
+        sym: SymTable,
+        warnings: list[str] | None = None,
+    ) -> RenderResult:
+        """Generate SVG directly from the SymPy symbol table.
+
+        Returns:
+            RenderResult(output=svg, format="svg", intermediate="")
+        """
+        from ir.to_svg import ir_to_svg
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        return RenderResult(output=svg, format="svg", intermediate="")
+
+
 class TikZRenderer(Renderer):
     """Renders DiagramIR → TikZ code → SVG via the LaTeX Docker container."""
 
