@@ -31,3 +31,9 @@ docs/superpowers/
 
 # Temporary files
 tmp/
+
+# Curriculum extraction artifacts
+curriculum/textbooks/
+curriculum/markdown/
+curriculum/.marker-venv/
+curriculum/topic_index.json
