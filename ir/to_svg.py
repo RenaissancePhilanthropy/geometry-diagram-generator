@@ -164,10 +164,14 @@ def ir_to_svg(
                 seg_groups.append(op.group)
     group_tick_counts = {g: (i % 3) + 1 for i, g in enumerate(seg_groups)}
 
+    # Pre-compute incident angles for smart auto label placement
+    incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
+
     for op in sorted_ops:
         _emit_svg_op(
             op, svg, sym, stmt_by_id, coords, helpers, _styles,
             group_tick_counts, pt, gxy, scale, xmin, xmax, ymin, ymax,
+            incident_angles=incident_angles,
             warnings=warnings,
         )
 
@@ -195,6 +199,7 @@ def _emit_svg_op(
     xmax: float,
     ymin: float,
     ymax: float,
+    incident_angles: dict[str, list[float]] | None = None,
     warnings: list[str] | None = None,
 ) -> None:
     match op:
@@ -404,11 +409,18 @@ def _emit_svg_op(
                 return
             label = text if text is not None else p
             px, py = pt(p)
-            ox, oy = _label_offset(pos, _LABEL_OFFSET)
+            if not pos or pos == "auto":
+                angles = (incident_angles or {}).get(p, [])
+                direction = _auto_label_direction(angles)
+                ox, oy = _angle_to_offset(direction, _LABEL_OFFSET)
+                anchor = _angle_to_anchor(direction)
+            else:
+                ox, oy = _label_offset(pos, _LABEL_OFFSET)
+                anchor = _pos_to_anchor(pos)
             color = _color_from_style(style, styles) or "black"
             _append_label(
                 svg, px + ox, py + oy, label, color,
-                anchor=_pos_to_anchor(pos),
+                anchor=anchor,
                 extra_attrs={"data-role": "label-point", "data-for": p},
             )
 
@@ -1151,6 +1163,262 @@ def _pos_to_anchor(pos: str | None) -> str:
     if "right" in pos_l and "left" not in pos_l:
         return "start"
     return "middle"
+
+
+# ---------------------------------------------------------------------------
+# Incident-angle-based auto label placement
+# ---------------------------------------------------------------------------
+
+def _build_incident_angles(
+    diagram: ir.DiagramIR,
+    sym: SymTable,
+    stmt_by_id: dict,
+    coords: dict,
+    helpers: dict,
+) -> dict[str, list[float]]:
+    """Return a map of point_id → list of edge angles (in geometry space, y-up).
+
+    Only considers objects that are actually drawn (present as Draw ops in
+    diagram.render).  Angles are in radians, computed with math.atan2 in the
+    math/SymPy coordinate system (y increases upward).
+    """
+    result: dict[str, list[float]] = {}
+
+    def _add(pid: str, angle: float) -> None:
+        result.setdefault(pid, []).append(angle)
+
+    def _geo(pid: str) -> tuple[float, float] | None:
+        if pid in coords:
+            return coords[pid]
+        if pid in helpers:
+            return helpers[pid]
+        return None
+
+    def _edge_angles(a_id: str, b_id: str) -> None:
+        """Record the angles of edge a→b at both endpoints."""
+        pa = _geo(a_id)
+        pb = _geo(b_id)
+        if pa is None or pb is None:
+            return
+        ax, ay = pa
+        bx, by = pb
+        if ax == bx and ay == by:
+            return
+        angle_ab = math.atan2(by - ay, bx - ax)
+        _add(a_id, angle_ab)
+        _add(b_id, angle_ab + math.pi)  # opposite direction at the other end
+
+    for op in diagram.render:
+        if not isinstance(op, ir.Draw):
+            continue
+        obj_id = op.obj
+        if obj_id not in sym:
+            continue
+        sym_obj = sym[obj_id]
+
+        if isinstance(sym_obj, spg.Segment):
+            a, b = seg_endpoints(obj_id, stmt_by_id)
+            _edge_angles(a, b)
+
+        elif isinstance(sym_obj, spg.Line):
+            # Infinite line: both directions occupied at each defining point.
+            p1_id, p2_id = line_endpoints(obj_id, stmt_by_id, helpers)
+            pa, pb = _geo(p1_id), _geo(p2_id)
+            if pa is not None and pb is not None:
+                ax, ay = pa
+                bx, by = pb
+                if not (ax == bx and ay == by):
+                    angle_ab = math.atan2(by - ay, bx - ax)
+                    _add(p1_id, angle_ab)
+                    _add(p1_id, angle_ab + math.pi)
+                    _add(p2_id, angle_ab)
+                    _add(p2_id, angle_ab + math.pi)
+
+        elif isinstance(sym_obj, spg.Ray):
+            stmt = stmt_by_id.get(obj_id)
+            if stmt is None:
+                continue
+            # Ray: source has one direction; direction-point has both
+            if hasattr(stmt, "a") and hasattr(stmt, "b"):
+                _edge_angles(stmt.a, stmt.b)
+            else:
+                p1_id, p2_id = line_endpoints(obj_id, stmt_by_id, helpers)
+                _edge_angles(p1_id, p2_id)
+
+        elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+            verts = poly_verts(obj_id, stmt_by_id)
+            for i in range(len(verts)):
+                _edge_angles(verts[i], verts[(i + 1) % len(verts)])
+
+        elif isinstance(sym_obj, spg.Circle):
+            # For each labeled point that lies on this circle, add both tangent
+            # directions at that point (perpendicular to the radius).
+            cx_g = sympy_to_float(sym_obj.center.x)
+            cy_g = sympy_to_float(sym_obj.center.y)
+            for lop in diagram.render:
+                if not isinstance(lop, ir.LabelPoint) or lop.pos != "auto":
+                    continue
+                pc = _geo(lop.p)
+                if pc is None:
+                    continue
+                px, py = pc
+                # Check if point lies on circle (within tolerance)
+                r_g = sympy_to_float(sym_obj.radius)
+                if abs(math.hypot(px - cx_g, py - cy_g) - r_g) > 1e-6 * max(r_g, 1):
+                    continue
+                # Tangent is perpendicular to radius direction
+                radius_angle = math.atan2(py - cy_g, px - cx_g)
+                tangent = radius_angle + math.pi / 2
+                _add(lop.p, tangent)
+                _add(lop.p, tangent + math.pi)
+
+    # Second pass: for each auto-labeled point, check if it lies on any drawn
+    # line/segment/ray without being a defining endpoint.  If so, add that
+    # object's direction as an incident angle.  This catches intersection
+    # points and points that lie on lines defined through other points.
+    auto_label_pids = [
+        lop.p for lop in diagram.render
+        if isinstance(lop, ir.LabelPoint) and (not lop.pos or lop.pos == "auto")
+    ]
+    drawn_objs = [
+        (op.obj, sym[op.obj]) for op in diagram.render
+        if isinstance(op, ir.Draw) and op.obj in sym
+    ]
+    for pid in auto_label_pids:
+        pc = _geo(pid)
+        if pc is None:
+            continue
+        px, py = pc
+        for obj_id, sym_obj in drawn_objs:
+            if isinstance(sym_obj, (spg.Segment, spg.Line, spg.Ray)):
+                # Skip if this point is already a defining endpoint
+                stmt = stmt_by_id.get(obj_id)
+                if stmt is not None:
+                    defining_pts = set()
+                    for attr in ("a", "b", "p", "q", "through"):
+                        v = getattr(stmt, attr, None)
+                        if isinstance(v, str):
+                            defining_pts.add(v)
+                    if pid in defining_pts:
+                        continue
+                # Check if the point lies on this object
+                p1 = sym_obj.p1
+                p2 = sym_obj.p2
+                x1, y1 = sympy_to_float(p1.x), sympy_to_float(p1.y)
+                x2, y2 = sympy_to_float(p2.x), sympy_to_float(p2.y)
+                dx, dy = x2 - x1, y2 - y1
+                length = math.hypot(dx, dy)
+                if length < 1e-12:
+                    continue
+                # Distance from point to the infinite line through p1-p2
+                dist = abs(dy * (px - x1) - dx * (py - y1)) / length
+                tol = 1e-6 * max(length, 1)
+                if dist > tol:
+                    continue
+                # For Segment, also check that the point is between endpoints
+                if isinstance(sym_obj, spg.Segment):
+                    t = ((px - x1) * dx + (py - y1) * dy) / (length * length)
+                    if t < -1e-6 or t > 1 + 1e-6:
+                        continue
+                line_angle = math.atan2(dy, dx)
+                _add(pid, line_angle)
+                _add(pid, line_angle + math.pi)
+
+            elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+                # Check if the point lies on any edge of the polygon
+                verts = poly_verts(obj_id, stmt_by_id)
+                if pid in verts:
+                    continue  # already handled as a vertex in the first pass
+                for i in range(len(verts)):
+                    v1_id = verts[i]
+                    v2_id = verts[(i + 1) % len(verts)]
+                    pv1 = _geo(v1_id)
+                    pv2 = _geo(v2_id)
+                    if pv1 is None or pv2 is None:
+                        continue
+                    x1, y1 = pv1
+                    x2, y2 = pv2
+                    dx, dy = x2 - x1, y2 - y1
+                    edge_len = math.hypot(dx, dy)
+                    if edge_len < 1e-12:
+                        continue
+                    dist = abs(dy * (px - x1) - dx * (py - y1)) / edge_len
+                    tol = 1e-6 * max(edge_len, 1)
+                    if dist > tol:
+                        continue
+                    # Check point is between endpoints
+                    t = ((px - x1) * dx + (py - y1) * dy) / (edge_len * edge_len)
+                    if t < -1e-6 or t > 1 + 1e-6:
+                        continue
+                    edge_angle = math.atan2(dy, dx)
+                    _add(pid, edge_angle)
+                    _add(pid, edge_angle + math.pi)
+
+    # Resolve aliases: if point X is an alias for point Y, copy Y's angles to X.
+    for stmt in diagram.define:
+        if isinstance(stmt, ir.PointAlias):
+            ref_angles = result.get(stmt.ref, [])
+            if ref_angles:
+                result.setdefault(stmt.id, []).extend(ref_angles)
+
+    return result
+
+
+def _auto_label_direction(angles: list[float]) -> float:
+    """Return the angle (geometry space, y-up) of the largest gap between edges.
+
+    - No edges → default to straight up (π/2).
+    - One edge angle → place label on the opposite side.
+    - Multiple → find the largest angular gap and bisect it.
+    """
+    if not angles:
+        return math.pi / 2  # above
+
+    # Normalise all angles to [0, 2π)
+    TWO_PI = 2 * math.pi
+    normed = sorted(a % TWO_PI for a in angles)
+
+    if len(normed) == 1:
+        return (normed[0] + math.pi) % TWO_PI
+
+    # Compute gaps between consecutive sorted angles (wrapping around)
+    best_gap = -1.0
+    best_bisector = math.pi / 2
+    n = len(normed)
+    for i in range(n):
+        a1 = normed[i]
+        a2 = normed[(i + 1) % n]
+        gap = (a2 - a1) % TWO_PI
+        if gap > best_gap:
+            best_gap = gap
+            best_bisector = (a1 + gap / 2) % TWO_PI
+
+    return best_bisector
+
+
+def _angle_to_offset(angle: float, dist: float) -> tuple[float, float]:
+    """Convert a geometry-space angle to an SVG pixel offset (dx, dy).
+
+    SVG y-axis is flipped relative to geometry space, so we negate the sin
+    component.
+    """
+    return math.cos(angle) * dist, -math.sin(angle) * dist
+
+
+def _angle_to_anchor(angle: float) -> str:
+    """Map a geometry-space label angle to an SVG text-anchor value."""
+    # Normalise to (-π, π]
+    a = (angle + math.pi) % (2 * math.pi) - math.pi
+    # Roughly above/below (within ±45° of vertical) → "middle"
+    if math.pi / 4 < a <= 3 * math.pi / 4:
+        return "middle"   # above
+    if -3 * math.pi / 4 <= a < -math.pi / 4:
+        return "middle"   # below
+    # Left half-plane → "end" (text ends at the point)
+    if abs(a) > math.pi / 2:
+        return "end"
+    # Right half-plane → "start"
+    return "start"
 
 
 # ---------------------------------------------------------------------------
