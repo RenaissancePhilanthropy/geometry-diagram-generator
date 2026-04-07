@@ -22,6 +22,7 @@ from ir.ir import (
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
     Triangle, Polygon, PolygonExterior,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
+    AngleEqual, EqualLength, Parallel, RatioEqual,
     Draw, DrawPoints, LabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
     RenderOp, DefStmt, PickRule,
@@ -35,7 +36,7 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
-    MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel,
+    MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     DrawObj,
 )
@@ -514,6 +515,88 @@ class _Lowerer:
         self._styles[key] = style
         return key
 
+    def _resolve_angle_mark(self, mark: Any) -> tuple[str, str, str]:
+        """Return (a, vertex, b) resolving at/of shorthand if used."""
+        if mark.a is not None:
+            return (mark.a, mark.vertex, mark.b)
+        tri_id = mark.of
+        if tri_id not in self._triangle_vertices:
+            raise LoweringError(
+                f"{mark.kind}: triangle {tri_id!r} not found — available: {list(self._triangle_vertices)}"
+            )
+        verts = self._triangle_vertices[tri_id]
+        vertex = mark.at
+        if vertex not in verts:
+            raise LoweringError(
+                f"{mark.kind}: vertex {vertex!r} not in triangle {tri_id!r} (vertices: {verts})"
+            )
+        others = [v for v in verts if v != vertex]
+        return (others[0], vertex, others[1])
+
+    def _angle_deg(self, a: str, vertex: str, b: str) -> float | None:
+        """Compute unsigned angle a-vertex-b in degrees from coord_floats, or None."""
+        if not all(p in self._coord_floats for p in (a, vertex, b)):
+            return None
+        ax, ay = self._coord_floats[a]
+        vx, vy = self._coord_floats[vertex]
+        bx, by = self._coord_floats[b]
+        v1 = (ax - vx, ay - vy)
+        v2 = (bx - vx, by - vy)
+        dot = v1[0] * v2[0] + v1[1] * v2[1]
+        cross = abs(v1[0] * v2[1] - v1[1] * v2[0])
+        return math.degrees(math.atan2(cross, dot))
+
+    def _candidate_angles_at(self, vertex: str, expected: float | str) -> str:
+        """Return a string listing angles at vertex that match expected, for error hints."""
+        target: float | None = None
+        category: str | None = None
+        if isinstance(expected, (int, float)):
+            target = expected
+        else:
+            category = expected
+
+        other_pts = [
+            pid for pid in self._point_ids
+            if pid != vertex and pid in self._coord_floats and not pid.startswith("__")
+        ]
+        matches: list[str] = []
+        for i in range(len(other_pts)):
+            for j in range(i + 1, len(other_pts)):
+                deg = self._angle_deg(other_pts[i], vertex, other_pts[j])
+                if deg is None:
+                    continue
+                if target is not None and abs(deg - target) <= 5.0:
+                    matches.append(f"{other_pts[i]}-{vertex}-{other_pts[j]} = {deg:.1f}°")
+                elif category is not None:
+                    cat = "right" if abs(deg - 90) < 5 else ("acute" if deg < 90 else "obtuse")
+                    if cat == category:
+                        matches.append(f"{other_pts[i]}-{vertex}-{other_pts[j]} = {deg:.1f}° ({cat})")
+        if not matches:
+            return ""
+        return " | candidates: " + ", ".join(matches)
+
+    def _check_angle_expected(self, a: str, vertex: str, b: str, expected: Any) -> None:
+        """Validate angle a-vertex-b against expected value. Raises LoweringError on mismatch."""
+        angle_deg = self._angle_deg(a, vertex, b)
+        if angle_deg is None:
+            return  # coords not available at lowering time; defer to IR check
+
+        if isinstance(expected, (int, float)):
+            if abs(angle_deg - expected) > 5.0:
+                hint = self._candidate_angles_at(vertex, expected)
+                raise LoweringError(
+                    f"MarkAngle at {vertex}: expected {expected}° but "
+                    f"{a}-{vertex}-{b} = {angle_deg:.1f}°{hint}"
+                )
+        else:
+            cat = "right" if abs(angle_deg - 90) < 5 else ("acute" if angle_deg < 90 else "obtuse")
+            if cat != expected:
+                hint = self._candidate_angles_at(vertex, expected)
+                raise LoweringError(
+                    f"MarkAngle at {vertex}: expected {expected} but "
+                    f"{a}-{vertex}-{b} = {angle_deg:.1f}° ({cat}){hint}"
+                )
+
     def _apply_annotations(self, ann: DSLAnnotations, dsl_ops: list | None = None) -> None:
         import warnings
 
@@ -562,26 +645,74 @@ class _Lowerer:
                 a, vertex, b = triple
                 self._renders.append(MarkRightAngles(angles=[AnglePoints(a=a, o=vertex, b=b)]))
 
+        angle_groups: dict[int, list[AnglePoints]] = {}
+        proportional_pairs: list[list[str]] = []
         for mark in ann.marks:
             if isinstance(mark, MarkAngle):
+                a, vertex, b = self._resolve_angle_mark(mark)
+                if mark.expected is not None:
+                    self._check_angle_expected(a, vertex, b, mark.expected)
                 self._renders.append(MarkAngles(
-                    angles=[AnglePoints(a=mark.a, o=mark.vertex, b=mark.b)],
+                    angles=[AnglePoints(a=a, o=vertex, b=b)],
                     group=str(mark.group) if mark.group is not None else None,
                 ))
+                if mark.group is not None:
+                    angle_groups.setdefault(mark.group, []).append(AnglePoints(a=a, o=vertex, b=b))
             elif isinstance(mark, MarkRightAngle):
+                a, vertex, b = self._resolve_angle_mark(mark)
                 self._renders.append(MarkRightAngles(
-                    angles=[AnglePoints(a=mark.a, o=mark.vertex, b=mark.b)],
+                    angles=[AnglePoints(a=a, o=vertex, b=b)],
                 ))
-            elif isinstance(mark, (MarkEqualLengths, MarkParallel)):
-                seg_ids: list[str] = []
-                for pair in mark.segments:
-                    p, q = pair[0], pair[1]
-                    seg_id = self._ensure_segment(p, q)
-                    seg_ids.append(seg_id)
+                self._checks.append(RightAngle(
+                    angle=AnglePoints(a=a, o=vertex, b=b),
+                    source=f"annotation: mark_right_angle({a},{vertex},{b})",
+                ))
+            elif isinstance(mark, MarkEqualLengths):
+                seg_ids = [self._ensure_segment(pair[0], pair[1]) for pair in mark.segments]
                 group_str = str(mark.group) if mark.group is not None else None
-                if isinstance(mark, MarkParallel):
-                    group_str = f"parallel_{group_str}" if group_str else "parallel"
                 self._renders.append(MarkSegments(segs=seg_ids, group=group_str))
+                if len(seg_ids) >= 2:
+                    self._checks.append(EqualLength(
+                        segs=seg_ids,
+                        source=f"annotation: mark_equal_lengths group={mark.group}",
+                    ))
+            elif isinstance(mark, MarkParallel):
+                seg_ids = [self._ensure_segment(pair[0], pair[1]) for pair in mark.segments]
+                group_str = f"parallel_{mark.group}" if mark.group is not None else "parallel"
+                self._renders.append(MarkSegments(segs=seg_ids, group=group_str))
+                for i in range(len(seg_ids)):
+                    for j in range(i + 1, len(seg_ids)):
+                        self._checks.append(Parallel(
+                            l1=seg_ids[i], l2=seg_ids[j],
+                            source=f"annotation: mark_parallel group={mark.group}",
+                        ))
+            elif isinstance(mark, MarkProportional):
+                seg_ids = [self._ensure_segment(pair[0], pair[1]) for pair in mark.segments]
+                group_str = f"proportional_{mark.group}" if mark.group is not None else "proportional"
+                self._renders.append(MarkSegments(segs=seg_ids, group=group_str))
+                # Collect the pair for cross-entry ratio checks below
+                if len(seg_ids) >= 2:
+                    proportional_pairs.append(seg_ids)
+
+        # Cross-entry proportionality: all mark_proportional entries claim the
+        # same ratio.  e.g. [AB,DE], [BC,EF], [AC,DF] → AB/DE == BC/EF == AC/DF.
+        if len(proportional_pairs) >= 2:
+            ref = proportional_pairs[0]
+            for i in range(1, len(proportional_pairs)):
+                cur = proportional_pairs[i]
+                self._checks.append(RatioEqual(
+                    s1=ref[0], s2=ref[1],
+                    s3=cur[0], s4=cur[1],
+                    source="annotation: mark_proportional (constant ratio)",
+                ))
+
+        for group_id, angles in angle_groups.items():
+            for i in range(len(angles)):
+                for j in range(i + 1, len(angles)):
+                    self._checks.append(AngleEqual(
+                        a1=angles[i], a2=angles[j],
+                        source=f"annotation: mark_angle group={group_id}",
+                    ))
 
         for label in ann.labels:
             if isinstance(label, DSLLabelSegment):

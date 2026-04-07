@@ -127,3 +127,29 @@ def test_triangle_inequality_violation():
 def test_unknown_spec_raises():
     with pytest.raises(SpecError):
         solve_triangle(["A","B","C"], {"angle_A": 60})  # insufficient constraints
+
+
+# --- Overdefined specs ---
+
+def test_overdefined_3_angles_1_side():
+    coords = solve_triangle(["A","B","C"], {"angle_A": 60, "angle_B": 60, "angle_C": 60, "side_AB": 3})
+    ab = dist(coords["A"], coords["B"])
+    assert abs(ab - 3.0) < 1e-6
+    # All angles should be 60°
+    assert abs(angle_at(coords["B"], coords["A"], coords["C"]) - 60.0) < 1e-4
+    assert abs(angle_at(coords["A"], coords["B"], coords["C"]) - 60.0) < 1e-4
+    assert abs(angle_at(coords["A"], coords["C"], coords["B"]) - 60.0) < 1e-4
+
+def test_overdefined_3_angles_bad_sum():
+    with pytest.raises(SpecError):
+        solve_triangle(["A","B","C"], {"angle_A": 70, "angle_B": 70, "angle_C": 70, "side_AB": 3})
+
+def test_overdefined_sss_with_extra_angle():
+    # SSS + redundant angle → uses SSS
+    coords = solve_triangle(["A","B","C"], {"side_AB": 3, "side_BC": 4, "side_CA": 5, "angle_A": 90})
+    # Should solve (it's a right triangle)
+    assert all(k in coords for k in ["A","B","C"])
+
+def test_aaa_no_sides():
+    with pytest.raises(SpecError):
+        solve_triangle(["A","B","C"], {"angle_A": 60, "angle_B": 60, "angle_C": 60})

@@ -792,3 +792,262 @@ def test_auto_draw_all_with_explicit_draw_deduplicates():
     t_draws = [r for r in draw_ops if r.obj == "T"]
     assert len(t_draws) == 1
     assert t_draws[0].style == "red"
+
+
+# ---------------------------------------------------------------------------
+# Annotation validation checks
+# ---------------------------------------------------------------------------
+
+def test_mark_right_angle_emits_check():
+    """MarkRightAngle on explicit vertices emits a RightAngle check with source."""
+    from ir.ir import RightAngle
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"right_angle_at": "C"}},
+    ], annotations={"marks": [{"kind": "mark_right_angle", "a": "A", "vertex": "C", "b": "B"}]})
+    ir = lower_to_ir(dsl)
+    ra_checks = [c for c in ir.checks if c.kind == "right_angle"]
+    # One from triangle spec, one from annotation
+    annotation_checks = [c for c in ra_checks if c.source and c.source.startswith("annotation: ")]
+    assert len(annotation_checks) == 1
+    assert annotation_checks[0].angle.o == "C"
+    assert annotation_checks[0].source.startswith("annotation: ")
+
+
+def test_mark_angle_group_emits_angle_equal_checks():
+    """Two MarkAngles with the same group emit one AngleEqual check with source."""
+    from ir.ir import AngleEqual
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 3]},
+        {"op": "point", "id": "D", "coords": [1, 0]},
+        {"op": "point", "id": "E", "coords": [4, 0]},
+        {"op": "point", "id": "F", "coords": [1, 3]},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "group": 1},
+        {"kind": "mark_angle", "a": "E", "vertex": "D", "b": "F", "group": 1},
+    ]})
+    ir = lower_to_ir(dsl)
+    ae_checks = [c for c in ir.checks if c.kind == "angle_equal"]
+    assert len(ae_checks) == 1
+    assert ae_checks[0].source.startswith("annotation: ")
+
+
+def test_mark_angle_group_three_emits_pairwise():
+    """Three MarkAngles with group=1 emit three pairwise AngleEqual checks."""
+    from ir.ir import AngleEqual
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [1, 0]},
+        {"op": "point", "id": "C", "coords": [0, 1]},
+        {"op": "point", "id": "D", "coords": [2, 0]},
+        {"op": "point", "id": "E", "coords": [3, 0]},
+        {"op": "point", "id": "F", "coords": [2, 1]},
+        {"op": "point", "id": "G", "coords": [4, 0]},
+        {"op": "point", "id": "H", "coords": [5, 0]},
+        {"op": "point", "id": "I", "coords": [4, 1]},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "group": 1},
+        {"kind": "mark_angle", "a": "E", "vertex": "D", "b": "F", "group": 1},
+        {"kind": "mark_angle", "a": "H", "vertex": "G", "b": "I", "group": 1},
+    ]})
+    ir = lower_to_ir(dsl)
+    ae_checks = [c for c in ir.checks if c.kind == "angle_equal"]
+    assert len(ae_checks) == 3
+
+
+def test_mark_equal_lengths_emits_check():
+    """MarkEqualLengths on 2 segments emits an EqualLength check with source."""
+    from ir.ir import EqualLength
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 3]},
+        {"op": "point", "id": "D", "coords": [3, 3]},
+    ], annotations={"marks": [
+        {"kind": "mark_equal_lengths", "segments": [["A", "B"], ["C", "D"]], "group": 1},
+    ]})
+    ir = lower_to_ir(dsl)
+    el_checks = [c for c in ir.checks if c.kind == "equal_length"]
+    assert len(el_checks) == 1
+    assert el_checks[0].source.startswith("annotation: ")
+    assert len(el_checks[0].segs) == 2
+
+
+def test_mark_parallel_emits_check():
+    """MarkParallel on 2 segments emits one Parallel check with source."""
+    from ir.ir import Parallel
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0, 0]},
+        {"op": "point", "id": "B", "coords": [3, 0]},
+        {"op": "point", "id": "C", "coords": [0, 2]},
+        {"op": "point", "id": "D", "coords": [3, 2]},
+    ], annotations={"marks": [
+        {"kind": "mark_parallel", "segments": [["A", "B"], ["C", "D"]], "group": 1},
+    ]})
+    ir = lower_to_ir(dsl)
+    par_checks = [c for c in ir.checks if c.kind == "parallel"]
+    assert len(par_checks) == 1
+    assert par_checks[0].source.startswith("annotation: ")
+
+
+def test_mark_angle_at_of_shorthand():
+    """mark_angle with at/of shorthand produces correct AnglePoints."""
+    from ir.ir import MarkAngles
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "at": "A", "of": "T", "group": 1},
+    ]})
+    ir = lower_to_ir(dsl)
+    mark_ops = [r for r in ir.render if r.kind == "mark_angles"]
+    assert len(mark_ops) == 1
+    angle = mark_ops[0].angles[0]
+    assert angle.o == "A"
+    assert set([angle.a, angle.b]) == {"B", "C"}
+
+
+def test_mark_right_angle_at_of_shorthand():
+    """mark_right_angle with at/of shorthand produces correct AnglePoints."""
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"right_angle_at": "C"}},
+    ], annotations={"marks": [
+        {"kind": "mark_right_angle", "at": "C", "of": "T"},
+    ]})
+    ir = lower_to_ir(dsl)
+    mark_ops = [r for r in ir.render if r.kind == "mark_right_angles"]
+    # one from auto_mark_right_angles is off; just the explicit annotation
+    annotation_marks = [r for r in mark_ops]
+    assert any(r.angles[0].o == "C" for r in annotation_marks)
+    # RightAngle check should reference C
+    ra_checks = [c for c in ir.checks if c.kind == "right_angle" and
+                 c.source and c.source.startswith("annotation: ")]
+    assert len(ra_checks) == 1
+    assert ra_checks[0].angle.o == "C"
+
+
+def test_mark_angle_at_of_unknown_triangle():
+    """mark_angle with of= pointing to nonexistent triangle raises LoweringError."""
+    with pytest.raises(LoweringError, match="nonexistent"):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "at": "A", "of": "nonexistent"},
+        ]}))
+
+
+def test_mark_angle_at_of_vertex_not_in_triangle():
+    """mark_angle with at= pointing to a vertex not in the triangle raises LoweringError."""
+    with pytest.raises(LoweringError, match="Z"):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "at": "Z", "of": "T"},
+        ]}))
+
+
+def test_mark_angle_both_forms_rejected():
+    """Providing both (a,vertex,b) and (at,of) should raise a pydantic ValidationError."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "a": "A", "vertex": "B", "b": "C", "at": "A", "of": "T"},
+        ]})
+
+
+def test_mark_angle_neither_form_rejected():
+    """Providing neither (a,vertex,b) nor (at,of) should raise a pydantic ValidationError."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        RecipeDSL(construction=[], annotations={"marks": [
+            {"kind": "mark_angle"},
+        ]})
+
+
+def test_mark_angle_expected_numeric_pass():
+    """mark_angle with expected=60 on a 60-degree angle raises no error."""
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "expected": 60},
+    ]})
+    ir = lower_to_ir(dsl)  # should not raise
+    assert ir is not None
+
+
+def test_mark_angle_expected_numeric_fail():
+    """mark_angle with expected value far from actual angle raises LoweringError with both values."""
+    with pytest.raises(LoweringError, match="120"):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "expected": 120},
+        ]}))
+
+
+def test_mark_angle_expected_category_pass():
+    """mark_angle with expected='acute' on an acute angle raises no error."""
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "expected": "acute"},
+    ]})
+    ir = lower_to_ir(dsl)  # should not raise
+    assert ir is not None
+
+
+def test_mark_angle_expected_category_fail():
+    """mark_angle with expected='obtuse' on an acute angle raises LoweringError."""
+    with pytest.raises(LoweringError, match="obtuse"):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "a": "B", "vertex": "A", "b": "C", "expected": "obtuse"},
+        ]}))
+
+
+def test_mark_angle_expected_skips_without_coords():
+    """mark_angle expected check silently skips if a vertex has no known coords."""
+    # IntersectionOp produces a point with no _coord_floats entry
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
+        {"op": "line_through", "id": "l1", "points": ["A", "B"]},
+        {"op": "line_through", "id": "l2", "points": ["A", "C"]},
+        {"op": "intersection", "id": "X", "of": ["l1", "l2"]},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "A", "vertex": "X", "b": "C", "expected": 45},
+    ]})
+    ir = lower_to_ir(dsl)  # should not raise
+    assert ir is not None
+
+
+def test_annotation_check_source_in_message():
+    """Mismatched MarkRightAngle annotation → failure message contains [annotation: mark_right_angle."""
+    from ir.to_sympy import compile_defs
+    from ir.checks import run_checks
+
+    # 3-4-5 right triangle, right angle at C; mark a non-right angle at A
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"side_AB": 3, "side_BC": 4, "side_CA": 5}},
+    ], annotations={"marks": [
+        {"kind": "mark_right_angle", "a": "B", "vertex": "A", "b": "C"},
+    ]})
+    ir = lower_to_ir(dsl)
+    sym = compile_defs(ir)
+    results = run_checks(ir.checks, sym)
+    failed = [r for r in results if not r.passed]
+    assert any("annotation: mark_right_angle" in r.message for r in failed)

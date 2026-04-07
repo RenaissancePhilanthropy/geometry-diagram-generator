@@ -83,14 +83,33 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 v1 = _angle_at(sym[a1.a], sym[a1.o], sym[a1.b])
                 v2 = _angle_at(sym[a2.a], sym[a2.o], sym[a2.b])
                 ok = abs(v1 - v2) < t
-                msg = "" if ok else (
-                    f"Angles differ: {math.degrees(v1):.3f}° vs {math.degrees(v2):.3f}°"
-                )
+                if ok:
+                    msg = ""
+                else:
+                    d1, d2 = math.degrees(v1), math.degrees(v2)
+                    msg = (
+                        f"Angle {a1.a}-{a1.o}-{a1.b} = {d1:.1f}° "
+                        f"but {a2.a}-{a2.o}-{a2.b} = {d2:.1f}°"
+                    )
+                    # Suggest matching alternatives at each vertex
+                    hints = []
+                    cands1 = _candidate_angles_at(a1.o, sym, d2, t)
+                    if cands1:
+                        hints.append(f"at {a1.o} try: {', '.join(cands1)}")
+                    cands2 = _candidate_angles_at(a2.o, sym, d1, t)
+                    if cands2:
+                        hints.append(f"at {a2.o} try: {', '.join(cands2)}")
+                    if hints:
+                        msg += " | " + "; ".join(hints)
 
             case ir.EqualLength(segs=segs):
                 lengths = [float(_seg_length(sym[s]).evalf()) for s in segs]
                 ok = all(abs(l - lengths[0]) < t for l in lengths[1:])
-                msg = "" if ok else f"Segment lengths not equal: {lengths}"
+                if ok:
+                    msg = ""
+                else:
+                    pairs = ", ".join(f"{s}={l:.4f}" for s, l in zip(segs, lengths))
+                    msg = f"Segment lengths not equal: {pairs}"
 
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
                 l1 = float(_seg_length(sym[s1]).evalf())
@@ -157,6 +176,8 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 ok = True
                 msg = f"(unrecognized check kind {check.kind!r}, skipped)"
 
+        if not ok and check.source:
+            msg = f"[{check.source}] {msg}"
         return CheckResult(check=check, passed=ok, message=msg)
 
     except Exception as exc:
@@ -317,3 +338,31 @@ def _angle_at(a: spg.Point2D, vertex: spg.Point2D, b: spg.Point2D) -> float:
         raise ValueError("Degenerate angle: vertex coincides with a leg point")
     cos_val = max(-1.0, min(1.0, dot / (mag_a * mag_b)))
     return math.acos(cos_val)
+
+
+def _candidate_angles_at(
+    vertex_id: str,
+    sym: "SymTable",
+    target_deg: float,
+    tol: float,
+) -> list[str]:
+    """Find all non-implicit point pairs at vertex whose angle matches target_deg."""
+    if vertex_id not in sym or not isinstance(sym[vertex_id], spg.Point2D):
+        return []
+    vertex = sym[vertex_id]
+    pts = [
+        (k, v) for k, v in sym.items()
+        if isinstance(v, spg.Point2D) and k != vertex_id and not k.startswith("__")
+    ]
+    matches = []
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            a_id, a_pt = pts[i]
+            b_id, b_pt = pts[j]
+            try:
+                deg = math.degrees(_angle_at(a_pt, vertex, b_pt))
+                if abs(deg - target_deg) < tol:
+                    matches.append(f"{a_id}-{vertex_id}-{b_id}={deg:.1f}°")
+            except (ValueError, ZeroDivisionError):
+                continue
+    return matches
