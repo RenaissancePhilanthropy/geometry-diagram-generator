@@ -454,6 +454,7 @@ class CheckBase(BaseModel):
     kind: str
     level: Literal["must", "prefer"] = "must"
     tol: Optional[float] = None
+    source: Optional[str] = None
 
 
 class DistinctPoints(CheckBase):

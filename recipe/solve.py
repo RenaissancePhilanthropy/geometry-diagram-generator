@@ -66,6 +66,26 @@ def solve_triangle(
         n_angles = len(angles)
         n_sides  = len(sides_raw)
 
+        # Reduce overdefined specs by dropping redundant constraints
+        if n_angles == 3:
+            angle_sum = sum(float(v) for v in angles.values())
+            if abs(angle_sum - 180.0) > 1.0:
+                raise SpecError(f"Three angles sum to {angle_sum:.1f}°, not 180°")
+            if n_sides >= 1:
+                # Drop any one angle — AAS path handles the remaining 2+sides
+                drop = list(angles.keys())[-1]
+                angles = {k: v for k, v in angles.items() if k != drop}
+                n_angles = 2
+            else:
+                raise SpecError(
+                    "Three angles but no side — AAA is underdetermined (infinitely many similar triangles)"
+                )
+
+        if n_sides == 3 and n_angles > 0:
+            # All three sides given — angles are redundant, use SSS
+            n_angles = 0
+            angles = {}
+
         # --- SSS ---
         if n_sides == 3 and n_angles == 0:
             ab = _get_side(v0, v1)

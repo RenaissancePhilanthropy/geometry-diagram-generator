@@ -363,19 +363,44 @@ class MarkAngle(BaseModel):
     """Mark an angle arc at `vertex` between rays toward `a` and `b`."""
     model_config = ConfigDict(extra="forbid")
     kind: Literal["mark_angle"] = "mark_angle"
-    a: str
-    vertex: str
-    b: str
+    a: Optional[str] = None
+    vertex: Optional[str] = None
+    b: Optional[str] = None
+    at: Optional[str] = None  # vertex name within triangle (shorthand)
+    of: Optional[str] = None  # triangle id (shorthand)
     group: Optional[int] = None  # tick-group for equal-angle marking
+    expected: Optional[Union[float, Literal["acute", "right", "obtuse"]]] = None
+
+    @model_validator(mode="after")
+    def _check_form(self) -> "MarkAngle":
+        has_explicit = all(v is not None for v in [self.a, self.vertex, self.b])
+        has_shorthand = self.at is not None and self.of is not None
+        if has_explicit == has_shorthand:
+            raise ValueError(
+                "mark_angle: specify exactly one of (a, vertex, b) or (at, of)"
+            )
+        return self
 
 
 class MarkRightAngle(BaseModel):
     """Mark a right-angle square at `vertex`."""
     model_config = ConfigDict(extra="forbid")
     kind: Literal["mark_right_angle"] = "mark_right_angle"
-    a: str
-    vertex: str
-    b: str
+    a: Optional[str] = None
+    vertex: Optional[str] = None
+    b: Optional[str] = None
+    at: Optional[str] = None  # vertex name within triangle (shorthand)
+    of: Optional[str] = None  # triangle id (shorthand)
+
+    @model_validator(mode="after")
+    def _check_form(self) -> "MarkRightAngle":
+        has_explicit = all(v is not None for v in [self.a, self.vertex, self.b])
+        has_shorthand = self.at is not None and self.of is not None
+        if has_explicit == has_shorthand:
+            raise ValueError(
+                "mark_right_angle: specify exactly one of (a, vertex, b) or (at, of)"
+            )
+        return self
 
 
 class MarkEqualLengths(BaseModel):
@@ -394,6 +419,20 @@ class MarkParallel(BaseModel):
     group: Optional[int] = None
 
 
+class MarkProportional(BaseModel):
+    """Mark proportional-length tick marks on groups of corresponding segments.
+
+    Use instead of mark_equal_lengths when segments are proportional but not
+    equal (e.g. corresponding sides of similar triangles).  Each inner list is
+    a pair [P, Q] of endpoints.  The lowerer verifies that the ratio between
+    consecutive pairs is constant.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_proportional"] = "mark_proportional"
+    segments: list[list[str]]   # [[A,B],[D,E], ...] — corresponding segments
+    group: Optional[int] = None
+
+
 class LabelSegment(BaseModel):
     """Place a text label at the midpoint of a segment."""
     model_config = ConfigDict(extra="forbid")
@@ -403,7 +442,7 @@ class LabelSegment(BaseModel):
 
 
 AnnotationMark = Annotated[
-    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel],
+    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional],
     Field(discriminator="kind")
 ]
 
