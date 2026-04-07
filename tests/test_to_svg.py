@@ -28,7 +28,14 @@ from ir.ir import (
     Polygon,
 )
 from ir.to_sympy import compile_defs
-from ir.to_svg import ir_to_svg, _parse_latex
+from ir.to_svg import (
+    ir_to_svg,
+    _parse_latex,
+    _auto_label_direction,
+    _angle_to_offset,
+    _angle_to_anchor,
+    _build_incident_angles,
+)
 from util.svg_checks import check_svg_wellformed, check_svg_has_content, check_svg_reasonable_size
 
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -718,3 +725,233 @@ def test_label_overline_produces_tspan():
     root = _parse(svg)
     tspans = _findall(root, "tspan")
     assert any(ts.get("text-decoration") == "overline" for ts in tspans)
+
+
+# ---------------------------------------------------------------------------
+# Auto label placement helpers
+# ---------------------------------------------------------------------------
+
+class TestAutoLabelDirection:
+    def test_no_angles_returns_above(self):
+        # No incident edges → label goes straight up (π/2)
+        d = _auto_label_direction([])
+        assert abs(d - math.pi / 2) < 1e-9
+
+    def test_single_angle_returns_opposite(self):
+        # One edge going right (0) → label should go left (π)
+        d = _auto_label_direction([0.0])
+        assert abs(d - math.pi) < 1e-9
+
+    def test_two_opposite_angles_returns_perpendicular(self):
+        # Horizontal line (0 and π) → largest gap is above/below; bisector at π/2 or 3π/2
+        d = _auto_label_direction([0.0, math.pi])
+        TWO_PI = 2 * math.pi
+        # Gap above (π/2) and below (3π/2) are equal; algorithm picks the first one
+        assert abs(d - math.pi / 2) < 1e-9 or abs(d - 3 * math.pi / 2) < 1e-9
+
+    def test_three_angles_finds_largest_gap(self):
+        # Three edges at 0°, 120°, 240° (equilateral triangle vertex)
+        # All gaps are equal (120°); bisector of gap between 240° and 0° is 300° = -60°
+        angles = [0.0, 2 * math.pi / 3, 4 * math.pi / 3]
+        d = _auto_label_direction(angles)
+        TWO_PI = 2 * math.pi
+        d_norm = d % TWO_PI
+        # Each gap is 120°; any of the three bisectors is valid
+        expected = [math.pi / 3, math.pi, 5 * math.pi / 3]
+        assert any(abs(d_norm - e) < 1e-9 for e in expected)
+
+    def test_four_edges_avoids_all(self):
+        # Four edges at 0°, 90°, 180°, 270° (cross pattern)
+        # All gaps are 90°; label should be at 45°, 135°, 225°, or 315°
+        angles = [0.0, math.pi / 2, math.pi, 3 * math.pi / 2]
+        d = _auto_label_direction(angles)
+        TWO_PI = 2 * math.pi
+        d_norm = d % TWO_PI
+        expected = [math.pi / 4, 3 * math.pi / 4, 5 * math.pi / 4, 7 * math.pi / 4]
+        assert any(abs(d_norm - e) < 1e-9 for e in expected)
+
+    def test_unequal_gaps_picks_largest(self):
+        # Edge at 0° and 45° — large gap from 45° to 360° (315°); bisector at 45 + 315/2 = 202.5°
+        angles = [0.0, math.pi / 4]
+        d = _auto_label_direction(angles)
+        expected = math.radians(202.5)
+        assert abs((d % (2 * math.pi)) - expected) < 1e-6
+
+
+class TestAngleToOffset:
+    def test_right(self):
+        dx, dy = _angle_to_offset(0.0, 10.0)
+        assert abs(dx - 10.0) < 1e-9
+        assert abs(dy) < 1e-9
+
+    def test_above(self):
+        # angle π/2 in geometry space → SVG y decreases (upward on screen)
+        dx, dy = _angle_to_offset(math.pi / 2, 10.0)
+        assert abs(dx) < 1e-9
+        assert abs(dy - (-10.0)) < 1e-9  # negative SVG dy = upward
+
+    def test_left(self):
+        dx, dy = _angle_to_offset(math.pi, 10.0)
+        assert abs(dx - (-10.0)) < 1e-9
+        assert abs(dy) < 1e-9
+
+    def test_below(self):
+        dx, dy = _angle_to_offset(-math.pi / 2, 10.0)
+        assert abs(dx) < 1e-9
+        assert abs(dy - 10.0) < 1e-9  # positive SVG dy = downward
+
+
+class TestAngleToAnchor:
+    def test_right_is_start(self):
+        assert _angle_to_anchor(0.0) == "start"
+
+    def test_above_is_middle(self):
+        assert _angle_to_anchor(math.pi / 2) == "middle"
+
+    def test_left_is_end(self):
+        assert _angle_to_anchor(math.pi) == "end"
+
+    def test_below_is_middle(self):
+        assert _angle_to_anchor(-math.pi / 2) == "middle"
+
+    def test_above_right_is_start(self):
+        assert _angle_to_anchor(math.pi / 6) == "start"   # 30° — right half-plane
+
+    def test_above_left_is_end(self):
+        assert _angle_to_anchor(5 * math.pi / 6) == "end"  # 150° — left half-plane
+
+
+class TestBuildIncidentAngles:
+    def test_segment_adds_angles_at_both_endpoints(self):
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=1, y=0),
+                Segment(id="s", a="A", b="B"),
+            ],
+            render=[Draw(obj="s"), LabelPoint(p="A"), LabelPoint(p="B")],
+        )
+        sym = compile_defs(diagram)
+        from ir.render_util import extract_coords, synthesize_helpers
+        coords = extract_coords(sym)
+        stmt_by_id = {s.id: s for s in diagram.define}
+        helpers = synthesize_helpers(diagram, sym, coords)
+        angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
+        assert "A" in angles
+        assert "B" in angles
+        # A→B is angle 0 (rightward); B→A is angle π
+        assert any(abs(a - 0.0) < 1e-9 for a in angles["A"])
+        assert any(abs(a - math.pi) < 1e-9 for a in angles["B"])
+
+    def test_intersection_point_gets_both_line_angles(self):
+        """A point lying on a drawn line (but not a defining endpoint) gets angles."""
+        from ir.ir import LineThrough, PointFixed, PointIntersection
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=2, y=0),
+                PointFixed(id="C", x=1, y=-1),
+                PointFixed(id="D", x=1, y=1),
+                Segment(id="s1", a="A", b="B"),
+                Segment(id="s2", a="C", b="D"),
+                PointIntersection(id="X", obj1="s1", obj2="s2"),
+            ],
+            render=[
+                Draw(obj="s1"), Draw(obj="s2"),
+                LabelPoint(p="X"),
+            ],
+        )
+        sym = compile_defs(diagram)
+        from ir.render_util import extract_coords, synthesize_helpers
+        coords = extract_coords(sym)
+        stmt_by_id = {s.id: s for s in diagram.define}
+        helpers = synthesize_helpers(diagram, sym, coords)
+        angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
+        # X lies on both segments; should have angles for both (0°/180° and 90°/270°)
+        assert "X" in angles
+        x_angles_deg = sorted(round(math.degrees(a) % 360, 1) for a in angles["X"])
+        assert 0.0 in x_angles_deg
+        assert 90.0 in x_angles_deg
+        assert 180.0 in x_angles_deg
+        assert 270.0 in x_angles_deg
+
+    def test_no_draw_op_no_angles(self):
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=1, y=0),
+                Segment(id="s", a="A", b="B"),
+            ],
+            render=[LabelPoint(p="A")],  # no Draw op
+        )
+        sym = compile_defs(diagram)
+        from ir.render_util import extract_coords, synthesize_helpers
+        coords = extract_coords(sym)
+        stmt_by_id = {s.id: s for s in diagram.define}
+        helpers = synthesize_helpers(diagram, sym, coords)
+        angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
+        assert angles.get("A", []) == []
+
+
+class TestAutoLabelIntegration:
+    """Integration tests: verify that auto labels are not placed along drawn edges."""
+
+    def _label_pos(self, svg_str: str, point_id: str) -> tuple[float, float]:
+        root = ET.fromstring(svg_str)
+        ns = "http://www.w3.org/2000/svg"
+        for el in root.iter(f"{{{ns}}}text"):
+            if el.get("data-for") == point_id:
+                return float(el.get("x", 0)), float(el.get("y", 0))
+        raise AssertionError(f"No label found for point {point_id!r}")
+
+    def _point_pos(self, svg_str: str, point_id: str) -> tuple[float, float]:
+        root = ET.fromstring(svg_str)
+        ns = "http://www.w3.org/2000/svg"
+        for el in root.iter(f"{{{ns}}}circle"):
+            if el.get("data-ir-id") == point_id:
+                return float(el.get("cx", 0)), float(el.get("cy", 0))
+        raise AssertionError(f"No drawn point found for {point_id!r}")
+
+    def test_label_not_along_horizontal_segment(self):
+        # Horizontal segment A-B; label for A should not be placed to the right
+        # (along the segment direction). With one outgoing edge (rightward),
+        # the algorithm places the label in the opposite direction (leftward).
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=2, y=0),
+                Segment(id="s", a="A", b="B"),
+            ],
+            render=[
+                Draw(obj="s"),
+                DrawPoints(points=["A", "B"]),
+                LabelPoint(p="A"),
+            ],
+        )
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym)
+        lx, ly = self._label_pos(svg, "A")
+        px, py = self._point_pos(svg, "A")
+        # Label should NOT be to the right of the point (which would be along the segment)
+        assert lx < px, "Label for endpoint A of a rightward segment should be placed to the left"
+
+    def test_explicit_pos_is_honored(self):
+        # Explicit pos="below" should always place label below, ignoring geometry
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=2, y=0),
+                Segment(id="s", a="A", b="B"),
+            ],
+            render=[
+                Draw(obj="s"),
+                DrawPoints(points=["A", "B"]),
+                LabelPoint(p="A", pos="below"),
+            ],
+        )
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym)
+        lx, ly = self._label_pos(svg, "A")
+        px, py = self._point_pos(svg, "A")
+        # "below" in SVG coords means higher y value
+        assert ly > py, "Label with pos='below' should be below the point in SVG space"
