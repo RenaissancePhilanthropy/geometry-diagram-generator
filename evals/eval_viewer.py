@@ -6,10 +6,13 @@ Runs on port 8002. Serves:
   GET  /api/runs/{run_id}                  — all records for a run (metadata)
   GET  /api/runs/{run_id}/records/{index}  — full record detail
   GET  /api/runs/{run_id}/svg/{index}      — serve the saved SVG file
-  POST /api/compile-ir                     — compile IR → TikZ → SVG
-  POST /api/render-tikz                    — render TikZ → SVG
+  GET  /api/renderer-status               — check which renderers are available
+  POST /api/compile-ir                     — compile IR → SVG (renderer: "svg" or "tikz")
+  POST /api/compile-recipe                 — compile RecipeDSL → IR → SVG
+  POST /api/render-tikz                    — render TikZ → SVG (requires Docker)
 
-Requires the TikZ renderer container running at localhost:8001 for compile/render.
+The SVG renderer works without Docker. The TikZ renderer requires the container
+at localhost:8001.
 """
 
 import os
@@ -36,7 +39,9 @@ from ir.errors import IRCompileError
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
 from ir.checks import run_checks
-from ir.renderer import TikZRenderer
+from ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from recipe.dsl import RecipeDSL
+from recipe.lower import LoweringError, lower_to_ir
 from util.tikz_renderer import render_tikz
 
 load_dotenv()
@@ -83,7 +88,13 @@ def _run_summary(run_id: str, records: list[dict]) -> dict:
 
 def _record_metadata(record: dict) -> dict:
     """Strip large fields for list views."""
-    return {k: v for k, v in record.items() if k not in ("tikz_code", "diagram_ir")}
+    return {k: v for k, v in record.items() if k not in ("tikz_code", "diagram_ir", "recipe_dsl", "recipe_metadata")}
+
+
+def _get_renderer(name: str) -> Renderer:
+    if name == "tikz":
+        return TikZRenderer()
+    return SVGRenderer()
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +181,10 @@ async def compile_ir(request: Request) -> JSONResponse:
     # Run checks
     check_results = run_checks(diagram.checks, sym)
 
-    # Generate TikZ and render to SVG
+    # Render to SVG
+    renderer_name = body.get("renderer", "svg")
     try:
-        render_result = TikZRenderer().render(diagram, sym)
+        render_result = _get_renderer(renderer_name).render(diagram, sym)
     except Exception as e:
         return JSONResponse(
             {"error": str(e), "stage": "render"},
@@ -183,7 +195,72 @@ async def compile_ir(request: Request) -> JSONResponse:
         "tikz_code": render_result.intermediate,
         "svg": render_result.output,
         "checks": [r.model_dump(mode="json") for r in check_results],
+        "renderer": renderer_name,
     })
+
+
+async def compile_recipe(request: Request) -> JSONResponse:
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    recipe_data = body.get("recipe_dsl")
+    if recipe_data is None:
+        return JSONResponse({"error": "Missing recipe_dsl field"}, status_code=400)
+
+    # Validate RecipeDSL
+    try:
+        dsl = RecipeDSL.model_validate(recipe_data)
+    except ValidationError as e:
+        return JSONResponse(
+            {"error": str(e), "stage": "validate"},
+            status_code=422,
+        )
+
+    # Lower to IR
+    try:
+        diagram = lower_to_ir(dsl)
+    except LoweringError as e:
+        return JSONResponse(
+            {"error": str(e), "stage": "lower"},
+            status_code=400,
+        )
+
+    # Compile to SymPy
+    try:
+        sym = compile_defs(diagram)
+    except IRCompileError as e:
+        return JSONResponse(
+            {"error": str(e), "stage": "compile", "def_id": e.def_id},
+            status_code=400,
+        )
+
+    # Run checks
+    check_results = run_checks(diagram.checks, sym)
+
+    # Render to SVG
+    renderer_name = body.get("renderer", "svg")
+    try:
+        render_result = _get_renderer(renderer_name).render(diagram, sym)
+    except Exception as e:
+        return JSONResponse(
+            {"error": str(e), "stage": "render"},
+            status_code=400,
+        )
+
+    return JSONResponse({
+        "diagram_ir": diagram.model_dump(mode="json"),
+        "tikz_code": render_result.intermediate,
+        "svg": render_result.output,
+        "checks": [r.model_dump(mode="json") for r in check_results],
+        "renderer": renderer_name,
+    })
+
+
+async def renderer_status(request: Request) -> JSONResponse:
+    tikz_ok = TikZRenderer().check_health()
+    return JSONResponse({"svg": True, "tikz": tikz_ok})
 
 
 async def render_tikz_endpoint(request: Request) -> JSONResponse:
@@ -216,7 +293,9 @@ routes = [
     Route("/api/runs/{run_id}", get_run),
     Route("/api/runs/{run_id}/records/{index:int}", get_record),
     Route("/api/runs/{run_id}/svg/{index:int}", get_svg),
+    Route("/api/renderer-status", renderer_status),
     Route("/api/compile-ir", compile_ir, methods=["POST"]),
+    Route("/api/compile-recipe", compile_recipe, methods=["POST"]),
     Route("/api/render-tikz", render_tikz_endpoint, methods=["POST"]),
 ]
 
