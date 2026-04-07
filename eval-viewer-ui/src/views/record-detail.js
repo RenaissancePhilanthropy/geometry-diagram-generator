@@ -20,6 +20,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
   }
 
   const hasIR = record.diagram_ir != null
+  const hasRecipe = record.recipe_dsl != null
 
   // Originals for diff comparison
   const originalIR = hasIR ? JSON.stringify(record.diagram_ir, null, 2) : ''
@@ -63,15 +64,37 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
         <!-- Judge scores -->
         ${renderJudgePanel(record)}
 
+        <!-- Renderer selector -->
+        <div style="padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+          <label style="color:#888;font-size:12px;white-space:nowrap">Renderer:</label>
+          <select id="renderer-select" style="background:#1e1e1e;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:4px;font-size:13px">
+            <option value="svg">SVG (no Docker)</option>
+            <option value="tikz">TikZ (Docker)</option>
+          </select>
+          <span id="tikz-status" style="font-size:11px;color:#888"></span>
+        </div>
+
         <!-- Editors -->
         <div class="panel">
           <div class="tabs">
-            ${hasIR ? '<button class="tab-btn active" data-tab="ir">Edit IR</button>' : ''}
-            <button class="tab-btn ${hasIR ? '' : 'active'}" data-tab="tikz">Edit TikZ</button>
+            ${hasRecipe ? '<button class="tab-btn active" data-tab="recipe">Edit Recipe</button>' : ''}
+            ${hasIR ? `<button class="tab-btn ${hasRecipe ? '' : 'active'}" data-tab="ir">Edit IR</button>` : ''}
+            <button class="tab-btn ${hasRecipe || hasIR ? '' : 'active'}" data-tab="tikz">Edit TikZ</button>
           </div>
 
+          ${hasRecipe ? `
+          <div class="tab-pane active" id="tab-recipe">
+            <textarea id="recipe-editor" class="code-editor" style="min-height:360px">${escapeHtml(JSON.stringify(record.recipe_dsl, null, 2))}</textarea>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-compile-recipe">Compile Recipe</button>
+              <span id="recipe-spinner" style="display:none"><span class="spinner"></span></span>
+            </div>
+            <div id="recipe-error" style="display:none"></div>
+          </div>
+          ` : ''}
+
           ${hasIR ? `
-          <div class="tab-pane active" id="tab-ir">
+          <div class="tab-pane ${hasRecipe ? '' : 'active'}" id="tab-ir">
             <textarea id="ir-editor" class="code-editor" style="min-height:360px">${escapeHtml(originalIR)}</textarea>
             <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" id="btn-compile">Recompile &amp; Render</button>
@@ -83,7 +106,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
           </div>
           ` : ''}
 
-          <div class="tab-pane ${hasIR ? '' : 'active'}" id="tab-tikz">
+          <div class="tab-pane ${hasRecipe || hasIR ? '' : 'active'}" id="tab-tikz">
             <textarea id="tikz-editor" class="code-editor" style="min-height:360px">${escapeHtml(originalTikZ)}</textarea>
             <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" id="btn-render">Re-render</button>
@@ -128,6 +151,9 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     document.getElementById('svg-source-label').textContent = 'no SVG saved'
   }
 
+  // Check renderer status
+  checkRendererStatus()
+
   // Tab switching
   container.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -147,6 +173,54 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     originalTikZ,
     document.getElementById('tikz-editor').value,
   ])
+
+  // Compile Recipe button
+  if (hasRecipe) {
+    document.getElementById('btn-compile-recipe').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-compile-recipe')
+      const spinner = document.getElementById('recipe-spinner')
+      const errBox = document.getElementById('recipe-error')
+
+      btn.disabled = true
+      spinner.style.display = 'inline'
+      errBox.style.display = 'none'
+
+      let recipeData
+      try {
+        recipeData = JSON.parse(document.getElementById('recipe-editor').value)
+      } catch (e) {
+        showError(errBox, `JSON parse error: ${e.message}`)
+        btn.disabled = false
+        spinner.style.display = 'none'
+        return
+      }
+
+      try {
+        const res = await fetch('/api/compile-recipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipe_dsl: recipeData,
+            renderer: document.getElementById('renderer-select').value,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          showError(errBox, formatError(data))
+        } else {
+          // Update IR editor with lowered IR
+          const irEditor = document.getElementById('ir-editor')
+          if (irEditor) irEditor.value = JSON.stringify(data.diagram_ir, null, 2)
+          updateAfterCompile(data, 'compiled from Recipe')
+        }
+      } catch (e) {
+        showError(errBox, `Request failed: ${e.message}`)
+      }
+
+      btn.disabled = false
+      spinner.style.display = 'none'
+    })
+  }
 
   // Compile IR button
   if (hasIR) {
@@ -173,17 +247,16 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
         const res = await fetch('/api/compile-ir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ diagram_ir: irData }),
+          body: JSON.stringify({
+            diagram_ir: irData,
+            renderer: document.getElementById('renderer-select').value,
+          }),
         })
         const data = await res.json()
         if (!res.ok) {
-          showError(errBox, data.error || 'Compilation failed')
+          showError(errBox, formatError(data))
         } else {
-          // Update TikZ editor with generated code
-          document.getElementById('tikz-editor').value = data.tikz_code || ''
-          setSvgContent(data.svg, 'recompiled from IR')
-          document.getElementById('checks-container').innerHTML = renderCheckResults(data.checks || [])
-          // Refresh diff panels if currently visible
+          updateAfterCompile(data, 'recompiled from IR')
           refreshDiffIfVisible('ir-diff-container', originalIR, document.getElementById('ir-editor').value)
           refreshDiffIfVisible('tikz-diff-container', originalTikZ, data.tikz_code || '')
         }
@@ -215,7 +288,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
       })
       const data = await res.json()
       if (!res.ok) {
-        showError(errBox, data.error || 'Render failed')
+        showError(errBox, formatError(data))
       } else {
         setSvgContent(data.svg, 're-rendered from TikZ')
       }
@@ -226,6 +299,46 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     btn.disabled = false
     spinner.style.display = 'none'
   })
+}
+
+// Shared post-compile update: sets TikZ editor, SVG, and checks
+function updateAfterCompile(data, svgLabel) {
+  const tikzEditor = document.getElementById('tikz-editor')
+  const renderBtn = document.getElementById('btn-render')
+  if (tikzEditor) {
+    tikzEditor.value = data.tikz_code || ''
+  }
+  if (renderBtn) {
+    if (!data.tikz_code) {
+      renderBtn.disabled = true
+      renderBtn.title = 'No TikZ code (SVG renderer used)'
+    } else {
+      renderBtn.disabled = false
+      renderBtn.title = ''
+    }
+  }
+  setSvgContent(data.svg, svgLabel + (data.renderer ? ` via ${data.renderer}` : ''))
+  document.getElementById('checks-container').innerHTML = renderCheckResults(data.checks || [])
+}
+
+async function checkRendererStatus() {
+  const select = document.getElementById('renderer-select')
+  const status = document.getElementById('tikz-status')
+  if (!select || !status) return
+  try {
+    const res = await fetch('/api/renderer-status')
+    const data = await res.json()
+    if (!data.tikz) {
+      const tikzOpt = select.querySelector('option[value="tikz"]')
+      if (tikzOpt) {
+        tikzOpt.disabled = true
+        tikzOpt.text = 'TikZ (Docker — unavailable)'
+      }
+      status.textContent = 'TikZ renderer not reachable'
+    }
+  } catch {
+    // If the status check fails, leave both options enabled
+  }
 }
 
 function setupDiffToggle(btnId, containerId, getTexts) {
@@ -293,6 +406,11 @@ function showError(el, message) {
   el.style.display = 'block'
 }
 
+function formatError(data) {
+  const stage = data.stage ? `[${data.stage}] ` : ''
+  return stage + (data.error || 'Unknown error')
+}
+
 function renderAllChecks(record) {
   const sections = []
 
@@ -307,7 +425,13 @@ function renderAllChecks(record) {
 
   if (record.svg_checks) {
     const failures = record.svg_checks.failures || []
-    sections.push(`<h3 style="margin-top:12px">SVG Checks</h3><div class="check-list">${checkItem('svg', record.svg_checks.passed, false, failures.join(', '))}</div>`)
+    let svgItems
+    if (failures.length) {
+      svgItems = failures.map(f => checkItem('svg', false, false, f))
+    } else {
+      svgItems = [checkItem('svg', record.svg_checks.passed, false, record.svg_checks.passed ? 'well-formed · has content · reasonable size' : '')]
+    }
+    sections.push(`<h3 style="margin-top:12px">SVG Checks</h3><div class="check-list">${svgItems.join('')}</div>`)
   }
 
   if (record.expected_point_checks) {
@@ -329,25 +453,40 @@ function renderAllChecks(record) {
 
 function renderCheckResults(checks) {
   if (!checks.length) return '<p style="color:#888;font-size:12px">No checks.</p>'
-  const items = checks.map(c => checkItem(
-    c.check?.kind || 'check',
-    c.passed,
-    false,
-    c.message || ''
-  ))
+  const items = checks.map(c => {
+    const source = c.check?.source
+    const level = c.check?.level || 'must'
+    const sourceTag = source
+      ? `<span class="source-tag">${escapeHtml(source)}</span>`
+      : ''
+    const kindLabel = sourceTag + escapeHtml(c.check?.kind || 'check')
+    return checkItem(kindLabel, c.passed, false, c.message || '', /*rawLabel=*/true, level)
+  })
   return `<h3>IR Checks</h3><div class="check-list">${items.join('')}</div>`
 }
 
-function checkItem(name, passed, skipped, message, rawLabel = false) {
-  const cls = skipped ? 'skip' : passed ? 'pass' : 'fail'
+function checkItem(name, passed, skipped, message, rawLabel = false, level = 'must') {
+  const isWarn = !passed && !skipped && level === 'prefer'
+  const cls = skipped ? 'skip' : passed ? 'pass' : isWarn ? 'warn' : 'fail'
   const icon = skipped ? '⊘' : passed ? '✓' : '✗'
   const nameHtml = rawLabel ? name : escapeHtml(String(name))
+
+  // Split on " | " to separate failure message from candidate hints
+  let mainMsg = message
+  let hints = ''
+  const pipeIdx = message.indexOf(' | ')
+  if (pipeIdx !== -1) {
+    mainMsg = message.substring(0, pipeIdx)
+    hints = message.substring(pipeIdx + 3)
+  }
+
   return `
     <div class="check-item ${cls}">
       <span class="check-icon">${icon}</span>
       <div>
         <div class="check-name">${nameHtml}</div>
-        ${message ? `<div class="check-msg">${escapeHtml(String(message))}</div>` : ''}
+        ${mainMsg ? `<div class="check-msg">${escapeHtml(String(mainMsg))}</div>` : ''}
+        ${hints ? `<div class="check-hint">Hint: ${escapeHtml(hints)}</div>` : ''}
       </div>
     </div>
   `
