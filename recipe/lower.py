@@ -51,6 +51,43 @@ _PICK_RULE_ADAPTER: TypeAdapter[PickRule] = TypeAdapter(PickRule)
 
 _DEG_TO_RAD = math.pi / 180.0
 
+_GENERIC_VERTICES = ("A", "B", "C")
+
+
+def _remap_triangle_spec(vertices: list[str], spec: dict) -> dict:
+    """Remap generic A/B/C spec keys to the actual vertex names.
+
+    When the LLM generates a triangle with vertices [D, E, F] but uses generic
+    spec keys like ``angle_A``, ``angle_B``, ``side_AB`` (meant positionally),
+    this function translates those keys to use the real vertex names
+    (``angle_D``, ``angle_E``, ``side_DE``).
+
+    The remapping is only applied when the vertex set is *completely disjoint*
+    from {A, B, C}, i.e. none of the actual vertices are named A, B, or C.
+    If any actual vertex shares a name with a generic label, the spec keys may
+    be intentional references to that vertex, so we leave the spec unchanged.
+    """
+    if set(vertices) & set(_GENERIC_VERTICES):
+        return spec  # actual vertices include A/B/C — cannot safely remap
+
+    mapping = {g: v for g, v in zip(_GENERIC_VERTICES, vertices)}
+
+    remapped: dict = {}
+    for key, val in spec.items():
+        if key.startswith("angle_"):
+            letter = key[len("angle_"):]
+            remapped[f"angle_{mapping.get(letter, letter)}"] = val
+        elif key.startswith("side_") and len(key) == 7:
+            # side_XY — two-character vertex pair
+            l0, l1 = key[5], key[6]
+            remapped[f"side_{mapping.get(l0, l0)}{mapping.get(l1, l1)}"] = val
+        elif key == "right_angle_at":
+            letter = str(val)
+            remapped[key] = mapping.get(letter, letter)
+        else:
+            remapped[key] = val
+    return remapped
+
 
 class _Lowerer:
     """Stateful lowering context for a single RecipeDSL."""
@@ -200,7 +237,8 @@ class _Lowerer:
 
     def _lower_triangle(self, op: TriangleOp) -> None:
         try:
-            coords = solve_triangle(op.vertices, op.spec, center=op.center)
+            spec = _remap_triangle_spec(op.vertices, op.spec)
+            coords = solve_triangle(op.vertices, spec, center=op.center)
         except Exception as e:
             raise LoweringError(f"Triangle '{op.id}': {e}") from e
 
@@ -474,6 +512,18 @@ class _Lowerer:
         self._add(LinePerpendicularThrough(id=op.id, through=op.mid, to_line=base_id))
         self._point_ids.append(op.mid)
         self._drawable.add(op.id)
+        # Always draw the base segment unless the user already defined one
+        # between those two points (to avoid a duplicate Draw op).
+        p0, p1 = op.of[0], op.of[1]
+        already_has_seg = any(
+            isinstance(d, Segment) and {d.a, d.b} == {p0, p1}
+            for d in self._defs
+        )
+        if not already_has_seg:
+            seg_id = f"__{op.id}_seg"
+            self._add(Segment(id=seg_id, a=p0, b=p1))
+            # Add Draw directly — auto_draw_all skips __-prefixed IDs.
+            self._renders.append(Draw(obj=seg_id))
 
     def _lower_median(self, op: MedianOp) -> None:
         # Resolve the two base points

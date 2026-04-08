@@ -189,6 +189,87 @@ def test_perpendicular_bisector_expansion():
     assert pb.to_line == "__pb_base"
 
 
+def test_perpendicular_bisector_emits_base_segment_when_no_explicit_segment():
+    """Without an explicit segment op, perp_bisector should auto-emit a drawable segment."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        PerpendicularBisectorOp(id="pb_AB", of=["A", "B"], mid="M"),
+    ], annotations={"auto_draw_all": True, "auto_label_points": False})
+    ir = lower_to_ir(dsl)
+    # A Segment between A and B should exist in the IR defines
+    segs = [d for d in ir.define if d.kind == "segment" and {d.a, d.b} == {"A", "B"}]
+    assert segs, "Expected a segment A-B to be auto-emitted by perp bisector lowering"
+    seg_id = segs[0].id
+    # That segment should be drawn
+    drawn = [r.obj for r in ir.render if r.kind == "draw"]
+    assert seg_id in drawn, f"Segment {seg_id!r} not found in draw ops"
+
+
+def test_perpendicular_bisector_no_duplicate_segment_when_explicit():
+    """When the user already defined a segment A-B, perp_bisector should not add another."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        SegmentOp(id="seg_AB", endpoints=["A", "B"]),
+        PerpendicularBisectorOp(id="pb_AB", of=["A", "B"], mid="M"),
+    ], annotations={"auto_draw_all": True, "auto_label_points": False})
+    ir = lower_to_ir(dsl)
+    segs = [d for d in ir.define if d.kind == "segment" and {d.a, d.b} == {"A", "B"}]
+    assert len(segs) == 1, "Should have exactly one segment A-B, not a duplicate"
+
+
+# ---------------------------------------------------------------------------
+# Triangle spec key remapping
+# ---------------------------------------------------------------------------
+
+from recipe.lower import _remap_triangle_spec
+
+
+def test_remap_triangle_spec_noop_when_abc_vertices():
+    """No remapping when vertices include A, B, or C."""
+    spec = {"angle_A": 60, "side_AB": 3}
+    assert _remap_triangle_spec(["A", "B", "C"], spec) == spec
+
+
+def test_remap_triangle_spec_noop_when_partial_abc_overlap():
+    """No remapping when even one vertex is A/B/C."""
+    spec = {"angle_A": 60, "angle_B": 70, "side_AB": 3}
+    assert _remap_triangle_spec(["A", "D", "E"], spec) == spec
+
+
+def test_remap_triangle_spec_remaps_angles_and_sides():
+    """Full remap for vertices completely disjoint from {A, B, C}."""
+    spec = {"angle_A": 50, "angle_B": 70, "side_AB": 5}
+    result = _remap_triangle_spec(["D", "E", "F"], spec)
+    assert result == {"angle_D": 50, "angle_E": 70, "side_DE": 5}
+
+
+def test_remap_triangle_spec_right_angle_at():
+    """right_angle_at value is also remapped."""
+    spec = {"right_angle_at": "A", "side_AB": 3, "side_CA": 4}
+    result = _remap_triangle_spec(["P", "Q", "R"], spec)
+    assert result["right_angle_at"] == "P"
+    assert "side_PQ" in result
+    assert "side_RP" in result
+
+
+def test_remap_triangle_spec_integration_similar_triangles():
+    """Two triangles: second with D/E/F vertices and generic A/B/C spec keys should lower."""
+    dsl = _dsl([
+        TriangleOp(id="triABC", vertices=["A", "B", "C"],
+                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 3},
+                   center=[2.0, 1.5]),
+        TriangleOp(id="triDEF", vertices=["D", "E", "F"],
+                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 5},  # generic keys
+                   center=[7.0, 2.5]),
+    ])
+    ir = lower_to_ir(dsl)  # should not raise
+    assert any(d.id == "D" for d in ir.define)
+    assert any(d.id == "E" for d in ir.define)
+    assert any(d.id == "F" for d in ir.define)
+
+
 # ---------------------------------------------------------------------------
 # Composite: angle_bisector
 # ---------------------------------------------------------------------------
