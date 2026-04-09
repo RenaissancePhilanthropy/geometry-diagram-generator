@@ -1,6 +1,6 @@
-name: parallel_transversal
-description: "Two parallel lines AB and CD cut by a transversal EF"
-tags: [parallel, transversal, angle, intermediate]
+name: parallel_transversal_basic
+description: "Two parallel lines AB and CD cut by a transversal, with intersection points G and H — no angle marks"
+tags: [parallel, transversal, basic]
 context: "Given points A, B on the first line and C, D on the second line."
 setup:
   - op: point
@@ -45,29 +45,9 @@ example:
   annotations:
     auto_draw_all: true
     auto_label_points: true
-    marks:
-      - kind: mark_angle
-        a: B
-        vertex: G
-        b: H
-        group: 1
-      - kind: mark_angle
-        a: D
-        vertex: H
-        b: F
-        group: 1
-      - kind: mark_angle
-        a: H
-        vertex: G
-        b: A
-        group: 2
-      - kind: mark_angle
-        a: G
-        vertex: H
-        b: D
-        group: 2
 notes:
+  - "Use this recipe for diagrams that only require drawing parallel lines and a transversal — no angle annotations"
   - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"
   - "D is placed at (4,2) to lie on L2, giving the standard 'parallel lines AB and CD' naming"
-  - "Transversal guide points (E, F) should be visible: false — only intersection points G, H should appear"
-  - "Angle pairs must mark BOTH intersections with the same group number (e.g. one mark_angle at G and one at H)"
+  - "Transversal guide points (E, F) must be visible: false — only G and H appear as intersection points"
+  - "For a diagram that also marks angle pairs, use the parallel_transversal_angles recipe instead"

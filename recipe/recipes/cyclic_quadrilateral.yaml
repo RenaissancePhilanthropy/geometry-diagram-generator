@@ -14,23 +14,31 @@ example:
   mode: grid
   construction:
     - op: point
-      id: P1
+      id: A
       coords: [4, 2]
-    - op: point
-      id: P2
-      coords: [2, 4]
-    - op: point
-      id: P3
-      coords: [0, 2]
-    - op: point
-      id: P4
-      coords: [2, 0]
+    - op: rotation
+      id: B
+      point: A
+      center: O
+      angle: 75
+    - op: rotation
+      id: C
+      point: A
+      center: O
+      angle: 160
+    - op: rotation
+      id: D
+      point: A
+      center: O
+      angle: 250
     - op: polygon
       id: quad
-      vertices: [P1, P2, P3, P4]
+      vertices: [A, B, C, D]
   annotations:
     auto_draw_all: true
     auto_label_points: true
 notes:
-  - "Points are on circle c (radius 2, center O=(2,2)) — P1,P2,P3,P4 are at distance 2 from O"
+  - "Place A explicitly on the circle (e.g. at the rightmost point: coords = [center_x + radius, center_y]), then rotate A around O to get B, C, D"
+  - "rotation guarantees all points are EXACTLY equidistant from O — never use hardcoded coordinates for B, C, D"
+  - "Choose non-uniform rotation angles (e.g. 75, 160, 250 degrees) so the quadrilateral is visibly non-regular and non-rectangular"
   - "Opposite angles of a cyclic quadrilateral sum to 180 degrees"

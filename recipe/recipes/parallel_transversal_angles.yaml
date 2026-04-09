@@ -1,0 +1,87 @@
+name: parallel_transversal_angles
+description: "Two parallel lines AB and CD cut by a transversal, with corresponding, alternate interior, and alternate exterior angle pairs marked"
+tags: [parallel, transversal, angle, annotation-heavy, intermediate]
+context: "Given points A, B on the first line and C, D on the second line."
+setup:
+  - op: point
+    id: A
+    coords: [0, 0]
+  - op: point
+    id: B
+    coords: [4, 0]
+  - op: point
+    id: C
+    coords: [0, 2]
+  - op: point
+    id: D
+    coords: [4, 2]
+example:
+  mode: grid
+  construction:
+    - op: line_through
+      id: L1
+      points: [A, B]
+    - op: parallel
+      id: L2
+      to_line: L1
+      through: C
+    - op: point
+      id: E
+      coords: [2, -1]
+      visible: false
+    - op: point
+      id: F
+      coords: [3, 3]
+      visible: false
+    - op: line_through
+      id: Trans
+      points: [E, F]
+    - op: intersection
+      id: G
+      of: [L1, Trans]
+    - op: intersection
+      id: H
+      of: [L2, Trans]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_angle
+        a: B
+        vertex: G
+        b: H
+        group: 1
+      - kind: mark_angle
+        a: D
+        vertex: H
+        b: F
+        group: 1
+      - kind: mark_angle
+        a: H
+        vertex: G
+        b: A
+        group: 2
+      - kind: mark_angle
+        a: G
+        vertex: H
+        b: D
+        group: 2
+      - kind: mark_angle
+        a: B
+        vertex: G
+        b: E
+        group: 3
+      - kind: mark_angle
+        a: C
+        vertex: H
+        b: F
+        group: 3
+notes:
+  - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"
+  - "D is placed at (4,2) to lie on L2, giving the standard 'parallel lines AB and CD' naming"
+  - "Transversal guide points (E, F) must be visible: false — only G and H appear as intersection points"
+  - "Angle pairs must mark BOTH intersections with the same group number (one mark_angle at G and one at H per group)"
+  - "Three angle pair types: group 1 = corresponding (B-G-H and D-H-F), group 2 = alternate interior (H-G-A and G-H-D), group 3 = alternate exterior (B-G-E and C-H-F)"
+  - "CRITICAL — alternate interior (group 2): at G use H-G-A, at H use G-H-D (NOT G-H-C). D and C are on opposite sides of the transversal at vertex H. Using C instead of D gives a supplementary angle, not an equal one."
+  - "Alternate exterior (group 3): use C (not D) at vertex H — C is on the opposite side of the transversal from B, matching the exterior angle at G"
+  - "Memory check: corresponding angles (group 1) are on the SAME side of the transversal at each intersection; alternate angles (groups 2, 3) are on OPPOSITE sides."

@@ -370,6 +370,37 @@ def test_check_render_angles_line_parallel_through():
     assert len(errors) == 1
 
 
+def test_check_render_angles_geometric_collinearity_with_sym():
+    # D is placed as a PointFixed on the parallel line (geometrically), but not
+    # structurally connected to l_par or H. Without sym, D-H pair fails.
+    # With sym, the geometric check should accept it.
+    from ir.ir import LineParallelThrough, PointIntersection
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=4, y=2),   # on l_par but not structurally linked
+            PointFixed(id="E", x=2, y=-1),
+            PointFixed(id="F", x=3, y=3),
+            LineThrough(id="l_AB", p="A", q="B"),
+            LineParallelThrough(id="l_par", through="C", to_line="l_AB"),
+            LineThrough(id="l_t", p="E", q="F"),
+            PointIntersection(id="G", obj1="l_AB", obj2="l_t"),
+            PointIntersection(id="H", obj1="l_par", obj2="l_t"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="G", o="H", b="D")])],
+    )
+    # Without sym: D not structurally on l_par → error
+    errors_no_sym = check_render_angles(diagram)
+    assert len(errors_no_sym) == 1
+    assert "'D'" in errors_no_sym[0]
+    # With sym: D geometrically lies on l_par through H → accepted
+    sym = compile_defs(diagram)
+    errors_with_sym = check_render_angles(diagram, sym)
+    assert errors_with_sym == []
+
+
 def test_check_render_angles_line_angle_bisector():
     # V is vertex of the bisector (registered on bis), D is a point on bis.
     # Angle triple (V, D_other, ...) — test valid case: (V, D, ...) where V-D share bis.
