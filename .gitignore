@@ -42,3 +42,6 @@ curriculum/*_raw.txt
 curriculum/debug_*.txt
 curriculum/*.log
 curriculum/*.zip
+
+# Benchmark run data
+benchmark/data/
