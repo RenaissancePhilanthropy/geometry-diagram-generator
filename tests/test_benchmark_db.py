@@ -20,14 +20,14 @@ from benchmark.db import (
 
 @pytest.fixture
 def conn():
-    c = get_db(Path(":memory:"))
+    c = get_db(":memory:")
     yield c
     c.close()
 
 
 @pytest.fixture
 def db_conn():
-    c = get_db(Path(":memory:"))
+    c = get_db(":memory:")
     yield c
     c.close()
 

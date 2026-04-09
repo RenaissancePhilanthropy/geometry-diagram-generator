@@ -10,7 +10,7 @@ export async function renderIrrReport(container, { runId, navigate }) {
     return
   }
 
-  if (report.status === 'irr_not_yet_implemented') {
+  if (report.error) {
     container.innerHTML = `
       <h2>IRR Report</h2>
       <p style="color:#888;margin-top:16px">
@@ -23,21 +23,21 @@ export async function renderIrrReport(container, { runId, navigate }) {
 
   const kappa = report.kappa !== undefined ? report.kappa.toFixed(3) : '—'
 
-  const categoryRows = (report.by_category || []).map(cat => `
+  const categoryRows = Object.entries(report.by_category || {}).map(([catName, cat]) => `
     <tr>
-      <td>${cat.category}</td>
+      <td>${catName}</td>
       <td>${cat.kappa !== undefined ? cat.kappa.toFixed(3) : '—'}</td>
-      <td>${cat.agreement_pct !== undefined ? (cat.agreement_pct * 100).toFixed(1) + '%' : '—'}</td>
-      <td style="color:#888;font-size:12px">${cat.n_items || 0} items</td>
+      <td>${cat.percent_agreement !== undefined ? (cat.percent_agreement * 100).toFixed(1) + '%' : '—'}</td>
+      <td style="color:#888;font-size:12px">${cat.n_pairs || 0} pairs</td>
     </tr>
   `).join('')
 
   const itemRows = (report.by_item || []).map(item => `
     <tr>
       <td style="font-size:12px;color:#aaa">${item.rubric_item_id}</td>
-      <td>${item.text || ''}</td>
-      <td>${item.kappa !== undefined ? item.kappa.toFixed(3) : '—'}</td>
-      <td>${item.agreement_pct !== undefined ? (item.agreement_pct * 100).toFixed(1) + '%' : '—'}</td>
+      <td>${item.category || ''}</td>
+      <td>${item.n_pairs || 0}</td>
+      <td>${item.agreement !== undefined ? (item.agreement * 100).toFixed(1) + '%' : '—'}</td>
     </tr>
   `).join('')
 
@@ -58,7 +58,7 @@ export async function renderIrrReport(container, { runId, navigate }) {
             <th>Category</th>
             <th>Kappa</th>
             <th>Agreement</th>
-            <th>Items</th>
+            <th>Pairs</th>
           </tr>
         </thead>
         <tbody>${categoryRows}</tbody>
@@ -71,8 +71,8 @@ export async function renderIrrReport(container, { runId, navigate }) {
         <thead>
           <tr>
             <th>Item ID</th>
-            <th>Text</th>
-            <th>Kappa</th>
+            <th>Category</th>
+            <th>Pairs</th>
             <th>Agreement</th>
           </tr>
         </thead>

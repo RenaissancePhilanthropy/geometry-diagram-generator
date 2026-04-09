@@ -78,7 +78,7 @@ export async function renderAnnotateView(container, { runId, promptId, navigate 
   function buildLayout() {
     const answered = countAnswered()
     const total = rubricItems.length
-    const promptText = result.prompt || promptId
+    const promptText = result.prompt_text || promptId
     const benchmarkId = result.benchmark_id || ''
 
     return `
@@ -141,7 +141,7 @@ export async function renderAnnotateView(container, { runId, promptId, navigate 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          result_id: result.id || promptId,
+          result_id: result.result_id || promptId,
           rubric_item_id: itemId,
           annotator_id: annotatorId,
           value: value,
