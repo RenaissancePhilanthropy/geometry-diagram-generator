@@ -8,7 +8,7 @@ Benchmark Annotation Server — serves annotation UI and API on port 8004.
   GET  /api/runs/{run_id}/results/{prompt_id}/svg   — serve generated SVG
   GET  /api/references/{benchmark_id}/{prompt_id}   — serve reference SVG
   POST /api/annotate                                — save a single annotation
-  GET  /api/irr/{run_id}                            — IRR stub
+  GET  /api/irr/{run_id}                            — compute IRR between two annotators
 """
 
 import os
