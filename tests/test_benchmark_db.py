@@ -25,6 +25,13 @@ def conn():
     c.close()
 
 
+@pytest.fixture
+def db_conn():
+    c = get_db(Path(":memory:"))
+    yield c
+    c.close()
+
+
 def test_insert_and_get_run(conn):
     insert_run(conn, "run1", "bench_core", "Test run")
     row = get_run(conn, "run1")
@@ -50,7 +57,7 @@ def test_insert_and_get_result(conn):
     assert row["svg_path"] == "/tmp/a.svg"
     assert row["tikz_code"] == "\\draw..."
     assert row["generation_success"] == 1
-    assert row["metadata"] == '{"k": "v"}'
+    assert row["metadata"] == {"k": "v"}
 
 
 def test_get_result_missing(conn):
@@ -78,7 +85,7 @@ def test_upsert_annotation_update(conn):
     assert annotations[0]["value"] == 0
 
 
-def test_annotation_unique_constraint_same_annotator(conn):
+def test_different_annotators_both_stored(conn):
     insert_run(conn, "run1", "bench_core", "Test run")
     insert_result(conn, "run1__p1", "run1", "p1", None, None, False, None)
     upsert_annotation(conn, "run1__p1", "angle_B_90", "human:gordon", "human", 1)
@@ -118,6 +125,11 @@ def test_list_results_for_run(conn):
     assert len(results) == 2
     prompt_ids = {r["prompt_id"] for r in results}
     assert prompt_ids == {"p1", "p2"}
+
+
+def test_result_fk_enforced(db_conn):
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_result(db_conn, "nonexistent__prompt", "nonexistent_run", "prompt", None, None, False, None)
 
 
 def test_result_unique_constraint(conn):
