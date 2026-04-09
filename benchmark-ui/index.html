@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Benchmark Annotator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    #nav {
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      height: 48px;
+    }
+    #nav .brand { font-weight: 600; color: #fff; font-size: 15px; }
+    #nav .breadcrumb { color: #888; font-size: 13px; }
+
+    #app { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #1e1e1e;
+      border-bottom: 2px solid #333;
+      color: #aaa;
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td { padding: 8px 12px; border-bottom: 1px solid #222; vertical-align: middle; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #1a1a1a; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-done { background: #14532d; color: #86efac; }
+    .badge-partial { background: #713f12; color: #fde68a; }
+    .badge-none { background: #1e1e1e; color: #888; }
+
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #fff; }
+    h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #ccc; }
+
+    .prompt-text {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #ccc;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    /* Annotation layout */
+    .annotate-layout { display: grid; grid-template-rows: auto 1fr auto; height: calc(100vh - 48px); }
+    .svgs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; overflow: hidden; }
+    .svg-panel { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; display: flex; flex-direction: column; overflow: hidden; }
+    .svg-panel h3 { padding: 8px 12px; font-size: 12px; color: #888; border-bottom: 1px solid #333; text-transform: uppercase; letter-spacing: 0.05em; }
+    .svg-panel .svg-container { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 12px; }
+    .svg-panel svg { max-width: 100%; max-height: 100%; }
+    .rubric-section { padding: 12px 0; overflow-y: auto; }
+    .rubric-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1a1a1a; cursor: pointer; }
+    .rubric-item:hover { background: #1a1a1a; }
+    .rubric-item.focused { background: #1e2a3a; }
+    .rubric-item .item-number { width: 20px; color: #555; font-size: 12px; text-align: right; flex-shrink: 0; }
+    .rubric-item .item-text { flex: 1; }
+    .rubric-item .yn-buttons { display: flex; gap: 4px; }
+    .yn-btn { padding: 2px 10px; border: 1px solid #444; border-radius: 3px; background: transparent; color: #888; cursor: pointer; font-size: 12px; }
+    .yn-btn.active-y { background: #166534; border-color: #16a34a; color: #4ade80; }
+    .yn-btn.active-n { background: #7f1d1d; border-color: #dc2626; color: #f87171; }
+    .rubric-divider { color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 0 4px; }
+    .nav-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid #333; }
+    .progress-badge { color: #888; font-size: 12px; }
+    .btn { padding: 6px 16px; border: 1px solid #444; border-radius: 4px; background: #1e1e1e; color: #e0e0e0; cursor: pointer; font-size: 13px; font-family: inherit; }
+    .btn:hover { background: #2a2a2a; }
+    .btn-primary { background: #1e40af; border-color: #3b82f6; }
+    .btn-primary:hover { background: #1d4ed8; }
+
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0 8px;
+    }
+    .header-bar h2 { margin-bottom: 0; }
+
+    .meta-row { color: #888; font-size: 12px; padding: 4px 0 8px; }
+
+    .no-ref { color: #555; font-size: 13px; font-style: italic; }
+
+    .kappa-display { font-size: 32px; font-weight: 600; color: #60a5fa; margin: 16px 0 8px; }
+  </style>
+</head>
+<body>
+  <div id="nav">
+    <span class="brand">Benchmark Annotator</span>
+    <span class="breadcrumb" id="breadcrumb"></span>
+  </div>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
