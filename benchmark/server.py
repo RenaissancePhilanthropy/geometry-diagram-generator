@@ -250,7 +250,11 @@ async def annotate(request: Request) -> JSONResponse:
 
 async def get_irr(request: Request) -> JSONResponse:
     run_id = request.path_params["run_id"]
-    return JSONResponse({"run_id": run_id, "status": "irr_not_yet_implemented"})
+    annotator1 = request.query_params.get("annotator1")
+    annotator2 = request.query_params.get("annotator2")
+    from benchmark.irr import compute_irr
+    report = compute_irr(run_id, annotator1, annotator2, _DB_PATH)
+    return JSONResponse(report)
 
 
 # ---------------------------------------------------------------------------
