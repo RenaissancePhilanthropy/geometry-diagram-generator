@@ -15,11 +15,15 @@ node_modules/
 
 # Local environment
 .env
-.claude/
 demo-ui/pnpm-workspace.yaml
 
-# Evals results (large artifacts only — JSONL and SVGs are committed)
-evals/results/*.log
+# LLM agent state and cache
+.claude/
+# Allow skills
+!.claude/skills/
+
+# Evals results
+evals/results/
 
 # macOS files
 .DS_Store
