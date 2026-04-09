@@ -45,6 +45,7 @@ def get_db(db_path: Path | None = None) -> sqlite3.Connection:
     if path != Path(":memory:"):
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     conn.executescript(_DDL)
     conn.commit()
@@ -116,7 +117,12 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> dict | None:
 
 def get_result(conn: sqlite3.Connection, result_id: str) -> dict | None:
     row = conn.execute("SELECT * FROM results WHERE result_id = ?", (result_id,)).fetchone()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    row_dict = dict(row)
+    if row_dict.get("metadata"):
+        row_dict["metadata"] = json.loads(row_dict["metadata"])
+    return row_dict
 
 
 def list_runs(conn: sqlite3.Connection) -> list[dict]:
@@ -128,4 +134,10 @@ def list_results_for_run(conn: sqlite3.Connection, run_id: str) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM results WHERE run_id = ?", (run_id,)
     ).fetchall()
-    return [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        row_dict = dict(row)
+        if row_dict.get("metadata"):
+            row_dict["metadata"] = json.loads(row_dict["metadata"])
+        result.append(row_dict)
+    return result
