@@ -56,7 +56,11 @@ The Intermediate Representation is the central abstraction:
 - **`ir.py`**: Pydantic models for `DiagramIR` — contains `Canvas`, `DefStmt` (20+ geometric definition types: points, segments, circles, triangles, polygons, intersections, etc.), `Check` (geometric invariants), and `RenderOp` (drawing commands).
 - **`to_sympy.py`**: Compiles `DiagramIR` definitions into SymPy geometry objects by resolving the definition DAG. Handles forward references and intersection disambiguation via `pick` rules.
 - **`to_tikz.py`**: Converts compiled SymPy objects to TikZ code (`\tkzDefPoint`, `\tkzDrawSegment`, etc.). Computes canvas bounds and helper points automatically.
+- **`to_svg.py`**: Direct SVG rendering path — converts compiled SymPy objects to SVG without going through TikZ/LaTeX.
 - **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison.
+- **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
+- **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.
+- **`renderer.py`**: Dispatch layer that selects the appropriate rendering backend.
 
 ### Strategies (`strategies/`)
 
@@ -65,9 +69,10 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 - **`raw_code.py`**: LLM generates TikZ directly.
 - **`raw_code_with_revise.py`**: Raw TikZ with a revision loop on validation failure.
 - **`plan_and_code.py`**: Two-stage: planning sub-agent determines coordinates, then generates TikZ.
-- **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. This is the most robust strategy.
+- **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. This is more robust and easier to debug than raw code generation. `structured_plus_refine.py` and `structured_two_phase.py` are variants with additional refinement steps.
+- **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Currently the main strategy to use.
 
-Prompt templates for all strategies are in `strategies/instructions.py`.
+Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, and related files.
 
 ### Renderer (`renderer/`)
 
@@ -84,7 +89,40 @@ A Docker container running a FastAPI server (port 8001) that compiles LaTeX to S
 
 ### Evals (`evals/`)
 
-Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored).
+Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored). `scenarios.py` provides programmatic scenario loading; `scenarios_query.yaml` defines query-style eval scenarios.
+
+### Benchmark (`benchmark/`)
+
+A standalone benchmarking system with persistent storage and an HTTP API:
+
+- **`db.py`**: Database layer for storing and querying benchmark run results.
+- **`server.py`**: FastAPI HTTP server exposing benchmark data and triggers.
+- **`models.py`**: Pydantic models shared across the benchmark system.
+- **`ai_judge.py`**: LLM-based judge for scoring benchmark outputs.
+- **`irr.py`**: Inter-rater reliability computation for human annotation agreement.
+- **`import_run.py`**: Imports eval run results into the benchmark database.
+
+Note: `benchmark/` and `evals/` serve related but distinct purposes — `evals/` is project-specific LLM eval harness (scenarios, repeats, judge scoring), while `benchmark/` is a persistent database-backed system for tracking results over time, potentially across multiple projects or pipelines.
+
+### Recipe (`recipe/`)
+
+A DSL for declaratively specifying geometry constructions:
+
+- **`dsl.py`**: Defines the recipe DSL syntax and parsing.
+- **`catalog.py`**: Library of named geometry construction recipes.
+- **`lower.py`**: Lowers recipe DSL constructions down to `DiagramIR` for compilation and rendering.
+- **`expressions.py`**: Expression evaluation for recipe DSL parameters.
+- **`solve.py`**: Constraint solver used during recipe lowering.
+
+### Benchmark UI (`benchmark-ui/`)
+
+A Vite-based frontend for the benchmark system. Connects to `benchmark/server.py` and provides views for annotation queues, IRR reports, and run lists. Run with `cd benchmark-ui && pnpm dev`.
+
+### Docs (`docs/`)
+
+- **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
+- **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
+- **`examples/`**: Pre-rendered SVG examples used for documentation.
 
 ## Key Design Notes
 
@@ -94,3 +132,4 @@ Benchmark harness comparing strategies across tiered geometry scenarios (Basic/I
 - **The renderer container must be running** for any code path that produces SVG output.
 - The project uses `pydantic-ai` for LLM agent orchestration with Anthropic and OpenAI backends.
 - API keys go in `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+
