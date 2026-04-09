@@ -21,7 +21,7 @@ export async function renderAnnotateQueue(container, { runId, navigate }) {
     <div class="header-bar">
       <div>
         <h2>${label}</h2>
-        <div class="meta-row">Run ID: ${runId}${runMeta.benchmark ? ` &middot; Benchmark: ${runMeta.benchmark}` : ''}</div>
+        <div class="meta-row">Run ID: ${runId}${runMeta.benchmark_id ? ` &middot; Benchmark: ${runMeta.benchmark_id}` : ''}</div>
       </div>
       <a href="#/runs/${runId}/irr">View IRR Report</a>
     </div>
@@ -36,14 +36,12 @@ export async function renderAnnotateQueue(container, { runId, navigate }) {
       </thead>
       <tbody>
         ${queue.map((item, idx) => {
-          const generated = item.has_result
+          const generated = item.generation_success
             ? '<span style="color:#4ade80">Yes</span>'
             : '<span style="color:#555">No</span>'
-          const annotated = item.is_annotated
-            ? '<span class="badge badge-done">Done</span>'
-            : item.annotation_count > 0
-              ? `<span class="badge badge-partial">${item.annotation_count} / ${item.rubric_count}</span>`
-              : '<span style="color:#555">—</span>'
+          const annotated = item.annotated
+            ? '<span class="badge badge-done">Yes</span>'
+            : '<span style="color:#555">No</span>'
           return `
             <tr class="clickable" data-run="${runId}" data-prompt="${item.prompt_id}">
               <td style="color:#555;font-size:12px">${idx + 1}</td>

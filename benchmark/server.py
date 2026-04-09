@@ -135,6 +135,7 @@ async def get_result_detail(request: Request) -> JSONResponse:
     return JSONResponse({
         "result_id": result_id,
         "prompt_id": prompt_id,
+        "benchmark_id": benchmark_id,
         "prompt_text": prompt_obj.prompt,
         "generation_success": bool(result["generation_success"]),
         "svg_path": result.get("svg_path"),

@@ -32,12 +32,12 @@ export async function renderRunList(container, { navigate }) {
         ${runs.map(run => {
           const annotated = run.annotated_count || 0
           const total = run.result_count || 0
-          const date = run.date ? new Date(run.date).toLocaleDateString() : '—'
+          const date = run.created_at ? new Date(run.created_at).toLocaleDateString() : '—'
           return `
             <tr class="clickable" data-run="${run.run_id}">
               <td><a href="#/runs/${run.run_id}">${run.run_id}</a></td>
               <td style="color:#ccc">${run.label || '—'}</td>
-              <td style="color:#aaa;font-size:12px">${run.benchmark || '—'}</td>
+              <td style="color:#aaa;font-size:12px">${run.benchmark_id || '—'}</td>
               <td style="color:#888;font-size:12px">${date}</td>
               <td>${total}</td>
               <td>${annotated} / ${total}</td>

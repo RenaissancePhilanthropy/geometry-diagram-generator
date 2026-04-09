@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS annotations (
 """
 
 
-def get_db(db_path: Path | None = None) -> sqlite3.Connection:
+def get_db(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = db_path if db_path is not None else _DEFAULT_DB_PATH
-    if path != Path(":memory:"):
+    if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA foreign_keys = ON")
