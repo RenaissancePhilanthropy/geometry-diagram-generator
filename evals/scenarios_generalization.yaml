@@ -1,0 +1,280 @@
+# Generalization scenarios: test the LLM's ability to combine recipe patterns
+# and handle novel constructions that no single recipe directly covers.
+# All tier 3. Run with:
+#   uv run python -m evals.run --scenarios evals/scenarios_generalization.yaml \
+#     --strategies recipe --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
+
+# --- Recipe Combination scenarios ---
+
+- id: tangent-incircle-foot
+  tier: 3
+  tags: [circle, tangent, incircle, generalization]
+  prompt: "Draw a triangle ABC with its inscribed circle centered at I. Mark the point T where the incircle touches side BC. Draw segment IT and mark the right angle at T. Label A, B, C, I, and T."
+  required_labels: [A, B, C, I, T]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: I_equidistant_from_sides
+      type: equidistant_from_sides
+      args: [I, A, B, C]
+    - name: T_on_BC
+      type: point_on_line
+      args: [T, B, C]
+    - name: IT_perpendicular_to_BC
+      type: right_angle
+      args: [I, T, B]
+
+- id: altitude-circumcircle
+  tier: 3
+  tags: [triangle, altitude, circle, generalization]
+  prompt: "Draw a triangle ABC with the altitude from C to side AB, meeting AB at foot H. Also draw the circumscribed circle through A, B, C with center O. Label A, B, C, H, and O."
+  required_labels: [A, B, C, H, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: altitude_perpendicular
+      type: right_angle
+      args: [C, H, A]
+    - name: H_on_AB
+      type: point_on_line
+      args: [H, A, B]
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]
+
+- id: cyclic-quadrilateral-diagonals
+  tier: 3
+  tags: [circle, quadrilateral, generalization]
+  prompt: "Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Draw both diagonals AC and BD, intersecting at point P. Label A, B, C, D, O, and P."
+  required_labels: [A, B, C, D, O, P]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: all_on_circle
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C], [O, D]]
+    - name: P_on_AC
+      type: point_on_line
+      args: [P, A, C]
+    - name: P_on_BD
+      type: point_on_line
+      args: [P, B, D]
+
+- id: isosceles-trapezoid-circle
+  tier: 3
+  tags: [circle, quadrilateral, parallel, generalization]
+  prompt: "Draw a convex isosceles trapezoid ABCD inscribed in a circle with center O. AB is the longer base and CD is the shorter base, with AB parallel to CD. The legs AD and BC are equal. Vertices go in order A, B, C, D around the shape. Label A, B, C, D, and O."
+  required_labels: [A, B, C, D, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: all_on_circle
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C], [O, D]]
+    - name: AB_parallel_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+    - name: equal_legs
+      type: equal_lengths
+      args: [[A, D], [B, C]]
+    - name: AB_CD_on_opposite_sides
+      type: opposite_side
+      args: [A, C, B, D]
+    - name: convex_AD_side
+      type: same_side
+      args: [A, B, C, D]
+
+# --- Novel Construction scenarios ---
+
+- id: angle-in-semicircle
+  tier: 3
+  tags: [circle, theorem, generalization]
+  prompt: "Draw a circle with center O and a diameter AB. Place a point C on the circle (not at A or B). Draw triangle ACB and mark the right angle at C, illustrating Thales' theorem. Label A, B, C, and O."
+  required_labels: [A, B, C, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: O_is_midpoint_of_AB
+      type: midpoint
+      args: [O, A, B]
+    - name: C_on_circle
+      type: point_on_circle
+      args: [C, O, A]
+    - name: right_angle_at_C
+      type: right_angle
+      args: [A, C, B]
+
+- id: rhombus-diagonals
+  tier: 3
+  tags: [quadrilateral, generalization]
+  prompt: "Draw a rhombus ABCD with all sides equal. Draw both diagonals AC and BD intersecting at point O. Mark the right angle at O. Label A, B, C, D, and O."
+  required_labels: [A, B, C, D, O]
+  expected_properties:
+    - name: all_sides_equal
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, D], [D, A]]
+    - name: diagonals_perpendicular
+      type: perpendicular
+      args: [[A, C], [B, D]]
+    - name: O_on_AC
+      type: point_on_line
+      args: [O, A, C]
+    - name: O_on_BD
+      type: point_on_line
+      args: [O, B, D]
+
+- id: medial-triangle
+  tier: 3
+  tags: [triangle, midpoint, generalization]
+  prompt: "Draw a triangle ABC. Mark the midpoints D of BC, E of AC, and F of AB. Connect D, E, F to form the medial triangle DEF. Label all six points A, B, C, D, E, and F."
+  required_labels: [A, B, C, D, E, F]
+  expected_properties:
+    - name: D_midpoint_BC
+      type: midpoint
+      args: [D, B, C]
+    - name: E_midpoint_AC
+      type: midpoint
+      args: [E, A, C]
+    - name: F_midpoint_AB
+      type: midpoint
+      args: [F, A, B]
+    - name: DE_parallel_AB
+      type: parallel
+      args: [[D, E], [A, B]]
+    - name: EF_parallel_BC
+      type: parallel
+      args: [[E, F], [B, C]]
+    - name: DF_parallel_AC
+      type: parallel
+      args: [[D, F], [A, C]]
+
+- id: chord-diameter-perpendicular
+  tier: 3
+  tags: [circle, chord, generalization]
+  prompt: "Draw a circle with center O and a diameter AB. Draw a chord CD perpendicular to the diameter, intersecting AB at point P. Label A, B, C, D, O, and P."
+  required_labels: [A, B, C, D, O, P]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: O_midpoint_AB
+      type: midpoint
+      args: [O, A, B]
+    - name: C_on_circle
+      type: point_on_circle
+      args: [C, O, A]
+    - name: D_on_circle
+      type: point_on_circle
+      args: [D, O, A]
+    - name: CD_perpendicular_AB
+      type: perpendicular
+      args: [[C, D], [A, B]]
+    - name: P_on_AB
+      type: point_on_line
+      args: [P, A, B]
+    - name: P_on_CD
+      type: point_on_line
+      args: [P, C, D]
+
+- id: tangent-secant-external
+  tier: 3
+  tags: [circle, tangent, generalization]
+  prompt: "Draw a circle with center O. From an external point P, draw a tangent line touching the circle at T and a secant line passing through the circle at points A and B (with A between P and B). Mark the right angle at T. Label O, P, T, A, and B."
+  required_labels: [O, P, T, A, B]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: tangent_perpendicular
+      type: right_angle
+      args: [P, T, O]
+    - name: T_on_circle
+      type: point_on_circle
+      args: [T, O, A]
+    - name: B_on_circle
+      type: point_on_circle
+      args: [B, O, A]
+    - name: P_A_B_collinear
+      type: collinear
+      args: [P, A, B]
+
+- id: kite-diagonals
+  tier: 3
+  tags: [quadrilateral, generalization]
+  prompt: "Draw a kite ABCD where AB equals AD and CB equals CD. Draw both diagonals AC and BD. Mark the right angle where the diagonals intersect. Label A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: AB_equals_AD
+      type: equal_lengths
+      args: [[A, B], [A, D]]
+    - name: CB_equals_CD
+      type: equal_lengths
+      args: [[C, B], [C, D]]
+    - name: diagonals_perpendicular
+      type: perpendicular
+      args: [[A, C], [B, D]]
+
+- id: varignon-parallelogram
+  tier: 3
+  tags: [quadrilateral, midpoint, generalization]
+  prompt: "Draw a general (non-special) quadrilateral ABCD. Mark E as the midpoint of AB, F as the midpoint of BC, G as the midpoint of CD, and H as the midpoint of DA. Connect E, F, G, H in order to form quadrilateral EFGH and show that it is a parallelogram. Label all eight points A, B, C, D, E, F, G, and H."
+  required_labels: [A, B, C, D, E, F, G, H]
+  expected_properties:
+    - name: E_midpoint_AB
+      type: midpoint
+      args: [E, A, B]
+    - name: F_midpoint_BC
+      type: midpoint
+      args: [F, B, C]
+    - name: G_midpoint_CD
+      type: midpoint
+      args: [G, C, D]
+    - name: H_midpoint_DA
+      type: midpoint
+      args: [H, D, A]
+    - name: EF_parallel_HG
+      type: parallel
+      args: [[E, F], [H, G]]
+    - name: FG_parallel_EH
+      type: parallel
+      args: [[F, G], [E, H]]
+
+- id: simson-line
+  tier: 3
+  tags: [circle, triangle, collinear, generalization]
+  prompt: "Draw a triangle ABC with its circumscribed circle (center O). Place a point P on the circle (distinct from A, B, C). Drop perpendiculars from P to each side of the triangle: D is the foot on BC, E is the foot on line AC, and F is the foot on line AB. Draw the segments PD, PE, and PF, marking the right angles at D, E, and F. Show that D, E, F are collinear (the Simson line). Label all seven points A, B, C, O, P, D, E, F."
+  required_labels: [A, B, C, O, P, D, E, F]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: P_on_circumcircle
+      type: point_on_circle
+      args: [P, O, A]
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]
+    - name: right_angle_at_D
+      type: right_angle
+      args: [P, D, B]
+    - name: right_angle_at_E
+      type: right_angle
+      args: [P, E, A]
+    - name: right_angle_at_F
+      type: right_angle
+      args: [P, F, A]
+    - name: D_on_BC
+      type: point_on_line
+      args: [D, B, C]
+    - name: E_on_AC
+      type: point_on_line
+      args: [E, A, C]
+    - name: F_on_AB
+      type: point_on_line
+      args: [F, A, B]
+    - name: DEF_collinear
+      type: collinear
+      args: [D, E, F]

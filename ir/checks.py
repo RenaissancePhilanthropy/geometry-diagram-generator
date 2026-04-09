@@ -235,18 +235,25 @@ def _seg_length(obj: Any):
 
 
 # ---------------------------------------------------------------------------
-# Render-op angle validation (no SymPy required)
+# Render-op angle validation
 # ---------------------------------------------------------------------------
 
-def check_render_angles(diagram: ir.DiagramIR) -> list[str]:
+def check_render_angles(
+    diagram: ir.DiagramIR,
+    sym: SymTable | None = None,
+) -> list[str]:
     """Validate that angle triples in render ops use points connected through
     the diagram's linear definitions.
 
     For mark_angles / mark_right_angles / label_angle, the triple {a, o, b}
     must have both `a` and `b` on a line/segment/ray that passes through `o`.
     Returns a list of error strings (empty = all valid).
+
+    When *sym* is provided, also accepts pairs where a point geometrically lies
+    on a drawn line/segment/ray (e.g. a point placed on a parallel line without
+    being a structural defining point).
     """
-    pairs = _build_linear_pairs(diagram)
+    pairs = _build_linear_pairs(diagram, sym)
     errors: list[str] = []
     for op in diagram.render:
         match op:
@@ -258,7 +265,10 @@ def check_render_angles(diagram: ir.DiagramIR) -> list[str]:
     return errors
 
 
-def _build_linear_pairs(diagram: ir.DiagramIR) -> set[frozenset]:
+def _build_linear_pairs(
+    diagram: ir.DiagramIR,
+    sym: SymTable | None = None,
+) -> set[frozenset]:
     """Return the set of {p, q} pairs that share a linear object in the diagram."""
     pts_on: dict[str, set[str]] = {}  # obj_id -> set of point ids on that obj
 
@@ -298,6 +308,30 @@ def _build_linear_pairs(diagram: ir.DiagramIR) -> set[frozenset]:
                 pts_on.setdefault(oid, set()).add(v)
             case ir.LineTangent(id=oid, point=p):
                 pts_on.setdefault(oid, set()).add(p)
+
+    # When sym is available, check if any point geometrically lies on a
+    # line/segment/ray it isn't structurally connected to.
+    if sym is not None:
+        linear_obj_ids = [
+            oid for oid, obj in sym.items()
+            if isinstance(obj, (spg.Line, spg.Segment, spg.Ray))
+        ]
+        point_ids = [
+            pid for pid, obj in sym.items()
+            if isinstance(obj, spg.Point2D) and not pid.startswith("__")
+        ]
+        for oid in linear_obj_ids:
+            line_obj = sym[oid]
+            existing = pts_on.get(oid, set())
+            for pid in point_ids:
+                if pid in existing:
+                    continue
+                pt_obj = sym[pid]
+                try:
+                    if line_obj.contains(pt_obj):
+                        pts_on.setdefault(oid, set()).add(pid)
+                except (TypeError, ValueError):
+                    continue
 
     pairs: set[frozenset] = set()
     for obj_pts in pts_on.values():

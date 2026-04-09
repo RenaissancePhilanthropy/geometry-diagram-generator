@@ -210,7 +210,7 @@ class StructureStrategy(SubstanceStrategy):
                 logger.warning("Attempt %d check failures:\n%s", attempt + 1, msgs)
                 continue
 
-            angle_errors = check_render_angles(diagram_ir)
+            angle_errors = check_render_angles(diagram_ir, sym)
             if angle_errors:
                 msgs = "\n".join(f"  - {e}" for e in angle_errors)
                 last_error = f"Invalid angle triples in render ops:\n{msgs}"
@@ -274,7 +274,7 @@ async def _run_ir_pipeline(
         msgs = "\n".join(f"  - {r.message}" for r in must_failures)
         raise RuntimeError(f"Geometric checks failed:\n{msgs}")
 
-    angle_errors = check_render_angles(diagram_ir)
+    angle_errors = check_render_angles(diagram_ir, sym)
     if angle_errors:
         msgs = "\n".join(f"  - {e}" for e in angle_errors)
         raise RuntimeError(f"Invalid angle triples in render ops:\n{msgs}")
@@ -343,7 +343,7 @@ async def _run_pipeline_once(
         msgs = "; ".join(r.message for r in must_failures)
         raise ModelRetry(f"Geometric checks failed: {msgs}")
 
-    angle_errors = check_render_angles(diagram_ir)
+    angle_errors = check_render_angles(diagram_ir, sym)
     if angle_errors:
         raise ModelRetry(f"Invalid angle triples: {'; '.join(angle_errors)}")
 
