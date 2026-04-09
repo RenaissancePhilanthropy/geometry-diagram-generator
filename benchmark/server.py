@@ -40,6 +40,7 @@ _BENCHMARK_ROOT = Path(__file__).parent
 _DEFINITIONS_DIR = _BENCHMARK_ROOT / "definitions"
 _REFERENCES_DIR = _BENCHMARK_ROOT / "references"
 _DATA_DIR = _BENCHMARK_ROOT / "data"
+_DB_PATH = _DATA_DIR / "benchmark.db"
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ async def list_benchmarks(request: Request) -> JSONResponse:
 
 
 async def list_runs(request: Request) -> JSONResponse:
-    conn = get_db()
+    conn = get_db(_DB_PATH)
     runs = db_list_runs(conn)
     result = []
     for run in runs:
@@ -86,7 +87,7 @@ async def list_runs(request: Request) -> JSONResponse:
 
 async def get_queue(request: Request) -> JSONResponse:
     run_id = request.path_params["run_id"]
-    conn = get_db()
+    conn = get_db(_DB_PATH)
     run = get_run(conn, run_id)
     if run is None:
         return JSONResponse({"error": "Run not found"}, status_code=404)
@@ -106,7 +107,7 @@ async def get_queue(request: Request) -> JSONResponse:
 async def get_result_detail(request: Request) -> JSONResponse:
     run_id = request.path_params["run_id"]
     prompt_id = request.path_params["prompt_id"]
-    conn = get_db()
+    conn = get_db(_DB_PATH)
 
     run = get_run(conn, run_id)
     if run is None:
@@ -154,7 +155,7 @@ async def get_result_detail(request: Request) -> JSONResponse:
 async def get_result_svg(request: Request) -> Response:
     run_id = request.path_params["run_id"]
     prompt_id = request.path_params["prompt_id"]
-    conn = get_db()
+    conn = get_db(_DB_PATH)
 
     result_id = f"{run_id}__{prompt_id}"
     result = get_result(conn, result_id)
@@ -215,7 +216,7 @@ async def annotate(request: Request) -> JSONResponse:
     if value not in (0, 1):
         return JSONResponse({"error": "value must be 0 or 1"}, status_code=400)
 
-    conn = get_db()
+    conn = get_db(_DB_PATH)
 
     result = get_result(conn, result_id)
     if result is None:
@@ -231,7 +232,7 @@ async def annotate(request: Request) -> JSONResponse:
     benchmark_id = run["benchmark_id"]
     def_path = _DEFINITIONS_DIR / f"{benchmark_id}.yaml"
     if not def_path.exists():
-        return JSONResponse({"error": f"Benchmark definition not found: {benchmark_id}"}, status_code=400)
+        return JSONResponse({"error": "Benchmark definition not found"}, status_code=500)
 
     defn = load_definition(def_path)
     rubric = defn.effective_rubric(prompt_id)
