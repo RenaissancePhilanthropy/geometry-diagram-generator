@@ -190,26 +190,17 @@ export async function renderAnnotateView(container, { runId, promptId, navigate 
     if (btnSkip) btnSkip.addEventListener('click', goNext)
   }
 
-  function onKeydown(e) {
+  async function onKeydown(e) {
     const tag = document.activeElement?.tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA') return
 
     const items = allItemsInOrder()
 
-    if (e.key >= '1' && e.key <= '9') {
-      const idx = parseInt(e.key, 10) - 1
-      if (idx < items.length) {
-        const item = items[idx]
-        const current = answers[item.id]
-        if (current === undefined) {
-          vote(item.id, 1)
-        } else {
-          delete answers[item.id]
-          refreshRubric()
-        }
-        focusedIndex = idx
-        refreshRubric()
-      }
+    const num = parseInt(e.key, 10)
+    if (!isNaN(num) && num >= 1 && num <= items.length) {
+      const idx = num - 1
+      focusedIndex = idx
+      await vote(items[idx].id, 1)
     } else if (e.key === 'y' || e.key === 'Y') {
       if (focusedIndex < items.length) {
         vote(items[focusedIndex].id, 1)
@@ -235,17 +226,9 @@ export async function renderAnnotateView(container, { runId, promptId, navigate 
     }
   }
 
-  window.addEventListener('keydown', onKeydown)
-
-  // Clean up on navigation
-  const origHashChange = window._benchmarkCleanup
-  if (origHashChange) origHashChange()
-  window._benchmarkCleanup = () => {
-    window.removeEventListener('keydown', onKeydown)
-    window._benchmarkCleanup = null
-  }
+  document.addEventListener('keydown', onKeydown)
   window.addEventListener('hashchange', () => {
-    window.removeEventListener('keydown', onKeydown)
+    document.removeEventListener('keydown', onKeydown)
   }, { once: true })
 
   render()
