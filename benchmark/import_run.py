@@ -30,7 +30,7 @@ def import_from_dir(
     db_path: Path | None = None,
 ) -> str:
     definition = load_definition(_definition_path(benchmark_id))
-    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
 
     svg_map: dict[str, Path] = {}
     for f in Path(svgs_dir).iterdir():
@@ -73,7 +73,7 @@ def import_from_manifest(
     db_path: Path | None = None,
 ) -> str:
     definition = load_definition(_definition_path(benchmark_id))
-    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
 
     prompt_ids = {p.id for p in definition.prompts}
 
@@ -90,7 +90,12 @@ def import_from_manifest(
                 continue
             entries.append(entry)
 
-    manifest_prompt_ids = {e["prompt_id"] for e in entries}
+    entries_by_id: dict[str, dict] = {}
+    for entry in entries:
+        if entry["prompt_id"] in prompt_ids:
+            entries_by_id[entry["prompt_id"]] = entry
+        else:
+            warnings.warn(f"Unknown prompt_id in manifest: {entry['prompt_id']!r}")
 
     dest_dir = _dest_svg_dir(run_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -101,8 +106,8 @@ def import_from_manifest(
     success_count = 0
     for prompt in definition.prompts:
         result_id = f"{run_id}__{prompt.id}"
-        if prompt.id in manifest_prompt_ids:
-            entry = next(e for e in entries if e["prompt_id"] == prompt.id)
+        entry = entries_by_id.get(prompt.id)
+        if entry is not None:
             src = Path(entry["svg_path"])
             dest = dest_dir / f"{prompt.id}.svg"
             shutil.copy2(src, dest)
