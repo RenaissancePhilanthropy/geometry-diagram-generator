@@ -11,9 +11,8 @@ from .state import (  # noqa: F401
     cascade_remove,
     MAX_REPAIR_CYCLES,
     KEEP_RECENT,
-    _REF_FIELDS,
-    _NON_REF_FIELDS,
 )
+from ir.refs import _REF_FIELDS, _NON_REF_FIELDS  # noqa: F401  (re-exported for backward compat)
 from .handlers_construction import (  # noqa: F401
     handle_init_diagram,
     handle_add_point_fixed,

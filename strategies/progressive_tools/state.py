@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart, UserPromptPart
 
 from ir import ir
+from ir.refs import def_references
 from ir.to_sympy import SymTable
 
 MAX_REPAIR_CYCLES = 2
@@ -112,44 +113,6 @@ class DiagramState:
 # ---------------------------------------------------------------------------
 # Dependency graph utilities
 # ---------------------------------------------------------------------------
-
-# Fields that hold point/object reference IDs in DefStmt models
-_REF_FIELDS = {
-    "p", "q", "a", "b", "c",               # geometric endpoints/vertices
-    "on", "onto", "source", "across",       # point_on, point_foot, point_reflect
-    "center", "through",                    # circles
-    "to_line",                              # line_parallel/perp
-    "tri",                                  # point_triangle_center
-    "obj1", "obj2",                         # point_intersection
-    "circle", "point",                      # line_tangent
-    "ref",                                  # polygon_exterior
-    "vertex",                               # line_angle_bisector
-}
-# Fields that are never IDs
-_NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
-                   "radius", "sides", "level", "tol", "which", "how", "k", "opacity"}
-
-
-def def_references(stmt: ir.DefStmt) -> set[str]:
-    """Return the set of definition IDs that this DefStmt directly references."""
-    refs: set[str] = set()
-    data = stmt.model_dump()
-    for key, value in data.items():
-        if key in _NON_REF_FIELDS:
-            continue
-        if key == "points" and isinstance(value, list):
-            refs.update(v for v in value if isinstance(v, str))
-        elif key in _REF_FIELDS and isinstance(value, str):
-            refs.add(value)
-        elif key == "pick" and isinstance(value, dict):
-            for pk, pv in value.items():
-                if pk == "kind":
-                    continue
-                if isinstance(pv, str):
-                    refs.add(pv)
-                elif isinstance(pv, list):
-                    refs.update(v for v in pv if isinstance(v, str))
-    return refs
 
 
 def cascade_remove(state: DiagramState, target_id: str) -> list[str]:

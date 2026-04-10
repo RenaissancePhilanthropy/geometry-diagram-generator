@@ -192,3 +192,16 @@
     - name: I_equidistant
       type: equidistant_from_sides
       args: [I, A, B, C]
+
+- id: isosceles-trapezoid
+  tier: 2
+  tags: [polygon, quadrilateral, parallel]
+  prompt: "Draw an isosceles trapezoid ABCD where AB is the longer base and CD is the shorter base, with AB parallel to CD. The legs AD and BC are equal in length. Label A, B, C, and D."
+  required_labels: [A, B, C, D]
+  expected_properties:
+    - name: AB_parallel_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+    - name: equal_legs
+      type: equal_lengths
+      args: [[A, D], [B, C]]

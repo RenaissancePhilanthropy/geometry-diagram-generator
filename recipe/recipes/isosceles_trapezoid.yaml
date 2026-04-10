@@ -1,0 +1,36 @@
+name: isosceles_trapezoid
+description: "Isosceles trapezoid with parallel bases and equal legs, constructed via mirror reflection"
+tags: [polygon, quadrilateral, parallel, symmetric, intermediate]
+context: "No prior objects given."
+setup: []
+example:
+  mode: grid
+  construction:
+    - op: point
+      id: A
+      coords: [-2, 0]
+    - op: point
+      id: B
+      coords: [2, 0]
+    - op: perpendicular_bisector
+      id: axis
+      of: [A, B]
+      mid: M
+    - op: point
+      id: D
+      coords: [-1, 2]
+    - op: reflection
+      id: C
+      point: D
+      over: axis
+    - op: polygon
+      id: trap
+      vertices: [A, B, C, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "Reflecting D over the perpendicular bisector of AB guarantees AD = BC (equal legs) and CD ∥ AB (parallel bases)"
+  - "Place D above AB (positive y relative to AB) so the trapezoid is convex and CD is the shorter base"
+  - "Vertices go in order A (bottom-left), B (bottom-right), C (top-right), D (top-left)"
+  - "The axis line and midpoint M are usually not drawn — omit them from draws if not needed"

@@ -1,0 +1,23 @@
+- id: isosceles-trapezoid-circle
+  tier: 3
+  tags: [circle, quadrilateral, parallel, generalization]
+  prompt: "Draw a convex isosceles trapezoid ABCD inscribed in a circle with center O. AB is the longer base and CD is the shorter base, with AB parallel to CD. The legs AD and BC are equal. Vertices go in order A, B, C, D around the shape. Label A, B, C, D, and O."
+  required_labels: [A, B, C, D, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: all_on_circle
+      type: equal_lengths
+      args: [[O, A], [O, B], [O, C], [O, D]]
+    - name: AB_parallel_CD
+      type: parallel
+      args: [[A, B], [C, D]]
+    - name: equal_legs
+      type: equal_lengths
+      args: [[A, D], [B, C]]
+    - name: AB_CD_on_opposite_sides
+      type: opposite_side
+      args: [A, C, B, D]
+    - name: convex_AD_side
+      type: same_side
+      args: [A, B, C, D]
