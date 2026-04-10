@@ -26,7 +26,7 @@ from ir.ir import (
     PickIndex, PickClosestTo, PickOnObject,
 )
 from ir.to_sympy import compile_defs
-from ir.errors import UndefinedRefError, IntersectionError, PickError, ExprEvalError
+from ir.errors import IRCompileError, UndefinedRefError, IntersectionError, PickError, ExprEvalError
 from ir.auto_checks import generate_auto_checks, run_auto_checks
 
 # Import the scenario registry populated at module load time
@@ -894,3 +894,79 @@ class TestPolygonExterior:
         for i in range(2, 5):
             vy = float(sym[f"pent_v{i}"].y.evalf())
             assert vy < 0, f"pent_v{i} should be below x-axis, got y={vy}"
+
+
+# ---------------------------------------------------------------------------
+# Topological sort and forward reference tests
+# ---------------------------------------------------------------------------
+
+class TestToposort:
+    def test_forward_reference_resolves(self):
+        """compile_defs handles forward references by sorting topologically."""
+        # M references A and B, but is listed before them — should still work.
+        stmts = [
+            PointMidpoint(id="M", p="A", q="B"),
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert approx(float(sym["M"].x), 2.0)
+        assert approx(float(sym["M"].y), 0.0)
+
+    def test_correct_order_unchanged(self):
+        """Definitions already in correct order compile as before."""
+        stmts = [
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointMidpoint(id="M", p="A", q="B"),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert approx(float(sym["M"].x), 2.0)
+
+    def test_circular_dependency_raises(self):
+        """Circular dependencies raise IRCompileError."""
+        # PointReflect A across B, and B across A — direct cycle
+        stmts = [
+            PointFixed(id="P", x=0, y=0),
+            PointReflect(id="A", source="P", across="B"),
+            PointReflect(id="B", source="P", across="A"),
+        ]
+        with pytest.raises(IRCompileError, match="Circular dependency"):
+            compile_defs(DiagramIR(define=stmts))
+
+    def test_undefined_id_error(self):
+        """Truly undefined IDs (not defined anywhere) still raise UndefinedRefError."""
+        stmts = [
+            PointMidpoint(id="M", p="A", q="NONEXISTENT"),
+            PointFixed(id="A", x=0, y=0),
+        ]
+        with pytest.raises(UndefinedRefError, match="undefined id 'NONEXISTENT'"):
+            compile_defs(DiagramIR(define=stmts))
+
+    def test_forward_reference_error_message(self):
+        """When toposort is bypassed (e.g. cycles prevent it), error is descriptive."""
+        # This tests the _resolve path — with toposort active this won't normally
+        # trigger, but if it does the message should be clear. We verify the
+        # undefined-id path still works with a genuinely missing reference.
+        stmts = [PointMidpoint(id="M", p="X", q="Y")]
+        with pytest.raises(UndefinedRefError):
+            compile_defs(DiagramIR(define=stmts))
+
+    def test_reflection_over_bisector_forward_ref(self):
+        """Real-world pattern: reflect D over perpendicular bisector 'axis' defined later."""
+        # This mirrors what the LLM generates for isosceles trapezoid:
+        # D and C defined before 'axis', but axis is listed after them in DSL.
+        from ir.ir import LineThrough, LinePerpendicularThrough
+        stmts = [
+            PointFixed(id="A", x=-2, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="D", x=-1, y=2),
+            PointReflect(id="C", source="D", across="axis"),   # forward ref to axis
+            PointMidpoint(id="M", p="A", q="B"),
+            LineThrough(id="__axis_base", p="A", q="B"),
+            LinePerpendicularThrough(id="axis", through="M", to_line="__axis_base"),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        # C should be the mirror of D over the y-axis (perpendicular bisector of AB)
+        assert approx(float(sym["C"].x), 1.0)   # mirrored: -1 -> +1
+        assert approx(float(sym["C"].y), 2.0)   # y unchanged

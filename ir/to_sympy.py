@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from graphlib import CycleError, TopologicalSorter
 from random import Random
 from typing import Any
 
@@ -9,6 +10,7 @@ import sympy.geometry as spg
 
 import ir.ir as ir
 from ir.errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
+from ir.refs import def_references
 
 # Symbol table: maps definition id -> SymPy geometry object
 SymTable = dict[str, Any]
@@ -47,9 +49,23 @@ def compile_defs(
         for name, raw in diagram.params.assign.items():
             params[name] = _eval_expr(raw, {}, def_id="<params>")
 
-    sym: SymTable = {}
+    all_ids = {stmt.id for stmt in diagram.define}
+    stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
+
+    # Build dependency graph and sort topologically so forward references work.
+    graph: dict[str, set[str]] = {}
     for stmt in diagram.define:
-        obj = _compile_one(stmt, sym, params, canvas, rng)
+        graph[stmt.id] = def_references(stmt) & all_ids
+
+    try:
+        order = list(TopologicalSorter(graph).static_order())
+    except CycleError as e:
+        raise IRCompileError("<cycle>", f"Circular dependency in definitions: {e}") from e
+
+    sym: SymTable = {}
+    for sid in order:
+        stmt = stmts_by_id[sid]
+        obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
         sym[stmt.id] = obj
         # PolygonExterior: also register its computed vertices as sub-points
         # v0=a, v1=b are already in sym; register v2..v_{n-1}
@@ -72,6 +88,7 @@ def _compile_one(
     params: dict[str, Any],
     canvas: ir.Canvas,
     rng: Random,
+    all_def_ids: set[str] | None = None,
 ) -> Any:
     did = stmt.id  # for error messages
 
@@ -79,7 +96,7 @@ def _compile_one(
         return _eval_expr(raw, params, def_id=did)
 
     def ref(obj_id: str) -> Any:
-        return _resolve(sym, obj_id, def_id=did)
+        return _resolve(sym, obj_id, def_id=did, all_def_ids=all_def_ids)
 
     match stmt:
         # --- Points ---
@@ -390,11 +407,17 @@ def _parse_between_ratio(ratio: float | str | None) -> float:
     raise IRCompileError("<parse_ratio>", f"Cannot parse ratio {ratio!r}; expected float, 'M:N', or 'a/b'")
 
 
-def _resolve(sym: SymTable, ref_id: str, *, def_id: str) -> Any:
+def _resolve(sym: SymTable, ref_id: str, *, def_id: str, all_def_ids: set[str] | None = None) -> Any:
     """Look up ref_id in sym, raising UndefinedRefError if missing."""
     try:
         return sym[ref_id]
     except KeyError:
+        if all_def_ids and ref_id in all_def_ids:
+            raise UndefinedRefError(
+                def_id,
+                f"references '{ref_id}', which is defined later in the list — "
+                f"move the definition of '{ref_id}' before '{def_id}'",
+            )
         raise UndefinedRefError(def_id, f"references undefined id {ref_id!r}")
 
 
