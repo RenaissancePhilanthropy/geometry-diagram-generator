@@ -215,6 +215,18 @@ Kinds: index(k), on_object(obj), closest_to(p), same_side(line:[A,B], ref_point)
 - auto_label_points: true (default) — label all named points
 - auto_mark_right_angles: false (default) — add right-angle marks
 
+### annotations.labels — explicit text callouts
+  {"kind":"label_segment", "endpoints":["A","B"], "text":"c"}
+      Text beside midpoint of segment AB (side lengths, etc.)
+  {"kind":"label_point", "point":"A", "text":"A_1", "pos":"above"}
+      Override the auto-generated label for point A. Omit "text" to keep
+      the point id but change only "pos". pos ∈ {auto, above, below, left,
+      right, above left, above right, below left, below right}.
+  {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C", "text":"45°"}
+      Text inside the angle at vertex A formed by rays AB and AC. Shorthand
+      form: {"kind":"label_angle", "at":"A", "of":"tri_ABC", "text":"α"}.
+      Pair with a mark_angle to also draw the arc.
+
 ## ID rules
 - All IDs must be unique
 - IDs starting with __ are reserved (used internally during lowering)

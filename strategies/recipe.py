@@ -6,7 +6,9 @@ import logging
 from dataclasses import dataclass, field
 
 import pydantic
-from pydantic_ai import Agent
+from pydantic_ai import Agent, capture_run_messages
+from pydantic_ai.exceptions import UnexpectedModelBehavior, ToolRetryError
+from pydantic_ai.messages import ModelResponse, ModelRequest, ToolCallPart, TextPart, RetryPromptPart
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
@@ -50,7 +52,64 @@ class RecipeAttemptTrace:
     attempt: int
     dsl_json: dict | None  # model_dump() of the RecipeDSL the LLM produced
     error: str | None       # error message if this attempt failed
-    stage: str              # "lowering", "ir_pipeline", or "success"
+    stage: str              # "lowering", "ir_pipeline", "output_validation", or "success"
+    raw_output: str | None = None  # raw payload from model on output_validation failure
+
+
+def _extract_failure_diagnostics(
+    exc: UnexpectedModelBehavior,
+    messages: list,
+) -> tuple[str, str | None]:
+    """Extract a human-readable error summary and raw model payload from a failed agent run.
+
+    Returns (summary_str, raw_payload_or_None).
+    """
+    # --- Raw payload: last ModelResponse's ToolCallPart or TextPart ---
+    raw_payload: str | None = None
+    for msg in reversed(messages):
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    raw_payload = part.args_as_json_str()
+                    break
+                if isinstance(part, TextPart):
+                    raw_payload = part.content
+                    break
+            if raw_payload is not None:
+                break
+
+    # --- Validation errors: walk exception chain first ---
+    error_lines: list[str] = []
+    cause = exc.__cause__
+    while cause is not None:
+        if isinstance(cause, pydantic.ValidationError):
+            for err in cause.errors(include_url=False):
+                loc = ".".join(str(x) for x in err.get("loc", ()))
+                error_lines.append(f"  loc={loc!r} type={err.get('type')!r} msg={err.get('msg')!r}")
+            break
+        cause = getattr(cause, "__cause__", None)
+
+    # --- Fallback: scan RetryPromptPart in message history ---
+    if not error_lines:
+        for msg in reversed(messages):
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if isinstance(part, RetryPromptPart) and isinstance(part.content, list):
+                        for err_detail in part.content:
+                            loc = ".".join(str(x) for x in err_detail.get("loc", ()))
+                            error_lines.append(
+                                f"  loc={loc!r} type={err_detail.get('type')!r} msg={err_detail.get('msg')!r}"
+                            )
+                        break
+                if error_lines:
+                    break
+
+    if error_lines:
+        summary = "Output validation failed:\n" + "\n".join(error_lines)
+    else:
+        summary = f"Output validation failed: {exc}"
+
+    return summary, raw_payload
 
 
 @dataclass
@@ -214,7 +273,23 @@ class RecipeStrategy(SubstanceStrategy):
                 instructions=RECIPE_GENERATION_SYSTEM,
                 output_type=RecipeDSL,
             )
-            response = await gen_agent.run(user_message)
+            with capture_run_messages() as agent_messages:
+                try:
+                    response = await gen_agent.run(user_message)
+                except UnexpectedModelBehavior as exc:
+                    diag_summary, raw_payload = _extract_failure_diagnostics(exc, agent_messages)
+                    last_error = diag_summary
+                    logger.warning("Attempt %d output validation failure:\n%s", attempt + 1, diag_summary)
+                    if raw_payload:
+                        logger.debug("Attempt %d failed payload: %s", attempt + 1, raw_payload[:2000])
+                    recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                        attempt=attempt + 1,
+                        dsl_json=None,
+                        error=last_error,
+                        stage="output_validation",
+                        raw_output=raw_payload,
+                    ))
+                    continue
             usage = response.usage()
             total_input_tokens += usage.input_tokens or 0
             total_output_tokens += usage.output_tokens or 0
