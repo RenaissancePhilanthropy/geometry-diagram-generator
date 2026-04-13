@@ -23,6 +23,7 @@ from ir.ir import (
     PointOnParam,
     Segment,
     Triangle,
+    EllipseCenterAxes,
 )
 import sympy.geometry as spg
 from ir.checks import check_render_angles
@@ -479,3 +480,32 @@ def test_fill_rendered_before_labels():
     fill_pos = tikz.index("\\tkzFillPolygon")
     label_pos = tikz.index("\\tkzLabelPoint")
     assert fill_pos < label_pos, "Fill must appear before labels in TikZ output"
+
+
+def test_ellipse_renders_raw_tikz():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+        define=[
+            PointFixed(id="O", x=1, y=3),
+            EllipseCenterAxes(id="E", center="O", hradius=1.5, vradius=2),
+        ],
+        render=[Draw(obj="E")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "ellipse" in tikz
+    assert "1.5 and 2" in tikz
+
+
+def test_ellipse_fill_renders_raw_tikz():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            EllipseCenterAxes(id="E", center="O", hradius=3, vradius=2),
+        ],
+        render=[Fill(obj="E", opacity=0.3)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\fill" in tikz
+    assert "ellipse" in tikz
+    assert "3 and 2" in tikz

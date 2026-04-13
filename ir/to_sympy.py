@@ -245,6 +245,59 @@ def _compile_one(
         case ir.CircleThrough3(a=a_id, b=b_id, c=c_id):
             return spg.Circle(ref(a_id), ref(b_id), ref(c_id))
 
+        # --- Ellipses ---
+        case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
+            return spg.Ellipse(ref(center_id), ev(hradius), ev(vradius))
+
+        case ir.EllipseBBox(corner1=c1_id, corner2=c2_id):
+            p1, p2 = ref(c1_id), ref(c2_id)
+            center = spg.Point((p1.x + p2.x) / 2, (p1.y + p2.y) / 2)
+            hr = sp.Abs(p2.x - p1.x) / 2
+            vr = sp.Abs(p2.y - p1.y) / 2
+            if float(hr.evalf()) < 1e-10 or float(vr.evalf()) < 1e-10:
+                raise IRCompileError(did, "EllipseBBox: bounding box has zero width or height")
+            return spg.Ellipse(center, hr, vr)
+
+        case ir.EllipseFoci(focus1=f1_id, focus2=f2_id, major_axis=major_axis, through=through_id):
+            f1, f2 = ref(f1_id), ref(f2_id)
+            center = spg.Point((f1.x + f2.x) / 2, (f1.y + f2.y) / 2)
+            c_dist = float(f1.distance(f2).evalf()) / 2  # focal distance c
+            # Determine orientation
+            dx = float((f2.x - f1.x).evalf())
+            dy = float((f2.y - f1.y).evalf())
+            if abs(dy) > 1e-9 and abs(dx) > 1e-9:
+                raise IRCompileError(
+                    did, f"EllipseFoci: foci must be axis-aligned (horizontal or vertical), "
+                    f"got dx={dx:.4g}, dy={dy:.4g}"
+                )
+            horizontal = abs(dy) <= 1e-9  # foci on same horizontal line → major axis horizontal
+            if major_axis is not None:
+                a = float(ev(major_axis).evalf()) / 2
+            else:
+                p = ref(through_id)
+                a = (float(f1.distance(p).evalf()) + float(f2.distance(p).evalf())) / 2
+            b_sq = a ** 2 - c_dist ** 2
+            if b_sq < 0:
+                raise IRCompileError(did, "EllipseFoci: major axis too short (b² < 0)")
+            b = b_sq ** 0.5
+            if horizontal:
+                return spg.Ellipse(center, sp.S(a), sp.S(b))
+            else:
+                return spg.Ellipse(center, sp.S(b), sp.S(a))
+
+        case ir.EllipseCenterEccentricity(
+            center=center_id, semi_major=semi_major, eccentricity=eccentricity, orientation=orientation
+        ):
+            a = float(ev(semi_major).evalf())
+            e = float(ev(eccentricity).evalf())
+            if not (0 <= e < 1):
+                raise IRCompileError(did, f"EllipseCenterEccentricity: eccentricity must be in [0,1), got {e}")
+            b = a * (1 - e ** 2) ** 0.5
+            if orientation == "horizontal":
+                return spg.Ellipse(ref(center_id), sp.S(a), sp.S(b))
+            else:
+                return spg.Ellipse(ref(center_id), sp.S(b), sp.S(a))
+
         # --- Higher-order shapes ---
         case ir.Triangle(a=a_id, b=b_id, c=c_id):
             return spg.Triangle(ref(a_id), ref(b_id), ref(c_id))
@@ -614,7 +667,7 @@ def _point_on_object(
 
 def _sample_param(obj: Any, rng: Random) -> float:
     """Sample a parameter t appropriate for the object type."""
-    if isinstance(obj, spg.Circle):
+    if isinstance(obj, spg.Ellipse):  # covers Circle too (Circle subclasses Ellipse)
         return rng.uniform(0, 2 * math.pi)
     # Segment, Ray, Line: [0, 1) for segment; [0, 1) maps intuitively
     return rng.random()
@@ -625,9 +678,10 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     if isinstance(obj, spg.Segment):
         a, b = obj.p1, obj.p2
         return spg.Point(a.x + sp.S(t) * (b.x - a.x), a.y + sp.S(t) * (b.y - a.y))
-    if isinstance(obj, spg.Circle):
-        cx, cy, r = obj.center.x, obj.center.y, obj.radius
-        return spg.Point(cx + r * sp.cos(sp.S(t)), cy + r * sp.sin(sp.S(t)))
+    if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
+        cx, cy = obj.center.x, obj.center.y
+        a, b = obj.hradius, obj.vradius
+        return spg.Point(cx + a * sp.cos(sp.S(t)), cy + b * sp.sin(sp.S(t)))
     if isinstance(obj, (spg.Line, spg.Ray)):
         # arbitrary_point uses a symbol; substitute t numerically
         sym_t = sp.Symbol("_t")

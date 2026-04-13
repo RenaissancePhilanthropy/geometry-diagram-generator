@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 # -----------------------
 # IDs
@@ -12,6 +12,7 @@ LineId = str
 SegmentId = str
 RayId = str
 CircleId = str
+EllipseId = str
 TriangleId = str
 PolygonId = str
 StyleId = str
@@ -314,6 +315,49 @@ class CircleThrough3(DefBase):
     c: PointId
 
 
+class EllipseCenterAxes(DefBase):
+    """Axis-aligned ellipse defined by center and semi-axis lengths."""
+    kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
+    center: PointId
+    hradius: Union[int, float, str]  # horizontal semi-axis
+    vradius: Union[int, float, str]  # vertical semi-axis
+
+
+class EllipseBBox(DefBase):
+    """Axis-aligned ellipse inscribed in the bounding box defined by two opposite corners."""
+    kind: Literal["ellipse_bbox"] = "ellipse_bbox"
+    corner1: PointId
+    corner2: PointId
+
+
+class EllipseFoci(DefBase):
+    """Axis-aligned ellipse from two foci plus major-axis length or a through-point.
+
+    The foci must lie on the same horizontal or vertical line (axis-aligned).
+    Exactly one of major_axis or through must be provided.
+    """
+    kind: Literal["ellipse_foci"] = "ellipse_foci"
+    focus1: PointId
+    focus2: PointId
+    major_axis: Optional[Union[int, float, str]] = None  # total length 2a
+    through: Optional[PointId] = None
+
+    @model_validator(mode="after")
+    def _major_axis_or_through(self) -> "EllipseFoci":
+        if (self.major_axis is None) == (self.through is None):
+            raise ValueError("EllipseFoci requires exactly one of 'major_axis' or 'through'")
+        return self
+
+
+class EllipseCenterEccentricity(DefBase):
+    """Axis-aligned ellipse from center, semi-major axis length, eccentricity, and orientation."""
+    kind: Literal["ellipse_center_eccentricity"] = "ellipse_center_eccentricity"
+    center: PointId
+    semi_major: Union[int, float, str]  # length of the semi-major axis
+    eccentricity: Union[int, float, str]  # e in [0, 1)
+    orientation: Literal["horizontal", "vertical"] = "horizontal"
+
+
 class Triangle(DefBase):
     kind: Literal["triangle"] = "triangle"
     a: PointId
@@ -439,6 +483,7 @@ DefStmt = Annotated[
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+        EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior,
     ],
     Field(discriminator="kind")

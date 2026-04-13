@@ -29,6 +29,7 @@ from ir.render_util import (
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    ellipse_params,
     extract_coords,
     fmt_label_num,
     fmt_num,
@@ -292,6 +293,20 @@ def _emit_svg_op(
                     **attrs,
                 })
 
+            elif isinstance(sym_obj, spg.Ellipse):
+                cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                rx_s = a_g * scale
+                ry_s = b_g * scale
+                ET.SubElement(svg, "ellipse", {
+                    "data-ir-id": obj_id,
+                    "data-type": "ellipse",
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "fill": "none",
+                    **attrs,
+                })
+
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"
             for pid in points:
@@ -336,6 +351,21 @@ def _emit_svg_op(
                     "data-ir-id": obj_id,
                     "data-role": "fill",
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
+
+            elif isinstance(sym_obj, spg.Ellipse):
+                cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                rx_s = a_g * scale
+                ry_s = b_g * scale
+                ET.SubElement(svg, "ellipse", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
                     "stroke": "none",

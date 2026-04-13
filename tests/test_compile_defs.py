@@ -20,6 +20,7 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
     LineAngleBisector, LineTangent,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior,
     PointOnParam, PointOnRandom, PointOnIntent,
     SameSideConstraint, NotNearConstraint,
@@ -339,6 +340,93 @@ def test_circle_through3():
     assert isinstance(sym["c"], spg.Circle)
     assert sym["c"].center == spg.Point(0, 0)
     assert sym["c"].radius == sp.Integer(1)
+
+
+# ---------------------------------------------------------------------------
+# Ellipses
+# ---------------------------------------------------------------------------
+
+def test_ellipse_center_axes():
+    sym = _compile(
+        PointFixed(id="O", x=1, y=3),
+        EllipseCenterAxes(id="E", center="O", hradius=1.5, vradius=2),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert not isinstance(sym["E"], spg.Circle)
+    assert approx(float(sym["E"].hradius), 1.5)
+    assert approx(float(sym["E"].vradius), 2.0)
+    assert sym["E"].center == spg.Point(1, 3)
+
+
+def test_ellipse_bbox():
+    sym = _compile(
+        PointFixed(id="C1", x=0, y=1),
+        PointFixed(id="C2", x=3, y=5),
+        EllipseBBox(id="E", corner1="C1", corner2="C2"),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert approx(float(sym["E"].center.x), 1.5)
+    assert approx(float(sym["E"].center.y), 3.0)
+    assert approx(float(sym["E"].hradius), 1.5)
+    assert approx(float(sym["E"].vradius), 2.0)
+
+
+def test_ellipse_foci_major_axis():
+    # Ellipse with foci at (-3,0) and (3,0) and major_axis=10 (a=5, c=3, b=4)
+    sym = _compile(
+        PointFixed(id="F1", x=-3, y=0),
+        PointFixed(id="F2", x=3, y=0),
+        EllipseFoci(id="E", focus1="F1", focus2="F2", major_axis=10),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert approx(float(sym["E"].center.x), 0.0)
+    assert approx(float(sym["E"].center.y), 0.0)
+    assert approx(float(sym["E"].hradius), 5.0)
+    assert approx(float(sym["E"].vradius), 4.0)
+
+
+def test_ellipse_foci_through_point():
+    # Same ellipse but specified via a through-point at (5, 0)
+    sym = _compile(
+        PointFixed(id="F1", x=-3, y=0),
+        PointFixed(id="F2", x=3, y=0),
+        PointFixed(id="P", x=5, y=0),
+        EllipseFoci(id="E", focus1="F1", focus2="F2", through="P"),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert approx(float(sym["E"].hradius), 5.0)
+    assert approx(float(sym["E"].vradius), 4.0)
+
+
+def test_ellipse_foci_non_axis_aligned_raises():
+    from ir.errors import IRCompileError
+    with pytest.raises(IRCompileError, match="axis-aligned"):
+        _compile(
+            PointFixed(id="F1", x=0, y=0),
+            PointFixed(id="F2", x=1, y=1),
+            EllipseFoci(id="E", focus1="F1", focus2="F2", major_axis=4),
+        )
+
+
+def test_ellipse_center_eccentricity_horizontal():
+    # a=5, e=0.6, b = 5*sqrt(1-0.36) = 5*sqrt(0.64) = 4
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        EllipseCenterEccentricity(id="E", center="O", semi_major=5, eccentricity=0.6, orientation="horizontal"),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert approx(float(sym["E"].hradius), 5.0)
+    assert approx(float(sym["E"].vradius), 4.0)
+
+
+def test_ellipse_center_eccentricity_vertical():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        EllipseCenterEccentricity(id="E", center="O", semi_major=5, eccentricity=0.6, orientation="vertical"),
+    )
+    assert isinstance(sym["E"], spg.Ellipse)
+    assert approx(float(sym["E"].hradius), 4.0)
+    assert approx(float(sym["E"].vradius), 5.0)
 
 
 # ---------------------------------------------------------------------------

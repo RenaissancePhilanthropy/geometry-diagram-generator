@@ -19,10 +19,13 @@ _REF_FIELDS = {
     "circle", "point",                      # line_tangent
     "ref",                                  # polygon_exterior
     "vertex",                               # line_angle_bisector
+    "corner1", "corner2",                   # ellipse_bbox
+    "focus1", "focus2",                     # ellipse_foci
 }
 # Fields that are never IDs
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
-                   "radius", "sides", "level", "tol", "which", "how", "k", "opacity"}
+                   "radius", "sides", "level", "tol", "which", "how", "k", "opacity",
+                   "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation"}
 
 
 def def_references(stmt: ir.DefStmt) -> set[str]:

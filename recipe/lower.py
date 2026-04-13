@@ -20,6 +20,7 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual,
@@ -30,7 +31,7 @@ from ir.ir import (
 )
 from recipe.dsl import (
     RecipeDSL, DSLAnnotations,
-    TriangleOp, CircleOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
+    TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
     LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,
@@ -142,6 +143,8 @@ class _Lowerer:
                 self._lower_triangle(op)
             case CircleOp():
                 self._lower_circle(op)
+            case EllipseOp():
+                self._lower_ellipse(op)
             case PolygonOp():
                 self._add(Polygon(id=op.id, points=op.vertices))
                 self._drawable.add(op.id)
@@ -268,6 +271,34 @@ class _Lowerer:
             self._add(CircleCenterRadius(id=op.id, center=op.center, radius=op.radius))
         else:
             self._add(CircleCenterPoint(id=op.id, center=op.center, through=op.through))
+        self._drawable.add(op.id)
+
+    def _lower_ellipse(self, op: EllipseOp) -> None:
+        if op.bbox is not None:
+            self._add(EllipseBBox(id=op.id, corner1=op.bbox[0], corner2=op.bbox[1]))
+        elif op.foci is not None:
+            self._add(EllipseFoci(
+                id=op.id,
+                focus1=op.foci[0],
+                focus2=op.foci[1],
+                major_axis=op.major_axis,
+                through=op.through,
+            ))
+        elif op.semi_major is not None:
+            self._add(EllipseCenterEccentricity(
+                id=op.id,
+                center=op.center,
+                semi_major=op.semi_major,
+                eccentricity=op.eccentricity,
+                orientation=op.orientation or "horizontal",
+            ))
+        else:
+            self._add(EllipseCenterAxes(
+                id=op.id,
+                center=op.center,
+                hradius=op.hradius,
+                vradius=op.vradius,
+            ))
         self._drawable.add(op.id)
 
     def _lower_regular_polygon(self, op: RegularPolygonOp) -> None:

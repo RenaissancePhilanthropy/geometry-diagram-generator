@@ -26,6 +26,7 @@ from ir.ir import (
     CircleCenterPoint,
     CircleCenterRadius,
     Polygon,
+    EllipseCenterAxes,
 )
 from ir.to_sympy import compile_defs
 from ir.to_svg import (
@@ -955,3 +956,44 @@ class TestAutoLabelIntegration:
         px, py = self._point_pos(svg, "A")
         # "below" in SVG coords means higher y value
         assert ly > py, "Label with pos='below' should be below the point in SVG space"
+
+
+def test_ellipse_renders_as_ellipse_element():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-3, xmax=6, ymin=-1, ymax=7),
+        define=[
+            PointFixed(id="O", x=1, y=3),
+            EllipseCenterAxes(id="E", center="O", hradius=1.5, vradius=2),
+        ],
+        render=[Draw(obj="E")],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    root = _parse(svg)
+    ellipses = _findall(root, "ellipse")
+    assert len(ellipses) == 1
+    rx = float(ellipses[0].get("rx"))
+    ry = float(ellipses[0].get("ry"))
+    # rx corresponds to hradius and ry to vradius scaled by the canvas
+    assert rx > 0
+    assert ry > 0
+    # ry > rx because vradius (2) > hradius (1.5)
+    assert ry > rx
+
+
+def test_ellipse_fill_renders_as_filled_ellipse():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            EllipseCenterAxes(id="E", center="O", hradius=3, vradius=2),
+        ],
+        render=[Fill(obj="E", opacity=0.3)],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    root = _parse(svg)
+    ellipses = _findall(root, "ellipse")
+    filled = [e for e in ellipses if e.get("data-role") == "fill"]
+    assert len(filled) == 1
+    assert filled[0].get("fill") not in (None, "none")

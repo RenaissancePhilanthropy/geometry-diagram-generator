@@ -63,6 +63,54 @@ class CircleOp(DSLOpBase):
         return self
 
 
+class EllipseOp(DSLOpBase):
+    """Axis-aligned ellipse.  Exactly one form must be specified:
+
+    - center_axes: {center, hradius, vradius}
+    - bbox:        {bbox: [corner1_id, corner2_id]}
+    - foci:        {foci: [focus1_id, focus2_id], major_axis: 2a}
+                   or {foci: [...], through: point_id}
+    - eccentricity:{center, semi_major, eccentricity, orientation}
+    """
+    op: Literal["ellipse"] = "ellipse"
+    # center_axes form
+    center: Optional[str] = None
+    hradius: Optional[Union[int, float, str]] = None
+    vradius: Optional[Union[int, float, str]] = None
+    # bbox form
+    bbox: Optional[list[str]] = None          # [corner1_id, corner2_id]
+    # foci form
+    foci: Optional[list[str]] = None          # [focus1_id, focus2_id]
+    major_axis: Optional[Union[int, float, str]] = None   # total length 2a
+    through: Optional[str] = None             # point on ellipse (foci form only)
+    # eccentricity form
+    semi_major: Optional[Union[int, float, str]] = None
+    eccentricity: Optional[Union[int, float, str]] = None
+    orientation: Optional[Literal["horizontal", "vertical"]] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_form(self) -> "EllipseOp":
+        center_axes = self.center is not None and self.hradius is not None and self.vradius is not None
+        bbox = self.bbox is not None
+        foci = self.foci is not None and (self.major_axis is not None or self.through is not None)
+        ecc = (self.center is not None and self.semi_major is not None and self.eccentricity is not None)
+        forms = [center_axes, bbox, foci, ecc]
+        if forms.count(True) != 1:
+            raise ValueError(
+                "EllipseOp requires exactly one form: "
+                "center_axes ({center, hradius, vradius}), "
+                "bbox ({bbox:[c1,c2]}), "
+                "foci ({foci:[f1,f2], major_axis or through}), "
+                "or eccentricity ({center, semi_major, eccentricity}). "
+                f"Got: center_axes={center_axes}, bbox={bbox}, foci={foci}, eccentricity={ecc}"
+            )
+        if bbox and (self.bbox is None or len(self.bbox) != 2):
+            raise ValueError("EllipseOp bbox must be a list of exactly 2 point IDs")
+        if foci and (self.foci is None or len(self.foci) != 2):
+            raise ValueError("EllipseOp foci must be a list of exactly 2 point IDs")
+        return self
+
+
 class PolygonOp(DSLOpBase):
     """Polygon from existing named vertices."""
     op: Literal["polygon"] = "polygon"
@@ -338,7 +386,7 @@ class CircleThrough3Op(DSLOpBase):
 DSLOp = Annotated[
     Union[
         # Foundation
-        TriangleOp, CircleOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
+        TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
         # Derived
         MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
         LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,

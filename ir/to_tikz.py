@@ -14,6 +14,7 @@ from ir.render_util import (
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    ellipse_params,
     extract_coords,
     fmt_label_num,
     fmt_num,
@@ -171,6 +172,14 @@ def _emit_op(
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzDrawCircle{sopts}({center},{through})")
+            elif isinstance(sym_obj, spg.Ellipse):
+                cx, cy, a, b = ellipse_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
+                    f"({fmt_num(a)} and {fmt_num(b)});"
+                )
             else:
                 out.append(f"% Draw: unhandled type {type(sym_obj).__name__} for {obj_id!r}")
 
@@ -196,6 +205,13 @@ def _emit_op(
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzFillCircle{fill_opts}({center},{through})")
+            elif isinstance(sym_obj, spg.Ellipse):
+                cx, cy, a, b = ellipse_params(obj_id, sym)
+                style_inner = fill_opts[1:-1] if fill_opts else "fill=blue!20,opacity=0.3"
+                out.append(
+                    f"\\fill[{style_inner}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
+                    f"({fmt_num(a)} and {fmt_num(b)});"
+                )
 
         case ir.MarkRightAngles(angles=angles, style=style):
             sopts = _style_str(style, styles)
