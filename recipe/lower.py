@@ -666,13 +666,10 @@ class _Lowerer:
         # Collect object IDs that have explicit draws so auto_draw_all can skip them
         explicit_draw_obj_ids: set[str] = {d.obj for d in ann.draws if d.obj is not None}
 
+        # Build set of explicitly hidden op IDs (visible=False suppresses auto-draw and auto-label)
+        hidden_ids: set[str] = {op.id for op in (dsl_ops or []) if not op.visible}
+
         if ann.auto_draw_all:
-            # Build set of explicitly hidden op IDs
-            hidden_ids: set[str] = set()
-            if dsl_ops:
-                for op in dsl_ops:
-                    if not op.visible:
-                        hidden_ids.add(op.id)
             for obj_id in self._drawable:
                 if not obj_id.startswith("__"):
                     if obj_id in hidden_ids:
@@ -680,14 +677,17 @@ class _Lowerer:
                     if obj_id in explicit_draw_obj_ids:
                         continue  # explicit draw takes precedence (preserves style)
                     self._renders.append(Draw(obj=obj_id))
-            # Emit a single DrawPoints for all non-implicit points
-            non_implicit = [pid for pid in self._point_ids if not pid.startswith("__")]
+            # Emit a single DrawPoints for all non-implicit, non-hidden points
+            non_implicit = [
+                pid for pid in self._point_ids
+                if not pid.startswith("__") and pid not in hidden_ids
+            ]
             if non_implicit:
                 self._renders.append(DrawPoints(points=non_implicit))
 
         if ann.auto_label_points:
             for pid in self._point_ids:
-                if not pid.startswith("__"):
+                if not pid.startswith("__") and pid not in hidden_ids:
                     self._renders.append(LabelPoint(p=pid))
 
         if ann.auto_mark_right_angles:
