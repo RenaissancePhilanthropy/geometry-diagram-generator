@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Node.js dependencies
+node_modules/
+
+# Local environment
+.env
+.claude/
+demo-ui/pnpm-workspace.yaml
+
+# Evals results
+evals/results/
+
+# macOS files
+.DS_Store
+
+# Git worktrees
+.worktrees/
+
+# Superpowers plans
+docs/superpowers/
+
+# Temporary files
+tmp/
