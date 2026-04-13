@@ -71,6 +71,12 @@ def synthesize_helpers(
                 sympy_to_float(circ.center.x),
                 sympy_to_float(circ.center.y),
             )
+        elif isinstance(stmt, (ir.EllipseCenterAxes, ir.EllipseBBox, ir.EllipseFoci, ir.EllipseCenterEccentricity)):
+            ell = sym[stmt.id]
+            helpers[f"_ec_{stmt.id}"] = (
+                sympy_to_float(ell.center.x),
+                sympy_to_float(ell.center.y),
+            )
     return helpers
 
 
@@ -143,6 +149,20 @@ def circle_center_through(
             raise ValueError(f"Unknown circle def kind {stmt.kind!r}")
 
 
+def ellipse_params(
+    ellipse_id: str,
+    sym: "SymTable",
+) -> tuple[float, float, float, float]:
+    """Return (cx, cy, hradius, vradius) for the given ellipse id."""
+    ell = sym[ellipse_id]
+    return (
+        sympy_to_float(ell.center.x),
+        sympy_to_float(ell.center.y),
+        sympy_to_float(ell.hradius),
+        sympy_to_float(ell.vradius),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Bounds computation
 # ---------------------------------------------------------------------------
@@ -155,10 +175,11 @@ def compute_bounds(
     """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
     all_pts = list(coords.values()) + list(helpers.values())
     for obj in sym.values():
-        if isinstance(obj, spg.Circle):
+        if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
             cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            r = sympy_to_float(obj.radius)
-            all_pts.extend([(cx - r, cy - r), (cx + r, cy + r)])
+            a = sympy_to_float(obj.hradius)
+            b = sympy_to_float(obj.vradius)
+            all_pts.extend([(cx - a, cy - b), (cx + a, cy + b)])
     if not all_pts:
         return (-5.0, 5.0, -5.0, 5.0)
     xs, ys = zip(*all_pts)

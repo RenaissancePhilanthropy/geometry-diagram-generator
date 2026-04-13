@@ -1132,3 +1132,53 @@ def test_annotation_check_source_in_message():
     results = run_checks(ir.checks, sym)
     failed = [r for r in results if not r.passed]
     assert any("annotation: mark_right_angle" in r.message for r in failed)
+
+
+# ---------------------------------------------------------------------------
+# EllipseOp lowering
+# ---------------------------------------------------------------------------
+
+def test_ellipse_op_center_axes_lowers():
+    from recipe.dsl import EllipseOp
+    from ir.ir import EllipseCenterAxes, PointFixed
+
+    ir = lower_to_ir(_dsl([
+        PointOp(id="O", coords=[1.0, 3.0]),
+        EllipseOp(id="E", center="O", hradius=1.5, vradius=2.0),
+    ], mode="grid"))
+    ellipses = [d for d in ir.define if hasattr(d, "kind") and d.kind == "ellipse_center_axes"]
+    assert len(ellipses) == 1
+    assert ellipses[0].hradius == 1.5
+    assert ellipses[0].vradius == 2.0
+    assert ellipses[0].center == "O"
+
+
+def test_ellipse_op_bbox_lowers():
+    from recipe.dsl import EllipseOp
+    from ir.ir import EllipseBBox
+
+    ir = lower_to_ir(_dsl([
+        PointOp(id="C1", coords=[0.0, 1.0]),
+        PointOp(id="C2", coords=[3.0, 5.0]),
+        EllipseOp(id="E", bbox=["C1", "C2"]),
+    ], mode="grid"))
+    ellipses = [d for d in ir.define if hasattr(d, "kind") and d.kind == "ellipse_bbox"]
+    assert len(ellipses) == 1
+    assert ellipses[0].corner1 == "C1"
+    assert ellipses[0].corner2 == "C2"
+
+
+def test_ellipse_op_foci_lowers():
+    from recipe.dsl import EllipseOp
+    from ir.ir import EllipseFoci
+
+    ir = lower_to_ir(_dsl([
+        PointOp(id="F1", coords=[-3.0, 0.0]),
+        PointOp(id="F2", coords=[3.0, 0.0]),
+        EllipseOp(id="E", foci=["F1", "F2"], major_axis=10),
+    ], mode="grid"))
+    ellipses = [d for d in ir.define if hasattr(d, "kind") and d.kind == "ellipse_foci"]
+    assert len(ellipses) == 1
+    assert ellipses[0].focus1 == "F1"
+    assert ellipses[0].focus2 == "F2"
+    assert ellipses[0].major_axis == 10

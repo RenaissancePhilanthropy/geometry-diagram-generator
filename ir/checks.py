@@ -198,11 +198,19 @@ def _to_bool(expr: Any) -> bool:
 
 
 def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
-    """Check whether obj contains point, using distance-based tolerance for circles."""
+    """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
     if isinstance(obj, spg.Circle):
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())
         return abs(d - r) < tol
+    if isinstance(obj, spg.Ellipse):
+        cx = float(obj.center.x.evalf())
+        cy = float(obj.center.y.evalf())
+        a = float(obj.hradius.evalf())
+        b = float(obj.vradius.evalf())
+        px, py = float(point.x.evalf()), float(point.y.evalf())
+        val = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
+        return abs(val - 1.0) < tol
     return _to_bool(obj.contains(point))
 
 

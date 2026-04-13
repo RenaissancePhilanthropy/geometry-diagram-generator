@@ -177,6 +177,17 @@ RecipeDSL is a JSON object with these top-level fields:
   Supported: AAS (2 angles + 1 side), SAS, SSS, ASA, right_angle_at + 2 sides
   NOT supported: SSA (ambiguous)
 - circle: {op, id, center, radius} or {op, id, center, through}
+- ellipse: axis-aligned ellipse. Exactly one form:
+    center_axes: {op, id, center:<pt_id>, hradius:<number>, vradius:<number>}
+    bbox:        {op, id, bbox:[<corner1_id>, <corner2_id>]}
+    foci:        {op, id, foci:[<f1_id>, <f2_id>], major_axis:<2a>}
+             or  {op, id, foci:[<f1_id>, <f2_id>], through:<pt_id>}
+    eccentricity:{op, id, center:<pt_id>, semi_major:<a>, eccentricity:<e>, orientation:"horizontal"|"vertical"}
+  Example (Mathematics_15 — ellipse with center (1,3), horiz axis 3, vert axis 4):
+    canvas: {op, id:"canvas", x_range:[-1,4], y_range:[0,8], axes:true, grid:true}
+    center: {op:"point", id:"O", coords:[1,3]}
+    ellipse: {op:"ellipse", id:"E", center:"O", hradius:1.5, vradius:2}
+    label center with its coordinates: annotations.labels [{kind:"label_point", point:"O", text:"(1, 3)"}]
 - polygon: {op, id, vertices:[...]}
 - point: {op, id, coords:[x, y]}  (grid mode)
 

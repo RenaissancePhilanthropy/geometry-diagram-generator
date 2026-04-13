@@ -52,3 +52,36 @@ def test_angle_equal_pass_produces_empty_message():
     assert len(results) == 1
     assert results[0].passed
     assert results[0].message == ""
+
+
+def test_contains_ellipse_point_on_boundary():
+    """Contains check passes for a point on the ellipse boundary."""
+    import math
+    from ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
+    from ir.to_sympy import compile_defs
+
+    # Ellipse centered at (1,3), hradius=1.5, vradius=2
+    # Point at (1 + 1.5, 3) = (2.5, 3) is on the boundary
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=1, y=3),
+        EllipseCenterAxes(id="E", center="O", hradius=1.5, vradius=2),
+        PointFixed(id="P", x=2.5, y=3),
+    ]))
+    checks = [Contains(obj="E", p="P")]
+    results = run_checks(checks, sym)
+    assert results[0].passed
+
+
+def test_contains_ellipse_point_outside():
+    """Contains check fails for a point clearly outside the ellipse."""
+    from ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
+    from ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        EllipseCenterAxes(id="E", center="O", hradius=1.5, vradius=2),
+        PointFixed(id="P", x=5, y=5),
+    ]))
+    checks = [Contains(obj="E", p="P")]
+    results = run_checks(checks, sym)
+    assert not results[0].passed
