@@ -36,7 +36,8 @@ tmp/
 curriculum/textbooks/
 curriculum/markdown/
 curriculum/.marker-venv/
-curriculum/topic_index.json
 curriculum/geometry_curriculum.json
+curriculum/*_raw.txt
+curriculum/debug_*.txt
 curriculum/*.log
 curriculum/*.zip
