@@ -1,0 +1,65 @@
+name: Deploy Eval Viewer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'evals/results/**'
+      - 'eval-viewer-ui/**'
+      - 'scripts/export_static.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Export results to static files
+        run: uv run python scripts/export_static.py
+
+      - name: Install frontend deps
+        run: pnpm install
+        working-directory: eval-viewer-ui
+
+      - name: Build frontend
+        run: pnpm build
+        working-directory: eval-viewer-ui
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: eval-viewer-ui/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
