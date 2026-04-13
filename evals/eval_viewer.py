@@ -12,9 +12,16 @@ Runs on port 8002. Serves:
 Requires the TikZ renderer container running at localhost:8001 for compile/render.
 """
 
-import json
 import os
+import sys
 from pathlib import Path
+
+# Ensure project root is on sys.path when run as `python evals/eval_viewer.py`
+_root = str(Path(__file__).resolve().parent.parent)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+import json
 
 import uvicorn
 from dotenv import load_dotenv
