@@ -11,14 +11,15 @@ wheels/
 
 # Node.js dependencies
 node_modules/
+.pnpm-store/
 
 # Local environment
 .env
 .claude/
 demo-ui/pnpm-workspace.yaml
 
-# Evals results
-evals/results/
+# Evals results (large artifacts only — JSONL and SVGs are committed)
+evals/results/*.log
 
 # macOS files
 .DS_Store
@@ -31,3 +32,13 @@ docs/superpowers/
 
 # Temporary files
 tmp/
+
+# Curriculum extraction artifacts
+curriculum/textbooks/
+curriculum/markdown/
+curriculum/.marker-venv/
+curriculum/geometry_curriculum.json
+curriculum/*_raw.txt
+curriculum/debug_*.txt
+curriculum/*.log
+curriculum/*.zip

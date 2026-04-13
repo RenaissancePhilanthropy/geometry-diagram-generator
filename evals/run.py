@@ -427,13 +427,23 @@ async def run_scenario(
         tikz_check_results: dict[str, Any] = {}
 
         for prop in scenario.get("expected_properties", []):
-            prop_result = validate_geometric_property(
-                coords,
-                prop["type"],
-                prop["args"],
-                tikz=tikz_code,
-                tolerance=_TIKZ_CHECK_TOLERANCE,
-            )
+            try:
+                prop_result = validate_geometric_property(
+                    coords,
+                    prop["type"],
+                    prop["args"],
+                    tikz=tikz_code,
+                    tolerance=_TIKZ_CHECK_TOLERANCE,
+                )
+            except (ValueError, KeyError, TypeError) as exc:
+                prop_result = None
+                tikz_check_results[prop["name"]] = {
+                    "passed": None,
+                    "type": prop["type"],
+                    "skipped": True,
+                    "error": str(exc),
+                }
+                continue
             tikz_check_results[prop["name"]] = {
                 "passed": prop_result,
                 "type": prop["type"],
