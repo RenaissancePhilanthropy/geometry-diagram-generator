@@ -10,14 +10,85 @@ import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
+# Point name normalization (A' <-> Aprime)
+# ---------------------------------------------------------------------------
+
+def _prime_variants(name: str) -> set[str]:
+    """Return the set of plausible TikZ point-name variants for *name*.
+
+    Handles the many ways LLMs encode primes: A', Ap, A2, A_prime,
+    Aprime, etc.  The returned set always includes the original name.
+    """
+    variants: set[str] = {name}
+
+    # Detect how many primes are in the name and extract the base.
+    # Try tick marks first: A', A'', A'''
+    if name.endswith("'''"):
+        base, n = name[:-3], 3
+    elif name.endswith("''"):
+        base, n = name[:-2], 2
+    elif name.endswith("'"):
+        base, n = name[:-1], 1
+    # Spelled-out suffixes: Atripleprime, Aprimeprime, Aprime
+    elif name.endswith("tripleprime"):
+        base, n = name[: -len("tripleprime")], 3
+    elif name.endswith("primeprime"):
+        base, n = name[: -len("primeprime")], 2
+    elif name.endswith("prime"):
+        base, n = name[: -len("prime")], 1
+    else:
+        return variants
+
+    tick = "'" * n
+    spelled = {1: "prime", 2: "primeprime", 3: "tripleprime"}[n]
+    p_suffix = "p" * n          # Ap, App, Appp
+    pp_suffix = {1: "p", 2: "pp", 3: "ppp"}[n]
+
+    variants.update([
+        f"{base}{tick}",            # A'  A''  A'''
+        f"{base}{spelled}",         # Aprime  Aprimeprime  Atripleprime
+        f"{base}_{spelled}",        # A_prime  A_primeprime
+        f"{base}{pp_suffix}",       # Ap  App  Appp
+        f"{base}{n}",               # A1  A2  A3
+        f"{base}d" * 1 if n == 1 else f"{base}{'d' * n}",  # Ad, Add, Addd (rare)
+    ])
+    return variants
+
+
+def normalize_point_name(name: str) -> str:
+    """Normalize prime variants to a canonical spelled-out form.
+
+    Converts A', Ap, A2, A_prime, etc. to ``Aprime`` so callers can
+    compare with a single ``==``.
+    """
+    if name.endswith("'''"):
+        return name[:-3] + "tripleprime"
+    if name.endswith("''"):
+        return name[:-2] + "primeprime"
+    if name.endswith("'"):
+        return name[:-1] + "prime"
+    return name
+
+
+def point_names_match(expected: str, actual: str) -> bool:
+    """Return True if *expected* and *actual* refer to the same point,
+    accounting for the many prime-notation variants LLMs produce."""
+    if expected == actual:
+        return True
+    return actual in _prime_variants(expected)
+
+# ---------------------------------------------------------------------------
 # Point extraction
 # ---------------------------------------------------------------------------
 
+# Point names may contain trailing primes: A, A', A''
+_POINT_NAME = r"\w+'{0,3}"
+
 _DEF_POINT_RE = re.compile(
-    r"\\tkzDefPoint\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*\{(\w+)\}"
+    rf"\\tkzDefPoint\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*\{{({_POINT_NAME})\}}"
 )
 _COORDINATE_RE = re.compile(
-    r"\\coordinate\s*\((\w+)\)\s*at\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
+    rf"\\coordinate\s*\(({_POINT_NAME})\)\s*at\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
 )
 
 
@@ -37,7 +108,7 @@ def extract_defined_points(tikz: str) -> dict[str, tuple[float, float]]:
 # Computed / derived point extraction
 # ---------------------------------------------------------------------------
 
-_GET_POINT_RE = re.compile(r"\\tkzGetPoint\s*\{(\w+)\}")
+_GET_POINT_RE = re.compile(rf"\\tkzGetPoint\s*\{{({_POINT_NAME})\}}")
 _MID_POINT_RE = re.compile(r"\\tkzDefMidPoint\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
 _CIRCUM_CENTER_RE = re.compile(
     r"\\tkzCircumCenter\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
@@ -211,13 +282,13 @@ def extract_draw_commands(tikz: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 _RIGHT_ANGLE_RE = re.compile(
-    r"\\tkzMarkRightAngle(?:\[[^\]]*\])?\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
+    rf"\\tkzMarkRightAngle(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
 _ANGLE_MARK_RE = re.compile(
-    r"\\tkzMarkAngle(?:\[[^\]]*\])?\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
+    rf"\\tkzMarkAngle(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
 _SEGMENT_MARK_RE = re.compile(
-    r"\\tkzMarkSegment(?:\[[^\]]*\])?\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)"
+    rf"\\tkzMarkSegment(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
 
 
@@ -255,7 +326,7 @@ _LABEL_POINTS_RE = re.compile(
     r"\\tkzLabelPoints(?:\[[^\]]*\])?\s*\(([^)]+)\)"
 )
 _LABEL_POINT_RE = re.compile(
-    r"\\tkzLabelPoint(?:\[[^\]]*\])?\s*\((\w+)\)\s*\{([^}]+)\}"
+    rf"\\tkzLabelPoint(?:\[[^\]]*\])?\s*\(({_POINT_NAME})\)\s*\{{([^}}]+)\}}"
 )
 _TKZ_GRID_RE = re.compile(r"\\tkzGrid\b")
 _TKZ_AXES_RE = re.compile(r"\\tkzAxeXY\b")

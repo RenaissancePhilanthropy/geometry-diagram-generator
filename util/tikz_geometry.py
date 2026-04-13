@@ -15,6 +15,7 @@ from .tikz_extraction import (
     extract_computed_points,
     extract_labels,
     extract_marks,
+    point_names_match,
 )
 
 # ---------------------------------------------------------------------------
@@ -254,10 +255,12 @@ def _angle_at_vertex(
 def _validate_label_present(tikz: str, point_name: str) -> bool:
     """Return True if a label for point_name exists in the TikZ source."""
     for label in extract_labels(tikz):
-        if label["type"] == "label_points" and point_name in label["points"]:
-            return True
-        if label["type"] == "label_point" and label["point"] == point_name:
-            return True
+        if label["type"] == "label_points":
+            if any(point_names_match(point_name, p) for p in label["points"]):
+                return True
+        if label["type"] == "label_point":
+            if point_names_match(point_name, label["point"]):
+                return True
     return False
 
 
@@ -266,11 +269,11 @@ def _validate_mark_present(tikz: str, mark_type: str, vertex: str) -> bool:
     for mark in extract_marks(tikz):
         if mark["type"] != mark_type:
             continue
-        # Right-angle and angle marks have an explicit "vertex" key
-        if mark.get("vertex") == vertex:
+        if point_names_match(vertex, mark.get("vertex", "")):
             return True
-        # Segment marks use "from"/"to"
-        if mark.get("from") == vertex or mark.get("to") == vertex:
+        if point_names_match(vertex, mark.get("from", "")):
+            return True
+        if point_names_match(vertex, mark.get("to", "")):
             return True
     return False
 
