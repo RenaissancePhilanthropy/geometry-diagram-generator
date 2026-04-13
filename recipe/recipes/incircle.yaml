@@ -20,3 +20,6 @@ example:
   annotations:
     auto_draw_all: true
     auto_label_points: true
+notes:
+  - "To find where the incircle touches a specific side (e.g. BC), first define that side as a named segment: {op: segment, id: seg_BC, endpoints: [B, C]}. Then use point_foot: {op: point_foot, id: T, source: I, onto: seg_BC}"
+  - "CRITICAL: point_foot requires a segment/line/ray as 'onto' — it CANNOT take a Triangle id. Always pass a segment id, not the triangle id"
