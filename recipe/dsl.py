@@ -441,14 +441,59 @@ class LabelSegment(BaseModel):
     text: str
 
 
+class LabelPoint(BaseModel):
+    """Place/override the label text at a point.
+
+    When a point already has an auto-generated label (auto_label_points=true),
+    a matching label_point entry overrides its text and/or position.  Omit
+    ``text`` to keep the point id but change only ``pos``.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_point"] = "label_point"
+    point: str
+    text: Optional[str] = None  # None → use point id
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right",
+    ] = "auto"
+
+
+class LabelAngle(BaseModel):
+    """Place a text label inside the angle at ``vertex`` between rays to ``a`` and ``b``.
+
+    Accepts the same explicit/shorthand forms as ``mark_angle``:
+      - explicit: a, vertex, b
+      - shorthand: at (vertex within triangle), of (triangle id)
+    Pair with a ``mark_angle`` entry in ``annotations.marks`` if you also want
+    the arc to be drawn.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_angle"] = "label_angle"
+    a: Optional[str] = None
+    vertex: Optional[str] = None
+    b: Optional[str] = None
+    at: Optional[str] = None  # vertex name within triangle (shorthand)
+    of: Optional[str] = None  # triangle id (shorthand)
+    text: str
+
+    @model_validator(mode="after")
+    def _check_form(self) -> "LabelAngle":
+        has_explicit = all(v is not None for v in [self.a, self.vertex, self.b])
+        has_shorthand = self.at is not None and self.of is not None
+        if has_explicit == has_shorthand:
+            raise ValueError(
+                "label_angle: specify exactly one of (a, vertex, b) or (at, of)"
+            )
+        return self
+
+
 AnnotationMark = Annotated[
     Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional],
     Field(discriminator="kind")
 ]
 
-# Pre-structured for future union extension; discriminator is inert with a single member.
 AnnotationLabel = Annotated[
-    Union[LabelSegment],
+    Union[LabelSegment, LabelPoint, LabelAngle],
     Field(discriminator="kind")
 ]
 

@@ -23,8 +23,9 @@ from ir.ir import (
     Triangle, Polygon, PolygonExterior,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual,
-    Draw, DrawPoints, LabelPoint, MarkRightAngles,
+    Draw, DrawPoints, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
+    LabelAngle as IRLabelAngle,
     RenderOp, DefStmt, PickRule,
 )
 from recipe.dsl import (
@@ -38,6 +39,8 @@ from recipe.dsl import (
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
+    LabelPoint as DSLLabelPoint,
+    LabelAngle as DSLLabelAngle,
     DrawObj,
 )
 from recipe.solve import solve_triangle
@@ -685,10 +688,18 @@ class _Lowerer:
             if non_implicit:
                 self._renders.append(DrawPoints(points=non_implicit))
 
+        # Point ids that have an explicit label_point override — skip the
+        # auto-generated label for these so the override wins cleanly.
+        explicit_label_points: set[str] = {
+            lbl.point for lbl in ann.labels if isinstance(lbl, DSLLabelPoint)
+        }
+
         if ann.auto_label_points:
             for pid in self._point_ids:
                 if not pid.startswith("__") and pid not in hidden_ids:
-                    self._renders.append(LabelPoint(p=pid))
+                    if pid in explicit_label_points:
+                        continue
+                    self._renders.append(IRLabelPoint(p=pid))
 
         if ann.auto_mark_right_angles:
             for triple in self._right_angle_triples:
@@ -769,6 +780,18 @@ class _Lowerer:
                 p, q = label.endpoints[0], label.endpoints[1]
                 seg_id = self._ensure_segment(p, q)
                 self._renders.append(IRLabelSegment(seg=seg_id, text=label.text))
+            elif isinstance(label, DSLLabelPoint):
+                self._renders.append(IRLabelPoint(
+                    p=label.point,
+                    text=label.text,
+                    pos=label.pos,
+                ))
+            elif isinstance(label, DSLLabelAngle):
+                a, vertex, b = self._resolve_angle_mark(label)
+                self._renders.append(IRLabelAngle(
+                    angle=AnglePoints(a=a, o=vertex, b=b),
+                    text=label.text,
+                ))
 
         # Explicit draws (with optional per-element styles)
         for draw_obj in ann.draws:
