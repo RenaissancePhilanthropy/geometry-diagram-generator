@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-filter_genexam.py — Filter GenExam-Math problems by geometry relevance.
+filter_genexam.py — Filter GenExam-Math problems by geometry relevance and
+emit a BenchmarkDefinition YAML ready for use with benchmark/ai_judge.py.
 
 Relevance tiers (defined in RELEVANCE table below):
   HIGH    — Pure plane geometry, constructible via DSL+recipes pipeline,
@@ -11,25 +12,28 @@ Relevance tiers (defined in RELEVANCE table below):
   LOW     — Analytic/function plots, calculus, polar/parametric, graph theory.
             Never included.
 
-Default output: HIGH + MEDIUM cartesian  (51 + 15 = ... see below)
+Default output: HIGH + MEDIUM cartesian → benchmark/definitions/bench_genexam.yaml
 Flags:
   --include-3d        also include MEDIUM 3d problems
   --high-only         only HIGH problems
   --exclude-medium    same as --high-only (alias)
+  --benchmark-id ID   BenchmarkDefinition id (default: bench_genexam)
   --stats             print relevance breakdown and exit (no file written)
 
 Usage:
-  python filter_genexam.py input.jsonl
-  python filter_genexam.py input.jsonl -o filtered.jsonl
-  python filter_genexam.py input.jsonl --include-3d
-  python filter_genexam.py input.jsonl --high-only
-  python filter_genexam.py input.jsonl --stats
+  python filter_genexam.py Mathematics.jsonl
+  python filter_genexam.py Mathematics.jsonl -o benchmark/definitions/bench_genexam.yaml
+  python filter_genexam.py Mathematics.jsonl --include-3d
+  python filter_genexam.py Mathematics.jsonl --high-only
+  python filter_genexam.py Mathematics.jsonl --stats
 """
 
 import argparse
 import json
 import sys
 from pathlib import Path
+
+import yaml
 
 # ---------------------------------------------------------------------------
 # Relevance table
@@ -215,6 +219,15 @@ RELEVANCE: dict[str, tuple[str, str | None, str]] = {
     "Mathematics_149": ("LOW", None, "Petersen graph — graph theory, out of scope"),
 }
 
+# ---------------------------------------------------------------------------
+# Difficulty → benchmark tier mapping
+# ---------------------------------------------------------------------------
+DIFFICULTY_TIER: dict[str, int] = {
+    "easy": 1,
+    "medium": 2,
+    "hard": 3,
+}
+
 
 def print_stats(problems: list[dict]) -> None:
     from collections import Counter
@@ -268,17 +281,93 @@ def should_include(pid: str, include_3d: bool, high_only: bool) -> bool:
     return True
 
 
+def _tags_from_problem(p: dict) -> list[str]:
+    """Derive tags from GenExam fields: difficulty, img_type, taxonomy leaves."""
+    tags: list[str] = []
+    if p.get("difficulty"):
+        tags.append(p["difficulty"])
+    if p.get("img_type"):
+        tags.append(p["img_type"])
+    # Add the last two path segments of taxonomy (most specific labels)
+    taxonomy = p.get("taxonomy", "")
+    if taxonomy:
+        parts = [s for s in taxonomy.split("/") if s]
+        tags.extend(parts[-2:] if len(parts) >= 2 else parts)
+    return tags
+
+
+def build_benchmark_definition(
+    problems: list[dict],
+    benchmark_id: str,
+    include_3d: bool,
+    high_only: bool,
+) -> dict:
+    """Convert filtered GenExam problems to a BenchmarkDefinition dict (YAML-serialisable)."""
+    prompts = []
+    for p in problems:
+        pid = p["id"]
+        if not should_include(pid, include_3d, high_only):
+            continue
+
+        tier_val, sub_val, note_val = RELEVANCE[pid]
+
+        # Build rubric items from scoring_points
+        rubric = []
+        for i, sp in enumerate(p.get("scoring_points", [])):
+            rubric.append({
+                "id": f"{pid}_sp{i}",
+                "text": sp["question"],
+                "category": "genexam",
+                "weight": float(sp["score"]),
+            })
+
+        prompt_entry: dict = {
+            "id": pid,
+            "prompt": p["prompt"],
+            "rubric": rubric,
+            "reference_svg": None,
+            "tags": _tags_from_problem(p),
+            "tier": DIFFICULTY_TIER.get(p.get("difficulty", ""), None),
+            "metadata": {
+                "image_path": p.get("image_path"),
+                "taxonomy": p.get("taxonomy"),
+                "img_type": p.get("img_type"),
+                "difficulty": p.get("difficulty"),
+                "relevance_tier": tier_val,
+                "relevance_sub": sub_val,
+                "relevance_note": note_val,
+            },
+        }
+        prompts.append(prompt_entry)
+
+    return {
+        "id": benchmark_id,
+        "shared_rubric": [],
+        "prompts": prompts,
+    }
+
+
 def main() -> None:
+    # Determine default output path relative to this script's repo root
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent.parent
+    default_output = repo_root / "benchmark" / "definitions" / "bench_genexam.yaml"
+
     parser = argparse.ArgumentParser(
-        description="Filter GenExam-Math problems by geometry relevance.",
+        description="Filter GenExam-Math problems and emit a BenchmarkDefinition YAML.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("input", help="Path to input JSONL file")
+    parser.add_argument("input", help="Path to input JSONL file (e.g. Mathematics.jsonl)")
     parser.add_argument(
         "-o", "--output",
         default=None,
-        help="Path to write filtered JSONL (default: <input_stem>_filtered.jsonl)",
+        help=f"Path to write BenchmarkDefinition YAML (default: {default_output})",
+    )
+    parser.add_argument(
+        "--benchmark-id",
+        default="bench_genexam",
+        help="BenchmarkDefinition id field (default: bench_genexam)",
     )
     parser.add_argument(
         "--include-3d",
@@ -323,19 +412,22 @@ def main() -> None:
         print_stats(problems)
         return
 
-    kept = [p for p in problems if should_include(p["id"], args.include_3d, args.high_only)]
-    dropped = len(problems) - len(kept)
+    definition = build_benchmark_definition(
+        problems,
+        benchmark_id=args.benchmark_id,
+        include_3d=args.include_3d,
+        high_only=args.high_only,
+    )
 
-    if args.output:
-        out_path = Path(args.output)
-    else:
-        out_path = input_path.parent / f"{input_path.stem}_filtered.jsonl"
+    out_path = Path(args.output) if args.output else default_output
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with out_path.open("w") as fh:
-        for p in kept:
-            fh.write(json.dumps(p, ensure_ascii=False) + "\n")
+    with out_path.open("w", encoding="utf-8") as fh:
+        yaml.dump(definition, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
-    # Summary
+    kept = len(definition["prompts"])
+    dropped = len(problems) - kept
+
     mode_parts = ["HIGH"]
     if not args.high_only:
         mode_parts.append("MEDIUM-cartesian")
@@ -345,7 +437,7 @@ def main() -> None:
 
     print(f"Input    : {input_path}  ({len(problems)} problems)")
     print(f"Mode     : {mode_str}")
-    print(f"Kept     : {len(kept)}")
+    print(f"Kept     : {kept}")
     print(f"Dropped  : {dropped}")
     print(f"Output   : {out_path}")
 

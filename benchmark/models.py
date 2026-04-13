@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, field_validator
@@ -10,6 +11,7 @@ class RubricItem(BaseModel):
     id: str
     text: str
     category: str = "custom"
+    weight: float | None = None
 
 
 class BenchmarkPrompt(BaseModel):
@@ -19,6 +21,7 @@ class BenchmarkPrompt(BaseModel):
     reference_svg: str | None = None
     tags: list[str] = []
     tier: int | None = None
+    metadata: dict[str, Any] = {}
 
 
 class BenchmarkDefinition(BaseModel):
