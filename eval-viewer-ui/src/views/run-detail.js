@@ -1,14 +1,13 @@
 import { gateBadge } from '../components/badges.js'
-import { fetchRun } from '../api.js'
 
 export async function renderRunDetail(container, { runId, navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading…</p>'
 
   let records
   try {
-    const result = await fetchRun(runId)
-    if (!result.ok) { container.innerHTML = `<p style="color:#f87171;padding:20px">Run not found.</p>`; return }
-    records = result.data
+    const res = await fetch(`/api/runs/${runId}`)
+    if (!res.ok) { container.innerHTML = `<p style="color:#f87171;padding:20px">Run not found.</p>`; return }
+    records = await res.json()
   } catch (e) {
     container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${e.message}</p>`
     return
