@@ -41,7 +41,7 @@ from util.tikz_renderer import render_tikz
 
 load_dotenv()
 
-RESULTS_DIR = Path("evals/results")
+RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 
 # ---------------------------------------------------------------------------
