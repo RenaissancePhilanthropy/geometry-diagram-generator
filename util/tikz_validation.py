@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .tikz_extraction import extract_labels, extract_canvas_features, extract_draw_commands
+from .tikz_extraction import extract_labels, extract_canvas_features, extract_draw_commands, point_names_match
 
 
 def validate_required_labels(tikz: str, required: list[str]) -> dict[str, Any]:
@@ -16,13 +16,16 @@ def validate_required_labels(tikz: str, required: list[str]) -> dict[str, Any]:
     Check that all required point labels appear in the TikZ source.
     Returns {"passed": bool, "missing": list[str]}.
     """
-    labeled: set[str] = set()
+    labeled: list[str] = []
     for label in extract_labels(tikz):
         if label["type"] == "label_points":
-            labeled.update(label["points"])
+            labeled.extend(label["points"])
         elif label["type"] == "label_point":
-            labeled.add(label["point"])
-    missing = [name for name in required if name not in labeled]
+            labeled.append(label["point"])
+    missing = [
+        name for name in required
+        if not any(point_names_match(name, lab) for lab in labeled)
+    ]
     return {"passed": len(missing) == 0, "missing": missing}
 
 
