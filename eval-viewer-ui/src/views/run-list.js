@@ -1,10 +1,11 @@
+import { fetchRuns } from '../api.js'
+
 export async function renderRunList(container, { navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading runs…</p>'
 
   let runs
   try {
-    const res = await fetch('/api/runs')
-    runs = await res.json()
+    runs = await fetchRuns()
   } catch (e) {
     container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load runs: ${e.message}</p>`
     return

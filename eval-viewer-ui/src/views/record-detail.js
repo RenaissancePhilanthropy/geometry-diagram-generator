@@ -1,19 +1,19 @@
 import { gateBadge, checkBadge } from '../components/badges.js'
 import { renderDiff } from '../components/diff.js'
+import { fetchRecord, fetchRun, fetchSvg, compileIR, renderTikz, isStaticMode } from '../api.js'
 
 export async function renderRecordDetail(container, { runId, index, navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading…</p>'
 
   let record, totalRecords
   try {
-    const [recRes, runRes] = await Promise.all([
-      fetch(`/api/runs/${runId}/records/${index}`),
-      fetch(`/api/runs/${runId}`),
+    const [recResult, runResult] = await Promise.all([
+      fetchRecord(runId, index),
+      fetchRun(runId),
     ])
-    if (!recRes.ok) { container.innerHTML = `<p style="color:#f87171;padding:20px">Record not found.</p>`; return }
-    record = await recRes.json()
-    const allRecords = await runRes.json()
-    totalRecords = allRecords.length
+    if (!recResult.ok) { container.innerHTML = `<p style="color:#f87171;padding:20px">Record not found.</p>`; return }
+    record = recResult.data
+    totalRecords = runResult.data.length
   } catch (e) {
     container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${e.message}</p>`
     return
@@ -122,7 +122,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
 
   // Load initial SVG
   if (record.svg_path) {
-    loadSvgFromFile(runId, index)
+    loadSvg(runId, index)
   } else {
     document.getElementById('svg-container').innerHTML = '<span class="svg-placeholder">No SVG available</span>'
     document.getElementById('svg-source-label').textContent = 'no SVG saved'
@@ -148,14 +148,18 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     document.getElementById('tikz-editor').value,
   ])
 
-  // Compile IR button
+  // Compile IR button (only works with live backend)
   if (hasIR) {
-    document.getElementById('btn-compile').addEventListener('click', async () => {
-      const btn = document.getElementById('btn-compile')
+    const compileBtn = document.getElementById('btn-compile')
+    if (isStaticMode()) {
+      compileBtn.disabled = true
+      compileBtn.title = 'Recompile requires the eval viewer backend'
+    }
+    compileBtn.addEventListener('click', async () => {
       const spinner = document.getElementById('compile-spinner')
       const errBox = document.getElementById('compile-error')
 
-      btn.disabled = true
+      compileBtn.disabled = true
       spinner.style.display = 'inline'
       errBox.style.display = 'none'
 
@@ -164,66 +168,58 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
         irData = JSON.parse(document.getElementById('ir-editor').value)
       } catch (e) {
         showError(errBox, `JSON parse error: ${e.message}`)
-        btn.disabled = false
+        compileBtn.disabled = false
         spinner.style.display = 'none'
         return
       }
 
       try {
-        const res = await fetch('/api/compile-ir', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ diagram_ir: irData }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          showError(errBox, data.error || 'Compilation failed')
+        const result = await compileIR(irData)
+        if (!result.ok) {
+          showError(errBox, result.data.error || 'Compilation failed')
         } else {
-          // Update TikZ editor with generated code
-          document.getElementById('tikz-editor').value = data.tikz_code || ''
-          setSvgContent(data.svg, 'recompiled from IR')
-          document.getElementById('checks-container').innerHTML = renderCheckResults(data.checks || [])
-          // Refresh diff panels if currently visible
+          document.getElementById('tikz-editor').value = result.data.tikz_code || ''
+          setSvgContent(result.data.svg, 'recompiled from IR')
+          document.getElementById('checks-container').innerHTML = renderCheckResults(result.data.checks || [])
           refreshDiffIfVisible('ir-diff-container', originalIR, document.getElementById('ir-editor').value)
-          refreshDiffIfVisible('tikz-diff-container', originalTikZ, data.tikz_code || '')
+          refreshDiffIfVisible('tikz-diff-container', originalTikZ, result.data.tikz_code || '')
         }
       } catch (e) {
         showError(errBox, `Request failed: ${e.message}`)
       }
 
-      btn.disabled = false
+      compileBtn.disabled = false
       spinner.style.display = 'none'
     })
   }
 
-  // Re-render TikZ button
-  document.getElementById('btn-render').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-render')
+  // Re-render TikZ button (only works with live backend)
+  const renderBtn = document.getElementById('btn-render')
+  if (isStaticMode()) {
+    renderBtn.disabled = true
+    renderBtn.title = 'Re-render requires the eval viewer backend'
+  }
+  renderBtn.addEventListener('click', async () => {
     const spinner = document.getElementById('render-spinner')
     const errBox = document.getElementById('render-error')
 
-    btn.disabled = true
+    renderBtn.disabled = true
     spinner.style.display = 'inline'
     errBox.style.display = 'none'
 
     const tikzCode = document.getElementById('tikz-editor').value
     try {
-      const res = await fetch('/api/render-tikz', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tikz_code: tikzCode }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        showError(errBox, data.error || 'Render failed')
+      const result = await renderTikz(tikzCode)
+      if (!result.ok) {
+        showError(errBox, result.data.error || 'Render failed')
       } else {
-        setSvgContent(data.svg, 're-rendered from TikZ')
+        setSvgContent(result.data.svg, 're-rendered from TikZ')
       }
     } catch (e) {
       showError(errBox, `Request failed: ${e.message}`)
     }
 
-    btn.disabled = false
+    renderBtn.disabled = false
     spinner.style.display = 'none'
   })
 }
@@ -257,13 +253,12 @@ function refreshDiffIfVisible(containerId, oldText, newText) {
   }
 }
 
-async function loadSvgFromFile(runId, index) {
+async function loadSvg(runId, index) {
   const container = document.getElementById('svg-container')
   const label = document.getElementById('svg-source-label')
   try {
-    const res = await fetch(`/api/runs/${runId}/svg/${index}`)
-    if (!res.ok) throw new Error('SVG not found')
-    const svg = await res.text()
+    const svg = await fetchSvg(runId, index)
+    if (!svg) throw new Error('not found')
     setSvgContent(svg, 'saved SVG')
   } catch {
     container.innerHTML = '<span class="svg-placeholder">SVG file not available</span>'

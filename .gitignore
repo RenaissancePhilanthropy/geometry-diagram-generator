@@ -17,8 +17,8 @@ node_modules/
 .claude/
 demo-ui/pnpm-workspace.yaml
 
-# Evals results
-evals/results/
+# Evals results (large artifacts only — JSONL and SVGs are committed)
+evals/results/*.log
 
 # macOS files
 .DS_Store
