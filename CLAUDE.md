@@ -19,7 +19,33 @@ source .venv/bin/activate
 
 # Run evals
 uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structured --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
+
+# GenExam dry run — end-to-end test against real LLM, no database writes
+# macOS: prefix with DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib (for cairosvg/libcairo)
+
+# Single prompt — verbose section output by default
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --prompt-id Mathematics_72
+
+# Random sample with judge
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 10 --seed 42
+
+# Verbose section output for a batch run
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 5 --verbose
+
+# Generation only (no AI judge), with outer retry on failure
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --prompt-id Mathematics_15 --no-judge --gen-retries 2
+
+# Filter by difficulty tier (1=easy, 2=medium, 3=hard) before sampling
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 5 --tier 1 --seed 0
+
+# Run all HIGH + MEDIUM-cartesian prompts (91 total), no judge, high concurrency
+DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --all --no-judge --concurrency 8
+
+# Regenerate benchmark/definitions/bench_genexam.yaml from the source JSONL
+.venv/bin/python -m benchmark.genexam.filter_genexam
 ```
+
+Key dry-run flags: `--model` (generation model, default `anthropic:claude-sonnet-4-6`), `--judge-model`, `--renderer svg|tikz` (svg=no Docker required), `--concurrency N`, `--out-dir` (SVGs + `dry_run.jsonl`, default `/tmp/bench_dry_run`), `--gen-retries N` (outer retry loop on generation failure). Output for single-prompt runs uses verbose section headers (Prompt / Generation / AI Judge / Score); use `--verbose` to enable that format for batch runs too.
 
 **Note:** The TikZ renderer container (`docker run -p 8001:8001 tikz-renderer`), the main server (`uv run python -m uvicorn main:app`), the UI dev server (`cd demo-ui && pnpm dev`), and the eval viewer (see below) are typically managed by the user, not started by Claude Code.
 
@@ -97,10 +123,19 @@ A standalone benchmarking system with persistent storage and an HTTP API:
 
 - **`db.py`**: Database layer for storing and querying benchmark run results.
 - **`server.py`**: FastAPI HTTP server exposing benchmark data and triggers.
-- **`models.py`**: Pydantic models shared across the benchmark system.
+- **`models.py`**: Pydantic models (`BenchmarkDefinition`, `BenchmarkPrompt`, `RubricItem`) shared across the benchmark system. `RubricItem` has an optional `weight` field; `BenchmarkPrompt` has a `metadata` dict.
 - **`ai_judge.py`**: LLM-based judge for scoring benchmark outputs.
 - **`irr.py`**: Inter-rater reliability computation for human annotation agreement.
 - **`import_run.py`**: Imports eval run results into the benchmark database.
+- **`definitions/bench_genexam.yaml`**: Pre-built benchmark definition from the GenExam-Math dataset (91 prompts: 77 HIGH-relevance + 14 MEDIUM-cartesian). Regenerate with `python -m benchmark.genexam.filter_genexam`.
+
+#### `benchmark/genexam/`
+
+GenExam-Math integration:
+
+- **`Mathematics.jsonl`**: Source dataset (geometry problems with scoring points).
+- **`filter_genexam.py`**: Filters problems by geometric relevance and emits `bench_genexam.yaml`. Relevance tiers: HIGH (77 problems), MEDIUM-cartesian (14), MEDIUM-3d (11), LOW (excluded). Weights come from `scoring_points[].score`; tags from difficulty/img_type/taxonomy.
+- **`dry_run.py`**: End-to-end test harness — runs RecipeStrategy against benchmark prompts with real LLM calls, no database writes. Outputs per-prompt SVGs and `dry_run.jsonl`. See Commands section for usage.
 
 Note: `benchmark/` and `evals/` serve related but distinct purposes — `evals/` is project-specific LLM eval harness (scenarios, repeats, judge scoring), while `benchmark/` is a persistent database-backed system for tracking results over time, potentially across multiple projects or pipelines.
 

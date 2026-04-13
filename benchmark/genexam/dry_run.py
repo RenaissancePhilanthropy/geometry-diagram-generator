@@ -114,15 +114,33 @@ def _get_validation_diagnostics(strategy: RecipeStrategy) -> tuple[str | None, s
     return None, None
 
 
+_W = 58  # width of the right-fill in section headers
+
+
+def _sec(title: str) -> str:
+    return f"─ {title} {'─' * max(2, _W - len(title))}─"
+
+
 async def _process_one(
     entry: BenchmarkPrompt,
     definition: BenchmarkDefinition,
     args: argparse.Namespace,
     out_dir: Path,
     semaphore: asyncio.Semaphore,
+    verbose: bool = False,
 ) -> PromptOutcome:
     async with semaphore:
         outcome = PromptOutcome(prompt_id=entry.id, tier=entry.tier, status="ok")
+        rubric = definition.effective_rubric(entry.id)
+
+        if verbose:
+            prompt_preview = entry.prompt if len(entry.prompt) <= 130 else entry.prompt[:127] + "..."
+            print(_sec("Prompt"))
+            print(f"  id         : {entry.id}")
+            print(f"  tier       : {entry.tier}")
+            print(f"  tags       : {entry.tags}")
+            print(f"  prompt     : {prompt_preview}")
+            print(f"  rubric     : {len(rubric)} items")
 
         renderer = TikZRenderer() if args.renderer == "tikz" else SVGRenderer()
         max_outer_attempts = 1 + args.gen_retries
@@ -130,9 +148,10 @@ async def _process_one(
         t0 = time.perf_counter()
         last_exc: Exception | None = None
         result = None
+        all_traces: list = []
         for outer_attempt in range(max_outer_attempts):
             strategy = RecipeStrategy(use_recipes=True)
-            if outer_attempt > 0:
+            if outer_attempt > 0 and not verbose:
                 print(f"  [{entry.id}] retrying generation (attempt {outer_attempt + 1}/{max_outer_attempts})")
             try:
                 result = await strategy.run(
@@ -142,6 +161,9 @@ async def _process_one(
                 )
                 last_exc = None
                 outcome.gen_attempts = outer_attempt + 1
+                meta = result.recipe_metadata
+                if meta:
+                    all_traces.extend(meta.attempt_traces)
                 break
             except Exception as exc:
                 last_exc = exc
@@ -151,19 +173,34 @@ async def _process_one(
                 if err_details:
                     outcome.error_details = err_details
                     outcome.failed_payload = failed_payload
+                meta = getattr(strategy, "_partial_recipe_metadata", None)
+                if meta:
+                    all_traces.extend(meta.attempt_traces)
+
+        outcome.gen_seconds = time.perf_counter() - t0
+
+        if verbose:
+            print(_sec("Generation"))
+            for t in all_traces:
+                if t.stage != "success":
+                    first_line = (t.error or "").splitlines()[0][:120]
+                    print(f"Attempt {t.attempt} {t.stage} error: {first_line}")
 
         if last_exc is not None or result is None:
             outcome.status = "gen_failed"
             outcome.error = f"{type(last_exc).__name__}: {last_exc}" if last_exc else "unknown"
-            outcome.gen_seconds = time.perf_counter() - t0
-            log_line = f"  [{entry.id}] GEN FAILED (attempt {outcome.gen_attempts}/{max_outer_attempts}): {outcome.error}"
-            if outcome.error_details:
-                # Show first 2 diagnostic lines inline
-                diag_preview = "\n    ".join(outcome.error_details.splitlines()[:3])
-                log_line += f"\n    {diag_preview}"
-            print(log_line)
+            if verbose:
+                print(f"  GEN FAILED: {outcome.error}")
+                if outcome.error_details:
+                    for line in outcome.error_details.splitlines()[:5]:
+                        print(f"  {line}")
+            else:
+                log_line = f"  [{entry.id}] GEN FAILED (attempt {outcome.gen_attempts}/{max_outer_attempts}): {outcome.error}"
+                if outcome.error_details:
+                    diag_preview = "\n    ".join(outcome.error_details.splitlines()[:3])
+                    log_line += f"\n    {diag_preview}"
+                print(log_line)
             return outcome
-        outcome.gen_seconds = time.perf_counter() - t0
 
         svg = result.svg or ""
         svg_path = out_dir / f"{entry.id}.svg"
@@ -173,12 +210,20 @@ async def _process_one(
         outcome.input_tokens = result.input_tokens or 0
         outcome.output_tokens = result.output_tokens or 0
 
-        print(
-            f"  [{entry.id}] gen ok  "
-            f"tier={entry.tier} svg={outcome.svg_length}ch "
-            f"tok={outcome.input_tokens}/{outcome.output_tokens} "
-            f"in {outcome.gen_seconds:.1f}s"
-        )
+        if verbose:
+            print(f"  model      : {args.model}")
+            print(f"  renderer   : {args.renderer}")
+            print(f"  svg_length : {outcome.svg_length}")
+            print(f"  svg_path   : {outcome.svg_path}")
+            print(f"  tokens in  : {outcome.input_tokens}")
+            print(f"  tokens out : {outcome.output_tokens}")
+        else:
+            print(
+                f"  [{entry.id}] gen ok  "
+                f"tier={entry.tier} svg={outcome.svg_length}ch "
+                f"tok={outcome.input_tokens}/{outcome.output_tokens} "
+                f"in {outcome.gen_seconds:.1f}s"
+            )
 
         if args.no_judge:
             return outcome
@@ -197,12 +242,16 @@ async def _process_one(
             outcome.status = "judge_failed"
             outcome.error = f"{type(exc).__name__}: {exc}"
             outcome.judge_seconds = time.perf_counter() - t0
-            print(f"  [{entry.id}] JUDGE FAILED: {outcome.error}")
+            if verbose:
+                print(_sec("AI Judge"))
+                print(f"  JUDGE FAILED: {outcome.error}")
+            else:
+                print(f"  [{entry.id}] JUDGE FAILED: {outcome.error}")
             return outcome
         outcome.judge_seconds = time.perf_counter() - t0
         outcome.answers = answers
 
-        rubric_by_id = {r.id: r for r in definition.effective_rubric(entry.id)}
+        rubric_by_id = {r.id: r for r in rubric}
         for item_id, passed in answers.items():
             item = rubric_by_id.get(item_id)
             outcome.unweighted_total += 1
@@ -214,12 +263,25 @@ async def _process_one(
                     outcome.weighted_earned += item.weight
 
         pct = (100 * outcome.weighted_earned / outcome.weighted_total) if outcome.weighted_total > 0 else 0.0
-        print(
-            f"  [{entry.id}] judge   "
-            f"{outcome.unweighted_earned}/{outcome.unweighted_total} items, "
-            f"weighted {outcome.weighted_earned:.2f}/{outcome.weighted_total:.2f} "
-            f"({pct:.0f}%) in {outcome.judge_seconds:.1f}s"
-        )
+
+        if verbose:
+            print(_sec("AI Judge"))
+            for item_id, passed in answers.items():
+                item = rubric_by_id.get(item_id)
+                sym = "✓" if passed else "✗"
+                wt_str = f"weight={item.weight:.2f}" if item and item.weight is not None else ""
+                text = item.text if item else item_id
+                print(f"  {sym} {item_id} ({wt_str}): {text}")
+            print(_sec("Score"))
+            print(f"  unweighted : {outcome.unweighted_earned}/{outcome.unweighted_total}")
+            print(f"  weighted   : {outcome.weighted_earned:.3f}/{outcome.weighted_total:.3f} ({pct:.1f}%)")
+        else:
+            print(
+                f"  [{entry.id}] judge   "
+                f"{outcome.unweighted_earned}/{outcome.unweighted_total} items, "
+                f"weighted {outcome.weighted_earned:.2f}/{outcome.weighted_total:.2f} "
+                f"({pct:.0f}%) in {outcome.judge_seconds:.1f}s"
+            )
         return outcome
 
 
@@ -247,8 +309,11 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"  out_dir    : {out_dir}")
     print(f"─ Running ─────────────────────────────────────────────")
 
+    # Verbose per-prompt output: always on for single prompt, opt-in for batch.
+    verbose = len(prompts) == 1 or getattr(args, "verbose", False)
+
     semaphore = asyncio.Semaphore(args.concurrency)
-    coros = [_process_one(p, definition, args, out_dir, semaphore) for p in prompts]
+    coros = [_process_one(p, definition, args, out_dir, semaphore, verbose=verbose) for p in prompts]
     outcomes = await asyncio.gather(*coros)
 
     outcomes.sort(key=lambda o: o.prompt_id)
@@ -324,6 +389,10 @@ def main() -> None:
     parser.add_argument("--gen-retries", type=int, default=0, metavar="N",
                         help="Outer-loop retries on generation failure (default: 0). "
                              "Each retry creates a fresh RecipeStrategy. Total attempts = 1 + N.")
+    parser.add_argument("--verbose", action="store_true", default=False,
+                        help="Print rich per-prompt sections (Prompt / Generation / AI Judge / Score). "
+                             "Enabled automatically when running a single prompt; "
+                             "for batch runs with concurrency > 1 output may interleave.")
 
     args = parser.parse_args()
     raise SystemExit(asyncio.run(main_async(args)))
