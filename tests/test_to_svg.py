@@ -36,6 +36,15 @@ from ir.to_svg import (
     _angle_to_offset,
     _angle_to_anchor,
     _build_incident_angles,
+    _bisector_angle,
+    _segment_label_side,
+    _estimate_text_width,
+    _label_bbox,
+    _bboxes_overlap,
+    _LabelPlacement,
+    _ANGLE_ARC_R,
+    _ANGLE_LABEL_R,
+    _FONT_SIZE,
 )
 from util.svg_checks import check_svg_wellformed, check_svg_has_content, check_svg_reasonable_size
 
@@ -685,6 +694,16 @@ def test_parse_latex_dollar_stripped():
     assert result[0]["content"] == "A"
 
 
+def test_parse_latex_inline_dollar_stripped():
+    """Inline $...$ within mixed text should not produce literal $ characters."""
+    # e.g. "arc $= 2\\pi r$" should render without dollar signs
+    result = _parse_latex("arc $= 2\\pi r$")
+    combined = "".join(seg["content"] for seg in result)
+    assert "$" not in combined, f"Dollar signs found in output: {combined!r}"
+    assert "arc" in combined
+    assert "π" in combined
+
+
 def test_label_with_subscript_produces_tspan():
     """A label like $p_{center}$ should produce a tspan for the subscript."""
     diagram = DiagramIR(
@@ -1177,3 +1196,242 @@ def test_arc_reflex_gives_large_arc():
     large_arc, sweep = _parse_arc_flags(_compile_svg(diagram))
     assert large_arc == "1"
     assert sweep == "0"
+
+
+# ---------------------------------------------------------------------------
+# Angle bisector
+# ---------------------------------------------------------------------------
+
+class TestBisectorAngle:
+    def test_normal_case(self):
+        """30° and 90° → bisector at 60°."""
+        da = math.radians(30)
+        db = math.radians(90)
+        result = _bisector_angle(da, db)
+        assert abs(result - math.radians(60)) < 1e-9
+
+    def test_straddling_pi(self):
+        """170° and -170° (=190°) → bisector at 180°, not 0°."""
+        da = math.radians(170)
+        db = math.radians(-170)  # same as 190°
+        result = _bisector_angle(da, db)
+        # Bisector should be near 180°, definitely not near 0°
+        result_deg = math.degrees(result % (2 * math.pi))
+        assert abs(result_deg - 180.0) < 1.0
+
+    def test_same_angle(self):
+        """Equal angles → bisector = that angle."""
+        da = math.radians(45)
+        result = _bisector_angle(da, da)
+        assert abs((result % (2 * math.pi)) - math.radians(45)) < 1e-9
+
+    def test_right_angle(self):
+        """0° and 90° → bisector at 45°."""
+        result = _bisector_angle(0.0, math.pi / 2)
+        assert abs(result - math.pi / 4) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Segment label side selection
+# ---------------------------------------------------------------------------
+
+class TestSegmentLabelSide:
+    def test_no_other_points_defaults_positive(self):
+        """With no surrounding points, return +1 (CCW side)."""
+        side = _segment_label_side(0, 0, 0, 1, [])
+        assert side == 1.0
+
+    def test_points_on_positive_side_gives_negative(self):
+        """If more points are on +ny side (below in SVG), label goes on -ny (above)."""
+        # Midpoint at (0, 0), ny=1 (downward in SVG). Points below midpoint → positive side.
+        other = [(0, 50), (10, 80), (-5, 60)]  # py > my=0 → positive side
+        side = _segment_label_side(0, 0, 0, 1, other)
+        assert side == -1.0
+
+    def test_points_on_negative_side_gives_positive(self):
+        """If more points are on -ny side (above in SVG), label goes on +ny (below)."""
+        # Midpoint at (0, 100), ny=1. Points above midpoint (py < 100) → negative side.
+        other = [(0, 50), (10, 20)]  # py < my=100 → negative side
+        side = _segment_label_side(0, 100, 0, 1, other)
+        assert side == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Text width estimation
+# ---------------------------------------------------------------------------
+
+class TestEstimateTextWidth:
+    def test_single_char(self):
+        w = _estimate_text_width("A")
+        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+
+    def test_greek_command(self):
+        """\\alpha is one command → width ~ 1 char."""
+        w = _estimate_text_width(r"\alpha")
+        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+
+    def test_longer_text(self):
+        w5 = _estimate_text_width("ABCDE")
+        w1 = _estimate_text_width("A")
+        assert w5 == pytest.approx(5 * w1, rel=0.01)
+
+    def test_dollar_stripped(self):
+        w = _estimate_text_width("$A$")
+        assert w == pytest.approx(_estimate_text_width("A"), rel=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Label bbox and overlap
+# ---------------------------------------------------------------------------
+
+class TestLabelBbox:
+    def _lp(self, x, y, text="A", anchor="middle"):
+        w = _estimate_text_width(text)
+        return _LabelPlacement(x=x, y=y, text=text, color="black", anchor=anchor, width_est=w)
+
+    def test_middle_anchor_centered(self):
+        lp = self._lp(100, 50, anchor="middle")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs((x0 + x1) / 2 - 100) < 0.1
+
+    def test_start_anchor_left_edge_at_x(self):
+        lp = self._lp(100, 50, anchor="start")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs(x0 - 100) < 0.1
+
+    def test_end_anchor_right_edge_at_x(self):
+        lp = self._lp(100, 50, anchor="end")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs(x1 - 100) < 0.1
+
+    def test_bboxes_overlap_same_position(self):
+        lp = self._lp(100, 50)
+        bb = _label_bbox(lp)
+        assert _bboxes_overlap(bb, bb)
+
+    def test_bboxes_no_overlap_far_apart(self):
+        lp1 = self._lp(10, 10)
+        lp2 = self._lp(500, 500)
+        assert not _bboxes_overlap(_label_bbox(lp1), _label_bbox(lp2))
+
+
+# ---------------------------------------------------------------------------
+# Angle label is beyond the arc marker
+# ---------------------------------------------------------------------------
+
+def test_angle_label_beyond_arc():
+    """Angle label must be placed farther from vertex than the arc radius."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            DrawPoints(points=["A", "B", "C"]),
+            MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")]),
+            LabelAngle(angle=AnglePoints(a="B", o="A", b="C"), text="α"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+
+    # Find the vertex A position in SVG
+    pts = _findall(root, "circle")
+    a_pt = next(el for el in pts if el.get("data-ir-id") == "A")
+    vx, vy = float(a_pt.get("cx")), float(a_pt.get("cy"))
+
+    # Find the angle label
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-angle"]
+    assert len(labels) == 1
+    lx, ly = float(labels[0].get("x")), float(labels[0].get("y"))
+
+    dist = math.hypot(lx - vx, ly - vy)
+    assert dist > _ANGLE_ARC_R, f"Label at dist={dist:.1f}px, arc radius={_ANGLE_ARC_R}px"
+    assert dist >= _ANGLE_LABEL_R - 2, f"Label should be at ~{_ANGLE_LABEL_R}px, got {dist:.1f}"
+
+
+# ---------------------------------------------------------------------------
+# Duplicate right-angle marks are deduplicated
+# ---------------------------------------------------------------------------
+
+def test_duplicate_right_angle_marks_deduplicated():
+    """Two MarkRightAngles ops with the same triple produce only one path."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=0, y=1),
+        ],
+        render=[
+            MarkRightAngles(angles=[AnglePoints(a="A", o="B", b="C")]),
+            MarkRightAngles(angles=[AnglePoints(a="A", o="B", b="C")]),  # duplicate
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    ra_paths = [el for el in _findall(root, "path") if el.get("data-role") == "mark-right-angle"]
+    assert len(ra_paths) == 1
+
+
+# ---------------------------------------------------------------------------
+# Coincident point labels are deduplicated
+# ---------------------------------------------------------------------------
+
+def test_coincident_point_labels_deduplicated():
+    """Two points at the same location produce only one label."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=0, y=0),  # same position
+        ],
+        render=[
+            DrawPoints(points=["A", "B"]),
+            LabelPoint(p="A"),
+            LabelPoint(p="B"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    point_labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-point"]
+    assert len(point_labels) == 1
+
+
+# ---------------------------------------------------------------------------
+# Segment label goes to the uncrowded side
+# ---------------------------------------------------------------------------
+
+def test_segment_label_avoids_crowded_side():
+    """For a horizontal segment, label should go to the side with fewer other points."""
+    # Segment A-B with C well below: label should go above (negative SVG y direction)
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=5),
+            PointFixed(id="B", x=4, y=5),
+            PointFixed(id="C", x=2, y=0),  # below the segment
+            Segment(id="seg_AB", a="A", b="B"),
+        ],
+        render=[
+            Draw(obj="seg_AB"),
+            DrawPoints(points=["A", "B", "C"]),
+            LabelSegment(seg="seg_AB", text="4"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+
+    # Find label and the SVG y-coordinate of A (both endpoints share same y)
+    ax, ay = None, None
+    for el in _findall(root, "circle"):
+        if el.get("data-ir-id") == "A":
+            ax, ay = float(el.get("cx")), float(el.get("cy"))
+    assert ay is not None
+
+    seg_label = next(
+        el for el in _findall(root, "text") if el.get("data-role") == "label-segment"
+    )
+    ly = float(seg_label.get("y"))
+    # C is below in geometry = higher SVG y. Label should be above segment (lower SVG y than segment).
+    assert ly < ay, f"Expected label above segment (ly={ly:.1f} < ay={ay:.1f})"

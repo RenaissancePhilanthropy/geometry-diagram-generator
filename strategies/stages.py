@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
 from util.tikz_renderer import render_tikz
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
@@ -35,6 +37,32 @@ from .instructions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Shared result type for raw (non-IR) strategies
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RawRunResult:
+    """Minimal run result compatible with dry_run._process_one expectations."""
+    svg: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def extract_svg_from_messages(messages) -> str:
+    """Return the SVG string from the last successful render_diagram tool return."""
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart) and part.tool_name == "render_diagram":
+                    try:
+                        return json.loads(part.content)["svg"]
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+    return ""
+
 
 # Default retry budgets used by register_render_tool_with_plan_check
 COMPILE_RETRIES = 2

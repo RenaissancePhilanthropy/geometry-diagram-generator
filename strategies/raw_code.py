@@ -6,6 +6,7 @@ from pydantic_ai import Agent, ModelRetry
 from util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .instructions import RAW_TIKZ_INSTRUCTIONS
+from .stages import RawRunResult, extract_svg_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -37,3 +38,12 @@ class RawCodeStrategy(SubstanceStrategy):
             return json.dumps({"svg": svg})
 
         return agent
+
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
+        result = await self.build_agent(model=model).run(prompt)
+        usage = result.usage()
+        return RawRunResult(
+            svg=extract_svg_from_messages(result.all_messages()),
+            input_tokens=usage.input_tokens or 0,
+            output_tokens=usage.output_tokens or 0,
+        )
