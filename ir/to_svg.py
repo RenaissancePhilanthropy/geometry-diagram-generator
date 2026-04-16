@@ -23,9 +23,10 @@ from typing import Any
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import SymTable
+from ir.to_sympy import Arc, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
+    arc_params,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
@@ -307,6 +308,34 @@ def _emit_svg_op(
                     **attrs,
                 })
 
+            elif isinstance(sym_obj, Arc):
+                cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+                r_s = r_g * scale
+                # Compute arc endpoint on the circle in geometry space, then map
+                # to pixel space.  The SymPy-space sweep is CCW from start_deg
+                # to end_deg.
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + r_g * math.cos(end_rad)
+                ey_g = cy_g + r_g * math.sin(end_rad)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg  # always > 0 per arc_params
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                # math-CCW = visually-CCW in SVG = sweep_flag=0
+                sweep_flag = 0
+                d = (
+                    f"M {sx_s:.2f} {sy_s:.2f} "
+                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} {sweep_flag} "
+                    f"{ex_s:.2f} {ey_s:.2f}"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-type": "arc",
+                    "d": d,
+                    "fill": "none",
+                    **attrs,
+                })
+
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"
             for pid in points:
@@ -322,14 +351,44 @@ def _emit_svg_op(
                     "fill": fill,
                 })
 
-        case ir.Fill(obj=obj_id, opacity=opacity, style=style):
+        case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
                 _warn(warnings, f"Skipping Fill for undefined object '{obj_id}'")
                 return
             sym_obj = sym[obj_id]
             fill_color, fill_opacity = _fill_attrs(style, styles, opacity)
 
-            if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+            if holes:
+                # Even-odd compound fill: outer shape minus hole shapes.
+                outer_path = _obj_to_svg_subpath(
+                    obj_id, sym, stmt_by_id, gxy, scale, poly_verts, ellipse_params
+                )
+                if outer_path is None:
+                    _warn(warnings, f"Fill with holes: unsupported outer shape type for '{obj_id}'")
+                    return
+                subpaths = [outer_path]
+                for hole_id in holes:
+                    if hole_id not in sym:
+                        _warn(warnings, f"Fill hole '{hole_id}' is undefined; skipping hole")
+                        continue
+                    hole_path = _obj_to_svg_subpath(
+                        hole_id, sym, stmt_by_id, gxy, scale, poly_verts, ellipse_params
+                    )
+                    if hole_path is None:
+                        _warn(warnings, f"Fill hole '{hole_id}' has unsupported shape type; skipping hole")
+                        continue
+                    subpaths.append(hole_path)
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
+                    "d": " ".join(subpaths),
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "fill-rule": "evenodd",
+                    "stroke": "none",
+                })
+
+            elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = poly_verts(obj_id, stmt_by_id)
                 pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
                 ET.SubElement(svg, "polygon", {
@@ -1158,6 +1217,61 @@ def _fill_attrs(
         op = d.get("opacity", opacity)
         return str(color), float(op)
     return "blue", opacity
+
+
+def _obj_to_svg_subpath(
+    obj_id: str,
+    sym: dict,
+    stmt_by_id: dict,
+    gxy,
+    scale: float,
+    poly_verts_fn,
+    ellipse_params_fn,
+) -> str | None:
+    """Return an SVG path subpath string (closed with Z) for a single shape.
+
+    Supports Polygon/Triangle, Circle, and Ellipse. Returns None for unsupported types.
+    """
+    sym_obj = sym.get(obj_id)
+    if sym_obj is None:
+        return None
+
+    if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+        verts = poly_verts_fn(obj_id, stmt_by_id)
+        first = verts[0]
+        fx, fy = gxy(sympy_to_float(sym[first].x), sympy_to_float(sym[first].y))
+        parts = [f"M {fx:.2f} {fy:.2f}"]
+        for v in verts[1:]:
+            vx, vy = gxy(sympy_to_float(sym[v].x), sympy_to_float(sym[v].y))
+            parts.append(f"L {vx:.2f} {vy:.2f}")
+        parts.append("Z")
+        return " ".join(parts)
+
+    if isinstance(sym_obj, spg.Circle):
+        cx_g = sympy_to_float(sym_obj.center.x)
+        cy_g = sympy_to_float(sym_obj.center.y)
+        r_g = sympy_to_float(sym_obj.radius)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        r_s = r_g * scale
+        # Circle as two semicircular arcs (SVG arc cannot do a full 360° in one command)
+        return (
+            f"M {cx_s - r_s:.2f} {cy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 1 0 {cx_s + r_s:.2f} {cy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 1 0 {cx_s - r_s:.2f} {cy_s:.2f} Z"
+        )
+
+    if isinstance(sym_obj, spg.Ellipse):
+        cx_g, cy_g, a_g, b_g = ellipse_params_fn(obj_id, sym)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        rx_s = a_g * scale
+        ry_s = b_g * scale
+        return (
+            f"M {cx_s - rx_s:.2f} {cy_s:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s + rx_s:.2f} {cy_s:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s - rx_s:.2f} {cy_s:.2f} Z"
+        )
+
+    return None
 
 
 # ---------------------------------------------------------------------------

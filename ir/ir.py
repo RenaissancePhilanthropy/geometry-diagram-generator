@@ -315,6 +315,16 @@ class CircleThrough3(DefBase):
     c: PointId
 
 
+class ArcCenterStartEnd(DefBase):
+    """Circular arc between `start` and `end` around `center`.
+    Draws the minor (≤180°) arc by default; set `reflex=True` for the >180° arc."""
+    kind: Literal["arc_center_start_end"] = "arc_center_start_end"
+    center: PointId
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
 class EllipseCenterAxes(DefBase):
     """Axis-aligned ellipse defined by center and semi-axis lengths."""
     kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
@@ -483,6 +493,7 @@ DefStmt = Annotated[
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+        ArcCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior,
     ],
@@ -701,9 +712,14 @@ class MarkRightAngles(RenderBase):
 
 
 class Fill(RenderBase):
-    """Fill a closed object (polygon, triangle, circle) with optional opacity."""
+    """Fill a closed object (polygon, triangle, circle) with optional opacity.
+
+    If ``holes`` is non-empty the fill is rendered with the even-odd rule so
+    each hole-shape punches a transparent cutout in the outer ``obj`` shape.
+    """
     kind: Literal["fill"] = "fill"
     obj: ObjId
+    holes: List[ObjId] = Field(default_factory=list)
     opacity: float = 1.0
 
 

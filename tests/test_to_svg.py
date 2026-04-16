@@ -997,3 +997,183 @@ def test_ellipse_fill_renders_as_filled_ellipse():
     filled = [e for e in ellipses if e.get("data-role") == "fill"]
     assert len(filled) == 1
     assert filled[0].get("fill") not in (None, "none")
+
+
+# ---------------------------------------------------------------------------
+# Fill with holes (even-odd)
+# ---------------------------------------------------------------------------
+
+def test_fill_with_holes_emits_evenodd_path():
+    """Circle filled with a polygon hole should produce a <path fill-rule='evenodd'>."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="quad", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["quad"], opacity=0.3)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [e for e in _findall(root, "path") if e.get("data-role") == "fill"]
+    assert len(paths) == 1
+    assert paths[0].get("fill-rule") == "evenodd"
+    d = paths[0].get("d", "")
+    assert "M" in d and "Z" in d
+    assert paths[0].get("fill") not in (None, "none")
+
+
+def test_fill_with_holes_d_has_two_subpaths():
+    """The compound path d-attribute should contain two closed subpaths (two 'Z')."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="tri", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["tri"], opacity=0.3)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [e for e in _findall(root, "path") if e.get("data-role") == "fill"]
+    d = paths[0].get("d", "")
+    assert d.count("Z") == 2
+
+
+def test_fill_without_holes_unchanged():
+    """Fill without holes still renders a <circle> element, not a <path>."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Fill(obj="circ", opacity=0.5)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    circles = _findall(root, "circle")
+    filled = [c for c in circles if c.get("data-role") == "fill"]
+    assert len(filled) == 1
+
+
+# ---------------------------------------------------------------------------
+# Arc rendering
+# ---------------------------------------------------------------------------
+
+def test_arc_emits_svg_path_with_arc_command():
+    """Arc should render as <path data-type='arc'> with an SVG 'A' arc segment."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    arcs = [e for e in _findall(root, "path") if e.get("data-type") == "arc"]
+    assert len(arcs) == 1
+    d = arcs[0].get("d", "")
+    assert d.startswith("M ")
+    assert " A " in d
+    assert arcs[0].get("fill") == "none"
+
+
+def test_arc_large_arc_flag_for_major_sweep():
+    """A reflex arc (>180°) should set large-arc-flag=1 and sweep-flag=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            # start at 0°, end at 270° — reflex=True to get the >180° arc
+            PointFixed(id="S", x=1, y=0),
+            PointFixed(id="E", x=0, y=-1),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    arcs = [e for e in _findall(root, "path") if e.get("data-type") == "arc"]
+    d = arcs[0].get("d", "")
+    # SVG path format: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+    # Parse out the portion after 'A '
+    a_parts = d.split(" A ", 1)[1].split()
+    large_arc_flag = a_parts[3]
+    sweep_flag = a_parts[4]
+    assert large_arc_flag == "1"
+    assert sweep_flag == "0"
+
+
+def _parse_arc_flags(svg_str: str) -> tuple[str, str]:
+    """Return (large_arc_flag, sweep_flag) from the first arc path in the SVG."""
+    root = ET.fromstring(svg_str)
+    arcs = [e for e in root.iter() if e.get("data-type") == "arc"]
+    d = arcs[0].get("d", "")
+    a_parts = d.split(" A ", 1)[1].split()
+    return a_parts[3], a_parts[4]
+
+
+def test_arc_minor_default_renders_correct_flags():
+    """Minor arc (default) around O=(0,-1) between endpoints on x-axis gives large=0, sweep=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc, sweep = _parse_arc_flags(_compile_svg(diagram))
+    assert large_arc == "0"
+    assert sweep == "0"
+
+    # Order-independence: swapping start/end gives the same flags
+    diagram2 = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="B", end="A"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc2, sweep2 = _parse_arc_flags(_compile_svg(diagram2))
+    assert large_arc2 == "0"
+    assert sweep2 == "0"
+
+
+def test_arc_reflex_gives_large_arc():
+    """Reflex arc around O=(0,-1) between endpoints on x-axis gives large=1, sweep=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc, sweep = _parse_arc_flags(_compile_svg(diagram))
+    assert large_arc == "1"
+    assert sweep == "0"

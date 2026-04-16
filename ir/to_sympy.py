@@ -16,6 +16,29 @@ from ir.refs import def_references
 SymTable = dict[str, Any]
 
 
+class Arc:
+    """Marker type for a circular arc in the symbol table.
+
+    SymPy has no native Arc type, so we store this lightweight wrapper.
+    ``center``, ``start``, ``end`` are SymPy ``Point`` objects, and
+    ``radius`` is a numeric (sympy expression) = ``center.distance(start)``.
+    The arc sweeps counter-clockwise from ``start`` to the point where the
+    ray ``center → end`` meets the circle.
+    """
+
+    __slots__ = ("center", "start", "end", "radius", "reflex")
+
+    def __init__(self, center: spg.Point, start: spg.Point, end: spg.Point, radius: Any, reflex: bool = False):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.radius = radius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"Arc(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -244,6 +267,12 @@ def _compile_one(
 
         case ir.CircleThrough3(a=a_id, b=b_id, c=c_id):
             return spg.Circle(ref(a_id), ref(b_id), ref(c_id))
+
+        # --- Arcs ---
+        case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            r = c.distance(s)
+            return Arc(center=c, start=s, end=e, radius=r, reflex=reflex)
 
         # --- Ellipses ---
         case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):

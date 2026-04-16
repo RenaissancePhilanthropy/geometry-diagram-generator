@@ -1,12 +1,15 @@
 # recipe/solve.py
-"""Triangle constraint solver.
+"""Geometry constraint solvers.
 
-Converts a triangle `spec` dict into concrete vertex coordinates (x, y).
-Supports AAS, SAS, SSS, ASA, and right_angle_at+two_sides.
+Converts geometry spec dicts into concrete vertex coordinates (x, y).
+
+Triangle solver: supports AAS, SAS, SSS, ASA, and right_angle_at+two_sides.
 SSA is explicitly not supported (raises SpecError).
-
 Layout: vertex[0] at origin on positive x-axis, vertex[1] at (side_AB, 0),
 vertex[2] above x-axis. Then translate so centroid ≈ (2, 2).
+
+Rectangle solver: lays out 4 vertices with given labeled side lengths.
+Default orientation: A top-left, B top-right, C bottom-right, D bottom-left.
 """
 from __future__ import annotations
 
@@ -277,3 +280,107 @@ def _solve_right_angle_at(vertices: list[str], spec: dict) -> dict:
     # right_angle_at + s0 (ra→other[0]) + s1 (ra→other[1])
     # Use SAS with 90°
     return _sas(v0, v1, v2, ra, 90.0, other[0], s0, other[1], s1)
+
+
+# ---------------------------------------------------------------------------
+# Rectangle solver
+# ---------------------------------------------------------------------------
+
+def solve_rectangle(
+    vertices: list[str],
+    spec: dict[str, Any],
+    center: tuple[float, float] = (2.0, 2.0),
+) -> dict[str, tuple[float, float]]:
+    """Lay out a rectangle so that labeled side lengths match the spec.
+
+    Parameters
+    ----------
+    vertices:
+        4 corner names in perimeter order, e.g. ["A", "B", "C", "D"].
+        Side AB connects vertices[0]→vertices[1]; side BC connects [1]→[2];
+        sides CD and DA are the opposites.
+    spec:
+        Must contain exactly the two adjacent-side length keys that correspond
+        to the first two edges, e.g. ``{side_AB: 4, side_BC: 3}``.
+        Accepted key patterns: ``side_XY`` where XY is any two-character combo
+        of the vertex names covering one adjacent pair.
+        Optional: ``rotation`` (float, degrees CCW, default 0).
+    center:
+        (cx, cy) target for the rectangle centroid; default (2.0, 2.0).
+
+    Returns
+    -------
+    dict mapping each vertex name to (x, y).
+
+    Default layout (rotation=0): A top-left, B top-right, C bottom-right,
+    D bottom-left, so ``|AB| = side_AB`` (horizontal) and ``|BC| = side_BC``
+    (vertical).
+
+    Raises
+    ------
+    SpecError
+        If fewer than two adjacent-side lengths are specified, or if the spec
+        keys don't correspond to the provided vertex names.
+    """
+    if len(vertices) != 4:
+        raise SpecError(f"solve_rectangle requires exactly 4 vertices; got {len(vertices)}")
+
+    v = list(vertices)
+    # Extract all side_XY keys
+    sides_raw: dict[str, float] = {}
+    for k, val in spec.items():
+        if k.startswith("side_") and len(k) == 7:
+            sides_raw[k[5:]] = float(val)
+
+    def _get_side(a: str, b: str) -> float | None:
+        for key in (a + b, b + a):
+            if key in sides_raw:
+                return sides_raw[key]
+        return None
+
+    # Need two adjacent sides meeting at v[1] (B): AB and BC
+    w = _get_side(v[0], v[1])  # side_AB  (width)
+    h = _get_side(v[1], v[2])  # side_BC  (height)
+
+    # Fall back: accept the other adjacent pair DA and AB
+    if w is None:
+        w = _get_side(v[3], v[0])
+    if h is None:
+        h = _get_side(v[2], v[3])
+
+    missing = []
+    if w is None:
+        missing.append(f"side_{v[0]}{v[1]} (or side_{v[1]}{v[0]})")
+    if h is None:
+        missing.append(f"side_{v[1]}{v[2]} (or side_{v[2]}{v[1]})")
+    if missing:
+        raise SpecError(
+            f"Rectangle spec missing required side lengths: {', '.join(missing)}. "
+            f"Provide e.g. side_{v[0]}{v[1]}=<width> and side_{v[1]}{v[2]}=<height>."
+        )
+
+    rotation_deg = float(spec.get("rotation", 0.0))
+    rotation_rad = rotation_deg * math.pi / 180.0
+
+    # Default orientation: A top-left, B top-right, C bottom-right, D bottom-left
+    # Width = |AB| = w, Height = |BC| = h
+    half_w = w / 2.0
+    half_h = h / 2.0
+    raw: dict[str, tuple[float, float]] = {
+        v[0]: (-half_w,  half_h),   # A top-left
+        v[1]: ( half_w,  half_h),   # B top-right
+        v[2]: ( half_w, -half_h),   # C bottom-right
+        v[3]: (-half_w, -half_h),   # D bottom-left
+    }
+
+    if rotation_rad != 0.0:
+        cos_r, sin_r = math.cos(rotation_rad), math.sin(rotation_rad)
+        raw = {
+            name: (x * cos_r - y * sin_r, x * sin_r + y * cos_r)
+            for name, (x, y) in raw.items()
+        }
+
+    # Translate centroid to target center
+    cx, cy = center
+    result = {name: (x + cx, y + cy) for name, (x, y) in raw.items()}
+    return result

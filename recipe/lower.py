@@ -20,11 +20,12 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    ArcCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual,
-    Draw, DrawPoints, LabelPoint as IRLabelPoint, MarkRightAngles,
+    Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle,
     RenderOp, DefStmt, PickRule,
@@ -38,13 +39,14 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
+    RectangleOp, FillOp, ArcOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
     DrawObj,
 )
-from recipe.solve import solve_triangle
+from recipe.solve import solve_triangle, solve_rectangle
 
 
 class LoweringError(ValueError):
@@ -234,6 +236,16 @@ class _Lowerer:
                     auto_name = f"{op.id}_v{base_count + i}"
                     self._add(PointAlias(id=vname, ref=auto_name))
                     self._point_ids.append(vname)
+            case RectangleOp():
+                self._lower_rectangle(op)
+            case ArcOp():
+                self._add(ArcCenterStartEnd(
+                    id=op.id, center=op.center, start=op.start, end=op.end,
+                    reflex=op.reflex,
+                ))
+                self._drawable.add(op.id)
+            case FillOp():
+                self._lower_fill(op)
             case _:
                 raise LoweringError(f"Unhandled DSL op type: {type(op).__name__}")
 
@@ -265,6 +277,35 @@ class _Lowerer:
             triple = (others[0], ra, others[1])
             self._checks.append(RightAngle(angle=AnglePoints(a=triple[0], o=triple[1], b=triple[2])))
             self._right_angle_triples.append(triple)
+
+    def _lower_rectangle(self, op: RectangleOp) -> None:
+        try:
+            center = tuple(op.center) if op.center is not None else (2.0, 2.0)
+            coords = solve_rectangle(op.vertices, op.spec, center=center)
+        except Exception as e:
+            raise LoweringError(f"Rectangle '{op.id}': {e}") from e
+
+        for name in op.vertices:
+            x, y = coords[name]
+            self._add(PointFixed(id=name, x=round(x, 10), y=round(y, 10)))
+            self._point_ids.append(name)
+            self._coord_floats[name] = (round(x, 10), round(y, 10))
+
+        self._add(Polygon(id=op.id, points=list(op.vertices)))
+        self._drawable.add(op.id)
+
+        # Auto right-angle check at vertex[0] (corner A, between B–A–D)
+        a, b, _c, d = op.vertices
+        self._right_angle_triples.append((b, a, d))
+
+    def _lower_fill(self, op: FillOp) -> None:
+        style_key = self._resolve_style(op.style)
+        self._renders.append(Fill(
+            obj=op.obj,
+            holes=list(op.holes),
+            opacity=op.opacity,
+            style=style_key,
+        ))
 
     def _lower_circle(self, op: CircleOp) -> None:
         if op.radius is not None:

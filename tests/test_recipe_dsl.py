@@ -296,3 +296,22 @@ def test_point_on_segment_op():
     op = PointOnSegmentOp(id="D", segment=["A","B"], ratio=0.5)
     assert op.op == "point_on_segment"
     assert op.ratio == 0.5
+
+
+def test_arc_op_reflex_parses():
+    from recipe.dsl import ArcOp
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[
+            {"op": "arc", "id": "a", "center": "O", "start": "A", "end": "B", "reflex": True}
+        ],
+    )
+    arc_op = dsl.construction[0]
+    assert isinstance(arc_op, ArcOp)
+    assert arc_op.reflex is True
+
+
+def test_arc_op_reflex_default_false():
+    from recipe.dsl import ArcOp
+    op = ArcOp(id="a", center="O", start="A", end="B")
+    assert op.reflex is False

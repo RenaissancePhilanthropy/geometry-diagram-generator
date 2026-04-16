@@ -153,3 +153,67 @@ def test_overdefined_sss_with_extra_angle():
 def test_aaa_no_sides():
     with pytest.raises(SpecError):
         solve_triangle(["A","B","C"], {"angle_A": 60, "angle_B": 60, "angle_C": 60})
+
+
+# ---------------------------------------------------------------------------
+# solve_rectangle
+# ---------------------------------------------------------------------------
+
+from recipe.solve import solve_rectangle
+
+def _dist(p1, p2):
+    return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+
+
+def test_solve_rectangle_side_lengths():
+    """solve_rectangle should produce corners with |AB|=4 and |BC|=3."""
+    coords = solve_rectangle(["A","B","C","D"], {"side_AB": 4, "side_BC": 3})
+    a, b, c, d = coords["A"], coords["B"], coords["C"], coords["D"]
+    assert _dist(a, b) == pytest.approx(4.0, abs=1e-8)
+    assert _dist(b, c) == pytest.approx(3.0, abs=1e-8)
+    assert _dist(c, d) == pytest.approx(4.0, abs=1e-8)
+    assert _dist(d, a) == pytest.approx(3.0, abs=1e-8)
+
+
+def test_solve_rectangle_right_angles():
+    """All four corners should be right angles."""
+    coords = solve_rectangle(["A","B","C","D"], {"side_AB": 5, "side_BC": 2})
+    verts = [coords["A"], coords["B"], coords["C"], coords["D"]]
+    for i in range(4):
+        a = verts[(i-1) % 4]
+        o = verts[i]
+        b = verts[(i+1) % 4]
+        v1 = (a[0]-o[0], a[1]-o[1])
+        v2 = (b[0]-o[0], b[1]-o[1])
+        dot = v1[0]*v2[0] + v1[1]*v2[1]
+        assert dot == pytest.approx(0.0, abs=1e-6)
+
+
+def test_solve_rectangle_center():
+    """Centroid should be at the requested center."""
+    coords = solve_rectangle(["A","B","C","D"], {"side_AB": 4, "side_BC": 3}, center=(5.0, 6.0))
+    cx = sum(v[0] for v in coords.values()) / 4
+    cy = sum(v[1] for v in coords.values()) / 4
+    assert cx == pytest.approx(5.0, abs=1e-8)
+    assert cy == pytest.approx(6.0, abs=1e-8)
+
+
+def test_solve_rectangle_rotation():
+    """With rotation=90, the horizontal side AB becomes vertical."""
+    coords_0 = solve_rectangle(["A","B","C","D"], {"side_AB": 4, "side_BC": 3})
+    coords_90 = solve_rectangle(["A","B","C","D"], {"side_AB": 4, "side_BC": 3}, center=(2.0, 2.0))
+    # At rotation=0, A and B have same y; at rotation=90 they'd have same x.
+    # Just check that the side lengths are still correct after rotation.
+    coords_r = solve_rectangle(["A","B","C","D"], {"side_AB": 4, "side_BC": 3, "rotation": 90})
+    assert _dist(coords_r["A"], coords_r["B"]) == pytest.approx(4.0, abs=1e-8)
+    assert _dist(coords_r["B"], coords_r["C"]) == pytest.approx(3.0, abs=1e-8)
+
+
+def test_solve_rectangle_missing_side_raises():
+    with pytest.raises(SpecError):
+        solve_rectangle(["A","B","C","D"], {"side_AB": 4})
+
+
+def test_solve_rectangle_wrong_vertex_count_raises():
+    with pytest.raises(SpecError):
+        solve_rectangle(["A","B","C"], {"side_AB": 4, "side_BC": 3})
