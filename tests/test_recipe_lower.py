@@ -1182,3 +1182,130 @@ def test_ellipse_op_foci_lowers():
     assert ellipses[0].focus1 == "F1"
     assert ellipses[0].focus2 == "F2"
     assert ellipses[0].major_axis == 10
+
+
+# ---------------------------------------------------------------------------
+# RectangleOp lowering
+# ---------------------------------------------------------------------------
+
+def test_rectangle_op_lowers_to_four_points_and_polygon():
+    from recipe.dsl import RectangleOp
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].points == ["A", "B", "C", "D"]
+
+
+def test_rectangle_op_correct_side_lengths():
+    import math
+    from recipe.dsl import RectangleOp
+    from ir.to_sympy import compile_defs
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ]))
+    sym = compile_defs(ir)
+    a = sym["A"]
+    b = sym["B"]
+    c = sym["C"]
+    ab = float(a.distance(b))
+    bc = float(b.distance(c))
+    assert abs(ab - 4.0) < 1e-6
+    assert abs(bc - 3.0) < 1e-6
+
+
+def test_rectangle_op_auto_right_angle_triple():
+    from recipe.dsl import RectangleOp
+    from recipe.lower import _Lowerer
+    dsl = _dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ])
+    lowerer = _Lowerer()
+    lowerer.lower(dsl)
+    # (B, A, D) triple should be registered
+    triples = lowerer._right_angle_triples
+    assert any(t[1] == "A" for t in triples)
+
+
+def test_rectangle_op_bad_spec_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(Exception):
+        lower_to_ir(_dsl([
+            RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4}),
+        ]))
+
+
+# ---------------------------------------------------------------------------
+# FillOp lowering
+# ---------------------------------------------------------------------------
+
+def test_fill_op_lowers_to_fill_render_op():
+    from recipe.dsl import RectangleOp, FillOp
+    from ir.ir import Fill
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+        CircleOp(id="circ", center="A", radius=1),
+        FillOp(id="shade", obj="circ", holes=["rect"], opacity=0.3),
+    ]))
+    fill_ops = [r for r in ir.render if isinstance(r, Fill)]
+    assert len(fill_ops) == 1
+    assert fill_ops[0].obj == "circ"
+    assert fill_ops[0].holes == ["rect"]
+    assert abs(fill_ops[0].opacity - 0.3) < 1e-9
+
+
+def test_fill_op_without_holes():
+    from recipe.dsl import FillOp
+    from ir.ir import Fill
+    ir = lower_to_ir(_dsl([
+        CircleOp(id="circ", center="O", radius=2),
+        PointOp(id="O", coords=[0.0, 0.0]),
+        FillOp(id="shade", obj="circ", opacity=0.5),
+    ], mode="grid"))
+    fill_ops = [r for r in ir.render if isinstance(r, Fill)]
+    assert len(fill_ops) == 1
+    assert fill_ops[0].holes == []
+
+
+# ---------------------------------------------------------------------------
+# ArcOp
+# ---------------------------------------------------------------------------
+
+def test_arc_op_lowers_to_arc_def_and_is_drawable():
+    from recipe.dsl import ArcOp
+    from ir.ir import ArcCenterStartEnd
+    ir = lower_to_ir(_dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="A", coords=[1.0, 0.0]),
+        PointOp(id="B", coords=[0.0, 1.0]),
+        ArcOp(id="arc1", center="O", start="A", end="B"),
+    ], mode="grid", annotations=DSLAnnotations(
+        auto_draw_all=True, auto_label_points=False,
+    )))
+    arc_defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd)]
+    assert len(arc_defs) == 1
+    assert arc_defs[0].id == "arc1"
+    assert arc_defs[0].center == "O"
+    assert arc_defs[0].start == "A"
+    assert arc_defs[0].end == "B"
+    # auto_draw_all should emit a Draw op for the arc
+    assert any(r.kind == "draw" and r.obj == "arc1" for r in ir.render)
+
+
+def test_arc_op_reflex_flag_flows_through():
+    from recipe.dsl import ArcOp
+    from ir.ir import ArcCenterStartEnd
+    ir = lower_to_ir(_dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="A", coords=[1.0, 0.0]),
+        PointOp(id="B", coords=[0.0, 1.0]),
+        ArcOp(id="a", center="O", start="A", end="B", reflex=True),
+    ], mode="grid", annotations=DSLAnnotations(
+        auto_draw_all=True, auto_label_points=False,
+    )))
+    arc_defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd)]
+    assert len(arc_defs) == 1
+    assert arc_defs[0].reflex is True

@@ -379,6 +379,72 @@ class CircleThrough3Op(DSLOpBase):
     center: str         # name for the circumcenter point
 
 
+class RectangleOp(DSLOpBase):
+    """Axis-aligned rectangle with labeled side lengths.
+
+    ``vertices`` lists the 4 corner names in perimeter order: A, B, C, D
+    where AB and BC are adjacent sides.
+
+    ``spec`` keys:
+    - ``side_XY`` (required for one pair of adjacent sides, e.g. side_AB and side_BC):
+      Euclidean lengths for the two sides meeting at B.  The key must use the
+      actual vertex-name letters from ``vertices``, e.g. side_AB=4, side_BC=3.
+    - ``rotation`` (optional, degrees, default 0): CCW rotation around ``center``.
+
+    ``center`` (optional): [x, y] override for the rectangle centroid; default (2, 2).
+
+    Vertex order (default orientation, no rotation): A top-left, B top-right,
+    C bottom-right, D bottom-left.
+    """
+    op: Literal["rectangle"] = "rectangle"
+    vertices: list[str]
+    spec: dict[str, Any]
+    center: Optional[list[float]] = None
+
+    @field_validator("vertices")
+    @classmethod
+    def _four_vertices(cls, v: list[str]) -> list[str]:
+        if len(v) != 4:
+            raise ValueError(f"RectangleOp requires exactly 4 vertices, got {len(v)}")
+        return v
+
+
+class ArcOp(DSLOpBase):
+    """Circular arc from ``start`` CCW to the ray through ``end``.
+
+    Radius = |center − start|.  The arc sweeps counter-clockwise starting at
+    ``start`` until it reaches the ray from ``center`` through ``end``.
+    ``end`` need not lie on the circle; only its direction from ``center`` is
+    used.  For a full-circle sweep, use a ``circle`` op instead.
+
+    Example (quarter-arc of the unit circle from the +x axis to the +y axis):
+      {op: "arc", id: "arc1", center: "O", start: "A", end: "B"}
+    """
+    op: Literal["arc"] = "arc"
+    center: str
+    start: str
+    end: str
+    reflex: bool = False
+
+
+class FillOp(DSLOpBase):
+    """Fill a closed shape, optionally punching holes with the even-odd rule.
+
+    ``obj``: the outer closed shape to fill (polygon, circle, triangle id).
+    ``holes``: list of shape IDs that cut transparent regions from ``obj``.
+    ``opacity``: fill opacity (0.0–1.0).
+    ``style``: named style key or inline style dict (same as DrawObj).
+
+    Example (shade ring between circle and quadrilateral):
+      {op: "fill", id: "shade", obj: "circ", holes: ["quad"], opacity: 0.3}
+    """
+    op: Literal["fill"] = "fill"
+    obj: str
+    holes: list[str] = Field(default_factory=list)
+    opacity: float = 1.0
+    style: Optional[Union[str, dict[str, Any]]] = None
+
+
 # ---------------------------------------------------------------------------
 # DSLOp discriminated union
 # ---------------------------------------------------------------------------
@@ -395,9 +461,11 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp,
+        RegularPolygonOp, RectangleOp, ArcOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
+        # Render-only
+        FillOp,
     ],
     Field(discriminator="op")
 ]

@@ -8,9 +8,10 @@ import sympy as sp
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import SymTable
+from ir.to_sympy import Arc, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
+    arc_params,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
@@ -135,6 +136,39 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
 # Render op emitters
 # ---------------------------------------------------------------------------
 
+def _obj_to_tikz_path(
+    obj_id: str,
+    sym: SymTable,
+    stmt_by_id: dict,
+    helpers: dict,
+) -> str | None:
+    """Return a TikZ path fragment for a shape, for use in even-odd compound fills.
+
+    Returns None for unsupported shape types (e.g. lines).
+    """
+    sym_obj = sym.get(obj_id)
+    if sym_obj is None:
+        return None
+    if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+        verts = _poly_verts(obj_id, stmt_by_id)
+        pts = " -- ".join(
+            f"({fmt_num(_f(sym[v].x))},{fmt_num(_f(sym[v].y))})" for v in verts
+        )
+        return f"{pts} -- cycle"
+    if isinstance(sym_obj, spg.Circle):
+        cx = fmt_num(_f(sym_obj.center.x))
+        cy = fmt_num(_f(sym_obj.center.y))
+        r = fmt_num(_f(sym_obj.radius))
+        return f"({cx},{cy}) circle[radius={r}]"
+    if isinstance(sym_obj, spg.Ellipse):
+        cx, cy, a, b = ellipse_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) "
+            f"ellipse[x radius={fmt_num(a)},y radius={fmt_num(b)}]"
+        )
+    return None
+
+
 def _emit_op(
     op: Any,
     sym: SymTable,
@@ -180,6 +214,15 @@ def _emit_op(
                     f"\\draw{style_str} ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
                     f"({fmt_num(a)} and {fmt_num(b)});"
                 )
+            elif isinstance(sym_obj, Arc):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} ({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}];"
+                )
             else:
                 out.append(f"% Draw: unhandled type {type(sym_obj).__name__} for {obj_id!r}")
 
@@ -187,7 +230,7 @@ def _emit_op(
             sopts = _style_str(style, styles)
             out.append(f"\\tkzDrawPoints{sopts}({','.join(points)})")
 
-        case ir.Fill(obj=obj_id, opacity=opacity, style=style):
+        case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
                 msg = f"Skipping render op Fill for undefined object '{obj_id}'"
                 logger.warning(msg)
@@ -197,9 +240,38 @@ def _emit_op(
             sym_obj = sym[obj_id]
             if style and style in styles:
                 fill_opts = _style_str(style, styles)
+                style_inner = fill_opts[1:-1] if fill_opts else f"fill=blue!20,opacity={opacity}"
             else:
-                fill_opts = f"[fill=blue!20,opacity={opacity}]"
-            if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+                style_inner = f"fill=blue!20,opacity={opacity}"
+                fill_opts = f"[{style_inner}]"
+
+            if holes:
+                # Even-odd compound fill using raw \fill[even odd rule].
+                outer_path = _obj_to_tikz_path(obj_id, sym, stmt_by_id, helpers)
+                if outer_path is None:
+                    msg = f"Fill with holes: unsupported outer shape type for '{obj_id}'"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    return out
+                path_parts = [outer_path]
+                for hole_id in holes:
+                    if hole_id not in sym:
+                        msg = f"Fill hole '{hole_id}' is undefined; skipping hole"
+                        logger.warning(msg)
+                        if warnings is not None:
+                            warnings.append(msg)
+                        continue
+                    hole_path = _obj_to_tikz_path(hole_id, sym, stmt_by_id, helpers)
+                    if hole_path is None:
+                        msg = f"Fill hole '{hole_id}' has unsupported shape type; skipping"
+                        logger.warning(msg)
+                        if warnings is not None:
+                            warnings.append(msg)
+                        continue
+                    path_parts.append(hole_path)
+                out.append(f"\\fill[{style_inner},even odd rule] {' '.join(path_parts)};")
+            elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = _poly_verts(obj_id, stmt_by_id)
                 out.append(f"\\tkzFillPolygon{fill_opts}({','.join(verts)})")
             elif isinstance(sym_obj, spg.Circle):
@@ -207,7 +279,6 @@ def _emit_op(
                 out.append(f"\\tkzFillCircle{fill_opts}({center},{through})")
             elif isinstance(sym_obj, spg.Ellipse):
                 cx, cy, a, b = ellipse_params(obj_id, sym)
-                style_inner = fill_opts[1:-1] if fill_opts else "fill=blue!20,opacity=0.3"
                 out.append(
                     f"\\fill[{style_inner}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
                     f"({fmt_num(a)} and {fmt_num(b)});"

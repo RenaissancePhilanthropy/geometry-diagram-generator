@@ -48,8 +48,10 @@ Key rules:
 | op | required fields | notes |
 |---|---|---|
 | triangle | vertices:[A,B,C], spec:{...} | spec keys: angle_A/B/C (deg), side_AB/BC/CA, right_angle_at; optional center:[x,y] for centroid placement (default [2,2]) |
+| rectangle | vertices:[A,B,C,D], spec:{side_AB:<w>, side_BC:<h>} | axis-aligned rectangle; A top-left, B top-right, C bottom-right, D bottom-left; spec MUST use actual vertex-name pairs, e.g. side_AB=4, side_BC=3; optional rotation (deg) |
 | regular_polygon | center, radius, vertices:[...], start_angle?, star? | N equally-spaced points on a circle + polygon; star:true connects every 2nd vertex (star polygon, e.g. pentagram) — requires odd N ≥ 5 |
 | circle | center, radius OR through | explicit radius or through-point |
+| arc | center, start, end, reflex? | arc around center between start and end; draws the minor (≤180°) arc by default; set reflex: true for the >180° wrap-around arc; endpoint order does not matter for the default |
 | segment | endpoints:[A,B] | finite segment |
 | line_through | points:[A,B] | infinite line |
 | parallel | to_line, through | line parallel to to_line through point |
@@ -64,6 +66,11 @@ Key rules:
 | perpendicular_bisector | of:[P,Q], mid | bisector of PQ; mid = named midpoint |
 | point_foot | source, onto | foot of perpendicular from source onto a line/segment |
 | polygon_exterior | base:[P,Q], ref_point, n, vertices:[...] | regular polygon on edge; n=4 square, n=3 equilateral |
+
+### Fill / shading op
+| op | key fields | notes |
+|---|---|---|
+| fill | obj:<id>, holes:[<id>,...], opacity:<0–1> | fills obj; if holes is non-empty, uses even-odd rule so holes punch transparent cutouts — e.g. shade the ring between a circle and an inscribed polygon |
 
 ### Annotations
 - auto_draw_all: true (default) — draw all non-implicit objects automatically
@@ -97,10 +104,13 @@ RECIPE_DSL_QUICK_REF = """\
 | op | key fields |
 |---|---|
 | triangle | vertices:[A,B,C], spec:{angle_A/B/C (deg), side_AB/BC/CA, right_angle_at} |
+| rectangle | vertices:[A,B,C,D], spec:{side_AB:<w>, side_BC:<h>} — A top-left, B top-right, C bottom-right, D bottom-left; key names must match vertex letters; optional rotation (deg) |
 | regular_polygon | center, radius, vertices:[...], start_angle?, star? | N equally-spaced points on circle + polygon; star:true for star shape (odd N ≥ 5) |
 | circle | center, radius OR through |
+| arc | center, start, end, reflex? | arc around center between start and end; draws the minor (≤180°) arc by default; set reflex: true for the >180° wrap-around arc; endpoint order does not matter for the default |
 | polygon | vertices:[A,B,...] |
 | point | coords:[x,y]  (grid mode only) |
+| fill | obj:<id>, holes:[<id>,...], opacity:<0–1> | fill a closed shape; holes punch even-odd cutouts (e.g. shade ring = outer circle minus inner polygon) |
 
 ### Composite ops
 | op | key fields |

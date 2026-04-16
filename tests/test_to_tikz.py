@@ -509,3 +509,89 @@ def test_ellipse_fill_renders_raw_tikz():
     assert r"\fill" in tikz
     assert "ellipse" in tikz
     assert "3 and 2" in tikz
+
+
+# ---------------------------------------------------------------------------
+# Fill with holes (even-odd) — TikZ
+# ---------------------------------------------------------------------------
+
+def test_fill_with_holes_emits_evenodd_rule():
+    """Circle filled with a polygon hole should emit \\fill[...,even odd rule]."""
+    from ir.ir import CircleCenterRadius, Polygon
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="tri", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["tri"], opacity=0.3)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "even odd rule" in tikz
+    assert r"\fill" in tikz
+    # Should not use tkzFillCircle (that's for the no-holes branch)
+    assert "tkzFillCircle" not in tikz
+
+
+def test_fill_without_holes_uses_tkz_command():
+    """Fill without holes should still use \\tkzFillCircle."""
+    from ir.ir import CircleCenterRadius
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Fill(obj="circ", opacity=0.5)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "tkzFillCircle" in tikz
+    assert "even odd rule" not in tikz
+
+
+# ---------------------------------------------------------------------------
+# ArcCenterStartEnd rendering
+# ---------------------------------------------------------------------------
+
+def test_arc_emits_raw_draw_arc_command():
+    """Arc draws via raw \\draw ... arc[...] with start_angle/end_angle/radius."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),   # 0°
+            PointFixed(id="B", x=0, y=1),   # 90°
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\draw" in tikz
+    assert "arc[" in tikz
+    assert "start angle=0" in tikz
+    assert "end angle=90" in tikz
+    assert "radius=1" in tikz
+
+
+def test_arc_sweep_ccw_crosses_zero_degree_boundary():
+    """Reflex arc from 180° to 90° (going the long way CCW) must emit end_angle=450°."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=-1, y=0),   # 180°
+            PointFixed(id="E", x=0, y=1),    # 90°  (reflex CCW sweep: 270°)
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "start angle=180" in tikz
+    # 90 < 180 → must be lifted to 450 to maintain CCW sweep
+    assert "end angle=450" in tikz

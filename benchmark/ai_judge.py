@@ -140,7 +140,7 @@ async def judge_run(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run AI judge on benchmark results")
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--model", default="anthropic:claude-sonnet-4-6")
+    parser.add_argument("--model", default="openai:gpt-5.4-mini", help="AI model to use for judging")
     parser.add_argument(
         "--annotator-id",
         default=None,

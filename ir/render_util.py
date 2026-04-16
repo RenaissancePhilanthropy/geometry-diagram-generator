@@ -13,7 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import SymTable
+from ir.to_sympy import Arc, SymTable
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +163,42 @@ def ellipse_params(
     )
 
 
+def arc_params(
+    arc_id: str,
+    sym: "SymTable",
+) -> tuple[float, float, float, float, float, float, float]:
+    """Return (cx, cy, r, start_deg, end_deg, sx, sy) for the given arc id.
+
+    - ``start_deg`` / ``end_deg`` delimit a math-CCW sweep (end_deg > start_deg).
+    - The magnitude ``end_deg - start_deg`` is ≤180° when ``reflex=False``
+      (minor arc, the default) and >180° when ``reflex=True``.
+    - ``sx``, ``sy`` are the Cartesian coordinates of the returned start point
+      (may be swapped relative to the IR's ``start`` to satisfy the above).
+    """
+    arc = sym[arc_id]
+    cx = sympy_to_float(arc.center.x)
+    cy = sympy_to_float(arc.center.y)
+    sx = sympy_to_float(arc.start.x)
+    sy = sympy_to_float(arc.start.y)
+    ex = sympy_to_float(arc.end.x)
+    ey = sympy_to_float(arc.end.y)
+    r = sympy_to_float(arc.radius)
+    s_deg = math.degrees(math.atan2(sy - cy, sx - cx)) % 360.0
+    e_deg = math.degrees(math.atan2(ey - cy, ex - cx)) % 360.0
+    ccw = (e_deg - s_deg) % 360.0
+    if ccw == 0:
+        ccw = 360.0
+    is_ccw_minor = ccw <= 180.0
+    want_reflex = bool(getattr(arc, "reflex", False))
+    # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
+    if is_ccw_minor == want_reflex:
+        sx, sy, ex, ey = ex, ey, sx, sy
+        s_deg, e_deg = e_deg, s_deg
+    if e_deg <= s_deg:
+        e_deg += 360.0
+    return (cx, cy, r, s_deg, e_deg, sx, sy)
+
+
 # ---------------------------------------------------------------------------
 # Bounds computation
 # ---------------------------------------------------------------------------
@@ -180,6 +216,12 @@ def compute_bounds(
             a = sympy_to_float(obj.hradius)
             b = sympy_to_float(obj.vradius)
             all_pts.extend([(cx - a, cy - b), (cx + a, cy + b)])
+        elif isinstance(obj, Arc):
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            r = sympy_to_float(obj.radius)
+            # Conservatively extend bounds to the full enclosing circle; the
+            # arc may sweep through any axis-aligned extreme.
+            all_pts.extend([(cx - r, cy), (cx + r, cy), (cx, cy - r), (cx, cy + r)])
     if not all_pts:
         return (-5.0, 5.0, -5.0, 5.0)
     xs, ys = zip(*all_pts)
