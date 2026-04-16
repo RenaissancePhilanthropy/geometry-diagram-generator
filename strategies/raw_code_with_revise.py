@@ -13,7 +13,7 @@ from pydantic_ai import Agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .instructions import DRAFT_INSTRUCTIONS
-from .stages import register_render_tool, run_draft, run_revision
+from .stages import register_render_tool, run_draft, run_revision, RawRunResult, extract_svg_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,18 @@ class RawCodeWithReviseStrategy(SubstanceStrategy):
         register_render_tool(agent)
         return agent
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None):
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
         """Run draft then mandatory revision via programmatic agent hand-off."""
         draft = await run_draft(prompt, model=model)
-        return await run_revision(
+        result = await run_revision(
             model,
             message_history=draft.all_messages(),
             usage=draft.usage(),
             force_rerender=True,
+        )
+        usage = result.usage()
+        return RawRunResult(
+            svg=extract_svg_from_messages(result.all_messages()),
+            input_tokens=usage.input_tokens or 0,
+            output_tokens=usage.output_tokens or 0,
         )

@@ -6,7 +6,7 @@ an aggregate JSONL summary are written to disk.
 
 Pipeline per prompt:
   1. Load a BenchmarkDefinition YAML
-  2. Generate an SVG via RecipeStrategy (no Docker when --renderer svg)
+  2. Generate an SVG via the selected strategy (no Docker required)
   3. Optionally run the AI judge against the prompt's rubric
   4. Record per-item answers + weighted/unweighted scores
 
@@ -25,6 +25,9 @@ Usage:
 
   # Generation only, no judge
   python -m benchmark.genexam.dry_run --sample 5 --no-judge
+
+  # Use a different strategy
+  python -m benchmark.genexam.dry_run --sample 5 --strategy structured
 """
 from __future__ import annotations
 
@@ -41,8 +44,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from benchmark.models import BenchmarkDefinition, BenchmarkPrompt, load_definition
+from strategies.base import SubstanceStrategy
 from strategies.recipe import RecipeStrategy
-from ir.renderer import SVGRenderer, TikZRenderer
+from strategies.structured import StructureStrategy
+from strategies.raw_code import RawCodeStrategy
+from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
+from strategies.raw_svg import RawSVGStrategy
+from strategies.raw_svg_with_revise import RawSVGWithReviseStrategy
+from ir.renderer import SVGRenderer
+
+_STRATEGIES: dict[str, type[SubstanceStrategy]] = {
+    "recipe": RecipeStrategy,
+    "structured": StructureStrategy,
+    "raw_code": RawCodeStrategy,
+    "raw_code_with_revise": RawCodeWithReviseStrategy,
+    "raw_svg": RawSVGStrategy,
+    "raw_svg_with_revise": RawSVGWithReviseStrategy,
+}
+
+
+def _make_strategy(name: str) -> SubstanceStrategy:
+    cls = _STRATEGIES[name]
+    if cls is RecipeStrategy:
+        return RecipeStrategy(use_recipes=True)
+    return cls()
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -103,7 +128,7 @@ def _select_prompts(
     return rng.sample(candidates, k)
 
 
-def _get_validation_diagnostics(strategy: RecipeStrategy) -> tuple[str | None, str | None]:
+def _get_validation_diagnostics(strategy: SubstanceStrategy) -> tuple[str | None, str | None]:
     """Pull error_details and failed_payload from the last output_validation trace, if any."""
     meta = getattr(strategy, "_partial_recipe_metadata", None)
     if meta is None:
@@ -142,7 +167,7 @@ async def _process_one(
             print(f"  prompt     : {prompt_preview}")
             print(f"  rubric     : {len(rubric)} items")
 
-        renderer = TikZRenderer() if args.renderer == "tikz" else SVGRenderer()
+        renderer = SVGRenderer()
         max_outer_attempts = 1 + args.gen_retries
 
         t0 = time.perf_counter()
@@ -150,7 +175,7 @@ async def _process_one(
         result = None
         all_traces: list = []
         for outer_attempt in range(max_outer_attempts):
-            strategy = RecipeStrategy(use_recipes=True)
+            strategy = _make_strategy(args.strategy)
             if outer_attempt > 0 and not verbose:
                 print(f"  [{entry.id}] retrying generation (attempt {outer_attempt + 1}/{max_outer_attempts})")
             try:
@@ -161,7 +186,7 @@ async def _process_one(
                 )
                 last_exc = None
                 outcome.gen_attempts = outer_attempt + 1
-                meta = result.recipe_metadata
+                meta = getattr(result, "recipe_metadata", None)
                 if meta:
                     all_traces.extend(meta.attempt_traces)
                 break
@@ -212,7 +237,6 @@ async def _process_one(
 
         if verbose:
             print(f"  model      : {args.model}")
-            print(f"  renderer   : {args.renderer}")
             print(f"  svg_length : {outcome.svg_length}")
             print(f"  svg_path   : {outcome.svg_path}")
             print(f"  tokens in  : {outcome.input_tokens}")
@@ -302,8 +326,8 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"─ Dry Run ─────────────────────────────────────────────")
     print(f"  definition : {args.definition}")
     print(f"  prompts    : {len(prompts)}")
+    print(f"  strategy   : {args.strategy}")
     print(f"  model      : {args.model}")
-    print(f"  renderer   : {args.renderer}")
     print(f"  judge      : {'skipped' if args.no_judge else args.judge_model}")
     print(f"  concurrency: {args.concurrency}")
     print(f"  out_dir    : {out_dir}")
@@ -379,10 +403,10 @@ def main() -> None:
     parser.add_argument("--definition", default=str(_DEFAULT_DEFINITION), help="Path to BenchmarkDefinition YAML")
     parser.add_argument("--tier", type=int, default=None, help="Filter prompts by tier (applies to --sample/--all)")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for --sample")
+    parser.add_argument("--strategy", choices=list(_STRATEGIES), default="recipe",
+                        help="Generation strategy (default: recipe)")
     parser.add_argument("--model", default="anthropic:claude-sonnet-4-6", help="Generation model")
-    parser.add_argument("--judge-model", default="anthropic:claude-sonnet-4-6", help="Judge model")
-    parser.add_argument("--renderer", choices=["svg", "tikz"], default="svg",
-                        help="svg=direct SVG (no Docker); tikz=LaTeX via renderer container on :8001")
+    parser.add_argument("--judge-model", default="openai:gpt-5.4-mini", help="AI judge model (ignored if --no-judge)")
     parser.add_argument("--concurrency", type=int, default=4, help="Max concurrent prompts")
     parser.add_argument("--out-dir", default=str(_DEFAULT_OUT_DIR), help="Directory for SVGs + dry_run.jsonl")
     parser.add_argument("--no-judge", action="store_true", help="Skip AI judge step")

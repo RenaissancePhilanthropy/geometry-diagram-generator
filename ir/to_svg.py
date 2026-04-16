@@ -18,6 +18,7 @@ import logging
 import math
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 from typing import Any
 
 import sympy.geometry as spg
@@ -56,6 +57,23 @@ _RA_SIZE = 8               # px — size of right-angle square leg
 _ANGLE_ARC_R = 20          # px — radius of angle arc marks
 _FONT_SIZE = 14            # px
 _LABEL_OFFSET = 12         # px — label distance from geometry
+_ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc
+
+
+# ---------------------------------------------------------------------------
+# Deferred label placement
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _LabelPlacement:
+    x: float
+    y: float
+    text: str
+    color: str
+    anchor: str
+    attrs: dict[str, str] = field(default_factory=dict)
+    width_est: float = 0.0
+    height_est: float = float(_FONT_SIZE)
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +187,37 @@ def ir_to_svg(
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
 
+    # Deduplicate angle marks globally to avoid duplicate paths
+    _seen_ra_triples: set[tuple[str, str, str]] = set()
+    _seen_angle_triples: set[tuple[str, str, str, str | None]] = set()
+
+    # Deferred label list: labels are collected here, collision-resolved, then emitted
+    pending_labels: list[_LabelPlacement] = []
+    # Collect drawn line segments (SVG pixel coords) for label-vs-geometry checks
+    drawn_segments: list[tuple[float, float, float, float]] = []
+
     for op in sorted_ops:
         _emit_svg_op(
             op, svg, sym, stmt_by_id, coords, helpers, _styles,
             group_tick_counts, pt, gxy, scale, xmin, xmax, ymin, ymax,
             incident_angles=incident_angles,
             warnings=warnings,
+            pending_labels=pending_labels,
+            seen_ra_triples=_seen_ra_triples,
+            seen_angle_triples=_seen_angle_triples,
+            drawn_segments=drawn_segments,
         )
+
+    # Deduplicate coincident point labels (keep first occurrence at each position)
+    _dedup_coincident_labels(pending_labels)
+
+    # Nudge labels away from drawn lines/segments that pass through them
+    _nudge_labels_from_lines(pending_labels, drawn_segments)
+
+    # Resolve label-label collisions and emit
+    _resolve_label_collisions(pending_labels, svg_w, svg_h)
+    for lp in pending_labels:
+        _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
 
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
@@ -203,6 +245,10 @@ def _emit_svg_op(
     ymax: float,
     incident_angles: dict[str, list[float]] | None = None,
     warnings: list[str] | None = None,
+    pending_labels: list[_LabelPlacement] | None = None,
+    seen_ra_triples: set[tuple[str, str, str]] | None = None,
+    seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
+    drawn_segments: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     match op:
         case ir.Draw(obj=obj_id, add=add, style=style):
@@ -224,6 +270,12 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_segments is not None:
+                    sv = [pt(v) for v in verts]
+                    for i in range(len(sv)):
+                        ax, ay = sv[i]
+                        bx, by = sv[(i + 1) % len(sv)]
+                        drawn_segments.append((ax, ay, bx, by))
 
             elif isinstance(sym_obj, spg.Segment):
                 a, b = seg_endpoints(obj_id, stmt_by_id)
@@ -237,6 +289,8 @@ def _emit_svg_op(
                     "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
                     **attrs,
                 })
+                if drawn_segments is not None:
+                    drawn_segments.append((x1, y1, x2, y2))
 
             elif isinstance(sym_obj, spg.Line):
                 p1_id, p2_id = line_endpoints(obj_id, stmt_by_id, helpers)
@@ -256,6 +310,8 @@ def _emit_svg_op(
                         "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
                         **attrs,
                     })
+                    if drawn_segments is not None:
+                        drawn_segments.append((px1, py1, px2, py2))
 
             elif isinstance(sym_obj, spg.Ray):
                 stmt = stmt_by_id[obj_id]
@@ -276,6 +332,8 @@ def _emit_svg_op(
                         "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
                         **attrs,
                     })
+                    if drawn_segments is not None:
+                        drawn_segments.append((px1, py1, px2, py2))
 
             elif isinstance(sym_obj, spg.Circle):
                 cx_g = sympy_to_float(sym_obj.center.x)
@@ -437,6 +495,12 @@ def _emit_svg_op(
                 if missing:
                     _warn(warnings, f"Skipping MarkRightAngles for undefined {missing!r}")
                     continue
+                # Deduplicate: canonical key ignores a/b order
+                ra_key = (min(angle.a, angle.b), angle.o, max(angle.a, angle.b))
+                if seen_ra_triples is not None:
+                    if ra_key in seen_ra_triples:
+                        continue
+                    seen_ra_triples.add(ra_key)
                 _append_right_angle_mark(
                     svg, angle.a, angle.o, angle.b, pt, stroke,
                     extra_attrs={
@@ -465,6 +529,12 @@ def _emit_svg_op(
                 if missing:
                     _warn(warnings, f"Skipping MarkAngles for undefined {missing!r}")
                     continue
+                # Deduplicate: canonical key ignores a/b order within a group
+                angle_key = (min(angle.a, angle.b), angle.o, max(angle.a, angle.b), group)
+                if seen_angle_triples is not None:
+                    if angle_key in seen_angle_triples:
+                        continue
+                    seen_angle_triples.add(angle_key)
                 a, o, b = orient_angle(angle.a, angle.o, angle.b, sym, which)
                 arc_attrs: dict[str, str] = {
                     "data-role": "mark-angle",
@@ -507,11 +577,15 @@ def _emit_svg_op(
                 ox, oy = _label_offset(pos, _LABEL_OFFSET)
                 anchor = _pos_to_anchor(pos)
             color = _color_from_style(style, styles) or "black"
-            _append_label(
-                svg, px + ox, py + oy, label, color,
-                anchor=anchor,
-                extra_attrs={"data-role": "label-point", "data-for": p},
+            lp = _LabelPlacement(
+                x=px + ox, y=py + oy, text=label, color=color, anchor=anchor,
+                attrs={"data-role": "label-point", "data-for": p},
+                width_est=_estimate_text_width(label),
             )
+            if pending_labels is not None:
+                pending_labels.append(lp)
+            else:
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
@@ -522,23 +596,25 @@ def _emit_svg_op(
             ox_g, oy_g = coords.get(o_id, helpers.get(o_id, (0, 0)))
             ax_g, ay_g = coords.get(a_id, helpers.get(a_id, (0, 0)))
             bx_g, by_g = coords.get(b_id, helpers.get(b_id, (0, 0)))
-            # Place label along bisector direction
+            # Place label along bisector direction, beyond the arc marker
             da = math.atan2(ay_g - oy_g, ax_g - ox_g)
             db = math.atan2(by_g - oy_g, bx_g - ox_g)
-            bisector_angle = (da + db) / 2
+            bisector = _bisector_angle(da, db)
             lx, ly = gxy(ox_g, oy_g)
-            lx += math.cos(bisector_angle) * _LABEL_OFFSET * 1.5
+            lx += math.cos(bisector) * _ANGLE_LABEL_R
             # In SVG space y is flipped, so negate sin component
-            ly -= math.sin(bisector_angle) * _LABEL_OFFSET * 1.5
+            ly -= math.sin(bisector) * _ANGLE_LABEL_R
+            label_text = text or ""
             color = _color_from_style(style, styles) or "black"
-            _append_label(
-                svg, lx, ly, text or "", color,
-                anchor="middle",
-                extra_attrs={
-                    "data-role": "label-angle",
-                    "data-for": f"{angle.a},{angle.o},{angle.b}",
-                },
+            lp = _LabelPlacement(
+                x=lx, y=ly, text=label_text, color=color, anchor="middle",
+                attrs={"data-role": "label-angle", "data-for": f"{angle.a},{angle.o},{angle.b}"},
+                width_est=_estimate_text_width(label_text),
             )
+            if pending_labels is not None:
+                pending_labels.append(lp)
+            else:
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -553,16 +629,26 @@ def _emit_svg_op(
             mag = math.hypot(dx, dy) or 1
             # Perpendicular (rotated 90° CCW in screen coords)
             nx, ny = -dy / mag, dx / mag
-            t_frac = pos if isinstance(pos, (int, float)) else 0.5
-            # For string pos values, place at midpoint offset
-            lx = mx + nx * _LABEL_OFFSET
-            ly = my + ny * _LABEL_OFFSET
+            # Choose the side with fewer surrounding points
+            other_pts = [
+                pt(pid)
+                for pid in list(coords.keys()) + list(helpers.keys())
+                if pid not in (a, b)
+            ]
+            side = _segment_label_side(mx, my, nx, ny, other_pts)
+            label_text = text or ""
+            lx = mx + nx * _LABEL_OFFSET * side
+            ly = my + ny * _LABEL_OFFSET * side
             color = _color_from_style(style, styles) or "black"
-            _append_label(
-                svg, lx, ly, text or "", color,
-                anchor="middle",
-                extra_attrs={"data-role": "label-segment", "data-for": seg_id},
+            lp = _LabelPlacement(
+                x=lx, y=ly, text=label_text, color=color, anchor="middle",
+                attrs={"data-role": "label-segment", "data-for": seg_id},
+                width_est=_estimate_text_width(label_text),
             )
+            if pending_labels is not None:
+                pending_labels.append(lp)
+            else:
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
 
 
 # ---------------------------------------------------------------------------
@@ -882,8 +968,8 @@ def _parse_latex(s: str) -> list[dict]:
                 inner = ""
             segments.append({"kind": "sup", "content": _apply_substitutions(inner)})
 
-        elif ch in "{}":
-            i += 1  # skip bare braces
+        elif ch in "${}":
+            i += 1  # skip dollar signs and bare braces
 
         else:
             current_text += ch
@@ -1563,6 +1649,160 @@ def _angle_to_anchor(angle: float) -> str:
         return "end"
     # Right half-plane → "start"
     return "start"
+
+
+def _point_to_segment_distance(
+    px: float, py: float,
+    x1: float, y1: float,
+    x2: float, y2: float,
+) -> tuple[float, float, float]:
+    """Return (distance, nearest_x, nearest_y) from point to line segment."""
+    dx, dy = x2 - x1, y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1e-12:
+        return math.hypot(px - x1, py - y1), x1, y1
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len_sq))
+    nx, ny = x1 + t * dx, y1 + t * dy
+    return math.hypot(px - nx, py - ny), nx, ny
+
+
+def _nudge_labels_from_lines(
+    labels: list[_LabelPlacement],
+    drawn_segments: list[tuple[float, float, float, float]],
+) -> None:
+    """Nudge labels whose center is too close to a drawn line or segment.
+
+    Uses up to 3 iterations so a label nudged away from one line doesn't land
+    on another.
+    """
+    min_dist = _FONT_SIZE * 0.7  # minimum distance from label center to any line
+    for _ in range(3):
+        moved = False
+        for lp in labels:
+            for x1, y1, x2, y2 in drawn_segments:
+                dist, nx, ny = _point_to_segment_distance(lp.x, lp.y, x1, y1, x2, y2)
+                if dist < min_dist and dist > 0.1:
+                    dx = lp.x - nx
+                    dy = lp.y - ny
+                    mag = math.hypot(dx, dy)
+                    nudge = min_dist - dist + 2.0
+                    lp.x += (dx / mag) * nudge
+                    lp.y += (dy / mag) * nudge
+                    moved = True
+        if not moved:
+            break
+
+
+def _bisector_angle(da: float, db: float) -> float:
+    """Return the bisector angle of two rays at angles da and db (geometry space, y-up).
+
+    Uses CCW angular difference from da to db so the result correctly bisects
+    the interior arc even when the angles straddle the ±π discontinuity.
+    """
+    diff = (db - da) % (2 * math.pi)
+    return da + diff / 2
+
+
+def _segment_label_side(
+    mx: float, my: float,
+    nx: float, ny: float,
+    other_points: list[tuple[float, float]],
+) -> float:
+    """Return +1 or -1 for the perpendicular side that has fewer nearby points.
+
+    (mx, my) is the midpoint of the segment in SVG pixel space.
+    (nx, ny) is the unit CCW perpendicular vector in SVG pixel space.
+    Positive side = direction of (nx, ny).
+    """
+    pos_count = sum(
+        1 for px, py in other_points
+        if (px - mx) * nx + (py - my) * ny > 0
+    )
+    neg_count = len(other_points) - pos_count
+    # Place label on the side with fewer points (opposite the majority)
+    return -1.0 if pos_count > neg_count else 1.0
+
+
+def _estimate_text_width(text: str) -> float:
+    """Approximate rendered text width in SVG pixels for collision detection."""
+    # Strip dollar signs and LaTeX commands (each becomes ~1 char wide)
+    t = text.strip()
+    if t.startswith("$") and t.endswith("$"):
+        t = t[1:-1]
+    # Replace command sequences like \alpha, \theta with a single character
+    t = re.sub(r"\\[a-zA-Z]+", "X", t)
+    # Drop grouping chars
+    t = re.sub(r"[{}_^]", "", t)
+    return max(len(t), 1) * _FONT_SIZE * 0.65
+
+
+def _label_bbox(lp: _LabelPlacement) -> tuple[float, float, float, float]:
+    """Return (x_min, y_min, x_max, y_max) for a label's approximate bounding box."""
+    w = lp.width_est
+    h = lp.height_est
+    if lp.anchor == "middle":
+        x0 = lp.x - w / 2
+    elif lp.anchor == "end":
+        x0 = lp.x - w
+    else:
+        x0 = lp.x
+    y0 = lp.y - h / 2  # dominant-baseline: central
+    return x0, y0, x0 + w, y0 + h
+
+
+def _bboxes_overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+    """Return True if two AABBs intersect."""
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def _dedup_coincident_labels(labels: list[_LabelPlacement]) -> None:
+    """Remove later point labels whose position is within 2px of an earlier one."""
+    seen_positions: list[tuple[float, float]] = []
+    to_remove: list[int] = []
+    for i, lp in enumerate(labels):
+        if lp.attrs.get("data-role") != "label-point":
+            continue
+        pos = (lp.x, lp.y)
+        for sp in seen_positions:
+            if math.hypot(pos[0] - sp[0], pos[1] - sp[1]) < 2.0:
+                to_remove.append(i)
+                break
+        else:
+            seen_positions.append(pos)
+    for i in reversed(to_remove):
+        del labels[i]
+
+
+def _resolve_label_collisions(labels: list[_LabelPlacement], svg_w: float, svg_h: float) -> None:
+    """Nudge overlapping labels apart in-place. O(n²) per pass, up to 4 passes."""
+    padding = 2.0  # extra gap between labels
+    for _ in range(4):
+        moved = False
+        for i in range(len(labels)):
+            bb_i = _label_bbox(labels[i])
+            for j in range(i):
+                bb_j = _label_bbox(labels[j])
+                # Expand bb_j by padding to enforce a minimum gap
+                bb_j_pad = (bb_j[0] - padding, bb_j[1] - padding, bb_j[2] + padding, bb_j[3] + padding)
+                if not _bboxes_overlap(bb_i, bb_j_pad):
+                    continue
+                dx = labels[i].x - labels[j].x
+                dy = labels[i].y - labels[j].y
+                dist = math.hypot(dx, dy)
+                if dist < 1e-6:
+                    # Exactly coincident: nudge upward
+                    dx, dy, dist = 0.0, -1.0, 1.0
+                nudge = _FONT_SIZE * 1.2
+                labels[i].x += (dx / dist) * nudge
+                labels[i].y += (dy / dist) * nudge
+                # Clamp to SVG viewport with a small margin
+                margin = _FONT_SIZE
+                labels[i].x = max(margin, min(svg_w - margin, labels[i].x))
+                labels[i].y = max(margin, min(svg_h - margin, labels[i].y))
+                moved = True
+                break  # recompute bb_i from updated position
+        if not moved:
+            break
 
 
 # ---------------------------------------------------------------------------
