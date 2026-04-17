@@ -135,8 +135,8 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True) -> None:
-        super().__init__()
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False) -> None:
+        super().__init__(enable_cache=enable_cache)
         self.use_recipes = use_recipes
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
@@ -146,7 +146,7 @@ class RecipeStrategy(SubstanceStrategy):
         _last_sym: dict | None = None
         _last_dsl_json: dict | None = None  # last successful DSL for edit context
 
-        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
+        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=MAX_RETRIES)
         async def render_diagram(request: str) -> str:
@@ -202,6 +202,7 @@ class RecipeStrategy(SubstanceStrategy):
                 _SELECTOR_MODEL,
                 instructions=RECIPE_SELECTION_SYSTEM,
                 output_type=str,
+                model_settings=self.model_settings,
             )
             sel_response = await selector_agent.run(selection_prompt)
             sel_usage = sel_response.usage()
@@ -272,6 +273,7 @@ class RecipeStrategy(SubstanceStrategy):
                 model,
                 instructions=RECIPE_GENERATION_SYSTEM,
                 output_type=RecipeDSL,
+                model_settings=self.model_settings,
             )
             with capture_run_messages() as agent_messages:
                 try:

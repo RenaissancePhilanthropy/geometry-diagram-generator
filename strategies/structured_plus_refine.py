@@ -89,7 +89,7 @@ class StructuredPlusRefineStrategy(SubstanceStrategy):
         tikz: str,
         model: str,
     ) -> tuple[str, str] | None:
-        agent = Agent(model, instructions=STRUCTURED_REFINE_INSTRUCTIONS)
+        agent = Agent(model, instructions=STRUCTURED_REFINE_INSTRUCTIONS, model_settings=self.model_settings)
         register_render_tool(agent, retries=2)
         user_message = (
             f"Original request: {prompt}\n\n"

@@ -15,6 +15,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.messages import BinaryContent
+from strategies.base import cache_model_settings
 
 from benchmark.db import get_db, list_results_for_run, upsert_annotation, get_run
 from benchmark.models import load_definition, BenchmarkDefinition
@@ -30,7 +31,7 @@ class _RubricJudgment(BaseModel):
     answers: dict[str, bool]
 
 
-async def judge_result(result: dict, definition: BenchmarkDefinition, model: str) -> dict[str, bool]:
+async def judge_result(result: dict, definition: BenchmarkDefinition, model: str, enable_cache: bool = False) -> dict[str, bool]:
     """Judge a single result against its full rubric.
 
     Returns a mapping of rubric_item_id to bool. Returns {} if result cannot
@@ -86,6 +87,7 @@ async def judge_result(result: dict, definition: BenchmarkDefinition, model: str
         model,
         system_prompt=system_prompt,
         output_type=_RubricJudgment,
+        model_settings=cache_model_settings(enable_cache),
     )
 
     result_obj = await agent.run(user_content)
@@ -122,7 +124,7 @@ async def judge_run(
         prompt_id = result["prompt_id"]
         result_id = result["result_id"]
 
-        answers = await judge_result(result, definition, model)
+        answers = await judge_result(result, definition, model, enable_cache=len(results) > 1)
         if not answers:
             skipped += 1
             continue

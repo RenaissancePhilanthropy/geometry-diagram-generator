@@ -83,8 +83,8 @@ from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 class _RecipeNoRecipesStrategy(RecipeStrategy):
-    def __init__(self) -> None:
-        super().__init__(use_recipes=False)
+    def __init__(self, enable_cache: bool = False) -> None:
+        super().__init__(use_recipes=False, enable_cache=enable_cache)
 
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
@@ -122,6 +122,7 @@ async def _run_query_phase(
     is the relevant call even if the LLM also calls list_objects first).
     """
     from pydantic_ai import Agent
+    from strategies.base import cache_model_settings
     from strategies.structured import dispatch_query
     from ir.queries import list_objects as _list_objects
 
@@ -134,6 +135,7 @@ async def _run_query_phase(
 
     objects_info = json.dumps(_list_objects(sym))
     results: list[dict[str, Any]] = []
+    _cache_settings = cache_model_settings(len(queries) > 1)
 
     for query_def in queries:
         question = query_def["question"]
@@ -152,7 +154,7 @@ async def _run_query_phase(
         }
 
         try:
-            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS)
+            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS, model_settings=_cache_settings)
 
             @agent.tool_plain
             async def query_diagram(query_type: str, args: dict[str, str]) -> str:
@@ -228,6 +230,7 @@ async def run_scenario(
     llm_judge: bool = False,
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
+    enable_cache: bool = False,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -269,7 +272,7 @@ async def run_scenario(
     }
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
-    strategy = strategy_cls()
+    strategy = strategy_cls(enable_cache=enable_cache)
 
     start = time.monotonic()
     try:
@@ -486,6 +489,7 @@ async def run_scenario(
                     tikz_code=tikz_code,
                     tkzelements_code=record["tkzelements_code"],
                     model=judge_model,
+                    enable_cache=enable_cache,
                 )
                 record["llm_judge_score"] = judge_result["score"]
                 record["llm_judge_reasoning"] = judge_result["reasoning"]
@@ -506,6 +510,7 @@ async def run_scenario(
                 svg=svg,
                 tikz_code=tikz_code,
                 model=judge_model,
+                enable_cache=enable_cache,
             )
             record["visual_judge_score"] = visual_result["score"]
             record["visual_judge_reasoning"] = visual_result["reasoning"]
@@ -801,6 +806,7 @@ async def main() -> None:
                 llm_judge=args.llm_judge,
                 visual_judge=args.visual_judge,
                 judge_model=args.judge_model,
+                enable_cache=total > 1,
             )
 
     for strategy_name in args.strategies:

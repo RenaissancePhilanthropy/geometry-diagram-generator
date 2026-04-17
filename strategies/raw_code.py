@@ -21,7 +21,7 @@ and call the render_diagram tool. Then briefly explain what you drew.
 
 class RawCodeStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(model, instructions=INSTRUCTIONS)
+        agent = Agent(model, instructions=INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=3)
         def render_diagram(tikz: str, tkzelements: str = "") -> str:

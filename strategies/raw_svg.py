@@ -63,7 +63,7 @@ def register_svg_render_tool(agent: Agent, retries: int = 3) -> None:
 
 class RawSVGStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS)
+        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=self.model_settings)
         register_svg_render_tool(agent)
         return agent
 
