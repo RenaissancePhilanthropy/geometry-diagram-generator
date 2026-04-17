@@ -15,13 +15,13 @@ strategy_name = os.environ.get("STRATEGY", "raw_code")
 
 if strategy_name == "raw_code":
     from strategies.raw_code import RawCodeStrategy
-    agent = RawCodeStrategy().build_agent()
+    agent = RawCodeStrategy(enable_cache=True).build_agent()
 elif strategy_name == "structured":
     from strategies.structured import StructureStrategy
-    agent = StructureStrategy().build_agent()
+    agent = StructureStrategy(enable_cache=True).build_agent()
 elif strategy_name == "recipe":
     from strategies.recipe import RecipeStrategy
-    agent = RecipeStrategy().build_agent()
+    agent = RecipeStrategy(enable_cache=True).build_agent()
 else:
     raise ValueError(f"Unknown STRATEGY: {strategy_name!r}. Supported: raw_code, structured, recipe")
 

@@ -118,7 +118,7 @@ class StructureStrategy(SubstanceStrategy):
         _last_sym: dict | None = None  # persisted across tool calls within this agent
         _last_ir: DiagramIR | None = None  # last successful IR for edit context
 
-        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
+        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=MAX_RETRIES)
         async def render_diagram(request: str) -> str:
@@ -128,7 +128,8 @@ class StructureStrategy(SubstanceStrategy):
             """
             nonlocal _last_sym, _last_ir
             result_json, sym, diagram_ir = await _run_pipeline_once(
-                request, model, renderer=_renderer, previous_ir=_last_ir
+                request, model, renderer=_renderer, previous_ir=_last_ir,
+                model_settings=self.model_settings,
             )
             _last_sym = sym
             _last_ir = diagram_ir
@@ -178,6 +179,7 @@ class StructureStrategy(SubstanceStrategy):
                 model,
                 instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
                 output_type=DiagramIR,
+                model_settings=self.model_settings,
             )
             response = await ir_agent.run(user_prompt)
             usage = response.usage()
@@ -304,6 +306,7 @@ async def _run_pipeline_once(
     model: str,
     renderer: Renderer | None = None,
     previous_ir: DiagramIR | None = None,
+    model_settings=None,
 ) -> tuple[str, dict, DiagramIR]:
     """Run the full IR pipeline for a single attempt.
 
@@ -328,6 +331,7 @@ async def _run_pipeline_once(
         model,
         instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
         output_type=DiagramIR,
+        model_settings=model_settings or {},
     )
     response = await ir_agent.run(full_prompt)
     diagram_ir = response.output

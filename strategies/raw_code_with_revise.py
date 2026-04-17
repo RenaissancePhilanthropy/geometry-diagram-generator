@@ -21,18 +21,19 @@ logger = logging.getLogger(__name__)
 class RawCodeWithReviseStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return the draft agent (single-pass) for web app use."""
-        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS)
+        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=self.model_settings)
         register_render_tool(agent)
         return agent
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
         """Run draft then mandatory revision via programmatic agent hand-off."""
-        draft = await run_draft(prompt, model=model)
+        draft = await run_draft(prompt, model=model, model_settings=self.model_settings)
         result = await run_revision(
             model,
             message_history=draft.all_messages(),
             usage=draft.usage(),
             force_rerender=True,
+            model_settings=self.model_settings,
         )
         usage = result.usage()
         return RawRunResult(

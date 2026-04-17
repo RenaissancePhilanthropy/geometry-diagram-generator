@@ -195,7 +195,7 @@ def _generate_for_topic(
     with client.messages.stream(
         model=MODEL,
         max_tokens=32000,
-        system=SYSTEM_PROMPT,
+        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_msg}],
     ) as stream:
         for _ in stream.text_stream:

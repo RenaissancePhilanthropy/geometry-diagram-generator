@@ -63,11 +63,11 @@ _STRATEGIES: dict[str, type[SubstanceStrategy]] = {
 }
 
 
-def _make_strategy(name: str) -> SubstanceStrategy:
+def _make_strategy(name: str, enable_cache: bool = False) -> SubstanceStrategy:
     cls = _STRATEGIES[name]
     if cls is RecipeStrategy:
-        return RecipeStrategy(use_recipes=True)
-    return cls()
+        return RecipeStrategy(use_recipes=True, enable_cache=enable_cache)
+    return cls(enable_cache=enable_cache)
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -153,6 +153,7 @@ async def _process_one(
     out_dir: Path,
     semaphore: asyncio.Semaphore,
     verbose: bool = False,
+    enable_cache: bool = False,
 ) -> PromptOutcome:
     async with semaphore:
         outcome = PromptOutcome(prompt_id=entry.id, tier=entry.tier, status="ok")
@@ -175,7 +176,7 @@ async def _process_one(
         result = None
         all_traces: list = []
         for outer_attempt in range(max_outer_attempts):
-            strategy = _make_strategy(args.strategy)
+            strategy = _make_strategy(args.strategy, enable_cache=enable_cache)
             if outer_attempt > 0 and not verbose:
                 print(f"  [{entry.id}] retrying generation (attempt {outer_attempt + 1}/{max_outer_attempts})")
             try:
@@ -336,8 +337,9 @@ async def main_async(args: argparse.Namespace) -> int:
     # Verbose per-prompt output: always on for single prompt, opt-in for batch.
     verbose = len(prompts) == 1 or getattr(args, "verbose", False)
 
+    enable_cache = len(prompts) > 1
     semaphore = asyncio.Semaphore(args.concurrency)
-    coros = [_process_one(p, definition, args, out_dir, semaphore, verbose=verbose) for p in prompts]
+    coros = [_process_one(p, definition, args, out_dir, semaphore, verbose=verbose, enable_cache=enable_cache) for p in prompts]
     outcomes = await asyncio.gather(*coros)
 
     outcomes.sort(key=lambda o: o.prompt_id)

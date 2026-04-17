@@ -14,7 +14,7 @@ class RawSVGWithReviseStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return the draft agent for web app use."""
         from .raw_svg import DRAFT_INSTRUCTIONS
-        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS)
+        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=self.model_settings)
         register_svg_render_tool(agent)
         return agent
 
@@ -29,7 +29,7 @@ class RawSVGWithReviseStrategy(SubstanceStrategy):
         draft = await draft_agent.run(prompt)
 
         # Revision pass — must re-render
-        revision_agent = Agent(model, instructions=REVISION_FORCE_INSTRUCTIONS)
+        revision_agent = Agent(model, instructions=REVISION_FORCE_INSTRUCTIONS, model_settings=self.model_settings)
         register_svg_render_tool(revision_agent)
         result = await revision_agent.run(
             REVISION_PROMPT,
