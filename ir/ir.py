@@ -599,6 +599,12 @@ class EqualLength(CheckBase):
     segs: List[SegmentId]  # 2+
 
 
+class DistanceEquals(CheckBase):
+    kind: Literal["distance_equals"] = "distance_equals"
+    seg: SegmentId
+    expected: float
+
+
 class RightAngle(CheckBase):
     """Angle a-o-b is 90 degrees."""
     kind: Literal["right_angle"] = "right_angle"
@@ -637,7 +643,7 @@ Check = Annotated[
         Contains, NotContains,
         Parallel, NotParallel, Perpendicular,
         RightAngle, AngleEqual,
-        EqualLength, RatioEqual,
+        EqualLength, DistanceEquals, RatioEqual,
         SimilarTriangles,
         Tangent,
         OppositeSide, SameSide,

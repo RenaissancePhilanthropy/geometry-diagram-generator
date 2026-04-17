@@ -1,0 +1,36 @@
+name: polygon_from_sides
+description: "Polygon with specified side lengths (any number of sides, N >= 3)"
+tags: [polygon, sides, intermediate]
+context: "Given a polygon with specified consecutive side lengths."
+example:
+  mode: abstract
+  construction:
+    - op: polygon_from_sides
+      id: pent
+      vertices: [A, B, C, D, E]
+      side_lengths: [5, 7, 8, 6, 4]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    labels:
+      - kind: label_segment
+        endpoints: [A, B]
+        text: "5"
+      - kind: label_segment
+        endpoints: [B, C]
+        text: "7"
+      - kind: label_segment
+        endpoints: [C, D]
+        text: "8"
+      - kind: label_segment
+        endpoints: [D, E]
+        text: "6"
+      - kind: label_segment
+        endpoints: [E, A]
+        text: "4"
+notes:
+  - "side_lengths[i] is the distance from vertices[i] to vertices[(i+1) % N]"
+  - "Vertices are placed to form the maximum-area (cyclic) polygon"
+  - "Works for any N >= 3: triangles, quadrilaterals, pentagons, hexagons, etc."
+  - "Polygon inequality must hold: no single side >= half the perimeter (max(sides) < sum(sides) / 2)"
+  - "If the polygon is also inscribed in a circle, add circle_through_3 on any 3 vertices after the polygon op"

@@ -111,6 +111,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     pairs = ", ".join(f"{s}={l:.4f}" for s, l in zip(segs, lengths))
                     msg = f"Segment lengths not equal: {pairs}"
 
+            case ir.DistanceEquals(seg=seg, expected=expected):
+                length = float(_seg_length(sym[seg]).evalf())
+                ok = abs(length - expected) < t * max(expected, 1.0)
+                msg = "" if ok else f"Segment {seg!r} length {length:.4f} ≠ expected {expected:.4f}"
+
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
                 l1 = float(_seg_length(sym[s1]).evalf())
                 l2 = float(_seg_length(sym[s2]).evalf())

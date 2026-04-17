@@ -1,44 +1,36 @@
 name: cyclic_quadrilateral
 description: "Quadrilateral with all four vertices on a circle"
 tags: [circle, polygon, cyclic, intermediate]
-context: "Given a circle c with center O."
-setup:
-  - op: point
-    id: O
-    coords: [2, 2]
-  - op: circle
-    id: c
-    center: O
-    radius: 2
+context: "Given a circle with a quadrilateral inscribed in it."
 example:
-  mode: grid
+  mode: abstract
   construction:
-    - op: point
-      id: A
-      coords: [4, 2]
-    - op: rotation
-      id: B
-      point: A
-      center: O
-      angle: 75
-    - op: rotation
-      id: C
-      point: A
-      center: O
-      angle: 160
-    - op: rotation
-      id: D
-      point: A
-      center: O
-      angle: 250
-    - op: polygon
+    - op: polygon_from_sides
       id: quad
       vertices: [A, B, C, D]
+      side_lengths: [7, 24, 20, 15]
+    - op: circle_through_3
+      id: circ
+      through: [A, B, C]
+      center: O
   annotations:
     auto_draw_all: true
     auto_label_points: true
+    labels:
+      - kind: label_segment
+        endpoints: [A, B]
+        text: "7"
+      - kind: label_segment
+        endpoints: [B, C]
+        text: "24"
+      - kind: label_segment
+        endpoints: [C, D]
+        text: "20"
+      - kind: label_segment
+        endpoints: [D, A]
+        text: "15"
 notes:
-  - "Place A explicitly on the circle (e.g. at the rightmost point: coords = [center_x + radius, center_y]), then rotate A around O to get B, C, D"
-  - "rotation guarantees all points are EXACTLY equidistant from O — never use hardcoded coordinates for B, C, D"
-  - "Choose non-uniform rotation angles (e.g. 75, 160, 250 degrees) so the quadrilateral is visibly non-regular and non-rectangular"
+  - "Use polygon_from_sides when side lengths are specified — it computes correct vertex positions automatically"
+  - "For the circumscribed circle, chain circle_through_3 through any 3 vertices after the polygon op (all vertices are co-circular)"
+  - "When no side lengths are given, use the rotation-based approach: place point A on a circle, then use rotation ops for B, C, D"
   - "Opposite angles of a cyclic quadrilateral sum to 180 degrees"
