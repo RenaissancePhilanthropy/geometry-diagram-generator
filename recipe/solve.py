@@ -283,6 +283,84 @@ def _solve_right_angle_at(vertices: list[str], spec: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Polygon-from-sides solver
+# ---------------------------------------------------------------------------
+
+def solve_polygon_from_sides(
+    vertices: list[str],
+    side_lengths: list[float],
+    *,
+    center: tuple[float, float] | list[float] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Compute vertex positions for a polygon with given consecutive side lengths.
+
+    Produces the maximum-area (cyclic) polygon.
+    side_lengths[i] is the distance from vertices[i] to vertices[(i+1) % N].
+
+    Returns dict mapping vertex name → (x, y).
+    Raises SpecError if the side lengths cannot form a valid polygon.
+    """
+    if len(vertices) != len(side_lengths):
+        raise SpecError(
+            f"solve_polygon_from_sides: len(vertices)={len(vertices)} "
+            f"must equal len(side_lengths)={len(side_lengths)}"
+        )
+    n = len(vertices)
+    if n < 3:
+        raise SpecError(
+            f"solve_polygon_from_sides requires at least 3 vertices, got {n}"
+        )
+    sides = [float(s) for s in side_lengths]
+    if any(s <= 0 for s in sides):
+        raise SpecError(
+            f"solve_polygon_from_sides: all side lengths must be positive, got {sides}"
+        )
+    total = sum(sides)
+    if max(sides) >= total / 2:
+        raise SpecError(
+            f"solve_polygon_from_sides: polygon inequality violated — "
+            f"max side {max(sides)} >= half-perimeter {total/2}"
+        )
+
+    # Find circumradius R by bisection on f(R) = Σ 2*arcsin(l_i/2R) - 2π = 0
+    def _f(R: float) -> float:
+        return sum(2 * math.asin(s / (2 * R)) for s in sides) - 2 * math.pi
+
+    R_lo = max(sides) / 2 + 1e-9
+    R_hi = total / math.pi
+    while _f(R_hi) > 0:
+        R_hi *= 2
+
+    for _ in range(200):
+        R_mid = (R_lo + R_hi) / 2
+        if _f(R_mid) > 0:
+            R_lo = R_mid
+        else:
+            R_hi = R_mid
+        if R_hi - R_lo < 1e-12:
+            break
+    R = (R_lo + R_hi) / 2
+
+    # Central angles and cumulative placement
+    thetas = [2 * math.asin(s / (2 * R)) for s in sides]
+    raw = []
+    alpha = 0.0
+    for theta in thetas:
+        raw.append((R * math.cos(alpha), R * math.sin(alpha)))
+        alpha += theta
+
+    # Translate centroid to target center (default (2, 2))
+    cx_target, cy_target = (float(center[0]), float(center[1])) if center is not None else (2.0, 2.0)
+    cx = sum(p[0] for p in raw) / n
+    cy = sum(p[1] for p in raw) / n
+    dx, dy = cx_target - cx, cy_target - cy
+    result = {}
+    for i, name in enumerate(vertices):
+        result[name] = (raw[i][0] + dx, raw[i][1] + dy)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Rectangle solver
 # ---------------------------------------------------------------------------
 

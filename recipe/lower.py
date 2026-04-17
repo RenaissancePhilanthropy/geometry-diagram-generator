@@ -39,14 +39,14 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
-    RectangleOp, FillOp, ArcOp,
+    RectangleOp, PolygonFromSidesOp, FillOp, ArcOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
     DrawObj,
 )
-from recipe.solve import solve_triangle, solve_rectangle
+from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides
 
 
 class LoweringError(ValueError):
@@ -238,6 +238,8 @@ class _Lowerer:
                     self._point_ids.append(vname)
             case RectangleOp():
                 self._lower_rectangle(op)
+            case PolygonFromSidesOp():
+                self._lower_polygon_from_sides(op)
             case ArcOp():
                 self._add(ArcCenterStartEnd(
                     id=op.id, center=op.center, start=op.start, end=op.end,
@@ -297,6 +299,19 @@ class _Lowerer:
         # Auto right-angle check at vertex[0] (corner A, between B–A–D)
         a, b, _c, d = op.vertices
         self._right_angle_triples.append((b, a, d))
+
+    def _lower_polygon_from_sides(self, op: PolygonFromSidesOp) -> None:
+        try:
+            coords = solve_polygon_from_sides(op.vertices, op.side_lengths, center=op.center)
+        except Exception as e:
+            raise LoweringError(f"polygon_from_sides '{op.id}': {e}") from e
+        for name in op.vertices:
+            x, y = coords[name]
+            self._add(PointFixed(id=name, x=x, y=y))
+            self._point_ids.append(name)
+            self._coord_floats[name] = (x, y)
+        self._add(Polygon(id=op.id, points=list(op.vertices)))
+        self._drawable.add(op.id)
 
     def _lower_fill(self, op: FillOp) -> None:
         style_key = self._resolve_style(op.style)

@@ -1309,3 +1309,25 @@ def test_arc_op_reflex_flag_flows_through():
     arc_defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd)]
     assert len(arc_defs) == 1
     assert arc_defs[0].reflex is True
+
+
+# ---------------------------------------------------------------------------
+# PolygonFromSidesOp lowering
+# ---------------------------------------------------------------------------
+
+def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
+    """polygon_from_sides emits N PointFixed defs + 1 Polygon def."""
+    from recipe.dsl import PolygonFromSidesOp
+    ir = lower_to_ir(_dsl([
+        PolygonFromSidesOp(id="quad", vertices=["A","B","C","D"],
+                           side_lengths=[7, 24, 20, 15]),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].id == "quad"
+    assert polygons[0].points == ["A", "B", "C", "D"]
+    ids = _ids(ir)
+    for v in ["A", "B", "C", "D"]:
+        assert v in ids

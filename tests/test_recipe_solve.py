@@ -217,3 +217,111 @@ def test_solve_rectangle_missing_side_raises():
 def test_solve_rectangle_wrong_vertex_count_raises():
     with pytest.raises(SpecError):
         solve_rectangle(["A","B","C"], {"side_AB": 4, "side_BC": 3})
+
+
+# ---------------------------------------------------------------------------
+# solve_polygon_from_sides
+# ---------------------------------------------------------------------------
+
+from recipe.solve import solve_polygon_from_sides
+
+
+def test_polygon_from_sides_quad_7_24_20_15():
+    """Quadrilateral with sides 7, 24, 20, 15 — all 4 distances match inputs."""
+    sides = [7, 24, 20, 15]
+    verts = ["A", "B", "C", "D"]
+    coords = solve_polygon_from_sides(verts, sides)
+    for i, (s) in enumerate(sides):
+        p1 = coords[verts[i]]
+        p2 = coords[verts[(i + 1) % 4]]
+        assert abs(dist(p1, p2) - s) < 1e-6, f"side {i} expected {s}, got {dist(p1, p2)}"
+
+
+def test_polygon_from_sides_equilateral_triangle():
+    """Equilateral triangle sides (5,5,5) — circumradius = 5/sqrt(3)."""
+    coords = solve_polygon_from_sides(["A", "B", "C"], [5, 5, 5])
+    expected_R = 5 / math.sqrt(3)
+    xs = [coords[v][0] for v in ["A", "B", "C"]]
+    ys = [coords[v][1] for v in ["A", "B", "C"]]
+    cx = sum(xs) / 3
+    cy = sum(ys) / 3
+    for v in ["A", "B", "C"]:
+        r = dist(coords[v], (cx, cy))
+        assert abs(r - expected_R) < 1e-6, f"circumradius {r} ≠ {expected_R}"
+
+
+def test_polygon_from_sides_square():
+    """Square with sides (5,5,5,5) — circumradius = 5*sqrt(2)/2."""
+    coords = solve_polygon_from_sides(["A", "B", "C", "D"], [5, 5, 5, 5])
+    expected_R = 5 * math.sqrt(2) / 2
+    xs = [coords[v][0] for v in ["A", "B", "C", "D"]]
+    ys = [coords[v][1] for v in ["A", "B", "C", "D"]]
+    cx = sum(xs) / 4
+    cy = sum(ys) / 4
+    for v in ["A", "B", "C", "D"]:
+        r = dist(coords[v], (cx, cy))
+        assert abs(r - expected_R) < 1e-6, f"circumradius {r} ≠ {expected_R}"
+
+
+def test_polygon_from_sides_pentagon_regular():
+    """Regular pentagon — all central angles should be 72°."""
+    s = 3.0
+    coords = solve_polygon_from_sides(["A", "B", "C", "D", "E"], [s, s, s, s, s])
+    xs = [coords[v][0] for v in ["A", "B", "C", "D", "E"]]
+    ys = [coords[v][1] for v in ["A", "B", "C", "D", "E"]]
+    cx = sum(xs) / 5
+    cy = sum(ys) / 5
+    # Compute angles from centroid (circumcenter for cyclic polygon)
+    angles = [math.degrees(math.atan2(coords[v][1] - cy, coords[v][0] - cx))
+              for v in ["A", "B", "C", "D", "E"]]
+    angles.sort()
+    diffs = [(angles[(i + 1) % 5] - angles[i]) % 360 for i in range(5)]
+    for d in diffs:
+        assert abs(d - 72.0) < 1e-4, f"Central angle {d} ≠ 72°"
+
+
+def test_polygon_from_sides_pentagon_asymmetric():
+    """Pentagon with sides (3,4,5,6,7) — verify all 5 distances."""
+    sides = [3, 4, 5, 6, 7]
+    verts = ["A", "B", "C", "D", "E"]
+    coords = solve_polygon_from_sides(verts, sides)
+    for i, s in enumerate(sides):
+        p1 = coords[verts[i]]
+        p2 = coords[verts[(i + 1) % 5]]
+        assert abs(dist(p1, p2) - s) < 1e-6, f"side {i} expected {s}, got {dist(p1, p2)}"
+
+
+def test_polygon_from_sides_custom_center():
+    """Centroid should be at the requested center."""
+    coords = solve_polygon_from_sides(["A", "B", "C", "D"], [5, 7, 6, 4],
+                                      center=(10.0, -3.0))
+    xs = [coords[v][0] for v in ["A", "B", "C", "D"]]
+    ys = [coords[v][1] for v in ["A", "B", "C", "D"]]
+    cx = sum(xs) / 4
+    cy = sum(ys) / 4
+    assert abs(cx - 10.0) < 1e-6, f"centroid x {cx} ≠ 10.0"
+    assert abs(cy - (-3.0)) < 1e-6, f"centroid y {cy} ≠ -3.0"
+
+
+def test_polygon_from_sides_too_few_vertices():
+    """2 vertices should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_sides(["A", "B"], [3, 4])
+
+
+def test_polygon_from_sides_negative_side():
+    """Negative side length should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_sides(["A", "B", "C"], [3, -1, 4])
+
+
+def test_polygon_from_sides_polygon_inequality_violated():
+    """One side >= half the perimeter should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_sides(["A", "B", "C"], [10, 1, 1])
+
+
+def test_polygon_from_sides_mismatched_counts():
+    """len(vertices) != len(side_lengths) should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_sides(["A", "B", "C"], [3, 4])

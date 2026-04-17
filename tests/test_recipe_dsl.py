@@ -315,3 +315,29 @@ def test_arc_op_reflex_default_false():
     from recipe.dsl import ArcOp
     op = ArcOp(id="a", center="O", start="A", end="B")
     assert op.reflex is False
+
+
+# ---- PolygonFromSidesOp ----
+
+def test_polygon_from_sides_op_parses():
+    from recipe.dsl import PolygonFromSidesOp
+    op = PolygonFromSidesOp(id="pent", vertices=["A","B","C","D","E"],
+                            side_lengths=[5, 7, 8, 6, 4])
+    assert op.op == "polygon_from_sides"
+    assert op.vertices == ["A","B","C","D","E"]
+    assert op.side_lengths == [5, 7, 8, 6, 4]
+    assert op.center is None
+
+
+def test_polygon_from_sides_op_mismatched_lengths():
+    from recipe.dsl import PolygonFromSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromSidesOp(id="quad", vertices=["A","B","C","D"],
+                           side_lengths=[3, 4, 5])
+
+
+def test_polygon_from_sides_op_too_few_vertices():
+    from recipe.dsl import PolygonFromSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromSidesOp(id="seg", vertices=["A","B"],
+                           side_lengths=[3, 4])

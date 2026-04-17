@@ -949,6 +949,12 @@ def _parse_latex(s: str) -> list[dict]:
             i += 1
             if i < len(s) and s[i] == "{":
                 inner, i = _read_braced(s, i)
+            elif i < len(s) and (s[i].isalnum() or s[i] == "_"):
+                j = i
+                while j < len(s) and (s[j].isalnum() or s[j] == "_"):
+                    j += 1
+                inner = s[i:j]
+                i = j
             elif i < len(s):
                 inner = s[i]
                 i += 1
@@ -961,6 +967,12 @@ def _parse_latex(s: str) -> list[dict]:
             i += 1
             if i < len(s) and s[i] == "{":
                 inner, i = _read_braced(s, i)
+            elif i < len(s) and (s[i].isalnum() or s[i] == "_"):
+                j = i
+                while j < len(s) and (s[j].isalnum() or s[j] == "_"):
+                    j += 1
+                inner = s[i:j]
+                i = j
             elif i < len(s):
                 inner = s[i]
                 i += 1

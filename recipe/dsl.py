@@ -409,6 +409,31 @@ class RectangleOp(DSLOpBase):
         return v
 
 
+class PolygonFromSidesOp(DSLOpBase):
+    """Polygon constructed from given consecutive side lengths.
+
+    Vertices are placed to form the maximum-area polygon.
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    """
+    op: Literal["polygon_from_sides"] = "polygon_from_sides"
+    vertices: list[str]
+    side_lengths: list[float]
+    center: Optional[list[float]] = None
+
+    @model_validator(mode="after")
+    def _check_lengths_match(self) -> "PolygonFromSidesOp":
+        if len(self.vertices) != len(self.side_lengths):
+            raise ValueError(
+                f"polygon_from_sides: len(vertices)={len(self.vertices)} "
+                f"must equal len(side_lengths)={len(self.side_lengths)}"
+            )
+        if len(self.vertices) < 3:
+            raise ValueError(
+                f"polygon_from_sides requires at least 3 vertices, got {len(self.vertices)}"
+            )
+        return self
+
+
 class ArcOp(DSLOpBase):
     """Circular arc from ``start`` CCW to the ray through ``end``.
 
@@ -461,7 +486,7 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp, RectangleOp, ArcOp,
+        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, ArcOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
         # Render-only
