@@ -483,13 +483,23 @@ class _Lowerer:
         self._checks.append(Perpendicular(l1=op.id, l2=base_id))
 
     def _lower_circumcircle(self, op: CircumcircleOp) -> None:
-        verts = self._triangle_vertices.get(op.of)
+        # Resolve triangle: either from explicit `of` or implicit from `points`
+        if op.points is not None:
+            a, b, c = op.points
+            tri_id = f"__{op.id}_tri"
+            self._add(Triangle(id=tri_id, a=a, b=b, c=c))
+            self._triangle_vertices[tri_id] = list(op.points)
+            tri_ref = tri_id
+        else:
+            tri_ref = op.of
+
+        verts = self._triangle_vertices.get(tri_ref)
         if verts is None:
             raise LoweringError(
-                f"CircumcircleOp '{op.id}': triangle '{op.of}' not found. "
+                f"CircumcircleOp '{op.id}': triangle '{tri_ref}' not found. "
                 "Define the triangle before the circumcircle."
             )
-        self._add(PointTriangleCenter(id=op.center, tri=op.of, which="circumcenter"))
+        self._add(PointTriangleCenter(id=op.center, tri=tri_ref, which="circumcenter"))
         self._add(CircleCenterPoint(id=op.id, center=op.center, through=verts[0]))
         self._point_ids.append(op.center)
         self._drawable.add(op.id)
@@ -498,12 +508,22 @@ class _Lowerer:
             self._checks.append(Contains(p=v, obj=op.id))
 
     def _lower_incircle(self, op: IncircleOp) -> None:
-        if op.of not in self._triangle_vertices:
-            raise LoweringError(f"incircle: triangle {op.of!r} not found")
-        verts = self._triangle_vertices[op.of]
+        # Resolve triangle: either from explicit `of` or implicit from `points`
+        if op.points is not None:
+            a, b, c = op.points
+            tri_id = f"__{op.id}_tri"
+            self._add(Triangle(id=tri_id, a=a, b=b, c=c))
+            self._triangle_vertices[tri_id] = list(op.points)
+            tri_ref = tri_id
+        else:
+            tri_ref = op.of
+
+        if tri_ref not in self._triangle_vertices:
+            raise LoweringError(f"incircle: triangle {tri_ref!r} not found")
+        verts = self._triangle_vertices[tri_ref]
         a_id, b_id, c_id = verts[0], verts[1], verts[2]
         # Emit incenter
-        self._defs.append(PointTriangleCenter(id=op.center, tri=op.of, which="incenter"))
+        self._defs.append(PointTriangleCenter(id=op.center, tri=tri_ref, which="incenter"))
         self._point_ids.append(op.center)
         # Compute inradius numerically from solved coordinates
         if all(v in self._coord_floats for v in [a_id, b_id, c_id]):

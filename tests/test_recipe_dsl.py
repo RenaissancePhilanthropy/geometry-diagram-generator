@@ -188,6 +188,44 @@ def test_incircle_op():
     op = IncircleOp(id="ic", of="T", center="I")
     assert op.op == "incircle"
 
+
+# --- CircumcircleOp / IncircleOp ---
+
+def test_circumcircle_of_triangle():
+    """Existing form still works."""
+    op = CircumcircleOp(id="cc", of="T", center="O")
+    assert op.of == "T"
+    assert op.points is None
+
+def test_circumcircle_of_points():
+    op = CircumcircleOp(id="cc", points=["A", "B", "C"], center="O")
+    assert op.points == ["A", "B", "C"]
+    assert op.of is None
+
+def test_circumcircle_neither_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", center="O")  # neither of nor points
+
+def test_circumcircle_both_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", of="T", points=["A", "B", "C"], center="O")
+
+def test_circumcircle_wrong_point_count_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", points=["A", "B"], center="O")  # needs exactly 3
+
+def test_incircle_of_triangle():
+    op = IncircleOp(id="ic", of="T", center="I")
+    assert op.of == "T"
+
+def test_incircle_of_points():
+    op = IncircleOp(id="ic", points=["A", "B", "C"], center="I")
+    assert op.points == ["A", "B", "C"]
+
+def test_incircle_neither_raises():
+    with pytest.raises(ValidationError):
+        IncircleOp(id="ic", center="I")
+
 def test_perpendicular_bisector_op():
     op = PerpendicularBisectorOp(id="pb", of=["A","B"], mid="M")
     assert op.op == "perpendicular_bisector"
