@@ -59,6 +59,23 @@ def test_point_external_op():
     op = PointExternalOp(id="E", relative_to="c", direction="right", distance_ratio=1.5)
     assert op.op == "point_external"
 
+def test_point_external_direction_cardinal():
+    op = PointExternalOp(id="E", relative_to="c", direction="right", distance_ratio=1.5)
+    assert op.direction == "right"
+
+def test_point_external_direction_float():
+    op = PointExternalOp(id="E", relative_to="c", direction=45.0, distance_ratio=1.5)
+    assert op.direction == 45.0
+
+def test_point_external_direction_string_coerced_to_float():
+    """Pydantic v2 coerces '45' → 45.0 for Union[Literal[...], float]."""
+    op = PointExternalOp(id="E", relative_to="c", direction="45", distance_ratio=1.5)
+    assert op.direction == 45.0
+
+def test_point_external_direction_invalid_string_raises():
+    with pytest.raises(ValidationError):
+        PointExternalOp(id="E", relative_to="c", direction="diagonal", distance_ratio=1.5)
+
 def test_canvas_op():
     op = CanvasOp(id="_canvas", x_range=[-2, 8], y_range=[-2, 8])
     assert op.op == "canvas"

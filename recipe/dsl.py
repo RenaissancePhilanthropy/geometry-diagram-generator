@@ -129,7 +129,7 @@ class PointExternalOp(DSLOpBase):
     """Point outside a circle at a given direction and distance ratio."""
     op: Literal["point_external"] = "point_external"
     relative_to: str   # circle id
-    direction: str     # "left", "right", "above", "below", or angle in degrees as str
+    direction: Union[Literal["left", "right", "above", "below"], float]  # Cardinals or numeric angle in degrees
     distance_ratio: float  # multiple of radius
 
 
