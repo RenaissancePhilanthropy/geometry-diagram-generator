@@ -734,6 +734,75 @@ AnnotationMark = Annotated[
     Field(discriminator="kind")
 ]
 
+
+# ---------------------------------------------------------------------------
+# DSL checks (typed; validated at parse time; lowering consumption TBD)
+# ---------------------------------------------------------------------------
+
+class CheckDistance(BaseModel):
+    """Assert distance between two points equals expected."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["distance"] = "distance"
+    points: list[str]   # [A, B]
+    expected: float
+
+
+class CheckParallel(BaseModel):
+    """Assert two segments are parallel."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["parallel"] = "parallel"
+    seg1: list[str]     # [A, B]
+    seg2: list[str]     # [C, D]
+
+
+class CheckPerpendicular(BaseModel):
+    """Assert two segments are perpendicular."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["perpendicular"] = "perpendicular"
+    seg1: list[str]
+    seg2: list[str]
+
+
+class CheckAngleEquals(BaseModel):
+    """Assert angle at vertex (a–vertex–b) equals expected degrees."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["angle_equals"] = "angle_equals"
+    points: list[str]   # [a, vertex, b]
+    expected: float     # degrees
+
+
+class CheckCollinear(BaseModel):
+    """Assert 3+ points are collinear."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["collinear"] = "collinear"
+    points: list[str]   # 3 or more point IDs
+
+
+class CheckPointOnCircle(BaseModel):
+    """Assert a point lies on a circle."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["on_circle"] = "on_circle"
+    point: str
+    circle: str
+
+
+class CheckTangent(BaseModel):
+    """Assert two objects are tangent."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["tangent"] = "tangent"
+    obj1: str
+    obj2: str
+
+
+DSLCheck = Annotated[
+    Union[
+        CheckDistance, CheckParallel, CheckPerpendicular,
+        CheckAngleEquals, CheckCollinear, CheckPointOnCircle,
+        CheckTangent,
+    ],
+    Field(discriminator="check"),
+]
+
 AnnotationLabel = Annotated[
     Union[LabelSegment, LabelPoint, LabelAngle],
     Field(discriminator="kind")
@@ -792,7 +861,10 @@ class RecipeDSL(BaseModel):
     mode: Literal["abstract", "grid", "mixed"] = "abstract"
     construction: list[DSLOp]
     annotations: DSLAnnotations = Field(default_factory=DSLAnnotations)
-    checks: list[dict[str, Any]] = Field(default_factory=list)
+    checks: list[DSLCheck] = Field(default_factory=list)
+    # Note: checks are validated at parse time but not yet consumed by the lowerer.
+    # Lowerer auto-generates checks from construction ops. Explicit check
+    # consumption is a planned follow-on (see design spec section 2.3).
 
     @model_validator(mode="before")
     @classmethod

@@ -506,3 +506,35 @@ def test_rectangle_spec_extra_key_raises():
     with pytest.raises(ValidationError):
         RectangleOp(id="R", vertices=["A","B","C","D"],
                     spec={"side_AB": 4, "side_BC": 3, "oops": 1})
+
+
+# --- DSLCheck union ---
+
+def test_dsl_check_distance():
+    from recipe.dsl import CheckDistance
+    c = CheckDistance(points=["A", "B"], expected=5.0)
+    assert c.check == "distance"
+
+def test_dsl_check_parallel():
+    from recipe.dsl import CheckParallel
+    c = CheckParallel(seg1=["A", "B"], seg2=["C", "D"])
+    assert c.check == "parallel"
+
+def test_recipe_dsl_checks_field_accepts_typed_checks():
+    from recipe.dsl import CheckDistance, CheckPerpendicular
+    r = RecipeDSL(
+        construction=[PointOp(id="A", coords=[0, 0]), PointOp(id="B", coords=[3, 0])],
+        checks=[
+            {"check": "distance", "points": ["A", "B"], "expected": 3.0},
+            {"check": "perpendicular", "seg1": ["A", "B"], "seg2": ["B", "C"]},
+        ],
+    )
+    assert len(r.checks) == 2
+    assert isinstance(r.checks[0], CheckDistance)
+
+def test_recipe_dsl_checks_rejects_unknown_kind():
+    with pytest.raises(ValidationError):
+        RecipeDSL(
+            construction=[PointOp(id="A", coords=[0, 0])],
+            checks=[{"check": "nonexistent_kind", "foo": "bar"}],
+        )
