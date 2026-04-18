@@ -434,26 +434,64 @@ class CircleThrough3Op(DSLOpBase):
     center: str         # name for the circumcenter point
 
 
+class RectangleSpec(BaseModel):
+    """Rectangle dimensions using positional A/B/C/D slots.
+
+    A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3] always.
+    Provide at least two adjacent side lengths. Adjacent pairs:
+        AB+BC, BC+CD, CD+DA, DA+AB
+    Opposite pairs (AB+CD, BC+DA) are not sufficient.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    side_AB: Optional[float] = None
+    side_BC: Optional[float] = None
+    side_CD: Optional[float] = None
+    side_DA: Optional[float] = None
+    rotation: float = 0.0  # degrees CCW
+
+    @model_validator(mode="after")
+    def _validate_two_adjacent(self) -> "RectangleSpec":
+        provided = [k for k in ["side_AB", "side_BC", "side_CD", "side_DA"]
+                    if getattr(self, k) is not None]
+        if len(provided) < 2:
+            raise ValueError(
+                "Rectangle needs at least 2 side lengths. "
+                "Provide two adjacent sides, e.g. side_AB and side_BC."
+            )
+        ADJACENT = {
+            ("side_AB", "side_BC"), ("side_BC", "side_CD"),
+            ("side_CD", "side_DA"), ("side_DA", "side_AB"),
+        }
+        pairs = [(provided[i], provided[j])
+                 for i in range(len(provided)) for j in range(i + 1, len(provided))]
+        if not any((a, b) in ADJACENT or (b, a) in ADJACENT for a, b in pairs):
+            raise ValueError(
+                "Rectangle needs two adjacent side lengths (sharing a vertex). "
+                "Opposite sides (side_AB + side_CD or side_BC + side_DA) are not sufficient."
+            )
+        return self
+
+
 class RectangleOp(DSLOpBase):
     """Axis-aligned rectangle with labeled side lengths.
 
     ``vertices`` lists the 4 corner names in perimeter order: A, B, C, D
-    where AB and BC are adjacent sides.
+    where AB and BC are adjacent sides. A/B/C/D in ``spec`` are positional
+    slots: A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3].
 
     ``spec`` keys:
-    - ``side_XY`` (required for one pair of adjacent sides, e.g. side_AB and side_BC):
-      Euclidean lengths for the two sides meeting at B.  The key must use the
-      actual vertex-name letters from ``vertices``, e.g. side_AB=4, side_BC=3.
-    - ``rotation`` (optional, degrees, default 0): CCW rotation around ``center``.
+    - ``side_AB``, ``side_BC``, etc.: lengths for positional slot pairs.
+      Provide at least two adjacent sides.
+    - ``rotation`` (optional, degrees CCW, default 0).
 
     ``center`` (optional): [x, y] override for the rectangle centroid; default (2, 2).
 
-    Vertex order (default orientation, no rotation): A top-left, B top-right,
-    C bottom-right, D bottom-left.
+    Default layout (rotation=0): A top-left, B top-right, C bottom-right, D bottom-left.
     """
     op: Literal["rectangle"] = "rectangle"
     vertices: list[str]
-    spec: dict[str, Any]
+    spec: RectangleSpec
     center: Optional[list[float]] = None
 
     @field_validator("vertices")
