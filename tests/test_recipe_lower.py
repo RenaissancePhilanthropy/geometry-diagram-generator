@@ -1368,3 +1368,49 @@ def test_rectangle_lowering_with_non_abcd_vertices():
     import math
     pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
     assert abs(pq_dist - 4.0) < 1e-6
+
+
+def test_rectangle_lowering_bc_cd():
+    """BC + CD adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_BC": 3, "side_CD": 4})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    assert kinds.count("polygon") == 1
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # QR distance should be side_BC = 3
+    qr_dist = math.hypot(pts["R"][0] - pts["Q"][0], pts["R"][1] - pts["Q"][1])
+    assert abs(qr_dist - 3.0) < 1e-6
+
+
+def test_rectangle_lowering_cd_da():
+    """CD + DA adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_CD": 4, "side_DA": 3})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # RS distance should be side_CD = 4
+    rs_dist = math.hypot(pts["S"][0] - pts["R"][0], pts["S"][1] - pts["R"][1])
+    assert abs(rs_dist - 4.0) < 1e-6
+
+
+def test_rectangle_lowering_da_ab():
+    """DA + AB adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_DA": 3, "side_AB": 4})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # PQ distance should be side_AB = 4
+    pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
+    assert abs(pq_dist - 4.0) < 1e-6

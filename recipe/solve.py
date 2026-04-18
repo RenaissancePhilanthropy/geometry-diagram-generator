@@ -420,11 +420,11 @@ def solve_rectangle(
     w = _get_side(v[0], v[1])  # side_AB  (width)
     h = _get_side(v[1], v[2])  # side_BC  (height)
 
-    # Fall back: accept the other adjacent pair DA and AB
+    # Fall back: accept the opposite side of the same orientation
     if w is None:
-        w = _get_side(v[3], v[0])
+        w = _get_side(v[2], v[3])
     if h is None:
-        h = _get_side(v[2], v[3])
+        h = _get_side(v[3], v[0])
 
     missing = []
     if w is None:
