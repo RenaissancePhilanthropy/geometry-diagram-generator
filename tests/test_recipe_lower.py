@@ -1331,3 +1331,46 @@ def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
     ids = _ids(ir)
     for v in ["A", "B", "C", "D"]:
         assert v in ids
+
+
+# ---------------------------------------------------------------------------
+# Label pos field lowering
+# ---------------------------------------------------------------------------
+
+def test_label_segment_pos_above_lowered_to_90_degrees():
+    """label_segment with pos='above' lowers to IR pos=90.0."""
+    from recipe.dsl import LabelSegment as DSLLabelSegment
+    from ir.ir import LabelSegment as IRLabelSegment
+    dsl = _dsl(
+        [TriangleOp(id="T", vertices=["A", "B", "C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            labels=[DSLLabelSegment(kind="label_segment", endpoints=["A", "B"],
+                                    text="3", pos="above")],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    seg_labels = [r for r in ir.render if isinstance(r, IRLabelSegment)]
+    assert len(seg_labels) == 1
+    assert seg_labels[0].pos == 90.0
+
+
+def test_label_segment_pos_auto_lowered_to_none():
+    """label_segment with pos='auto' (default) lowers to IR pos=None."""
+    from recipe.dsl import LabelSegment as DSLLabelSegment
+    from ir.ir import LabelSegment as IRLabelSegment
+    dsl = _dsl(
+        [TriangleOp(id="T", vertices=["A", "B", "C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            labels=[DSLLabelSegment(kind="label_segment", endpoints=["A", "B"],
+                                    text="3")],  # default pos="auto"
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    seg_labels = [r for r in ir.render if isinstance(r, IRLabelSegment)]
+    assert seg_labels[0].pos is None
