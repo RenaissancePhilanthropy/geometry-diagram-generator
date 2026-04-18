@@ -16,6 +16,7 @@ from recipe.dsl import (
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     PointFootOp, CircleThrough3Op,
 )
+from ir.ir import Contains
 from recipe.lower import lower_to_ir, LoweringError
 from ir.ir import (
     DiagramIR, PointFixed, PointMidpoint, PointFoot, PointTriangleCenter,
@@ -1414,3 +1415,38 @@ def test_rectangle_lowering_da_ab():
     # PQ distance should be side_AB = 4
     pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
     assert abs(pq_dist - 4.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# CircumcircleOp / IncircleOp points= path
+# ---------------------------------------------------------------------------
+
+def test_circumcircle_from_points_creates_implicit_triangle():
+    """CircumcircleOp with points= should create an implicit triangle and circumcircle."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        PointOp(id="C", coords=[2.0, 3.0]),
+        CircumcircleOp(id="cc", points=["A", "B", "C"], center="O"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids_ = [d.id for d in ir.define]
+    assert "__cc_tri" in ids_          # implicit triangle
+    assert "O" in ids_                 # circumcenter
+    assert "cc" in ids_                # circumcircle
+    contains = [c for c in ir.checks if isinstance(c, Contains)]
+    assert len(contains) == 3          # all three points on the circle
+
+def test_incircle_from_points_creates_implicit_triangle():
+    """IncircleOp with points= should create an implicit triangle and incircle."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        PointOp(id="C", coords=[2.0, 3.0]),
+        IncircleOp(id="ic", points=["A", "B", "C"], center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids_ = [d.id for d in ir.define]
+    assert "__ic_tri" in ids_
+    assert "I" in ids_
+    assert "ic" in ids_

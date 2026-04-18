@@ -301,17 +301,49 @@ class AltitudeOp(DSLOpBase):
 
 
 class CircumcircleOp(DSLOpBase):
-    """Circumscribed circle of a triangle."""
+    """Circumscribed circle of a triangle or three points.
+
+    Specify exactly one of:
+      - ``of``: a triangle ID (existing form)
+      - ``points``: exactly 3 point IDs
+    """
     op: Literal["circumcircle"] = "circumcircle"
-    of: str    # triangle id
-    center: str  # name for circumcenter point
+    of: Optional[str] = None        # triangle id
+    points: Optional[list[str]] = None  # OR exactly 3 point IDs
+    center: str                     # name for circumcenter point
+
+    @model_validator(mode="after")
+    def _of_xor_points(self) -> "CircumcircleOp":
+        if not self.of and not self.points:
+            raise ValueError("CircumcircleOp requires 'of' (triangle) or 'points' (3 points)")
+        if self.of and self.points:
+            raise ValueError("CircumcircleOp: specify 'of' or 'points', not both")
+        if self.points is not None and len(self.points) != 3:
+            raise ValueError(f"'points' must have exactly 3 point IDs, got {len(self.points)}")
+        return self
 
 
 class IncircleOp(DSLOpBase):
-    """Inscribed circle of a triangle."""
+    """Inscribed circle of a triangle or three points.
+
+    Specify exactly one of:
+      - ``of``: a triangle ID (existing form)
+      - ``points``: exactly 3 point IDs
+    """
     op: Literal["incircle"] = "incircle"
-    of: str    # triangle id
-    center: str  # name for incenter point
+    of: Optional[str] = None
+    points: Optional[list[str]] = None
+    center: str
+
+    @model_validator(mode="after")
+    def _of_xor_points(self) -> "IncircleOp":
+        if not self.of and not self.points:
+            raise ValueError("IncircleOp requires 'of' (triangle) or 'points' (3 points)")
+        if self.of and self.points:
+            raise ValueError("IncircleOp: specify 'of' or 'points', not both")
+        if self.points is not None and len(self.points) != 3:
+            raise ValueError(f"'points' must have exactly 3 point IDs, got {len(self.points)}")
+        return self
 
 
 class PerpendicularBisectorOp(DSLOpBase):
