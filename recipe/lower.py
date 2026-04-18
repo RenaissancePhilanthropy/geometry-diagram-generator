@@ -53,6 +53,18 @@ class LoweringError(ValueError):
 
 _DEG_TO_RAD = math.pi / 180.0
 
+_POS_TO_ANGLE: dict[str, float | None] = {
+    "auto": None,
+    "right": 0.0,
+    "above right": 45.0,
+    "above": 90.0,
+    "above left": 135.0,
+    "left": 180.0,
+    "below left": 225.0,
+    "below": 270.0,
+    "below right": 315.0,
+}
+
 _GENERIC_VERTICES = ("A", "B", "C")
 
 
@@ -858,7 +870,11 @@ class _Lowerer:
             if isinstance(label, DSLLabelSegment):
                 p, q = label.endpoints[0], label.endpoints[1]
                 seg_id = self._ensure_segment(p, q)
-                self._renders.append(IRLabelSegment(seg=seg_id, text=label.text))
+                self._renders.append(IRLabelSegment(
+                    seg=seg_id,
+                    text=label.text,
+                    pos=_POS_TO_ANGLE[label.pos],
+                ))
             elif isinstance(label, DSLLabelPoint):
                 self._renders.append(IRLabelPoint(
                     p=label.point,
@@ -870,6 +886,7 @@ class _Lowerer:
                 self._renders.append(IRLabelAngle(
                     angle=AnglePoints(a=a, o=vertex, b=b),
                     text=label.text,
+                    pos=_POS_TO_ANGLE[label.pos],
                 ))
 
         # Explicit draws (with optional per-element styles)

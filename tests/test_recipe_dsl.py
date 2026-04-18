@@ -397,3 +397,26 @@ def test_tangent_line_selector_rejects_invalid():
             id="T", circle="C", from_point="P",
             selector={"kind": "bogus"},
         )
+
+
+# ---- Label pos field ----
+
+def test_label_segment_has_pos_field_defaulting_to_auto():
+    from recipe.dsl import LabelSegment
+    lbl = LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4")
+    assert lbl.pos == "auto"
+
+def test_label_segment_pos_above():
+    from recipe.dsl import LabelSegment
+    lbl = LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4", pos="above")
+    assert lbl.pos == "above"
+
+def test_label_segment_pos_invalid_raises():
+    from recipe.dsl import LabelSegment
+    with pytest.raises(ValidationError):
+        LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4", pos="diagonal")
+
+def test_label_angle_has_pos_field_defaulting_to_auto():
+    from recipe.dsl import LabelAngle
+    lbl = LabelAngle(kind="label_angle", a="A", vertex="B", b="C", text="60°")
+    assert lbl.pos == "auto"

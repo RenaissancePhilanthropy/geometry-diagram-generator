@@ -582,6 +582,10 @@ class LabelSegment(BaseModel):
     kind: Literal["label_segment"] = "label_segment"
     endpoints: list[str]  # [A, B]
     text: str
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right",
+    ] = "auto"
 
 
 class LabelPoint(BaseModel):
@@ -618,6 +622,10 @@ class LabelAngle(BaseModel):
     at: Optional[str] = None  # vertex name within triangle (shorthand)
     of: Optional[str] = None  # triangle id (shorthand)
     text: str
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right",
+    ] = "auto"
 
     @model_validator(mode="after")
     def _check_form(self) -> "LabelAngle":
