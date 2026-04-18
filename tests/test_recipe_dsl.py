@@ -341,3 +341,42 @@ def test_polygon_from_sides_op_too_few_vertices():
     with pytest.raises(ValidationError):
         PolygonFromSidesOp(id="seg", vertices=["A","B"],
                            side_lengths=[3, 4])
+
+
+# ---- Selector → PickRule ----
+
+def test_intersection_selector_accepts_pick_rule_dict():
+    """Dict coerced to PickRule at parse time."""
+    op = IntersectionOp(
+        id="P", of=["L1", "C1"],
+        selector={"kind": "upper_of_line", "a": "A", "b": "B"},
+    )
+    from ir.ir import PickUpperOfLine
+    assert isinstance(op.selector, PickUpperOfLine)
+
+def test_intersection_selector_accepts_none():
+    op = IntersectionOp(id="P", of=["L1", "C1"])
+    assert op.selector is None
+
+def test_intersection_selector_rejects_invalid_kind():
+    """Invalid kind raises ValidationError at parse time, not lowering time."""
+    with pytest.raises(ValidationError):
+        IntersectionOp(
+            id="P", of=["L1", "C1"],
+            selector={"kind": "not_a_real_kind"},
+        )
+
+def test_tangent_line_selector_accepts_pick_rule_dict():
+    op = TangentLineOp(
+        id="T", circle="C", from_point="P",
+        selector={"kind": "closest_to", "p": "Q"},
+    )
+    from ir.ir import PickClosestTo
+    assert isinstance(op.selector, PickClosestTo)
+
+def test_tangent_line_selector_rejects_invalid():
+    with pytest.raises(ValidationError):
+        TangentLineOp(
+            id="T", circle="C", from_point="P",
+            selector={"kind": "bogus"},
+        )
