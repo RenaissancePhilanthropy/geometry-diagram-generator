@@ -21,17 +21,67 @@ from recipe.dsl import (
 # ---- Foundation ops ----
 
 def test_triangle_op_angles():
-    op = TriangleOp(id="T", vertices=["A","B","C"], spec={"angle_A": 60, "angle_B": 70})
+    op = TriangleOp(id="T", vertices=["A","B","C"], spec={"angle_A": 60, "angle_B": 70, "side_AB": 3})
     assert op.op == "triangle"
-    assert op.spec["angle_A"] == 60
+    assert op.spec.angle_A == 60
 
 def test_triangle_op_sides():
     op = TriangleOp(id="T", vertices=["A","B","C"], spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})
-    assert op.spec["side_AB"] == 3
+    assert op.spec.side_AB == 3
 
 def test_triangle_op_right_angle():
     op = TriangleOp(id="T", vertices=["A","B","C"], spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})
-    assert op.spec["right_angle_at"] == "B"
+    assert op.spec.right_angle_at == "B"
+
+
+# --- TriangleSpec model ---
+
+def test_triangle_spec_sss():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})
+    from recipe.dsl import TriangleSpec
+    assert isinstance(op.spec, TriangleSpec)
+    assert op.spec.side_AB == 3.0
+
+def test_triangle_spec_sas():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"side_AB": 4, "angle_B": 60, "side_BC": 3})
+    assert op.spec.angle_B == 60.0
+
+def test_triangle_spec_right_at():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})
+    assert op.spec.right_angle_at == "B"
+
+def test_triangle_spec_underdetermined_raises():
+    """2 constraints (no right_angle_at) should fail."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"side_AB": 3, "side_BC": 4})
+
+def test_triangle_spec_aaa_raises():
+    """Three angles, no side — AAA is underdetermined."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "angle_C": 60})
+
+def test_triangle_spec_right_at_needs_two_constraints():
+    """right_angle_at alone is underdetermined (needs 2 more)."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"right_angle_at": "B"})
+
+def test_triangle_spec_extra_key_raises():
+    """extra='forbid' means unknown keys raise at parse time."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"side_AB": 3, "side_BC": 4, "side_CA": 5, "oops": 1})
+
+def test_triangle_spec_right_angle_at_invalid_slot_raises():
+    """right_angle_at must be A, B, or C."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"right_angle_at": "D", "side_AB": 3, "side_BC": 4})
 
 def test_circle_op_radius():
     op = CircleOp(id="c", center="O", radius=5)
@@ -264,7 +314,7 @@ def test_recipe_dsl_minimal():
         mode="abstract",
         construction=[
             {"op": "triangle", "id": "T", "vertices": ["A","B","C"],
-             "spec": {"angle_A": 60, "angle_B": 70}},
+             "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 3}},
         ]
     )
     assert dsl.mode == "abstract"
