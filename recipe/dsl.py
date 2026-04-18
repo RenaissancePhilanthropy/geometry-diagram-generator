@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ir.ir import PickRule
+
 
 # ---------------------------------------------------------------------------
 # Shared validators
@@ -152,7 +154,7 @@ class MidpointOp(DSLOpBase):
 class IntersectionOp(DSLOpBase):
     op: Literal["intersection"] = "intersection"
     of: list[str]  # exactly [obj1, obj2]
-    selector: Optional[dict[str, Any]] = None  # PickRule dict for disambiguation
+    selector: Optional[PickRule] = None
 
 
 class PerpendicularOp(DSLOpBase):
@@ -208,7 +210,7 @@ class TangentLineOp(DSLOpBase):
     circle: str
     at: Optional[str] = None          # point on the circle → tangent at that point
     from_point: Optional[str] = None  # external point → tangent lines from there
-    selector: Optional[dict[str, Any]] = None
+    selector: Optional[PickRule] = None
 
     @model_validator(mode="after")
     def _validate_exactly_one_point(self) -> "TangentLineOp":

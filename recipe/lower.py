@@ -11,8 +11,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from pydantic import TypeAdapter
-
 from ir.ir import (
     DiagramIR, Canvas, Params,
     PointFixed, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
@@ -52,8 +50,6 @@ from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sid
 class LoweringError(ValueError):
     """Raised when a RecipeDSL cannot be lowered to DiagramIR."""
 
-
-_PICK_RULE_ADAPTER: TypeAdapter[PickRule] = TypeAdapter(PickRule)
 
 _DEG_TO_RAD = math.pi / 180.0
 
@@ -169,7 +165,7 @@ class _Lowerer:
                 self._add(PointMidpoint(id=op.id, p=op.of[0], q=op.of[1]))
                 self._point_ids.append(op.id)
             case IntersectionOp():
-                pick = _PICK_RULE_ADAPTER.validate_python(op.selector) if op.selector else None
+                pick = op.selector  # already a PickRule or None (validated at parse time)
                 self._add(PointIntersection(id=op.id, obj1=op.of[0], obj2=op.of[1], pick=pick))
                 self._point_ids.append(op.id)
             case PerpendicularOp():
@@ -417,7 +413,7 @@ class _Lowerer:
         self._coord_floats[op.id] = (px, py)
 
     def _lower_tangent_line(self, op: TangentLineOp) -> None:
-        pick = _PICK_RULE_ADAPTER.validate_python(op.selector) if op.selector else None
+        pick = op.selector  # already a PickRule or None
         if op.from_point:
             self._add(LineTangent(id=op.id, point=op.from_point, circle=op.circle, pick=pick))
         elif op.at:
