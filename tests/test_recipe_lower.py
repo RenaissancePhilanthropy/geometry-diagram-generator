@@ -77,6 +77,33 @@ def test_triangle_point_fixed_coords_are_floats():
         assert isinstance(float(f.y), float)
 
 
+def test_triangle_lowering_with_non_abc_vertices():
+    """Non-ABC vertices with positional spec should lower correctly."""
+    dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
+                            spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})])
+    ir = lower_to_ir(dsl)
+    # side_AB means side_PQ=3, side_BC means side_QR=4, side_CA means side_RP=5
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 3
+    assert kinds.count("triangle") == 1
+
+def test_triangle_right_angle_at_b_generates_check():
+    """right_angle_at='B' with non-ABC vertices maps to the correct vertex."""
+    dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
+                            spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})])
+    ir = lower_to_ir(dsl)
+    from ir.ir import RightAngle
+    ra_checks = [c for c in ir.checks if isinstance(c, RightAngle)]
+    assert len(ra_checks) == 1
+    # B slot → Q vertex
+    assert ra_checks[0].angle.o == "Q"
+
+def test_remap_triangle_spec_no_longer_exists():
+    """_remap_triangle_spec should be deleted."""
+    import recipe.lower as lower_mod
+    assert not hasattr(lower_mod, "_remap_triangle_spec")
+
+
 # ---------------------------------------------------------------------------
 # Composite: altitude
 # ---------------------------------------------------------------------------
@@ -219,55 +246,6 @@ def test_perpendicular_bisector_no_duplicate_segment_when_explicit():
     assert len(segs) == 1, "Should have exactly one segment A-B, not a duplicate"
 
 
-# ---------------------------------------------------------------------------
-# Triangle spec key remapping
-# ---------------------------------------------------------------------------
-
-from recipe.lower import _remap_triangle_spec
-
-
-def test_remap_triangle_spec_noop_when_abc_vertices():
-    """No remapping when vertices include A, B, or C."""
-    spec = {"angle_A": 60, "side_AB": 3}
-    assert _remap_triangle_spec(["A", "B", "C"], spec) == spec
-
-
-def test_remap_triangle_spec_noop_when_partial_abc_overlap():
-    """No remapping when even one vertex is A/B/C."""
-    spec = {"angle_A": 60, "angle_B": 70, "side_AB": 3}
-    assert _remap_triangle_spec(["A", "D", "E"], spec) == spec
-
-
-def test_remap_triangle_spec_remaps_angles_and_sides():
-    """Full remap for vertices completely disjoint from {A, B, C}."""
-    spec = {"angle_A": 50, "angle_B": 70, "side_AB": 5}
-    result = _remap_triangle_spec(["D", "E", "F"], spec)
-    assert result == {"angle_D": 50, "angle_E": 70, "side_DE": 5}
-
-
-def test_remap_triangle_spec_right_angle_at():
-    """right_angle_at value is also remapped."""
-    spec = {"right_angle_at": "A", "side_AB": 3, "side_CA": 4}
-    result = _remap_triangle_spec(["P", "Q", "R"], spec)
-    assert result["right_angle_at"] == "P"
-    assert "side_PQ" in result
-    assert "side_RP" in result
-
-
-def test_remap_triangle_spec_integration_similar_triangles():
-    """Two triangles: second with D/E/F vertices and generic A/B/C spec keys should lower."""
-    dsl = _dsl([
-        TriangleOp(id="triABC", vertices=["A", "B", "C"],
-                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 3},
-                   center=[2.0, 1.5]),
-        TriangleOp(id="triDEF", vertices=["D", "E", "F"],
-                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 5},  # generic keys
-                   center=[7.0, 2.5]),
-    ])
-    ir = lower_to_ir(dsl)  # should not raise
-    assert any(d.id == "D" for d in ir.define)
-    assert any(d.id == "E" for d in ir.define)
-    assert any(d.id == "F" for d in ir.define)
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +554,7 @@ def test_multiple_triangles_circumcircle():
         {"op": "triangle", "id": "T1", "vertices": ["A","B","C"],
          "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 4}},
         {"op": "triangle", "id": "T2", "vertices": ["P","Q","R"],
-         "spec": {"angle_P": 50, "angle_Q": 60, "side_PQ": 4}},
+         "spec": {"angle_A": 50, "angle_B": 60, "side_AB": 4}},
         {"op": "circumcircle", "id": "cc2", "of": "T2", "center": "O2"},
     ])
     ir = lower_to_ir(dsl)
@@ -717,7 +695,7 @@ def test_two_triangles_with_centers_non_overlapping():
         {"op": "triangle", "id": "t1", "vertices": ["A", "B", "C"],
          "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 3}, "center": [2, 2]},
         {"op": "triangle", "id": "t2", "vertices": ["D", "E", "F"],
-         "spec": {"angle_D": 50, "angle_E": 70, "side_DE": 5}, "center": [8, 2]},
+         "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 5}, "center": [8, 2]},
     ])
     ir = lower_to_ir(dsl)
     coords = {d.id: (d.x, d.y) for d in ir.define if hasattr(d, 'x') and hasattr(d, 'y')}
@@ -884,7 +862,7 @@ def test_mark_right_angle_emits_check():
     from ir.ir import RightAngle
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
-         "spec": {"right_angle_at": "C"}},
+         "spec": {"right_angle_at": "C", "side_AB": 5, "side_BC": 3}},
     ], annotations={"marks": [{"kind": "mark_right_angle", "a": "A", "vertex": "C", "b": "B"}]})
     ir = lower_to_ir(dsl)
     ra_checks = [c for c in ir.checks if c.kind == "right_angle"]
@@ -994,7 +972,7 @@ def test_mark_right_angle_at_of_shorthand():
     """mark_right_angle with at/of shorthand produces correct AnglePoints."""
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
-         "spec": {"right_angle_at": "C"}},
+         "spec": {"right_angle_at": "C", "side_AB": 5, "side_BC": 3}},
     ], annotations={"marks": [
         {"kind": "mark_right_angle", "at": "C", "of": "T"},
     ]})

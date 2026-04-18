@@ -65,42 +65,6 @@ _POS_TO_ANGLE: dict[str, float | None] = {
     "below right": 315.0,
 }
 
-_GENERIC_VERTICES = ("A", "B", "C")
-
-
-def _remap_triangle_spec(vertices: list[str], spec: dict) -> dict:
-    """Remap generic A/B/C spec keys to the actual vertex names.
-
-    When the LLM generates a triangle with vertices [D, E, F] but uses generic
-    spec keys like ``angle_A``, ``angle_B``, ``side_AB`` (meant positionally),
-    this function translates those keys to use the real vertex names
-    (``angle_D``, ``angle_E``, ``side_DE``).
-
-    The remapping is only applied when the vertex set is *completely disjoint*
-    from {A, B, C}, i.e. none of the actual vertices are named A, B, or C.
-    If any actual vertex shares a name with a generic label, the spec keys may
-    be intentional references to that vertex, so we leave the spec unchanged.
-    """
-    if set(vertices) & set(_GENERIC_VERTICES):
-        return spec  # actual vertices include A/B/C — cannot safely remap
-
-    mapping = {g: v for g, v in zip(_GENERIC_VERTICES, vertices)}
-
-    remapped: dict = {}
-    for key, val in spec.items():
-        if key.startswith("angle_"):
-            letter = key[len("angle_"):]
-            remapped[f"angle_{mapping.get(letter, letter)}"] = val
-        elif key.startswith("side_") and len(key) == 7:
-            # side_XY — two-character vertex pair
-            l0, l1 = key[5], key[6]
-            remapped[f"side_{mapping.get(l0, l0)}{mapping.get(l1, l1)}"] = val
-        elif key == "right_angle_at":
-            letter = str(val)
-            remapped[key] = mapping.get(letter, letter)
-        else:
-            remapped[key] = val
-    return remapped
 
 
 class _Lowerer:
@@ -264,9 +228,23 @@ class _Lowerer:
     # ------------------------------------------------------------------
 
     def _lower_triangle(self, op: TriangleOp) -> None:
+        v0, v1, v2 = op.vertices[0], op.vertices[1], op.vertices[2]
+        spec = op.spec
+        _slot = {"A": v0, "B": v1, "C": v2}
+
+        # Translate positional TriangleSpec to vertex-keyed dict for solve_triangle
+        spec_dict: dict[str, Any] = {}
+        if spec.side_AB is not None: spec_dict[f"side_{v0}{v1}"] = spec.side_AB
+        if spec.side_BC is not None: spec_dict[f"side_{v1}{v2}"] = spec.side_BC
+        if spec.side_CA is not None: spec_dict[f"side_{v2}{v0}"] = spec.side_CA
+        if spec.angle_A is not None: spec_dict[f"angle_{v0}"] = spec.angle_A
+        if spec.angle_B is not None: spec_dict[f"angle_{v1}"] = spec.angle_B
+        if spec.angle_C is not None: spec_dict[f"angle_{v2}"] = spec.angle_C
+        if spec.right_angle_at is not None:
+            spec_dict["right_angle_at"] = _slot[spec.right_angle_at]
+
         try:
-            spec = _remap_triangle_spec(op.vertices, op.spec)
-            coords = solve_triangle(op.vertices, spec, center=op.center)
+            coords = solve_triangle(op.vertices, spec_dict, center=op.center)
         except Exception as e:
             raise LoweringError(f"Triangle '{op.id}': {e}") from e
 
@@ -281,8 +259,8 @@ class _Lowerer:
         self._triangle_vertices[op.id] = list(op.vertices)
 
         # Auto-generate right_angle check if spec has right_angle_at
-        if "right_angle_at" in op.spec:
-            ra = op.spec["right_angle_at"]
+        if spec.right_angle_at is not None:
+            ra = _slot[spec.right_angle_at]
             others = [v for v in op.vertices if v != ra]
             triple = (others[0], ra, others[1])
             self._checks.append(RightAngle(angle=AnglePoints(a=triple[0], o=triple[1], b=triple[2])))

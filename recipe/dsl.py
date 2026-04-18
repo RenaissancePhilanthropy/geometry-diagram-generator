@@ -43,12 +43,65 @@ class DSLOpBase(BaseModel):
 # Foundation ops
 # ---------------------------------------------------------------------------
 
+class TriangleSpec(BaseModel):
+    """Triangle constraints using positional A/B/C slots.
+
+    A=vertices[0], B=vertices[1], C=vertices[2] always.
+    Provide any combination of sides and angles that uniquely determines
+    the triangle. right_angle_at takes priority over angle constraints.
+
+    Supported forms:
+        SSS:       side_AB, side_BC, side_CA
+        SAS:       two sides + included angle (e.g. side_AB, angle_B, side_BC)
+        ASA/AAS:   two angles + one side
+        right_at:  right_angle_at + at least 2 other constraints
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    side_AB: Optional[float] = None
+    side_BC: Optional[float] = None
+    side_CA: Optional[float] = None
+    angle_A: Optional[float] = None
+    angle_B: Optional[float] = None
+    angle_C: Optional[float] = None
+    right_angle_at: Optional[Literal["A", "B", "C"]] = None
+
+    @model_validator(mode="after")
+    def _validate_sufficient_constraints(self) -> "TriangleSpec":
+        sides = [k for k in ["side_AB", "side_BC", "side_CA"]
+                 if getattr(self, k) is not None]
+        angles = [k for k in ["angle_A", "angle_B", "angle_C"]
+                  if getattr(self, k) is not None]
+
+        if self.right_angle_at is not None:
+            if len(sides) + len(angles) + 1 < 3:
+                raise ValueError(
+                    "right_angle_at triangle needs at least 2 additional constraints "
+                    "(sides and/or angles)"
+                )
+            return self
+
+        total = len(sides) + len(angles)
+        if total < 3:
+            raise ValueError(
+                f"Triangle needs at least 3 constraints, got {total}. "
+                "Supported: SSS, SAS, ASA, AAS, or right_angle_at+2."
+            )
+        if len(sides) == 0:
+            raise ValueError(
+                "At least one side length is required (AAA is underdetermined — "
+                "infinitely many similar triangles)"
+            )
+        return self
+
+
 class TriangleOp(DSLOpBase):
-    """Triangle defined by angles/sides (abstract) or vertices (grid)."""
+    """Triangle defined by angles/sides. A/B/C in spec are positional slots:
+    A=vertices[0], B=vertices[1], C=vertices[2]."""
     op: Literal["triangle"] = "triangle"
     vertices: list[str]  # exactly 3 names for the vertices
-    spec: dict[str, Any]  # keys: angle_A/B/C, side_AB/BC/CA, right_angle_at
-    center: Optional[list[float]] = None  # [x, y] centroid target; default (2, 2)
+    spec: TriangleSpec
+    center: Optional[list[float]] = None
 
 
 class CircleOp(DSLOpBase):
