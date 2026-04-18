@@ -396,14 +396,10 @@ class _Lowerer:
             )
         # Parse direction: numeric degrees or named cardinal
         _DIRECTIONS = {"right": 0.0, "left": 180.0, "above": 90.0, "below": 270.0}
-        dir_str = str(op.direction)
-        if dir_str in _DIRECTIONS:
-            angle_deg = _DIRECTIONS[dir_str]
+        if isinstance(op.direction, str):
+            angle_deg = _DIRECTIONS[op.direction]  # Literal["left","right","above","below"] guaranteed
         else:
-            try:
-                angle_deg = float(dir_str)
-            except ValueError:
-                raise LoweringError(f"point_external: unrecognised direction {op.direction!r}")
+            angle_deg = float(op.direction)        # already a float
         angle_rad = math.radians(angle_deg)
         dist = float(op.distance_ratio) * r
         px = round(cx + dist * math.cos(angle_rad), 10)
