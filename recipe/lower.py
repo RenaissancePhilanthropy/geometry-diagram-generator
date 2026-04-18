@@ -267,9 +267,19 @@ class _Lowerer:
             self._right_angle_triples.append(triple)
 
     def _lower_rectangle(self, op: RectangleOp) -> None:
+        v = op.vertices  # [v0, v1, v2, v3] = A, B, C, D positional slots
+        spec = op.spec
+
+        # Translate positional RectangleSpec to vertex-keyed dict for solve_rectangle
+        spec_dict: dict[str, Any] = {"rotation": spec.rotation}
+        if spec.side_AB is not None: spec_dict[f"side_{v[0]}{v[1]}"] = spec.side_AB
+        if spec.side_BC is not None: spec_dict[f"side_{v[1]}{v[2]}"] = spec.side_BC
+        if spec.side_CD is not None: spec_dict[f"side_{v[2]}{v[3]}"] = spec.side_CD
+        if spec.side_DA is not None: spec_dict[f"side_{v[3]}{v[0]}"] = spec.side_DA
+
         try:
             center = tuple(op.center) if op.center is not None else (2.0, 2.0)
-            coords = solve_rectangle(op.vertices, op.spec, center=center)
+            coords = solve_rectangle(op.vertices, spec_dict, center=center)
         except Exception as e:
             raise LoweringError(f"Rectangle '{op.id}': {e}") from e
 
@@ -282,7 +292,7 @@ class _Lowerer:
         self._add(Polygon(id=op.id, points=list(op.vertices)))
         self._drawable.add(op.id)
 
-        # Auto right-angle check at vertex[0] (corner A, between B–A–D)
+        # Auto right-angle check at vertex[0] (corner A, between D–A–B)
         a, b, _c, d = op.vertices
         self._right_angle_triples.append((b, a, d))
 

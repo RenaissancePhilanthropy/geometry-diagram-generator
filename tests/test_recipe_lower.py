@@ -1352,3 +1352,19 @@ def test_label_segment_pos_auto_lowered_to_none():
     ir = lower_to_ir(dsl)
     seg_labels = [r for r in ir.render if isinstance(r, IRLabelSegment)]
     assert seg_labels[0].pos is None
+
+
+def test_rectangle_lowering_with_non_abcd_vertices():
+    """Non-ABCD vertices with positional spec should lower correctly."""
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_AB": 4, "side_BC": 3})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    assert kinds.count("polygon") == 1
+    # Check that the correct dimensions were used (P and Q are 4 apart)
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    import math
+    pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
+    assert abs(pq_dist - 4.0) < 1e-6

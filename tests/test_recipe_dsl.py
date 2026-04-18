@@ -470,3 +470,39 @@ def test_label_angle_has_pos_field_defaulting_to_auto():
     from recipe.dsl import LabelAngle
     lbl = LabelAngle(kind="label_angle", a="A", vertex="B", b="C", text="60°")
     assert lbl.pos == "auto"
+
+
+# --- RectangleSpec model ---
+
+def test_rectangle_spec_two_adjacent_sides():
+    from recipe.dsl import RectangleOp, RectangleSpec
+    op = RectangleOp(id="R", vertices=["A","B","C","D"],
+                     spec={"side_AB": 4, "side_BC": 3})
+    assert isinstance(op.spec, RectangleSpec)
+    assert op.spec.side_AB == 4.0
+    assert op.spec.side_BC == 3.0
+
+def test_rectangle_spec_with_rotation():
+    from recipe.dsl import RectangleOp
+    op = RectangleOp(id="R", vertices=["A","B","C","D"],
+                     spec={"side_AB": 4, "side_BC": 3, "rotation": 30.0})
+    assert op.spec.rotation == 30.0
+
+def test_rectangle_spec_opposite_sides_raises():
+    """side_AB + side_CD are opposite, not adjacent — should fail."""
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4, "side_CD": 4})
+
+def test_rectangle_spec_only_one_side_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4})
+
+def test_rectangle_spec_extra_key_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4, "side_BC": 3, "oops": 1})
