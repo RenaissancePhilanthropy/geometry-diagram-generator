@@ -237,20 +237,21 @@ selector kinds — use the exact kind string from this table:
 | nearest to a point | "closest_to" | "p": "<point_id>" |
 | above a line | "upper_of_line" | "a": "<pt>", "b": "<pt>" |
 | below a line | "lower_of_line" | "a": "<pt>", "b": "<pt>" |
-| by index (0=first) | "index" | "i": 0 |
+| by index (0=first) | "index" | "k": 0 |
 | inside a triangle | "inside_triangle" | "tri": "<triangle_id>" |
-| same side as a point | "same_side" | "line": "<line_id>", "point": "<pt>" |
+| same side as a point | "same_side" | "line": ["<pt>", "<pt>"], "ref_point": "<pt>" |
 | between two points | "between" | "a": "<pt>", "b": "<pt>" |
-| beyond a point | "beyond" | "from_": "<pt>", "through": "<pt>" |
-| interior of a shape | "interior" | "obj": "<shape_id>" |
-| exterior of a shape | "exterior" | "obj": "<shape_id>" |
-| opposite side | "opposite_side" | "line": "<line_id>", "point": "<pt>" |
+| beyond a point | "beyond" | "from_point": "<pt>", "past_point": "<pt>" |
+| interior of a shape | "interior" | "polygon": "<shape_id>" |
+| exterior of a shape | "exterior" | "polygon": "<shape_id>" |
+| opposite side | "opposite_side" | "line_through": ["<pt>", "<pt>"], "ref_point": "<pt>" |
+| point on object | "on_object" | "obj": "<object_id>" |
 | chain (sequential) | "chain" | "rules": [<selector>, ...] |
 
 Examples:
   selector: {"kind": "closest_to", "p": "P"}
   selector: {"kind": "upper_of_line", "a": "A", "b": "B"}
-  selector: {"kind": "index", "i": 0}
+  selector: {"kind": "index", "k": 0}
   selector: {"kind": "chain", "rules": [{"kind": "upper_of_line", "a": "A", "b": "B"}, {"kind": "closest_to", "p": "P"}]}
 
 ## Annotations
