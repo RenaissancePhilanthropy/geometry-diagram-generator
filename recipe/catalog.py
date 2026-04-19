@@ -173,8 +173,21 @@ RecipeDSL is a JSON object with these top-level fields:
 
 ## Foundation ops
 - triangle: {op, id, vertices:[A,B,C], spec:{angle_A, angle_B, side_AB, ...}}
-  Spec options: angle_A/B/C (degrees), side_AB/BC/CA, right_angle_at
-  Supported: AAS (2 angles + 1 side), SAS, SSS, ASA, right_angle_at + 2 sides
+
+## triangle op
+
+spec fields (A/B/C are positional slots: A=vertices[0], B=vertices[1], C=vertices[2]):
+
+| Form | Required fields | Example spec |
+|------|----------------|--------------|
+| SSS  | side_AB, side_BC, side_CA | {"side_AB": 4, "side_BC": 3, "side_CA": 5} |
+| SAS  | two sides + included angle | {"side_AB": 4, "angle_B": 60, "side_BC": 3} |
+| ASA  | two angles + included side | {"angle_A": 45, "side_AB": 5, "angle_B": 60} |
+| AAS  | two angles + non-included side | {"angle_A": 45, "angle_B": 60, "side_BC": 4} |
+| right_at | right_angle_at + 2 constraints | {"right_angle_at": "B", "side_AB": 3, "side_BC": 4} |
+
+IMPORTANT: A/B/C always refer to the first, second, and third entry in `vertices`, regardless
+of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) in the spec.
   NOT supported: SSA (ambiguous)
 - circle: {op, id, center, radius} or {op, id, center, through}
 - ellipse: axis-aligned ellipse. Exactly one form:
@@ -215,11 +228,30 @@ RecipeDSL is a JSON object with these top-level fields:
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
 
-## Selectors (for intersection, tangent_line)
-Kinds: index(k), on_object(obj), closest_to(p), same_side(line:[A,B], ref_point),
-       between(a,b), beyond(from_point, past_point), interior(polygon),
-       exterior(polygon), opposite_side(line_through:[A,B], ref_point),
-       upper_of_line(a,b), lower_of_line(a,b), chain(rules:[...])
+## selector (for intersection and tangent_line ops)
+
+selector kinds — use the exact kind string from this table:
+
+| Description | kind string | Required fields |
+|-------------|-------------|-----------------|
+| nearest to a point | "closest_to" | "p": "<point_id>" |
+| above a line | "upper_of_line" | "a": "<pt>", "b": "<pt>" |
+| below a line | "lower_of_line" | "a": "<pt>", "b": "<pt>" |
+| by index (0=first) | "index" | "i": 0 |
+| inside a triangle | "inside_triangle" | "tri": "<triangle_id>" |
+| same side as a point | "same_side" | "line": "<line_id>", "point": "<pt>" |
+| between two points | "between" | "a": "<pt>", "b": "<pt>" |
+| beyond a point | "beyond" | "from_": "<pt>", "through": "<pt>" |
+| interior of a shape | "interior" | "obj": "<shape_id>" |
+| exterior of a shape | "exterior" | "obj": "<shape_id>" |
+| opposite side | "opposite_side" | "line": "<line_id>", "point": "<pt>" |
+| chain (sequential) | "chain" | "rules": [<selector>, ...] |
+
+Examples:
+  selector: {"kind": "closest_to", "p": "P"}
+  selector: {"kind": "upper_of_line", "a": "A", "b": "B"}
+  selector: {"kind": "index", "i": 0}
+  selector: {"kind": "chain", "rules": [{"kind": "upper_of_line", "a": "A", "b": "B"}, {"kind": "closest_to", "p": "P"}]}
 
 ## Annotations
 - auto_draw_all: true (default) — draw all non-implicit objects
@@ -237,6 +269,22 @@ Kinds: index(k), on_object(obj), closest_to(p), same_side(line:[A,B], ref_point)
       Text inside the angle at vertex A formed by rays AB and AC. Shorthand
       form: {"kind":"label_angle", "at":"A", "of":"tri_ABC", "text":"α"}.
       Pair with a mark_angle to also draw the arc.
+
+## checks (optional)
+
+The `checks` field accepts a list of geometric assertions. These are validated at parse time.
+
+Supported check kinds:
+  {"check": "distance", "points": ["A", "B"], "expected": 5.0}
+  {"check": "parallel", "seg1": ["A", "B"], "seg2": ["C", "D"]}
+  {"check": "perpendicular", "seg1": ["A", "B"], "seg2": ["B", "C"]}
+  {"check": "angle_equals", "points": ["A", "B", "C"], "expected": 90.0}
+  {"check": "collinear", "points": ["A", "B", "C"]}
+  {"check": "on_circle", "point": "P", "circle": "c1"}
+  {"check": "tangent", "obj1": "c1", "obj2": "L1"}
+
+Note: The lowerer auto-generates checks from construction ops (triangles, altitudes, etc.).
+Explicit checks in this field are supplemental assertions.
 
 ## ID rules
 - All IDs must be unique

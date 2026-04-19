@@ -577,6 +577,12 @@ class ArcOp(DSLOpBase):
     reflex: bool = False
 
 
+# SectorOp (deferred): a closed, fillable sector is expressible as:
+#   SectorOp(center=midpoint, radius=r, start_angle=..., end_angle=start+sweep)
+# For now, approximate with ArcOp + two SegmentOps (center→start, center→end).
+# SectorOp will be added in Plan B (requires IR + renderer changes).
+
+
 class FillOp(DSLOpBase):
     """Fill a closed shape, optionally punching holes with the even-odd rule.
 
