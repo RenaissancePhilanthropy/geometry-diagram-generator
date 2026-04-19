@@ -519,7 +519,10 @@ class _Lowerer:
             tri_ref = op.of
 
         if tri_ref not in self._triangle_vertices:
-            raise LoweringError(f"incircle: triangle {tri_ref!r} not found")
+            raise LoweringError(
+                f"IncircleOp '{op.id}': triangle '{tri_ref}' not found. "
+                "Define the triangle before the incircle."
+            )
         verts = self._triangle_vertices[tri_ref]
         a_id, b_id, c_id = verts[0], verts[1], verts[2]
         # Emit incenter
