@@ -162,6 +162,12 @@ class _Lowerer:
                 self._add(PointReflect(id=op.id, source=op.point, across=op.over))
                 self._point_ids.append(op.id)
             case RotationOp():
+                if op.point == op.center:
+                    raise LoweringError(
+                        f"RotationOp '{op.id}': rotating point '{op.point}' around itself "
+                        f"produces the same point — use a different source point "
+                        f"(e.g. a point on a circle) or place the point with coordinates"
+                    )
                 angle_rad = float(op.angle) * _DEG_TO_RAD
                 self._add(PointRotate(id=op.id, center=op.center, source=op.point, angle=angle_rad))
                 self._point_ids.append(op.id)
