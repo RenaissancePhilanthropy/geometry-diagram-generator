@@ -14,6 +14,7 @@ from ir.ir import (
     DrawPoints,
     Fill,
     LabelAngle,
+    LabelFreeText,
     LabelPoint,
     LabelSegment,
     LineThrough,
@@ -574,9 +575,8 @@ def test_mark_right_angle_has_metadata():
     sym = compile_defs(diagram)
     svg_str = ir_to_svg(diagram, sym)
     root = _parse(svg_str)
-    paths = _findall(root, "path")
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "mark-right-angle"]
     assert len(paths) >= 1
-    assert paths[0].get("data-role") == "mark-right-angle"
     assert paths[0].get("data-angle") == "A,B,C"
 
 
@@ -592,8 +592,8 @@ def test_mark_angle_has_metadata():
     sym = compile_defs(diagram)
     svg_str = ir_to_svg(diagram, sym)
     root = _parse(svg_str)
-    paths = _findall(root, "path")
-    assert all(p.get("data-role") == "mark-angle" for p in paths)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "mark-angle"]
+    assert len(paths) >= 1
     assert all(p.get("data-angle") == "A,O,B" for p in paths)
     assert all(p.get("data-group") == "2" for p in paths)
 
@@ -1435,3 +1435,99 @@ def test_segment_label_avoids_crowded_side():
     ly = float(seg_label.get("y"))
     # C is below in geometry = higher SVG y. Label should be above segment (lower SVG y than segment).
     assert ly < ay, f"Expected label above segment (ly={ly:.1f} < ay={ay:.1f})"
+
+
+# ---------------------------------------------------------------------------
+# LabelFreeText
+# ---------------------------------------------------------------------------
+
+def _triangle_ir(extra_render=None):
+    return DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=(extra_render or []),
+    )
+
+
+def test_label_free_text_at_renders_svg_text():
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text="hello", at=[2.0, 1.5]),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    # Should have some x/y coordinate
+    assert float(labels[0].get("x")) > 0
+    assert float(labels[0].get("y")) > 0
+
+
+def test_label_free_text_centroid_of_renders_at_centroid():
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text="I", centroid_of="T"),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    # Centroid of (0,0),(4,0),(2,3) is (2,1); must land inside the SVG bounds
+    assert float(labels[0].get("x")) > 0
+    assert float(labels[0].get("y")) > 0
+
+
+# ---------------------------------------------------------------------------
+# Arrow style
+# ---------------------------------------------------------------------------
+
+def test_arrow_style_renders_marker_defs():
+    """SVG output should contain arrowhead marker definitions."""
+    diagram = _triangle_ir([Draw(obj="T")])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    markers = _findall(root, "marker")
+    marker_ids = {m.get("id") for m in markers}
+    assert "arrowhead" in marker_ids
+    assert "arrowhead-start" in marker_ids
+
+
+def test_arrow_style_end_adds_marker_end():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="seg", a="A", b="B"),
+        ],
+        styles={"arr": {"->": True}},
+        render=[Draw(obj="seg", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    seg_lines = [l for l in lines if l.get("marker-end")]
+    assert len(seg_lines) == 1
+    assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
+
+
+def test_arrow_style_both_adds_both_markers():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="seg", a="A", b="B"),
+        ],
+        styles={"arr": {"<->": True}},
+        render=[Draw(obj="seg", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    seg_lines = [l for l in lines if l.get("marker-end")]
+    assert len(seg_lines) == 1
+    assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
+    assert seg_lines[0].get("marker-start") == "url(#arrowhead-start)"

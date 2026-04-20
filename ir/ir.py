@@ -711,6 +711,26 @@ class LabelSegment(RenderBase):
     pos: Optional[float] = None
 
 
+class LabelFreeText(RenderBase):
+    """Place arbitrary text at explicit coordinates or at a polygon/triangle centroid.
+
+    Exactly one of ``at`` or ``centroid_of`` must be set.
+    ``text`` follows the same LaTeX notation as other labels (^{}, _{}, \\pi, etc.).
+    """
+    kind: Literal["label_free_text"] = "label_free_text"
+    text: str
+    at: Optional[List[float]] = None       # [x, y] in construction coordinates
+    centroid_of: Optional[ObjId] = None    # polygon/triangle ID → auto-compute centroid
+
+    @model_validator(mode="after")
+    def _check_exactly_one(self) -> "LabelFreeText":
+        has_at = self.at is not None
+        has_cof = self.centroid_of is not None
+        if has_at == has_cof:
+            raise ValueError("LabelFreeText requires exactly one of 'at' or 'centroid_of'")
+        return self
+
+
 class MarkRightAngles(RenderBase):
     """Emits the square symbol at each angle. Distinct from MarkAngles (arc)."""
     kind: Literal["mark_right_angles"] = "mark_right_angles"
@@ -733,7 +753,7 @@ RenderOp = Annotated[
     Union[
         Draw, DrawPoints, Fill,
         MarkAngles, MarkRightAngles, MarkSegments,
-        LabelPoint, LabelAngle, LabelSegment,
+        LabelPoint, LabelAngle, LabelSegment, LabelFreeText,
     ],
     Field(discriminator="kind")
 ]

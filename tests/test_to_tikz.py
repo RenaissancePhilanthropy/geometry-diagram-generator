@@ -8,6 +8,7 @@ from ir.ir import (
     DrawPoints,
     Fill,
     LabelAngle,
+    LabelFreeText,
     LabelPoint,
     LineAngleBisector,
     LineParallelThrough,
@@ -595,3 +596,40 @@ def test_arc_sweep_ccw_crosses_zero_degree_boundary():
     assert "start angle=180" in tikz
     # 90 < 180 → must be lifted to 450 to maintain CCW sweep
     assert "end angle=450" in tikz
+
+
+def test_label_free_text_at_renders_node():
+    """LabelFreeText with explicit coords should emit a \\node at (x,y) command."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text="hello", at=[2.0, 1.5]),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at (2,1.5) {$hello$};" in tikz
+
+
+def test_label_free_text_centroid_of_renders_node():
+    """LabelFreeText with centroid_of should emit a \\node at the polygon centroid."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=6, y=0),
+            PointFixed(id="C", x=3, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text="I", centroid_of="T"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    # Centroid of (0,0),(6,0),(3,3) = (3,1)
+    assert r"\node at (3,1) {$I$};" in tikz

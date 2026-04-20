@@ -151,6 +151,29 @@ def ir_to_svg(
         "viewBox": f"0 0 {fmt_num(svg_w)} {fmt_num(svg_h)}",
     })
 
+    # Arrow marker definitions (referenced by stroke attrs when "->" or "<->" style is used)
+    defs = ET.SubElement(svg, "defs")
+    marker = ET.SubElement(defs, "marker", {
+        "id": "arrowhead",
+        "markerWidth": "8", "markerHeight": "6",
+        "refX": "8", "refY": "3",
+        "orient": "auto",
+    })
+    ET.SubElement(marker, "path", {
+        "d": "M 0 0 L 8 3 L 0 6 Z",
+        "fill": "black",
+    })
+    marker_start = ET.SubElement(defs, "marker", {
+        "id": "arrowhead-start",
+        "markerWidth": "8", "markerHeight": "6",
+        "refX": "0", "refY": "3",
+        "orient": "auto-start-reverse",
+    })
+    ET.SubElement(marker_start, "path", {
+        "d": "M 0 0 L 8 3 L 0 6 Z",
+        "fill": "black",
+    })
+
     # White background
     ET.SubElement(svg, "rect", {
         "x": "0", "y": "0",
@@ -171,7 +194,7 @@ def ir_to_svg(
         "fill": 0,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
         "draw_points": 2,
-        "label_point": 3, "label_angle": 3, "label_segment": 3,
+        "label_point": 3, "label_angle": 3, "label_segment": 3, "label_free_text": 3,
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
@@ -643,6 +666,30 @@ def _emit_svg_op(
             lp = _LabelPlacement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
                 attrs={"data-role": "label-segment", "data-for": seg_id},
+                width_est=_estimate_text_width(label_text),
+            )
+            if pending_labels is not None:
+                pending_labels.append(lp)
+            else:
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+
+        case ir.LabelFreeText(text=text, at=at, centroid_of=cof, style=style):
+            if at is not None:
+                lx, ly = gxy(float(at[0]), float(at[1]))
+            else:
+                obj = sym.get(cof)
+                if obj is None:
+                    _warn(warnings, f"Skipping LabelFreeText: centroid_of '{cof}' not in sym")
+                    return
+                verts = list(obj.vertices)
+                cx = sum(float(v.x) for v in verts) / len(verts)
+                cy = sum(float(v.y) for v in verts) / len(verts)
+                lx, ly = gxy(cx, cy)
+            label_text = text or ""
+            color = _color_from_style(style, styles) or "black"
+            lp = _LabelPlacement(
+                x=lx, y=ly, text=label_text, color=color, anchor="middle",
+                attrs={"data-role": "label-free-text"},
                 width_est=_estimate_text_width(label_text),
             )
             if pending_labels is not None:
@@ -1297,6 +1344,10 @@ def _stroke_attrs(style_key: str | None, styles: dict) -> dict[str, str]:
             attrs["stroke-dasharray"] = "6,3"
         if "dotted" in d and d["dotted"] is True:
             attrs["stroke-dasharray"] = "2,3"
+        if d.get("->") is True or d.get("<->") is True:
+            attrs["marker-end"] = "url(#arrowhead)"
+        if d.get("<-") is True or d.get("<->") is True:
+            attrs["marker-start"] = "url(#arrowhead-start)"
         return attrs
     if style_key in _CSS_COLOR_NAMES:
         attrs["stroke"] = style_key

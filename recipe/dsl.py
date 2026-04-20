@@ -841,8 +841,38 @@ DSLCheck = Annotated[
     Field(discriminator="check"),
 ]
 
+class LabelFreeText(BaseModel):
+    """Place arbitrary text at explicit coordinates or at a polygon/triangle centroid.
+
+    Use ``at`` for explicit placement or ``centroid_of`` to automatically
+    place the label at the geometric centroid of a named polygon or triangle.
+    ``text`` supports LaTeX notation: ``^{2}`` (superscript), ``_{n}`` (subscript),
+    ``\\pi``, ``\\sqrt{3}``, etc.
+
+    Examples::
+
+        {"kind": "label_free_text", "text": "S_1", "centroid_of": "poly1"}
+        {"kind": "label_free_text", "text": "s^{2} = r^{2} + h^{2}", "at": [3.0, 1.5]}
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_free_text"] = "label_free_text"
+    text: str
+    at: Optional[list[float]] = None
+    centroid_of: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check_exactly_one(self) -> "LabelFreeText":
+        has_at = self.at is not None
+        has_cof = self.centroid_of is not None
+        if has_at == has_cof:
+            raise ValueError(
+                "label_free_text: specify exactly one of 'at' or 'centroid_of'"
+            )
+        return self
+
+
 AnnotationLabel = Annotated[
-    Union[LabelSegment, LabelPoint, LabelAngle],
+    Union[LabelSegment, LabelPoint, LabelAngle, LabelFreeText],
     Field(discriminator="kind")
 ]
 

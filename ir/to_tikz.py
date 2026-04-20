@@ -111,7 +111,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
         "fill": 0,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
         "draw_points": 2,
-        "label_point": 3, "label_angle": 3, "label_segment": 3,
+        "label_point": 3, "label_angle": 3, "label_segment": 3, "label_free_text": 3,
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
@@ -382,6 +382,22 @@ def _emit_op(
             a, b = _seg_pts(seg_id, stmt_by_id)
             sopts = f"[pos={pos}]" if pos is not None else ""
             out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${text}$}}")
+
+        case ir.LabelFreeText(text=text, at=at, centroid_of=cof):
+            if at is not None:
+                x, y = float(at[0]), float(at[1])
+            else:
+                obj = sym.get(cof)
+                if obj is None:
+                    msg = f"Skipping LabelFreeText: centroid_of '{cof}' not in sym"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    return out
+                verts = list(obj.vertices)
+                x = sum(_f(v.x) for v in verts) / len(verts)
+                y = sum(_f(v.y) for v in verts) / len(verts)
+            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{${text}$}};")
 
     return out
 
