@@ -51,7 +51,8 @@ from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from strategies.raw_svg import RawSVGStrategy
 from strategies.raw_svg_with_revise import RawSVGWithReviseStrategy
-from ir.renderer import SVGRenderer
+from ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from util.tikz_renderer import check_renderer_health
 
 _STRATEGIES: dict[str, type[SubstanceStrategy]] = {
     "recipe": RecipeStrategy,
@@ -197,6 +198,7 @@ async def _process_one(
     args: argparse.Namespace,
     out_dir: Path,
     semaphore: asyncio.Semaphore,
+    renderer: Renderer,
     verbose: bool = False,
     enable_cache: bool = False,
 ) -> PromptOutcome:
@@ -212,8 +214,6 @@ async def _process_one(
             print(f"  tags       : {entry.tags}")
             print(f"  prompt     : {prompt_preview}")
             print(f"  rubric     : {len(rubric)} items")
-
-        renderer = SVGRenderer()
         max_outer_attempts = 1 + args.gen_retries
 
         t0 = time.perf_counter()
@@ -379,6 +379,20 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"  judge      : {'skipped' if args.no_judge else args.judge_model}")
     print(f"  concurrency: {args.concurrency}")
     print(f"  out_dir    : {out_dir}")
+
+    import os
+    if args.renderer == "svg":
+        renderer: Renderer = SVGRenderer()
+        print(f"  renderer   : svg (direct)")
+    else:
+        renderer_url = os.getenv("TIKZ_RENDERER_URL", "http://localhost:8001")
+        if not check_renderer_health(renderer_url):
+            print(f"ERROR: TikZ renderer is not reachable at {renderer_url}.")
+            print("Start it with: docker run -p 8001:8001 tikz-renderer")
+            return 1
+        renderer = TikZRenderer(renderer_url)
+        print(f"  renderer   : tikz ({renderer_url})")
+
     print(f"─ Running ─────────────────────────────────────────────")
 
     # Verbose per-prompt output: always on for single prompt, opt-in for batch.
@@ -386,7 +400,7 @@ async def main_async(args: argparse.Namespace) -> int:
 
     enable_cache = len(prompts) > 1
     semaphore = asyncio.Semaphore(args.concurrency)
-    coros = [_process_one(p, definition, args, out_dir, semaphore, verbose=verbose, enable_cache=enable_cache) for p in prompts]
+    coros = [_process_one(p, definition, args, out_dir, semaphore, renderer=renderer, verbose=verbose, enable_cache=enable_cache) for p in prompts]
     outcomes = await asyncio.gather(*coros)
 
     outcomes.sort(key=lambda o: o.prompt_id)
@@ -458,6 +472,8 @@ def main() -> None:
     parser.add_argument("--judge-model", default="openai:gpt-5.4-mini", help="AI judge model (ignored if --no-judge)")
     parser.add_argument("--concurrency", type=int, default=4, help="Max concurrent prompts")
     parser.add_argument("--out-dir", default=str(_DEFAULT_OUT_DIR), help="Directory for SVGs + dry_run.jsonl")
+    parser.add_argument("--renderer", choices=["tikz", "svg"], default="svg",
+                        help="Renderer backend: 'svg' (default, no Docker) or 'tikz' (requires Docker)")
     parser.add_argument("--no-judge", action="store_true", help="Skip AI judge step")
     parser.add_argument("--gen-retries", type=int, default=0, metavar="N",
                         help="Outer-loop retries on generation failure (default: 0). "
