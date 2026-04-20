@@ -31,6 +31,7 @@ from ir.render_util import (
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    expand_bounds_for_geometry,
     ellipse_params,
     extract_coords,
     fmt_label_num,
@@ -105,6 +106,7 @@ def ir_to_svg(
                 ymin = py - BOUNDS_PADDING
             if py > ymax:
                 ymax = py + BOUNDS_PADDING
+        xmin, xmax, ymin, ymax = expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
     else:
         xmin, xmax, ymin, ymax = compute_bounds(coords, helpers, sym)
 

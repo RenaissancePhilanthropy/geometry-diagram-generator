@@ -203,6 +203,44 @@ def arc_params(
 # Bounds computation
 # ---------------------------------------------------------------------------
 
+def expand_bounds_for_geometry(
+    xmin: float, xmax: float, ymin: float, ymax: float,
+    sym: SymTable,
+) -> tuple[float, float, float, float]:
+    """Expand (xmin, xmax, ymin, ymax) to include circles, ellipses, and arcs.
+
+    Used when a Canvas is already established and we need to ensure geometry
+    that extends outside the point-based bounds (e.g. a large circle) is not
+    clipped.
+    """
+    for obj in sym.values():
+        if isinstance(obj, spg.Ellipse):  # covers Circle
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            a = sympy_to_float(obj.hradius)
+            b = sympy_to_float(obj.vradius)
+            if cx - a < xmin:
+                xmin = cx - a - BOUNDS_PADDING
+            if cx + a > xmax:
+                xmax = cx + a + BOUNDS_PADDING
+            if cy - b < ymin:
+                ymin = cy - b - BOUNDS_PADDING
+            if cy + b > ymax:
+                ymax = cy + b + BOUNDS_PADDING
+        elif isinstance(obj, Arc):
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            r = sympy_to_float(obj.radius)
+            # Conservatively use full enclosing circle.
+            if cx - r < xmin:
+                xmin = cx - r - BOUNDS_PADDING
+            if cx + r > xmax:
+                xmax = cx + r + BOUNDS_PADDING
+            if cy - r < ymin:
+                ymin = cy - r - BOUNDS_PADDING
+            if cy + r > ymax:
+                ymax = cy + r + BOUNDS_PADDING
+    return xmin, xmax, ymin, ymax
+
+
 def compute_bounds(
     coords: dict[str, tuple[float, float]],
     helpers: dict[str, tuple[float, float]],
@@ -210,27 +248,14 @@ def compute_bounds(
 ) -> tuple[float, float, float, float]:
     """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
     all_pts = list(coords.values()) + list(helpers.values())
-    for obj in sym.values():
-        if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
-            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            a = sympy_to_float(obj.hradius)
-            b = sympy_to_float(obj.vradius)
-            all_pts.extend([(cx - a, cy - b), (cx + a, cy + b)])
-        elif isinstance(obj, Arc):
-            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            r = sympy_to_float(obj.radius)
-            # Conservatively extend bounds to the full enclosing circle; the
-            # arc may sweep through any axis-aligned extreme.
-            all_pts.extend([(cx - r, cy), (cx + r, cy), (cx, cy - r), (cx, cy + r)])
     if not all_pts:
-        return (-5.0, 5.0, -5.0, 5.0)
+        return expand_bounds_for_geometry(-5.0, 5.0, -5.0, 5.0, sym)
     xs, ys = zip(*all_pts)
-    return (
-        min(xs) - BOUNDS_PADDING,
-        max(xs) + BOUNDS_PADDING,
-        min(ys) - BOUNDS_PADDING,
-        max(ys) + BOUNDS_PADDING,
-    )
+    xmin = min(xs) - BOUNDS_PADDING
+    xmax = max(xs) + BOUNDS_PADDING
+    ymin = min(ys) - BOUNDS_PADDING
+    ymax = max(ys) + BOUNDS_PADDING
+    return expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
 
 
 def effective_canvas_bounds(canvas: ir.Canvas) -> tuple[float, float, float, float]:
