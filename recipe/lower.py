@@ -936,11 +936,43 @@ class _Lowerer:
     # ------------------------------------------------------------------
 
     def _auto_canvas(self) -> Canvas:
-        """Compute canvas from solved coordinate floats with 1-unit padding."""
+        """Compute canvas from solved coordinate floats with 1-unit padding.
+
+        Also accounts for circles and ellipses with numeric radii so that a
+        large circle whose center is the only point in coord_floats doesn't
+        produce a tiny canvas that clips most of the circle.
+        """
         if not self._coord_floats:
             return Canvas()  # default
         xs = [c[0] for c in self._coord_floats.values()]
         ys = [c[1] for c in self._coord_floats.values()]
+        for d in self._defs:
+            if d.kind == "circle_center_radius":
+                center = self._coord_floats.get(d.center)
+                if center is not None:
+                    try:
+                        r = float(d.radius)
+                        xs.extend([center[0] - r, center[0] + r])
+                        ys.extend([center[1] - r, center[1] + r])
+                    except (TypeError, ValueError):
+                        pass
+            elif d.kind == "circle_center_point":
+                center = self._coord_floats.get(d.center)
+                through = self._coord_floats.get(d.through)
+                if center is not None and through is not None:
+                    r = ((center[0] - through[0]) ** 2 + (center[1] - through[1]) ** 2) ** 0.5
+                    xs.extend([center[0] - r, center[0] + r])
+                    ys.extend([center[1] - r, center[1] + r])
+            elif d.kind == "ellipse_center_axes":
+                center = self._coord_floats.get(d.center)
+                if center is not None:
+                    try:
+                        a = float(d.hradius)
+                        b = float(d.vradius)
+                        xs.extend([center[0] - a, center[0] + a])
+                        ys.extend([center[1] - b, center[1] + b])
+                    except (TypeError, ValueError):
+                        pass
         pad = 1.0
         return Canvas(
             xmin=round(min(xs) - pad, 1),

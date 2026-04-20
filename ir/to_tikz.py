@@ -15,6 +15,7 @@ from ir.render_util import (
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    expand_bounds_for_geometry,
     ellipse_params,
     extract_coords,
     fmt_label_num,
@@ -39,6 +40,7 @@ _fmt_num = fmt_num
 _fmt_label_num = fmt_label_num
 _compute_bounds = compute_bounds
 _effective_canvas_bounds = effective_canvas_bounds
+_expand_bounds_for_geometry = expand_bounds_for_geometry
 _orient_angle = orient_angle
 _second_line_point = second_line_point
 _poly_verts = poly_verts
@@ -84,6 +86,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
                 ymin = py - _BOUNDS_PADDING
             if py > ymax:
                 ymax = py + _BOUNDS_PADDING
+        xmin, xmax, ymin, ymax = _expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
     else:
         xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
     lines.append(

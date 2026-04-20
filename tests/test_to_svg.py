@@ -1531,3 +1531,72 @@ def test_arrow_style_both_adds_both_markers():
     assert len(seg_lines) == 1
     assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
     assert seg_lines[0].get("marker-start") == "url(#arrowhead-start)"
+
+
+# ---------------------------------------------------------------------------
+# Canvas bounds — circles/ellipses must not be clipped
+# ---------------------------------------------------------------------------
+
+def _svg_viewbox(svg_text: str) -> tuple[float, float, float, float]:
+    """Parse viewBox='x y w h' from SVG root element."""
+    root = ET.fromstring(svg_text)
+    vb = root.get("viewBox", "").split()
+    return tuple(float(v) for v in vb)  # (x, y, width, height)
+
+
+def test_canvas_expands_for_large_circle_with_explicit_canvas():
+    """A circle with radius 3 at origin should produce canvas well beyond [-1, 1]."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=1, ymin=-1, ymax=1),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Draw(obj="circ"), DrawPoints(points=["O"])],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    # The circle extends from -3 to +3 in both axes; viewBox should cover that
+    vb_x, vb_y, vb_w, vb_h = _svg_viewbox(svg)
+    # SVG coordinate system has y flipped, so just check that both dimensions
+    # are large enough to contain a radius-3 circle with some padding
+    assert vb_w >= 6 * 40, f"SVG width {vb_w} too small to contain circle (r=3)"
+    assert vb_h >= 6 * 40, f"SVG height {vb_h} too small to contain circle (r=3)"
+
+
+def test_canvas_expands_for_circle_without_explicit_canvas():
+    """With no canvas, compute_bounds should already handle circles correctly."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Draw(obj="circ"), DrawPoints(points=["O"])],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    vb_x, vb_y, vb_w, vb_h = _svg_viewbox(svg)
+    assert vb_w >= 6 * 40, f"SVG width {vb_w} too small to contain circle (r=3)"
+    assert vb_h >= 6 * 40, f"SVG height {vb_h} too small to contain circle (r=3)"
+
+
+def test_auto_canvas_expands_for_circle_in_lowerer():
+    """_auto_canvas() should consider circle radii when no explicit canvas is given."""
+    from recipe.dsl import RecipeDSL
+    from recipe.lower import lower_to_ir
+
+    dsl = RecipeDSL.model_validate({
+        "mode": "abstract",
+        "construction": [
+            {"op": "point", "id": "O", "coords": [0, 0]},
+            {"op": "circle", "id": "circ", "center": "O", "radius": 3},
+        ],
+        "annotations": {"auto_draw_all": True},
+        "checks": [],
+    })
+    ir = lower_to_ir(dsl)
+    # Canvas should extend at least to ±3 + padding in both axes
+    assert ir.canvas.xmin <= -3, f"xmin={ir.canvas.xmin} doesn't cover circle extent"
+    assert ir.canvas.xmax >= 3, f"xmax={ir.canvas.xmax} doesn't cover circle extent"
+    assert ir.canvas.ymin <= -3, f"ymin={ir.canvas.ymin} doesn't cover circle extent"
+    assert ir.canvas.ymax >= 3, f"ymax={ir.canvas.ymax} doesn't cover circle extent"
