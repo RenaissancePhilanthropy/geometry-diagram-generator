@@ -75,6 +75,50 @@ _DEFAULT_DEFINITION = _REPO_ROOT / "benchmark" / "definitions" / "bench_genexam.
 _DEFAULT_OUT_DIR = Path("/tmp/bench_dry_run")
 
 
+def _extract_artifacts(result) -> dict | None:
+    """Extract serializable generation artifacts from any strategy result.
+
+    Duck-types the result object so this works with StructuredRunResult,
+    RawRunResult, or any future result type.
+    """
+    arts: dict = {}
+
+    ir = getattr(result, "diagram_ir", None)
+    if ir is not None:
+        arts["diagram_ir"] = ir.model_dump() if hasattr(ir, "model_dump") else ir
+
+    tikz = getattr(result, "tikz", None)
+    if tikz:
+        arts["tikz"] = tikz
+
+    meta = getattr(result, "recipe_metadata", None)
+    if meta and getattr(meta, "attempt_traces", None):
+        for trace in reversed(meta.attempt_traces):
+            if trace.stage == "success" and trace.dsl_json:
+                arts["recipe_dsl"] = trace.dsl_json
+                break
+        if meta.selected_recipes:
+            arts["selected_recipes"] = meta.selected_recipes
+        if meta.unmatched_concepts:
+            arts["unmatched_concepts"] = meta.unmatched_concepts
+
+    return arts or None
+
+
+def _extract_failed_artifacts(strategy) -> dict | None:
+    """Extract artifacts from a failed strategy run (partial metadata)."""
+    meta = getattr(strategy, "_partial_recipe_metadata", None)
+    if not meta or not getattr(meta, "attempt_traces", None):
+        return None
+    arts: dict = {}
+    last = meta.attempt_traces[-1]
+    if last.dsl_json:
+        arts["recipe_dsl"] = last.dsl_json
+    if meta.selected_recipes:
+        arts["selected_recipes"] = meta.selected_recipes
+    return arts or None
+
+
 @dataclass
 class PromptOutcome:
     prompt_id: str
@@ -95,6 +139,7 @@ class PromptOutcome:
     gen_attempts: int = 0           # total strategy.run() invocations (including outer retries)
     error_details: str | None = None  # validation error summary from last failed attempt
     failed_payload: str | None = None  # raw model output from last output_validation failure
+    artifacts: dict | None = None   # strategy-specific generation artifacts (IR, DSL, TikZ, etc.)
 
 
 def _select_prompts(
@@ -199,6 +244,7 @@ async def _process_one(
                 if err_details:
                     outcome.error_details = err_details
                     outcome.failed_payload = failed_payload
+                outcome.artifacts = _extract_failed_artifacts(strategy)
                 meta = getattr(strategy, "_partial_recipe_metadata", None)
                 if meta:
                     all_traces.extend(meta.attempt_traces)
@@ -235,6 +281,7 @@ async def _process_one(
         outcome.svg_length = len(svg)
         outcome.input_tokens = result.input_tokens or 0
         outcome.output_tokens = result.output_tokens or 0
+        outcome.artifacts = _extract_artifacts(result)
 
         if verbose:
             print(f"  model      : {args.model}")
