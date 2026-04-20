@@ -270,6 +270,31 @@ Examples:
       Text inside the angle at vertex A formed by rays AB and AC. Shorthand
       form: {"kind":"label_angle", "at":"A", "of":"tri_ABC", "text":"α"}.
       Pair with a mark_angle to also draw the arc.
+  {"kind":"label_free_text", "text":"S_1", "centroid_of":"poly1"}
+      Place text at the centroid of a named polygon or triangle.
+  {"kind":"label_free_text", "text":"s^{2} = r^{2} + h^{2}", "at":[3.0, 1.5]}
+      Place text at explicit construction coordinates.
+      text supports LaTeX: ^{2} (superscript), _{n} (subscript), \\pi, \\sqrt{3}.
+
+### annotations.draws — explicit draw control (use when auto_draw_all=false or for styled elements)
+  {"obj": "circle1"}                              — draw named object
+  {"endpoints": ["A","B"], "style": "red"}        — draw segment with named color
+  {"obj": "seg1", "style": {"dashed": true, "color": "blue"}}  — inline style dict
+
+### annotations.styles — named style definitions
+  styles: {"highlight": {"color": "red", "thick": true}}
+  Style properties: color, dashed, dotted, thick, thin, opacity, "->", "<->", "<-"
+  Arrow styles add arrowheads: {"->": true} for end arrow, {"<->": true} for both ends.
+
+## Render ops (in construction list)
+- fill: {op:"fill", id, obj:"poly1", opacity:0.3, style:{"color":"blue","fill":"lightblue"}}
+    Fills a closed shape (polygon, circle, triangle). Optional holes:[...] for cutouts.
+- arc: {op:"arc", id, center:"O", start:"A", end:"B", reflex:false}
+    Arc from A to B around center O. reflex:true for major arc (>180°).
+
+## Layout — multiple figures
+Side-by-side: use separate constructions with offset centers and a wide canvas.
+  E.g., two triangles: first at center:[1.5,2], second at center:[5.5,2], canvas width≥8.
 
 ## checks (optional)
 

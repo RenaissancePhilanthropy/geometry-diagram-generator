@@ -25,7 +25,7 @@ from ir.ir import (
     AngleEqual, EqualLength, Parallel, RatioEqual,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
-    LabelAngle as IRLabelAngle,
+    LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
     RenderOp, DefStmt, PickRule,
 )
 from recipe.dsl import (
@@ -42,6 +42,7 @@ from recipe.dsl import (
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
+    LabelFreeText as DSLLabelFreeText,
     DrawObj,
 )
 from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides
@@ -898,6 +899,12 @@ class _Lowerer:
                     angle=AnglePoints(a=a, o=vertex, b=b),
                     text=label.text,
                     pos=_POS_TO_ANGLE[label.pos],
+                ))
+            elif isinstance(label, DSLLabelFreeText):
+                self._renders.append(IRLabelFreeText(
+                    text=label.text,
+                    at=label.at,
+                    centroid_of=label.centroid_of,
                 ))
 
         # Explicit draws (with optional per-element styles)
