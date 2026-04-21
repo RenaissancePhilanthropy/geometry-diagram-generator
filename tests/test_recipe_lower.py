@@ -14,7 +14,7 @@ from recipe.dsl import (
     LineThroughOp, SegmentOp, IntersectionOp, CircleOp, CanvasOp,
     PolygonOp, PointOp, ReflectionOp, RotationOp, PointOnSegmentOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
-    PointFootOp, CircleThrough3Op,
+    PointFootOp, CircleThrough3Op, TangentLineOp, RectangleOp,
 )
 from ir.ir import Contains
 from recipe.lower import lower_to_ir, LoweringError
@@ -1450,3 +1450,189 @@ def test_incircle_from_points_creates_implicit_triangle():
     assert "__ic_tri" in ids_
     assert "I" in ids_
     assert "ic" in ids_
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: self-intersection error
+# ---------------------------------------------------------------------------
+
+def test_self_intersection_error():
+    """intersection(obj, obj) should give a clear 'with itself' error, not a cryptic SymPy error."""
+    from ir.to_sympy import compile_defs
+    from ir.errors import IRCompileError
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        IntersectionOp(id="X", of=["c1", "c1"]),
+    ])
+    ir = lower_to_ir(dsl)
+    with pytest.raises(IRCompileError, match="itself"):
+        compile_defs(ir)
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: incircle of polygon
+# ---------------------------------------------------------------------------
+
+def test_incircle_of_square():
+    """IncircleOp should work with a square polygon, producing center at centroid and radius = half side."""
+    dsl = _dsl([
+        RectangleOp(
+            id="sq", vertices=["A", "B", "C", "D"],
+            spec={"side_AB": 4.0, "side_BC": 4.0},
+            center=None,
+        ),
+        IncircleOp(id="ic", of="sq", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids = [d.id for d in ir.define]
+    assert "I" in ids
+    assert "ic" in ids
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    assert isinstance(circle_def.radius, (int, float))
+    # Inscribed circle of a 4x4 square has radius 2
+    assert abs(circle_def.radius - 2.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: tangent at point on circle
+# ---------------------------------------------------------------------------
+
+def test_tangent_at_point_on_circle():
+    """tangent_line with at= should emit a line perpendicular to the radius at that point."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids = [d.id for d in ir.define]
+    assert "__tang_radius" in ids
+    assert "tang" in ids
+    radius_def = next(d for d in ir.define if d.id == "__tang_radius")
+    tang_def = next(d for d in ir.define if d.id == "tang")
+    assert radius_def.kind == "line_through"
+    assert set([radius_def.p, radius_def.q]) == {"O", "P"}
+    assert tang_def.kind == "line_perp_through"
+    assert tang_def.through == "P"
+    assert tang_def.to_line == "__tang_radius"
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: self-intersection error — additional cases
+# ---------------------------------------------------------------------------
+
+def test_self_intersection_error_segment():
+    """intersection(seg, seg) with the same segment should also raise 'itself'."""
+    from ir.to_sympy import compile_defs
+    from ir.errors import IRCompileError
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        SegmentOp(id="s1", endpoints=["A", "B"]),
+        IntersectionOp(id="X", of=["s1", "s1"]),
+    ])
+    ir = lower_to_ir(dsl)
+    with pytest.raises(IRCompileError, match="itself"):
+        compile_defs(ir)
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: incircle of polygon — additional cases
+# ---------------------------------------------------------------------------
+
+def test_incircle_of_rectangle_radius_is_min_half_side():
+    """Inscribed circle of a 4x6 rectangle has radius 2 (= half the shorter side)."""
+    dsl = _dsl([
+        RectangleOp(
+            id="rect", vertices=["A", "B", "C", "D"],
+            spec={"side_AB": 6.0, "side_BC": 4.0},
+            center=None,
+        ),
+        IncircleOp(id="ic", of="rect", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    assert abs(circle_def.radius - 2.0) < 1e-6
+
+
+def test_incircle_of_polygon_op():
+    """IncircleOp works with an explicit PolygonOp whose vertices are already placed."""
+    # 6x6 square via raw PolygonOp with pre-placed points
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[6.0, 0.0]),
+        PointOp(id="C", coords=[6.0, 6.0]),
+        PointOp(id="D", coords=[0.0, 6.0]),
+        PolygonOp(id="sq", vertices=["A", "B", "C", "D"]),
+        IncircleOp(id="ic", of="sq", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    center_def = next(d for d in ir.define if d.id == "I")
+    assert abs(circle_def.radius - 3.0) < 1e-6
+    # Center should be at centroid (3, 3)
+    assert abs(center_def.x - 3.0) < 1e-6
+    assert abs(center_def.y - 3.0) < 1e-6
+
+
+def test_incircle_unknown_id_error_lists_available():
+    """IncircleOp referencing an unknown id should name available triangles and polygons."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A", "B", "C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        IncircleOp(id="ic", of="nosuchpoly", center="I"),
+    ])
+    with pytest.raises(LoweringError, match="nosuchpoly"):
+        lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: tangent at point — additional cases
+# ---------------------------------------------------------------------------
+
+def test_tangent_at_point_is_drawable():
+    """The tangent line emitted by at= should appear in renders when auto_draw_all=True."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=5.0),
+        PointOp(id="P", coords=[0.0, 5.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ], annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False))
+    ir = lower_to_ir(dsl)
+    drawn_ids = {r.obj for r in ir.render if r.kind == "draw"}
+    assert "tang" in drawn_ids
+    # The helper radius line is implicit — should not be auto-drawn
+    assert "__tang_radius" not in drawn_ids
+
+
+def test_tangent_at_point_geometric_correctness():
+    """The compiled tangent line should pass through P and be perpendicular to the radius."""
+    import sympy.geometry as spg
+    from ir.to_sympy import compile_defs
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ])
+    ir = lower_to_ir(dsl)
+    sym = compile_defs(ir)
+    tang = sym["tang"]
+    radius_line = sym["__tang_radius"]
+    p = sym["P"]
+    # Tangent passes through P
+    assert tang.contains(p)
+    # Tangent is perpendicular to the radius line
+    assert tang.is_perpendicular(radius_line)
+
+
+def test_tangent_at_unknown_circle_raises():
+    """TangentLineOp with at= referencing an unknown circle raises LoweringError."""
+    dsl = _dsl([
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="no_such_circle", at="P"),
+    ])
+    with pytest.raises(LoweringError, match="no_such_circle"):
+        lower_to_ir(dsl)
