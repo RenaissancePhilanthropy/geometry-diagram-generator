@@ -205,6 +205,8 @@ def _compile_one(
             return getattr(tri, which)
 
         case ir.PointIntersection(obj1=obj1_id, obj2=obj2_id, pick=pick):
+            if obj1_id == obj2_id:
+                raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
             raw = obj1.intersection(obj2)
             # SymPy may return the geometry object itself (not a list) when objects
