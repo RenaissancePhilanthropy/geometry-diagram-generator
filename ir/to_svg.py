@@ -54,6 +54,9 @@ logger = logging.getLogger(__name__)
 _SVG_SIZE = 500
 _POINT_RADIUS = 2.5        # px — radius of drawn points
 _TICK_LEN = 6              # px — half-length of segment tick marks
+_CHEVRON_TIP = 5           # px — tip length of chevron marks
+_CHEVRON_BACK = 6          # px — back-step distance for chevron wings
+_CHEVRON_WING = 4          # px — wing half-width for chevron marks
 _RA_SIZE = 8               # px — size of right-angle square leg
 _ANGLE_ARC_R = 20          # px — radius of angle arc marks
 _FONT_SIZE = 14            # px
@@ -271,7 +274,7 @@ def _emit_svg_op(
     coords: dict,
     helpers: dict,
     styles: dict,
-    group_tick_counts: dict,
+    group_tick_counts: dict[str, int],
     pt,
     gxy,
     scale: float,
@@ -279,7 +282,7 @@ def _emit_svg_op(
     xmax: float,
     ymin: float,
     ymax: float,
-    group_chevron_counts: dict | None = None,
+    group_chevron_counts: dict[str, int] = None,
     incident_angles: dict[str, list[float]] | None = None,
     warnings: list[str] | None = None,
     pending_labels: list[_LabelPlacement] | None = None,
@@ -595,9 +598,11 @@ def _emit_svg_op(
                 if group:
                     mark_attrs["data-group"] = str(group)
                 if group and group.startswith("parallel"):
-                    n_chevrons = (group_chevron_counts or {}).get(group, 1)
+                    # Parallel segments: use chevron marks (incrementing count per group)
+                    n_chevrons = group_chevron_counts.get(group, 1)
                     _append_seg_chevrons(svg, a, b, pt, stroke, n_chevrons, extra_attrs=mark_attrs)
                 else:
+                    # Equal-length segments: use tick marks (proportional_ falls through here)
                     n_ticks = group_tick_counts.get(group, 1) if group else 1
                     _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
 
@@ -868,13 +873,13 @@ def _append_seg_chevrons(
         cx = mx + along_x * offset
         cy = my + along_y * offset
         # Tip point ahead in the segment direction
-        tip_x = cx + along_x * 5
-        tip_y = cy + along_y * 5
+        tip_x = cx + along_x * _CHEVRON_TIP
+        tip_y = cy + along_y * _CHEVRON_TIP
         # Wing base points: back from tip, offset perpendicular
-        wing1_x = tip_x - along_x * 6 + perp_x * 4
-        wing1_y = tip_y - along_y * 6 + perp_y * 4
-        wing2_x = tip_x - along_x * 6 - perp_x * 4
-        wing2_y = tip_y - along_y * 6 - perp_y * 4
+        wing1_x = tip_x - along_x * _CHEVRON_BACK + perp_x * _CHEVRON_WING
+        wing1_y = tip_y - along_y * _CHEVRON_BACK + perp_y * _CHEVRON_WING
+        wing2_x = tip_x - along_x * _CHEVRON_BACK - perp_x * _CHEVRON_WING
+        wing2_y = tip_y - along_y * _CHEVRON_BACK - perp_y * _CHEVRON_WING
         # Two arms of the chevron
         for wx, wy in [(wing1_x, wing1_y), (wing2_x, wing2_y)]:
             ET.SubElement(svg, "line", {
