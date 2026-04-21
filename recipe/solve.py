@@ -24,6 +24,21 @@ class SpecError(ValueError):
 _TOL = 1e-9
 
 
+def _split_side_key(key: str, vertices: list[str]) -> tuple[str, str]:
+    """Split a concatenated side key like 'AB' or 'A1B1' into two vertex names.
+
+    Tries all prefix splits and returns the first pair where both halves are
+    in the vertex list. Raises SpecError if no valid split is found.
+    """
+    for i in range(1, len(key)):
+        sv0, sv1 = key[:i], key[i:]
+        if sv0 in vertices and sv1 in vertices:
+            return sv0, sv1
+    raise SpecError(
+        f"Side key {key!r} cannot be split into two known vertices from {vertices}"
+    )
+
+
 def solve_triangle(
     vertices: list[str],
     spec: dict[str, Any],
@@ -113,14 +128,9 @@ def solve_triangle(
                     all_angles[v] = a_third
             # Which side?
             side_key, side_val = list(sides_raw.items())[0]
-            # Identify the two vertices of this side
-            if len(side_key) != 2:
-                raise SpecError(f"Unexpected side key {side_key!r}; expected two vertex names")
-            sv0, sv1 = side_key[0], side_key[1]
-            if sv0 not in vertices or sv1 not in vertices:
-                raise SpecError(
-                    f"Side key {side_key!r} references vertices not in {vertices}"
-                )
+            # Identify the two vertices of this side — vertex names may be multi-character,
+            # so find the split point by trying all prefix lengths.
+            sv0, sv1 = _split_side_key(side_key, vertices)
             # Law of sines: side / sin(opposite_angle) = constant
             # Use the given side to derive the other two
             opp_angle = all_angles.get(

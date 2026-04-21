@@ -27,13 +27,24 @@ Key rules:
 - In "abstract" mode, never specify coordinates. The solver handles placement.
 - In "grid" mode, use explicit "point" ops with "coords".
 - Set auto_draw_all: true unless you need fine control over what is drawn.
-- IDs starting with __ are reserved for lowering intermediates — never use them.
+- IDs starting with __ are reserved for lowering intermediates — never use them,
+  not even as references in 'of' fields. Always use the actual op id you defined.
 - If recipe examples are provided, follow their patterns closely.
 - If no recipes are provided, reason from the DSL quick-reference below.
 - Keep diagrams compact and legible.
 - Points used only to define lines (not labeled intersections) should have visible: false.
 - When marking angle pairs (corresponding, alternate interior, etc.), always assign the same
   group number to both angles and mark BOTH intersection points — never just one.
+- polygon_exterior auto-generates internal vertex IDs ({id}_v0, {id}_v1, …).
+  Always provide explicit names in the "vertices" field and reference THOSE names
+  in later ops — never reference {id}_vN directly.
+- regular_polygon requires explicit vertex names in "vertices" — always reference
+  those names in later ops, never guess positional names.
+- point_foot creates a perpendicular foot but does NOT auto-annotate it.
+  After each point_foot, add an explicit mark_right_angle with (source, foot, onto-endpoint)
+  to make the right angle visible.
+- incircle and circumcircle require a triangle op — the 'of' field must reference an object
+  created by a 'triangle' op. Polygons and rectangles are not accepted even if 3-sided.
 
 """ + """\
 ## DSL Quick Reference
@@ -60,8 +71,8 @@ Key rules:
 | intersection | of:[obj1,obj2], selector? | add selector when 2+ candidates possible |
 | altitude | from_vertex, triangle, foot | altitude line; foot = named foot point |
 | median | from_vertex, triangle, mid | median line; mid = named midpoint |
-| circumcircle | of:<tri_id>, center | circumscribed circle; center = named circumcenter |
-| incircle | of:<tri_id>, center | inscribed circle; center = named incenter |
+| circumcircle | of:<tri_id>, center | circumscribed circle; center = named circumcenter; of must reference a triangle op |
+| incircle | of:<tri_id>, center | inscribed circle; center = named incenter; of must reference a triangle op (not a polygon) |
 | angle_bisector | vertex, ray1_toward, ray2_toward | bisector line at vertex |
 | perpendicular_bisector | of:[P,Q], mid | bisector of PQ; mid = named midpoint |
 | point_foot | source, onto | foot of perpendicular from source onto a line/segment |
@@ -117,8 +128,8 @@ RECIPE_DSL_QUICK_REF = """\
 |---|---|
 | altitude | from_vertex, triangle:<tri_id>, foot:<name> |
 | median | from_vertex, triangle:<tri_id>, mid:<name> |
-| circumcircle | of:<tri_id>, center:<name> |
-| incircle | of:<tri_id>, center:<name> |
+| circumcircle | of:<tri_id>, center:<name> | of must reference a triangle op |
+| incircle | of:<tri_id>, center:<name> | of must reference a triangle op (not a polygon) |
 | angle_bisector | vertex, ray1_toward, ray2_toward |
 | perpendicular_bisector | of:[P,Q], mid:<name> |
 | centroid | of:<tri_id> |
