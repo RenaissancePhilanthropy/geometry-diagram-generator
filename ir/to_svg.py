@@ -200,14 +200,24 @@ def ir_to_svg(
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
-    # Pre-compute group → tick-count for MarkSegments
+    # Pre-compute group → tick-count / chevron-count for MarkSegments
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
         if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_tick_counts = {g: (i % 3) + 1 for i, g in enumerate(seg_groups)}
+    group_tick_counts: dict[str, int] = {}
+    group_chevron_counts: dict[str, int] = {}
+    equal_idx = 0
+    parallel_idx = 0
+    for g in seg_groups:
+        if g.startswith("parallel"):
+            group_chevron_counts[g] = (parallel_idx % 3) + 1
+            parallel_idx += 1
+        else:
+            group_tick_counts[g] = (equal_idx % 3) + 1
+            equal_idx += 1
 
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
@@ -225,6 +235,7 @@ def ir_to_svg(
         _emit_svg_op(
             op, svg, sym, stmt_by_id, coords, helpers, _styles,
             group_tick_counts, pt, gxy, scale, xmin, xmax, ymin, ymax,
+            group_chevron_counts=group_chevron_counts,
             incident_angles=incident_angles,
             warnings=warnings,
             pending_labels=pending_labels,
@@ -268,6 +279,7 @@ def _emit_svg_op(
     xmax: float,
     ymin: float,
     ymax: float,
+    group_chevron_counts: dict | None = None,
     incident_angles: dict[str, list[float]] | None = None,
     warnings: list[str] | None = None,
     pending_labels: list[_LabelPlacement] | None = None,
@@ -571,21 +583,23 @@ def _emit_svg_op(
 
         case ir.MarkSegments(segs=segs, group=group, style=style):
             stroke = _color_from_style(style or group, styles) or "black"
-            n_ticks = 1
-            if group and group in group_tick_counts:
-                n_ticks = group_tick_counts[group]
             for seg_id in segs:
                 if seg_id not in stmt_by_id:
                     _warn(warnings, f"Skipping MarkSegments for undefined '{seg_id}'")
                     continue
                 a, b = seg_endpoints(seg_id, stmt_by_id)
-                tick_attrs: dict[str, str] = {
+                mark_attrs: dict[str, str] = {
                     "data-role": "mark-segment",
                     "data-segment": seg_id,
                 }
                 if group:
-                    tick_attrs["data-group"] = str(group)
-                _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=tick_attrs)
+                    mark_attrs["data-group"] = str(group)
+                if group and group.startswith("parallel"):
+                    n_chevrons = (group_chevron_counts or {}).get(group, 1)
+                    _append_seg_chevrons(svg, a, b, pt, stroke, n_chevrons, extra_attrs=mark_attrs)
+                else:
+                    n_ticks = group_tick_counts.get(group, 1) if group else 1
+                    _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
             if p not in sym:
@@ -827,6 +841,51 @@ def _append_seg_ticks(
             "stroke": stroke,
             "stroke-width": "1.5",
         })
+
+
+def _append_seg_chevrons(
+    svg: ET.Element,
+    a_id: str,
+    b_id: str,
+    pt,
+    stroke: str,
+    n_chevrons: int,
+    extra_attrs: dict[str, str] | None = None,
+) -> None:
+    """Draw n_chevrons directional chevron marks at the midpoint of segment AB."""
+    ax, ay = pt(a_id)
+    bx, by = pt(b_id)
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    dx, dy = bx - ax, by - ay
+    mag = math.hypot(dx, dy) or 1
+    # Direction (A→B) and perpendicular
+    along_x, along_y = dx / mag, dy / mag
+    perp_x, perp_y = -dy / mag, dx / mag
+    spacing = 4  # px between multiple chevrons
+
+    for i in range(n_chevrons):
+        offset = (i - (n_chevrons - 1) / 2) * spacing
+        cx = mx + along_x * offset
+        cy = my + along_y * offset
+        # Tip point ahead in the segment direction
+        tip_x = cx + along_x * 5
+        tip_y = cy + along_y * 5
+        # Wing base points: back from tip, offset perpendicular
+        wing1_x = tip_x - along_x * 6 + perp_x * 4
+        wing1_y = tip_y - along_y * 6 + perp_y * 4
+        wing2_x = tip_x - along_x * 6 - perp_x * 4
+        wing2_y = tip_y - along_y * 6 - perp_y * 4
+        # Two arms of the chevron
+        for wx, wy in [(wing1_x, wing1_y), (wing2_x, wing2_y)]:
+            ET.SubElement(svg, "line", {
+                **(extra_attrs or {}),
+                "x1": f"{wx:.2f}",
+                "y1": f"{wy:.2f}",
+                "x2": f"{tip_x:.2f}",
+                "y2": f"{tip_y:.2f}",
+                "stroke": stroke,
+                "stroke-width": "1.5",
+            })
 
 
 # ---------------------------------------------------------------------------

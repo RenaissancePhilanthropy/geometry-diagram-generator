@@ -120,13 +120,23 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
 
     # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
+    _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
         if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_marks = {g: _MARK_SYMBOLS[i % len(_MARK_SYMBOLS)] for i, g in enumerate(seg_groups)}
+    group_marks: dict[str, str] = {}
+    equal_idx = 0
+    parallel_idx = 0
+    for g in seg_groups:
+        if g.startswith("parallel"):
+            group_marks[g] = _PARALLEL_MARKS[parallel_idx % len(_PARALLEL_MARKS)]
+            parallel_idx += 1
+        else:
+            group_marks[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
+            equal_idx += 1
 
     for op in sorted_ops:
         chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)

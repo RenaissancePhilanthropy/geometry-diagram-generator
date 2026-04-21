@@ -253,6 +253,60 @@ def test_mark_segments_style_overrides_group_mark():
     assert "mark=|]" in tikz    # beta gets first auto-assigned symbol
 
 
+def test_mark_segments_parallel_group_uses_arrow():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            Segment(id="s1", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["s1"], group="parallel_1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=>" in tikz
+    assert "mark=|" not in tikz
+
+
+def test_mark_segments_two_parallel_groups_escalate():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="parallel_1"),
+            MarkSegments(segs=["s2"], group="parallel_2"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=>" in tikz
+    assert "mark=>>" in tikz
+
+
+def test_mark_segments_mixed_parallel_and_equal():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="1"),
+            MarkSegments(segs=["s2"], group="parallel_1"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=|" in tikz
+    assert "mark=>" in tikz
+
+
 # ---------------------------------------------------------------------------
 # check_render_angles tests
 # ---------------------------------------------------------------------------
