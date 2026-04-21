@@ -191,3 +191,147 @@ async def test_recipe_strategy_all_retries_exhaust_raises(monkeypatch):
     traces = strategy._partial_recipe_metadata.attempt_traces
     assert len(traces) == MAX_RETRIES
     assert all(t.stage == "output_validation" for t in traces)
+
+
+# ---------------------------------------------------------------------------
+# Test 4: AngleEqual check failure appends a targeted hint
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_angle_hint(monkeypatch):
+    """
+    When retry error contains an AngleEqual-style failure message,
+    the retry prompt should include a targeted hint about ensuring
+    geometric similarity when two angles must be equal.
+    """
+    # Simulate a geometric check failure with AngleEqual error
+    angle_error = (
+        "Geometric checks failed:\n"
+        "  - [annotation: mark_angle group=1] Angle B-S-A = 33.7° but D-T-C = 18.4°"
+    )
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    # Track IR pipeline calls to fail on first, succeed on second
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(angle_error)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    # Track user messages passed to gen_agent.run
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    # Use standard internal patches but hook the pipeline and message capture
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        # Patch Agent to capture user messages
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    # Should have at least 2 gen agent calls: initial + retry
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
+
+    # The second gen message is the retry prompt
+    retry_prompt = gen_messages[1]
+
+    # Should contain the hint text about angle equality
+    assert "When two angles must be equal" in retry_prompt, (
+        f"Hint not found in retry prompt. Prompt:\n{retry_prompt}"
+    )
+    assert "geometrically similar" in retry_prompt
+    assert "matching right_angle_at positions" in retry_prompt
+
+
+@pytest.mark.asyncio
+async def test_retry_prompt_no_hint_for_non_angle_errors(monkeypatch):
+    """
+    When retry error does NOT contain an AngleEqual-style message,
+    the hint should NOT be appended.
+    """
+    # Non-angle error (e.g., some other geometric check)
+    generic_error = "Geometric checks failed:\n  - Points A and B coincide"
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    # Track IR pipeline calls to fail on first, succeed on second
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(generic_error)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    # Track user messages passed to gen_agent.run
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    # Use standard internal patches but hook the pipeline and message capture
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        # Patch Agent to capture user messages
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    # Should have at least 2 gen agent calls: initial + retry
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
+
+    # The second gen message is the retry prompt
+    retry_prompt = gen_messages[1]
+
+    # Should NOT contain the angle hint
+    assert "When two angles must be equal" not in retry_prompt, (
+        f"Unexpected angle hint in retry prompt. Prompt:\n{retry_prompt}"
+    )
