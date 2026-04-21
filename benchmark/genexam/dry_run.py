@@ -64,10 +64,10 @@ _STRATEGIES: dict[str, type[SubstanceStrategy]] = {
 }
 
 
-def _make_strategy(name: str, enable_cache: bool = False) -> SubstanceStrategy:
+def _make_strategy(name: str, enable_cache: bool = False, catalog: str = "default") -> SubstanceStrategy:
     cls = _STRATEGIES[name]
     if cls is RecipeStrategy:
-        return RecipeStrategy(use_recipes=True, enable_cache=enable_cache)
+        return RecipeStrategy(use_recipes=True, enable_cache=enable_cache, catalog=catalog)
     return cls(enable_cache=enable_cache)
 
 
@@ -242,7 +242,7 @@ async def _process_one(
         result = None
         all_traces: list = []
         for outer_attempt in range(max_outer_attempts):
-            strategy = _make_strategy(args.strategy, enable_cache=enable_cache)
+            strategy = _make_strategy(args.strategy, enable_cache=enable_cache, catalog=args.catalog)
             if outer_attempt > 0 and not verbose:
                 print(f"  [{entry.id}] retrying generation (attempt {outer_attempt + 1}/{max_outer_attempts})")
             try:
@@ -489,6 +489,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="Random seed for --sample")
     parser.add_argument("--strategy", choices=list(_STRATEGIES), default="recipe",
                         help="Generation strategy (default: recipe)")
+    parser.add_argument("--catalog", default="default",
+                        help="Recipe catalog subfolder name (default: 'default')")
     parser.add_argument("--model", default="anthropic:claude-sonnet-4-6", help="Generation model")
     parser.add_argument("--judge-model", default="openai:gpt-5.4-mini", help="AI judge model (ignored if --no-judge)")
     parser.add_argument("--concurrency", type=int, default=4, help="Max concurrent prompts")

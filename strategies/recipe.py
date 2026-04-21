@@ -136,9 +136,10 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False) -> None:
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default") -> None:
         super().__init__(enable_cache=enable_cache)
         self.use_recipes = use_recipes
+        self.catalog = catalog
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
@@ -197,7 +198,7 @@ class RecipeStrategy(SubstanceStrategy):
         recipe_metadata = RecipeMetadata()
 
         if self.use_recipes:
-            catalog = load_catalog()
+            catalog = load_catalog(self.catalog)
             selection_prompt = build_selection_prompt(prompt, catalog)
             selector_agent: Agent[None, str] = Agent(
                 _SELECTOR_MODEL,
@@ -230,7 +231,7 @@ class RecipeStrategy(SubstanceStrategy):
             recipes: list[Recipe] = []
             for rid in selected_ids:
                 try:
-                    recipes.append(load_recipe(rid))
+                    recipes.append(load_recipe(rid, catalog=self.catalog))
                     recipe_metadata.selected_recipes.append(rid)
                 except KeyError:
                     logger.warning("Selected recipe %r not found in catalog; skipping", rid)
