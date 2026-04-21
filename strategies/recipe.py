@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import pydantic
@@ -263,11 +264,22 @@ class RecipeStrategy(SubstanceStrategy):
         for attempt in range(MAX_RETRIES):
             user_message = generation_prompt
             if attempt > 0:
-                user_message = (
-                    f"{generation_prompt}\n\n"
-                    f"Previous attempt failed: {last_error}\n"
-                    f"Please produce a corrected RecipeDSL."
-                )
+                retry_msg = f"{generation_prompt}\n\nPrevious attempt failed: {last_error}\n"
+
+                # Check if error is AngleEqual-style and append targeted hint
+                if re.search(r"Angle \S+ = [\d.]+° but \S+ = [\d.]+", last_error):
+                    retry_msg += (
+                        "\nHINT: When two angles must be equal across separate constructions (e.g.\n"
+                        "mark_angle group), ensure the triangles are geometrically similar.\n"
+                        "For triangle ops: use the same angle values in both specs, OR use\n"
+                        "proportional side lengths with matching right_angle_at positions\n"
+                        "(e.g. legs 2:3 and 10:15 produce identical base angles).\n"
+                        "For free points: derive the second construction's coordinates from\n"
+                        "the first using the same ratios or rotation angles.\n"
+                    )
+
+                retry_msg += "Please produce a corrected RecipeDSL."
+                user_message = retry_msg
 
             gen_agent: Agent[None, RecipeDSL] = Agent(
                 model,
