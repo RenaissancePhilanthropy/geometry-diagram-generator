@@ -310,6 +310,31 @@ def test_segment_tick_marks():
     assert len(lines) >= 1
 
 
+def test_parallel_mark_renders_chevrons():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["AB"], group="parallel_1")],
+    )
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    root = _parse(svg_str)
+    lines = [
+        el for el in _findall(root, "line")
+        if el.get("data-group") == "parallel_1"
+    ]
+    # A chevron has two arms
+    assert len(lines) >= 2
+    # Chevron arms on a horizontal segment are NOT perpendicular (x1 != x2)
+    for el in lines:
+        assert el.get("x1") != el.get("x2"), (
+            f"Expected non-perpendicular chevron line but got x1==x2=={el.get('x1')}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Labels
 # ---------------------------------------------------------------------------
