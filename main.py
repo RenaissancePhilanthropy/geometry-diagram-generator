@@ -21,7 +21,8 @@ elif strategy_name == "structured":
     agent = StructureStrategy(enable_cache=True).build_agent()
 elif strategy_name == "recipe":
     from strategies.recipe import RecipeStrategy
-    agent = RecipeStrategy(enable_cache=True).build_agent()
+    recipe_catalog = os.environ.get("RECIPE_CATALOG", "default")
+    agent = RecipeStrategy(enable_cache=True, catalog=recipe_catalog).build_agent()
 else:
     raise ValueError(f"Unknown STRATEGY: {strategy_name!r}. Supported: raw_code, structured, recipe")
 

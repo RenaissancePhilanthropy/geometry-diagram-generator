@@ -19,7 +19,18 @@ import yaml
 from pydantic import BaseModel
 
 
-_RECIPES_DIR = Path(__file__).parent / "recipes"
+_RECIPES_BASE = Path(__file__).parent / "recipes"
+
+
+def _catalog_dir(catalog: str = "default") -> Path:
+    """Resolve the directory for a named recipe catalog."""
+    d = (_RECIPES_BASE / catalog).resolve()
+    # Reject path traversal
+    if _RECIPES_BASE.resolve() not in d.parents:
+        raise ValueError(f"Invalid catalog name: {catalog!r}")
+    if not d.is_dir():
+        raise FileNotFoundError(f"Recipe catalog {catalog!r} not found at {d}")
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -56,10 +67,10 @@ class RecipeSelection(BaseModel):
 # Catalog loading
 # ---------------------------------------------------------------------------
 
-def _load_all_recipes() -> dict[str, Recipe]:
-    """Load all YAML files from recipes/ directory."""
+def _load_all_recipes(catalog: str = "default") -> dict[str, Recipe]:
+    """Load all YAML files from the named catalog directory."""
     recipes: dict[str, Recipe] = {}
-    for path in sorted(_RECIPES_DIR.glob("*.yaml")):
+    for path in sorted(_catalog_dir(catalog).glob("*.yaml")):
         with path.open() as f:
             data = yaml.safe_load(f)
         recipe = Recipe.model_validate(data)
@@ -67,17 +78,21 @@ def _load_all_recipes() -> dict[str, Recipe]:
     return recipes
 
 
-_RECIPE_CACHE: dict[str, Recipe] | None = None
+_CATALOG_CACHE: dict[str, dict[str, Recipe]] = {}
 
 
-def _get_cache() -> dict[str, Recipe]:
-    global _RECIPE_CACHE
-    if _RECIPE_CACHE is None:
-        _RECIPE_CACHE = _load_all_recipes()
-    return _RECIPE_CACHE
+def _get_cache(catalog: str = "default") -> dict[str, Recipe]:
+    if catalog not in _CATALOG_CACHE:
+        _CATALOG_CACHE[catalog] = _load_all_recipes(catalog)
+    return _CATALOG_CACHE[catalog]
 
 
-def load_catalog() -> list[RecipeSummary]:
+def clear_cache() -> None:
+    """Clear the recipe catalog cache (primarily for testing)."""
+    _CATALOG_CACHE.clear()
+
+
+def load_catalog(catalog: str = "default") -> list[RecipeSummary]:
     """Return catalog as a flat list of RecipeSummary objects."""
     return [
         RecipeSummary(
@@ -86,13 +101,13 @@ def load_catalog() -> list[RecipeSummary]:
             description=r.description,
             tags=r.tags,
         )
-        for r in _get_cache().values()
+        for r in _get_cache(catalog).values()
     ]
 
 
-def load_recipe(name: str) -> Recipe:
+def load_recipe(name: str, catalog: str = "default") -> Recipe:
     """Load a full recipe by name. Raises KeyError if not found."""
-    cache = _get_cache()
+    cache = _get_cache(catalog)
     if name not in cache:
         raise KeyError(f"Recipe {name!r} not found. Available: {sorted(cache.keys())}")
     return cache[name]
