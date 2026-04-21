@@ -102,6 +102,17 @@ def _extract_artifacts(result) -> dict | None:
             arts["selected_recipes"] = meta.selected_recipes
         if meta.unmatched_concepts:
             arts["unmatched_concepts"] = meta.unmatched_concepts
+        if len(meta.attempt_traces) > 1:
+            # Only store traces when there were retries (single-attempt success is noise-free)
+            arts["attempt_traces"] = [
+                {
+                    "attempt": t.attempt,
+                    "stage": t.stage,
+                    "error": t.error,
+                    "dsl_json": t.dsl_json,
+                }
+                for t in meta.attempt_traces
+            ]
 
     return arts or None
 
@@ -117,6 +128,16 @@ def _extract_failed_artifacts(strategy) -> dict | None:
         arts["recipe_dsl"] = last.dsl_json
     if meta.selected_recipes:
         arts["selected_recipes"] = meta.selected_recipes
+    # Store all attempt traces for debugging multi-attempt failures
+    arts["attempt_traces"] = [
+        {
+            "attempt": t.attempt,
+            "stage": t.stage,
+            "error": t.error,
+            "dsl_json": t.dsl_json,
+        }
+        for t in meta.attempt_traces
+    ]
     return arts or None
 
 

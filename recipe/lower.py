@@ -172,6 +172,12 @@ class _Lowerer:
                 self._add(PointRotate(id=op.id, center=op.center, source=op.point, angle=angle_rad))
                 self._point_ids.append(op.id)
             case PointOnSegmentOp():
+                if op.segment[0] == op.segment[1]:
+                    raise LoweringError(
+                        f"point_on_segment '{op.id}': both endpoints are the same point "
+                        f"({op.segment[0]!r}). To place a point on a circle, use "
+                        "'intersection' of a 'line_through' with the circle instead."
+                    )
                 self._add(PointBetween(id=op.id, a=op.segment[0], b=op.segment[1], ratio=op.ratio))
                 self._point_ids.append(op.id)
             case TangentLineOp():
@@ -202,18 +208,31 @@ class _Lowerer:
             case MedianOp():
                 self._lower_median(op)
             case PolygonExteriorOp():
+                # Build the full vertex name list for all n vertices.
+                # The LLM may provide either:
+                #   n names  → names for ALL vertices (including base positions)
+                #   n-base_count names → names for the NEW vertices only
+                #   fewer → auto-fill missing with {id}_v{k}
+                base_count = len(op.base)
+                n_new = op.n - base_count
+                user_names = list(op.vertices or [])
+                if len(user_names) == op.n:
+                    # Full vertex list: user is naming all n vertices
+                    all_vertex_names = user_names
+                else:
+                    # New-only (or partial): prefix with base point names, auto-fill gaps
+                    all_vertex_names = list(op.base) + [
+                        user_names[i] if i < len(user_names) else f"{op.id}_v{base_count + i}"
+                        for i in range(n_new)
+                    ]
                 self._add(PolygonExterior(
                     id=op.id, a=op.base[0], b=op.base[1],
                     ref=op.ref_point, sides=op.n,
+                    vertex_names=all_vertex_names,
                 ))
                 self._drawable.add(op.id)
-                # Emit point aliases for user-given vertex names so they can be
-                # referenced in annotations, marks, and other ops.
-                # Base points occupy indices 0..len(base)-1; new vertices start after.
-                base_count = len(op.base)
-                for i, vname in enumerate(op.vertices or []):
-                    auto_name = f"{op.id}_v{base_count + i}"
-                    self._add(PointAlias(id=vname, ref=auto_name))
+                # Register new vertex names as point IDs (coordinates resolved later by SymPy)
+                for vname in all_vertex_names[base_count:]:
                     self._point_ids.append(vname)
             case RectangleOp():
                 self._lower_rectangle(op)

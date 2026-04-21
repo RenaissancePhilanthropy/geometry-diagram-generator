@@ -397,6 +397,7 @@ class PolygonExterior(DefBase):
     b: PointId    # second edge endpoint (polygon vertex 1)
     ref: PointId  # reference point — polygon is placed on the OPPOSITE side
     sides: int = 4  # number of sides (4=square, 3=equilateral triangle)
+    vertex_names: Optional[list[str]] = None  # explicit names for all n vertices; if set, used instead of {id}_v{i}
 
 
 class PointMidpoint(DefBase):

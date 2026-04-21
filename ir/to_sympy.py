@@ -75,10 +75,25 @@ def compile_defs(
     all_ids = {stmt.id for stmt in diagram.define}
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
+    # Build a mapping from polygon sub-vertex names → their parent polygon ID.
+    # PolygonExterior registers sub-vertices in sym as a side effect, so any
+    # DefStmt that references a sub-vertex name needs to depend on the polygon.
+    poly_vertex_to_poly: dict[str, str] = {}
+    for stmt in diagram.define:
+        if isinstance(stmt, ir.PolygonExterior):
+            names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
+            for vname in names:
+                if vname not in all_ids:  # only synthesized names, not real DefStmts
+                    poly_vertex_to_poly[vname] = stmt.id
+
     # Build dependency graph and sort topologically so forward references work.
+    # Substitute polygon sub-vertex refs with their parent polygon so the sort
+    # correctly places the polygon before any statement that uses its vertices.
     graph: dict[str, set[str]] = {}
     for stmt in diagram.define:
-        graph[stmt.id] = def_references(stmt) & all_ids
+        raw_refs = def_references(stmt)
+        resolved = {poly_vertex_to_poly.get(r, r) for r in raw_refs}
+        graph[stmt.id] = resolved & all_ids
 
     try:
         order = list(TopologicalSorter(graph).static_order())
@@ -90,11 +105,15 @@ def compile_defs(
         stmt = stmts_by_id[sid]
         obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
         sym[stmt.id] = obj
-        # PolygonExterior: also register its computed vertices as sub-points
-        # v0=a, v1=b are already in sym; register v2..v_{n-1}
+        # PolygonExterior: also register its computed vertices as sub-points.
+        # Use explicit vertex_names if provided (lowerer fills these); otherwise
+        # fall back to the auto-generated {id}_v{i} pattern.
         if isinstance(stmt, ir.PolygonExterior) and isinstance(obj, spg.Polygon):
             for i, vertex in enumerate(obj.vertices):
-                sub_id = f"{stmt.id}_v{i}"
+                if stmt.vertex_names and i < len(stmt.vertex_names):
+                    sub_id = stmt.vertex_names[i]
+                else:
+                    sub_id = f"{stmt.id}_v{i}"
                 if sub_id not in sym:
                     sym[sub_id] = vertex
 

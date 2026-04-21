@@ -92,7 +92,9 @@ def poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
             return [a, b, c]
         case ir.Polygon(points=pts):
             return list(pts)
-        case ir.PolygonExterior(a=a, b=b, sides=sides):
+        case ir.PolygonExterior(a=a, b=b, sides=sides, vertex_names=vnames):
+            if vnames:
+                return list(vnames)
             verts = [a, b]
             for i in range(2, sides):
                 verts.append(f"{obj_id}_v{i}")

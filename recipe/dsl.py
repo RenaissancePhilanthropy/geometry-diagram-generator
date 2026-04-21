@@ -394,7 +394,7 @@ class PolygonExteriorOp(DSLOpBase):
     base: list[str]   # [P, Q] — edge
     ref_point: str    # polygon placed on opposite side from this point
     n: int            # number of sides (3=equilateral triangle, 4=square)
-    vertices: list[str]  # names for the computed vertices (v2..v_{n-1})
+    vertices: list[str] = Field(default_factory=list)  # names for computed vertices (v2..v_{n-1}); omitted entries get auto-names {id}_v{k}
 
 
 class RegularPolygonOp(DSLOpBase):
@@ -937,13 +937,24 @@ class RecipeDSL(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def check_reserved_ids(cls, data: Any) -> Any:
-        """Reject any construction op whose id starts with '__'."""
+        """Reject any construction op whose id starts with '__', or that references
+        a '__'-prefixed ID in its 'of' field (e.g. intersection targets)."""
         construction = data.get("construction", [])
         for op in construction:
-            if isinstance(op, dict):
-                id_ = op.get("id", "")
-                if isinstance(id_, str) and id_.startswith("__"):
-                    raise ValueError(
-                        f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}"
-                    )
+            if not isinstance(op, dict):
+                continue
+            id_ = op.get("id", "")
+            if isinstance(id_, str) and id_.startswith("__"):
+                raise ValueError(
+                    f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}"
+                )
+            # Also check reference fields that take object IDs
+            of_ = op.get("of")
+            if isinstance(of_, list):
+                for ref in of_:
+                    if isinstance(ref, str) and ref.startswith("__"):
+                        raise ValueError(
+                            f"Op '{id_}': reference {ref!r} in 'of' starts with '__', "
+                            "which is reserved. Use the actual op id (without '__')."
+                        )
         return data
