@@ -1058,3 +1058,27 @@ class TestToposort:
         # C should be the mirror of D over the y-axis (perpendicular bisector of AB)
         assert approx(float(sym["C"].x), 1.0)   # mirrored: -1 -> +1
         assert approx(float(sym["C"].y), 2.0)   # y unchanged
+
+    def test_arc_with_rotation_forward_ref(self):
+        """Arc defined before its end point (a PointRotate) — topo sort must reorder."""
+        from ir.ir import ArcCenterStartEnd
+        import math
+        stmts = [
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),  # B not yet defined
+            PointRotate(id="B", center="O", source="A", angle=math.pi / 4),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert "arc1" in sym
+
+
+# ---------------------------------------------------------------------------
+# def_references for ArcCenterStartEnd
+# ---------------------------------------------------------------------------
+
+def test_def_references_arc_includes_start_end():
+    from ir.refs import def_references
+    from ir.ir import ArcCenterStartEnd
+    refs = def_references(ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"))
+    assert refs == {"O", "A", "B"}
