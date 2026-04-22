@@ -1050,6 +1050,23 @@ def _parse_latex(s: str) -> list[dict]:
                     # \text{...} → plain text (upright)
                     inner, i = _read_braced(s, i)
                     current_text += inner
+                elif cmd == "frac" and i < len(s) and s[i] == "{":
+                    # \frac{num}{den} → Unicode fraction if common, else num/den
+                    num, i = _read_braced(s, i)
+                    if i < len(s) and s[i] == "{":
+                        den, i = _read_braced(s, i)
+                    else:
+                        den = ""
+                    num = _apply_substitutions(num.strip())
+                    den = _apply_substitutions(den.strip())
+                    frac_unicode = {
+                        ("1", "2"): "½", ("1", "3"): "⅓", ("2", "3"): "⅔",
+                        ("1", "4"): "¼", ("3", "4"): "¾", ("1", "5"): "⅕",
+                        ("2", "5"): "⅖", ("3", "5"): "⅗", ("4", "5"): "⅘",
+                        ("1", "6"): "⅙", ("5", "6"): "⅚", ("1", "8"): "⅛",
+                        ("3", "8"): "⅜", ("5", "8"): "⅝", ("7", "8"): "⅞",
+                    }
+                    current_text += frac_unicode.get((num, den), f"{num}/{den}")
                 else:
                     current_text += _LATEX_UNICODE.get(cmd, cmd)
             else:

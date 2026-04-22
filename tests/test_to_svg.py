@@ -729,6 +729,35 @@ def test_parse_latex_inline_dollar_stripped():
     assert "π" in combined
 
 
+def test_parse_latex_frac_unicode():
+    """\\frac{1}{3} should produce the Unicode fraction character ⅓."""
+    result = _parse_latex(r"\frac{1}{3}")
+    combined = "".join(seg["content"] for seg in result)
+    assert combined == "⅓", f"Expected '⅓', got {combined!r}"
+
+
+def test_parse_latex_frac_half():
+    """\\frac{1}{2} should produce ½."""
+    result = _parse_latex(r"\frac{1}{2}")
+    combined = "".join(seg["content"] for seg in result)
+    assert combined == "½", f"Expected '½', got {combined!r}"
+
+
+def test_parse_latex_frac_generic():
+    """\\frac{a}{b} with no Unicode shortcut should produce 'a/b'."""
+    result = _parse_latex(r"\frac{a}{b}")
+    combined = "".join(seg["content"] for seg in result)
+    assert "/" in combined, f"Expected slash in output, got {combined!r}"
+    assert "a" in combined and "b" in combined
+
+
+def test_parse_latex_frac_not_in_output():
+    """'frac' literal text should not appear in \\frac output."""
+    result = _parse_latex(r"\frac{1}{3}")
+    combined = "".join(seg["content"] for seg in result)
+    assert "frac" not in combined, f"'frac' literal found in output: {combined!r}"
+
+
 def test_label_with_subscript_produces_tspan():
     """A label like $p_{center}$ should produce a tspan for the subscript."""
     diagram = DiagramIR(
