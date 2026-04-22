@@ -279,6 +279,32 @@ class RecipeStrategy(SubstanceStrategy):
                         "the first using the same ratios or rotation angles.\n"
                     )
 
+                # Hint B: mark_right_angle geometric check failure
+                if re.search(r"mark_right_angle\(.*?\).*?not 90", last_error):
+                    retry_msg += (
+                        "\nHINT: A mark_right_angle annotation failed because the angle at that"
+                        " vertex is not 90°. The annotation declares an intent — the construction"
+                        " must make it true. Use point_foot to project the point onto the line:"
+                        " `{op: 'point_foot', id: 'X', source: 'P', onto: 'seg_AB'}` guarantees"
+                        " angle P-X-endpoint = 90°. Do not place the foot manually with"
+                        " point_along or fixed coordinates — only point_foot guarantees the right"
+                        " angle.\n"
+                    )
+
+                # Hint C: between-selector mismatch (intersection outside the segment)
+                if re.search(r"beyond|before .+, t≈", last_error):
+                    retry_msg += (
+                        "\nHINT: The intersection exists but is outside the segment"
+                        " (t<0 = before the start point, t>1 = beyond the end point). This"
+                        " usually means the two objects' endpoints are placed so they don't"
+                        " actually cross between the named points. Reposition the endpoints so"
+                        " the two lines/segments genuinely intersect between the selector's"
+                        " reference points. For chords: ensure both chords span the interior of"
+                        " the circle and cross each other. For an angle bisector: verify the"
+                        " vertex angle is what the problem states (check the actual angle in"
+                        " your coords).\n"
+                    )
+
                 retry_msg += "Please produce a corrected RecipeDSL."
                 user_message = retry_msg
 
