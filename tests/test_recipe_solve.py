@@ -116,6 +116,47 @@ def test_ssa_raises_spec_error():
     with pytest.raises(SpecError):
         solve_triangle(["A","B","C"], {"angle_A": 30, "side_AB": 3, "side_BC": 5})
 
+
+def test_ssa_right_angle_leg_and_hypotenuse():
+    """angle_A=90 + adjacent leg + hypotenuse resolves uniquely (not SSA)."""
+    verts = solve_triangle(
+        ["A", "B", "C"],
+        {"angle_A": 90, "side_AB": 12, "side_BC": 18},
+    )
+    A, B, C = verts["A"], verts["B"], verts["C"]
+    assert abs(angle_at(B, A, C) - 90.0) < 1e-4
+    assert abs(dist(A, B) - 12.0) < 1e-6
+    assert abs(dist(B, C) - 18.0) < 1e-6
+    expected_AC = math.sqrt(18**2 - 12**2)
+    assert abs(dist(A, C) - expected_AC) < 1e-4
+
+
+def test_ssa_right_angle_other_vertex():
+    """angle_B=90 + adjacent leg + hypotenuse, different vertex order."""
+    verts = solve_triangle(
+        ["A", "B", "C"],
+        {"angle_B": 90, "side_AB": 5, "side_AC": 13},
+    )
+    A, B, C = verts["A"], verts["B"], verts["C"]
+    assert abs(angle_at(A, B, C) - 90.0) < 1e-4
+    assert abs(dist(A, B) - 5.0) < 1e-6
+    assert abs(dist(A, C) - 13.0) < 1e-6
+
+
+def test_ssa_right_angle_invalid_hypotenuse_too_short():
+    """Hypotenuse shorter than leg should still raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_triangle(
+            ["A", "B", "C"],
+            {"angle_A": 90, "side_AB": 10, "side_BC": 6},  # 6 < 10: impossible
+        )
+
+
+def test_ssa_non_right_angle_still_raises():
+    """Non-90° SSA must still raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_triangle(["A", "B", "C"], {"angle_A": 30, "side_AB": 3, "side_BC": 5})
+
 def test_angle_sum_over_constrained():
     with pytest.raises(SpecError):
         solve_triangle(["A","B","C"], {"angle_A": 90, "angle_B": 90, "side_AB": 3})
