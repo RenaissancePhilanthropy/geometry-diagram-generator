@@ -136,14 +136,15 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default") -> None:
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None) -> None:
         super().__init__(enable_cache=enable_cache)
         self.use_recipes = use_recipes
         self.catalog = catalog
+        self.renderer = renderer
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
-        _renderer = TikZRenderer()
+        _renderer = self.renderer if self.renderer is not None else TikZRenderer()
         _strategy = self
         _last_sym: dict | None = None
         _last_dsl_json: dict | None = None  # last successful DSL for edit context

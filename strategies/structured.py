@@ -112,9 +112,13 @@ class StructureStrategy(SubstanceStrategy):
     error description for up to MAX_RETRIES attempts.
     """
 
+    def __init__(self, enable_cache: bool = False, renderer: Renderer | None = None) -> None:
+        super().__init__(enable_cache=enable_cache)
+        self.renderer = renderer
+
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
-        _renderer = TikZRenderer()  # build_agent always uses the default TikZ renderer
+        _renderer = self.renderer if self.renderer is not None else TikZRenderer()
         _last_sym: dict | None = None  # persisted across tool calls within this agent
         _last_ir: DiagramIR | None = None  # last successful IR for edit context
 
