@@ -1658,3 +1658,53 @@ def test_tangent_at_unknown_circle_raises():
     ])
     with pytest.raises(LoweringError, match="no_such_circle"):
         lower_to_ir(dsl)
+
+
+def test_polygon_on_edge_lowers_to_polygon_on_edge_ir_def():
+    """Edge-anchored mode emits PolygonOnEdge IR def; G is NOT PointFixed."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from ir.ir import PolygonOnEdge, PointFixed
+    ir_out = lower_to_ir(_dsl([
+        PointOp(id="B", coords=[3.0, 0.0]),
+        PointOp(id="C", coords=[8.0, 0.0]),
+        PointOp(id="R", coords=[5.5, -1.0]),  # ref_point below BC
+        PolygonFromAnglesAndSidesOp(
+            id="tri",
+            vertices=["B","C","G"],
+            side_lengths=[5.0, 5.0],   # N-1 = 2 sides (CG and GB)
+            angles=[60.0, 60.0, 60.0],
+            base=["B","C"],
+            ref_point="R",
+        ),
+    ]))
+    pol = [d for d in ir_out.define if isinstance(d, PolygonOnEdge)]
+    assert len(pol) == 1, f"Expected 1 PolygonOnEdge, got {len(pol)}"
+    p = pol[0]
+    assert p.a == "B" and p.b == "C" and p.ref == "R"
+    assert p.vertex_names == ["B","C","G"]
+    assert len(p.side_lengths) == 2  # N-1
+    assert p.claimed_base_length is None  # not provided
+    # G must NOT be a PointFixed
+    fixed_ids = {d.id for d in ir_out.define if isinstance(d, PointFixed)}
+    assert "G" not in fixed_ids
+
+def test_polygon_on_edge_n_side_lengths_sets_claimed_base():
+    """N side_lengths: claimed_base_length set to side_lengths[0]."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from ir.ir import PolygonOnEdge
+    ir_out = lower_to_ir(_dsl([
+        PointOp(id="B", coords=[0.0, 0.0]),
+        PointOp(id="C", coords=[5.0, 0.0]),
+        PointOp(id="R", coords=[2.5, -1.0]),
+        PolygonFromAnglesAndSidesOp(
+            id="tri",
+            vertices=["B","C","G"],
+            side_lengths=[5.0, 5.0, 5.0],  # N=3; side_lengths[0]=5.0 is the claimed base
+            angles=[60.0, 60.0, 60.0],
+            base=["B","C"],
+            ref_point="R",
+        ),
+    ]))
+    pol = [d for d in ir_out.define if isinstance(d, PolygonOnEdge)]
+    assert pol[0].claimed_base_length == 5.0
+    assert len(pol[0].side_lengths) == 2  # non-base sides only in IR

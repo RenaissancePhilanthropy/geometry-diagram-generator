@@ -1082,3 +1082,94 @@ def test_def_references_arc_includes_start_end():
     from ir.ir import ArcCenterStartEnd
     refs = def_references(ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"))
     assert refs == {"O", "A", "B"}
+
+
+# ---------------------------------------------------------------------------
+# PolygonOnEdge compilation
+# ---------------------------------------------------------------------------
+
+def test_polygon_on_edge_equilateral_triangle_above():
+    """Equilateral triangle on AB (ref below) → C above the baseline."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),  # below AB → triangle goes above
+        PolygonOnEdge(
+            id="tri",
+            a="A", b="B", ref="R",
+            vertex_names=["A","B","C"],
+            side_lengths=[5.0, 5.0],   # BC and CA
+            angles=[60.0, 60.0, 60.0],
+        ),
+    ]
+    sym = compile_defs(DiagramIR(define=defs))
+    assert "C" in sym
+    cy = float(sym["C"].y.evalf())
+    assert cy > 0, f"C.y={cy:.4f} should be > 0 (above AB)"
+    # |AC| ≈ 5, |BC| ≈ 5
+    ac = float(sym["A"].distance(sym["C"]).evalf())
+    bc = float(sym["B"].distance(sym["C"]).evalf())
+    assert abs(ac - 5.0) < 1e-3, f"|AC|={ac:.6f}"
+    assert abs(bc - 5.0) < 1e-3, f"|BC|={bc:.6f}"
+
+def test_polygon_on_edge_ref_flips_side():
+    """Flipping ref_point to the other side places the polygon on the other side."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs_ref_below = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0]),
+    ]
+    defs_ref_above = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=1.0),  # above AB
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0]),
+    ]
+    sym_below = compile_defs(DiagramIR(define=defs_ref_below))
+    sym_above = compile_defs(DiagramIR(define=defs_ref_above))
+    cy_ref_below = float(sym_below["C"].y.evalf())
+    cy_ref_above = float(sym_above["C"].y.evalf())
+    assert cy_ref_below > 0, f"ref below → C above: cy={cy_ref_below:.4f}"
+    assert cy_ref_above < 0, f"ref above → C below: cy={cy_ref_above:.4f}"
+
+def test_polygon_on_edge_claimed_base_length_wrong_raises():
+    """Wrong claimed_base_length raises IRCompileError with hint."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    from ir.errors import IRCompileError
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0],
+            claimed_base_length=4.0),  # wrong: actual |AB|=5
+    ]
+    with pytest.raises(IRCompileError, match="Omit side_lengths"):
+        compile_defs(DiagramIR(define=defs))
+
+def test_polygon_on_edge_parallelogram_correct_shape():
+    """Parallelogram anchored to a base edge has correct side lengths."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="para", a="A", b="B", ref="R",
+            vertex_names=["A","B","C","D"],
+            side_lengths=[5.0, 5.0, 5.0],  # BC, CD, DA
+            angles=[100.0, 80.0, 100.0, 80.0]),
+    ]
+    sym = compile_defs(DiagramIR(define=defs))
+    assert "C" in sym and "D" in sym
+    for p1_id, p2_id, expected in [("A","B",5.0),("B","C",5.0),("C","D",5.0),("D","A",5.0)]:
+        d = float(sym[p1_id].distance(sym[p2_id]).evalf())
+        assert abs(d - expected) < 1e-3, f"|{p1_id}{p2_id}|={d:.4f}, expected {expected}"
+

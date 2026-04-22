@@ -20,7 +20,7 @@ from ir.ir import (
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
     ArcCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-    Triangle, Polygon, PolygonExterior,
+    Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
@@ -345,20 +345,55 @@ class _Lowerer:
         self._polygon_vertices[op.id] = list(op.vertices)
 
     def _lower_polygon_from_angles_and_sides(self, op: PolygonFromAnglesAndSidesOp) -> None:
-        try:
-            coords = solve_polygon_from_angles_and_sides(
-                op.vertices, op.side_lengths, op.angles, center=op.center
-            )
-        except Exception as e:
-            raise LoweringError(f"polygon_from_angles_and_sides '{op.id}': {e}") from e
-        for name in op.vertices:
-            x, y = coords[name]
-            self._add(PointFixed(id=name, x=x, y=y))
-            self._point_ids.append(name)
-            self._coord_floats[name] = (x, y)
-        self._add(Polygon(id=op.id, points=list(op.vertices)))
-        self._drawable.add(op.id)
-        self._polygon_vertices[op.id] = list(op.vertices)
+        n = len(op.vertices)
+        # Expand angles: N-1 → N by inferring the last
+        expected_sum = (n - 2) * 180.0
+        angs = list(op.angles)
+        if len(angs) == n - 1:
+            angs.append(expected_sum - sum(angs))
+
+        if op.base is None:
+            # --- Standalone mode: same as before, pass rotation ---
+            try:
+                coords = solve_polygon_from_angles_and_sides(
+                    op.vertices, op.side_lengths, angs, center=op.center, rotation=op.rotation
+                )
+            except Exception as e:
+                raise LoweringError(f"polygon_from_angles_and_sides '{op.id}': {e}") from e
+            for name in op.vertices:
+                x, y = coords[name]
+                self._add(PointFixed(id=name, x=x, y=y))
+                self._point_ids.append(name)
+                self._coord_floats[name] = (x, y)
+            self._add(Polygon(id=op.id, points=list(op.vertices)))
+            self._drawable.add(op.id)
+            self._polygon_vertices[op.id] = list(op.vertices)
+        else:
+            # --- Edge-anchored mode: emit PolygonOnEdge IR def ---
+            sides = list(op.side_lengths)
+            if len(sides) == n:
+                # LLM included the base edge as sides[0]
+                claimed_base = sides[0]
+                non_base_sides = sides[1:]
+            else:
+                # N-1 sides: no base edge provided
+                claimed_base = None
+                non_base_sides = sides  # already N-1
+
+            self._add(PolygonOnEdge(
+                id=op.id,
+                a=op.base[0],
+                b=op.base[1],
+                ref=op.ref_point,
+                vertex_names=list(op.vertices),
+                side_lengths=non_base_sides,
+                angles=angs,
+                claimed_base_length=claimed_base,
+            ))
+            self._drawable.add(op.id)
+            # vertices[0] and [1] already defined; register [2..N-1] as point IDs only
+            for vname in op.vertices[2:]:
+                self._point_ids.append(vname)
 
     def _lower_fill(self, op: FillOp) -> None:
         style_key = self._resolve_style(op.style)

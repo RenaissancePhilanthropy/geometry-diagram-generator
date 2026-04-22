@@ -409,6 +409,7 @@ def solve_polygon_from_angles_and_sides(
     angles: list[float],
     *,
     center: tuple[float, float] | list[float] | None = None,
+    rotation: float = 0.0,
 ) -> dict[str, tuple[float, float]]:
     """Compute vertex positions for a polygon with given consecutive side lengths and interior angles.
 
@@ -489,6 +490,14 @@ def solve_polygon_from_angles_and_sides(
             f"final position ({x:.6f}, {y:.6f}) ≠ (0, 0). "
             "Check that the side lengths and interior angles are geometrically consistent."
         )
+
+    if rotation != 0.0:
+        cos_r = math.cos(math.radians(rotation))
+        sin_r = math.sin(math.radians(rotation))
+        coords = [
+            (x * cos_r - y * sin_r, x * sin_r + y * cos_r)
+            for (x, y) in coords
+        ]
 
     # Translate centroid to target center (default (2, 2))
     cx_target, cy_target = (float(center[0]), float(center[1])) if center is not None else (2.0, 2.0)
