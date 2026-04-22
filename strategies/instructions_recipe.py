@@ -43,6 +43,23 @@ Key rules:
 - point_foot creates a perpendicular foot but does NOT auto-annotate it.
   After each point_foot, add an explicit mark_right_angle with (source, foot, onto-endpoint)
   to make the right angle visible.
+- polygon drawn with 'draw' or auto_draw_all is OUTLINE ONLY (fill: none).
+  To shade/fill a region, add a separate 'fill' op referencing the polygon id:
+    {op: 'polygon', id: 'region', vertices: [...]}
+    {op: 'fill', id: 'shade', obj: 'region', opacity: 0.4}
+- polygon_exterior builds a regular polygon on the EXTERIOR of base edge [P,Q]
+  (on the opposite side from ref_point). Use it for equilateral triangles or squares
+  erected OUTSIDE a triangle side — not for corner squares inscribed at a vertex.
+- To draw a small square inscribed at a right-angle corner vertex V with legs VA and VC:
+    point_along V→A by δ → S1
+    point_along V→C by δ → S3
+    perpendicular to seg_VA through S1 → perp1
+    perpendicular to seg_VC through S3 → perp2
+    intersection of perp1 and perp2 → S2   (the opposite corner)
+    polygon [V, S1, S2, S3] + optional fill
+  Then label S2 or the polygon centroid with the label text.
+  For the shortest distance from S2 to a line L: point_foot from S2 onto L → foot,
+  draw segment S2→foot, label it.
 - incircle and circumcircle require a triangle op — the 'of' field must reference an object
   created by a 'triangle' op. Polygons and rectangles are not accepted even if 3-sided.
 
