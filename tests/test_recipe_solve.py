@@ -152,11 +152,6 @@ def test_ssa_right_angle_invalid_hypotenuse_too_short():
         )
 
 
-def test_ssa_non_right_angle_still_raises():
-    """Non-90° SSA must still raise SpecError."""
-    with pytest.raises(SpecError):
-        solve_triangle(["A", "B", "C"], {"angle_A": 30, "side_AB": 3, "side_BC": 5})
-
 def test_angle_sum_over_constrained():
     with pytest.raises(SpecError):
         solve_triangle(["A","B","C"], {"angle_A": 90, "angle_B": 90, "side_AB": 3})

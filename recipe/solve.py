@@ -3,8 +3,9 @@
 
 Converts geometry spec dicts into concrete vertex coordinates (x, y).
 
-Triangle solver: supports AAS, SAS, SSS, ASA, and right_angle_at+two_sides.
-SSA is explicitly not supported (raises SpecError).
+Triangle solver: supports AAS, SAS, SSS, ASA, right_angle_at+two_sides, and
+right-angle SSA (angle=90 with one adjacent leg and the hypotenuse, which is
+uniquely determined). General SSA (non-right-angle) raises SpecError.
 Layout: vertex[0] at origin on positive x-axis, vertex[1] at (side_AB, 0),
 vertex[2] above x-axis. Then translate so centroid ≈ (2, 2).
 
