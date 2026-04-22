@@ -601,7 +601,24 @@ def _apply_pick(
             seg = spg.Segment(a_pt, b_pt)
             between = [p for p in points if seg.contains(p)]
             if not between:
-                raise PickError(def_id, f"no candidate lies between {a_id!r} and {b_id!r}")
+                direction = b_pt - a_pt
+                seg_len_sq = float((direction.x**2 + direction.y**2).evalf())
+                def _param(p) -> float:
+                    if seg_len_sq < 1e-12:
+                        return 0.0
+                    dp = p - a_pt
+                    return float((dp.x * direction.x + dp.y * direction.y).evalf()) / seg_len_sq
+
+                if points:
+                    ts = [_param(p) for p in points]
+                    nearest_t = min(ts, key=lambda t: min(abs(t), abs(t - 1)))
+                    if nearest_t < 0:
+                        extra = f" (nearest candidate is before {a_id!r}, t\u2248{nearest_t:.2f})"
+                    else:
+                        extra = f" (nearest candidate is beyond {b_id!r}, t\u2248{nearest_t:.2f})"
+                else:
+                    extra = " (no intersection candidates at all)"
+                raise PickError(def_id, f"no candidate lies between {a_id!r} and {b_id!r}{extra}")
             return between[0]
 
         case ir.PickBeyond(from_point=from_id, past_point=past_id):
