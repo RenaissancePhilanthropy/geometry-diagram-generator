@@ -230,6 +230,8 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
 - median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
 - polygon_exterior: {op, id, base:[P,Q], ref_point, n, vertices:[v2,...]}
   n=4 for square, n=3 for equilateral triangle
+- polygon_from_angles_and_sides: {op, id, vertices:[A,B,...], side_lengths:[...], angles:[...], center?:[x,y]}
+  Polygon placed by turtle-graphics: side_lengths[i] from vertices[i] to vertices[(i+1)%N]; angles[i] is interior angle at vertices[i] in degrees. Sum of angles must equal (N-2)*180. Use when the problem specifies BOTH side lengths AND interior angles (e.g. a parallelogram with a given angle, a trapezoid with specific angles). Unlike polygon_from_sides, this preserves exact angle relationships.
 
 ## Derived ops (direct IR mapping)
 - midpoint: {op, id, of:[P,Q]}
@@ -310,6 +312,8 @@ Examples:
 ## Layout — multiple figures
 Side-by-side: use separate constructions with offset centers and a wide canvas.
   E.g., two triangles: first at center:[1.5,2], second at center:[5.5,2], canvas width≥8.
+  triangle, polygon_from_sides, and polygon_from_angles_and_sides all support center:[x,y].
+  Each op must use distinct vertex names across all shapes in the diagram.
 
 ## checks (optional)
 

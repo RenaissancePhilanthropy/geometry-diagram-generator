@@ -576,3 +576,74 @@ def test_recipe_dsl_checks_rejects_unknown_kind():
             construction=[PointOp(id="A", coords=[0, 0])],
             checks=[{"check": "nonexistent_kind", "foo": "bar"}],
         )
+
+
+# ---- PolygonFromAnglesAndSidesOp ----
+
+def test_polygon_from_angles_and_sides_op_parses():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="para",
+        vertices=["E", "F", "G", "H"],
+        side_lengths=[5.0, 5.0, 5.0, 5.0],
+        angles=[100.0, 80.0, 100.0, 80.0],
+    )
+    assert op.op == "polygon_from_angles_and_sides"
+    assert op.vertices == ["E", "F", "G", "H"]
+    assert op.side_lengths == [5.0, 5.0, 5.0, 5.0]
+    assert op.angles == [100.0, 80.0, 100.0, 80.0]
+    assert op.center is None
+
+
+def test_polygon_from_angles_and_sides_op_n_minus_1_angles_valid():
+    """N-1 angles accepted — last is inferred from sum constraint."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="para",
+        vertices=["E", "F", "G", "H"],
+        side_lengths=[5.0, 5.0, 5.0, 5.0],
+        angles=[100.0, 80.0, 100.0],  # 3 angles for 4 vertices — valid
+    )
+    assert len(op.angles) == 3
+
+
+def test_polygon_from_angles_and_sides_op_too_few_angles_raises():
+    """N-2 angles (< N-1) should raise ValidationError."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[90.0, 90.0],  # 2 angles for 4 vertices — too few
+        )
+
+
+def test_polygon_from_angles_and_sides_op_too_many_angles_raises():
+    """N+1 angles should raise ValidationError."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[90.0, 90.0, 90.0, 90.0, 90.0],  # 5 angles for 4 vertices
+        )
+
+
+def test_polygon_from_angles_and_sides_op_roundtrips_json():
+    """DSLOp union parses polygon_from_angles_and_sides from raw dict."""
+    from recipe.dsl import RecipeDSL
+    raw = {
+        "construction": [{
+            "op": "polygon_from_angles_and_sides",
+            "id": "para",
+            "vertices": ["E", "F", "G", "H"],
+            "side_lengths": [5.0, 5.0, 5.0, 5.0],
+            "angles": [100.0, 80.0, 100.0, 80.0],
+        }]
+    }
+    dsl = RecipeDSL.model_validate(raw)
+    op = dsl.construction[0]
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    assert isinstance(op, PolygonFromAnglesAndSidesOp)

@@ -37,7 +37,7 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
-    RectangleOp, PolygonFromSidesOp, FillOp, ArcOp,
+    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
@@ -45,7 +45,7 @@ from recipe.dsl import (
     LabelFreeText as DSLLabelFreeText,
     DrawObj,
 )
-from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides
+from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
 
 
 class LoweringError(ValueError):
@@ -243,6 +243,8 @@ class _Lowerer:
                 self._lower_rectangle(op)
             case PolygonFromSidesOp():
                 self._lower_polygon_from_sides(op)
+            case PolygonFromAnglesAndSidesOp():
+                self._lower_polygon_from_angles_and_sides(op)
             case ArcOp():
                 self._add(ArcCenterStartEnd(
                     id=op.id, center=op.center, start=op.start, end=op.end,
@@ -333,6 +335,22 @@ class _Lowerer:
             coords = solve_polygon_from_sides(op.vertices, op.side_lengths, center=op.center)
         except Exception as e:
             raise LoweringError(f"polygon_from_sides '{op.id}': {e}") from e
+        for name in op.vertices:
+            x, y = coords[name]
+            self._add(PointFixed(id=name, x=x, y=y))
+            self._point_ids.append(name)
+            self._coord_floats[name] = (x, y)
+        self._add(Polygon(id=op.id, points=list(op.vertices)))
+        self._drawable.add(op.id)
+        self._polygon_vertices[op.id] = list(op.vertices)
+
+    def _lower_polygon_from_angles_and_sides(self, op: PolygonFromAnglesAndSidesOp) -> None:
+        try:
+            coords = solve_polygon_from_angles_and_sides(
+                op.vertices, op.side_lengths, op.angles, center=op.center
+            )
+        except Exception as e:
+            raise LoweringError(f"polygon_from_angles_and_sides '{op.id}': {e}") from e
         for name in op.vertices:
             x, y = coords[name]
             self._add(PointFixed(id=name, x=x, y=y))
