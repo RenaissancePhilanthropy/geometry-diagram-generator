@@ -559,6 +559,52 @@ class PolygonFromSidesOp(DSLOpBase):
         return self
 
 
+class PolygonFromAnglesAndSidesOp(DSLOpBase):
+    """Polygon constructed from consecutive side lengths AND interior angles.
+
+    Uses turtle-graphics placement: vertex[0] at origin, heading east, walking
+    each side and turning left by the exterior angle at each successive vertex.
+
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    angles[i] = interior angle (degrees) at vertices[i].
+
+    angles may have N or N-1 entries:
+      N entries: validated to sum to (N-2)*180.
+      N-1 entries: the last angle is inferred from the sum constraint.
+    More than N or fewer than N-1 angles is an error.
+    """
+    op: Literal["polygon_from_angles_and_sides"] = "polygon_from_angles_and_sides"
+    vertices: list[str]
+    side_lengths: list[float]
+    angles: list[float]
+    center: Optional[list[float]] = None
+
+    @model_validator(mode="after")
+    def _check_counts_match(self) -> "PolygonFromAnglesAndSidesOp":
+        n = len(self.vertices)
+        if n < 3:
+            raise ValueError(
+                f"polygon_from_angles_and_sides requires at least 3 vertices, got {n}"
+            )
+        if len(self.side_lengths) != n:
+            raise ValueError(
+                f"polygon_from_angles_and_sides: len(vertices)={n} "
+                f"must equal len(side_lengths)={len(self.side_lengths)}"
+            )
+        na = len(self.angles)
+        if na > n:
+            raise ValueError(
+                f"polygon_from_angles_and_sides: len(angles)={na} exceeds "
+                f"len(vertices)={n}; provide at most N angles"
+            )
+        if na < n - 1:
+            raise ValueError(
+                f"polygon_from_angles_and_sides: len(angles)={na} is too few for "
+                f"{n} vertices; provide N-1 (last inferred) or N angles"
+            )
+        return self
+
+
 class ArcOp(DSLOpBase):
     """Circular arc from ``start`` CCW to the ray through ``end``.
 
@@ -617,7 +663,7 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, ArcOp,
+        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
         # Render-only

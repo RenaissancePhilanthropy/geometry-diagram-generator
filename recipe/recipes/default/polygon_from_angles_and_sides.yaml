@@ -1,0 +1,35 @@
+name: polygon_from_angles_and_sides
+description: "Polygon with specified side lengths AND interior angles (parallelogram, trapezoid, etc.)"
+tags: [polygon, sides, angles, parallelogram, intermediate]
+context: "Given a polygon with specified consecutive side lengths and interior angles."
+example:
+  mode: abstract
+  construction:
+    - op: polygon_from_angles_and_sides
+      id: para
+      vertices: [E, F, G, H]
+      side_lengths: [5, 5, 5, 5]
+      angles: [100, 80, 100, 80]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    labels:
+      - kind: label_segment
+        endpoints: [E, F]
+        text: "5"
+      - kind: label_segment
+        endpoints: [F, G]
+        text: "5"
+      - kind: label_angle
+        a: E
+        vertex: F
+        b: G
+        text: "80°"
+notes:
+  - "side_lengths[i] is the distance from vertices[i] to vertices[(i+1) % N]"
+  - "angles[i] is the interior angle in degrees at vertices[i]"
+  - "Sum of angles MUST equal (N-2)*180: for quadrilaterals 360°, triangles 180°, pentagons 540°"
+  - "For a parallelogram with angle α: opposite angles are equal, adjacent angles sum to 180°. Provide all 4 angles, e.g. [180-α, α, 180-α, α]"
+  - "Use this recipe instead of polygon_from_sides whenever the problem specifies interior angles"
+  - "Vertices are placed starting from vertices[0] at the origin going east; centroid is then translated to the canvas center"
+  - "For diagrams with multiple shapes, set center:[x,y] on each op to separate them (e.g. center:[2,2] and center:[7,2]) and use a wide canvas. Each op must use distinct vertex names."

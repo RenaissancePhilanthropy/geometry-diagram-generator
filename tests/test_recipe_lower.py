@@ -1312,6 +1312,28 @@ def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
         assert v in ids
 
 
+def test_polygon_from_angles_and_sides_lowers_to_n_point_fixed_and_polygon():
+    """polygon_from_angles_and_sides emits N PointFixed defs + 1 Polygon def."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    ir = lower_to_ir(_dsl([
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[100.0, 80.0, 100.0, 80.0],
+        ),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].id == "para"
+    assert polygons[0].points == ["E", "F", "G", "H"]
+    ids = _ids(ir)
+    for v in ["E", "F", "G", "H"]:
+        assert v in ids
+
+
 # ---------------------------------------------------------------------------
 # Label pos field lowering
 # ---------------------------------------------------------------------------

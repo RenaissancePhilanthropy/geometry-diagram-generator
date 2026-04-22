@@ -361,3 +361,139 @@ def test_polygon_from_sides_mismatched_counts():
     """len(vertices) != len(side_lengths) should raise SpecError."""
     with pytest.raises(SpecError):
         solve_polygon_from_sides(["A", "B", "C"], [3, 4])
+
+
+# ---------------------------------------------------------------------------
+# solve_polygon_from_angles_and_sides
+# ---------------------------------------------------------------------------
+
+from recipe.solve import solve_polygon_from_angles_and_sides
+
+
+def test_pfa_parallelogram_side_lengths():
+    """Parallelogram EFGH sides 5,5,5,5 angle 80 at F — all sides ≈ 5."""
+    verts = ["E", "F", "G", "H"]
+    sides = [5.0, 5.0, 5.0, 5.0]
+    angles = [100.0, 80.0, 100.0, 80.0]  # sum=360=(4-2)*180
+    coords = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    for i, s in enumerate(sides):
+        p1 = coords[verts[i]]
+        p2 = coords[verts[(i + 1) % 4]]
+        assert abs(dist(p1, p2) - s) < 1e-6, f"side {i} expected {s}, got {dist(p1, p2)}"
+
+
+def test_pfa_parallelogram_parallel_sides():
+    """Opposite sides of the parallelogram must be parallel (same direction vector)."""
+    import math
+    verts = ["E", "F", "G", "H"]
+    sides = [5.0, 5.0, 5.0, 5.0]
+    angles = [100.0, 80.0, 100.0, 80.0]
+    coords = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    E, F, G, H = coords["E"], coords["F"], coords["G"], coords["H"]
+    # EF and HG should be parallel: cross product of direction vectors ≈ 0
+    ef = (F[0]-E[0], F[1]-E[1])
+    hg = (G[0]-H[0], G[1]-H[1])
+    cross = ef[0]*hg[1] - ef[1]*hg[0]
+    assert abs(cross) < 1e-6, f"EF not parallel to HG, cross={cross}"
+    # FG and EH should be parallel
+    fg = (G[0]-F[0], G[1]-F[1])
+    eh = (H[0]-E[0], H[1]-E[1])
+    cross2 = fg[0]*eh[1] - fg[1]*eh[0]
+    assert abs(cross2) < 1e-6, f"FG not parallel to EH, cross={cross2}"
+
+
+def test_pfa_rectangle_right_angles():
+    """Rectangle — all four interior angles should be 90°."""
+    import math
+    verts = ["A", "B", "C", "D"]
+    sides = [4.0, 3.0, 4.0, 3.0]
+    angles = [90.0, 90.0, 90.0, 90.0]
+    coords = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    for i in range(4):
+        p_prev = coords[verts[(i - 1) % 4]]
+        p = coords[verts[i]]
+        p_next = coords[verts[(i + 1) % 4]]
+        v1 = (p_prev[0]-p[0], p_prev[1]-p[1])
+        v2 = (p_next[0]-p[0], p_next[1]-p[1])
+        dot = v1[0]*v2[0] + v1[1]*v2[1]
+        mag = math.sqrt(v1[0]**2+v1[1]**2) * math.sqrt(v2[0]**2+v2[1]**2)
+        angle = math.degrees(math.acos(max(-1.0, min(1.0, dot/mag))))
+        assert abs(angle - 90.0) < 1e-6, f"angle at {verts[i]} = {angle}"
+
+
+def test_pfa_right_triangle_closure():
+    """3-4-5 right triangle (right angle at A) closes correctly."""
+    import math
+    verts = ["A", "B", "C"]
+    sides = [3.0, 5.0, 4.0]  # AB=3, BC=5, CA=4
+    angle_B = math.degrees(math.asin(4/5))  # ≈53.13
+    angle_C = math.degrees(math.asin(3/5))  # ≈36.87
+    angles = [90.0, angle_B, angle_C]
+    coords = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    # Verify right angle at A
+    A, B, C = coords["A"], coords["B"], coords["C"]
+    v1 = (C[0]-A[0], C[1]-A[1])
+    v2 = (B[0]-A[0], B[1]-A[1])
+    dot = v1[0]*v2[0] + v1[1]*v2[1]
+    assert abs(dot) < 1e-6, f"angle at A not 90°, dot={dot}"
+
+
+def test_pfa_centroid_at_custom_center():
+    """Centroid should land at the requested center."""
+    verts = ["A", "B", "C", "D"]
+    sides = [5.0, 5.0, 5.0, 5.0]
+    angles = [100.0, 80.0, 100.0, 80.0]
+    coords = solve_polygon_from_angles_and_sides(verts, sides, angles, center=[7.0, -1.0])
+    xs = [coords[v][0] for v in verts]
+    ys = [coords[v][1] for v in verts]
+    assert abs(sum(xs)/4 - 7.0) < 1e-6
+    assert abs(sum(ys)/4 - (-1.0)) < 1e-6
+
+
+def test_pfa_bad_angle_sum_raises():
+    """Angles not summing to (N-2)*180 should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_angles_and_sides(
+            ["A", "B", "C", "D"], [5, 5, 5, 5], [90, 90, 90, 91]
+        )
+
+
+def test_pfa_inconsistent_sides_and_angles_raises():
+    """Angles sum correctly but don't match side lengths — closure check must raise."""
+    with pytest.raises(SpecError):
+        # Equilateral-angle triangle (60,60,60) but 3-4-5 sides → won't close
+        solve_polygon_from_angles_and_sides(
+            ["A", "B", "C"], [3.0, 4.0, 5.0], [60.0, 60.0, 60.0]
+        )
+
+
+def test_pfa_too_few_vertices_raises():
+    with pytest.raises(SpecError):
+        solve_polygon_from_angles_and_sides(["A", "B"], [3.0, 4.0], [90.0, 90.0])
+
+
+def test_pfa_n_minus_1_angles_infers_last():
+    """N-1 angles: last angle inferred from sum; result matches N-angle call."""
+    verts = ["E", "F", "G", "H"]
+    sides = [5.0, 5.0, 5.0, 5.0]
+    full = solve_polygon_from_angles_and_sides(verts, sides, [100.0, 80.0, 100.0, 80.0])
+    partial = solve_polygon_from_angles_and_sides(verts, sides, [100.0, 80.0, 100.0])
+    for v in verts:
+        assert abs(full[v][0] - partial[v][0]) < 1e-6
+        assert abs(full[v][1] - partial[v][1]) < 1e-6
+
+
+def test_pfa_too_few_angles_raises():
+    """N-2 angles (< N-1) should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_angles_and_sides(
+            ["A", "B", "C"], [3.0, 4.0, 5.0], [60.0]  # only 1 angle for 3 vertices
+        )
+
+
+def test_pfa_too_many_angles_raises():
+    """N+1 angles should raise SpecError."""
+    with pytest.raises(SpecError):
+        solve_polygon_from_angles_and_sides(
+            ["A", "B", "C"], [3.0, 4.0, 5.0], [60.0, 60.0, 60.0, 60.0]
+        )

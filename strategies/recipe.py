@@ -291,7 +291,18 @@ class RecipeStrategy(SubstanceStrategy):
                         " angle.\n"
                     )
 
-                # Hint C: between-selector mismatch (intersection outside the segment)
+                # Hint C: circular dependency caused by triangle id matching a vertex name
+                if re.search(r"[Cc]ircular dependency.*nodes are in a cycle", last_error):
+                    retry_msg += (
+                        "\nHINT: A circular dependency was detected — this almost always means a"
+                        " triangle (or other shape) op has an `id` that is the same as one of its"
+                        " own vertex names. For example, `{op:'triangle', id:'T', vertices:['R','S','T']}`"
+                        " creates a cycle because the shape object and vertex point share the id 'T'."
+                        " Fix: give the triangle a distinct id that does not appear in its vertices"
+                        " list, e.g. `id:'tri_RST'`.\n"
+                    )
+
+                # Hint D: between-selector mismatch (intersection outside the segment)
                 if re.search(r"beyond|before .+, t≈", last_error):
                     retry_msg += (
                         "\nHINT: The intersection exists but is outside the segment"

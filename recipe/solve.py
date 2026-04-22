@@ -400,6 +400,105 @@ def solve_polygon_from_sides(
 
 
 # ---------------------------------------------------------------------------
+# Polygon-from-angles-and-sides solver
+# ---------------------------------------------------------------------------
+
+def solve_polygon_from_angles_and_sides(
+    vertices: list[str],
+    side_lengths: list[float],
+    angles: list[float],
+    *,
+    center: tuple[float, float] | list[float] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Compute vertex positions for a polygon with given consecutive side lengths and interior angles.
+
+    Uses turtle-graphics: start at (0,0) heading east, walk each side, turn left
+    by the exterior angle at each successive vertex.
+
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    angles[i] = interior angle (degrees) at vertices[i].
+
+    angles may have N or N-1 entries:
+      N entries: validated to sum to (N-2)*180.
+      N-1 entries: the last angle is inferred from the sum constraint.
+    Providing more than N or fewer than N-1 angles raises SpecError.
+
+    Returns dict mapping vertex name → (x, y).
+    Raises SpecError if inputs are invalid or the polygon doesn't close.
+    """
+    n = len(vertices)
+    if n < 3:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides requires at least 3 vertices, got {n}"
+        )
+    if len(side_lengths) != n:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(side_lengths)={len(side_lengths)} "
+            f"must equal len(vertices)={n}"
+        )
+    na = len(angles)
+    if na > n:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(angles)={na} exceeds "
+            f"len(vertices)={n}; provide at most N angles"
+        )
+    if na < n - 1:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(angles)={na} is too few for "
+            f"{n} vertices; provide N-1 (last inferred) or N angles"
+        )
+    sides = [float(s) for s in side_lengths]
+    angs = [float(a) for a in angles]
+    if any(s <= 0 for s in sides):
+        raise SpecError("solve_polygon_from_angles_and_sides: all side lengths must be positive")
+    expected_sum = (n - 2) * 180.0
+    if na == n - 1:
+        inferred = expected_sum - sum(angs)
+        if inferred <= 0:
+            raise SpecError(
+                f"solve_polygon_from_angles_and_sides: inferred last angle={inferred:.3f}° ≤ 0; "
+                "check that the provided N-1 angles are valid"
+            )
+        angs.append(inferred)
+    else:
+        actual_sum = sum(angs)
+        if abs(actual_sum - expected_sum) > 0.5:
+            raise SpecError(
+                f"solve_polygon_from_angles_and_sides: interior angles sum to {actual_sum:.3f}°, "
+                f"expected {expected_sum:.1f}° for a {n}-gon"
+            )
+
+    # Turtle-graphics walk
+    x, y = 0.0, 0.0
+    heading = 0.0  # degrees, east
+    coords: list[tuple[float, float]] = []
+    for i in range(n):
+        coords.append((x, y))
+        dx = sides[i] * math.cos(math.radians(heading))
+        dy = sides[i] * math.sin(math.radians(heading))
+        x += dx
+        y += dy
+        # Turn left by exterior angle at the next vertex
+        exterior = 180.0 - angs[(i + 1) % n]
+        heading += exterior
+
+    # Closure check
+    if abs(x) > 1e-6 or abs(y) > 1e-6:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: polygon does not close — "
+            f"final position ({x:.6f}, {y:.6f}) ≠ (0, 0). "
+            "Check that the side lengths and interior angles are geometrically consistent."
+        )
+
+    # Translate centroid to target center (default (2, 2))
+    cx_target, cy_target = (float(center[0]), float(center[1])) if center is not None else (2.0, 2.0)
+    cx = sum(p[0] for p in coords) / n
+    cy = sum(p[1] for p in coords) / n
+    dx_off, dy_off = cx_target - cx, cy_target - cy
+    return {vertices[i]: (coords[i][0] + dx_off, coords[i][1] + dy_off) for i in range(n)}
+
+
+# ---------------------------------------------------------------------------
 # Rectangle solver
 # ---------------------------------------------------------------------------
 
