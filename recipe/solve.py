@@ -152,12 +152,40 @@ def solve_triangle(
             s1 = _get_side(ang_vertex, other_verts[0])
             s2 = _get_side(ang_vertex, other_verts[1])
             if None in (s1, s2):
-                # One or both sides don't meet ang_vertex → SSA (ambiguous)
-                raise SpecError(
-                    "SSA (two sides + non-included angle) is ambiguous; "
-                    "use AAS, SAS, SSS, or ASA instead"
-                )
-            result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
+                # One side doesn't meet ang_vertex → potential SSA.
+                # Special case: if the angle is 90° and the non-adjacent side is the
+                # hypotenuse (opposite ang_vertex), compute the missing leg via
+                # Pythagorean theorem and reduce to right_angle_at.
+                if abs(ang_val - 90.0) < _TOL:
+                    hyp = _get_side(other_verts[0], other_verts[1])
+                    leg = s1 if s1 is not None else s2
+                    adj_vert = other_verts[0] if s1 is not None else other_verts[1]
+                    missing_vert = other_verts[1] if s1 is not None else other_verts[0]
+                    if hyp is not None and leg is not None:
+                        if hyp <= leg:
+                            raise SpecError(
+                                f"right triangle: hypotenuse ({hyp}) must be longer than leg ({leg})"
+                            )
+                        missing_leg = math.sqrt(hyp**2 - leg**2)
+                        ra_spec = {
+                            "right_angle_at": ang_vertex,
+                            f"side_{ang_vertex}{adj_vert}": leg,
+                            f"side_{ang_vertex}{missing_vert}": missing_leg,
+                        }
+                        result = _solve_right_angle_at(vertices, ra_spec)
+                    else:
+                        raise SpecError(
+                            "SSA (two sides + non-included angle) is ambiguous; "
+                            "use AAS, SAS, SSS, or ASA instead"
+                        )
+                else:
+                    # One or both sides don't meet ang_vertex → SSA (ambiguous)
+                    raise SpecError(
+                        "SSA (two sides + non-included angle) is ambiguous; "
+                        "use AAS, SAS, SSS, or ASA instead"
+                    )
+            else:
+                result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
 
         else:
             raise SpecError(
