@@ -497,3 +497,40 @@ def test_pfa_too_many_angles_raises():
         solve_polygon_from_angles_and_sides(
             ["A", "B", "C"], [3.0, 4.0, 5.0], [60.0, 60.0, 60.0, 60.0]
         )
+
+
+def test_pfa_rotation_zero_unchanged():
+    """rotation=0 produces same result as no rotation parameter."""
+    verts = ["A","B","C","D"]
+    sides = [5.0,5.0,5.0,5.0]
+    angles = [100.0,80.0,100.0,80.0]
+    no_rot = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    with_rot = solve_polygon_from_angles_and_sides(verts, sides, angles, rotation=0.0)
+    for v in verts:
+        assert abs(no_rot[v][0] - with_rot[v][0]) < 1e-9
+        assert abs(no_rot[v][1] - with_rot[v][1]) < 1e-9
+
+def test_pfa_rotation_90_preserves_sides_and_centroid():
+    """rotation=90 preserves side lengths and centroid position."""
+    import math as _math
+    verts = ["A","B","C","D"]
+    sides = [5.0,5.0,5.0,5.0]
+    angles = [100.0,80.0,100.0,80.0]
+    base = solve_polygon_from_angles_and_sides(verts, sides, angles)
+    rotated = solve_polygon_from_angles_and_sides(verts, sides, angles, rotation=90.0)
+    # centroid unchanged
+    for coord in (0,1):
+        bc = sum(base[v][coord] for v in verts)/4
+        rc = sum(rotated[v][coord] for v in verts)/4
+        assert abs(bc - rc) < 1e-6, f"centroid coord {coord}: {bc} vs {rc}"
+    # side lengths preserved
+    for i in range(4):
+        p1 = rotated[verts[i]]; p2 = rotated[verts[(i+1)%4]]
+        assert abs(dist(p1,p2) - sides[i]) < 1e-6
+    # vertex A rotated 90° CCW relative to centroid
+    cx = sum(base[v][0] for v in verts)/4
+    cy = sum(base[v][1] for v in verts)/4
+    base_angle = _math.atan2(base["A"][1]-cy, base["A"][0]-cx)
+    rot_angle  = _math.atan2(rotated["A"][1]-cy, rotated["A"][0]-cx)
+    delta = (rot_angle - base_angle) % (2*_math.pi)
+    assert abs(delta - _math.pi/2) < 1e-5, f"rotation delta={_math.degrees(delta):.4f}°"

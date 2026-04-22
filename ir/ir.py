@@ -400,6 +400,30 @@ class PolygonExterior(DefBase):
     vertex_names: Optional[list[str]] = None  # explicit names for all n vertices; if set, used instead of {id}_v{i}
 
 
+class PolygonOnEdge(DefBase):
+    """Irregular polygon built on edge (a→b), placed on the opposite side from ref.
+
+    Analogous to PolygonExterior but supports arbitrary side lengths and angles.
+
+    vertex_names: all N vertex names ([0]=a, [1]=b, [2..N-1]=new vertices)
+    side_lengths: exactly N-1 values (non-base sides):
+        side_lengths[0] = b→vertices[2]
+        side_lengths[1] = vertices[2]→vertices[3]
+        ...
+        side_lengths[N-2] = vertices[N-1]→a  (closing side)
+    angles: N values (fully expanded), sum = (N-2)*180
+    claimed_base_length: if set, validated against |a-b| at compile time
+    """
+    kind: Literal["polygon_on_edge"] = "polygon_on_edge"
+    a: PointId
+    b: PointId
+    ref: PointId
+    vertex_names: list[str]
+    side_lengths: list[float]    # N-1 non-base sides
+    angles: list[float]          # N angles
+    claimed_base_length: Optional[float] = None
+
+
 class PointMidpoint(DefBase):
     """Midpoint of segment PQ. Semantic sugar over PointOn(param=0.5)."""
     kind: Literal["point_midpoint"] = "point_midpoint"
@@ -496,7 +520,7 @@ DefStmt = Annotated[
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
         ArcCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-        Triangle, Polygon, PolygonExterior,
+        Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     ],
     Field(discriminator="kind")
 ]

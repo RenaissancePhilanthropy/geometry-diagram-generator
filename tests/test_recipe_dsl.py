@@ -647,3 +647,86 @@ def test_polygon_from_angles_and_sides_op_roundtrips_json():
     op = dsl.construction[0]
     from recipe.dsl import PolygonFromAnglesAndSidesOp
     assert isinstance(op, PolygonFromAnglesAndSidesOp)
+
+
+def test_pfas_base_and_ref_point_valid():
+    """base + ref_point accepted; side_lengths can be N-1 (omit base edge)."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="pent",
+        vertices=["B","C","G","H","I"],
+        side_lengths=[5.0, 4.0, 4.0, 4.0],  # N-1 = 4, no base edge
+        angles=[108.0, 108.0, 108.0, 108.0],  # N-1, last inferred
+        base=["B","C"],
+        ref_point="X",
+    )
+    assert op.base == ["B","C"]
+    assert op.ref_point == "X"
+    assert len(op.side_lengths) == 4
+
+def test_pfas_base_n_side_lengths_accepted():
+    """base + N side_lengths: side_lengths[0] is the claimed base edge length."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="pent",
+        vertices=["B","C","G","H","I"],
+        side_lengths=[5.0, 5.0, 4.0, 4.0, 4.0],  # N = 5, includes base edge
+        angles=[108.0, 108.0, 108.0, 108.0],
+        base=["B","C"],
+        ref_point="X",
+    )
+    assert len(op.side_lengths) == 5
+
+def test_pfas_base_without_ref_point_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"],
+        )
+
+def test_pfas_base_with_center_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="X",
+            center=[2.0, 2.0],
+        )
+
+def test_pfas_base_with_rotation_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="X",
+            rotation=15.0,
+        )
+
+def test_pfas_base_vertices_must_start_with_base():
+    """vertices[0:2] must equal base[0:2]."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["X","Y","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="R",
+        )
+
+def test_pfas_base_too_few_side_lengths_raises():
+    """N-2 side_lengths with base is too few (need N-1 or N)."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0],  # N-2 = 3, too few
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="R",
+        )

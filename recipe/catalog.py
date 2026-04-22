@@ -230,8 +230,12 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
 - median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
 - polygon_exterior: {op, id, base:[P,Q], ref_point, n, vertices:[v2,...]}
   n=4 for square, n=3 for equilateral triangle
-- polygon_from_angles_and_sides: {op, id, vertices:[A,B,...], side_lengths:[...], angles:[...], center?:[x,y]}
-  Polygon placed by turtle-graphics: side_lengths[i] from vertices[i] to vertices[(i+1)%N]; angles[i] is interior angle at vertices[i] in degrees. Sum of angles must equal (N-2)*180. Use when the problem specifies BOTH side lengths AND interior angles (e.g. a parallelogram with a given angle, a trapezoid with specific angles). Unlike polygon_from_sides, this preserves exact angle relationships.
+- polygon_from_angles_and_sides: {op, id, vertices:[A,B,...], side_lengths:[...], angles:[...], center?:[x,y], rotation?:degrees}
+  Standalone mode: side_lengths N values, angles N or N-1. Optional rotation (degrees CCW) spins the shape before centering.
+  Edge-anchored mode: add base:[P,Q] (must equal vertices[0:2]) + ref_point:str.
+    side_lengths: N-1 (omit base edge) or N (include base edge as [0] for validation).
+    Polygon is placed on the OPPOSITE side of base edge from ref_point.
+    Works with any already-defined points including intersections and midpoints.
 
 ## Derived ops (direct IR mapping)
 - midpoint: {op, id, of:[P,Q]}

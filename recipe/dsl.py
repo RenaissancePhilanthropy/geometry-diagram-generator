@@ -578,6 +578,9 @@ class PolygonFromAnglesAndSidesOp(DSLOpBase):
     side_lengths: list[float]
     angles: list[float]
     center: Optional[list[float]] = None
+    rotation: float = 0.0   # degrees CCW, standalone mode only
+    base: Optional[list[str]] = None       # [P, Q] — anchors vertices[0] and vertices[1]
+    ref_point: Optional[str] = None        # required when base is set
 
     @model_validator(mode="after")
     def _check_counts_match(self) -> "PolygonFromAnglesAndSidesOp":
@@ -586,11 +589,25 @@ class PolygonFromAnglesAndSidesOp(DSLOpBase):
             raise ValueError(
                 f"polygon_from_angles_and_sides requires at least 3 vertices, got {n}"
             )
-        if len(self.side_lengths) != n:
-            raise ValueError(
-                f"polygon_from_angles_and_sides: len(vertices)={n} "
-                f"must equal len(side_lengths)={len(self.side_lengths)}"
-            )
+
+        # side_lengths count check
+        ns = len(self.side_lengths)
+        if self.base is not None:
+            # Edge-anchored: N-1 (base edge omitted) or N (base edge included for validation)
+            if ns < n - 1 or ns > n:
+                raise ValueError(
+                    f"polygon_from_angles_and_sides with base: len(side_lengths)={ns} "
+                    f"must be N-1={n-1} (omit base edge) or N={n} (include for validation)"
+                )
+        else:
+            # Standalone: exactly N
+            if ns != n:
+                raise ValueError(
+                    f"polygon_from_angles_and_sides: len(vertices)={n} "
+                    f"must equal len(side_lengths)={ns}"
+                )
+
+        # angles count check (N-1 or N, both modes)
         na = len(self.angles)
         if na > n:
             raise ValueError(
@@ -602,6 +619,26 @@ class PolygonFromAnglesAndSidesOp(DSLOpBase):
                 f"polygon_from_angles_and_sides: len(angles)={na} is too few for "
                 f"{n} vertices; provide N-1 (last inferred) or N angles"
             )
+
+        # base / ref_point rules
+        if self.base is not None:
+            if len(self.base) != 2:
+                raise ValueError("polygon_from_angles_and_sides: base must be a list of exactly 2 point ids")
+            if self.ref_point is None:
+                raise ValueError("polygon_from_angles_and_sides: ref_point is required when base is set")
+            if self.center is not None:
+                raise ValueError("polygon_from_angles_and_sides: center and base are mutually exclusive")
+            if self.rotation != 0.0:
+                raise ValueError("polygon_from_angles_and_sides: rotation and base are mutually exclusive")
+            if len(self.vertices) >= 2 and (self.vertices[0] != self.base[0] or self.vertices[1] != self.base[1]):
+                raise ValueError(
+                    f"polygon_from_angles_and_sides: vertices[0:2]={self.vertices[:2]} "
+                    f"must equal base={self.base}"
+                )
+        else:
+            if self.ref_point is not None:
+                raise ValueError("polygon_from_angles_and_sides: ref_point requires base to be set")
+
         return self
 
 

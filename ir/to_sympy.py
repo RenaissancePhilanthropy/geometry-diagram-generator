@@ -76,14 +76,18 @@ def compile_defs(
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
     # Build a mapping from polygon sub-vertex names → their parent polygon ID.
-    # PolygonExterior registers sub-vertices in sym as a side effect, so any
-    # DefStmt that references a sub-vertex name needs to depend on the polygon.
+    # PolygonExterior and PolygonOnEdge register sub-vertices in sym as a side effect,
+    # so any DefStmt that references a sub-vertex name needs to depend on the polygon.
     poly_vertex_to_poly: dict[str, str] = {}
     for stmt in diagram.define:
         if isinstance(stmt, ir.PolygonExterior):
             names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
             for vname in names:
                 if vname not in all_ids:  # only synthesized names, not real DefStmts
+                    poly_vertex_to_poly[vname] = stmt.id
+        if isinstance(stmt, ir.PolygonOnEdge):
+            for vname in stmt.vertex_names[2:]:   # only new vertices
+                if vname not in all_ids:
                     poly_vertex_to_poly[vname] = stmt.id
 
     # Build dependency graph and sort topologically so forward references work.
@@ -116,6 +120,11 @@ def compile_defs(
                     sub_id = f"{stmt.id}_v{i}"
                 if sub_id not in sym:
                     sym[sub_id] = vertex
+        # PolygonOnEdge: register vertices[2..N-1] in sym
+        if isinstance(stmt, ir.PolygonOnEdge) and isinstance(obj, spg.Polygon):
+            for i, vname in enumerate(stmt.vertex_names):
+                if vname not in sym:
+                    sym[vname] = obj.vertices[i]
 
     return sym
 
@@ -383,6 +392,60 @@ def _compile_one(
                 new_v = prev2.rotate(rot_angle, prev1)
                 vertices.append(new_v)
             return spg.Polygon(*vertices)
+
+        case ir.PolygonOnEdge(a=a_id, b=b_id, ref=ref_id):
+            a_pt = ref(a_id)
+            b_pt = ref(b_id)
+            ref_pt = ref(ref_id)
+            n = len(stmt.vertex_names)
+
+            # Validate claimed base length if provided
+            if stmt.claimed_base_length is not None:
+                base_dist = float(a_pt.distance(b_pt).evalf())
+                if abs(base_dist - stmt.claimed_base_length) > 1e-4:
+                    raise IRCompileError(
+                        did,
+                        f"polygon_on_edge: claimed base length {stmt.claimed_base_length} "
+                        f"does not match actual |{a_id}–{b_id}| = {base_dist:.6f}. "
+                        f"Omit side_lengths[0] to let it be inferred automatically."
+                    )
+
+            # Determine orientation sign from ref_point
+            cross = _cross_sign(a_pt, b_pt, ref_pt)
+            cross_val = float(cross.evalf())
+            if abs(cross_val) < 1e-10:
+                raise IRCompileError(
+                    did, f"ref_point {ref_id!r} lies on line {a_id!r}–{b_id!r}; cannot determine side"
+                )
+            # sign: +1 = CCW turns (polygon to LEFT of a→b)
+            #       -1 = CW turns  (polygon to RIGHT of a→b)
+            # We want polygon on OPPOSITE side from ref_point.
+            # cross_val > 0 → ref is LEFT of a→b → polygon goes RIGHT → sign = -1
+            # cross_val < 0 → ref is RIGHT of a→b → polygon goes LEFT → sign = +1
+            sign = -1.0 if cross_val > 0 else 1.0
+
+            # Numeric base coordinates
+            ax = float(a_pt.x.evalf()); ay = float(a_pt.y.evalf())
+            bx = float(b_pt.x.evalf()); by = float(b_pt.y.evalf())
+            heading = math.degrees(math.atan2(by - ay, bx - ax))
+
+            # Turtle walk from b, turning at each vertex and walking the non-base sides
+            # vertices: [a, b, v2, v3, ..., v_{n-1}]
+            # side_lengths: [b→v2, v2→v3, ..., v_{n-1}→a]  (N-1 values)
+            vertices_pts = [a_pt, b_pt]
+            x, y = bx, by
+            for i in range(n - 1):
+                # Turn at vertex i+1 (angles[i+1])
+                exterior = sign * (180.0 - stmt.angles[i + 1])
+                heading += exterior
+                dx = stmt.side_lengths[i] * math.cos(math.radians(heading))
+                dy = stmt.side_lengths[i] * math.sin(math.radians(heading))
+                x += dx
+                y += dy
+                if i < n - 2:
+                    vertices_pts.append(spg.Point(sp.Float(x), sp.Float(y)))
+
+            return spg.Polygon(*vertices_pts)
 
         case _:
             raise IRCompileError(did, f"unhandled definition kind: {stmt.kind!r}")
