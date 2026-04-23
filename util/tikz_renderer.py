@@ -28,6 +28,7 @@ def render_tikz(
     *,
     tkzelements: str | None = None,
     renderer_url: str | None = None,
+    font_family: str | None = None,
 ) -> str:
     """
     Render TikZ code to SVG via the renderer container.
@@ -37,6 +38,7 @@ def render_tikz(
         tkzelements: Optional tkz-elements Lua code block.
         renderer_url: Base URL of the renderer. Defaults to TIKZ_RENDERER_URL env
                       var or http://localhost:8001.
+        font_family: Optional font family name to pass to the renderer.
 
     Returns:
         Rendered SVG as a string.
@@ -50,6 +52,8 @@ def render_tikz(
     payload: dict = {"tikz": tikz}
     if tkzelements:
         payload["tkzelements"] = tkzelements
+    if font_family:
+        payload["font_family"] = font_family
 
     logger.debug("Sending TikZ render request to %s", endpoint)
 
