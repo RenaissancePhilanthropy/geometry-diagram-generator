@@ -1654,3 +1654,65 @@ def test_auto_canvas_expands_for_circle_in_lowerer():
     assert ir.canvas.xmax >= 3, f"xmax={ir.canvas.xmax} doesn't cover circle extent"
     assert ir.canvas.ymin <= -3, f"ymin={ir.canvas.ymin} doesn't cover circle extent"
     assert ir.canvas.ymax >= 3, f"ymax={ir.canvas.ymax} doesn't cover circle extent"
+
+
+# ---------------------------------------------------------------------------
+# Font injection
+# ---------------------------------------------------------------------------
+
+from ir.font import FontConfig
+
+
+def test_svg_has_font_face_defs():
+    """SVG output includes @font-face rules in <defs><style>."""
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg)
+    assert "@font-face" in svg_str
+    assert "NunitoSans-Regular.ttf" in svg_str
+    assert "NunitoSans-Bold.ttf" in svg_str
+
+
+def test_svg_font_family_attribute():
+    """Text elements use the configured font family."""
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[LabelPoint(p="A", text="A")],
+    )
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg)
+    assert 'font-family' in svg_str
+    # Should not contain old hardcoded families
+    assert '"serif"' not in svg_str
+    assert '"sans-serif"' not in svg_str
+    assert "NunitoSans" in svg_str
+
+
+def test_svg_embed_fonts_uses_data_uri(tmp_path, monkeypatch):
+    """embed_fonts=True uses data: URIs instead of URL paths."""
+    import ir.font as font_mod
+    fake_ttf = b"\x00fake"
+    font_dir = tmp_path
+    for variant in ("Regular", "Bold", "Italic", "BoldItalic"):
+        (font_dir / f"NunitoSans-{variant}.ttf").write_bytes(fake_ttf)
+    monkeypatch.setattr(font_mod, "_FONTS_DIR", font_dir)
+
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg, embed_fonts=True)
+    assert "data:font/ttf;base64," in svg_str
+    assert "/fonts/NunitoSans" not in svg_str
+
+
+def test_svg_no_font_config_uses_default():
+    """Passing font_config=None uses default_font_config() (NunitoSans)."""
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    assert "NunitoSans" in svg_str

@@ -24,6 +24,7 @@ from typing import Any
 import sympy.geometry as spg
 
 import ir.ir as ir
+from ir.font import FontConfig, FONT_VARIANTS, default_font_config
 from ir.to_sympy import Arc, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
@@ -88,8 +89,12 @@ def ir_to_svg(
     diagram: ir.DiagramIR,
     sym: SymTable,
     warnings: list[str] | None = None,
+    font_config: "FontConfig | None" = None,
+    embed_fonts: bool = False,
 ) -> str:
     """Compile a DiagramIR + resolved SymTable to an SVG string."""
+    if font_config is None:
+        font_config = default_font_config()
 
     # --- Extract coordinates and helper points ---
     coords = extract_coords(sym)
@@ -178,6 +183,25 @@ def ir_to_svg(
         "d": "M 0 0 L 8 3 L 0 6 Z",
         "fill": "black",
     })
+
+    # Font @font-face declarations
+    _FONT_WEIGHTS = {
+        "Regular":    ("normal", "normal"),
+        "Bold":       ("bold",   "normal"),
+        "Italic":     ("normal", "italic"),
+        "BoldItalic": ("bold",   "italic"),
+    }
+    font_rules = []
+    for variant in FONT_VARIANTS:
+        weight, style = _FONT_WEIGHTS[variant]
+        src = font_config.data_uri(variant) if embed_fonts else font_config.url(variant)
+        font_rules.append(
+            f"@font-face {{ font-family: '{font_config.family}'; "
+            f"font-weight: {weight}; font-style: {style}; "
+            f"src: url('{src}'); }}"
+        )
+    style_el = ET.SubElement(defs, "style")
+    style_el.text = "\n    ".join([""] + font_rules + [""])
 
     # White background
     ET.SubElement(svg, "rect", {
