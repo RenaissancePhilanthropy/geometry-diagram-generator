@@ -89,7 +89,7 @@ def ir_to_svg(
     diagram: ir.DiagramIR,
     sym: SymTable,
     warnings: list[str] | None = None,
-    font_config: "FontConfig | None" = None,
+    font_config: FontConfig | None = None,
     embed_fonts: bool = False,
 ) -> str:
     """Compile a DiagramIR + resolved SymTable to an SVG string."""
@@ -201,7 +201,7 @@ def ir_to_svg(
             f"src: url('{src}'); }}"
         )
     style_el = ET.SubElement(defs, "style")
-    style_el.text = "\n    ".join([""] + font_rules + [""])
+    style_el.text = "\n    " + "\n    ".join(font_rules) + "\n"
 
     # White background
     ET.SubElement(svg, "rect", {
