@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import subprocess
 import tempfile
 from fastapi import FastAPI, HTTPException
@@ -64,6 +65,8 @@ async def render_svg(req: RenderReq) -> dict:
                 tkze = "\\begin{tkzelements}\n" + req.tkzelements + "\n\\end{tkzelements}\n"
 
             family = req.font_family or "NunitoSans"
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", family):
+                return {"ok": False, "stage": "validation", "log": f"Invalid font_family: {family!r}"}
             font_path = f"/usr/local/share/fonts/{family}/"
             tex = TEMPLATE.format(
                 font_family=family,
