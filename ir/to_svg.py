@@ -216,7 +216,8 @@ def ir_to_svg(
 
     # Optional axes
     if canvas is not None and canvas.axes:
-        _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale)
+        _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale,
+                     font_family=font_config.family)
 
     # --- Render ops (z-sorted) ---
     _Z_ORDER = {
@@ -280,7 +281,8 @@ def ir_to_svg(
     # Resolve label-label collisions and emit
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
     for lp in pending_labels:
-        _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+        _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                      font_family=font_config.family)
 
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
@@ -653,7 +655,8 @@ def _emit_svg_op(
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
-                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                      font_family=font_config.family)
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
@@ -682,7 +685,8 @@ def _emit_svg_op(
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
-                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                      font_family=font_config.family)
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -716,7 +720,8 @@ def _emit_svg_op(
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
-                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                      font_family=font_config.family)
 
         case ir.LabelFreeText(text=text, at=at, centroid_of=cof, style=style):
             if at is not None:
@@ -740,7 +745,8 @@ def _emit_svg_op(
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
-                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs)
+                _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                      font_family=font_config.family)
 
 
 # ---------------------------------------------------------------------------
@@ -929,13 +935,14 @@ def _append_label(
     color: str,
     anchor: str = "middle",
     extra_attrs: dict[str, str] | None = None,
+    font_family: str = "serif",
 ) -> None:
     """Append a <text> element with LaTeX-to-SVG tspan conversion."""
     el = ET.SubElement(svg, "text", {
         **(extra_attrs or {}),
         "x": f"{x:.2f}",
         "y": f"{y:.2f}",
-        "font-family": "serif",
+        "font-family": font_family,
         "font-size": str(_FONT_SIZE),
         "fill": color,
         "text-anchor": anchor,
@@ -1232,6 +1239,7 @@ def _append_axes(
     ymax: float,
     gxy,
     scale: float,
+    font_family: str = "serif",
 ) -> None:
     has_x = ymin <= 0 <= ymax
     has_y = xmin <= 0 <= xmax
@@ -1254,7 +1262,7 @@ def _append_axes(
         if canvas.show_axis_labels:
             ET.SubElement(svg, "text", {
                 "x": f"{px2 + 8:.2f}", "y": f"{py2:.2f}",
-                "font-family": "serif", "font-size": str(_FONT_SIZE),
+                "font-family": font_family, "font-size": str(_FONT_SIZE),
                 "font-style": "italic", "dominant-baseline": "central",
             }).text = "x"
 
@@ -1265,7 +1273,7 @@ def _append_axes(
         if canvas.show_axis_labels:
             ET.SubElement(svg, "text", {
                 "x": f"{px2:.2f}", "y": f"{py2 - 8:.2f}",
-                "font-family": "serif", "font-size": str(_FONT_SIZE),
+                "font-family": font_family, "font-size": str(_FONT_SIZE),
                 "font-style": "italic", "text-anchor": "middle",
             }).text = "y"
 
@@ -1284,7 +1292,7 @@ def _append_axes(
             if canvas.show_tick_labels:
                 ET.SubElement(svg, "text", {
                     "x": f"{px:.2f}", "y": f"{py + TICK_PX + 4:.2f}",
-                    "font-family": "sans-serif", "font-size": "11",
+                    "font-family": font_family, "font-size": "11",
                     "text-anchor": "middle", "dominant-baseline": "hanging",
                 }).text = fmt_label_num(x)
 
@@ -1300,7 +1308,7 @@ def _append_axes(
             if canvas.show_tick_labels:
                 ET.SubElement(svg, "text", {
                     "x": f"{px - TICK_PX - 3:.2f}", "y": f"{py:.2f}",
-                    "font-family": "sans-serif", "font-size": "11",
+                    "font-family": font_family, "font-size": "11",
                     "text-anchor": "end", "dominant-baseline": "central",
                 }).text = fmt_label_num(y)
 
