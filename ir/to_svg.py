@@ -270,6 +270,7 @@ def ir_to_svg(
             seen_ra_triples=_seen_ra_triples,
             seen_angle_triples=_seen_angle_triples,
             drawn_segments=drawn_segments,
+            font_family=font_config.family,
         )
 
     # Deduplicate coincident point labels (keep first occurrence at each position)
@@ -315,6 +316,7 @@ def _emit_svg_op(
     seen_ra_triples: set[tuple[str, str, str]] | None = None,
     seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
+    font_family: str = "serif",
 ) -> None:
     match op:
         case ir.Draw(obj=obj_id, add=add, style=style):
@@ -656,7 +658,7 @@ def _emit_svg_op(
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_config.family)
+                      font_family=font_family)
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
@@ -686,7 +688,7 @@ def _emit_svg_op(
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_config.family)
+                      font_family=font_family)
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -721,7 +723,7 @@ def _emit_svg_op(
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_config.family)
+                      font_family=font_family)
 
         case ir.LabelFreeText(text=text, at=at, centroid_of=cof, style=style):
             if at is not None:
@@ -746,7 +748,7 @@ def _emit_svg_op(
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_config.family)
+                      font_family=font_family)
 
 
 # ---------------------------------------------------------------------------
