@@ -684,6 +684,30 @@ class SectorOp(DSLOpBase):
     reflex: bool = False
 
 
+class RegularSectorsOp(DSLOpBase):
+    """Divide a circle into N equal sectors and emit all as Sector defs.
+
+    Generates N spoke-endpoint points (``{id}__r0`` … ``{id}__r{N-1}``) and
+    N sector defs (``{id}__0`` … ``{id}__{N-1}``), all drawable by default.
+
+    ``center``: ID of the center point (must have known coordinates at lower time).
+    ``radius``: numeric radius of the circle.
+    ``n``: number of equal sectors.
+    ``start_angle``: angle in degrees of the first spoke (default 0 = east).
+
+    Example — 6 equal sectors, center O, radius 3:
+      {op: "regular_sectors", id: "pie", center: "O", radius: 3, n: 6}
+    Then fill individual sectors:
+      {op: "fill", id: "f0", obj: "pie__0", style: {"fill": "red"}, opacity: 0.4}
+    Or draw all at once with auto_draw_all (sectors are in _drawable).
+    """
+    op: Literal["regular_sectors"] = "regular_sectors"
+    center: str
+    radius: float
+    n: int
+    start_angle: float = 0.0
+
+
 class FillOp(DSLOpBase):
     """Fill a closed shape, optionally punching holes with the even-odd rule.
 
@@ -718,7 +742,7 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp, SectorOp,
+        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp, SectorOp, RegularSectorsOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
         # Render-only
