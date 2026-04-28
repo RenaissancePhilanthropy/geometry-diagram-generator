@@ -325,6 +325,21 @@ class ArcCenterStartEnd(DefBase):
     reflex: bool = False
 
 
+class SectorCenterStartEnd(DefBase):
+    """Closed circular sector between `start` and `end` around `center`.
+
+    Represents the pie-slice region bounded by two radii and an arc.
+    Minor sector (≤180°) by default; set `reflex=True` for the >180° sector.
+    Unlike ArcCenterStartEnd (which is just the curved edge), this is a
+    closed region and can be used as the `obj` of a Fill render op.
+    """
+    kind: Literal["sector_center_start_end"] = "sector_center_start_end"
+    center: PointId
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
 class EllipseCenterAxes(DefBase):
     """Axis-aligned ellipse defined by center and semi-axis lengths."""
     kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
@@ -519,6 +534,7 @@ DefStmt = Annotated[
         LineAngleBisector, LineTangent,
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
         ArcCenterStartEnd,
+        SectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     ],
