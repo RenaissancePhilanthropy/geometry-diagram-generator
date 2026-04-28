@@ -37,7 +37,7 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
-    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp,
+    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
@@ -257,6 +257,8 @@ class _Lowerer:
                     start=op.start, end=op.end, reflex=op.reflex,
                 ))
                 self._drawable.add(op.id)
+            case RegularSectorsOp():
+                self._lower_regular_sectors(op)
             case FillOp():
                 self._lower_fill(op)
             case _:
@@ -409,6 +411,40 @@ class _Lowerer:
             opacity=op.opacity,
             style=style_key,
         ))
+
+    def _lower_regular_sectors(self, op: RegularSectorsOp) -> None:
+        import math as _math
+        if op.center not in self._coord_floats:
+            raise LoweringError(
+                f"regular_sectors '{op.id}': center point '{op.center}' not in coord table. "
+                "Define the center point before this op."
+            )
+        cx, cy = self._coord_floats[op.center]
+        r = float(op.radius)
+        n = op.n
+        if n < 2:
+            raise LoweringError(f"regular_sectors '{op.id}': n must be ≥ 2, got {n}")
+        # Emit N spoke-endpoint PointFixed defs
+        spoke_ids: list[str] = []
+        for k in range(n):
+            angle_deg = op.start_angle + k * 360.0 / n
+            angle_rad = _math.radians(angle_deg)
+            px = round(cx + r * _math.cos(angle_rad), 10)
+            py = round(cy + r * _math.sin(angle_rad), 10)
+            spoke_id = f"{op.id}__r{k}"
+            self._defs.append(PointFixed(id=spoke_id, x=px, y=py))
+            self._coord_floats[spoke_id] = (px, py)
+            spoke_ids.append(spoke_id)
+        # Emit N SectorCenterStartEnd defs (sector k: spoke k → spoke (k+1)%n)
+        for k in range(n):
+            sec_id = f"{op.id}__{k}"
+            self._add(SectorCenterStartEnd(
+                id=sec_id,
+                center=op.center,
+                start=spoke_ids[k],
+                end=spoke_ids[(k + 1) % n],
+            ))
+            self._drawable.add(sec_id)
 
     def _lower_circle(self, op: CircleOp) -> None:
         if op.radius is not None:

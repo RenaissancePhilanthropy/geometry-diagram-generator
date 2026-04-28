@@ -1826,3 +1826,71 @@ def test_sector_op_reflex():
     sec = next(d for d in ir.define if d.id == "sec")
     assert isinstance(sec, SectorCenterStartEnd)
     assert sec.reflex is True
+
+
+# ---------------------------------------------------------------------------
+# RegularSectorsOp
+# ---------------------------------------------------------------------------
+
+def test_regular_sectors_emits_n_sectors():
+    """RegularSectorsOp with n=4 emits 4 SectorCenterStartEnd defs."""
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=3.0, n=4),
+    ])
+    ir = lower_to_ir(dsl)
+    sectors = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
+    assert len(sectors) == 4
+
+
+def test_regular_sectors_spoke_points_on_circle():
+    """Spoke points are at the correct distance from center."""
+    import math
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import PointFixed
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=2.0, n=4),
+    ])
+    ir = lower_to_ir(dsl)
+    spokes = [d for d in ir.define if isinstance(d, PointFixed) and "__r" in d.id]
+    assert len(spokes) == 4
+    for sp in spokes:
+        dist = math.hypot(float(sp.x), float(sp.y))
+        assert dist == pytest.approx(2.0, abs=1e-9)
+
+
+def test_regular_sectors_start_angle():
+    """start_angle=90 rotates first spoke to point north."""
+    import math
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import PointFixed
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=1.0, n=4, start_angle=90.0),
+    ])
+    ir = lower_to_ir(dsl)
+    spoke0 = next(d for d in ir.define if d.id == "spokes__r0")
+    assert float(spoke0.x) == pytest.approx(0.0, abs=1e-9)
+    assert float(spoke0.y) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_regular_sectors_sectors_share_boundary_points():
+    """Adjacent sectors share spoke endpoint IDs (sector k end == sector k+1 start)."""
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="w", center="O", radius=3.0, n=3),
+    ])
+    ir = lower_to_ir(dsl)
+    sectors = sorted(
+        [d for d in ir.define if isinstance(d, SectorCenterStartEnd)],
+        key=lambda s: s.id,
+    )
+    assert len(sectors) == 3
+    # Each sector's end matches the next sector's start
+    for i in range(3):
+        assert sectors[i].end == sectors[(i + 1) % 3].start
