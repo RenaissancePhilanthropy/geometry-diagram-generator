@@ -18,7 +18,7 @@ from ir.ir import (
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
-    ArcCenterStartEnd,
+    ArcCenterStartEnd, SectorCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
@@ -37,7 +37,7 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
-    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp,
+    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
@@ -249,6 +249,12 @@ class _Lowerer:
                 self._add(ArcCenterStartEnd(
                     id=op.id, center=op.center, start=op.start, end=op.end,
                     reflex=op.reflex,
+                ))
+                self._drawable.add(op.id)
+            case SectorOp():
+                self._add(SectorCenterStartEnd(
+                    id=op.id, center=op.center,
+                    start=op.start, end=op.end, reflex=op.reflex,
                 ))
                 self._drawable.add(op.id)
             case FillOp():
