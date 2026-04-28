@@ -8,7 +8,7 @@ import sympy as sp
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import Arc, SymTable
+from ir.to_sympy import Arc, Sector, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
     arc_params,
@@ -179,6 +179,14 @@ def _obj_to_tikz_path(
             f"({fmt_num(cx)},{fmt_num(cy)}) "
             f"ellipse[x radius={fmt_num(a)},y radius={fmt_num(b)}]"
         )
+    if isinstance(sym_obj, Sector):
+        cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+            f"({fmt_num(sx)},{fmt_num(sy)}) "
+            f"arc[start angle={fmt_num(start_deg)},"
+            f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle"
+        )
     return None
 
 
@@ -235,6 +243,17 @@ def _emit_op(
                     f"\\draw{style_str} ({fmt_num(sx)},{fmt_num(sy)}) "
                     f"arc[start angle={fmt_num(start_deg)},"
                     f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}];"
+                )
+            elif isinstance(sym_obj, Sector):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
                 )
             else:
                 out.append(f"% Draw: unhandled type {type(sym_obj).__name__} for {obj_id!r}")
@@ -295,6 +314,15 @@ def _emit_op(
                 out.append(
                     f"\\fill[{style_inner}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
                     f"({fmt_num(a)} and {fmt_num(b)});"
+                )
+            elif isinstance(sym_obj, Sector):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                out.append(
+                    f"\\fill[{style_inner}] "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
                 )
 
         case ir.MarkRightAngles(angles=angles, style=style):

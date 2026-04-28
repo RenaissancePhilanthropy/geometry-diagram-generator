@@ -687,3 +687,40 @@ def test_label_free_text_centroid_of_renders_node():
     tikz = _compile_tikz(diagram)
     # Centroid of (0,0),(6,0),(3,3) = (3,1)
     assert r"\node at (3,1) {$I$};" in tikz
+
+
+def test_fill_sector_tikz():
+    """Fill of a sector uses \\fill with arc syntax."""
+    from ir.ir import SectorCenterStartEnd, Fill
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=0.3)],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\fill" in tikz
+    assert "arc" in tikz
+    assert "cycle" in tikz
+
+
+def test_draw_sector_tikz():
+    """Draw of a sector emits \\draw with arc syntax."""
+    from ir.ir import SectorCenterStartEnd, Draw
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec")],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\draw" in tikz
+    assert "arc" in tikz
