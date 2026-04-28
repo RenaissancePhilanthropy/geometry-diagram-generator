@@ -1173,3 +1173,16 @@ def test_polygon_on_edge_parallelogram_correct_shape():
         d = float(sym[p1_id].distance(sym[p2_id]).evalf())
         assert abs(d - expected) < 1e-3, f"|{p1_id}{p2_id}|={d:.4f}, expected {expected}"
 
+
+def test_sector_ir_kind():
+    from ir.ir import SectorCenterStartEnd
+    s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B")
+    assert s.kind == "sector_center_start_end"
+    assert s.reflex is False
+
+
+def test_sector_ir_reflex_flag():
+    from ir.ir import SectorCenterStartEnd
+    s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B", reflex=True)
+    assert s.reflex is True
+
