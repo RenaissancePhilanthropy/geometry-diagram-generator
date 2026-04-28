@@ -1792,3 +1792,37 @@ def test_polygon_on_edge_n_side_lengths_sets_claimed_base():
     pol = [d for d in ir_out.define if isinstance(d, PolygonOnEdge)]
     assert pol[0].claimed_base_length == 5.0
     assert len(pol[0].side_lengths) == 2  # non-base sides only in IR
+
+
+def test_sector_op_lowers_to_sector_def():
+    """SectorOp lowers to a SectorCenterStartEnd def and is drawable."""
+    from recipe.dsl import SectorOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        SectorOp(id="sec", center="A", start="B", end="C"),
+    ])
+    ir = lower_to_ir(dsl)
+    defs = {d.id: d for d in ir.define}
+    assert "sec" in defs
+    sec = defs["sec"]
+    assert isinstance(sec, SectorCenterStartEnd)
+    assert sec.center == "A"
+    assert sec.start == "B"
+    assert sec.end == "C"
+    assert sec.reflex is False
+
+
+def test_sector_op_reflex():
+    from recipe.dsl import SectorOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        SectorOp(id="sec", center="A", start="B", end="C", reflex=True),
+    ])
+    ir = lower_to_ir(dsl)
+    sec = next(d for d in ir.define if d.id == "sec")
+    assert isinstance(sec, SectorCenterStartEnd)
+    assert sec.reflex is True

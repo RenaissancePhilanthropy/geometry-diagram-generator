@@ -660,10 +660,28 @@ class ArcOp(DSLOpBase):
     reflex: bool = False
 
 
-# SectorOp (deferred): a closed, fillable sector is expressible as:
-#   SectorOp(center=midpoint, radius=r, start_angle=..., end_angle=start+sweep)
-# For now, approximate with ArcOp + two SegmentOps (center→start, center→end).
-# SectorOp will be added in Plan B (requires IR + renderer changes).
+class SectorOp(DSLOpBase):
+    """A closed, fillable circular sector (pie slice).
+
+    The sector region is bounded by two radii (center→start and center→end)
+    and the arc between them.  Use Fill to shade it; use Draw to stroke the
+    outline (both radii + arc).
+
+    ``center``, ``start``, and ``end`` must all be defined point IDs.
+    The radius is inferred as distance(center, start) — ensure start and end
+    lie on the same circle.
+
+    ``reflex=True`` selects the major sector (>180°); default is the minor.
+
+    Example:
+      {op: "sector", id: "sec1", center: "O", start: "A", end: "B"}
+      {op: "fill", id: "shade", obj: "sec1", style: {"fill": "lightblue"}, opacity: 0.4}
+    """
+    op: Literal["sector"] = "sector"
+    center: str
+    start: str
+    end: str
+    reflex: bool = False
 
 
 class FillOp(DSLOpBase):
@@ -700,7 +718,7 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp,
+        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp, SectorOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
         # Render-only
