@@ -1186,3 +1186,19 @@ def test_sector_ir_reflex_flag():
     s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B", reflex=True)
     assert s.reflex is True
 
+
+def test_sector_compiles_to_sector_wrapper():
+    from ir.ir import PointFixed, SectorCenterStartEnd
+    from ir.to_sympy import Sector
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="B", x=0, y=3),
+        SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+    )
+    assert "sec" in sym
+    sector = sym["sec"]
+    assert isinstance(sector, Sector)
+    assert float(sector.radius) == pytest.approx(3.0)
+    assert sector.reflex is False
+
