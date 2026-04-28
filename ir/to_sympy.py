@@ -39,6 +39,27 @@ class Arc:
         return f"Arc(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
 
 
+class Sector:
+    """Marker type for a closed circular sector in the symbol table.
+
+    Represents the pie-slice region (center + arc). Like Arc, SymPy has no
+    native Sector type. Fields mirror Arc but the object is treated as a
+    closed fillable region rather than just the curved edge.
+    """
+
+    __slots__ = ("center", "start", "end", "radius", "reflex")
+
+    def __init__(self, center: spg.Point, start: spg.Point, end: spg.Point, radius: Any, reflex: bool = False):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.radius = radius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"Sector(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -303,6 +324,11 @@ def _compile_one(
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             r = c.distance(s)
             return Arc(center=c, start=s, end=e, radius=r, reflex=reflex)
+
+        case ir.SectorCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            r = c.distance(s)
+            return Sector(center=c, start=s, end=e, radius=r, reflex=reflex)
 
         # --- Ellipses ---
         case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
