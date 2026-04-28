@@ -1718,6 +1718,74 @@ def test_svg_no_font_config_uses_default():
     assert "NunitoSans" in svg_str
 
 
+def test_fill_sector_emits_path_element():
+    """Fill of a sector produces a <path> element (not polygon/circle)."""
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=0.4)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    assert "M" in d
+    assert "A" in d   # arc command
+    assert "Z" in d   # closed path
+    assert float(paths[0].get("fill-opacity", 0)) == pytest.approx(0.4)
+
+
+def test_fill_sector_path_starts_at_center():
+    """The fill path starts at the sector center (M cx cy)."""
+    import re
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=4, y=0),
+            PointFixed(id="B", x=0, y=4),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=1.0)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    d = paths[0].get("d", "")
+    # First command should be M at the center pixel position
+    m = re.match(r"M\s+([\d.]+)\s+([\d.]+)", d)
+    assert m is not None
+
+
+def test_fill_sector_with_hole_uses_evenodd():
+    """Sector as outer shape with a polygon hole uses even-odd fill rule."""
+    from ir.ir import SectorCenterStartEnd, Triangle
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=5, y=0),
+            PointFixed(id="B", x=0, y=5),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+            PointFixed(id="P1", x=1, y=0),
+            PointFixed(id="P2", x=2, y=0),
+            PointFixed(id="P3", x=1, y=1),
+            Triangle(id="hole", a="P1", b="P2", c="P3"),
+        ],
+        render=[Fill(obj="sec", holes=["hole"], opacity=0.5)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    assert paths[0].get("fill-rule") == "evenodd"
+
+
 def test_parse_latex_rightarrow():
     from ir.to_svg import _parse_latex
     segs = _parse_latex("\\rightarrow")
