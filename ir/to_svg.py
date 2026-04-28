@@ -25,7 +25,7 @@ import sympy.geometry as spg
 
 import ir.ir as ir
 from ir.font import FontConfig, FONT_VARIANTS, default_font_config
-from ir.to_sympy import Arc, SymTable
+from ir.to_sympy import Arc, Sector, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
     arc_params,
@@ -551,6 +551,31 @@ def _emit_svg_op(
                     "data-role": "fill",
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
                     "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
+
+            elif isinstance(sym_obj, Sector):
+                cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+                r_s = r_g * scale
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + r_g * math.cos(end_rad)
+                ey_g = cy_g + r_g * math.sin(end_rad)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                d = (
+                    f"M {cx_s:.2f} {cy_s:.2f} "
+                    f"L {sx_s:.2f} {sy_s:.2f} "
+                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
+                    "d": d,
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
                     "stroke": "none",
@@ -1540,6 +1565,23 @@ def _obj_to_svg_subpath(
             f"M {cx_s - rx_s:.2f} {cy_s:.2f} "
             f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s + rx_s:.2f} {cy_s:.2f} "
             f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s - rx_s:.2f} {cy_s:.2f} Z"
+        )
+
+    if isinstance(sym_obj, Sector):
+        cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+        r_s = r_g * scale
+        end_rad = math.radians(end_deg)
+        ex_g = cx_g + r_g * math.cos(end_rad)
+        ey_g = cy_g + r_g * math.sin(end_rad)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        sx_s, sy_s = gxy(sx_g, sy_g)
+        ex_s, ey_s = gxy(ex_g, ey_g)
+        sweep_deg = end_deg - start_deg
+        large_arc = 1 if sweep_deg > 180.0 else 0
+        return (
+            f"M {cx_s:.2f} {cy_s:.2f} "
+            f"L {sx_s:.2f} {sy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
         )
 
     return None
