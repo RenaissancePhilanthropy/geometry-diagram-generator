@@ -1038,6 +1038,11 @@ _LATEX_UNICODE: dict[str, str] = {
     "degree": "°", "infty": "∞", "cdot": "·", "times": "×",
     "leq": "≤", "geq": "≥", "neq": "≠", "approx": "≈",
     "pm": "±", "sqrt": "√",
+    # Arrows
+    "rightarrow": "→", "to": "→", "Rightarrow": "⇒",
+    "leftarrow": "←", "Leftarrow": "⇐",
+    "leftrightarrow": "↔", "Leftrightarrow": "⟺",
+    "longrightarrow": "⟶", "longleftarrow": "⟵",
     # Formatting that becomes invisible/plain
     "left": "", "right": "", ",": " ", ";": " ", "!": "",
     "text": "",  # \text{...} handled below
