@@ -462,6 +462,31 @@ def _emit_svg_op(
                     **attrs,
                 })
 
+            elif isinstance(sym_obj, Sector):
+                cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+                r_s = r_g * scale
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + r_g * math.cos(end_rad)
+                ey_g = cy_g + r_g * math.sin(end_rad)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                d = (
+                    f"M {cx_s:.2f} {cy_s:.2f} "
+                    f"L {sx_s:.2f} {sy_s:.2f} "
+                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
+                    f"L {cx_s:.2f} {cy_s:.2f}"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-type": "sector",
+                    "d": d,
+                    "fill": "none",
+                    **attrs,
+                })
+
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"
             for pid in points:

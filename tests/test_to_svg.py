@@ -1786,6 +1786,25 @@ def test_fill_sector_with_hole_uses_evenodd():
     assert paths[0].get("fill-rule") == "evenodd"
 
 
+def test_draw_sector_emits_path():
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-type") == "sector"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    assert "M" in d and "L" in d and "A" in d
+
+
 def test_parse_latex_rightarrow():
     from ir.to_svg import _parse_latex
     segs = _parse_latex("\\rightarrow")
