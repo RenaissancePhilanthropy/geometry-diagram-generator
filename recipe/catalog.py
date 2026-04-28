@@ -249,6 +249,29 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
 
+## Common annotation mistakes
+
+### Right-angle mark triple must not be collinear
+mark_right_angle(a, vertex, b) validates that the angle a-vertex-b is 90°.
+If a, vertex, b are collinear (e.g. a=endpoint, vertex=foot, b=other_endpoint),
+the angle is 180° and the check fails. One arm of the right angle must leave the line:
+  WRONG: mark_right_angle(R, M, B)  ← if M is the midpoint of RB, all three are collinear
+  RIGHT: mark_right_angle(perp_pt, M, B)  ← perp_pt is a point on the perpendicular bisector
+
+### Central angle is twice the inscribed angle
+When labeling the central angle at center O subtending arc BC:
+  central angle B-O-C = 2 × inscribed angle B-A-C  (A on the major arc)
+MarkAngle expects the actual angle value. If the inscribed angle is 40°,
+specify 80° for the central angle — not 40°.
+
+### mark_angle group asserts pairwise equality, not sum
+Placing angles in the same mark_angle group asserts they are ALL equal to each other.
+It cannot assert that one angle equals the SUM of others (e.g. exterior angle theorem).
+For sum relationships, use label_angle annotations only — do not group the sum
+and addends together:
+  WRONG: mark_angle group=1 on angles 55°, 65°, and 120°  (55≠65≠120)
+  RIGHT: label_angle for each, explain the sum relationship in a label_free_text
+
 ## selector (for intersection and tangent_line ops)
 
 selector kinds — use the exact kind string from this table:
@@ -341,6 +364,8 @@ distance from segment[0].
     Fills a closed shape (polygon, circle, triangle). Optional holes:[...] for cutouts.
 - arc: {op:"arc", id, center:"O", start:"A", end:"B", reflex:false}
     Arc from A to B around center O. reflex:true for major arc (>180°).
+- sector: {op, id, center, start, end, reflex?}  (fillable pie-slice region; fill with fill op)
+- regular_sectors: {op, id, center, radius, n, start_angle?}  (N equal sectors; named {id}__0…{id}__{N-1}; spoke points {id}__r0…)
 
 ## Layout — multiple figures
 Side-by-side: use separate constructions with offset centers and a wide canvas.
