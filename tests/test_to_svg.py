@@ -1716,3 +1716,22 @@ def test_svg_no_font_config_uses_default():
     sym = compile_defs(diagram)
     svg_str = ir_to_svg(diagram, sym)
     assert "NunitoSans" in svg_str
+
+
+def test_parse_latex_rightarrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("\\rightarrow")
+    assert len(segs) == 1
+    assert segs[0]["content"] == "→"
+
+def test_parse_latex_to_arrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("A \\to B")
+    text = "".join(s["content"] for s in segs)
+    assert "→" in text
+    assert "to" not in text
+
+def test_parse_latex_leftarrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("\\leftarrow")
+    assert segs[0]["content"] == "←"
