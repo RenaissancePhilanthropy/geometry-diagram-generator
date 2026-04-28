@@ -377,6 +377,90 @@ def test_intersection_with_selector():
 
 
 # ---------------------------------------------------------------------------
+# point_on_segment ratio semantics (Group F)
+# ---------------------------------------------------------------------------
+
+def test_point_on_segment_ratio_float_lowers_to_point_between():
+    """PointOnSegmentOp with float ratio lowers to PointBetween with same ratio."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio=1/3),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.a == "B"
+    assert m.b == "C"
+    assert abs(float(m.ratio) - 1/3) < 1e-9
+
+
+def test_point_on_segment_ratio_string_colon_lowers_correctly():
+    """ratio='1:2' means 1/(1+2) = 1/3 from segment[0].
+
+    For 'M on BC with MC=2·MB': MB:MC=1:2 → ratio='1:2' with segment=[B,C].
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio="1:2"),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.a == "B"
+    assert m.b == "C"
+    # ratio string is passed through to IR as-is; SymPy layer parses "1:2" → 1/3
+    assert m.ratio == "1:2"
+
+
+def test_point_on_segment_ratio_2_colon_1_lowers_correctly():
+    """ratio='2:1' means 2/(2+1) = 2/3 from segment[0].
+
+    If a problem says 'MC=2·MB', the LLM must use ratio='1:2' (not '2:1').
+    '2:1' gives 2/3 from B, meaning MB=2·MC — the inverse.
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio="2:1"),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.ratio == "2:1"
+
+
+def test_point_on_segment_ratio_af_fd_1_2():
+    """'AF:FD=1:2' → F is 1/3 from A → segment=[A,D], ratio='1:2'.
+
+    TriangleSpec uses positional angle_A/B/C regardless of vertex names.
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","D","X"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="F", segment=["A","D"], ratio="1:2"),
+    ])
+    ir = lower_to_ir(dsl)
+    f = next(d for d in ir.define if d.id == "F")
+    assert f.kind == "point_between"
+    assert f.a == "A"
+    assert f.b == "D"
+    assert f.ratio == "1:2"
+
+
+def test_point_on_segment_degenerate_same_endpoints_raises():
+    """segment=[A,A] must raise LoweringError with helpful message."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="G", segment=["A","A"], ratio=0.5),
+    ])
+    with pytest.raises(LoweringError, match="both endpoints are the same point"):
+        lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
 # Auto-annotation
 # ---------------------------------------------------------------------------
 

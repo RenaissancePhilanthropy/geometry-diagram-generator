@@ -275,6 +275,35 @@ Examples:
   selector: {"kind": "index", "k": 0}
   selector: {"kind": "chain", "rules": [{"kind": "upper_of_line", "a": "A", "b": "B"}, {"kind": "closest_to", "p": "P"}]}
 
+### Secant from external point — getting near and far intersections in order
+
+A secant from external point A through a circle hits two points C (near) and D (far),
+with order A–C–D. Use two separate intersection ops:
+  # C = nearer intersection (closer to A)
+  {op:"intersection", id:"C", of:["secant_line","circle"], selector:{"kind":"closest_to","p":"A"}}
+  # D = farther intersection (beyond C from A's perspective)
+  {op:"intersection", id:"D", of:["secant_line","circle"], selector:{"kind":"beyond","from_point":"A","past_point":"C"}}
+
+Do NOT use "index" for secant intersections — the index order is arbitrary and may vary.
+
+### Ratio points on a segment — direction matters
+
+point_on_segment ratio is measured from segment[0] toward segment[1]:
+  ratio=0   → at segment[0]
+  ratio=1   → at segment[1]
+  ratio=0.5 → midpoint
+
+For ratio strings "m:n", the point is m/(m+n) of the way from segment[0] to segment[1].
+
+Examples:
+  "M on BC with MC = 2·MB" → MB:MC = 1:2 → segment:["B","C"], ratio:"1:2"  (1/3 from B)
+  "F on AD with AF:FD = 1:2"             → segment:["A","D"], ratio:"1:2"  (1/3 from A)
+  "G on CN with NC = 3·GC" → GC:CN = 1:3 → segment:["C","N"], ratio:"1:3"  (1/4 from C)
+
+A common mistake: writing ratio:"2:1" when the problem says MC=2·MB — that places M at 2/3
+from B (i.e. MB=2·MC), which is the opposite. Always map the first ratio component to the
+distance from segment[0].
+
 ## Annotations
 - auto_draw_all: true (default) — draw all non-implicit objects
 - auto_label_points: true (default) — label all named points
