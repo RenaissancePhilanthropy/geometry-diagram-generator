@@ -10,39 +10,40 @@ Frontier large language models are increasingly deployed to *author* technical c
 
 ## 1.2 Why this matters: a motivating example
 
-Consider the prompt every middle-school teacher writes by Tuesday morning:
+Consider the prompt every middle-school teacher writes by Tuesday morning (one of 30 in our pilot, scenario `tpl-t2-alt-EFG-H-60-70`):
 
-> *"Draw an acute triangle ABC. Drop the altitude from vertex A to side BC, meeting it at the foot H. Mark the right angle at H. Label all four points."*
+> *"Draw an acute triangle EFG where the angle at F is 60° and the angle at G is 70°. Drop the altitude from vertex E to side FG, meeting it at the foot H. Mark the right angle at H and label all four points."*
 
-We asked four frontier models — GPT-5.1, Claude Opus 4.7, Claude Sonnet 4.6, and Claude Haiku 4.5 — to render this prompt as a TikZ diagram. The naive raw-code prompt yielded the diagrams in **Figure 1**. *(figure to be inserted; pulled from `evals/results/leaderboard_pilot/<run>/svgs/`)*. Across the four outputs:
+We asked four frontier models — GPT-5.1, Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5 — to render this prompt as a TikZ diagram, with each of three generation strategies. **Figure 1** *(to be inserted; pulled from `evals/results/leaderboard_pilot/<run>/svgs/tpl-t2-alt-EFG-H-60-70__*.svg`)* shows their outputs. Across the twelve attempts on this single prompt:
 
-- one model rendered the altitude correctly but **placed H outside segment BC** (geometric error: extended-line foot, not segment foot);
-- one model omitted the right-angle mark (fidelity error: prompt requirement violated);
-- one model labeled H but rendered no altitude segment at all (rendering error);
-- one model produced a visually correct diagram.
+- some attempts **render the altitude as a line that extends beyond segment FG** (geometric error: the foot H is not on segment FG, only on the line through it);
+- some **omit the right-angle mark at H** (fidelity error: a stated prompt requirement is silently dropped);
+- some **mislabel which vertex the altitude is dropped from**, producing an altitude from F instead of E (instruction-following error);
+- some produce a fully correct diagram.
 
-A human teacher catches all four cases at a glance. A naive LLM-as-judge ("does this look like an altitude?") catches the gross errors but cannot reliably distinguish the foot-outside-segment case from the correct one without explicit symbolic reasoning. A diagram-question-answering benchmark catches none of these errors at all — they live entirely in the production step, which existing benchmarks skip over.
+A human teacher distinguishes all four cases at a glance. A naive LLM-as-judge ("does this look like an altitude?") catches the gross errors but cannot reliably distinguish the foot-outside-segment case from the correct one without explicit symbolic reasoning. A diagram-question-answering benchmark catches none of these errors at all — they live entirely in the production step, which existing benchmarks skip over.
 
-**This is the GeoGen task.** Each scenario provides a natural-language prompt plus a machine-checkable property list; a model passes only if the rendered diagram satisfies every property under symbolic verification.
+In our pilot, this single prompt distinguishes models. Direct TikZ generation (`raw_code`) fails for half the models on tier-2 prompts like this one — the cross-model strict-pass rate is 4/10 to 6/10 on T2 across raw_code variants. A generic intermediate-representation strategy with check-and-revise (`structured`) brings every model to **at least 9/10 strict pass on T2**. **This is the GeoGen task.** Each scenario provides a natural-language prompt plus a machine-checkable property list; a model passes only if the rendered diagram satisfies every property under symbolic verification.
 
 ## 1.3 Contributions
 
 We make four contributions:
 
-1. **GeoGen-v1, an 801-scenario benchmark** of K-12 geometry diagram-generation tasks across three difficulty tiers. Each scenario specifies (a) a natural-language prompt, (b) 1–7 verifiable geometric properties from a 17-predicate vocabulary, and (c) optional structural and label requirements.
+1. **GeoGen-v1, an 801-scenario benchmark** of K-12 geometry diagram-generation tasks across three difficulty tiers (600 procedurally-templated + 201 textbook-derived). Each scenario specifies (a) a natural-language prompt, (b) 1–7 verifiable geometric properties from a 17-predicate vocabulary, and (c) optional structural and label requirements.
 2. **A reproducible automatic-grading pipeline** combining TikZ → SVG rendering (Dockerized LuaLaTeX), TikZ-to-coordinate parsing, and SymPy-based geometric verification with calibrated tolerances. The pipeline grades a scenario in <1 second on commodity hardware.
-3. **A leaderboard of [N] frontier models × 3 generation strategies** (raw TikZ, structured intermediate-representation JSON, and recipe-DSL with constraint solving), revealing a [X]-percentage-point spread between the strongest and weakest model and a [Y]× cost spread between equivalent-quality combinations.
-4. **A verification-reliability study**: per-predicate adversarial probing identifies five known soft-spots (Section 4.4); a pre-registered N=200 human-correlation study targets Cohen's κ ≥ 0.7 between automatic and majority-human verdicts.
+3. **A leaderboard of 4 frontier models × 3 generation strategies** (raw TikZ, structured intermediate-representation JSON with check-and-revise, and recipe-DSL with constraint solving), revealing a strict-pass spread of **31.7 percentage points** (60.0% to 91.7%) across non-saturating combos and a **19× cost spread** across configurations of equivalent strict-pass rate.
+4. **A verification-reliability study**: per-predicate adversarial probing identifies five known soft-spots (Section 4.4); a pre-registered N=200 human-correlation study targets Cohen's κ ≥ 0.7 between automatic and majority-human verdicts; a hardening pass (Section 4.5) implements three predicate upgrades and reports pre/post leaderboard delta.
 
 ## 1.4 Headline result preview
 
-Across our pilot leaderboard (30 scenarios stratified across 23 templates and three tiers, evaluated on [N] frontier models), we observe:
+From our 30-scenario stratified pilot evaluating four frontier models — Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5, GPT-5.1 — on three strategies, we find:
 
-- **Strict-pass rates range from [X]% to [Y]%** at the top of the leaderboard, with tier-3 (advanced) scenarios producing the largest spread.
-- **Cost-equivalence**: the structured-IR strategy with Sonnet 4.6 matches the strict-pass rate of Opus 4.7 at **~1/19th the per-scenario cost** ($0.007 vs $0.13), demonstrating that strategy choice dominates model choice in the cost-quality trade-off.
-- **Failure-mode taxonomy**: across all failures, [Z]% are geometric-violation (the model produced TikZ that rendered but did not satisfy the property list), [W]% are rendering errors (LaTeX compilation failed), and [V]% are completeness skips (the prompt required a check our verifier marks as soft).
+- **Strategy effect dominates model effect.** The `structured` strategy lifts every model by **10–30 percentage points** of strict pass rate over direct TikZ (`raw_code`): GPT-5.1 (60% → 90%), Sonnet (67% → 92%), Opus (63% → 100% on N=9), Haiku (77% → 87%).
+- **Cost-equivalence: scaffolding beats scale.** Claude Haiku 4.5 with the `structured` strategy (87% strict pass, $0.032/scenario) **dominates** Claude Opus 4.7 with `raw_code` (63% strict pass, $0.329/scenario) on both axes — 24 pp more correct diagrams at 10× lower cost. The Pareto frontier is built almost entirely from `structured` configurations of cheap models; `raw_code` and `recipe` variants of expensive models are universally dominated.
+- **The recipe-DSL strategy is unstable across models.** It works for Sonnet (93%, +27 pp over Sonnet's `raw_code`) but actively hurts GPT-5.1 (60%, identical to its `raw_code`) and Haiku (70%, –7 pp from `raw_code`). Small custom DSLs with built-in geometric priors are *not* a transferable scaffolding pattern.
+- **Failure modes are interpretable.** Of the failures we observe, the dominant bucket for `raw_code` is **silent geometric error** (the model produced TikZ that renders but violates a property like "right angle at H" or "F lies on the circle"); for `structured` it is **completeness gaps in our verifier** (skipped `mark_present` checks); rendering errors are <1% across the board.
 
-These numbers will be updated post-pilot; the *qualitative shape* (sharp tier-3 spread + dominant strategy effect + low rendering-error rate) is robust across the partial data we have today.
+The pilot is small (30 scenarios × 1 repeat) and the full 600-scenario × 3-repeat headline run will tighten the numbers above. The *qualitative findings* (strategy >> model, cost-equivalence, recipe-instability, low rendering-error rate) are robust across the partial Sonnet/Opus runs we collected during the pilot's rate-limit recovery.
 
 ## 1.5 What we are *not* claiming
 
