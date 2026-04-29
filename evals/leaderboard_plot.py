@@ -6,7 +6,8 @@ Produces three figures (PNG + PDF):
   Pareto frontier traced. Each point = (model, strategy).
 * ``per_template_heatmap.{png,pdf}`` — rows = templates, cols = models
   (best strategy per model), cells = pass-rate.
-* ``failure_modes.{png,pdf}`` — stacked bars of gate-failure buckets per
+* ``tier_stratified.{png,pdf}`` — strict pass-rate by tier.
+* ``failure_modes.{png,pdf}`` — stacked bars of semantic failure buckets per
   (model, strategy).
 
 Usage:
@@ -77,6 +78,21 @@ def _by_combo(records: list[dict]) -> dict[tuple[str, str], list[dict]]:
     return d
 
 
+def _combo_label(model: str, strategy: str) -> str:
+    model_label = {
+        "claude-opus-4-7": "Opus",
+        "claude-sonnet-4-6": "Sonnet",
+        "claude-haiku-4-5": "Haiku",
+        "gpt-5.1": "GPT-5.1",
+    }.get(_model_short(model), _model_short(model))
+    strategy_label = {
+        "raw_code": "Raw",
+        "structured": "IR",
+        "recipe": "Recipe",
+    }.get(strategy, strategy)
+    return f"{model_label}\n{strategy_label}"
+
+
 def _pareto(points: list[tuple[float, float, str]]) -> list[tuple[float, float, str]]:
     """Return Pareto-optimal points (lower x, higher y is better)."""
     sorted_pts = sorted(points, key=lambda p: (p[0], -p[1]))
@@ -118,11 +134,39 @@ def plot_pareto(records: list[dict], out_path: Path, strict: bool = True) -> Non
     marker_map = {"raw_code": "o", "structured": "D", "recipe": "^",
                   "raw_code_with_revise": "s", "plan_and_code": "P"}
 
-    for x, y, m, s, _ in pts:
+    sorted_pts = sorted(pts, key=lambda p: (p[0], p[1]))
+    for idx, (x, y, m, s, _) in enumerate(sorted_pts):
         ax.scatter(x, y, s=140, color=color_map[m], marker=marker_map.get(s, "o"),
                    edgecolor="black", linewidth=0.7, zorder=3)
-        ax.annotate(f"{m}\n{s}", (x, y), fontsize=7,
-                    xytext=(5, 5), textcoords="offset points", zorder=4)
+        nearby = [
+            (xx, yy)
+            for xx, yy, *_ in sorted_pts
+            if abs(np.log10(xx) - np.log10(x)) < 0.06 and abs(yy - y) < 6 and (xx, yy) != (x, y)
+        ]
+        if not nearby:
+            dx, dy = 6, 6
+            ha = "left"
+        else:
+            higher = sum(1 for _, yy in nearby if yy > y)
+            lower = sum(1 for _, yy in nearby if yy < y)
+            if higher > lower:
+                dx, dy = 6, -10
+                ha = "left"
+            elif lower > higher:
+                dx, dy = 6, 8
+                ha = "left"
+            else:
+                dx, dy = -8, 0
+                ha = "right"
+        ax.annotate(
+            _combo_label(m, s),
+            (x, y),
+            fontsize=7,
+            xytext=(dx, dy),
+            textcoords="offset points",
+            ha=ha,
+            zorder=4,
+        )
 
     front = _pareto([(x, y, f"{m}/{s}") for x, y, m, s, _ in pts])
     if len(front) >= 2:
@@ -147,18 +191,72 @@ def plot_pareto(records: list[dict], out_path: Path, strict: bool = True) -> Non
     print(f"  wrote {out_path.with_suffix('.png')}")
 
 
+def plot_tier_stratified(records: list[dict], out_path: Path) -> None:
+    by_combo = _by_combo(records)
+    combos = sorted(by_combo.keys())
+    if not combos:
+        return
+
+    tiers = [1, 2, 3]
+    matrix = np.zeros((len(combos), len(tiers)))
+    for i, combo in enumerate(combos):
+        recs = by_combo[combo]
+        for j, tier in enumerate(tiers):
+            rs = [r for r in recs if r.get("tier") == tier]
+            matrix[i, j] = (
+                sum(1 for r in rs if _strict_pass(r)) / len(rs) * 100
+                if rs
+                else np.nan
+            )
+
+    x = np.arange(len(combos))
+    width = 0.24
+    colors = ["#4C78A8", "#F58518", "#E45756"]
+
+    fig, ax = plt.subplots(figsize=(max(8, 0.9 * len(combos)), 5.2))
+    for j, tier in enumerate(tiers):
+        offsets = x + (j - 1) * width
+        heights = matrix[:, j]
+        ax.bar(offsets, np.nan_to_num(heights), width, label=f"Tier {tier}", color=colors[j])
+        for xi, h in zip(offsets, heights):
+            if not np.isnan(h):
+                ax.text(xi, h + 1.5, f"{h:.0f}", ha="center", va="bottom", fontsize=7)
+
+    labels = [_combo_label(m, s) for m, s in combos]
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
+    ax.set_ylim(0, 108)
+    ax.set_ylabel("Strict pass-rate (%)")
+    ax.set_title("GeoGen pilot strict pass-rate by difficulty tier")
+    ax.legend(loc="lower left", ncol=3, fontsize=8)
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path.with_suffix(".png"), dpi=180)
+    fig.savefig(out_path.with_suffix(".pdf"))
+    plt.close(fig)
+    print(f"  wrote {out_path.with_suffix('.png')}")
+
+
 def plot_per_template_heatmap(records: list[dict], out_path: Path) -> None:
     by_combo = _by_combo(records)
     by_model: dict[str, dict[str, list[dict]]] = collections.defaultdict(dict)
     for (model, strategy), recs in by_combo.items():
         by_model[model][strategy] = recs
 
-    # best strategy per model = the one with most strict-passes
+    # best strategy per model = highest strict-pass rate (ties broken by larger N
+    # so combos with very small samples don't dominate when they happen to hit 100%).
     best_by_model: dict[str, list[dict]] = {}
+    best_strategy_by_model: dict[str, str] = {}
     for model, strats in by_model.items():
-        best = max(strats.items(),
-                   key=lambda kv: sum(1 for r in kv[1] if _strict_pass(r)))
+        def _key(kv):
+            recs = kv[1]
+            n = len(recs) or 1
+            rate = sum(1 for r in recs if _strict_pass(r)) / n
+            return (rate, n)
+        best = max(strats.items(), key=_key)
         best_by_model[model] = best[1]
+        best_strategy_by_model[model] = best[0]
 
     templates: set[str] = set()
     for recs in best_by_model.values():
@@ -186,11 +284,17 @@ def plot_per_template_heatmap(records: list[dict], out_path: Path) -> None:
             if rs:
                 matrix[i, j] = sum(1 for r in rs if _strict_pass(r)) / len(rs) * 100
 
-    fig, ax = plt.subplots(figsize=(max(6, 1.5 * len(model_list)),
+    fig, ax = plt.subplots(figsize=(max(6, 1.7 * len(model_list)),
                                     max(6, 0.32 * len(template_list))))
     im = ax.imshow(matrix, aspect="auto", cmap="RdYlGn", vmin=0, vmax=100)
+
+    strategy_short = {"raw_code": "raw", "structured": "IR", "recipe": "recipe"}
+    col_labels = []
+    for m in model_list:
+        strat = best_strategy_by_model.get(m, "?")
+        col_labels.append(f"{_model_short(m)}\n({strategy_short.get(strat, strat)})")
     ax.set_xticks(range(len(model_list)))
-    ax.set_xticklabels([_model_short(m) for m in model_list], rotation=20, ha="right")
+    ax.set_xticklabels(col_labels, rotation=20, ha="right", fontsize=9)
     ax.set_yticks(range(len(template_list)))
     ax.set_yticklabels(template_list, fontsize=8)
     ax.set_title("Per-template strict-pass rate (best strategy per model)")
@@ -209,6 +313,49 @@ def plot_per_template_heatmap(records: list[dict], out_path: Path) -> None:
     print(f"  wrote {out_path.with_suffix('.png')}")
 
 
+_GEOMETRIC_PREDICATE_TYPES = {
+    "right_angle",
+    "parallel",
+    "perpendicular",
+    "equal_lengths",
+    "point_on_circle",
+    "point_on_segment",
+    "point_on_line",
+    "centroid",
+    "angle_bisector",
+    "equidistant_from_sides",
+    "angle_equal",
+    "tangent",
+    "collinear",
+    "intersects",
+    "midpoint",
+    "opposite_side",
+    "same_side",
+    "not_between",
+}
+
+
+def _failure_bucket(rec: dict, failure_name: str) -> str:
+    checks = rec.get("tikz_checks") or {}
+    check = checks.get(failure_name)
+    if isinstance(check, dict):
+        ptype = check.get("type")
+        if ptype:
+            if ptype in _GEOMETRIC_PREDICATE_TYPES:
+                return "geometric predicate"
+            if ptype in {"mark_present", "label_present"}:
+                return "mark / label"
+            return str(ptype)
+
+    if failure_name in {"required_labels", "required_entities"}:
+        return "label / entity"
+    if failure_name.startswith("canvas:"):
+        return "canvas"
+    if "marked" in failure_name or "label" in failure_name:
+        return "mark / label"
+    return "geometric predicate"
+
+
 def plot_failure_modes(records: list[dict], out_path: Path) -> None:
     by_combo = _by_combo(records)
     combos = sorted(by_combo.keys())
@@ -223,7 +370,7 @@ def plot_failure_modes(records: list[dict], out_path: Path) -> None:
             if r.get("gate_status") != "fail":
                 continue
             for f in r.get("gate_failures", []):
-                bucket = f.split(":", 1)[0]
+                bucket = _failure_bucket(r, f.split(":", 1)[0])
                 c[bucket] += 1
         bucketed[k] = c
         bucket_set.update(c.keys())
@@ -240,7 +387,7 @@ def plot_failure_modes(records: list[dict], out_path: Path) -> None:
         heights = np.array([bucketed[k][bucket] for k in combos], dtype=float)
         ax.bar(x, heights, bottom=bottom, label=bucket)
         bottom += heights
-    labels = [f"{_model_short(m)}\n{s}" for m, s in combos]
+    labels = [_combo_label(m, s) for m, s in combos]
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=8)
     ax.set_ylabel("# failed scenarios")
@@ -270,6 +417,7 @@ def main() -> None:
 
     print(f"Loaded {len(records)} records from {args.input_dir}")
     plot_pareto(records, out_dir / "pareto", strict=args.strict)
+    plot_tier_stratified(records, out_dir / "tier_stratified")
     plot_per_template_heatmap(records, out_dir / "per_template_heatmap")
     plot_failure_modes(records, out_dir / "failure_modes")
     print(f"\nAll plots in {out_dir}")

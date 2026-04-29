@@ -92,7 +92,7 @@ Catalog (early enumeration, will fill in with concrete examples):
 | `point_on_circle` | Tolerance permits 0.005 radial slack per unit. Acceptable. | **acceptable** |
 | `mark_present` | Pure TikZ-string match; passes if the *primitive* is in the source even if it would render off-canvas. | **soft check**: classified as soft-pass, doesn't contribute to strict pass |
 | `label_present` | Same. | **soft check** |
-| `angle_equal` | **Not implemented.** Falls through to default "skipped". | **bug**: fixed in §4.5 hardening |
+| `angle_equal` | Compares interior angles at two named vertex triples to within $\tau$ rad. Sound. | **acceptable** (8 of 14 pilot failures were caught here, e.g., `corresponding_angles_equal`) |
 | `centroid` | Verifies $G = (A+B+C)/3$ exactly (within tol). Sound. | **acceptable** |
 | `equidistant_from_sides` | Distance computed to *line*, not segment. A point outside the triangle equidistant from the three side-lines passes (e.g., the *excenters*). | **soft spot**: tighten by also requiring `same_side` from each pair of vertices |
 | `intersects` | Sound. | **acceptable** |
