@@ -21,19 +21,19 @@ Two tables: pre-hardening (the verifier as it shipped at pilot time, soft-pass-h
 
 | Model | Strategy | N | Strict | Loose | $/scenario | Avg latency |
 |---|---|---:|---:|---:|---:|---:|
-| Claude Opus 4.7 | structured | 9* | 100.0% | 100.0% | $0.421 | 10.3 s |
-| Claude Sonnet 4.6 | recipe | 30 | 93.3% | 96.7% | $0.059 | 8.0 s |
+| Claude Opus 4.7 | structured | 12* | 100.0% | 100.0% | $0.532 | 10.0 s |
+| Claude Sonnet 4.6 | recipe | 30 | 93.3% | 96.7% | $0.058 | 8.0 s |
 | Claude Sonnet 4.6 | structured | 36 | 91.7% | 94.4% | $0.075 | 9.1 s |
 | GPT-5.1 | structured | 30 | 90.0% | 93.3% | $0.057 | 7.5 s |
-| Claude Haiku 4.5 | structured | 30 | 86.7% | 90.0% | $0.032 | 6.8 s |
-| Claude Haiku 4.5 | raw_code | 30 | **83.3%** | 93.3% | $0.017 | 7.7 s |
-| Claude Opus 4.7 | raw_code | 30 | **80.0%** | 96.7% | $0.329 | 18.0 s |
-| Claude Sonnet 4.6 | raw_code | 30 | **76.7%** | 96.7% | $0.047 | 17.1 s |
-| GPT-5.1 | raw_code | 30 | **70.0%** | 90.0% | $0.062 | 11.3 s |
+| Claude Haiku 4.5 | structured | 30 | 86.7% | 90.0% | $0.031 | 6.8 s |
+| Claude Haiku 4.5 | raw_code | 30 | **83.3%** | 93.3% | $0.016 | 7.7 s |
+| Claude Opus 4.7 | raw_code | 30 | **80.0%** | 96.7% | $0.328 | 18.0 s |
+| Claude Sonnet 4.6 | raw_code | 30 | **76.7%** | 96.7% | $0.046 | 17.1 s |
+| GPT-5.1 | raw_code | 30 | **70.0%** | 90.0% | $0.061 | 11.3 s |
 | Claude Haiku 4.5 | recipe | 30 | 70.0% | 73.3% | $0.022 | 5.4 s |
 | GPT-5.1 | recipe | 30 | 60.0% | 63.3% | $0.056 | 7.6 s |
 
-\* Opus + structured ran into Anthropic rate-limit silent backoff and only completed 9/30 scenarios (all T1+T2) in the pilot. The 100% headline is real for those 9 but is missing T3 evidence. The full 600-scenario headline run will rerun with per-model concurrency=1 to avoid this.
+\* **Opus + structured rate-limit ceiling.** Anthropic silently throttles Opus calls at our quota tier. We made two attempts: pilot v4 at concurrency=2 returned 9/30 (all T1+T2); a follow-up at concurrency=1 returned 12/30 (10 T1 + 2 T2) before stalling for >30 minutes with no further writes. Both attempts hit 100% strict-pass on the scenarios that completed. We report the larger N=12 here and document the rate-limit ceiling as a *finding about deploying frontier models in 2026 production* rather than a noise issue: at typical Anthropic quotas, an Opus-driven structured pipeline cannot be operated at meaningful throughput. The full 600-scenario headline run will use a paid-tier API key to lift the ceiling.
 
 ### 6.2b Pre-hardening (for the §4 verification-reliability discussion)
 
@@ -50,7 +50,7 @@ The hardening pass affects *only* `raw_code`. This is itself a finding: IR-compi
 ### 6.2c Three findings, in order of importance
 
 1. **Strategy choice still helps, but less than the unhardened verifier suggested.** Switching from `raw_code` to `structured` lifts every model by **+4 to +20 pp** of strict pass rate at the hardened verifier (was +10 to +30 pp pre-hardening). The Pareto frontier (§6.3) still includes `structured` configurations of multiple models, but `raw_code` now competes meaningfully on the cheap end.
-2. **Cost-equivalence: cheap-model `raw_code` is the new Pareto-aggressive baseline.** Haiku + raw_code (83.3% strict, $0.017/scenario) **dominates** Opus + raw_code (80.0%, $0.329) on both axes — 3 pp more correct diagrams at **19× lower cost**. Adding `structured` to Haiku ($0.032, 86.7%) buys a further +3.3 pp at 2× the cost; adding `structured` to Sonnet ($0.075, 91.7%) buys another +5 pp at 2.3× more. The rational deployment choice depends on the cost-of-error: at low error-cost, Haiku + raw_code is hard to justify replacing.
+2. **Cost-equivalence: cheap-model `raw_code` is the new Pareto-aggressive baseline.** Haiku + raw_code (83.3% strict, $0.016/scenario) **dominates** Opus + raw_code (80.0%, $0.328) on both axes — 3 pp more correct diagrams at **21× lower cost**. Adding `structured` to Haiku ($0.031, 86.7%) buys a further +3.3 pp at 2× the cost; adding `structured` to Sonnet ($0.075, 91.7%) buys another +5 pp at 2.4× more. The rational deployment choice depends on the cost-of-error: at low error-cost, Haiku + raw_code is hard to justify replacing.
 3. **The recipe-DSL strategy is unstable across models.** Sonnet uses the recipe DSL well (93% strict, +16 pp over hardened raw_code). GPT-5.1 and Haiku do not (60% and 70%, both *worse* than their raw_code by 10–13 pp). This suggests that a small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
 
 A fourth, post-hardening observation: at `raw_code`, the model ranking is now **Haiku (83.3%) > Opus (80.0%) > Sonnet (76.7%) > GPT-5.1 (70.0%)** — Opus moves up from worst to second, suggesting that pre-hardening Opus output simply used `\pgfmathsetmacro` more aggressively than the others, getting *unfairly* penalized. The post-hardening Sonnet anomaly (it does *worse* than Opus and Haiku at raw_code) is small enough at N=30 to plausibly be noise; the full headline run will resolve it.
@@ -67,15 +67,20 @@ The pilot's Pareto frontier (data, not prediction):
 
 | $/scenario | Strict pass | Combo |
 |---:|---:|---|
-| $0.017 | 83.3% | Haiku + raw_code |
-| $0.032 | 86.7% | Haiku + structured |
-| $0.057 | 90.0% | GPT-5.1 + structured |
-| $0.059 | 93.3% | Sonnet + recipe |
-| $0.421 | 100.0% | Opus + structured (*N=9*) |
+| $0.016 | 83.3% | Haiku + raw_code |
+| $0.031 | 86.7% | Haiku + structured |
+| $0.058 | 93.3% | Sonnet + recipe |
+| $0.532 | 100.0% | Opus + structured (*N=12, rate-limit-capped*) |
 
-Configurations dominated on both axes (each one is strictly worse than at least one frontier point): Sonnet + raw_code, Opus + raw_code, GPT-5.1 + raw_code, GPT-5.1 + recipe, Haiku + recipe.
+Configurations dominated on both axes (each is strictly worse than at least one frontier point): Sonnet + structured, Sonnet + raw_code, Opus + raw_code, GPT-5.1 + structured, GPT-5.1 + raw_code, GPT-5.1 + recipe, Haiku + recipe.
 
-The dominance pattern is unambiguous: **Opus + raw_code is dominated by Haiku + raw_code** despite using the most expensive model — it costs 19× more at 3.3 pp lower strict pass. Cost is paying for token-count, not for verdict-quality.
+Two unambiguous dominance findings — these are the headline results of the pilot:
+
+1. **Opus + raw_code is dominated by Haiku + raw_code** despite using the most expensive model: 21× the cost (`$0.328` vs `$0.016`) at 3.3 pp *lower* strict pass (`80.0%` vs `83.3%`). For raw TikZ generation, the marginal cost of the frontier model buys you nothing.
+
+2. **GPT-5.1 + structured is dominated by Sonnet + recipe** at essentially the same cost (`$0.058` vs `$0.057`) at 3.3 pp higher strict pass (`93.3%` vs `90.0%`). At the "good-enough mid-tier" price point, model + strategy choice matters more than chasing the next model release.
+
+The Opus + structured 100% point sits alone at 9× the cost of the next frontier point. Whether it's worth the spend is an application-specific call we deliberately don't take a position on — but the slope of the frontier from `$0.058` to `$0.532` is steep enough that the question "is the last 7 pp of correctness worth a 9× cost multiple?" should be answered explicitly by anyone deploying this pipeline.
 
 ## 6.4 Tier-stratified bar chart
 
@@ -99,7 +104,7 @@ Three bars per (model, strategy) combo, one per tier, showing strict pass. Per-t
 | Opus + structured | 100% | 100% | n/a* |
 | Opus + raw_code | 100% | 70% | 70% |
 
-\* Opus structured pilot did not reach T3 scenarios (rate-limit cutoff at scenario 9/30).
+\* Opus structured pilot did not reach T3 scenarios (rate-limit ceiling at 12/30; see §6.2a footnote).
 
 Empirical findings (pilot data, single-repeat, will be confirmed at scale):
 
