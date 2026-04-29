@@ -16,10 +16,12 @@ set -euo pipefail
 
 SCENARIOS=${SCENARIOS:-evals/scenarios_pilot.yaml}
 OUTPUT_DIR=${OUTPUT_DIR:-evals/results/leaderboard_pilot}
-CONCURRENCY=${CONCURRENCY:-8}
+CONCURRENCY=${CONCURRENCY:-4}
 
+# Pilot v2: dropped Opus (rate-limited; deadlocked the v1 launch). Keeping
+# Sonnet/Haiku/GPT-5.1 for the cost-quality spread; we'll add Opus back for
+# the full headline run with a per-model concurrency override.
 MODELS=(
-  "anthropic:claude-opus-4-7"
   "anthropic:claude-sonnet-4-6"
   "anthropic:claude-haiku-4-5-20251001"
   "openai-responses:gpt-5.1"
