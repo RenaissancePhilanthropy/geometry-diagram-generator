@@ -53,12 +53,23 @@ def _price(model: str, in_tok: int, out_tok: int) -> float:
 
 
 def _gate_pass(rec: dict) -> bool | None:
+    """Loose pass: counts both strict and soft pass. Used for the headline."""
     gs = rec.get("gate_status")
     if gs == "pass":
         return True
     if gs == "soft_pass":
         return True
     if gs == "fail":
+        return False
+    return None
+
+
+def _gate_strict(rec: dict) -> bool | None:
+    """Strict pass: requires every check to actually pass (no skipped)."""
+    gs = rec.get("gate_status")
+    if gs == "pass":
+        return True
+    if gs in {"soft_pass", "fail"}:
         return False
     return None
 
@@ -88,6 +99,8 @@ def _aggregate(records: list[dict]) -> dict:
 def _summary_row(model: str, strategy: str, recs: list[dict]) -> dict:
     n = len(recs)
     passes = sum(1 for r in recs if _gate_pass(r) is True)
+    strict = sum(1 for r in recs if _gate_strict(r) is True)
+    soft = sum(1 for r in recs if r.get("gate_status") == "soft_pass")
     fails = sum(1 for r in recs if _gate_pass(r) is False)
     skipped = n - passes - fails
 
@@ -101,9 +114,12 @@ def _summary_row(model: str, strategy: str, recs: list[dict]) -> dict:
         "strategy": strategy,
         "n": n,
         "pass": passes,
+        "strict": strict,
+        "soft": soft,
         "fail": fails,
         "skip": skipped,
         "pass_rate": (passes / n) if n else 0.0,
+        "strict_rate": (strict / n) if n else 0.0,
         "mean_in_tok": statistics.mean(in_toks) if in_toks else 0,
         "mean_out_tok": statistics.mean(out_toks) if out_toks else 0,
         "mean_dur_s": statistics.mean(durs) if durs else 0.0,
@@ -112,12 +128,13 @@ def _summary_row(model: str, strategy: str, recs: list[dict]) -> dict:
     }
 
 
-def _by_tier_pass_rate(recs: list[dict]) -> dict[int, float]:
+def _by_tier_pass_rate(recs: list[dict], *, strict: bool = False) -> dict[int, float]:
+    pred = _gate_strict if strict else _gate_pass
     by_tier: dict[int, list[dict]] = collections.defaultdict(list)
     for r in recs:
         by_tier[r.get("tier")].append(r)
     return {
-        t: (sum(1 for r in rs if _gate_pass(r) is True) / len(rs)) if rs else 0.0
+        t: (sum(1 for r in rs if pred(r) is True) / len(rs)) if rs else 0.0
         for t, rs in by_tier.items()
     }
 
@@ -158,20 +175,25 @@ def _markdown_report(by_combo: dict, all_records: list[dict]) -> str:
     )
 
     out.append("## Headline: pass-rate × cost\n")
-    out.append("| model | strategy | N | pass | fail | pass-rate | mean tok in | mean tok out | mean dur (s) | mean $ | total $ |")
+    out.append("Strict = every check passed (no skipped/soft); Loose = strict + soft_pass (the predicate did fire but was marked skipped, e.g. `mark_present` checks).\n")
+    out.append("| model | strategy | N | strict | soft | fail | strict-rate | loose-rate | mean dur (s) | mean $ | total $ |")
     out.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
-    for r in rows:
+    rows_strict = sorted(
+        rows,
+        key=lambda r: (-r["strict_rate"], r["mean_cost_usd"]),
+    )
+    for r in rows_strict:
         out.append(
-            f"| `{r['model']}` | `{r['strategy']}` | {r['n']} | {r['pass']} | {r['fail']} | "
-            f"**{r['pass_rate']*100:.1f}%** | {r['mean_in_tok']:.0f} | {r['mean_out_tok']:.0f} | "
+            f"| `{r['model']}` | `{r['strategy']}` | {r['n']} | {r['strict']} | {r['soft']} | {r['fail']} | "
+            f"**{r['strict_rate']*100:.1f}%** | {r['pass_rate']*100:.1f}% | "
             f"{r['mean_dur_s']:.1f} | ${r['mean_cost_usd']:.3f} | ${r['total_cost_usd']:.2f} |"
         )
 
-    out.append("\n## Per-tier pass rate\n")
+    out.append("\n## Per-tier strict pass rate\n")
     out.append("| model | strategy | T1 (easy) | T2 (medium) | T3 (hard) |")
     out.append("|---|---|---:|---:|---:|")
     for (model, strategy), recs in sorted(by_combo.items()):
-        bt = _by_tier_pass_rate(recs)
+        bt = _by_tier_pass_rate(recs, strict=True)
         out.append(
             f"| `{_model_short(model)}` | `{strategy}` | "
             f"{bt.get(1, 0)*100:.0f}% | {bt.get(2, 0)*100:.0f}% | {bt.get(3, 0)*100:.0f}% |"
@@ -235,11 +257,13 @@ def main() -> None:
     print(f"Wrote CSV: {csv_path}")
 
     print()
-    for r in rows:
+    rows_strict = sorted(rows, key=lambda r: (-r["strict_rate"], r["mean_cost_usd"]))
+    for r in rows_strict:
         print(f"  {r['model']:30s} {r['strategy']:12s} "
-              f"pass={r['pass_rate']*100:5.1f}%  "
+              f"strict={r['strict_rate']*100:5.1f}%  "
+              f"loose={r['pass_rate']*100:5.1f}%  "
               f"cost=${r['total_cost_usd']:6.2f}  "
-              f"dur={r['mean_dur_s']:5.1f}s")
+              f"dur={r['mean_dur_s']:5.1f}s  N={r['n']}")
 
 
 if __name__ == "__main__":

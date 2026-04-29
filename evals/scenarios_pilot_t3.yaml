@@ -1,0 +1,520 @@
+- id: tpl-t3-2cir-OC-PQ-5-5
+  tier: 3
+  tags:
+  - templated
+  - circle
+  - intersection
+  - advanced
+  prompt: 'Draw two circles that intersect in two points: the first centered at O
+    with radius 5, the second centered at C with radius 5. Mark the two intersection
+    points as P and Q. Label all four points.'
+  expected_properties:
+  - name: P_on_first
+    type: point_on_circle
+    args:
+    - P
+    - O
+    - Q
+  - name: Q_on_first
+    type: point_on_circle
+    args:
+    - Q
+    - O
+    - P
+  - name: P_on_second
+    type: point_on_circle
+    args:
+    - P
+    - C
+    - Q
+  - name: Q_on_second
+    type: point_on_circle
+    args:
+    - Q
+    - C
+    - P
+  structural_checks: []
+  required_labels:
+  - O
+  - C
+  - P
+  - Q
+  required_entities:
+  - type: circle
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-medial-MNO-DEF-50
+  tier: 3
+  tags:
+  - templated
+  - triangle
+  - medial-triangle
+  - midpoint
+  - parallel
+  - advanced
+  prompt: "Draw a triangle MNO with angle N = 50\xB0 and angle O = 80\xB0. Mark the\
+    \ midpoints D of side NO, E of side OM, and F of side MN. Then draw the inner\
+    \ triangle DEF. Label all six points."
+  expected_properties:
+  - name: D_midpoint_NO
+    type: midpoint
+    args:
+    - D
+    - N
+    - O
+  - name: E_midpoint_OM
+    type: midpoint
+    args:
+    - E
+    - O
+    - M
+  - name: F_midpoint_MN
+    type: midpoint
+    args:
+    - F
+    - M
+    - N
+  - name: DE_parallel_MN
+    type: parallel
+    args:
+    - - D
+      - E
+    - - M
+      - N
+  - name: EF_parallel_NO
+    type: parallel
+    args:
+    - - E
+      - F
+    - - N
+      - O
+  - name: FD_parallel_OM
+    type: parallel
+    args:
+    - - F
+      - D
+    - - O
+      - M
+  structural_checks: []
+  required_labels:
+  - M
+  - N
+  - O
+  - D
+  - E
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-tan-M-T-UV-r4
+  tier: 3
+  tags:
+  - templated
+  - circle
+  - tangent
+  - perpendicular
+  - advanced
+  prompt: Construct a circle centered at M with radius 4, and a point T on the circle.
+    Draw the tangent line to the circle at T, with two labeled points U and V on that
+    line, one on each side of T. Mark the right angle between radius MT and the tangent
+    line. Label all four points.
+  expected_properties:
+  - name: tangent_at_T
+    type: tangent
+    args:
+    - - U
+      - V
+    - M
+    - T
+  - name: radius_perp_tangent
+    type: perpendicular
+    args:
+    - - M
+      - T
+    - - U
+      - V
+  - name: T_between_U_and_V
+    type: point_on_segment
+    args:
+    - T
+    - U
+    - V
+  - name: right_angle_marked_at_T
+    type: mark_present
+    args:
+    - right_angle
+    - T
+  structural_checks: []
+  required_labels:
+  - M
+  - T
+  - U
+  - V
+  required_entities:
+  - type: circle
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-rt-alt-ABC-H-3-4
+  tier: 3
+  tags:
+  - templated
+  - triangle
+  - right-angle
+  - altitude
+  - advanced
+  prompt: Draw a right triangle ABC with the right angle at C, leg AC of length 3,
+    and leg BC of length 4. Drop the altitude from C to the hypotenuse AB, meeting
+    at point H. Mark both right angles (at C and at H) and label all four points.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: right_angle_at_H
+    type: right_angle
+    args:
+    - C
+    - H
+    - A
+  - name: H_on_hypotenuse
+    type: point_on_segment
+    args:
+    - H
+    - A
+    - B
+  - name: right_angle_marked_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  - name: right_angle_marked_at_H
+    type: mark_present
+    args:
+    - right_angle
+    - H
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-cen-XYZ-G-60
+  tier: 3
+  tags:
+  - templated
+  - triangle
+  - centroid
+  - median
+  - advanced
+  prompt: "Create a diagram showing a triangle XYZ with angle Y = 60\xB0 and angle\
+    \ Z = 70\xB0. Mark the midpoint D of side YZ, the midpoint E of side ZX, and the\
+    \ midpoint F of side XY. Draw the three medians XD, YE, and ZF \u2014 they all\
+    \ meet at the centroid G. Label all seven points."
+  expected_properties:
+  - name: G_is_centroid
+    type: centroid
+    args:
+    - G
+    - X
+    - Y
+    - Z
+  - name: D_midpoint_YZ
+    type: midpoint
+    args:
+    - D
+    - Y
+    - Z
+  - name: E_midpoint_ZX
+    type: midpoint
+    args:
+    - E
+    - Z
+    - X
+  - name: F_midpoint_XY
+    type: midpoint
+    args:
+    - F
+    - X
+    - Y
+  - name: G_on_median_XD
+    type: point_on_segment
+    args:
+    - G
+    - X
+    - D
+  structural_checks: []
+  required_labels:
+  - X
+  - Y
+  - Z
+  - D
+  - E
+  - F
+  - G
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-trv-WX-YZ-GH-40
+  tier: 3
+  tags:
+  - templated
+  - parallel
+  - transversal
+  - angles
+  - advanced
+  prompt: "Create a diagram showing two parallel horizontal lines: the first passes\
+    \ through points W and X, and the second passes through points Y and Z below it.\
+    \ Then draw a transversal line that makes a 40\xB0 angle with the lines, crossing\
+    \ the first at point G and the second at point H. Mark a pair of corresponding\
+    \ angles at G and H as equal. Label all six points."
+  expected_properties:
+  - name: lines_parallel
+    type: parallel
+    args:
+    - - W
+      - X
+    - - Y
+      - Z
+  - name: G_on_first_line
+    type: point_on_line
+    args:
+    - G
+    - W
+    - X
+  - name: H_on_second_line
+    type: point_on_line
+    args:
+    - H
+    - Y
+    - Z
+  - name: corresponding_angles_equal
+    type: angle_equal
+    args:
+    - - W
+      - G
+      - H
+    - - Y
+      - H
+      - G
+  structural_checks: []
+  required_labels:
+  - W
+  - X
+  - Y
+  - Z
+  - G
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-iso-alt-MNO-H-l8-b6
+  tier: 3
+  tags:
+  - templated
+  - triangle
+  - isosceles
+  - altitude
+  - midpoint
+  - advanced
+  prompt: Show an isosceles triangle MNO where MN and MO are both length 8 and the
+    base NO has length 6. Drop the altitude from the apex M to base NO, meeting at
+    point H. Show that H is also the midpoint of NO. Mark the right angle at H and
+    label all four points.
+  expected_properties:
+  - name: MN_eq_MO
+    type: equal_lengths
+    args:
+    - - M
+      - N
+    - - M
+      - O
+  - name: right_angle_at_H
+    type: right_angle
+    args:
+    - M
+    - H
+    - N
+  - name: H_midpoint_NO
+    type: midpoint
+    args:
+    - H
+    - N
+    - O
+  - name: H_on_segment_NO
+    type: point_on_segment
+    args:
+    - H
+    - N
+    - O
+  - name: right_angle_marked_at_H
+    type: mark_present
+    args:
+    - right_angle
+    - H
+  structural_checks: []
+  required_labels:
+  - M
+  - N
+  - O
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-thales-DEF-O-6-8
+  tier: 3
+  tags:
+  - templated
+  - triangle
+  - right-angle
+  - circle
+  - thales
+  - advanced
+  prompt: Show a right triangle DEF with the right angle at F, leg DF = 6, and leg
+    EF = 8. Then draw the circle with diameter DE, with center O at the midpoint of
+    DE. By Thales' theorem the right-angle vertex F lies on this circle. Label all
+    four points and mark the right angle at F.
+  expected_properties:
+  - name: right_angle_at_F
+    type: right_angle
+    args:
+    - D
+    - F
+    - E
+  - name: O_midpoint_DE
+    type: midpoint
+    args:
+    - O
+    - D
+    - E
+  - name: F_on_circle
+    type: point_on_circle
+    args:
+    - F
+    - O
+    - D
+  - name: right_angle_marked_at_F
+    type: mark_present
+    args:
+    - right_angle
+    - F
+  structural_checks: []
+  required_labels:
+  - D
+  - E
+  - F
+  - O
+  required_entities:
+  - type: circle
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-cyc-JKLM-O-r5
+  tier: 3
+  tags:
+  - templated
+  - quadrilateral
+  - circle
+  - cyclic
+  - advanced
+  prompt: Construct a circle centered at O with radius 5. Mark four points J, K, L,
+    M on the circle going around in order so they form a cyclic quadrilateral JKLM.
+    Draw the four sides. Label all five points.
+  expected_properties:
+  - name: J_on_circle
+    type: point_on_circle
+    args:
+    - J
+    - O
+    - K
+  - name: L_on_circle
+    type: point_on_circle
+    args:
+    - L
+    - O
+    - K
+  - name: M_on_circle
+    type: point_on_circle
+    args:
+    - M
+    - O
+    - K
+  structural_checks: []
+  required_labels:
+  - J
+  - K
+  - L
+  - M
+  - O
+  required_entities:
+  - type: circle
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: tpl-t3-2cir-OK-ST-6-5
+  tier: 3
+  tags:
+  - templated
+  - circle
+  - intersection
+  - advanced
+  prompt: 'Sketch two circles that intersect in two points: the first centered at
+    O with radius 6, the second centered at K with radius 5. Mark the two intersection
+    points as S and T. Label all four points.'
+  expected_properties:
+  - name: S_on_first
+    type: point_on_circle
+    args:
+    - S
+    - O
+    - T
+  - name: T_on_first
+    type: point_on_circle
+    args:
+    - T
+    - O
+    - S
+  - name: S_on_second
+    type: point_on_circle
+    args:
+    - S
+    - K
+    - T
+  - name: T_on_second
+    type: point_on_circle
+    args:
+    - T
+    - K
+    - S
+  structural_checks: []
+  required_labels:
+  - O
+  - K
+  - S
+  - T
+  required_entities:
+  - type: circle
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
