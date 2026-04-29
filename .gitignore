@@ -25,6 +25,9 @@ demo-ui/pnpm-workspace.yaml
 # Evals results
 evals/results/
 
+# Eval-viewer static data dump (regenerated locally; do not commit)
+eval-viewer-ui/public/data/
+
 # macOS files
 .DS_Store
 
