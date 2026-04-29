@@ -16,11 +16,24 @@ set -euo pipefail
 
 SCENARIOS=${SCENARIOS:-evals/scenarios_pilot.yaml}
 OUTPUT_DIR=${OUTPUT_DIR:-evals/results/leaderboard_pilot}
-CONCURRENCY=${CONCURRENCY:-4}
+
+# Per-model concurrency. Anthropic models get throttled at ~4-concurrent
+# 19K-token bursts (CLOSE_WAIT 429s, observed in v1 + v2). OpenAI models
+# have a separate rate-limit pool. (macOS bash 3.2 lacks assoc arrays.)
+concurrency_for() {
+  case "$1" in
+    anthropic:*) echo 2 ;;
+    openai-responses:*) echo 4 ;;
+    *) echo 2 ;;
+  esac
+}
+
+# Skip combos that already completed cleanly in earlier runs (manual list).
+# Format: "model|strategy"
+SKIP=${SKIP:-"anthropic:claude-sonnet-4-6|raw_code"}
 
 # Pilot v2: dropped Opus (rate-limited; deadlocked the v1 launch). Keeping
-# Sonnet/Haiku/GPT-5.1 for the cost-quality spread; we'll add Opus back for
-# the full headline run with a per-model concurrency override.
+# Sonnet/Haiku/GPT-5.1 for the cost-quality spread.
 MODELS=(
   "anthropic:claude-sonnet-4-6"
   "anthropic:claude-haiku-4-5-20251001"
@@ -31,7 +44,7 @@ STRATEGIES=("raw_code" "structured" "recipe")
 mkdir -p "$OUTPUT_DIR"
 
 INDEX="$OUTPUT_DIR/index.tsv"
-echo -e "model\tstrategy\trun_id\tjsonl\tstatus\tstart\tend\twallclock_s" > "$INDEX"
+[[ -f "$INDEX" ]] || echo -e "model\tstrategy\trun_id\tjsonl\tstatus\tstart\tend\twallclock_s" > "$INDEX"
 
 total=$(( ${#MODELS[@]} * ${#STRATEGIES[@]} ))
 i=0
@@ -43,18 +56,24 @@ for model in "${MODELS[@]}"; do
     echo "$label"
     echo "===================================================================="
 
+    if [[ "$SKIP" == *"${model}|${strategy}"* ]]; then
+      echo "  skipped (already completed in earlier run)"
+      continue
+    fi
+
+    conc=$(concurrency_for "$model")
+    echo "  using concurrency=$conc"
+
     start_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     t0=$(date +%s)
 
-    # The harness picks its own run_id from UTC timestamp; we capture by
-    # sniffing what was produced after the run.
     set +e
     uv run python -m evals.run \
       --scenarios "$SCENARIOS" \
       --strategies "$strategy" \
       --model "$model" \
       --output "$OUTPUT_DIR" \
-      --max-concurrency "$CONCURRENCY" \
+      --max-concurrency "$conc" \
       --no-llm-judge
     rc=$?
     set -e
