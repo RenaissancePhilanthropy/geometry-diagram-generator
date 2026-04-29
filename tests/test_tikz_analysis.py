@@ -823,6 +823,255 @@ def test_equidistant_missing_coordinate_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# Hardening pass §4.5 — pgfmath macro + trig coordinate evaluation
+# ---------------------------------------------------------------------------
+# Real LLM outputs frequently use \pgfmathsetmacro to define helpers like
+# \side, then place points at \tkzDefPoint({\side*cos(-35)},{\side*sin(-35)}).
+# The literal-only point extractor silently skips these, leading to
+# soft_pass on every downstream check that references those points.
+
+def test_extract_def_point_with_pgfmath_expression():
+    tikz = r"""
+\pgfmathsetmacro{\side}{6}
+\tkzDefPoint(0,0){A}
+\tkzDefPoint({\side*cos(-35)},{\side*sin(-35)}){B}
+"""
+    pts = extract_defined_points(tikz)
+    import math
+    assert "A" in pts
+    assert "B" in pts
+    assert pts["B"][0] == pytest.approx(6 * math.cos(math.radians(-35)), abs=1e-6)
+    assert pts["B"][1] == pytest.approx(6 * math.sin(math.radians(-35)), abs=1e-6)
+
+
+def test_extract_def_point_chained_macros():
+    tikz = r"""
+\pgfmathsetmacro{\s}{0.5}
+\pgfmathsetmacro{\side}{6*\s}
+\tkzDefPoint({\side*cos(0)},{\side*sin(0)}){B}
+"""
+    pts = extract_defined_points(tikz)
+    assert pts["B"] == pytest.approx((3.0, 0.0), abs=1e-6)
+
+
+def test_extract_def_point_with_addition_expression():
+    tikz = r"""
+\pgfmathsetmacro{\side}{6}
+\tkzDefPoint(0,0){A}
+\tkzDefPoint({\side*cos(-35)+\side*cos(35)},{\side*sin(-35)+\side*sin(35)}){C}
+"""
+    pts = extract_defined_points(tikz)
+    import math
+    expected_x = 6 * math.cos(math.radians(-35)) + 6 * math.cos(math.radians(35))
+    expected_y = 6 * math.sin(math.radians(-35)) + 6 * math.sin(math.radians(35))
+    assert pts["C"][0] == pytest.approx(expected_x, abs=1e-6)
+    assert pts["C"][1] == pytest.approx(expected_y, abs=1e-6)
+
+
+def test_extract_def_point_unsupported_expression_skipped():
+    # Expression with an unsupported function: should silently skip rather
+    # than crash or return a guess.
+    tikz = r"""
+\tkzDefPoint(0,0){A}
+\tkzDefPoint({undefined_macro+1},0){B}
+"""
+    pts = extract_defined_points(tikz)
+    assert "A" in pts
+    assert "B" not in pts
+
+
+def test_extract_def_point_expression_does_not_break_literal():
+    # Literal coordinates must continue to parse even when expression-style
+    # points appear elsewhere in the source.
+    tikz = r"""
+\pgfmathsetmacro{\side}{4}
+\tkzDefPoint(1.5,2.5){A}
+\tkzDefPoint({\side*cos(0)},{\side*sin(0)}){B}
+"""
+    pts = extract_defined_points(tikz)
+    assert pts["A"] == pytest.approx((1.5, 2.5))
+    assert pts["B"] == pytest.approx((4.0, 0.0), abs=1e-6)
+
+
+def test_resolve_rhombus_via_expressions_passes_parallel_check():
+    # Real-LLM TikZ shape (modeled on tpl-t2-rh-ABCD-s6-70). After hardening,
+    # the parallel sides of the rhombus should be detected.
+    tikz = r"""
+\pgfmathsetmacro{\side}{6}
+\tkzDefPoint(0,0){A}
+\tkzDefPoint({\side*cos(-35)},{\side*sin(-35)}){B}
+\tkzDefPoint({\side*cos(35)},{\side*sin(35)}){D}
+\tkzDefPoint({\side*cos(-35)+\side*cos(35)},{\side*sin(-35)+\side*sin(35)}){C}
+"""
+    coords = resolve_all_coordinates(tikz)
+    for n in ("A", "B", "C", "D"):
+        assert n in coords, n
+    assert validate_geometric_property(coords, "parallel", [["A", "B"], ["D", "C"]]) is True
+    assert validate_geometric_property(coords, "parallel", [["B", "C"], ["A", "D"]]) is True
+    assert validate_geometric_property(
+        coords, "equal_lengths", [["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"]]
+    ) is True
+
+
+# ---------------------------------------------------------------------------
+# Hardening pass §4.5 — circle-circle and line-circle intersections
+# ---------------------------------------------------------------------------
+# Real LLM outputs use \tkzInterCC and \tkzInterLC followed by \tkzGetPoints
+# (plural) to capture the two intersection candidates. Without resolving these,
+# every downstream property check (point_on_circle, equal_lengths involving
+# the intersection points) is silently skipped → soft_pass instead of strict.
+
+def test_extract_inter_cc_command():
+    tikz = r"\tkzInterCC(O,A)(C,B) \tkzGetPoints{P}{Q}"
+    computed = extract_computed_points(tikz)
+    assert "P" in computed
+    assert "Q" in computed
+    assert computed["P"]["type"] == "inter_cc"
+    assert computed["P"]["args"] == ["O", "A", "C", "B"]
+    assert computed["P"]["which"] == 0
+    assert computed["Q"]["type"] == "inter_cc"
+    assert computed["Q"]["args"] == ["O", "A", "C", "B"]
+    assert computed["Q"]["which"] == 1
+
+
+def test_extract_inter_lc_command():
+    tikz = r"\tkzInterLC(A,B)(O,T) \tkzGetPoints{X}{Y}"
+    computed = extract_computed_points(tikz)
+    assert "X" in computed
+    assert "Y" in computed
+    assert computed["X"]["type"] == "inter_lc"
+    assert computed["X"]["args"] == ["A", "B", "O", "T"]
+    assert computed["X"]["which"] == 0
+    assert computed["Y"]["which"] == 1
+
+
+def test_resolve_inter_cc_two_unit_circles():
+    # Two unit circles centered at (0,0) and (2,0) → intersect at (1, ±√3·0.5...)
+    # Actually: r1=r2=1, distance=2 → tangent at (1,0). Use radius = 1.5 instead.
+    # Centers (0,0), (2,0) and r1 = r2 = 1.5 → x = 1; y = ±√(2.25 - 1) = ±√1.25
+    tikz = r"""
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(1.5,0){A}
+\tkzDefPoint(2,0){C}
+\tkzDefPoint(0.5,0){B}
+\tkzInterCC(O,A)(C,B) \tkzGetPoints{P}{Q}
+"""
+    coords = resolve_all_coordinates(tikz)
+    import math
+    expected_y = math.sqrt(1.25)
+    assert "P" in coords
+    assert "Q" in coords
+    # P (which=0) gets the lower-y solution by convention; Q gets upper.
+    assert coords["P"][0] == pytest.approx(1.0, abs=1e-6)
+    assert coords["Q"][0] == pytest.approx(1.0, abs=1e-6)
+    assert {round(coords["P"][1], 4), round(coords["Q"][1], 4)} == {
+        round(-expected_y, 4),
+        round(expected_y, 4),
+    }
+
+
+def test_resolve_inter_cc_intersection_points_satisfy_both_circles():
+    # The intersection points P,Q must lie on both circles regardless of
+    # the lower/upper convention. This is the property our verifier needs.
+    tikz = r"""
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(2,0){A}
+\tkzDefPoint(3,0){C}
+\tkzDefPoint(5,0){B}
+\tkzInterCC(O,A)(C,B) \tkzGetPoints{P}{Q}
+"""
+    coords = resolve_all_coordinates(tikz)
+    # Circle 1: center O(0,0), radius |OA| = 2
+    # Circle 2: center C(3,0), radius |CB| = 2
+    import math
+    for name in ("P", "Q"):
+        d_to_O = math.dist(coords[name], (0, 0))
+        d_to_C = math.dist(coords[name], (3, 0))
+        assert d_to_O == pytest.approx(2.0, abs=1e-6), name
+        assert d_to_C == pytest.approx(2.0, abs=1e-6), name
+
+
+def test_resolve_inter_cc_non_intersecting_circles_omitted():
+    # Two circles too far apart to intersect — should leave P, Q unresolved
+    # rather than producing imaginary coordinates.
+    tikz = r"""
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(1,0){A}
+\tkzDefPoint(10,0){C}
+\tkzDefPoint(11,0){B}
+\tkzInterCC(O,A)(C,B) \tkzGetPoints{P}{Q}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "P" not in coords
+    assert "Q" not in coords
+
+
+def test_resolve_inter_lc_secant_line():
+    # Line y=0 cuts unit circle at (-1,0) and (1,0)
+    tikz = r"""
+\tkzDefPoint(-3,0){A}
+\tkzDefPoint(3,0){B}
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(1,0){T}
+\tkzInterLC(A,B)(O,T) \tkzGetPoints{X}{Y}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "X" in coords
+    assert "Y" in coords
+    xs = sorted([coords["X"][0], coords["Y"][0]])
+    assert xs[0] == pytest.approx(-1.0, abs=1e-6)
+    assert xs[1] == pytest.approx(1.0, abs=1e-6)
+    for name in ("X", "Y"):
+        assert coords[name][1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_resolve_inter_lc_tangent_line_returns_double_point():
+    # Tangent line y=1 to unit circle at (0,1) — both X and Y should be the
+    # tangent point.
+    tikz = r"""
+\tkzDefPoint(-2,1){A}
+\tkzDefPoint(2,1){B}
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(1,0){T}
+\tkzInterLC(A,B)(O,T) \tkzGetPoints{X}{Y}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert coords["X"] == pytest.approx((0.0, 1.0), abs=1e-6)
+    assert coords["Y"] == pytest.approx((0.0, 1.0), abs=1e-6)
+
+
+def test_resolve_inter_lc_non_intersecting_omitted():
+    tikz = r"""
+\tkzDefPoint(-2,5){A}
+\tkzDefPoint(2,5){B}
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(1,0){T}
+\tkzInterLC(A,B)(O,T) \tkzGetPoints{X}{Y}
+"""
+    coords = resolve_all_coordinates(tikz)
+    assert "X" not in coords
+    assert "Y" not in coords
+
+
+def test_inter_cc_then_point_on_circle_check_passes():
+    # End-to-end: real-LLM-shape TikZ (modeled on tpl-t3-2cir-OC-PQ-5-5)
+    # → intersection points should pass `point_on_circle` checks.
+    tikz = r"""
+\tkzDefPoint(0,0){O}
+\tkzDefPoint(2,0){C}
+\tkzDefPoint(2,0){A}
+\tkzDefPoint(4,0){B}
+\tkzInterCC(O,A)(C,B) \tkzGetPoints{P}{Q}
+"""
+    coords = resolve_all_coordinates(tikz)
+    # P on circle (center=O, radius=|OA|): args=[P, O, A]
+    assert validate_geometric_property(coords, "point_on_circle", ["P", "O", "A"]) is True
+    assert validate_geometric_property(coords, "point_on_circle", ["Q", "O", "A"]) is True
+    assert validate_geometric_property(coords, "point_on_circle", ["P", "C", "B"]) is True
+    assert validate_geometric_property(coords, "point_on_circle", ["Q", "C", "B"]) is True
+
+
+# ---------------------------------------------------------------------------
 # Canvas feature extraction / validation
 # ---------------------------------------------------------------------------
 
