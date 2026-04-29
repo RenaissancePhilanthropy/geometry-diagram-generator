@@ -17,27 +17,33 @@ set -euo pipefail
 SCENARIOS=${SCENARIOS:-evals/scenarios_pilot.yaml}
 OUTPUT_DIR=${OUTPUT_DIR:-evals/results/leaderboard_pilot}
 
-# Per-model concurrency. Anthropic models get throttled at ~4-concurrent
-# 19K-token bursts (CLOSE_WAIT 429s, observed in v1 + v2). OpenAI models
-# have a separate rate-limit pool. (macOS bash 3.2 lacks assoc arrays.)
+# Per-model concurrency. Anthropic models get throttled at ~2-concurrent
+# 19K-token bursts (CLOSE_WAIT 429s, then 25-min silent backoff observed
+# in v1, v2, v3). With structured strategy each scenario uses 19K input +
+# multi-retry, so even concurrency 2 saturates. Drop to 1 for Anthropic.
+# OpenAI gets its own pool at 4. (macOS bash 3.2 lacks assoc arrays.)
 concurrency_for() {
   case "$1" in
-    anthropic:*) echo 2 ;;
+    anthropic:*) echo 1 ;;
     openai-responses:*) echo 4 ;;
     *) echo 2 ;;
   esac
 }
 
 # Skip combos that already completed cleanly in earlier runs (manual list).
-# Format: "model|strategy"
-SKIP=${SKIP:-"anthropic:claude-sonnet-4-6|raw_code"}
+# Format: "model|strategy" entries separated by spaces.
+# Sonnet+raw_code finished in v2; Sonnet+structured has 14 records in v2
+# which is enough for the cost-equivalence headline; skip both to avoid
+# burning more rate-limit budget.
+SKIP=${SKIP:-"anthropic:claude-sonnet-4-6|raw_code anthropic:claude-sonnet-4-6|structured"}
 
 # Pilot v2: dropped Opus (rate-limited; deadlocked the v1 launch). Keeping
-# Sonnet/Haiku/GPT-5.1 for the cost-quality spread.
+# Sonnet/Haiku/GPT-5.1 for the cost-quality spread. v4 ordering: OpenAI
+# first (separate rate pool), then Anthropic (sequential to avoid burst).
 MODELS=(
-  "anthropic:claude-sonnet-4-6"
-  "anthropic:claude-haiku-4-5-20251001"
   "openai-responses:gpt-5.1"
+  "anthropic:claude-haiku-4-5-20251001"
+  "anthropic:claude-sonnet-4-6"
 )
 STRATEGIES=("raw_code" "structured" "recipe")
 
