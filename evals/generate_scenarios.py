@@ -16,9 +16,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Callable, Iterator
-from itertools import islice
 from pathlib import Path
 
 import yaml
@@ -1105,25 +1105,59 @@ _TEMPLATES: list[Callable[[], Iterator[dict]]] = [
 ]
 
 
+_TEMPLATE_PREFIX_RE = re.compile(r"^(tpl-t\d-[a-z0-9]+)")
+
+
+def _template_key(scenario: dict) -> str:
+    """Group scenarios by their template prefix (e.g. 'tpl-t2-alt')."""
+    m = _TEMPLATE_PREFIX_RE.match(str(scenario.get("id", "")))
+    return m.group(1) if m else "other"
+
+
 def generate_all(
     tier_filter: int | None = None,
     cap_per_tier: int | None = None,
 ) -> list[dict]:
-    """Run every template; optionally cap each tier to at most N scenarios."""
-    by_tier: dict[int, list[dict]] = {1: [], 2: [], 3: []}
+    """Run every template; optionally cap each tier to at most N scenarios.
+
+    When capping, the cap is enforced via round-robin over template groups so
+    every template that contributes to a tier gets a fair share of slots, up
+    to its available count. This avoids the "first-N takes the cap" bug where
+    later templates in ``_TEMPLATES`` were silently dropped.
+    """
+    by_tier_template: dict[int, dict[str, list[dict]]] = {}
     for tpl in _TEMPLATES:
         for s in tpl():
             t = s.get("tier", 1)
-            by_tier.setdefault(t, []).append(s)
+            by_tier_template.setdefault(t, {}).setdefault(_template_key(s), []).append(s)
 
     out: list[dict] = []
-    for tier in sorted(by_tier):
+    for tier in sorted(by_tier_template):
         if tier_filter is not None and tier != tier_filter:
             continue
-        items = by_tier[tier]
-        if cap_per_tier is not None and len(items) > cap_per_tier:
-            items = list(islice(items, cap_per_tier))
-        out.extend(items)
+        groups = by_tier_template[tier]
+        if cap_per_tier is None:
+            for tpl_id in groups:
+                out.extend(groups[tpl_id])
+            continue
+
+        # Round-robin: rotate through templates picking one at a time until
+        # we hit cap_per_tier or every group is exhausted. Order is stable
+        # (templates appear in the order they first emit a scenario).
+        cursors = {tpl_id: 0 for tpl_id in groups}
+        order = list(groups.keys())
+        picked: list[dict] = []
+        while len(picked) < cap_per_tier and any(
+            cursors[tpl_id] < len(groups[tpl_id]) for tpl_id in order
+        ):
+            for tpl_id in order:
+                if len(picked) >= cap_per_tier:
+                    break
+                idx = cursors[tpl_id]
+                if idx < len(groups[tpl_id]):
+                    picked.append(groups[tpl_id][idx])
+                    cursors[tpl_id] = idx + 1
+        out.extend(picked)
     return out
 
 
