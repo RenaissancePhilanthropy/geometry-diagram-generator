@@ -13,12 +13,7 @@ example:
     - op: point
       id: B
       coords: [8, 0]
-    # Direction point for the second ray from A at 40°
-    - op: point
-      id: ray_dir
-      coords: [0.766, 0.643]
-      visible: false
-    # The second ray from A — long line to show it extends beyond both intersections
+    # ray_far: a point far along the 40° ray from A — must extend beyond both intersections
     - op: point
       id: ray_far
       coords: [9.0, 7.55]
@@ -26,31 +21,42 @@ example:
     - op: segment
       id: seg_ray
       endpoints: [A, ray_far]
+    # Base segment AB
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
     # Circle centered at B with radius 6 (> AB·sin(40°) ≈ 5.14, guaranteeing two intersections)
     - op: circle
       id: circ_B
       center: B
       radius: 6
-    # C1: acute case — nearer intersection (t ≈ 3.04)
-    - op: point
+    # Use line_through to make the ray available as a line object for intersection
+    - op: line_through
+      id: ray_line
+      points: [A, ray_far]
+      visible: false
+    # C1: acute case — intersection closest to A
+    - op: intersection
       id: C1
-      coords: [2.33, 1.95]
-    # C2: obtuse case — farther intersection (t ≈ 9.22)
-    - op: point
+      of: [ray_line, circ_B]
+      selector:
+        kind: closest_to
+        p: A
+    # C2: obtuse case — the other intersection, beyond C1 from A
+    - op: intersection
       id: C2
-      coords: [7.07, 5.93]
-    # Triangle 1: acute — A, B, C1
+      of: [ray_line, circ_B]
+      selector:
+        kind: beyond
+        from_point: A
+        past_point: C1
+    # Triangle sides
     - op: segment
       id: seg_BC1
       endpoints: [B, C1]
-    # Triangle 2: obtuse — A, B, C2
     - op: segment
       id: seg_BC2
       endpoints: [B, C2]
-    # Base segment AB
-    - op: segment
-      id: seg_AB
-      endpoints: [A, B]
   annotations:
     auto_draw_all: true
     auto_label_points: true
@@ -65,9 +71,9 @@ example:
         group: 1
 notes:
   - "CRITICAL: choose radius > AB·sin(angle_A) to guarantee two intersections. Here AB=8, angle_A=40°, so min_radius ≈ 5.14. Use radius 6."
-  - "C1 and C2 are computed from the ray-circle intersection: A + t·(cos40°,sin40°) for t≈3.04 (acute) and t≈9.22 (obtuse)."
-  - "Do NOT use an 'intersection' op with a 'beyond' selector for C1/C2 — if radius is too small the op will fail. Use explicit coords."
-  - "ray_far is placed far along the 40° ray so the segment A→ray_far passes through both C1 and C2 and extends beyond."
+  - "C1 and C2 are computed via intersection ops — DO NOT hardcode their coordinates."
+  - "line_through makes the ray available as a line object; then intersect with circ_B using selectors."
+  - "C1 = closest_to A (acute case, nearer intersection). C2 = beyond C1 from A (obtuse case, farther intersection)."
+  - "ray_far is placed far along the 40° ray: coords = (9·cos40°, 9·sin40°) ≈ (6.89, 5.79) — must extend beyond C2."
   - "seg_BC1 and seg_BC2 are both radii of circ_B, so BC1 = BC2 = 6. Mark them equal with tick marks."
-  - "The two possible triangles ABC1 (acute at C1) and ABC2 (obtuse at C2) share the same angle A and side lengths AB and BC."
-  - "Optional: mark AC1 and AC2 with different labels to show the two possible side lengths for the remaining side."
+  - "The two possible triangles ABC1 (acute at C1) and ABC2 (obtuse at C2) share angle A and side lengths AB and BC."
