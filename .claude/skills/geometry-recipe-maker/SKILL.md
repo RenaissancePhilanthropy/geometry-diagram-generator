@@ -7,7 +7,7 @@ description: Use when creating a new geometry recipe YAML file for the geometry-
 
 ## Overview
 
-A recipe is a named, reusable geometry construction stored as a YAML file in `recipe/recipes/genexam/<name>.yaml`. It has a stable `setup` (anchor objects) and an `example.construction` (derived objects). New recipes always go in the `genexam` catalog.
+A recipe is a named, reusable geometry construction stored as a YAML file in `recipe/recipes/{catalog}/<name>.yaml`. It has a stable `setup` (anchor objects) and an `example.construction` (derived objects). While 'default' is the most common catalog, other catalogs may be requested in your input.
 
 ## Workflow
 
