@@ -1935,3 +1935,55 @@ def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
             {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
              "expected": 60},
         ]}))
+
+
+# ---------------------------------------------------------------------------
+# polygon_from_angles_and_sides: N-1 side_lengths (infer closing side)
+# ---------------------------------------------------------------------------
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_l_shape():
+    """L-shape hexagon: 6 angles, 5 explicit sides → infer 6th (A→F = 4)."""
+    from recipe.solve import solve_polygon_from_angles_and_sides
+    vertices = ["F", "E", "D", "C", "B", "A"]
+    angles   = [90, 90, 90, 270, 90, 90]
+    sides_5  = [6.0, 2.0, 3.0, 2.0, 3.0]   # omit A→F = 4
+    coords = solve_polygon_from_angles_and_sides(vertices, sides_5, angles)
+    assert set(coords.keys()) == set(vertices)
+    # A→F distance should be ~4
+    ax, ay = coords["A"]
+    fx, fy = coords["F"]
+    assert abs(math.hypot(ax - fx, ay - fy) - 4.0) < 0.01
+
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_rectangle():
+    """Rectangle: 4 angles (all 90), 3 explicit sides → infer 4th."""
+    from recipe.solve import solve_polygon_from_angles_and_sides
+    vertices = ["A", "B", "C", "D"]
+    angles   = [90, 90, 90, 90]
+    sides_3  = [5.0, 3.0, 5.0]   # omit D→A = 3
+    coords = solve_polygon_from_angles_and_sides(vertices, sides_3, angles)
+    ax, ay = coords["A"]
+    dx, dy = coords["D"]
+    assert abs(math.hypot(ax - dx, ay - dy) - 3.0) < 0.01
+
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_inconsistent_raises():
+    """Wildly wrong side length → SpecError on closing direction mismatch."""
+    from recipe.solve import solve_polygon_from_angles_and_sides, SpecError
+    vertices = ["F", "E", "D", "C", "B", "A"]
+    angles   = [90, 90, 90, 270, 90, 90]
+    bad_5    = [6.0, 2.0, 3.0, 2.0, 999.0]   # last side wildly wrong
+    with pytest.raises(SpecError, match="inconsistent"):
+        solve_polygon_from_angles_and_sides(vertices, bad_5, angles)
+
+
+def test_polygon_from_angles_and_sides_dsl_n_minus_1_sides_accepted():
+    """DSL validator accepts N-1 side_lengths in standalone mode."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="lshape",
+        vertices=["F","E","D","C","B","A"],
+        side_lengths=[6.0, 2.0, 3.0, 2.0, 3.0],   # 5 of 6
+        angles=[90, 90, 90, 270, 90, 90],
+    )
+    assert len(op.side_lengths) == 5
