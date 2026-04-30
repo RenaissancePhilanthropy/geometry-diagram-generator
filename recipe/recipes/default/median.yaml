@@ -21,3 +21,5 @@ example:
   annotations:
     auto_draw_all: true
     auto_label_points: true
+notes:
+  - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."
