@@ -18,8 +18,8 @@ node_modules/
 demo-ui/pnpm-workspace.yaml
 
 # LLM agent state and cache
-.claude/
-# Allow skills
+.claude/*
+# Allow skills (negation only works if parent isn't fully ignored)
 !.claude/skills/
 
 # Evals results
