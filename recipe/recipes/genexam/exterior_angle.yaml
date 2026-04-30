@@ -26,13 +26,13 @@ example:
     auto_label_points: true
     marks:
       - kind: mark_angle
-        a: C
+        a: A
         vertex: B
         b: D
 notes:
   - "D is a point beyond B on the extension of side CB. extend_segment computes the correct direction automatically — do not place D at an eyeballed coordinate."
   - "extend_segment takes segment: [C, B] (the direction C→B) and beyond: B to extend PAST B. The order matters: extension continues in the C→B direction."
-  - "The exterior angle at B is angle CBD. Mark it with mark_angle(a=C, vertex=B, b=D)."
+  - "The exterior angle at B is angle ABD — between side BA and the extension BD. Mark it with mark_angle(a=A, vertex=B, b=D). Do NOT use a=C: C, B, D are collinear so angle CBD = 180°."
   - "Exterior angle theorem: the exterior angle equals the sum of the two non-adjacent interior angles: angle_CBD = angle_A + angle_C."
   - "To extend a different side: change segment to [A, B] (to extend past B in the A→B direction) or [B, C] (to extend past C)."
   - "Use label_angle to add a numeric label (e.g. '115°') inside the exterior angle arc if the problem states its measure."

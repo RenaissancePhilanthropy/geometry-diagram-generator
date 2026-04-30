@@ -57,11 +57,6 @@ example:
   annotations:
     auto_draw_all: true
     auto_label_points: true
-    marks:
-      - kind: mark_angle
-        a: A
-        vertex: P
-        b: C
 notes:
   - "CRITICAL: P must be defined via intersection of two line_through ops — never placed at an eyeballed coordinate. The line_through ops are marked visible: false so only the chord segments appear."
   - "Draw the four chord segments explicitly (A-P, P-B, C-P, P-D) rather than drawing the full line_through objects, which would extend outside the circle."

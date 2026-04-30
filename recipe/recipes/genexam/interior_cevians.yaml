@@ -1,7 +1,7 @@
-name: square_with_interior_points
-description: "Square with points on its sides and cevian segments drawn, avoiding circular dependency"
-tags: [polygon, square, rectangle, interior-points, cevian, intermediate]
-context: "Given a square with points on two of its sides and segments connecting them."
+name: interior_cevians
+description: "Rectangle or square with points on its sides and interior segments (cevians) drawn, avoiding circular dependency"
+tags: [polygon, rectangle, square, interior-points, cevian, intermediate]
+context: "Given a rectangle with points on two of its sides and interior segments connecting them."
 example:
   mode: abstract
   construction:
