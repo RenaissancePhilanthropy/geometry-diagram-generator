@@ -92,25 +92,46 @@ def clear_cache() -> None:
     _CATALOG_CACHE.clear()
 
 
+def _parse_catalogs(catalog: str) -> list[str]:
+    """Split 'default,genexam' → ['default', 'genexam']."""
+    return [c.strip() for c in catalog.split(",") if c.strip()]
+
+
 def load_catalog(catalog: str = "default") -> list[RecipeSummary]:
-    """Return catalog as a flat list of RecipeSummary objects."""
-    return [
-        RecipeSummary(
-            id=r.name,
-            name=r.name.replace("_", " ").title(),
-            description=r.description,
-            tags=r.tags,
-        )
-        for r in _get_cache(catalog).values()
-    ]
+    """Return catalog as a flat list of RecipeSummary objects.
+
+    ``catalog`` may be a comma-separated list of catalog names,
+    e.g. ``"default,genexam"``.  Recipes from later catalogs are appended;
+    duplicates (same name) are silently skipped (first wins).
+    """
+    seen: set[str] = set()
+    result: list[RecipeSummary] = []
+    for cat in _parse_catalogs(catalog):
+        for r in _get_cache(cat).values():
+            if r.name not in seen:
+                seen.add(r.name)
+                result.append(RecipeSummary(
+                    id=r.name,
+                    name=r.name.replace("_", " ").title(),
+                    description=r.description,
+                    tags=r.tags,
+                ))
+    return result
 
 
 def load_recipe(name: str, catalog: str = "default") -> Recipe:
-    """Load a full recipe by name. Raises KeyError if not found."""
-    cache = _get_cache(catalog)
-    if name not in cache:
-        raise KeyError(f"Recipe {name!r} not found. Available: {sorted(cache.keys())}")
-    return cache[name]
+    """Load a full recipe by name from one or more catalogs (comma-separated).
+
+    Searches catalogs in order; raises KeyError if not found in any.
+    """
+    for cat in _parse_catalogs(catalog):
+        cache = _get_cache(cat)
+        if name in cache:
+            return cache[name]
+    all_names = sorted(
+        n for cat in _parse_catalogs(catalog) for n in _get_cache(cat)
+    )
+    raise KeyError(f"Recipe {name!r} not found. Available: {all_names}")
 
 
 # ---------------------------------------------------------------------------
