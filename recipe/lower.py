@@ -13,7 +13,7 @@ from typing import Any
 
 from ir.ir import (
     DiagramIR, Canvas, Params,
-    PointFixed, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
+    PointFixed, PointOn, PointOnParam, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
     PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
@@ -98,7 +98,38 @@ class _Lowerer:
     # Entry point
     # ------------------------------------------------------------------
 
+    def _inject_implicit_points(self, construction: list[Any]) -> None:
+        """Auto-inject PointFixed(0,0) for any point IDs referenced but never defined.
+
+        LLMs sometimes reference a center point (e.g. circle center='O') without
+        emitting an explicit 'point' op for it. Rather than failing at IR compilation,
+        we silently create the point at the origin. This is an intentional robustness
+        measure — the LLM usually intends the center to be at (0,0) anyway.
+        """
+        defined_ids = {op.id for op in construction if hasattr(op, "id") and op.id}
+        for op in construction:
+            # Fields that hold point-ID references (not line/object IDs)
+            point_ref_fields: list[str] = []
+            if isinstance(op, CircleOp):
+                point_ref_fields = ["center"]
+                if op.through:
+                    point_ref_fields.append("through")
+            elif isinstance(op, CircleThrough3Op):
+                for pid in op.through:
+                    if pid not in defined_ids:
+                        self._defs.insert(0, PointFixed(id=pid, x=0.0, y=0.0))
+                        self._point_ids.insert(0, pid)
+                        defined_ids.add(pid)
+                continue
+            for field in point_ref_fields:
+                ref_id = getattr(op, field, None)
+                if ref_id and isinstance(ref_id, str) and ref_id not in defined_ids:
+                    self._defs.insert(0, PointFixed(id=ref_id, x=0.0, y=0.0))
+                    self._point_ids.insert(0, ref_id)
+                    defined_ids.add(ref_id)
+
     def lower(self, dsl: RecipeDSL) -> DiagramIR:
+        self._inject_implicit_points(dsl.construction)
         for op in dsl.construction:
             self._lower_op(op)
         self._apply_annotations(dsl.annotations, dsl.construction)
@@ -164,6 +195,11 @@ class _Lowerer:
                 self._add(Ray(id=op.id, a=op.from_, b=op.through))
                 self._drawable.add(op.id)
             case ReflectionOp():
+                if op.point == op.over:
+                    raise LoweringError(
+                        f"ReflectionOp '{op.id}': reflecting point '{op.point}' across itself "
+                        "produces the same point — use a different axis"
+                    )
                 self._add(PointReflect(id=op.id, source=op.point, across=op.over))
                 self._point_ids.append(op.id)
             case RotationOp():
@@ -725,6 +761,11 @@ class _Lowerer:
     def _lower_point_along(self, op: PointAlongOp) -> None:
         from_id = op.from_
         toward_id = op.toward
+        if from_id == toward_id:
+            raise LoweringError(
+                f"point_along '{op.id}': 'from' and 'toward' are the same point ({from_id!r}) — "
+                "direction is undefined. Use a different point to indicate direction."
+            )
         if from_id not in self._coord_floats:
             raise LoweringError(f"point_along: from point {from_id!r} not in coord table")
         if toward_id not in self._coord_floats:
@@ -745,6 +786,11 @@ class _Lowerer:
 
     def _lower_extend_segment(self, op: ExtendSegmentOp) -> None:
         a_id, b_id = op.segment[0], op.segment[1]
+        if a_id == b_id:
+            raise LoweringError(
+                f"extend_segment '{op.id}': both segment endpoints are the same point ({a_id!r}) — "
+                "segment has zero length and no direction to extend."
+            )
         beyond_id = op.beyond
         other_id = b_id if beyond_id == a_id else a_id
         if beyond_id not in self._coord_floats:
@@ -773,6 +819,11 @@ class _Lowerer:
         if len(op.through) != 3:
             raise LoweringError(f"circle_through_3: expected exactly 3 points, got {len(op.through)}")
         a, b, c = op.through
+        if len({a, b, c}) < 3:
+            raise LoweringError(
+                f"circle_through_3 '{op.id}': duplicate points in through list {op.through} — "
+                "all three points must be distinct."
+            )
         # Triangle must precede its circumcenter in the definition DAG
         self._defs.append(Triangle(id=f"__{op.id}_tri", a=a, b=b, c=c))
         self._defs.append(PointTriangleCenter(id=op.center,
@@ -788,6 +839,9 @@ class _Lowerer:
         self._add(PointMidpoint(id=op.mid, p=op.of[0], q=op.of[1]))
         self._add(LinePerpendicularThrough(id=op.id, through=op.mid, to_line=base_id))
         self._point_ids.append(op.mid)
+        if op.point_on_line:
+            self._add(PointOn(id=op.point_on_line, on=op.id, how=PointOnParam(t=0.5)))
+            self._point_ids.append(op.point_on_line)
         self._drawable.add(op.id)
         # Always draw the base segment unless the user already defined one
         # between those two points (to avoid a duplicate Draw op).
