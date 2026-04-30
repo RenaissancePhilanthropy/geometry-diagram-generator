@@ -1,0 +1,70 @@
+name: intersecting_chords
+description: "Two chords of a circle crossing at an interior point, with the intersection explicitly named"
+tags: [circle, chord, intersection, angle, intermediate]
+context: "Given a circle c with center O and two chords."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: point
+    id: A
+    coords: [3, 0]
+  - op: circle
+    id: c
+    center: O
+    radius: 3
+example:
+  mode: grid
+  construction:
+    - op: rotation
+      id: B
+      point: A
+      center: O
+      angle: 155
+    - op: rotation
+      id: C
+      point: A
+      center: O
+      angle: 65
+    - op: rotation
+      id: D
+      point: A
+      center: O
+      angle: 250
+    - op: line_through
+      id: chord1
+      points: [A, B]
+      visible: false
+    - op: line_through
+      id: chord2
+      points: [C, D]
+      visible: false
+    - op: intersection
+      id: P
+      of: [chord1, chord2]
+    - op: segment
+      id: seg_AP
+      endpoints: [A, P]
+    - op: segment
+      id: seg_PB
+      endpoints: [P, B]
+    - op: segment
+      id: seg_CP
+      endpoints: [C, P]
+    - op: segment
+      id: seg_PD
+      endpoints: [P, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_angle
+        a: A
+        vertex: P
+        b: C
+notes:
+  - "CRITICAL: P must be defined via intersection of two line_through ops — never placed at an eyeballed coordinate. The line_through ops are marked visible: false so only the chord segments appear."
+  - "Draw the four chord segments explicitly (A-P, P-B, C-P, P-D) rather than drawing the full line_through objects, which would extend outside the circle."
+  - "The four points A, B, C, D lie on the circle. Place them using rotation ops (or explicit coords) — not point_on_segment, which places points on a line segment, not on a circle."
+  - "To add the intersecting-chords angle annotation: mark_angle(a=A, vertex=P, b=C) marks one of the four angles at P. Use a second mark_angle for the vertical angle if the problem requests both."
+  - "Intersecting chords theorem: AP * PB = CP * PD. You can verify this as a numeric check if needed."
