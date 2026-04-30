@@ -1,0 +1,94 @@
+\section{Related work}
+\label{sec:related}
+
+We organise prior work along the two axes that determine where \GeoGen sits in the literature: (i)~whether the model is asked to \emph{interpret} an existing diagram or \emph{produce} a new one, and (ii)~whether grading is done by symbolic execution, by a vision-language judge, or by a fixed multiple-choice answer key.
+
+\subsection{Geometry-understanding benchmarks (model is given a diagram)}
+\label{ssec:related_qa}
+
+The dominant family of geometry benchmarks gives the model a diagram and a question and asks it to \emph{answer} --- typically as multiple-choice or as a numeric value.
+\textbf{Geometry3K} \citep{lu2021intergps} introduced 3{,}002 high-school problems annotated in a 91-predicate formal language; the accompanying solver, Inter-GPS, achieves 57.5\% test accuracy versus 90.9\% for human experts.
+\textbf{GeoQA} \citep{chen2021geoqa} released 4{,}998 Chinese middle-school problems with annotated program traces; correctness is judged by program execution against the gold answer.
+\textbf{UniGeo} \citep{chen2022unigeo} unifies geometry calculation (4{,}998 problems, reusing GeoQA) with proving (9{,}543 multi-step proofs).
+\textbf{MathVista} \citep{lu2024mathvista} aggregates 6{,}141 examples across 31 multimodal-math datasets including a Geometry Problem Solving subset.
+\textbf{GeoEval} \citep{zhang2024geoeval} aggregates 5{,}050 problems from seven prior datasets and demonstrates that QA benchmarks can be saturated by training-data overlap.
+\textbf{GeoBench} introduces hierarchical evaluation across four van~Hiele reasoning levels with 1{,}021 formally-verified problems \citep{geobench2026}.
+
+\paragraph{Positioning.}
+Every benchmark above tests whether a model can \emph{interpret} a diagram and answer a question.
+\GeoGen tests whether the model can \emph{produce} a correct diagram from a textual description --- a fundamentally different capability that requires translating a textual specification into a globally-consistent metric realisation.
+As frontier models are increasingly deployed as agents that author visual artefacts, this capability is what is being asked for in deployment but not measured in research.
+
+\subsection{Text-to-image compositionality benchmarks}
+\label{ssec:related_t2i}
+
+A separate literature evaluates whether text-to-image models can faithfully render compositions of objects, attributes, and relations.
+\textbf{T2I-CompBench / T2I-CompBench++} \citep{huang2023t2icompbench, huang2025t2icompbenchpp} provides 6{,}000--8{,}000 compositional prompts with detection-based metrics (BLIP-VQA, UniDet, CLIPScore, MLLM-3-in-1).
+\textbf{DrawBench} \citep{saharia2022imagen} and earlier benchmarks like \textbf{PaintSkills} test similar compositional skills.
+
+\paragraph{Positioning.}
+T2I benchmarks operate in pixel space and rely on visual evaluators (CLIP, BLIP, MLLMs) to score outputs.
+They cannot tell whether a ``right triangle'' actually has a right angle --- only whether the image \emph{looks like} a right triangle to a vision--language judge.
+\GeoGen operates in symbolic space (TikZ $\to$ compiled SymPy geometry) where automatic exact verification is possible: angle-equal checks are computed by \texttt{sympy.geometry.Triangle.angles}, midpoint checks by coordinate equality, and so on.
+
+\subsection{Generative-exam image benchmarks}
+\label{ssec:related_genexam}
+
+\textbf{GenExam} \citep{wang2025genexam} is the closest prior art: 1{,}000 multidisciplinary text-to-image exam-style prompts across 10 subjects with ground-truth images and per-problem scoring rubrics evaluated by an MLLM judge.
+Even frontier T2I models score under 15\% strict on the full set; the latest closed leaderboard entry (Nano Banana Pro, Nov 2025) reaches 72.7 strict / 93.7 relaxed.
+
+\paragraph{Positioning.}
+GenExam and \GeoGen share a generative-exam framing but differ on three axes:
+(1)~\textbf{Grading mechanism} --- GenExam uses an MLLM judge; \GeoGen uses a deterministic SymPy program ($\sim$1000$\times$ cheaper, fully reproducible, not contestable as ``the judge was confused'').
+When a \GeoGen scenario marks \propname{right\_angle\_at\_C: pass}, that is \texttt{Triangle(B, C, A).angles[C] == $\pi/2 \pm \tau$}, not ``the judge said it looked perpendicular.''
+(2)~\textbf{Modality} --- GenExam evaluates raster image generation; \GeoGen evaluates structured TikZ generation, accessible to text-only LLMs.
+(3)~\textbf{Domain breadth} --- GenExam spans 10 disciplines $\sim$100 prompts each; \GeoGen is geometry-only with $\sim$800 prompts.
+We view \GeoGen as the \emph{automatic-grading complement} to GenExam: same generative framing, but in a domain where symbolic verification replaces visual judgment.
+
+\subsection{Symbolic verification \& formal grading}
+\label{ssec:related_formal}
+
+A growing line of work treats math benchmarks as opportunities for \emph{exact}, machine-checked grading.
+Lean / Isabelle / Coq corpora (miniF2F, ProofNet, MathLib) check mathematical proofs symbolically but require formal-language outputs.
+\textbf{AlphaGeometry} \citep{trinh2024alphageometry} solves IMO-level geometry problems with a neuro-symbolic architecture using a deduction engine for verification.
+\textbf{Lean-Workbook} generates auto-formalisable problems with exact verifiability \citep{wang2024leanworkbook}.
+\GeoGen extends this automatic-verification tradition into \emph{diagram generation}, where the verifiability target is the geometric configuration produced rather than a propositional proof.
+
+\subsection{Tool-use and agent benchmarks}
+\label{ssec:related_agent}
+
+\textbf{SWE-bench} \citep{jimenez2024swebench} evaluates code-edit correctness with executable tests; \textbf{AgentBench}, \textbf{GAIA}, and others stress multi-step reasoning.
+Diagrammatic output rarely shows up in these as a first-class target; where it does (e.g., when an agent must produce a UI mock or chart), grading typically falls back to LLM-as-judge.
+\GeoGen offers a self-contained domain where execution-style grading (compile-to-SymPy + check) replaces judge-based grading for diagrammatic output.
+
+\subsection{Comparison summary}
+\label{ssec:related_table}
+
+\Cref{tab:benchmark_comparison} positions \GeoGen against the closest prior benchmarks.
+
+\begin{table}[t]
+\caption{\GeoGen vs.\ closest prior benchmarks. \emph{Auto-grade} = grading does not require human or MLLM judgment.}
+\label{tab:benchmark_comparison}
+\centering
+\small
+\begin{tabular}{lllrlll}
+\toprule
+\textbf{Benchmark} & \textbf{Year} & \textbf{Task} & \textbf{\# items} & \textbf{Auto-grade} & \textbf{Modality} \\
+\midrule
+Geometry3K \citep{lu2021intergps} & 2021 & QA & 3{,}002 & yes (MC) & image+text \\
+GeoQA \citep{chen2021geoqa} & 2021 & QA (program) & 4{,}998 & yes (exec) & image+text \\
+UniGeo \citep{chen2022unigeo} & 2022 & QA + proving & 14{,}541 & yes (seq) & image+text \\
+MathVista \citep{lu2024mathvista} & 2024 & QA (mixed) & 6{,}141 & partial & image+text \\
+GeoEval \citep{zhang2024geoeval} & 2024 & QA + variants & 5{,}050 & yes & image+text \\
+GeoBench \citep{geobench2026} & 2026 & hierarchical QA & 1{,}021 & yes (verified) & image+text \\
+T2I-CompBench++ \citep{huang2025t2icompbenchpp} & 2025 & T2I gen & 8{,}000 & partial (VLM) & text $\to$ image \\
+GenExam \citep{wang2025genexam} & 2025 & T2I exam gen & 1{,}000 & LLM-judge & text $\to$ image \\
+\midrule
+\textbf{\GeoGen (ours)} & \textbf{2026} & \textbf{diagram gen} & \textbf{801} & \textbf{yes (symbolic)} & \textbf{text $\to$ TikZ $\to$ SVG} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+The structural insight: \emph{all auto-graded prior benchmarks are QA over given diagrams; all generation-side benchmarks rely on visual judges}.
+\GeoGen occupies the previously-empty cell of \emph{generation-side, automatically-graded} geometry --- enabled by the choice to grade in symbolic space (compiled SymPy geometry) rather than pixel space.

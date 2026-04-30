@@ -1,0 +1,50 @@
+\section{Reproduction instructions}
+\label{app:reproduction}
+
+\subsection{Quickstart}
+
+Clone the repository, install the Python deps with \texttt{uv sync}, start the renderer container:
+\begin{lstlisting}
+git clone https://github.com/<anon>/geogen
+cd geogen
+uv sync
+docker run -d -p 8001:8001 ghcr.io/<anon>/tikz-renderer:latest
+\end{lstlisting}
+
+\subsection{Reproducing the headline numbers}
+
+The headline pilot in \cref{sec:results} can be reproduced with:
+\begin{lstlisting}
+bash evals/leaderboard_launch.sh
+\end{lstlisting}
+This iterates over (model $\times$ strategy) combinations against \texttt{evals/scenarios\_pilot.yaml}, writing per-combo JSONL files into \texttt{evals/results/leaderboard\_pilot/}.
+Subsequent analysis:
+\begin{lstlisting}
+uv run python -m evals.leaderboard_analyze \
+    --input-dir evals/results/leaderboard_pilot_hardened \
+    --output-md REPORT.md --output-csv leaderboard.csv
+
+uv run python -m evals.leaderboard_plot \
+    --input-dir evals/results/leaderboard_pilot_hardened \
+    --output-dir docs/figures/geogen-pilot
+\end{lstlisting}
+
+\subsection{Re-rolling the dataset}
+
+To generate a contamination-free re-roll of the templated split with a different seed:
+\begin{lstlisting}
+uv run python -m evals.generate_scenarios \
+    --output evals/scenarios_generated_v2.yaml \
+    --seed 42
+\end{lstlisting}
+The procedural variant generator preserves the 30-template / 200-per-tier structure and is the recommended defence against suspected contamination.
+
+\subsection{Docker images and dataset card}
+
+We release:
+\begin{itemize}
+\item \texttt{ghcr.io/<anon>/tikz-renderer:latest} --- the TikZ$\to$SVG renderer (LuaLaTeX + dvisvgm + tkz-euclide).
+\item \texttt{ghcr.io/<anon>/geogen-eval:latest} --- the full Python evaluator with all dependencies pre-installed.
+\item \texttt{datasets/geogen-v1.0} on Hugging Face --- the 801-scenario benchmark in JSONL with full property lists.
+\end{itemize}
+A datasheet following \citet{gebru2021datasheets} accompanies the release.

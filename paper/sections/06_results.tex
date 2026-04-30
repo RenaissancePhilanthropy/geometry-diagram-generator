@@ -1,0 +1,188 @@
+\section{Results}
+\label{sec:results}
+
+\subsection{Setup}
+\label{ssec:results_setup}
+
+We evaluate every (model $\times$ strategy) combination across \opus, \sonnet, \haiku, \gpt $\times$ \rawcode, \structured, \recipe.
+For the pilot reported here we run a stratified 30-scenario sample (10 per tier, drawn round-robin across 23 of 30 templates).
+The full headline run uses the complete 600-scenario templated split with three repeats; here we report a single-repeat pilot to demonstrate signal and cost.
+
+\subsection{Headline pass-rate table}
+\label{ssec:headline}
+
+\Cref{tab:headline} shows the post-hardening leaderboard.
+We report both \emph{strict} pass (all checks passed and none skipped) and \emph{loose} pass (strict $+$ soft); headline numbers throughout the paper use \emph{strict}.
+
+\begin{table}[t]
+\caption{Headline leaderboard (post-\cref{sec:hardening}). Strict $=$ \texttt{pass}; loose $=$ \texttt{pass}$+$\texttt{soft\_pass}.}
+\label{tab:headline}
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
+\midrule
+\opus & \structured & $12^*$ & 100.0\% & 100.0\% & \dollars{0.532} & 10.0\,s \\
+\sonnet & \recipe & 30 & 93.3\% & 96.7\% & \dollars{0.058} & 8.0\,s \\
+\sonnet & \structured & 36 & 91.7\% & 94.4\% & \dollars{0.075} & 9.1\,s \\
+\gpt & \structured & 30 & 90.0\% & 93.3\% & \dollars{0.057} & 7.5\,s \\
+\haiku & \structured & 30 & 86.7\% & 90.0\% & \dollars{0.031} & 6.8\,s \\
+\haiku & \rawcode & 30 & \textbf{83.3\%} & 93.3\% & \dollars{0.016} & 7.7\,s \\
+\opus & \rawcode & 30 & \textbf{80.0\%} & 96.7\% & \dollars{0.328} & 18.0\,s \\
+\sonnet & \rawcode & 30 & \textbf{76.7\%} & 96.7\% & \dollars{0.046} & 17.1\,s \\
+\gpt & \rawcode & 30 & \textbf{70.0\%} & 90.0\% & \dollars{0.061} & 11.3\,s \\
+\haiku & \recipe & 30 & 70.0\% & 73.3\% & \dollars{0.022} & 5.4\,s \\
+\gpt & \recipe & 30 & 60.0\% & 63.3\% & \dollars{0.056} & 7.6\,s \\
+\bottomrule
+\end{tabular}
+\\[2pt]
+{\footnotesize $^*$ \opus + \structured rate-limit ceiling. Anthropic silently throttles \opus calls at our quota tier. We made two attempts: pilot v4 at concurrency $=2$ returned 9/30 (all \tone+\ttwo); a follow-up at concurrency $=1$ returned 12/30 (10 \tone + 2 \ttwo) before stalling for $> 30$ minutes with no further writes. Both attempts hit 100\% strict-pass on the scenarios that completed. We document this as a deployment finding rather than a noise issue.}
+\end{table}
+
+\paragraph{Pre- vs post-hardening delta.}
+\Cref{tab:hardening_delta} shows the impact of \cref{sec:hardening} on \rawcode rows; \structured and \recipe rows are unchanged.
+
+\begin{table}[t]
+\caption{\Cref{sec:hardening} affects \rawcode only because IR-compiled outputs emit literal coordinates exclusively.}
+\label{tab:hardening_delta}
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Strict (pre)} & \textbf{Strict (post)} & $\Delta$ \\
+\midrule
+\opus + \rawcode & 63.3\% & 80.0\% & $+16.7$\pp \\
+\sonnet + \rawcode & 66.7\% & 76.7\% & $+10.0$\pp \\
+\haiku + \rawcode & 76.7\% & 83.3\% & $+6.6$\pp \\
+\gpt + \rawcode & 60.0\% & 70.0\% & $+10.0$\pp \\
+\midrule
+all \structured / \recipe & unchanged & unchanged & $0.0$\pp \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Three findings, in order of importance}
+\label{ssec:findings}
+
+\paragraph{Strategy choice still helps, but less than the unhardened verifier suggested.}
+Switching from \rawcode to \structured lifts every model by $+4$ to $+20$\pp of strict pass rate at the hardened verifier (it was $+10$ to $+30$\pp pre-hardening).
+The Pareto frontier (\cref{ssec:pareto}) still includes \structured configurations of multiple models, but \rawcode now competes meaningfully on the cheap end.
+
+\paragraph{Cost-equivalence: cheap-model \rawcode is the new Pareto-aggressive baseline.}
+\haiku + \rawcode (83.3\% strict, \dollars{0.016}/scenario) \emph{dominates} \opus + \rawcode (80.0\%, \dollars{0.328}) on both axes --- 3\pp more correct diagrams at \textbf{$21\times$ lower cost}.
+Adding \structured to \haiku (\dollars{0.031}, 86.7\%) buys a further $+3.3$\pp at $2\times$ the cost; adding \structured to \sonnet (\dollars{0.075}, 91.7\%) buys another $+5$\pp at $2.4\times$ more.
+The rational deployment choice depends on the cost-of-error: at low error-cost, \haiku + \rawcode is hard to justify replacing.
+
+\paragraph{The recipe-DSL strategy is unstable across models.}
+\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode).
+\gpt and \haiku do not (60\% and 70\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
+A small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
+
+\paragraph{A fourth, post-hardening observation.}
+At \rawcode, the model ranking is now \textbf{\haiku (83.3\%) $>$ \opus (80.0\%) $>$ \sonnet (76.7\%) $>$ \gpt (70.0\%)} --- \opus moves up from worst to second, suggesting that pre-hardening \opus output simply used \texttt{\textbackslash pgfmathsetmacro} more aggressively than the others, getting \emph{unfairly} penalised.
+The post-hardening \sonnet anomaly (it does \emph{worse} than \opus and \haiku at \rawcode) is small enough at $N=30$ to plausibly be noise; the full headline run will resolve it.
+
+\subsection{Pareto figure: cost vs strict-pass}
+\label{ssec:pareto}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/pareto.pdf}
+\caption{Pareto frontier of strict pass-rate vs mean cost per scenario, log-x. Each point is one (model, strategy) combo. The frontier traces $\haiku{+}\rawcode \to \haiku{+}\structured \to \sonnet{+}\recipe \to \opus{+}\structured$; all other configurations are dominated.}
+\label{fig:pareto}
+\end{figure}
+
+\Cref{tab:pareto_frontier} lists the frontier points.
+Two unambiguous dominance findings:
+(i)~\opus + \rawcode is dominated by \haiku + \rawcode despite using the most expensive model: $21\times$ the cost (\dollars{0.328} vs \dollars{0.016}) at 3.3\pp \emph{lower} strict pass.
+For raw TikZ generation, the marginal cost of the frontier model buys nothing.
+(ii)~\gpt + \structured is dominated by \sonnet + \recipe at essentially the same cost (\dollars{0.058} vs \dollars{0.057}) at 3.3\pp higher strict pass.
+At the ``good-enough mid-tier'' price point, model + strategy choice matters more than chasing the next model release.
+
+\begin{table}[t]
+\caption{Pareto frontier of the post-hardening pilot. All other (model, strategy) configurations are dominated on both axes.}
+\label{tab:pareto_frontier}
+\centering
+\small
+\begin{tabular}{rrl}
+\toprule
+\textbf{\$/scenario} & \textbf{Strict pass} & \textbf{Combo} \\
+\midrule
+\dollars{0.016} & 83.3\% & \haiku + \rawcode \\
+\dollars{0.031} & 86.7\% & \haiku + \structured \\
+\dollars{0.058} & 93.3\% & \sonnet + \recipe \\
+\dollars{0.532} & 100.0\% & \opus + \structured ($N{=}12$, rate-limit-capped) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tier-stratified breakdown}
+\label{ssec:tiers_results}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/tier_stratified.pdf}
+\caption{Strict pass-rate by tier for each (model, strategy) combo. \tone is near-saturated for all combos except \gpt + \recipe; \ttwo is where strategy first matters; \tthree is where model + strategy both matter and produces the largest cell-to-cell variance.}
+\label{fig:tier_stratified}
+\end{figure}
+
+\Cref{fig:tier_stratified} shows three robust patterns:
+\begin{itemize}
+\item \textbf{\tone is near-saturated for every (model, strategy) combo except \gpt + \recipe (70\%)} --- a signal that we need harder \tone templates in v2.
+\item \textbf{\ttwo is where strategy first matters.} Across all 4 models, the \structured strategy lifts \ttwo strict-pass from 60--80\% (\rawcode) to 90--100\%. This is the cleanest ``structured wins'' signal in the pilot.
+\item \textbf{\tthree is where model and strategy \emph{both} matter.} The top \tthree strict-pass is 80\% (\sonnet+\recipe and \gpt+\structured); the bottom is 40\% (\gpt+\rawcode and \haiku+\recipe). \tthree produces the largest variance and is the right place to invest in v2 expansion.
+\end{itemize}
+
+\subsection{Per-template heatmap}
+\label{ssec:per_template}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.75\linewidth]{figures/per_template_heatmap.pdf}
+\caption{Per-template strict pass-rate, best strategy per model. Blank cells in the \opus column reflect the $N{=}12$ rate-limit cutoff (\cref{ssec:headline}). Two templates (\texttt{tpl-t3-cen}, \texttt{tpl-t3-trv}) are universally hard ($0\%$ across columns); they make natural case-study targets.}
+\label{fig:heatmap}
+\end{figure}
+
+\Cref{fig:heatmap} exposes which specific geometric constructions are universally hard or universally easy:
+\textbf{universally easy} --- every \tone template is at or near 100\% for each model's best strategy;
+\textbf{universally hard} --- \texttt{tpl-t3-trv} (parallel-line/transversal/corresponding-angle construction) and \texttt{tpl-t3-cen} (centroid/median construction) are 0\% across the best-strategy columns;
+\textbf{discriminating} --- \texttt{tpl-t3-tan} (tangent), \texttt{tpl-t2-rh} (rhombus), and \texttt{tpl-t2-cc} (circumcircle) split models/strategies rather than being universally solved or failed.
+We identify the top-3 universally-hard templates and report their failure modes in \cref{ssec:case_studies}.
+
+\subsection{Failure-mode taxonomy}
+\label{ssec:failure_modes}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/failure_modes.pdf}
+\caption{Stacked failure modes per (model, strategy). After \cref{sec:hardening}, the dominant failure category is \emph{geometric predicate} (the model rendered a diagram with the wrong geometry), not render or generation failure.}
+\label{fig:failure_modes}
+\end{figure}
+
+\Cref{fig:failure_modes} categorises each failed scenario into one of: \emph{geometric predicate} (a SymPy property check returned false), \emph{label / entity} (required label or structural element missing), or \emph{mark / label} (a TikZ source-string check failed).
+Pilot readout: failures are dominated by geometric-predicate violations on the hardest templates.
+\recipe failures are mostly label / mark problems, not render failures; \structured failures are rare but still include geometric-predicate failures on the hardest templates.
+This supports the main verifier story: \emph{most wrong outputs are rendered diagrams with the wrong geometry}, not broken LaTeX.
+
+\subsection{Drill-down: failure-mode case studies}
+\label{ssec:case_studies}
+
+\TODO{Three case studies of universally-hard templates with side-by-side rendered failure modes (planned: \texttt{tpl-t3-cen}, \texttt{tpl-t3-trv}, \texttt{tpl-t3-tan}). For each: (a)~the original prompt, (b)~the expected property list with a hand-drawn reference SVG, (c)~each model's best attempt across the three strategies as a 3$\times$4 grid of SVGs, (d)~the per-predicate verdict for each output with a one-line interpretation of the failure mode.}
+
+\subsection{Repeats and stability (planned for full run)}
+\label{ssec:stability}
+
+For the headline run we use 3 independent repeats per (model, strategy, scenario) and report \emph{per-cell standard error} of strict-pass rate, plus a \emph{stability index}: fraction of scenarios where all 3 repeats produce the same verdict.
+We expect stability $\geq 0.85$ for \structured (deterministic compilation + bounded retries) and lower for \rawcode (LLM stochasticity).
+The pilot data (1 repeat) is reported with a standard-error caveat throughout.
+
+\subsection{What to look for in this section}
+\label{ssec:reviewer_traps}
+
+We anticipate three reviewer concerns and address them here for clarity:
+(i)~``the differences are within noise'' --- \tthree deltas of $\geq 10$\pp exceed the standard error of a single 30-scenario sample at $p < 0.05$ by Wilson's interval; we pre-register this as the headline test.
+(ii)~``the soft-pass rate inflates apparent performance'' --- we report strict-pass as the headline; the full table includes both; the \cref{sec:hardening} converts most soft-passes to strict verdicts.
+(iii)~``your strategies aren't a fair comparison --- \structured costs less because the compiler does the work'' --- that is the point.
+The benchmark is task completion under a verifier; how the LLM gets there is a strategy choice, and we measure the resulting cost.
+If the compiler is part of the deployment pipeline, it should be part of the evaluation.

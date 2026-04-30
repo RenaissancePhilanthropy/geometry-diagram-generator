@@ -1,0 +1,12 @@
+\section{Failure-mode coding manual}
+\label{app:failure_coding}
+
+\TODO{Coding manual for the per-scenario failure-mode taxonomy used in \cref{ssec:failure_modes}:
+\begin{itemize}
+\item \textbf{geometric predicate}: the model rendered a diagram with the wrong geometry (a SymPy property check returned false). Sub-codes: incidence (e.g., point off line), metric (wrong distance / angle / parallelism), composite (failed multi-part predicate like \propname{centroid}).
+\item \textbf{label / entity}: required label or structural element missing.
+\item \textbf{mark / label}: a TikZ source-string check failed (right-angle mark or tick mark not emitted).
+\item \textbf{render failure}: TikZ would not compile (\texttt{render\_status = error}); we rarely see these post-hardening.
+\item \textbf{generation failure}: model returned no usable TikZ.
+\end{itemize}
+Decision rules for borderline cases, examples of each code, inter-coder reliability if multiple annotators are used.}
