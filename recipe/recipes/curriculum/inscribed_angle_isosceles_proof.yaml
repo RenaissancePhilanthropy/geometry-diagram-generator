@@ -1,0 +1,89 @@
+name: inscribed_angle_isosceles_proof
+description: "Inscribed angle theorem case 1: inscribed angle BAC = half central angle BOC, proved via isosceles triangles OAB and OAC"
+tags: [circle, inscribed-angle, central-angle, isosceles, triangle, proof, intermediate]
+context: "Given a circle with center O. Points A, B, C are on the circle. Center O is inside the inscribed angle BAC (case 1)."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+  - op: point
+    id: ref
+    coords: [3, 0]
+    visible: false
+example:
+  mode: abstract
+  construction:
+    # Place A, B, C on the circle using rotation from ref=(3,0)
+    # A at 90° (top), B at 210° (bottom-left), C at 330° (bottom-right)
+    # Arc BC not through A = 120°. Central angle BOC = 120°. Inscribed angle BAC = 60°.
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 90
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 210
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 330
+    # Radii OA, OB, OC
+    - op: segment
+      id: seg_OA
+      endpoints: [O, A]
+    - op: segment
+      id: seg_OB
+      endpoints: [O, B]
+    - op: segment
+      id: seg_OC
+      endpoints: [O, C]
+    # Chords BC and AB (forming the inscribed angle at A)
+    - op: segment
+      id: seg_BC
+      endpoints: [B, C]
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    - op: segment
+      id: seg_AC
+      endpoints: [A, C]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Triangle OAB is isosceles: OA = OB (both radii) — tick group 1
+      - kind: mark_equal_lengths
+        segments: [[O, A], [O, B]]
+        group: 1
+      # Triangle OAC is isosceles: OA = OC (both radii) — tick group 2
+      - kind: mark_equal_lengths
+        segments: [[O, A], [O, C]]
+        group: 2
+      # Central angle BOC (the larger angle at O)
+      - kind: mark_angle
+        a: B
+        vertex: O
+        b: C
+        group: 1
+      # Inscribed angle BAC (at A on the circle)
+      - kind: mark_angle
+        a: B
+        vertex: A
+        b: C
+        group: 2
+notes:
+  - "ALWAYS use rotation ops to place A, B, C on the circle — NEVER use point_on_segment, intersection(circle, point), or hardcoded coordinates."
+  - "rotation op syntax: point must be a string ID (e.g. 'ref'), not inline coords. Define ref in setup first."
+  - "A at 90°, B at 210°, C at 330° — O is strictly inside angle BAC (case 1 of inscribed angle theorem)."
+  - "All three triangles OAB, OAC share OA=OB=OC=radius. This makes both triangles isosceles."
+  - "mark_equal_lengths group 1 = OA=OB (one tick), group 2 = OA=OC (two ticks). Both pairs share OA."
+  - "The proof: base angles of isosceles △OAB are equal (∠OAB=∠OBA), and same for △OAC. The central angle equals twice the inscribed angle by exterior angle or direct angle addition."
+  - "Do NOT use beyond/closest_to selectors to find circle points — use rotation instead."
