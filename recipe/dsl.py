@@ -351,6 +351,7 @@ class PerpendicularBisectorOp(DSLOpBase):
     op: Literal["perpendicular_bisector"] = "perpendicular_bisector"
     of: list[str]   # [P, Q]
     mid: str        # name for midpoint
+    point_on_line: Optional[str] = None  # optional named point on the bisector line (useful for mark_right_angle)
 
 
 class AngleBisectorOp(DSLOpBase):

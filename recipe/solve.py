@@ -419,10 +419,16 @@ def solve_polygon_from_angles_and_sides(
     side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
     angles[i] = interior angle (degrees) at vertices[i].
 
-    angles may have N or N-1 entries:
-      N entries: validated to sum to (N-2)*180.
-      N-1 entries: the last angle is inferred from the sum constraint.
-    Providing more than N or fewer than N-1 angles raises SpecError.
+    Let V = len(vertices).
+
+    side_lengths may have V-1 or V entries; when V are given, the last is ignored
+    and the closing side length is always inferred from geometry (the V-1 given sides
+    plus the V angles fully determine the polygon up to position/rotation).
+
+    angles may have V or V-1 entries:
+      V entries: validated to sum to (V-2)*180.
+      V-1 entries: the last angle is inferred from the sum constraint.
+    Providing more than V or fewer than V-1 angles raises SpecError.
 
     Returns dict mapping vertex name → (x, y).
     Raises SpecError if inputs are invalid or the polygon doesn't close.
@@ -435,21 +441,28 @@ def solve_polygon_from_angles_and_sides(
     if len(side_lengths) < n - 1 or len(side_lengths) > n:
         raise SpecError(
             f"solve_polygon_from_angles_and_sides: len(side_lengths)={len(side_lengths)} "
-            f"must be N={n} or N-1={n - 1} (last side inferred from closure)"
+            f"must be V-1={n - 1} (last side inferred) or V={n} (where V=len(vertices)={n})"
         )
-    infer_last_side = len(side_lengths) == n - 1
+    # When V angles and V sides are both given, always infer the last side from closure.
+    # Providing all V sides is over-determined: the angles alone dictate shape, so the
+    # last side is redundant and often numerically inconsistent with the others.
+    infer_last_side = len(side_lengths) >= n - 1  # always True; V case drops last side
+    if len(side_lengths) == n:
+        sides_input = list(side_lengths[: n - 1])  # drop the last side; will be computed
+    else:
+        sides_input = list(side_lengths)
     na = len(angles)
     if na > n:
         raise SpecError(
             f"solve_polygon_from_angles_and_sides: len(angles)={na} exceeds "
-            f"len(vertices)={n}; provide at most N angles"
+            f"len(vertices)={n}; provide at most V={n} angles"
         )
     if na < n - 1:
         raise SpecError(
             f"solve_polygon_from_angles_and_sides: len(angles)={na} is too few for "
-            f"{n} vertices; provide N-1 (last inferred) or N angles"
+            f"{n} vertices; provide V-1={n - 1} (last inferred) or V={n} angles"
         )
-    sides = [float(s) for s in side_lengths]
+    sides = [float(s) for s in sides_input]
     angs = [float(a) for a in angles]
     if any(s <= 0 for s in sides):
         raise SpecError("solve_polygon_from_angles_and_sides: all side lengths must be positive")
@@ -459,7 +472,7 @@ def solve_polygon_from_angles_and_sides(
         if inferred <= 0:
             raise SpecError(
                 f"solve_polygon_from_angles_and_sides: inferred last angle={inferred:.3f}° ≤ 0; "
-                "check that the provided N-1 angles are valid"
+                f"check that the provided V-1={n - 1} angles are valid"
             )
         angs.append(inferred)
     else:
@@ -470,11 +483,11 @@ def solve_polygon_from_angles_and_sides(
                 f"expected {expected_sum:.1f}° for a {n}-gon"
             )
 
-    # Turtle-graphics walk (N steps for all sides given; N-1 steps when inferring last)
+    # Turtle-graphics walk: always V-1 steps (last side inferred from closure)
     x, y = 0.0, 0.0
     heading = 0.0  # degrees, east
     coords: list[tuple[float, float]] = []
-    steps = n - 1 if infer_last_side else n
+    steps = n - 1
     for i in range(steps):
         coords.append((x, y))
         dx = sides[i] * math.cos(math.radians(heading))
@@ -485,35 +498,25 @@ def solve_polygon_from_angles_and_sides(
         exterior = 180.0 - angs[(i + 1) % n]
         heading += exterior
 
-    if infer_last_side:
-        # Closing side: distance from current position back to origin
-        close_len = math.hypot(x, y)
-        if close_len < 1e-9:
-            raise SpecError(
-                "solve_polygon_from_angles_and_sides (N-1 sides): closing side has zero "
-                "length — the N-1 given sides already close the polygon."
-            )
-        # Validate direction: turtle heading must point from P toward origin
-        expected_heading = math.degrees(math.atan2(-y, -x)) % 360.0
-        actual_heading = heading % 360.0
-        diff = abs(expected_heading - actual_heading)
-        if diff > 0.5 and abs(diff - 360.0) > 0.5:
-            raise SpecError(
-                f"solve_polygon_from_angles_and_sides (N-1 sides): "
-                f"closing direction {expected_heading:.1f}° ≠ turtle heading {actual_heading:.1f}°. "
-                "The given sides are geometrically inconsistent with the given angles."
-            )
-        sides.append(close_len)
-        coords.append((x, y))  # last vertex position (before closing step)
-        x, y = 0.0, 0.0        # reset so closure check below passes
-
-    # Closure check
-    if abs(x) > 1e-6 or abs(y) > 1e-6:
+    # Closing side: distance from current position back to origin
+    close_len = math.hypot(x, y)
+    if close_len < 1e-9:
         raise SpecError(
-            f"solve_polygon_from_angles_and_sides: polygon does not close — "
-            f"final position ({x:.6f}, {y:.6f}) ≠ (0, 0). "
-            "Check that the side lengths and interior angles are geometrically consistent."
+            "solve_polygon_from_angles_and_sides: closing side has zero "
+            f"length — the V-1={n - 1} given sides already close the polygon."
         )
+    # Validate direction: turtle heading must point from current position toward origin
+    expected_heading = math.degrees(math.atan2(-y, -x)) % 360.0
+    actual_heading = heading % 360.0
+    diff = abs(expected_heading - actual_heading)
+    if diff > 0.5 and abs(diff - 360.0) > 0.5:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: "
+            f"closing direction {expected_heading:.1f}° ≠ turtle heading {actual_heading:.1f}°. "
+            "The given angles are geometrically inconsistent."
+        )
+    sides.append(close_len)
+    coords.append((x, y))  # last vertex position
 
     if rotation != 0.0:
         cos_r = math.cos(math.radians(rotation))
