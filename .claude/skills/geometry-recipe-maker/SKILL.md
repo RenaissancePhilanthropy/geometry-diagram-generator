@@ -15,9 +15,11 @@ A recipe is a named, reusable geometry construction stored as a YAML file in `re
 2. **Design `construction`** — derived objects that build on the setup
 3. **Write the YAML** (see structure below)
 4. **Render**: `source .venv/bin/activate && python docs/render_recipe.py <name>`
-5. **Review** `/tmp/<name>.svg` visually in a browser — Do NOT skip this step
+5. **Review** `/tmp/<name>.svg` visually (human-in-the-loop, pause and ask for feedback) — Do NOT skip this step
 6. **Iterate** — fix the YAML and re-render until the diagram is correct
 7. **Commit** only after visual review passes
+
+Note that it's fine to work in batches when making multiple recipes, the human helping review would prefer it if you did steps 1-4 for all recipes you are developing at once.
 
 ## Recipe YAML Structure
 
