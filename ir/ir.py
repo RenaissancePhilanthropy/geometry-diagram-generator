@@ -736,6 +736,7 @@ class LabelPoint(RenderBase):
         "auto", "above", "below", "left", "right",
         "above left", "above right", "below left", "below right"
     ] = "auto"
+    show_coords: bool = False
 
 
 class LabelAngle(RenderBase):

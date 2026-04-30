@@ -767,6 +767,7 @@ class MarkAngle(BaseModel):
     of: Optional[str] = None  # triangle id (shorthand)
     group: Optional[int] = None  # tick-group for equal-angle marking
     expected: Optional[Union[float, Literal["acute", "right", "obtuse"]]] = None
+    label_only: bool = False  # when True, skip geometric assertion; emit only visual arc
 
     @model_validator(mode="after")
     def _check_form(self) -> "MarkAngle":
@@ -848,6 +849,9 @@ class LabelPoint(BaseModel):
     When a point already has an auto-generated label (auto_label_points=true),
     a matching label_point entry overrides its text and/or position.  Omit
     ``text`` to keep the point id but change only ``pos``.
+
+    Set ``show_coords=True`` to append the point's compiled (x, y) coordinates
+    to the label text.  Useful for coordinate geometry problems.
     """
     model_config = ConfigDict(extra="forbid")
     kind: Literal["label_point"] = "label_point"
@@ -857,6 +861,7 @@ class LabelPoint(BaseModel):
         "auto", "above", "below", "left", "right",
         "above left", "above right", "below left", "below right",
     ] = "auto"
+    show_coords: bool = False
 
 
 class LabelAngle(BaseModel):

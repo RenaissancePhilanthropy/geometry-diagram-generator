@@ -1202,3 +1202,36 @@ def test_sector_compiles_to_sector_wrapper():
     assert float(sector.radius) == pytest.approx(3.0)
     assert sector.reflex is False
 
+
+# ---------------------------------------------------------------------------
+# Fix 3: LinearEntity ValueError → descriptive IRCompileError
+# ---------------------------------------------------------------------------
+
+def test_intersection_circle_and_line_normal():
+    """Circle-line intersection with a proper LineThrough produces two points."""
+    from ir.ir import PickIndex
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="P", x=-1, y=0),
+        PointFixed(id="Q", x=1, y=0),
+        CircleCenterRadius(id="c", center="O", radius=3),
+        LineThrough(id="L", p="P", q="Q"),
+        PointIntersection(id="X", obj1="c", obj2="L", pick=PickIndex(k=0)),
+    )
+    assert "X" in sym
+    assert isinstance(sym["X"], spg.Point)
+
+
+def test_intersection_two_circles_descriptive_error_on_no_points():
+    """Two non-intersecting circles raise IntersectionError with meaningful message."""
+    from ir.errors import IntersectionError
+    with pytest.raises(IntersectionError, match="no intersection"):
+        _compile(
+            PointFixed(id="O1", x=0, y=0),
+            PointFixed(id="O2", x=10, y=0),
+            CircleCenterRadius(id="c1", center="O1", radius=1),
+            CircleCenterRadius(id="c2", center="O2", radius=1),
+            PointIntersection(id="X", obj1="c1", obj2="c2"),
+        )
+

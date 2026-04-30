@@ -61,11 +61,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Object {obj!r} unexpectedly contains point {p!r}"
 
             case ir.Parallel(l1=l1, l2=l2):
-                ok = _to_bool(_as_linear(sym[l1]).is_parallel(_as_linear(sym[l2])))
+                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not parallel"
 
             case ir.NotParallel(l1=l1, l2=l2):
-                ok = not _to_bool(_as_linear(sym[l1]).is_parallel(_as_linear(sym[l2])))
+                ok = not _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are unexpectedly parallel"
 
             case ir.Perpendicular(l1=l1, l2=l2):
@@ -192,6 +192,25 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _is_parallel(obj1, obj2, tol: float = 1e-9) -> bool:
+    """Check parallelism symbolically, falling back to numerical cross-product for float coords."""
+    try:
+        result = _to_bool(obj1.is_parallel(obj2))
+        if result:
+            return True
+    except Exception:
+        pass
+    # Numerical fallback: cross product of direction vectors
+    try:
+        d1 = obj1.direction
+        d2 = obj2.direction
+        cross = float(d1.x * d2.y - d1.y * d2.x)
+        norm = (float(abs(d1.x) + abs(d1.y))) * (float(abs(d2.x) + abs(d2.y)))
+        return abs(cross) < tol * norm if norm > 0 else True
+    except Exception:
+        return False
+
 
 def _to_bool(expr: Any) -> bool:
     if isinstance(expr, bool):

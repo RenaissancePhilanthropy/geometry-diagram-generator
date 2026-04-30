@@ -1822,3 +1822,39 @@ def test_parse_latex_leftarrow():
     from ir.to_svg import _parse_latex
     segs = _parse_latex("\\leftarrow")
     assert segs[0]["content"] == "←"
+
+
+# ---------------------------------------------------------------------------
+# Fix 5: LabelPoint show_coords
+# ---------------------------------------------------------------------------
+
+def test_label_point_show_coords_appends_coordinate_text():
+    """LabelPoint with show_coords=True includes the point's (x, y) in the SVG text."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=6, ymin=-1, ymax=6),
+        define=[PointFixed(id="P", x=3, y=4)],
+        render=[
+            Draw(obj="P"),
+            LabelPoint(p="P", text="P", show_coords=True),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    assert "(3" in svg_str and "4)" in svg_str, (
+        f"Expected coordinate text '(3, 4)' in SVG output, got:\n{svg_str[:500]}"
+    )
+
+
+def test_label_point_show_coords_false_no_coordinate_text():
+    """LabelPoint with show_coords=False (default) does not append coordinates."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=6, ymin=-1, ymax=6),
+        define=[PointFixed(id="P", x=3, y=4)],
+        render=[
+            Draw(obj="P"),
+            LabelPoint(p="P", text="P", show_coords=False),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    # Should contain the label "P" but not coordinate notation
+    assert "P" in svg_str
+    assert "(3" not in svg_str or "4)" not in svg_str
