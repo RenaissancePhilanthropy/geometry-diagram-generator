@@ -1,0 +1,38 @@
+name: exterior_angle
+description: "Triangle with one side extended past a vertex to show the exterior angle"
+tags: [triangle, angle, exterior, basic]
+context: "Given a triangle T with one side extended past vertex B to show the exterior angle."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 50
+      angle_B: 65
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: extend_segment
+      id: D
+      segment: [C, B]
+      beyond: B
+      by: 2
+    - op: segment
+      id: ext
+      endpoints: [B, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_angle
+        a: C
+        vertex: B
+        b: D
+notes:
+  - "D is a point beyond B on the extension of side CB. extend_segment computes the correct direction automatically — do not place D at an eyeballed coordinate."
+  - "extend_segment takes segment: [C, B] (the direction C→B) and beyond: B to extend PAST B. The order matters: extension continues in the C→B direction."
+  - "The exterior angle at B is angle CBD. Mark it with mark_angle(a=C, vertex=B, b=D)."
+  - "Exterior angle theorem: the exterior angle equals the sum of the two non-adjacent interior angles: angle_CBD = angle_A + angle_C."
+  - "To extend a different side: change segment to [A, B] (to extend past B in the A→B direction) or [B, C] (to extend past C)."
+  - "Use label_angle to add a numeric label (e.g. '115°') inside the exterior angle arc if the problem states its measure."
