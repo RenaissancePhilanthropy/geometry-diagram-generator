@@ -490,7 +490,8 @@ def main() -> None:
     parser.add_argument("--strategy", choices=list(_STRATEGIES), default="recipe",
                         help="Generation strategy (default: recipe)")
     parser.add_argument("--catalog", default="default",
-                        help="Recipe catalog subfolder name (default: 'default')")
+                        help="Recipe catalog(s) to use. Comma-separated for multi-catalog: "
+                             "'default,genexam' loads both. Default: 'default'.")
     parser.add_argument("--model", default="anthropic:claude-sonnet-4-6", help="Generation model")
     parser.add_argument("--judge-model", default="openai:gpt-5.4-mini", help="AI judge model (ignored if --no-judge)")
     parser.add_argument("--concurrency", type=int, default=4, help="Max concurrent prompts")
