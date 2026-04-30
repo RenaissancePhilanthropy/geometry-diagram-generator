@@ -1,0 +1,101 @@
+name: bridge_indirect_measurement
+description: "Indirect measurement across an inaccessible gap using similar triangles"
+tags: [triangle, similarity, indirect-measurement, proportion, intermediate]
+context: "Two similar triangles share a vertex at A. The inaccessible distance BC is found from the measurable distance DE."
+setup: []
+example:
+  mode: grid
+  construction:
+    # Near bank (y=3): A at river edge, B inland
+    - op: point
+      id: A
+      coords: [0, 3]
+    - op: point
+      id: B
+      coords: [4, 3]
+    # Far bank (y=0): C directly across A, D directly across B
+    - op: point
+      id: C
+      coords: [0, 0]
+    - op: point
+      id: D
+      coords: [4, 0]
+    # River boundary lines (visual guides)
+    - op: point
+      id: bank_near_L
+      coords: [-1, 3]
+      visible: false
+    - op: point
+      id: bank_near_R
+      coords: [5.5, 3]
+      visible: false
+    - op: point
+      id: bank_far_L
+      coords: [-1, 0]
+      visible: false
+    - op: point
+      id: bank_far_R
+      coords: [5.5, 0]
+      visible: false
+    - op: segment
+      id: near_bank
+      endpoints: [bank_near_L, bank_near_R]
+    - op: segment
+      id: far_bank
+      endpoints: [bank_far_L, bank_far_R]
+    # The two triangles: ABC (large, with AC = unknown river width)
+    # and a smaller reference triangle
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    - op: segment
+      id: seg_AC
+      endpoints: [A, C]
+    - op: segment
+      id: seg_BC
+      endpoints: [B, C]
+    - op: segment
+      id: seg_CD
+      endpoints: [C, D]
+    - op: segment
+      id: seg_BD
+      endpoints: [B, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Right angles at A and D (AC and BD are perpendicular to the banks)
+      - kind: mark_right_angle
+        a: B
+        vertex: A
+        b: C
+      - kind: mark_right_angle
+        a: B
+        vertex: D
+        b: C
+      # Equal angles at B (alternate interior angles)
+      - kind: mark_angle
+        a: A
+        vertex: B
+        b: C
+        group: 1
+      - kind: mark_angle
+        a: C
+        vertex: B
+        b: D
+        group: 1
+    labels:
+      - kind: label_segment
+        endpoints: [A, B]
+        text: "known"
+      - kind: label_segment
+        endpoints: [A, C]
+        text: "?"
+notes:
+  - "AC is the inaccessible distance (river width). AB is a measurable distance along the near bank."
+  - "Place A directly above C (same x-coordinate) and B directly above D (same x-coordinate) for right angles."
+  - "Triangle ABC ~ triangle DBC by AA (right angle at A and D, shared angle at B)."
+  - "Proportion: AC/AB = DC/DB → AC = AB · DC/DB. DC is the other bank segment (measurable), DB is the diagonal."
+  - "mark_right_angle(B, A, C): angle at A between AB and AC = 90°. ✓ (B is horizontal from A, C is vertical from A)"
+  - "mark_right_angle(B, D, C): angle at D between BD and DC = 90°. ✓ (B is horizontal from D, C is vertical from D)"
+  - "For the 'extend' variant of this problem, replace the rectangle with two triangles meeting at a point on the bank."
