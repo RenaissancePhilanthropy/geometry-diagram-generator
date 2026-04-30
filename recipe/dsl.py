@@ -600,11 +600,11 @@ class PolygonFromAnglesAndSidesOp(DSLOpBase):
                     f"must be N-1={n-1} (omit base edge) or N={n} (include for validation)"
                 )
         else:
-            # Standalone: exactly N
-            if ns != n:
+            # Standalone: N (all sides given) or N-1 (last side inferred from closure)
+            if ns < n - 1 or ns > n:
                 raise ValueError(
-                    f"polygon_from_angles_and_sides: len(vertices)={n} "
-                    f"must equal len(side_lengths)={ns}"
+                    f"polygon_from_angles_and_sides: len(side_lengths)={ns} "
+                    f"must be N={n} or N-1={n - 1} (last side inferred from closure)"
                 )
 
         # angles count check (N-1 or N, both modes)
