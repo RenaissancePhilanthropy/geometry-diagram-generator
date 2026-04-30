@@ -4,7 +4,7 @@
 \subsection{Task formulation}
 \label{ssec:task}
 
-A \GeoGen scenario is a tuple
+A \GeoGenBench scenario is a tuple
 \[
 \mathcal{S} = \langle \text{prompt},\ \mathcal{P},\ \mathcal{L},\ \mathcal{C} \rangle,
 \]
@@ -38,7 +38,7 @@ Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\tim
 \Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signature, semantics, and validation code for each predicate.
 
 \begin{table}[t]
-\caption{The \GeoGen property language. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass.}
+\caption{The \GeoGenBench property language. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass.}
 \label{tab:predicates}
 \centering
 \small
@@ -98,7 +98,7 @@ The two-renderer choice (TikZ $\to$ SVG via Docker by default; pure-Python SVG r
   \draw[->] (sympy) -- (verdict);
   \draw[->] (svg) -- (verdict);
 \end{tikzpicture}
-\caption{The \GeoGen verification pipeline. The LLM produces TikZ; the TikZ is rendered to SVG by a containerised LuaLaTeX/dvisvgm; the SVG and the compiled SymPy geometry are independently checked against the per-scenario property list; the result is a single \texttt{gate\_status}.}
+\caption{The \GeoGenBench verification pipeline. The LLM produces TikZ; the TikZ is rendered to SVG by a containerised LuaLaTeX/dvisvgm; the SVG and the compiled SymPy geometry are independently checked against the per-scenario property list; the result is a single \texttt{gate\_status}.}
 \label{fig:pipeline}
 \end{figure}
 
@@ -121,7 +121,7 @@ Curriculum scenarios inherit tier labels from the LLM curriculum extractor; we a
 \label{ssec:stats}
 
 \begin{table}[t]
-\caption{\GeoGen dataset composition.}
+\caption{\GeoGenBench dataset composition.}
 \label{tab:dataset_stats}
 \centering
 \small

@@ -1,12 +1,20 @@
-# GeoGen — paper
+# GeoGenBench — paper
 
-LaTeX source for the GeoGen NeurIPS Datasets & Benchmarks paper.
+LaTeX source for the **GeoGenBench** NeurIPS Datasets & Benchmarks paper.
+
+**Naming convention** (also defined in §1 of the paper):
+
+- **GeoGen** = the methodology / pipeline (text → TikZ → SymPy → automatic geometric verification).
+- **GeoGenBench** = the released benchmark instantiating that methodology
+  (801 prompts paired with machine-checkable property lists).
+
+This paper is principally about the benchmark; the methodology is the means.
 
 ## Layout
 
 ```
 paper/
-├── geogen.tex              # main file; \input's everything below
+├── geogenbench.tex         # main file; \input's everything below
 ├── preamble.tex            # packages, project-specific macros
 ├── abstract.tex
 ├── sections/
@@ -41,7 +49,7 @@ Requires MacTeX (or a full TeX Live install) with `latexmk` and `lualatex`:
 
 ```bash
 brew install --cask mactex-no-gui     # one-time install (~4 GB)
-make                                  # build geogen.pdf
+make                                  # build geogenbench.pdf
 make watch                            # continuous rebuild on save (latexmk -pvc)
 make view                             # open PDF
 make clean                            # remove aux files
@@ -53,7 +61,7 @@ Uses the official `texlive/texlive` image. From `paper/`:
 
 ```bash
 docker run --rm -v "$PWD:/workdir" -w /workdir texlive/texlive:latest \
-    latexmk -lualatex -interaction=nonstopmode geogen.tex
+    latexmk -lualatex -interaction=nonstopmode geogenbench.tex
 ```
 
 `paper/` is fully self-contained — figures live as PDFs under `paper/figures/`
@@ -93,7 +101,7 @@ docker run --rm -v "$PWD:/workdir" -w /workdir texlive/texlive:latest \
 ## Style: NeurIPS 2024
 
 The `style/neurips_2024.sty` file is the official 2024 style. It is included
-unmodified per the NeurIPS rules. Submission options in `geogen.tex`:
+unmodified per the NeurIPS rules. Submission options in `geogenbench.tex`:
 
 - `[preprint]` — author names visible, no copyright box (use for arXiv preprint
   and during writing).
@@ -103,7 +111,7 @@ unmodified per the NeurIPS rules. Submission options in `geogen.tex`:
 We pass `[nonatbib]` to avoid a clash with the natbib loaded in `preamble.tex`.
 
 When NeurIPS 2026 publishes its style file, replace `style/neurips_2024.sty`
-with `style/neurips_2026.sty` and update the `\usepackage` line in `geogen.tex`.
+with `style/neurips_2026.sty` and update the `\usepackage` line in `geogenbench.tex`.
 
 ## Status
 

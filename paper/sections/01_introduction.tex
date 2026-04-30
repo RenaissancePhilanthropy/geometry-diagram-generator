@@ -4,7 +4,7 @@
 Modern frontier LLMs are being asked to do things that were science-fiction five years ago, including authoring entire visual artifacts: slide decks, worksheets, technical illustrations, and engineering diagrams.
 The most-deployed visual artifact in the K--12 educational market is the \emph{geometry diagram}: a 2D plane figure paired with a problem statement.
 Yet every existing geometry benchmark we are aware of evaluates the inverse direction --- given a diagram, answer a question about it --- and provides no way to evaluate whether a model can \emph{produce} a correct diagram from a textual description.
-This is the gap \GeoGen fills.
+This is the gap \GeoGenBench fills.
 
 \subsection{Motivating example}
 
@@ -12,15 +12,21 @@ This is the gap \GeoGen fills.
 ``Draw an acute triangle $EFG$ with vertex angles $60^\circ$, $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''
 \end{quote}
 A correct rendering must satisfy: (a) $\angle E = 60^\circ$, $\angle F = 70^\circ$, (b) $H$ lies on segment $EF$ (not its extension), (c) $\angle GHE = 90^\circ$, (d) the triangle is acute.
-\GeoGen encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output.
+\GeoGenBench encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output.
 On this scenario (\texttt{tpl-t2-alt-EFG-H-60-70} in our pilot), \haiku and \opus pass under all three strategies; \gpt with \rawcode places $H$ on the line $EF$ but \emph{outside} the segment (extension); \sonnet with \rawcode draws an obtuse triangle.
 The verifier flags each failure with a specific predicate verdict, not a holistic score, enabling actionable per-check error analysis.
+
+\subsection{Naming convention}
+\label{ssec:naming}
+
+We use \textbf{\GeoGen} for the methodology this paper proposes (text-to-TikZ generation evaluated by automatic SymPy-based geometric verification) and \textbf{\GeoGenBench} for the released benchmark instantiating that methodology (801 prompts paired with machine-checkable property lists).
+The methodology is intended to extend beyond plane geometry as future work; this paper is principally about the benchmark.
 
 \subsection{Contributions}
 
 \begin{enumerate}
 \item \textbf{A new benchmark.}
-\GeoGen is 801 prompts paired with executable property lists.
+\GeoGenBench is 801 prompts paired with executable property lists.
 600 prompts come from a 30-template procedural generator (released, so reviewers can roll new splits to defeat contamination); 201 come from an LLM-based extraction pipeline over open K--12 textbook content (\cref{sec:design}).
 \item \textbf{A symbolic-verification toolkit.}
 We pair each prompt with a list of geometric properties (right-angle, midpoint, parallel, equal-length, point-on-circle, etc.) decidable in milliseconds against the SymPy-compiled coordinates of the model's TikZ output.
@@ -52,9 +58,9 @@ A small custom DSL with built-in geometric priors transfers poorly across model 
 
 \subsection{Roadmap}
 
-\Cref{sec:related} situates \GeoGen against geometry-understanding benchmarks, math benchmarks without diagrams, and image-generation benchmarks.
+\Cref{sec:related} situates \GeoGenBench against geometry-understanding benchmarks, math benchmarks without diagrams, and image-generation benchmarks.
 \Cref{sec:design} describes the dataset and the property language.
 \Cref{sec:verification} audits verifier soundness and completeness, including a quantified false-positive rate from adversarial probing and the \cref{sec:hardening} that lifted 4.1\% of pilot records from soft-pass to strict-pass.
 \Cref{sec:strategies} describes the three generation strategies.
 \Cref{sec:results} presents the leaderboard, Pareto analysis, per-tier and per-template breakdowns, and failure-mode taxonomy.
-\Cref{sec:discussion} discusses what \GeoGen does and does not measure, limitations, and threats to validity.
+\Cref{sec:discussion} discusses what \GeoGenBench does and does not measure, limitations, and threats to validity.

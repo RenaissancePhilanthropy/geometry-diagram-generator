@@ -12,6 +12,7 @@
 *.snm
 
 # PDF output (commit only when explicitly requested)
+geogenbench.pdf
 geogen.pdf
 
 # Editor
