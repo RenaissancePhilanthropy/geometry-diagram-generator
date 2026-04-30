@@ -34,3 +34,4 @@ notes:
   - "For the circumscribed circle, chain circle_through_3 through any 3 vertices after the polygon op (all vertices are co-circular)"
   - "When no side lengths are given, use the rotation-based approach: place point A on a circle, then use rotation ops for B, C, D"
   - "Opposite angles of a cyclic quadrilateral sum to 180 degrees"
+  - "When the prompt specifies a Cartesian plane or coordinate labels: set axes: true on the canvas op, and use show_coords: true on label_point entries for all named points."

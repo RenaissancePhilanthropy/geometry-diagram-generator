@@ -35,3 +35,4 @@ notes:
   - "Polygon inequality must hold: no single side >= half the perimeter (max(sides) < sum(sides) / 2)"
   - "If the polygon is also inscribed in a circle, add circle_through_3 on any 3 vertices after the polygon op"
   - "IMPORTANT: This op does NOT support interior angle constraints. If the problem specifies angles (e.g. a parallelogram with an 80° angle), do NOT use this recipe. Build the polygon manually using point ops with explicit coordinates derived from the given angles and side lengths instead."
+  - "When the prompt specifies a Cartesian plane or coordinate labels: set axes: true on the canvas op, and use show_coords: true on label_point entries for all named points."

@@ -42,3 +42,4 @@ notes:
   - "Use mark_proportional (NOT mark_equal_lengths) for corresponding sides — proportional marks show similarity, not congruence"
   - "Corresponding vertex pairs: A↔D, B↔E, C↔F — mark_proportional groups match AB↔DE (group 1), BC↔EF (group 2), AC↔DF (group 3)"
   - "Offset centers by ~4 units horizontally so the triangles are clearly separated with a visible gap between them"
+  - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."
