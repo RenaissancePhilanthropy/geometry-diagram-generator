@@ -1,7 +1,7 @@
 \section{Related work}
 \label{sec:related}
 
-We organise prior work along the two axes that determine where \GeoGen sits in the literature: (i)~whether the model is asked to \emph{interpret} an existing diagram or \emph{produce} a new one, and (ii)~whether grading is done by symbolic execution, by a vision-language judge, or by a fixed multiple-choice answer key.
+We organise prior work along the two axes that determine where \GeoGenBench sits in the literature: (i)~whether the model is asked to \emph{interpret} an existing diagram or \emph{produce} a new one, and (ii)~whether grading is done by symbolic execution, by a vision-language judge, or by a fixed multiple-choice answer key.
 
 \subsection{Geometry-understanding benchmarks (model is given a diagram)}
 \label{ssec:related_qa}
@@ -16,7 +16,7 @@ The dominant family of geometry benchmarks gives the model a diagram and a quest
 
 \paragraph{Positioning.}
 Every benchmark above tests whether a model can \emph{interpret} a diagram and answer a question.
-\GeoGen tests whether the model can \emph{produce} a correct diagram from a textual description --- a fundamentally different capability that requires translating a textual specification into a globally-consistent metric realisation.
+\GeoGenBench tests whether the model can \emph{produce} a correct diagram from a textual description --- a fundamentally different capability that requires translating a textual specification into a globally-consistent metric realisation.
 As frontier models are increasingly deployed as agents that author visual artefacts, this capability is what is being asked for in deployment but not measured in research.
 
 \subsection{Text-to-image compositionality benchmarks}
@@ -29,7 +29,7 @@ A separate literature evaluates whether text-to-image models can faithfully rend
 \paragraph{Positioning.}
 T2I benchmarks operate in pixel space and rely on visual evaluators (CLIP, BLIP, MLLMs) to score outputs.
 They cannot tell whether a ``right triangle'' actually has a right angle --- only whether the image \emph{looks like} a right triangle to a vision--language judge.
-\GeoGen operates in symbolic space (TikZ $\to$ compiled SymPy geometry) where automatic exact verification is possible: angle-equal checks are computed by \texttt{sympy.geometry.Triangle.angles}, midpoint checks by coordinate equality, and so on.
+\GeoGenBench operates in symbolic space (TikZ $\to$ compiled SymPy geometry) where automatic exact verification is possible: angle-equal checks are computed by \texttt{sympy.geometry.Triangle.angles}, midpoint checks by coordinate equality, and so on.
 
 \subsection{Generative-exam image benchmarks}
 \label{ssec:related_genexam}
@@ -38,12 +38,12 @@ They cannot tell whether a ``right triangle'' actually has a right angle --- onl
 Even frontier T2I models score under 15\% strict on the full set; the latest closed leaderboard entry (Nano Banana Pro, Nov 2025) reaches 72.7 strict / 93.7 relaxed.
 
 \paragraph{Positioning.}
-GenExam and \GeoGen share a generative-exam framing but differ on three axes:
-(1)~\textbf{Grading mechanism} --- GenExam uses an MLLM judge; \GeoGen uses a deterministic SymPy program ($\sim$1000$\times$ cheaper, fully reproducible, not contestable as ``the judge was confused'').
-When a \GeoGen scenario marks \propname{right\_angle\_at\_C: pass}, that is \texttt{Triangle(B, C, A).angles[C] == $\pi/2 \pm \tau$}, not ``the judge said it looked perpendicular.''
-(2)~\textbf{Modality} --- GenExam evaluates raster image generation; \GeoGen evaluates structured TikZ generation, accessible to text-only LLMs.
-(3)~\textbf{Domain breadth} --- GenExam spans 10 disciplines $\sim$100 prompts each; \GeoGen is geometry-only with $\sim$800 prompts.
-We view \GeoGen as the \emph{automatic-grading complement} to GenExam: same generative framing, but in a domain where symbolic verification replaces visual judgment.
+GenExam and \GeoGenBench share a generative-exam framing but differ on three axes:
+(1)~\textbf{Grading mechanism} --- GenExam uses an MLLM judge; \GeoGenBench uses a deterministic SymPy program ($\sim$1000$\times$ cheaper, fully reproducible, not contestable as ``the judge was confused'').
+When a \GeoGenBench scenario marks \propname{right\_angle\_at\_C: pass}, that is \texttt{Triangle(B, C, A).angles[C] == $\pi/2 \pm \tau$}, not ``the judge said it looked perpendicular.''
+(2)~\textbf{Modality} --- GenExam evaluates raster image generation; \GeoGenBench evaluates structured TikZ generation, accessible to text-only LLMs.
+(3)~\textbf{Domain breadth} --- GenExam spans 10 disciplines $\sim$100 prompts each; \GeoGenBench is geometry-only with $\sim$800 prompts.
+We view \GeoGenBench as the \emph{automatic-grading complement} to GenExam: same generative framing, but in a domain where symbolic verification replaces visual judgment.
 
 \subsection{Symbolic verification \& formal grading}
 \label{ssec:related_formal}
@@ -52,22 +52,22 @@ A growing line of work treats math benchmarks as opportunities for \emph{exact},
 Lean / Isabelle / Coq corpora (miniF2F, ProofNet, MathLib) check mathematical proofs symbolically but require formal-language outputs.
 \textbf{AlphaGeometry} \citep{trinh2024alphageometry} solves IMO-level geometry problems with a neuro-symbolic architecture using a deduction engine for verification.
 \textbf{Lean-Workbook} generates auto-formalisable problems with exact verifiability \citep{wang2024leanworkbook}.
-\GeoGen extends this automatic-verification tradition into \emph{diagram generation}, where the verifiability target is the geometric configuration produced rather than a propositional proof.
+\GeoGenBench extends this automatic-verification tradition into \emph{diagram generation}, where the verifiability target is the geometric configuration produced rather than a propositional proof.
 
 \subsection{Tool-use and agent benchmarks}
 \label{ssec:related_agent}
 
 \textbf{SWE-bench} \citep{jimenez2024swebench} evaluates code-edit correctness with executable tests; \textbf{AgentBench}, \textbf{GAIA}, and others stress multi-step reasoning.
 Diagrammatic output rarely shows up in these as a first-class target; where it does (e.g., when an agent must produce a UI mock or chart), grading typically falls back to LLM-as-judge.
-\GeoGen offers a self-contained domain where execution-style grading (compile-to-SymPy + check) replaces judge-based grading for diagrammatic output.
+\GeoGenBench offers a self-contained domain where execution-style grading (compile-to-SymPy + check) replaces judge-based grading for diagrammatic output.
 
 \subsection{Comparison summary}
 \label{ssec:related_table}
 
-\Cref{tab:benchmark_comparison} positions \GeoGen against the closest prior benchmarks.
+\Cref{tab:benchmark_comparison} positions \GeoGenBench against the closest prior benchmarks.
 
 \begin{table}[t]
-\caption{\GeoGen vs.\ closest prior benchmarks. \emph{Auto-grade} = grading does not require human or MLLM judgment.}
+\caption{\GeoGenBench vs.\ closest prior benchmarks. \emph{Auto-grade} = grading does not require human or MLLM judgment.}
 \label{tab:benchmark_comparison}
 \centering
 \small
@@ -84,11 +84,11 @@ GeoBench \citep{geobench2026} & 2026 & hierarchical QA & 1{,}021 & yes (verified
 T2I-CompBench++ \citep{huang2025t2icompbenchpp} & 2025 & T2I gen & 8{,}000 & partial (VLM) & text $\to$ image \\
 GenExam \citep{wang2025genexam} & 2025 & T2I exam gen & 1{,}000 & LLM-judge & text $\to$ image \\
 \midrule
-\textbf{\GeoGen (ours)} & \textbf{2026} & \textbf{diagram gen} & \textbf{801} & \textbf{yes (symbolic)} & \textbf{text $\to$ TikZ $\to$ SVG} \\
+\textbf{\GeoGenBench (ours)} & \textbf{2026} & \textbf{diagram gen} & \textbf{801} & \textbf{yes (symbolic)} & \textbf{text $\to$ TikZ $\to$ SVG} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \noindent
 The structural insight: \emph{all auto-graded prior benchmarks are QA over given diagrams; all generation-side benchmarks rely on visual judges}.
-\GeoGen occupies the previously-empty cell of \emph{generation-side, automatically-graded} geometry --- enabled by the choice to grade in symbolic space (compiled SymPy geometry) rather than pixel space.
+\GeoGenBench occupies the previously-empty cell of \emph{generation-side, automatically-graded} geometry --- enabled by the choice to grade in symbolic space (compiled SymPy geometry) rather than pixel space.

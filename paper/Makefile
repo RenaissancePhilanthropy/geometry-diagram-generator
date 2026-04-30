@@ -1,4 +1,4 @@
-PAPER = geogen
+PAPER = geogenbench
 LATEXMK = latexmk
 
 .PHONY: all watch clean view help

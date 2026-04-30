@@ -5,7 +5,7 @@ This is the single most important defensive section of the paper.
 If reviewers do not trust the verifier, they do not trust any number we report.
 \Cref{sec:design} documented soft spots up front; here we (i)~define what ``verification'' means precisely (\cref{ssec:ver_defn}); (ii)~analyse the \emph{completeness} of our property lists (\cref{ssec:completeness}); (iii)~report a pre-registered \emph{human-correlation study} (\cref{ssec:human}); (iv)~enumerate and bound an \emph{adversarial false-positive analysis} (\cref{ssec:adversarial}); and (v)~document the \emph{hardening pass} we performed in response to pilot data (\cref{sec:hardening}).
 
-\subsection{What ``verification'' means in \GeoGen, precisely}
+\subsection{What ``verification'' means in \GeoGenBench, precisely}
 \label{ssec:ver_defn}
 
 For each scenario $\mathcal{S}$, a model produces TikZ source $T$.
@@ -17,12 +17,12 @@ A scenario \texttt{soft\_pass}es iff (1, 2, 4, 5) hold and no property in (3) re
 \label{ssec:completeness}
 
 A property list $\mathcal{P}$ is \emph{complete} for scenario $\mathcal{S}$ if every diagram passing all of $\mathcal{P}$ is congruent (up to rigid motion + scaling) to the intended construction.
-Most $\mathcal{P}$ in \GeoGen are not complete in this strict sense --- e.g., ``draw an acute triangle $ABC$ with altitude $AH$ to $BC$'' is constrained by $\{\angle AHB = 90^\circ, H \text{ on segment } BC\}$ but the exact shape of $\triangle ABC$ is left free.
+Most $\mathcal{P}$ in \GeoGenBench are not complete in this strict sense --- e.g., ``draw an acute triangle $ABC$ with altitude $AH$ to $BC$'' is constrained by $\{\angle AHB = 90^\circ, H \text{ on segment } BC\}$ but the exact shape of $\triangle ABC$ is left free.
 This is intentional: the prompt under-specifies the geometry, and the property list is a soundness-not-completeness rubric, matching educational practice (a teacher accepts any acute triangle as long as the altitude is correct).
 
 We classify each scenario along a \textbf{completeness spectrum}:
 \textbf{tight} ($\mathcal{P}$ uniquely determines the figure up to rigid motion + scale; e.g., equilateral triangle with side length 5 + three vertex labels);
-\textbf{loose} ($\mathcal{P}$ pins the named relations but leaves continuous parameters free; the modal case in \GeoGen);
+\textbf{loose} ($\mathcal{P}$ pins the named relations but leaves continuous parameters free; the modal case in \GeoGenBench);
 \textbf{skeletal} (only incidence, not metric; rare).
 For the templated split, audit yields $18/30$ tight, $11/30$ loose, $1/30$ skeletal templates, giving an aggregate $\sim 60\%$ tight / $\sim 37\%$ loose / $\sim 3\%$ skeletal at the scenario level.
 
@@ -32,7 +32,7 @@ For 50 sampled loose scenarios, we exhibit (a)~the property list, (b)~a paramete
 \subsection{Human-correlation study (target $N = 200$)}
 \label{ssec:human}
 
-We pre-register a human-correlation study using the existing \GeoGen annotation infrastructure (DB schema, IRR pipeline, annotation UI all released).
+We pre-register a human-correlation study using the existing \GeoGenBench annotation infrastructure (DB schema, IRR pipeline, annotation UI all released).
 
 \paragraph{Protocol.}
 We sample 200 (scenario, model output, automatic verdict) triples, stratified to balance tier, automatic verdict (60 strict-pass / 60 soft-pass / 80 fail), model (across the leaderboard's 4 models), and source (100 templated, 100 curriculum).
@@ -110,7 +110,7 @@ This is a positive outcome for the soundness of the prior verdicts.
 \label{ssec:trust_claims}
 
 \begin{table}[t]
-\caption{What we claim about \GeoGen's verifier and how confident we are.}
+\caption{What we claim about \GeoGenBench's verifier and how confident we are.}
 \label{tab:trust_claims}
 \centering
 \small

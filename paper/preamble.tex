@@ -57,8 +57,13 @@
 % =============================================================
 % Project-specific macros
 % =============================================================
+% \GeoGen      = the methodology / pipeline (text -> TikZ -> SymPy -> verify)
+% \GeoGenBench = the released benchmark (801 prompts + property lists)
+% This paper is principally about the benchmark; the methodology is the means.
 \newcommand{\GeoGen}{\textsc{GeoGen}\xspace}
+\newcommand{\GeoGenBench}{\textsc{GeoGenBench}\xspace}
 \newcommand{\geogen}{\GeoGen}              % alias
+\newcommand{\geogenbench}{\GeoGenBench}    % alias
 
 \newcommand{\strat}[1]{\textsf{#1}}        % strategy names (raw_code, structured, recipe)
 \newcommand{\rawcode}{\strat{raw\_code}\xspace}

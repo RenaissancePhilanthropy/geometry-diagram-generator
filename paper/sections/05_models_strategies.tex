@@ -19,7 +19,7 @@ Costs are computed using each model's published per-token rate as of April 2026;
 \subsection{Strategies}
 \label{ssec:strategies}
 
-\GeoGen ships three reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
+\GeoGenBench ships three reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
 The benchmark itself does not depend on any of these --- any text-emitting model can be benchmarked by routing its TikZ output through the verification pipeline.
 The strategies sit on a spectrum from ``maximum LLM freedom'' (\rawcode) to ``maximum scaffolding'' (\recipe); comparing them isolates the contribution of structured intermediate representations and retrieval.
 

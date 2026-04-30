@@ -1,9 +1,9 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{What \GeoGen measures and what it does not}
+\subsection{What \GeoGenBench measures and what it does not}
 
-\GeoGen measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation that satisfies a stated set of relational properties.
+\GeoGenBench measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation that satisfies a stated set of relational properties.
 This is a narrower task than ``geometric reasoning'' broadly construed --- it does not require proof, does not test 3D solid geometry, does not exercise coordinate-plane algebra, and does not measure \emph{teaching utility} (whether a diagram makes a concept clear).
 We chose this scope because (i)~it is the part of geometric reasoning where automatic, exact, fast verification is achievable today; (ii)~it is the dominant deployed task for LLMs in K--12 worksheet authoring; and (iii)~it generalises in obvious ways (the same property language extends to coordinate-plane and 3D once the relevant SymPy primitives are wired in).
 
@@ -20,7 +20,7 @@ We report metrics decomposed by source so reviewers can trust the templated half
 \item \textbf{2D Euclidean only.}
 Curriculum scenarios that mention cones / spheres exercise the renderer but cannot be symbolically verified by the current toolkit.
 \item \textbf{No proof construction.}
-\GeoGen tests diagram production, not the propositional reasoning that justifies the construction.
+\GeoGenBench tests diagram production, not the propositional reasoning that justifies the construction.
 A model that draws a correct diagram but cannot explain \emph{why} it is correct still passes.
 \item \textbf{Single repeat in the pilot.}
 The headline numbers in \cref{sec:results} are 1-repeat estimates; we have no run-to-run variance.
