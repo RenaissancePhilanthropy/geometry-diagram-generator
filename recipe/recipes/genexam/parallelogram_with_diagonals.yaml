@@ -1,0 +1,46 @@
+name: parallelogram_with_diagonals
+description: "Parallelogram with both diagonals drawn and their intersection point labeled"
+tags: [polygon, parallelogram, diagonal, parallel, intermediate]
+context: "Given a parallelogram ABCD with both diagonals drawn."
+example:
+  mode: abstract
+  construction:
+    - op: polygon_from_angles_and_sides
+      id: para
+      vertices: [A, B, C, D]
+      side_lengths: [5, 3, 5, 3]
+      angles: [70, 110, 70, 110]
+    - op: line_through
+      id: diag_AC
+      points: [A, C]
+      visible: false
+    - op: line_through
+      id: diag_BD
+      points: [B, D]
+      visible: false
+    - op: intersection
+      id: M
+      of: [diag_AC, diag_BD]
+    - op: segment
+      id: seg_AC
+      endpoints: [A, C]
+    - op: segment
+      id: seg_BD
+      endpoints: [B, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_parallel
+        segments: [[A, B], [D, C]]
+        group: 1
+      - kind: mark_parallel
+        segments: [[A, D], [B, C]]
+        group: 2
+notes:
+  - "Vertices MUST be in consecutive perimeter order: A→B→C→D→A. Crossed order (e.g. A,B,D,C) produces a self-intersecting bowtie, not a parallelogram."
+  - "For a parallelogram with angle α: angles are [α, 180-α, α, 180-α]. Opposite angles equal, adjacent angles supplementary."
+  - "CRITICAL — mark_parallel direction: AB is parallel to DC (not CD). Use [D,C] for the opposite side, not [C,D]. [D,C] traverses the same direction as [A,B]; [C,D] is antiparallel and produces incorrect tick-mark orientation."
+  - "The diagonals bisect each other: M is the midpoint of both AC and BD. This is automatic — no extra midpoint op needed."
+  - "Rhombus variant: use side_lengths [a, a, a, a] (all equal). The diagonals of a rhombus are perpendicular; add auto_mark_right_angles: true to annotations to show this."
+  - "Rectangle variant: use angles [90, 90, 90, 90] or use the rectangle op directly."
