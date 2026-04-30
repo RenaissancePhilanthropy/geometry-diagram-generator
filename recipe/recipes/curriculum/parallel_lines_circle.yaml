@@ -1,0 +1,62 @@
+name: parallel_lines_circle
+description: "Circle with a chord AC and a parallel line through center O, showing equal arcs"
+tags: [circle, chord, parallel, arc, diameter, intermediate]
+context: "Circle with center O. Chord AC. A line through O parallel to AC intersects the circle at D and E."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+example:
+  mode: grid
+  construction:
+    # Diameter endpoints A and B on the circle (A left, B right)
+    - op: point
+      id: A
+      coords: [-3, 0]
+    - op: point
+      id: B
+      coords: [3, 0]
+    - op: segment
+      id: diam_AB
+      endpoints: [A, B]
+    # C is a point on the circle (not at A or B)
+    - op: point
+      id: C
+      coords: [1.5, 2.598]
+    - op: segment
+      id: chord_AC
+      endpoints: [A, C]
+    # Direction of AC: C - A = (4.5, 2.598), slope = 2.598/4.5 ≈ 0.5773 (30° angle)
+    # Parallel line through O in same direction: parametric O + t*(4.5, 2.598)
+    # Hits circle at t = ±1/|AC_dir_norm| * 3
+    # |AC_dir| = sqrt(4.5²+2.598²) = sqrt(20.25+6.75) = sqrt(27) = 5.196
+    # unit = (4.5/5.196, 2.598/5.196) = (0.866, 0.5)
+    # D = O - 3*(0.866, 0.5) = (-2.598, -1.5)
+    # E = O + 3*(0.866, 0.5) = (2.598, 1.5)
+    - op: point
+      id: D
+      coords: [-2.598, -1.5]
+    - op: point
+      id: E
+      coords: [2.598, 1.5]
+    - op: segment
+      id: chord_DE
+      endpoints: [D, E]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_parallel
+        segments: [[A, C], [D, E]]
+notes:
+  - "A = (-3, 0) and B = (3, 0) are diameter endpoints. C = (1.5, 2.598) = 3*(cos60°, sin60°) is on the circle at 60°."
+  - "DE is parallel to AC and passes through O. D = 3*(cos210°, sin210°), E = 3*(cos30°, sin30°) — both on the circle."
+  - "Arc AD = arc BE (equal arcs cut by parallel chord and parallel line through center)."
+  - "DO NOT place A on the circle and then try to find C using 'intersection beyond A_dir from A' — A is already on the circle, causing selector failure."
+  - "Compute D and E explicitly from the chord direction unit vector: rotate by 180° and 0° from O along the chord direction."
+  - "mark_parallel [[A,C],[D,E]]: both point in the same direction (left-to-right) for correct arrow orientation."
+  - "To label arc AD = arc BE: use label_free_text ops positioned on the arcs."
