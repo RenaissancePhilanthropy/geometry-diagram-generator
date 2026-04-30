@@ -1894,3 +1894,44 @@ def test_regular_sectors_sectors_share_boundary_points():
     # Each sector's end matches the next sector's start
     for i in range(3):
         assert sectors[i].end == sectors[(i + 1) % 3].start
+
+
+# ---------------------------------------------------------------------------
+# mark_angle label_only mode
+# ---------------------------------------------------------------------------
+
+def test_mark_angle_label_only_skips_geometric_check():
+    """mark_angle with label_only=True and inconsistent expected value lowers without error.
+
+    Triangle with sides AB=12, BC=18 (right-angle at B). The actual angle at C
+    is ~33.7°. Marking it as 30° with label_only=True should succeed because the
+    geometric assertion is suppressed.
+    """
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"right_angle_at": "B", "side_AB": 12, "side_BC": 18}},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
+         "expected": 30, "label_only": True},
+    ]})
+    ir = lower_to_ir(dsl)  # must not raise
+    assert ir is not None
+    # The MarkAngles render op must still be emitted
+    from ir.ir import MarkAngles
+    mark_ops = [op for op in ir.render if isinstance(op, MarkAngles)]
+    assert len(mark_ops) >= 1
+
+
+def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
+    """Without label_only, an expected value far from actual raises LoweringError.
+
+    The actual angle at C is ~33.7°. Using expected=60 (>5° away) triggers the check.
+    """
+    with pytest.raises(LoweringError):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"right_angle_at": "B", "side_AB": 12, "side_BC": 18}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
+             "expected": 60},
+        ]}))

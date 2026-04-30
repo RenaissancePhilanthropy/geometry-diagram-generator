@@ -82,6 +82,23 @@ class _LabelPlacement:
 
 
 # ---------------------------------------------------------------------------
+# Coordinate formatting helper
+# ---------------------------------------------------------------------------
+
+def _fmt_coord_val(v: float) -> str:
+    """Format a coordinate value: 1 decimal place when close to .0 or .5, else 2."""
+    rounded1 = round(v, 1)
+    if abs(v - rounded1) < 1e-9:
+        return f"{rounded1:g}"
+    return f"{round(v, 2):g}"
+
+
+def _fmt_coord_pair(x: float, y: float) -> str:
+    """Return a '(x, y)' string with appropriate precision."""
+    return f"({_fmt_coord_val(x)}, {_fmt_coord_val(y)})"
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -684,11 +701,14 @@ def _emit_svg_op(
                     n_ticks = group_tick_counts.get(group, 1) if group else 1
                     _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
 
-        case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
+        case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
                 _warn(warnings, f"Skipping LabelPoint for undefined '{p}'")
                 return
             label = text if text is not None else p
+            if show_coords and p in coords:
+                gx_val, gy_val = coords[p]
+                label = label + _fmt_coord_pair(gx_val, gy_val)
             px, py = pt(p)
             if not pos or pos == "auto":
                 angles = (incident_angles or {}).get(p, [])

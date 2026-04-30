@@ -272,6 +272,13 @@ and addends together:
   WRONG: mark_angle group=1 on angles 55°, 65°, and 120°  (55≠65≠120)
   RIGHT: label_angle for each, explain the sum relationship in a label_free_text
 
+### mark_angle label_only mode
+When the problem states an angle that may be geometrically inconsistent with the given sides
+(e.g. the stated angle does not match what the constructed shape actually has), set
+label_only: true on mark_angle. This draws the arc and respects the expected field for
+display purposes but skips the geometric consistency assertion:
+  {"kind": "mark_angle", "a": "A", "vertex": "C", "b": "B", "expected": 30, "label_only": true}
+
 ## selector (for intersection and tangent_line ops)
 
 selector kinds — use the exact kind string from this table:
@@ -339,6 +346,17 @@ distance from segment[0].
       Override the auto-generated label for point A. Omit "text" to keep
       the point id but change only "pos". pos ∈ {auto, above, below, left,
       right, above left, above right, below left, below right}.
+  {"kind":"label_point", "point":"A", "show_coords": true}
+      Append the point's compiled (x, y) coordinates to the label text.
+      Useful for coordinate geometry problems. Combine with axes:true on
+      the canvas for full coordinate-plane diagrams.
+
+### Coordinate geometry canvas setup
+For problems that require displaying x/y coordinates on a grid:
+  canvas: {op:"canvas", id:"canvas", x_range:[-1,8], y_range:[-1,6],
+           axes:true, show_tick_labels:true, show_axis_labels:true}
+  Then use show_coords:true on label_point entries for each labeled point.
+
   {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C", "text":"45°"}
       Text inside the angle at vertex A formed by rays AB and AC. Shorthand
       form: {"kind":"label_angle", "at":"A", "of":"tri_ABC", "text":"α"}.

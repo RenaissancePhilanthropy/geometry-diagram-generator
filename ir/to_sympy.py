@@ -238,7 +238,17 @@ def _compile_one(
             if obj1_id == obj2_id:
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
-            raw = obj1.intersection(obj2)
+            try:
+                raw = obj1.intersection(obj2)
+            except ValueError as exc:
+                if "LinearEntity" in str(exc):
+                    raise IRCompileError(
+                        did,
+                        f"intersection failed: line/circle intersection received invalid arguments — "
+                        f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
+                        f"(underlying error: {exc})"
+                    ) from exc
+                raise
             # SymPy may return the geometry object itself (not a list) when objects
             # are identical (e.g. two equal circles → Circle, not []).
             candidates = raw if isinstance(raw, list) else []
@@ -753,17 +763,43 @@ def _apply_pick(
         case ir.PickUpperOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]
+            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]  # type: ignore[union-attr]
             if not upper:
-                raise PickError(def_id, f"no candidate above directed line {a_id!r}→{b_id!r}")
+                _dx: Any = b_pt.x - a_pt.x
+                _dy: Any = b_pt.y - a_pt.y
+                angle_deg = math.degrees(math.atan2(float(_dy.evalf()), float(_dx.evalf())))
+                _rev = {id(v): k for k, v in sym.items() if isinstance(v, spg.Point)}
+                dists = ", ".join(
+                    f"{_rev.get(id(p), '?')}: {float(_cross_sign(a_pt, b_pt, p).evalf()):+.3f}"  # type: ignore[union-attr]
+                    for p in points
+                )
+                raise PickError(
+                    def_id,
+                    f"no candidate on the 'above' side of directed line {a_id!r}→{b_id!r} "
+                    f"(directed angle: {angle_deg:.1f}°). "
+                    f"Candidates and their signed distances: {dists}"
+                )
             return upper[0]
 
         case ir.PickLowerOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]
+            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]  # type: ignore[union-attr]
             if not lower:
-                raise PickError(def_id, f"no candidate below directed line {a_id!r}→{b_id!r}")
+                _dx: Any = b_pt.x - a_pt.x
+                _dy: Any = b_pt.y - a_pt.y
+                angle_deg = math.degrees(math.atan2(float(_dy.evalf()), float(_dx.evalf())))
+                _rev = {id(v): k for k, v in sym.items() if isinstance(v, spg.Point)}
+                dists = ", ".join(
+                    f"{_rev.get(id(p), '?')}: {float(_cross_sign(a_pt, b_pt, p).evalf()):+.3f}"  # type: ignore[union-attr]
+                    for p in points
+                )
+                raise PickError(
+                    def_id,
+                    f"no candidate on the 'below' side of directed line {a_id!r}→{b_id!r} "
+                    f"(directed angle: {angle_deg:.1f}°). "
+                    f"Candidates and their signed distances: {dists}"
+                )
             return lower[0]
 
         case ir.PickChain(rules=rules):

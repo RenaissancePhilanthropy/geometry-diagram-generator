@@ -985,7 +985,7 @@ class _Lowerer:
         for mark in ann.marks:
             if isinstance(mark, MarkAngle):
                 a, vertex, b = self._resolve_angle_mark(mark)
-                if mark.expected is not None:
+                if mark.expected is not None and not mark.label_only:
                     self._check_angle_expected(a, vertex, b, mark.expected)
                 self._renders.append(MarkAngles(
                     angles=[AnglePoints(a=a, o=vertex, b=b)],
@@ -1063,6 +1063,7 @@ class _Lowerer:
                     p=label.point,
                     text=label.text,
                     pos=label.pos,
+                    show_coords=label.show_coords,
                 ))
             elif isinstance(label, DSLLabelAngle):
                 a, vertex, b = self._resolve_angle_mark(label)

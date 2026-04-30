@@ -384,7 +384,7 @@ def _emit_op(
                 a, b = _seg_pts(seg_id, stmt_by_id)
                 out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
-        case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
+        case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
                 msg = f"Skipping render op LabelPoint for undefined object '{p}'"
                 logger.warning(msg)
@@ -392,6 +392,11 @@ def _emit_op(
                     warnings.append(msg)
                 return out
             label = text if text is not None else p
+            if show_coords and isinstance(sym.get(p), spg.Point):
+                pt_obj = sym[p]
+                _cx: Any = pt_obj.x
+                _cy: Any = pt_obj.y
+                label = label + _tikz_fmt_coord_pair(float(_cx.evalf()), float(_cy.evalf()))
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")
 
@@ -452,6 +457,19 @@ _TIKZ_COLOR_NAMES = {
     "yellow", "black", "white", "brown", "gray", "grey",
     "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
 }
+
+
+def _tikz_fmt_coord_val(v: float) -> str:
+    """Format a coordinate value: 1 decimal place when close to .0 or .5, else 2."""
+    rounded1 = round(v, 1)
+    if abs(v - rounded1) < 1e-9:
+        return f"{rounded1:g}"
+    return f"{round(v, 2):g}"
+
+
+def _tikz_fmt_coord_pair(x: float, y: float) -> str:
+    """Return a '(x, y)' string with appropriate precision."""
+    return f"({_tikz_fmt_coord_val(x)}, {_tikz_fmt_coord_val(y)})"
 
 
 def _style_str(style_key: str | None, styles: dict) -> str:

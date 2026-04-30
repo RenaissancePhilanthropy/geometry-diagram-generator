@@ -35,3 +35,4 @@ notes:
   - "For diagrams with multiple shapes, set center:[x,y] on each op to separate them (e.g. center:[2,2] and center:[7,2]) and use a wide canvas. Each op must use distinct vertex names."
   - "Standalone mode: add rotation (degrees CCW) to spin the shape before centering, e.g. rotation: 15"
   - "Edge-anchored mode: add base:[P,Q] and ref_point:R to anchor the first edge to existing points P and Q. The polygon is built on the OPPOSITE side of P→Q from R. P and Q must be the first two entries in vertices. Provide N-1 side_lengths (omitting base edge P→Q) or N (including it as side_lengths[0] for validation)."
+  - "If the problem states an angle that may be inconsistent with the given sides, use label_only: true on mark_angle to draw the arc and label without checking geometric consistency. USE THIS OPTION WITH CAUTION."
