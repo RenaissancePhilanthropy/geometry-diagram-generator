@@ -1,101 +1,97 @@
 name: bridge_indirect_measurement
-description: "Indirect measurement across an inaccessible gap using similar triangles"
-tags: [triangle, similarity, indirect-measurement, proportion, intermediate]
-context: "Two similar triangles share a vertex at A. The inaccessible distance BC is found from the measurable distance DE."
+description: "SAS indirect measurement — vertical angles at A prove △CAB ≅ △DAE, so DE = BC"
+tags: [triangle, congruence, sas, vertical-angles, indirect-measurement, intermediate]
+context: "River-crossing SAS congruence diagram. A is on the top bank at the river edge."
 setup: []
 example:
   mode: grid
   construction:
-    # Near bank (y=3): A at river edge, B inland
+    # Bank guide lines (visual only)
+    - op: point
+      id: bank_top_L
+      coords: [-4, 2]
+      visible: false
+    - op: point
+      id: bank_top_R
+      coords: [4, 2]
+      visible: false
+    - op: point
+      id: bank_bot_L
+      coords: [-4, 0]
+      visible: false
+    - op: point
+      id: bank_bot_R
+      coords: [4, 0]
+      visible: false
+    - op: segment
+      id: top_bank
+      endpoints: [bank_top_L, bank_top_R]
+    - op: segment
+      id: bot_bank
+      endpoints: [bank_bot_L, bank_bot_R]
+    # Key points — geometry explanation:
+    #   Direction CA = A - C = (0,2)-(-2,0) = (2,2). D = A + (2,2) = (2,4). So C,A,D are collinear.
+    #   Direction BA = A - B = (0,2)-(3,4) = (-3,-2). E = A + (-3,-2) = (-3,0). So B,A,E are collinear.
+    #   CA = DA = 2√2, AB = AE = √13. Vertical angles ∠CAB = ∠DAE → SAS → △CAB ≅ △DAE → DE = BC.
     - op: point
       id: A
-      coords: [0, 3]
+      coords: [0, 2]
     - op: point
       id: B
-      coords: [4, 3]
-    # Far bank (y=0): C directly across A, D directly across B
+      coords: [3, 4]
     - op: point
       id: C
-      coords: [0, 0]
+      coords: [-2, 0]
     - op: point
       id: D
-      coords: [4, 0]
-    # River boundary lines (visual guides)
+      coords: [2, 4]
     - op: point
-      id: bank_near_L
-      coords: [-1, 3]
-      visible: false
-    - op: point
-      id: bank_near_R
-      coords: [5.5, 3]
-      visible: false
-    - op: point
-      id: bank_far_L
-      coords: [-1, 0]
-      visible: false
-    - op: point
-      id: bank_far_R
-      coords: [5.5, 0]
-      visible: false
+      id: E
+      coords: [-3, 0]
+    # C-A-D straight line (extension of CA past A)
     - op: segment
-      id: near_bank
-      endpoints: [bank_near_L, bank_near_R]
+      id: seg_CD_thru_A
+      endpoints: [C, D]
+    # B-A-E straight line (extension of BA past A)
     - op: segment
-      id: far_bank
-      endpoints: [bank_far_L, bank_far_R]
-    # The two triangles: ABC (large, with AC = unknown river width)
-    # and a smaller reference triangle
-    - op: segment
-      id: seg_AB
-      endpoints: [A, B]
-    - op: segment
-      id: seg_AC
-      endpoints: [A, C]
+      id: seg_BE_thru_A
+      endpoints: [B, E]
+    # The inaccessible side BC and the measurable copy DE
     - op: segment
       id: seg_BC
       endpoints: [B, C]
     - op: segment
-      id: seg_CD
-      endpoints: [C, D]
-    - op: segment
-      id: seg_BD
-      endpoints: [B, D]
+      id: seg_DE
+      endpoints: [D, E]
   annotations:
     auto_draw_all: true
     auto_label_points: true
     marks:
-      # Right angles at A and D (AC and BD are perpendicular to the banks)
-      - kind: mark_right_angle
-        a: B
-        vertex: A
-        b: C
-      - kind: mark_right_angle
-        a: B
-        vertex: D
-        b: C
-      # Equal angles at B (alternate interior angles)
-      - kind: mark_angle
-        a: A
-        vertex: B
-        b: C
+      # CA = DA (tick group 1) — constructed equal by measurement
+      - kind: mark_equal_lengths
+        segments: [[C, A], [D, A]]
         group: 1
+      # AB = AE (tick group 2) — constructed equal by measurement
+      - kind: mark_equal_lengths
+        segments: [[A, B], [A, E]]
+        group: 2
+      # Vertical angles at A: ∠CAB = ∠DAE (arc group 1)
       - kind: mark_angle
         a: C
-        vertex: B
-        b: D
+        vertex: A
+        b: B
         group: 1
-    labels:
-      - kind: label_segment
-        endpoints: [A, B]
-        text: "known"
-      - kind: label_segment
-        endpoints: [A, C]
-        text: "?"
+      - kind: mark_angle
+        a: D
+        vertex: A
+        b: E
+        group: 1
 notes:
-  - "AC is the inaccessible distance (river width). AB is a measurable distance along the near bank."
-  - "Place A directly above C (same x-coordinate) and B directly above D (same x-coordinate) for right angles."
-  - "Triangle ABC ~ triangle DBC by AA (right angle at A and D, shared angle at B)."
-  - "Proportion: AC/AB = DC/DB → AC = AB · DC/DB. DC is the other bank segment (measurable), DB is the diagonal."
-  - "mark_right_angle(B, A, C): angle at A between AB and AC = 90°. ✓ (B is horizontal from A, C is vertical from A)"
-  - "mark_right_angle(B, D, C): angle at D between BD and DC = 90°. ✓ (B is horizontal from D, C is vertical from D)"
-  - "For the 'extend' variant of this problem, replace the rectangle with two triangles meeting at a point on the bank."
+  - "GEOMETRY: C,A,D are collinear (D = A + (A−C) = extension past A). B,A,E are collinear (E = A + (A−B) = extension past A)."
+  - "Coordinates: A=(0,2), B=(3,4), C=(−2,0), D=(2,4), E=(−3,0)."
+  - "CA=DA=2√2, AB=AE=√13. Vertical angles ∠CAB=∠DAE (since C-A-D and B-A-E are straight lines through A). SAS → DE=BC."
+  - "B and D are both at y=4 (inland). C and E are both at y=0 (bottom bank). A=(0,2) is at the top bank river edge."
+  - "mark_angle(C, A, B) and mark_angle(D, A, E): arm points C,B and D,E are the correct non-collinear arm endpoints."
+  - "DO NOT use mark_right_angle — angle CAB is NOT 90°."
+  - "DO NOT place C directly below A (same x) — that makes CA vertical and D lands above the top bank, breaking the geometry."
+  - "DO NOT make AB horizontal — that makes E land on the top bank instead of the bottom bank."

@@ -1,6 +1,6 @@
 name: isosceles_trapezoid_base_angles
-description: "Isosceles trapezoid TRAP with base angle marks, equal-leg tick marks, parallel base arrows, and diagonals"
-tags: [polygon, quadrilateral, trapezoid, isosceles, base-angles, parallel, intermediate]
+description: "Isosceles trapezoid TRAP with base angle marks, equal-leg tick marks, parallel base arrows, diagonals, and aux line to X"
+tags: [polygon, quadrilateral, trapezoid, isosceles, base-angles, parallel, auxiliary-line, intermediate]
 context: "No prior objects. Trapezoid vertices: T top-left, R top-right, A bottom-right, P bottom-left."
 setup: []
 example:
@@ -28,6 +28,27 @@ example:
     - op: segment
       id: diag_PR
       endpoints: [P, R]
+    # Auxiliary line: from T parallel to leg RA, hits base PA at X
+    # Direction RA = A − R = (3−1.5, 0−2.5) = (1.5, −2.5). From T=(−1.5,2.5): T + t*(1.5,−2.5) at y=0 → t=1 → X=(0,0). ✓ between P and A.
+    - op: parallel
+      id: aux_line
+      to_line: [R, A]
+      through: T
+      visible: false
+    - op: line_through
+      id: base_line
+      points: [P, A]
+      visible: false
+    - op: intersection
+      id: X
+      of: [aux_line, base_line]
+      selector:
+        kind: between
+        a: P
+        b: A
+    - op: segment
+      id: seg_TX
+      endpoints: [T, X]
   annotations:
     auto_draw_all: true
     auto_label_points: true
@@ -47,16 +68,25 @@ example:
       - kind: mark_equal_lengths
         segments: [[P, T], [R, A]]
         group: 1
+      # Equal diagonals: TA and PR
+      - kind: mark_equal_lengths
+        segments: [[T, A], [P, R]]
+        group: 2
       # Parallel bases: PA and TR (same direction left-to-right)
       - kind: mark_parallel
         segments: [[P, A], [T, R]]
+      # Aux line TX is parallel to leg RA
+      - kind: mark_parallel
+        segments: [[T, X], [R, A]]
+        group: 2
 notes:
   - "Vertices in polygon order: T(top-left) → R(top-right) → A(bottom-right) → P(bottom-left)."
   - "Trapezoid is isosceles by construction: T and R are placed symmetrically about x=0, as are P and A."
-  - "Bottom base PA has width 6; top base TR has width 3; legs PT and RA are equal by symmetry."
-  - "Base angles: angle at P = angle TPА = mark_angle(T, P, A); angle at A = angle RAP = mark_angle(R, A, P). Same group = equal."
+  - "Bottom base PA width=6; top base TR width=3; legs PT=RA by symmetry."
+  - "CRITICAL — aux line direction: use to_line: [R, A] (the right leg), NOT [P, R] (the diagonal)."
+  - "Why: direction RA=(1.5,−2.5); from T=(−1.5,2.5) this hits y=0 at X=(0,0), between P=(−3,0) and A=(3,0). ✓"
+  - "If you use to_line: [P, R] (diagonal), direction=(4.5,2.5); from T this hits y=0 at (−6,0), outside PA. ✗"
   - "mark_angle(T, P, A): T is top-left, P is bottom-left vertex, A is bottom-right — not collinear. ✓"
   - "mark_angle(R, A, P): R is top-right, A is bottom-right vertex, P is bottom-left — not collinear. ✓"
   - "mark_parallel segments [[P,A],[T,R]]: both go left-to-right (same traversal direction) — correct for parallel arrow marks."
-  - "Diagonals TA and PR cross inside the trapezoid. Do NOT use intersection op to find their crossing point — just draw them."
-  - "To show top base angles equal (group 2), add: mark_angle(P, T, R) and mark_angle(T, R, A) with group: 2."
+  - "To show top base angles equal (group 3), add: mark_angle(P, T, R) and mark_angle(T, R, A) with group: 3."
