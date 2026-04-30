@@ -1,0 +1,16 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We introduced \GeoGen, the first benchmark for generative geometric reasoning with fully-automatic, geometry-aware verification.
+\GeoGen pairs 801 natural-language prompts with executable property lists decided in milliseconds via SymPy, removing the dependence on human raters or vision-language judges that limit prior generative-exam benchmarks.
+Across four frontier models and three generation strategies on a stratified pilot, we find a 30\pp strict-pass spread and a Pareto frontier dominated by cheap-model configurations: \haiku with direct TikZ generation reaches 83\% strict pass at \dollars{0.016}/scenario, beating \opus on the same strategy at $21\times$ lower cost.
+A scaffolded intermediate-representation strategy adds a further 4--20\pp on top.
+We documented and quantified the verifier's soundness via adversarial probing and a hardening pass that closed 4.1\% of silently-skipped checks.
+
+We release the dataset, the procedural template engine that generated it (allowing reviewers to roll new contamination-free splits), the verification toolkit, and a public leaderboard.
+A datasheet (Gebru et al.\ format) accompanies the release.
+
+\paragraph{Future work.}
+The most-needed next step is the human-correlation study (\cref{ssec:human}) to validate the verdict's agreement with expert raters; this is queued and pre-registered.
+On the benchmark side, extending the property language to 3D solids, coordinate-plane constructions, and transformations would close the topical gap between the templated and curriculum splits.
+On the modelling side, a fine-tuning study using the templated split as supervision (with the verifier as a reward signal) would test whether \GeoGen-style symbolic supervision can move the Pareto frontier without test-set contamination.

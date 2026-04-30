@@ -1,0 +1,60 @@
+\section{Introduction}
+\label{sec:intro}
+
+Modern frontier LLMs are being asked to do things that were science-fiction five years ago, including authoring entire visual artifacts: slide decks, worksheets, technical illustrations, and engineering diagrams.
+The most-deployed visual artifact in the K--12 educational market is the \emph{geometry diagram}: a 2D plane figure paired with a problem statement.
+Yet every existing geometry benchmark we are aware of evaluates the inverse direction --- given a diagram, answer a question about it --- and provides no way to evaluate whether a model can \emph{produce} a correct diagram from a textual description.
+This is the gap \GeoGen fills.
+
+\subsection{Motivating example}
+
+\begin{quote}\itshape
+``Draw an acute triangle $EFG$ with vertex angles $60^\circ$, $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''
+\end{quote}
+A correct rendering must satisfy: (a) $\angle E = 60^\circ$, $\angle F = 70^\circ$, (b) $H$ lies on segment $EF$ (not its extension), (c) $\angle GHE = 90^\circ$, (d) the triangle is acute.
+\GeoGen encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output.
+On this scenario (\texttt{tpl-t2-alt-EFG-H-60-70} in our pilot), \haiku and \opus pass under all three strategies; \gpt with \rawcode places $H$ on the line $EF$ but \emph{outside} the segment (extension); \sonnet with \rawcode draws an obtuse triangle.
+The verifier flags each failure with a specific predicate verdict, not a holistic score, enabling actionable per-check error analysis.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+\item \textbf{A new benchmark.}
+\GeoGen is 801 prompts paired with executable property lists.
+600 prompts come from a 30-template procedural generator (released, so reviewers can roll new splits to defeat contamination); 201 come from an LLM-based extraction pipeline over open K--12 textbook content (\cref{sec:design}).
+\item \textbf{A symbolic-verification toolkit.}
+We pair each prompt with a list of geometric properties (right-angle, midpoint, parallel, equal-length, point-on-circle, etc.) decidable in milliseconds against the SymPy-compiled coordinates of the model's TikZ output.
+We document the predicate library, tolerance semantics, and \emph{soundness audit} (\cref{sec:verification}) including a \cref{sec:hardening} that closes 4.1\% of pilot records that were previously silently skipped.
+\item \textbf{A leaderboard of 4 frontier models $\times$ 3 generation strategies} (raw TikZ, structured intermediate-representation JSON with check-and-revise, and recipe-DSL with constraint solving), revealing --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{30.0\pp} (60.0\% to 91.7\%) across non-saturating combos and a \textbf{$21\times$ cost-with-equal-pass spread} between \haiku + \rawcode (83\% at \dollars{0.016}/scen) and \opus + \rawcode (80\% at \dollars{0.328}/scen).
+\item \textbf{A reproducible release.}
+The dataset, the template generator, the verification toolkit, the leaderboard data, and a Docker-packaged TikZ$\to$SVG renderer are all released under permissive licenses; we additionally release a procedural variant generator so reviewers can re-roll the entire benchmark if contamination is suspected.
+\end{enumerate}
+
+\subsection{Headline empirical results}
+
+Three findings from the post-hardening pilot, in order of importance:
+
+\begin{itemize}
+\item \textbf{Strategy effect is real but smaller than the verifier's first reading suggested.}
+The \structured strategy lifts every model by \textbf{4--20\pp} of strict pass rate over direct TikZ (\rawcode):
+\gpt (70\% $\to$ 90\%, +20\pp), \sonnet (77\% $\to$ 92\%, +15\pp), \opus (80\% $\to$ 100\% on $N=12$, +20\pp), \haiku (83\% $\to$ 87\%, +4\pp).
+The pre-hardening verifier reported gaps of 10--30\pp; the \cref{sec:hardening} audit attributes about half of that gap to silent skips of \texttt{\textbackslash pgfmathsetmacro}-style coordinates that \rawcode outputs use more often than IR-compiled outputs.
+We report both numbers in \cref{sec:results} and \cref{app:property_reference}.
+\item \textbf{Cost-equivalence: scaffolding beats scale.}
+\haiku with \rawcode (83\% strict pass, \dollars{0.016}/scenario) \emph{dominates} \opus with \rawcode (80\% strict pass, \dollars{0.328}/scenario) on both axes --- 3\pp more correct diagrams at $21\times$ lower cost.
+Adding \structured on \haiku (\dollars{0.031}/scenario) buys a further 4\pp at $2\times$ the \haiku cost.
+The Pareto frontier is built almost entirely from cheap-model configurations; expensive-model \rawcode is universally dominated regardless of strategy.
+\item \textbf{The recipe-DSL strategy is unstable across models.}
+\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode).
+\gpt and \haiku do not (60\% and 70\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
+A small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
+\end{itemize}
+
+\subsection{Roadmap}
+
+\Cref{sec:related} situates \GeoGen against geometry-understanding benchmarks, math benchmarks without diagrams, and image-generation benchmarks.
+\Cref{sec:design} describes the dataset and the property language.
+\Cref{sec:verification} audits verifier soundness and completeness, including a quantified false-positive rate from adversarial probing and the \cref{sec:hardening} that lifted 4.1\% of pilot records from soft-pass to strict-pass.
+\Cref{sec:strategies} describes the three generation strategies.
+\Cref{sec:results} presents the leaderboard, Pareto analysis, per-tier and per-template breakdowns, and failure-mode taxonomy.
+\Cref{sec:discussion} discusses what \GeoGen does and does not measure, limitations, and threats to validity.

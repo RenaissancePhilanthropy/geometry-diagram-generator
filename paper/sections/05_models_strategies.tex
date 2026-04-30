@@ -1,0 +1,55 @@
+\section{Models and strategies}
+\label{sec:strategies}
+
+\subsection{Models}
+\label{ssec:models}
+
+We evaluate four production frontier models that span an order of magnitude of price and represent two API families:
+
+\begin{itemize}
+\item \opus (Anthropic): \dollars{15}/\$75 per million input/output tokens.
+\item \sonnet (Anthropic): \dollars{3}/\$15.
+\item \haiku (Anthropic): \dollars{1}/\$5.
+\item \gpt (OpenAI Responses API): \dollars{5}/\$20.
+\end{itemize}
+
+All runs use temperature $= 1.0$ (default for both APIs).
+Costs are computed using each model's published per-token rate as of April 2026; \cref{sec:results} reports both raw token counts and dollarised costs.
+
+\subsection{Strategies}
+\label{ssec:strategies}
+
+\GeoGen ships three reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
+The benchmark itself does not depend on any of these --- any text-emitting model can be benchmarked by routing its TikZ output through the verification pipeline.
+The strategies sit on a spectrum from ``maximum LLM freedom'' (\rawcode) to ``maximum scaffolding'' (\recipe); comparing them isolates the contribution of structured intermediate representations and retrieval.
+
+\paragraph{\rawcode (single-shot direct TikZ).}
+The LLM is given the prompt plus a TikZ tutorial system prompt and produces TikZ via a \texttt{render\_diagram(tikz: str)} tool call.
+It may call the tool multiple times to revise based on the rendered output, but no symbolic checks are run.
+This is the zero-scaffolding baseline.
+
+\paragraph{\structured (schema-constrained intermediate representation).}
+The LLM is given a Pydantic schema for an intermediate \texttt{DiagramIR} representation (point declarations, segment declarations, intersections, circles, render ops, and \emph{check} declarations) and must emit IR JSON.
+Code (not the LLM) compiles IR $\to$ SymPy objects $\to$ TikZ $\to$ SVG.
+Validation against the IR's check list happens \emph{before} render, so the strategy can self-correct: if a declared check fails on the LLM's IR, the strategy revises (up to $N=3$ retries).
+This is the strategy we recommend for production deployment.
+
+\paragraph{\recipe (high-level DSL with few-shot retrieval).}
+A cheaper ``selector'' model picks 0--N relevant \emph{recipes} (curated DSL examples like \texttt{circumcircle.yaml}, \texttt{altitude.yaml}) which are prepended as in-context examples for the main model.
+The main model emits a \texttt{RecipeDSL} (high-level operations like \texttt{triangle}, \texttt{altitude}, \texttt{circumcircle}); a lowering pass compiles to \texttt{DiagramIR}, then the \structured pipeline runs.
+This is the most heavily scaffolded strategy: the LLM picks from a constrained menu of pre-built constructions, trading creative freedom for built-in geometric correctness.
+
+\subsection{Cost and latency methodology}
+\label{ssec:cost_methodology}
+
+For each (model, strategy, scenario, repeat) we record (a)~total input + output tokens across all API calls (including any retries), (b)~wall-clock duration from prompt submission to rendered SVG, and (c)~the token-multiplied USD cost at published rates.
+The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean of per-scenario costs across the pilot, including failed scenarios (a model that frequently retries before failing pays for the retries).
+Per-call latency excludes time spent in our verification pipeline.
+
+\subsection{Pilot configuration}
+\label{ssec:pilot_config}
+
+For the pilot reported in \cref{sec:results} we ran a stratified 30-scenario sample (10 per tier, drawn round-robin across 23 of 30 templates) with one repeat per (model, strategy, scenario) cell.
+The full headline run uses the complete 600-scenario templated split with three repeats and reports per-cell standard error.
+The \structured strategy permits up to three internal check-fail retries before recording final verdict.
+We document the rate-limit ceiling we encountered with \opus + \structured at \cref{ssec:headline}.

@@ -1,0 +1,19 @@
+# LaTeX build artefacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.nav
+*.snm
+
+# PDF output (commit only when explicitly requested)
+geogen.pdf
+
+# Editor
+*.swp
+.DS_Store

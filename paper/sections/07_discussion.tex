@@ -1,0 +1,72 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{What \GeoGen measures and what it does not}
+
+\GeoGen measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation that satisfies a stated set of relational properties.
+This is a narrower task than ``geometric reasoning'' broadly construed --- it does not require proof, does not test 3D solid geometry, does not exercise coordinate-plane algebra, and does not measure \emph{teaching utility} (whether a diagram makes a concept clear).
+We chose this scope because (i)~it is the part of geometric reasoning where automatic, exact, fast verification is achievable today; (ii)~it is the dominant deployed task for LLMs in K--12 worksheet authoring; and (iii)~it generalises in obvious ways (the same property language extends to coordinate-plane and 3D once the relevant SymPy primitives are wired in).
+
+\subsection{Templated vs.\ curriculum: where they diverge}
+
+Templated scenarios have provably-correct ground truth (prose and properties are emitted from the same source code) and bound the model's task tightly enough that we can quantify completeness rates per-template (\cref{ssec:completeness}).
+Curriculum scenarios cover topics the templates do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs) but rely on LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way.
+We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
+\TODO{Once full headline run completes, report the templated-vs-curriculum delta per-model so reviewers can see which split each finding survives on.}
+
+\subsection{Limitations}
+
+\begin{enumerate}
+\item \textbf{2D Euclidean only.}
+Curriculum scenarios that mention cones / spheres exercise the renderer but cannot be symbolically verified by the current toolkit.
+\item \textbf{No proof construction.}
+\GeoGen tests diagram production, not the propositional reasoning that justifies the construction.
+A model that draws a correct diagram but cannot explain \emph{why} it is correct still passes.
+\item \textbf{Single repeat in the pilot.}
+The headline numbers in \cref{sec:results} are 1-repeat estimates; we have no run-to-run variance.
+The full headline run uses 3 repeats; until then, the strict-pass differences below 5\pp should be read as suggestive only.
+\item \textbf{Rate-limit ceiling on \opus + \structured.}
+We report $N=12$ for that single cell (\cref{ssec:headline}); this is documented as a deployment finding rather than a noise issue.
+\item \textbf{Tolerance is fixed.}
+The $5\times 10^{-3}$ threshold was tuned for human-rating agreement on a small sample and is uniform across check types; per-type tolerances are left for future work.
+\item \textbf{Loose-completeness is the modal case.}
+$\sim 37\%$ of templated scenarios are loose (\cref{ssec:completeness}): the property list pins named relations but leaves continuous parameters free.
+This is intentional and matches educational practice, but it means a passing verdict cannot be read as ``produced \emph{the} canonical diagram,'' only as ``produced \emph{a} diagram consistent with the prompt's stated constraints.''
+\end{enumerate}
+
+\subsection{Threats to validity}
+
+\paragraph{Contamination.}
+LLMs may have seen procedurally-similar geometry problems during training.
+The procedural template engine ships with the benchmark, allowing reviewers to roll new contamination-free splits with a different seed; we further commit to releasing a held-out test split that is revealed only at evaluation time.
+The curriculum split is naturalistic and harder to contamination-defend; we report templated-only metrics in the headline and curriculum metrics as a robustness check.
+
+\paragraph{Soft-pass semantics.}
+Pre-hardening, soft-pass made some configurations look better than they were.
+\Cref{sec:hardening} converted 13/315 records (4.1\%) of pilot soft-passes to strict-pass, and we report both numbers throughout.
+We use \emph{strict pass} as the headline metric to avoid the criticism.
+
+\paragraph{Verifier soundness.}
+\Cref{ssec:adversarial} enumerated 5 predicates with measurable soft spots; all five are addressable by either hardening (\propname{point\_on\_segment}) or template-side mitigation (pairing with a complementary predicate).
+We estimate $< 5\%$ of strict passes are vulnerable to an adversarial construction; the planned human-correlation study (\cref{ssec:human}) will tighten this estimate.
+
+\paragraph{LLM-judged check authoring (curriculum split).}
+The curriculum-extracted scenarios use an LLM to translate textbook problems into property lists; the LLM may emit incorrect or incomplete property lists.
+We spot-check this on a sample but cannot guarantee per-scenario correctness in the same way templated scenarios provide.
+Headline metrics are reported templated-only; curriculum metrics are reported as a robustness check.
+
+\subsection{Implications for deployment}
+
+The pilot's two unambiguous Pareto-dominance findings (\cref{ssec:pareto}) have direct deployment implications:
+
+\begin{itemize}
+\item \textbf{For raw TikZ generation, the marginal cost of the frontier model buys nothing.}
+\haiku + \rawcode dominates \opus + \rawcode at $21\times$ lower cost.
+A team deploying an LLM-driven worksheet author should default to the cheap-tier model unless they have evidence their domain is in the Pareto-undominated region.
+\item \textbf{At the mid-tier price point, model + strategy choice matters more than chasing the next model release.}
+\sonnet + \recipe dominates \gpt + \structured at the same cost.
+The optimal scaffolding is model-family-specific; we recommend benchmarking the strategy on the deployment target rather than assuming the leaderboard transfers.
+\item \textbf{The recipe-DSL strategy is unstable below the frontier-model tier.}
+\sonnet uses recipe well; \haiku and \gpt do not (worse than their \rawcode).
+Custom DSLs with built-in geometric priors do not transfer; teams considering this approach should validate per-model.
+\end{itemize}

@@ -1,0 +1,91 @@
+% =============================================================
+% Preamble — packages, macros, and authoring conventions for
+% the GeoGen paper.  Include via \input{preamble} from geogen.tex.
+% =============================================================
+
+% --- core typography ---
+% LuaLaTeX is natively UTF-8 and uses TU encoding; inputenc and fontenc are
+% only needed under pdflatex. Wrap in \ifdefined for engine-portability.
+\ifdefined\directlua\else
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\fi
+\usepackage{microtype}
+\usepackage{lmodern}
+
+% --- math ---
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+
+% --- graphics, color, tables ---
+\usepackage{graphicx}
+\usepackage[dvipsnames,table]{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{makecell}
+
+% --- code listings ---
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{black!30},
+  numbers=none,
+}
+
+% --- references ---
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+% --- diagrams (TikZ for figures we draw inline; pre-rendered figures use \includegraphics) ---
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+
+% --- misc ---
+\usepackage{xspace}
+\usepackage{enumitem}
+\setlist[itemize]{itemsep=2pt, topsep=4pt}
+\setlist[enumerate]{itemsep=2pt, topsep=4pt}
+
+% =============================================================
+% Project-specific macros
+% =============================================================
+\newcommand{\GeoGen}{\textsc{GeoGen}\xspace}
+\newcommand{\geogen}{\GeoGen}              % alias
+
+\newcommand{\strat}[1]{\textsf{#1}}        % strategy names (raw_code, structured, recipe)
+\newcommand{\rawcode}{\strat{raw\_code}\xspace}
+\newcommand{\structured}{\strat{structured}\xspace}
+\newcommand{\recipe}{\strat{recipe}\xspace}
+
+\newcommand{\modelname}[1]{\textsf{#1}}
+\newcommand{\opus}{\modelname{Claude\,Opus\,4.7}\xspace}
+\newcommand{\sonnet}{\modelname{Claude\,Sonnet\,4.6}\xspace}
+\newcommand{\haiku}{\modelname{Claude\,Haiku\,4.5}\xspace}
+\newcommand{\gpt}{\modelname{GPT-5.1}\xspace}
+
+\newcommand{\pp}{\,p.p.\xspace}            % percentage points
+\newcommand{\dollars}[1]{\$#1}             % monetary
+
+\newcommand{\true}{\textsc{true}\xspace}
+\newcommand{\false}{\textsc{false}\xspace}
+
+% Property type names (verbatim/typewriter)
+\newcommand{\propname}[1]{\texttt{#1}}
+
+% Tier shortcuts
+\newcommand{\tone}{T1\xspace}
+\newcommand{\ttwo}{T2\xspace}
+\newcommand{\tthree}{T3\xspace}
+
+% Editorial flags (visible in drafts; remove before camera-ready)
+\newcommand{\TODO}[1]{{\color{red}\textbf{TODO:} #1}}
+\newcommand{\NOTE}[1]{{\color{blue}\textit{[note: #1]}}}
+\newcommand{\citationneeded}{{\color{red}[cite]}}

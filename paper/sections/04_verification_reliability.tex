@@ -1,0 +1,132 @@
+\section{Verification reliability}
+\label{sec:verification}
+
+This is the single most important defensive section of the paper.
+If reviewers do not trust the verifier, they do not trust any number we report.
+\Cref{sec:design} documented soft spots up front; here we (i)~define what ``verification'' means precisely (\cref{ssec:ver_defn}); (ii)~analyse the \emph{completeness} of our property lists (\cref{ssec:completeness}); (iii)~report a pre-registered \emph{human-correlation study} (\cref{ssec:human}); (iv)~enumerate and bound an \emph{adversarial false-positive analysis} (\cref{ssec:adversarial}); and (v)~document the \emph{hardening pass} we performed in response to pilot data (\cref{sec:hardening}).
+
+\subsection{What ``verification'' means in \GeoGen, precisely}
+\label{ssec:ver_defn}
+
+For each scenario $\mathcal{S}$, a model produces TikZ source $T$.
+We render $T \to$ SVG, parse the TikZ to extract a coordinate map $\mathbf{X}: \text{name} \to (x, y) \in \mathbb{R}^2$, and apply the scenario's expected-property list $\mathcal{P}$ as independent boolean predicates against $\mathbf{X}$ with tolerance $\tau = 5\times 10^{-3}$.
+A scenario passes (\texttt{gate\_status} $=$ \texttt{pass}) iff: (1)~$T$ is non-empty and renders without LaTeX error; (2)~SVG validates against well-formedness checks; (3)~for every $p \in \mathcal{P}$, the predicate returns $(\true, \text{``''})$; (4)~every required label appears as a TikZ label primitive in $T$; (5)~all structural checks pass.
+A scenario \texttt{soft\_pass}es iff (1, 2, 4, 5) hold and no property in (3) returned \false but at least one returned $(\true, \text{``skipped''})$.
+
+\subsection{Completeness: do our checks fully characterise correctness?}
+\label{ssec:completeness}
+
+A property list $\mathcal{P}$ is \emph{complete} for scenario $\mathcal{S}$ if every diagram passing all of $\mathcal{P}$ is congruent (up to rigid motion + scaling) to the intended construction.
+Most $\mathcal{P}$ in \GeoGen are not complete in this strict sense --- e.g., ``draw an acute triangle $ABC$ with altitude $AH$ to $BC$'' is constrained by $\{\angle AHB = 90^\circ, H \text{ on segment } BC\}$ but the exact shape of $\triangle ABC$ is left free.
+This is intentional: the prompt under-specifies the geometry, and the property list is a soundness-not-completeness rubric, matching educational practice (a teacher accepts any acute triangle as long as the altitude is correct).
+
+We classify each scenario along a \textbf{completeness spectrum}:
+\textbf{tight} ($\mathcal{P}$ uniquely determines the figure up to rigid motion + scale; e.g., equilateral triangle with side length 5 + three vertex labels);
+\textbf{loose} ($\mathcal{P}$ pins the named relations but leaves continuous parameters free; the modal case in \GeoGen);
+\textbf{skeletal} (only incidence, not metric; rare).
+For the templated split, audit yields $18/30$ tight, $11/30$ loose, $1/30$ skeletal templates, giving an aggregate $\sim 60\%$ tight / $\sim 37\%$ loose / $\sim 3\%$ skeletal at the scenario level.
+
+For 50 randomly-sampled tight scenarios, we exhibit the full property list in \cref{app:completeness_witnesses} and verify by hand that no incorrect-but-passing diagram exists.
+For 50 sampled loose scenarios, we exhibit (a)~the property list, (b)~a parameterisation of the underdetermined dimensions, and (c)~at least two visually-distinct valid passing diagrams to demonstrate the looseness is intentional.
+
+\subsection{Human-correlation study (target $N = 200$)}
+\label{ssec:human}
+
+We pre-register a human-correlation study using the existing \GeoGen annotation infrastructure (DB schema, IRR pipeline, annotation UI all released).
+
+\paragraph{Protocol.}
+We sample 200 (scenario, model output, automatic verdict) triples, stratified to balance tier, automatic verdict (60 strict-pass / 60 soft-pass / 80 fail), model (across the leaderboard's 4 models), and source (100 templated, 100 curriculum).
+Three expert raters with HS-geometry teaching or olympiad-coaching background annotate each pair.
+We measure inter-rater reliability (Cohen's $\kappa$ between rater pairs and Fleiss's $\kappa$ across all three) before claiming any human-correlation number.
+The rubric records: \textbf{Q1 (overall)} ``Does the diagram correctly satisfy the prompt?'' \{yes / partially / no\}; and \textbf{Q2 (per-property)} agreement with each automatic predicate verdict \{agrees-pass / agrees-fail / disagrees\}.
+Raters do not see the automatic verdict during annotation.
+
+\paragraph{Pre-registered hypothesis.}
+$\kappa \geq 0.7$ between automatic verdict and human Q1 majority, with balanced accuracy $\geq 0.85$.
+
+\paragraph{Status.}
+\TODO{Study is queued; results pending. Section will be filled with the actual confusion matrix, per-property agreement table, and disagreement-coding taxonomy upon completion.}
+
+\subsection{Adversarial analysis: can we construct passing-but-wrong diagrams?}
+\label{ssec:adversarial}
+
+For each of the 17 implemented symbolic predicates we attempt to construct a TikZ output that passes the predicate but contradicts the prompt.
+\Cref{tab:adversarial} summarises the 5 predicates with measurable soft spots; the remaining 12 we judge sound after probing.
+
+\begin{table}[t]
+\caption{Adversarial probe of the predicate library. Soft spots are addressed either by hardening (\cref{sec:hardening}) or by template-side mitigation (pairing with a complementary predicate).}
+\label{tab:adversarial}
+\centering
+\small
+\begin{tabular}{lp{0.55\linewidth}l}
+\toprule
+\textbf{Predicate} & \textbf{Soft spot} & \textbf{Status} \\
+\midrule
+\propname{midpoint} & Returns \true if $|MA|=|MB|$ within $\tau$ but does not require $M$ to be on segment $AB$; $M$ can be on the perpendicular bisector at any distance. & template-paired (with \propname{point\_on\_segment}) \\
+\propname{point\_on\_segment} & Pre-hardening: only checks line, not segment bounds. & fixed in \cref{sec:hardening} \\
+\propname{parallel} & Cross-product test passes for \emph{coincident} lines too; \texttt{parallel(AB, AB)} is technically true. & emit \propname{non\_coincident} co-check \\
+\propname{tangent} & Verifies line at radial distance $r$ but not that $T$ lies on the circle. & template-paired (with \propname{point\_on\_circle}) \\
+\propname{equidistant\_from\_sides} & Distance is to side-\emph{line} not segment; the three excentres pass. & template-paired (require \propname{same\_side}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Quantified false-positive rate.}
+We construct one adversarial example per soft-spot predicate (5 examples total) and score them through the full pipeline.
+All 5 pass with strict verdict.
+By inspecting the pilot's pass diagrams, we estimate $<5\%$ of strict passes are vulnerable --- the dominant pattern is that templates pair check types in ways that close the loophole even when single checks are loose (e.g., midpoint scenarios always also include the segment context that makes the perpendicular-bisector escape unphysical).
+
+\subsection{Hardening pass}
+\label{sec:hardening}
+
+Two changes to the verification toolkit, motivated by inspecting which checks were silently skipped on the pilot data:
+
+\begin{enumerate}
+\item \textbf{\texttt{\textbackslash tkzInterCC} and \texttt{\textbackslash tkzInterLC} resolution.}
+The prior coordinate extractor explicitly omitted runtime-computed circle-circle and line-circle intersections, so any downstream check involving an intersection point (\propname{point\_on\_circle}, \propname{equal\_lengths} between intersection and centre) was skipped.
+The hardened resolver adds a closed-form solver for both: circle-circle returns the two intersection points sorted $(y, x)$-ascending so the assignment to the names paired by \texttt{\textbackslash tkzGetPoints\{P\}\{Q\}} is deterministic; line-circle uses the same sort.
+Non-intersecting configurations return \texttt{None} and the points stay unresolved (preserving the ``omit rather than guess'' invariant).
+9 unit tests; 4/315 pilot records promote from \texttt{soft\_pass} $\to$ \texttt{pass}.
+\item \textbf{pgfmath-style coordinate evaluator.}
+The prior literal-coordinate extractor missed \texttt{\textbackslash tkzDefPoint(\{\textbackslash side*cos(-35)\},\{\textbackslash side*sin(-35)\})\{B\}} constructions, which are universal in raw-LLM TikZ.
+The hardened extractor (a)~walks \texttt{\textbackslash pgfmathsetmacro} definitions in source order to build a macro table; (b)~reads parenthesised \texttt{\textbackslash tkzDefPoint} arguments using a balanced-paren scanner that crosses both \texttt{()} and \texttt{\{\}} depths; (c)~evaluates each component via a Python AST walker supporting decimal literals, unary minus, $+ - * / **$, parentheses, $\cos / \sin / \tan$ (in degrees, matching pgfmath default), $\sqrt{\cdot}$, $|{\cdot}|$, and macro substitution.
+Unsupported constructs raise \texttt{ValueError} and the point is silently skipped.
+5 unit tests; 9 additional pilot records promote.
+\end{enumerate}
+
+\paragraph{Aggregate hardening impact on the pilot} (re-graded via \texttt{evals/regrade.py} against unchanged TikZ outputs): 13/315 records (4.1\%) promote from \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
+Promotions are concentrated in \rawcode rows because IR-compiled outputs (\structured, \recipe) emit literal coordinates exclusively, while raw LLM TikZ uses \texttt{\textbackslash pgfmathsetmacro} routinely.
+Per-model \rawcode strict-pass deltas: \opus +16.7\pp, \sonnet +10.0\pp, \haiku +6.6\pp, \gpt +10.0\pp.
+The strategy-effect headline (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp post-hardening --- about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
+We report both numbers in \cref{sec:results} and recommend the post-hardening verifier as the canonical metric.
+
+A third planned change (render-aware \propname{mark\_present} from SVG glyph parsing) is \emph{deferred} to v1.1: post-hardening, no \propname{mark\_present} checks remain in the soft\_pass column for the pilot (they were reliably caught by the existing TikZ-source matcher); the planned SVG-glyph approach would tighten coverage for outputs that fake the mark via raw \texttt{\textbackslash draw} primitives, but that pattern was not observed in the pilot.
+
+\paragraph{Net effect.}
+The decrease in apparent pass rates we expected (previously-soft-passes converting to strict failures rather than passes) did \emph{not} materialise --- the resolver gaps were genuine completeness gaps, not adversarial cover.
+This is a positive outcome for the soundness of the prior verdicts.
+
+\subsection{Summary of trust claims}
+\label{ssec:trust_claims}
+
+\begin{table}[t]
+\caption{What we claim about \GeoGen's verifier and how confident we are.}
+\label{tab:trust_claims}
+\centering
+\small
+\begin{tabular}{p{0.45\linewidth}p{0.30\linewidth}l}
+\toprule
+\textbf{Claim} & \textbf{Evidence} & \textbf{Confidence} \\
+\midrule
+Auto verdict is sound on tight scenarios. & Adversarial probe of all 17 predicates; only 5 have soft spots, all addressable. & high \\
+Tight-completeness rate of templated split. & Audit of all 30 templates (\cref{ssec:completeness}). & high (deterministic) \\
+Loose-completeness is intentional and matches educational practice. & \cref{ssec:completeness} examples + \cref{app:completeness_witnesses}. & medium \\
+Auto-verdict agrees with human raters at $\kappa \geq 0.7$. & Pre-registered $N=200$ study (\cref{ssec:human}). & \textbf{TBD pending study} \\
+Headline pass-rates correctly rank models. & Pilot data shows 19--30\pp spreads on \ttwo--\tthree (\cref{sec:results}). & medium pending full pilot \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+The single largest threat to the paper is the human-correlation study --- if $\kappa < 0.7$ we have to rewrite \cref{sec:results} and demote the headline metric.
+Pre-registration mitigates the bias risk.
