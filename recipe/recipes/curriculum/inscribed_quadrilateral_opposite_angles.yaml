@@ -89,10 +89,10 @@ example:
     labels:
       - kind: label_free_text
         text: "∠A + ∠C = 110° + 70° = 180°"
-        at: [-3.5, -3.5]
+        at: [0, -3.8]
       - kind: label_free_text
         text: "∠B + ∠D = 85° + 95° = 180°"
-        at: [-3.5, -4.1]
+        at: [0, -4.3]
 notes:
   - "NEVER use polygon_from_angles_and_sides for a cyclic quadrilateral — the side lengths are determined by the circle, not freely choosable."
   - "Use rotation ops to place each vertex at the correct arc position. This guarantees exact inscribed angles."
