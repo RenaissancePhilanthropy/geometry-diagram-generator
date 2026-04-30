@@ -1,0 +1,23 @@
+name: rectilinear_polygon
+description: "L-shaped (or step-shaped) rectilinear polygon with one or more concave (inward) corners"
+tags: [polygon, rectilinear, non-convex, angles, intermediate]
+context: "Given an L-shaped hexagon with specified side lengths."
+example:
+  mode: abstract
+  construction:
+    - op: polygon_from_angles_and_sides
+      id: lshape
+      vertices: [F, E, D, C, B, A]
+      side_lengths: [6, 2, 3, 2, 3, 4]
+      angles: [90, 90, 90, 270, 90, 90]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "Vertices are listed in counter-clockwise perimeter order starting from the bottom-left corner"
+  - "CRITICAL — concave corners use 270°, not 90°: the interior angle at an inward-pointing (concave) corner is 270°. Writing 90° for every corner is the most common error on L-shapes."
+  - "Rule: convex corner (outward-pointing) → 90°; concave corner (inward-pointing, the notch) → 270°"
+  - "For an L-shape there is exactly one concave corner. For a T-shape or step-shape there may be two."
+  - "Angle sum check: for an N-vertex rectilinear polygon, sum = (N-2)*180. A hexagon: 5*90 + 1*270 = 720 = (6-2)*180 ✓"
+  - "If the problem gives all angles and only N-1 side lengths (one side unconstrained), omit the unknown side from side_lengths — the closure condition will infer it automatically."
+  - "For diagrams with tick marks on equal sides, use mark_equal_lengths on the relevant segment pairs after the polygon op."
