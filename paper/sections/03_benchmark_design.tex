@@ -1,5 +1,33 @@
-\section{Benchmark design}
+\section{Methodology and instance}
 \label{sec:design}
+
+\subsection{The \GeoGen methodology}
+\label{ssec:methodology}
+
+We separate \emph{methodology} from \emph{instance} from the outset.
+\GeoGen is a methodology for building automatically-verifiable benchmarks of generative geometric reasoning; \GeoGenBench (\cref{ssec:task}~onward) is its first instantiation, for plane Euclidean geometry.
+The methodology rests on two pillars:
+
+\paragraph{Pillar 1: Procedural co-generation of prompts and rubrics.}
+For domains where the construction admits a Python expression --- which is essentially every domain in classical geometry --- both the natural-language prompt and the machine-checkable property list can be emitted from the same source code.
+A single \texttt{altitude\_template($A$, $B$, $C$, $H$)} function, for example, returns both a prose request to draw the altitude and the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]} that any correct rendering must satisfy.
+This eliminates the drift problem that haunts hand-authored or LLM-extracted benchmarks (where the grading rubric and the question can disagree silently) and provides a strong contamination defence (reviewers can re-roll the engine with new seeds, label sets, or numeric parameters and obtain a fresh split with the same difficulty distribution).
+For domains where procedural co-generation is impractical --- 3D constructions, multi-step proof figures, or scenarios requiring extra-mathematical context --- the methodology supports a fallback mode (\cref{ssec:sources}): hand-authored or LLM-extracted prompts paired with hand- or LLM-authored property lists.
+This trades the correctness-by-construction guarantee for breadth, and we report metrics on the two modes separately.
+
+\paragraph{Pillar 2: Render-then-symbolic-verify with a declarative predicate language.}
+The model emits source code in a text-emitting renderer's input language (TikZ here, but also SVG, Asymptote, OpenSCAD, or any other text-format vector medium); a containerised renderer compiles that to its visual output; an extractor compiles the same source to a coordinate-bearing symbolic representation (SymPy here); a fixed-vocabulary, typed \emph{predicate language} (\cref{ssec:properties}, formalised in \cref{app:property_reference}) is decided against the symbolic representation in microseconds per predicate.
+Three properties make this work as a benchmark substrate.
+First, the predicate language is \emph{declarative} --- prompt authors specify \emph{what must be true}, not \emph{how to check it} --- so adding a new construction never requires writing a new checker.
+Second, the predicate vocabulary is \emph{versioned}: \cref{app:property_reference} formalises v1 (17 symbolic + 2 source-string predicates); future \GeoGen instantiations extend it (e.g.\ \texttt{face\_incidence} for 3D, \texttt{point\_on\_curve} for coordinate plane) without disturbing existing benchmarks.
+Third, the recipe is \emph{renderer-agnostic}: the codebase ships an SVG-output strategy alongside TikZ to demonstrate that swapping the text-emitting target is a one-paragraph change in the strategy layer (\cref{ssec:strategies}).
+
+\paragraph{Why these two pillars together.}
+Each pillar partially addresses the canonical reviewer attack on a generative-reasoning benchmark.
+Pillar~1 addresses ``how do we know your ground truth is right?'' (it is correct by construction wherever procedural generation applies, and the engine source is part of the release).
+Pillar~2 addresses ``how do we know your verifier is sound?'' (declarative predicates have stable, auditable semantics; a soundness audit is reported in \cref{sec:hardening}; cross-version verdict stability is documented in \cref{app:pinned_versions}).
+Together they let the leaderboard numbers in \cref{sec:results} be interrogated end-to-end: every prompt traces to a Python generator, every check traces to a SymPy decision procedure, every disagreement is reproducible without an LLM in the loop.
+The remainder of this section instantiates both pillars for plane Euclidean geometry as \GeoGenBench.
 
 \subsection{Task formulation}
 \label{ssec:task}

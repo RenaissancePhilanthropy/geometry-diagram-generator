@@ -1,11 +1,11 @@
-\section{Property type reference}
+\section{The \GeoGen predicate language v1}
 \label{app:property_reference}
 
-\TODO{One subsection per predicate (17 symbolic + 2 source-string). For each:
-\begin{itemize}
-\item Formal signature (arg list with types).
-\item Decision rule, including tolerance handling.
-\item Code reference (\texttt{evals/sympy\_checks.py:line}).
-\item Soft-spot notes from \cref{ssec:adversarial} where applicable.
-\item Example: an adversarial input (if any) and the predicate verdict on it.
-\end{itemize}}
+\GeoGenBench's predicate library is the first published version of the \GeoGen predicate language.
+Future instantiations of the methodology (\cref{ssec:future_methodology}) will extend the vocabulary --- adding face-incidence for 3D solids, point-on-curve for coordinate plane, transformation-equivalence for symmetry constructions --- but the predicate-language design pattern (typed signatures, declarative semantics, tolerance-aware decision procedures, optional soft predicates for source-string checks that cannot reach into the rendered output) is intended to remain stable.
+This appendix is the reference for v1.
+
+For each predicate we give: (a)~the formal signature (arg list with types); (b)~the decision rule, including tolerance handling; (c)~the implementation code reference; and (d)~where applicable, soft-spot notes from \cref{ssec:adversarial} and the predicate's verdict on an adversarial input.
+\Cref{tab:predicates} summarises the v1 vocabulary at a glance.
+
+\TODO{One subsection per predicate (17 symbolic + 2 source-string). Section in flight; \cref{tab:predicates} is the authoritative summary in the meantime.}
