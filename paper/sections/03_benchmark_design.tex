@@ -24,11 +24,13 @@ A procedural template engine emits scenarios in which the prompt prose and the e
 We use 30 templates grouped by tier (9~\tone, 10~\ttwo, 11~\tthree) covering right/equi\-lateral/iso\-sce\-les triangles, squares/rectangles/parallelo\-grams/rhombi/trapezoids, segment+midpoint, parallel/perpendicular pairs, circle+point, altitude/median/angle-bisector/circumcircle/incircle/perpendicular-bisector/chord constructions, right-triangle altitude to hypotenuse, medial triangle, centroid+medians, parallel lines + transversal, isosceles altitude bisects base, tangent to circle, cyclic quadrilateral, two intersecting circles, Thales' theorem, triangle with two altitudes, and inscribed angle in a semicircle.
 Per-template variation axes (10 vertex-triple label sets, 6 quad-label sets, 8 pair-label sets, numeric parameter sweeps such as Pythagorean leg pairs, and 7 prompt-opener variants) multiplied by round-robin per-tier capping yield \textbf{600 scenarios} (200 per tier).
 Property correctness is by construction: the same Python function emits both the prose and the property list.
+The released artefact is \texttt{benchmark/definitions/bench\_generated.yaml}.
 
 \paragraph{Curriculum-extracted scenarios (broader topic coverage).}
-A separate pipeline extracts curriculum structure from K--12 geometry textbooks and uses an LLM to convert each into a student-style diagram request, plus structural and property-level expected outputs.
+A separate pipeline (\texttt{curriculum/to\_benchmark.py}) extracts curriculum structure from K--12 geometry textbooks and uses an LLM to convert each into a student-style diagram request, plus structural and property-level expected outputs.
 This adds \textbf{201 scenarios} ($[36, 128, 37]$ across tiers) covering topics templated scenarios do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs requiring auxiliary lines), at the cost of LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way templated GT is.
 We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
+The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}.
 
 \subsection{Property language}
 \label{ssec:properties}

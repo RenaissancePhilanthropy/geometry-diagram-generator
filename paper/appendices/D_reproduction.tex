@@ -1,14 +1,23 @@
 \section{Reproduction instructions}
 \label{app:reproduction}
 
+\subsection{Pinned versions}
+\label{app:pinned_versions}
+
+All results in this paper were produced against repository commit \texttt{db17ae5} on \texttt{master} (with the paper-only commits in \texttt{feat/geogen-paper} layered on top). The pilot dataset in \cref{sec:results} was scored by the verifier at that commit; we re-graded all 498 pilot records against the same commit's verification logic and confirmed zero \texttt{gate\_status} drift versus the as-collected JSONL records.
+
+The renderer Docker image is pinned to the tag \texttt{tikz-renderer:db17ae5}, built from the \texttt{renderer/} directory at the same commit. The renderer was migrated mid-development from a DVI pipeline to a PDF+\texttt{fontspec} pipeline (master commit \texttt{a74970f}); reproductions before that commit will produce visually different SVGs but should yield identical strict-pass verdicts because the verifier operates on the SymPy-compiled coordinate set extracted from the TikZ source, not on rendered SVG bytes.
+
 \subsection{Quickstart}
 
 Clone the repository, install the Python deps with \texttt{uv sync}, start the renderer container:
 \begin{lstlisting}
 git clone https://github.com/<anon>/geogen
 cd geogen
+git checkout db17ae5             # paper-pinned commit
 uv sync
-docker run -d -p 8001:8001 ghcr.io/<anon>/tikz-renderer:latest
+docker run -d -p 8001:8001 \
+    ghcr.io/<anon>/tikz-renderer:db17ae5
 \end{lstlisting}
 
 \subsection{Reproducing the headline numbers}
@@ -21,11 +30,11 @@ This iterates over (model $\times$ strategy) combinations against \texttt{evals/
 Subsequent analysis:
 \begin{lstlisting}
 uv run python -m evals.leaderboard_analyze \
-    --input-dir evals/results/leaderboard_pilot_hardened \
+    --input-dir evals/results/leaderboard_pilot_v2 \
     --output-md REPORT.md --output-csv leaderboard.csv
 
 uv run python -m evals.leaderboard_plot \
-    --input-dir evals/results/leaderboard_pilot_hardened \
+    --input-dir evals/results/leaderboard_pilot_v2 \
     --output-dir docs/figures/geogen-pilot
 \end{lstlisting}
 
@@ -39,12 +48,22 @@ uv run python -m evals.generate_scenarios \
 \end{lstlisting}
 The procedural variant generator preserves the 30-template / 200-per-tier structure and is the recommended defence against suspected contamination.
 
+\subsection{Re-grading without LLM calls}
+
+Because the pilot JSONL files store every model's TikZ output verbatim, the verifier can be re-run against a different commit's check semantics without spending another dollar on LLM tokens:
+\begin{lstlisting}
+uv run python -m evals.regrade \
+    --input-dir evals/results/leaderboard_pilot_v2 \
+    --output-dir evals/results/leaderboard_pilot_regraded
+\end{lstlisting}
+This is how we audited verdict stability across the renderer/IR migration described in \cref{app:pinned_versions} (498 records, zero gate-status changes), and is also the right tool for any future hardening pass: re-grade first, re-run only if the verdicts shift in a way the new code cannot reproduce.
+
 \subsection{Docker images and dataset card}
 
 We release:
 \begin{itemize}
-\item \texttt{ghcr.io/<anon>/tikz-renderer:latest} --- the TikZ$\to$SVG renderer (LuaLaTeX + dvisvgm + tkz-euclide).
-\item \texttt{ghcr.io/<anon>/geogen-eval:latest} --- the full Python evaluator with all dependencies pre-installed.
+\item \texttt{ghcr.io/<anon>/tikz-renderer:db17ae5} --- the TikZ$\to$SVG renderer (LuaLaTeX + \texttt{fontspec} + \texttt{tkz-euclide}, pinned to the paper commit). A floating \texttt{:latest} tag tracks the current \texttt{master} for active development; reviewers should pull the pinned tag.
+\item \texttt{ghcr.io/<anon>/geogen-eval:db17ae5} --- the full Python evaluator with all dependencies pre-installed.
 \item \texttt{datasets/geogen-v1.0} on Hugging Face --- the 801-scenario benchmark in JSONL with full property lists.
 \end{itemize}
 A datasheet following \citet{gebru2021datasheets} accompanies the release.

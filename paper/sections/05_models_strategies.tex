@@ -41,6 +41,11 @@ A cheaper ``selector'' model picks 0--N relevant \emph{recipes} (curated DSL exa
 The main model emits a \texttt{RecipeDSL} (high-level operations like \texttt{triangle}, \texttt{altitude}, \texttt{circumcircle}); a lowering pass compiles to \texttt{DiagramIR}, then the \structured pipeline runs.
 This is the most heavily scaffolded strategy: the LLM picks from a constrained menu of pre-built constructions, trading creative freedom for built-in geometric correctness.
 
+\paragraph{Beyond TikZ: an alternate text-emit target.}
+The methodology is renderer-agnostic --- the verifier does not care whether the model emits TikZ, raw SVG, Asymptote, or any other text-emittable vector format, provided we can compile it back to a coordinate set.
+The codebase ships \texttt{strategies/raw\_svg.py} (and a self-revising variant) which routes the model directly to SVG output, bypassing TikZ and the LuaLaTeX container entirely.
+Because raw SVG and raw TikZ measure essentially the same thing --- ``can the model emit a text-format vector diagram with correct geometry'' --- we do not include \texttt{raw\_svg} in the headline leaderboard; it is intended for deployments where a TeX-free runtime is required, and is documented in the released codebase rather than benchmarked here.
+
 \subsection{Cost and latency methodology}
 \label{ssec:cost_methodology}
 

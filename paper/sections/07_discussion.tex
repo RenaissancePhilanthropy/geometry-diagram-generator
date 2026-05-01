@@ -70,3 +70,19 @@ The optimal scaffolding is model-family-specific; we recommend benchmarking the 
 \sonnet uses recipe well; \haiku and \gpt do not (worse than their \rawcode).
 Custom DSLs with built-in geometric priors do not transfer; teams considering this approach should validate per-model.
 \end{itemize}
+
+\subsection{Extending the methodology}
+\label{ssec:future_methodology}
+
+The verification recipe used here --- text-emit a renderer-targeted artefact, compile it into symbolic objects, decide a list of declarative predicates --- is not specific to plane geometry.
+Two natural extensions are already in flight at the codebase level and could be released as separate \GeoGen-family benchmarks:
+\begin{itemize}
+\item \textbf{GenExam-Math integration.}
+\citet{wang2025genexam} introduce a multidisciplinary text-to-exam-image dataset with LLM-judged scoring.
+We have re-encoded a 91-prompt geometry-relevant subset (HIGH-relevance plus medium-cartesian) as a \GeoGen-style benchmark with declarative property checks (\texttt{benchmark/definitions/bench\_genexam.yaml}); a separate report will compare strict-pass rates between automatic verification and the GenExam vision-LM judge on the overlap.
+This is an empirical test of whether vision-LM judges and SymPy-decided predicates agree on text-to-diagram tasks where both can be applied.
+\item \textbf{Beyond plane geometry.}
+The predicate language (\cref{app:property_reference}) extends to coordinate-plane algebra (point-on-curve, intersection-of-curves), 3D solids (face-incidence, dihedral angles), and transformation-group constructions (rotation/reflection/translation equivalence) by adding the relevant SymPy primitives.
+Engineering and architectural drawings are similar: any domain where ``correctness'' decomposes into a finite list of relational properties decidable against a symbolic ground truth is a candidate for the same recipe.
+The bottleneck is predicate-language design, not symbolic computation --- and the predicate language is the part future \GeoGen instantiations would inherit unchanged.
+\end{itemize}
