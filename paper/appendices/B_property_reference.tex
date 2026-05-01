@@ -5,7 +5,288 @@
 Future instantiations of the methodology (\cref{ssec:future_methodology}) will extend the vocabulary --- adding face-incidence for 3D solids, point-on-curve for coordinate plane, transformation-equivalence for symmetry constructions --- but the predicate-language design pattern (typed signatures, declarative semantics, tolerance-aware decision procedures, optional soft predicates for source-string checks that cannot reach into the rendered output) is intended to remain stable.
 This appendix is the reference for v1.
 
-For each predicate we give: (a)~the formal signature (arg list with types); (b)~the decision rule, including tolerance handling; (c)~the implementation code reference; and (d)~where applicable, soft-spot notes from \cref{ssec:adversarial} and the predicate's verdict on an adversarial input.
-\Cref{tab:predicates} summarises the v1 vocabulary at a glance.
+For each predicate we give: (a)~the formal signature with positional argument types; (b)~the decision rule, including tolerance handling; (c)~the implementation reference (file:line in \texttt{util/tikz\_geometry.py} unless otherwise noted); and (d)~where applicable, soft-spot notes from \cref{ssec:adversarial} and the predicate's verdict on an adversarial input.
+\Cref{tab:predicates} in \cref{ssec:properties} summarises the v1 vocabulary at a glance.
+All decisions use the production tolerance $\tau = 5\times 10^{-3}$ unless overridden by the per-check \texttt{tol} field in the scenario YAML.
 
-\TODO{One subsection per predicate (17 symbolic + 2 source-string). Section in flight; \cref{tab:predicates} is the authoritative summary in the meantime.}
+In what follows we use $\mathbf{X}: \text{name} \to (x, y) \in \mathbb{R}^2$ for the coordinate map produced by the TikZ extractor, $|PQ|$ for the Euclidean distance between two coordinates, $\vec{PQ}$ for the vector $Q-P$, $\vec{u}\cdot\vec{v}$ for the dot product, and $\vec{u}\times\vec{v}$ for the scalar 2D cross product $u_x v_y - u_y v_x$.
+
+\subsection{Symbolic predicates (decided exactly against \texorpdfstring{$\mathbf{X}$}{X})}
+
+\subsubsection{\propname{right\_angle}}
+\label{app:pred:right_angle}
+
+\noindent\textbf{Signature.}\quad \texttt{right\_angle([a, vertex, c])} where each argument is a point name in $\mathbf{X}$.
+
+\noindent\textbf{Semantics.}\quad The angle at \texttt{vertex} formed by rays to \texttt{a} and \texttt{c} is a right angle.
+
+\noindent\textbf{Decision rule.}\quad Compute $\vec{u} = \vec{(\text{vertex})\,a}$ and $\vec{v} = \vec{(\text{vertex})\,c}$; return $|\vec{u}\cdot\vec{v}| \leq \tau$.
+The dot-product test is preferred over an explicit angle computation because it has no $\arccos$ branch issues and is symmetric in the leg lengths.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:397}.
+
+\noindent\textbf{Soft spots.}\quad None observed.
+The dot-product threshold is tight enough that floating-point near-90$^\circ$ angles ($\sim$89.9$^\circ$) are correctly rejected at $\tau = 5\times 10^{-3}$ for the unit-scale coordinates produced by TikZ.
+
+\subsubsection{\propname{midpoint}}
+\label{app:pred:midpoint}
+
+\noindent\textbf{Signature.}\quad \texttt{midpoint([m, a, b])}.
+
+\noindent\textbf{Semantics.}\quad Point \texttt{m} is the midpoint of segment $\overline{ab}$.
+
+\noindent\textbf{Decision rule.}\quad Return $\max(|m_x - (a_x{+}b_x)/2|,\ |m_y - (a_y{+}b_y)/2|) \leq \tau$.
+We test componentwise on the expected midpoint coordinates rather than testing $|MA|=|MB|$, because the latter is satisfied by every point on the perpendicular bisector of $\overline{ab}$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:406}.
+
+\noindent\textbf{Soft spots.}\quad The earlier ``equal-distance'' implementation (now superseded) had a soft spot allowing $M$ anywhere on the perpendicular bisector --- see \cref{tab:adversarial}.
+The current componentwise check eliminates that escape entirely.
+
+\subsubsection{\propname{collinear}}
+\label{app:pred:collinear}
+
+\noindent\textbf{Signature.}\quad \texttt{collinear([a, b, c])}.
+
+\noindent\textbf{Semantics.}\quad The three points lie on a common line.
+
+\noindent\textbf{Decision rule.}\quad Return $|\vec{ab}\times\vec{ac}| \leq \tau$.
+The cross-product test is the signed area of $\triangle abc$ doubled; zero iff degenerate.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:417}.
+
+\noindent\textbf{Soft spots.}\quad The check does not require $a \neq b$; three coincident points trivially pass.
+Pair with \propname{distinct\_points} (IR-side) or rely on TikZ's failure to draw a zero-length segment if degeneracy matters for the prompt.
+
+\subsubsection{\propname{equal\_lengths}}
+\label{app:pred:equal_lengths}
+
+\noindent\textbf{Signature.}\quad \texttt{equal\_lengths([[p1, p2], [p3, p4], \dots])} --- a list of $\geq 2$ point pairs, each defining a segment.
+
+\noindent\textbf{Semantics.}\quad All listed segments have the same length.
+
+\noindent\textbf{Decision rule.}\quad Compute $d_i = |p_{2i-1} p_{2i}|$ for each pair; return $\max_{i\geq 2} |d_i - d_1| \leq \tau$.
+A list with a single pair returns \texttt{None} (cannot decide equality of one length).
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:426}.
+
+\noindent\textbf{Soft spots.}\quad Tolerance is absolute, not relative; for very long segments ($|PQ| \gg 1$) the absolute tolerance becomes effectively tighter, but every \GeoGenBench scenario keeps coordinates in the range $[-10, 10]$ so this is not observed.
+
+\subsubsection{\propname{parallel}}
+\label{app:pred:parallel}
+
+\noindent\textbf{Signature.}\quad \texttt{parallel([[a, b], [c, d]])}.
+
+\noindent\textbf{Semantics.}\quad Lines $\overleftrightarrow{ab}$ and $\overleftrightarrow{cd}$ are parallel.
+
+\noindent\textbf{Decision rule.}\quad Return $|\vec{ab}\times\vec{cd}| \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:438}.
+
+\noindent\textbf{Soft spots.}\quad Coincident lines pass --- $\overleftrightarrow{ab}$ is parallel to itself.
+For prompts where ``parallel'' implies ``parallel and distinct'', pair with \propname{point\_on\_line} = \texttt{False} for one endpoint of the second line against the first (see \cref{tab:adversarial}).
+
+\subsubsection{\propname{perpendicular}}
+\label{app:pred:perpendicular}
+
+\noindent\textbf{Signature.}\quad \texttt{perpendicular([[a, b], [c, d]])}.
+
+\noindent\textbf{Semantics.}\quad Lines $\overleftrightarrow{ab}$ and $\overleftrightarrow{cd}$ meet at right angles (or would if extended).
+
+\noindent\textbf{Decision rule.}\quad Return $|\vec{ab}\cdot\vec{cd}| \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:448}.
+
+\noindent\textbf{Soft spots.}\quad None.
+Note this does \emph{not} require the lines to actually intersect within the visible canvas; for that, pair with \propname{intersects}.
+
+\subsubsection{\propname{point\_on\_line}}
+\label{app:pred:point_on_line}
+
+\noindent\textbf{Signature.}\quad \texttt{point\_on\_line([p, a, b])}.
+
+\noindent\textbf{Semantics.}\quad Point \texttt{p} lies on the infinite line $\overleftrightarrow{ab}$.
+
+\noindent\textbf{Decision rule.}\quad Return $|\vec{ab}\times\vec{ap}| \leq \tau$ (signed area of $\triangle abp$ is zero).
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:456}.
+
+\noindent\textbf{Soft spots.}\quad The check accepts $p$ on the line at \emph{any} parameter, including outside segment $\overline{ab}$.
+For ``on segment'' semantics, use \propname{point\_on\_segment}.
+
+\subsubsection{\propname{point\_on\_segment}}
+\label{app:pred:point_on_segment}
+
+\noindent\textbf{Signature.}\quad \texttt{point\_on\_segment([p, a, b])}.
+
+\noindent\textbf{Semantics.}\quad Point \texttt{p} lies on segment $\overline{ab}$ (between $a$ and $b$, inclusive).
+
+\noindent\textbf{Decision rule.}\quad Two-step:
+\begin{enumerate}
+\item Collinearity: $|\vec{ab}\times\vec{ap}| \leq \tau$. Return \false if not.
+\item Between-ness: $\big||ap| + |pb| - |ab|\big| \leq \tau$ (triangle equality holds iff $p$ is on the segment).
+\end{enumerate}
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:464}.
+
+\noindent\textbf{Soft spots.}\quad The pre-hardening implementation only ran step (1) --- this caused a measurable false-positive rate documented in \cref{tab:adversarial} and was the primary motivator for the hardening pass in \cref{sec:hardening}.
+
+\subsubsection{\propname{point\_on\_circle}}
+\label{app:pred:point_on_circle}
+
+\noindent\textbf{Signature.}\quad \texttt{point\_on\_circle([p, o, r])} where \texttt{o} is the centre and \texttt{r} is any reference point on the circle (typically the radius witness).
+
+\noindent\textbf{Semantics.}\quad Point \texttt{p} lies on the circle centred at \texttt{o} with radius $|or|$.
+
+\noindent\textbf{Decision rule.}\quad Return $\big||op| - |or|\big| \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:476}.
+
+\noindent\textbf{Soft spots.}\quad Requires the radius witness \texttt{r} to be a resolved coordinate; if \texttt{r} is itself a constructed point that the extractor cannot resolve, the check returns \texttt{None} (silent skip). Templates avoid this by passing a directly-defined point as \texttt{r}.
+
+\subsubsection{\propname{tangent}}
+\label{app:pred:tangent}
+
+\noindent\textbf{Signature.}\quad \texttt{tangent([[l1, l2], o, t])} --- line through $l_1, l_2$, circle centre $o$, point of tangency $t$.
+
+\noindent\textbf{Semantics.}\quad Line $\overleftrightarrow{l_1 l_2}$ is tangent to the circle centred at $o$, touching it at point $t$.
+
+\noindent\textbf{Decision rule.}\quad Two-step:
+\begin{enumerate}
+\item $t$ on line: $|\vec{l_1 l_2}\times\vec{l_1 t}| \leq \tau$.
+\item $\vec{ot} \perp \vec{l_1 l_2}$: $|\vec{l_1 l_2}\cdot\vec{ot}| \leq \tau$.
+\end{enumerate}
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:483}.
+
+\noindent\textbf{Soft spots.}\quad Does not separately verify that $t$ lies on the circle (that $|ot|$ equals the circle's radius). For that, pair with \propname{point\_on\_circle} (\cref{tab:adversarial}).
+Templates that emit \propname{tangent} also emit \propname{point\_on\_circle} on $t$ as a co-check.
+
+\subsubsection{\propname{angle\_equal}}
+\label{app:pred:angle_equal}
+
+\noindent\textbf{Signature.}\quad \texttt{angle\_equal([[a1, b1, c1], [a2, b2, c2]])} --- two angle triples in (leg, vertex, leg) order.
+
+\noindent\textbf{Semantics.}\quad $\angle a_1 b_1 c_1 = \angle a_2 b_2 c_2$ (unsigned, in $[0, \pi]$).
+
+\noindent\textbf{Decision rule.}\quad For each triple, compute $\theta_i = \arccos\big(\vec{b_i a_i}\cdot\vec{b_i c_i} / (|\vec{b_i a_i}||\vec{b_i c_i}|)\big)$.
+Return $|\theta_1 - \theta_2| \leq \tau$ (radians).
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:499}.
+
+\noindent\textbf{Soft spots.}\quad Compares unsigned angles, so a $30^\circ$ angle and a $-30^\circ$ angle (orientation-flipped) are equal under this predicate.
+Templates needing oriented-angle equality must additionally constrain orientation (\propname{same\_side}, IR-side).
+
+\subsubsection{\propname{angle\_bisector}}
+\label{app:pred:angle_bisector}
+
+\noindent\textbf{Signature.}\quad \texttt{angle\_bisector([d, a, b, c])}.
+
+\noindent\textbf{Semantics.}\quad Ray $\vec{ad}$ bisects $\angle bac$.
+
+\noindent\textbf{Decision rule.}\quad Compute $\theta_1 = \angle bad$ and $\theta_2 = \angle dac$ via the same $\arccos$ formula as \propname{angle\_equal}; return $|\theta_1 - \theta_2| \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:506}.
+
+\noindent\textbf{Soft spots.}\quad The check does not require $d \neq a$ (a degenerate ray); a coincident-with-vertex $d$ would cause a divide-by-zero caught by the helper and return \texttt{None} (silent skip).
+The check also does not require $d$ to be inside $\angle bac$ --- it accepts $d$ on the \emph{external} bisector (perpendicular to the internal bisector at $a$), which gives equal angles to both legs but is on the opposite side.
+Pair with \propname{same\_side} (IR-side) for prompts that require the internal bisector specifically.
+
+\subsubsection{\propname{intersects}}
+\label{app:pred:intersects}
+
+\noindent\textbf{Signature.}\quad \texttt{intersects([[a, b], [c, d], p])}.
+
+\noindent\textbf{Semantics.}\quad Lines $\overleftrightarrow{ab}$ and $\overleftrightarrow{cd}$ intersect at point $p$.
+
+\noindent\textbf{Decision rule.}\quad Compute the line-line intersection $q$ via the standard determinant formula; return \false if the lines are parallel; otherwise return $\max(|q_x - p_x|, |q_y - p_y|) \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:517} (intersection helper at \texttt{:119}).
+
+\noindent\textbf{Soft spots.}\quad None observed for the line-line case; the parallel-line return-\false is correct (no intersection exists).
+
+\subsubsection{\propname{equidistant\_from\_sides}}
+\label{app:pred:equidistant_from_sides}
+
+\noindent\textbf{Signature.}\quad \texttt{equidistant\_from\_sides([p, a, b, c])}.
+
+\noindent\textbf{Semantics.}\quad Point \texttt{p} is equidistant from the three side-lines of $\triangle abc$ (i.e., \texttt{p} is the incentre or one of the three excentres).
+
+\noindent\textbf{Decision rule.}\quad Compute the perpendicular distances $d_{ab}, d_{bc}, d_{ca}$ from $p$ to each side-line; return $|d_{ab} - d_{bc}| \leq \tau$ AND $|d_{bc} - d_{ca}| \leq \tau$.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:541}.
+
+\noindent\textbf{Soft spots.}\quad Distance is to the side-\emph{line} (extended), not the side \emph{segment}; the three excentres are equidistant from the three lines and pass this check (\cref{tab:adversarial}).
+Templates that mean ``incentre'' specifically should pair with three \propname{same\_side} co-checks ensuring \texttt{p} is on the same side of each side-line as the opposite vertex.
+
+\subsection{Source-string predicates (decided against the TikZ source)}
+
+\subsubsection{\propname{label\_present}}
+\label{app:pred:label_present}
+
+\noindent\textbf{Signature.}\quad \texttt{label\_present(["name"])}.
+
+\noindent\textbf{Semantics.}\quad A label primitive for the named point appears in the TikZ source.
+
+\noindent\textbf{Decision rule.}\quad Scan extracted labels (\texttt{tikz\_extraction.extract\_labels}) for \texttt{label\_point} and \texttt{label\_points} entries whose target name matches via \texttt{point\_names\_match} (case-insensitive, ignoring \LaTeX-math escapes).
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:529}.
+
+\noindent\textbf{Soft spots.}\quad This is a TikZ-source check, not a render check: a label primitive that exists in the source but is positioned outside the canvas, hidden by overlap, or otherwise visually invisible \emph{still passes}.
+This is intentional: the predicate verifies the model's intent, not the renderer's layout.
+Most scenarios use the dedicated \texttt{required\_labels} field (graded by \texttt{validate\_required\_labels}) rather than the symbolic-predicate form, which is why \propname{label\_present} appears infrequently in scenarios released as part of v1.
+Both forms decide the same condition.
+
+\subsubsection{\propname{mark\_present}}
+\label{app:pred:mark_present}
+
+\noindent\textbf{Signature.}\quad \texttt{mark\_present(["kind", "vertex"])} where \texttt{"kind"} is one of \texttt{"right\_angle"}, \texttt{"angle"}, \texttt{"length"}, \texttt{"tick"}.
+
+\noindent\textbf{Semantics.}\quad A mark primitive of the requested kind, attached to the named vertex, appears in the TikZ source.
+
+\noindent\textbf{Decision rule.}\quad Scan extracted marks (\texttt{tikz\_extraction.extract\_marks}) for entries whose \texttt{type} matches \texttt{kind} and whose \texttt{vertex}, \texttt{from}, or \texttt{to} field name-matches the vertex argument.
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:535}.
+
+\noindent\textbf{Soft spots.}\quad As with \propname{label\_present}, this is a source-string check: a mark primitive that would render off-canvas or that uses a non-standard TikZ command not recognised by the extractor will fail to register.
+Per \cref{sec:hardening}, no observed pilot record fails because a mark was rendered via raw \texttt{\textbackslash draw} primitives instead of the \texttt{\textbackslash tkzMark*} family the extractor recognises; the planned render-aware variant (parsing the rendered SVG for the actual right-angle glyph or tick stroke) is deferred to v1.1.
+
+\subsection{Schema-reserved predicates (declared in the IR layer, not yet wired into the eval verifier)}
+\label{app:reserved_predicates}
+
+The IR layer (\texttt{ir/checks.py}) defines four additional predicates that appear in scenario YAML files but are currently \emph{silently skipped} by the eval-side verifier (\texttt{validate\_geometric\_property} returns \texttt{None}, which downgrades the scenario from \texttt{pass} to \texttt{soft\_pass}).
+We document them here for two reasons: (i) for transparency about what is and is not currently graded; (ii) because they are committed targets for v1.1 and any \GeoGen-family benchmark that adopts the IR-side checker (used internally by the \structured strategy for self-validation before render) already supports them.
+
+\paragraph{\propname{centroid}}
+\noindent\textbf{Signature.}\quad \texttt{centroid([g, a, b, c])}.
+\textbf{Semantics.}\quad $g = (a + b + c)/3$.
+\textbf{Status.}\quad Used in 22 templated scenarios (medians/centroid template family).
+Currently silent-skipped; checks of this type contribute to \texttt{soft\_pass}, not \texttt{pass}.
+Implementation in \texttt{ir/checks.py} is straightforward (componentwise distance to the average of the three vertex coordinates) and will be ported to \texttt{util/tikz\_geometry.py} in v1.1.
+
+\paragraph{\propname{opposite\_side}, \propname{same\_side}}
+\noindent\textbf{Signature.}\quad \texttt{opposite\_side([p, q, line\_a, line\_b])} and similarly \texttt{same\_side}.
+\textbf{Semantics.}\quad The signed cross product $\vec{(\text{line\_a})(\text{line\_b})} \times \vec{(\text{line\_a})\,p}$ has the opposite (resp.\ same) sign as the corresponding quantity for $q$.
+\textbf{Status.}\quad Implemented in the IR-side checker (\texttt{ir/checks.py:154,169}) but not currently emitted by any v1 scenario.
+Designed to be paired with \propname{angle\_bisector}, \propname{equidistant\_from\_sides}, and other predicates whose soft spots are addressed by adding an orientation co-check (\cref{tab:adversarial}).
+
+\paragraph{\propname{not\_between}}
+\noindent\textbf{Signature.}\quad \texttt{not\_between([d, b, c])}.
+\textbf{Semantics.}\quad The negation of \propname{point\_on\_segment}: $d$ may be on line $\overleftrightarrow{bc}$ but is \emph{not} on segment $\overline{bc}$.
+\textbf{Status.}\quad Currently neither implemented in the eval verifier nor emitted by v1 scenarios; reserved as a v1.1 negative-incidence primitive for templates whose construction places a point on a line extension (e.g., the foot of an altitude that falls outside the triangle's base segment).
+
+\subsection{Tolerance and the verdict ladder}
+
+All symbolic predicates use the same default tolerance $\tau = 5\times 10^{-3}$ in unit-coordinate space.
+A scenario YAML may override this per-check via the \texttt{tol} field; in v1, $13/801$ scenarios use a per-check tolerance, all loosenings (e.g., \texttt{tol: 0.05}) for predicates over coordinates produced by trigonometric formulas where TikZ's printf-style \texttt{cos(35.0)} introduces a $\sim$1\% rounding step.
+We chose absolute (not relative) tolerance because every \GeoGenBench scenario keeps coordinates in $[-10, 10]$ and a single uniform threshold simplifies adversarial analysis (\cref{ssec:adversarial}).
+For \GeoGen instantiations spanning wider coordinate ranges (architectural drawings, astronomical diagrams), a relative tolerance regime is the obvious extension.
+
+A predicate's verdict is one of:
+\begin{itemize}
+\item \texttt{True} --- decision rule passed within $\tau$;
+\item \texttt{False} --- decision rule failed;
+\item \texttt{None} --- a required input coordinate was not in $\mathbf{X}$ (extractor failure or unimplemented derived-point construction), or, for \propname{label\_present}/\propname{mark\_present}, the TikZ source was not provided.
+\end{itemize}
+A \texttt{None} verdict downgrades the scenario from \texttt{pass} to \texttt{soft\_pass}; only \texttt{False} causes \texttt{fail}.
+The \cref{sec:hardening} pass closed 13 \texttt{None}-verdicts in the pilot ($4.1\%$); the schema-reserved predicates above are the remaining known source of \texttt{None} verdicts in \GeoGenBench v1.
