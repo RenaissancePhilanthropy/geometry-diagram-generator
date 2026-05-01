@@ -75,9 +75,13 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             case ir.RightAngle(angle=angle):
                 av = _angle_at(sym[angle.a], sym[angle.o], sym[angle.b])
                 ok = abs(av - math.pi / 2) < t
-                msg = "" if ok else (
-                    f"Angle {angle.a}-{angle.o}-{angle.b} is {math.degrees(av):.3f}°, not 90°"
-                )
+                if ok:
+                    msg = ""
+                else:
+                    msg = f"Angle {angle.a}-{angle.o}-{angle.b} is {math.degrees(av):.3f}°, not 90°"
+                    cands = _candidate_angles_at(angle.o, sym, 90.0, t)
+                    if cands:
+                        msg += f" | right angles at {angle.o}: {', '.join(cands)}"
 
             case ir.AngleEqual(a1=a1, a2=a2):
                 v1 = _angle_at(sym[a1.a], sym[a1.o], sym[a1.b])
@@ -381,13 +385,14 @@ def _validate_triple(
     errors: list[str],
 ) -> None:
     a, o, b = angle.a, angle.o, angle.b
+    hint = f" (to mark an angle at {o}, draw a segment from {o} to each leg point)"
     if frozenset([a, o]) not in pairs:
         errors.append(
-            f"{kind}: point {a!r} does not lie on any line/segment/ray through vertex {o!r}"
+            f"{kind}: point {a!r} does not lie on any line/segment/ray through vertex {o!r}{hint}"
         )
     if frozenset([b, o]) not in pairs:
         errors.append(
-            f"{kind}: point {b!r} does not lie on any line/segment/ray through vertex {o!r}"
+            f"{kind}: point {b!r} does not lie on any line/segment/ray through vertex {o!r}{hint}"
         )
 
 

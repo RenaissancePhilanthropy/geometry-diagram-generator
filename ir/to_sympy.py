@@ -103,7 +103,10 @@ def compile_defs(
     for stmt in diagram.define:
         if isinstance(stmt, ir.PolygonExterior):
             names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
-            for vname in names:
+            # Only register NEW vertices (skip base vertices a=names[0], b=names[1]).
+            # Base vertices are inputs from a prior statement; registering them here
+            # would overwrite the parent polygon's ownership and create a self-loop.
+            for vname in names[2:]:
                 if vname not in all_ids:  # only synthesized names, not real DefStmts
                     poly_vertex_to_poly[vname] = stmt.id
         if isinstance(stmt, ir.PolygonOnEdge):
