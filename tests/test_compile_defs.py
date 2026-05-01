@@ -926,6 +926,67 @@ class TestPolygonExterior:
         with pytest.raises(IRCompileError):
             compile_defs(DiagramIR(define=stmts))
 
+    def test_chained_polygon_exterior_no_circular_dependency(self):
+        """Two polygon_exterior ops sharing base vertices must not create a self-loop.
+
+        Regression test: previously the second polygon_exterior overwrote the
+        poly_vertex_to_poly entries for its base vertices (D, E), making the
+        dependency resolver think sq_DEFG depended on itself.
+        """
+        stmts = [
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=0, y=0),
+            PointFixed(id="C", x=4, y=0),
+            # Square on edge B-C, exterior to A
+            PolygonExterior(id="sq_BC", a="B", b="C", ref="A", sides=4),
+            # Second square on edge formed by new vertices of sq_BC, exterior to B
+            PolygonExterior(
+                id="sq_DE",
+                a="sq_BC_v2",
+                b="sq_BC_v3",
+                ref="B",
+                sides=4,
+            ),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert isinstance(sym["sq_BC"], spg.Polygon)
+        assert isinstance(sym["sq_DE"], spg.Polygon)
+        # All new vertices from both polygons must be registered
+        for name in ("sq_BC_v2", "sq_BC_v3", "sq_DE_v2", "sq_DE_v3"):
+            assert name in sym, f"{name} missing from sym"
+
+    def test_chained_polygon_exterior_explicit_vertex_names(self):
+        """Chained polygon_exterior with explicit vertex_names (e.g. ['D','E','F','G']).
+
+        Regression test: when vertex_names lists all n vertices including the base
+        pair, registering those base names for the second polygon overwrote their
+        parent polygon's ownership, causing a spurious self-loop in toposort.
+        """
+        stmts = [
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=0, y=0),
+            PointFixed(id="C", x=4, y=0),
+            # Square with explicit names for all 4 vertices
+            PolygonExterior(
+                id="sq_CBDE",
+                a="C", b="B", ref="A", sides=4,
+                vertex_names=["C", "B", "D", "E"],
+            ),
+            # Second square using D, E as its base — explicit names for all 4
+            PolygonExterior(
+                id="sq_DEFG",
+                a="D", b="E", ref="C", sides=4,
+                vertex_names=["D", "E", "F", "G"],
+            ),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        for name in ("D", "E", "F", "G", "sq_CBDE", "sq_DEFG"):
+            assert name in sym, f"{name} missing from sym"
+        # D and E are outputs of sq_CBDE; they must equal sq_CBDE's vertices[2]/[3]
+        cbde_verts = sym["sq_CBDE"].vertices
+        assert float(sym["D"].distance(cbde_verts[2]).evalf()) < 1e-9
+        assert float(sym["E"].distance(cbde_verts[3]).evalf()) < 1e-9
+
     def test_sides_less_than_3_raises(self):
         from ir.errors import IRCompileError
         stmts = [
@@ -1058,3 +1119,180 @@ class TestToposort:
         # C should be the mirror of D over the y-axis (perpendicular bisector of AB)
         assert approx(float(sym["C"].x), 1.0)   # mirrored: -1 -> +1
         assert approx(float(sym["C"].y), 2.0)   # y unchanged
+
+    def test_arc_with_rotation_forward_ref(self):
+        """Arc defined before its end point (a PointRotate) — topo sort must reorder."""
+        from ir.ir import ArcCenterStartEnd
+        import math
+        stmts = [
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),  # B not yet defined
+            PointRotate(id="B", center="O", source="A", angle=math.pi / 4),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert "arc1" in sym
+
+
+# ---------------------------------------------------------------------------
+# def_references for ArcCenterStartEnd
+# ---------------------------------------------------------------------------
+
+def test_def_references_arc_includes_start_end():
+    from ir.refs import def_references
+    from ir.ir import ArcCenterStartEnd
+    refs = def_references(ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"))
+    assert refs == {"O", "A", "B"}
+
+
+# ---------------------------------------------------------------------------
+# PolygonOnEdge compilation
+# ---------------------------------------------------------------------------
+
+def test_polygon_on_edge_equilateral_triangle_above():
+    """Equilateral triangle on AB (ref below) → C above the baseline."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),  # below AB → triangle goes above
+        PolygonOnEdge(
+            id="tri",
+            a="A", b="B", ref="R",
+            vertex_names=["A","B","C"],
+            side_lengths=[5.0, 5.0],   # BC and CA
+            angles=[60.0, 60.0, 60.0],
+        ),
+    ]
+    sym = compile_defs(DiagramIR(define=defs))
+    assert "C" in sym
+    cy = float(sym["C"].y.evalf())
+    assert cy > 0, f"C.y={cy:.4f} should be > 0 (above AB)"
+    # |AC| ≈ 5, |BC| ≈ 5
+    ac = float(sym["A"].distance(sym["C"]).evalf())
+    bc = float(sym["B"].distance(sym["C"]).evalf())
+    assert abs(ac - 5.0) < 1e-3, f"|AC|={ac:.6f}"
+    assert abs(bc - 5.0) < 1e-3, f"|BC|={bc:.6f}"
+
+def test_polygon_on_edge_ref_flips_side():
+    """Flipping ref_point to the other side places the polygon on the other side."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs_ref_below = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0]),
+    ]
+    defs_ref_above = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=1.0),  # above AB
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0]),
+    ]
+    sym_below = compile_defs(DiagramIR(define=defs_ref_below))
+    sym_above = compile_defs(DiagramIR(define=defs_ref_above))
+    cy_ref_below = float(sym_below["C"].y.evalf())
+    cy_ref_above = float(sym_above["C"].y.evalf())
+    assert cy_ref_below > 0, f"ref below → C above: cy={cy_ref_below:.4f}"
+    assert cy_ref_above < 0, f"ref above → C below: cy={cy_ref_above:.4f}"
+
+def test_polygon_on_edge_claimed_base_length_wrong_raises():
+    """Wrong claimed_base_length raises IRCompileError with hint."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    from ir.errors import IRCompileError
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A","B","C"], side_lengths=[5.0, 5.0],
+            angles=[60.0, 60.0, 60.0],
+            claimed_base_length=4.0),  # wrong: actual |AB|=5
+    ]
+    with pytest.raises(IRCompileError, match="Omit side_lengths"):
+        compile_defs(DiagramIR(define=defs))
+
+def test_polygon_on_edge_parallelogram_correct_shape():
+    """Parallelogram anchored to a base edge has correct side lengths."""
+    from ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="para", a="A", b="B", ref="R",
+            vertex_names=["A","B","C","D"],
+            side_lengths=[5.0, 5.0, 5.0],  # BC, CD, DA
+            angles=[100.0, 80.0, 100.0, 80.0]),
+    ]
+    sym = compile_defs(DiagramIR(define=defs))
+    assert "C" in sym and "D" in sym
+    for p1_id, p2_id, expected in [("A","B",5.0),("B","C",5.0),("C","D",5.0),("D","A",5.0)]:
+        d = float(sym[p1_id].distance(sym[p2_id]).evalf())
+        assert abs(d - expected) < 1e-3, f"|{p1_id}{p2_id}|={d:.4f}, expected {expected}"
+
+
+def test_sector_ir_kind():
+    from ir.ir import SectorCenterStartEnd
+    s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B")
+    assert s.kind == "sector_center_start_end"
+    assert s.reflex is False
+
+
+def test_sector_ir_reflex_flag():
+    from ir.ir import SectorCenterStartEnd
+    s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B", reflex=True)
+    assert s.reflex is True
+
+
+def test_sector_compiles_to_sector_wrapper():
+    from ir.ir import PointFixed, SectorCenterStartEnd
+    from ir.to_sympy import Sector
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="B", x=0, y=3),
+        SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+    )
+    assert "sec" in sym
+    sector = sym["sec"]
+    assert isinstance(sector, Sector)
+    assert float(sector.radius) == pytest.approx(3.0)
+    assert sector.reflex is False
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: LinearEntity ValueError → descriptive IRCompileError
+# ---------------------------------------------------------------------------
+
+def test_intersection_circle_and_line_normal():
+    """Circle-line intersection with a proper LineThrough produces two points."""
+    from ir.ir import PickIndex
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="P", x=-1, y=0),
+        PointFixed(id="Q", x=1, y=0),
+        CircleCenterRadius(id="c", center="O", radius=3),
+        LineThrough(id="L", p="P", q="Q"),
+        PointIntersection(id="X", obj1="c", obj2="L", pick=PickIndex(k=0)),
+    )
+    assert "X" in sym
+    assert isinstance(sym["X"], spg.Point)
+
+
+def test_intersection_two_circles_descriptive_error_on_no_points():
+    """Two non-intersecting circles raise IntersectionError with meaningful message."""
+    from ir.errors import IntersectionError
+    with pytest.raises(IntersectionError, match="no intersection"):
+        _compile(
+            PointFixed(id="O1", x=0, y=0),
+            PointFixed(id="O2", x=10, y=0),
+            CircleCenterRadius(id="c1", center="O1", radius=1),
+            CircleCenterRadius(id="c2", center="O2", radius=1),
+            PointIntersection(id="X", obj1="c1", obj2="c2"),
+        )
+

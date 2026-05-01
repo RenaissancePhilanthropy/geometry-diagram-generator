@@ -1,0 +1,71 @@
+name: parallel_lines_circle
+description: "Circle with a chord AC and a parallel line through center O, showing equal arcs"
+tags: [circle, chord, parallel, arc, diameter, intermediate]
+context: "Circle with center O. Chord AC. A line through O parallel to AC intersects the circle at D and E."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+example:
+  mode: abstract
+  construction:
+    # Reference point on circle at 0° (used for rotations)
+    - op: point
+      id: ref
+      coords: [3, 0]
+      visible: false
+    # A at 180° (left), B at 0° (right) — diameter
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 180
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 0
+    - op: segment
+      id: diam_AB
+      endpoints: [A, B]
+    # C at 60° on the circle
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 60
+    - op: segment
+      id: chord_AC
+      endpoints: [A, C]
+    # DE passes through O, parallel to AC.
+    # AC direction = 60° from horizontal, so D is at 210° and E is at 30° on the circle.
+    - op: rotation
+      id: D
+      point: ref
+      center: O
+      angle: 210
+    - op: rotation
+      id: E
+      point: ref
+      center: O
+      angle: 30
+    - op: segment
+      id: chord_DE
+      endpoints: [D, E]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_parallel
+        segments: [[A, C], [D, E]]
+notes:
+  - "A at 180°, B at 0° — diameter. C at 60° on the circle. Use rotation ops for exact coordinates."
+  - "DE is parallel to AC and passes through O: D at 210° and E at 30° lie on the same chord direction as AC."
+  - "Proof: direction AC = (cos60°-cos180°, sin60°-sin180°) ∝ (cos30°, sin30°) — same as direction DE. ✓"
+  - "Arc AD = arc BE (equal arcs cut by parallel chord and parallel line through center)."
+  - "ONLY add mark_parallel — do NOT add angle marks comparing angles at A and O; those will fail geometric checks."
+  - "mark_parallel [[A,C],[D,E]]: both point left→right for correct arrow orientation."

@@ -1,0 +1,79 @@
+name: ssa_ambiguity
+description: "SSA ambiguity diagram: given angle A and sides AB and BC, a circle from B shows two possible triangle positions"
+tags: [triangle, congruence, ambiguity, SSA, circle, intermediate]
+context: "No prior objects. Shows why SSA does not guarantee triangle congruence."
+setup: []
+example:
+  mode: grid
+  construction:
+    - op: point
+      id: A
+      coords: [0, 0]
+    # B is along the base ray from A
+    - op: point
+      id: B
+      coords: [8, 0]
+    # ray_far: a point far along the 40° ray from A — must extend beyond both intersections
+    - op: point
+      id: ray_far
+      coords: [9.0, 7.55]
+      visible: false
+    - op: segment
+      id: seg_ray
+      endpoints: [A, ray_far]
+    # Base segment AB
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    # Circle centered at B with radius 6 (> AB·sin(40°) ≈ 5.14, guaranteeing two intersections)
+    - op: circle
+      id: circ_B
+      center: B
+      radius: 6
+    # Use line_through to make the ray available as a line object for intersection
+    - op: line_through
+      id: ray_line
+      points: [A, ray_far]
+      visible: false
+    # C1: acute case — intersection closest to A
+    - op: intersection
+      id: C1
+      of: [ray_line, circ_B]
+      selector:
+        kind: closest_to
+        p: A
+    # C2: obtuse case — the other intersection, beyond C1 from A
+    - op: intersection
+      id: C2
+      of: [ray_line, circ_B]
+      selector:
+        kind: beyond
+        from_point: A
+        past_point: C1
+    # Triangle sides
+    - op: segment
+      id: seg_BC1
+      endpoints: [B, C1]
+    - op: segment
+      id: seg_BC2
+      endpoints: [B, C2]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_angle
+        a: B
+        vertex: A
+        b: ray_far
+        group: 1
+      - kind: mark_equal_lengths
+        segments: [[B, C1], [B, C2]]
+        group: 1
+notes:
+  - "CRITICAL: choose radius > AB·sin(angle_A) to guarantee two intersections. Here AB=8, angle_A=40°, so min_radius ≈ 5.14. Use radius 6."
+  - "C1 and C2 are computed via intersection ops — DO NOT hardcode their coordinates."
+  - "line_through makes the ray available as a line object; then intersect with circ_B using selectors."
+  - "C1 = closest_to A (acute case, nearer intersection). C2 = beyond C1 from A (obtuse case, farther intersection)."
+  - "ray_far is placed far along the 40° ray: coords = (9·cos40°, 9·sin40°) ≈ (6.89, 5.79) — must extend beyond C2."
+  - "seg_BC1 and seg_BC2 are both radii of circ_B, so BC1 = BC2 = 6. Mark them equal with tick marks."
+  - "The two possible triangles ABC1 (acute at C1) and ABC2 (obtuse at C2) share angle A and side lengths AB and BC."

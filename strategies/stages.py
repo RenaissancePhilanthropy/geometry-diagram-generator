@@ -17,13 +17,16 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
 from util.tikz_renderer import render_tikz
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
+from pydantic_ai.settings import ModelSettings
 from .base import DEFAULT_AGENT_MODEL
 from .instructions import (
     DRAFT_INSTRUCTIONS,
@@ -35,6 +38,32 @@ from .instructions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Shared result type for raw (non-IR) strategies
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RawRunResult:
+    """Minimal run result compatible with dry_run._process_one expectations."""
+    svg: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def extract_svg_from_messages(messages) -> str:
+    """Return the SVG string from the last successful render_diagram tool return."""
+    for msg in reversed(messages):
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart) and part.tool_name == "render_diagram":
+                    try:
+                        return json.loads(part.content)["svg"]
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+    return ""
+
 
 # Default retry budgets used by register_render_tool_with_plan_check
 COMPILE_RETRIES = 2
@@ -155,23 +184,23 @@ def register_render_tool_with_plan_check(
 # Stage functions
 # ---------------------------------------------------------------------------
 
-async def run_draft(prompt: str, model: str = DEFAULT_AGENT_MODEL):
+async def run_draft(prompt: str, model: str = DEFAULT_AGENT_MODEL, model_settings: ModelSettings = {}):
     """Draft stage: generate TikZ and render it.
 
     Returns an AgentRunResult whose .all_messages() and .usage() can be passed
     to run_revision for chaining.
     """
-    agent = Agent(model, instructions=DRAFT_INSTRUCTIONS)
+    agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=model_settings)
     register_render_tool(agent)
     return await agent.run(prompt)
 
 
-async def run_plan(prompt: str, model: str = DEFAULT_AGENT_MODEL):
+async def run_plan(prompt: str, model: str = DEFAULT_AGENT_MODEL, model_settings: ModelSettings = {}):
     """Plan stage: produce a GeometricPlan for the given prompt.
 
     Returns (GeometricPlan, AgentRunResult).
     """
-    agent = Agent(model, output_type=GeometricPlan, instructions=PLANNER_INSTRUCTIONS)
+    agent = Agent(model, output_type=GeometricPlan, instructions=PLANNER_INSTRUCTIONS, model_settings=model_settings)
     result = await agent.run(prompt)
     logger.info(
         "run_plan: %d points, %d constructions, %d expected_properties",
@@ -186,13 +215,14 @@ async def run_code_from_plan(
     plan: GeometricPlan,
     prompt: str,
     model: str = DEFAULT_AGENT_MODEL,
+    model_settings: ModelSettings = {},
 ):
     """Code stage: translate a GeometricPlan into TikZ and render it.
 
     Includes geometry self-check with separate retry budgets for compile errors
     and geometric constraint failures.
     """
-    agent = Agent(model, instructions=CODE_FROM_PLAN_INSTRUCTIONS)
+    agent = Agent(model, instructions=CODE_FROM_PLAN_INSTRUCTIONS, model_settings=model_settings)
     register_render_tool_with_plan_check(agent, plan)
     user_message = (
         f"Original request: {prompt}\n\n"
@@ -208,6 +238,7 @@ async def run_revision(
     message_history,
     usage,
     force_rerender: bool = True,
+    model_settings: ModelSettings = {},
 ):
     """Revision stage: review and re-render the diagram.
 
@@ -220,7 +251,7 @@ async def run_revision(
             If False, the agent may skip re-rendering if satisfied.
     """
     instructions = REVISION_FORCE_INSTRUCTIONS if force_rerender else REVISION_INSTRUCTIONS
-    agent = Agent(model, instructions=instructions)
+    agent = Agent(model, instructions=instructions, model_settings=model_settings)
     register_render_tool(agent)
     return await agent.run(
         REVISION_PROMPT,

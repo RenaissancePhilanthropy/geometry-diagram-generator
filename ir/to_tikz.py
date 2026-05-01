@@ -8,12 +8,14 @@ import sympy as sp
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import SymTable
+from ir.to_sympy import Arc, Sector, SymTable
 from ir.render_util import (
     BOUNDS_PADDING,
+    arc_params,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    expand_bounds_for_geometry,
     ellipse_params,
     extract_coords,
     fmt_label_num,
@@ -38,6 +40,7 @@ _fmt_num = fmt_num
 _fmt_label_num = fmt_label_num
 _compute_bounds = compute_bounds
 _effective_canvas_bounds = effective_canvas_bounds
+_expand_bounds_for_geometry = expand_bounds_for_geometry
 _orient_angle = orient_angle
 _second_line_point = second_line_point
 _poly_verts = poly_verts
@@ -83,6 +86,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
                 ymin = py - _BOUNDS_PADDING
             if py > ymax:
                 ymax = py + _BOUNDS_PADDING
+        xmin, xmax, ymin, ymax = _expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
     else:
         xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
     lines.append(
@@ -110,19 +114,29 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
         "fill": 0,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
         "draw_points": 2,
-        "label_point": 3, "label_angle": 3, "label_segment": 3,
+        "label_point": 3, "label_angle": 3, "label_segment": 3, "label_free_text": 3,
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
     # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
+    _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
         if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_marks = {g: _MARK_SYMBOLS[i % len(_MARK_SYMBOLS)] for i, g in enumerate(seg_groups)}
+    group_marks: dict[str, str] = {}
+    equal_idx = 0
+    parallel_idx = 0
+    for g in seg_groups:
+        if g.startswith("parallel"):
+            group_marks[g] = _PARALLEL_MARKS[parallel_idx % len(_PARALLEL_MARKS)]
+            parallel_idx += 1
+        else:
+            group_marks[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
+            equal_idx += 1
 
     for op in sorted_ops:
         chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)
@@ -134,6 +148,47 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
 # ---------------------------------------------------------------------------
 # Render op emitters
 # ---------------------------------------------------------------------------
+
+def _obj_to_tikz_path(
+    obj_id: str,
+    sym: SymTable,
+    stmt_by_id: dict,
+    helpers: dict,
+) -> str | None:
+    """Return a TikZ path fragment for a shape, for use in even-odd compound fills.
+
+    Returns None for unsupported shape types (e.g. lines).
+    """
+    sym_obj = sym.get(obj_id)
+    if sym_obj is None:
+        return None
+    if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+        verts = _poly_verts(obj_id, stmt_by_id)
+        pts = " -- ".join(
+            f"({fmt_num(_f(sym[v].x))},{fmt_num(_f(sym[v].y))})" for v in verts
+        )
+        return f"{pts} -- cycle"
+    if isinstance(sym_obj, spg.Circle):
+        cx = fmt_num(_f(sym_obj.center.x))
+        cy = fmt_num(_f(sym_obj.center.y))
+        r = fmt_num(_f(sym_obj.radius))
+        return f"({cx},{cy}) circle[radius={r}]"
+    if isinstance(sym_obj, spg.Ellipse):
+        cx, cy, a, b = ellipse_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) "
+            f"ellipse[x radius={fmt_num(a)},y radius={fmt_num(b)}]"
+        )
+    if isinstance(sym_obj, Sector):
+        cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+            f"({fmt_num(sx)},{fmt_num(sy)}) "
+            f"arc[start angle={fmt_num(start_deg)},"
+            f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle"
+        )
+    return None
+
 
 def _emit_op(
     op: Any,
@@ -180,6 +235,26 @@ def _emit_op(
                     f"\\draw{style_str} ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
                     f"({fmt_num(a)} and {fmt_num(b)});"
                 )
+            elif isinstance(sym_obj, Arc):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} ({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}];"
+                )
+            elif isinstance(sym_obj, Sector):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
+                )
             else:
                 out.append(f"% Draw: unhandled type {type(sym_obj).__name__} for {obj_id!r}")
 
@@ -187,7 +262,7 @@ def _emit_op(
             sopts = _style_str(style, styles)
             out.append(f"\\tkzDrawPoints{sopts}({','.join(points)})")
 
-        case ir.Fill(obj=obj_id, opacity=opacity, style=style):
+        case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
                 msg = f"Skipping render op Fill for undefined object '{obj_id}'"
                 logger.warning(msg)
@@ -197,9 +272,38 @@ def _emit_op(
             sym_obj = sym[obj_id]
             if style and style in styles:
                 fill_opts = _style_str(style, styles)
+                style_inner = fill_opts[1:-1] if fill_opts else f"fill=blue!20,opacity={opacity}"
             else:
-                fill_opts = f"[fill=blue!20,opacity={opacity}]"
-            if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
+                style_inner = f"fill=blue!20,opacity={opacity}"
+                fill_opts = f"[{style_inner}]"
+
+            if holes:
+                # Even-odd compound fill using raw \fill[even odd rule].
+                outer_path = _obj_to_tikz_path(obj_id, sym, stmt_by_id, helpers)
+                if outer_path is None:
+                    msg = f"Fill with holes: unsupported outer shape type for '{obj_id}'"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    return out
+                path_parts = [outer_path]
+                for hole_id in holes:
+                    if hole_id not in sym:
+                        msg = f"Fill hole '{hole_id}' is undefined; skipping hole"
+                        logger.warning(msg)
+                        if warnings is not None:
+                            warnings.append(msg)
+                        continue
+                    hole_path = _obj_to_tikz_path(hole_id, sym, stmt_by_id, helpers)
+                    if hole_path is None:
+                        msg = f"Fill hole '{hole_id}' has unsupported shape type; skipping"
+                        logger.warning(msg)
+                        if warnings is not None:
+                            warnings.append(msg)
+                        continue
+                    path_parts.append(hole_path)
+                out.append(f"\\fill[{style_inner},even odd rule] {' '.join(path_parts)};")
+            elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = _poly_verts(obj_id, stmt_by_id)
                 out.append(f"\\tkzFillPolygon{fill_opts}({','.join(verts)})")
             elif isinstance(sym_obj, spg.Circle):
@@ -207,10 +311,18 @@ def _emit_op(
                 out.append(f"\\tkzFillCircle{fill_opts}({center},{through})")
             elif isinstance(sym_obj, spg.Ellipse):
                 cx, cy, a, b = ellipse_params(obj_id, sym)
-                style_inner = fill_opts[1:-1] if fill_opts else "fill=blue!20,opacity=0.3"
                 out.append(
                     f"\\fill[{style_inner}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
                     f"({fmt_num(a)} and {fmt_num(b)});"
+                )
+            elif isinstance(sym_obj, Sector):
+                cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
+                out.append(
+                    f"\\fill[{style_inner}] "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
                 )
 
         case ir.MarkRightAngles(angles=angles, style=style):
@@ -272,7 +384,7 @@ def _emit_op(
                 a, b = _seg_pts(seg_id, stmt_by_id)
                 out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
-        case ir.LabelPoint(p=p, text=text, pos=pos, style=style):
+        case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
                 msg = f"Skipping render op LabelPoint for undefined object '{p}'"
                 logger.warning(msg)
@@ -280,6 +392,11 @@ def _emit_op(
                     warnings.append(msg)
                 return out
             label = text if text is not None else p
+            if show_coords and isinstance(sym.get(p), spg.Point):
+                pt_obj = sym[p]
+                _cx: Any = pt_obj.x
+                _cy: Any = pt_obj.y
+                label = label + _tikz_fmt_coord_pair(float(_cx.evalf()), float(_cy.evalf()))
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")
 
@@ -312,6 +429,22 @@ def _emit_op(
             sopts = f"[pos={pos}]" if pos is not None else ""
             out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${text}$}}")
 
+        case ir.LabelFreeText(text=text, at=at, centroid_of=cof):
+            if at is not None:
+                x, y = float(at[0]), float(at[1])
+            else:
+                obj = sym.get(cof)
+                if obj is None:
+                    msg = f"Skipping LabelFreeText: centroid_of '{cof}' not in sym"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    return out
+                verts = list(obj.vertices)
+                x = sum(_f(v.x) for v in verts) / len(verts)
+                y = sum(_f(v.y) for v in verts) / len(verts)
+            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{${text}$}};")
+
     return out
 
 
@@ -324,6 +457,19 @@ _TIKZ_COLOR_NAMES = {
     "yellow", "black", "white", "brown", "gray", "grey",
     "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
 }
+
+
+def _tikz_fmt_coord_val(v: float) -> str:
+    """Format a coordinate value: 1 decimal place when close to .0 or .5, else 2."""
+    rounded1 = round(v, 1)
+    if abs(v - rounded1) < 1e-9:
+        return f"{rounded1:g}"
+    return f"{round(v, 2):g}"
+
+
+def _tikz_fmt_coord_pair(x: float, y: float) -> str:
+    """Return a '(x, y)' string with appropriate precision."""
+    return f"({_tikz_fmt_coord_val(x)}, {_tikz_fmt_coord_val(y)})"
 
 
 def _style_str(style_key: str | None, styles: dict) -> str:

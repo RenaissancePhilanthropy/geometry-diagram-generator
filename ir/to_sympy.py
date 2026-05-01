@@ -16,6 +16,50 @@ from ir.refs import def_references
 SymTable = dict[str, Any]
 
 
+class Arc:
+    """Marker type for a circular arc in the symbol table.
+
+    SymPy has no native Arc type, so we store this lightweight wrapper.
+    ``center``, ``start``, ``end`` are SymPy ``Point`` objects, and
+    ``radius`` is a numeric (sympy expression) = ``center.distance(start)``.
+    The arc sweeps counter-clockwise from ``start`` to the point where the
+    ray ``center → end`` meets the circle.
+    """
+
+    __slots__ = ("center", "start", "end", "radius", "reflex")
+
+    def __init__(self, center: spg.Point, start: spg.Point, end: spg.Point, radius: Any, reflex: bool = False):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.radius = radius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"Arc(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
+
+
+class Sector:
+    """Marker type for a closed circular sector in the symbol table.
+
+    Represents the pie-slice region (center + arc). Like Arc, SymPy has no
+    native Sector type. Fields mirror Arc but the object is treated as a
+    closed fillable region rather than just the curved edge.
+    """
+
+    __slots__ = ("center", "start", "end", "radius", "reflex")
+
+    def __init__(self, center: spg.Point, start: spg.Point, end: spg.Point, radius: Any, reflex: bool = False):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.radius = radius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"Sector(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -52,10 +96,32 @@ def compile_defs(
     all_ids = {stmt.id for stmt in diagram.define}
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
+    # Build a mapping from polygon sub-vertex names → their parent polygon ID.
+    # PolygonExterior and PolygonOnEdge register sub-vertices in sym as a side effect,
+    # so any DefStmt that references a sub-vertex name needs to depend on the polygon.
+    poly_vertex_to_poly: dict[str, str] = {}
+    for stmt in diagram.define:
+        if isinstance(stmt, ir.PolygonExterior):
+            names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
+            # Only register NEW vertices (skip base vertices a=names[0], b=names[1]).
+            # Base vertices are inputs from a prior statement; registering them here
+            # would overwrite the parent polygon's ownership and create a self-loop.
+            for vname in names[2:]:
+                if vname not in all_ids:  # only synthesized names, not real DefStmts
+                    poly_vertex_to_poly[vname] = stmt.id
+        if isinstance(stmt, ir.PolygonOnEdge):
+            for vname in stmt.vertex_names[2:]:   # only new vertices
+                if vname not in all_ids:
+                    poly_vertex_to_poly[vname] = stmt.id
+
     # Build dependency graph and sort topologically so forward references work.
+    # Substitute polygon sub-vertex refs with their parent polygon so the sort
+    # correctly places the polygon before any statement that uses its vertices.
     graph: dict[str, set[str]] = {}
     for stmt in diagram.define:
-        graph[stmt.id] = def_references(stmt) & all_ids
+        raw_refs = def_references(stmt)
+        resolved = {poly_vertex_to_poly.get(r, r) for r in raw_refs}
+        graph[stmt.id] = resolved & all_ids
 
     try:
         order = list(TopologicalSorter(graph).static_order())
@@ -67,13 +133,22 @@ def compile_defs(
         stmt = stmts_by_id[sid]
         obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
         sym[stmt.id] = obj
-        # PolygonExterior: also register its computed vertices as sub-points
-        # v0=a, v1=b are already in sym; register v2..v_{n-1}
+        # PolygonExterior: also register its computed vertices as sub-points.
+        # Use explicit vertex_names if provided (lowerer fills these); otherwise
+        # fall back to the auto-generated {id}_v{i} pattern.
         if isinstance(stmt, ir.PolygonExterior) and isinstance(obj, spg.Polygon):
             for i, vertex in enumerate(obj.vertices):
-                sub_id = f"{stmt.id}_v{i}"
+                if stmt.vertex_names and i < len(stmt.vertex_names):
+                    sub_id = stmt.vertex_names[i]
+                else:
+                    sub_id = f"{stmt.id}_v{i}"
                 if sub_id not in sym:
                     sym[sub_id] = vertex
+        # PolygonOnEdge: register vertices[2..N-1] in sym
+        if isinstance(stmt, ir.PolygonOnEdge) and isinstance(obj, spg.Polygon):
+            for i, vname in enumerate(stmt.vertex_names):
+                if vname not in sym:
+                    sym[vname] = obj.vertices[i]
 
     return sym
 
@@ -163,8 +238,20 @@ def _compile_one(
             return getattr(tri, which)
 
         case ir.PointIntersection(obj1=obj1_id, obj2=obj2_id, pick=pick):
+            if obj1_id == obj2_id:
+                raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
-            raw = obj1.intersection(obj2)
+            try:
+                raw = obj1.intersection(obj2)
+            except ValueError as exc:
+                if "LinearEntity" in str(exc):
+                    raise IRCompileError(
+                        did,
+                        f"intersection failed: line/circle intersection received invalid arguments — "
+                        f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
+                        f"(underlying error: {exc})"
+                    ) from exc
+                raise
             # SymPy may return the geometry object itself (not a list) when objects
             # are identical (e.g. two equal circles → Circle, not []).
             candidates = raw if isinstance(raw, list) else []
@@ -244,6 +331,17 @@ def _compile_one(
 
         case ir.CircleThrough3(a=a_id, b=b_id, c=c_id):
             return spg.Circle(ref(a_id), ref(b_id), ref(c_id))
+
+        # --- Arcs ---
+        case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            r = c.distance(s)
+            return Arc(center=c, start=s, end=e, radius=r, reflex=reflex)
+
+        case ir.SectorCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            r = c.distance(s)
+            return Sector(center=c, start=s, end=e, radius=r, reflex=reflex)
 
         # --- Ellipses ---
         case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
@@ -333,6 +431,60 @@ def _compile_one(
                 new_v = prev2.rotate(rot_angle, prev1)
                 vertices.append(new_v)
             return spg.Polygon(*vertices)
+
+        case ir.PolygonOnEdge(a=a_id, b=b_id, ref=ref_id):
+            a_pt = ref(a_id)
+            b_pt = ref(b_id)
+            ref_pt = ref(ref_id)
+            n = len(stmt.vertex_names)
+
+            # Validate claimed base length if provided
+            if stmt.claimed_base_length is not None:
+                base_dist = float(a_pt.distance(b_pt).evalf())
+                if abs(base_dist - stmt.claimed_base_length) > 1e-4:
+                    raise IRCompileError(
+                        did,
+                        f"polygon_on_edge: claimed base length {stmt.claimed_base_length} "
+                        f"does not match actual |{a_id}–{b_id}| = {base_dist:.6f}. "
+                        f"Omit side_lengths[0] to let it be inferred automatically."
+                    )
+
+            # Determine orientation sign from ref_point
+            cross = _cross_sign(a_pt, b_pt, ref_pt)
+            cross_val = float(cross.evalf())
+            if abs(cross_val) < 1e-10:
+                raise IRCompileError(
+                    did, f"ref_point {ref_id!r} lies on line {a_id!r}–{b_id!r}; cannot determine side"
+                )
+            # sign: +1 = CCW turns (polygon to LEFT of a→b)
+            #       -1 = CW turns  (polygon to RIGHT of a→b)
+            # We want polygon on OPPOSITE side from ref_point.
+            # cross_val > 0 → ref is LEFT of a→b → polygon goes RIGHT → sign = -1
+            # cross_val < 0 → ref is RIGHT of a→b → polygon goes LEFT → sign = +1
+            sign = -1.0 if cross_val > 0 else 1.0
+
+            # Numeric base coordinates
+            ax = float(a_pt.x.evalf()); ay = float(a_pt.y.evalf())
+            bx = float(b_pt.x.evalf()); by = float(b_pt.y.evalf())
+            heading = math.degrees(math.atan2(by - ay, bx - ax))
+
+            # Turtle walk from b, turning at each vertex and walking the non-base sides
+            # vertices: [a, b, v2, v3, ..., v_{n-1}]
+            # side_lengths: [b→v2, v2→v3, ..., v_{n-1}→a]  (N-1 values)
+            vertices_pts = [a_pt, b_pt]
+            x, y = bx, by
+            for i in range(n - 1):
+                # Turn at vertex i+1 (angles[i+1])
+                exterior = sign * (180.0 - stmt.angles[i + 1])
+                heading += exterior
+                dx = stmt.side_lengths[i] * math.cos(math.radians(heading))
+                dy = stmt.side_lengths[i] * math.sin(math.radians(heading))
+                x += dx
+                y += dy
+                if i < n - 2:
+                    vertices_pts.append(spg.Point(sp.Float(x), sp.Float(y)))
+
+            return spg.Polygon(*vertices_pts)
 
         case _:
             raise IRCompileError(did, f"unhandled definition kind: {stmt.kind!r}")
@@ -551,7 +703,24 @@ def _apply_pick(
             seg = spg.Segment(a_pt, b_pt)
             between = [p for p in points if seg.contains(p)]
             if not between:
-                raise PickError(def_id, f"no candidate lies between {a_id!r} and {b_id!r}")
+                direction = b_pt - a_pt
+                seg_len_sq = float((direction.x**2 + direction.y**2).evalf())
+                def _param(p) -> float:
+                    if seg_len_sq < 1e-12:
+                        return 0.0
+                    dp = p - a_pt
+                    return float((dp.x * direction.x + dp.y * direction.y).evalf()) / seg_len_sq
+
+                if points:
+                    ts = [_param(p) for p in points]
+                    nearest_t = min(ts, key=lambda t: min(abs(t), abs(t - 1)))
+                    if nearest_t < 0:
+                        extra = f" (nearest candidate is before {a_id!r}, t\u2248{nearest_t:.2f})"
+                    else:
+                        extra = f" (nearest candidate is beyond {b_id!r}, t\u2248{nearest_t:.2f})"
+                else:
+                    extra = " (no intersection candidates at all)"
+                raise PickError(def_id, f"no candidate lies between {a_id!r} and {b_id!r}{extra}")
             return between[0]
 
         case ir.PickBeyond(from_point=from_id, past_point=past_id):
@@ -597,17 +766,43 @@ def _apply_pick(
         case ir.PickUpperOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]
+            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]  # type: ignore[union-attr]
             if not upper:
-                raise PickError(def_id, f"no candidate above directed line {a_id!r}→{b_id!r}")
+                _dx: Any = b_pt.x - a_pt.x
+                _dy: Any = b_pt.y - a_pt.y
+                angle_deg = math.degrees(math.atan2(float(_dy.evalf()), float(_dx.evalf())))
+                _rev = {id(v): k for k, v in sym.items() if isinstance(v, spg.Point)}
+                dists = ", ".join(
+                    f"{_rev.get(id(p), '?')}: {float(_cross_sign(a_pt, b_pt, p).evalf()):+.3f}"  # type: ignore[union-attr]
+                    for p in points
+                )
+                raise PickError(
+                    def_id,
+                    f"no candidate on the 'above' side of directed line {a_id!r}→{b_id!r} "
+                    f"(directed angle: {angle_deg:.1f}°). "
+                    f"Candidates and their signed distances: {dists}"
+                )
             return upper[0]
 
         case ir.PickLowerOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]
+            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]  # type: ignore[union-attr]
             if not lower:
-                raise PickError(def_id, f"no candidate below directed line {a_id!r}→{b_id!r}")
+                _dx: Any = b_pt.x - a_pt.x
+                _dy: Any = b_pt.y - a_pt.y
+                angle_deg = math.degrees(math.atan2(float(_dy.evalf()), float(_dx.evalf())))
+                _rev = {id(v): k for k, v in sym.items() if isinstance(v, spg.Point)}
+                dists = ", ".join(
+                    f"{_rev.get(id(p), '?')}: {float(_cross_sign(a_pt, b_pt, p).evalf()):+.3f}"  # type: ignore[union-attr]
+                    for p in points
+                )
+                raise PickError(
+                    def_id,
+                    f"no candidate on the 'below' side of directed line {a_id!r}→{b_id!r} "
+                    f"(directed angle: {angle_deg:.1f}°). "
+                    f"Candidates and their signed distances: {dists}"
+                )
             return lower[0]
 
         case ir.PickChain(rules=rules):

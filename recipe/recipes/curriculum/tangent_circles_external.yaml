@@ -1,0 +1,99 @@
+name: tangent_circles_external
+description: "Two circles externally tangent at point T, with a common external tangent segment AB"
+tags: [circle, tangent, external, common-tangent, intermediate]
+context: "Two circles with centers O1 and O2 that are externally tangent (touching at one point T). A common external tangent touches the smaller circle at A and larger at B."
+setup:
+  - op: point
+    id: O1
+    coords: [0, 0]
+  - op: point
+    id: O2
+    coords: [5, 0]
+  - op: circle
+    id: c1
+    center: O1
+    radius: 2
+  - op: circle
+    id: c2
+    center: O2
+    radius: 3
+example:
+  mode: grid
+  construction:
+    # Tangent point T: on segment O1O2, at distance r1=2 from O1
+    - op: intersection
+      id: T
+      of: [c1, c2]
+      selector:
+        kind: between
+        a: O1
+        b: O2
+    # Radii to T
+    - op: segment
+      id: seg_O1T
+      endpoints: [O1, T]
+    - op: segment
+      id: seg_O2T
+      endpoints: [O2, T]
+    # External center of similitude: E = (r1*O2 - r2*O1)/(r1-r2)
+    # With O1=(0,0), r1=2, O2=(5,0), r2=3: E = (2*(5,0) - 3*(0,0))/(2-3) = (-10, 0)
+    - op: point
+      id: E_sim
+      coords: [-10, 0]
+      visible: false
+    # Upper common external tangent from E_sim to c1 (upper side)
+    - op: tangent_line
+      id: tang_upper
+      circle: c1
+      from_point: E_sim
+      selector:
+        kind: upper_of_line
+        a: O1
+        b: O2
+      visible: false
+    # Tangent point A on c1 (upper)
+    - op: intersection
+      id: A
+      of: [tang_upper, c1]
+      selector:
+        kind: upper_of_line
+        a: O1
+        b: O2
+    # Tangent point B on c2 (same tangent line — intersect tang_upper with c2, not a new tangent)
+    - op: intersection
+      id: B
+      of: [tang_upper, c2]
+      selector:
+        kind: upper_of_line
+        a: O1
+        b: O2
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    # Radii to tangent points (showing perpendicularity)
+    - op: segment
+      id: seg_O1A
+      endpoints: [O1, A]
+    - op: segment
+      id: seg_O2B
+      endpoints: [O2, B]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_right_angle
+        a: A
+        vertex: O1
+        b: E_sim
+      - kind: mark_right_angle
+        a: B
+        vertex: O2
+        b: E_sim
+notes:
+  - "Externally tangent: distance O1O2 = r1 + r2 = 2 + 3 = 5. ✓"
+  - "Tangent point T: intersection of c1 and c2 using selector 'between O1 and O2'."
+  - "External center of similitude: E = (r1·O2 - r2·O1)/(r1 - r2). For r1=2, r2=3, O2=(5,0): E=(-10, 0)."
+  - "CRITICAL: tangent_line from E_sim to c1 only. Then intersect that SAME line with c2 for B — do NOT make a separate tangent_line to c2."
+  - "Use upper_of_line / lower_of_line to disambiguate. Only one external tangent is shown; add lower one similarly if needed."
+  - "mark_right_angle(A, O1, E_sim): radius O1A ⊥ tangent line. Same for O2B."
+  - "The internal tangent at T (just the touching point) is shown by seg_O1T and seg_O2T."

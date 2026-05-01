@@ -16,16 +16,6 @@ setup:
 example:
   mode: grid
   construction:
-    - op: point
-      id: O
-      coords: [0, 0]
-    - op: circle
-      id: c
-      center: O
-      radius: 2
-    - op: point
-      id: P
-      coords: [5, 0]
     - op: tangent_line
       id: t1
       circle: c

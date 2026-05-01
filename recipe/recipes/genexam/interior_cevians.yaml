@@ -1,0 +1,49 @@
+name: interior_cevians
+description: "Rectangle or square with points on its sides and interior segments (cevians) drawn, avoiding circular dependency"
+tags: [polygon, rectangle, square, interior-points, cevian, intermediate]
+context: "Given a rectangle with points on two of its sides and interior segments connecting them."
+example:
+  mode: abstract
+  construction:
+    - op: rectangle
+      id: sq
+      vertices: [A, B, C, D]
+      spec:
+        side_AB: 4
+        side_BC: 4
+      center: [2, 2]
+    - op: point_on_segment
+      id: E
+      segment: [A, B]
+      ratio: 0.6
+    - op: point_on_segment
+      id: F
+      segment: [B, C]
+      ratio: 0.4
+    - op: line_through
+      id: line_DE
+      points: [D, E]
+      visible: false
+    - op: line_through
+      id: line_AF
+      points: [A, F]
+      visible: false
+    - op: intersection
+      id: G
+      of: [line_DE, line_AF]
+    - op: segment
+      id: seg_DE
+      endpoints: [D, E]
+    - op: segment
+      id: seg_AF
+      endpoints: [A, F]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "CRITICAL: build the square first (rectangle op), then place side points (point_on_segment), then draw cevians. Never define the square in terms of derived points — that creates circular dependencies that prevent lowering."
+  - "rectangle op default layout (rotation=0): A top-left, B top-right, C bottom-right, D bottom-left. Side AB is the top edge, BC the right edge, CD the bottom edge, DA the left edge."
+  - "ratio on point_on_segment: 0.0 = first endpoint, 1.0 = second endpoint, 0.5 = midpoint."
+  - "For a square, use equal side_AB and side_BC in the rectangle spec. For a generic rectangle use different values."
+  - "To find where two cevians cross: define each as a line_through (visible: false) and use intersection. Draw the actual segments separately to avoid lines extending beyond the square."
+  - "This pattern applies to any polygon: construct the polygon first, then place side/interior points, then draw connectors — never the reverse."

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import subprocess
 import tempfile
 from fastapi import FastAPI, HTTPException
@@ -20,14 +21,24 @@ queue = asyncio.Queue(maxsize=QUEUE_SIZE)
 class RenderReq(BaseModel):
     tikz: str
     tkzelements: str | None = None  # optional block for tkz-elements
+    font_family: str | None = None
 
 TEMPLATE = r"""
-\documentclass[dvisvgm,border=0pt]{{standalone}}
+\documentclass[border=0pt]{{standalone}}
 \usepackage{{tikz}}
 \usepackage{{luacode}}
 \usepackage{{tkz-euclide}}
 \usepackage{{tkz-elements}}
 \usepackage{{amsmath}}
+\usepackage{{fontspec}}
+\setmainfont{{{font_family}}}[
+  UprightFont    = *-Regular,
+  BoldFont       = *-Bold,
+  ItalicFont     = *-Italic,
+  BoldItalicFont = *-BoldItalic,
+  Extension      = .ttf,
+  Path           = {font_path}
+]
 \begin{{document}}
 {tkzelements_block}
 \begin{{tikzpicture}}
@@ -53,15 +64,23 @@ async def render_svg(req: RenderReq) -> dict:
             if req.tkzelements:
                 tkze = "\\begin{tkzelements}\n" + req.tkzelements + "\n\\end{tkzelements}\n"
 
-            tex = TEMPLATE.format(tkzelements_block=tkze, tikz=req.tikz)
+            family = req.font_family or "NunitoSans"
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", family):
+                return {"ok": False, "stage": "validation", "log": f"Invalid font_family: {family!r}"}
+            font_path = f"/usr/local/share/fonts/{family}/"
+            tex = TEMPLATE.format(
+                font_family=family,
+                font_path=font_path,
+                tkzelements_block=tkze,
+                tikz=req.tikz,
+            )
             tex_path = os.path.join(td, "main.tex")
             with open(tex_path, "w", encoding="utf-8") as f:
                 f.write(tex)
 
-            # 1) lualatex -> DVI (per TikZ docs for dvisvgm flow) :contentReference[oaicite:15]{index=15}
+            # 1) lualatex -> PDF
             p1 = run_cmd([
                 "lualatex",
-                "--output-format=dvi",
                 "--interaction=nonstopmode",
                 "--halt-on-error",
                 "-file-line-error",
@@ -75,17 +94,15 @@ async def render_svg(req: RenderReq) -> dict:
             logger.info("lualatex succeeded: %s", p1.stdout)
 
             # 2) dvisvgm -> SVG
-            # --no-fonts improves browser compatibility :contentReference[oaicite:16]{index=16}
-            # --bbox=min gives a tight bbox :contentReference[oaicite:17]{index=17}
-            # --exact-bbox can avoid clipped glyphs :contentReference[oaicite:18]{index=18}
             p2 = run_cmd([
                 "dvisvgm",
                 "--no-fonts",
+                "--pdf",
                 "--bbox=min",
                 "--exact-bbox",
                 "-Oall",
                 "-o", "out.svg",
-                "main.dvi",
+                "main.pdf",
             ], cwd=td)
 
             if p2.returncode != 0 or not os.path.exists(os.path.join(td, "out.svg")):

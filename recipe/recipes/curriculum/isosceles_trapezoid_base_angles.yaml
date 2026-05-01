@@ -1,0 +1,94 @@
+name: isosceles_trapezoid_base_angles
+description: "Isosceles trapezoid TRAP with base angle marks, equal-leg tick marks, parallel base arrows, diagonals, and aux line to X"
+tags: [polygon, quadrilateral, trapezoid, isosceles, base-angles, parallel, auxiliary-line, intermediate]
+context: "No prior objects. Trapezoid with top base TR and bottom base AP. Legs TA (left) and PR (right) are equal."
+setup: []
+example:
+  mode: grid
+  construction:
+    # VERTEX POSITIONS — A is bottom-LEFT, P is bottom-RIGHT.
+    # This is the only arrangement where PR is the right LEG (not a diagonal),
+    # and "from T parallel to PR" correctly lands on base AP between A and P.
+    - op: point
+      id: T
+      coords: [-1.5, 2.5]
+    - op: point
+      id: R
+      coords: [1.5, 2.5]
+    - op: point
+      id: A
+      coords: [-3, 0]
+    - op: point
+      id: P
+      coords: [3, 0]
+    # Polygon: clockwise traversal T(TL) → R(TR) → P(BR) → A(BL)
+    - op: polygon
+      id: trap
+      vertices: [T, R, P, A]
+    # Diagonals TP and RA (equal length by symmetry)
+    - op: segment
+      id: diag_TP
+      endpoints: [T, P]
+    - op: segment
+      id: diag_RA
+      endpoints: [R, A]
+    # Auxiliary line: from T parallel to right leg PR, hits base AP at X=(0,0)
+    # Direction PR = R - P = (-1.5, 2.5). From T=(-1.5,2.5): t=-1 → X=(0,0). ✓ between A and P.
+    - op: parallel
+      id: aux_line
+      to_line: [P, R]
+      through: T
+      visible: false
+    - op: line_through
+      id: base_line
+      points: [A, P]
+      visible: false
+    - op: intersection
+      id: X
+      of: [aux_line, base_line]
+      selector:
+        kind: between
+        a: A
+        b: P
+    - op: segment
+      id: seg_TX
+      endpoints: [T, X]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Base angles at bottom corners A and P are equal
+      - kind: mark_angle
+        a: T
+        vertex: A
+        b: P
+        group: 1
+      - kind: mark_angle
+        a: R
+        vertex: P
+        b: A
+        group: 1
+      # Equal legs: TA (left) and PR (right)
+      - kind: mark_equal_lengths
+        segments: [[T, A], [P, R]]
+        group: 1
+      # Equal diagonals: TP and RA
+      - kind: mark_equal_lengths
+        segments: [[T, P], [R, A]]
+        group: 2
+      # Parallel bases: AP and TR — both left-to-right for correct arrow direction
+      - kind: mark_parallel
+        segments: [[A, P], [T, R]]
+      # Aux line TX is parallel to right leg PR
+      - kind: mark_parallel
+        segments: [[T, X], [P, R]]
+        group: 2
+notes:
+  - "VERTEX POSITIONS: A=bottom-LEFT (−3,0), P=bottom-RIGHT (3,0). This is different from what some prompts may say ('A bottom-right, P bottom-left')."
+  - "WHY: legs are TA (left) and PR (right). For PR to be a leg (not a diagonal), P must be bottom-RIGHT and R must be top-right."
+  - "With this layout, 'from T parallel to PR' (the right leg) hits base AP at X=(0,0). ✓"
+  - "If A were bottom-right and P bottom-left, then PR would be the diagonal and the parallel from T would land at (−6,0), outside the base."
+  - "Polygon traversal: [T, R, P, A] clockwise (T top-left → R top-right → P bottom-right → A bottom-left)."
+  - "mark_angle(T, A, P): T is the leg arm, A is the bottom-left vertex, P is the base arm — not collinear. ✓"
+  - "mark_angle(R, P, A): R is the leg arm, P is the bottom-right vertex, A is the base arm — not collinear. ✓"
+  - "mark_parallel [[A,P],[T,R]]: A→P is left-to-right, T→R is left-to-right — same direction for correct parallel arrow marks. ✓"
