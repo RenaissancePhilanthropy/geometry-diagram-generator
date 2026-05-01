@@ -4,13 +4,15 @@
 \subsection{Models}
 \label{ssec:models}
 
-We evaluate four production frontier models that span an order of magnitude of price and represent two API families:
+We evaluate six production frontier models that span $\sim$20$\times$ in price and represent three API families (Anthropic, OpenAI, Google):
 
 \begin{itemize}
 \item \opus (Anthropic): \dollars{15}/\$75 per million input/output tokens.
 \item \sonnet (Anthropic): \dollars{3}/\$15.
 \item \haiku (Anthropic): \dollars{1}/\$5.
 \item \gpt (OpenAI Responses API): \dollars{5}/\$20.
+\item \geminipro (Google AI Studio API, paid tier, $\leq$200K context): \dollars{1.25}/\$10.
+\item \geminiflash (Google AI Studio API, paid tier, $\leq$200K context): \dollars{0.30}/\$2.50.
 \end{itemize}
 
 All runs use temperature $= 1.0$ (default for both APIs).

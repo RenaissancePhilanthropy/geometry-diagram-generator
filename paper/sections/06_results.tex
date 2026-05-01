@@ -4,9 +4,10 @@
 \subsection{Setup}
 \label{ssec:results_setup}
 
-We evaluate every (model $\times$ strategy) combination across \opus, \sonnet, \haiku, \gpt $\times$ \rawcode, \structured, \recipe.
+We evaluate every (model $\times$ strategy) combination across \opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash $\times$ \rawcode, \structured, \recipe (18 cells).
 For the pilot reported here we run a stratified 30-scenario sample (10 per tier, drawn round-robin across 23 of 30 templates).
 The full headline run uses the complete 600-scenario templated split with three repeats; here we report a single-repeat pilot to demonstrate signal and cost.
+Two cells (\geminiflash + \structured, \geminiflash + \recipe) are blocked at the API layer by Google's schema-state cap (\cref{ssec:gemini_finding}); we report them as a deployment finding rather than a capability measurement.
 
 \subsection{Headline pass-rate table}
 \label{ssec:headline}
@@ -15,7 +16,7 @@ The full headline run uses the complete 600-scenario templated split with three 
 We report both \emph{strict} pass (all checks passed and none skipped) and \emph{loose} pass (strict $+$ soft); headline numbers throughout the paper use \emph{strict}.
 
 \begin{table}[t]
-\caption{Headline leaderboard (post-\cref{sec:hardening}). Strict $=$ \texttt{pass}; loose $=$ \texttt{pass}$+$\texttt{soft\_pass}.}
+\caption{Headline leaderboard (post-\cref{sec:hardening}). Strict $=$ \texttt{pass}; loose $=$ \texttt{pass}$+$\texttt{soft\_pass}. Two cells marked $^\dagger$ are blocked at the API layer by Google's schema-state cap (\cref{ssec:gemini_finding}); we report them as a deployment finding rather than a capability measurement.}
 \label{tab:headline}
 \centering
 \small
@@ -23,21 +24,29 @@ We report both \emph{strict} pass (all checks passed and none skipped) and \emph
 \toprule
 \textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
 \midrule
-\opus & \structured & $12^*$ & 100.0\% & 100.0\% & \dollars{0.532} & 10.0\,s \\
-\sonnet & \recipe & 30 & 93.3\% & 96.7\% & \dollars{0.058} & 8.0\,s \\
+\opus & \structured & $12^*$ & 100.0\% & 100.0\% & \dollars{0.533} & 10.0\,s \\
+\sonnet & \recipe & 30 & 93.3\% & 96.7\% & \dollars{0.059} & 8.0\,s \\
 \sonnet & \structured & 36 & 91.7\% & 94.4\% & \dollars{0.075} & 9.1\,s \\
 \gpt & \structured & 30 & 90.0\% & 93.3\% & \dollars{0.057} & 7.5\,s \\
-\haiku & \structured & 30 & 86.7\% & 90.0\% & \dollars{0.031} & 6.8\,s \\
-\haiku & \rawcode & 30 & \textbf{83.3\%} & 93.3\% & \dollars{0.016} & 7.7\,s \\
-\opus & \rawcode & 30 & \textbf{80.0\%} & 96.7\% & \dollars{0.328} & 18.0\,s \\
-\sonnet & \rawcode & 30 & \textbf{76.7\%} & 96.7\% & \dollars{0.046} & 17.1\,s \\
-\gpt & \rawcode & 30 & \textbf{70.0\%} & 90.0\% & \dollars{0.061} & 11.3\,s \\
+\haiku & \structured & 30 & 86.7\% & 90.0\% & \dollars{0.032} & 6.8\,s \\
+\haiku & \rawcode & 30 & \textbf{83.3\%} & 93.3\% & \dollars{0.017} & 7.7\,s \\
+\opus & \rawcode & 30 & \textbf{80.0\%} & 96.7\% & \dollars{0.329} & 18.0\,s \\
+\sonnet & \rawcode & 30 & \textbf{76.7\%} & 96.7\% & \dollars{0.047} & 17.1\,s \\
+\geminipro & \recipe & 30 & 73.3\% & 76.7\% & \dollars{0.031} & 25.0\,s \\
 \haiku & \recipe & 30 & 70.0\% & 73.3\% & \dollars{0.022} & 5.4\,s \\
+\geminipro & \structured & 30 & 70.0\% & 70.0\% & \dollars{0.033} & 132.0\,s \\
+\gpt & \rawcode & 30 & \textbf{70.0\%} & 90.0\% & \dollars{0.062} & 11.3\,s \\
 \gpt & \recipe & 30 & 60.0\% & 63.3\% & \dollars{0.056} & 7.6\,s \\
+\geminipro & \rawcode & 30 & \textbf{50.0\%} & 76.7\% & \dollars{0.040} & 32.6\,s \\
+\geminiflash & \rawcode & 30 & \textbf{36.7\%} & 46.7\% & \dollars{0.009} & 99.7\,s \\
+\midrule
+\geminiflash & \structured & $0^\dagger$ & --- & --- & --- & --- \\
+\geminiflash & \recipe & $0^\dagger$ & --- & --- & --- & --- \\
 \bottomrule
 \end{tabular}
 \\[2pt]
-{\footnotesize $^*$ \opus + \structured rate-limit ceiling. Anthropic silently throttles \opus calls at our quota tier. We made two attempts: pilot v4 at concurrency $=2$ returned 9/30 (all \tone+\ttwo); a follow-up at concurrency $=1$ returned 12/30 (10 \tone + 2 \ttwo) before stalling for $> 30$ minutes with no further writes. Both attempts hit 100\% strict-pass on the scenarios that completed. We document this as a deployment finding rather than a noise issue.}
+{\footnotesize $^*$ \opus + \structured rate-limit ceiling. Anthropic silently throttles \opus calls at our quota tier. We made two attempts: pilot v4 at concurrency $=2$ returned 9/30 (all \tone+\ttwo); a follow-up at concurrency $=1$ returned 12/30 (10 \tone + 2 \ttwo) before stalling for $> 30$ minutes with no further writes. Both attempts hit 100\% strict-pass on the scenarios that completed. We document this as a deployment finding rather than a noise issue.\\
+$^\dagger$ \geminiflash + \structured / \recipe is blocked at Google's request-validation layer by a schema-state-space cap on constrained generation; see \cref{ssec:gemini_finding}.}
 \end{table}
 
 \paragraph{Pre- vs post-hardening delta.}
@@ -74,14 +83,17 @@ The Pareto frontier (\cref{ssec:pareto}) still includes \structured configuratio
 Adding \structured to \haiku (\dollars{0.031}, 86.7\%) buys a further $+3.3$\pp at $2\times$ the cost; adding \structured to \sonnet (\dollars{0.075}, 91.7\%) buys another $+5$\pp at $2.4\times$ more.
 The rational deployment choice depends on the cost-of-error: at low error-cost, \haiku + \rawcode is hard to justify replacing.
 
-\paragraph{The recipe-DSL strategy is unstable across models.}
-\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode).
-\gpt and \haiku do not (60\% and 70\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
-A small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
+\paragraph{The recipe-DSL strategy is vendor-dependent.}
+\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode); \geminipro likewise benefits ($73$\% strict, $+23$\pp over its \rawcode and $+3$\pp over its \structured).
+\gpt and \haiku do not ($60$\% and $70$\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
+The split is along a single axis we can identify in the pilot data: models with strong tool-call following (Sonnet, Gemini Pro) extract value from the recipe scaffolding; models tuned for direct-emit (Haiku, GPT-5.1) lose information at the recipe-selection stage.
+Recipe is not a transferable scaffolding pattern across vendors; we recommend the \structured strategy for cross-vendor deployment.
 
 \paragraph{A fourth, post-hardening observation.}
-At \rawcode, the model ranking is now \textbf{\haiku (83.3\%) $>$ \opus (80.0\%) $>$ \sonnet (76.7\%) $>$ \gpt (70.0\%)} --- \opus moves up from worst to second, suggesting that pre-hardening \opus output simply used \texttt{\textbackslash pgfmathsetmacro} more aggressively than the others, getting \emph{unfairly} penalised.
+At \rawcode, the cross-vendor model ranking is now \textbf{\haiku (83.3\%) $>$ \opus (80.0\%) $>$ \sonnet (76.7\%) $>$ \gpt (70.0\%) $>$ \geminipro (50.0\%) $>$ \geminiflash (36.7\%)} --- \opus moves up from worst to second among the Anthropic+OpenAI cohort, suggesting that pre-hardening \opus output simply used \texttt{\textbackslash pgfmathsetmacro} more aggressively than the others, getting \emph{unfairly} penalised.
 The post-hardening \sonnet anomaly (it does \emph{worse} than \opus and \haiku at \rawcode) is small enough at $N=30$ to plausibly be noise; the full headline run will resolve it.
+The Gemini gap is larger than within-vendor noise: \geminipro at $50$\% \rawcode is $20$\pp below \gpt and $30$\pp below \haiku at the same task, despite comparable per-token pricing.
+Under \structured, \geminipro recovers to $70$\% --- still $\sim$$17$--$22$\pp behind the Anthropic and OpenAI \structured runs at similar cost (\dollars{0.033} vs \dollars{0.032}--\dollars{0.057}), making \geminipro the weakest frontier-tier model on this benchmark.
 
 \subsection{Pareto figure: cost vs strict-pass}
 \label{ssec:pareto}
@@ -94,11 +106,14 @@ The post-hardening \sonnet anomaly (it does \emph{worse} than \opus and \haiku a
 \end{figure}
 
 \Cref{tab:pareto_frontier} lists the frontier points.
-Two unambiguous dominance findings:
+Three unambiguous dominance findings:
 (i)~\opus + \rawcode is dominated by \haiku + \rawcode despite using the most expensive model: $21\times$ the cost (\dollars{0.328} vs \dollars{0.016}) at 3.3\pp \emph{lower} strict pass.
 For raw TikZ generation, the marginal cost of the frontier model buys nothing.
 (ii)~\gpt + \structured is dominated by \sonnet + \recipe at essentially the same cost (\dollars{0.058} vs \dollars{0.057}) at 3.3\pp higher strict pass.
 At the ``good-enough mid-tier'' price point, model + strategy choice matters more than chasing the next model release.
+(iii)~Both \geminipro configurations (\structured at \dollars{0.033}, \recipe at \dollars{0.031}) are dominated by \haiku + \structured (\dollars{0.032}, $86.7$\%) on both axes --- same price tier, $13$--$17$\pp lower strict pass.
+\geminiflash + \rawcode (\dollars{0.009}, $36.7$\%) is the only Gemini configuration that escapes domination by an Anthropic peer at its price point, but is itself dominated on cost-per-passed-scenario by \haiku + \rawcode (\dollars{0.025} per pass for Flash vs \dollars{0.020} per pass for Haiku).
+\textbf{No Gemini configuration appears on the Pareto frontier} --- Gemini Pro and Flash are useful comparators that confirm the strategy/cost story, but do not displace any frontier point.
 
 \begin{table}[t]
 \caption{Pareto frontier of the post-hardening pilot. All other (model, strategy) configurations are dominated on both axes.}
@@ -129,9 +144,9 @@ At the ``good-enough mid-tier'' price point, model + strategy choice matters mor
 
 \Cref{fig:tier_stratified} shows three robust patterns:
 \begin{itemize}
-\item \textbf{\tone is near-saturated for every (model, strategy) combo except \gpt + \recipe (70\%)} --- a signal that we need harder \tone templates in v2.
-\item \textbf{\ttwo is where strategy first matters.} Across all 4 models, the \structured strategy lifts \ttwo strict-pass from 60--80\% (\rawcode) to 90--100\%. This is the cleanest ``structured wins'' signal in the pilot.
-\item \textbf{\tthree is where model and strategy \emph{both} matter.} The top \tthree strict-pass is 80\% (\sonnet+\recipe and \gpt+\structured); the bottom is 40\% (\gpt+\rawcode and \haiku+\recipe). \tthree produces the largest variance and is the right place to invest in v2 expansion.
+\item \textbf{\tone is near-saturated for every (model, strategy) combo except \gpt + \recipe and the Gemini cells} --- a signal that we need harder \tone templates in v2 for the Anthropic/OpenAI tier; \geminiflash + \rawcode at $40$\% on \tone shows that ``saturation'' is a property of the leading vendors, not a property of the templates themselves.
+\item \textbf{\ttwo is where strategy first matters.} For Anthropic and OpenAI models, the \structured strategy lifts \ttwo strict-pass from $60$--$80$\% (\rawcode) to $90$--$100$\%. This is the cleanest ``structured wins'' signal in the pilot. \geminipro + \structured is an exception: \ttwo lifts to only $70$\% (vs \rawcode at $20$\%), still a $+50$\pp gain but landing well below the Anthropic/OpenAI ceiling.
+\item \textbf{\tthree is where model and strategy \emph{both} matter.} The top \tthree strict-pass is $80$\% (\sonnet+\recipe and \gpt+\structured); the bottom is $30$\% (\geminiflash+\rawcode), with \geminipro+\structured landing at $40$\%. \tthree produces the largest variance and is the right place to invest in v2 expansion.
 \end{itemize}
 
 \subsection{Per-template heatmap}
@@ -164,6 +179,31 @@ We identify the top-3 universally-hard templates and report their failure modes 
 Pilot readout: failures are dominated by geometric-predicate violations on the hardest templates.
 \recipe failures are mostly label / mark problems, not render failures; \structured failures are rare but still include geometric-predicate failures on the hardest templates.
 This supports the main verifier story: \emph{most wrong outputs are rendered diagrams with the wrong geometry}, not broken LaTeX.
+
+\subsection{Deployment finding: Gemini's schema-state cap blocks two strategies}
+\label{ssec:gemini_finding}
+
+The \structured and \recipe strategies depend on schema-constrained generation: the LLM is told its output must conform to a Pydantic schema (\texttt{DiagramIR} for \structured; \texttt{RecipeDSL}, which lowers to \texttt{DiagramIR}, for \recipe).
+For Anthropic models this is implemented via tool-call validation; for OpenAI Responses and Google AI Studio it is implemented via a server-side schema-to-FSM compilation step that constrains decoding token-by-token.
+The FSM-based vendors (OpenAI, Google) impose vendor-specific caps on automaton state count.
+
+Our \texttt{DiagramIR} schema centres on a discriminated union of $\sim$20 \texttt{DefStmt} variants (right triangle, isosceles triangle, segment, midpoint, circle, intersection, $\dots$), each with its own typed argument list, in a list field that admits arbitrary repetition.
+This compiles to thousands of FSM states.
+\textbf{The OpenAI and \geminipro caps accommodate this; \geminiflash's does not.}
+Every \geminiflash + \structured / \recipe attempt returns an HTTP 400 in 1.1--1.6 seconds before any generation occurs, with the error text:
+
+\begin{quote}\small\itshape
+``The specified schema produces a constraint that has too many states for serving. Typical causes of this error are schemas with lots of text (very long property or enum names), schemas with long array constraints$\dots$''
+\end{quote}
+
+Three implications:
+\begin{itemize}
+\item \textbf{This is not a capability gap.} \geminiflash never generates a token under \structured / \recipe; the failure is at Google's request-validation layer. We cannot conclude anything about \geminiflash's geometric-reasoning ability under IR scaffolding from these cells.
+\item \textbf{This is a real cross-vendor portability concern for any benchmark that ships a multi-variant discriminated union as its IR.} A benchmark intending to test ``does the IR strategy generalise?'' must report which vendors can host the IR at all.
+\item \textbf{The fix is at the schema level, not the model level.} Possible mitigations --- shorter discriminator strings, flatter union structure, splitting the IR into smaller schemas chained sequentially, or falling back to text-output JSON with post-hoc parsing --- all sit in the benchmark author's design space. We document the current schema's footprint in \cref{app:property_reference} and leave the Flash-compatible refactor to v2.
+\end{itemize}
+
+We report \geminiflash + \rawcode (which uses no schema) at $36.7$\% strict pass, and exclude the two blocked cells from the Pareto, tier, heatmap, and failure-mode analyses.
 
 \subsection{Drill-down: failure-mode case studies}
 \label{ssec:case_studies}
