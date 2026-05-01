@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PILOT_DIR="${PILOT_DIR:-$REPO_ROOT/evals/results/leaderboard_pilot_hardened}"
+PILOT_DIR="${PILOT_DIR:-$REPO_ROOT/evals/results/leaderboard_pilot_v2}"
 DOCS_FIG_DIR="$REPO_ROOT/docs/figures/geogen-pilot"
 PAPER_FIG_DIR="$REPO_ROOT/paper/figures"
 

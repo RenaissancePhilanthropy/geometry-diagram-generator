@@ -36,6 +36,8 @@ _PRICE_PER_M_TOKENS: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
     "gpt-5.1": (5.0, 20.0),
     "gpt-5.1-codex-mini": (1.0, 4.0),
+    "gemini-2.5-pro": (1.25, 10.0),
+    "gemini-2.5-flash": (0.30, 2.50),
 }
 
 
@@ -84,6 +86,8 @@ def _combo_label(model: str, strategy: str) -> str:
         "claude-sonnet-4-6": "Sonnet",
         "claude-haiku-4-5": "Haiku",
         "gpt-5.1": "GPT-5.1",
+        "gemini-2.5-pro": "Gem-2.5 Pro",
+        "gemini-2.5-flash": "Gem-2.5 Flash",
     }.get(_model_short(model), _model_short(model))
     strategy_label = {
         "raw_code": "Raw",
