@@ -4,7 +4,7 @@
 # Prereqs:
 #   * .venv activated (or use uv run)
 #   * TikZ renderer container running on :8001
-#   * .env populated with ANTHROPIC_API_KEY and OPENAI_API_KEY
+#   * .env populated with ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 #
 # Usage:
 #   bash evals/leaderboard_launch.sh
@@ -26,6 +26,9 @@ concurrency_for() {
   case "$1" in
     anthropic:*) echo 1 ;;
     openai-responses:*) echo 4 ;;
+    # google-gla = AI Studio key (AIza... format). Free tier is RPM-limited
+    # but generous on burst; start at 4 and dial down if we see 429s.
+    google-gla:*) echo 4 ;;
     *) echo 2 ;;
   esac
 }
@@ -42,6 +45,8 @@ SKIP=${SKIP:-"anthropic:claude-sonnet-4-6|raw_code anthropic:claude-sonnet-4-6|s
 # first (separate rate pool), then Anthropic (sequential to avoid burst).
 MODELS=(
   "openai-responses:gpt-5.1"
+  "google-gla:gemini-2.5-pro"
+  "google-gla:gemini-2.5-flash"
   "anthropic:claude-haiku-4-5-20251001"
   "anthropic:claude-sonnet-4-6"
 )

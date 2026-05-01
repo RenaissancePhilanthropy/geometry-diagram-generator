@@ -33,6 +33,8 @@ _PRICE_PER_M_TOKENS: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
     "gpt-5.1": (5.0, 20.0),
     "gpt-5.1-codex-mini": (1.0, 4.0),
+    "gemini-2.5-pro": (1.25, 10.0),
+    "gemini-2.5-flash": (0.30, 2.50),
 }
 
 
