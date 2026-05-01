@@ -1149,8 +1149,8 @@ def _parse_latex(s: str) -> list[dict]:
                     j += 1
                 cmd = s[i:j]
                 i = j
-                # Check for \overline{...}
-                if cmd == "overline" and i < len(s) and s[i] == "{":
+                # Check for \overline{...} and arc/hat commands
+                if cmd in ("overline", "widehat", "widetilde", "hat", "bar", "vec") and i < len(s) and s[i] == "{":
                     inner, i = _read_braced(s, i)
                     flush()
                     segments.append({"kind": "overline", "content": _apply_substitutions(inner)})
