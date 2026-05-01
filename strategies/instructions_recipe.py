@@ -117,6 +117,8 @@ Key rules:
 Selector "kind" values: upper_of_line, lower_of_line, pick_index (k), on_object (obj),
 closest_to (p), same_side (line:[A,B], ref_point), between, beyond, interior, exterior,
 opposite_side, chain (rules:[...])
+IMPORTANT: every point/ID referenced in a selector (ref_point, p, obj, line endpoints)
+must be a previously-defined construction ID. Never use placeholder names like "dummy".
 """
 
 RECIPE_DSL_QUICK_REF = """\
@@ -182,6 +184,12 @@ RECIPE_DSL_QUICK_REF = """\
 ### Selectors
 selector dicts use "kind" values: upper_of_line, lower_of_line, pick_index (k),
 on_object (obj), closest_to (p), same_side (line:[A,B], ref_point), chain (rules:[...])
+
+**CRITICAL — all IDs in selectors must be already-defined construction IDs.**
+Every point or object name in a selector (ref_point, p, line, obj) must appear earlier
+in the construction list. Never invent placeholder names like "dummy" or "avoid_pt" —
+use an actual point from your construction instead. If you need to express "on the
+opposite side from X", X must be a real defined point (e.g. a triangle vertex).
 
 ### ID rules
 - All IDs must be unique across the construction list
