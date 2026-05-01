@@ -74,8 +74,10 @@ Custom DSLs with built-in geometric priors do not transfer; teams considering th
 \subsection{Extending the methodology}
 \label{ssec:future_methodology}
 
-The verification recipe used here --- text-emit a renderer-targeted artefact, compile it into symbolic objects, decide a list of declarative predicates --- is not specific to plane geometry.
-Two natural extensions are already in flight at the codebase level and could be released as separate \GeoGen-family benchmarks:
+Both pillars of \GeoGen (\cref{ssec:methodology}) are designed to extend beyond plane geometry.
+Pillar~1 (procedural co-generation) is reusable wherever a domain admits a Python-expressible construction --- the engine in \texttt{evals/generate\_scenarios.py} is $\sim$1{,}000 lines and the per-template extension cost is $\sim$50 lines per construction; we expect the same template-engine pattern to apply to coordinate-plane algebra and most ruler-and-compass extensions of plane Euclidean geometry, with proportionally larger investments for 3D solids and transformations.
+Pillar~2 (render-then-symbolic-verify) extends along the predicate-language axis: the v1 vocabulary in \cref{app:property_reference} covers plane-Euclidean relations; future \GeoGen-family benchmarks would publish v2, v3, \dots adding domain primitives without disturbing existing benchmarks (the predicate-language versioning pattern is intentional).
+Two extensions are already in flight at the codebase level and could be released as separate \GeoGen-family benchmarks:
 \begin{itemize}
 \item \textbf{GenExam-Math integration.}
 \citet{wang2025genexam} introduce a multidisciplinary text-to-exam-image dataset with LLM-judged scoring.

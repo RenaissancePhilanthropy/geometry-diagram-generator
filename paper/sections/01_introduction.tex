@@ -16,25 +16,23 @@ A correct rendering must satisfy: (a) $\angle E = 60^\circ$, $\angle F = 70^\cir
 On this scenario (\texttt{tpl-t2-alt-EFG-H-60-70} in our pilot), \haiku and \opus pass under all three strategies; \gpt with \rawcode places $H$ on the line $EF$ but \emph{outside} the segment (extension); \sonnet with \rawcode draws an obtuse triangle.
 The verifier flags each failure with a specific predicate verdict, not a holistic score, enabling actionable per-check error analysis.
 
-\subsection{Naming convention}
+\subsection{Methodology and instance}
 \label{ssec:naming}
 
-We use \textbf{\GeoGen} for the methodology this paper proposes (text-to-TikZ generation evaluated by automatic SymPy-based geometric verification) and \textbf{\GeoGenBench} for the released benchmark instantiating that methodology (801 prompts paired with machine-checkable property lists).
-The methodology is intended to extend beyond plane geometry as future work; this paper is principally about the benchmark.
+This paper contributes both a \emph{methodology} for building automatically-verifiable benchmarks of generative geometric reasoning and a \emph{first instance} of that methodology.
+We use \textbf{\GeoGen} for the methodology --- two coupled ideas, formalised in \cref{ssec:methodology}: (i) procedural co-generation of prompts and property-list rubrics from shared source code, and (ii) a render-then-symbolic-verify pipeline driven by a declarative predicate language --- and \textbf{\GeoGenBench} for the 801-prompt plane-geometry benchmark in which we instantiate it.
+The distinction matters: future \GeoGen-family benchmarks for coordinate-plane algebra, 3D solid geometry, transformation-group constructions, and engineering or architectural drawings would inherit the methodology and the predicate-language design (\cref{app:property_reference}) while extending the per-domain symbolic primitives (\cref{ssec:future_methodology}).
 
 \subsection{Contributions}
 
 \begin{enumerate}
-\item \textbf{A new benchmark.}
-\GeoGenBench is 801 prompts paired with executable property lists.
-600 prompts come from a 30-template procedural generator (released, so reviewers can roll new splits to defeat contamination); 201 come from an LLM-based extraction pipeline over open K--12 textbook content (\cref{sec:design}).
-\item \textbf{A symbolic-verification toolkit.}
-We pair each prompt with a list of geometric properties (right-angle, midpoint, parallel, equal-length, point-on-circle, etc.) decidable in milliseconds against the SymPy-compiled coordinates of the model's TikZ output.
-We document the predicate library, tolerance semantics, and \emph{soundness audit} (\cref{sec:verification}) including a \cref{sec:hardening} that closes 4.1\% of pilot records that were previously silently skipped.
-\item \textbf{A leaderboard of 6 frontier models from 3 vendors $\times$ 3 generation strategies} (raw TikZ; structured intermediate-representation JSON with check-and-revise; and recipe-DSL with constraint solving), revealing --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{56.7\pp} (36.7\% to 93.3\%) across non-saturating combos and a \textbf{$21\times$ cost-with-equal-pass spread} between \haiku + \rawcode (83\% at \dollars{0.016}/scen) and \opus + \rawcode (80\% at \dollars{0.328}/scen).
-We also identify a vendor-specific deployment-portability finding: \geminiflash's schema-state cap blocks our \structured and \recipe strategies entirely (\cref{ssec:gemini_finding}); the strategy generalises across the other five tested models.
-\item \textbf{A reproducible release.}
-The dataset, the template generator, the verification toolkit, the leaderboard data, and a Docker-packaged TikZ$\to$SVG renderer are all released under permissive licenses; we additionally release a procedural variant generator so reviewers can re-roll the entire benchmark if contamination is suspected.
+\item \textbf{The \GeoGen methodology and reusable verification toolkit.}
+We formalise a two-pillar recipe for generative-geometric-reasoning benchmarks: (a) \emph{procedural co-generation}, in which a small Python generator emits the natural-language prompt and the machine-checkable rubric from the same source code, eliminating drift between the question and its grading criteria and providing a built-in contamination defence (reviewers can re-roll the engine with new seeds); and (b) \emph{render-then-symbolic-verify}, in which the model's text-emitted output is compiled to symbolic objects against which a versioned, declarative predicate language (\cref{ssec:properties}, \cref{app:property_reference}) is decided in milliseconds.
+We release both pillars as reusable code (template engine + verifier + 17-predicate language v1 + a soundness audit, \cref{sec:hardening}, that closes 4.1\% of silently-skipped pilot checks).
+\item \textbf{The \GeoGenBench instance: 801 prompts, six frontier models, and a leaderboard with three deployment-relevant findings.}
+\GeoGenBench is the methodology's first instantiation: 600 procedurally co-generated prompts (released as \texttt{bench\_generated.yaml}) plus 201 LLM-extracted curriculum prompts for breadth (released as \texttt{bench\_curriculum.yaml}).
+We benchmark six frontier models from three vendors (\opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash) under three generation strategies (raw TikZ; structured intermediate-representation JSON with check-and-revise; recipe-DSL with constraint solving), reporting --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{56.7\pp} (36.7\% to 93.3\%) across non-saturating combos, a \textbf{$21\times$ cost-with-equal-pass spread} between \haiku + \rawcode (83\% at \dollars{0.016}/scen) and \opus + \rawcode (80\% at \dollars{0.328}/scen), and a vendor-specific deployment-portability finding (\cref{ssec:gemini_finding}): \geminiflash's schema-state cap blocks structured generation entirely.
+The dataset, the template engine, the verification toolkit, the leaderboard data, and a Docker-packaged TikZ$\to$SVG renderer are all released under permissive licenses (\cref{app:reproduction}).
 \end{enumerate}
 
 \subsection{Headline empirical results}
