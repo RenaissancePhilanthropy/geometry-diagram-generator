@@ -5,8 +5,15 @@ from pathlib import Path
 from recipe.catalog import (
     RecipeSummary, Recipe, RecipeSelection,
     load_catalog, load_recipe, build_selection_prompt, build_generation_prompt,
-    DSL_DOCS,
+    clear_cache, DSL_DOCS,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_catalog_cache():
+    clear_cache()
+    yield
+    clear_cache()
 
 
 def test_load_catalog_returns_list():
@@ -106,3 +113,71 @@ def test_all_recipes_loadable():
     for entry in catalog:
         recipe = load_recipe(entry.id)
         assert recipe.name == entry.id
+
+
+# ---------------------------------------------------------------------------
+# Multi-catalog tests
+# ---------------------------------------------------------------------------
+
+def test_load_catalog_explicit_default():
+    """Explicit catalog='default' returns same result as no argument."""
+    assert load_catalog() == load_catalog(catalog="default")
+
+
+def test_load_recipe_explicit_default():
+    """Explicit catalog='default' returns same recipe as no argument."""
+    assert load_recipe("altitude") == load_recipe("altitude", catalog="default")
+
+
+def test_load_catalog_nonexistent_raises():
+    with pytest.raises(FileNotFoundError):
+        load_catalog("nonexistent_catalog_xyz")
+
+
+def test_load_recipe_nonexistent_catalog_raises():
+    with pytest.raises(FileNotFoundError):
+        load_recipe("altitude", catalog="nonexistent_catalog_xyz")
+
+
+def test_catalog_path_traversal_rejected():
+    """Catalog names with path traversal components must be rejected."""
+    with pytest.raises((ValueError, FileNotFoundError)):
+        load_catalog("../recipes")
+
+
+def test_catalog_cache_is_independent(tmp_path, monkeypatch):
+    """Two catalogs load independently; each has only its own recipes."""
+    import recipe.catalog as cat_module
+
+    # Build two minimal catalogs in a tmp directory
+    cat_a = tmp_path / "alpha"
+    cat_b = tmp_path / "beta"
+    cat_a.mkdir()
+    cat_b.mkdir()
+
+    recipe_yaml = """\
+name: dummy_{name}
+description: A dummy recipe for {name}
+tags: [test]
+context: Context for {name}
+setup: []
+example:
+  construction:
+    - op: point
+      id: P_{name}
+      coords: [0, 0]
+notes: []
+"""
+    (cat_a / "dummy_alpha.yaml").write_text(recipe_yaml.format(name="alpha"))
+    (cat_b / "dummy_beta.yaml").write_text(recipe_yaml.format(name="beta"))
+
+    monkeypatch.setattr(cat_module, "_RECIPES_BASE", tmp_path)
+    clear_cache()
+
+    alpha_catalog = load_catalog("alpha")
+    beta_catalog = load_catalog("beta")
+
+    assert len(alpha_catalog) == 1
+    assert alpha_catalog[0].id == "dummy_alpha"
+    assert len(beta_catalog) == 1
+    assert beta_catalog[0].id == "dummy_beta"

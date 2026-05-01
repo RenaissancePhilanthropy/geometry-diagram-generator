@@ -1,0 +1,103 @@
+name: inscribed_quadrilateral_opposite_angles
+description: "Cyclic quadrilateral ABCD inscribed in a circle with opposite angles labeled to show they are supplementary"
+tags: [circle, quadrilateral, inscribed, cyclic, opposite-angles, supplementary, intermediate]
+context: "Given a circle with center O. Quadrilateral ABCD is inscribed with all four vertices on the circle."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+  - op: point
+    id: ref
+    coords: [3, 0]
+    visible: false
+example:
+  mode: abstract
+  construction:
+    # Arc positions derived from inscribed angle theorem:
+    #   ∠A = (arc BC + arc CD)/2 = 110°  →  arc BCD = 220°
+    #   ∠B = (arc CD + arc DA)/2 = 85°   →  arc CDA = 170°
+    #   ∠C = (arc DA + arc AB)/2 = 70°   →  arc DAB = 140°
+    #   ∠D = (arc AB + arc BC)/2 = 95°   →  arc ABC = 190°
+    # Solving: arc AB=40°, arc BC=150°, arc CD=70°, arc DA=100°
+    # Placing A at 90° CCW: A=90°, B=130°, C=280°, D=350°
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 90
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 130
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 280
+    - op: rotation
+      id: D
+      point: ref
+      center: O
+      angle: 350
+    # Quadrilateral sides
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    - op: segment
+      id: seg_BC
+      endpoints: [B, C]
+    - op: segment
+      id: seg_CD
+      endpoints: [C, D]
+    - op: segment
+      id: seg_DA
+      endpoints: [D, A]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Label each interior angle with its degree measure
+      - kind: mark_angle
+        a: D
+        vertex: A
+        b: B
+        expected: 110.0
+        label_only: true
+      - kind: mark_angle
+        a: A
+        vertex: B
+        b: C
+        expected: 85.0
+        label_only: true
+      - kind: mark_angle
+        a: B
+        vertex: C
+        b: D
+        expected: 70.0
+        label_only: true
+      - kind: mark_angle
+        a: C
+        vertex: D
+        b: A
+        expected: 95.0
+        label_only: true
+    labels:
+      - kind: label_free_text
+        text: "∠A + ∠C = 110° + 70° = 180°"
+        at: [0, -3.8]
+      - kind: label_free_text
+        text: "∠B + ∠D = 85° + 95° = 180°"
+        at: [0, -4.3]
+notes:
+  - "NEVER use polygon_from_angles_and_sides for a cyclic quadrilateral — the side lengths are determined by the circle, not freely choosable."
+  - "Use rotation ops to place each vertex at the correct arc position. This guarantees exact inscribed angles."
+  - "Arc assignments: AB=40°, BC=150°, CD=70°, DA=100°. Vertex angles: A=90°, B=130°, C=280°, D=350° (all measured from ref at 0°)."
+  - "Inscribed angle = half the intercepted arc (the arc NOT containing that vertex)."
+  - "Use label_only: true on mark_angle to display the degree label without a geometric arc check."
+  - "Opposite angle pairs: A+C=180° (110+70), B+D=180° (85+95). This holds for any cyclic quadrilateral."
+  - "Do NOT use circle_through_3 after placing the vertices — they are already exactly on the circle by construction."

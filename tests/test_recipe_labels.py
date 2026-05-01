@@ -1,13 +1,16 @@
-"""Tests for LabelPoint and LabelAngle DSL ops lowering to DiagramIR."""
+"""Tests for LabelPoint, LabelAngle, and LabelFreeText DSL ops lowering to DiagramIR."""
+import pytest
 from recipe.dsl import (
     RecipeDSL, DSLAnnotations, TriangleOp,
     LabelSegment, LabelPoint as DSLLabelPoint, LabelAngle as DSLLabelAngle,
+    LabelFreeText as DSLLabelFreeText,
 )
 from recipe.lower import lower_to_ir
 from ir.ir import (
     LabelPoint as IRLabelPoint,
     LabelAngle as IRLabelAngle,
     LabelSegment as IRLabelSegment,
+    LabelFreeText as IRLabelFreeText,
 )
 
 
@@ -147,6 +150,43 @@ def test_label_angle_rejects_missing_form():
 
 
 def test_label_angle_rejects_both_forms():
-    import pytest
     with pytest.raises(Exception):
         DSLLabelAngle(a="B", vertex="A", b="C", at="A", of="T", text="α")
+
+
+# ---------------------------------------------------------------------------
+# LabelFreeText
+# ---------------------------------------------------------------------------
+
+def test_label_free_text_at_lowers_to_ir():
+    dsl = _triangle_dsl(labels=[
+        DSLLabelFreeText(text="s^{2} = r^{2} + h^{2}", at=[3.0, 1.5]),
+    ])
+    ir = lower_to_ir(dsl)
+    matches = [r for r in ir.render if isinstance(r, IRLabelFreeText)]
+    assert len(matches) == 1
+    assert matches[0].text == "s^{2} = r^{2} + h^{2}"
+    assert matches[0].at == [3.0, 1.5]
+    assert matches[0].centroid_of is None
+
+
+def test_label_free_text_centroid_of_lowers_to_ir():
+    dsl = _triangle_dsl(labels=[
+        DSLLabelFreeText(text="I", centroid_of="T"),
+    ])
+    ir = lower_to_ir(dsl)
+    matches = [r for r in ir.render if isinstance(r, IRLabelFreeText)]
+    assert len(matches) == 1
+    assert matches[0].text == "I"
+    assert matches[0].centroid_of == "T"
+    assert matches[0].at is None
+
+
+def test_label_free_text_rejects_neither():
+    with pytest.raises(Exception):
+        DSLLabelFreeText(text="x")  # neither at nor centroid_of
+
+
+def test_label_free_text_rejects_both():
+    with pytest.raises(Exception):
+        DSLLabelFreeText(text="x", at=[1.0, 2.0], centroid_of="T")

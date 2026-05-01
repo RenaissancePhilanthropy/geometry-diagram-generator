@@ -1,0 +1,82 @@
+name: congruent_chords_circle
+description: "Circle with two congruent chords AB and CD, all four radii drawn, showing the chords are equidistant from center"
+tags: [circle, chord, congruent, radius, triangle, intermediate]
+context: "A circle with center O. Two congruent chords AB and CD are placed symmetrically."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+example:
+  mode: grid
+  construction:
+    # Reference point on circle at 0° (used for rotations)
+    - op: point
+      id: ref
+      coords: [3, 0]
+      visible: false
+    # Chord AB: A at 150°, B at 30° — subtends 120°, chord length = 3√3 ≈ 5.196
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 150
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 30
+    # Chord CD: C at 210°, D at 330° — same 120° subtended arc → same chord length
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 210
+    - op: rotation
+      id: D
+      point: ref
+      center: O
+      angle: 330
+    # Draw the two chords
+    - op: segment
+      id: chord_AB
+      endpoints: [A, B]
+    - op: segment
+      id: chord_CD
+      endpoints: [C, D]
+    # Draw all four radii
+    - op: segment
+      id: rad_OA
+      endpoints: [O, A]
+    - op: segment
+      id: rad_OB
+      endpoints: [O, B]
+    - op: segment
+      id: rad_OC
+      endpoints: [O, C]
+    - op: segment
+      id: rad_OD
+      endpoints: [O, D]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Mark the two chords as equal length
+      - kind: mark_equal_lengths
+        segments: [[A, B], [C, D]]
+        group: 1
+      # Mark all four radii as equal (all radii of the same circle)
+      - kind: mark_equal_lengths
+        segments: [[O, A], [O, B], [O, C], [O, D]]
+        group: 2
+notes:
+  - "CRITICAL: use 'rotation' to place points on the circle. Do NOT use point_on_segment (that works on segments, not arcs)."
+  - "CRITICAL: the rotation source point must be ON the circle, NOT the center O. Here ref=(3,0) is on the circle at angle 0°."
+  - "rotate ref around O by 150° → A at 150°; by 30° → B at 30°. Arc AB subtends 120°, chord = 2·3·sin(60°) = 3√3."
+  - "rotate ref around O by 210° → C at 210°; by 330° → D at 330°. Arc CD also subtends 120°, same chord length. ✓"
+  - "The four radii and two chords create triangles OAB and OCD — these are congruent by SSS (OA=OB=OC=OD=r, AB=CD)."
+  - "mark_equal_lengths for radii uses group 2 (different from chord group 1) to get different tick styles."
+  - "To show the perpendicular bisectors: add a midpoint op and a perpendicular_bisector op with point_on_line for right-angle marking."

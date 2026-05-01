@@ -1,0 +1,38 @@
+name: segment_ratio
+description: "Point P on segment AB dividing it in ratio m:n (e.g. AP:PB = 2:3)"
+tags: [segment, ratio, midpoint, point, basic]
+context: "Given a segment AB and a point P dividing it in a given ratio."
+setup:
+  - op: point
+    id: A
+    coords: [0, 0]
+  - op: point
+    id: B
+    coords: [5, 0]
+  - op: segment
+    id: seg_AB
+    endpoints: [A, B]
+example:
+  mode: grid
+  construction:
+    - op: point_on_segment
+      id: P
+      segment: [A, B]
+      ratio: "2:3"
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    labels:
+      - kind: label_segment
+        endpoints: [A, P]
+        text: "2"
+      - kind: label_segment
+        endpoints: [P, B]
+        text: "3"
+notes:
+  - "ratio: '2:3' means AP = 2 parts, PB = 3 parts (total 5). P is 2/5 of the way from A to B."
+  - "Midpoint is the special case ratio: '1:1' (or equivalently ratio: 0.5 as a float). Prefer the midpoint op for clarity: {op: midpoint, id: M, of: [A, B]}."
+  - "Float ratio: a value in [0, 1] is the fraction of AB from A. ratio: 0.4 gives the same result as '2:3'."
+  - "To place a point BEYOND B (extension): use a float greater than 1.0. ratio: 1.2 places P 20% past B along the AB direction."
+  - "If the problem states 'AP = 3 and AB = 5', compute ratio: 3/5 = 0.6 as a float, or '3:2' as a string."
+  - "To label the two sub-segments, add label_segment entries for [A,P] and [P,B] in annotations.labels."

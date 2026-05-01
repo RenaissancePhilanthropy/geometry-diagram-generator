@@ -1,0 +1,107 @@
+name: shape_rotation
+description: "L-shaped pre-image and its 90° CCW rotated image about a center point, with rotation arc"
+tags: [rotation, transformation, rigid-motion, angle, intermediate]
+context: "An L-shaped polygon is rotated 90° counterclockwise about center of rotation E."
+setup: []
+example:
+  mode: abstract
+  construction:
+    # Center of rotation
+    - op: point
+      id: E
+      coords: [0, 0]
+    # L-shape pre-image vertices (clockwise from bottom-left)
+    - op: point
+      id: A
+      coords: [1, 0]
+    - op: point
+      id: B
+      coords: [3, 0]
+    - op: point
+      id: C
+      coords: [3, 2]
+    - op: point
+      id: D
+      coords: [2, 2]
+    - op: point
+      id: F
+      coords: [2, 1]
+    - op: point
+      id: G
+      coords: [1, 1]
+    - op: polygon
+      id: preimage
+      vertices: [A, B, C, D, F, G]
+    # Rotated image: each vertex rotated 90° CCW about E
+    - op: rotation
+      id: A2
+      point: A
+      center: E
+      angle: 90
+    - op: rotation
+      id: B2
+      point: B
+      center: E
+      angle: 90
+    - op: rotation
+      id: C2
+      point: C
+      center: E
+      angle: 90
+    - op: rotation
+      id: D2
+      point: D
+      center: E
+      angle: 90
+    - op: rotation
+      id: F2
+      point: F
+      center: E
+      angle: 90
+    - op: rotation
+      id: G2
+      point: G
+      center: E
+      angle: 90
+    - op: polygon
+      id: image
+      vertices: [A2, B2, C2, D2, F2, G2]
+    # Arc from B to B2 centered at E to show rotation sweep
+    - op: arc
+      id: rot_arc
+      center: E
+      start: B
+      end: B2
+      reflex: false
+    # Radius segments from E to arc endpoints (CRITICAL: required for mark_angle to work)
+    - op: segment
+      id: arm_EB
+      endpoints: [E, B]
+    - op: segment
+      id: arm_EB2
+      endpoints: [E, B2]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: false
+    labels:
+      - kind: label_point
+        point: E
+      - kind: label_point
+        point: A
+      - kind: label_point
+        point: A2
+    marks:
+      # 90° angle at E between the two radius segments
+      - kind: mark_angle
+        a: B
+        vertex: E
+        b: B2
+        group: 1
+        expected: 90
+notes:
+  - "CRITICAL: after creating 'arc' for visual sweep, add explicit 'segment' ops from E to B and E to B2."
+  - "Without arm_EB and arm_EB2, mark_angle(B, E, B2) fails: 'B does not lie on any line/segment/ray through vertex E'."
+  - "The polygon op with vertices [A,B,C,D,F,G] draws the L-shape. Same for the rotated image [A2,B2,C2,D2,F2,G2]."
+  - "Use rotation ops to compute image vertices — DO NOT try to hardcode rotated coordinates."
+  - "auto_label_points: false prevents cluttering with A2,B2,C2... labels. Explicitly label only E and key points."
+  - "The arc is purely visual; the angle mark at E is what proves the 90° rotation."

@@ -11,22 +11,21 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from pydantic import TypeAdapter
-
 from ir.ir import (
     DiagramIR, Canvas, Params,
-    PointFixed, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
+    PointFixed, PointOn, PointOnParam, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
     PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    ArcCenterStartEnd, SectorCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-    Triangle, Polygon, PolygonExterior,
+    Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual,
-    Draw, DrawPoints, LabelPoint as IRLabelPoint, MarkRightAngles,
+    Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
-    LabelAngle as IRLabelAngle,
+    LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
     RenderOp, DefStmt, PickRule,
 )
 from recipe.dsl import (
@@ -38,59 +37,35 @@ from recipe.dsl import (
     PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
+    RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
+    LabelFreeText as DSLLabelFreeText,
     DrawObj,
 )
-from recipe.solve import solve_triangle
+from recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
 
 
 class LoweringError(ValueError):
     """Raised when a RecipeDSL cannot be lowered to DiagramIR."""
 
 
-_PICK_RULE_ADAPTER: TypeAdapter[PickRule] = TypeAdapter(PickRule)
-
 _DEG_TO_RAD = math.pi / 180.0
 
-_GENERIC_VERTICES = ("A", "B", "C")
+_POS_TO_ANGLE: dict[str, float | None] = {
+    "auto": None,
+    "right": 0.0,
+    "above right": 45.0,
+    "above": 90.0,
+    "above left": 135.0,
+    "left": 180.0,
+    "below left": 225.0,
+    "below": 270.0,
+    "below right": 315.0,
+}
 
-
-def _remap_triangle_spec(vertices: list[str], spec: dict) -> dict:
-    """Remap generic A/B/C spec keys to the actual vertex names.
-
-    When the LLM generates a triangle with vertices [D, E, F] but uses generic
-    spec keys like ``angle_A``, ``angle_B``, ``side_AB`` (meant positionally),
-    this function translates those keys to use the real vertex names
-    (``angle_D``, ``angle_E``, ``side_DE``).
-
-    The remapping is only applied when the vertex set is *completely disjoint*
-    from {A, B, C}, i.e. none of the actual vertices are named A, B, or C.
-    If any actual vertex shares a name with a generic label, the spec keys may
-    be intentional references to that vertex, so we leave the spec unchanged.
-    """
-    if set(vertices) & set(_GENERIC_VERTICES):
-        return spec  # actual vertices include A/B/C — cannot safely remap
-
-    mapping = {g: v for g, v in zip(_GENERIC_VERTICES, vertices)}
-
-    remapped: dict = {}
-    for key, val in spec.items():
-        if key.startswith("angle_"):
-            letter = key[len("angle_"):]
-            remapped[f"angle_{mapping.get(letter, letter)}"] = val
-        elif key.startswith("side_") and len(key) == 7:
-            # side_XY — two-character vertex pair
-            l0, l1 = key[5], key[6]
-            remapped[f"side_{mapping.get(l0, l0)}{mapping.get(l1, l1)}"] = val
-        elif key == "right_angle_at":
-            letter = str(val)
-            remapped[key] = mapping.get(letter, letter)
-        else:
-            remapped[key] = val
-    return remapped
 
 
 class _Lowerer:
@@ -103,6 +78,10 @@ class _Lowerer:
         self._canvas: Canvas | None = None
         # Maps triangle DSL id → [v0, v1, v2] vertex names (for circumcircle etc.)
         self._triangle_vertices: dict[str, list[str]] = {}
+        # Maps polygon/rectangle DSL id → vertex names (for incircle support)
+        self._polygon_vertices: dict[str, list[str]] = {}
+        # Maps circle DSL id → center point id (for tangent-at-point support)
+        self._circle_centers: dict[str, str] = {}
         # All non-implicit point IDs defined in construction order
         self._point_ids: list[str] = []
         # All non-implicit drawable object IDs (set for O(1) membership, order via _defs)
@@ -119,7 +98,38 @@ class _Lowerer:
     # Entry point
     # ------------------------------------------------------------------
 
+    def _inject_implicit_points(self, construction: list[Any]) -> None:
+        """Auto-inject PointFixed(0,0) for any point IDs referenced but never defined.
+
+        LLMs sometimes reference a center point (e.g. circle center='O') without
+        emitting an explicit 'point' op for it. Rather than failing at IR compilation,
+        we silently create the point at the origin. This is an intentional robustness
+        measure — the LLM usually intends the center to be at (0,0) anyway.
+        """
+        defined_ids = {op.id for op in construction if hasattr(op, "id") and op.id}
+        for op in construction:
+            # Fields that hold point-ID references (not line/object IDs)
+            point_ref_fields: list[str] = []
+            if isinstance(op, CircleOp):
+                point_ref_fields = ["center"]
+                if op.through:
+                    point_ref_fields.append("through")
+            elif isinstance(op, CircleThrough3Op):
+                for pid in op.through:
+                    if pid not in defined_ids:
+                        self._defs.insert(0, PointFixed(id=pid, x=0.0, y=0.0))
+                        self._point_ids.insert(0, pid)
+                        defined_ids.add(pid)
+                continue
+            for field in point_ref_fields:
+                ref_id = getattr(op, field, None)
+                if ref_id and isinstance(ref_id, str) and ref_id not in defined_ids:
+                    self._defs.insert(0, PointFixed(id=ref_id, x=0.0, y=0.0))
+                    self._point_ids.insert(0, ref_id)
+                    defined_ids.add(ref_id)
+
     def lower(self, dsl: RecipeDSL) -> DiagramIR:
+        self._inject_implicit_points(dsl.construction)
         for op in dsl.construction:
             self._lower_op(op)
         self._apply_annotations(dsl.annotations, dsl.construction)
@@ -148,6 +158,7 @@ class _Lowerer:
             case PolygonOp():
                 self._add(Polygon(id=op.id, points=op.vertices))
                 self._drawable.add(op.id)
+                self._polygon_vertices[op.id] = list(op.vertices)
             case PointOp():
                 self._add(PointFixed(id=op.id, x=op.coords[0], y=op.coords[1]))
                 self._point_ids.append(op.id)
@@ -167,7 +178,7 @@ class _Lowerer:
                 self._add(PointMidpoint(id=op.id, p=op.of[0], q=op.of[1]))
                 self._point_ids.append(op.id)
             case IntersectionOp():
-                pick = _PICK_RULE_ADAPTER.validate_python(op.selector) if op.selector else None
+                pick = op.selector  # already a PickRule or None (validated at parse time)
                 self._add(PointIntersection(id=op.id, obj1=op.of[0], obj2=op.of[1], pick=pick))
                 self._point_ids.append(op.id)
             case PerpendicularOp():
@@ -184,13 +195,30 @@ class _Lowerer:
                 self._add(Ray(id=op.id, a=op.from_, b=op.through))
                 self._drawable.add(op.id)
             case ReflectionOp():
+                if op.point == op.over:
+                    raise LoweringError(
+                        f"ReflectionOp '{op.id}': reflecting point '{op.point}' across itself "
+                        "produces the same point — use a different axis"
+                    )
                 self._add(PointReflect(id=op.id, source=op.point, across=op.over))
                 self._point_ids.append(op.id)
             case RotationOp():
+                if op.point == op.center:
+                    raise LoweringError(
+                        f"RotationOp '{op.id}': rotating point '{op.point}' around itself "
+                        f"produces the same point — use a different source point "
+                        f"(e.g. a point on a circle) or place the point with coordinates"
+                    )
                 angle_rad = float(op.angle) * _DEG_TO_RAD
                 self._add(PointRotate(id=op.id, center=op.center, source=op.point, angle=angle_rad))
                 self._point_ids.append(op.id)
             case PointOnSegmentOp():
+                if op.segment[0] == op.segment[1]:
+                    raise LoweringError(
+                        f"point_on_segment '{op.id}': both endpoints are the same point "
+                        f"({op.segment[0]!r}). To place a point on a circle, use "
+                        "'intersection' of a 'line_through' with the circle instead."
+                    )
                 self._add(PointBetween(id=op.id, a=op.segment[0], b=op.segment[1], ratio=op.ratio))
                 self._point_ids.append(op.id)
             case TangentLineOp():
@@ -221,19 +249,54 @@ class _Lowerer:
             case MedianOp():
                 self._lower_median(op)
             case PolygonExteriorOp():
+                # Build the full vertex name list for all n vertices.
+                # The LLM may provide either:
+                #   n names  → names for ALL vertices (including base positions)
+                #   n-base_count names → names for the NEW vertices only
+                #   fewer → auto-fill missing with {id}_v{k}
+                base_count = len(op.base)
+                n_new = op.n - base_count
+                user_names = list(op.vertices or [])
+                if len(user_names) == op.n:
+                    # Full vertex list: user is naming all n vertices
+                    all_vertex_names = user_names
+                else:
+                    # New-only (or partial): prefix with base point names, auto-fill gaps
+                    all_vertex_names = list(op.base) + [
+                        user_names[i] if i < len(user_names) else f"{op.id}_v{base_count + i}"
+                        for i in range(n_new)
+                    ]
                 self._add(PolygonExterior(
                     id=op.id, a=op.base[0], b=op.base[1],
                     ref=op.ref_point, sides=op.n,
+                    vertex_names=all_vertex_names,
                 ))
                 self._drawable.add(op.id)
-                # Emit point aliases for user-given vertex names so they can be
-                # referenced in annotations, marks, and other ops.
-                # Base points occupy indices 0..len(base)-1; new vertices start after.
-                base_count = len(op.base)
-                for i, vname in enumerate(op.vertices or []):
-                    auto_name = f"{op.id}_v{base_count + i}"
-                    self._add(PointAlias(id=vname, ref=auto_name))
+                # Register new vertex names as point IDs (coordinates resolved later by SymPy)
+                for vname in all_vertex_names[base_count:]:
                     self._point_ids.append(vname)
+            case RectangleOp():
+                self._lower_rectangle(op)
+            case PolygonFromSidesOp():
+                self._lower_polygon_from_sides(op)
+            case PolygonFromAnglesAndSidesOp():
+                self._lower_polygon_from_angles_and_sides(op)
+            case ArcOp():
+                self._add(ArcCenterStartEnd(
+                    id=op.id, center=op.center, start=op.start, end=op.end,
+                    reflex=op.reflex,
+                ))
+                self._drawable.add(op.id)
+            case SectorOp():
+                self._add(SectorCenterStartEnd(
+                    id=op.id, center=op.center,
+                    start=op.start, end=op.end, reflex=op.reflex,
+                ))
+                self._drawable.add(op.id)
+            case RegularSectorsOp():
+                self._lower_regular_sectors(op)
+            case FillOp():
+                self._lower_fill(op)
             case _:
                 raise LoweringError(f"Unhandled DSL op type: {type(op).__name__}")
 
@@ -242,9 +305,23 @@ class _Lowerer:
     # ------------------------------------------------------------------
 
     def _lower_triangle(self, op: TriangleOp) -> None:
+        v0, v1, v2 = op.vertices[0], op.vertices[1], op.vertices[2]
+        spec = op.spec
+        _slot = {"A": v0, "B": v1, "C": v2}
+
+        # Translate positional TriangleSpec to vertex-keyed dict for solve_triangle
+        spec_dict: dict[str, Any] = {}
+        if spec.side_AB is not None: spec_dict[f"side_{v0}{v1}"] = spec.side_AB
+        if spec.side_BC is not None: spec_dict[f"side_{v1}{v2}"] = spec.side_BC
+        if spec.side_CA is not None: spec_dict[f"side_{v2}{v0}"] = spec.side_CA
+        if spec.angle_A is not None: spec_dict[f"angle_{v0}"] = spec.angle_A
+        if spec.angle_B is not None: spec_dict[f"angle_{v1}"] = spec.angle_B
+        if spec.angle_C is not None: spec_dict[f"angle_{v2}"] = spec.angle_C
+        if spec.right_angle_at is not None:
+            spec_dict["right_angle_at"] = _slot[spec.right_angle_at]
+
         try:
-            spec = _remap_triangle_spec(op.vertices, op.spec)
-            coords = solve_triangle(op.vertices, spec, center=op.center)
+            coords = solve_triangle(op.vertices, spec_dict, center=op.center)
         except Exception as e:
             raise LoweringError(f"Triangle '{op.id}': {e}") from e
 
@@ -259,12 +336,151 @@ class _Lowerer:
         self._triangle_vertices[op.id] = list(op.vertices)
 
         # Auto-generate right_angle check if spec has right_angle_at
-        if "right_angle_at" in op.spec:
-            ra = op.spec["right_angle_at"]
+        if spec.right_angle_at is not None:
+            ra = _slot[spec.right_angle_at]
             others = [v for v in op.vertices if v != ra]
             triple = (others[0], ra, others[1])
             self._checks.append(RightAngle(angle=AnglePoints(a=triple[0], o=triple[1], b=triple[2])))
             self._right_angle_triples.append(triple)
+
+    def _lower_rectangle(self, op: RectangleOp) -> None:
+        v = op.vertices  # [v0, v1, v2, v3] = A, B, C, D positional slots
+        spec = op.spec
+
+        # Translate positional RectangleSpec to vertex-keyed dict for solve_rectangle
+        spec_dict: dict[str, Any] = {"rotation": spec.rotation}
+        if spec.side_AB is not None: spec_dict[f"side_{v[0]}{v[1]}"] = spec.side_AB
+        if spec.side_BC is not None: spec_dict[f"side_{v[1]}{v[2]}"] = spec.side_BC
+        if spec.side_CD is not None: spec_dict[f"side_{v[2]}{v[3]}"] = spec.side_CD
+        if spec.side_DA is not None: spec_dict[f"side_{v[3]}{v[0]}"] = spec.side_DA
+
+        try:
+            center = tuple(op.center) if op.center is not None else (2.0, 2.0)
+            coords = solve_rectangle(op.vertices, spec_dict, center=center)
+        except Exception as e:
+            raise LoweringError(f"Rectangle '{op.id}': {e}") from e
+
+        for name in op.vertices:
+            x, y = coords[name]
+            self._add(PointFixed(id=name, x=round(x, 10), y=round(y, 10)))
+            self._point_ids.append(name)
+            self._coord_floats[name] = (round(x, 10), round(y, 10))
+
+        self._add(Polygon(id=op.id, points=list(op.vertices)))
+        self._drawable.add(op.id)
+        self._polygon_vertices[op.id] = list(op.vertices)
+
+        # Auto right-angle check at vertex[0] (corner A, between D–A–B)
+        a, b, _c, d = op.vertices
+        self._right_angle_triples.append((b, a, d))
+
+    def _lower_polygon_from_sides(self, op: PolygonFromSidesOp) -> None:
+        try:
+            coords = solve_polygon_from_sides(op.vertices, op.side_lengths, center=op.center)
+        except Exception as e:
+            raise LoweringError(f"polygon_from_sides '{op.id}': {e}") from e
+        for name in op.vertices:
+            x, y = coords[name]
+            self._add(PointFixed(id=name, x=x, y=y))
+            self._point_ids.append(name)
+            self._coord_floats[name] = (x, y)
+        self._add(Polygon(id=op.id, points=list(op.vertices)))
+        self._drawable.add(op.id)
+        self._polygon_vertices[op.id] = list(op.vertices)
+
+    def _lower_polygon_from_angles_and_sides(self, op: PolygonFromAnglesAndSidesOp) -> None:
+        n = len(op.vertices)
+        # Expand angles: N-1 → N by inferring the last
+        expected_sum = (n - 2) * 180.0
+        angs = list(op.angles)
+        if len(angs) == n - 1:
+            angs.append(expected_sum - sum(angs))
+
+        if op.base is None:
+            # --- Standalone mode: same as before, pass rotation ---
+            try:
+                coords = solve_polygon_from_angles_and_sides(
+                    op.vertices, op.side_lengths, angs, center=op.center, rotation=op.rotation
+                )
+            except Exception as e:
+                raise LoweringError(f"polygon_from_angles_and_sides '{op.id}': {e}") from e
+            for name in op.vertices:
+                x, y = coords[name]
+                self._add(PointFixed(id=name, x=x, y=y))
+                self._point_ids.append(name)
+                self._coord_floats[name] = (x, y)
+            self._add(Polygon(id=op.id, points=list(op.vertices)))
+            self._drawable.add(op.id)
+            self._polygon_vertices[op.id] = list(op.vertices)
+        else:
+            # --- Edge-anchored mode: emit PolygonOnEdge IR def ---
+            sides = list(op.side_lengths)
+            if len(sides) == n:
+                # LLM included the base edge as sides[0]
+                claimed_base = sides[0]
+                non_base_sides = sides[1:]
+            else:
+                # N-1 sides: no base edge provided
+                claimed_base = None
+                non_base_sides = sides  # already N-1
+
+            self._add(PolygonOnEdge(
+                id=op.id,
+                a=op.base[0],
+                b=op.base[1],
+                ref=op.ref_point,
+                vertex_names=list(op.vertices),
+                side_lengths=non_base_sides,
+                angles=angs,
+                claimed_base_length=claimed_base,
+            ))
+            self._drawable.add(op.id)
+            # vertices[0] and [1] already defined; register [2..N-1] as point IDs only
+            for vname in op.vertices[2:]:
+                self._point_ids.append(vname)
+
+    def _lower_fill(self, op: FillOp) -> None:
+        style_key = self._resolve_style(op.style)
+        self._renders.append(Fill(
+            obj=op.obj,
+            holes=list(op.holes),
+            opacity=op.opacity,
+            style=style_key,
+        ))
+
+    def _lower_regular_sectors(self, op: RegularSectorsOp) -> None:
+        import math as _math
+        if op.center not in self._coord_floats:
+            raise LoweringError(
+                f"regular_sectors '{op.id}': center point '{op.center}' not in coord table. "
+                "Define the center point before this op."
+            )
+        cx, cy = self._coord_floats[op.center]
+        r = float(op.radius)
+        n = op.n
+        if n < 2:
+            raise LoweringError(f"regular_sectors '{op.id}': n must be ≥ 2, got {n}")
+        # Emit N spoke-endpoint PointFixed defs
+        spoke_ids: list[str] = []
+        for k in range(n):
+            angle_deg = op.start_angle + k * 360.0 / n
+            angle_rad = _math.radians(angle_deg)
+            px = round(cx + r * _math.cos(angle_rad), 10)
+            py = round(cy + r * _math.sin(angle_rad), 10)
+            spoke_id = f"{op.id}__r{k}"
+            self._defs.append(PointFixed(id=spoke_id, x=px, y=py))
+            self._coord_floats[spoke_id] = (px, py)
+            spoke_ids.append(spoke_id)
+        # Emit N SectorCenterStartEnd defs (sector k: spoke k → spoke (k+1)%n)
+        for k in range(n):
+            sec_id = f"{op.id}__{k}"
+            self._add(SectorCenterStartEnd(
+                id=sec_id,
+                center=op.center,
+                start=spoke_ids[k],
+                end=spoke_ids[(k + 1) % n],
+            ))
+            self._drawable.add(sec_id)
 
     def _lower_circle(self, op: CircleOp) -> None:
         if op.radius is not None:
@@ -272,6 +488,7 @@ class _Lowerer:
         else:
             self._add(CircleCenterPoint(id=op.id, center=op.center, through=op.through))
         self._drawable.add(op.id)
+        self._circle_centers[op.id] = op.center
 
     def _lower_ellipse(self, op: EllipseOp) -> None:
         if op.bbox is not None:
@@ -322,6 +539,7 @@ class _Lowerer:
             reordered = list(op.vertices)
         self._defs.append(Polygon(id=op.id, points=reordered))
         self._drawable.add(op.id)
+        self._polygon_vertices[op.id] = list(op.vertices)
 
     def _lower_point_external(self, op: PointExternalOp) -> None:
         # Find circle center and radius from previously defined circles
@@ -344,14 +562,10 @@ class _Lowerer:
             )
         # Parse direction: numeric degrees or named cardinal
         _DIRECTIONS = {"right": 0.0, "left": 180.0, "above": 90.0, "below": 270.0}
-        dir_str = str(op.direction)
-        if dir_str in _DIRECTIONS:
-            angle_deg = _DIRECTIONS[dir_str]
+        if isinstance(op.direction, str):
+            angle_deg = _DIRECTIONS[op.direction]  # Literal["left","right","above","below"] guaranteed
         else:
-            try:
-                angle_deg = float(dir_str)
-            except ValueError:
-                raise LoweringError(f"point_external: unrecognised direction {op.direction!r}")
+            angle_deg = float(op.direction)        # already a float
         angle_rad = math.radians(angle_deg)
         dist = float(op.distance_ratio) * r
         px = round(cx + dist * math.cos(angle_rad), 10)
@@ -361,18 +575,21 @@ class _Lowerer:
         self._coord_floats[op.id] = (px, py)
 
     def _lower_tangent_line(self, op: TangentLineOp) -> None:
-        pick = _PICK_RULE_ADAPTER.validate_python(op.selector) if op.selector else None
+        pick = op.selector  # already a PickRule or None
         if op.from_point:
             self._add(LineTangent(id=op.id, point=op.from_point, circle=op.circle, pick=pick))
         elif op.at:
-            # Tangent at a point on circle requires the circle's center id,
-            # which the lowerer does not currently track. Raise explicitly rather
-            # than emitting IR with an unresolvable placeholder id.
-            raise LoweringError(
-                f"TangentLineOp '{op.id}': 'at=' tangent (tangent at a point on the circle) "
-                "is not yet supported. Use 'from_point=' for an external tangent, "
-                "or emit a line_perp_through manually using the circle center."
-            )
+            circle_id = op.circle
+            if circle_id not in self._circle_centers:
+                raise LoweringError(
+                    f"TangentLineOp '{op.id}': circle '{circle_id}' not found. "
+                    "Define the circle before the tangent."
+                )
+            center_id = self._circle_centers[circle_id]
+            # Tangent at point P on circle = line perpendicular to radius (center→P) at P
+            radius_line_id = f"__{op.id}_radius"
+            self._add(LineThrough(id=radius_line_id, p=center_id, q=op.at))
+            self._add(LinePerpendicularThrough(id=op.id, through=op.at, to_line=radius_line_id))
         else:
             raise LoweringError(f"TangentLineOp '{op.id}': must specify 'from_point' or 'at'")
         self._drawable.add(op.id)
@@ -435,54 +652,120 @@ class _Lowerer:
         self._checks.append(Perpendicular(l1=op.id, l2=base_id))
 
     def _lower_circumcircle(self, op: CircumcircleOp) -> None:
-        verts = self._triangle_vertices.get(op.of)
+        # Resolve triangle: either from explicit `of` or implicit from `points`
+        if op.points is not None:
+            a, b, c = op.points
+            tri_id = f"__{op.id}_tri"
+            self._add(Triangle(id=tri_id, a=a, b=b, c=c))
+            self._triangle_vertices[tri_id] = list(op.points)
+            tri_ref = tri_id
+        else:
+            tri_ref = op.of
+
+        verts = self._triangle_vertices.get(tri_ref)
         if verts is None:
             raise LoweringError(
-                f"CircumcircleOp '{op.id}': triangle '{op.of}' not found. "
+                f"CircumcircleOp '{op.id}': triangle '{tri_ref}' not found. "
                 "Define the triangle before the circumcircle."
             )
-        self._add(PointTriangleCenter(id=op.center, tri=op.of, which="circumcenter"))
+        self._add(PointTriangleCenter(id=op.center, tri=tri_ref, which="circumcenter"))
         self._add(CircleCenterPoint(id=op.id, center=op.center, through=verts[0]))
         self._point_ids.append(op.center)
         self._drawable.add(op.id)
+        self._circle_centers[op.id] = op.center
         # Auto-generate contains checks for all three vertices
         for v in verts:
             self._checks.append(Contains(p=v, obj=op.id))
 
     def _lower_incircle(self, op: IncircleOp) -> None:
-        if op.of not in self._triangle_vertices:
-            raise LoweringError(f"incircle: triangle {op.of!r} not found")
-        verts = self._triangle_vertices[op.of]
-        a_id, b_id, c_id = verts[0], verts[1], verts[2]
-        # Emit incenter
-        self._defs.append(PointTriangleCenter(id=op.center, tri=op.of, which="incenter"))
-        self._point_ids.append(op.center)
-        # Compute inradius numerically from solved coordinates
-        if all(v in self._coord_floats for v in [a_id, b_id, c_id]):
-            ax, ay = self._coord_floats[a_id]
-            bx, by = self._coord_floats[b_id]
-            cx, cy = self._coord_floats[c_id]
-            side_a = math.hypot(bx - cx, by - cy)  # BC (opposite A)
-            side_b = math.hypot(ax - cx, ay - cy)  # AC (opposite B)
-            side_c = math.hypot(ax - bx, ay - by)  # AB (opposite C)
-            s = (side_a + side_b + side_c) / 2
-            area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
-            inradius: float | str = round(area / s, 10)
+        # Resolve triangle: either from explicit `of` or implicit from `points`
+        if op.points is not None:
+            a, b, c = op.points
+            tri_id = f"__{op.id}_tri"
+            self._add(Triangle(id=tri_id, a=a, b=b, c=c))
+            self._triangle_vertices[tri_id] = list(op.points)
+            tri_ref = tri_id
         else:
-            # Fallback: Heron's formula as string expression (derived triangle)
-            a, b, c = a_id, b_id, c_id
-            inradius = (
-                f"sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({b},{c})) "
-                f"* sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({a},{c})) "
-                f"* sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({a},{b})) "
-                f"/ sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2)"
-            )
-        self._defs.append(CircleCenterRadius(id=op.id, center=op.center, radius=inradius))
-        self._drawable.add(op.id)
+            tri_ref = op.of
+
+        if tri_ref in self._triangle_vertices:
+            verts = self._triangle_vertices[tri_ref]
+            a_id, b_id, c_id = verts[0], verts[1], verts[2]
+            # Emit incenter
+            self._defs.append(PointTriangleCenter(id=op.center, tri=tri_ref, which="incenter"))
+            self._point_ids.append(op.center)
+            # Compute inradius numerically from solved coordinates
+            if all(v in self._coord_floats for v in [a_id, b_id, c_id]):
+                ax, ay = self._coord_floats[a_id]
+                bx, by = self._coord_floats[b_id]
+                cx, cy = self._coord_floats[c_id]
+                side_a = math.hypot(bx - cx, by - cy)  # BC (opposite A)
+                side_b = math.hypot(ax - cx, ay - cy)  # AC (opposite B)
+                side_c = math.hypot(ax - bx, ay - by)  # AB (opposite C)
+                s = (side_a + side_b + side_c) / 2
+                area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+                inradius: float | str = round(area / s, 10)
+            else:
+                # Fallback: Heron's formula as string expression (derived triangle)
+                a, b, c = a_id, b_id, c_id
+                inradius = (
+                    f"sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({b},{c})) "
+                    f"* sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({a},{c})) "
+                    f"* sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2 - length({a},{b})) "
+                    f"/ sqrt((length({b},{c})+length({a},{c})+length({a},{b}))/2)"
+                )
+            self._defs.append(CircleCenterRadius(id=op.id, center=op.center, radius=inradius))
+            self._drawable.add(op.id)
+            return
+
+        if tri_ref in self._polygon_vertices:
+            verts = self._polygon_vertices[tri_ref]
+            if not all(v in self._coord_floats for v in verts):
+                raise LoweringError(
+                    f"IncircleOp '{op.id}': polygon '{tri_ref}' vertices don't have "
+                    "resolved coordinates — define the polygon before the incircle."
+                )
+            coords = [self._coord_floats[v] for v in verts]
+            n = len(coords)
+            # Center = centroid
+            cx = sum(p[0] for p in coords) / n
+            cy = sum(p[1] for p in coords) / n
+            # Radius = min distance from centroid to each edge
+            min_dist = float("inf")
+            for i in range(n):
+                x1, y1 = coords[i]
+                x2, y2 = coords[(i + 1) % n]
+                # Distance from (cx, cy) to line through (x1,y1)-(x2,y2)
+                dx, dy = x2 - x1, y2 - y1
+                seg_len = math.hypot(dx, dy)
+                if seg_len < 1e-12:
+                    continue
+                dist = abs(dx * (y1 - cy) - dy * (x1 - cx)) / seg_len
+                min_dist = min(min_dist, dist)
+            center_id = op.center
+            self._add(PointFixed(id=center_id, x=round(cx, 10), y=round(cy, 10)))
+            self._point_ids.append(center_id)
+            self._coord_floats[center_id] = (round(cx, 10), round(cy, 10))
+            self._defs.append(CircleCenterRadius(id=op.id, center=center_id, radius=round(min_dist, 10)))
+            self._drawable.add(op.id)
+            return
+
+        available_tris = list(self._triangle_vertices)
+        available_polys = list(self._polygon_vertices)
+        raise LoweringError(
+            f"IncircleOp '{op.id}': '{tri_ref}' is not a known triangle or polygon. "
+            f"Available triangles: {available_tris}. Available polygons: {available_polys}. "
+            "Define the triangle or polygon before the incircle."
+        )
 
     def _lower_point_along(self, op: PointAlongOp) -> None:
         from_id = op.from_
         toward_id = op.toward
+        if from_id == toward_id:
+            raise LoweringError(
+                f"point_along '{op.id}': 'from' and 'toward' are the same point ({from_id!r}) — "
+                "direction is undefined. Use a different point to indicate direction."
+            )
         if from_id not in self._coord_floats:
             raise LoweringError(f"point_along: from point {from_id!r} not in coord table")
         if toward_id not in self._coord_floats:
@@ -503,6 +786,11 @@ class _Lowerer:
 
     def _lower_extend_segment(self, op: ExtendSegmentOp) -> None:
         a_id, b_id = op.segment[0], op.segment[1]
+        if a_id == b_id:
+            raise LoweringError(
+                f"extend_segment '{op.id}': both segment endpoints are the same point ({a_id!r}) — "
+                "segment has zero length and no direction to extend."
+            )
         beyond_id = op.beyond
         other_id = b_id if beyond_id == a_id else a_id
         if beyond_id not in self._coord_floats:
@@ -531,6 +819,11 @@ class _Lowerer:
         if len(op.through) != 3:
             raise LoweringError(f"circle_through_3: expected exactly 3 points, got {len(op.through)}")
         a, b, c = op.through
+        if len({a, b, c}) < 3:
+            raise LoweringError(
+                f"circle_through_3 '{op.id}': duplicate points in through list {op.through} — "
+                "all three points must be distinct."
+            )
         # Triangle must precede its circumcenter in the definition DAG
         self._defs.append(Triangle(id=f"__{op.id}_tri", a=a, b=b, c=c))
         self._defs.append(PointTriangleCenter(id=op.center,
@@ -538,6 +831,7 @@ class _Lowerer:
         self._defs.append(CircleCenterPoint(id=op.id, center=op.center, through=a))
         self._point_ids.append(op.center)
         self._drawable.add(op.id)
+        self._circle_centers[op.id] = op.center
 
     def _lower_perp_bisector(self, op: PerpendicularBisectorOp) -> None:
         base_id = f"__{op.id}_base"
@@ -545,6 +839,9 @@ class _Lowerer:
         self._add(PointMidpoint(id=op.mid, p=op.of[0], q=op.of[1]))
         self._add(LinePerpendicularThrough(id=op.id, through=op.mid, to_line=base_id))
         self._point_ids.append(op.mid)
+        if op.point_on_line:
+            self._add(PointOn(id=op.point_on_line, on=op.id, how=PointOnParam(t=0.5)))
+            self._point_ids.append(op.point_on_line)
         self._drawable.add(op.id)
         # Always draw the base segment unless the user already defined one
         # between those two points (to avoid a duplicate Draw op).
@@ -742,7 +1039,7 @@ class _Lowerer:
         for mark in ann.marks:
             if isinstance(mark, MarkAngle):
                 a, vertex, b = self._resolve_angle_mark(mark)
-                if mark.expected is not None:
+                if mark.expected is not None and not mark.label_only:
                     self._check_angle_expected(a, vertex, b, mark.expected)
                 self._renders.append(MarkAngles(
                     angles=[AnglePoints(a=a, o=vertex, b=b)],
@@ -810,18 +1107,30 @@ class _Lowerer:
             if isinstance(label, DSLLabelSegment):
                 p, q = label.endpoints[0], label.endpoints[1]
                 seg_id = self._ensure_segment(p, q)
-                self._renders.append(IRLabelSegment(seg=seg_id, text=label.text))
+                self._renders.append(IRLabelSegment(
+                    seg=seg_id,
+                    text=label.text,
+                    pos=_POS_TO_ANGLE[label.pos],
+                ))
             elif isinstance(label, DSLLabelPoint):
                 self._renders.append(IRLabelPoint(
                     p=label.point,
                     text=label.text,
                     pos=label.pos,
+                    show_coords=label.show_coords,
                 ))
             elif isinstance(label, DSLLabelAngle):
                 a, vertex, b = self._resolve_angle_mark(label)
                 self._renders.append(IRLabelAngle(
                     angle=AnglePoints(a=a, o=vertex, b=b),
                     text=label.text,
+                    pos=_POS_TO_ANGLE[label.pos],
+                ))
+            elif isinstance(label, DSLLabelFreeText):
+                self._renders.append(IRLabelFreeText(
+                    text=label.text,
+                    at=label.at,
+                    centroid_of=label.centroid_of,
                 ))
 
         # Explicit draws (with optional per-element styles)
@@ -847,11 +1156,43 @@ class _Lowerer:
     # ------------------------------------------------------------------
 
     def _auto_canvas(self) -> Canvas:
-        """Compute canvas from solved coordinate floats with 1-unit padding."""
+        """Compute canvas from solved coordinate floats with 1-unit padding.
+
+        Also accounts for circles and ellipses with numeric radii so that a
+        large circle whose center is the only point in coord_floats doesn't
+        produce a tiny canvas that clips most of the circle.
+        """
         if not self._coord_floats:
             return Canvas()  # default
         xs = [c[0] for c in self._coord_floats.values()]
         ys = [c[1] for c in self._coord_floats.values()]
+        for d in self._defs:
+            if d.kind == "circle_center_radius":
+                center = self._coord_floats.get(d.center)
+                if center is not None:
+                    try:
+                        r = float(d.radius)
+                        xs.extend([center[0] - r, center[0] + r])
+                        ys.extend([center[1] - r, center[1] + r])
+                    except (TypeError, ValueError):
+                        pass
+            elif d.kind == "circle_center_point":
+                center = self._coord_floats.get(d.center)
+                through = self._coord_floats.get(d.through)
+                if center is not None and through is not None:
+                    r = ((center[0] - through[0]) ** 2 + (center[1] - through[1]) ** 2) ** 0.5
+                    xs.extend([center[0] - r, center[0] + r])
+                    ys.extend([center[1] - r, center[1] + r])
+            elif d.kind == "ellipse_center_axes":
+                center = self._coord_floats.get(d.center)
+                if center is not None:
+                    try:
+                        a = float(d.hradius)
+                        b = float(d.vradius)
+                        xs.extend([center[0] - a, center[0] + a])
+                        ys.extend([center[1] - b, center[1] + b])
+                    except (TypeError, ValueError):
+                        pass
         pad = 1.0
         return Canvas(
             xmin=round(min(xs) - pad, 1),

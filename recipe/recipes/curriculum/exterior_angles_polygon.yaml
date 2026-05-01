@@ -1,0 +1,124 @@
+name: exterior_angles_polygon
+description: "Convex pentagon with exterior angles marked at each vertex using extend_segment and explicit arm segments"
+tags: [polygon, pentagon, exterior-angle, annotation, intermediate]
+context: "A convex polygon with one side extended at each vertex to show the exterior angle."
+setup: []
+example:
+  mode: abstract
+  construction:
+    # Regular pentagon: 5 vertices, all interior angles 108°, all sides 3
+    - op: polygon_from_angles_and_sides
+      id: pent
+      vertices: [A, B, C, D, E]
+      side_lengths: [3, 3, 3, 3]
+      angles: [108, 108, 108, 108, 108]
+      center: [3, 3]
+      rotation: 90
+    # Extend each side BEYOND the next vertex to create exterior angle arm points
+    # extend [prev_vertex, vertex] beyond vertex — gives the outward arm at that vertex
+    - op: extend_segment
+      id: extA
+      segment: [E, A]
+      beyond: A
+      by: 1.0
+    - op: extend_segment
+      id: extB
+      segment: [A, B]
+      beyond: B
+      by: 1.0
+    - op: extend_segment
+      id: extC
+      segment: [B, C]
+      beyond: C
+      by: 1.0
+    - op: extend_segment
+      id: extD
+      segment: [C, D]
+      beyond: D
+      by: 1.0
+    - op: extend_segment
+      id: extE
+      segment: [D, E]
+      beyond: E
+      by: 1.0
+    # CRITICAL: add explicit segments from each vertex to its extended point.
+    # Without these segments, the angle validator cannot verify the angle triples.
+    - op: segment
+      id: arm_A
+      endpoints: [A, extA]
+    - op: segment
+      id: arm_B
+      endpoints: [B, extB]
+    - op: segment
+      id: arm_C
+      endpoints: [C, extC]
+    - op: segment
+      id: arm_D
+      endpoints: [D, extD]
+    - op: segment
+      id: arm_E
+      endpoints: [E, extE]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: false
+    marks:
+      - kind: mark_angle
+        a: extA
+        vertex: A
+        b: B
+        group: 1
+      - kind: mark_angle
+        a: extB
+        vertex: B
+        b: C
+        group: 2
+      - kind: mark_angle
+        a: extC
+        vertex: C
+        b: D
+        group: 3
+      - kind: mark_angle
+        a: extD
+        vertex: D
+        b: E
+        group: 4
+      - kind: mark_angle
+        a: extE
+        vertex: E
+        b: A
+        group: 5
+    labels:
+      - kind: label_angle
+        a: extA
+        vertex: A
+        b: B
+        text: "1"
+      - kind: label_angle
+        a: extB
+        vertex: B
+        b: C
+        text: "2"
+      - kind: label_angle
+        a: extC
+        vertex: C
+        b: D
+        text: "3"
+      - kind: label_angle
+        a: extD
+        vertex: D
+        b: E
+        text: "4"
+      - kind: label_angle
+        a: extE
+        vertex: E
+        b: A
+        text: "5"
+notes:
+  - "CRITICAL: after every extend_segment op, add an explicit 'segment' op from the vertex to the extended point."
+  - "Without the explicit arm segment, the angle triple validator rejects mark_angle — the extended point is not connected to the vertex."
+  - "extend_segment [prev, vertex] beyond vertex: this places extX in the direction away from prev, past the vertex."
+  - "mark_angle(extA, A, B): extA is the outward arm, A is the vertex, B is the next polygon side. These are not collinear. ✓"
+  - "Each exterior angle = 180° - interior angle = 180° - 108° = 72° for a regular pentagon."
+  - "Sum of all exterior angles = 360° (true for any convex polygon)."
+  - "Use auto_label_points: false to avoid cluttering the diagram with extA, extB... labels."
+  - "polygon_from_angles_and_sides with 4 side_lengths: the 5th side is automatically inferred from closure."

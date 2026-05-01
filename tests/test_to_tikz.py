@@ -8,6 +8,7 @@ from ir.ir import (
     DrawPoints,
     Fill,
     LabelAngle,
+    LabelFreeText,
     LabelPoint,
     LineAngleBisector,
     LineParallelThrough,
@@ -250,6 +251,60 @@ def test_mark_segments_style_overrides_group_mark():
     tikz = _compile_tikz(diagram)
     assert "mark=|||" in tikz   # style dict entry honoured for alpha
     assert "mark=|]" in tikz    # beta gets first auto-assigned symbol
+
+
+def test_mark_segments_parallel_group_uses_arrow():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            Segment(id="s1", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["s1"], group="parallel_1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=>" in tikz
+    assert "mark=|" not in tikz
+
+
+def test_mark_segments_two_parallel_groups_escalate():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="parallel_1"),
+            MarkSegments(segs=["s2"], group="parallel_2"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=>" in tikz
+    assert "mark=>>" in tikz
+
+
+def test_mark_segments_mixed_parallel_and_equal():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="1"),
+            MarkSegments(segs=["s2"], group="parallel_1"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=|" in tikz
+    assert "mark=>" in tikz
 
 
 # ---------------------------------------------------------------------------
@@ -509,3 +564,163 @@ def test_ellipse_fill_renders_raw_tikz():
     assert r"\fill" in tikz
     assert "ellipse" in tikz
     assert "3 and 2" in tikz
+
+
+# ---------------------------------------------------------------------------
+# Fill with holes (even-odd) — TikZ
+# ---------------------------------------------------------------------------
+
+def test_fill_with_holes_emits_evenodd_rule():
+    """Circle filled with a polygon hole should emit \\fill[...,even odd rule]."""
+    from ir.ir import CircleCenterRadius, Polygon
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="tri", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["tri"], opacity=0.3)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "even odd rule" in tikz
+    assert r"\fill" in tikz
+    # Should not use tkzFillCircle (that's for the no-holes branch)
+    assert "tkzFillCircle" not in tikz
+
+
+def test_fill_without_holes_uses_tkz_command():
+    """Fill without holes should still use \\tkzFillCircle."""
+    from ir.ir import CircleCenterRadius
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Fill(obj="circ", opacity=0.5)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "tkzFillCircle" in tikz
+    assert "even odd rule" not in tikz
+
+
+# ---------------------------------------------------------------------------
+# ArcCenterStartEnd rendering
+# ---------------------------------------------------------------------------
+
+def test_arc_emits_raw_draw_arc_command():
+    """Arc draws via raw \\draw ... arc[...] with start_angle/end_angle/radius."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),   # 0°
+            PointFixed(id="B", x=0, y=1),   # 90°
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\draw" in tikz
+    assert "arc[" in tikz
+    assert "start angle=0" in tikz
+    assert "end angle=90" in tikz
+    assert "radius=1" in tikz
+
+
+def test_arc_sweep_ccw_crosses_zero_degree_boundary():
+    """Reflex arc from 180° to 90° (going the long way CCW) must emit end_angle=450°."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=-1, y=0),   # 180°
+            PointFixed(id="E", x=0, y=1),    # 90°  (reflex CCW sweep: 270°)
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "start angle=180" in tikz
+    # 90 < 180 → must be lifted to 450 to maintain CCW sweep
+    assert "end angle=450" in tikz
+
+
+def test_label_free_text_at_renders_node():
+    """LabelFreeText with explicit coords should emit a \\node at (x,y) command."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text="hello", at=[2.0, 1.5]),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at (2,1.5) {$hello$};" in tikz
+
+
+def test_label_free_text_centroid_of_renders_node():
+    """LabelFreeText with centroid_of should emit a \\node at the polygon centroid."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=6, y=0),
+            PointFixed(id="C", x=3, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text="I", centroid_of="T"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    # Centroid of (0,0),(6,0),(3,3) = (3,1)
+    assert r"\node at (3,1) {$I$};" in tikz
+
+
+def test_fill_sector_tikz():
+    """Fill of a sector uses \\fill with arc syntax."""
+    from ir.ir import SectorCenterStartEnd, Fill
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=0.3)],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\fill" in tikz
+    assert "arc" in tikz
+    assert "cycle" in tikz
+
+
+def test_draw_sector_tikz():
+    """Draw of a sector emits \\draw with arc syntax."""
+    from ir.ir import SectorCenterStartEnd, Draw
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec")],
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\draw" in tikz
+    assert "arc" in tikz

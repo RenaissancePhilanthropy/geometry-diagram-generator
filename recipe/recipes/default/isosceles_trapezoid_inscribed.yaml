@@ -14,13 +14,6 @@ example:
   mode: grid
   construction:
     - op: point
-      id: O
-      coords: [0, 0]
-    - op: circle
-      id: circ
-      center: O
-      radius: 3
-    - op: point
       id: ax_lo
       coords: [0, -1]
       visible: false

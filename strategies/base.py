@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModelSettings
+from pydantic_ai.settings import ModelSettings
 
 from logging import getLogger
 
@@ -15,13 +17,25 @@ if TYPE_CHECKING:
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 #DEFAULT_AGENT_MODEL = "openai-responses:gpt-5.1-codex-mini"
 
+
+def cache_model_settings(enable: bool) -> ModelSettings:
+    """Return ModelSettings with Anthropic prompt caching enabled or empty."""
+    if not enable:
+        return {}
+    return AnthropicModelSettings(
+        anthropic_cache_instructions=True,
+        anthropic_cache_tool_definitions=True,
+    )
+
+
 class SubstanceStrategy(ABC):
     """Abstract base class for substance generation strategies."""
 
     logger = getLogger(__name__)
 
-    def __init__(self):
+    def __init__(self, enable_cache: bool = False):
         super().__init__()
+        self.model_settings: ModelSettings = cache_model_settings(enable_cache)
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
     @abstractmethod

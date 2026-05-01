@@ -1,0 +1,37 @@
+name: cyclic_quadrilateral
+description: "Quadrilateral with all four vertices on a circle"
+tags: [circle, polygon, cyclic, intermediate]
+context: "Given a circle with a quadrilateral inscribed in it."
+example:
+  mode: abstract
+  construction:
+    - op: polygon_from_sides
+      id: quad
+      vertices: [A, B, C, D]
+      side_lengths: [7, 24, 20, 15]
+    - op: circle_through_3
+      id: circ
+      through: [A, B, C]
+      center: O
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    labels:
+      - kind: label_segment
+        endpoints: [A, B]
+        text: "7"
+      - kind: label_segment
+        endpoints: [B, C]
+        text: "24"
+      - kind: label_segment
+        endpoints: [C, D]
+        text: "20"
+      - kind: label_segment
+        endpoints: [D, A]
+        text: "15"
+notes:
+  - "Use polygon_from_sides when side lengths are specified — it computes correct vertex positions automatically"
+  - "For the circumscribed circle, chain circle_through_3 through any 3 vertices after the polygon op (all vertices are co-circular)"
+  - "When no side lengths are given, use the rotation-based approach: place point A on a circle, then use rotation ops for B, C, D"
+  - "Opposite angles of a cyclic quadrilateral sum to 180 degrees"
+  - "When the prompt specifies a Cartesian plane or coordinate labels: set axes: true on the canvas op, and use show_coords: true on label_point entries for all named points."

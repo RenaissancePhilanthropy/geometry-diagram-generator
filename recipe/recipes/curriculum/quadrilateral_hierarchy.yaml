@@ -1,0 +1,284 @@
+name: quadrilateral_hierarchy
+description: "Six labeled quadrilateral figures showing the hierarchy: general quad, trapezoid, parallelogram, rhombus, rectangle, square"
+tags: [polygon, quadrilateral, trapezoid, parallelogram, rhombus, rectangle, square, hierarchy, advanced]
+context: "No prior objects. Six separate quadrilateral shapes arranged in a 3×2 grid."
+setup: []
+example:
+  mode: grid
+  construction:
+    # Canvas for 3-column × 2-row layout
+    - op: canvas
+      id: canvas
+      x_range: [-1, 25]
+      y_range: [-1, 13]
+      grid: false
+      axes: false
+    # === ROW 1 (y≈8-11): General Quad | Trapezoid | Parallelogram ===
+
+    # (1) General quadrilateral ABCD — no special properties, center (2, 9)
+    - op: point
+      id: A
+      coords: [0, 8]
+    - op: point
+      id: B
+      coords: [4, 8.5]
+    - op: point
+      id: C
+      coords: [4.5, 11]
+    - op: point
+      id: D
+      coords: [0.5, 11]
+    - op: polygon
+      id: quad_ABCD
+      vertices: [A, B, C, D]
+
+    # (2) Trapezoid TRAP — one pair parallel sides (TR top, PA bottom), center (11, 9)
+    - op: point
+      id: T
+      coords: [8.5, 11]
+    - op: point
+      id: R
+      coords: [12, 11]
+    - op: point
+      id: Ap
+      coords: [13, 8]
+    - op: point
+      id: P
+      coords: [8, 8]
+    - op: polygon
+      id: trap_TRAP
+      vertices: [T, R, Ap, P]
+
+    # (3) Parallelogram PARM — both pairs of opposite sides parallel, center (20, 9)
+    - op: point
+      id: Pa
+      coords: [17, 8]
+    - op: point
+      id: Ar
+      coords: [22, 8]
+    - op: point
+      id: Rm
+      coords: [23, 11]
+    - op: point
+      id: Mp
+      coords: [18, 11]
+    - op: polygon
+      id: para_PARM
+      vertices: [Pa, Ar, Rm, Mp]
+
+    # === ROW 2 (y≈1-4): Rhombus | Rectangle | Square ===
+
+    # (4) Rhombus RHOM — all 4 sides equal, diamond shape, center (2, 2)
+    - op: point
+      id: Rh
+      coords: [0, 2]
+    - op: point
+      id: Ho
+      coords: [2, 4]
+    - op: point
+      id: Om
+      coords: [4, 2]
+    - op: point
+      id: Mb
+      coords: [2, 0]
+    - op: polygon
+      id: rhom_RHOM
+      vertices: [Rh, Ho, Om, Mb]
+
+    # (5) Rectangle RECT — 4 right angles, center (11, 2)
+    - op: point
+      id: Re
+      coords: [8, 1]
+    - op: point
+      id: Ec
+      coords: [14, 1]
+    - op: point
+      id: Ct
+      coords: [14, 3]
+    - op: point
+      id: Tr2
+      coords: [8, 3]
+    - op: polygon
+      id: rect_RECT
+      vertices: [Re, Ec, Ct, Tr2]
+
+    # (6) Square SQRE — 4 equal sides AND 4 right angles, center (20, 2)
+    - op: point
+      id: Sq
+      coords: [18, 0]
+    - op: point
+      id: Qr
+      coords: [22, 0]
+    - op: point
+      id: Re2
+      coords: [22, 4]
+    - op: point
+      id: E2
+      coords: [18, 4]
+    - op: polygon
+      id: sq_SQRE
+      vertices: [Sq, Qr, Re2, E2]
+
+  annotations:
+    auto_draw_all: true
+    auto_label_points: false
+    marks:
+      # Trapezoid: mark TR || PA (parallel arrows, group 1)
+      - kind: mark_parallel
+        segments: [[P, Ap], [T, R]]
+        group: 1
+
+      # Parallelogram: both pairs of opposite sides parallel
+      - kind: mark_parallel
+        segments: [[Pa, Ar], [Mp, Rm]]
+        group: 1
+      - kind: mark_parallel
+        segments: [[Ar, Rm], [Pa, Mp]]
+        group: 2
+
+      # Rhombus: all 4 sides equal (tick marks, all group 1)
+      - kind: mark_equal_lengths
+        segments: [[Rh, Ho], [Ho, Om], [Om, Mb], [Mb, Rh]]
+        group: 1
+
+      # Rectangle: right angle marks at all 4 corners
+      - kind: mark_right_angle
+        a: Tr2
+        vertex: Re
+        b: Ec
+      - kind: mark_right_angle
+        a: Re
+        vertex: Ec
+        b: Ct
+      - kind: mark_right_angle
+        a: Ec
+        vertex: Ct
+        b: Tr2
+      - kind: mark_right_angle
+        a: Ct
+        vertex: Tr2
+        b: Re
+
+      # Square: all 4 sides equal AND right angle marks
+      - kind: mark_equal_lengths
+        segments: [[Sq, Qr], [Qr, Re2], [Re2, E2], [E2, Sq]]
+        group: 1
+      - kind: mark_right_angle
+        a: E2
+        vertex: Sq
+        b: Qr
+      - kind: mark_right_angle
+        a: Sq
+        vertex: Qr
+        b: Re2
+      - kind: mark_right_angle
+        a: Qr
+        vertex: Re2
+        b: E2
+      - kind: mark_right_angle
+        a: Re2
+        vertex: E2
+        b: Sq
+
+    labels:
+      # Shape name labels below each figure
+      - kind: label_free_text
+        text: "(1) Quadrilateral"
+        at: [2.5, 7.3]
+      - kind: label_free_text
+        text: "(2) Trapezoid"
+        at: [10.5, 7.3]
+      - kind: label_free_text
+        text: "(3) Parallelogram"
+        at: [20, 7.3]
+      - kind: label_free_text
+        text: "(4) Rhombus"
+        at: [2, -0.7]
+      - kind: label_free_text
+        text: "(5) Rectangle"
+        at: [11, -0.7]
+      - kind: label_free_text
+        text: "(6) Square"
+        at: [20, -0.7]
+      # Vertex labels for each shape
+      - kind: label_point
+        point: A
+        text: "A"
+      - kind: label_point
+        point: B
+        text: "B"
+      - kind: label_point
+        point: C
+        text: "C"
+      - kind: label_point
+        point: D
+        text: "D"
+      - kind: label_point
+        point: T
+        text: "T"
+      - kind: label_point
+        point: R
+        text: "R"
+      - kind: label_point
+        point: Ap
+        text: "A"
+      - kind: label_point
+        point: P
+        text: "P"
+      - kind: label_point
+        point: Pa
+        text: "P"
+      - kind: label_point
+        point: Ar
+        text: "A"
+      - kind: label_point
+        point: Rm
+        text: "R"
+      - kind: label_point
+        point: Mp
+        text: "M"
+      - kind: label_point
+        point: Rh
+        text: "R"
+      - kind: label_point
+        point: Ho
+        text: "H"
+      - kind: label_point
+        point: Om
+        text: "O"
+      - kind: label_point
+        point: Mb
+        text: "M"
+      - kind: label_point
+        point: Re
+        text: "R"
+      - kind: label_point
+        point: Ec
+        text: "E"
+      - kind: label_point
+        point: Ct
+        text: "C"
+      - kind: label_point
+        point: Tr2
+        text: "T"
+      - kind: label_point
+        point: Sq
+        text: "S"
+      - kind: label_point
+        point: Qr
+        text: "Q"
+      - kind: label_point
+        point: Re2
+        text: "R"
+      - kind: label_point
+        point: E2
+        text: "E"
+notes:
+  - "NEVER use polygon_from_angles_and_sides for this diagram — it is fragile and will fail on general quads."
+  - "Use explicit point coordinates for all 6 shapes. Rectangle and square use explicit polygon (not rectangle op) for consistent vertex naming."
+  - "Layout: 3 columns (x≈2, 11, 20) × 2 rows (y≈9, 2). Canvas x=[−1,25], y=[−1,13]."
+  - "Vertex names use suffixes to avoid collisions: Ap=trapezoid A, Pa/Ar/Rm/Mp=parallelogram, Rh/Ho/Om/Mb=rhombus, Re/Ec/Ct/Tr2=rectangle, Sq/Qr/Re2/E2=square."
+  - "auto_label_points: false — use explicit label_point ops to show the intended letter (e.g., Ap→'A', Pa→'P')."
+  - "mark_equal_lengths accepts a list of more than 2 segments — all get the same tick group."
+  - "mark_right_angle needs 3 distinct non-collinear points. For rectangle corner at Re: a=Tr2, vertex=Re, b=Ec (adjacent corners). ✓"
+  - "Parallelogram sides: Pa→Ar (bottom) || Mp→Rm (top), same direction. Ar→Rm (right) || Pa→Mp (left), same direction."

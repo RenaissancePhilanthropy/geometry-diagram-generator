@@ -1,0 +1,112 @@
+name: intersecting_chords_similar_triangles
+description: "Two chords AC and BD intersecting at P inside a circle, with similar triangles APB and DPC marked"
+tags: [circle, chord, intersection, similar-triangles, inscribed-angle, intermediate]
+context: "A circle with two chords AC and BD intersecting at interior point P. Triangles APB and DPC are similar by AA (equal inscribed angles)."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+example:
+  mode: abstract
+  construction:
+    - op: point
+      id: ref
+      coords: [3, 0]
+      visible: false
+    # Four points on the circle
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 160
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 60
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 340
+    - op: rotation
+      id: D
+      point: ref
+      center: O
+      angle: 230
+    # Two chords AC and BD
+    - op: line_through
+      id: line_AC
+      points: [A, C]
+      visible: false
+    - op: line_through
+      id: line_BD
+      points: [B, D]
+      visible: false
+    # Intersection point P inside the circle
+    - op: intersection
+      id: P
+      of: [line_AC, line_BD]
+      selector:
+        kind: interior
+        polygon: circ
+    # Draw the chord segments (not full lines)
+    - op: segment
+      id: chord_AP
+      endpoints: [A, P]
+    - op: segment
+      id: chord_PC
+      endpoints: [P, C]
+    - op: segment
+      id: chord_BP
+      endpoints: [B, P]
+    - op: segment
+      id: chord_PD
+      endpoints: [P, D]
+    # Triangle APB sides
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    # Triangle DPC sides
+    - op: segment
+      id: seg_DC
+      endpoints: [D, C]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # angle PAB = angle PDC (both inscribed in same arc BC)
+      - kind: mark_angle
+        a: P
+        vertex: A
+        b: B
+        group: 1
+      - kind: mark_angle
+        a: P
+        vertex: D
+        b: C
+        group: 1
+      # angle PBA = angle PCD (both inscribed in same arc AD)
+      - kind: mark_angle
+        a: P
+        vertex: B
+        b: A
+        group: 2
+      - kind: mark_angle
+        a: P
+        vertex: C
+        b: D
+        group: 2
+notes:
+  - "Four points A, B, C, D on the circle at 160°, 60°, 340°, 230° — chord AC crosses chord BD inside the circle."
+  - "P = intersection of line_AC and line_BD, using selector 'interior: circ' to pick the point inside the circle."
+  - "Draw chords as four segments AP, PC, BP, PD (not full lines), plus AB and DC for the triangle sides."
+  - "AA similarity: angle_PAB = angle_PDC (inscribed angles subtending arc BC); angle_PBA = angle_PCD (subtending arc AD)."
+  - "mark_angle(P, A, B): vertex A, arm toward P (along chord), arm toward B (triangle side). Not collinear. ✓"
+  - "mark_angle(P, D, C): vertex D, arm toward P (along chord), arm toward C (triangle side). Not collinear. ✓"
+  - "Group 1 = equal inscribed angles at A and D (same arc BC). Group 2 = equal inscribed angles at B and C (same arc AD)."
+  - "Result: triangle APB ~ triangle DPC by AA, so AP/DP = BP/CP = AB/DC."

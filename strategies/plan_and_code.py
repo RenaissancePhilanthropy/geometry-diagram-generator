@@ -73,7 +73,7 @@ class PlanAndCodeStrategy(SubstanceStrategy):
         plan_state: list[GeometricPlan] = []
         geometry_attempts: list[int] = [0]
 
-        agent = Agent(model, instructions=_CODER_INSTRUCTIONS)
+        agent = Agent(model, instructions=_CODER_INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=2)
         async def plan_diagram(prompt: str) -> str:
@@ -82,6 +82,7 @@ class PlanAndCodeStrategy(SubstanceStrategy):
                 model,
                 output_type=GeometricPlan,
                 instructions=PLANNER_INSTRUCTIONS,
+                model_settings=self.model_settings,
             )
             result = await planner.run(prompt)
             plan = result.output
@@ -152,5 +153,5 @@ class PlanAndCodeStrategy(SubstanceStrategy):
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Run plan then code stages via programmatic agent hand-off."""
-        plan, _ = await run_plan(prompt, model=model)
-        return await run_code_from_plan(plan, prompt, model=model)
+        plan, _ = await run_plan(prompt, model=model, model_settings=self.model_settings)
+        return await run_code_from_plan(plan, prompt, model=model, model_settings=self.model_settings)

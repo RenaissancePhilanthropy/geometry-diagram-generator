@@ -1,12 +1,16 @@
 # recipe/solve.py
-"""Triangle constraint solver.
+"""Geometry constraint solvers.
 
-Converts a triangle `spec` dict into concrete vertex coordinates (x, y).
-Supports AAS, SAS, SSS, ASA, and right_angle_at+two_sides.
-SSA is explicitly not supported (raises SpecError).
+Converts geometry spec dicts into concrete vertex coordinates (x, y).
 
+Triangle solver: supports AAS, SAS, SSS, ASA, right_angle_at+two_sides, and
+right-angle SSA (angle=90 with one adjacent leg and the hypotenuse, which is
+uniquely determined). General SSA (non-right-angle) raises SpecError.
 Layout: vertex[0] at origin on positive x-axis, vertex[1] at (side_AB, 0),
 vertex[2] above x-axis. Then translate so centroid ≈ (2, 2).
+
+Rectangle solver: lays out 4 vertices with given labeled side lengths.
+Default orientation: A top-left, B top-right, C bottom-right, D bottom-left.
 """
 from __future__ import annotations
 
@@ -19,6 +23,21 @@ class SpecError(ValueError):
 
 
 _TOL = 1e-9
+
+
+def _split_side_key(key: str, vertices: list[str]) -> tuple[str, str]:
+    """Split a concatenated side key like 'AB' or 'A1B1' into two vertex names.
+
+    Tries all prefix splits and returns the first pair where both halves are
+    in the vertex list. Raises SpecError if no valid split is found.
+    """
+    for i in range(1, len(key)):
+        sv0, sv1 = key[:i], key[i:]
+        if sv0 in vertices and sv1 in vertices:
+            return sv0, sv1
+    raise SpecError(
+        f"Side key {key!r} cannot be split into two known vertices from {vertices}"
+    )
 
 
 def solve_triangle(
@@ -110,14 +129,9 @@ def solve_triangle(
                     all_angles[v] = a_third
             # Which side?
             side_key, side_val = list(sides_raw.items())[0]
-            # Identify the two vertices of this side
-            if len(side_key) != 2:
-                raise SpecError(f"Unexpected side key {side_key!r}; expected two vertex names")
-            sv0, sv1 = side_key[0], side_key[1]
-            if sv0 not in vertices or sv1 not in vertices:
-                raise SpecError(
-                    f"Side key {side_key!r} references vertices not in {vertices}"
-                )
+            # Identify the two vertices of this side — vertex names may be multi-character,
+            # so find the split point by trying all prefix lengths.
+            sv0, sv1 = _split_side_key(side_key, vertices)
             # Law of sines: side / sin(opposite_angle) = constant
             # Use the given side to derive the other two
             opp_angle = all_angles.get(
@@ -139,12 +153,50 @@ def solve_triangle(
             s1 = _get_side(ang_vertex, other_verts[0])
             s2 = _get_side(ang_vertex, other_verts[1])
             if None in (s1, s2):
-                # One or both sides don't meet ang_vertex → SSA (ambiguous)
-                raise SpecError(
-                    "SSA (two sides + non-included angle) is ambiguous; "
-                    "use AAS, SAS, SSS, or ASA instead"
-                )
-            result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
+                # One side doesn't meet ang_vertex → potential SSA.
+                # Special case: if the angle is 90° and the non-adjacent side is the
+                # hypotenuse (opposite ang_vertex), compute the missing leg via
+                # Pythagorean theorem and reduce to right_angle_at.
+                if abs(ang_val - 90.0) < _TOL:
+                    hyp = _get_side(other_verts[0], other_verts[1])
+                    leg = s1 if s1 is not None else s2
+                    adj_vert = other_verts[0] if s1 is not None else other_verts[1]
+                    missing_vert = other_verts[1] if s1 is not None else other_verts[0]
+                    if hyp is not None and leg is not None:
+                        if hyp <= leg:
+                            raise SpecError(
+                                f"right triangle: hypotenuse ({hyp}) must be longer than leg ({leg})"
+                            )
+                        missing_leg = math.sqrt(hyp**2 - leg**2)
+                        ra_spec = {
+                            "right_angle_at": ang_vertex,
+                            f"side_{ang_vertex}{adj_vert}": leg,
+                            f"side_{ang_vertex}{missing_vert}": missing_leg,
+                        }
+                        result = _solve_right_angle_at(vertices, ra_spec)
+                    else:
+                        raise SpecError(
+                            "SSA (two sides + non-included angle) is ambiguous; "
+                            "use AAS, SAS, SSS, or ASA instead. "
+                            f"You gave side_{ang_vertex}{other_verts[0]} (or similar) and angle_{ang_vertex} — "
+                            f"to fix, either: (1) add angle_{other_verts[0]} or angle_{other_verts[1]} to use AAS, "
+                            f"(2) replace the non-adjacent side with side_{ang_vertex}{other_verts[1]} to use SAS, "
+                            "(3) provide all three sides to use SSS, "
+                            f"or (4) use right_angle_at={ang_vertex!r} if the angle is 90°."
+                        )
+                else:
+                    # One or both sides don't meet ang_vertex → SSA (ambiguous)
+                    raise SpecError(
+                        "SSA (two sides + non-included angle) is ambiguous; "
+                        "use AAS, SAS, SSS, or ASA instead. "
+                        f"You gave angle_{ang_vertex} but the two sides do not both meet at {ang_vertex} — "
+                        f"to fix, either: (1) add angle_{other_verts[0]} or angle_{other_verts[1]} to use AAS, "
+                        f"(2) ensure both sides meet at {ang_vertex} to use SAS, "
+                        "(3) provide all three sides to use SSS, "
+                        f"or (4) use right_angle_at={ang_vertex!r} if the angle is 90°."
+                    )
+            else:
+                result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
 
         else:
             raise SpecError(
@@ -277,3 +329,320 @@ def _solve_right_angle_at(vertices: list[str], spec: dict) -> dict:
     # right_angle_at + s0 (ra→other[0]) + s1 (ra→other[1])
     # Use SAS with 90°
     return _sas(v0, v1, v2, ra, 90.0, other[0], s0, other[1], s1)
+
+
+# ---------------------------------------------------------------------------
+# Polygon-from-sides solver
+# ---------------------------------------------------------------------------
+
+def solve_polygon_from_sides(
+    vertices: list[str],
+    side_lengths: list[float],
+    *,
+    center: tuple[float, float] | list[float] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Compute vertex positions for a polygon with given consecutive side lengths.
+
+    Produces the maximum-area (cyclic) polygon.
+    side_lengths[i] is the distance from vertices[i] to vertices[(i+1) % N].
+
+    Returns dict mapping vertex name → (x, y).
+    Raises SpecError if the side lengths cannot form a valid polygon.
+    """
+    if len(vertices) != len(side_lengths):
+        raise SpecError(
+            f"solve_polygon_from_sides: len(vertices)={len(vertices)} "
+            f"must equal len(side_lengths)={len(side_lengths)}"
+        )
+    n = len(vertices)
+    if n < 3:
+        raise SpecError(
+            f"solve_polygon_from_sides requires at least 3 vertices, got {n}"
+        )
+    sides = [float(s) for s in side_lengths]
+    if any(s <= 0 for s in sides):
+        raise SpecError(
+            f"solve_polygon_from_sides: all side lengths must be positive, got {sides}"
+        )
+    total = sum(sides)
+    if max(sides) >= total / 2:
+        raise SpecError(
+            f"solve_polygon_from_sides: polygon inequality violated — "
+            f"max side {max(sides)} >= half-perimeter {total/2}"
+        )
+
+    # Find circumradius R by bisection on f(R) = Σ 2*arcsin(l_i/2R) - 2π = 0
+    def _f(R: float) -> float:
+        return sum(2 * math.asin(s / (2 * R)) for s in sides) - 2 * math.pi
+
+    R_lo = max(sides) / 2 + 1e-9
+    R_hi = total / math.pi
+    while _f(R_hi) > 0:
+        R_hi *= 2
+
+    for _ in range(200):
+        R_mid = (R_lo + R_hi) / 2
+        if _f(R_mid) > 0:
+            R_lo = R_mid
+        else:
+            R_hi = R_mid
+        if R_hi - R_lo < 1e-12:
+            break
+    R = (R_lo + R_hi) / 2
+
+    # Central angles and cumulative placement
+    thetas = [2 * math.asin(s / (2 * R)) for s in sides]
+    raw = []
+    alpha = 0.0
+    for theta in thetas:
+        raw.append((R * math.cos(alpha), R * math.sin(alpha)))
+        alpha += theta
+
+    # Translate centroid to target center (default (2, 2))
+    cx_target, cy_target = (float(center[0]), float(center[1])) if center is not None else (2.0, 2.0)
+    cx = sum(p[0] for p in raw) / n
+    cy = sum(p[1] for p in raw) / n
+    dx, dy = cx_target - cx, cy_target - cy
+    result = {}
+    for i, name in enumerate(vertices):
+        result[name] = (raw[i][0] + dx, raw[i][1] + dy)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Polygon-from-angles-and-sides solver
+# ---------------------------------------------------------------------------
+
+def solve_polygon_from_angles_and_sides(
+    vertices: list[str],
+    side_lengths: list[float],
+    angles: list[float],
+    *,
+    center: tuple[float, float] | list[float] | None = None,
+    rotation: float = 0.0,
+) -> dict[str, tuple[float, float]]:
+    """Compute vertex positions for a polygon with given consecutive side lengths and interior angles.
+
+    Uses turtle-graphics: start at (0,0) heading east, walk each side, turn left
+    by the exterior angle at each successive vertex.
+
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    angles[i] = interior angle (degrees) at vertices[i].
+
+    Let V = len(vertices).
+
+    side_lengths may have V-1 or V entries; when V are given, the last is ignored
+    and the closing side length is always inferred from geometry (the V-1 given sides
+    plus the V angles fully determine the polygon up to position/rotation).
+
+    angles may have V or V-1 entries:
+      V entries: validated to sum to (V-2)*180.
+      V-1 entries: the last angle is inferred from the sum constraint.
+    Providing more than V or fewer than V-1 angles raises SpecError.
+
+    Returns dict mapping vertex name → (x, y).
+    Raises SpecError if inputs are invalid or the polygon doesn't close.
+    """
+    n = len(vertices)
+    if n < 3:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides requires at least 3 vertices, got {n}"
+        )
+    if len(side_lengths) < n - 1 or len(side_lengths) > n:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(side_lengths)={len(side_lengths)} "
+            f"must be V-1={n - 1} (last side inferred) or V={n} (where V=len(vertices)={n})"
+        )
+    # When V angles and V sides are both given, always infer the last side from closure.
+    # Providing all V sides is over-determined: the angles alone dictate shape, so the
+    # last side is redundant and often numerically inconsistent with the others.
+    infer_last_side = len(side_lengths) >= n - 1  # always True; V case drops last side
+    if len(side_lengths) == n:
+        sides_input = list(side_lengths[: n - 1])  # drop the last side; will be computed
+    else:
+        sides_input = list(side_lengths)
+    na = len(angles)
+    if na > n:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(angles)={na} exceeds "
+            f"len(vertices)={n}; provide at most V={n} angles"
+        )
+    if na < n - 1:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: len(angles)={na} is too few for "
+            f"{n} vertices; provide V-1={n - 1} (last inferred) or V={n} angles"
+        )
+    sides = [float(s) for s in sides_input]
+    angs = [float(a) for a in angles]
+    if any(s <= 0 for s in sides):
+        raise SpecError("solve_polygon_from_angles_and_sides: all side lengths must be positive")
+    expected_sum = (n - 2) * 180.0
+    if na == n - 1:
+        inferred = expected_sum - sum(angs)
+        if inferred <= 0:
+            raise SpecError(
+                f"solve_polygon_from_angles_and_sides: inferred last angle={inferred:.3f}° ≤ 0; "
+                f"check that the provided V-1={n - 1} angles are valid"
+            )
+        angs.append(inferred)
+    else:
+        actual_sum = sum(angs)
+        if abs(actual_sum - expected_sum) > 0.5:
+            raise SpecError(
+                f"solve_polygon_from_angles_and_sides: interior angles sum to {actual_sum:.3f}°, "
+                f"expected {expected_sum:.1f}° for a {n}-gon"
+            )
+
+    # Turtle-graphics walk: always V-1 steps (last side inferred from closure)
+    x, y = 0.0, 0.0
+    heading = 0.0  # degrees, east
+    coords: list[tuple[float, float]] = []
+    steps = n - 1
+    for i in range(steps):
+        coords.append((x, y))
+        dx = sides[i] * math.cos(math.radians(heading))
+        dy = sides[i] * math.sin(math.radians(heading))
+        x += dx
+        y += dy
+        # Turn left by exterior angle at the next vertex
+        exterior = 180.0 - angs[(i + 1) % n]
+        heading += exterior
+
+    # Closing side: distance from current position back to origin
+    close_len = math.hypot(x, y)
+    if close_len < 1e-9:
+        raise SpecError(
+            "solve_polygon_from_angles_and_sides: closing side has zero "
+            f"length — the V-1={n - 1} given sides already close the polygon."
+        )
+    # Validate direction: turtle heading must point from current position toward origin
+    expected_heading = math.degrees(math.atan2(-y, -x)) % 360.0
+    actual_heading = heading % 360.0
+    diff = abs(expected_heading - actual_heading)
+    if diff > 0.5 and abs(diff - 360.0) > 0.5:
+        raise SpecError(
+            f"solve_polygon_from_angles_and_sides: "
+            f"closing direction {expected_heading:.1f}° ≠ turtle heading {actual_heading:.1f}°. "
+            "The given angles are geometrically inconsistent."
+        )
+    sides.append(close_len)
+    coords.append((x, y))  # last vertex position
+
+    if rotation != 0.0:
+        cos_r = math.cos(math.radians(rotation))
+        sin_r = math.sin(math.radians(rotation))
+        coords = [
+            (x * cos_r - y * sin_r, x * sin_r + y * cos_r)
+            for (x, y) in coords
+        ]
+
+    # Translate centroid to target center (default (2, 2))
+    cx_target, cy_target = (float(center[0]), float(center[1])) if center is not None else (2.0, 2.0)
+    cx = sum(p[0] for p in coords) / n
+    cy = sum(p[1] for p in coords) / n
+    dx_off, dy_off = cx_target - cx, cy_target - cy
+    return {vertices[i]: (coords[i][0] + dx_off, coords[i][1] + dy_off) for i in range(n)}
+
+
+# ---------------------------------------------------------------------------
+# Rectangle solver
+# ---------------------------------------------------------------------------
+
+def solve_rectangle(
+    vertices: list[str],
+    spec: dict[str, Any],
+    center: tuple[float, float] = (2.0, 2.0),
+) -> dict[str, tuple[float, float]]:
+    """Lay out a rectangle so that labeled side lengths match the spec.
+
+    Parameters
+    ----------
+    vertices:
+        4 corner names in perimeter order, e.g. ["A", "B", "C", "D"].
+        Side AB connects vertices[0]→vertices[1]; side BC connects [1]→[2];
+        sides CD and DA are the opposites.
+    spec:
+        Must contain exactly the two adjacent-side length keys that correspond
+        to the first two edges, e.g. ``{side_AB: 4, side_BC: 3}``.
+        Accepted key patterns: ``side_XY`` where XY is any two-character combo
+        of the vertex names covering one adjacent pair.
+        Optional: ``rotation`` (float, degrees CCW, default 0).
+    center:
+        (cx, cy) target for the rectangle centroid; default (2.0, 2.0).
+
+    Returns
+    -------
+    dict mapping each vertex name to (x, y).
+
+    Default layout (rotation=0): A top-left, B top-right, C bottom-right,
+    D bottom-left, so ``|AB| = side_AB`` (horizontal) and ``|BC| = side_BC``
+    (vertical).
+
+    Raises
+    ------
+    SpecError
+        If fewer than two adjacent-side lengths are specified, or if the spec
+        keys don't correspond to the provided vertex names.
+    """
+    if len(vertices) != 4:
+        raise SpecError(f"solve_rectangle requires exactly 4 vertices; got {len(vertices)}")
+
+    v = list(vertices)
+    # Extract all side_XY keys
+    sides_raw: dict[str, float] = {}
+    for k, val in spec.items():
+        if k.startswith("side_") and len(k) == 7:
+            sides_raw[k[5:]] = float(val)
+
+    def _get_side(a: str, b: str) -> float | None:
+        for key in (a + b, b + a):
+            if key in sides_raw:
+                return sides_raw[key]
+        return None
+
+    # Need two adjacent sides meeting at v[1] (B): AB and BC
+    w = _get_side(v[0], v[1])  # side_AB  (width)
+    h = _get_side(v[1], v[2])  # side_BC  (height)
+
+    # Fall back: accept the opposite side of the same orientation
+    if w is None:
+        w = _get_side(v[2], v[3])
+    if h is None:
+        h = _get_side(v[3], v[0])
+
+    missing = []
+    if w is None:
+        missing.append(f"side_{v[0]}{v[1]} (or side_{v[1]}{v[0]})")
+    if h is None:
+        missing.append(f"side_{v[1]}{v[2]} (or side_{v[2]}{v[1]})")
+    if missing:
+        raise SpecError(
+            f"Rectangle spec missing required side lengths: {', '.join(missing)}. "
+            f"Provide e.g. side_{v[0]}{v[1]}=<width> and side_{v[1]}{v[2]}=<height>."
+        )
+
+    rotation_deg = float(spec.get("rotation", 0.0))
+    rotation_rad = rotation_deg * math.pi / 180.0
+
+    # Default orientation: A top-left, B top-right, C bottom-right, D bottom-left
+    # Width = |AB| = w, Height = |BC| = h
+    half_w = w / 2.0
+    half_h = h / 2.0
+    raw: dict[str, tuple[float, float]] = {
+        v[0]: (-half_w,  half_h),   # A top-left
+        v[1]: ( half_w,  half_h),   # B top-right
+        v[2]: ( half_w, -half_h),   # C bottom-right
+        v[3]: (-half_w, -half_h),   # D bottom-left
+    }
+
+    if rotation_rad != 0.0:
+        cos_r, sin_r = math.cos(rotation_rad), math.sin(rotation_rad)
+        raw = {
+            name: (x * cos_r - y * sin_r, x * sin_r + y * cos_r)
+            for name, (x, y) in raw.items()
+        }
+
+    # Translate centroid to target center
+    cx, cy = center
+    result = {name: (x + cx, y + cy) for name, (x, y) in raw.items()}
+    return result

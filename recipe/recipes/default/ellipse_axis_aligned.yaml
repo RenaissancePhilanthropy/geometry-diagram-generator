@@ -33,3 +33,4 @@ notes:
   - "For 'horizontal axis length 3': hradius = 1.5; for 'vertical axis length 4': vradius = 2"
   - "Set axes: true and grid: true on the canvas for Cartesian coordinate system prompts"
   - "Label the center using annotations.labels with kind: label_point and the coordinate text"
+  - "Use show_coords: true on label_point to append the computed (x,y) coordinate automatically rather than hardcoding it in the text field."

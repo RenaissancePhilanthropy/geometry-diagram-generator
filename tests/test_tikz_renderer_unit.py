@@ -49,3 +49,19 @@ def test_omits_tkzelements_when_none():
     payload = mock_post.call_args[1]["json"]
     assert "tikz" in payload
     assert "tkzelements" not in payload
+
+
+def test_includes_font_family_in_payload():
+    """font_family is included in the POST payload when provided."""
+    with patch("httpx.post", return_value=_ok_response()) as mock_post:
+        render_tikz(r"\draw (0,0)--(1,1);", font_family="Roboto")
+    payload = mock_post.call_args[1]["json"]
+    assert payload["font_family"] == "Roboto"
+
+
+def test_omits_font_family_when_none():
+    """font_family is omitted from the POST payload when not provided."""
+    with patch("httpx.post", return_value=_ok_response()) as mock_post:
+        render_tikz(r"\draw (0,0)--(1,1);")
+    payload = mock_post.call_args[1]["json"]
+    assert "font_family" not in payload

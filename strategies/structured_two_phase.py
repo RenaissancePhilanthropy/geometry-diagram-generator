@@ -80,6 +80,7 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
             model=model,
             output_type=ConstructionPlan,
             instructions=TWO_PHASE_PLANNER_INSTRUCTIONS,
+            model_settings=self.model_settings,
         )
         result = await agent.run(prompt)
         usage = result.usage()
@@ -90,6 +91,7 @@ class StructuredTwoPhaseStrategy(SubstanceStrategy):
             model=model,
             output_type=DiagramIR,
             instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
+            model_settings=self.model_settings,
         )
         result = await agent.run(prompt)
         usage = result.usage()

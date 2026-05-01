@@ -13,6 +13,7 @@ _REF_FIELDS = {
     "p", "q", "a", "b", "c",               # geometric endpoints/vertices
     "on", "onto", "source", "across",       # point_on, point_foot, point_reflect
     "center", "through",                    # circles
+    "start", "end",                         # arc_center_start_end
     "to_line",                              # line_parallel/perp
     "tri",                                  # point_triangle_center
     "obj1", "obj2",                         # point_intersection
@@ -25,7 +26,8 @@ _REF_FIELDS = {
 # Fields that are never IDs
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
                    "radius", "sides", "level", "tol", "which", "how", "k", "opacity",
-                   "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation"}
+                   "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation",
+                   "reflex", "vertex_names"}
 
 
 def def_references(stmt: ir.DefStmt) -> set[str]:

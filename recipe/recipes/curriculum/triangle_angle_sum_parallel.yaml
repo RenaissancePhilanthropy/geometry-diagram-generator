@@ -1,0 +1,79 @@
+name: triangle_angle_sum_parallel
+description: "Triangle with a parallel line through one vertex showing alternate interior angles equal the base angles, proving the triangle angle sum is 180°"
+tags: [triangle, parallel, angle-sum, proof, alternate-interior, intermediate]
+context: "Given triangle ABC with A at bottom-left, C at bottom-right, B at top."
+setup: []
+example:
+  mode: grid
+  construction:
+    - op: point
+      id: A
+      coords: [0, 0]
+    - op: point
+      id: C
+      coords: [4, 0]
+    - op: point
+      id: B
+      coords: [1.5, 2.5]
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    - op: segment
+      id: seg_BC
+      endpoints: [B, C]
+    - op: segment
+      id: seg_AC
+      endpoints: [A, C]
+    # D and E are on the horizontal line y=2.5 through B, parallel to AC (which is y=0)
+    - op: point
+      id: D
+      coords: [-1.0, 2.5]
+      visible: false
+    - op: point
+      id: E
+      coords: [4.5, 2.5]
+      visible: false
+    - op: segment
+      id: seg_DE
+      endpoints: [D, E]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # Group 1: angle_DBA = angle_BAC (alternate interior angles, transversal AB)
+      - kind: mark_angle
+        a: D
+        vertex: B
+        b: A
+        group: 1
+      - kind: mark_angle
+        a: B
+        vertex: A
+        b: C
+        group: 1
+      # Group 2: angle_CBE = angle_BCA (alternate interior angles, transversal BC)
+      - kind: mark_angle
+        a: C
+        vertex: B
+        b: E
+        group: 2
+      - kind: mark_angle
+        a: A
+        vertex: C
+        b: B
+        group: 2
+      # Group 3: angle_ABC (the middle angle at B)
+      - kind: mark_angle
+        a: A
+        vertex: B
+        b: C
+        group: 3
+notes:
+  - "D and E MUST share the same y-coordinate as B. Place them by explicit coords, NOT by point_along."
+  - "DO NOT use point_along with toward: A or toward: C — those put D/E along the triangle sides, not the parallel line."
+  - "D is to the left of B on line DE; E is to the right. D and E are visible: false so they don't get labels."
+  - "seg_DE is the parallel line. It is NOT drawn via a 'parallel' op (which creates a full infinite line)."
+  - "Alternate interior angles: group 1 = angle_A and angle_DBA (transversal AB); group 2 = angle_C and angle_CBE (transversal BC)."
+  - "angle_DBA: a=D (left arm on parallel), vertex=B, b=A (down to base). This is NOT collinear — D is left of B, A is below-left."
+  - "angle_CBE: a=C (right side of base), vertex=B, b=E (right arm on parallel). C is below-right, E is right — not collinear."
+  - "All three groups together at B form a straight line D-B-E = 180°, proving the triangle angle sum."

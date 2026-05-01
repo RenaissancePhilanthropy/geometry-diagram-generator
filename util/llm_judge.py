@@ -14,6 +14,7 @@ import re
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from strategies.base import cache_model_settings
 
 _CODE_REVIEW_SYSTEM = """\
 You are an expert geometry teacher and TikZ/tkz-euclide code reviewer.
@@ -119,6 +120,7 @@ async def judge_tikz_code(
     tikz_code: str,
     tkzelements_code: str | None = None,
     model: str = "anthropic:claude-sonnet-4-6",
+    enable_cache: bool = False,
 ) -> dict:
     """
     Ask an LLM to judge whether the TikZ code correctly implements the
@@ -131,6 +133,7 @@ async def judge_tikz_code(
         model,
         system_prompt=_CODE_REVIEW_SYSTEM,
         output_type=_JudgeResult,
+        model_settings=cache_model_settings(enable_cache),
     )
 
     parts = [f"User prompt: {prompt}\n\nTikZ code:\n```\n{tikz_code}\n```"]
@@ -156,6 +159,7 @@ async def judge_rendered_diagram(
     svg: str,
     tikz_code: str | None = None,
     model: str = "anthropic:claude-sonnet-4-6",
+    enable_cache: bool = False,
 ) -> dict:
     """
     Ask a vision-capable LLM to judge the rendered diagram against the prompt.
@@ -184,6 +188,7 @@ async def judge_rendered_diagram(
         model,
         system_prompt=_VISUAL_REVIEW_SYSTEM,
         output_type=_VisualJudgeResult,
+        model_settings=cache_model_settings(enable_cache),
     )
 
     user_content: list = [

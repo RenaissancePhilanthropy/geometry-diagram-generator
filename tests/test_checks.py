@@ -85,3 +85,40 @@ def test_contains_ellipse_point_outside():
     checks = [Contains(obj="E", p="P")]
     results = run_checks(checks, sym)
     assert not results[0].passed
+
+
+# ---------------------------------------------------------------------------
+# DistanceEquals checks
+# ---------------------------------------------------------------------------
+
+def test_distance_equals_passes_when_segment_has_expected_length():
+    """DistanceEquals passes when the segment has the expected length."""
+    import math
+    from ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
+    from ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=3, y=4),
+        Segment(id="s", a="A", b="B"),
+    ]))
+    checks = [DistanceEquals(seg="s", expected=5.0)]
+    results = run_checks(checks, sym)
+    assert results[0].passed
+    assert results[0].message == ""
+
+
+def test_distance_equals_fails_when_segment_has_wrong_length():
+    """DistanceEquals fails when the segment length differs from expected."""
+    from ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
+    from ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=3, y=4),
+        Segment(id="s", a="A", b="B"),
+    ]))
+    checks = [DistanceEquals(seg="s", expected=10.0)]
+    results = run_checks(checks, sym)
+    assert not results[0].passed
+    assert "s" in results[0].message

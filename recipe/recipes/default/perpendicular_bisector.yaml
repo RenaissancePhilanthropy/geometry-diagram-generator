@@ -1,0 +1,50 @@
+name: perpendicular_bisector
+description: "Line perpendicular to a segment at its midpoint, with optional point P on the bisector"
+tags: [perpendicular, midpoint, segment, basic]
+context: "Given a segment AB, construct its perpendicular bisector."
+setup:
+  - op: point
+    id: A
+    coords: [-2, 0]
+  - op: point
+    id: B
+    coords: [2, 0]
+example:
+  mode: abstract
+  construction:
+    - op: segment
+      id: seg_AB
+      endpoints: [A, B]
+    - op: perpendicular_bisector
+      id: l
+      of: [A, B]
+      mid: M
+      visible: false
+    # P is a point on the bisector above AB
+    - op: point_on_segment
+      id: P
+      segment: [A, B]
+      ratio: 0.5
+    # Draw only the relevant portion of the bisector as a segment through M
+    - op: segment
+      id: seg_PA
+      endpoints: [P, A]
+    - op: segment
+      id: seg_PB
+      endpoints: [P, B]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      - kind: mark_equal_lengths
+        segments: [[A, M], [M, B]]
+        group: 1
+      - kind: mark_equal_lengths
+        segments: [[P, A], [P, B]]
+        group: 2
+notes:
+  - "CRITICAL: always define A and B as explicit point ops before using them in segment or perpendicular_bisector ops."
+  - "perpendicular_bisector requires visible: false to avoid drawing an infinite line — use explicit segment ops for what to show."
+  - "M is the midpoint (auto-named via the 'mid' field). P is a point on the bisector."
+  - "For a standalone theorem diagram: show seg_AB with midpoint M, right-angle mark at M, PA=PB tick marks."
+  - "For a triangle context: define the triangle in setup and reference its vertices in the perpendicular_bisector op."

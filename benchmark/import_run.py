@@ -111,8 +111,10 @@ def import_from_manifest(
             src = Path(entry["svg_path"])
             dest = dest_dir / f"{prompt.id}.svg"
             shutil.copy2(src, dest)
-            metadata = entry.get("metadata")
-            insert_result(conn, result_id, run_id, prompt.id, str(dest), None, True, metadata)
+            metadata = entry.get("metadata") or {}
+            if entry.get("artifacts"):
+                metadata["artifacts"] = entry["artifacts"]
+            insert_result(conn, result_id, run_id, prompt.id, str(dest), None, True, metadata or None)
             success_count += 1
         else:
             insert_result(conn, result_id, run_id, prompt.id, None, None, False, None)

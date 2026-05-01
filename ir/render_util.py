@@ -13,7 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 import ir.ir as ir
-from ir.to_sympy import SymTable
+from ir.to_sympy import Arc, SymTable
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,9 @@ def poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
             return [a, b, c]
         case ir.Polygon(points=pts):
             return list(pts)
-        case ir.PolygonExterior(a=a, b=b, sides=sides):
+        case ir.PolygonExterior(a=a, b=b, sides=sides, vertex_names=vnames):
+            if vnames:
+                return list(vnames)
             verts = [a, b]
             for i in range(2, sides):
                 verts.append(f"{obj_id}_v{i}")
@@ -163,9 +165,83 @@ def ellipse_params(
     )
 
 
+def arc_params(
+    arc_id: str,
+    sym: "SymTable",
+) -> tuple[float, float, float, float, float, float, float]:
+    """Return (cx, cy, r, start_deg, end_deg, sx, sy) for the given arc id.
+
+    - ``start_deg`` / ``end_deg`` delimit a math-CCW sweep (end_deg > start_deg).
+    - The magnitude ``end_deg - start_deg`` is ≤180° when ``reflex=False``
+      (minor arc, the default) and >180° when ``reflex=True``.
+    - ``sx``, ``sy`` are the Cartesian coordinates of the returned start point
+      (may be swapped relative to the IR's ``start`` to satisfy the above).
+    """
+    arc = sym[arc_id]
+    cx = sympy_to_float(arc.center.x)
+    cy = sympy_to_float(arc.center.y)
+    sx = sympy_to_float(arc.start.x)
+    sy = sympy_to_float(arc.start.y)
+    ex = sympy_to_float(arc.end.x)
+    ey = sympy_to_float(arc.end.y)
+    r = sympy_to_float(arc.radius)
+    s_deg = math.degrees(math.atan2(sy - cy, sx - cx)) % 360.0
+    e_deg = math.degrees(math.atan2(ey - cy, ex - cx)) % 360.0
+    ccw = (e_deg - s_deg) % 360.0
+    if ccw == 0:
+        ccw = 360.0
+    is_ccw_minor = ccw <= 180.0
+    want_reflex = bool(getattr(arc, "reflex", False))
+    # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
+    if is_ccw_minor == want_reflex:
+        sx, sy, ex, ey = ex, ey, sx, sy
+        s_deg, e_deg = e_deg, s_deg
+    if e_deg <= s_deg:
+        e_deg += 360.0
+    return (cx, cy, r, s_deg, e_deg, sx, sy)
+
+
 # ---------------------------------------------------------------------------
 # Bounds computation
 # ---------------------------------------------------------------------------
+
+def expand_bounds_for_geometry(
+    xmin: float, xmax: float, ymin: float, ymax: float,
+    sym: SymTable,
+) -> tuple[float, float, float, float]:
+    """Expand (xmin, xmax, ymin, ymax) to include circles, ellipses, and arcs.
+
+    Used when a Canvas is already established and we need to ensure geometry
+    that extends outside the point-based bounds (e.g. a large circle) is not
+    clipped.
+    """
+    for obj in sym.values():
+        if isinstance(obj, spg.Ellipse):  # covers Circle
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            a = sympy_to_float(obj.hradius)
+            b = sympy_to_float(obj.vradius)
+            if cx - a < xmin:
+                xmin = cx - a - BOUNDS_PADDING
+            if cx + a > xmax:
+                xmax = cx + a + BOUNDS_PADDING
+            if cy - b < ymin:
+                ymin = cy - b - BOUNDS_PADDING
+            if cy + b > ymax:
+                ymax = cy + b + BOUNDS_PADDING
+        elif isinstance(obj, Arc):
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            r = sympy_to_float(obj.radius)
+            # Conservatively use full enclosing circle.
+            if cx - r < xmin:
+                xmin = cx - r - BOUNDS_PADDING
+            if cx + r > xmax:
+                xmax = cx + r + BOUNDS_PADDING
+            if cy - r < ymin:
+                ymin = cy - r - BOUNDS_PADDING
+            if cy + r > ymax:
+                ymax = cy + r + BOUNDS_PADDING
+    return xmin, xmax, ymin, ymax
+
 
 def compute_bounds(
     coords: dict[str, tuple[float, float]],
@@ -174,21 +250,14 @@ def compute_bounds(
 ) -> tuple[float, float, float, float]:
     """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
     all_pts = list(coords.values()) + list(helpers.values())
-    for obj in sym.values():
-        if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
-            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            a = sympy_to_float(obj.hradius)
-            b = sympy_to_float(obj.vradius)
-            all_pts.extend([(cx - a, cy - b), (cx + a, cy + b)])
     if not all_pts:
-        return (-5.0, 5.0, -5.0, 5.0)
+        return expand_bounds_for_geometry(-5.0, 5.0, -5.0, 5.0, sym)
     xs, ys = zip(*all_pts)
-    return (
-        min(xs) - BOUNDS_PADDING,
-        max(xs) + BOUNDS_PADDING,
-        min(ys) - BOUNDS_PADDING,
-        max(ys) + BOUNDS_PADDING,
-    )
+    xmin = min(xs) - BOUNDS_PADDING
+    xmax = max(xs) + BOUNDS_PADDING
+    ymin = min(ys) - BOUNDS_PADDING
+    ymax = max(ys) + BOUNDS_PADDING
+    return expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
 
 
 def effective_canvas_bounds(canvas: ir.Canvas) -> tuple[float, float, float, float]:
