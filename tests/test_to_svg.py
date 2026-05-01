@@ -705,6 +705,17 @@ def test_parse_latex_overline():
     assert any(s["kind"] == "overline" and s["content"] == "AB" for s in result)
 
 
+def test_parse_latex_widehat():
+    # \widehat{AT} should render as overline (arc notation), not literal "widehat"
+    result = _parse_latex(r"\widehat{AT}")
+    assert any(s["kind"] == "overline" and s["content"] == "AT" for s in result), (
+        f"Expected overline segment for widehat, got: {result}"
+    )
+    # Ensure the word "widehat" does not appear literally
+    all_text = "".join(s["content"] for s in result)
+    assert "widehat" not in all_text
+
+
 def test_parse_latex_geometry_symbols():
     result = _parse_latex(r"\triangle ABC")
     combined = "".join(s["content"] for s in result)
