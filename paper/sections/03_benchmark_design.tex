@@ -63,12 +63,13 @@ The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}.
 \subsection{Property language}
 \label{ssec:properties}
 
-Each scenario carries a list of expected geometric properties drawn from a fixed vocabulary of \textbf{17 symbolic predicate types} plus 3 source-string check types, all enforced against a coordinate symbol table extracted from the rendered TikZ.
+Each scenario carries a list of expected geometric properties drawn from a fixed vocabulary of \textbf{14 symbolic predicate types implemented in the eval verifier} plus 2 source-string check types, all enforced against a coordinate symbol table extracted from the rendered TikZ.
+A further 4 predicates (\propname{centroid}, \propname{opposite\_side}, \propname{same\_side}, \propname{not\_between}) are declared in the IR-side checker but currently silent-skipped by the eval verifier; we document them transparently in \cref{app:reserved_predicates} and account for their effect on the headline numbers in \cref{sec:hardening}.
 Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\times 10^{-3}$ (justified empirically against human ratings; see \cref{sec:verification}).
-\Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signature, semantics, and validation code for each predicate.
+\Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signature, semantics, decision rule, and code reference for each predicate.
 
 \begin{table}[t]
-\caption{The \GeoGenBench property language. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass.}
+\caption{The \GeoGen predicate language v1. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass. Four additional predicates declared in the IR layer are not yet wired into the eval verifier --- see \cref{app:reserved_predicates}.}
 \label{tab:predicates}
 \centering
 \small
@@ -76,29 +77,25 @@ Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\tim
 \toprule
 \textbf{Predicate} & \textbf{Args} & \textbf{Decision} \\
 \midrule
-\multicolumn{3}{l}{\emph{Symbolic (exact)}} \\
-\propname{right\_angle} & $[a, o, b]$ & $|\angle aob - \pi/2| < \tau$ \\
-\propname{midpoint} & $[m, a, b]$ & $\big||MA| - |MB|\big| < \tau$ \\
-\propname{collinear} & $[p_1, p_2, p_3]$ & $|\text{cross}(p_2{-}p_1, p_3{-}p_1)| < \tau$ \\
-\propname{equal\_lengths} & $[[a,b], [c,d]]$ & $\big||AB| - |CD|\big| < \tau$ \\
-\propname{parallel} & $[[a,b], [c,d]]$ & $|\vec{AB}\times\vec{CD}| < \tau$ \\
-\propname{perpendicular} & $[[a,b], [c,d]]$ & $|\vec{AB}\cdot\vec{CD}| < \tau$ \\
-\propname{point\_on\_line} & $[p, a, b]$ & perp.\ dist.\ $(P, AB) < \tau$ \\
-\propname{point\_on\_segment} & $[p, a, b]$ & line check + parametric bounds (post-hardening) \\
-\propname{point\_on\_circle} & $[p, o, r]$ & $\big||PO|-|OR|\big| < \tau$ \\
-\propname{tangent} & $[[L_1,L_2], O, T]$ & $\big|d_{O,L} - r\big| < \tau$ \\
-\propname{angle\_bisector} & $[D, A, B, C]$ & $|\angle BAD - \angle DAC| < \tau$ \\
-\propname{angle\_equal} & $[[a_1, o_1, b_1], [a_2, o_2, b_2]]$ & $|\angle a_1 o_1 b_1 - \angle a_2 o_2 b_2| < \tau$ \\
-\propname{intersects} & $[[A,B], [C,D], P]$ & both perp.\ distances $< \tau$ \\
-\propname{equidistant\_from\_sides} & $[I, A, B, C]$ & three side-distances equal within $\tau$ \\
-\propname{centroid} & $[G, A, B, C]$ & $|G - (A{+}B{+}C)/3| < \tau$ \\
-\propname{opposite\_side} & $[P, Q, A, B]$ & signed-cross test \\
-\propname{same\_side} & $[P, Q, A, B]$ & signed-cross test \\
-\propname{not\_between} & $[D, B, C]$ & collinearity + parametric $t \notin [0,1]$ \\
+\multicolumn{3}{l}{\emph{Symbolic (exact, implemented in v1)}} \\
+\propname{right\_angle} & $[a, o, b]$ & $|\vec{oa}\cdot\vec{ob}| < \tau$ \\
+\propname{midpoint} & $[m, a, b]$ & $\max(|m_x-(a_x{+}b_x)/2|, |m_y-(a_y{+}b_y)/2|) < \tau$ \\
+\propname{collinear} & $[p_1, p_2, p_3]$ & $|\vec{p_1 p_2}\times\vec{p_1 p_3}| < \tau$ \\
+\propname{equal\_lengths} & $[[a,b], [c,d], \dots]$ & all pairwise $\big||AB| - |CD|\big| < \tau$ \\
+\propname{parallel} & $[[a,b], [c,d]]$ & $|\vec{ab}\times\vec{cd}| < \tau$ \\
+\propname{perpendicular} & $[[a,b], [c,d]]$ & $|\vec{ab}\cdot\vec{cd}| < \tau$ \\
+\propname{point\_on\_line} & $[p, a, b]$ & $|\vec{ab}\times\vec{ap}| < \tau$ \\
+\propname{point\_on\_segment} & $[p, a, b]$ & on line + $\big||ap|+|pb|-|ab|\big| < \tau$ \\
+\propname{point\_on\_circle} & $[p, o, r]$ & $\big||OP|-|OR|\big| < \tau$ \\
+\propname{tangent} & $[[L_1,L_2], O, T]$ & $T$ on line $L_1L_2$ + $\vec{OT} \perp \vec{L_1L_2}$ \\
+\propname{angle\_bisector} & $[d, a, b, c]$ & $|\angle bad - \angle dac| < \tau$ \\
+\propname{angle\_equal} & $[[a_1, b_1, c_1], [a_2, b_2, c_2]]$ & $|\angle a_1 b_1 c_1 - \angle a_2 b_2 c_2| < \tau$ \\
+\propname{intersects} & $[[a,b], [c,d], p]$ & line-line intersection $\approx p$ \\
+\propname{equidistant\_from\_sides} & $[p, a, b, c]$ & three side-line distances equal $< \tau$ \\
 \midrule
 \multicolumn{3}{l}{\emph{Source-string (soft)}} \\
-\propname{label\_present} & $[\text{name}]$ & label appears in TikZ source \\
-\propname{mark\_present} & $[\text{kind}, \text{point}]$ & rendering primitive appears in TikZ source \\
+\propname{label\_present} & $[\text{name}]$ & label primitive for \texttt{name} appears in TikZ source \\
+\propname{mark\_present} & $[\text{kind}, \text{vertex}]$ & mark primitive of \texttt{kind} at \texttt{vertex} appears in source \\
 \bottomrule
 \end{tabular}
 \end{table}
