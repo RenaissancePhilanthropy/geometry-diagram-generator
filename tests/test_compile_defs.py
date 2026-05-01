@@ -926,6 +926,67 @@ class TestPolygonExterior:
         with pytest.raises(IRCompileError):
             compile_defs(DiagramIR(define=stmts))
 
+    def test_chained_polygon_exterior_no_circular_dependency(self):
+        """Two polygon_exterior ops sharing base vertices must not create a self-loop.
+
+        Regression test: previously the second polygon_exterior overwrote the
+        poly_vertex_to_poly entries for its base vertices (D, E), making the
+        dependency resolver think sq_DEFG depended on itself.
+        """
+        stmts = [
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=0, y=0),
+            PointFixed(id="C", x=4, y=0),
+            # Square on edge B-C, exterior to A
+            PolygonExterior(id="sq_BC", a="B", b="C", ref="A", sides=4),
+            # Second square on edge formed by new vertices of sq_BC, exterior to B
+            PolygonExterior(
+                id="sq_DE",
+                a="sq_BC_v2",
+                b="sq_BC_v3",
+                ref="B",
+                sides=4,
+            ),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        assert isinstance(sym["sq_BC"], spg.Polygon)
+        assert isinstance(sym["sq_DE"], spg.Polygon)
+        # All new vertices from both polygons must be registered
+        for name in ("sq_BC_v2", "sq_BC_v3", "sq_DE_v2", "sq_DE_v3"):
+            assert name in sym, f"{name} missing from sym"
+
+    def test_chained_polygon_exterior_explicit_vertex_names(self):
+        """Chained polygon_exterior with explicit vertex_names (e.g. ['D','E','F','G']).
+
+        Regression test: when vertex_names lists all n vertices including the base
+        pair, registering those base names for the second polygon overwrote their
+        parent polygon's ownership, causing a spurious self-loop in toposort.
+        """
+        stmts = [
+            PointFixed(id="A", x=0, y=3),
+            PointFixed(id="B", x=0, y=0),
+            PointFixed(id="C", x=4, y=0),
+            # Square with explicit names for all 4 vertices
+            PolygonExterior(
+                id="sq_CBDE",
+                a="C", b="B", ref="A", sides=4,
+                vertex_names=["C", "B", "D", "E"],
+            ),
+            # Second square using D, E as its base — explicit names for all 4
+            PolygonExterior(
+                id="sq_DEFG",
+                a="D", b="E", ref="C", sides=4,
+                vertex_names=["D", "E", "F", "G"],
+            ),
+        ]
+        sym = compile_defs(DiagramIR(define=stmts))
+        for name in ("D", "E", "F", "G", "sq_CBDE", "sq_DEFG"):
+            assert name in sym, f"{name} missing from sym"
+        # D and E are outputs of sq_CBDE; they must equal sq_CBDE's vertices[2]/[3]
+        cbde_verts = sym["sq_CBDE"].vertices
+        assert float(sym["D"].distance(cbde_verts[2]).evalf()) < 1e-9
+        assert float(sym["E"].distance(cbde_verts[3]).evalf()) < 1e-9
+
     def test_sides_less_than_3_raises(self):
         from ir.errors import IRCompileError
         stmts = [

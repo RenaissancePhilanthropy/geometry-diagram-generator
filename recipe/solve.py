@@ -177,13 +177,23 @@ def solve_triangle(
                     else:
                         raise SpecError(
                             "SSA (two sides + non-included angle) is ambiguous; "
-                            "use AAS, SAS, SSS, or ASA instead"
+                            "use AAS, SAS, SSS, or ASA instead. "
+                            f"You gave side_{ang_vertex}{other_verts[0]} (or similar) and angle_{ang_vertex} — "
+                            f"to fix, either: (1) add angle_{other_verts[0]} or angle_{other_verts[1]} to use AAS, "
+                            f"(2) replace the non-adjacent side with side_{ang_vertex}{other_verts[1]} to use SAS, "
+                            "(3) provide all three sides to use SSS, "
+                            f"or (4) use right_angle_at={ang_vertex!r} if the angle is 90°."
                         )
                 else:
                     # One or both sides don't meet ang_vertex → SSA (ambiguous)
                     raise SpecError(
                         "SSA (two sides + non-included angle) is ambiguous; "
-                        "use AAS, SAS, SSS, or ASA instead"
+                        "use AAS, SAS, SSS, or ASA instead. "
+                        f"You gave angle_{ang_vertex} but the two sides do not both meet at {ang_vertex} — "
+                        f"to fix, either: (1) add angle_{other_verts[0]} or angle_{other_verts[1]} to use AAS, "
+                        f"(2) ensure both sides meet at {ang_vertex} to use SAS, "
+                        "(3) provide all three sides to use SSS, "
+                        f"or (4) use right_angle_at={ang_vertex!r} if the angle is 90°."
                     )
             else:
                 result = _sas(v0, v1, v2, ang_vertex, ang_val, other_verts[0], s1, other_verts[1], s2)
