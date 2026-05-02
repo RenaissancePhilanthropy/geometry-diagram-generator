@@ -1,14 +1,181 @@
-\section{Human-correlation study materials}
+\section{Human-correlation study materials and results}
 \label{app:human_study}
 
-\TODO{Pre-registration document for the human-correlation study (\cref{ssec:human}):
+This appendix accompanies the headline trust claim that the \GeoGenBench automatic verdict agrees with expert human judgment (\cref{ssec:human}, \cref{tab:trust_claims}).
+The pre-registered protocol was committed to the project repository at \texttt{docs/human\_study\_protocol.md} \emph{before} annotation began; this appendix is its paper-facing counterpart.
+We separate \textbf{methodology} (frozen pre-collection) from \textbf{results} (filled at study completion) to make the pre-registration auditable: changes to the methodology subsections after \texttt{2026-05-02} are logged in the protocol's \emph{deviation log} and surfaced here.
+
+\subsection{Raters}
+\label{app:human_study:raters}
+
+Two domain-expert raters annotate the full sample independently:
+
 \begin{itemize}
-\item Sampling protocol (200 triples stratified by tier, verdict, model, source).
-\item Annotator recruitment criteria + consent form.
-\item Rubric Q1 (overall yes/partial/no) and Q2 (per-property agree-pass / agree-fail / disagree).
-\item Blinding procedure.
-\item Statistical pre-registration: $\kappa \geq 0.7$ as primary endpoint; 95\% CI computation; pre-specified subgroup analyses.
-\item Annotator instructions + interface screenshots.
-\item Output tables to be reported on completion.
+\item \textbf{Rater A}: PhD in mathematics; co-author.
+\item \textbf{Rater B}: award-winning K--12 mathematics educator with middle-school teaching experience; co-author.
 \end{itemize}
-Once the study is run, this appendix will also include the full confusion matrix, per-property agreement table, and qualitative coding of disagreements.}
+
+Both raters are paper authors --- a real but standard limitation for benchmark papers --- which we mitigate by (a)~Q1 blinding, (b)~independent annotation prior to consensus, and (c)~reporting per-rater $\kappa$ against the auto-verdict alongside the consensus statistic so reviewers can read how much consensus discussion shifted the headline number.
+Post-acceptance work (\cref{sec:conclusion}) extends the rater pool to a heterogeneous external sample.
+
+\subsection{Sample construction ($N = 200$)}
+\label{app:human_study:sample}
+
+The sample is drawn deterministically (random seed 42) from the canonical post-hardening pilot \texttt{evals/results/leaderboard\_pilot\_v3} (498 records).
+Of those 498, 98 lack a rendered SVG (all 98 are \texttt{gate\_status\,=\,fail} with unparseable model output: there is no diagram to rate).
+The sampling pool is therefore 400 records:
+
+\begin{itemize}
+\item All \textbf{28 \texttt{soft\_pass}} records (verifier was uncertain --- the most epistemically informative stratum).
+\item All \textbf{35 rendered-but-failed} records (the entire pool of cases where the verifier said \texttt{fail} but a diagram exists for human inspection).
+\item \textbf{137 \texttt{pass}} records sampled from the remaining 337, balanced across (tier $\times$ strategy $\times$ model). Cells with fewer records than the per-cell budget are taken in full and the deficit is redistributed to the largest cells.
+\end{itemize}
+
+The realised composition (deterministic given the seed) is summarised in \cref{tab:human_sample_composition}.
+The sample is committed at \texttt{evals/human\_study/sample.json}; running \texttt{python -m evals.human\_study.sample\_human\_study} reproduces it byte-identically.
+
+\begin{table}[h]
+\caption{Realised composition of the $N{=}200$ rating sample.}
+\label{tab:human_sample_composition}
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Stratum} & \textbf{N} \\
+\midrule
+\textbf{Verdict:} & \\
+\quad \texttt{pass} & 137 \\
+\quad \texttt{soft\_pass} & 28 (all available) \\
+\quad \texttt{fail} (with rendered SVG) & 35 (all available) \\
+\midrule
+\textbf{Tier:} & \\
+\quad T1 (easy) & 56 \\
+\quad T2 (medium) & 73 \\
+\quad T3 (hard) & 71 \\
+\midrule
+\textbf{Strategy:} & \\
+\quad \rawcode & 102 \\
+\quad \structured & 48 \\
+\quad \recipe & 50 \\
+\midrule
+\textbf{Model:} & \\
+\quad \haiku & 39 \\
+\quad \sonnet & 37 \\
+\quad \opus & 23 (sampling pool $N{=}42$) \\
+\quad \gpt & 36 \\
+\quad \geminipro & 44 \\
+\quad \geminiflash & 21 (sampling pool $N{=}22$) \\
+\midrule
+\textbf{Source:} all 200 templated; curriculum split unsampled (\cref{app:human_study:limitations}). & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Rubric}
+\label{app:human_study:rubric}
+
+Each item presents the rater with the natural-language prompt and the rendered SVG, and (for Q2 only, after Q1 is submitted) the verifier's per-predicate verdict.
+
+\paragraph{Q1 --- Overall verdict (blind, mandatory).}
+\textit{``Does this diagram correctly satisfy every claim in the prompt?''}
+\begin{itemize}
+\item \textbf{Yes} --- every prompt clause is geometrically satisfied.
+\item \textbf{Partial} --- some clauses are satisfied, some are violated.
+\item \textbf{No} --- at least one major prompt clause is violated, or the diagram is unrelated to the prompt.
+\end{itemize}
+For the binary collapse used in the primary endpoint, \emph{Partial} maps to \emph{No} (conservative; treats partial satisfaction as failure of the per-prompt completeness criterion).
+
+\paragraph{Q2 --- Per-predicate agreement (post-Q1, mandatory per row).}
+For each predicate the verifier checked on the diagram (mean $4.4$ per item), the rater records:
+\begin{itemize}
+\item \textbf{Agrees-pass} --- verifier said pass and the property holds in the diagram.
+\item \textbf{Agrees-fail} --- verifier said fail and the property does not hold.
+\item \textbf{Disagrees} --- verifier said the opposite of what the rater observes.
+\item \textbf{Unsure} --- the diagram is geometrically ambiguous on this property.
+\end{itemize}
+
+\paragraph{Optional notes.} A free-text field per item for disagreement-coding observations (``verifier's tolerance was too loose'', ``rater missed an implicit prompt constraint until consensus discussion'', etc.); these feed the qualitative coding in \cref{app:human_study:disagreement_coding}.
+
+\subsection{Workflow and tooling}
+\label{app:human_study:tooling}
+
+The rating tool is a single static HTML page (\texttt{evals/human\_study/viewer.html}) served by a small local Python server (\texttt{evals/human\_study/serve.py}) that auto-saves answers to a per-rater CSV (\texttt{responses\_<rater>.csv}) on every keystroke.
+Q1 is rendered \emph{without} the auto-verdict or any predicate values; Q2 unlocks only after Q1 is submitted, mechanically enforcing the blinding protocol.
+Keyboard-only operation is supported throughout (\texttt{1/2/3} for Q1, \texttt{a/f/d/u} for Q2, $\rightarrow / \leftarrow$ for navigation).
+
+After both raters complete independent annotation, \texttt{python -m evals.human\_study.compute\_kappa} reads both response CSVs, computes inter-rater Cohen's $\kappa$, and emits a disagreement list.
+The two raters then meet in a single $\leq 90$-minute session to discuss each disagreement to convergence and produce a consensus label per item; the consensus labels are saved to \texttt{responses\_consensus.csv}.
+The same script re-runs against the consensus labels to produce the headline $\kappa(\text{auto},\text{consensus})$ and the analyses below.
+
+\subsection{Pre-registered analyses}
+\label{app:human_study:analyses}
+
+\paragraph{Primary endpoint.}
+Cohen's $\kappa(\text{auto-verdict}, \text{human-consensus}) \geq 0.70$ on the binary collapse (\texttt{pass}~$\cup$~\texttt{soft\_pass} vs \texttt{fail}), $N = 200$.
+We report the point estimate, an asymptotic 95\% CI (Fleiss--Cohen--Everitt), and a 1000-resample bootstrap 95\% CI; the protocol pre-registers the bootstrap CI's lower bound exceeding $0.70$ as the formal pass criterion.
+We additionally report balanced accuracy of the auto-verdict against the consensus label.
+
+\paragraph{Secondary analyses (reported regardless of primary outcome).}
+\begin{itemize}
+\item \textbf{Inter-rater reliability}: Cohen's $\kappa$ between the two human raters on Q1 binary and on Q1 three-way (\texttt{yes}/\texttt{partial}/\texttt{no}), computed before consensus discussion.
+\item \textbf{Per-tier $\kappa$}: $\kappa(\text{auto},\text{consensus})$ separately on T1, T2, T3.
+\item \textbf{Per-strategy $\kappa$}: separately on \rawcode, \structured, \recipe.
+\item \textbf{Per-vendor $\kappa$}: separately for Anthropic, OpenAI, Google models (per-cell N is too small for per-model splits at this sample size).
+\item \textbf{Per-rater independent $\kappa$}: $\kappa(\text{auto},\text{rater~A})$ and $\kappa(\text{auto},\text{rater~B})$ separately, as a robustness check on how much consensus discussion shifted the headline.
+\item \textbf{Per-predicate Q2 agreement rate}: agreement rate broken down by each of the 17 implemented predicates.
+\item \textbf{Disagreement coding}: consensus-discussion notes coded by category and counts reported (\cref{app:human_study:disagreement_coding}).
+\end{itemize}
+
+\subsection{Results}
+\label{app:human_study:results}
+
+\TODO{Filled at study completion (target 2026-05-05). Insertion points wired to \texttt{evals/human\_study/results.json} produced by \texttt{compute\_kappa.py}.
+
+\begin{itemize}
+\item \textbf{Primary $\kappa$} (auto, consensus, binary): point estimate, asymptotic CI, bootstrap CI, balanced accuracy. Statement of whether the lower bound of the 95\% bootstrap CI exceeds the pre-registered threshold of $0.70$.
+\item \textbf{Confusion matrix}: $2{\times}2$ table of (auto verdict) $\times$ (human consensus) on the binary collapse.
+\item \textbf{Inter-rater reliability}: Cohen's $\kappa$ between rater A and rater B before consensus, on both Q1 binary and Q1 three-way.
+\item \textbf{Per-subgroup table}: per-tier, per-strategy, and per-vendor $\kappa$ in a single table.
+\item \textbf{Per-rater table}: $\kappa$(auto, A) and $\kappa$(auto, B) before consensus, alongside $\kappa$(auto, consensus).
+\item \textbf{Per-predicate Q2 agreement}: agreement rate per predicate, with disagreement and unsure counts.
+\end{itemize}}
+
+\subsection{Disagreement coding (qualitative)}
+\label{app:human_study:disagreement_coding}
+
+\TODO{Filled at study completion. The notes captured during independent rating and during consensus discussion are inductively coded into 4--6 categories (e.g., \emph{verifier tolerance too loose}, \emph{verifier missed implicit prompt constraint}, \emph{ambiguous prompt}, \emph{rater error caught in consensus}, \emph{model output renders correctly but exhibits an unrequested artifact}). Counts and representative excerpts reported here.}
+
+\subsection{Acknowledged limitations}
+\label{app:human_study:limitations}
+
+\paragraph{Two raters, not three.}
+Standard inter-rater statistics for $\geq 3$ raters (Fleiss's $\kappa$, intraclass correlation) are not applicable; we report Cohen's pairwise $\kappa$.
+Two raters is sufficient to estimate $\kappa(\text{auto}, \text{consensus})$ at the pre-registered precision but provides only one inter-rater datum.
+
+\paragraph{Raters are paper authors.}
+Conflict of interest is real and material.
+We mitigate via (a)~Q1 blinding to the auto-verdict and to the per-predicate values, (b)~independent annotation before any consensus discussion, and (c)~reporting per-rater $\kappa$ against the auto-verdict alongside the consensus statistic so the contribution of consensus discussion to the headline is auditable.
+Post-acceptance work extends to an external rater pool drawn from the K--12 mathematics-education community.
+
+\paragraph{Templated split only.}
+The pilot (\texttt{leaderboard\_pilot\_v3}) does not include curriculum-extracted scenarios, so all 200 sample items are templated.
+Curriculum-style prompts have a different failure mode profile (LLM-extracted property lists may be incomplete; templated property lists are guaranteed-by-construction); the human-correlation generalisation across this gap is queued for follow-up.
+
+\paragraph{Three-day data-collection window.}
+Annotation occurs over 2026-05-02 to 2026-05-05; a typical item receives 2--4 minutes of rater attention.
+This is consistent with the inter-rater workflows used in published benchmark papers but is shorter than expert deliberation in adjudicated educational assessment.
+
+\subsection{Reproducibility artifacts}
+\label{app:human_study:artifacts}
+
+All pre-registration, code, and (post-collection) data are committed to the project repository under permissive license:
+\begin{itemize}
+\item \texttt{docs/human\_study\_protocol.md} --- frozen pre-registration.
+\item \texttt{evals/human\_study/sample\_human\_study.py} --- deterministic stratified sampler.
+\item \texttt{evals/human\_study/sample.json} --- the $N{=}200$ sample (frozen).
+\item \texttt{evals/human\_study/viewer.html} --- single-page rating UI.
+\item \texttt{evals/human\_study/serve.py} --- local rating server.
+\item \texttt{evals/human\_study/responses\_*.csv} --- per-rater and consensus annotations.
+\item \texttt{evals/human\_study/compute\_kappa.py} --- $\kappa$ + confusion-matrix + per-subgroup analysis.
+\item \texttt{evals/human\_study/results.json} --- machine-readable analysis output.
+\end{itemize}
