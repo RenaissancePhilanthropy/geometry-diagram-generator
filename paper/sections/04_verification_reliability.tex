@@ -29,23 +29,40 @@ For the templated split, audit yields $18/30$ tight, $11/30$ loose, $1/30$ skele
 For 50 randomly-sampled tight scenarios, we exhibit the full property list in \cref{app:completeness_witnesses} and verify by hand that no incorrect-but-passing diagram exists.
 For 50 sampled loose scenarios, we exhibit (a)~the property list, (b)~a parameterisation of the underdetermined dimensions, and (c)~at least two visually-distinct valid passing diagrams to demonstrate the looseness is intentional.
 
-\subsection{Human-correlation study (target $N = 200$)}
+\subsection{Human-correlation study ($N = 200$, two domain-expert raters)}
 \label{ssec:human}
 
-We pre-register a human-correlation study using the existing \GeoGenBench annotation infrastructure (DB schema, IRR pipeline, annotation UI all released).
+We pre-register and run a human-correlation study against the canonical post-hardening pilot (\texttt{leaderboard\_pilot\_v3}, $N=498$).
+The full pre-registration is committed to the repository at \texttt{docs/human\_study\_protocol.md} prior to data collection; the supporting tooling (sampler, single-page rating viewer, $\kappa$ computation, results schema) is in \texttt{evals/human\_study/}.
 
-\paragraph{Protocol.}
-We sample 200 (scenario, model output, automatic verdict) triples, stratified to balance tier, automatic verdict (60 strict-pass / 60 soft-pass / 80 fail), model (across the leaderboard's 4 models), and source (100 templated, 100 curriculum).
-Three expert raters with HS-geometry teaching or olympiad-coaching background annotate each pair.
-We measure inter-rater reliability (Cohen's $\kappa$ between rater pairs and Fleiss's $\kappa$ across all three) before claiming any human-correlation number.
-The rubric records: \textbf{Q1 (overall)} ``Does the diagram correctly satisfy the prompt?'' \{yes / partially / no\}; and \textbf{Q2 (per-property)} agreement with each automatic predicate verdict \{agrees-pass / agrees-fail / disagrees\}.
-Raters do not see the automatic verdict during annotation.
+\paragraph{Sample ($N = 200$).}
+A deterministic stratified sample (random seed 42) drawn from the 400 records with rendered SVGs (the 98 excluded records are all \texttt{fail} due to unparseable model output, with no diagram to rate).
+The sample takes \emph{all} 28 \texttt{soft\_pass} records (the most epistemically informative stratum, as these are the verdict-near-boundary cases) and \emph{all} 35 rendered-but-failed records, then balances the remaining 137 \texttt{pass} records across (tier $\times$ strategy $\times$ model).
+All 200 are templated; the curriculum split is unsampled because the pilot did not include curriculum runs --- a stratum-coverage limitation acknowledged in \cref{app:human_study} and queued for a follow-up.
+The exact sample is committed at \texttt{evals/human\_study/sample.json}; re-running the sampler with the same seed reproduces it byte-identically.
 
-\paragraph{Pre-registered hypothesis.}
-$\kappa \geq 0.7$ between automatic verdict and human Q1 majority, with balanced accuracy $\geq 0.85$.
+\paragraph{Raters.}
+Two domain-expert raters annotate the full sample independently: a PhD mathematician and an award-winning K--12 mathematics educator with middle-school teaching experience (anonymized for review).
+Both are paper authors; we mitigate this conflict of interest via Q1 blinding (next paragraph) and by reporting per-rater $\kappa$ against the auto-verdict as a robustness check alongside the consensus statistic.
+
+\paragraph{Rubric and blinding.}
+\textbf{Q1 (overall, blind):} ``Does the diagram correctly satisfy every claim in the prompt?'' \{yes / partially / no\}.
+The rating tool reveals neither the auto-verdict nor any per-predicate values until Q1 is submitted, preserving blinding for the headline endpoint.
+\textbf{Q2 (per-predicate, post-Q1):} for each of the $\sim 4.4$ predicates the verifier checked on the diagram, the rater records \{agrees-pass / agrees-fail / disagrees / unsure\}.
+Q2 is not blind --- agreement with the auto-verdict is the construct of interest --- and is unlocked only after Q1.
+
+\paragraph{Consensus protocol.}
+Each rater works through the full sample independently with no contact.
+A computation script then identifies disagreements; the two raters meet (synchronously, $\leq 90$ minutes) to discuss each disagreement to convergence, producing a single consensus label per item.
+Items irreconcilable within $5$ minutes of discussion are recorded transparently and excluded from the primary endpoint.
+
+\paragraph{Pre-registered primary endpoint.}
+Cohen's $\kappa(\text{auto-verdict}, \text{human-consensus}) \geq 0.70$ on the binary collapse (\texttt{pass}~$\cup$~\texttt{soft\_pass} vs \texttt{fail}), $N = 200$, with the lower bound of a 1000-resample bootstrap 95\% CI exceeding $0.70$.
+Pre-registered secondary analyses (per-tier, per-strategy, per-vendor $\kappa$; per-predicate Q2 agreement; inter-rater Cohen's $\kappa$ before consensus) are reported regardless of the primary outcome in \cref{app:human_study}.
 
 \paragraph{Status.}
-\TODO{Study is queued; results pending. Section will be filled with the actual confusion matrix, per-property agreement table, and disagreement-coding taxonomy upon completion.}
+Annotation underway during 2026-05-02 to 2026-05-05.
+\Cref{app:human_study} reports the methodology in full (committed before annotation begins) and the results (filled at study completion): primary $\kappa$ with CI, per-subgroup $\kappa$, the full confusion matrix, and a qualitative disagreement-coding taxonomy.
 
 \subsection{Adversarial analysis: can we construct passing-but-wrong diagrams?}
 \label{ssec:adversarial}
@@ -126,7 +143,7 @@ This is a positive outcome for the soundness of the prior verdicts.
 Auto verdict is sound on tight scenarios. & Adversarial probe of all 17 predicates; only 5 have soft spots, all addressable. & high \\
 Tight-completeness rate of templated split. & Audit of all 30 templates (\cref{ssec:completeness}). & high (deterministic) \\
 Loose-completeness is intentional and matches educational practice. & \cref{ssec:completeness} examples + \cref{app:completeness_witnesses}. & medium \\
-Auto-verdict agrees with human raters at $\kappa \geq 0.7$. & Pre-registered $N=200$ study (\cref{ssec:human}). & \textbf{TBD pending study} \\
+Auto-verdict agrees with human raters at $\kappa \geq 0.7$. & Pre-registered $N{=}200$ study, two domain-expert raters, consensus-derived ground truth (\cref{ssec:human}, \cref{app:human_study}). & \textbf{TBD: $\kappa$ pending consensus pass} \\
 Headline pass-rates correctly rank models. & Pilot data shows 19--30\pp spreads on \ttwo--\tthree (\cref{sec:results}). & medium pending full pilot \\
 \bottomrule
 \end{tabular}
