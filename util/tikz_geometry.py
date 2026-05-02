@@ -376,6 +376,7 @@ def validate_geometric_property(
     property_type values:
       - "right_angle":     args = [A, vertex, C] — angle at vertex is 90°
       - "midpoint":        args = [M, A, B] — M is the midpoint of AB
+      - "centroid":        args = [G, A, B, C] — G = (A + B + C) / 3
       - "collinear":       args = [A, B, C] — three points are collinear
       - "equal_lengths":   args = [[P1,P2], [P3,P4], ...] — all segments equal
       - "parallel":        args = [[A,B], [C,D]] — lines AB and CD are parallel
@@ -412,6 +413,18 @@ def validate_geometric_property(
             return (
                 abs(m[0] - expected[0]) <= tolerance
                 and abs(m[1] - expected[1]) <= tolerance
+            )
+
+        elif property_type == "centroid":
+            # Componentwise check on (A + B + C) / 3, parallel to the midpoint
+            # decision rule. The equivalent "G lies on each median" form would
+            # be a numerically equivalent but more expensive consequence.
+            g_name, a_name, b_name, c_name = args
+            g = coords[g_name]
+            expected = _centroid(coords[a_name], coords[b_name], coords[c_name])
+            return (
+                abs(g[0] - expected[0]) <= tolerance
+                and abs(g[1] - expected[1]) <= tolerance
             )
 
         elif property_type == "collinear":
