@@ -63,13 +63,14 @@ The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}.
 \subsection{Property language}
 \label{ssec:properties}
 
-Each scenario carries a list of expected geometric properties drawn from a fixed vocabulary of \textbf{14 symbolic predicate types implemented in the eval verifier} plus 2 source-string check types, all enforced against a coordinate symbol table extracted from the rendered TikZ.
-A further 4 predicates (\propname{centroid}, \propname{opposite\_side}, \propname{same\_side}, \propname{not\_between}) are declared in the IR-side checker but currently silent-skipped by the eval verifier; we document them transparently in \cref{app:reserved_predicates} and account for their effect on the headline numbers in \cref{sec:hardening}.
+Each scenario carries a list of expected geometric properties drawn from a fixed vocabulary of \textbf{15 symbolic predicate types implemented in the eval verifier} plus 2 source-string check types, all enforced against a coordinate symbol table extracted from the rendered TikZ.
+A further 3 predicates remain unwired in v1: \propname{opposite\_side} and \propname{same\_side} are implemented in the IR-side checker (\texttt{ir/checks.py}) and used by the \structured strategy for self-validation but not yet ported to the eval verifier; \propname{not\_between} is reserved for v1.1 negative-incidence templates and emitted by no v1 scenario.
+We document this minority transparently in \cref{app:reserved_predicates} and account for the residual effect on the headline numbers in \cref{sec:hardening}.
 Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\times 10^{-3}$ (justified empirically against human ratings; see \cref{sec:verification}).
 \Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signature, semantics, decision rule, and code reference for each predicate.
 
 \begin{table}[t]
-\caption{The \GeoGen predicate language v1. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass. Four additional predicates declared in the IR layer are not yet wired into the eval verifier --- see \cref{app:reserved_predicates}.}
+\caption{The \GeoGen predicate language v1. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass. Three additional predicates (\propname{opposite\_side}, \propname{same\_side}, \propname{not\_between}) are declared but not yet wired into the eval verifier --- see \cref{app:reserved_predicates}.}
 \label{tab:predicates}
 \centering
 \small
@@ -80,6 +81,7 @@ Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\tim
 \multicolumn{3}{l}{\emph{Symbolic (exact, implemented in v1)}} \\
 \propname{right\_angle} & $[a, o, b]$ & $|\vec{oa}\cdot\vec{ob}| < \tau$ \\
 \propname{midpoint} & $[m, a, b]$ & $\max(|m_x-(a_x{+}b_x)/2|, |m_y-(a_y{+}b_y)/2|) < \tau$ \\
+\propname{centroid} & $[g, a, b, c]$ & $\max(|g_x-(a_x{+}b_x{+}c_x)/3|, |g_y-(a_y{+}b_y{+}c_y)/3|) < \tau$ \\
 \propname{collinear} & $[p_1, p_2, p_3]$ & $|\vec{p_1 p_2}\times\vec{p_1 p_3}| < \tau$ \\
 \propname{equal\_lengths} & $[[a,b], [c,d], \dots]$ & all pairwise $\big||AB| - |CD|\big| < \tau$ \\
 \propname{parallel} & $[[a,b], [c,d]]$ & $|\vec{ab}\times\vec{cd}| < \tau$ \\

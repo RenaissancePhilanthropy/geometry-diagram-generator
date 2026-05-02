@@ -79,26 +79,31 @@ By inspecting the pilot's pass diagrams, we estimate $<5\%$ of strict passes are
 \subsection{Hardening pass}
 \label{sec:hardening}
 
-Two changes to the verification toolkit, motivated by inspecting which checks were silently skipped on the pilot data:
+Three changes to the verification toolkit, motivated by inspecting which checks were silently skipped on the pilot data:
 
 \begin{enumerate}
 \item \textbf{\texttt{\textbackslash tkzInterCC} and \texttt{\textbackslash tkzInterLC} resolution.}
 The prior coordinate extractor explicitly omitted runtime-computed circle-circle and line-circle intersections, so any downstream check involving an intersection point (\propname{point\_on\_circle}, \propname{equal\_lengths} between intersection and centre) was skipped.
 The hardened resolver adds a closed-form solver for both: circle-circle returns the two intersection points sorted $(y, x)$-ascending so the assignment to the names paired by \texttt{\textbackslash tkzGetPoints\{P\}\{Q\}} is deterministic; line-circle uses the same sort.
 Non-intersecting configurations return \texttt{None} and the points stay unresolved (preserving the ``omit rather than guess'' invariant).
-9 unit tests; 4/315 pilot records promote from \texttt{soft\_pass} $\to$ \texttt{pass}.
+9 unit tests; 4 pilot records promote from \texttt{soft\_pass} $\to$ \texttt{pass}.
 \item \textbf{pgfmath-style coordinate evaluator.}
 The prior literal-coordinate extractor missed \texttt{\textbackslash tkzDefPoint(\{\textbackslash side*cos(-35)\},\{\textbackslash side*sin(-35)\})\{B\}} constructions, which are universal in raw-LLM TikZ.
 The hardened extractor (a)~walks \texttt{\textbackslash pgfmathsetmacro} definitions in source order to build a macro table; (b)~reads parenthesised \texttt{\textbackslash tkzDefPoint} arguments using a balanced-paren scanner that crosses both \texttt{()} and \texttt{\{\}} depths; (c)~evaluates each component via a Python AST walker supporting decimal literals, unary minus, $+ - * / **$, parentheses, $\cos / \sin / \tan$ (in degrees, matching pgfmath default), $\sqrt{\cdot}$, $|{\cdot}|$, and macro substitution.
 Unsupported constructs raise \texttt{ValueError} and the point is silently skipped.
 5 unit tests; 9 additional pilot records promote.
+\item \textbf{\propname{centroid} predicate.}
+The pre-hardening verifier emitted no decision for \propname{centroid}, which is used by every \texttt{tpl-t3-cen} scenario in the templated benchmark.
+We added a componentwise check $\max(|g_x - (a_x{+}b_x{+}c_x)/3|,\ |g_y - (a_y{+}b_y{+}c_y)/3|) \leq \tau$ in line with \propname{midpoint}; 3 unit tests.
+The promotion count (10 records) and the heatmap shift (\texttt{tpl-t3-cen} dropping out of the universally-hard list, \cref{ssec:per_template}) attribute to a single scenario in the pilot.
 \end{enumerate}
 
-\paragraph{Aggregate hardening impact on the pilot} (re-graded via \texttt{evals/regrade.py} against unchanged TikZ outputs): 13/315 records (4.1\%) promote from \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
-Promotions are concentrated in \rawcode rows because IR-compiled outputs (\structured, \recipe) emit literal coordinates exclusively, while raw LLM TikZ uses \texttt{\textbackslash pgfmathsetmacro} routinely.
-Per-model \rawcode strict-pass deltas: \opus +16.7\pp, \sonnet +10.0\pp, \haiku +6.6\pp, \gpt +10.0\pp.
-The strategy-effect headline (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp post-hardening --- about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
-We report both numbers in \cref{sec:results} and recommend the post-hardening verifier as the canonical metric.
+\paragraph{Aggregate hardening impact on the pilot} (re-graded via \texttt{evals/regrade.py} against unchanged TikZ outputs): 23 records ($4.6\%$ of $498$) promote from \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
+The first two passes are concentrated in \rawcode rows because IR-compiled outputs (\structured, \recipe) emit literal coordinates exclusively, while raw LLM TikZ uses \texttt{\textbackslash pgfmathsetmacro} routinely.
+Per-model \rawcode strict-pass deltas after \textbf{passes 1+2}: \opus +16.7\pp, \sonnet +10.0\pp, \haiku +6.6\pp, \gpt +10.0\pp.
+The strategy-effect headline (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp after passes 1+2 --- about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
+\textbf{Pass 3} (\propname{centroid}) adds $+3.3$\pp to ten cells uniformly across all three strategies (one centroid scenario in the pilot); the strategy-effect headline is unaffected because the scenario is self-referential and every observed strategy emits a satisfying construction.
+We report the post-hardening numbers in \cref{sec:results} and recommend the post-hardening verifier as the canonical metric.
 
 A third planned change (render-aware \propname{mark\_present} from SVG glyph parsing) is \emph{deferred} to v1.1: post-hardening, no \propname{mark\_present} checks remain in the soft\_pass column for the pilot (they were reliably caught by the existing TikZ-source matcher); the planned SVG-glyph approach would tighten coverage for outputs that fake the mark via raw \texttt{\textbackslash draw} primitives, but that pattern was not observed in the pilot.
 
