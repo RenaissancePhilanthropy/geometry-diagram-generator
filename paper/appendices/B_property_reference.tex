@@ -43,6 +43,18 @@ We test componentwise on the expected midpoint coordinates rather than testing $
 \noindent\textbf{Soft spots.}\quad The earlier ``equal-distance'' implementation (now superseded) had a soft spot allowing $M$ anywhere on the perpendicular bisector --- see \cref{tab:adversarial}.
 The current componentwise check eliminates that escape entirely.
 
+\subsubsection{\propname{centroid}}
+\label{app:pred:centroid}
+
+\noindent\textbf{Signature.}\quad \texttt{centroid([g, a, b, c])}.
+
+\noindent\textbf{Semantics.}\quad Point \texttt{g} is the centroid of $\triangle abc$, i.e., $g = (a + b + c)/3$.
+
+\noindent\textbf{Decision rule.}\quad Return $\max(|g_x - (a_x{+}b_x{+}c_x)/3|,\ |g_y - (a_y{+}b_y{+}c_y)/3|) \leq \tau$.
+The componentwise form mirrors \propname{midpoint}: testing $|GA|+|GB|+|GC|$ minimisation would admit any point on the locus where the sum-of-distances function is locally flat (which is in fact only the centroid, but the fixed-point form is cheaper and more obviously correct).
+
+\noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:418}.
+
 \subsubsection{\propname{collinear}}
 \label{app:pred:collinear}
 
@@ -251,29 +263,23 @@ Both forms decide the same condition.
 \noindent\textbf{Soft spots.}\quad As with \propname{label\_present}, this is a source-string check: a mark primitive that would render off-canvas or that uses a non-standard TikZ command not recognised by the extractor will fail to register.
 Per \cref{sec:hardening}, no observed pilot record fails because a mark was rendered via raw \texttt{\textbackslash draw} primitives instead of the \texttt{\textbackslash tkzMark*} family the extractor recognises; the planned render-aware variant (parsing the rendered SVG for the actual right-angle glyph or tick stroke) is deferred to v1.1.
 
-\subsection{Schema-reserved predicates (declared in the IR layer, not yet wired into the eval verifier)}
+\subsection{Reserved predicates (declared but not yet wired into the eval verifier)}
 \label{app:reserved_predicates}
 
-The IR layer (\texttt{ir/checks.py}) defines four additional predicates that appear in scenario YAML files but are currently \emph{silently skipped} by the eval-side verifier (\texttt{validate\_geometric\_property} returns \texttt{None}, which downgrades the scenario from \texttt{pass} to \texttt{soft\_pass}).
-We document them here for two reasons: (i) for transparency about what is and is not currently graded; (ii) because they are committed targets for v1.1 and any \GeoGen-family benchmark that adopts the IR-side checker (used internally by the \structured strategy for self-validation before render) already supports them.
+Three predicates remain declared but unwired in v1 because, to a first approximation, all v1 scenarios that need them can be expressed without them.
+They split into two distinct categories.
 
-\paragraph{\propname{centroid}}
-\noindent\textbf{Signature.}\quad \texttt{centroid([g, a, b, c])}.
-\textbf{Semantics.}\quad $g = (a + b + c)/3$.
-\textbf{Status.}\quad Used in 22 templated scenarios (medians/centroid template family).
-Currently silent-skipped; checks of this type contribute to \texttt{soft\_pass}, not \texttt{pass}.
-Implementation in \texttt{ir/checks.py} is straightforward (componentwise distance to the average of the three vertex coordinates) and will be ported to \texttt{util/tikz\_geometry.py} in v1.1.
-
-\paragraph{\propname{opposite\_side}, \propname{same\_side}}
-\noindent\textbf{Signature.}\quad \texttt{opposite\_side([p, q, line\_a, line\_b])} and similarly \texttt{same\_side}.
+\paragraph{IR-side checker only: \propname{opposite\_side}, \propname{same\_side}.}
+These are full first-class predicates in the IR layer (\texttt{ir/ir.py:662,671}; \texttt{ir/checks.py:154,169}), used by the \structured strategy during \emph{self}-validation before TikZ emission, but are not currently re-evaluated by the eval-side verifier (\texttt{util/tikz\_geometry.py}) on the rendered output.
+\textbf{Signature.}\quad \texttt{opposite\_side([p, q, line\_a, line\_b])} and similarly \texttt{same\_side}.
 \textbf{Semantics.}\quad The signed cross product $\vec{(\text{line\_a})(\text{line\_b})} \times \vec{(\text{line\_a})\,p}$ has the opposite (resp.\ same) sign as the corresponding quantity for $q$.
-\textbf{Status.}\quad Implemented in the IR-side checker (\texttt{ir/checks.py:154,169}) but not currently emitted by any v1 scenario.
-Designed to be paired with \propname{angle\_bisector}, \propname{equidistant\_from\_sides}, and other predicates whose soft spots are addressed by adding an orientation co-check (\cref{tab:adversarial}).
+\textbf{Status.}\quad Not currently emitted by any v1 scenario, so the missing eval-side wiring has no observed effect on headline numbers.
+Designed to pair with \propname{angle\_bisector}, \propname{equidistant\_from\_sides}, and other predicates whose adversarial soft spots are closed by adding an orientation co-check (\cref{tab:adversarial}).
 
-\paragraph{\propname{not\_between}}
-\noindent\textbf{Signature.}\quad \texttt{not\_between([d, b, c])}.
-\textbf{Semantics.}\quad The negation of \propname{point\_on\_segment}: $d$ may be on line $\overleftrightarrow{bc}$ but is \emph{not} on segment $\overline{bc}$.
-\textbf{Status.}\quad Currently neither implemented in the eval verifier nor emitted by v1 scenarios; reserved as a v1.1 negative-incidence primitive for templates whose construction places a point on a line extension (e.g., the foot of an altitude that falls outside the triangle's base segment).
+\paragraph{Reserved for v1.1: \propname{not\_between}.}
+\textbf{Signature.}\quad \texttt{not\_between([d, b, c])}.
+\textbf{Semantics.}\quad The negation of \propname{point\_on\_segment}: $d$ may lie on line $\overleftrightarrow{bc}$ but is \emph{not} on segment $\overline{bc}$.
+\textbf{Status.}\quad Implemented in neither layer and emitted by no v1 scenario; reserved as a v1.1 negative-incidence primitive for templates whose construction places a point on a line extension (e.g., the foot of an altitude that falls outside the triangle's base segment).
 
 \subsection{Tolerance and the verdict ladder}
 
@@ -289,4 +295,4 @@ A predicate's verdict is one of:
 \item \texttt{None} --- a required input coordinate was not in $\mathbf{X}$ (extractor failure or unimplemented derived-point construction), or, for \propname{label\_present}/\propname{mark\_present}, the TikZ source was not provided.
 \end{itemize}
 A \texttt{None} verdict downgrades the scenario from \texttt{pass} to \texttt{soft\_pass}; only \texttt{False} causes \texttt{fail}.
-The \cref{sec:hardening} pass closed 13 \texttt{None}-verdicts in the pilot ($4.1\%$); the schema-reserved predicates above are the remaining known source of \texttt{None} verdicts in \GeoGenBench v1.
+The \cref{sec:hardening} pass closed $23$ \texttt{None}-verdicts in the pilot ($4.6\%$ of $498$ records, in two waves: $13$ from coordinate-extraction hardening and $10$ from implementing \propname{centroid}); the three reserved predicates above are the remaining known source of \texttt{None} verdicts in \GeoGenBench v1.

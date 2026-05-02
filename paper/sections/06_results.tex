@@ -53,7 +53,7 @@ $^\dagger$ \geminiflash + \structured / \recipe is blocked at Google's request-v
 \Cref{tab:hardening_delta} shows the impact of \cref{sec:hardening} on \rawcode rows; \structured and \recipe rows are unchanged.
 
 \begin{table}[t]
-\caption{\Cref{sec:hardening} affects \rawcode only because IR-compiled outputs emit literal coordinates exclusively.}
+\caption{Cumulative effect of all three \cref{sec:hardening} passes (post = post-pass-3, the canonical metric). Passes~1+2 (extractor improvements) targeted \rawcode rows because IR-compiled outputs emit literal coordinates exclusively. Pass~3 (\propname{centroid}) added a uniform $+3.3$\pp on the single \texttt{tpl-t3-cen} scenario for ten cells across all three strategies.}
 \label{tab:hardening_delta}
 \centering
 \small
@@ -62,11 +62,12 @@ $^\dagger$ \geminiflash + \structured / \recipe is blocked at Google's request-v
 \textbf{Model} & \textbf{Strict (pre)} & \textbf{Strict (post)} & $\Delta$ \\
 \midrule
 \opus + \rawcode & 63.3\% & 80.0\% & $+16.7$\pp \\
-\sonnet + \rawcode & 66.7\% & 76.7\% & $+10.0$\pp \\
-\haiku + \rawcode & 76.7\% & 83.3\% & $+6.6$\pp \\
-\gpt + \rawcode & 60.0\% & 70.0\% & $+10.0$\pp \\
+\sonnet + \rawcode & 66.7\% & 80.0\% & $+13.3$\pp \\
+\haiku + \rawcode & 76.7\% & 86.7\% & $+10.0$\pp \\
+\gpt + \rawcode & 60.0\% & 73.3\% & $+13.3$\pp \\
 \midrule
-all \structured / \recipe & unchanged & unchanged & $0.0$\pp \\
+\structured / \recipe (passes 1+2) & unchanged & unchanged & $0.0$\pp \\
+\structured / \recipe (pass 3 only) & --- & 7 cells $+3.3$\pp & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
