@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GeoGenBench human-correlation rating</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b66;
+    --line: #e5e5e0;
+    --accent: #1f6feb;
+    --pass: #1a7f37;
+    --fail: #b62a2a;
+    --soft: #b5740b;
+    --warn: #b5740b;
+    --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink);
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 14px; font-weight: 600; margin: 0; }
+  header .spacer { flex: 1; }
+  header .status { font-size: 13px; color: var(--muted); }
+  header .save-state { font-size: 12px; color: var(--muted); min-width: 110px; text-align: right; }
+  header .save-state.saving { color: var(--warn); }
+  header .save-state.error { color: var(--fail); }
+  header .save-state.ok { color: var(--pass); }
+
+  #progress {
+    height: 3px; background: var(--line); position: relative;
+  }
+  #progress > div {
+    height: 100%; background: var(--accent); transition: width 0.2s ease-out;
+  }
+
+  main {
+    display: grid; grid-template-columns: minmax(0, 3fr) minmax(380px, 1.5fr);
+    gap: 16px; padding: 16px; max-width: 1700px; margin: 0 auto;
+    align-items: start;
+  }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .card-title {
+    padding: 10px 16px; border-bottom: 1px solid var(--line);
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted); font-weight: 600;
+  }
+  .card-body { padding: 16px; }
+
+  /* Diagram panel */
+  #diagram-card .card-body {
+    padding: 0; min-height: 480px; display: flex; align-items: center; justify-content: center;
+    background: #ffffff;
+  }
+  #diagram-host { width: 100%; max-width: 700px; min-height: 480px; padding: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #diagram-host img, #diagram-host svg { max-width: 100%; max-height: 70vh; height: auto; }
+
+  /* Prompt + meta */
+  #prompt-text { font-size: 16px; line-height: 1.55; white-space: pre-wrap; }
+  .meta-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .chip {
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+    background: #fbfbf9;
+  }
+  .chip.tier-T1 { color: #1a7f37; border-color: #c5e8d0; }
+  .chip.tier-T2 { color: #b5740b; border-color: #f0e1c2; }
+  .chip.tier-T3 { color: #b62a2a; border-color: #f3cfcf; }
+
+  /* Rubric */
+  .rubric { display: flex; flex-direction: column; gap: 14px; }
+  .question-label {
+    font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 6px;
+  }
+  .question-help {
+    font-size: 12px; color: var(--muted); margin-top: -4px; margin-bottom: 8px;
+  }
+  .options { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt {
+    border: 1px solid var(--line); background: #fff; padding: 8px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 13px; user-select: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .opt .kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
+    background: #fbfbf9;
+  }
+  .opt:hover { border-color: var(--accent); }
+  .opt.selected { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt.selected .kbd { color: #fff; border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.1); }
+  .opt.opt-pass.selected { background: var(--pass); border-color: var(--pass); }
+  .opt.opt-fail.selected { background: var(--fail); border-color: var(--fail); }
+  .opt.opt-soft.selected { background: var(--soft); border-color: var(--soft); }
+  .opt.opt-warn.selected { background: var(--warn); border-color: var(--warn); }
+
+  .q2-locked { color: var(--muted); font-size: 13px; padding: 12px; background: #f7f7f4; border-radius: 6px; }
+  .q2-list { display: flex; flex-direction: column; gap: 10px; }
+  .q2-row {
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: #fff;
+  }
+  .q2-row .head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px;
+  }
+  .q2-row .pred { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  .q2-row .auto-verdict {
+    font-size: 11px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    font-weight: 600;
+  }
+  .q2-row .auto-verdict.pass { background: #e6f4ea; color: var(--pass); }
+  .q2-row .auto-verdict.fail { background: #fdecec; color: var(--fail); }
+  .q2-row .auto-verdict.skip { background: #f0e1c2; color: var(--warn); }
+  .q2-row .options { gap: 4px; }
+  .q2-row .opt { padding: 5px 10px; font-size: 12px; }
+
+  textarea {
+    width: 100%; min-height: 60px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    font: inherit; resize: vertical;
+  }
+
+  .nav-row {
+    display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line);
+    background: #fbfbf9; border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius);
+  }
+  .nav-row button {
+    flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; cursor: pointer; font: inherit;
+  }
+  .nav-row button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+  }
+  .nav-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .meta-grid {
+    display: grid; grid-template-columns: 80px 1fr; gap: 4px 12px; font-size: 12px; color: var(--muted);
+  }
+  .meta-grid dt { font-weight: 600; color: var(--ink); }
+  .meta-grid dd { margin: 0; word-break: break-word; }
+
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre.tikz {
+    margin-top: 8px; padding: 10px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; background: #f7f7f4; border-radius: 6px; max-height: 240px; overflow: auto;
+    white-space: pre-wrap;
+  }
+
+  #intro {
+    max-width: 720px; margin: 60px auto; padding: 32px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  #intro h2 { margin-top: 0; }
+  #intro input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); margin-right: 8px; }
+  #intro button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  #intro ul { color: var(--muted); }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex; gap: 8px; align-items: center; padding: 6px 16px; background: #fbfbf9;
+    border-bottom: 1px solid var(--line); font-size: 12px;
+  }
+  .filter-bar a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .filter-bar a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div id="intro" style="display:none">
+  <h2>GeoGenBench human-correlation rating</h2>
+  <p>You're about to rate ~200 (prompt, diagram) pairs. The protocol is in <code>docs/human_study_protocol.md</code>.</p>
+  <ul>
+    <li><b>Q1 is blind</b>: you'll see only the prompt and diagram (not the auto-verdict) until you submit Q1.</li>
+    <li>Then <b>Q2 unlocks</b>: you'll see each predicate the verifier checked, and rate whether you agree.</li>
+    <li>Your answers <b>auto-save</b> to <code>evals/human_study/responses_&lt;your-name&gt;.csv</code>.</li>
+    <li>Use the keyboard: <span class="kbd">1</span>/<span class="kbd">2</span>/<span class="kbd">3</span> for Q1, <span class="kbd">a</span>/<span class="kbd">f</span>/<span class="kbd">d</span>/<span class="kbd">u</span> for Q2, <span class="kbd">→</span>/<span class="kbd">←</span> to navigate.</li>
+    <li>You can stop and resume any time — your progress is saved on the server.</li>
+  </ul>
+  <p><b>Enter your rater name to begin:</b></p>
+  <div>
+    <input id="rater-input" placeholder="e.g. mei" />
+    <button id="rater-go">Begin</button>
+  </div>
+</div>
+
+<header style="display:none" id="header">
+  <h1>GeoGenBench rating</h1>
+  <span class="status" id="hdr-rater"></span>
+  <span class="status" id="hdr-pos"></span>
+  <span class="status" id="hdr-verdict-counts"></span>
+  <div class="spacer"></div>
+  <span class="save-state ok" id="save-state">saved</span>
+</header>
+<div id="progress" style="display:none"><div></div></div>
+<div class="filter-bar" id="filter-bar" style="display:none">
+  <span id="filter-info">Showing all 200 items</span>
+  <span class="spacer" style="flex:1"></span>
+  <a id="jump-unanswered">Next unanswered ▶</a>
+  <a id="jump-incomplete">Next incomplete-Q2 ▶</a>
+</div>
+
+<main id="main" style="display:none">
+  <section class="card" id="diagram-card">
+    <div class="card-title">Diagram</div>
+    <div class="card-body">
+      <div id="diagram-host"></div>
+    </div>
+  </section>
+
+  <aside style="display:flex; flex-direction:column; gap:16px;">
+    <section class="card">
+      <div class="card-title">Prompt</div>
+      <div class="card-body">
+        <div id="prompt-text"></div>
+        <div class="meta-row" id="meta-chips"></div>
+        <details>
+          <summary>Item metadata</summary>
+          <dl class="meta-grid" id="meta-grid"></dl>
+        </details>
+        <details>
+          <summary>Show TikZ source (only inspect if Q1 doesn't change)</summary>
+          <pre class="tikz" id="tikz-source"></pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">Rubric</div>
+      <div class="card-body">
+        <div class="rubric">
+          <div>
+            <div class="question-label">Q1 — Overall verdict <span style="color:var(--muted); font-weight:400">(blind: auto-verdict hidden until you answer)</span></div>
+            <div class="question-help">Does this diagram correctly satisfy every claim in the prompt?</div>
+            <div class="options" id="q1-options">
+              <div class="opt opt-pass" data-q1="yes">Yes — fully satisfied <span class="kbd">1</span></div>
+              <div class="opt opt-soft" data-q1="partial">Partial — some clauses violated <span class="kbd">2</span></div>
+              <div class="opt opt-fail" data-q1="no">No — major violation / unrelated <span class="kbd">3</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="question-label">Q2 — Per-predicate agreement</div>
+            <div id="q2-host"></div>
+          </div>
+
+          <div>
+            <div class="question-label">Notes (optional)</div>
+            <textarea id="notes" placeholder="Disagreement coding, edge cases, etc."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button id="prev-btn" title="Previous (←)">◀ Prev</button>
+        <button id="next-btn" class="primary" title="Next (→)">Next ▶</button>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+const Q1_OPTIONS = ["yes", "partial", "no"];
+const Q2_OPTIONS = ["agree-pass", "agree-fail", "disagree", "unsure"];
+const Q1_KEYS = { "1": "yes", "2": "partial", "3": "no" };
+const Q2_KEYS = { "a": "agree-pass", "f": "agree-fail", "d": "disagree", "u": "unsure" };
+
+const state = {
+  rater: null,
+  sample: null,
+  index: 0,
+  responses: {},
+  saveTimer: null,
+  saveInFlight: false,
+  saveQueued: false,
+};
+
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+
+function setSaveState(state_, text) {
+  const el = $("#save-state");
+  el.classList.remove("saving", "ok", "error");
+  el.classList.add(state_);
+  el.textContent = text;
+}
+
+async function loadSample() {
+  const r = await fetch("sample.json");
+  if (!r.ok) throw new Error("Failed to load sample.json");
+  return await r.json();
+}
+
+async function loadResponses(rater) {
+  try {
+    const r = await fetch(`/human_study/load?rater=${encodeURIComponent(rater)}`);
+    if (!r.ok) return {};
+    const data = await r.json();
+    const byItem = {};
+    for (const row of data.rows || []) {
+      const id = row.item_id;
+      if (!byItem[id]) {
+        byItem[id] = { q1: row.q1_overall || "", notes: row.notes || "", q2: {} };
+      }
+      if (row.q2_predicate) {
+        byItem[id].q2[row.q2_predicate] = row.q2_agreement || "";
+      }
+      if (row.q1_overall && !byItem[id].q1) byItem[id].q1 = row.q1_overall;
+      if (row.notes && !byItem[id].notes) byItem[id].notes = row.notes;
+    }
+    return byItem;
+  } catch (e) {
+    console.error(e);
+    return {};
+  }
+}
+
+function flatRowsForCsv() {
+  const rows = [];
+  const now = new Date().toISOString();
+  for (const item of state.sample.items) {
+    const resp = state.responses[item.item_id];
+    if (!resp || !resp.q1) continue;
+    const preds = (item.predicate_checks && item.predicate_checks.length) ? item.predicate_checks : [{name: ""}];
+    for (const pred of preds) {
+      rows.push({
+        item_id: item.item_id,
+        scenario_id: item.scenario_id,
+        model: item.model,
+        strategy: item.strategy,
+        tier: item.tier,
+        auto_verdict: item.auto_verdict || "",
+        q1_overall: resp.q1,
+        q2_predicate: pred.name || "",
+        q2_agreement: (resp.q2 && resp.q2[pred.name]) || "",
+        notes: resp.notes || "",
+        rater_id: state.rater,
+        answered_at: now,
+      });
+    }
+  }
+  return rows;
+}
+
+function scheduleSave() {
+  clearTimeout(state.saveTimer);
+  setSaveState("saving", "saving…");
+  state.saveTimer = setTimeout(actuallySave, 400);
+}
+
+async function actuallySave() {
+  if (state.saveInFlight) {
+    state.saveQueued = true;
+    return;
+  }
+  state.saveInFlight = true;
+  try {
+    const r = await fetch("/human_study/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rater_id: state.rater, rows: flatRowsForCsv() }),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      setSaveState("ok", `saved (${data.wrote} rows)`);
+    } else {
+      setSaveState("error", `error: ${data.error || "unknown"}`);
+    }
+  } catch (e) {
+    setSaveState("error", "save failed");
+    console.error(e);
+  } finally {
+    state.saveInFlight = false;
+    if (state.saveQueued) {
+      state.saveQueued = false;
+      scheduleSave();
+    }
+  }
+}
+
+function render() {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id] || { q1: "", q2: {}, notes: "" };
+  state.responses[item.item_id] = resp;
+
+  $("#hdr-pos").textContent = `Item ${state.index + 1} of ${state.sample.items.length}`;
+  const counts = countAnswered();
+  $("#hdr-verdict-counts").textContent = `Q1 done: ${counts.q1Done}/${state.sample.items.length} · Q2 done: ${counts.q2Done}`;
+  $("#progress > div").style.width = `${(counts.q1Done / state.sample.items.length) * 100}%`;
+
+  $("#prompt-text").textContent = item.user_prompt || "(no prompt text)";
+
+  const tierClass = `tier-${item.tier || "T?"}`;
+  $("#meta-chips").innerHTML = "";
+  for (const [label, cls] of [
+    [item.tier || "T?", tierClass],
+    [item.strategy, ""],
+    [(item.tags || []).join(", "), ""],
+  ]) {
+    if (!label) continue;
+    const c = document.createElement("span");
+    c.className = "chip " + cls;
+    c.textContent = label;
+    $("#meta-chips").appendChild(c);
+  }
+
+  $("#meta-grid").innerHTML = "";
+  const meta = [
+    ["scenario", item.scenario_id],
+    ["model", item.model],
+    ["strategy", item.strategy],
+    ["item_id", item.item_id],
+  ];
+  for (const [k, v] of meta) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    $("#meta-grid").appendChild(dt);
+    $("#meta-grid").appendChild(dd);
+  }
+  $("#tikz-source").textContent = item.tikz_code || "(none)";
+
+  const host = $("#diagram-host");
+  host.innerHTML = "";
+  if (item.svg_path) {
+    const img = document.createElement("img");
+    img.src = "/" + item.svg_path;
+    img.alt = item.scenario_id;
+    img.onerror = () => { host.innerHTML = `<div style="color:var(--fail)">Failed to load SVG: ${item.svg_path}</div>`; };
+    host.appendChild(img);
+  } else {
+    host.innerHTML = `<div style="color:var(--muted)">No SVG available — model produced unparseable output.</div>`;
+  }
+
+  for (const opt of $$("#q1-options .opt")) {
+    opt.classList.toggle("selected", opt.dataset.q1 === resp.q1);
+  }
+
+  renderQ2(item, resp);
+
+  $("#notes").value = resp.notes || "";
+  $("#prev-btn").disabled = state.index === 0;
+  $("#next-btn").disabled = state.index >= state.sample.items.length - 1;
+}
+
+function renderQ2(item, resp) {
+  const host = $("#q2-host");
+  host.innerHTML = "";
+
+  if (!resp.q1) {
+    const lock = document.createElement("div");
+    lock.className = "q2-locked";
+    lock.textContent = "Submit Q1 to unlock per-predicate questions (this preserves blinding).";
+    host.appendChild(lock);
+    return;
+  }
+
+  const checks = item.predicate_checks || [];
+  if (!checks.length) {
+    const note = document.createElement("div");
+    note.className = "q2-locked";
+    note.textContent = "No automatic predicates were checked on this diagram (typically because the model output was unparseable). Q2 is N/A.";
+    host.appendChild(note);
+    return;
+  }
+
+  const list = document.createElement("div"); list.className = "q2-list";
+  for (const pred of checks) {
+    const row = document.createElement("div"); row.className = "q2-row";
+    const head = document.createElement("div"); head.className = "head";
+    const name = document.createElement("div"); name.className = "pred";
+    name.textContent = pred.name + (pred.type ? `  (${pred.type})` : "");
+    const av = document.createElement("div"); av.className = "auto-verdict " + (pred.verdict || "");
+    av.textContent = "auto: " + (pred.verdict || "?");
+    head.appendChild(name); head.appendChild(av);
+    row.appendChild(head);
+
+    const opts = document.createElement("div"); opts.className = "options";
+    for (const v of Q2_OPTIONS) {
+      const opt = document.createElement("div");
+      opt.className = "opt";
+      opt.textContent = v;
+      opt.dataset.predicate = pred.name;
+      opt.dataset.q2 = v;
+      if (resp.q2 && resp.q2[pred.name] === v) opt.classList.add("selected");
+      opts.appendChild(opt);
+    }
+    row.appendChild(opts);
+    list.appendChild(row);
+  }
+  host.appendChild(list);
+}
+
+function countAnswered() {
+  let q1Done = 0, q2Done = 0;
+  for (const item of state.sample.items) {
+    const resp = state.responses[item.item_id];
+    if (!resp) continue;
+    if (resp.q1) q1Done++;
+    const checks = item.predicate_checks || [];
+    if (checks.length === 0) {
+      if (resp.q1) q2Done++;
+    } else if (resp.q2 && checks.every(p => resp.q2[p.name])) {
+      q2Done++;
+    }
+  }
+  return { q1Done, q2Done };
+}
+
+function selectQ1(value) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id] = state.responses[item.item_id] || { q1: "", q2: {}, notes: "" };
+  resp.q1 = value;
+  render();
+  scheduleSave();
+}
+
+function selectQ2(predicate, value) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id];
+  if (!resp || !resp.q1) return;
+  resp.q2 = resp.q2 || {};
+  resp.q2[predicate] = value;
+  render();
+  scheduleSave();
+}
+
+function setNotes(text) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id];
+  if (!resp) return;
+  resp.notes = text;
+  scheduleSave();
+}
+
+function nav(delta) {
+  state.index = Math.max(0, Math.min(state.sample.items.length - 1, state.index + delta));
+  render();
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function jumpToFirst(predicate) {
+  for (let i = 0; i < state.sample.items.length; i++) {
+    if (predicate(state.sample.items[i])) { state.index = i; render(); return; }
+  }
+  alert("All items satisfy that filter — nothing to jump to.");
+}
+
+function attachHandlers() {
+  $("#q1-options").addEventListener("click", (e) => {
+    const opt = e.target.closest(".opt"); if (!opt) return;
+    selectQ1(opt.dataset.q1);
+  });
+  $("#q2-host").addEventListener("click", (e) => {
+    const opt = e.target.closest(".opt"); if (!opt) return;
+    selectQ2(opt.dataset.predicate, opt.dataset.q2);
+  });
+  $("#notes").addEventListener("input", (e) => setNotes(e.target.value));
+  $("#prev-btn").addEventListener("click", () => nav(-1));
+  $("#next-btn").addEventListener("click", () => nav(1));
+  $("#jump-unanswered").addEventListener("click", () => {
+    jumpToFirst(it => !state.responses[it.item_id] || !state.responses[it.item_id].q1);
+  });
+  $("#jump-incomplete").addEventListener("click", () => {
+    jumpToFirst(it => {
+      const r = state.responses[it.item_id];
+      if (!r || !r.q1) return false;
+      const checks = it.predicate_checks || [];
+      if (!checks.length) return false;
+      return !r.q2 || checks.some(p => !r.q2[p.name]);
+    });
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowRight") { nav(1); e.preventDefault(); return; }
+    if (e.key === "ArrowLeft") { nav(-1); e.preventDefault(); return; }
+    if (Q1_KEYS[e.key]) { selectQ1(Q1_KEYS[e.key]); e.preventDefault(); return; }
+    if (Q2_KEYS[e.key.toLowerCase()]) {
+      const item = state.sample.items[state.index];
+      const resp = state.responses[item.item_id];
+      if (!resp || !resp.q1) return;
+      const checks = item.predicate_checks || [];
+      const next = checks.find(p => !(resp.q2 && resp.q2[p.name]));
+      if (next) selectQ2(next.name, Q2_KEYS[e.key.toLowerCase()]);
+      e.preventDefault();
+    }
+  });
+}
+
+async function start(rater) {
+  state.rater = rater;
+  $("#hdr-rater").textContent = `Rater: ${rater}`;
+  $("#intro").style.display = "none";
+  $("#header").style.display = "flex";
+  $("#progress").style.display = "block";
+  $("#filter-bar").style.display = "flex";
+  $("#main").style.display = "grid";
+
+  state.sample = await loadSample();
+  state.responses = await loadResponses(rater);
+
+  for (let i = 0; i < state.sample.items.length; i++) {
+    const it = state.sample.items[i];
+    if (!state.responses[it.item_id] || !state.responses[it.item_id].q1) {
+      state.index = i; break;
+    }
+  }
+  attachHandlers();
+  render();
+}
+
+(function bootstrap() {
+  const params = new URLSearchParams(location.search);
+  const rater = params.get("rater") || "";
+  if (rater) {
+    start(rater).catch(e => alert("Failed to start: " + e.message));
+  } else {
+    $("#intro").style.display = "block";
+    $("#rater-go").addEventListener("click", () => {
+      const v = $("#rater-input").value.trim();
+      if (!v) { alert("Please enter a name"); return; }
+      const url = new URL(location.href); url.searchParams.set("rater", v);
+      location.href = url.toString();
+    });
+    $("#rater-input").addEventListener("keydown", e => { if (e.key === "Enter") $("#rater-go").click(); });
+  }
+})();
+</script>
+</body>
+</html>
