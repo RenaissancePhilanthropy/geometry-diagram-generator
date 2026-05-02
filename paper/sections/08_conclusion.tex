@@ -3,9 +3,9 @@
 
 We introduced \GeoGenBench, the first benchmark for generative geometric reasoning with fully-automatic, geometry-aware verification.
 \GeoGenBench pairs 801 natural-language prompts with executable property lists decided in milliseconds via SymPy, removing the dependence on human raters or vision-language judges that limit prior generative-exam benchmarks.
-Across four frontier models and three generation strategies on a stratified pilot, we find a 30\pp strict-pass spread and a Pareto frontier dominated by cheap-model configurations: \haiku with direct TikZ generation reaches 83\% strict pass at \dollars{0.016}/scenario, beating \opus on the same strategy at $21\times$ lower cost.
-A scaffolded intermediate-representation strategy adds a further 4--20\pp on top.
-We documented and quantified the verifier's soundness via adversarial probing and a hardening pass that closed 4.1\% of silently-skipped checks.
+Across four frontier models and three generation strategies on a stratified pilot, we find a $\sim$37\pp strict-pass spread and a Pareto frontier dominated by cheap-model configurations: \haiku with direct TikZ generation reaches 87\% strict pass at \dollars{0.017}/scenario, beating \opus on the same strategy at $19\times$ lower cost.
+A scaffolded intermediate-representation strategy adds a further 3--20\pp on top.
+We documented and quantified the verifier's soundness via adversarial probing and a hardening pass that closed 4.6\% of silently-skipped checks.
 
 We release the dataset, the procedural template engine that generated it (allowing reviewers to roll new contamination-free splits), the verification toolkit, and a public leaderboard.
 A datasheet (Gebru et al.\ format) accompanies the release.

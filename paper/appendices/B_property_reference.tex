@@ -55,6 +55,9 @@ The componentwise form mirrors \propname{midpoint}: testing $|GA|+|GB|+|GC|$ min
 
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:418}.
 
+\noindent\textbf{Soft spots.}\quad This is the canonical \emph{self-referential} predicate (\cref{ssec:self_referential_checks}): in the pilot, every observed implementation emits $G$ either through an IR \texttt{centroid} derivation (in \structured/\recipe) or via $\backslash$\texttt{tkzInterLL} on two medians (in \rawcode), and both forms make the formula check tautological for any non-degenerate triangle.
+The check is non-trivial only when a model writes literal numerical coordinates for $G$, which we did not observe in v1; we retain the predicate because the median-concurrency form (an alternative semantics that requires the three medians to be \emph{drawn}, not merely the centroid \emph{computed}) is a v1.1 candidate.
+
 \subsubsection{\propname{collinear}}
 \label{app:pred:collinear}
 
@@ -280,6 +283,38 @@ Designed to pair with \propname{angle\_bisector}, \propname{equidistant\_from\_s
 \textbf{Signature.}\quad \texttt{not\_between([d, b, c])}.
 \textbf{Semantics.}\quad The negation of \propname{point\_on\_segment}: $d$ may lie on line $\overleftrightarrow{bc}$ but is \emph{not} on segment $\overline{bc}$.
 \textbf{Status.}\quad Implemented in neither layer and emitted by no v1 scenario; reserved as a v1.1 negative-incidence primitive for templates whose construction places a point on a line extension (e.g., the foot of an altitude that falls outside the triangle's base segment).
+
+\subsection{Self-referential checks}
+\label{ssec:self_referential_checks}
+
+A predicate is \emph{self-referential} for a given strategy when the LLM's natural construction of the relevant geometric object makes the predicate's decision rule pass by symbolic identity.
+The check still runs --- it can fail if the extractor mis-resolves coordinates or if the LLM chose a wrong construction primitive --- but it cannot fail because the LLM \emph{computed an answer incorrectly}, because the LLM did not compute an answer at all.
+
+We observed three flavours of self-reference in v1, and the property language was designed to be transparent about each.
+
+\paragraph{IR-derived points.} The \structured and \recipe strategies emit IR primitives such as \texttt{point\_midpoint(M, A, B)}, \texttt{point\_centroid(G, A, B, C)}, \texttt{point\_intersection(P, line\_1, line\_2)}, and \texttt{point\_foot(H, X, line)}.
+The compiler (\texttt{ir/to\_sympy.py}) evaluates these to numerical coordinates exactly per the textbook formulas; the predicate-language checks (\propname{midpoint}, \propname{centroid}, \propname{intersects}, \propname{point\_on\_line}) are the same formulas.
+For these strategies, the predicate over an IR-derived point is \emph{tautological}: it is satisfied iff the extractor recovers the coordinate the compiler emitted.
+
+\paragraph{TikZ-macro construction in \rawcode.} Capable LLMs writing raw TikZ delegate geometric arithmetic to \texttt{tkz-euclide} macros: $\backslash$\texttt{tkzDefMidPoint(A,B)}, $\backslash$\texttt{tkzInterLL(line\_1)(line\_2)}, $\backslash$\texttt{tkzCircumCenter(A,B,C)}, $\backslash$\texttt{tkzDefPointBy[rotation=...]}, etc.
+These compute the same derived points as the IR but inside the LaTeX engine.
+Because the predicate language and the macro library encode the same Euclidean theorems, predicates over points constructed this way are also tautological.
+Empirically, \emph{every} of the 11 \texttt{tpl-t3-cen} pilot records (4 \rawcode, 4 \recipe, 3 \structured) produced a $G$ within $10^{-9}$ of $(A+B+C)/3$ (the four \rawcode records all used $\backslash$\texttt{tkzInterLL} on two medians; by the median-concurrency theorem this intersection is exactly the centroid).
+
+\paragraph{Literal-coordinate construction.} Only when the LLM hard-codes numerical coordinates directly (e.g., $\backslash$\texttt{tkzDefPoint(2.5,1.7)\{G\}} for a triangle with vertices summing to $(7.5, 5.1)$) is the predicate non-trivially testing arithmetic.
+We did not observe this pattern for derived points in the v1 pilot.
+
+\paragraph{Why retain self-referential checks.}
+Three reasons.
+(i)~The check is not vacuous: it catches extractor bugs, mis-named labels, and incorrect construction-primitive choices (e.g., emitting \texttt{point\_intersection} of two non-medians and labelling the result $G$).
+(ii)~Removing them would push the headline metric toward strategies that hard-code coordinates over strategies that delegate construction, which inverts the methodological preference of \GeoGen for symbolic constructions.
+(iii)~For diagram-generation \emph{benchmarks}, the LLM's choice of construction primitive (``the centroid is the intersection of any two medians'') is itself a meaningful skill; the predicate verifies that the LLM picked a primitive whose semantics agree with the prompt's intent.
+
+\paragraph{Implication for headline interpretation.}
+When most cells of a per-template column report identical-and-high strict-pass rates, the proximate cause is often that the predicate is self-referential and every observed strategy chose a satisfying construction.
+The \texttt{tpl-t3-cen} case study (\cref{ssec:case_studies}) is the worked example: $10/11$ pilot records pass the centroid check tautologically, with the residual $1/11$ failing on \emph{other} (non-self-referential) checks in the same scenario.
+A v1.1 hardening direction is to define \emph{construction-rendered} variants of self-referential predicates --- e.g., a centroid check that requires the three medians to be \emph{drawn} as detectable strokes in the SVG, in addition to $G$ being computationally correct --- which would shift the test from ``which primitive did the LLM use'' toward ``did the LLM make the construction visible to a viewer''.
+We document this as future work (\cref{ssec:future_methodology}) rather than v1 functionality.
 
 \subsection{Tolerance and the verdict ladder}
 

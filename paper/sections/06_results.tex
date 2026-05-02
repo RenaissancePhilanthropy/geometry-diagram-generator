@@ -25,18 +25,18 @@ We report both \emph{strict} pass (all checks passed and none skipped) and \emph
 \textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
 \midrule
 \opus & \structured & $12^*$ & 100.0\% & 100.0\% & \dollars{0.533} & 10.0\,s \\
-\sonnet & \recipe & 30 & 93.3\% & 96.7\% & \dollars{0.059} & 8.0\,s \\
-\sonnet & \structured & 36 & 91.7\% & 94.4\% & \dollars{0.075} & 9.1\,s \\
-\gpt & \structured & 30 & 90.0\% & 93.3\% & \dollars{0.057} & 7.5\,s \\
-\haiku & \structured & 30 & 86.7\% & 90.0\% & \dollars{0.032} & 6.8\,s \\
-\haiku & \rawcode & 30 & \textbf{83.3\%} & 93.3\% & \dollars{0.017} & 7.7\,s \\
+\sonnet & \recipe & 30 & 96.7\% & 96.7\% & \dollars{0.059} & 8.0\,s \\
+\sonnet & \structured & 36 & 94.4\% & 94.4\% & \dollars{0.075} & 9.1\,s \\
+\gpt & \structured & 30 & 93.3\% & 93.3\% & \dollars{0.057} & 7.5\,s \\
+\haiku & \structured & 30 & 90.0\% & 90.0\% & \dollars{0.032} & 6.8\,s \\
+\haiku & \rawcode & 30 & \textbf{86.7\%} & 93.3\% & \dollars{0.017} & 7.7\,s \\
 \opus & \rawcode & 30 & \textbf{80.0\%} & 96.7\% & \dollars{0.329} & 18.0\,s \\
-\sonnet & \rawcode & 30 & \textbf{76.7\%} & 96.7\% & \dollars{0.047} & 17.1\,s \\
-\geminipro & \recipe & 30 & 73.3\% & 76.7\% & \dollars{0.031} & 25.0\,s \\
-\haiku & \recipe & 30 & 70.0\% & 73.3\% & \dollars{0.022} & 5.4\,s \\
+\sonnet & \rawcode & 30 & \textbf{80.0\%} & 96.7\% & \dollars{0.047} & 17.1\,s \\
+\geminipro & \recipe & 30 & 76.7\% & 76.7\% & \dollars{0.031} & 25.0\,s \\
+\gpt & \rawcode & 30 & \textbf{73.3\%} & 90.0\% & \dollars{0.062} & 11.3\,s \\
+\haiku & \recipe & 30 & 73.3\% & 73.3\% & \dollars{0.022} & 5.4\,s \\
 \geminipro & \structured & 30 & 70.0\% & 70.0\% & \dollars{0.033} & 132.0\,s \\
-\gpt & \rawcode & 30 & \textbf{70.0\%} & 90.0\% & \dollars{0.062} & 11.3\,s \\
-\gpt & \recipe & 30 & 60.0\% & 63.3\% & \dollars{0.056} & 7.6\,s \\
+\gpt & \recipe & 30 & 63.3\% & 63.3\% & \dollars{0.056} & 7.6\,s \\
 \geminipro & \rawcode & 30 & \textbf{50.0\%} & 76.7\% & \dollars{0.040} & 32.6\,s \\
 \geminiflash & \rawcode & 30 & \textbf{36.7\%} & 46.7\% & \dollars{0.009} & 99.7\,s \\
 \midrule
@@ -76,25 +76,24 @@ $^\dagger$ \geminiflash + \structured / \recipe is blocked at Google's request-v
 \label{ssec:findings}
 
 \paragraph{Strategy choice still helps, but less than the unhardened verifier suggested.}
-Switching from \rawcode to \structured lifts every model by $+4$ to $+20$\pp of strict pass rate at the hardened verifier (it was $+10$ to $+30$\pp pre-hardening).
+Switching from \rawcode to \structured lifts every model by $+3$ to $+20$\pp of strict pass rate at the hardened verifier (it was $+10$ to $+30$\pp pre-hardening).
 The Pareto frontier (\cref{ssec:pareto}) still includes \structured configurations of multiple models, but \rawcode now competes meaningfully on the cheap end.
 
 \paragraph{Cost-equivalence: cheap-model \rawcode is the new Pareto-aggressive baseline.}
-\haiku + \rawcode (83.3\% strict, \dollars{0.016}/scenario) \emph{dominates} \opus + \rawcode (80.0\%, \dollars{0.328}) on both axes --- 3\pp more correct diagrams at \textbf{$21\times$ lower cost}.
-Adding \structured to \haiku (\dollars{0.031}, 86.7\%) buys a further $+3.3$\pp at $2\times$ the cost; adding \structured to \sonnet (\dollars{0.075}, 91.7\%) buys another $+5$\pp at $2.4\times$ more.
+\haiku + \rawcode ($86.7$\% strict, \dollars{0.017}/scenario) \emph{dominates} \opus + \rawcode ($80.0$\%, \dollars{0.329}) on both axes --- $6.7$\pp more correct diagrams at \textbf{$\mathbf{19\times}$ lower cost}.
+Adding \structured to \haiku (\dollars{0.032}, $90.0$\%) buys a further $+3.3$\pp at $1.9\times$ the cost; adding \structured to \sonnet (\dollars{0.075}, $94.4$\%) buys another $+4.4$\pp at $2.3\times$ more.
 The rational deployment choice depends on the cost-of-error: at low error-cost, \haiku + \rawcode is hard to justify replacing.
 
 \paragraph{The recipe-DSL strategy is vendor-dependent.}
-\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode); \geminipro likewise benefits ($73$\% strict, $+23$\pp over its \rawcode and $+3$\pp over its \structured).
-\gpt and \haiku do not ($60$\% and $70$\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
+\sonnet uses the recipe DSL well ($96.7$\% strict, $+16.7$\pp over hardened \rawcode); \geminipro likewise benefits ($76.7$\% strict, $+26.7$\pp over its \rawcode and $+6.7$\pp over its \structured).
+\gpt and \haiku do not ($63.3$\% and $73.3$\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
 The split is along a single axis we can identify in the pilot data: models with strong tool-call following (Sonnet, Gemini Pro) extract value from the recipe scaffolding; models tuned for direct-emit (Haiku, GPT-5.1) lose information at the recipe-selection stage.
 Recipe is not a transferable scaffolding pattern across vendors; we recommend the \structured strategy for cross-vendor deployment.
 
 \paragraph{A fourth, post-hardening observation.}
-At \rawcode, the cross-vendor model ranking is now \textbf{\haiku (83.3\%) $>$ \opus (80.0\%) $>$ \sonnet (76.7\%) $>$ \gpt (70.0\%) $>$ \geminipro (50.0\%) $>$ \geminiflash (36.7\%)} --- \opus moves up from worst to second among the Anthropic+OpenAI cohort, suggesting that pre-hardening \opus output simply used \texttt{\textbackslash pgfmathsetmacro} more aggressively than the others, getting \emph{unfairly} penalised.
-The post-hardening \sonnet anomaly (it does \emph{worse} than \opus and \haiku at \rawcode) is small enough at $N=30$ to plausibly be noise; the full headline run will resolve it.
-The Gemini gap is larger than within-vendor noise: \geminipro at $50$\% \rawcode is $20$\pp below \gpt and $30$\pp below \haiku at the same task, despite comparable per-token pricing.
-Under \structured, \geminipro recovers to $70$\% --- still $\sim$$17$--$22$\pp behind the Anthropic and OpenAI \structured runs at similar cost (\dollars{0.033} vs \dollars{0.032}--\dollars{0.057}), making \geminipro the weakest frontier-tier model on this benchmark.
+At \rawcode, the cross-vendor model ranking is now \textbf{\haiku ($86.7$\%) $>$ \opus = \sonnet ($80.0$\%) $>$ \gpt ($73.3$\%) $>$ \geminipro ($50.0$\%) $>$ \geminiflash ($36.7$\%)} --- \opus moves up from worst to a tie for second among the Anthropic+OpenAI cohort, suggesting that pre-hardening \opus output simply used \texttt{\textbackslash pgfmathsetmacro} more aggressively than the others, getting \emph{unfairly} penalised.
+The Gemini gap is larger than within-vendor noise: \geminipro at $50$\% \rawcode is $23$\pp below \gpt and $37$\pp below \haiku at the same task, despite comparable per-token pricing.
+Under \structured, \geminipro recovers to $70$\% --- still $\sim$$20$--$24$\pp behind the Anthropic and OpenAI \structured runs at similar cost (\dollars{0.033} vs \dollars{0.032}--\dollars{0.075}), making \geminipro the weakest frontier-tier model on this benchmark.
 
 \subsection{Pareto figure: cost vs strict-pass}
 \label{ssec:pareto}
@@ -108,12 +107,12 @@ Under \structured, \geminipro recovers to $70$\% --- still $\sim$$17$--$22$\pp b
 
 \Cref{tab:pareto_frontier} lists the frontier points.
 Three unambiguous dominance findings:
-(i)~\opus + \rawcode is dominated by \haiku + \rawcode despite using the most expensive model: $21\times$ the cost (\dollars{0.328} vs \dollars{0.016}) at 3.3\pp \emph{lower} strict pass.
+(i)~\opus + \rawcode is dominated by \haiku + \rawcode despite using the most expensive model: $19\times$ the cost (\dollars{0.329} vs \dollars{0.017}) at $6.7$\pp \emph{lower} strict pass.
 For raw TikZ generation, the marginal cost of the frontier model buys nothing.
-(ii)~\gpt + \structured is dominated by \sonnet + \recipe at essentially the same cost (\dollars{0.058} vs \dollars{0.057}) at 3.3\pp higher strict pass.
+(ii)~\gpt + \structured is dominated by \sonnet + \recipe at essentially the same cost (\dollars{0.059} vs \dollars{0.057}) at $3.4$\pp higher strict pass.
 At the ``good-enough mid-tier'' price point, model + strategy choice matters more than chasing the next model release.
-(iii)~Both \geminipro configurations (\structured at \dollars{0.033}, \recipe at \dollars{0.031}) are dominated by \haiku + \structured (\dollars{0.032}, $86.7$\%) on both axes --- same price tier, $13$--$17$\pp lower strict pass.
-\geminiflash + \rawcode (\dollars{0.009}, $36.7$\%) is the only Gemini configuration that escapes domination by an Anthropic peer at its price point, but is itself dominated on cost-per-passed-scenario by \haiku + \rawcode (\dollars{0.025} per pass for Flash vs \dollars{0.020} per pass for Haiku).
+(iii)~Both \geminipro configurations (\structured at \dollars{0.033}, \recipe at \dollars{0.031}) are dominated by \haiku + \structured (\dollars{0.032}, $90.0$\%) on both axes --- same price tier, $13$--$20$\pp lower strict pass.
+\geminiflash + \rawcode (\dollars{0.009}, $36.7$\%) is the only Gemini configuration that escapes domination by an Anthropic peer at its price point, but is itself dominated on cost-per-passed-scenario by \haiku + \rawcode (\dollars{0.025} per pass for Flash vs \dollars{0.019} per pass for Haiku).
 \textbf{No Gemini configuration appears on the Pareto frontier} --- Gemini Pro and Flash are useful comparators that confirm the strategy/cost story, but do not displace any frontier point.
 
 \begin{table}[t]
@@ -125,10 +124,10 @@ At the ``good-enough mid-tier'' price point, model + strategy choice matters mor
 \toprule
 \textbf{\$/scenario} & \textbf{Strict pass} & \textbf{Combo} \\
 \midrule
-\dollars{0.016} & 83.3\% & \haiku + \rawcode \\
-\dollars{0.031} & 86.7\% & \haiku + \structured \\
-\dollars{0.058} & 93.3\% & \sonnet + \recipe \\
-\dollars{0.532} & 100.0\% & \opus + \structured ($N{=}12$, rate-limit-capped) \\
+\dollars{0.017} & 86.7\% & \haiku + \rawcode \\
+\dollars{0.032} & 90.0\% & \haiku + \structured \\
+\dollars{0.059} & 96.7\% & \sonnet + \recipe \\
+\dollars{0.533} & 100.0\% & \opus + \structured ($N{=}12$, rate-limit-capped) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -147,7 +146,7 @@ At the ``good-enough mid-tier'' price point, model + strategy choice matters mor
 \begin{itemize}
 \item \textbf{\tone is near-saturated for every (model, strategy) combo except \gpt + \recipe and the Gemini cells} --- a signal that we need harder \tone templates in v2 for the Anthropic/OpenAI tier; \geminiflash + \rawcode at $40$\% on \tone shows that ``saturation'' is a property of the leading vendors, not a property of the templates themselves.
 \item \textbf{\ttwo is where strategy first matters.} For Anthropic and OpenAI models, the \structured strategy lifts \ttwo strict-pass from $60$--$80$\% (\rawcode) to $90$--$100$\%. This is the cleanest ``structured wins'' signal in the pilot. \geminipro + \structured is an exception: \ttwo lifts to only $70$\% (vs \rawcode at $20$\%), still a $+50$\pp gain but landing well below the Anthropic/OpenAI ceiling.
-\item \textbf{\tthree is where model and strategy \emph{both} matter.} The top \tthree strict-pass is $80$\% (\sonnet+\recipe and \gpt+\structured); the bottom is $30$\% (\geminiflash+\rawcode), with \geminipro+\structured landing at $40$\%. \tthree produces the largest variance and is the right place to invest in v2 expansion.
+\item \textbf{\tthree is where model and strategy \emph{both} matter.} The top \tthree strict-pass is $90$\% (\sonnet+\recipe and \gpt+\structured); the bottom is $30$\% (\geminiflash+\rawcode), with \geminipro+\structured landing at $40$\%. \tthree produces the largest variance and is the right place to invest in v2 expansion.
 \end{itemize}
 
 \subsection{Per-template heatmap}
@@ -156,15 +155,17 @@ At the ``good-enough mid-tier'' price point, model + strategy choice matters mor
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.75\linewidth]{figures/per_template_heatmap.pdf}
-\caption{Per-template strict pass-rate, best strategy per model. Blank cells in the \opus column reflect the $N{=}12$ rate-limit cutoff (\cref{ssec:headline}). Two templates (\texttt{tpl-t3-cen}, \texttt{tpl-t3-trv}) are universally hard ($0\%$ across columns); they make natural case-study targets.}
+\caption{Per-template strict pass-rate, best strategy per model. Blank cells in the \opus column reflect the $N{=}12$ rate-limit cutoff (\cref{ssec:headline}). One template (\texttt{tpl-t3-trv}) is universally hard ($0\%$ for every model's best strategy); it is the natural case-study target. The pre-centroid-hardening figure reported \texttt{tpl-t3-cen} as a second universally-hard template; \cref{sec:hardening} attributes that artefact to a self-referential silent-skip and \cref{ssec:self_referential_checks} discusses the revised reading.}
 \label{fig:heatmap}
 \end{figure}
 
 \Cref{fig:heatmap} exposes which specific geometric constructions are universally hard or universally easy:
 \textbf{universally easy} --- every \tone template is at or near 100\% for each model's best strategy;
-\textbf{universally hard} --- \texttt{tpl-t3-trv} (parallel-line/transversal/corresponding-angle construction) and \texttt{tpl-t3-cen} (centroid/median construction) are 0\% across the best-strategy columns;
+\textbf{universally hard} --- \texttt{tpl-t3-trv} (parallel-line/transversal/corresponding-angle construction) is $0\%$ across the best-strategy columns;
 \textbf{discriminating} --- \texttt{tpl-t3-tan} (tangent), \texttt{tpl-t2-rh} (rhombus), and \texttt{tpl-t2-cc} (circumcircle) split models/strategies rather than being universally solved or failed.
-We identify the top-3 universally-hard templates and report their failure modes in \cref{ssec:case_studies}.
+A fourth template, \texttt{tpl-t3-cen} (centroid/median construction), passed at $0\%$ across the columns in the pre-hardening pilot but rose to $100\%$ for four of six models after we implemented the \propname{centroid} predicate (\cref{sec:hardening}).
+The reading is not ``models suddenly learned centroids''; the predicate is self-referential (\cref{ssec:self_referential_checks}) for both IR-mediated and macro-mediated constructions, so what was previously a silent-skipped \texttt{soft\_pass} becomes a tautological \texttt{pass} once the formula is wired.
+We identify the case-study targets in \cref{ssec:case_studies}.
 
 \subsection{Failure-mode taxonomy}
 \label{ssec:failure_modes}
@@ -209,7 +210,7 @@ We report \geminiflash + \rawcode (which uses no schema) at $36.7$\% strict pass
 \subsection{Drill-down: failure-mode case studies}
 \label{ssec:case_studies}
 
-\TODO{Three case studies of universally-hard templates with side-by-side rendered failure modes (planned: \texttt{tpl-t3-cen}, \texttt{tpl-t3-trv}, \texttt{tpl-t3-tan}). For each: (a)~the original prompt, (b)~the expected property list with a hand-drawn reference SVG, (c)~each model's best attempt across the three strategies as a 3$\times$4 grid of SVGs, (d)~the per-predicate verdict for each output with a one-line interpretation of the failure mode.}
+\TODO{Three case studies, each chosen for a distinct reason: \texttt{tpl-t3-trv} (the only template at $0\%$ best-strategy across all six models, a true universal failure), \texttt{tpl-t3-tan} (a strategy-discriminating tangent construction where \rawcode succeeds at $5/6$ but \recipe and \structured drop to $1/5$), and \texttt{tpl-t3-cen} (a vehicle for the self-referential-check discussion --- showing why a $100\%$ pass under the v1 predicate language does not imply the model would draw the medians correctly under a future ``construction-rendered'' centroid predicate, \cref{ssec:self_referential_checks}). For each: (a)~the original prompt, (b)~the expected property list with a hand-drawn reference SVG, (c)~each model's best attempt across the three strategies as a 3$\times$4 grid of SVGs, (d)~the per-predicate verdict for each output with a one-line interpretation of the failure mode.}
 
 \subsection{Repeats and stability (planned for full run)}
 \label{ssec:stability}
