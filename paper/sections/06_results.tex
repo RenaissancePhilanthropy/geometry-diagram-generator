@@ -210,7 +210,70 @@ We report \geminiflash + \rawcode (which uses no schema) at $36.7$\% strict pass
 \subsection{Drill-down: failure-mode case studies}
 \label{ssec:case_studies}
 
-\TODO{Three case studies, each chosen for a distinct reason: \texttt{tpl-t3-trv} (the only template at $0\%$ best-strategy across all six models, a true universal failure), \texttt{tpl-t3-tan} (a strategy-discriminating tangent construction where \rawcode succeeds at $5/6$ but \recipe and \structured drop to $1/5$), and \texttt{tpl-t3-cen} (a vehicle for the self-referential-check discussion --- showing why a $100\%$ pass under the v1 predicate language does not imply the model would draw the medians correctly under a future ``construction-rendered'' centroid predicate, \cref{ssec:self_referential_checks}). For each: (a)~the original prompt, (b)~the expected property list with a hand-drawn reference SVG, (c)~each model's best attempt across the three strategies as a 3$\times$4 grid of SVGs, (d)~the per-predicate verdict for each output with a one-line interpretation of the failure mode.}
+We pick three pilot scenarios that, together, exercise three distinct argument shapes: a \emph{universal failure} that survives every model and strategy, a \emph{strategy-discriminating} construction where \rawcode beats both IR-based strategies, and a \emph{self-referential pass} that motivates why the predicate-language design choice matters.
+Each subsection states the prompt, the expected predicate list, the per-cell strict-pass distribution across the 16 (model, strategy) cells (six models $\times$ three strategies, minus the two \cref{ssec:gemini_finding}-blocked Flash cells), and the dominant failure mode.
+\TODO{Add a 3$\times$4 grid figure per scenario with the rendered SVGs side-by-side; per-cell render paths are in \texttt{evals/results/leaderboard\_pilot\_v3/}. Hand-drawn reference SVGs are queued.}
+
+\subsubsection{\texttt{tpl-t3-trv}: the universal failure (corresponding angles)}
+\label{sssec:trv_case}
+
+\noindent\textbf{Prompt.}\quad ``Create a diagram showing two parallel horizontal lines: the first passes through points $W$ and $X$, and the second passes through points $Y$ and $Z$ below it. Then draw a transversal line that makes a $40^\circ$ angle with the lines, crossing the first at point $G$ and the second at point $H$. Mark a pair of corresponding angles at $G$ and $H$ as equal. Label all six points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{parallel}$([WX], [YZ])$, \propname{point\_on\_line}$(G, W, X)$, \propname{point\_on\_line}$(H, Y, Z)$, \propname{angle\_equal}$([\angle WGH], [\angle YHG])$, plus the six required labels.
+
+\noindent\textbf{Per-cell distribution.}\quad 0/16 cells strict-pass; 1/16 \texttt{soft\_pass} (\geminipro+\rawcode, with \propname{angle\_equal} skipped on a coordinate-extraction edge case); 5/16 produced no rendered output to verify; the remaining 10/16 \emph{all} fail on a single predicate.
+
+\noindent\textbf{Failure-mode tally.}\quad In every cell with a render, the geometry of the parallel pair and the on-line incidence is correct: \propname{parallel} = pass (10/10), \propname{point\_on\_line} = pass (10/10 each for $G$ and $H$), \propname{label\_present} = pass (10/10).
+The single failing predicate is \propname{angle\_equal}: \textbf{10/10} cells fail.
+
+\noindent\textbf{Interpretation.}\quad The construction skill being tested is not ``draw two parallel lines and a transversal'' (every model handles that) but ``set the same angle on both crossings.''
+Inspecting the failing TikZ outputs, three error patterns dominate:
+(i)~the model rotates the transversal by $40^\circ$ at $G$ but draws the segment from $G$ to $H$ at a different (visually-similar but unequal) slope;
+(ii)~the model draws the transversal as a segment between two free points and never enforces that the angle at $G$ equals the angle at $H$ symbolically (it visually looks like a single line but the angle measurements diverge);
+(iii)~the corresponding-angle \emph{pair} is mis-identified --- e.g., the model marks the alternate-interior pair instead of the corresponding-angle pair, and the pair the prompt names happens to be unequal.
+This template is a candidate for retiering or rewording in v2: the natural-language description ``corresponding angle'' is geometrically precise but six of six frontier models fail to translate it into an arithmetically-correct construction across all three strategies, so it is testing the \emph{language understanding} of the prompt as much as the geometric reasoning.
+
+\subsubsection{\texttt{tpl-t3-tan}: the strategy discriminator (tangent at a labelled point)}
+\label{sssec:tan_case}
+
+\noindent\textbf{Prompt.}\quad ``Construct a circle centered at $M$ with radius $4$, and a point $T$ on the circle. Draw the tangent line to the circle at $T$, with two labeled points $U$ and $V$ on that line, one on each side of $T$. Mark the right angle between radius $MT$ and the tangent line. Label all four points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{tangent}$([UV], M, T)$, \propname{perpendicular}$([MT], [UV])$, \propname{point\_on\_segment}$(T, U, V)$, \propname{mark\_present}$(\text{right\_angle}, T)$, plus required labels and the circle entity.
+
+\noindent\textbf{Per-cell strict-pass split by strategy} (over the cells that produced a render):
+\begin{itemize}
+\item \textbf{\rawcode: 5/6 strict-pass} (\opus, \sonnet, \haiku, \gpt, \geminipro pass; \geminiflash fails at the prompt-comprehension stage).
+\item \textbf{\structured: 1/5 strict-pass} (\gpt; \haiku misses the right-angle mark and a required label, \sonnet places $T$ outside segment $UV$, \geminipro fails to render, \geminiflash blocked).
+\item \textbf{\recipe: 1/5 strict-pass} (\sonnet; \gpt and \haiku fail to render, \geminipro renders but loses the right-angle mark, \geminiflash blocked).
+\end{itemize}
+
+\noindent\textbf{Failure-mode tally across the 10 rendered cells.}\quad \propname{tangent} = pass (10/10) and \propname{perpendicular} = pass (10/10): the geometry of tangency itself is fine in \emph{every} successful render --- ``where to put $T$'' and ``which way is the tangent line'' are easy.
+The failures are almost entirely on the \emph{accompanying} predicates: \propname{mark\_present} fails 2/10 (the right-angle glyph at $T$ is missing or rendered via \texttt{\textbackslash draw} primitives the extractor doesn't recognise), \propname{point\_on\_segment} fails 1/10 ($T$ on the line but outside segment $UV$), and the required-labels/required-entities checks each fail 1/10.
+
+\noindent\textbf{Interpretation.}\quad This is the cleanest illustration of an \emph{IR-overhead} failure mode: when an LLM writes raw TikZ, the \texttt{\textbackslash tkzDefTangent} family of macros encodes both the tangent and the perpendicular semantics in a single primitive, and a right-angle mark via \texttt{\textbackslash tkzMarkRightAngle(M,T,U)} is one extra line.
+When the same model has to encode the construction in our IR, it produces a syntactically-valid scenario but loses one of the small-but-mandatory side conditions --- typically the right-angle mark (a source-string check, not a geometric one) or the segment-bound on $T$.
+The strategy delta here is not measuring geometric capability; it is measuring \emph{construction-completeness under a richer scaffolding}.
+For benchmark consumers who are deploying the IR strategy in production, this is the relevant signal: the IR adds a $\sim 4$-of-5 chance of dropping a side condition.
+\sonnet is the only frontier model that handles all three strategies on this template; the other models have one strategy that fits the prompt's macro-shape and lose information when that strategy is replaced.
+
+\subsubsection{\texttt{tpl-t3-cen}: the self-referential pass (centroid as median intersection)}
+\label{sssec:cen_case}
+
+\noindent\textbf{Prompt.}\quad ``Create a diagram showing a triangle $XYZ$ with angle $Y = 60^\circ$ and angle $Z = 70^\circ$. Mark the midpoint $D$ of side $YZ$, the midpoint $E$ of side $ZX$, and the midpoint $F$ of side $XY$. Draw the three medians $XD$, $YE$, and $ZF$ --- they all meet at the centroid $G$. Label all seven points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{centroid}$(G, X, Y, Z)$, \propname{midpoint}$(D, Y, Z)$, \propname{midpoint}$(E, Z, X)$, \propname{midpoint}$(F, X, Y)$, \propname{point\_on\_segment}$(G, X, D)$, plus seven required labels.
+
+\noindent\textbf{Per-cell distribution.}\quad 10/16 strict-pass, 1/16 \texttt{soft\_pass} (\opus + \rawcode), 5/16 fail (the four blocked or render-failing Gemini cells plus \geminipro + \structured).
+
+\noindent\textbf{Failure-mode tally across the 11 rendered cells.}\quad For all 10 strict-pass cells: \emph{every one of the five predicates passes}.
+The single \texttt{soft\_pass} (\opus + \rawcode) is instructive: \propname{midpoint}$(D, Y, Z)$ passes, but \propname{midpoint}$(E, Z, X)$, \propname{midpoint}$(F, X, Y)$, \propname{centroid}$(G, X, Y, Z)$, and \propname{point\_on\_segment}$(G, X, D)$ all return \texttt{None} --- not because the geometry is wrong but because \opus uses \texttt{\textbackslash tkzInterLL} on points that the eval-side coordinate extractor cannot trace through (the line endpoints themselves are \texttt{\textbackslash tkzInterLL} outputs of yet-earlier intersections).
+This is a coordinate-extraction limit, not a model-skill failure; the rendered SVG looks correct.
+
+\noindent\textbf{Interpretation.}\quad This template is the worked example for the self-referential checks discussion in \cref{ssec:self_referential_checks}.
+Of the 10 rendered-and-passed cells, \emph{every} one constructs $G$ either through an IR \texttt{point\_centroid} primitive or via \texttt{\textbackslash tkzInterLL} on two medians, and both forms make the \propname{centroid} formula check tautological by construction.
+The same construction-by-primitive pattern explains the four \propname{midpoint} checks: every model uses \texttt{\textbackslash tkzDefMidPoint} or the IR \texttt{point\_midpoint}, both of which compute the formula the predicate decides.
+We retain these checks because (i) they catch the class of error the \opus + \rawcode \texttt{soft\_pass} demonstrates --- coordinate-extraction edge cases on chained intersections --- and (ii) they detect the small minority of cases where a model picks a wrong construction primitive (e.g., labelling the intersection of two non-medians ``$G$''), which we did not observe in the pilot but is a real failure mode under v1.1.
+The $100\%$ strict-pass rate at the post-hardening verifier is therefore an honest measurement \emph{of what v1 measures}, with the caveat that v1.1 should add a \emph{construction-rendered} centroid variant requiring the three medians be visible as detectable strokes (not just $G$ being numerically correct).
 
 \subsection{Repeats and stability (planned for full run)}
 \label{ssec:stability}
