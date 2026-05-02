@@ -28,10 +28,10 @@ The distinction matters: future \GeoGen-family benchmarks for coordinate-plane a
 \begin{enumerate}
 \item \textbf{The \GeoGen methodology and reusable verification toolkit.}
 We formalise a two-pillar recipe for generative-geometric-reasoning benchmarks: (a) \emph{procedural co-generation}, in which a small Python generator emits the natural-language prompt and the machine-checkable rubric from the same source code, eliminating drift between the question and its grading criteria and providing a built-in contamination defence (reviewers can re-roll the engine with new seeds); and (b) \emph{render-then-symbolic-verify}, in which the model's text-emitted output is compiled to symbolic objects against which a versioned, declarative predicate language (\cref{ssec:properties}, \cref{app:property_reference}) is decided in milliseconds.
-We release both pillars as reusable code (template engine + verifier + 17-predicate language v1 + a soundness audit, \cref{sec:hardening}, that closes 4.1\% of silently-skipped pilot checks).
+We release both pillars as reusable code (template engine + verifier + 17-predicate language v1 + a soundness audit, \cref{sec:hardening}, that closes 4.6\% of silently-skipped pilot checks across three hardening passes).
 \item \textbf{The \GeoGenBench instance: 801 prompts, six frontier models, and a leaderboard with three deployment-relevant findings.}
 \GeoGenBench is the methodology's first instantiation: 600 procedurally co-generated prompts (released as \texttt{bench\_generated.yaml}) plus 201 LLM-extracted curriculum prompts for breadth (released as \texttt{bench\_curriculum.yaml}).
-We benchmark six frontier models from three vendors (\opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash) under three generation strategies (raw TikZ; structured intermediate-representation JSON with check-and-revise; recipe-DSL with constraint solving), reporting --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{56.7\pp} (36.7\% to 93.3\%) across non-saturating combos, a \textbf{$21\times$ cost-with-equal-pass spread} between \haiku + \rawcode (83\% at \dollars{0.016}/scen) and \opus + \rawcode (80\% at \dollars{0.328}/scen), and a vendor-specific deployment-portability finding (\cref{ssec:gemini_finding}): \geminiflash's schema-state cap blocks structured generation entirely.
+We benchmark six frontier models from three vendors (\opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash) under three generation strategies (raw TikZ; structured intermediate-representation JSON with check-and-revise; recipe-DSL with constraint solving), reporting --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{60\pp} (36.7\% to 96.7\%) across non-saturating combos, a \textbf{$\mathbf{19\times}$ cost-with-equal-pass spread} between \haiku + \rawcode (87\% at \dollars{0.017}/scen) and \opus + \rawcode (80\% at \dollars{0.329}/scen), and a vendor-specific deployment-portability finding (\cref{ssec:gemini_finding}): \geminiflash's schema-state cap blocks structured generation entirely.
 The dataset, the template engine, the verification toolkit, the leaderboard data, and a Docker-packaged TikZ$\to$SVG renderer are all released under permissive licenses (\cref{app:reproduction}).
 \end{enumerate}
 
@@ -41,17 +41,17 @@ Three findings from the post-hardening pilot, in order of importance:
 
 \begin{itemize}
 \item \textbf{Strategy effect is real but smaller than the verifier's first reading suggested.}
-The \structured strategy lifts every model by \textbf{4--20\pp} of strict pass rate over direct TikZ (\rawcode):
-\gpt (70\% $\to$ 90\%, +20\pp), \sonnet (77\% $\to$ 92\%, +15\pp), \opus (80\% $\to$ 100\% on $N=12$, +20\pp), \haiku (83\% $\to$ 87\%, +4\pp).
+The \structured strategy lifts every model by \textbf{3--20\pp} of strict pass rate over direct TikZ (\rawcode):
+\gpt (73\% $\to$ 93\%, $+20$\pp), \sonnet (80\% $\to$ 94\%, $+14$\pp), \opus (80\% $\to$ 100\% on $N=12$, $+20$\pp), \haiku (87\% $\to$ 90\%, $+3$\pp).
 The pre-hardening verifier reported gaps of 10--30\pp; the \cref{sec:hardening} audit attributes about half of that gap to silent skips of \texttt{\textbackslash pgfmathsetmacro}-style coordinates that \rawcode outputs use more often than IR-compiled outputs.
 We report both numbers in \cref{sec:results} and \cref{app:property_reference}.
 \item \textbf{Cost-equivalence: scaffolding beats scale.}
-\haiku with \rawcode (83\% strict pass, \dollars{0.016}/scenario) \emph{dominates} \opus with \rawcode (80\% strict pass, \dollars{0.328}/scenario) on both axes --- 3\pp more correct diagrams at $21\times$ lower cost.
-Adding \structured on \haiku (\dollars{0.031}/scenario) buys a further 4\pp at $2\times$ the \haiku cost.
+\haiku with \rawcode (87\% strict pass, \dollars{0.017}/scenario) \emph{dominates} \opus with \rawcode (80\% strict pass, \dollars{0.329}/scenario) on both axes --- $7$\pp more correct diagrams at $19\times$ lower cost.
+Adding \structured on \haiku (\dollars{0.032}/scenario) buys a further $3$\pp at $1.9\times$ the \haiku cost.
 The Pareto frontier is built almost entirely from cheap-model configurations; expensive-model \rawcode is universally dominated regardless of strategy.
 \item \textbf{The recipe-DSL strategy is unstable across models.}
-\sonnet uses the recipe DSL well (93\% strict, $+16$\pp over hardened \rawcode).
-\gpt and \haiku do not (60\% and 70\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
+\sonnet uses the recipe DSL well (97\% strict, $+17$\pp over hardened \rawcode).
+\gpt and \haiku do not (63\% and 73\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
 A small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
 \end{itemize}
 
@@ -59,7 +59,7 @@ A small custom DSL with built-in geometric priors transfers poorly across model 
 
 \Cref{sec:related} situates \GeoGenBench against geometry-understanding benchmarks, math benchmarks without diagrams, and image-generation benchmarks.
 \Cref{sec:design} describes the dataset and the property language.
-\Cref{sec:verification} audits verifier soundness and completeness, including a quantified false-positive rate from adversarial probing and the \cref{sec:hardening} that lifted 4.1\% of pilot records from soft-pass to strict-pass.
+\Cref{sec:verification} audits verifier soundness and completeness, including a quantified false-positive rate from adversarial probing and the \cref{sec:hardening} that lifted 4.6\% of pilot records from soft-pass to strict-pass.
 \Cref{sec:strategies} describes the three generation strategies.
 \Cref{sec:results} presents the leaderboard, Pareto analysis, per-tier and per-template breakdowns, and failure-mode taxonomy.
 \Cref{sec:discussion} discusses what \GeoGenBench does and does not measure, limitations, and threats to validity.

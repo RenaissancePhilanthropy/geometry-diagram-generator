@@ -30,11 +30,11 @@ This iterates over (model $\times$ strategy) combinations against \texttt{evals/
 Subsequent analysis:
 \begin{lstlisting}
 uv run python -m evals.leaderboard_analyze \
-    --input-dir evals/results/leaderboard_pilot_v2 \
+    --input-dir evals/results/leaderboard_pilot_v3 \
     --output-md REPORT.md --output-csv leaderboard.csv
 
 uv run python -m evals.leaderboard_plot \
-    --input-dir evals/results/leaderboard_pilot_v2 \
+    --input-dir evals/results/leaderboard_pilot_v3 \
     --output-dir docs/figures/geogen-pilot
 \end{lstlisting}
 
@@ -54,9 +54,10 @@ Because the pilot JSONL files store every model's TikZ output verbatim, the veri
 \begin{lstlisting}
 uv run python -m evals.regrade \
     --input-dir evals/results/leaderboard_pilot_v2 \
-    --output-dir evals/results/leaderboard_pilot_regraded
+    --output-dir evals/results/leaderboard_pilot_v3
 \end{lstlisting}
-This is how we audited verdict stability across the renderer/IR migration described in \cref{app:pinned_versions} (498 records, zero gate-status changes), and is also the right tool for any future hardening pass: re-grade first, re-run only if the verdicts shift in a way the new code cannot reproduce.
+We used this exact invocation to materialise \texttt{leaderboard\_pilot\_v3} from \texttt{leaderboard\_pilot\_v2} after pass~3 of \cref{sec:hardening} (the \propname{centroid} predicate): 10/498 records promoted, 0 demotions.
+The same pattern audited verdict stability across the renderer/IR migration described in \cref{app:pinned_versions} (498 records, zero gate-status changes pre-pass-3), and is also the right tool for any future hardening pass: re-grade first, re-run only if the verdicts shift in a way the new code cannot reproduce.
 
 \subsection{Docker images and dataset card}
 

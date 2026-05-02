@@ -43,7 +43,7 @@ The curriculum split is naturalistic and harder to contamination-defend; we repo
 
 \paragraph{Soft-pass semantics.}
 Pre-hardening, soft-pass made some configurations look better than they were.
-\Cref{sec:hardening} converted 13/315 records (4.1\%) of pilot soft-passes to strict-pass, and we report both numbers throughout.
+\Cref{sec:hardening} converted 23/498 records (4.6\%) of pilot soft-passes to strict-pass over three hardening passes, and we report both numbers throughout.
 We use \emph{strict pass} as the headline metric to avoid the criticism.
 
 \paragraph{Verifier soundness.}
@@ -61,7 +61,7 @@ The pilot's two unambiguous Pareto-dominance findings (\cref{ssec:pareto}) have 
 
 \begin{itemize}
 \item \textbf{For raw TikZ generation, the marginal cost of the frontier model buys nothing.}
-\haiku + \rawcode dominates \opus + \rawcode at $21\times$ lower cost.
+\haiku + \rawcode dominates \opus + \rawcode at $19\times$ lower cost.
 A team deploying an LLM-driven worksheet author should default to the cheap-tier model unless they have evidence their domain is in the Pareto-undominated region.
 \item \textbf{At the mid-tier price point, model + strategy choice matters more than chasing the next model release.}
 \sonnet + \recipe dominates \gpt + \structured at the same cost.

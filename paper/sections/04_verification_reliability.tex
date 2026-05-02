@@ -95,7 +95,7 @@ Unsupported constructs raise \texttt{ValueError} and the point is silently skipp
 \item \textbf{\propname{centroid} predicate.}
 The pre-hardening verifier emitted no decision for \propname{centroid}, which is used by every \texttt{tpl-t3-cen} scenario in the templated benchmark.
 We added a componentwise check $\max(|g_x - (a_x{+}b_x{+}c_x)/3|,\ |g_y - (a_y{+}b_y{+}c_y)/3|) \leq \tau$ in line with \propname{midpoint}; 3 unit tests.
-The promotion count (10 records) and the heatmap shift (\texttt{tpl-t3-cen} dropping out of the universally-hard list, \cref{ssec:per_template}) attribute to a single scenario in the pilot.
+The promotion count (10 records) and the heatmap shift (\texttt{tpl-t3-cen} dropping out of the universally-hard list, \cref{ssec:per_template}) attribute to a single scenario in the pilot, but the predicate is also self-referential for both the IR-derived and the $\backslash$\texttt{tkzInterLL}-of-medians constructions; the meaning of these promotions is discussed in \cref{ssec:self_referential_checks}.
 \end{enumerate}
 
 \paragraph{Aggregate hardening impact on the pilot} (re-graded via \texttt{evals/regrade.py} against unchanged TikZ outputs): 23 records ($4.6\%$ of $498$) promote from \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
