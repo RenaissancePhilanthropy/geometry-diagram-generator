@@ -271,6 +271,42 @@ def test_validate_midpoint_false():
     assert result is False
 
 
+def test_validate_centroid_true():
+    coords = {
+        "A": (0.0, 0.0),
+        "B": (6.0, 0.0),
+        "C": (3.0, 6.0),
+        "G": (3.0, 2.0),
+    }
+    result = validate_geometric_property(coords, "centroid", ["G", "A", "B", "C"])
+    assert result is True
+
+
+def test_validate_centroid_false():
+    coords = {
+        "A": (0.0, 0.0),
+        "B": (6.0, 0.0),
+        "C": (3.0, 6.0),
+        "G": (3.0, 3.0),  # incenter-like, not the centroid
+    }
+    result = validate_geometric_property(coords, "centroid", ["G", "A", "B", "C"])
+    assert result is False
+
+
+def test_validate_centroid_irrational_triangle():
+    # Equilateral with vertices at unit-scale irrational coordinates;
+    # check that floating-point rounding stays within the default tolerance.
+    import math
+    coords = {
+        "A": (1.0, 0.0),
+        "B": (math.cos(2 * math.pi / 3), math.sin(2 * math.pi / 3)),
+        "C": (math.cos(4 * math.pi / 3), math.sin(4 * math.pi / 3)),
+        "G": (0.0, 0.0),
+    }
+    result = validate_geometric_property(coords, "centroid", ["G", "A", "B", "C"])
+    assert result is True
+
+
 def test_validate_collinear_true():
     coords = {"A": (0.0, 0.0), "B": (1.0, 1.0), "C": (2.0, 2.0)}
     result = validate_geometric_property(coords, "collinear", ["A", "B", "C"])
