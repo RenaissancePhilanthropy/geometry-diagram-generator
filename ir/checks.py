@@ -180,6 +180,22 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Points {p!r} and {q!r} are not on the same side of line {line_a!r}-{line_b!r}"
                 )
 
+            case ir.Centroid(g=g, a=a, b=b, c=c):
+                ga = sym[g]
+                aa = sym[a]
+                ba = sym[b]
+                ca = sym[c]
+                cx = (float(aa.x.evalf()) + float(ba.x.evalf()) + float(ca.x.evalf())) / 3.0
+                cy = (float(aa.y.evalf()) + float(ba.y.evalf()) + float(ca.y.evalf())) / 3.0
+                dx = float(ga.x.evalf()) - cx
+                dy = float(ga.y.evalf()) - cy
+                ok = max(abs(dx), abs(dy)) <= t
+                msg = "" if ok else (
+                    f"Point {g!r} is not the centroid of triangle "
+                    f"{a!r}{b!r}{c!r}: expected ({cx:.4f}, {cy:.4f}), "
+                    f"got ({float(ga.x.evalf()):.4f}, {float(ga.y.evalf()):.4f})"
+                )
+
             case _:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True

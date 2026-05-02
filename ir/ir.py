@@ -677,6 +677,20 @@ class SameSide(CheckBase):
     line_b: PointId
 
 
+class Centroid(CheckBase):
+    """Point g is the centroid of triangle abc, i.e. g = (a + b + c) / 3.
+
+    Symmetric to the eval-side `centroid` predicate in
+    `util/tikz_geometry.py`; lets `structured` self-validate centroid
+    derivations before TikZ emission.
+    """
+    kind: Literal["centroid"] = "centroid"
+    g: PointId
+    a: PointId
+    b: PointId
+    c: PointId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -688,6 +702,7 @@ Check = Annotated[
         SimilarTriangles,
         Tangent,
         OppositeSide, SameSide,
+        Centroid,
     ],
     Field(discriminator="kind")
 ]

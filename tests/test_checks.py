@@ -122,3 +122,53 @@ def test_distance_equals_fails_when_segment_has_wrong_length():
     results = run_checks(checks, sym)
     assert not results[0].passed
     assert "s" in results[0].message
+
+
+def test_centroid_passes_for_average_of_vertices():
+    """Centroid check passes when g is exactly the average of A, B, C."""
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(6, 0),
+        "C": spg.Point2D(0, 6),
+        "G": spg.Point2D(2, 2),
+    }
+    from ir.ir import Centroid
+
+    checks = [Centroid(g="G", a="A", b="B", c="C")]
+    results = run_checks(checks, sym)
+    assert results[0].passed
+    assert results[0].message == ""
+
+
+def test_centroid_fails_when_offset():
+    """Centroid check fails when g is meaningfully off the (A+B+C)/3 point."""
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(6, 0),
+        "C": spg.Point2D(0, 6),
+        "G": spg.Point2D(3, 2),
+    }
+    from ir.ir import Centroid
+
+    checks = [Centroid(g="G", a="A", b="B", c="C")]
+    results = run_checks(checks, sym)
+    assert not results[0].passed
+    assert "centroid" in results[0].message.lower()
+    assert "2.0000" in results[0].message  # expected x = (0+6+0)/3 = 2
+
+
+def test_centroid_irrational_equilateral():
+    """Centroid passes for an equilateral triangle whose centroid has irrational coords."""
+    import math
+
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(1, 0),
+        "C": spg.Point2D(0.5, math.sqrt(3) / 2),
+        "G": spg.Point2D(0.5, math.sqrt(3) / 6),
+    }
+    from ir.ir import Centroid
+
+    checks = [Centroid(g="G", a="A", b="B", c="C")]
+    results = run_checks(checks, sym)
+    assert results[0].passed
