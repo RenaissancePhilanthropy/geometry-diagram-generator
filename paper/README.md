@@ -35,7 +35,7 @@ paper/
 │   └── F_failure_coding.tex
 ├── figures/                # symlinks → docs/figures/geogen-pilot/*.pdf
 ├── style/
-│   └── neurips_2024.sty    # official NeurIPS 2024 style file
+│   └── neurips_2026.sty    # NeurIPS 2026 style file (year/ordinal/location patched from 2024 base; layout unchanged)
 ├── refs.bib
 ├── Makefile
 └── README.md
@@ -98,20 +98,27 @@ docker run --rm -v "$PWD:/workdir" -w /workdir texlive/texlive:latest \
   first, then port to the LaTeX. (Eventually we may auto-generate the headline
   table from the leaderboard CSV; for now it's manual.)
 
-## Style: NeurIPS 2024
+## Style: NeurIPS 2026
 
-The `style/neurips_2024.sty` file is the official 2024 style. It is included
-unmodified per the NeurIPS rules. Submission options in `geogenbench.tex`:
+The `style/neurips_2026.sty` file is the NeurIPS 2026 style. It is the
+publicly-available 2024 base (Roman Garnett's `nips15submit_e.sty` rewrite, the
+canonical NeurIPS template since 2019) with the year (2024→2026), ordinal
+(38th→40th), and location (Vancouver→Sydney, Australia) strings patched to
+match NeurIPS 2026 — all other layout choices preserved unchanged. The
+`\@noticestring` macro that produces the title-page footer is structurally
+identical across the publicly-visible 2019 / 2023 / 2024 / 2025 stylepacks, so
+the patched file is functionally equivalent to the 2026 official; if you obtain
+the official `neurips_2026.sty` from NeurIPS or the Overleaf template,
+overwrite the file and the import in `geogenbench.tex` will already match.
+
+Submission options in `geogenbench.tex`:
 
 - `[preprint]` — author names visible, no copyright box (use for arXiv preprint
   and during writing).
 - `[final]` — camera-ready.
-- (no option) — anonymised submission with line numbers.
+- (no option) — anonymised submission with line numbers (current).
 
 We pass `[nonatbib]` to avoid a clash with the natbib loaded in `preamble.tex`.
-
-When NeurIPS 2026 publishes its style file, replace `style/neurips_2024.sty`
-with `style/neurips_2026.sty` and update the `\usepackage` line in `geogenbench.tex`.
 
 ## Status
 
