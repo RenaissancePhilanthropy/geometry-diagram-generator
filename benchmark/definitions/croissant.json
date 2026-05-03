@@ -1,0 +1,246 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "sc": "https://schema.org/",
+    "cr": "http://mlcommons.org/croissant/",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "dct": "http://purl.org/dc/terms/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "data": {"@id": "cr:data", "@type": "@json"},
+    "dataType": {"@id": "cr:dataType", "@type": "@vocab"},
+    "examples": {"@id": "cr:examples", "@type": "@json"},
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileProperty": "cr:fileProperty",
+    "fileObject": "cr:fileObject",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform"
+  },
+  "@type": "sc:Dataset",
+  "name": "GeoGenBench",
+  "conformsTo": "http://mlcommons.org/croissant/1.0",
+  "description": "GeoGenBench is an automatically-verifiable benchmark of generative geometric reasoning: 801 natural-language prompts asking a language model to produce a TikZ source string that renders a specific 2D plane-geometry construction, paired with machine-checkable expected geometric properties drawn from a fixed 17-predicate vocabulary. The dataset is the first instantiation of the GeoGen methodology (procedural co-generation of prompts and rubrics from shared source code, plus a render-then-symbolic-verify pipeline). It is split into 600 procedurally-generated templated scenarios (bench_generated) with provably-correct ground truth, and 201 LLM-extracted curriculum scenarios (bench_curriculum) drawn from K-12 geometry textbooks for topical breadth. Each scenario is graded by compiling the model's TikZ output to SymPy geometry objects and deciding the property list as declarative predicates with tolerance 5e-3.",
+  "url": "https://github.com/<anon>/geogen",
+  "version": "1.0.0",
+  "datePublished": "2026-05-06",
+  "dateCreated": "2026-04-01",
+  "dateModified": "2026-05-02",
+  "license": "https://opensource.org/licenses/MIT",
+  "creator": [
+    {
+      "@type": "sc:Person",
+      "name": "Anonymous Authors"
+    }
+  ],
+  "publisher": [
+    {
+      "@type": "sc:Organization",
+      "name": "Anonymized for double-blind review"
+    }
+  ],
+  "citeAs": "@inproceedings{geogenbench2026, title={{GeoGenBench}: An automatically-verifiable benchmark of generative geometric reasoning}, author={Anonymous}, booktitle={NeurIPS 2026 Evaluations and Datasets Track}, year={2026}, note={Anonymized for double-blind review}}",
+  "keywords": [
+    "geometry",
+    "diagram generation",
+    "TikZ",
+    "evaluation benchmark",
+    "language models",
+    "symbolic verification",
+    "K-12 mathematics",
+    "generative reasoning",
+    "machine-checkable rubrics"
+  ],
+  "inLanguage": "en",
+  "isLiveDataset": false,
+  "rai:dataCollection": "Two-source assembly. (1) Templated split (600 scenarios): each scenario emitted by a deterministic Python generator (one function per construction template) covering 30 plane-geometry templates (right/equilateral/isosceles triangles, polygons, segment+midpoint, parallel/perpendicular constructions, circle constructions including incircle/circumcircle/tangent, altitude/median/angle-bisector constructions, and composed constructions); the same function emits both the natural-language prose and the machine-checkable property list, guaranteeing mutual consistency. (2) Curriculum split (201 scenarios): K-12 geometry textbook chapters were processed by an LLM (Anthropic Claude Sonnet) under author supervision to convert each into a student-style diagram request plus expected-property list; only the generated prompts and verifier annotations are released, not source textbook text.",
+  "rai:dataCollectionType": [
+    "Software Collection",
+    "Document analysis",
+    "Manual Human Curator"
+  ],
+  "rai:dataCollectionTimeframe": [
+    "2026-04-01",
+    "2026-04-30"
+  ],
+  "rai:dataCollectionRawData": "Templated split: the procedural template engine source code (released alongside the dataset under MIT license at evals/generate_scenarios.py) is the entirety of the raw input; the YAML scenarios are pure functions of the engine + a fixed seed. Curriculum split: K-12 geometry textbook chapters in the public domain or used under educational fair-use; only the LLM-generated prompts and author-curated property annotations are released.",
+  "rai:dataPreprocessingProtocol": [
+    "Templated scenarios: no preprocessing; emitted directly from generator code with deterministic seed.",
+    "Curriculum scenarios: schema-validated by `evals/scenarios.py::_validate_scenarios` to enforce well-formed property arguments; ~5% of LLM-extracted candidates were rejected at this stage and not included in the released set.",
+    "Both splits: passed through three soundness-hardening verifier passes (point_on_segment bounds tightening, mark_present semantics, centroid predicate addition) prior to v1.0 release; 4.6% of pilot soft-passes were promoted to strict-pass as a result, and the rubric semantics were frozen at the post-hardening verifier."
+  ],
+  "rai:dataAnnotationProtocol": "Each scenario carries an expected-property list drawn from a fixed 17-predicate vocabulary (15 symbolic + 2 source-string checks; full vocabulary documented in the paper Appendix B and at ir/checks.py). Templated scenarios: the property list is emitted by the same Python function that emits the prose, so prose and rubric are mutually consistent by construction. Curriculum scenarios: the property list was LLM-authored (Anthropic Claude Sonnet) under a structured prompt and spot-audited on a 50-sample subset by the paper authors (a PhD-mathematician author and an award-winning K-12 mathematics-educator author); systematic disagreements observed during the spot audit were used to refine the LLM prompt and re-extract.",
+  "rai:dataReleaseMaintenancePlan": "Versioned releases are git-tagged in the project repository; v1.0 corresponds to the post-hardening verifier described in the paper. A CHANGELOG.md (released with the v1.0 tag) tracks scenario additions, modifications, and any rolled-back records. Older versions remain available under their git tags; the verifier code in the same repository is pinned to the tag for byte-identical re-grading. Maintainers will triage GitHub issues filed against the dataset and apply errata in patch releases (v1.0.x). v1.1 is planned to add the held-back contamination-defence test split; v2.0 if 3D solids and transformation-group constructions are added.",
+  "rai:personalSensitiveInformation": "None. The dataset contains only mathematical statements about geometric figures (vertex labels A-Z, numeric angle measures and lengths, predicate names). No personally identifiable, demographic, biometric, behavioural, or otherwise sensitive information about people is present. The dataset does not relate to people.",
+  "rai:dataBiases": [
+    "Linguistic: all prompts are in English; cross-lingual generalization has not been evaluated.",
+    "Notational: vertex labels are drawn from Latin letters A-Z; models trained predominantly on Greek or Cyrillic geometric notation may underperform.",
+    "Curricular: the curriculum split is sampled from US K-12 geometry textbook chapters and may under-represent geometric-notation conventions standard in other educational traditions (e.g., the European right-angle-mark-inside-the-angle convention).",
+    "Construction-coverage: the templated split covers 30 named construction families chosen for breadth across triangles, quadrilaterals, circles, and basic auxiliary constructions; rare or pathological constructions (degenerate cases, transformation groups, projective constructions) are out of scope by design."
+  ],
+  "rai:dataLimitations": [
+    "Scope: 2D plane Euclidean geometry only. Curriculum scenarios that mention 3D solids (cones, spheres) exercise the renderer but cannot be symbolically verified by the v1 toolkit.",
+    "Verification surface: the verifier operates on SymPy-compiled coordinates extracted from the rendered TikZ source, not on the rasterised SVG bytes. Visual aesthetics, label placement quality, and rendering artefacts are out of scope.",
+    "Tolerance: a uniform numeric tolerance tau = 5e-3 is applied across all symbolic predicates; per-predicate tolerances are left for future work.",
+    "Curriculum ground truth: LLM-authored property lists are spot-audited but not provably correct in the same way the templated split is. Headline metrics in the accompanying paper are reported templated-only; curriculum metrics are reported as a robustness check.",
+    "Self-referential predicates: a class of predicates (documented in the paper's hardening section) pass tautologically when the construction itself supplies the witness; we estimate <5% of strict passes are vulnerable to such constructions and report pre/post-audit numbers throughout the paper."
+  ],
+  "rai:dataUseCases": [
+    "Evaluation of language-model generative geometric reasoning (text-to-diagram).",
+    "Cost-quality leaderboarding across (model, generation-strategy) combinations; the bench is automatically gradable so leaderboards can refresh without LLM-judge overhead.",
+    "Calibration of verification tolerances for downstream geometry-checking tools.",
+    "Few-shot prompt engineering research and curriculum learning for math-tutor agents.",
+    "Out-of-scope uses: (a) training image classifiers (the dataset is text-to-diagram, not image-to-text); (b) evaluation of 3D-solid geometric capability; (c) measurement of teaching utility, which the verifier does not assess; (d) any use that requires per-vertex coordinate ground truth as input rather than as grading rubric."
+  ],
+  "rai:dataSocialImpact": "Direct: enables practitioners deploying LLMs for K-12 educational-content authoring (worksheets, slides, assessment items) to choose models on a measured quality/cost basis instead of by vendor reputation. Indirect: encourages frontier-model vendors to address text-to-diagram quality, which is currently under-evaluated relative to text-only reasoning benchmarks despite being a deployed capability that affects accessibility-tool generation, technical-illustration workflows, and visual-curriculum design. Risk: a public leaderboard could create a Goodhart-style incentive to optimise for the 17-predicate vocabulary specifically; we mitigate this by versioning the predicate language and committing to release a held-back contamination-defence test split.",
+  "distribution": [
+    {
+      "@type": "cr:FileObject",
+      "@id": "bench_generated.jsonl",
+      "name": "bench_generated.jsonl",
+      "description": "Templated split: 600 procedurally-co-generated scenarios (200 per tier) with provably-correct ground truth. One JSON record per line, generated deterministically from bench_generated.yaml by benchmark/definitions/build_release_jsonl.py.",
+      "contentUrl": "https://github.com/<anon>/geogen/raw/v1.0.0/benchmark/definitions/bench_generated.jsonl",
+      "encodingFormat": "application/jsonlines",
+      "contentSize": "1007101 B",
+      "sha256": "5e116307c99d9550c62f29b28c5594c7129c7084467ad06d63fed83abda332bb"
+    },
+    {
+      "@type": "cr:FileObject",
+      "@id": "bench_curriculum.jsonl",
+      "name": "bench_curriculum.jsonl",
+      "description": "Curriculum split: 201 LLM-extracted scenarios from K-12 geometry textbook chapters, covering topics the templates do not (3D solids, transformations, coordinate-overlay constructions). One JSON record per line, generated deterministically from bench_curriculum.yaml.",
+      "contentUrl": "https://github.com/<anon>/geogen/raw/v1.0.0/benchmark/definitions/bench_curriculum.jsonl",
+      "encodingFormat": "application/jsonlines",
+      "contentSize": "548782 B",
+      "sha256": "33efed400fbb494027005e3a24097130963c9b8c033e31318a2d3af9b4809df9"
+    }
+  ],
+  "recordSet": [
+    {
+      "@type": "cr:RecordSet",
+      "@id": "templated",
+      "name": "templated",
+      "description": "Templated scenarios with provably-correct ground truth (600 records, 200 per tier). The Croissant exposes the four atomic per-record fields (id, prompt, tier, tags); each JSONL line additionally carries a `rubric` (JSON list of human-readable rubric items: id/text/category/weight) and a `metadata` block (JSON object whose `original_expected_properties` sub-field is the canonical machine-checkable predicate list from the 17-predicate vocabulary, plus `coordinate_tolerance`, `required_canvas`, `expected_points`, `structural_checks`, `queries`, `raw_weights`, `source`). Consumers needing the rubric or metadata should parse the JSONL line directly; both are documented in the project's `docs/datasheet.md` and the paper's Appendix B.",
+      "key": {"@id": "templated/id"},
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "templated/id",
+          "name": "id",
+          "description": "Unique scenario identifier. Encodes template, vertex-label set, and numeric parameters (e.g., tpl-t2-alt-EFG-H-60-70 = tier-2 altitude template, vertices E/F/G + foot H, angles 60 and 70 degrees).",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {"@id": "bench_generated.jsonl"},
+            "extract": {"column": "id"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "templated/prompt",
+          "name": "prompt",
+          "description": "Natural-language request to draw the geometric figure. The model is given only this string (not the rubric) at inference time.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {"@id": "bench_generated.jsonl"},
+            "extract": {"column": "prompt"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "templated/tier",
+          "name": "tier",
+          "description": "Difficulty tier (1=single named shape, 2=one shape + one auxiliary construction, 3=multi-step or composed construction).",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {"@id": "bench_generated.jsonl"},
+            "extract": {"column": "tier"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "templated/tags",
+          "name": "tags",
+          "description": "Topic tags (e.g., triangle, right-angle, circle, parallel). Used for stratified analysis and split selection.",
+          "dataType": "sc:Text",
+          "repeated": true,
+          "source": {
+            "fileObject": {"@id": "bench_generated.jsonl"},
+            "extract": {"column": "tags"}
+          }
+        }
+      ]
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "curriculum",
+      "name": "curriculum",
+      "description": "Curriculum scenarios extracted from K-12 geometry textbooks (201 records: 36 tier-1, 128 tier-2, 37 tier-3). Same per-record schema as the `templated` RecordSet (id, prompt, tier, tags exposed; rubric and metadata available by parsing the JSONL line). Ground truth is LLM-authored and spot-audited (not provably correct as in the templated split).",
+      "key": {"@id": "curriculum/id"},
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "curriculum/id",
+          "name": "id",
+          "description": "Unique scenario identifier (geo-mN-tT-...).",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {"@id": "bench_curriculum.jsonl"},
+            "extract": {"column": "id"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "curriculum/prompt",
+          "name": "prompt",
+          "description": "Natural-language request to draw the geometric figure.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileObject": {"@id": "bench_curriculum.jsonl"},
+            "extract": {"column": "prompt"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "curriculum/tier",
+          "name": "tier",
+          "description": "Difficulty tier (1, 2, or 3); inherited from the LLM curriculum extractor and not retiered.",
+          "dataType": "sc:Integer",
+          "source": {
+            "fileObject": {"@id": "bench_curriculum.jsonl"},
+            "extract": {"column": "tier"}
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "curriculum/tags",
+          "name": "tags",
+          "description": "Topic tags (73 unique values across the curriculum split).",
+          "dataType": "sc:Text",
+          "repeated": true,
+          "source": {
+            "fileObject": {"@id": "bench_curriculum.jsonl"},
+            "extract": {"column": "tags"}
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -65,6 +65,19 @@ We release:
 \begin{itemize}
 \item \texttt{ghcr.io/<anon>/tikz-renderer:db17ae5} --- the TikZ$\to$SVG renderer (LuaLaTeX + \texttt{fontspec} + \texttt{tkz-euclide}, pinned to the paper commit). A floating \texttt{:latest} tag tracks the current \texttt{master} for active development; reviewers should pull the pinned tag.
 \item \texttt{ghcr.io/<anon>/geogen-eval:db17ae5} --- the full Python evaluator with all dependencies pre-installed.
-\item \texttt{datasets/geogen-v1.0} on Hugging Face --- the 801-scenario benchmark in JSONL with full property lists.
+\item \texttt{datasets/geogen-v1.0} on Hugging Face --- the 801-scenario benchmark in JSONL (\texttt{bench\_generated.jsonl} with 600 templated records and \texttt{bench\_curriculum.jsonl} with 201 curriculum records), generated deterministically from the YAML sources in \texttt{benchmark/definitions/} by \texttt{benchmark/definitions/build\_release\_jsonl.py}.
 \end{itemize}
-A datasheet following \citet{gebru2021datasheets} accompanies the release.
+
+\subsection{Croissant metadata and datasheet}
+
+A \textbf{Croissant 1.0} metadata file accompanies the release at \texttt{benchmark/definitions/croissant.json}.
+It conforms to \texttt{http://mlcommons.org/croissant/1.0}, declares both released JSONL files with their SHA-256 checksums, and exposes per-record \texttt{id}, \texttt{prompt}, \texttt{tier}, and \texttt{tags} fields for both the \texttt{templated} and \texttt{curriculum} splits.
+The file additionally carries the Croissant Responsible-AI vocabulary fields covering data collection, annotation, preprocessing, biases, limitations, recommended uses, and social impact (mined from the Gebru et al.\ datasheet, \texttt{docs/datasheet.md}, and the discussion sections of this paper).
+Validation passes against the reference \texttt{mlcroissant} Python implementation v1.1.0:
+\begin{lstlisting}
+.venv/bin/python -c "
+import mlcroissant as mlc
+ds = mlc.Dataset(jsonld='benchmark/definitions/croissant.json')
+print(ds.metadata.ctx.issues.report() or 'OK')"
+\end{lstlisting}
+The complete \GeoGen datasheet (\citealp{gebru2021datasheets} format) is at \texttt{docs/datasheet.md}; the Hugging-Face-ready dataset card is at \texttt{benchmark/definitions/README.md} and uses the same content.
