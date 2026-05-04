@@ -40,10 +40,19 @@ class RawCodeStrategy(SubstanceStrategy):
         return agent
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
+        from util.message_helpers import count_tool_calls, extract_tool_call_args
+
         result = await self.build_agent(model=model).run(prompt)
         usage = result.usage()
+        messages = result.all_messages()
+        tool_args = extract_tool_call_args(messages, "render_diagram") or {}
+        tool_calls = count_tool_calls(messages, "render_diagram")
         return RawRunResult(
-            svg=extract_svg_from_messages(result.all_messages()),
+            svg=extract_svg_from_messages(messages),
             input_tokens=usage.input_tokens or 0,
             output_tokens=usage.output_tokens or 0,
+            tikz=tool_args.get("tikz"),
+            tkzelements=tool_args.get("tkzelements") or None,
+            tool_calls=tool_calls,
+            retries=max(0, tool_calls - 1),
         )

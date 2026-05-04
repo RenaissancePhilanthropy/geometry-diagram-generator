@@ -1,14 +1,30 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
 
 import sympy.geometry as spg
 
-from pydantic_ai import Agent, ModelRetry
+from pydantic_ai import Agent, ModelRetry, PromptedOutput
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+
+
+def _resolve_output_type(model: str):
+    """Pick output mode based on model.
+
+    Gemini's native structured-output backend ("response_schema") fails on
+    schemas with many oneOf branches with error: "The specified schema
+    produces a constraint that has too many states for serving." DiagramIR
+    has 20+ DefStmt subtypes so it always trips this. Use PromptedOutput
+    (freeform JSON parsed by pydantic-ai) for Gemini; default NativeOutput
+    for OpenAI/Anthropic which handle the schema fine.
+    """
+    if "google" in model or "gemini" in model:
+        return PromptedOutput(DiagramIR)
+    return DiagramIR
 from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
 from ir.ir import DiagramIR
 from ir.to_sympy import compile_defs
@@ -182,7 +198,7 @@ class StructureStrategy(SubstanceStrategy):
             ir_agent = Agent(
                 model,
                 instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
-                output_type=DiagramIR,
+                output_type=_resolve_output_type(model),
                 model_settings=self.model_settings,
             )
             response = await ir_agent.run(user_prompt)
@@ -199,16 +215,25 @@ class StructureStrategy(SubstanceStrategy):
             )
             logger.debug("DiagramIR:\n%s", diagram_ir.model_dump_json(indent=2))
 
-            # Step 2: Compile IR → SymPy symbol table
+            # Step 2: Compile IR → SymPy symbol table.
+            # Run in a worker thread so that asyncio.wait_for in the runner
+            # can fire its timer (the asyncio loop stays responsive while
+            # SymPy chews through degenerate IRs). The hung thread will
+            # leak until process exit, but other concurrent tasks keep
+            # making progress; periodic process restarts via the chunked
+            # bash wrapper reclaim the leaked threads.
             try:
-                sym = compile_defs(diagram_ir)
+                sym = await asyncio.to_thread(compile_defs, diagram_ir)
             except IRCompileError as e:
                 last_error = f"IR compilation failed: {e}"
                 logger.warning("Attempt %d compile error: %s", attempt + 1, e)
                 continue
 
-            # Step 3: Run geometric checks
-            results: list[CheckResult] = run_checks(diagram_ir.checks, sym)
+            # Step 3: Run geometric checks (also offloaded — checks involve
+            # sympy.geometry computations that can be slow on degenerate inputs).
+            results: list[CheckResult] = await asyncio.to_thread(
+                run_checks, diagram_ir.checks, sym
+            )
             must_failures = [r for r in results if not r.passed and r.check.level == "must"]
             if must_failures:
                 msgs = "\n".join(f"  - {r.message}" for r in must_failures)
@@ -270,11 +295,13 @@ async def _run_ir_pipeline(
     Raises on failure so the caller can handle retries.
     """
     try:
-        sym = compile_defs(diagram_ir)
+        sym = await asyncio.to_thread(compile_defs, diagram_ir)
     except IRCompileError as e:
         raise RuntimeError(f"IR compilation failed: {e}") from e
 
-    results: list[CheckResult] = run_checks(diagram_ir.checks, sym)
+    results: list[CheckResult] = await asyncio.to_thread(
+        run_checks, diagram_ir.checks, sym
+    )
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
     if must_failures:
         msgs = "\n".join(f"  - {r.message}" for r in must_failures)
@@ -334,18 +361,18 @@ async def _run_pipeline_once(
     ir_agent = Agent(
         model,
         instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
-        output_type=DiagramIR,
+        output_type=_resolve_output_type(model),
         model_settings=model_settings or {},
     )
     response = await ir_agent.run(full_prompt)
     diagram_ir = response.output
 
     try:
-        sym = compile_defs(diagram_ir)
+        sym = await asyncio.to_thread(compile_defs, diagram_ir)
     except IRCompileError as e:
         raise ModelRetry(f"IR compilation failed: {e}") from e
 
-    results = run_checks(diagram_ir.checks, sym)
+    results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym)
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
     if must_failures:
         msgs = "; ".join(r.message for r in must_failures)
