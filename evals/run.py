@@ -69,6 +69,7 @@ from strategies.recipe import RecipeStrategy
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
+from strategies.stages import RawRunResult
 from util.tikz_renderer import check_renderer_health
 from ir.renderer import Renderer, TikZRenderer, SVGRenderer
 from util.tikz_analysis import (
@@ -371,6 +372,21 @@ async def run_scenario(
                     {"question": q["question"], "tool_called": False, "error": "sym_full unavailable"}
                     for q in queries
                 ]
+    elif isinstance(result, RawRunResult):
+        # Raw strategies (raw_code, raw_svg, *_with_revise) return a slim
+        # RawRunResult dataclass that already extracted the SVG and TikZ from
+        # the message history. We don't have message_history here, so checks
+        # below that depend on diagram_ir / sym_table will be skipped.
+        record["input_tokens"] = result.input_tokens
+        record["output_tokens"] = result.output_tokens
+        record["tool_calls"] = result.tool_calls
+        record["retries"] = result.retries
+        record["tikz_code"] = result.tikz
+        record["tkzelements_code"] = result.tkzelements
+        svg = result.svg
+        if not svg:
+            record["error"] = "RawRunResult contained no SVG"
+            return record
     else:
         messages = result.all_messages()
         usage = result.usage()
@@ -742,6 +758,24 @@ async def main() -> None:
         default="tikz",
         help="Renderer backend: 'tikz' (default, requires Docker) or 'svg' (direct, no Docker needed)",
     )
+    parser.add_argument(
+        "--scenario-timeout",
+        type=int,
+        default=180,
+        help="Per-scenario hard timeout in seconds (default: 180). Prevents SymPy/network hangs from blocking the run.",
+    )
+    parser.add_argument(
+        "--scenario-offset",
+        type=int,
+        default=0,
+        help="Skip the first N scenarios (default: 0). Used by chunked-run wrapper.",
+    )
+    parser.add_argument(
+        "--scenario-limit",
+        type=int,
+        default=0,
+        help="Process only N scenarios after the offset (default: 0 = no limit). Used by chunked-run wrapper.",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -756,6 +790,14 @@ async def main() -> None:
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
     benchmark = scenarios_path.stem
+
+    # Apply --scenario-offset / --scenario-limit slicing for chunked runs
+    if args.scenario_offset or args.scenario_limit:
+        n_total = len(scenarios)
+        start = max(0, args.scenario_offset)
+        end = (start + args.scenario_limit) if args.scenario_limit > 0 else n_total
+        scenarios = scenarios[start:end]
+        print(f"Slicing to scenarios [{start}:{end}] = {len(scenarios)} of {n_total}")
 
     # Build run ID and output path
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -795,19 +837,44 @@ async def main() -> None:
         repeat_index: int,
     ) -> dict[str, Any]:
         async with semaphore:
-            return await run_scenario(
-                scenario,
-                strategy_name,
-                args.model,
-                repeat_index,
-                svg_output_dir,
-                benchmark,
-                renderer=renderer,
-                llm_judge=args.llm_judge,
-                visual_judge=args.visual_judge,
-                judge_model=args.judge_model,
-                enable_cache=total > 1,
-            )
+            try:
+                return await asyncio.wait_for(
+                    run_scenario(
+                        scenario,
+                        strategy_name,
+                        args.model,
+                        repeat_index,
+                        svg_output_dir,
+                        benchmark,
+                        renderer=renderer,
+                        llm_judge=args.llm_judge,
+                        visual_judge=args.visual_judge,
+                        judge_model=args.judge_model,
+                        enable_cache=total > 1,
+                    ),
+                    timeout=args.scenario_timeout,
+                )
+            except asyncio.TimeoutError:
+                # Build a minimal failure record that downstream reporting/aggregation
+                # treats like any other gate=fail row. Prevents one hung scenario
+                # (e.g. SymPy on a degenerate IR) from stalling the whole cell.
+                return {
+                    "scenario_id": scenario.get("id", "?"),
+                    "strategy": strategy_name,
+                    "model": args.model,
+                    "repeat_index": repeat_index,
+                    "user_prompt": scenario.get("prompt", ""),
+                    "duration_s": float(args.scenario_timeout),
+                    "error": f"scenario timed out after {args.scenario_timeout}s",
+                    "gate_status": "fail",
+                    "gate_failures": ["timeout"],
+                    "generation_success": False,
+                    "svg_rendered": False,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "tool_calls": 0,
+                    "retries": 0,
+                }
 
     for strategy_name in args.strategies:
         print(f"Strategy: {strategy_name}  model: {args.model}")
@@ -818,13 +885,60 @@ async def main() -> None:
         ]
 
         for finished in asyncio.as_completed(tasks):
-            record = await finished
+            try:
+                record = await finished
+            except Exception as e:
+                # An unhandled exception in run_scenario's post-strategy
+                # processing (sympy checks, query phase, etc.) used to
+                # propagate through `await finished` and silently kill the
+                # entire as_completed loop, leaving the remaining 1000+
+                # scenarios un-run. Catch it here, write a failure stub,
+                # and keep going.
+                logger.exception("Per-task exception (continuing)")
+                record = {
+                    "scenario_id": "?",
+                    "strategy": strategy_name,
+                    "model": args.model,
+                    "error": f"runner exception: {type(e).__name__}: {e}",
+                    "gate_status": "fail",
+                    "gate_failures": ["runner_exception"],
+                    "generation_success": False,
+                    "svg_rendered": False,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "tool_calls": 0,
+                    "retries": 0,
+                    "duration_s": 0.0,
+                }
             record["run_id"] = run_id
             record["timestamp"] = datetime.now(timezone.utc).isoformat()
-            _externalize_traces(record, traces_output_dir)
-            _print_record(record)
-            _append_jsonl(output_path, record)
+            try:
+                _externalize_traces(record, traces_output_dir)
+            except Exception:
+                logger.exception("_externalize_traces failed (continuing)")
+            try:
+                _print_record(record)
+            except Exception:
+                logger.exception("_print_record failed (continuing)")
+            try:
+                _append_jsonl(output_path, record)
+            except Exception:
+                logger.exception("_append_jsonl failed (continuing)")
             all_records.append(record)
+
+            # Periodic memory cleanup. Long structured-strategy runs accumulate
+            # SymPy's global expression cache (singletons + cached evaluations)
+            # which grows unbounded across scenarios; this caused 17GB+ RSS and
+            # eventual OOM SIGKILL around record 600-700 on 1800-scenario cells.
+            # Clear SymPy cache + force gc every 25 records to keep memory flat.
+            if len(all_records) % 25 == 0:
+                try:
+                    from sympy.core.cache import clear_cache
+                    import gc
+                    clear_cache()
+                    gc.collect()
+                except Exception:
+                    logger.exception("periodic cache clear failed (continuing)")
 
     _print_summary(all_records)
     print(f"\nResults written to {output_path}")

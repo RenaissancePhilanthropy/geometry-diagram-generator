@@ -46,10 +46,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RawRunResult:
-    """Minimal run result compatible with dry_run._process_one expectations."""
+    """Minimal run result compatible with dry_run._process_one expectations.
+
+    The optional `tikz`, `tkzelements`, `tool_calls`, and `retries` fields are
+    populated by raw-strategy `run()` methods so that `evals/run.py` can record
+    the same per-record fields it records for IR-based strategies. They default
+    to None/0 so older callers (dry_run, raw_svg) that don't set them keep
+    working.
+    """
     svg: str
     input_tokens: int = 0
     output_tokens: int = 0
+    tikz: str | None = None
+    tkzelements: str | None = None
+    tool_calls: int = 0
+    retries: int = 0
 
 
 def extract_svg_from_messages(messages) -> str:
