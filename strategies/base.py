@@ -28,6 +28,31 @@ def cache_model_settings(enable: bool) -> ModelSettings:
     )
 
 
+def build_model_settings(
+    model: str,
+    enable_cache: bool = False,
+    reasoning_effort: str | None = None,
+) -> ModelSettings:
+    """Build ModelSettings tailored to the given model.
+
+    - For ``anthropic:*`` models, optionally enables prompt caching via ``enable_cache``.
+    - For ``openai-responses:*`` models, optionally sets ``openai_reasoning_effort``
+      (one of ``"minimal" | "low" | "medium" | "high"``) via
+      ``OpenAIResponsesModelSettings``.
+
+    Returns a vendor-appropriate settings object (or ``{}`` if no flags apply).
+    """
+    if model.startswith("anthropic:"):
+        return cache_model_settings(enable_cache)
+    if model.startswith("openai-responses:") and reasoning_effort:
+        from pydantic_ai.models.openai import OpenAIResponsesModelSettings
+
+        return OpenAIResponsesModelSettings(
+            openai_reasoning_effort=reasoning_effort,
+        )
+    return {}
+
+
 class SubstanceStrategy(ABC):
     """Abstract base class for substance generation strategies."""
 

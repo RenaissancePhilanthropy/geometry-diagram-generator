@@ -232,6 +232,7 @@ async def run_scenario(
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
     enable_cache: bool = False,
+    reasoning_effort: str | None = None,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -274,6 +275,14 @@ async def run_scenario(
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
     strategy = strategy_cls(enable_cache=enable_cache)
+    if reasoning_effort and model.startswith("openai-responses:"):
+        from strategies.base import build_model_settings
+
+        strategy.model_settings = build_model_settings(
+            model=model,
+            enable_cache=enable_cache,
+            reasoning_effort=reasoning_effort,
+        )
 
     start = time.monotonic()
     try:
@@ -776,6 +785,17 @@ async def main() -> None:
         default=0,
         help="Process only N scenarios after the offset (default: 0 = no limit). Used by chunked-run wrapper.",
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["minimal", "low", "medium", "high"],
+        default=None,
+        help="Override OpenAI Responses reasoning effort (e.g. high for GPT-5.5/5.5-pro). Ignored for non-OpenAI models.",
+    )
+    parser.add_argument(
+        "--benchmark-name",
+        default=None,
+        help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -789,7 +809,7 @@ async def main() -> None:
         raw_scenarios = yaml.safe_load(f)
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
-    benchmark = scenarios_path.stem
+    benchmark = args.benchmark_name or scenarios_path.stem
 
     # Apply --scenario-offset / --scenario-limit slicing for chunked runs
     if args.scenario_offset or args.scenario_limit:
@@ -851,6 +871,7 @@ async def main() -> None:
                         visual_judge=args.visual_judge,
                         judge_model=args.judge_model,
                         enable_cache=total > 1,
+                        reasoning_effort=args.reasoning_effort,
                     ),
                     timeout=args.scenario_timeout,
                 )
