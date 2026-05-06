@@ -21,9 +21,10 @@ Costs are computed using each model's published per-token rate as of April 2026;
 \subsection{Strategies}
 \label{ssec:strategies}
 
-\GeoGenBench ships three reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
-The benchmark itself does not depend on any of these --- any text-emitting model can be benchmarked by routing its TikZ output through the verification pipeline.
-The strategies sit on a spectrum from ``maximum LLM freedom'' (\rawcode) to ``maximum scaffolding'' (\recipe); comparing them isolates the contribution of structured intermediate representations and retrieval.
+\GeoGenBench ships two reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
+The benchmark itself does not depend on either --- any text-emitting model can be benchmarked by routing its TikZ output through the verification pipeline.
+The strategies sit on a spectrum from ``maximum LLM freedom'' (\rawcode) to ``schema-constrained intermediate representation'' (\structured); comparing them isolates the contribution of typed intermediate representations and pre-render self-validation.
+\Cref{fig:strategies_compare} shows what the LLM emits in each strategy on the same prompt.
 
 \paragraph{\rawcode (single-shot direct TikZ).}
 The LLM is given the prompt plus a TikZ tutorial system prompt and produces TikZ via a \texttt{render\_diagram(tikz: str)} tool call.
@@ -36,10 +37,68 @@ Code (not the LLM) compiles IR $\to$ SymPy objects $\to$ TikZ $\to$ SVG.
 Validation against the IR's check list happens \emph{before} render, so the strategy can self-correct: if a declared check fails on the LLM's IR, the strategy revises (up to $N=3$ retries).
 This is the strategy we recommend for production deployment.
 
-\paragraph{\recipe (high-level DSL with few-shot retrieval).}
-A cheaper ``selector'' model picks 0--N relevant \emph{recipes} (curated DSL examples like \texttt{circumcircle.yaml}, \texttt{altitude.yaml}) which are prepended as in-context examples for the main model.
-The main model emits a \texttt{RecipeDSL} (high-level operations like \texttt{triangle}, \texttt{altitude}, \texttt{circumcircle}); a lowering pass compiles to \texttt{DiagramIR}, then the \structured pipeline runs.
-This is the most heavily scaffolded strategy: the LLM picks from a constrained menu of pre-built constructions, trading creative freedom for built-in geometric correctness.
+\begin{figure}[t]
+\centering
+\small
+% Common prompt header
+\fbox{\begin{minipage}{0.97\linewidth}
+\textit{Common prompt:} ``Draw an acute triangle $EFG$ with $\angle E = 60^{\circ}$, $\angle F = 70^{\circ}$. Construct the altitude from $G$ meeting $EF$ at $H$.''
+\end{minipage}}\\[6pt]
+
+% Two strategy columns. Each column = title + role line + code box of identical
+% fixed height (so frames line up regardless of how many code lines there are).
+\newlength{\stratcolwd}\setlength{\stratcolwd}{0.47\linewidth}
+\newlength{\stratcodeht}\setlength{\stratcodeht}{52mm}
+
+\begin{minipage}[t]{\stratcolwd}
+\centering
+{\textbf{\rawcode}}\\
+{\scriptsize\itshape zero scaffolding}\\[2pt]
+{\scriptsize LLM emits TikZ directly:}\\[2pt]
+\fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
+\ttfamily\tiny
+\textbackslash coordinate (E) at (0,0);\\
+\textbackslash coordinate (F) at (5,0);\\
+\textbackslash coordinate (G) at (3.07,5.31);\\
+\textbackslash coordinate (H) at (3.07,0);\\
+\textbackslash draw (E)--(F)--(G)--cycle;\\
+\textbackslash draw[densely dashed]\\
+\hphantom{xx}(G) -- (H);
+\end{minipage}}
+\end{minipage}\hfill
+\begin{minipage}[t]{\stratcolwd}
+\centering
+{\textbf{\structured}}\\
+{\scriptsize\itshape schema-constrained IR}\\[2pt]
+{\scriptsize LLM emits typed JSON; \emph{we} compile to TikZ:}\\[2pt]
+\fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
+\ttfamily\tiny
+\{ "points": [\\
+\hphantom{x}\{"name":"E","type":"free"\},\\
+\hphantom{x}\{"name":"F","type":"free"\},\\
+\hphantom{x}\{"name":"G","type":"by\_angles",\\
+\hphantom{xx}"from":"E","to":"F",\\
+\hphantom{xx}"ang\_at\_from":60,\\
+\hphantom{xx}"ang\_at\_to":70\}\,],\\
+\hphantom{x}"intersections":[\\
+\hphantom{xx}\{"name":"H",\\
+\hphantom{xxx}"lines":[\\
+\hphantom{xxxx}["G","perp\_EF"],\\
+\hphantom{xxxx}["E","F"]\,]\}\,],\\
+\hphantom{x}"checks":[\{"type":\\
+\hphantom{xxx}"right\_angle",\\
+\hphantom{xxx}"args":["G","H","E"]\}\,]\}
+\end{minipage}}
+\end{minipage}
+
+\vspace{4pt}
+\centering\textit{\small$\Big\downarrow$\ \ Both converge to the same TikZ\,$\to$\,SVG\,$\to$\,SymPy\,$\to$\,predicate-verdict pipeline of \cref{fig:pipeline}.\ \ $\Big\downarrow$}
+
+\caption{\textbf{The two reference generation strategies, side by side on the same prompt.}
+\rawcode places minimal trust in scaffolding: the LLM emits coordinate-bearing TikZ directly.
+\structured asks the LLM to declare \emph{what} it wants to draw via a typed schema (an intermediate representation, IR); \emph{our} compiler picks coordinates and the IR's own \texttt{checks} list lets the strategy self-correct before rendering.}
+\label{fig:strategies_compare}
+\end{figure}
 
 \paragraph{Beyond TikZ: an alternate text-emit target.}
 The methodology is renderer-agnostic --- the verifier does not care whether the model emits TikZ, raw SVG, Asymptote, or any other text-emittable vector format, provided we can compile it back to a coordinate set.
@@ -50,13 +109,12 @@ Because raw SVG and raw TikZ measure essentially the same thing --- ``can the mo
 \label{ssec:cost_methodology}
 
 For each (model, strategy, scenario, repeat) we record (a)~total input + output tokens across all API calls (including any retries), (b)~wall-clock duration from prompt submission to rendered SVG, and (c)~the token-multiplied USD cost at published rates.
-The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean of per-scenario costs across the pilot, including failed scenarios (a model that frequently retries before failing pays for the retries).
+The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean of per-scenario costs across the headline run, including failed scenarios (a model that frequently retries before failing pays for the retries).
 Per-call latency excludes time spent in our verification pipeline.
 
-\subsection{Pilot configuration}
+\subsection{Headline-run configuration}
 \label{ssec:pilot_config}
 
-For the pilot reported in \cref{sec:results} we ran a stratified 30-scenario sample (10 per tier, drawn round-robin across 23 of 30 templates) with one repeat per (model, strategy, scenario) cell.
-The full headline run uses the complete 600-scenario templated split with three repeats and reports per-cell standard error.
+The headline run reported in \cref{sec:results} draws each of the $600$ templated scenarios with three repeats per (model, strategy) cell.
 The \structured strategy permits up to three internal check-fail retries before recording final verdict.
-We document the rate-limit ceiling we encountered with \opus + \structured at \cref{ssec:headline}.
+Two cells are marginally partial --- \opus + \structured at $574/600$ unique scenarios with $\geq 3$ repeats and \gpt + \structured at $545/600$ --- because a fixed set of pathology scenarios trigger circular-dependency cycles in the IR resolver that the subprocess-isolated runner kills via OS-level timeout; we document the per-cell coverage caveat in \cref{ssec:headline} and the per-tier breakdown in \cref{ssec:tiers_results}.

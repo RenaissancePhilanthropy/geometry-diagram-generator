@@ -21,14 +21,14 @@ Post-acceptance work (\cref{sec:conclusion}) extends the rater pool to a heterog
 \subsection{Sample construction ($N = 200$)}
 \label{app:human_study:sample}
 
-The sample is drawn deterministically (random seed 42) from the canonical post-hardening pilot \texttt{evals/results/leaderboard\_pilot\_v3} (498 records).
-Of those 498, 98 lack a rendered SVG (all 98 are \texttt{gate\_status\,=\,fail} with unparseable model output: there is no diagram to rate).
-The sampling pool is therefore 400 records:
+The sample is drawn deterministically (random seed 42) from the canonical post-hardening pilot \texttt{evals/results/leaderboard\_pilot\_v3} (498 records), restricted to the two strategies reported in the headline run (\rawcode, \structured).
+Of the 348 records under those strategies, 55 lack a rendered SVG (all are \texttt{gate\_status\,=\,fail} with unparseable model output: there is no diagram to rate).
+The sampling pool is therefore 293 records:
 
 \begin{itemize}
 \item All \textbf{28 \texttt{soft\_pass}} records (verifier was uncertain --- the most epistemically informative stratum).
-\item All \textbf{35 rendered-but-failed} records (the entire pool of cases where the verifier said \texttt{fail} but a diagram exists for human inspection).
-\item \textbf{137 \texttt{pass}} records sampled from the remaining 337, balanced across (tier $\times$ strategy $\times$ model). Cells with fewer records than the per-cell budget are taken in full and the deficit is redistributed to the largest cells.
+\item All \textbf{21 rendered-but-failed} records (the entire pool of cases where the verifier said \texttt{fail} but a diagram exists for human inspection).
+\item \textbf{151 \texttt{pass}} records sampled from the remaining 244, balanced across (tier $\times$ strategy $\times$ model). Cells with fewer records than the per-cell budget are taken in full and the deficit is redistributed to the largest cells.
 \end{itemize}
 
 The realised composition (deterministic given the seed) is summarised in \cref{tab:human_sample_composition}.
@@ -44,27 +44,26 @@ The sample is committed at \texttt{evals/human\_study/sample.json}; running \tex
 \textbf{Stratum} & \textbf{N} \\
 \midrule
 \textbf{Verdict:} & \\
-\quad \texttt{pass} & 137 \\
+\quad \texttt{pass} & 151 \\
 \quad \texttt{soft\_pass} & 28 (all available) \\
-\quad \texttt{fail} (with rendered SVG) & 35 (all available) \\
+\quad \texttt{fail} (with rendered SVG) & 21 (all available) \\
 \midrule
 \textbf{Tier:} & \\
-\quad T1 (easy) & 56 \\
-\quad T2 (medium) & 73 \\
-\quad T3 (hard) & 71 \\
+\quad T1 (easy) & 61 \\
+\quad T2 (medium) & 76 \\
+\quad T3 (hard) & 63 \\
 \midrule
 \textbf{Strategy:} & \\
-\quad \rawcode & 102 \\
-\quad \structured & 48 \\
-\quad \recipe & 50 \\
+\quad \rawcode & 128 \\
+\quad \structured & 72 \\
 \midrule
 \textbf{Model:} & \\
-\quad \haiku & 39 \\
-\quad \sonnet & 37 \\
-\quad \opus & 23 (sampling pool $N{=}42$) \\
-\quad \gpt & 36 \\
-\quad \geminipro & 44 \\
-\quad \geminiflash & 21 (sampling pool $N{=}22$) \\
+\quad \haiku & 34 \\
+\quad \sonnet & 41 \\
+\quad \opus & 30 \\
+\quad \gpt & 37 \\
+\quad \geminipro & 36 \\
+\quad \geminiflash & 22 (sampling pool $N{=}22$) \\
 \midrule
 \textbf{Source:} all 200 templated; curriculum split unsampled (\cref{app:human_study:limitations}). & \\
 \bottomrule
@@ -119,7 +118,7 @@ We additionally report balanced accuracy of the auto-verdict against the consens
 \begin{itemize}
 \item \textbf{Inter-rater reliability}: Cohen's $\kappa$ between the two human raters on Q1 binary and on Q1 three-way (\texttt{yes}/\texttt{partial}/\texttt{no}), computed before consensus discussion.
 \item \textbf{Per-tier $\kappa$}: $\kappa(\text{auto},\text{consensus})$ separately on T1, T2, T3.
-\item \textbf{Per-strategy $\kappa$}: separately on \rawcode, \structured, \recipe.
+\item \textbf{Per-strategy $\kappa$}: separately on \rawcode, \structured.
 \item \textbf{Per-vendor $\kappa$}: separately for Anthropic, OpenAI, Google models (per-cell N is too small for per-model splits at this sample size).
 \item \textbf{Per-rater independent $\kappa$}: $\kappa(\text{auto},\text{rater~A})$ and $\kappa(\text{auto},\text{rater~B})$ separately, as a robustness check on how much consensus discussion shifted the headline.
 \item \textbf{Per-predicate Q2 agreement rate}: agreement rate broken down by each of the 17 implemented predicates.

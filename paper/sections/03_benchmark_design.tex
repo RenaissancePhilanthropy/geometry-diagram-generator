@@ -9,9 +9,51 @@ We separate \emph{methodology} from \emph{instance} from the outset.
 The methodology rests on two pillars:
 
 \paragraph{Pillar 1: Procedural co-generation of prompts and rubrics.}
-For domains where the construction admits a Python expression --- which is essentially every domain in classical geometry --- both the natural-language prompt and the machine-checkable property list can be emitted from the same source code.
+For domains where the construction admits a Python expression --- which is essentially every domain in classical geometry --- both the natural-language prompt and the machine-checkable property list can be emitted from the same source code (\cref{fig:cogen}).
 A single \texttt{altitude\_template($A$, $B$, $C$, $H$)} function, for example, returns both a prose request to draw the altitude and the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]} that any correct rendering must satisfy.
 This eliminates the drift problem that haunts hand-authored or LLM-extracted benchmarks (where the grading rubric and the question can disagree silently) and provides a strong contamination defence (reviewers can re-roll the engine with new seeds, label sets, or numeric parameters and obtain a fresh split with the same difficulty distribution).
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    every node/.style={font=\small},
+    func/.style={draw, rounded corners, fill=blue!8, align=center,
+                 text width=70mm, minimum height=12mm, font=\ttfamily\small},
+    outbox/.style={draw, rounded corners, fill=green!6, align=center,
+                text width=53mm, minimum height=22mm, inner sep=4pt},
+    role/.style={font=\scriptsize\itshape, color=gray!50!black, align=center},
+    >=Stealth, line width=0.5pt
+]
+  \node[func] (fn) {altitude\_template($A,B,C,H$,\ ang$_A$,\ ang$_B$):};
+  \node[role, below=0.5mm of fn] {one Python function};
+
+  \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.7)$) {%
+    \textbf{Natural-language prompt}\\[3pt]
+    \scriptsize ``Draw an acute triangle $ABC$ with
+    $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
+    Construct the altitude from $C$ meeting $AB$ at $H$.''};
+
+  \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.7)$) {%
+    \textbf{Property list (rubric)}\\[3pt]
+    \scriptsize\ttfamily
+    right\_angle($C, H, A$)\\
+    point\_on\_segment($H, A, B$)\\
+    angle\_equal($\angle BAC$, $60^\circ$)\\
+    angle\_equal($\angle ABC$, $70^\circ$)};
+
+  \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (prompt.north);
+  \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (rubric.north);
+
+  \node[role, below=2mm of prompt, text width=53mm] {\textbf{shown to the model}};
+  \node[role, below=2mm of rubric, text width=53mm]
+    {\textbf{used to grade the model}\\(never shown to the model)};
+\end{tikzpicture}
+\caption{\textbf{Procedural co-generation (Pillar~1).}
+A single Python template emits both the natural-language prompt and the machine-checkable rubric, guaranteeing the question and its grading criteria stay mutually consistent.
+The model sees only the prompt; the rubric drives the grader.
+Re-rolling the engine with new label sets or numeric parameters yields a fresh, contamination-free split with the same difficulty distribution.}
+\label{fig:cogen}
+\end{figure}
 For domains where procedural co-generation is impractical --- 3D constructions, multi-step proof figures, or scenarios requiring extra-mathematical context --- the methodology supports a fallback mode (\cref{ssec:sources}): hand-authored or LLM-extracted prompts paired with hand- or LLM-authored property lists.
 This trades the correctness-by-construction guarantee for breadth, and we report metrics on the two modes separately.
 
@@ -20,7 +62,7 @@ The model emits source code in a text-emitting renderer's input language (TikZ h
 Three properties make this work as a benchmark substrate.
 First, the predicate language is \emph{declarative} --- prompt authors specify \emph{what must be true}, not \emph{how to check it} --- so adding a new construction never requires writing a new checker.
 Second, the predicate vocabulary is \emph{versioned}: \cref{app:property_reference} formalises v1 (17 symbolic + 2 source-string predicates); future \GeoGen instantiations extend it (e.g.\ \texttt{face\_incidence} for 3D, \texttt{point\_on\_curve} for coordinate plane) without disturbing existing benchmarks.
-Third, the recipe is \emph{renderer-agnostic}: the codebase ships an SVG-output strategy alongside TikZ to demonstrate that swapping the text-emitting target is a one-paragraph change in the strategy layer (\cref{ssec:strategies}).
+Third, the methodology is \emph{renderer-agnostic}: the codebase ships an SVG-output strategy alongside TikZ to demonstrate that swapping the text-emitting target is a one-paragraph change in the strategy layer (\cref{ssec:strategies}).
 
 \paragraph{Why these two pillars together.}
 Each pillar partially addresses the canonical reviewer attack on a generative-reasoning benchmark.
@@ -55,10 +97,11 @@ Property correctness is by construction: the same Python function emits both the
 The released artefact is \texttt{benchmark/definitions/bench\_generated.yaml}.
 
 \paragraph{Curriculum-extracted scenarios (broader topic coverage).}
-A separate pipeline (\texttt{curriculum/to\_benchmark.py}) extracts curriculum structure from K--12 geometry textbooks and uses an LLM to convert each into a student-style diagram request, plus structural and property-level expected outputs.
+A separate pipeline (\texttt{curriculum/to\_benchmark.py}) extracts lesson-level curriculum structure from a publicly-available US K--12 mathematics curriculum --- the Carnegie Learning \emph{Bluebonnet Learning} Teacher's Edition (Grades 6--8 and Geometry), adopted by the Texas Education Agency \citep{bluebonnet2024} --- and uses an LLM (\sonnet) to convert each lesson topic into a student-style diagram request, plus structural and property-level expected outputs.
+We use the curriculum only as a \emph{topical scaffold} for what to ask about (e.g.\ ``slant height of a cone,'' ``transversal across parallel lines,'' ``coordinate-plane reflection'') --- no textbook prose is reproduced in the released benchmark; only our LLM-generated prompt rewrites and our property-list rubrics are released.
 This adds \textbf{201 scenarios} ($[36, 128, 37]$ across tiers) covering topics templated scenarios do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs requiring auxiliary lines), at the cost of LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way templated GT is.
 We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
-The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}.
+The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}; full attribution and licensing details are in \cref{app:reproduction}.
 
 \subsection{Property language}
 \label{ssec:properties}
@@ -113,7 +156,7 @@ The two-renderer choice (TikZ $\to$ SVG via Docker by default; pure-Python SVG r
 \begin{tikzpicture}[node distance=4mm, font=\small,
     box/.style={draw, rounded corners, minimum width=22mm, minimum height=8mm, align=center}]
   \node[box] (prompt) {prompt};
-  \node[box, right=of prompt] (llm) {LLM strategy\\ \scriptsize{\rawcode / \structured / \recipe}};
+  \node[box, right=of prompt] (llm) {LLM strategy\\ \scriptsize{\rawcode / \structured}};
   \node[box, right=of llm] (tikz) {TikZ source};
   \node[box, below=of tikz] (latex) {LuaLaTeX\\(container)};
   \node[box, left=of latex] (svg) {SVG};
