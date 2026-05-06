@@ -719,6 +719,52 @@ const state = {
   notesExpanded: false,
 };
 
+const measureState = {
+  tool: null,          // null | 'ruler' | 'protractor'
+  pending: [],         // [{x, y}, ...] normalised fractions, incomplete measurement
+  measurements: [],    // completed: {type:'ruler'|'protractor', points:[{x,y},...]}
+};
+
+let _measureOverlay = null;
+function getMeasureOverlay() {
+  if (!_measureOverlay) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'measure-overlay';
+    svg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; pointer-events:none; cursor:default;';
+    svg.addEventListener('click', onOverlayClick);
+    _measureOverlay = svg;
+  }
+  return _measureOverlay;
+}
+
+function updateClearBtn() {
+  const clearBtn = document.getElementById('tool-clear');
+  if (!clearBtn) return;
+  const hasMeasurements = measureState.measurements.length > 0 || measureState.pending.length > 0;
+  clearBtn.style.display = hasMeasurements ? '' : 'none';
+  const sep = document.querySelector('.measure-toolbar .measure-sep');
+  if (sep) sep.style.display = hasMeasurements ? '' : 'none';
+}
+
+function setTool(name) {
+  measureState.tool = (measureState.tool === name) ? null : name;
+  measureState.pending = [];
+
+  const rulerBtn = document.getElementById('tool-ruler');
+  const protractorBtn = document.getElementById('tool-protractor');
+  const overlaySvg = getMeasureOverlay();
+
+  rulerBtn.classList.toggle('active', measureState.tool === 'ruler');
+  protractorBtn.classList.toggle('active', measureState.tool === 'protractor');
+
+  const active = measureState.tool !== null;
+  overlaySvg.style.pointerEvents = active ? 'all' : 'none';
+  overlaySvg.style.cursor = active ? 'crosshair' : 'default';
+
+  updateClearBtn();
+  renderOverlay();
+}
+
 function $(sel) { return document.querySelector(sel); }
 function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
 
@@ -1071,6 +1117,15 @@ function attachHandlers() {
     $("#tips-banner").style.display = "none";
     document.documentElement.style.setProperty("--chrome-h", "56px");
     try { localStorage.setItem("geogen.tips.dismissed", "1"); } catch (_) {}
+  });
+
+  document.getElementById('tool-ruler').addEventListener('click', () => setTool('ruler'));
+  document.getElementById('tool-protractor').addEventListener('click', () => setTool('protractor'));
+  document.getElementById('tool-clear').addEventListener('click', () => {
+    measureState.measurements = [];
+    measureState.pending = [];
+    updateClearBtn();
+    renderOverlay();
   });
 
   document.addEventListener("keydown", (e) => {
