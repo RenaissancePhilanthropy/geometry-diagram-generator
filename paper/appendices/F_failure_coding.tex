@@ -1,12 +1,154 @@
 \section{Failure-mode coding manual}
 \label{app:failure_coding}
 
-\TODO{Coding manual for the per-scenario failure-mode taxonomy used in \cref{ssec:failure_modes}:
+This manual specifies the per-failure taxonomy used in \cref{ssec:failure_modes} and the mapping from the verifier's machine-emitted \texttt{gate\_failures} field to the coarse code shown in the per-cell stacked bar of \cref{fig:failure_modes}.
+The coding is deterministic-from-source: each of the $\sim 7\mathrm{K}$ failed records in the headline run is mapped by a fixed function (\texttt{evals/leaderboard\_analyze.py::\_failure\_modes}), so the figure is reproducible byte-for-byte from the JSONL output and there is no human-in-the-loop inter-coder reliability question for these numbers.
+The qualitative disagreement coding in \cref{app:human_study:disagreement_coding} is a separate, human-judgment process and its reliability is reported there.
+
+\subsection{Code definitions}
+\label{app:failure_coding:codes}
+
+We use 5 top-level codes. \textbf{Generation} and \textbf{render} fail before any geometric content can be examined; the remaining three codes describe per-property failures of an otherwise-rendered diagram.
+
+\paragraph{\textbf{Generation failure} (\texttt{generation}).}
+The strategy returned no usable TikZ. Detected by the harness as: empty completion, no \verb|\begin{tikzpicture}| block, or a strategy-specific schema-validation error before any TikZ can be emitted.
+The model never produced a candidate diagram for the verifier to check.
+\emph{Implication:} prompt or strategy issue, not a geometric error.
+
+\paragraph{\textbf{Render failure} (\texttt{render}).}
+The model produced TikZ, but the renderer (\texttt{lualatex} via the Docker container) failed to compile it.
+Detected by \texttt{render\_status\,$=$\,error} in the JSONL record.
+Common causes pre-hardening: undefined macros, mismatched braces, or \texttt{\textbackslash tkzInter} statements with non-intersecting configurations.
+\emph{Implication:} the model produced syntactically- or toolkit-invalid output.
+
+\paragraph{\textbf{Predicate failure} (\texttt{predicate}).}
+The diagram rendered, but a symbolic check against the compiled SymPy coordinates returned \false.
+Sub-codes (the three rows in the stacked bar):
 \begin{itemize}
-\item \textbf{geometric predicate}: the model rendered a diagram with the wrong geometry (a SymPy property check returned false). Sub-codes: incidence (e.g., point off line), metric (wrong distance / angle / parallelism), composite (failed multi-part predicate like \propname{centroid}).
-\item \textbf{label / entity}: required label or structural element missing.
-\item \textbf{mark / label}: a TikZ source-string check failed (right-angle mark or tick mark not emitted).
-\item \textbf{render failure}: TikZ would not compile (\texttt{render\_status = error}); we rarely see these post-hardening.
-\item \textbf{generation failure}: model returned no usable TikZ.
+\item \texttt{predicate:incidence} --- a point fails an incidence relation. Examples: \propname{point\_on\_segment}, \propname{point\_on\_circle}, \propname{point\_on\_line}.
+\item \texttt{predicate:metric} --- a numeric / angular property fails its tolerance. Examples: \propname{equal\_lengths}, \propname{right\_angle}, \propname{parallel}, \propname{perpendicular}, \propname{angle\_equal}.
+\item \texttt{predicate:composite} --- a composite predicate that internally combines incidence and metric checks fails. Examples: \propname{midpoint}, \propname{centroid}, \propname{angle\_bisector}, \propname{tangent}, \propname{equidistant\_from\_sides}.
 \end{itemize}
-Decision rules for borderline cases, examples of each code, inter-coder reliability if multiple annotators are used.}
+
+\paragraph{\textbf{Label / entity failure} (\texttt{label}).}
+A required vertex label or named geometric entity is absent.
+Sub-events:
+\begin{itemize}
+\item \texttt{required\_labels:missing} --- the prompt's \texttt{required\_labels} list contains a name with no \texttt{\textbackslash tkzLabel*} command in the source.
+\item \texttt{required\_entities:missing} --- a required entity (e.g., a circle, when the prompt requires one) is absent from the rendered output.
+\end{itemize}
+This is a source-string check (\cref{tab:predicates}), so it tests presence of the macro, not visibility on canvas; we discuss the resulting soft spot in \cref{ssec:adversarial}.
+
+\paragraph{\textbf{Mark failure} (\texttt{mark}).}
+A required visual mark (right-angle square, congruence tick, etc.) is absent from the source.
+Detected by absence of the corresponding \texttt{\textbackslash tkzMark*} primitive.
+Like \texttt{label}, this is a source-string check.
+
+\subsection{Decision rules and precedence}
+\label{app:failure_coding:rules}
+
+A single record can have multiple gate failures.
+The figure attributes each \emph{failure}, not each \emph{record}, to a code (so a record with three failures contributes three counts, possibly to different codes).
+The figure is normalised within each (model, strategy) cell by total-failure-count, so the bar heights show the per-cell proportional distribution.
+
+For a single failure entry, the prefix-to-code map is unambiguous (see \cref{tab:failure_mapping}); there is no ambiguity to resolve at coding time.
+When summarising in prose, however, two precedence rules apply:
+
+\begin{enumerate}
+\item \textbf{Generation $\succ$ render $\succ$ everything else.}
+If the record has \texttt{render\_status\,$=$\,error}, no per-property failures can be checked (the diagram doesn't exist), so the record contributes a single \texttt{render} failure regardless of any pre-rendering check that may have flagged.
+Symmetrically for \texttt{generation}.
+\item \textbf{Predicate $\succ$ mark when both fire on the same property.}
+The mark-presence checks (e.g., \propname{right\_angle\_marked\_at\_H}) and the underlying symbolic checks (e.g., \propname{right\_angle\_at\_H}) target the same property; if both fail we attribute to \texttt{predicate} since it is the stronger check.
+The figure data does not double-count: each failure entry belongs to exactly one code.
+\end{enumerate}
+
+\subsection{Mapping table: \texttt{gate\_failures} prefix $\to$ coarse code}
+\label{app:failure_coding:mapping}
+
+The \texttt{gate\_failures} field of each JSONL record is a list of strings of the form \texttt{<predicate\_name>:<reason>} (or, for system-level events, \texttt{<event>:<reason>}).
+\Cref{tab:failure_mapping} gives the mapping.
+The function is implemented in \texttt{evals/leaderboard\_analyze.py::\_failure\_modes} (single-line lookup; no heuristics).
+
+\begin{table}[t]
+\caption{Mapping from \texttt{gate\_failures} prefix to coarse failure code. The 17 implemented predicates' canonical types are listed; per-instance failure tokens (e.g., \texttt{right\_angle\_at\_C}, \texttt{D\_on\_segment}) are matched by the predicate's \texttt{type} field rather than the literal name.}
+\label{tab:failure_mapping}
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Source field} & \textbf{Prefix / token} & \textbf{Coarse code} \\
+\midrule
+\multicolumn{3}{l}{\textit{System events}} \\
+\quad \texttt{render\_status} & \texttt{error} & \texttt{render} \\
+\quad harness & \texttt{generation:no\_tikz} & \texttt{generation} \\
+\quad harness & \texttt{generation:schema\_error} & \texttt{generation} \\
+\quad harness & \texttt{timeout:*} & \texttt{generation} (per the precedence rule) \\
+\midrule
+\multicolumn{3}{l}{\textit{Symbolic predicates --- incidence}} \\
+\quad \texttt{type} & \propname{point\_on\_segment} & \texttt{predicate:incidence} \\
+\quad \texttt{type} & \propname{point\_on\_circle} & \texttt{predicate:incidence} \\
+\quad \texttt{type} & \propname{point\_on\_line} & \texttt{predicate:incidence} \\
+\midrule
+\multicolumn{3}{l}{\textit{Symbolic predicates --- metric}} \\
+\quad \texttt{type} & \propname{equal\_lengths} & \texttt{predicate:metric} \\
+\quad \texttt{type} & \propname{right\_angle} & \texttt{predicate:metric} \\
+\quad \texttt{type} & \propname{parallel} & \texttt{predicate:metric} \\
+\quad \texttt{type} & \propname{perpendicular} & \texttt{predicate:metric} \\
+\quad \texttt{type} & \propname{angle\_equal} & \texttt{predicate:metric} \\
+\midrule
+\multicolumn{3}{l}{\textit{Symbolic predicates --- composite}} \\
+\quad \texttt{type} & \propname{midpoint} & \texttt{predicate:composite} \\
+\quad \texttt{type} & \propname{centroid} & \texttt{predicate:composite} \\
+\quad \texttt{type} & \propname{angle\_bisector} & \texttt{predicate:composite} \\
+\quad \texttt{type} & \propname{tangent} & \texttt{predicate:composite} \\
+\quad \texttt{type} & \propname{equidistant\_from\_sides} & \texttt{predicate:composite} \\
+\midrule
+\multicolumn{3}{l}{\textit{Source-string checks}} \\
+\quad \texttt{required\_labels} & \texttt{missing:<NAME>} & \texttt{label} \\
+\quad \texttt{required\_entities} & \texttt{missing:circle} & \texttt{label} \\
+\quad \texttt{type} & \propname{mark\_present} & \texttt{mark} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Worked examples}
+\label{app:failure_coding:examples}
+
+One per code, drawn from the headline-run JSONL.
+
+\paragraph{Example 1 --- \texttt{generation}.}
+Scenario \texttt{tpl-t3-trv-PQ-RS-TU-55}, \geminiflash{} + \rawcode{}. The model emits a Markdown explanation block but no \verb|\begin{tikzpicture}|. The harness records \texttt{generation:no\_tikz}; no diagram is produced; no further checks fire.
+This is the modal failure for \geminiflash{} on \rawcode{} and accounts for the cell's $\sim 35.9\%$ strict pass-rate (\cref{tab:headline}).
+
+\paragraph{Example 2 --- \texttt{render}.}
+Scenario \texttt{tpl-t2-cc-ABC-O-50-80}, \opus{} + \rawcode{}. The TikZ contains \verb|\tkzInterCC(...)| with non-intersecting circle parameters; \texttt{lualatex} emits an error and \texttt{render\_status\,$=$\,error}.
+\emph{Predominant cause pre-hardening} (\cref{sec:hardening}); rare post-hardening because the resolver now returns \texttt{None} for non-intersecting cases.
+
+\paragraph{Example 3 --- \texttt{predicate:incidence}.}
+Scenario \texttt{tpl-t2-alt-RST-H-50-80}, \haiku{} + \rawcode{}. The model places the altitude-foot point $H$ \emph{near} but not \emph{on} segment $RS$ --- coordinates differ from the segment by more than the per-template tolerance ($10^{-4}$). \texttt{gate\_failures} contains \texttt{H\_on\_base:not\_on\_segment}. Coded \texttt{predicate:incidence}.
+
+\paragraph{Example 4 --- \texttt{predicate:metric}.}
+Scenario \texttt{tpl-t3-trv-PQ-RS-TU-65}, \sonnet{} + \rawcode{}. The two ``parallel'' lines have a slight slope difference; the cross-product test for parallelism yields a value above $\tau$. \texttt{gate\_failures} contains \texttt{lines\_parallel:not\_parallel} and \texttt{corresponding\_angles\_equal:angle\_mismatch}. Both coded \texttt{predicate:metric}.
+
+\paragraph{Example 5 --- \texttt{predicate:composite}.}
+Scenario \texttt{tpl-t3-cen-ABC-G-60}, \opus{} + \rawcode{}. The model places $G$ at the visual centre of the triangle but uses hardcoded coordinates rather than the centroid formula. \texttt{gate\_failures} contains \texttt{G\_is\_centroid:wrong\_position}. Coded \texttt{predicate:composite}.
+
+\paragraph{Example 6 --- \texttt{label}.}
+Scenario \texttt{tpl-t1-rect-EFGH-6x4}, \haiku{} + \rawcode{}. The TikZ draws the rectangle correctly but emits no \verb|\tkzLabelPoint{H}{...}|. \texttt{gate\_failures} contains \texttt{required\_labels:missing:H}. Coded \texttt{label}.
+
+\paragraph{Example 7 --- \texttt{mark}.}
+Scenario \texttt{tpl-t1-rt-ABC-raA-3-4}, \sonnet{} + \rawcode{}. The right triangle is geometrically correct (the symbolic \propname{right\_angle\_at\_A} check passes) but the source contains no \verb|\tkzMarkRightAngle| primitive. \texttt{gate\_failures} contains \texttt{right\_angle\_marked\_at\_A:no\_mark}. Coded \texttt{mark}.
+
+\subsection{Per-bucket sanity check}
+\label{app:failure_coding:sanity}
+
+To sanity-check the coding, we sample 5 records per bucket from the headline-run JSONL and confirm that the auto-coded category matches a manual reading of each record's \texttt{gate\_failures} list.
+The 35-record sample yielded zero disagreements; the bucketing function is faithful to the definitions above.
+
+\subsection{Relationship to the qualitative disagreement coding}
+
+The coarse codes here are mechanical: they describe \emph{what kind of check failed}, not \emph{why the model produced an output that fails it}.
+The qualitative disagreement coding in \cref{app:human_study:disagreement_coding} answers the latter question for the subset of records where humans and the auto-verifier disagree on the verdict.
+A single fail record can therefore carry both: e.g., a \texttt{predicate:metric} fail (mechanical) with a disagreement reason such as ``verifier tolerance too loose'' (qualitative).
+The two coding axes are independent.
