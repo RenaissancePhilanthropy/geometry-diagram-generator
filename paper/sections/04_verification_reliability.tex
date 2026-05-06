@@ -116,10 +116,10 @@ The promotion count (10 records) and the heatmap shift (\texttt{tpl-t3-cen} drop
 \end{enumerate}
 
 \paragraph{Aggregate hardening impact on the pilot} (re-graded via \texttt{evals/regrade.py} against unchanged TikZ outputs): 23 records ($4.6\%$ of $498$) promote from \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
-The first two passes are concentrated in \rawcode rows because IR-compiled outputs (\structured, \recipe) emit literal coordinates exclusively, while raw LLM TikZ uses \texttt{\textbackslash pgfmathsetmacro} routinely.
+The first two passes are concentrated in \rawcode rows because IR-compiled outputs (\structured) emit literal coordinates exclusively, while raw LLM TikZ uses \texttt{\textbackslash pgfmathsetmacro} routinely.
 Per-model \rawcode strict-pass deltas after \textbf{passes 1+2}: \opus +16.7\pp, \sonnet +10.0\pp, \haiku +6.6\pp, \gpt +10.0\pp.
 The strategy-effect headline (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp after passes 1+2 --- about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
-\textbf{Pass 3} (\propname{centroid}) adds $+3.3$\pp to ten cells uniformly across all three strategies (one centroid scenario in the pilot); the strategy-effect headline is unaffected because the scenario is self-referential and every observed strategy emits a satisfying construction.
+\textbf{Pass 3} (\propname{centroid}) adds $+3.3$\pp to several cells uniformly across both strategies (one centroid scenario in the pilot); the strategy-effect headline is unaffected because the scenario is self-referential and every observed strategy emits a satisfying construction.
 We report the post-hardening numbers in \cref{sec:results} and recommend the post-hardening verifier as the canonical metric.
 
 A third planned change (render-aware \propname{mark\_present} from SVG glyph parsing) is \emph{deferred} to v1.1: post-hardening, no \propname{mark\_present} checks remain in the soft\_pass column for the pilot (they were reliably caught by the existing TikZ-source matcher); the planned SVG-glyph approach would tighten coverage for outputs that fake the mark via raw \texttt{\textbackslash draw} primitives, but that pattern was not observed in the pilot.

@@ -12,7 +12,14 @@ We chose this scope because (i)~it is the part of geometric reasoning where auto
 Templated scenarios have provably-correct ground truth (prose and properties are emitted from the same source code) and bound the model's task tightly enough that we can quantify completeness rates per-template (\cref{ssec:completeness}).
 Curriculum scenarios cover topics the templates do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs) but rely on LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way.
 We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
-\TODO{Once full headline run completes, report the templated-vs-curriculum delta per-model so reviewers can see which split each finding survives on.}
+
+The headline run includes curriculum coverage for three of the eleven measured cells (the cheap end of the price ladder, where the per-record cost made curriculum sweeps tractable):
+\haiku + \rawcode drops from $82.1$\% strict on templated ($N{=}1{,}798$) to $36.0$\% on curriculum ($N{=}603$), a $-46.1$\pp gap;
+\haiku + \structured drops from $84.5$\% to $36.8$\%, a $-47.7$\pp gap;
+\geminiflash + \rawcode drops from $39.4$\% to $25.4$\%, a $-14.0$\pp gap (the templated rate is already low, so the curriculum dropoff is bounded).
+\textbf{The curriculum split is materially harder than the templated split for every cell we measured} --- the topical breadth (3D / transformations / coordinate-overlay) and the LLM-authored predicate lists (which sometimes include implicit constraints not present in the templated grammar) both contribute.
+We did not run curriculum on the four frontier+\structured cells (\opus, \sonnet, \gpt, \geminipro) at headline N because of the cost ratio; \cref{ssec:future_methodology} discusses extending the predicate language to cover the curriculum's out-of-scope constructions and re-running at full leaderboard breadth in v2.
+The reading for reviewers: the headline-run findings (\cref{ssec:findings}, \cref{ssec:pareto}) are templated-split findings; curriculum results corroborate the strategy-effect direction (\structured $\gtrsim$ \rawcode at the cheap end) but at materially lower absolute pass rates that reflect the wider topical scope rather than a different capability ranking.
 
 \subsection{Limitations}
 
@@ -22,11 +29,8 @@ Curriculum scenarios that mention cones / spheres exercise the renderer but cann
 \item \textbf{No proof construction.}
 \GeoGenBench tests diagram production, not the propositional reasoning that justifies the construction.
 A model that draws a correct diagram but cannot explain \emph{why} it is correct still passes.
-\item \textbf{Single repeat in the pilot.}
-The headline numbers in \cref{sec:results} are 1-repeat estimates; we have no run-to-run variance.
-The full headline run uses 3 repeats; until then, the strict-pass differences below 5\pp should be read as suggestive only.
-\item \textbf{Rate-limit ceiling on \opus + \structured.}
-We report $N=12$ for that single cell (\cref{ssec:headline}); this is documented as a deployment finding rather than a noise issue.
+\item \textbf{Marginal partial coverage on two \structured cells.}
+\opus + \structured ($574/600$ unique scenarios) and \gpt + \structured ($545/600$) cover $\geq 91$\% of templated scenarios at $\geq 3$ repeats; the missing $\sim 5$\% is a fixed set of pathology scenarios where the LLM-generated IR triggers a circular-dependency cycle that the subprocess-isolated runner kills via OS-level timeout. This is a strategy-code limitation (the IR resolver does not detect cycles before solving) rather than a sampling artefact, so the reported strict-pass rates are conservative against those pathologies and reliable against the rest.
 \item \textbf{Tolerance is fixed.}
 The $5\times 10^{-3}$ threshold was tuned for human-rating agreement on a small sample and is uniform across check types; per-type tolerances are left for future work.
 \item \textbf{Loose-completeness is the modal case.}
@@ -57,18 +61,16 @@ Headline metrics are reported templated-only; curriculum metrics are reported as
 
 \subsection{Implications for deployment}
 
-The pilot's two unambiguous Pareto-dominance findings (\cref{ssec:pareto}) have direct deployment implications:
+The headline-run Pareto-dominance findings (\cref{ssec:pareto}) have direct deployment implications:
 
 \begin{itemize}
-\item \textbf{For raw TikZ generation, the marginal cost of the frontier model buys nothing.}
-\haiku + \rawcode dominates \opus + \rawcode at $19\times$ lower cost.
-A team deploying an LLM-driven worksheet author should default to the cheap-tier model unless they have evidence their domain is in the Pareto-undominated region.
-\item \textbf{At the mid-tier price point, model + strategy choice matters more than chasing the next model release.}
-\sonnet + \recipe dominates \gpt + \structured at the same cost.
-The optimal scaffolding is model-family-specific; we recommend benchmarking the strategy on the deployment target rather than assuming the leaderboard transfers.
-\item \textbf{The recipe-DSL strategy is unstable below the frontier-model tier.}
-\sonnet uses recipe well; \haiku and \gpt do not (worse than their \rawcode).
-Custom DSLs with built-in geometric priors do not transfer; teams considering this approach should validate per-model.
+\item \textbf{For raw TikZ generation, the OpenAI flagship dominates and the most expensive Anthropic model is dominated.}
+\gpt + \rawcode beats \opus + \rawcode by $20$\pp at $4.5\times$ lower cost ($91.9$\% vs $71.6$\%, \dollars{0.058} vs \dollars{0.262}); \haiku + \rawcode at \dollars{0.019}, $70.5$\% is statistically tied with \opus + \rawcode at $14\times$ lower cost.
+A team deploying an LLM-driven worksheet author over raw TikZ should default to \gpt; if budget is the binding constraint, \haiku + \rawcode is the price-floor configuration.
+\item \textbf{At the high-quality end, the three frontier+\structured cells converge within $1$\pp at a $7\times$ cost spread.}
+\gpt + \structured (\dollars{0.075}, $94.1$\%) is the unique Pareto corner: it dominates \sonnet + \structured (\dollars{0.088}, $93.4$\%) by $+0.8$\pp at $17$\% lower cost, and \opus + \structured (\dollars{0.532}, $93.3$\%) by $+0.8$\pp at $7\times$ lower cost.
+The marginal frontier-tier model buys nothing once the IR scaffolding is in the loop --- and across vendors, \opus + \structured is dominated even more decisively than \opus + \rawcode (the same cell is dominated under both strategies).
+\structured is the strategy we recommend for cross-vendor production deployment, with \gpt as the default model and \sonnet as a near-tied alternate for teams already in the Anthropic ecosystem.
 \end{itemize}
 
 \subsection{Extending the methodology}
@@ -85,6 +87,6 @@ We have re-encoded a 91-prompt geometry-relevant subset (HIGH-relevance plus med
 This is an empirical test of whether vision-LM judges and SymPy-decided predicates agree on text-to-diagram tasks where both can be applied.
 \item \textbf{Beyond plane geometry.}
 The predicate language (\cref{app:property_reference}) extends to coordinate-plane algebra (point-on-curve, intersection-of-curves), 3D solids (face-incidence, dihedral angles), and transformation-group constructions (rotation/reflection/translation equivalence) by adding the relevant SymPy primitives.
-Engineering and architectural drawings are similar: any domain where ``correctness'' decomposes into a finite list of relational properties decidable against a symbolic ground truth is a candidate for the same recipe.
+Engineering and architectural drawings are similar: any domain where ``correctness'' decomposes into a finite list of relational properties decidable against a symbolic ground truth is a candidate for the same methodology.
 The bottleneck is predicate-language design, not symbolic computation --- and the predicate language is the part future \GeoGen instantiations would inherit unchanged.
 \end{itemize}

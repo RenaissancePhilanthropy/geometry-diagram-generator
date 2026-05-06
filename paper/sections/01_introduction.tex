@@ -12,9 +12,85 @@ This is the gap \GeoGenBench fills.
 ``Draw an acute triangle $EFG$ with vertex angles $60^\circ$, $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''
 \end{quote}
 A correct rendering must satisfy: (a) $\angle E = 60^\circ$, $\angle F = 70^\circ$, (b) $H$ lies on segment $EF$ (not its extension), (c) $\angle GHE = 90^\circ$, (d) the triangle is acute.
-\GeoGenBench encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output.
-On this scenario (\texttt{tpl-t2-alt-EFG-H-60-70} in our pilot), \haiku and \opus pass under all three strategies; \gpt with \rawcode places $H$ on the line $EF$ but \emph{outside} the segment (extension); \sonnet with \rawcode draws an obtuse triangle.
+\GeoGenBench encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output (\cref{fig:teaser}).
+On this scenario (\texttt{tpl-t2-alt-EFG-H-60-70} in our pilot), \haiku and \opus pass under both strategies; \gpt with \rawcode places $H$ on the line $EF$ but \emph{outside} the segment (extension); \sonnet with \rawcode draws an obtuse triangle.
 The verifier flags each failure with a specific predicate verdict, not a holistic score, enabling actionable per-check error analysis.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    promptbox/.style={draw, rounded corners, fill=blue!6, align=left,
+                      text width=39mm, minimum height=34mm,
+                      inner sep=5pt, font=\small\itshape},
+    diagrambox/.style={draw, rounded corners, fill=gray!4, align=center,
+                       minimum width=42mm, minimum height=34mm, inner sep=4pt},
+    verdictbox/.style={draw, rounded corners, fill=green!6, align=left,
+                       text width=42mm, minimum height=34mm,
+                       inner sep=5pt, font=\scriptsize\ttfamily},
+    role/.style={font=\scriptsize\itshape, color=gray!55!black, align=center},
+    arrlbl/.style={font=\tiny\itshape, color=gray!50!black},
+    >=Stealth, line width=0.5pt, node distance=8mm
+]
+  %--- header roles row ---
+  \node[role] (lbl1) at (0, 0.6) {prompt};
+  \node[role] (lbl2) at (5.6, 0.6) {model output (rendered)};
+  \node[role] (lbl3) at (11.2, 0.6) {symbolic predicate verdicts};
+
+  %--- prompt (left) ---
+  \node[promptbox, anchor=north] (prompt) at (lbl1 |- 0,0)
+    {``Draw an acute triangle $EFG$ with vertex angles $60^{\circ}$, $70^{\circ}$ at $E$ and $F$.
+      Construct the altitude from $G$ meeting $EF$ at $H$.''};
+
+  %--- rendered diagram (middle) — drawn in TikZ ---
+  % Coordinates: E=(0,0), F=(5,0). Angle at E = 60°, angle at F = 70° → G ≈ (3.07, 5.31). H = foot ≈ (3.07, 0).
+  \node[diagrambox, anchor=north] (dia) at (lbl2 |- 0,0) {};
+  \begin{scope}[shift={($(dia.south) + (-1.45,0.4)$)}, scale=0.5]
+    \coordinate (E) at (0,0);
+    \coordinate (F) at (5,0);
+    \coordinate (G) at (3.07,5.31);
+    \coordinate (H) at (3.07,0);
+    \draw[thick] (E) -- (F) -- (G) -- cycle;
+    \draw[densely dashed, thick] (G) -- (H);
+    % right-angle marker at H (small square opening up-left toward G)
+    \draw[thick] (H) ++(-0.42,0) -- ++(0,0.42) -- ++(0.42,0);
+    % vertex labels
+    \node[anchor=north east, font=\small] at (E) {$E$};
+    \node[anchor=north west, font=\small] at (F) {$F$};
+    \node[anchor=south,      font=\small] at (G) {$G$};
+    \node[anchor=north,      font=\small] at ($(H)+(0.15,-0.05)$) {$H$};
+    % angle arcs + labels
+    \draw[thin] (0.7,0) arc (0:60:0.7);
+    \draw[thin] (4.3,0) arc (180:110:0.7);
+    \node[font=\scriptsize] at (1.05,0.34) {$60^{\circ}$};
+    \node[font=\scriptsize] at (3.95,0.34) {$70^{\circ}$};
+  \end{scope}
+
+  %--- verdicts (right) ---
+  \node[verdictbox, anchor=north] (verdict) at (lbl3 |- 0,0)
+    {\textcolor{green!50!black}{\textbf{\checkmark}}\ angle\_equal($\angle E,60^{\circ}$)\\[1pt]
+     \textcolor{green!50!black}{\textbf{\checkmark}}\ angle\_equal($\angle F,70^{\circ}$)\\[1pt]
+     \textcolor{green!50!black}{\textbf{\checkmark}}\ right\_angle($G,H,E$)\\[1pt]
+     \textcolor{green!50!black}{\textbf{\checkmark}}\ point\_on\_segment\\[-2pt]
+     \hphantom{\textbf{\checkmark}\ \ }($H,E,F$)\\[1pt]
+     \textcolor{green!50!black}{\textbf{\checkmark}}\ label\_present\\[-2pt]
+     \hphantom{\textbf{\checkmark}\ \ }($\{E,F,G,H\}$)\\[3pt]
+     \rmfamily\textbf{verdict:} \textcolor{green!50!black}{\textbf{strict\_pass}}};
+
+  %--- arrows between the three boxes (above the boxes' midline) ---
+  \draw[->, thick] (prompt.east)  -- (dia.west)
+        node[arrlbl, midway, above] {LLM emits}
+        node[arrlbl, midway, below] {TikZ$\to$SVG};
+  \draw[->, thick] (dia.east)     -- (verdict.west)
+        node[arrlbl, midway, above] {compile to}
+        node[arrlbl, midway, below] {SymPy + check};
+\end{tikzpicture}
+\caption{\textbf{A worked \GeoGenBench scenario, end-to-end.}
+The model receives only the natural-language prompt (left).
+It emits TikZ that we render to SVG and re-compile to symbolic geometry (centre).
+The per-scenario property list (right) is decided in microseconds against the SymPy coordinates: every clause becomes a typed predicate with a \texttt{true/false} verdict, no human grading, no LLM-as-judge.
+A scenario passes only when \emph{all} predicates are satisfied; failures localise to the specific predicate that broke.}
+\label{fig:teaser}
+\end{figure}
 
 \subsection{Methodology and instance}
 \label{ssec:naming}
@@ -27,32 +103,28 @@ The distinction matters: future \GeoGen-family benchmarks for coordinate-plane a
 
 \begin{enumerate}
 \item \textbf{The \GeoGen methodology and reusable verification toolkit.}
-We formalise a two-pillar recipe for generative-geometric-reasoning benchmarks: (a) \emph{procedural co-generation}, in which a small Python generator emits the natural-language prompt and the machine-checkable rubric from the same source code, eliminating drift between the question and its grading criteria and providing a built-in contamination defence (reviewers can re-roll the engine with new seeds); and (b) \emph{render-then-symbolic-verify}, in which the model's text-emitted output is compiled to symbolic objects against which a versioned, declarative predicate language (\cref{ssec:properties}, \cref{app:property_reference}) is decided in milliseconds.
+We formalise a two-pillar methodology for generative-geometric-reasoning benchmarks: (a) \emph{procedural co-generation}, in which a small Python generator emits the natural-language prompt and the machine-checkable rubric from the same source code, eliminating drift between the question and its grading criteria and providing a built-in contamination defence (reviewers can re-roll the engine with new seeds); and (b) \emph{render-then-symbolic-verify}, in which the model's text-emitted output is compiled to symbolic objects against which a versioned, declarative predicate language (\cref{ssec:properties}, \cref{app:property_reference}) is decided in milliseconds.
 We release both pillars as reusable code (template engine + verifier + 17-predicate language v1 + a soundness audit, \cref{sec:hardening}, that closes 4.6\% of silently-skipped pilot checks across three hardening passes).
-\item \textbf{The \GeoGenBench instance: 801 prompts, six frontier models, and a leaderboard with three deployment-relevant findings.}
+\item \textbf{The \GeoGenBench instance: 801 prompts, six frontier models, and a leaderboard with two deployment-relevant findings plus a cross-vendor portability finding.}
 \GeoGenBench is the methodology's first instantiation: 600 procedurally co-generated prompts (released as \texttt{bench\_generated.yaml}) plus 201 LLM-extracted curriculum prompts for breadth (released as \texttt{bench\_curriculum.yaml}).
-We benchmark six frontier models from three vendors (\opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash) under three generation strategies (raw TikZ; structured intermediate-representation JSON with check-and-revise; recipe-DSL with constraint solving), reporting --- at the \cref{sec:hardening}-hardened verifier --- a strict-pass spread of \textbf{60\pp} (36.7\% to 96.7\%) across non-saturating combos, a \textbf{$\mathbf{19\times}$ cost-with-equal-pass spread} between \haiku + \rawcode (87\% at \dollars{0.017}/scen) and \opus + \rawcode (80\% at \dollars{0.329}/scen), and a vendor-specific deployment-portability finding (\cref{ssec:gemini_finding}): \geminiflash's schema-state cap blocks structured generation entirely.
+We benchmark six frontier models from three vendors (\opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash) under two generation strategies (raw TikZ; structured intermediate-representation JSON with check-and-revise), reporting --- at the \cref{sec:hardening}-hardened verifier on a $600$-scenario $\times$ $3$-repeat draw --- a strict-pass spread of \textbf{$58$\pp} ($35.9$\% to $94.1$\%) across the eleven measurable cells, a \textbf{$\mathbf{7{\times}}$ cost-with-equivalent-pass spread} between \gpt + \structured ($94.1$\% at \dollars{0.075}/scen) and \opus + \structured ($93.3$\% at \dollars{0.532}/scen), and a vendor-specific deployment-portability finding (\cref{ssec:gemini_finding}): \geminiflash's schema-state cap blocks structured generation entirely.
 The dataset, the template engine, the verification toolkit, the leaderboard data, and a Docker-packaged TikZ$\to$SVG renderer are all released under permissive licenses (\cref{app:reproduction}).
 \end{enumerate}
 
 \subsection{Headline empirical results}
 
-Three findings from the post-hardening pilot, in order of importance:
+Two findings from the post-hardening headline run, in order of importance:
 
 \begin{itemize}
-\item \textbf{Strategy effect is real but smaller than the verifier's first reading suggested.}
-The \structured strategy lifts every model by \textbf{3--20\pp} of strict pass rate over direct TikZ (\rawcode):
-\gpt (73\% $\to$ 93\%, $+20$\pp), \sonnet (80\% $\to$ 94\%, $+14$\pp), \opus (80\% $\to$ 100\% on $N=12$, $+20$\pp), \haiku (87\% $\to$ 90\%, $+3$\pp).
-The pre-hardening verifier reported gaps of 10--30\pp; the \cref{sec:hardening} audit attributes about half of that gap to silent skips of \texttt{\textbackslash pgfmathsetmacro}-style coordinates that \rawcode outputs use more often than IR-compiled outputs.
-We report both numbers in \cref{sec:results} and \cref{app:property_reference}.
-\item \textbf{Cost-equivalence: scaffolding beats scale.}
-\haiku with \rawcode (87\% strict pass, \dollars{0.017}/scenario) \emph{dominates} \opus with \rawcode (80\% strict pass, \dollars{0.329}/scenario) on both axes --- $7$\pp more correct diagrams at $19\times$ lower cost.
-Adding \structured on \haiku (\dollars{0.032}/scenario) buys a further $3$\pp at $1.9\times$ the \haiku cost.
-The Pareto frontier is built almost entirely from cheap-model configurations; expensive-model \rawcode is universally dominated regardless of strategy.
-\item \textbf{The recipe-DSL strategy is unstable across models.}
-\sonnet uses the recipe DSL well (97\% strict, $+17$\pp over hardened \rawcode).
-\gpt and \haiku do not (63\% and 73\%, both \emph{worse} than their \rawcode by $10$--$13$\pp).
-A small custom DSL with built-in geometric priors transfers poorly across model families and is not a recommendable deployment strategy below the frontier-model tier.
+\item \textbf{Strategy effect is uneven across models.}
+The \structured strategy lifts every model on strict pass, but the gain ranges from $+2.2$ to $+24.7$\pp:
+\gpt ($91.9\% \to 94.1\%$, $+2.2$\pp), \haiku ($70.5\% \to 75.3\%$, $+4.8$\pp), \sonnet ($81.2\% \to 93.4\%$, $+12.2$\pp), \opus ($71.6\% \to 93.3\%$, $+21.7$\pp), \geminipro ($58.4\% \to 83.1\%$, $+24.7$\pp).
+Models that already do well at raw TikZ (\gpt) gain little from scaffolding; models that struggle at raw (\opus, \geminipro) gain the most.
+The pre-hardening verifier reported gaps of $10$--$30$\pp; the \cref{sec:hardening} audit attributes about half of the early signal to silent skips of \texttt{\textbackslash pgfmathsetmacro}-style coordinates that \rawcode outputs use more often than IR-compiled outputs.
+\item \textbf{Frontier convergence: three flagship models tie within $1$\pp at IR strategy, but cost differs by $7\times$.}
+Under \structured, \gpt ($94.1$\% strict, \dollars{0.075}/scenario), \sonnet ($93.4$\%, \dollars{0.088}), and \opus ($93.3$\%, \dollars{0.532}) span only $0.8$\pp of strict pass at a cost ratio of $7.1\times$; \gpt and \sonnet are essentially tied while \opus carries no measurable quality premium for $6\times$ the cost.
+\opus + \rawcode (\dollars{0.262}/scenario, $71.6$\%) is the most decisively dominated cell: \gpt + \rawcode (\dollars{0.058}, $91.9$\%) gives $20$\pp better pass at $4.5\times$ lower cost.
+The Pareto frontier collapses to two cells (cheapest and best-quality), with all three frontier+IR cells essentially co-located.
 \end{itemize}
 
 \subsection{Roadmap}
@@ -60,6 +132,6 @@ A small custom DSL with built-in geometric priors transfers poorly across model 
 \Cref{sec:related} situates \GeoGenBench against geometry-understanding benchmarks, math benchmarks without diagrams, and image-generation benchmarks.
 \Cref{sec:design} describes the dataset and the property language.
 \Cref{sec:verification} audits verifier soundness and completeness, including a quantified false-positive rate from adversarial probing and the \cref{sec:hardening} that lifted 4.6\% of pilot records from soft-pass to strict-pass.
-\Cref{sec:strategies} describes the three generation strategies.
+\Cref{sec:strategies} describes the two generation strategies.
 \Cref{sec:results} presents the leaderboard, Pareto analysis, per-tier and per-template breakdowns, and failure-mode taxonomy.
 \Cref{sec:discussion} discusses what \GeoGenBench does and does not measure, limitations, and threats to validity.

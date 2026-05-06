@@ -22,19 +22,19 @@ docker run -d -p 8001:8001 \
 
 \subsection{Reproducing the headline numbers}
 
-The headline pilot in \cref{sec:results} can be reproduced with:
+The headline run in \cref{sec:results} can be reproduced with:
 \begin{lstlisting}
 bash evals/leaderboard_launch.sh
 \end{lstlisting}
-This iterates over (model $\times$ strategy) combinations against \texttt{evals/scenarios\_pilot.yaml}, writing per-combo JSONL files into \texttt{evals/results/leaderboard\_pilot/}.
+This iterates over (model $\times$ strategy) combinations against \texttt{evals/scenarios\_generated.yaml}, writing per-combo JSONL files into \texttt{evals/results/headline\_run/}.
 Subsequent analysis:
 \begin{lstlisting}
 uv run python -m evals.leaderboard_analyze \
-    --input-dir evals/results/leaderboard_pilot_v3 \
+    --input-dir evals/results/headline_run/unified \
     --output-md REPORT.md --output-csv leaderboard.csv
 
 uv run python -m evals.leaderboard_plot \
-    --input-dir evals/results/leaderboard_pilot_v3 \
+    --input-dir evals/results/headline_run/unified \
     --output-dir docs/figures/geogen-pilot
 \end{lstlisting}
 
@@ -50,7 +50,7 @@ The procedural variant generator preserves the 30-template / 200-per-tier struct
 
 \subsection{Re-grading without LLM calls}
 
-Because the pilot JSONL files store every model's TikZ output verbatim, the verifier can be re-run against a different commit's check semantics without spending another dollar on LLM tokens:
+Because the headline-run JSONL files store every model's TikZ output verbatim, the verifier can be re-run against a different commit's check semantics without spending another dollar on LLM tokens:
 \begin{lstlisting}
 uv run python -m evals.regrade \
     --input-dir evals/results/leaderboard_pilot_v2 \
@@ -81,3 +81,21 @@ ds = mlc.Dataset(jsonld='benchmark/definitions/croissant.json')
 print(ds.metadata.ctx.issues.report() or 'OK')"
 \end{lstlisting}
 The complete \GeoGen datasheet (\citealp{gebru2021datasheets} format) is at \texttt{docs/datasheet.md}; the Hugging-Face-ready dataset card is at \texttt{benchmark/definitions/README.md} and uses the same content.
+
+\subsection{Curriculum source attribution and licensing}
+\label{app:curriculum_attribution}
+
+The 201 curriculum-extracted scenarios (\cref{ssec:sources}) were prompted by lesson-level topical structure drawn from \textit{Bluebonnet Learning} K--12 mathematics, the open educational curriculum produced by Carnegie Learning, Inc.\ for the Texas Education Agency under the Texas State Board of Education's Instructional Materials and Technology Allotment process \citep{bluebonnet2024}.
+Specifically, we used the Teacher's Editions of the Grade 6, Grade 7, Grade 8, and high-school Geometry volumes.
+The Bluebonnet Learning materials are made publicly available by the Texas Education Agency at \url{https://learn.texas.gov/} for use by Texas public schools and the broader education community.
+
+\paragraph{What we use from Bluebonnet, and what we release.}
+Our pipeline uses Bluebonnet only as a \emph{topical scaffold}: we extract the lesson-level structure (chapter titles, lesson topics, and the geometric concepts each lesson exercises), and we prompt an LLM (\sonnet) to author a fresh, student-style diagram-drawing request that exercises that concept.
+We do not redistribute, paraphrase, or otherwise include any portion of the Bluebonnet textbook prose, figures, problem statements, solutions, or pedagogical commentary in the released benchmark.
+The released artefacts are: (a) our LLM-generated diagram-drawing prompts (each is a short, self-contained natural-language request with no excerpted Bluebonnet text); (b) the corresponding property-list rubrics we authored against those prompts; and (c) the per-scenario lineage tags identifying which Bluebonnet chapter and lesson \emph{topic} a scenario was inspired by, so that downstream users can replicate or extend the topical coverage.
+The Bluebonnet attribution lives in each curriculum scenario's \texttt{metadata.lineage} field in the released JSONL.
+
+\paragraph{Licensing.}
+The Bluebonnet Learning curriculum carries its own publication terms set by the Texas Education Agency and Carnegie Learning, Inc.\ for the Bluebonnet programme; we do not assert any rights in those source materials, and any use of the Bluebonnet curriculum itself must be made under those terms.
+Our derivative artefacts --- the LLM-generated prompt rewrites, the property-list rubrics, the verifier code, the renderer, the Croissant metadata, the datasheet, and this paper --- are released under the MIT License.
+Users wishing to access the underlying Bluebonnet Learning materials should obtain them directly from the Texas Education Agency Bluebonnet portal (\url{https://learn.texas.gov/}); we do not redistribute any Bluebonnet content.

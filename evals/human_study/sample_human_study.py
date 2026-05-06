@@ -26,6 +26,7 @@ DEFAULT_INPUT_DIR = REPO_ROOT / "evals" / "results" / "leaderboard_pilot_v3"
 DEFAULT_OUTPUT_PATH = REPO_ROOT / "evals" / "human_study" / "sample.json"
 DEFAULT_SEED = 42
 DEFAULT_TARGET_N = 200
+DEFAULT_STRATEGIES = ("raw_code", "structured")
 
 
 def load_pilot_records(input_dir: Path) -> list[dict[str, Any]]:
@@ -166,12 +167,24 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--target-n", type=int, default=DEFAULT_TARGET_N)
+    parser.add_argument(
+        "--strategies",
+        nargs="+",
+        default=list(DEFAULT_STRATEGIES),
+        help="Strategies to include in the sampling pool. Default matches the headline run "
+             "(raw_code, structured); the deprecated 'recipe' strategy is excluded.",
+    )
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
 
     records = load_pilot_records(args.input_dir)
     print(f"Loaded {len(records)} records from {args.input_dir}")
+
+    allowed = set(args.strategies)
+    pre_strategy = len(records)
+    records = [r for r in records if r.get("strategy") in allowed]
+    print(f"  filtered to strategies {sorted(allowed)}: {len(records)}/{pre_strategy}")
 
     rendered = [r for r in records if has_renderable_svg(r)]
     print(f"  with renderable SVG: {len(rendered)}")

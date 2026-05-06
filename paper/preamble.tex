@@ -46,7 +46,7 @@
 
 % --- diagrams (TikZ for figures we draw inline; pre-rendered figures use \includegraphics) ---
 \usepackage{tikz}
-\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,calc}
 
 % --- misc ---
 \usepackage{xspace}
@@ -65,16 +65,15 @@
 \newcommand{\geogen}{\GeoGen}              % alias
 \newcommand{\geogenbench}{\GeoGenBench}    % alias
 
-\newcommand{\strat}[1]{\textsf{#1}}        % strategy names (raw_code, structured, recipe)
+\newcommand{\strat}[1]{\textsf{#1}}        % strategy names (raw_code, structured)
 \newcommand{\rawcode}{\strat{raw\_code}\xspace}
 \newcommand{\structured}{\strat{structured}\xspace}
-\newcommand{\recipe}{\strat{recipe}\xspace}
 
 \newcommand{\modelname}[1]{\textsf{#1}}
 \newcommand{\opus}{\modelname{Claude\,Opus\,4.7}\xspace}
 \newcommand{\sonnet}{\modelname{Claude\,Sonnet\,4.6}\xspace}
 \newcommand{\haiku}{\modelname{Claude\,Haiku\,4.5}\xspace}
-\newcommand{\gpt}{\modelname{GPT-5.1}\xspace}
+\newcommand{\gpt}{\modelname{GPT-5.5}\xspace}
 \newcommand{\geminipro}{\modelname{Gemini\,2.5\,Pro}\xspace}
 \newcommand{\geminiflash}{\modelname{Gemini\,2.5\,Flash}\xspace}
 

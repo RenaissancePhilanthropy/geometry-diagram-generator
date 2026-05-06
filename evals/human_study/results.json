@@ -1,0 +1,38 @@
+{
+  "consensus_available": false,
+  "irr": {
+    "irr_q1_binary": {
+      "interpretation": "n/a",
+      "kappa": NaN,
+      "n": 0
+    },
+    "irr_q1_threeway": {
+      "interpretation": "n/a",
+      "kappa": NaN,
+      "n": 0
+    }
+  },
+  "per_predicate_q2": {},
+  "per_rater_vs_auto": {
+    "rater_a": {
+      "interpretation": "n/a",
+      "kappa": NaN,
+      "n": 0
+    },
+    "rater_b": {
+      "interpretation": "n/a",
+      "kappa": NaN,
+      "n": 0
+    }
+  },
+  "raters": [
+    "rater_a",
+    "rater_b"
+  ],
+  "responses_per_rater": {
+    "rater_a": 0,
+    "rater_b": 0
+  },
+  "sample_n": 200,
+  "schema_version": 1
+}

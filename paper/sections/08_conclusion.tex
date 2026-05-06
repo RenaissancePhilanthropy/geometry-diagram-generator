@@ -3,8 +3,8 @@
 
 We introduced \GeoGenBench, the first benchmark for generative geometric reasoning with fully-automatic, geometry-aware verification.
 \GeoGenBench pairs 801 natural-language prompts with executable property lists decided in milliseconds via SymPy, removing the dependence on human raters or vision-language judges that limit prior generative-exam benchmarks.
-Across four frontier models and three generation strategies on a stratified pilot, we find a $\sim$37\pp strict-pass spread and a Pareto frontier dominated by cheap-model configurations: \haiku with direct TikZ generation reaches 87\% strict pass at \dollars{0.017}/scenario, beating \opus on the same strategy at $19\times$ lower cost.
-A scaffolded intermediate-representation strategy adds a further 3--20\pp on top.
+Across six frontier models and two generation strategies on the headline run ($600$ scenarios $\times$ $3$ repeats per cell), we find a $\sim$$58$\pp strict-pass spread ($35.9$\% to $94.1$\%) and a Pareto frontier where seven of eleven measured cells are non-dominated: \gpt + \structured is the unique high-quality corner at $94.1$\% strict pass and \dollars{0.075}/scenario, dominating both \sonnet + \structured ($93.4$\%, \dollars{0.088}) and \opus + \structured ($93.3$\%, \dollars{0.532}) on \emph{both} axes despite a $7\times$ price spread between cheapest and most expensive frontier flagship; \gpt + \rawcode reaches $91.9$\% at \dollars{0.058}, dominating \opus + \rawcode by $20$\pp at $4.5\times$ lower cost.
+A scaffolded intermediate-representation strategy adds $+2$--$25$\pp on top of \rawcode on strict pass, with the largest gains on the models that struggle most with raw TikZ.
 We documented and quantified the verifier's soundness via adversarial probing and a hardening pass that closed 4.6\% of silently-skipped checks.
 
 We release the dataset, the procedural template engine that generated it (allowing reviewers to roll new contamination-free splits), the verification toolkit, and a public leaderboard.
