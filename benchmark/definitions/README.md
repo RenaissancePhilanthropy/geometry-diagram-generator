@@ -123,13 +123,13 @@ The full verifier toolkit and the Docker renderer are released in the project re
 ## Sources
 
 - Templated split: deterministic Python template engine (`evals/generate_scenarios.py` in the source repo); seed 42.
-- Curriculum split: K-12 geometry textbook chapters, processed by Anthropic Claude Sonnet under author supervision; only generated prompts and verifier annotations are released, not source textbook text.
+- Curriculum split: prompted by lesson-level topical structure extracted from the **Carnegie Learning *Bluebonnet Learning* Teacher's Edition** (Grades 6–8 and Geometry), the open K–12 mathematics curriculum produced for the Texas Education Agency and made publicly available at https://learn.texas.gov/. We use the Bluebonnet curriculum only as a topical scaffold (chapter / lesson / concept structure); no Bluebonnet textbook prose, figures, problem statements, solutions, or pedagogical commentary appears in the released scenarios. An LLM (Anthropic Claude Sonnet 4.6) authors fresh, student-style diagram-drawing requests against each lesson topic, under author supervision; the property-list rubrics are author-written. Per-scenario lineage tags (`metadata.lineage`) identify the source chapter / lesson topic for traceability.
 
 ## Licensing
 
 - Code (template engine, verifier, renderer, this dataset card): MIT License (`https://opensource.org/licenses/MIT`).
 - Templated scenarios: MIT License.
-- Curriculum scenarios: derivative annotations released under MIT; the underlying textbook content is not redistributed and is referenced under §107 (educational fair use, US Copyright Act).
+- Curriculum scenarios: our LLM-generated prompt rewrites and property-list rubrics are released under MIT. The underlying *Bluebonnet Learning* curriculum that inspired them is published by the Texas Education Agency and Carnegie Learning, Inc.\ under the terms of the Bluebonnet programme — we make no claim of rights in that source material and do not redistribute any of it. Users wishing to access the Bluebonnet curriculum itself should obtain it directly from the Texas Education Agency at https://learn.texas.gov/ under that programme's own terms.
 
 ## Versioning
 
