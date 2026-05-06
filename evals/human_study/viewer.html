@@ -583,7 +583,7 @@
       <div id="diagram-host"></div>
       <div class="measure-toolbar" id="measure-toolbar" style="display:none">
         <button id="tool-ruler" title="Ruler: click two points to measure distance">📏 Ruler</button>
-        <button id="tool-protractor" title="Protractor: click vertex then two arm points to measure angle">∠ Protractor</button>
+        <button id="tool-protractor" title="Protractor: click ray · vertex · ray to measure angle">∠ Protractor</button>
         <span class="measure-sep" style="display:none"></span>
         <button id="tool-clear" style="display:none">Clear</button>
       </div>
@@ -1178,7 +1178,7 @@ function renderOverlay() {
       svg.appendChild(labelRect((a.x + b.x) / 2, (a.y + b.y) / 2, `${dist} px`));
 
     } else if (m.type === 'protractor') {
-      const [V, A1, A2] = m.points.map(p => projectPt(p, hostRect));
+      const [A1, V, A2] = m.points.map(p => projectPt(p, hostRect));
       const d1 = normalize2d(A1.x - V.x, A1.y - V.y);
       const d2 = normalize2d(A2.x - V.x, A2.y - V.y);
 
