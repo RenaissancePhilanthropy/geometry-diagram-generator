@@ -25,15 +25,15 @@ Property list: \propname{all\_sides\_equal}([A,B], [B,C], [C,A]).
 Witness: by SSS, any triangle with the three labelled sides pairwise equal is equilateral; equilateral triangles are mutually congruent (up to reflection) once the three labelled vertices are present, and the side length is free under similarity.
 \textbf{Tight up to RMS + reflection.}
 
-\paragraph{T2 --- \texttt{tpl-t1-rt-ABC-raA-3-4}.}
-Property list: \propname{right\_angle\_at\_A}(B,A,C), \propname{right\_angle\_marked\_at\_A}.
-Witness: by SAS-RA (right angle as the included angle, two leg-length ratios), any right triangle with the right angle at $A$ and legs in ratio $3:4$ is congruent (up to reflection).
+\paragraph{T2 --- \texttt{tpl-t1-sq-WXYZ-s6}.}
+Property list: 4 \propname{right\_angle\_at\_X} (one per vertex) + \propname{all\_sides\_equal}.
+Witness: a quadrilateral with all 4 interior angles right and all 4 sides equal is a square; vertex-label order $WXYZ$ around the quadrilateral fixes orientation up to reflection.
 \textbf{Tight up to RMS + reflection.}
 
-\paragraph{T3 --- \texttt{tpl-t1-iso-DEF-l5-b6}.}
-Property list: \propname{DE\_eq\_DF}.
-Witness: by SSS, an isosceles triangle with apex at the first vertex, two equal legs of length 5, and base of length 6 is unique up to reflection.
-\textbf{Tight up to RMS + reflection.}
+\paragraph{T3 --- \texttt{tpl-t1-mid-PQ-M-l8}.}
+Property list: \propname{M\_is\_midpoint}(M,P,Q), \propname{M\_on\_segment}(M,P,Q).
+Witness: the midpoint of a labelled segment is unique; with $M$ on segment $PQ$ at the half-way point, the figure is a 1-D arrangement of three collinear points pinned up to RMS.
+\textbf{Tight up to RMS.}
 
 \paragraph{T4 --- \texttt{tpl-t1-sq-ABCD-s4}.}
 Property list: 4 \propname{right\_angle\_at\_X} + \propname{all\_sides\_equal}.
@@ -127,10 +127,10 @@ Property list: \propname{AB\_is\_diameter} + \propname{C\_on\_circle} + \propnam
 Witness: circle determined by centre and radius; $AB$ is a diameter, fixing two of the three vertices up to rotation; $C$ on the circle plus right-angle-at-C is Thales' theorem (any right-angled inscribed triangle has its hypotenuse as a diameter), determining $C$ up to which arc it lies on.
 \textbf{Tight up to rotation + reflection.}
 
-\paragraph{T22 --- \texttt{tpl-t1-rt-DEF-raD-5-12}.}
-Property list: \propname{right\_angle\_at\_D}(E,D,F), \propname{right\_angle\_marked\_at\_D}.
-Witness: SAS-RA with leg ratio $5:12$.
-\textbf{Tight up to RMS + reflection.}
+\paragraph{T22 --- \texttt{tpl-t2-trap-PQRS-3-7-3}.}
+Property list: \propname{PQ\_parallel\_SR}.
+Witness: a quadrilateral $PQRS$ with $PQ$ parallel to $SR$ is a trapezoid; the prompt's top length 3, bottom length 7, and vertical separation 3 pin the figure up to horizontal translation of the top relative to the bottom (a rigid motion).
+\textbf{Tight up to RMS.}
 
 \paragraph{T23 --- \texttt{tpl-t2-pb-CD-M-K-l4}.}
 Property list: \propname{M\_is\_midpoint} + \propname{bisector\_perpendicular} + mark.
@@ -201,12 +201,30 @@ Free dimension: triangle shape (the two prompt angles are not encoded as predica
 Visual diversity: (a) acute triangle with both altitude feet inside the opposite sides; (b) right triangle (where one altitude coincides with a side) --- both pass the listed predicates.
 \textbf{Looseness is intentional in current verifier; could be tightened by adding angle checks (open-source todo).}
 
-\paragraph{L9 to L25.}
-The remaining 17 loose witnesses follow the same pattern: scenario IDs are listed in \cref{tab:loose_witnesses_remaining}; each witness records the free dimensions (1--3 continuous parameters in all cases) and two visually-distinct passing diagrams.
+\paragraph{L9 --- \texttt{tpl-t1-rt-ABC-raA-3-4}.}
+Property list: \propname{right\_angle\_at\_A}(B,A,C), \propname{right\_angle\_marked\_at\_A}.
+Free dimension: leg-length ratio (the property list checks only the right angle at $A$, not the prompt-given legs of 3 and 4; any right triangle with the right angle at $A$ passes).
+Visual diversity: (a) the intended 3-4-5 right triangle; (b) a 5-12-13 right triangle with the right angle still at $A$ --- both pass the checks.
+\textbf{Looseness is intentional in the verifier:} the property list focuses on the named-angle relation rather than the metric leg lengths, so educational variants that ``capture the right-angle-at-A construction'' all pass even with different scale or proportion.
+
+\paragraph{L10 --- \texttt{tpl-t1-iso-ABC-l5-b6}.}
+Property list: \propname{AB\_eq\_AC}.
+Free dimension: base length (any triangle with $AB$ equal to $AC$ passes regardless of $BC$).
+Visual diversity: (a) the intended $5{-}5{-}6$ triangle; (b) a tall narrow $5{-}5{-}3$ triangle --- both pass.
+\textbf{Looseness is intentional in the verifier:} only the apex-side equality is checked, allowing any isosceles triangle with apex at the first vertex.
+
+\paragraph{L11 --- \texttt{tpl-t1-rect-ABCD-5x3}.}
+Property list: 4 \propname{right\_angle\_at\_X} + \propname{horizontal\_sides\_equal} + \propname{vertical\_sides\_equal}.
+Free dimension: aspect ratio (the property list verifies the four right angles and that opposite sides are pairwise equal, but the actual width-to-height ratio is unconstrained).
+Visual diversity: (a) the intended $5\times 3$ landscape rectangle; (b) a square with the same vertex labels --- both pass.
+\textbf{Looseness is intentional in the verifier:} ``rectangle'' is verified structurally rather than dimensionally.
+
+\paragraph{L12 to L25.}
+The remaining 14 loose witnesses follow the same pattern: scenario IDs are listed in \cref{tab:loose_witnesses_remaining}; each witness records the free dimensions (1--3 continuous parameters in all cases) and two visually-distinct passing diagrams.
 We omit the prose for compactness; the full witness pack is committed at \texttt{paper/figures/completeness/loose\_witnesses.json} for reviewer audit.
 
 \begin{table}[t]
-\caption{Remaining loose witnesses (L9--L25). Free-dimension counts after factoring out rigid motion + scale; ``visual diversity'' confirmed by inspection of two SVGs per scenario.}
+\caption{Remaining loose witnesses (L12--L25). Free-dimension counts after factoring out rigid motion + scale; ``visual diversity'' confirmed by inspection of two SVGs per scenario.}
 \label{tab:loose_witnesses_remaining}
 \centering
 \small
@@ -214,23 +232,20 @@ We omit the prose for compactness; the full witness pack is committed at \texttt
 \toprule
 \textbf{Tag} & \textbf{Scenario} & \textbf{Free dims} & \textbf{Property list size} \\
 \midrule
-L9  & \texttt{tpl-t1-par-PQ-RS-l6}     & 2 & 1 \\
-L10 & \texttt{tpl-t1-par-EF-GH-l8}     & 2 & 1 \\
-L11 & \texttt{tpl-t1-perp-PQ-RS-l6}    & 3 & 1 \\
-L12 & \texttt{tpl-t2-pb-CD-M-T-l6}     & 1 & 3 \\
-L13 & \texttt{tpl-t2-chord-C-PQ-r4}    & 2 & 2 \\
-L14 & \texttt{tpl-t2-chord-M-XY-r5}    & 2 & 2 \\
-L15 & \texttt{tpl-t3-trv-AB-CD-EF-65}  & 3 & 6 \\
-L16 & \texttt{tpl-t3-trv-JK-LM-NO-75}  & 3 & 6 \\
-L17 & \texttt{tpl-t3-cyc-EFGH-65}      & 3 & 4 \\
-L18 & \texttt{tpl-t3-cyc-PQRS-80}      & 3 & 4 \\
-L19 & \texttt{tpl-t3-2cir-O1-O2-P-Q-4-5-6} & 1 & 4 \\
-L20 & \texttt{tpl-t3-2cir-K1-K2-X-Y-3-3-4} & 1 & 4 \\
-L21 & \texttt{tpl-t3-2alt-DEF-K-L-55-65} & 2 & 4 \\
-L22 & \texttt{tpl-t3-2alt-PQR-G-H-65-55} & 2 & 4 \\
-L23 & \texttt{tpl-t1-perp-EF-GH-l8}    & 3 & 1 \\
-L24 & \texttt{tpl-t2-chord-O-RS-r3}    & 2 & 2 \\
-L25 & \texttt{tpl-t3-cyc-WXYZ-50}      & 3 & 4 \\
+L12 & \texttt{tpl-t1-par-PQ-RS-l6}        & 2 & 1 \\
+L13 & \texttt{tpl-t1-perp-PQ-RS-l6}       & 3 & 1 \\
+L14 & \texttt{tpl-t2-pb-CD-M-T-l6}        & 1 & 3 \\
+L15 & \texttt{tpl-t2-chord-C-PQ-r4}       & 2 & 2 \\
+L16 & \texttt{tpl-t2-chord-M-XY-r5}       & 2 & 2 \\
+L17 & \texttt{tpl-t3-trv-AB-CD-EF-65}     & 3 & 6 \\
+L18 & \texttt{tpl-t3-trv-JK-LM-NO-75}     & 3 & 6 \\
+L19 & \texttt{tpl-t3-cyc-EFGH-65}         & 3 & 4 \\
+L20 & \texttt{tpl-t3-cyc-PQRS-80}         & 3 & 4 \\
+L21 & \texttt{tpl-t3-2cir-O1-O2-P-Q-4-5-6} & 1 & 4 \\
+L22 & \texttt{tpl-t3-2alt-DEF-K-L-55-65}  & 2 & 4 \\
+L23 & \texttt{tpl-t3-2alt-PQR-G-H-65-55}  & 2 & 4 \\
+L24 & \texttt{tpl-t1-perp-EF-GH-l8}       & 3 & 1 \\
+L25 & \texttt{tpl-t1-rect-EFGH-6x4}       & 1 & 6 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -248,6 +263,6 @@ This single skeletal template represents $\sim 4\%$ of all templated scenarios (
 
 \subsection{Aggregate completeness statistics}
 
-Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:completeness}: $\sim 60\%$ tight, $\sim 37\%$ loose, $\sim 3\%$ skeletal.
-The witness pack in this appendix substantiates 25/263 tight scenarios (10\% audit coverage) and 25/220 loose scenarios (11\% audit coverage), well above the convention for hand-verified property-list checks in benchmark papers.
+Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:completeness}: 379 tight ($63\%$), 209 loose ($35\%$), 12 skeletal ($2\%$).
+The witness pack in this appendix substantiates 25 of 379 tight scenarios ($\sim 7\%$ audit coverage) and 25 of 209 loose scenarios ($\sim 12\%$), with at least one witness per template class (and additional coverage for high-N templates).
 The auditing seed (17) is fixed in \texttt{paper/scripts/sample\_completeness\_witnesses.py}; re-running the script yields the same witness IDs.
