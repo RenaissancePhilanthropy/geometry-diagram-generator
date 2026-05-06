@@ -173,11 +173,37 @@
       linear-gradient(45deg, transparent 49.5%, rgba(0,0,0,0.012) 49.5% 50.5%, transparent 50.5%) 0/20px 20px,
       #ffffff;
     overflow: hidden;
+    position: relative;
   }
   #diagram-host {
     width: 100%; height: 100%; padding: 16px;
     display: flex; align-items: center; justify-content: center;
+    position: relative;
   }
+  /* ---------- Measure toolbar ---------- */
+  .measure-toolbar {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 11;
+    display: flex; align-items: center; gap: 4px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 6px;
+    box-shadow: var(--shadow-md);
+  }
+  .measure-toolbar button {
+    border: 1px solid transparent; background: transparent;
+    padding: 4px 10px; border-radius: 999px;
+    font: inherit; font-size: 12px; cursor: pointer; color: var(--ink-soft);
+    transition: all 120ms ease; white-space: nowrap;
+  }
+  .measure-toolbar button:hover { background: var(--panel-soft); color: var(--ink); }
+  .measure-toolbar button.active {
+    background: var(--accent-soft); border-color: var(--accent);
+    color: var(--accent); font-weight: 600;
+  }
+  .measure-toolbar .measure-sep {
+    width: 1px; height: 16px; background: var(--line); margin: 0 2px;
+  }
+
   #diagram-host img, #diagram-host svg {
     max-width: 100%; max-height: 100%; height: auto;
     background: #fff;
@@ -555,6 +581,12 @@
     <div class="card-title">Diagram <span class="right" id="diag-meta"></span></div>
     <div class="card-body">
       <div id="diagram-host"></div>
+      <div class="measure-toolbar" id="measure-toolbar" style="display:none">
+        <button id="tool-ruler" title="Ruler: click two points to measure distance">📏 Ruler</button>
+        <button id="tool-protractor" title="Protractor: click vertex then two arm points to measure angle">∠ Protractor</button>
+        <span class="measure-sep" style="display:none"></span>
+        <button id="tool-clear" style="display:none">Clear</button>
+      </div>
     </div>
   </section>
 
@@ -627,6 +659,7 @@
       <tr><td>Navigate</td><td><kbd>←</kbd> <kbd>→</kbd></td></tr>
       <tr><td>Show this help</td><td><kbd>?</kbd></td></tr>
       <tr><td>Close help</td><td><kbd>Esc</kbd></td></tr>
+      <tr><td>Measure tools</td><td>Toolbar at bottom of diagram</td></tr>
     </table>
     <p style="font-size:12px; color:var(--muted); margin-top:12px; line-height:1.5;">
       The notes textarea captures keystrokes — click out of it before using shortcuts.
