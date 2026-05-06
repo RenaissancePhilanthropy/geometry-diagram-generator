@@ -730,7 +730,7 @@ function getMeasureOverlay() {
   if (!_measureOverlay) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.id = 'measure-overlay';
-    svg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; pointer-events:none; cursor:default;';
+    svg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; pointer-events:none; cursor:default; background:none;';
     svg.addEventListener('click', onOverlayClick);
     _measureOverlay = svg;
   }
@@ -1117,10 +1117,10 @@ function normalize2d(dx, dy) {
   return { x: dx / len, y: dy / len };
 }
 
-function projectPt(frac, imgRect, hostRect) {
+function projectPt(frac, hostRect) {
   return {
-    x: frac.x * imgRect.width  + (imgRect.left - hostRect.left),
-    y: frac.y * imgRect.height + (imgRect.top  - hostRect.top),
+    x: frac.x * hostRect.width,
+    y: frac.y * hostRect.height,
   };
 }
 
@@ -1140,14 +1140,13 @@ function renderOverlay() {
   if (!img || !img.complete || img.naturalWidth === 0) return;
 
   const hostRect = host.getBoundingClientRect();
-  const imgRect  = img.getBoundingClientRect();
   svg.setAttribute('viewBox', `0 0 ${hostRect.width} ${hostRect.height}`);
 
   const ACCENT = 'var(--accent)';
   const ARC_R = 30;
 
   function dot(pt, opacity) {
-    const { x, y } = projectPt(pt, imgRect, hostRect);
+    const { x, y } = projectPt(pt, hostRect);
     return makeSvgEl('circle', { cx: x, cy: y, r: 4, fill: ACCENT, opacity: opacity ?? 1 });
   }
 
@@ -1169,7 +1168,7 @@ function renderOverlay() {
 
   for (const m of measureState.measurements) {
     if (m.type === 'ruler') {
-      const [a, b] = m.points.map(p => projectPt(p, imgRect, hostRect));
+      const [a, b] = m.points.map(p => projectPt(p, hostRect));
       svg.appendChild(makeSvgEl('line', {
         x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: ACCENT, 'stroke-width': 1.5,
       }));
@@ -1179,7 +1178,7 @@ function renderOverlay() {
       svg.appendChild(labelRect((a.x + b.x) / 2, (a.y + b.y) / 2, `${dist} px`));
 
     } else if (m.type === 'protractor') {
-      const [V, A1, A2] = m.points.map(p => projectPt(p, imgRect, hostRect));
+      const [V, A1, A2] = m.points.map(p => projectPt(p, hostRect));
       const d1 = normalize2d(A1.x - V.x, A1.y - V.y);
       const d2 = normalize2d(A2.x - V.x, A2.y - V.y);
 
@@ -1233,13 +1232,12 @@ function onOverlayClick(e) {
   if (!measureState.tool) return;
 
   const host = $("#diagram-host");
-  const img = host ? host.querySelector('img') : null;
-  if (!img) return;
+  if (!host || !host.querySelector('img')) return;
 
-  const imgRect = img.getBoundingClientRect();
-  // Normalise click to [0,1] within image rect
-  const fx = Math.max(0, Math.min(1, (e.clientX - imgRect.left) / imgRect.width));
-  const fy = Math.max(0, Math.min(1, (e.clientY - imgRect.top)  / imgRect.height));
+  const hostRect = host.getBoundingClientRect();
+  // Normalise click to [0,1] within the full diagram host area
+  const fx = Math.max(0, Math.min(1, (e.clientX - hostRect.left) / hostRect.width));
+  const fy = Math.max(0, Math.min(1, (e.clientY - hostRect.top)  / hostRect.height));
   const pt = { x: fx, y: fy };
 
   measureState.pending.push(pt);
