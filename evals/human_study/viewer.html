@@ -903,15 +903,33 @@ function render() {
   // Diagram
   const host = $("#diagram-host");
   host.innerHTML = "";
+  const overlaySvg = getMeasureOverlay();
+  const toolbar = document.getElementById('measure-toolbar');
+
   if (item.svg_path) {
     const img = document.createElement("img");
-    img.src = "/" + item.svg_path; img.alt = item.scenario_id;
+    img.alt = item.scenario_id;
+    // Set handlers before src so cached images don't miss onload
+    img.onload = () => renderOverlay();
     img.onerror = () => {
       host.innerHTML = `<div class="diagram-empty"><span class="em">Failed to load SVG</span><code>${item.svg_path}</code></div>`;
+      host.appendChild(overlaySvg);
+      overlaySvg.style.pointerEvents = 'none';
+      if (toolbar) toolbar.style.display = 'none';
     };
+    img.src = "/" + item.svg_path;   // set src AFTER handlers (cached images fire onload synchronously)
+    if (img.complete) renderOverlay();  // handle already-cached case
     host.appendChild(img);
+    host.appendChild(overlaySvg);   // re-attach after innerHTML wipe
+    // Restore pointer-events to match current tool state
+    overlaySvg.style.pointerEvents = measureState.tool ? 'all' : 'none';
+    overlaySvg.style.cursor = measureState.tool ? 'crosshair' : 'default';
+    if (toolbar) toolbar.style.display = '';
   } else {
     host.innerHTML = `<div class="diagram-empty"><span class="em">No SVG available</span>The model produced unparseable output. Q2 is N/A — record a Q1 verdict (likely "No") and continue.</div>`;
+    host.appendChild(overlaySvg);
+    overlaySvg.style.pointerEvents = 'none';
+    if (toolbar) toolbar.style.display = 'none';
   }
 
   // Q1
@@ -1076,7 +1094,10 @@ function nav(delta) {
   const total = state.sample.items.length;
   state.index = Math.max(0, Math.min(total - 1, state.index + delta));
   state.notesExpanded = false; // collapse notes on nav
+  measureState.pending = [];
+  measureState.measurements = [];
   render();
+  updateClearBtn();   // sync after render (render may have shown/hidden toolbar)
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 
@@ -1089,6 +1110,151 @@ function jumpToFirst(predicate) {
 
 function openHelp() { $("#help-modal").classList.add("open"); }
 function closeHelp() { $("#help-modal").classList.remove("open"); }
+
+function normalize2d(dx, dy) {
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return { x: 0, y: 0 };
+  return { x: dx / len, y: dy / len };
+}
+
+function projectPt(frac, imgRect, hostRect) {
+  return {
+    x: frac.x * imgRect.width  + (imgRect.left - hostRect.left),
+    y: frac.y * imgRect.height + (imgRect.top  - hostRect.top),
+  };
+}
+
+function makeSvgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function renderOverlay() {
+  const svg = getMeasureOverlay();
+  const host = $("#diagram-host");
+  const img = host ? host.querySelector('img') : null;
+
+  // Clear previous drawing
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+
+  const hostRect = host.getBoundingClientRect();
+  const imgRect  = img.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${hostRect.width} ${hostRect.height}`);
+
+  const ACCENT = 'var(--accent)';
+  const ARC_R = 30;
+
+  function dot(pt, opacity) {
+    const { x, y } = projectPt(pt, imgRect, hostRect);
+    return makeSvgEl('circle', { cx: x, cy: y, r: 4, fill: ACCENT, opacity: opacity ?? 1 });
+  }
+
+  function labelRect(x, y, text) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const approxW = text.length * 6.5 + 8;
+    const bg = makeSvgEl('rect', {
+      x: x - approxW / 2, y: y - 9, width: approxW, height: 18,
+      rx: 3, fill: 'white', stroke: ACCENT, 'stroke-width': 1, opacity: 0.92,
+    });
+    const t = makeSvgEl('text', {
+      x, y, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      'font-size': '11', 'font-family': 'ui-monospace, monospace', fill: '#1c1c1a',
+    });
+    t.textContent = text;
+    g.appendChild(bg); g.appendChild(t);
+    return g;
+  }
+
+  for (const m of measureState.measurements) {
+    if (m.type === 'ruler') {
+      const [a, b] = m.points.map(p => projectPt(p, imgRect, hostRect));
+      svg.appendChild(makeSvgEl('line', {
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: ACCENT, 'stroke-width': 1.5,
+      }));
+      svg.appendChild(dot(m.points[0]));
+      svg.appendChild(dot(m.points[1]));
+      const dist = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
+      svg.appendChild(labelRect((a.x + b.x) / 2, (a.y + b.y) / 2, `${dist} px`));
+
+    } else if (m.type === 'protractor') {
+      const [V, A1, A2] = m.points.map(p => projectPt(p, imgRect, hostRect));
+      const d1 = normalize2d(A1.x - V.x, A1.y - V.y);
+      const d2 = normalize2d(A2.x - V.x, A2.y - V.y);
+
+      // Rays extended 20px beyond arm points
+      const len1 = Math.hypot(A1.x - V.x, A1.y - V.y) + 20;
+      const len2 = Math.hypot(A2.x - V.x, A2.y - V.y) + 20;
+      svg.appendChild(makeSvgEl('line', {
+        x1: V.x, y1: V.y, x2: V.x + d1.x * len1, y2: V.y + d1.y * len1,
+        stroke: ACCENT, 'stroke-width': 1,
+      }));
+      svg.appendChild(makeSvgEl('line', {
+        x1: V.x, y1: V.y, x2: V.x + d2.x * len2, y2: V.y + d2.y * len2,
+        stroke: ACCENT, 'stroke-width': 1,
+      }));
+
+      // Arc — always sweep the non-reflex angle (≤ 180°)
+      const startX = V.x + ARC_R * d1.x, startY = V.y + ARC_R * d1.y;
+      const endX   = V.x + ARC_R * d2.x, endY   = V.y + ARC_R * d2.y;
+      // In screen coords (Y-down), cross > 0 means A2 is CW from A1.
+      // SVG sweep-flag=1 means clockwise. To sweep the non-reflex arc, go CW when A2 is CW from A1.
+      const cross  = (A1.x - V.x) * (A2.y - V.y) - (A1.y - V.y) * (A2.x - V.x);
+      const sweepFlag = cross > 0 ? 1 : 0;   // SVG: 1=clockwise
+      svg.appendChild(makeSvgEl('path', {
+        d: `M ${startX} ${startY} A ${ARC_R} ${ARC_R} 0 0 ${sweepFlag} ${endX} ${endY}`,
+        fill: 'none', stroke: ACCENT, 'stroke-width': 1.5,
+      }));
+
+      // Dots
+      svg.appendChild(dot(m.points[0]));
+      svg.appendChild(dot(m.points[1]));
+      svg.appendChild(dot(m.points[2]));
+
+      // Angle value (always non-reflex)
+      const dotProd = (A1.x - V.x) * (A2.x - V.x) + (A1.y - V.y) * (A2.y - V.y);
+      const angleDeg = Math.abs(Math.atan2(Math.abs(cross), dotProd) * 180 / Math.PI);
+
+      // Label at bisector, 44px from vertex; fallback perpendicular for 180°
+      let bisect = normalize2d(d1.x + d2.x, d1.y + d2.y);
+      if (bisect.x === 0 && bisect.y === 0) bisect = { x: -d1.y, y: d1.x };
+      svg.appendChild(labelRect(V.x + 44 * bisect.x, V.y + 44 * bisect.y, `${angleDeg.toFixed(1)}°`));
+    }
+  }
+
+  // Pending dots (faint)
+  for (const pt of measureState.pending) {
+    svg.appendChild(dot(pt, 0.4));
+  }
+}
+
+function onOverlayClick(e) {
+  if (!measureState.tool) return;
+
+  const host = $("#diagram-host");
+  const img = host ? host.querySelector('img') : null;
+  if (!img) return;
+
+  const imgRect = img.getBoundingClientRect();
+  // Normalise click to [0,1] within image rect
+  const fx = Math.max(0, Math.min(1, (e.clientX - imgRect.left) / imgRect.width));
+  const fy = Math.max(0, Math.min(1, (e.clientY - imgRect.top)  / imgRect.height));
+  const pt = { x: fx, y: fy };
+
+  measureState.pending.push(pt);
+
+  if (measureState.tool === 'ruler' && measureState.pending.length === 2) {
+    measureState.measurements.push({ type: 'ruler', points: [...measureState.pending] });
+    measureState.pending = [];
+  } else if (measureState.tool === 'protractor' && measureState.pending.length === 3) {
+    measureState.measurements.push({ type: 'protractor', points: [...measureState.pending] });
+    measureState.pending = [];
+  }
+
+  updateClearBtn();
+  renderOverlay();
+}
 
 function attachHandlers() {
   $("#q1-options").addEventListener("click", (e) => {
@@ -1180,6 +1346,7 @@ async function start(rater) {
   }
   attachHandlers();
   render();
+  new ResizeObserver(() => renderOverlay()).observe($("#diagram-host"));
 }
 
 (function bootstrap() {
