@@ -125,27 +125,25 @@ The function is implemented in \texttt{evals/leaderboard\_analyze.py::\_failure\
 One per code, drawn from the headline-run JSONL.
 
 \paragraph{Example 1 --- \texttt{generation}.}
-Scenario \texttt{tpl-t3-trv-PQ-RS-TU-55}, \geminiflash{} + \rawcode{}. The model emits a Markdown explanation block but no \verb|\begin{tikzpicture}|. The harness records \texttt{generation:no\_tikz}; no diagram is produced; no further checks fire.
-This is the modal failure for \geminiflash{} on \rawcode{} and accounts for the cell's $\sim 35.9\%$ strict pass-rate (\cref{tab:headline}).
+Scenario \texttt{tpl-t1-iso-DEF-l8-b6}, \opus{} + \rawcode{}. The model exceeds the 180\,s per-scenario kill timeout enforced by the subprocess-isolated runner (no usable TikZ produced). \texttt{gate\_failures}: \texttt{[timeout]}. The \opus + \rawcode\ cell shows scattered timeouts (resource saturation under burst-rate-limit conditions); they are coded \texttt{generation} per the precedence rule (no diagram exists for the verifier to check).
 
 \paragraph{Example 2 --- \texttt{render}.}
-Scenario \texttt{tpl-t2-cc-ABC-O-50-80}, \opus{} + \rawcode{}. The TikZ contains \verb|\tkzInterCC(...)| with non-intersecting circle parameters; \texttt{lualatex} emits an error and \texttt{render\_status\,$=$\,error}.
-\emph{Predominant cause pre-hardening} (\cref{ssec:ver_defn}); rare post-hardening because the resolver now returns \texttt{None} for non-intersecting cases.
+Scenario \texttt{tpl-t2-alt-ABC-H-50-80}, \geminipro{} + \rawcode{}. The TikZ compiles to an empty SVG (the model emits \verb|\begin{tikzpicture}| but the contained drawing primitives fail to produce visible strokes). \texttt{gate\_failures} contains \texttt{[svg:SVG contains no visible drawing elements, svg:SVG has zero or negative viewBox dimensions, right\_angle\_marked\_at\_H]}; the \texttt{svg:*} entries are the render-failure signal.
 
 \paragraph{Example 3 --- \texttt{predicate:incidence}.}
-Scenario \texttt{tpl-t2-alt-RST-H-50-80}, \haiku{} + \rawcode{}. The model places the altitude-foot point $H$ \emph{near} but not \emph{on} segment $RS$ --- coordinates differ from the segment by more than the per-template tolerance ($10^{-4}$). \texttt{gate\_failures} contains \texttt{H\_on\_base:not\_on\_segment}. Coded \texttt{predicate:incidence}.
+Scenario \texttt{tpl-t2-chord-C-PQ-r4}, \sonnet{} + \rawcode{}. The model places labelled point $Q$ near the circle but not exactly on it (radial distance differs from the prompt-specified radius by more than $\tau$). \texttt{gate\_failures}: \texttt{[Q\_on\_circle]}. The expected predicate type for \propname{Q\_on\_circle} is \propname{point\_on\_circle}, mapping to \texttt{predicate:incidence}.
 
 \paragraph{Example 4 --- \texttt{predicate:metric}.}
-Scenario \texttt{tpl-t3-trv-PQ-RS-TU-65}, \sonnet{} + \rawcode{}. The two ``parallel'' lines have a slight slope difference; the cross-product test for parallelism yields a value above $\tau$. \texttt{gate\_failures} contains \texttt{lines\_parallel:not\_parallel} and \texttt{corresponding\_angles\_equal:angle\_mismatch}. Both coded \texttt{predicate:metric}.
+Scenario \texttt{tpl-t3-trv-PQ-RS-TU-40}, \sonnet{} + \structured{}. The two transversal-cut angles fail equality at tolerance $\tau$. \texttt{gate\_failures}: \texttt{[corresponding\_angles\_equal]}. The expected type is \propname{angle\_equal}, mapping to \texttt{predicate:metric}. This is the modal failure on \texttt{tpl-t3-trv} and accounts for $390$ of the $\sim 480$ template fails (\cref{sssec:trv_case}).
 
 \paragraph{Example 5 --- \texttt{predicate:composite}.}
-Scenario \texttt{tpl-t3-cen-ABC-G-60}, \opus{} + \rawcode{}. The model places $G$ at the visual centre of the triangle but uses hardcoded coordinates rather than the centroid formula. \texttt{gate\_failures} contains \texttt{G\_is\_centroid:wrong\_position}. Coded \texttt{predicate:composite}.
+Scenario \texttt{tpl-t2-ic-JKL-I-60-70}, \sonnet{} + \rawcode{}. The model places point $I$ inside the triangle but not at the incentre (the three side-line distances are not equal within tolerance). \texttt{gate\_failures}: \texttt{[I\_equidistant\_from\_sides]}. The expected type is \propname{equidistant\_from\_sides}, mapping to \texttt{predicate:composite} (the predicate combines three side-distance checks under a single decision).
 
 \paragraph{Example 6 --- \texttt{label}.}
-Scenario \texttt{tpl-t1-rect-EFGH-6x4}, \haiku{} + \rawcode{}. The TikZ draws the rectangle correctly but emits no \verb|\tkzLabelPoint{H}{...}|. \texttt{gate\_failures} contains \texttt{required\_labels:missing:H}. Coded \texttt{label}.
+Scenario \texttt{tpl-t2-ic-JKL-I-50-80}, \sonnet{} + \rawcode{}. The model omits both the required vertex labels and the required circle entity. \texttt{gate\_failures}: \texttt{[required\_labels, required\_entities]}. Both are source-string checks; both bucket to \texttt{label} per the mapping table.
 
 \paragraph{Example 7 --- \texttt{mark}.}
-Scenario \texttt{tpl-t1-rt-ABC-raA-3-4}, \sonnet{} + \rawcode{}. The right triangle is geometrically correct (the symbolic \propname{right\_angle\_at\_A} check passes) but the source contains no \verb|\tkzMarkRightAngle| primitive. \texttt{gate\_failures} contains \texttt{right\_angle\_marked\_at\_A:no\_mark}. Coded \texttt{mark}.
+Scenario \texttt{tpl-t1-rt-MNO-raO-3-4}, \geminiflash{} + \rawcode{}. The \texttt{gate\_failures} list is \texttt{[right\_angle\_marked\_at\_O, required\_labels]}. The \propname{right\_angle\_marked\_at\_O} entry is a \propname{mark\_present} source-string check that buckets to \texttt{mark}; the \propname{required\_labels} entry buckets to \texttt{label} (the figure attributes each \emph{failure}, not each \emph{record}, so this single record contributes one count to \texttt{mark} and one to \texttt{label}).
 
 \subsection{Per-bucket sanity check}
 \label{app:failure_coding:sanity}

@@ -151,7 +151,7 @@ Witness: same as T4 with different vertex labels and side length.
 \subsection{Loose witnesses ($N{=}25$)}
 \label{app:completeness_witnesses:loose}
 
-For each loose scenario we exhibit (a) the property list, (b) a parametrisation of the under-determined dimensions, and (c) two visually-distinct passing diagrams (referenced by description; full SVGs in the supplementary release at \texttt{paper/figures/completeness/}).
+For each loose scenario we exhibit (a) the property list, (b) a parametrisation of the under-determined dimensions, and (c) two visually-distinct passing diagrams (referenced by description in this appendix; the rendered SVGs corresponding to each witness are in the released headline-run JSONL at \texttt{evals/results/headline\_run/unified/svgs/} and indexed by \texttt{scenario\_id}).
 
 \paragraph{L1 --- \texttt{tpl-t1-par-AB-CD-l4}.}
 Property list: \propname{segments\_parallel}([A,B], [C,D]).
@@ -220,8 +220,8 @@ Visual diversity: (a) the intended $5\times 3$ landscape rectangle; (b) a square
 \textbf{Looseness is intentional in the verifier:} ``rectangle'' is verified structurally rather than dimensionally.
 
 \paragraph{L12 to L25.}
-The remaining 14 loose witnesses follow the same pattern: scenario IDs are listed in \cref{tab:loose_witnesses_remaining}; each witness records the free dimensions (1--3 continuous parameters in all cases) and two visually-distinct passing diagrams.
-We omit the prose for compactness; the full witness pack is committed at \texttt{paper/figures/completeness/loose\_witnesses.json} for reviewer audit.
+The remaining 14 loose witnesses follow the same pattern: scenario IDs are listed in \cref{tab:loose_witnesses_remaining}; each records the free-dimension count (1--3 continuous parameters in all cases) and the size of the property list it must satisfy.
+We omit the prose for compactness; readers interested in inspecting the visual diversity directly can run the released sampler at \texttt{evals/human\_study/sample\_human\_study.py} (or any of the rendered SVGs at \texttt{evals/results/headline\_run/unified/svgs/}) keyed by the scenario IDs below.
 
 \begin{table}[t]
 \caption{Remaining loose witnesses (L12--L25). Free-dimension counts after factoring out rigid motion + scale; ``visual diversity'' confirmed by inspection of two SVGs per scenario.}
@@ -265,4 +265,4 @@ This single skeletal template represents $\sim 4\%$ of all templated scenarios (
 
 Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:ver_defn}: 379 tight ($63\%$), 209 loose ($35\%$), 12 skeletal ($2\%$).
 The witness pack in this appendix substantiates 25 of 379 tight scenarios ($\sim 7\%$ audit coverage) and 25 of 209 loose scenarios ($\sim 12\%$), with at least one witness per template class (and additional coverage for high-N templates).
-The auditing seed (17) is fixed in \texttt{paper/scripts/sample\_completeness\_witnesses.py}; re-running the script yields the same witness IDs.
+The witness IDs above are reproducible: the templated-split YAML is byte-deterministic from \texttt{evals/generate\_scenarios.py} (seed 42), and the per-template stratified selection used here is documented at the start of this appendix (one witness per template family, plus extras for high-N families).
