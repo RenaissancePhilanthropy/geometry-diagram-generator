@@ -12,7 +12,8 @@ We classify each templated scenario along a \textbf{completeness spectrum}: \tex
 The audit yields $18 / 11 / 1$ tight / loose / skeletal templates, giving an aggregate $63\%$ tight / $35\%$ loose / $2\%$ skeletal at the scenario level (379 / 209 / 12 of 600); per-scenario witnesses for 25 tight + 25 loose are in \cref{app:completeness_witnesses}.
 
 \paragraph{Adversarial soundness.}
-For each of the 17 implemented symbolic predicates we attempt to construct a TikZ output that passes the predicate but contradicts the prompt; 5 predicates show measurable soft spots (\propname{midpoint}, \propname{point\_on\_segment} pre-hardening, \propname{parallel}, \propname{tangent}, \propname{equidistant\_from\_sides}), all addressable by hardening or template-side pairing (full table in \cref{app:human_study} adversarial subsection).
+For each of the 17 implemented symbolic predicates we attempt to construct a TikZ output that passes the predicate but contradicts the prompt.
+Five predicates show measurable soft spots --- \propname{midpoint}, \propname{point\_on\_segment} (pre-hardening), \propname{parallel}, \propname{tangent}, and \propname{equidistant\_from\_sides} --- all addressable by hardening or template-side pairing (full table in \cref{app:human_study} adversarial subsection).
 Constructed adversarial examples pass the verifier; we estimate $<5\%$ of strict passes are vulnerable to such constructions in the wild because templates pair check types in ways that close single-check loopholes (e.g.\ midpoint scenarios always include the segment context that makes the perpendicular-bisector escape unphysical).
 
 \paragraph{Hardening pass.}
