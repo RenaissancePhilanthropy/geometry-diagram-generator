@@ -2,10 +2,10 @@
 \label{app:property_reference}
 
 \GeoGenBench's predicate library is the first published version of the \GeoGen predicate language.
-Future instantiations of the methodology (\cref{ssec:future_methodology}) will extend the vocabulary --- adding face-incidence for 3D solids, point-on-curve for coordinate plane, transformation-equivalence for symmetry constructions --- but the predicate-language design pattern (typed signatures, declarative semantics, tolerance-aware decision procedures, optional soft predicates for source-string checks that cannot reach into the rendered output) is intended to remain stable.
+Future instantiations of the methodology (\cref{sec:discussion}) will extend the vocabulary --- adding face-incidence for 3D solids, point-on-curve for coordinate plane, transformation-equivalence for symmetry constructions --- but the predicate-language design pattern (typed signatures, declarative semantics, tolerance-aware decision procedures, optional soft predicates for source-string checks that cannot reach into the rendered output) is intended to remain stable.
 This appendix is the reference for v1.
 
-For each predicate we give: (a)~the formal signature with positional argument types; (b)~the decision rule, including tolerance handling; (c)~the implementation reference (file:line in \texttt{util/tikz\_geometry.py} unless otherwise noted); and (d)~where applicable, soft-spot notes from \cref{ssec:adversarial} and the predicate's verdict on an adversarial input.
+For each predicate we give: (a)~the formal signature with positional argument types; (b)~the decision rule, including tolerance handling; (c)~the implementation reference (file:line in \texttt{util/tikz\_geometry.py} unless otherwise noted); and (d)~where applicable, soft-spot notes from \cref{ssec:ver_defn} and the predicate's verdict on an adversarial input.
 \Cref{tab:predicates} in \cref{ssec:properties} summarises the v1 vocabulary at a glance.
 All decisions use the production tolerance $\tau = 5\times 10^{-3}$ unless overridden by the per-check \texttt{tol} field in the scenario YAML.
 
@@ -40,7 +40,7 @@ We test componentwise on the expected midpoint coordinates rather than testing $
 
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:406}.
 
-\noindent\textbf{Soft spots.}\quad The earlier ``equal-distance'' implementation (now superseded) had a soft spot allowing $M$ anywhere on the perpendicular bisector --- see \cref{tab:adversarial}.
+\noindent\textbf{Soft spots.}\quad The earlier ``equal-distance'' implementation (now superseded) had a soft spot allowing $M$ anywhere on the perpendicular bisector --- see \cref{ssec:ver_defn}.
 The current componentwise check eliminates that escape entirely.
 
 \subsubsection{\propname{centroid}}
@@ -99,7 +99,7 @@ A list with a single pair returns \texttt{None} (cannot decide equality of one l
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:438}.
 
 \noindent\textbf{Soft spots.}\quad Coincident lines pass --- $\overleftrightarrow{ab}$ is parallel to itself.
-For prompts where ``parallel'' implies ``parallel and distinct'', pair with \propname{point\_on\_line} = \texttt{False} for one endpoint of the second line against the first (see \cref{tab:adversarial}).
+For prompts where ``parallel'' implies ``parallel and distinct'', pair with \propname{point\_on\_line} = \texttt{False} for one endpoint of the second line against the first (see \cref{ssec:ver_defn}).
 
 \subsubsection{\propname{perpendicular}}
 \label{app:pred:perpendicular}
@@ -144,7 +144,7 @@ For ``on segment'' semantics, use \propname{point\_on\_segment}.
 
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:464}.
 
-\noindent\textbf{Soft spots.}\quad The pre-hardening implementation only ran step (1) --- this caused a measurable false-positive rate documented in \cref{tab:adversarial} and was the primary motivator for the hardening pass in \cref{sec:hardening}.
+\noindent\textbf{Soft spots.}\quad The pre-hardening implementation only ran step (1) --- this caused a measurable false-positive rate documented in \cref{ssec:ver_defn} and was the primary motivator for the hardening pass in \cref{ssec:ver_defn}.
 
 \subsubsection{\propname{point\_on\_circle}}
 \label{app:pred:point_on_circle}
@@ -174,7 +174,7 @@ For ``on segment'' semantics, use \propname{point\_on\_segment}.
 
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:483}.
 
-\noindent\textbf{Soft spots.}\quad Does not separately verify that $t$ lies on the circle (that $|ot|$ equals the circle's radius). For that, pair with \propname{point\_on\_circle} (\cref{tab:adversarial}).
+\noindent\textbf{Soft spots.}\quad Does not separately verify that $t$ lies on the circle (that $|ot|$ equals the circle's radius). For that, pair with \propname{point\_on\_circle} (\cref{ssec:ver_defn}).
 Templates that emit \propname{tangent} also emit \propname{point\_on\_circle} on $t$ as a co-check.
 
 \subsubsection{\propname{angle\_equal}}
@@ -231,7 +231,7 @@ Pair with \propname{same\_side} (IR-side) for prompts that require the internal 
 
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:541}.
 
-\noindent\textbf{Soft spots.}\quad Distance is to the side-\emph{line} (extended), not the side \emph{segment}; the three excentres are equidistant from the three lines and pass this check (\cref{tab:adversarial}).
+\noindent\textbf{Soft spots.}\quad Distance is to the side-\emph{line} (extended), not the side \emph{segment}; the three excentres are equidistant from the three lines and pass this check (\cref{ssec:ver_defn}).
 Templates that mean ``incentre'' specifically should pair with three \propname{same\_side} co-checks ensuring \texttt{p} is on the same side of each side-line as the opposite vertex.
 
 \subsection{Source-string predicates (decided against the TikZ source)}
@@ -264,7 +264,7 @@ Both forms decide the same condition.
 \noindent\textbf{Reference.}\quad \texttt{util/tikz\_geometry.py:535}.
 
 \noindent\textbf{Soft spots.}\quad As with \propname{label\_present}, this is a source-string check: a mark primitive that would render off-canvas or that uses a non-standard TikZ command not recognised by the extractor will fail to register.
-Per \cref{sec:hardening}, no observed pilot record fails because a mark was rendered via raw \texttt{\textbackslash draw} primitives instead of the \texttt{\textbackslash tkzMark*} family the extractor recognises; the planned render-aware variant (parsing the rendered SVG for the actual right-angle glyph or tick stroke) is deferred to v1.1.
+Per \cref{ssec:ver_defn}, no observed pilot record fails because a mark was rendered via raw \texttt{\textbackslash draw} primitives instead of the \texttt{\textbackslash tkzMark*} family the extractor recognises; the planned render-aware variant (parsing the rendered SVG for the actual right-angle glyph or tick stroke) is deferred to v1.1.
 
 \subsection{Reserved predicates (declared but not yet wired into the eval verifier)}
 \label{app:reserved_predicates}
@@ -277,7 +277,7 @@ These are full first-class predicates in the IR layer (\texttt{ir/ir.py:662,671}
 \textbf{Signature.}\quad \texttt{opposite\_side([p, q, line\_a, line\_b])} and similarly \texttt{same\_side}.
 \textbf{Semantics.}\quad The signed cross product $\vec{(\text{line\_a})(\text{line\_b})} \times \vec{(\text{line\_a})\,p}$ has the opposite (resp.\ same) sign as the corresponding quantity for $q$.
 \textbf{Status.}\quad Not currently emitted by any v1 scenario, so the missing eval-side wiring has no observed effect on headline numbers.
-Designed to pair with \propname{angle\_bisector}, \propname{equidistant\_from\_sides}, and other predicates whose adversarial soft spots are closed by adding an orientation co-check (\cref{tab:adversarial}).
+Designed to pair with \propname{angle\_bisector}, \propname{equidistant\_from\_sides}, and other predicates whose adversarial soft spots are closed by adding an orientation co-check (\cref{ssec:ver_defn}).
 
 \paragraph{Reserved for v1.1: \propname{not\_between}.}
 \textbf{Signature.}\quad \texttt{not\_between([d, b, c])}.
@@ -312,15 +312,15 @@ Three reasons.
 
 \paragraph{Implication for headline interpretation.}
 When most cells of a per-template column report identical-and-high strict-pass rates, the proximate cause is often that the predicate is self-referential and every observed strategy chose a satisfying construction.
-The \texttt{tpl-t3-cen} case study (\cref{ssec:case_studies}) is the worked example: across $\sim 600$ headline-run records, only $5$ records fail \propname{centroid} itself, while $\sim 30$ fail on \emph{other} (non-self-referential) checks in the same scenario --- principally \propname{required\_labels} and timeouts.
+The \texttt{tpl-t3-cen} case study (\cref{sssec:cen_case}) is the worked example: across $\sim 600$ headline-run records, only $5$ records fail \propname{centroid} itself, while $\sim 30$ fail on \emph{other} (non-self-referential) checks in the same scenario --- principally \propname{required\_labels} and timeouts.
 A v1.1 hardening direction is to define \emph{construction-rendered} variants of self-referential predicates --- e.g., a centroid check that requires the three medians to be \emph{drawn} as detectable strokes in the SVG, in addition to $G$ being computationally correct --- which would shift the test from ``which primitive did the LLM use'' toward ``did the LLM make the construction visible to a viewer''.
-We document this as future work (\cref{ssec:future_methodology}) rather than v1 functionality.
+We document this as future work (\cref{sec:discussion}) rather than v1 functionality.
 
 \subsection{Tolerance and the verdict ladder}
 
 All symbolic predicates use the same default tolerance $\tau = 5\times 10^{-3}$ in unit-coordinate space.
 A scenario YAML may override this per-check via the \texttt{tol} field; in v1, $13/801$ scenarios use a per-check tolerance, all loosenings (e.g., \texttt{tol: 0.05}) for predicates over coordinates produced by trigonometric formulas where TikZ's printf-style \texttt{cos(35.0)} introduces a $\sim$1\% rounding step.
-We chose absolute (not relative) tolerance because every \GeoGenBench scenario keeps coordinates in $[-10, 10]$ and a single uniform threshold simplifies adversarial analysis (\cref{ssec:adversarial}).
+We chose absolute (not relative) tolerance because every \GeoGenBench scenario keeps coordinates in $[-10, 10]$ and a single uniform threshold simplifies adversarial analysis (\cref{ssec:ver_defn}).
 For \GeoGen instantiations spanning wider coordinate ranges (architectural drawings, astronomical diagrams), a relative tolerance regime is the obvious extension.
 
 A predicate's verdict is one of:
@@ -330,4 +330,4 @@ A predicate's verdict is one of:
 \item \texttt{None} --- a required input coordinate was not in $\mathbf{X}$ (extractor failure or unimplemented derived-point construction), or, for \propname{label\_present}/\propname{mark\_present}, the TikZ source was not provided.
 \end{itemize}
 A \texttt{None} verdict downgrades the scenario from \texttt{pass} to \texttt{soft\_pass}; only \texttt{False} causes \texttt{fail}.
-The \cref{sec:hardening} pass closed $23$ \texttt{None}-verdicts in the pilot ($4.6\%$ of $498$ records, in two waves: $13$ from coordinate-extraction hardening and $10$ from implementing \propname{centroid}); the three reserved predicates above are the remaining known source of \texttt{None} verdicts in \GeoGenBench v1.
+The \cref{ssec:ver_defn} pass closed $23$ \texttt{None}-verdicts in the pilot ($4.6\%$ of $498$ records, in two waves: $13$ from coordinate-extraction hardening and $10$ from implementing \propname{centroid}); the three reserved predicates above are the remaining known source of \texttt{None} verdicts in \GeoGenBench v1.

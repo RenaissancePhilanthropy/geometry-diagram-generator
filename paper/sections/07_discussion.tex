@@ -1,92 +1,22 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{What \GeoGenBench measures and what it does not}
+\paragraph{Scope and limitations.}
+\GeoGenBench measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation satisfying a stated set of relational properties; it does not test proof construction, 3D solids, coordinate-plane algebra, or \emph{teaching utility}.
+Specific limitations: 2D Euclidean only (curriculum scenarios mentioning cones / spheres exercise the renderer but cannot be symbolically verified); no proof construction (a model that draws a correct diagram but cannot explain why still passes); marginal partial coverage on two \structured cells (\opus\ $574/600$, \gpt\ $545/600$) due to LLM-IR circular-dependency cycles --- conservative against those pathologies; tolerance $5\times 10^{-3}$ uniform across check types; $35\%$ of templated scenarios are loose, so a passing verdict means ``produced \emph{a} diagram consistent with the prompt's stated constraints,'' not \emph{the} canonical diagram.
 
-\GeoGenBench measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation that satisfies a stated set of relational properties.
-This is a narrower task than ``geometric reasoning'' broadly construed --- it does not require proof, does not test 3D solid geometry, does not exercise coordinate-plane algebra, and does not measure \emph{teaching utility} (whether a diagram makes a concept clear).
-We chose this scope because (i)~it is the part of geometric reasoning where automatic, exact, fast verification is achievable today; (ii)~it is the dominant deployed task for LLMs in K--12 worksheet authoring; and (iii)~it generalises in obvious ways (the same property language extends to coordinate-plane and 3D once the relevant SymPy primitives are wired in).
+\paragraph{Templated vs.\ curriculum.}
+Templated scenarios have provably-correct ground truth; curriculum scenarios cover topics templates do not (3D solids, transformations, multi-step proofs) but rely on LLM-authored ground truth that is spot-checkable but not guaranteed correct.
+On the three cells run on curriculum at headline N (cheap end of the price ladder), \haiku\ + \rawcode drops from $82.1\% \to 36.0\%$, \haiku\ + \structured from $84.5\% \to 36.8\%$, \geminiflash\ + \rawcode from $39.4\% \to 25.4\%$.
+The curriculum split is materially harder for every cell measured --- topical breadth and LLM-authored predicate lists both contribute --- but corroborates the strategy-effect direction at lower absolute pass rates.
+Headline-run findings (\cref{ssec:findings,ssec:pareto}) are templated-split findings.
 
-\subsection{Templated vs.\ curriculum: where they diverge}
+\paragraph{Threats to validity.}
+\textbf{Contamination}: the procedural template engine ships with the benchmark, allowing reviewers to roll fresh contamination-free splits; we additionally commit to a held-out test split revealed only at evaluation time.
+\textbf{Verifier soundness}: the adversarial probe found 5 predicate soft spots all addressable by hardening or template-side mitigation, yielding $<5\%$ vulnerability to constructed adversarial examples; the human-correlation study (\cref{ssec:human}) found a larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but expert raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
+\textbf{LLM-judged check authoring}: curriculum-split predicate lists are LLM-generated; headline metrics are templated-only.
 
-Templated scenarios have provably-correct ground truth (prose and properties are emitted from the same source code) and bound the model's task tightly enough that we can quantify completeness rates per-template (\cref{ssec:completeness}).
-Curriculum scenarios cover topics the templates do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs) but rely on LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way.
-We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
-
-The headline run includes curriculum coverage for three of the eleven measured cells (the cheap end of the price ladder, where the per-record cost made curriculum sweeps tractable):
-\haiku + \rawcode drops from $82.1$\% strict on templated ($N{=}1{,}798$) to $36.0$\% on curriculum ($N{=}603$), a $-46.1$\pp gap;
-\haiku + \structured drops from $84.5$\% to $36.8$\%, a $-47.7$\pp gap;
-\geminiflash + \rawcode drops from $39.4$\% to $25.4$\%, a $-14.0$\pp gap (the templated rate is already low, so the curriculum dropoff is bounded).
-\textbf{The curriculum split is materially harder than the templated split for every cell we measured} --- the topical breadth (3D / transformations / coordinate-overlay) and the LLM-authored predicate lists (which sometimes include implicit constraints not present in the templated grammar) both contribute.
-We did not run curriculum on the four frontier+\structured cells (\opus, \sonnet, \gpt, \geminipro) at headline N because of the cost ratio; \cref{ssec:future_methodology} discusses extending the predicate language to cover the curriculum's out-of-scope constructions and re-running at full leaderboard breadth in v2.
-The reading for reviewers: the headline-run findings (\cref{ssec:findings}, \cref{ssec:pareto}) are templated-split findings; curriculum results corroborate the strategy-effect direction (\structured $\gtrsim$ \rawcode at the cheap end) but at materially lower absolute pass rates that reflect the wider topical scope rather than a different capability ranking.
-
-\subsection{Limitations}
-
-\begin{enumerate}
-\item \textbf{2D Euclidean only.}
-Curriculum scenarios that mention cones / spheres exercise the renderer but cannot be symbolically verified by the current toolkit.
-\item \textbf{No proof construction.}
-\GeoGenBench tests diagram production, not the propositional reasoning that justifies the construction.
-A model that draws a correct diagram but cannot explain \emph{why} it is correct still passes.
-\item \textbf{Marginal partial coverage on two \structured cells.}
-\opus + \structured ($574/600$ unique scenarios) and \gpt + \structured ($545/600$) cover $\geq 91$\% of templated scenarios at $\geq 3$ repeats; the missing $\sim 5$\% is a fixed set of pathology scenarios where the LLM-generated IR triggers a circular-dependency cycle that the subprocess-isolated runner kills via OS-level timeout. This is a strategy-code limitation (the IR resolver does not detect cycles before solving) rather than a sampling artefact, so the reported strict-pass rates are conservative against those pathologies and reliable against the rest.
-\item \textbf{Tolerance is fixed.}
-The $5\times 10^{-3}$ threshold was tuned for human-rating agreement on a small sample and is uniform across check types; per-type tolerances are left for future work.
-\item \textbf{Loose-completeness is the modal case.}
-$35\%$ of templated scenarios are loose (\cref{ssec:completeness}): the property list pins named relations but leaves continuous parameters free.
-This is intentional and matches educational practice, but it means a passing verdict cannot be read as ``produced \emph{the} canonical diagram,'' only as ``produced \emph{a} diagram consistent with the prompt's stated constraints.''
-\end{enumerate}
-
-\subsection{Threats to validity}
-
-\paragraph{Contamination.}
-LLMs may have seen procedurally-similar geometry problems during training.
-The procedural template engine ships with the benchmark, allowing reviewers to roll new contamination-free splits with a different seed; we further commit to releasing a held-out test split that is revealed only at evaluation time.
-The curriculum split is naturalistic and harder to contamination-defend; we report templated-only metrics in the headline and curriculum metrics as a robustness check.
-
-\paragraph{Soft-pass semantics.}
-Pre-hardening, soft-pass made some configurations look better than they were.
-\Cref{sec:hardening} converted 23/498 records (4.6\%) of pilot soft-passes to strict-pass over three hardening passes, and we report both numbers throughout.
-We use \emph{strict pass} as the headline metric to avoid the criticism.
-
-\paragraph{Verifier soundness.}
-\Cref{ssec:adversarial} enumerated 5 predicates with measurable soft spots; all five are addressable by either hardening (\propname{point\_on\_segment}) or template-side mitigation (pairing with a complementary predicate).
-We estimate $< 5\%$ of strict passes are vulnerable to a constructed adversarial example; the human-correlation study (\cref{ssec:human}, \cref{app:human_study}) found a much larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but expert raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numeric angles or lengths.
-
-\paragraph{LLM-judged check authoring (curriculum split).}
-The curriculum-extracted scenarios use an LLM to translate textbook problems into property lists; the LLM may emit incorrect or incomplete property lists.
-We spot-check this on a sample but cannot guarantee per-scenario correctness in the same way templated scenarios provide.
-Headline metrics are reported templated-only; curriculum metrics are reported as a robustness check.
-
-\subsection{Implications for deployment}
-
-The headline-run Pareto-dominance findings (\cref{ssec:pareto}) have direct deployment implications:
-
-\begin{itemize}
-\item \textbf{For raw TikZ generation, the OpenAI flagship dominates and the most expensive Anthropic model is dominated.}
-\gpt + \rawcode beats \opus + \rawcode by $20$\pp at $4.5\times$ lower cost ($91.9$\% vs $71.6$\%, \dollars{0.058} vs \dollars{0.262}); \haiku + \rawcode at \dollars{0.019}, $70.5$\% is statistically tied with \opus + \rawcode at $14\times$ lower cost.
-A team deploying an LLM-driven worksheet author over raw TikZ should default to \gpt; if budget is the binding constraint, \haiku + \rawcode is the price-floor configuration.
-\item \textbf{At the high-quality end, the three frontier+\structured cells converge within $1$\pp at a $7\times$ cost spread.}
-\gpt + \structured (\dollars{0.075}, $94.1$\%) is the unique Pareto corner: it dominates \sonnet + \structured (\dollars{0.088}, $93.4$\%) by $+0.8$\pp at $17$\% lower cost, and \opus + \structured (\dollars{0.532}, $93.3$\%) by $+0.8$\pp at $7\times$ lower cost.
-The marginal frontier-tier model buys nothing once the IR scaffolding is in the loop --- and across vendors, \opus + \structured is dominated even more decisively than \opus + \rawcode (the same cell is dominated under both strategies).
-\structured is the strategy we recommend for cross-vendor production deployment, with \gpt as the default model and \sonnet as a near-tied alternate for teams already in the Anthropic ecosystem.
-\end{itemize}
-
-\subsection{Extending the methodology}
-\label{ssec:future_methodology}
-
-Both pillars of \GeoGen (\cref{ssec:methodology}) are designed to extend beyond plane geometry.
-Pillar~1 (procedural co-generation) is reusable wherever a domain admits a Python-expressible construction --- the engine in \texttt{evals/generate\_scenarios.py} is $\sim$1{,}000 lines and the per-template extension cost is $\sim$50 lines per construction; we expect the same template-engine pattern to apply to coordinate-plane algebra and most ruler-and-compass extensions of plane Euclidean geometry, with proportionally larger investments for 3D solids and transformations.
-Pillar~2 (render-then-symbolic-verify) extends along the predicate-language axis: the v1 vocabulary in \cref{app:property_reference} covers plane-Euclidean relations; future \GeoGen-family benchmarks would publish v2, v3, \dots adding domain primitives without disturbing existing benchmarks (the predicate-language versioning pattern is intentional).
-Two extensions are already in flight at the codebase level and could be released as separate \GeoGen-family benchmarks:
-\begin{itemize}
-\item \textbf{GenExam-Math integration.}
-\citet{wang2025genexam} introduce a multidisciplinary text-to-exam-image dataset with LLM-judged scoring.
-We have re-encoded a 91-prompt geometry-relevant subset (HIGH-relevance plus medium-cartesian) as a \GeoGen-style benchmark with declarative property checks (\texttt{benchmark/definitions/bench\_genexam.yaml}); a separate report will compare strict-pass rates between automatic verification and the GenExam vision-LM judge on the overlap.
-This is an empirical test of whether vision-LM judges and SymPy-decided predicates agree on text-to-diagram tasks where both can be applied.
-\item \textbf{Beyond plane geometry.}
-The predicate language (\cref{app:property_reference}) extends to coordinate-plane algebra (point-on-curve, intersection-of-curves), 3D solids (face-incidence, dihedral angles), and transformation-group constructions (rotation/reflection/translation equivalence) by adding the relevant SymPy primitives.
-Engineering and architectural drawings are similar: any domain where ``correctness'' decomposes into a finite list of relational properties decidable against a symbolic ground truth is a candidate for the same methodology.
-The bottleneck is predicate-language design, not symbolic computation --- and the predicate language is the part future \GeoGen instantiations would inherit unchanged.
-\end{itemize}
+\paragraph{Deployment implications.}
+For raw TikZ, \gpt + \rawcode dominates (beats \opus + \rawcode by $20$\pp at $4.5\times$ lower cost; \haiku + \rawcode tied with \opus + \rawcode at $14\times$ lower cost).
+At the high-quality end, the three frontier+\structured cells converge within $1$\pp at a $7\times$ cost spread, with \gpt + \structured as the unique Pareto corner; \structured is our recommended strategy for cross-vendor production deployment, with \gpt as default and \sonnet as a near-tied alternate.
+\GeoGen's two pillars (\cref{sec:design}) extend beyond plane geometry: procedural co-generation reuses wherever a domain admits a Python-expressible construction; render-then-symbolic-verify extends along the predicate-language axis (versioned, additive). Two extensions are in flight at the codebase level: a GenExam-Math integration \citep{wang2025genexam} re-encoding a 91-prompt geometry subset for empirical comparison between automatic verification and vision-LM judges, and a coordinate-plane / 3D-solid extension.

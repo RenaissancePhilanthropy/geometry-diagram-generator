@@ -1,196 +1,65 @@
 \section{Methodology and instance}
 \label{sec:design}
 
-\subsection{The \GeoGen methodology}
-\label{ssec:methodology}
-
-We separate \emph{methodology} from \emph{instance} from the outset.
-\GeoGen is a methodology for building automatically-verifiable benchmarks of generative geometric reasoning; \GeoGenBench (\cref{ssec:task}~onward) is its first instantiation, for plane Euclidean geometry.
-The methodology rests on two pillars:
+\GeoGen is a methodology for building automatically-verifiable benchmarks of generative geometric reasoning; \GeoGenBench is its first instantiation, for plane Euclidean geometry.
+The methodology rests on two pillars.
 
 \paragraph{Pillar 1: Procedural co-generation of prompts and rubrics.}
-For domains where the construction admits a Python expression --- which is essentially every domain in classical geometry --- both the natural-language prompt and the machine-checkable property list can be emitted from the same source code (\cref{fig:cogen}).
-A single \texttt{altitude\_template($A$, $B$, $C$, $H$)} function, for example, returns both a prose request to draw the altitude and the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]} that any correct rendering must satisfy.
-This eliminates the drift problem that haunts hand-authored or LLM-extracted benchmarks (where the grading rubric and the question can disagree silently) and provides a strong contamination defence (reviewers can re-roll the engine with new seeds, label sets, or numeric parameters and obtain a fresh split with the same difficulty distribution).
+Both the natural-language prompt and the machine-checkable property list are emitted from the same Python source code (\cref{fig:cogen}).
+A single \texttt{altitude\_template($A,B,C,H$)} function returns both a prose request to draw the altitude and the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]} that any correct rendering must satisfy.
+This eliminates rubric/question drift and provides a contamination defence (reviewers can re-roll the engine with new seeds for fresh splits at the same difficulty distribution).
+For domains where procedural co-generation is impractical (3D, multi-step proofs), the methodology supports a fallback mode: hand- or LLM-extracted prompts paired with hand-authored property lists, with metrics reported separately by source.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
     every node/.style={font=\small},
     func/.style={draw, rounded corners, fill=blue!8, align=center,
-                 text width=70mm, minimum height=12mm, font=\ttfamily\small},
+                 text width=70mm, minimum height=10mm, font=\ttfamily\small},
     outbox/.style={draw, rounded corners, fill=green!6, align=center,
-                text width=53mm, minimum height=22mm, inner sep=4pt},
+                text width=53mm, minimum height=18mm, inner sep=4pt},
     role/.style={font=\scriptsize\itshape, color=gray!50!black, align=center},
     >=Stealth, line width=0.5pt
 ]
   \node[func] (fn) {altitude\_template($A,B,C,H$,\ ang$_A$,\ ang$_B$):};
-  \node[role, below=0.5mm of fn] {one Python function};
-
-  \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.7)$) {%
-    \textbf{Natural-language prompt}\\[3pt]
-    \scriptsize ``Draw an acute triangle $ABC$ with
-    $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
+  \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.4)$) {%
+    \textbf{Natural-language prompt}\\[2pt]
+    \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
     Construct the altitude from $C$ meeting $AB$ at $H$.''};
-
-  \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.7)$) {%
-    \textbf{Property list (rubric)}\\[3pt]
-    \scriptsize\ttfamily
-    right\_angle($C, H, A$)\\
+  \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.4)$) {%
+    \textbf{Property list (rubric)}\\[2pt]
+    \scriptsize\ttfamily right\_angle($C, H, A$)\\
     point\_on\_segment($H, A, B$)\\
-    angle\_equal($\angle BAC$, $60^\circ$)\\
-    angle\_equal($\angle ABC$, $70^\circ$)};
-
+    angle\_equal($\angle BAC$, $60^\circ$)};
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (prompt.north);
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (rubric.north);
-
-  \node[role, below=2mm of prompt, text width=53mm] {\textbf{shown to the model}};
-  \node[role, below=2mm of rubric, text width=53mm]
-    {\textbf{used to grade the model}\\(never shown to the model)};
+  \node[role, below=1mm of prompt, text width=53mm] {shown to the model};
+  \node[role, below=1mm of rubric, text width=53mm] {used to grade (never shown to the model)};
 \end{tikzpicture}
-\caption{\textbf{Procedural co-generation (Pillar~1).}
-A single Python template emits both the natural-language prompt and the machine-checkable rubric, guaranteeing the question and its grading criteria stay mutually consistent.
-The model sees only the prompt; the rubric drives the grader.
-Re-rolling the engine with new label sets or numeric parameters yields a fresh, contamination-free split with the same difficulty distribution.}
+\caption{Procedural co-generation: one Python template emits both the prompt and the rubric, guaranteeing they stay mutually consistent.}
 \label{fig:cogen}
 \end{figure}
-For domains where procedural co-generation is impractical --- 3D constructions, multi-step proof figures, or scenarios requiring extra-mathematical context --- the methodology supports a fallback mode (\cref{ssec:sources}): hand-authored or LLM-extracted prompts paired with hand- or LLM-authored property lists.
-This trades the correctness-by-construction guarantee for breadth, and we report metrics on the two modes separately.
 
 \paragraph{Pillar 2: Render-then-symbolic-verify with a declarative predicate language.}
-The model emits source code in a text-emitting renderer's input language (TikZ here, but also SVG, Asymptote, OpenSCAD, or any other text-format vector medium); a containerised renderer compiles that to its visual output; an extractor compiles the same source to a coordinate-bearing symbolic representation (SymPy here); a fixed-vocabulary, typed \emph{predicate language} (\cref{ssec:properties}, formalised in \cref{app:property_reference}) is decided against the symbolic representation in microseconds per predicate.
-Three properties make this work as a benchmark substrate.
-First, the predicate language is \emph{declarative} --- prompt authors specify \emph{what must be true}, not \emph{how to check it} --- so adding a new construction never requires writing a new checker.
-Second, the predicate vocabulary is \emph{versioned}: \cref{app:property_reference} formalises v1 (17 symbolic + 2 source-string predicates); future \GeoGen instantiations extend it (e.g.\ \texttt{face\_incidence} for 3D, \texttt{point\_on\_curve} for coordinate plane) without disturbing existing benchmarks.
-Third, the methodology is \emph{renderer-agnostic}: the codebase ships an SVG-output strategy alongside TikZ to demonstrate that swapping the text-emitting target is a one-paragraph change in the strategy layer (\cref{ssec:strategies}).
-
-\paragraph{Why these two pillars together.}
-Each pillar partially addresses the canonical reviewer attack on a generative-reasoning benchmark.
-Pillar~1 addresses ``how do we know your ground truth is right?'' (it is correct by construction wherever procedural generation applies, and the engine source is part of the release).
-Pillar~2 addresses ``how do we know your verifier is sound?'' (declarative predicates have stable, auditable semantics; a soundness audit is reported in \cref{sec:hardening}; cross-version verdict stability is documented in \cref{app:pinned_versions}).
-Together they let the leaderboard numbers in \cref{sec:results} be interrogated end-to-end: every prompt traces to a Python generator, every check traces to a SymPy decision procedure, every disagreement is reproducible without an LLM in the loop.
-The remainder of this section instantiates both pillars for plane Euclidean geometry as \GeoGenBench.
+The model emits TikZ; a containerised LuaLaTeX renderer compiles to SVG; an extractor compiles the same source to a coordinate-bearing SymPy representation; a fixed-vocabulary, typed predicate language (\cref{tab:predicates}) is decided against the SymPy representation in microseconds per predicate.
+The language is \emph{declarative} (prompt authors specify \emph{what} must be true, not \emph{how} to check it), \emph{versioned} (\cref{app:property_reference} formalises v1: 17 symbolic + 2 source-string predicates; future instantiations extend without disturbing existing benchmarks), and \emph{renderer-agnostic} (we ship an alternate SVG-output strategy alongside TikZ to demonstrate the swap is a one-paragraph change).
 
 \subsection{Task formulation}
 \label{ssec:task}
 
-A \GeoGenBench scenario is a tuple
-\[
-\mathcal{S} = \langle \text{prompt},\ \mathcal{P},\ \mathcal{L},\ \mathcal{C} \rangle,
-\]
-where the \textbf{prompt} is a natural-language request to draw a geometric figure (e.g., \emph{``Draw an acute triangle $ABC$ with the altitude from $A$ meeting $BC$ at $H$. Label all four points and mark the right angle at $H$.''}), $\mathcal{P}$ is a list of \emph{expected geometric properties} the rendered figure must satisfy, $\mathcal{L}$ is a set of \emph{required labels} (point names that must appear in the output), and $\mathcal{C}$ is an optional set of \emph{structural checks} (e.g., ``must contain at least one quadrilateral'').
-
-A model must produce a TikZ source string that compiles to a valid SVG.
-The system then (1)~\textbf{renders} the TikZ via a containerised LuaLaTeX + dvisvgm pipeline; (2)~\textbf{verifies} by compiling the diagram's coordinate set and applying each property in $\mathcal{P}$ against a SymPy symbol table, comparing $\mathcal{L}$ against TikZ string content, and applying each structural check; and (3)~\textbf{scores} the scenario as one of \texttt{pass} (all checks passed), \texttt{soft\_pass} (no failures but at least one check skipped), \texttt{fail} ($\geq 1$ hard failure), or \texttt{gen\_failure}/\texttt{render\_failure} (no usable output).
-
-Crucially, the model is \emph{not} given access to the property list during generation --- only the natural-language prompt.
-Properties are the grading rubric, not the input.
+A \GeoGenBench scenario is $\mathcal{S} = \langle \text{prompt},\ \mathcal{P},\ \mathcal{L},\ \mathcal{C} \rangle$: a natural-language drawing request, a list of expected geometric properties $\mathcal{P}$, required labels $\mathcal{L}$, and optional structural checks $\mathcal{C}$.
+A model produces a TikZ source string; we (1)~render via LuaLaTeX, (2)~verify by compiling the diagram's coordinate set and applying each property in $\mathcal{P}$ against a SymPy symbol table, (3)~score as one of \texttt{pass} (all checks passed), \texttt{soft\_pass} (no failures but $\geq 1$ check skipped), \texttt{fail}, or \texttt{gen\_failure}/\texttt{render\_failure}.
+The model is \emph{not} given the property list during generation --- properties are the rubric, not the input.
 
 \subsection{Scenario sources}
 \label{ssec:sources}
 
-\paragraph{Templated scenarios (provably correct ground truth).}
-A procedural template engine emits scenarios in which the prompt prose and the expected-property list are produced \emph{from the same source code}, guaranteeing they are mutually consistent.
-We use 30 templates grouped by tier (9~\tone, 10~\ttwo, 11~\tthree) covering right/equi\-lateral/iso\-sce\-les triangles, squares/rectangles/parallelo\-grams/rhombi/trapezoids, segment+midpoint, parallel/perpendicular pairs, circle+point, altitude/median/angle-bisector/circumcircle/incircle/perpendicular-bisector/chord constructions, right-triangle altitude to hypotenuse, medial triangle, centroid+medians, parallel lines + transversal, isosceles altitude bisects base, tangent to circle, cyclic quadrilateral, two intersecting circles, Thales' theorem, triangle with two altitudes, and inscribed angle in a semicircle.
-Per-template variation axes (10 vertex-triple label sets, 6 quad-label sets, 8 pair-label sets, numeric parameter sweeps such as Pythagorean leg pairs, and 7 prompt-opener variants) multiplied by round-robin per-tier capping yield \textbf{600 scenarios} (200 per tier).
-Property correctness is by construction: the same Python function emits both the prose and the property list.
-The released artefact is \texttt{benchmark/definitions/bench\_generated.yaml}.
-
-\paragraph{Curriculum-extracted scenarios (broader topic coverage).}
-A separate pipeline (\texttt{curriculum/to\_benchmark.py}) extracts lesson-level curriculum structure from a publicly-available US K--12 mathematics curriculum --- the Carnegie Learning \emph{Bluebonnet Learning} Teacher's Edition (Grades 6--8 and Geometry), adopted by the Texas Education Agency \citep{bluebonnet2024} --- and uses an LLM (\sonnet) to convert each lesson topic into a student-style diagram request, plus structural and property-level expected outputs.
-We use the curriculum only as a \emph{topical scaffold} for what to ask about (e.g.\ ``slant height of a cone,'' ``transversal across parallel lines,'' ``coordinate-plane reflection'') --- no textbook prose is reproduced in the released benchmark; only our LLM-generated prompt rewrites and our property-list rubrics are released.
-This adds \textbf{201 scenarios} ($[36, 128, 37]$ across tiers) covering topics templated scenarios do not (3D solids, transformations, coordinate-overlay constructions, multi-step proofs requiring auxiliary lines), at the cost of LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way templated GT is.
-We report metrics decomposed by source so reviewers can trust the templated half as a calibration anchor while the curriculum half stress-tests breadth.
-The released artefact is \texttt{benchmark/definitions/bench\_curriculum.yaml}; full attribution and licensing details are in \cref{app:reproduction}.
-
-\subsection{Property language}
-\label{ssec:properties}
-
-Each scenario carries a list of expected geometric properties drawn from a fixed vocabulary of \textbf{15 symbolic predicate types implemented in the eval verifier} plus 2 source-string check types, all enforced against a coordinate symbol table extracted from the rendered TikZ.
-A further 3 predicates remain unwired in v1: \propname{opposite\_side} and \propname{same\_side} are implemented in the IR-side checker (\texttt{ir/checks.py}) and used by the \structured strategy for self-validation but not yet ported to the eval verifier; \propname{not\_between} is reserved for v1.1 negative-incidence templates and emitted by no v1 scenario.
-We document this minority transparently in \cref{app:reserved_predicates} and account for the residual effect on the headline numbers in \cref{sec:hardening}.
-Each predicate is decided in microseconds with a numeric tolerance $\tau = 5\times 10^{-3}$ (justified empirically against human ratings; see \cref{sec:verification}).
-\Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signature, semantics, decision rule, and code reference for each predicate.
-
-\begin{table}[t]
-\caption{The \GeoGen predicate language v1. Symbolic predicates are exact checks against compiled coordinates; source-string checks are intentionally weaker (they verify a TikZ primitive that \emph{would} render the mark appears in the source) and contribute only to \emph{loose} pass. Three additional predicates (\propname{opposite\_side}, \propname{same\_side}, \propname{not\_between}) are declared but not yet wired into the eval verifier --- see \cref{app:reserved_predicates}.}
-\label{tab:predicates}
-\centering
-\small
-\begin{tabular}{lll}
-\toprule
-\textbf{Predicate} & \textbf{Args} & \textbf{Decision} \\
-\midrule
-\multicolumn{3}{l}{\emph{Symbolic (exact, implemented in v1)}} \\
-\propname{right\_angle} & $[a, o, b]$ & $|\vec{oa}\cdot\vec{ob}| < \tau$ \\
-\propname{midpoint} & $[m, a, b]$ & $\max(|m_x-(a_x{+}b_x)/2|, |m_y-(a_y{+}b_y)/2|) < \tau$ \\
-\propname{centroid} & $[g, a, b, c]$ & $\max(|g_x-(a_x{+}b_x{+}c_x)/3|, |g_y-(a_y{+}b_y{+}c_y)/3|) < \tau$ \\
-\propname{collinear} & $[p_1, p_2, p_3]$ & $|\vec{p_1 p_2}\times\vec{p_1 p_3}| < \tau$ \\
-\propname{equal\_lengths} & $[[a,b], [c,d], \dots]$ & all pairwise $\big||AB| - |CD|\big| < \tau$ \\
-\propname{parallel} & $[[a,b], [c,d]]$ & $|\vec{ab}\times\vec{cd}| < \tau$ \\
-\propname{perpendicular} & $[[a,b], [c,d]]$ & $|\vec{ab}\cdot\vec{cd}| < \tau$ \\
-\propname{point\_on\_line} & $[p, a, b]$ & $|\vec{ab}\times\vec{ap}| < \tau$ \\
-\propname{point\_on\_segment} & $[p, a, b]$ & on line + $\big||ap|+|pb|-|ab|\big| < \tau$ \\
-\propname{point\_on\_circle} & $[p, o, r]$ & $\big||OP|-|OR|\big| < \tau$ \\
-\propname{tangent} & $[[L_1,L_2], O, T]$ & $T$ on line $L_1L_2$ + $\vec{OT} \perp \vec{L_1L_2}$ \\
-\propname{angle\_bisector} & $[d, a, b, c]$ & $|\angle bad - \angle dac| < \tau$ \\
-\propname{angle\_equal} & $[[a_1, b_1, c_1], [a_2, b_2, c_2]]$ & $|\angle a_1 b_1 c_1 - \angle a_2 b_2 c_2| < \tau$ \\
-\propname{intersects} & $[[a,b], [c,d], p]$ & line-line intersection $\approx p$ \\
-\propname{equidistant\_from\_sides} & $[p, a, b, c]$ & three side-line distances equal $< \tau$ \\
-\midrule
-\multicolumn{3}{l}{\emph{Source-string (soft)}} \\
-\propname{label\_present} & $[\text{name}]$ & label primitive for \texttt{name} appears in TikZ source \\
-\propname{mark\_present} & $[\text{kind}, \text{vertex}]$ & mark primitive of \texttt{kind} at \texttt{vertex} appears in source \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Verification pipeline}
-\label{ssec:pipeline}
-
-The pipeline is illustrated in \cref{fig:pipeline}.
-The two-renderer choice (TikZ $\to$ SVG via Docker by default; pure-Python SVG renderer as fallback) decouples the benchmark from any specific TeX install while staying reproducible.
-
-\begin{figure}[t]
-\centering
-\begin{tikzpicture}[node distance=4mm, font=\small,
-    box/.style={draw, rounded corners, minimum width=22mm, minimum height=8mm, align=center}]
-  \node[box] (prompt) {prompt};
-  \node[box, right=of prompt] (llm) {LLM strategy\\ \scriptsize{\rawcode / \structured}};
-  \node[box, right=of llm] (tikz) {TikZ source};
-  \node[box, below=of tikz] (latex) {LuaLaTeX\\(container)};
-  \node[box, left=of latex] (svg) {SVG};
-  \node[box, left=of svg] (sympy) {SymPy compile\\ + property check};
-  \node[box, below=of svg] (verdict) {gate\_status \\ $\in \{$pass, soft\_pass, fail$\}$};
-  \draw[->] (prompt) -- (llm);
-  \draw[->] (llm) -- (tikz);
-  \draw[->] (tikz) -- (latex);
-  \draw[->] (latex) -- (svg);
-  \draw[->] (svg) -- (sympy);
-  \draw[->] (sympy) -- (verdict);
-  \draw[->] (svg) -- (verdict);
-\end{tikzpicture}
-\caption{The \GeoGenBench verification pipeline. The LLM produces TikZ; the TikZ is rendered to SVG by a containerised LuaLaTeX/dvisvgm; the SVG and the compiled SymPy geometry are independently checked against the per-scenario property list; the result is a single \texttt{gate\_status}.}
-\label{fig:pipeline}
-\end{figure}
-
-\paragraph{Gate-status semantics.}
-We mark a scenario \texttt{fail} if any check failed; \texttt{soft\_pass} if no checks failed but at least one was skipped (typically rendering-only); \texttt{pass} if all checks ran and returned true.
-Headline tables use \emph{strict-pass} (\texttt{pass} only); soft-pass acts as a diagnostic for ``did the model get the geometry right but skip a label?'' versus ``did it produce something illegible.''
-
-\subsection{Tiered difficulty}
-\label{ssec:tiers}
-
-Templated scenarios are tier-labelled at template-definition time:
-\begin{itemize}
-\item \textbf{\tone (easy)}: single named shape, no auxiliary construction.
-\item \textbf{\ttwo (medium)}: one shape + one auxiliary construction.
-\item \textbf{\tthree (hard)}: multi-step or composed construction.
-\end{itemize}
-Curriculum scenarios inherit tier labels from the LLM curriculum extractor; we audit them but do not retier.
-
-\subsection{Dataset statistics}
-\label{ssec:stats}
+\Cref{tab:dataset_stats} summarises the benchmark composition.
+\textbf{Templated scenarios} (600, $200$ per tier) are emitted by 30 procedural templates (full enumeration in \cref{app:template_specs}) covering single shapes (\tone), shapes with one auxiliary construction (\ttwo), and multi-step compositions (\tthree); property-prompt consistency is by construction.
+\textbf{Curriculum scenarios} (201, distributed $36 / 128 / 37$ across tiers) are LLM-extracted (\sonnet) prompts authored against the topical scaffold of the Carnegie Learning \emph{Bluebonnet Learning} K--12 mathematics curriculum \citep{bluebonnet2024} adopted by the Texas Education Agency.
+We use Bluebonnet only for chapter / lesson topics --- no textbook prose is reproduced; only LLM-generated prompt rewrites + author-written property rubrics are released, with per-scenario lineage tags for traceability.
+This adds breadth (3D solids, transformations, coordinate-overlay constructions) at the cost of LLM-authored ground truth that is spot-checkable but not guaranteed correct in the same way templated GT is.
+We report metrics decomposed by source so reviewers can read the templated half as a calibration anchor.
 
 \begin{table}[t]
 \caption{\GeoGenBench dataset composition.}
@@ -209,22 +78,37 @@ Curriculum & 201 & 36 & 128 & 37 & 6.0 & 73 unique tags \\
 \end{tabular}
 \end{table}
 
-\subsection{Reproducibility and contamination defence}
-\label{ssec:repro}
+\subsection{Property language and tiers}
+\label{ssec:properties}
 
-The procedural template engine is part of the release; reviewers can re-roll the templated split with a different seed or new label sets to detect contamination.
-We commit to releasing the templated set as \emph{train} and a held-back roll of the engine as \emph{test}.
-All renders are deterministic: the scenario YAML schema and the property checker are pure functions of the input, with no nondeterminism in grading.
+The v1 vocabulary is 15 symbolic predicate types implemented in the eval verifier, plus 2 source-string check types (label and mark presence; intentionally weaker, contributing to \texttt{soft\_pass} only).
+A further 3 predicates (\propname{opposite\_side}, \propname{same\_side}, \propname{not\_between}) are reserved for v1.1 negative-incidence templates.
+Each predicate is decided in microseconds against compiled coordinates with numeric tolerance $\tau = 5 \times 10^{-3}$.
+\Cref{tab:predicates} summarises the language; \cref{app:property_reference} gives the full signatures, semantics, and code references.
+Tier labels at template-definition time: \tone\ (single shape, no auxiliary construction), \ttwo\ (one shape + one auxiliary), \tthree\ (multi-step / composed).
 
-\subsection{Known limitations of the verification toolkit}
-\label{ssec:design_limits}
-
-We document soft spots up front rather than be surprised by them in review:
-\begin{enumerate}
-\item \propname{point\_on\_segment} originally checked collinearity but not segment bounds; this was a true source of false positives in pre-hardening pilot data and is fixed in \cref{sec:hardening}.
-\item \propname{label\_present} and \propname{mark\_present} are TikZ-string checks; a model that emits \texttt{\textbackslash tkzMarkRightAngle} passes the check even if the mark would visually clip off-canvas.
-These checks are intentionally classified as soft and contribute to \texttt{soft\_pass}, not \texttt{pass}.
-\item \propname{tangent} verifies the line is at radial distance $r$ from the centre but does not separately verify that $T$ itself lies on the circle; we recommend pairing with \propname{point\_on\_circle} in templates.
-\item No 3D / solid-geometry checks. Curriculum scenarios that mention cones or spheres exercise the renderer but cannot be symbolically verified by the current toolkit.
-\item Tolerance $\tau = 5\times 10^{-3}$ is fixed and uniform across check types; per-type tolerances are left for future work.
-\end{enumerate}
+\begin{table}[t]
+\caption{The \GeoGen predicate language v1. Symbolic predicates are exact checks against compiled coordinates; source-string checks contribute only to \emph{loose} pass. Three reserved predicates are documented in \cref{app:reserved_predicates}.}
+\label{tab:predicates}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lll}
+\toprule
+\textbf{Predicate} & \textbf{Args} & \textbf{Decision} \\
+\midrule
+\multicolumn{3}{l}{\emph{Symbolic (exact, implemented in v1)}} \\
+\propname{right\_angle} & $[a, o, b]$ & $|\vec{oa}\cdot\vec{ob}| < \tau$ \\
+\propname{midpoint} & $[m, a, b]$ & $\max(|m_x{-}(a_x{+}b_x)/2|, |m_y{-}(a_y{+}b_y)/2|) < \tau$ \\
+\propname{centroid} & $[g, a, b, c]$ & componentwise centroid formula $< \tau$ \\
+\propname{collinear}, \propname{parallel}, \propname{perpendicular} & --- & cross/dot product $< \tau$ \\
+\propname{equal\_lengths} & $[[a,b], \dots]$ & all pairwise $\big||AB| - |CD|\big| < \tau$ \\
+\propname{point\_on\_line/segment/circle} & $[p, \dots]$ & incidence within $\tau$ \\
+\propname{tangent}, \propname{angle\_bisector}, \propname{angle\_equal} & --- & composite checks \\
+\propname{intersects}, \propname{equidistant\_from\_sides} & --- & intersection / side-distance \\
+\midrule
+\multicolumn{3}{l}{\emph{Source-string (soft, contribute only to \texttt{soft\_pass})}} \\
+\propname{label\_present}, \propname{mark\_present} & --- & TikZ primitive appears in source \\
+\bottomrule
+\end{tabular}
+\end{table}

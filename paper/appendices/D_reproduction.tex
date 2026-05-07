@@ -56,7 +56,7 @@ uv run python -m evals.regrade \
     --input-dir evals/results/leaderboard_pilot_v2 \
     --output-dir evals/results/leaderboard_pilot_v3
 \end{lstlisting}
-We used this exact invocation to materialise \texttt{leaderboard\_pilot\_v3} from \texttt{leaderboard\_pilot\_v2} after pass~3 of \cref{sec:hardening} (the \propname{centroid} predicate): 10/498 records promoted, 0 demotions.
+We used this exact invocation to materialise \texttt{leaderboard\_pilot\_v3} from \texttt{leaderboard\_pilot\_v2} after pass~3 of \cref{ssec:ver_defn} (the \propname{centroid} predicate): 10/498 records promoted, 0 demotions.
 The same pattern audited verdict stability across the renderer/IR migration described in \cref{app:pinned_versions} (498 records, zero gate-status changes pre-pass-3), and is also the right tool for any future hardening pass: re-grade first, re-run only if the verdicts shift in a way the new code cannot reproduce.
 
 \subsection{Docker images and dataset card}

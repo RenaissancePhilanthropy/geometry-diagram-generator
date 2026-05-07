@@ -1,7 +1,7 @@
 \section{Per-scenario completeness witnesses}
 \label{app:completeness_witnesses}
 
-\Cref{ssec:completeness} classifies each templated scenario as \emph{tight}, \emph{loose}, or \emph{skeletal} and reports the template-level audit (18 / 11 / 1). This appendix exhibits per-scenario witnesses for each class:
+\Cref{ssec:ver_defn} classifies each templated scenario as \emph{tight}, \emph{loose}, or \emph{skeletal} and reports the template-level audit (18 / 11 / 1). This appendix exhibits per-scenario witnesses for each class:
 
 \begin{itemize}
 \item \textbf{Tight witnesses} (\cref{app:completeness_witnesses:tight}, $N{=}25$): a hand-written argument that any TikZ output passing the listed properties is congruent (up to rigid motion + scale + reflection) to the intended figure. We do not attempt to enumerate every diagram; the witness proves the equivalence class.
@@ -78,7 +78,7 @@ Witness: triangle determined up to similarity; circumcircle is the unique circle
 \paragraph{T12 --- \texttt{tpl-t2-ic-MNO-I-50-80}.}
 Property list: \propname{I\_equidistant\_from\_sides}.
 Witness: triangle determined by two angles up to similarity; incentre is the unique interior point equidistant from all three sides.
-\emph{Caveat:} the predicate has a soft spot (excentres also pass) closed at template level by requiring $I$ in the figure interior (\cref{ssec:adversarial}, mitigation row).
+\emph{Caveat:} the predicate has a soft spot (excentres also pass) closed at template level by requiring $I$ in the figure interior (\cref{ssec:ver_defn}, mitigation row).
 \textbf{Tight up to similarity (with template-side mitigation).}
 
 \paragraph{T13 --- \texttt{tpl-t2-par-PQRS-6-4-60}.}
@@ -109,7 +109,7 @@ Witness: outer triangle determined up to similarity by the prompt angle; midpoin
 \paragraph{T18 --- \texttt{tpl-t3-cen-PQR-G-60}.}
 Property list: \propname{G\_is\_centroid} + 3 \propname{midpoint} + \propname{G\_on\_median}.
 Witness: triangle determined by two angles up to similarity; centroid is unique; medians and midpoints follow.
-\emph{Caveat:} \propname{centroid} is a hardening-pass addition (\cref{sec:hardening}); pre-hardening, this template emitted no decision on its primary property and would have been classified loose.
+\emph{Caveat:} \propname{centroid} is a hardening-pass addition (\cref{ssec:ver_defn}); pre-hardening, this template emitted no decision on its primary property and would have been classified loose.
 \textbf{Tight up to similarity (post-hardening).}
 
 \paragraph{T19 --- \texttt{tpl-t3-iso-DEF-l5-b6}.}
@@ -263,6 +263,6 @@ This single skeletal template represents $\sim 4\%$ of all templated scenarios (
 
 \subsection{Aggregate completeness statistics}
 
-Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:completeness}: 379 tight ($63\%$), 209 loose ($35\%$), 12 skeletal ($2\%$).
+Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:ver_defn}: 379 tight ($63\%$), 209 loose ($35\%$), 12 skeletal ($2\%$).
 The witness pack in this appendix substantiates 25 of 379 tight scenarios ($\sim 7\%$ audit coverage) and 25 of 209 loose scenarios ($\sim 12\%$), with at least one witness per template class (and additional coverage for high-N templates).
 The auditing seed (17) is fixed in \texttt{paper/scripts/sample\_completeness\_witnesses.py}; re-running the script yields the same witness IDs.

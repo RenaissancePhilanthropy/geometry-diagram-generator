@@ -1,9 +1,16 @@
 \section{Failure-mode coding manual}
 \label{app:failure_coding}
 
-This manual specifies the per-failure taxonomy used in \cref{ssec:failure_modes} and the mapping from the verifier's machine-emitted \texttt{gate\_failures} field to the coarse code shown in the per-cell stacked bar of \cref{fig:failure_modes}.
+This manual specifies the per-failure taxonomy used in \cref{ssec:per_template} and the mapping from the verifier's machine-emitted \texttt{gate\_failures} field to the coarse code shown in the per-cell stacked bar of \cref{fig:failure_modes}.
 The coding is deterministic-from-source: each of the $\sim 7\mathrm{K}$ failed records in the headline run is mapped by a fixed function (\texttt{evals/leaderboard\_analyze.py::\_failure\_modes}), so the figure is reproducible byte-for-byte from the JSONL output and there is no human-in-the-loop inter-coder reliability question for these numbers.
 The qualitative disagreement coding in \cref{app:human_study:disagreement_coding} is a separate, human-judgment process and its reliability is reported there.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/failure_modes.pdf}
+\caption{Stacked failure modes per (model, strategy). After hardening, the dominant category is \emph{geometric predicate} (the model rendered a diagram with the wrong geometry), not render or generation.}
+\label{fig:failure_modes}
+\end{figure}
 
 \subsection{Code definitions}
 \label{app:failure_coding:codes}
@@ -37,7 +44,7 @@ Sub-events:
 \item \texttt{required\_labels:missing} --- the prompt's \texttt{required\_labels} list contains a name with no \texttt{\textbackslash tkzLabel*} command in the source.
 \item \texttt{required\_entities:missing} --- a required entity (e.g., a circle, when the prompt requires one) is absent from the rendered output.
 \end{itemize}
-This is a source-string check (\cref{tab:predicates}), so it tests presence of the macro, not visibility on canvas; we discuss the resulting soft spot in \cref{ssec:adversarial}.
+This is a source-string check (\cref{tab:predicates}), so it tests presence of the macro, not visibility on canvas; we discuss the resulting soft spot in \cref{ssec:ver_defn}.
 
 \paragraph{\textbf{Mark failure} (\texttt{mark}).}
 A required visual mark (right-angle square, congruence tick, etc.) is absent from the source.
@@ -123,7 +130,7 @@ This is the modal failure for \geminiflash{} on \rawcode{} and accounts for the 
 
 \paragraph{Example 2 --- \texttt{render}.}
 Scenario \texttt{tpl-t2-cc-ABC-O-50-80}, \opus{} + \rawcode{}. The TikZ contains \verb|\tkzInterCC(...)| with non-intersecting circle parameters; \texttt{lualatex} emits an error and \texttt{render\_status\,$=$\,error}.
-\emph{Predominant cause pre-hardening} (\cref{sec:hardening}); rare post-hardening because the resolver now returns \texttt{None} for non-intersecting cases.
+\emph{Predominant cause pre-hardening} (\cref{ssec:ver_defn}); rare post-hardening because the resolver now returns \texttt{None} for non-intersecting cases.
 
 \paragraph{Example 3 --- \texttt{predicate:incidence}.}
 Scenario \texttt{tpl-t2-alt-RST-H-50-80}, \haiku{} + \rawcode{}. The model places the altitude-foot point $H$ \emph{near} but not \emph{on} segment $RS$ --- coordinates differ from the segment by more than the per-template tolerance ($10^{-4}$). \texttt{gate\_failures} contains \texttt{H\_on\_base:not\_on\_segment}. Coded \texttt{predicate:incidence}.
