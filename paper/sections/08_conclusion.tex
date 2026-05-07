@@ -1,8 +1,0 @@
-\section{Conclusion}
-\label{sec:conclusion}
-
-\GeoGenBench is the first benchmark for generative geometric reasoning with fully-automatic, geometry-aware verification: 801 prompts paired with executable property lists decided in milliseconds via SymPy, removing the dependence on human raters or vision-language judges that limit prior generative-exam benchmarks.
-Across six frontier models and two strategies on the headline run, we find a $58$\pp strict-pass spread ($35.9\% \to 94.1\%$) and a Pareto frontier where seven of eleven measured cells are non-dominated: \gpt + \structured is the unique high-quality corner at $94.1$\% and \dollars{0.075}/scenario, dominating both \sonnet + \structured and \opus + \structured on both axes despite a $7\times$ price spread between cheapest and most expensive frontier flagship.
-A pre-registered $N{=}200$ human-correlation study finds moderate auto/expert agreement ($\kappa{=}0.455$) with one-directional verifier lenience concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numeric parameters --- a result that localises the gap concretely and motivates a v2 fix (template-side numeric predicates).
-We release the dataset, procedural template engine (allowing reviewers to roll new contamination-free splits), verification toolkit, and Docker renderer under permissive licenses.
-Future work extends the property language to 3D, coordinate-plane, and transformation-group constructions; a fine-tuning study using the templated split as supervision (with the verifier as reward signal) would test whether \GeoGenBench-style symbolic supervision can move the Pareto frontier.

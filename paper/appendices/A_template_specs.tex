@@ -14,6 +14,13 @@ Each scenario the template emits has the same shape: \texttt{(id, tier, tags, pr
 \Cref{fig:heatmap} shows the per-template strict pass-rate at headline N, with universally hard templates (e.g.\ \texttt{tpl-t3-trv} at $\leq 16$\% for every cell) highlighted in the $\ttwo$--$\tthree$ rows.
 Total scenario counts per template depend on the cardinality of its parameter sweep (vertex-label set, numeric parameter grid).
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/per_template_heatmap.pdf}
+\caption{Per-template strict pass-rate, best strategy per model. \texttt{tpl-t3-trv} (corresponding-angles transversal) is the universal hard cell ($\leq 16$\%); \texttt{tpl-t2-bis}, \texttt{tpl-t2-ic}, \texttt{tpl-t3-2alt} are model-discriminating; \tone\ templates saturate.}
+\label{fig:heatmap}
+\end{figure}
+
 \begin{table}[t]
 \caption{All 30 templates in the templated split. \textbf{Class}: T=tight, L=loose, S=skeletal (\cref{ssec:ver_defn}). \textbf{N}: scenarios emitted per template (verified against \texttt{evals/scenarios\_generated.yaml}). Aggregate: 600 scenarios; 18 tight templates, 11 loose, 1 skeletal.}
 \label{tab:template_summary}
