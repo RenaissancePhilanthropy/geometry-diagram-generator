@@ -1,0 +1,117 @@
+\section{Per-template case studies and stability index}
+\label{app:case_studies}
+
+This appendix expands two parts of \cref{sec:results} that we abbreviate in the body for length.
+\Cref{app:case_studies:templates} gives per-template drill-downs on three diagnostic templates: a \emph{universal failure} (\texttt{tpl-t3-trv}) where every cell scores below $20\%$, a \emph{strategy discriminator} (\texttt{tpl-t3-tan}) where \rawcode beats \structured for two of three frontier flagships, and a \emph{self-referential pass} (\texttt{tpl-t3-cen}) that motivates the predicate-language design discussion in \cref{ssec:self_referential_checks}.
+\Cref{app:case_studies:stability} reports the per-cell stability index summarised in the body.
+
+\subsection{Per-template case studies}
+\label{app:case_studies:templates}
+
+We pick three templates that, together, exercise three distinct argument shapes.
+For each we state the prompt, the expected predicate list, the per-cell strict-pass distribution at headline N ($\sim 48$--$60$ records per cell, $\sim 16$ scenario instantiations $\times$ $3$ repeats), and the dominant failure mode.
+
+\subsubsection{\texttt{tpl-t3-trv}: the universal failure (corresponding angles)}
+\label{sssec:trv_case}
+
+\noindent\textbf{Prompt.}\quad ``Create a diagram showing two parallel horizontal lines: the first passes through points $W$ and $X$, and the second passes through points $Y$ and $Z$ below it. Then draw a transversal line that makes a $40^\circ$ angle with the lines, crossing the first at point $G$ and the second at point $H$. Mark a pair of corresponding angles at $G$ and $H$ as equal. Label all six points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{parallel}$([WX], [YZ])$, \propname{point\_on\_line}$(G, W, X)$, \propname{point\_on\_line}$(H, Y, Z)$, \propname{angle\_equal}$([\angle WGH], [\angle YHG])$, plus the six required labels.
+
+\noindent\textbf{Per-cell distribution at headline N.}\quad Across the eleven measured cells (every model, both strategies, $48$--$51$ records per cell):
+$0/11$ cells reach $\geq 50\%$ strict pass; the best is \sonnet + \structured at $8/51 = 15.7$\%, followed by \haiku + \rawcode at $4/48 = 8.3$\%.
+$5/11$ cells score $0$ strict pass: \gpt under both strategies, \sonnet + \rawcode, \opus + \rawcode (only $1/48$), and \geminiflash + \rawcode.
+The lone soft-pass cluster is \geminipro + \rawcode at $21/48$ (\propname{angle\_equal} skipped on a coordinate-extraction edge case).
+
+\noindent\textbf{Failure-mode tally.}\quad Across all $\sim 480$ rendered records, \textbf{the \propname{corresponding\_angles\_equal} predicate accounts for $390$ of the failures} --- $\geq 80\%$ of every cell's fail rows. The other failure modes are scattered: $9$ timeouts (clustered in \opus + \structured), $7$ \propname{required\_labels} misses, and a handful of svg-level rendering failures on the \geminiflash cell.
+The geometry of the parallel pair and the on-line incidence is correct in every render: \propname{parallel} passes universally, and so does \propname{point\_on\_line} for both $G$ and $H$.
+
+\noindent\textbf{Interpretation.}\quad The construction skill being tested is not ``draw two parallel lines and a transversal'' (every model handles that) but ``set the same angle on both crossings.''
+Inspecting the failing TikZ outputs, three error patterns dominate:
+(i)~the model rotates the transversal by $40^\circ$ at $G$ but draws the segment from $G$ to $H$ at a different (visually-similar but unequal) slope;
+(ii)~the model draws the transversal as a segment between two free points and never enforces that the angle at $G$ equals the angle at $H$ symbolically (it visually looks like a single line but the angle measurements diverge);
+(iii)~the corresponding-angle \emph{pair} is mis-identified --- e.g., the model marks the alternate-interior pair instead of the corresponding-angle pair, and the pair the prompt names happens to be unequal.
+This template is a candidate for retiering or rewording in v2: the natural-language description ``corresponding angle'' is geometrically precise but no measured cell crosses $20\%$ strict pass, so it is testing the \emph{language understanding} of the prompt as much as the geometric reasoning.
+
+\subsubsection{\texttt{tpl-t3-tan}: the strategy discriminator (tangent at a labelled point)}
+\label{sssec:tan_case}
+
+\noindent\textbf{Prompt.}\quad ``Construct a circle centered at $M$ with radius $4$, and a point $T$ on the circle. Draw the tangent line to the circle at $T$, with two labeled points $U$ and $V$ on that line, one on each side of $T$. Mark the right angle between radius $MT$ and the tangent line. Label all four points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{tangent}$([UV], M, T)$, \propname{perpendicular}$([MT], [UV])$, \propname{point\_on\_segment}$(T, U, V)$, \propname{mark\_present}$(\text{right\_angle}, T)$, plus required labels and the circle entity.
+
+\noindent\textbf{Per-cell distribution at headline N.}\quad The cleanest strategy-by-cell split in the benchmark:
+\begin{itemize}
+\item \textbf{\rawcode is uniformly strong} for the four flagship-tier models: \gpt $56/57$, \sonnet $56/57$, \opus $54/57$, \haiku $51/57$. \geminipro + \rawcode is at $40/57$ strict + $15/57$ soft (the soft cluster is the same coordinate-extraction edge case as on \texttt{tpl-t3-trv}); \geminiflash + \rawcode lags at $31/57$.
+\item \textbf{\structured splits sharply by model.} \gpt + \structured matches its raw-code performance ($56/57$); \haiku + \structured holds steady ($52/57$). But \sonnet + \structured collapses to $27/60$, and \opus + \structured collapses to $\mathbf{6/60}$ --- a $\mathbf{-86\%}$ raw $\to$ structured gap on this single template.
+\end{itemize}
+
+\noindent\textbf{Failure-mode tally across the $\sim 600$ rendered records.}\quad The geometry of tangency itself is fine when the model produces \emph{any} render: where \propname{tangent} can be evaluated, it passes nearly universally, and \propname{perpendicular} likewise.
+The failures are almost entirely on the \emph{accompanying} predicates that hit \opus + \structured especially hard: \propname{required\_entities} (the IR omits the circle entity itself: $26$ records), \propname{required\_labels} ($25$), \propname{mark\_present} for the right-angle glyph at $T$ ($12$, the macro hand-off issue), \propname{T\_between\_P\_and\_Q} / \propname{T\_between\_U\_and\_V} ($\sim 20$ combined: $T$ on the line but outside segment $UV$), and \propname{radius\_perp\_tangent} ($9$).
+
+\noindent\textbf{Interpretation.}\quad This is the cleanest illustration of an \emph{IR-overhead} failure mode in the benchmark, but it is \emph{model-specific}: when \opus and \sonnet write raw TikZ, the \texttt{\textbackslash tkzDefTangent} family of macros encodes both the tangent and the perpendicular semantics in a single primitive, and a right-angle mark via \texttt{\textbackslash tkzMarkRightAngle(M,T,U)} is one extra line.
+When the same models have to encode the construction in our IR, they produce a syntactically-valid scenario but lose one of the small-but-mandatory side conditions --- typically a missing circle entity, missing labels, or the right-angle mark.
+\gpt + \structured does not exhibit this failure ($56/57$); the gap is between Anthropic's \structured implementation and OpenAI's. We read this as \emph{the IR's discriminated-union schema interacts unfavourably with Anthropic tool-call validation when the construction has a strict ordering between the geometric primitive and its decorating predicates}, and not as ``IR is universally worse on tangents.''
+For benchmark consumers, the actionable signal is: if you are deploying \opus or \sonnet for tangent-style constructions, prefer \rawcode; if you are deploying \gpt, either strategy works.
+
+\subsubsection{\texttt{tpl-t3-cen}: the self-referential pass (centroid as median intersection)}
+\label{sssec:cen_case}
+
+\noindent\textbf{Prompt.}\quad ``Create a diagram showing a triangle $XYZ$ with angle $Y = 60^\circ$ and angle $Z = 70^\circ$. Mark the midpoint $D$ of side $YZ$, the midpoint $E$ of side $ZX$, and the midpoint $F$ of side $XY$. Draw the three medians $XD$, $YE$, and $ZF$ --- they all meet at the centroid $G$. Label all seven points.''
+
+\noindent\textbf{Expected predicates.}\quad \propname{centroid}$(G, X, Y, Z)$, \propname{midpoint}$(D, Y, Z)$, \propname{midpoint}$(E, Z, X)$, \propname{midpoint}$(F, X, Y)$, \propname{point\_on\_segment}$(G, X, D)$, plus seven required labels.
+
+\noindent\textbf{Per-cell distribution at headline N.}\quad
+\begin{itemize}
+\item \textbf{\structured cells uniformly high}: \sonnet $63/63 = 100\%$, \opus $58/60 = 97\%$, \haiku $51/60 = 85\%$, \gpt $44/60 = 73\%$ ($16$ failures dominated by $\propname{required\_labels}$ misses and timeouts).
+\item \textbf{\rawcode mixed}: \haiku $56/60$, \gpt $53/60 + 7$ soft, \sonnet $49/60 + 11$ soft, \opus $14/60$ strict + \emph{$46/60$ \texttt{soft\_pass}} (every centroid-or-midpoint check returns \texttt{None}), \geminipro $6/60 + 44$ soft, \geminiflash $35/60 + 9$ soft + $16$ fail.
+\end{itemize}
+
+\noindent\textbf{Failure-mode tally.}\quad The \opus + \rawcode soft-pass cluster is the diagnostic case: \propname{midpoint}$(D, Y, Z)$ passes when present, but \propname{midpoint}$(E, Z, X)$, \propname{midpoint}$(F, X, Y)$, \propname{centroid}$(G, X, Y, Z)$, and \propname{point\_on\_segment}$(G, X, D)$ all return \texttt{None} --- not because the geometry is wrong but because \opus uses \texttt{\textbackslash tkzInterLL} on points that the eval-side coordinate extractor cannot trace through (the line endpoints themselves are \texttt{\textbackslash tkzInterLL} outputs of yet-earlier intersections).
+This is a coordinate-extraction limit, not a model-skill failure; the rendered SVG looks correct, and the soft-pass count of $46$ in this cell is the largest single soft-pass concentration in the benchmark.
+
+\noindent\textbf{Interpretation.}\quad This template is the worked example for the self-referential checks discussion in \cref{ssec:self_referential_checks}.
+For every passing record, $G$ is constructed either through an IR \texttt{point\_centroid} primitive or via \texttt{\textbackslash tkzInterLL} on two medians, and both forms make the \propname{centroid} formula check tautological by construction.
+The same construction-by-primitive pattern explains the four \propname{midpoint} checks: passing models use \texttt{\textbackslash tkzDefMidPoint} or the IR \texttt{point\_midpoint}, both of which compute the formula the predicate decides.
+We retain these checks because (i) they catch the class of error the \opus + \rawcode soft-pass demonstrates --- coordinate-extraction edge cases on chained intersections --- and (ii) they detect the small minority of cases where a model picks a wrong construction primitive (e.g., labelling the intersection of two non-medians ``$G$''), which we observed in $\sim 5$ records as \propname{G\_is\_centroid} and \propname{G\_on\_median\_AD} failures.
+The high strict-pass rate at the post-hardening verifier is therefore an honest measurement \emph{of what v1 measures}, with the caveat that v1.1 should add a \emph{construction-rendered} centroid variant requiring the three medians be visible as detectable strokes (not just $G$ being numerically correct).
+
+\subsection{Repeats and stability index}
+\label{app:case_studies:stability}
+
+The headline run uses $3$ independent repeats per (model, strategy, scenario) wherever rate limits permitted (\cref{tab:headline} shows per-cell N).
+We compute a \emph{stability index} per cell: fraction of (scenario) groups with $\geq 3$ repeats in which every repeat produces the same verdict (i.e.\ either all pass, all soft-pass, or all fail).
+
+\begin{table}[t]
+\caption{Per-cell stability on the templated split (groups with $\geq 3$ repeats; all-same-verdict fraction). \emph{Mixed P/F} counts the groups where the same scenario both passed and failed across repeats --- the stochasticity that 3 repeats are designed to surface.}
+\label{tab:stability}
+\centering
+\small
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Model} & \textbf{Strategy} & \textbf{Groups} & \textbf{Stability} & \textbf{Mixed P/F} \\
+\midrule
+\gpt & \structured & $545$ & $99.8\%$ & $1$ \\
+\opus & \structured & $574$ & $97.0\%$ & $17$ \\
+\geminipro & \structured & $291$ & $96.2\%$ & $11$ \\
+\sonnet & \structured & $582$ & $89.9\%$ & $59$ \\
+\haiku & \structured & $600$ & $74.3\%$ & $154$ \\
+\midrule
+\gpt & \rawcode & $600$ & $88.2\%$ & $23$ \\
+\opus & \rawcode & $598$ & $83.4\%$ & $14$ \\
+\haiku & \rawcode & $598$ & $79.6\%$ & $85$ \\
+\sonnet & \rawcode & $598$ & $76.9\%$ & $18$ \\
+\geminipro & \rawcode & $593$ & $64.4\%$ & $22$ \\
+\geminiflash & \rawcode & $600$ & $33.2\%$ & $348$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two patterns emerge in \cref{tab:stability}:
+(i)~\textbf{\structured is more stable than \rawcode for every model} except \haiku, where \haiku's IR-output JSON shape is itself the stochastic component.
+\gpt + \structured at $99.8\%$ stability ($1$ mixed-verdict group out of $545$) is essentially deterministic; the three frontier+\structured cells all sit at $\geq 96\%$.
+(ii)~\textbf{Stability tracks pass rate, but with the OpenAI flagship as a noticeable outlier in raw-code stability.}
+\gpt + \rawcode at $88.2\%$ stability is materially more stable than the next-cleanest raw-code cell (\opus + \rawcode at $83.4\%$), even though their pass rates differ by $20$\pp.
+The largest mixed-verdict counts come from cells whose pass rate sits in the $30$--$70\%$ band (\geminiflash + \rawcode: $58\%$ of groups mix pass/fail; \haiku + \structured: $26\%$), exactly where between-repeat variance is informationally maximal.
+
+The stability index justifies the $3$-repeat design (cheaper would have understated the noise on the bottom half of the leaderboard) and bounds the magnitude of any sampling artefact in the headline pass rates --- for the three frontier+\structured cells, the per-scenario verdict is consistent across repeats $\geq 96\%$ of the time, so the $0.8$\pp pass-rate spread between them is essentially deterministic, not within-cell noise.

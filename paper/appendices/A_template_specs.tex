@@ -10,11 +10,12 @@ Each scenario the template emits has the same shape: \texttt{(id, tier, tags, pr
 \subsection{Summary table}
 \label{app:template_specs:summary}
 
-\Cref{tab:template_summary} indexes all 30 templates by tier, geometric category, and completeness class (\cref{ssec:completeness}).
+\Cref{tab:template_summary} indexes all 30 templates by tier, geometric category, and completeness class (\cref{ssec:ver_defn}).
+\Cref{fig:heatmap} shows the per-template strict pass-rate at headline N, with universally hard templates (e.g.\ \texttt{tpl-t3-trv} at $\leq 16$\% for every cell) highlighted in the $\ttwo$--$\tthree$ rows.
 Total scenario counts per template depend on the cardinality of its parameter sweep (vertex-label set, numeric parameter grid).
 
 \begin{table}[t]
-\caption{All 30 templates in the templated split. \textbf{Class}: T=tight, L=loose, S=skeletal (\cref{ssec:completeness}). \textbf{N}: scenarios emitted per template (verified against \texttt{evals/scenarios\_generated.yaml}). Aggregate: 600 scenarios; 18 tight templates, 11 loose, 1 skeletal.}
+\caption{All 30 templates in the templated split. \textbf{Class}: T=tight, L=loose, S=skeletal (\cref{ssec:ver_defn}). \textbf{N}: scenarios emitted per template (verified against \texttt{evals/scenarios\_generated.yaml}). Aggregate: 600 scenarios; 18 tight templates, 11 loose, 1 skeletal.}
 \label{tab:template_summary}
 \centering
 \footnotesize
@@ -165,7 +166,7 @@ We omit per-template rendered example SVGs to keep the appendix compact; the can
 \textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ acute-angle specifications.\\
 \textbf{Property list:} \propname{I\_equidistant\_from\_sides}.\\
 \textbf{Required entities:} circle.\\
-\textbf{Completeness class:} tight up to similarity. \emph{Note:} the \propname{equidistant\_from\_sides} predicate has a documented soft spot --- the three excentres also pass --- mitigated by template-side pairing in \cref{ssec:adversarial}.
+\textbf{Completeness class:} tight up to similarity. \emph{Note:} the \propname{equidistant\_from\_sides} predicate has a documented soft spot --- the three excentres also pass --- mitigated by template-side pairing in \cref{ssec:ver_defn}.
 
 \subsubsection{\texttt{tpl-t2-par} --- parallelogram}
 
@@ -210,7 +211,7 @@ We omit per-template rendered example SVGs to keep the appendix compact; the can
 
 \textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ angle specifications.\\
 \textbf{Property list:} \propname{G\_is\_centroid} + 3 \propname{midpoint} checks + 1 \propname{point\_on\_segment} (G on one of the medians).\\
-\textbf{Completeness class:} tight up to similarity. \emph{Note:} \propname{centroid} was added in the hardening pass (\cref{sec:hardening}); pre-hardening this template silently emitted no decision on its primary property.
+\textbf{Completeness class:} tight up to similarity. \emph{Note:} \propname{centroid} was added in the hardening pass (\cref{ssec:ver_defn}); pre-hardening this template silently emitted no decision on its primary property.
 
 \subsubsection{\texttt{tpl-t3-trv} --- transversal of two parallel lines}
 
@@ -229,7 +230,7 @@ We omit per-template rendered example SVGs to keep the appendix compact; the can
 \textbf{Parameter sweep:} 19 scenarios = (centre, T, U, V) tuples $\times$ radii.\\
 \textbf{Property list:} \propname{tangent\_at\_T}, \propname{radius\_perp\_tangent}, \propname{T\_between\_U\_and\_V}, \propname{T\_on\_circle}, plus mark-presence.\\
 \textbf{Required entities:} circle.\\
-\textbf{Completeness class:} tight up to rotation. \emph{Note:} \propname{tangent} alone has a soft spot (verifies line at radial distance but not that $T$ lies on the circle), mitigated by template-side pairing with \propname{point\_on\_circle} (\cref{ssec:adversarial}).
+\textbf{Completeness class:} tight up to rotation. \emph{Note:} \propname{tangent} alone has a soft spot (verifies line at radial distance but not that $T$ lies on the circle), mitigated by template-side pairing with \propname{point\_on\_circle} (\cref{ssec:ver_defn}).
 
 \subsubsection{\texttt{tpl-t3-cyc} --- cyclic quadrilateral}
 
@@ -274,4 +275,4 @@ Summing the per-template $N$ from \cref{tab:template_summary}:
 \item Tier 3 (11 templates): $20{+}20{+}20{+}16{+}20{+}19{+}19{+}16{+}19{+}19{+}12 = 200$.
 \end{itemize}
 Total: 600 scenarios, exact (\cref{tab:template_summary}). The release artefact is committed at \texttt{benchmark/definitions/bench\_generated.jsonl} (600 records, sha256 \texttt{5e116307...}).
-The 200/200/200 per-tier balance is intentional and matches the tier-stratified analysis in \cref{ssec:tiers_results}.
+The 200/200/200 per-tier balance is intentional and matches the tier-stratified analysis in \cref{ssec:pareto}.

@@ -1,7 +1,7 @@
 \section{Human-correlation study materials and results}
 \label{app:human_study}
 
-This appendix accompanies the headline trust claim that the \GeoGenBench automatic verdict agrees with expert human judgment (\cref{ssec:human}, \cref{tab:trust_claims}).
+This appendix accompanies the headline trust claim that the \GeoGenBench automatic verdict agrees with expert human judgment (\cref{ssec:human}, \cref{ssec:ver_defn}).
 The pre-registered protocol was committed to the project repository at \texttt{docs/human\_study\_protocol.md} \emph{before} annotation began; this appendix is its paper-facing counterpart.
 We separate \textbf{methodology} (frozen pre-collection) from \textbf{results} (filled at study completion) to make the pre-registration auditable: changes to the methodology subsections after \texttt{2026-05-02} are logged in the protocol's \emph{deviation log} and surfaced here.
 
@@ -141,7 +141,7 @@ The lower bound of the 95\% bootstrap CI ($0.304$) does \emph{not} exceed the pr
 The $2{\times}2$ confusion matrix of (auto-verdict $\times$ human-consensus) on the binary collapse is shown in \cref{tab:human_confusion}.
 The asymmetry is the headline qualitative finding:
 the auto-verifier is \emph{never stricter than humans} on this sample (zero records with auto $=$ \texttt{fail} but human $=$ \texttt{pass}), but it is \emph{more lenient than humans on $36$ records} (auto $=$ \texttt{pass} but human consensus $=$ \texttt{fail}, $18\%$ of $200$).
-This is consistent with the loose-completeness analysis (\cref{ssec:completeness}): the verifier's property list checks named geometric relations but not all the prompt-given numeric parameters, so figures that satisfy the named relations while drifting from the prompt's specific angle / length values pass the verifier and fail the human reading that treats prompt numerics as binding.
+This is consistent with the loose-completeness analysis (\cref{ssec:ver_defn}): the verifier's property list checks named geometric relations but not all the prompt-given numeric parameters, so figures that satisfy the named relations while drifting from the prompt's specific angle / length values pass the verifier and fail the human reading that treats prompt numerics as binding.
 
 \begin{table}[t]
 \caption{Confusion matrix of auto-verdict against human consensus on the binary collapse, $N{=}200$. Rows are the verifier; columns are the consensus label. The verifier is one-directionally lenient: zero auto-fail / human-pass records, but $36$ auto-pass / human-fail records.}
@@ -256,7 +256,7 @@ During inductive coding we also considered:
 
 \paragraph{Code (ii): verifier missed prompt-numeric constraint ($N{=}32$, $89\%$).}
 The dominant pattern.
-Templates affected (all from the loose-property-list class identified in \cref{ssec:completeness} and \cref{tab:template_summary}):
+Templates affected (all from the loose-property-list class identified in \cref{ssec:ver_defn} and \cref{tab:template_summary}):
 \texttt{tpl-t2-cc} (4 records),
 \texttt{tpl-t2-med} (4),
 \texttt{tpl-t2-rh} (3),

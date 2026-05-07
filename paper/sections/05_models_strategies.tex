@@ -1,60 +1,35 @@
 \section{Models and strategies}
 \label{sec:strategies}
 
-\subsection{Models}
-\label{ssec:models}
+\paragraph{Models.}
+We evaluate six production frontier models spanning $\sim$$20\times$ in price across three vendors:
+\opus\ (\dollars{15}/\$75 per M input/output tokens), \sonnet\ (\dollars{3}/\$15), \haiku\ (\dollars{1}/\$5), \gpt\ (\dollars{5}/\$20), \geminipro\ (\dollars{1.25}/\$10), and \geminiflash\ (\dollars{0.30}/\$2.50).
+All runs use temperature $1.0$; costs use each model's published per-token rate as of April 2026.
 
-We evaluate six production frontier models that span $\sim$20$\times$ in price and represent three API families (Anthropic, OpenAI, Google):
-
-\begin{itemize}
-\item \opus (Anthropic): \dollars{15}/\$75 per million input/output tokens.
-\item \sonnet (Anthropic): \dollars{3}/\$15.
-\item \haiku (Anthropic): \dollars{1}/\$5.
-\item \gpt (OpenAI Responses API): \dollars{5}/\$20.
-\item \geminipro (Google AI Studio API, paid tier, $\leq$200K context): \dollars{1.25}/\$10.
-\item \geminiflash (Google AI Studio API, paid tier, $\leq$200K context): \dollars{0.30}/\$2.50.
-\end{itemize}
-
-All runs use temperature $= 1.0$ (default for both APIs).
-Costs are computed using each model's published per-token rate as of April 2026; \cref{sec:results} reports both raw token counts and dollarised costs.
-
-\subsection{Strategies}
-\label{ssec:strategies}
-
-\GeoGenBench ships two reference strategies as comparators, each implementing a common \texttt{SubstanceStrategy} interface.
-The benchmark itself does not depend on either --- any text-emitting model can be benchmarked by routing its TikZ output through the verification pipeline.
-The strategies sit on a spectrum from ``maximum LLM freedom'' (\rawcode) to ``schema-constrained intermediate representation'' (\structured); comparing them isolates the contribution of typed intermediate representations and pre-render self-validation.
-\Cref{fig:strategies_compare} shows what the LLM emits in each strategy on the same prompt.
-
-\paragraph{\rawcode (single-shot direct TikZ).}
-The LLM is given the prompt plus a TikZ tutorial system prompt and produces TikZ via a \texttt{render\_diagram(tikz: str)} tool call.
-It may call the tool multiple times to revise based on the rendered output, but no symbolic checks are run.
+\paragraph{Strategies.}
+\GeoGenBench ships two reference strategies on a spectrum from ``maximum LLM freedom'' to ``schema-constrained intermediate representation''; both share a common \texttt{SubstanceStrategy} interface and either can be replaced by any text-emitting model.
+\Cref{fig:strategies_compare} shows what the LLM emits in each on the same prompt.
+\textbf{\rawcode}: the LLM is given the prompt plus a TikZ tutorial system prompt and produces TikZ directly via a \texttt{render\_diagram(tikz: str)} tool call.
+It may revise based on the rendered output but no symbolic checks are run.
 This is the zero-scaffolding baseline.
-
-\paragraph{\structured (schema-constrained intermediate representation).}
-The LLM is given a Pydantic schema for an intermediate \texttt{DiagramIR} representation (point declarations, segment declarations, intersections, circles, render ops, and \emph{check} declarations) and must emit IR JSON.
-Code (not the LLM) compiles IR $\to$ SymPy objects $\to$ TikZ $\to$ SVG.
-Validation against the IR's check list happens \emph{before} render, so the strategy can self-correct: if a declared check fails on the LLM's IR, the strategy revises (up to $N=3$ retries).
+\textbf{\structured}: the LLM is given a Pydantic schema for a typed intermediate representation \texttt{DiagramIR} (point declarations, segments, intersections, circles, render ops, \emph{check} declarations) and emits IR JSON; \emph{code} (not the LLM) compiles IR $\to$ SymPy $\to$ TikZ $\to$ SVG.
+The IR's check list runs \emph{before} render, so the strategy self-corrects: if a declared check fails, the strategy revises (up to $N{=}3$ retries).
 This is the strategy we recommend for production deployment.
+The codebase additionally ships \texttt{strategies/raw\_svg.py} (text $\to$ SVG, no TeX); we exclude it from the headline since it measures essentially the same task as raw TikZ.
 
 \begin{figure}[t]
 \centering
 \small
-% Common prompt header
 \fbox{\begin{minipage}{0.97\linewidth}
 \textit{Common prompt:} ``Draw an acute triangle $EFG$ with $\angle E = 60^{\circ}$, $\angle F = 70^{\circ}$. Construct the altitude from $G$ meeting $EF$ at $H$.''
 \end{minipage}}\\[6pt]
-
-% Two strategy columns. Each column = title + role line + code box of identical
-% fixed height (so frames line up regardless of how many code lines there are).
 \newlength{\stratcolwd}\setlength{\stratcolwd}{0.47\linewidth}
-\newlength{\stratcodeht}\setlength{\stratcodeht}{52mm}
+\newlength{\stratcodeht}\setlength{\stratcodeht}{42mm}
 
 \begin{minipage}[t]{\stratcolwd}
 \centering
 {\textbf{\rawcode}}\\
-{\scriptsize\itshape zero scaffolding}\\[2pt]
-{\scriptsize LLM emits TikZ directly:}\\[2pt]
+{\scriptsize\itshape zero scaffolding --- LLM emits TikZ directly}\\[2pt]
 \fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
 \ttfamily\tiny
 \textbackslash coordinate (E) at (0,0);\\
@@ -62,15 +37,13 @@ This is the strategy we recommend for production deployment.
 \textbackslash coordinate (G) at (3.07,5.31);\\
 \textbackslash coordinate (H) at (3.07,0);\\
 \textbackslash draw (E)--(F)--(G)--cycle;\\
-\textbackslash draw[densely dashed]\\
-\hphantom{xx}(G) -- (H);
+\textbackslash draw[densely dashed] (G) -- (H);
 \end{minipage}}
 \end{minipage}\hfill
 \begin{minipage}[t]{\stratcolwd}
 \centering
 {\textbf{\structured}}\\
-{\scriptsize\itshape schema-constrained IR}\\[2pt]
-{\scriptsize LLM emits typed JSON; \emph{we} compile to TikZ:}\\[2pt]
+{\scriptsize\itshape schema-constrained IR --- LLM emits typed JSON, we compile to TikZ}\\[2pt]
 \fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
 \ttfamily\tiny
 \{ "points": [\\
@@ -78,43 +51,18 @@ This is the strategy we recommend for production deployment.
 \hphantom{x}\{"name":"F","type":"free"\},\\
 \hphantom{x}\{"name":"G","type":"by\_angles",\\
 \hphantom{xx}"from":"E","to":"F",\\
-\hphantom{xx}"ang\_at\_from":60,\\
-\hphantom{xx}"ang\_at\_to":70\}\,],\\
-\hphantom{x}"intersections":[\\
-\hphantom{xx}\{"name":"H",\\
-\hphantom{xxx}"lines":[\\
-\hphantom{xxxx}["G","perp\_EF"],\\
-\hphantom{xxxx}["E","F"]\,]\}\,],\\
-\hphantom{x}"checks":[\{"type":\\
-\hphantom{xxx}"right\_angle",\\
-\hphantom{xxx}"args":["G","H","E"]\}\,]\}
+\hphantom{xx}"ang\_at\_from":60,"ang\_at\_to":70\}],\\
+\hphantom{x}"intersections":[\{"name":"H",\\
+\hphantom{xx}"lines":[["G","perp\_EF"],["E","F"]]\}],\\
+\hphantom{x}"checks":[\{"type":"right\_angle",\\
+\hphantom{xx}"args":["G","H","E"]\}]\}
 \end{minipage}}
 \end{minipage}
-
-\vspace{4pt}
-\centering\textit{\small$\Big\downarrow$\ \ Both converge to the same TikZ\,$\to$\,SVG\,$\to$\,SymPy\,$\to$\,predicate-verdict pipeline of \cref{fig:pipeline}.\ \ $\Big\downarrow$}
-
-\caption{\textbf{The two reference generation strategies, side by side on the same prompt.}
-\rawcode places minimal trust in scaffolding: the LLM emits coordinate-bearing TikZ directly.
-\structured asks the LLM to declare \emph{what} it wants to draw via a typed schema (an intermediate representation, IR); \emph{our} compiler picks coordinates and the IR's own \texttt{checks} list lets the strategy self-correct before rendering.}
+\caption{The two reference strategies on the same prompt. Both converge to the same TikZ$\to$SVG$\to$SymPy$\to$predicate-verdict pipeline.}
 \label{fig:strategies_compare}
 \end{figure}
 
-\paragraph{Beyond TikZ: an alternate text-emit target.}
-The methodology is renderer-agnostic --- the verifier does not care whether the model emits TikZ, raw SVG, Asymptote, or any other text-emittable vector format, provided we can compile it back to a coordinate set.
-The codebase ships \texttt{strategies/raw\_svg.py} (and a self-revising variant) which routes the model directly to SVG output, bypassing TikZ and the LuaLaTeX container entirely.
-Because raw SVG and raw TikZ measure essentially the same thing --- ``can the model emit a text-format vector diagram with correct geometry'' --- we do not include \texttt{raw\_svg} in the headline leaderboard; it is intended for deployments where a TeX-free runtime is required, and is documented in the released codebase rather than benchmarked here.
-
-\subsection{Cost and latency methodology}
-\label{ssec:cost_methodology}
-
-For each (model, strategy, scenario, repeat) we record (a)~total input + output tokens across all API calls (including any retries), (b)~wall-clock duration from prompt submission to rendered SVG, and (c)~the token-multiplied USD cost at published rates.
-The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean of per-scenario costs across the headline run, including failed scenarios (a model that frequently retries before failing pays for the retries).
-Per-call latency excludes time spent in our verification pipeline.
-
-\subsection{Headline-run configuration}
-\label{ssec:pilot_config}
-
-The headline run reported in \cref{sec:results} draws each of the $600$ templated scenarios with three repeats per (model, strategy) cell.
-The \structured strategy permits up to three internal check-fail retries before recording final verdict.
-Two cells are marginally partial --- \opus + \structured at $574/600$ unique scenarios with $\geq 3$ repeats and \gpt + \structured at $545/600$ --- because a fixed set of pathology scenarios trigger circular-dependency cycles in the IR resolver that the subprocess-isolated runner kills via OS-level timeout; we document the per-cell coverage caveat in \cref{ssec:headline} and the per-tier breakdown in \cref{ssec:tiers_results}.
+\paragraph{Cost and latency.}
+For each (model, strategy, scenario, repeat) we record (a)~total input/output tokens including retries, (b)~wall-clock duration from prompt submission to rendered SVG, and (c)~the token-multiplied USD cost.
+The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean across the headline run including failed scenarios.
+The headline run draws each of the $600$ templated scenarios with three repeats per cell, with up to three internal IR-check retries on \structured.
