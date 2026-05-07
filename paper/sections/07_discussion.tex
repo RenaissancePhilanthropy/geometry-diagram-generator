@@ -1,22 +1,20 @@
-\section{Discussion}
+\section{Discussion and conclusion}
 \label{sec:discussion}
 
 \paragraph{Scope and limitations.}
-\GeoGenBench measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation satisfying a stated set of relational properties; it does not test proof construction, 3D solids, coordinate-plane algebra, or \emph{teaching utility}.
-Specific limitations: 2D Euclidean only (curriculum scenarios mentioning cones / spheres exercise the renderer but cannot be symbolically verified); no proof construction (a model that draws a correct diagram but cannot explain why still passes); marginal partial coverage on two \structured cells (\opus\ $574/600$, \gpt\ $545/600$) due to LLM-IR circular-dependency cycles --- conservative against those pathologies; tolerance $5\times 10^{-3}$ uniform across check types; $35\%$ of templated scenarios are loose, so a passing verdict means ``produced \emph{a} diagram consistent with the prompt's stated constraints,'' not \emph{the} canonical diagram.
-
-\paragraph{Templated vs.\ curriculum.}
-Templated scenarios have provably-correct ground truth; curriculum scenarios cover topics templates do not (3D solids, transformations, multi-step proofs) but rely on LLM-authored ground truth that is spot-checkable but not guaranteed correct.
-On the three cells run on curriculum at headline N (cheap end of the price ladder), \haiku\ + \rawcode drops from $82.1\% \to 36.0\%$, \haiku\ + \structured from $84.5\% \to 36.8\%$, \geminiflash\ + \rawcode from $39.4\% \to 25.4\%$.
-The curriculum split is materially harder for every cell measured --- topical breadth and LLM-authored predicate lists both contribute --- but corroborates the strategy-effect direction at lower absolute pass rates.
-Headline-run findings (\cref{ssec:findings,ssec:pareto}) are templated-split findings.
+\GeoGenBench measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation; it does not test proof construction, 3D solids, coordinate-plane algebra, or \emph{teaching utility}.
+$35\%$ of templated scenarios are loose: a passing verdict means ``produced \emph{a} diagram consistent with the prompt's stated constraints,'' not \emph{the} canonical diagram.
+Two \structured\ cells are marginally partial (\opus\ $574/600$, \gpt\ $545/600$) due to LLM-IR circular-dependency cycles --- conservative against those pathologies.
+On the three cells run on curriculum at headline N, \haiku\ + \rawcode\ drops $82.1\% \to 36.0\%$, \haiku\ + \structured\ $84.5\% \to 36.8\%$, \geminiflash\ + \rawcode\ $39.4\% \to 25.4\%$: the curriculum split is materially harder for every cell measured (topical breadth and LLM-authored predicate lists both contribute).
+Headline-run findings are templated-split findings.
 
 \paragraph{Threats to validity.}
-\textbf{Contamination}: the procedural template engine ships with the benchmark, allowing reviewers to roll fresh contamination-free splits; we additionally commit to a held-out test split revealed only at evaluation time.
-\textbf{Verifier soundness}: the adversarial probe found 5 predicate soft spots all addressable by hardening or template-side mitigation, yielding $<5\%$ vulnerability to constructed adversarial examples; the human-correlation study (\cref{ssec:human}) found a larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but expert raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
-\textbf{LLM-judged check authoring}: curriculum-split predicate lists are LLM-generated; headline metrics are templated-only.
+The procedural template engine ships with the benchmark, allowing reviewers to roll fresh contamination-free splits.
+The adversarial probe found 5 predicate soft spots all addressable by hardening or template-side mitigation, yielding $<5\%$ vulnerability to constructed adversarial examples; the human-correlation study (\cref{ssec:human}) found a larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but expert raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
 
-\paragraph{Deployment implications.}
-For raw TikZ, \gpt + \rawcode dominates (beats \opus + \rawcode by $20$\pp at $4.5\times$ lower cost; \haiku + \rawcode tied with \opus + \rawcode at $14\times$ lower cost).
-At the high-quality end, the three frontier+\structured cells converge within $1$\pp at a $7\times$ cost spread, with \gpt + \structured as the unique Pareto corner; \structured is our recommended strategy for cross-vendor production deployment, with \gpt as default and \sonnet as a near-tied alternate.
-\GeoGen's two pillars (\cref{sec:design}) extend beyond plane geometry: procedural co-generation reuses wherever a domain admits a Python-expressible construction; render-then-symbolic-verify extends along the predicate-language axis (versioned, additive). Two extensions are in flight at the codebase level: a GenExam-Math integration \citep{wang2025genexam} re-encoding a 91-prompt geometry subset for empirical comparison between automatic verification and vision-LM judges, and a coordinate-plane / 3D-solid extension.
+\paragraph{Deployment and conclusion.}
+For raw TikZ, \gpt + \rawcode\ dominates (beats \opus\ + \rawcode\ by $20$\pp at $4.5\times$ lower cost; \haiku\ + \rawcode\ tied with \opus\ + \rawcode\ at $14\times$ lower cost).
+At the high-quality end, the three frontier+\structured\ cells converge within $1$\pp at $7\times$ cost spread; \gpt + \structured\ is the unique Pareto corner.
+\GeoGen's two pillars (\cref{sec:design}) extend beyond plane geometry: procedural co-generation reuses wherever a domain admits a Python-expressible construction, and render-then-symbolic-verify extends along the predicate-language axis (versioned, additive).
+Two extensions are in flight: a GenExam-Math integration \citep{wang2025genexam} re-encoding a 91-prompt geometry subset for empirical comparison between automatic verification and vision-LM judges, and a coordinate-plane / 3D-solid extension.
+We release the dataset, template engine, verification toolkit, and Docker renderer under permissive licenses.

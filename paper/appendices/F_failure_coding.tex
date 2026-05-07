@@ -1,7 +1,7 @@
 \section{Failure-mode coding manual}
 \label{app:failure_coding}
 
-This manual specifies the per-failure taxonomy used in \cref{ssec:per_template} and the mapping from the verifier's machine-emitted \texttt{gate\_failures} field to the coarse code shown in the per-cell stacked bar of \cref{fig:failure_modes}.
+This manual specifies the per-failure taxonomy used in \cref{ssec:findings} and the mapping from the verifier's machine-emitted \texttt{gate\_failures} field to the coarse code shown in the per-cell stacked bar of \cref{fig:failure_modes}.
 The coding is deterministic-from-source: each of the $\sim 7\mathrm{K}$ failed records in the headline run is mapped by a fixed function (\texttt{evals/leaderboard\_analyze.py::\_failure\_modes}), so the figure is reproducible byte-for-byte from the JSONL output and there is no human-in-the-loop inter-coder reliability question for these numbers.
 The qualitative disagreement coding in \cref{app:human_study:disagreement_coding} is a separate, human-judgment process and its reliability is reported there.
 
