@@ -25,7 +25,9 @@ cp benchmark/definitions/croissant.json        "$OUT_DIR"/
 # Metadata
 cp benchmark/definitions/README.md             "$OUT_DIR"/dataset_card.md
 cp docs/datasheet.md                           "$OUT_DIR"/datasheet.md
-cp docs/human_study_protocol.md                "$OUT_DIR"/human_study_protocol.md
+# Note: human_study_protocol.md is intentionally not included --
+# the paper's Appendix E describes the protocol in full, so including it
+# in the supplementary bundle would duplicate appendix content.
 
 # Top-level reviewer-facing index
 cat > "$OUT_DIR"/README.md <<'EOF'
@@ -44,7 +46,6 @@ with Symbolic Verification"*.
 | `croissant.json` | Croissant 1.0 metadata for both splits. Validates against `mlcroissant >= 1.1.0`. |
 | `dataset_card.md` | Hugging Face-style dataset card. |
 | `datasheet.md` | Gebru-format datasheet (Datasheets for Datasets). |
-| `human_study_protocol.md` | Frozen pre-registration of the human-correlation study. |
 
 ## File integrity
 
