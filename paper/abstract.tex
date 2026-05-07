@@ -1,7 +1,7 @@
 \begin{abstract}
 Existing geometry benchmarks ask language models to \emph{interpret} a diagram and answer a question.
 None ask whether a model can \emph{produce} a correct diagram from a description.
-We introduce \textbf{\GeoGen}, a methodology for automatically-verifiable benchmarks of generative geometric reasoning, and \textbf{\GeoGenBench}, its first instance: 801 prompts paired with machine-checkable property lists from a 17-predicate language.
+We introduce \textbf{\GeoGen}, a methodology for automatically-verifiable benchmarks of generative geometric reasoning, and \textbf{\GeoGenBench}, its first instance: 801 prompts paired with machine-checkable property lists (e.g.\ \propname{right\_angle}, \propname{midpoint}, \propname{parallel}; 17 predicate types in total).
 \GeoGen co-generates prompts and rubrics from shared Python source (eliminating drift between question and grading criteria), then renders the model's TikZ output and decides each predicate symbolically against compiled SymPy coordinates --- no human grading, no vision--language judge.
 
 We benchmark six frontier models from three vendors under raw-TikZ and structured-IR strategies.
