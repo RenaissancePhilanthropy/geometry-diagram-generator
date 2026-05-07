@@ -1,0 +1,86 @@
+\clearpage
+\section*{NeurIPS Paper Checklist}
+
+\begin{enumerate}
+
+\item {\bf Claims}
+\item[] Question: Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?
+\item[] Answer: \answerYes{}
+\item[] Justification: The abstract and \cref{sec:intro} state three contributions: (i) the \GeoGen\ methodology, (ii) the 801-prompt \GeoGenBench\ instance with a 17-predicate language, and (iii) headline empirical findings from a $600$-scenario $\times$ $3$-repeat draw across six frontier models and two strategies. All three are substantiated in the paper: (i) in \cref{sec:design}, (ii) in \cref{sec:design,app:property_reference}, and (iii) in \cref{sec:results,app:case_studies}. The Pareto-corner finding ($\gpt + \structured$ at $94.1$\%, \dollars{0.075}/scenario), the $7\times$ cost-equivalent-quality spread, the $\sim 18\%$ one-directional verifier lenience from the human-correlation study, and the Gemini-Flash deployment-portability finding are all reproducible from the released JSONL and tooling.
+
+\item {\bf Limitations}
+\item[] Question: Does the paper discuss the limitations of the work performed by the authors?
+\item[] Answer: \answerYes{}
+\item[] Justification: \cref{sec:discussion} (``Scope and limitations'' and ``Threats to validity'' paragraphs) enumerates the limitations of the benchmark: 2D Euclidean only, no proof construction, marginal partial coverage on two \structured cells, fixed tolerance $\tau$, $35\%$ of templated scenarios are loose, and the $\sim 18\%$ naturally-occurring verifier lenience. \cref{app:human_study:limitations} adds limitations specific to the human-correlation study (two raters, both paper authors; templated split only; three-day annotation window).
+
+\item {\bf Theory assumptions and proofs}
+\item[] Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof?
+\item[] Answer: \answerNA{}
+\item[] Justification: The paper presents an empirical benchmarking study; it does not advance any theoretical results requiring formal proofs.
+
+\item {\bf Experimental result reproducibility}
+\item[] Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?
+\item[] Answer: \answerYes{}
+\item[] Justification: \cref{app:reproduction} provides a complete reproduction recipe: the procedural template engine and exact seed (42), the per-(model, strategy, scenario, repeat) JSONL artefacts, the verification toolkit, the Docker renderer image, the API model identifiers and dates of access, and the scripts for re-aggregating the leaderboard. The hardening pass and its per-pilot-record promotion delta are documented in \cref{ssec:ver_defn}.
+
+\item {\bf Open access to data and code}
+\item[] Question: Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?
+\item[] Answer: \answerYes{}
+\item[] Justification: The dataset (\texttt{benchmark/definitions/bench\_generated.jsonl}, \texttt{bench\_curriculum.jsonl}, plus a Croissant 1.0 metadata file), the procedural template engine, the verification toolkit, the rating viewer used in the human-correlation study, and the Docker renderer are all released under permissive licenses (MIT for code; details in \cref{app:reproduction} and the \texttt{benchmark/definitions/README.md} dataset card). Reviewers can re-roll the engine with a different seed for a contamination-free split.
+
+\item {\bf Experimental setting/details}
+\item[] Question: Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer, etc.) necessary to understand the results?
+\item[] Answer: \answerYes{}
+\item[] Justification: \cref{sec:strategies} specifies model identifiers, sampling temperature ($1.0$, default), the two strategies' system prompts and tool-call interface, the $N{=}3$ self-correct retry budget for \structured, and the 600-scenario $\times$ 3-repeat headline-run shape. \cref{app:reproduction} adds the per-cell wall-clock and token totals and the subprocess-isolated-runner timeout configuration. We do not train any model in this work; we benchmark frozen production endpoints.
+
+\item {\bf Experiment statistical significance}
+\item[] Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?
+\item[] Answer: \answerYes{}
+\item[] Justification: The human-correlation primary endpoint reports $\kappa = 0.455$ with a $1000$-resample bootstrap $95\%$ CI $[0.304, 0.590]$ (\cref{ssec:human}, \cref{app:human_study:results}). Headline pass-rate spreads ($1$\pp on the three frontier+\structured\ cells, $20$\pp on the $\rawcode$ cross-vendor comparison) are at $N \geq 1{,}140$ records per cell, where Wilson $95\%$ CIs on a single cell are $\leq 1$\pp; cross-cell deltas of $\geq 5$\pp are well above sampling noise. Per-cell repeat stability is reported in \cref{app:case_studies:stability} ($\geq 96\%$ all-same-verdict on the three frontier+\structured\ cells), bounding within-cell variance.
+
+\item {\bf Experiments compute resources}
+\item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
+\item[] Answer: \answerYes{}
+\item[] Justification: The headline run consumed approximately $\$975$ in API spend, with per-cell per-scenario cost reported in \cref{tab:headline} and per-cell wall-clock latency in the same table. Reproduction does not require GPUs or specialised hardware --- only API access to the named endpoints and a Docker host able to run the LuaLaTeX renderer container ($\sim 200$\,MB image, $<1$\,s/render). The eval harness uses asyncio with subprocess isolation and runs comfortably on a 4-core laptop. \cref{app:reproduction} documents the canonical compute environment.
+
+\item {\bf Code of ethics}
+\item[] Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics?
+\item[] Answer: \answerYes{}
+\item[] Justification: The work benchmarks publicly-available model APIs against a procedurally-generated dataset and a curriculum-derived dataset; it does not use personal data, does not deploy a system in a high-stakes setting, and does not introduce a generative model with elevated misuse risk. The human-correlation study uses two paper-author raters under documented conflict-of-interest mitigations (\cref{ssec:human}, \cref{app:human_study}).
+
+\item {\bf Broader impacts}
+\item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
+\item[] Answer: \answerYes{}
+\item[] Justification: \emph{Positive impacts:} an automatic, geometry-aware verifier for diagram generation enables faster iteration on LLM-driven educational content (e.g., K--12 worksheet authoring, technical illustrations) and provides a cheap reward signal for fine-tuning that does not require human labels or vision-language judges. The procedural template engine ships with the benchmark so reviewers and downstream researchers can re-roll contamination-free splits, lowering the cost of evaluation hygiene. \emph{Negative impacts:} an automatically-graded benchmark could displace human assessment in educational technology where teaching utility (rather than dimensional correctness) is the relevant signal --- we explicitly note in \cref{sec:discussion} that \GeoGenBench\ does not measure teaching utility and should not be used as a proxy for it. The human-correlation study's $18\%$ one-directional lenience finding is also published transparently to caution downstream users about over-relying on the auto-verdict for student-facing decisions.
+
+\item {\bf Safeguards}
+\item[] Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse?
+\item[] Answer: \answerNA{}
+\item[] Justification: The paper releases a benchmark dataset, a verification toolkit, and a Docker renderer; it does not release a generative model or scraped dataset. The released artefacts are low-risk: the dataset consists of procedurally-generated geometry prompts and machine-decidable property lists; misuse risk is comparable to releasing a unit-test suite. The curriculum-extracted scenarios cite their topical scaffold (Carnegie Learning's \emph{Bluebonnet Learning} curriculum, an open public-domain curriculum) and reproduce no copyrighted prose.
+
+\item {\bf Licenses for existing assets}
+\item[] Question: Are the creators or original owners of assets used in the paper properly credited and are the license and terms of use explicitly mentioned and properly respected?
+\item[] Answer: \answerYes{}
+\item[] Justification: The curriculum scaffold is the Texas Education Agency / Carnegie Learning's \emph{Bluebonnet Learning} K--12 curriculum, attributed in \cref{sec:design,app:reproduction} and \texttt{docs/datasheet.md}; we use Bluebonnet only as a topical scaffold (chapter / lesson structure) and reproduce no Bluebonnet prose, figures, or problems. The TikZ ecosystem (\texttt{tkz-euclide}, \texttt{tkz-elements}, \texttt{tikz}) is licensed under the LaTeX Project Public License; SymPy under BSD-3-Clause; \texttt{pydantic-ai} under MIT; the model APIs (Anthropic, OpenAI, Google) under their respective developer terms. All upstream licenses are listed in \cref{app:reproduction} and \texttt{benchmark/definitions/README.md}.
+
+\item {\bf New assets}
+\item[] Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets?
+\item[] Answer: \answerYes{}
+\item[] Justification: The released benchmark ships with: a Croissant 1.0 metadata file (\texttt{benchmark/definitions/croissant.json}, validated against \texttt{mlcroissant} 1.1.0), a Hugging Face-style dataset card (\texttt{benchmark/definitions/README.md}), a Gebru-format datasheet (\texttt{docs/datasheet.md}), a frozen pre-registration for the human-correlation study (\texttt{docs/human\_study\_protocol.md}), and a public leaderboard URL committed to the repository.
+
+\item {\bf Crowdsourcing and research with human subjects}
+\item[] Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation?
+\item[] Answer: \answerYes{}
+\item[] Justification: \cref{app:human_study:rubric} reproduces the full rating rubric (Q1, Q2, blinding); \cref{app:human_study:tooling} describes the rating viewer (single-page HTML, screenshot deferred to the released repository at \texttt{evals/human\_study/viewer.html} and the runbook at \texttt{evals/human\_study/README.md}); the protocol is committed at \texttt{docs/human\_study\_protocol.md} prior to data collection. Both raters are paper authors; no monetary compensation was given; the conflict-of-interest mitigation (Q1 blinding + per-rater independent $\kappa$) is reported in \cref{ssec:human,app:human_study:limitations}.
+
+\item {\bf Institutional review board (IRB) approvals or equivalent}
+\item[] Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether IRB approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?
+\item[] Answer: \answerNA{}
+\item[] Justification: The human-correlation study involves only the two paper authors as raters, evaluates publicly-available LLM outputs against publicly-released geometry prompts, collects no personal information beyond a self-chosen rater identifier, and presents no foreseeable risk to the raters beyond the time investment of $7$--$13$ hours per rater of focused rating work. Under our institution's review process, low-risk self-rating studies of this kind do not require IRB approval. The annotation effort and rater identities are disclosed in \cref{ssec:human,app:human_study:raters}.
+
+\item {\bf Declaration of LLM usage}
+\item[] Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research?
+\item[] Answer: \answerYes{}
+\item[] Justification: LLMs play two distinct roles in this work, both disclosed: (i) the systems under evaluation --- six production frontier models from three vendors (Anthropic Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5; OpenAI GPT-5.5; Google Gemini 2.5 Pro / Flash) are benchmarked end-to-end (\cref{sec:strategies}); and (ii) the curriculum-split scenario authoring --- Anthropic Claude Sonnet 4.6 was used to convert lesson-topic scaffolds from the \emph{Bluebonnet Learning} curriculum into student-style diagram-drawing prompts paired with author-written property lists (\cref{sec:design,app:reproduction}), with the templated split (procedurally-generated, no LLM in the authoring loop) reported separately as a calibration anchor.
+
+\end{enumerate}
