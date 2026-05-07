@@ -4,7 +4,7 @@ None ask whether a model can \emph{produce} a correct diagram from a description
 We introduce \textbf{\GeoGen}, a methodology for automatically-verifiable benchmarks of generative geometric reasoning, and \textbf{\GeoGenBench}, its first instance: 801 prompts paired with machine-checkable property lists (e.g.\ \propname{right\_angle}, \propname{midpoint}, \propname{parallel}; 17 predicate types in total).
 \GeoGen co-generates prompts and rubrics from shared Python source (eliminating drift between question and grading criteria), then renders the model's TikZ output and decides each predicate symbolically against compiled SymPy coordinates --- no human grading, no vision--language judge.
 
-We benchmark six frontier models from three vendors under raw-TikZ and structured-IR strategies.
+We benchmark six frontier models from three vendors under two strategies: \emph{raw TikZ} (the model emits TikZ directly) and a structured \emph{intermediate representation} (IR; the model emits typed JSON declaring points, lines, intersections, and self-checks, which we compile to TikZ before rendering).
 \textbf{The cost--quality Pareto frontier collapses to a single corner.}
 Under the IR strategy, \gpt\ ($94.1$\%, \dollars{0.075}/scen), \sonnet\ ($93.4$\%, \dollars{0.088}), and \opus\ ($93.3$\%, \dollars{0.532}) tie within $1$\pp at a $\mathbf{7\times}$ cost spread.
 On raw TikZ, \gpt\ ($91.9$\%, \dollars{0.058}) beats \opus\ ($71.6$\%, \dollars{0.262}) by $20$\pp at $4.5\times$ lower cost.
