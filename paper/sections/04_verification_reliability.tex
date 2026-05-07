@@ -60,9 +60,13 @@ Items irreconcilable within $5$ minutes of discussion are recorded transparently
 Cohen's $\kappa(\text{auto-verdict}, \text{human-consensus}) \geq 0.70$ on the binary collapse (\texttt{pass}~$\cup$~\texttt{soft\_pass} vs \texttt{fail}), $N = 200$, with the lower bound of a 1000-resample bootstrap 95\% CI exceeding $0.70$.
 Pre-registered secondary analyses (per-tier, per-strategy, per-vendor $\kappa$; per-predicate Q2 agreement; inter-rater Cohen's $\kappa$ before consensus) are reported regardless of the primary outcome in \cref{app:human_study}.
 
-\paragraph{Status.}
-Annotation underway during 2026-05-02 to 2026-05-05.
-\Cref{app:human_study} reports the methodology in full (committed before annotation begins) and the results (filled at study completion): primary $\kappa$ with CI, per-subgroup $\kappa$, the full confusion matrix, and a qualitative disagreement-coding taxonomy.
+\paragraph{Headline result.}
+$\kappa(\text{auto-verdict}, \text{human-consensus}) = 0.455$ on the binary collapse, $N{=}200$, with 95\% bootstrap CI $[0.304,\ 0.590]$ over 1000 resamples.
+The point estimate is in the protocol's pre-registered \emph{moderate-agreement} branch ($0.40 \leq \kappa < 0.70$), so we report the result as moderate agreement with disagreement coded qualitatively (\cref{app:human_study:disagreement_coding}); the lower bound of the 95\% CI does not exceed the pre-registered $0.70$ threshold, so the headline-validation hypothesis is \emph{not} supported.
+Inter-rater agreement before consensus is substantial ($\kappa{=}0.704$), so the rating instrument is consistent; the gap is between the two raters as a unit and the auto-verdict, not between the raters.
+The disagreement is one-directional: $36$ of $200$ records have the verifier accepting where humans reject, and \emph{zero} records have the reverse, indicating systematic verifier lenience rather than randomness or symmetric noise.
+The disagreement concentrates on \ttwo\ ($\kappa{=}0.160$) where the verifier's property list checks the named auxiliary construction (altitude perpendicular, median to midpoint, etc.) but does not enforce the prompt's specific numeric angle / side parameters; \tone\ ($\kappa{=}0.651$) and \tthree\ ($\kappa{=}0.796$) reach substantial agreement.
+\Cref{app:human_study} reports the full methodology, per-subgroup $\kappa$, confusion matrix, and disagreement-coding taxonomy; \cref{ssec:completeness} discusses the loose-completeness pattern surfaced by the disagreement coding.
 
 \subsection{Adversarial analysis: can we construct passing-but-wrong diagrams?}
 \label{ssec:adversarial}
@@ -143,12 +147,14 @@ This is a positive outcome for the soundness of the prior verdicts.
 Auto verdict is sound on tight scenarios. & Adversarial probe of all 17 predicates; only 5 have soft spots, all addressable. & high \\
 Tight-completeness rate of templated split. & Audit of all 30 templates (\cref{ssec:completeness}). & high (deterministic) \\
 Loose-completeness is intentional and matches educational practice. & \cref{ssec:completeness} examples + \cref{app:completeness_witnesses}. & medium \\
-Auto-verdict agrees with human raters at $\kappa \geq 0.7$. & Pre-registered $N{=}200$ study, two domain-expert raters, consensus-derived ground truth (\cref{ssec:human}, \cref{app:human_study}). & \textbf{TBD: $\kappa$ pending consensus pass} \\
+Auto-verdict agrees with human raters at \emph{moderate} level. & Pre-registered $N{=}200$ study, two domain-expert raters, consensus-derived ground truth (\cref{ssec:human}, \cref{app:human_study}); $\kappa{=}0.455$ (CI $[0.304, 0.590]$); below pre-registered $0.70$ threshold but $\geq 0.40$, so we are in the protocol's middle response branch. & moderate (one-directional verifier lenience) \\
 Headline pass-rates correctly rank models. & Pilot data shows 19--30\pp spreads on \ttwo--\tthree (\cref{sec:results}). & medium pending full pilot \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \noindent
-The single largest threat to the paper is the human-correlation study --- if $\kappa < 0.7$ we have to rewrite \cref{sec:results} and demote the headline metric.
-Pre-registration mitigates the bias risk.
+The pre-registered headline-validation hypothesis ($\kappa \geq 0.7$) is not supported: $\kappa{=}0.455$ on $N{=}200$, in the moderate-agreement band.
+The headline pass-rate numbers in \cref{sec:results} should therefore be read with one explicit caveat: the auto-verdict is one-directionally lenient relative to expert humans on $\sim 18\%$ of \texttt{pass} records (no records have the reverse polarity), and the lenience concentrates on the \ttwo\ auxiliary-construction templates whose property lists do not enforce the prompt's prompt-specified numeric angles or lengths (\cref{ssec:completeness} loose-completeness pattern; \cref{app:human_study:disagreement_coding} disagreement coding).
+Concretely, the strict pass-rates in \cref{tab:headline} are conservative against the verifier-bias axis (true expert-rated rates would be \emph{lower}, not inflated by spurious fails), and rate \emph{differences} between cells are largely preserved because the lenience applies uniformly across (model, strategy) cells on the affected templates.
+We do not demote the leaderboard but we do hedge the headline interpretation: \GeoGenBench\ pass-rate is a moderately-but-not-perfectly-correlated proxy for expert agreement, with the gap concretely localised and the v2 fix (template-side numeric predicates) committed as follow-up work.

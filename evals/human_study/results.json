@@ -1,37 +1,576 @@
 {
-  "consensus_available": false,
+  "consensus_available": true,
   "irr": {
     "irr_q1_binary": {
-      "interpretation": "n/a",
-      "kappa": NaN,
-      "n": 0
+      "interpretation": "substantial",
+      "kappa": 0.7043970932380834,
+      "n": 200
     },
     "irr_q1_threeway": {
-      "interpretation": "n/a",
-      "kappa": NaN,
-      "n": 0
+      "interpretation": "substantial",
+      "kappa": 0.6603645420581908,
+      "n": 200
     }
   },
-  "per_predicate_q2": {},
-  "per_rater_vs_auto": {
-    "rater_a": {
-      "interpretation": "n/a",
-      "kappa": NaN,
-      "n": 0
-    },
-    "rater_b": {
-      "interpretation": "n/a",
-      "kappa": NaN,
-      "n": 0
+  "per_model": {
+    "by_vendor": {
+      "anthropic": {
+        "interpretation": "moderate",
+        "kappa": 0.4059405940594058,
+        "n": 105
+      },
+      "google": {
+        "interpretation": "moderate",
+        "kappa": 0.5839311334289813,
+        "n": 58
+      },
+      "openai": {
+        "interpretation": "fair",
+        "kappa": 0.2801556420233461,
+        "n": 37
+      }
     }
+  },
+  "per_predicate_q2": {
+    "AB_parallel_DC": {
+      "agreement_rate": 0.9444444444444444,
+      "disagreement_count": 0,
+      "n": 18,
+      "unsure_count": 0
+    },
+    "BC_parallel_AD": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 18,
+      "unsure_count": 0
+    },
+    "DE_eq_DF": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "DE_parallel_MN": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "D_bisects_angle_E": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "D_midpoint_NO": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "D_midpoint_YZ": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "D_on_segment": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "EF_eq_HG": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "EF_parallel_HG": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "EF_parallel_NO": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "E_midpoint_OM": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "E_midpoint_ZX": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "E_on_circumcircle": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 12,
+      "unsure_count": 0
+    },
+    "FD_parallel_OM": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "FG_eq_EH": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "FG_parallel_EH": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "F_midpoint_MN": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "F_midpoint_XY": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "F_on_circle": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "G_is_centroid": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "G_on_circumcircle": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 12,
+      "unsure_count": 0
+    },
+    "G_on_first_line": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "G_on_median_XD": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "H_midpoint_NO": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 2,
+      "unsure_count": 0
+    },
+    "H_on_base": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 8,
+      "unsure_count": 0
+    },
+    "H_on_hypotenuse": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 9,
+      "unsure_count": 0
+    },
+    "H_on_second_line": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "H_on_segment_NO": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 2,
+      "unsure_count": 0
+    },
+    "I_equidistant_from_sides": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "J_on_circle": {
+      "agreement_rate": 0.75,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "L_on_circle": {
+      "agreement_rate": 0.75,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "MN_eq_MO": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 2,
+      "unsure_count": 0
+    },
+    "M_is_midpoint": {
+      "agreement_rate": 0.9523809523809523,
+      "disagreement_count": 0,
+      "n": 21,
+      "unsure_count": 0
+    },
+    "M_on_circle": {
+      "agreement_rate": 0.75,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "M_on_circumcircle": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "M_on_segment": {
+      "agreement_rate": 0.9411764705882353,
+      "disagreement_count": 0,
+      "n": 17,
+      "unsure_count": 0
+    },
+    "O_midpoint_DE": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "O_on_circumcircle": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "P_on_first": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "P_on_second": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "Q_on_first": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "Q_on_second": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "S_on_first": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "S_on_second": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "T_between_U_and_V": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "T_on_first": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "T_on_second": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "all_sides_equal": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 41,
+      "unsure_count": 0
+    },
+    "bisector_perpendicular": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "corresponding_angles_equal": {
+      "agreement_rate": 0.6666666666666666,
+      "disagreement_count": 0,
+      "n": 6,
+      "unsure_count": 0
+    },
+    "horizontal_sides_equal": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 10,
+      "unsure_count": 0
+    },
+    "lines_parallel": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 8,
+      "unsure_count": 0
+    },
+    "radius_perp_tangent": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "required_entities": {
+      "agreement_rate": 0.9818181818181818,
+      "disagreement_count": 0,
+      "n": 55,
+      "unsure_count": 0
+    },
+    "required_labels": {
+      "agreement_rate": 0.9947089947089947,
+      "disagreement_count": 0,
+      "n": 189,
+      "unsure_count": 0
+    },
+    "right_angle_at_C": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 9,
+      "unsure_count": 0
+    },
+    "right_angle_at_D": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "right_angle_at_F": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "right_angle_at_H": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 18,
+      "unsure_count": 0
+    },
+    "right_angle_at_P": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 10,
+      "unsure_count": 0
+    },
+    "right_angle_at_Q": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 15,
+      "unsure_count": 0
+    },
+    "right_angle_at_R": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 15,
+      "unsure_count": 0
+    },
+    "right_angle_at_S": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 15,
+      "unsure_count": 0
+    },
+    "right_angle_at_T": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "right_angle_at_W": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "right_angle_at_X": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "right_angle_at_Y": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "right_angle_at_Z": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 11,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_C": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 9,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_D": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 8,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_F": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_H": {
+      "agreement_rate": 0.95,
+      "disagreement_count": 0,
+      "n": 20,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_M": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 5,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_T": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "right_angle_marked_at_Z": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 4,
+      "unsure_count": 0
+    },
+    "tangent_at_T": {
+      "agreement_rate": 0.8571428571428571,
+      "disagreement_count": 0,
+      "n": 7,
+      "unsure_count": 0
+    },
+    "vertical_sides_equal": {
+      "agreement_rate": 1.0,
+      "disagreement_count": 0,
+      "n": 10,
+      "unsure_count": 0
+    }
+  },
+  "per_rater_vs_auto": {
+    "101": {
+      "interpretation": "moderate",
+      "kappa": 0.5633982172093869,
+      "n": 200
+    },
+    "102": {
+      "interpretation": "fair",
+      "kappa": 0.37778980116326266,
+      "n": 200
+    }
+  },
+  "per_strategy": {
+    "by_strategy": {
+      "raw_code": {
+        "interpretation": "moderate",
+        "kappa": 0.40186915887850466,
+        "n": 128
+      },
+      "structured": {
+        "interpretation": "moderate",
+        "kappa": 0.5807860262008732,
+        "n": 72
+      }
+    }
+  },
+  "per_tier": {
+    "by_tier": {
+      "T1": {
+        "interpretation": "substantial",
+        "kappa": 0.6514285714285712,
+        "n": 61
+      },
+      "T2": {
+        "interpretation": "slight",
+        "kappa": 0.16006097560975596,
+        "n": 76
+      },
+      "T3": {
+        "interpretation": "substantial",
+        "kappa": 0.7963800904977374,
+        "n": 63
+      }
+    }
+  },
+  "primary": {
+    "balanced_accuracy_auto_vs_consensus": 0.6842105263157895,
+    "ci95_bootstrap": [
+      0.30415674784837965,
+      0.5901639344262295
+    ],
+    "confusion_matrix_auto_x_consensus": {
+      "auto=fail,human=fail": 21,
+      "auto=pass,human=fail": 36,
+      "auto=pass,human=pass": 143
+    },
+    "endpoint": "kappa(auto, human-consensus) on binary collapse",
+    "interpretation_landis_koch": "moderate",
+    "kappa": 0.45479327578373463,
+    "n": 200,
+    "passes_pre_registered_threshold": false,
+    "pre_registered_threshold": 0.7
   },
   "raters": [
-    "rater_a",
-    "rater_b"
+    "101",
+    "102"
   ],
   "responses_per_rater": {
-    "rater_a": 0,
-    "rater_b": 0
+    "101": 198,
+    "102": 198
   },
   "sample_n": 200,
   "schema_version": 1
