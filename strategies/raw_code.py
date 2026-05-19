@@ -1,12 +1,14 @@
 import json
 import logging
 
-from pydantic_ai import Agent, ModelRetry
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
 
 from util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from .llm import get_chat_model
 from .instructions import RAW_TIKZ_INSTRUCTIONS
-from .stages import RawRunResult, extract_svg_from_messages
+from .stages import RawRunResult, extract_svg_from_messages, _extract_usage_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -20,37 +22,44 @@ and call the render_diagram tool. Then briefly explain what you drew.
 
 
 class RawCodeStrategy(SubstanceStrategy):
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(model, instructions=INSTRUCTIONS, model_settings=self.model_settings)
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+        llm = get_chat_model(model)
 
-        @agent.tool_plain(retries=3)
+        @tool
         def render_diagram(tikz: str, tkzelements: str = "") -> str:
-            """Render a geometry diagram using TikZ/tkz-euclide code."""
-            logger.debug("render_diagram called — tikz=%d chars, tkzelements=%d chars",
-                         len(tikz), len(tkzelements))
+            """Render a geometry diagram using TikZ/tkz-euclide code.
+
+            Args:
+                tikz: TikZ code for the diagram.
+                tkzelements: Optional tkz-elements code.
+            Returns:
+                JSON with svg field on success, or error field on failure.
+            """
+            logger.debug("render_diagram called — tikz=%d chars", len(tikz))
             logger.info("tikz code:\n%s", tikz)
             try:
                 svg = render_tikz(tikz, tkzelements=tkzelements or None)
                 logger.info("render_diagram succeeded — svg=%d chars", len(svg))
+                return json.dumps({"svg": svg})
             except RuntimeError as e:
-                logger.warning("render_diagram failed (will retry): %s", e)
-                raise ModelRetry(str(e)) from e
-            return json.dumps({"svg": svg})
+                logger.warning("render_diagram failed: %s", e)
+                return json.dumps({"error": str(e)})
 
-        return agent
+        return create_react_agent(llm, tools=[render_diagram], prompt=INSTRUCTIONS)
 
-    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:
         from util.message_helpers import count_tool_calls, extract_tool_call_args
 
-        result = await self.build_agent(model=model).run(prompt)
-        usage = result.usage()
-        messages = result.all_messages()
+        graph = self.build_agent(model=model)
+        state = await graph.ainvoke({"messages": [("user", prompt)]})
+        messages = state["messages"]
+        input_tokens, output_tokens = _extract_usage_from_messages(messages)
         tool_args = extract_tool_call_args(messages, "render_diagram") or {}
         tool_calls = count_tool_calls(messages, "render_diagram")
         return RawRunResult(
             svg=extract_svg_from_messages(messages),
-            input_tokens=usage.input_tokens or 0,
-            output_tokens=usage.output_tokens or 0,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             tikz=tool_args.get("tikz"),
             tkzelements=tool_args.get("tkzelements") or None,
             tool_calls=tool_calls,

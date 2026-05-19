@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from strategies.raw_code import RawCodeStrategy
 from tests.availability import api_key_available, llm_tests_enabled, renderer_available
@@ -23,8 +24,8 @@ from util.svg_checks import run_svg_checks
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
 from tests.agent_helpers import (
     count_tool_calls,
-    extract_svg_from_run,
-    extract_tikz_from_run,
+    extract_svg_from_messages,
+    extract_tikz_from_messages,
 )
 
 
@@ -48,10 +49,11 @@ pytestmark = [
 # Helper
 # ---------------------------------------------------------------------------
 
-def _run_agent(prompt: str):
-    """Run the agent synchronously and return the RunResult."""
+def _run_agent(prompt: str) -> list:
+    """Run the agent synchronously and return the message list."""
     agent = RawCodeStrategy().build_agent()
-    return asyncio.run(agent.run(prompt))
+    state = asyncio.run(agent.ainvoke({"messages": [HumanMessage(content=prompt)]}))
+    return state["messages"]
 
 
 def _assert_svg_valid(svg: str) -> None:
@@ -68,13 +70,13 @@ def test_right_triangle_svg_and_geometry():
     The most fundamental test: the agent draws a right triangle with the right
     angle at B, and we verify both the SVG and the geometry.
     """
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
 
-    svg = extract_svg_from_run(result)
+    svg = extract_svg_from_messages(messages)
     assert svg is not None, "Agent did not produce an SVG"
     _assert_svg_valid(svg)
 
-    tikz = extract_tikz_from_run(result)
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None, "Could not extract TikZ from agent output"
 
     coords = resolve_all_coordinates(tikz)
@@ -91,13 +93,13 @@ def test_right_triangle_svg_and_geometry():
 
 def test_midpoint_construction():
     """Agent draws segment AB with midpoint M — verify M is actually the midpoint."""
-    result = _run_agent("Draw a segment AB and mark its midpoint M")
+    messages = _run_agent("Draw a segment AB and mark its midpoint M")
 
-    svg = extract_svg_from_run(result)
+    svg = extract_svg_from_messages(messages)
     assert svg is not None
     _assert_svg_valid(svg)
 
-    tikz = extract_tikz_from_run(result)
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     coords = resolve_all_coordinates(tikz)
@@ -113,13 +115,13 @@ def test_midpoint_construction():
 
 def test_equilateral_triangle_equal_sides():
     """Agent draws equilateral triangle — verify all three sides are equal length."""
-    result = _run_agent("Draw an equilateral triangle ABC")
+    messages = _run_agent("Draw an equilateral triangle ABC")
 
-    svg = extract_svg_from_run(result)
+    svg = extract_svg_from_messages(messages)
     assert svg is not None
     _assert_svg_valid(svg)
 
-    tikz = extract_tikz_from_run(result)
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     coords = resolve_all_coordinates(tikz)
@@ -136,13 +138,13 @@ def test_equilateral_triangle_equal_sides():
 
 def test_circumscribed_circle_draws_circle():
     """Agent draws triangle + circumscribed circle — TikZ must include a circle draw."""
-    result = _run_agent("Draw a triangle with its circumscribed circle")
+    messages = _run_agent("Draw a triangle with its circumscribed circle")
 
-    svg = extract_svg_from_run(result)
+    svg = extract_svg_from_messages(messages)
     assert svg is not None
     _assert_svg_valid(svg)
 
-    tikz = extract_tikz_from_run(result)
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     # The TikZ code must include a circle drawing command
@@ -153,8 +155,8 @@ def test_circumscribed_circle_draws_circle():
 
 def test_agent_calls_render_tool():
     """Verify the agent actually calls render_diagram (not just returning text)."""
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
-    n = count_tool_calls(result.all_messages(), "render_diagram")
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
+    n = count_tool_calls(messages, "render_diagram")
     assert n >= 1, "Agent never called render_diagram"
 
 
@@ -163,8 +165,8 @@ def test_svg_is_non_trivial():
     The SVG should represent a real diagram, not a stub.
     We check that the viewBox is bigger than a single point.
     """
-    result = _run_agent("Draw a segment AB and mark its midpoint M")
-    svg = extract_svg_from_run(result)
+    messages = _run_agent("Draw a segment AB and mark its midpoint M")
+    svg = extract_svg_from_messages(messages)
     assert svg is not None
 
     import xml.etree.ElementTree as ET
@@ -182,16 +184,16 @@ def test_parallel_lines_prompt():
     This is harder for tikz_analysis to verify geometrically (lines extend infinitely),
     so we just check structural correctness.
     """
-    result = _run_agent(
+    messages = _run_agent(
         "Draw a transversal intersecting two parallel lines, "
         "and label two opposite interior angles"
     )
 
-    svg = extract_svg_from_run(result)
+    svg = extract_svg_from_messages(messages)
     assert svg is not None
     _assert_svg_valid(svg)
 
-    tikz = extract_tikz_from_run(result)
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     # Should draw at least two lines/segments

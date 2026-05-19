@@ -5,14 +5,18 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any, Optional, TypedDict
 
 import pydantic
-from pydantic_ai import Agent, capture_run_messages
-from pydantic_ai.exceptions import UnexpectedModelBehavior, ToolRetryError
-from pydantic_ai.messages import ModelResponse, ModelRequest, ToolCallPart, TextPart, RetryPromptPart
+from langchain_core.tools import tool
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.exceptions import OutputParserException
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import create_react_agent
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
+from strategies.llm import get_chat_model, extract_usage, make_system_message
 from strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from recipe.catalog import (
     load_catalog,
@@ -48,69 +52,15 @@ with query_type="list_objects" and args={}.
 """
 
 
+# ── metadata types ────────────────────────────────────────────────────────────
+
 @dataclass
 class RecipeAttemptTrace:
     attempt: int
-    dsl_json: dict | None  # model_dump() of the RecipeDSL the LLM produced
-    error: str | None       # error message if this attempt failed
-    stage: str              # "lowering", "ir_pipeline", "output_validation", or "success"
-    raw_output: str | None = None  # raw payload from model on output_validation failure
-
-
-def _extract_failure_diagnostics(
-    exc: UnexpectedModelBehavior,
-    messages: list,
-) -> tuple[str, str | None]:
-    """Extract a human-readable error summary and raw model payload from a failed agent run.
-
-    Returns (summary_str, raw_payload_or_None).
-    """
-    # --- Raw payload: last ModelResponse's ToolCallPart or TextPart ---
-    raw_payload: str | None = None
-    for msg in reversed(messages):
-        if isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, ToolCallPart):
-                    raw_payload = part.args_as_json_str()
-                    break
-                if isinstance(part, TextPart):
-                    raw_payload = part.content
-                    break
-            if raw_payload is not None:
-                break
-
-    # --- Validation errors: walk exception chain first ---
-    error_lines: list[str] = []
-    cause = exc.__cause__
-    while cause is not None:
-        if isinstance(cause, pydantic.ValidationError):
-            for err in cause.errors(include_url=False):
-                loc = ".".join(str(x) for x in err.get("loc", ()))
-                error_lines.append(f"  loc={loc!r} type={err.get('type')!r} msg={err.get('msg')!r}")
-            break
-        cause = getattr(cause, "__cause__", None)
-
-    # --- Fallback: scan RetryPromptPart in message history ---
-    if not error_lines:
-        for msg in reversed(messages):
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if isinstance(part, RetryPromptPart) and isinstance(part.content, list):
-                        for err_detail in part.content:
-                            loc = ".".join(str(x) for x in err_detail.get("loc", ()))
-                            error_lines.append(
-                                f"  loc={loc!r} type={err_detail.get('type')!r} msg={err_detail.get('msg')!r}"
-                            )
-                        break
-                if error_lines:
-                    break
-
-    if error_lines:
-        summary = "Output validation failed:\n" + "\n".join(error_lines)
-    else:
-        summary = f"Output validation failed: {exc}"
-
-    return summary, raw_payload
+    dsl_json: dict | None
+    error: str | None
+    stage: str  # "output_validation" | "lowering" | "ir_pipeline" | "success"
+    raw_output: str | None = None
 
 
 @dataclass
@@ -122,294 +72,355 @@ class RecipeMetadata:
     attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
 
 
+# ── error hint helpers ────────────────────────────────────────────────────────
+
+def _build_retry_hints(last_error: str) -> str:
+    """Return contextual hints to append on retry based on the error message."""
+    hints = []
+    if re.search(r"AngleEqual|angle.*equal", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: AngleEqual checks require three distinct points forming each angle. "
+            "Ensure the vertex and both rays are separate, named points."
+        )
+    if re.search(r"mark_right_angle|right.?angle", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: mark_right_angle requires exactly three distinct points. "
+            "Do not use the same point for vertex and ray endpoint."
+        )
+    if re.search(r"circular|depends on itself|cycle", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: Circular dependency detected. Ensure definitions do not form cycles. "
+            "Each object should depend only on previously defined objects."
+        )
+    if re.search(r"intersection.*outside|outside.*segment|beyond", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: An intersection point is outside the expected range. "
+            "Check that intersecting objects actually cross within the diagram bounds."
+        )
+    return "\n".join(hints)
+
+
+# ── inner pipeline graph ──────────────────────────────────────────────────────
+
+class RecipePipelineState(TypedDict):
+    prompt: str
+    model_id: str
+    enable_cache: bool
+    generation_prompt: str
+    attempt: int
+    last_error: str
+    dsl: Optional[RecipeDSL]
+    diagram_ir: Optional[Any]
+    result: Optional[StructuredRunResult]
+    input_tokens: int
+    output_tokens: int
+    recipe_metadata: RecipeMetadata
+    renderer: Optional[Any]
+    selection_done: bool
+
+
+async def _select_recipes_node(state: RecipePipelineState) -> dict:
+    """Run the cheap selector model to pick relevant recipes."""
+    catalog = load_catalog()
+    selection_prompt = build_selection_prompt(state["prompt"], catalog)
+
+    llm = get_chat_model(_SELECTOR_MODEL)
+    from langchain_core.messages import SystemMessage, HumanMessage
+    messages = [
+        SystemMessage(content=RECIPE_SELECTION_SYSTEM),
+        HumanMessage(content=selection_prompt),
+    ]
+    response = await llm.ainvoke(messages)
+    raw_text = response.content if hasattr(response, "content") else str(response)
+
+    in_tok, out_tok = extract_usage(response)
+
+    # Parse JSON response
+    selected_recipes = []
+    unmatched_concepts = []
+    try:
+        # Try to find JSON in the response
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
+            unmatched_concepts = parsed.get("unmatched_concepts", [])
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
+
+    # Load selected recipes and build generation prompt
+    recipes = []
+    valid_recipe_ids = []
+    for recipe_id in selected_recipes:
+        try:
+            recipe = load_recipe(recipe_id)
+            recipes.append(recipe)
+            valid_recipe_ids.append(recipe_id)
+        except Exception:
+            pass
+
+    generation_prompt = build_generation_prompt(state["prompt"], recipes, DSL_DOCS)
+
+    metadata = RecipeMetadata(
+        selected_recipes=valid_recipe_ids,
+        unmatched_concepts=unmatched_concepts,
+        selection_input_tokens=in_tok,
+        selection_output_tokens=out_tok,
+    )
+
+    return {
+        "generation_prompt": generation_prompt,
+        "recipe_metadata": metadata,
+        "input_tokens": state.get("input_tokens", 0) + in_tok,
+        "output_tokens": state.get("output_tokens", 0) + out_tok,
+        "selection_done": True,
+    }
+
+
+async def _generate_dsl_node(state: RecipePipelineState) -> dict:
+    """Call main LLM to generate RecipeDSL structured output."""
+    model_id = state["model_id"]
+    enable_cache = state.get("enable_cache", False)
+    attempt = state["attempt"]
+    last_error = state.get("last_error", "")
+
+    user_message = state["generation_prompt"]
+    if attempt > 0 and last_error:
+        hints = _build_retry_hints(last_error)
+        user_message = (
+            f"{user_message}\n\n"
+            f"Previous attempt failed at stage: {last_error}\n"
+            f"Please correct the issue and try again.\n"
+            f"{hints}"
+        )
+
+    from langchain_core.messages import HumanMessage
+    messages = [
+        make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache),
+        HumanMessage(content=user_message),
+    ]
+
+    llm = get_chat_model(model_id, enable_cache=enable_cache)
+    structured = llm.with_structured_output(RecipeDSL, include_raw=True)
+
+    try:
+        # include_raw=True makes ainvoke return a dict at runtime, not BaseModel
+        response: Any = await structured.ainvoke(messages)
+        raw_msg = response.get("raw")
+        dsl = response.get("parsed")
+        in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+
+        if dsl is None:
+            parsing_error = response.get("parsing_error") or "Failed to parse RecipeDSL"
+            raise OutputParserException(str(parsing_error))
+
+        metadata = state["recipe_metadata"]
+        metadata.attempt_traces.append(RecipeAttemptTrace(
+            attempt=attempt + 1,
+            dsl_json=dsl.model_dump(),
+            error=None,
+            stage="success",
+        ))
+        # Always increment attempt so the retry budget counts DSL gen calls uniformly
+        return {
+            "dsl": dsl,
+            "attempt": attempt + 1,
+            "input_tokens": state.get("input_tokens", 0) + in_tok,
+            "output_tokens": state.get("output_tokens", 0) + out_tok,
+        }
+    except (OutputParserException, pydantic.ValidationError) as exc:
+        error_msg = str(exc)
+        if hasattr(exc, "__cause__") and isinstance(exc.__cause__, pydantic.ValidationError):
+            error_msg = f"Output validation error: {exc.__cause__}"
+        metadata = state["recipe_metadata"]
+        metadata.attempt_traces.append(RecipeAttemptTrace(
+            attempt=attempt + 1,
+            dsl_json=None,
+            error=error_msg,
+            stage="output_validation",
+        ))
+        return {
+            "dsl": None,
+            "last_error": error_msg,
+            "attempt": attempt + 1,
+        }
+    except Exception as exc:
+        error_msg = str(exc)
+        metadata = state["recipe_metadata"]
+        metadata.attempt_traces.append(RecipeAttemptTrace(
+            attempt=attempt + 1,
+            dsl_json=None,
+            error=error_msg,
+            stage="output_validation",
+        ))
+        return {
+            "dsl": None,
+            "last_error": error_msg,
+            "attempt": attempt + 1,
+        }
+
+
+async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
+    """Lower DSL to IR and run the deterministic pipeline."""
+    dsl = state["dsl"]
+    assert dsl is not None  # router only sends here when dsl is set
+    renderer = state.get("renderer")
+
+    # Lower DSL -> DiagramIR
+    try:
+        diagram_ir = await asyncio.to_thread(lower_to_ir, dsl)
+    except (LoweringError, pydantic.ValidationError, Exception) as e:
+        error_msg = f"DSL lowering failed: {e}"
+        metadata = state["recipe_metadata"]
+        if metadata.attempt_traces:
+            metadata.attempt_traces[-1].stage = "lowering"
+            metadata.attempt_traces[-1].error = error_msg
+        # attempt already incremented by _generate_dsl_node on success
+        return {
+            "last_error": error_msg,
+            "result": None,
+            "dsl": None,  # Reset DSL so generate_dsl re-runs
+        }
+
+    # Run IR pipeline
+    try:
+        result = await _run_ir_pipeline(diagram_ir, renderer)
+        metadata = state["recipe_metadata"]
+        if metadata.attempt_traces:
+            metadata.attempt_traces[-1].stage = "success"
+        return {
+            "result": result,
+            "diagram_ir": diagram_ir,
+        }
+    except RuntimeError as e:
+        error_msg = str(e)
+        metadata = state["recipe_metadata"]
+        if metadata.attempt_traces:
+            metadata.attempt_traces[-1].stage = "ir_pipeline"
+            metadata.attempt_traces[-1].error = error_msg
+        # attempt already incremented by _generate_dsl_node on success
+        return {
+            "last_error": error_msg,
+            "result": None,
+            "dsl": None,  # Reset so generate_dsl re-runs
+        }
+
+
+def _after_generate_dsl_router(state: RecipePipelineState) -> str:
+    """Route after DSL generation: to pipeline if success, retry or end if failure."""
+    if state.get("dsl") is not None:
+        return "run_recipe_pipeline"
+    if state["attempt"] < MAX_RETRIES:
+        return "generate_dsl"
+    return END
+
+
+def _after_pipeline_router(state: RecipePipelineState) -> str:
+    """Route after pipeline: end if success, retry or end if failure."""
+    if state.get("result") is not None:
+        return END
+    if state["attempt"] < MAX_RETRIES:
+        return "generate_dsl"
+    return END
+
+
+def _build_recipe_graph():
+    builder = StateGraph(RecipePipelineState)
+    builder.add_node("select_recipes", _select_recipes_node)
+    builder.add_node("generate_dsl", _generate_dsl_node)
+    builder.add_node("run_recipe_pipeline", _run_recipe_pipeline_node)
+    builder.add_edge(START, "select_recipes")
+    builder.add_edge("select_recipes", "generate_dsl")
+    builder.add_conditional_edges("generate_dsl", _after_generate_dsl_router)
+    builder.add_conditional_edges("run_recipe_pipeline", _after_pipeline_router)
+    return builder.compile()
+
+
+# ── strategy class ────────────────────────────────────────────────────────────
+
 class RecipeStrategy(SubstanceStrategy):
-    """
-    Recipe-based geometry diagram strategy.
+    """Recipe-based strategy: selector -> DSL generation -> lower -> IR pipeline."""
 
-    Pipeline:
-        (Optional) cheap model selects relevant recipes from catalog
-        → Main model generates RecipeDSL JSON using selected recipes + DSL docs
-        → lower_to_ir(dsl) compiles RecipeDSL to DiagramIR
-        → compile_defs → run_checks → Renderer.render()
-
-    On lowering, check, or render failures the main model is re-prompted with
-    the error description for up to MAX_RETRIES attempts.
-    """
-
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None) -> None:
-        super().__init__(enable_cache=enable_cache)
-        self.use_recipes = use_recipes
-        self.catalog = catalog
-        self.renderer = renderer
-
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        """Return a conversational agent with render_diagram and query_diagram tools."""
-        _renderer = self.renderer if self.renderer is not None else TikZRenderer()
-        _strategy = self
-        _last_sym: dict | None = None
-        _last_dsl_json: dict | None = None  # last successful DSL for edit context
-
-        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS, model_settings=self.model_settings)
-
-        @agent.tool_plain(retries=MAX_RETRIES)
-        async def render_diagram(request: str) -> str:
-            """Generate a geometry diagram from the user's request.
-
-            Returns JSON with an SVG field on success.
-            """
-            nonlocal _last_sym, _last_dsl_json
-            result = await _strategy.run(request, model, renderer=_renderer, previous_dsl_json=_last_dsl_json)
-            _last_sym = result.sym_full
-            traces = result.recipe_metadata.attempt_traces if result.recipe_metadata else []
-            successful = [t for t in traces if t.stage == "success"]
-            _last_dsl_json = successful[-1].dsl_json if successful else _last_dsl_json
-            return json.dumps({"svg": result.svg})
-
-        @agent.tool_plain
-        async def query_diagram(query_type: str, args: dict[str, str]) -> str:
-            """Query a geometric property of the current diagram.
-
-            query_type and args:
-              coordinate  {"point": "A"}           → x, y coords
-              distance    {"a": "A", "b": "B"}     → distance between points (use for side lengths too)
-              angle       {"ray1": "A", "vertex": "B", "ray2": "C"} → angle in degrees
-              length      {"segment": "seg_AB"}    → segment length
-              radius      {"circle": "c1"}         → circle radius
-              area        {"object": "tri_ABC"}    → area
-              perimeter   {"object": "tri_ABC"}    → perimeter
-              list_objects {}                       → all objects and their types
-            """
-            if _last_sym is None:
-                return json.dumps({"error": "No diagram has been rendered yet."})
-            return dispatch_query(_last_sym, query_type, args)
-
-        return agent
+    _partial_recipe_metadata: RecipeMetadata | None = None
+    _partial_input_tokens: int = 0
+    _partial_output_tokens: int = 0
 
     async def run(
         self,
         prompt: str,
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
-        previous_dsl_json: dict | None = None,
     ) -> StructuredRunResult:
-        """Run the full recipe pipeline with retry on failure."""
-        _renderer = renderer if renderer is not None else TikZRenderer()
+        graph = _build_recipe_graph()
+        initial_state: RecipePipelineState = {
+            "prompt": prompt,
+            "model_id": model,
+            "enable_cache": self.enable_cache,
+            "generation_prompt": "",
+            "attempt": 0,
+            "last_error": "",
+            "dsl": None,
+            "diagram_ir": None,
+            "result": None,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "recipe_metadata": RecipeMetadata(),
+            "renderer": renderer,
+            "selection_done": False,
+        }
+        final_state = await graph.ainvoke(initial_state)
 
-        # --- Step 1: Recipe selection (optional) ---
-        recipe_metadata = RecipeMetadata()
+        # Expose partial metadata for eval harness
+        self._partial_recipe_metadata = final_state.get("recipe_metadata")
+        self._partial_input_tokens = final_state.get("input_tokens", 0)
+        self._partial_output_tokens = final_state.get("output_tokens", 0)
 
-        if self.use_recipes:
-            catalog = load_catalog(self.catalog)
-            selection_prompt = build_selection_prompt(prompt, catalog)
-            selector_agent: Agent[None, str] = Agent(
-                _SELECTOR_MODEL,
-                instructions=RECIPE_SELECTION_SYSTEM,
-                output_type=str,
-                model_settings=self.model_settings,
+        if final_state.get("result") is None:
+            raise RuntimeError(
+                f"RecipeStrategy failed after {MAX_RETRIES} attempts. "
+                f"Last error: {final_state.get('last_error', 'unknown')}"
             )
-            sel_response = await selector_agent.run(selection_prompt)
-            sel_usage = sel_response.usage()
-            recipe_metadata.selection_input_tokens = sel_usage.input_tokens or 0
-            recipe_metadata.selection_output_tokens = sel_usage.output_tokens or 0
+        result = final_state["result"]
+        result.recipe_metadata = final_state.get("recipe_metadata")
+        result.input_tokens = final_state.get("input_tokens", 0)
+        result.output_tokens = final_state.get("output_tokens", 0)
+        return result
 
-            raw_text = sel_response.output
-            selected_ids: list[str] = []
-            unmatched_concepts: list[str] = []
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+        """Return a conversational ReAct agent with render_diagram + query_diagram tools."""
+        _last_sym: dict | None = None
+        _renderer = TikZRenderer()
+
+        @tool
+        async def render_diagram(request: str) -> str:
+            """Render a geometry diagram from a natural language description.
+
+            Args:
+                request: Full description of the diagram to render.
+            Returns:
+                JSON with svg field on success, or error field on failure.
+            """
+            nonlocal _last_sym
             try:
-                # Strip markdown code fences if the model wrapped its output
-                text = raw_text.strip()
-                if text.startswith("```"):
-                    text = text.split("```")[1]
-                    if text.startswith("json"):
-                        text = text[4:]
-                    text = text.strip()
-                parsed = json.loads(text)
-                selected_ids = parsed.get("selected_recipes", parsed.get("selected", []))
-                unmatched_concepts = parsed.get("unmatched_concepts", [])
-            except (json.JSONDecodeError, AttributeError):
-                logger.warning("Recipe selection JSON parse failed; treating as empty selection. Raw: %r", raw_text[:200])
+                result = await self.run(request, model=model, renderer=_renderer)
+                _last_sym = result.sym_full
+                return json.dumps({"svg": result.svg})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
 
-            recipes: list[Recipe] = []
-            for rid in selected_ids:
-                try:
-                    recipes.append(load_recipe(rid, catalog=self.catalog))
-                    recipe_metadata.selected_recipes.append(rid)
-                except KeyError:
-                    logger.warning("Selected recipe %r not found in catalog; skipping", rid)
+        @tool
+        def query_diagram(query_type: str, args: dict) -> str:
+            """Query geometric properties of the most recently rendered diagram.
 
-            recipe_metadata.unmatched_concepts = unmatched_concepts
-            generation_prompt = build_generation_prompt(prompt, recipes, DSL_DOCS)
-        else:
-            generation_prompt = build_generation_prompt(prompt, [], DSL_DOCS)
+            Args:
+                query_type: One of: list_objects, coordinate, distance, angle, length, radius, area, perimeter
+                args: Query arguments (e.g. {"id": "A"} for coordinate)
+            Returns:
+                JSON with query result or error.
+            """
+            if _last_sym is None:
+                return json.dumps({"error": "No diagram rendered yet"})
+            return dispatch_query(_last_sym, query_type, args)
 
-        if previous_dsl_json is not None:
-            generation_prompt = (
-                f"{generation_prompt}\n\n"
-                "---\n"
-                "The user previously had this diagram rendered successfully. Use it as the "
-                "starting point and apply the requested modifications. Preserve all properties "
-                "(angles, lengths, positions, labels, etc.) that the user did not ask to change.\n\n"
-                f"Previous RecipeDSL:\n{json.dumps(previous_dsl_json, indent=2)}\n"
-                "---"
-            )
-
-        # Expose partial metadata on self so the eval harness can access it even on failure
-        self._partial_recipe_metadata = recipe_metadata
-
-        # --- Step 2: Retry loop ---
-        last_error: str = ""
-        total_input_tokens: int = recipe_metadata.selection_input_tokens
-        total_output_tokens: int = recipe_metadata.selection_output_tokens
-        self._partial_input_tokens = total_input_tokens
-        self._partial_output_tokens = total_output_tokens
-
-        for attempt in range(MAX_RETRIES):
-            user_message = generation_prompt
-            if attempt > 0:
-                retry_msg = f"{generation_prompt}\n\nPrevious attempt failed: {last_error}\n"
-
-                # Check if error is AngleEqual-style and append targeted hint
-                if re.search(r"Angle \S+ = [\d.]+° but \S+ = [\d.]+", last_error):
-                    retry_msg += (
-                        "\nHINT: When two angles must be equal across separate constructions (e.g.\n"
-                        "mark_angle group), ensure the triangles are geometrically similar.\n"
-                        "For triangle ops: use the same angle values in both specs, OR use\n"
-                        "proportional side lengths with matching right_angle_at positions\n"
-                        "(e.g. legs 2:3 and 10:15 produce identical base angles).\n"
-                        "For free points: derive the second construction's coordinates from\n"
-                        "the first using the same ratios or rotation angles.\n"
-                    )
-
-                # Hint B: mark_right_angle geometric check failure
-                if re.search(r"mark_right_angle\(.*?\).*?not 90", last_error):
-                    retry_msg += (
-                        "\nHINT: A mark_right_angle annotation failed because the angle at that"
-                        " vertex is not 90°. The annotation declares an intent — the construction"
-                        " must make it true. Use point_foot to project the point onto the line:"
-                        " `{op: 'point_foot', id: 'X', source: 'P', onto: 'seg_AB'}` guarantees"
-                        " angle P-X-endpoint = 90°. Do not place the foot manually with"
-                        " point_along or fixed coordinates — only point_foot guarantees the right"
-                        " angle.\n"
-                    )
-
-                # Hint C: circular dependency caused by triangle id matching a vertex name
-                if re.search(r"[Cc]ircular dependency.*nodes are in a cycle", last_error):
-                    retry_msg += (
-                        "\nHINT: A circular dependency was detected — this almost always means a"
-                        " triangle (or other shape) op has an `id` that is the same as one of its"
-                        " own vertex names. For example, `{op:'triangle', id:'T', vertices:['R','S','T']}`"
-                        " creates a cycle because the shape object and vertex point share the id 'T'."
-                        " Fix: give the triangle a distinct id that does not appear in its vertices"
-                        " list, e.g. `id:'tri_RST'`.\n"
-                    )
-
-                # Hint D: between-selector mismatch (intersection outside the segment)
-                if re.search(r"beyond|before .+, t≈", last_error):
-                    retry_msg += (
-                        "\nHINT: The intersection exists but is outside the segment"
-                        " (t<0 = before the start point, t>1 = beyond the end point). This"
-                        " usually means the two objects' endpoints are placed so they don't"
-                        " actually cross between the named points. Reposition the endpoints so"
-                        " the two lines/segments genuinely intersect between the selector's"
-                        " reference points. For chords: ensure both chords span the interior of"
-                        " the circle and cross each other. For an angle bisector: verify the"
-                        " vertex angle is what the problem states (check the actual angle in"
-                        " your coords).\n"
-                    )
-
-                retry_msg += "Please produce a corrected RecipeDSL."
-                user_message = retry_msg
-
-            gen_agent: Agent[None, RecipeDSL] = Agent(
-                model,
-                instructions=RECIPE_GENERATION_SYSTEM,
-                output_type=RecipeDSL,
-                model_settings=self.model_settings,
-            )
-            with capture_run_messages() as agent_messages:
-                try:
-                    response = await gen_agent.run(user_message)
-                except UnexpectedModelBehavior as exc:
-                    diag_summary, raw_payload = _extract_failure_diagnostics(exc, agent_messages)
-                    last_error = diag_summary
-                    logger.warning("Attempt %d output validation failure:\n%s", attempt + 1, diag_summary)
-                    if raw_payload:
-                        logger.debug("Attempt %d failed payload: %s", attempt + 1, raw_payload[:2000])
-                    recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
-                        attempt=attempt + 1,
-                        dsl_json=None,
-                        error=last_error,
-                        stage="output_validation",
-                        raw_output=raw_payload,
-                    ))
-                    continue
-            usage = response.usage()
-            total_input_tokens += usage.input_tokens or 0
-            total_output_tokens += usage.output_tokens or 0
-            self._partial_input_tokens = total_input_tokens
-            self._partial_output_tokens = total_output_tokens
-            dsl = response.output
-            logger.info(
-                "Attempt %d: RecipeDSL has %d construction ops",
-                attempt + 1,
-                len(dsl.construction),
-            )
-            logger.debug("Attempt %d DSL: %s", attempt + 1, dsl.model_dump_json(indent=2))
-
-            # Lowering
-            try:
-                diagram_ir = lower_to_ir(dsl)
-            except (LoweringError, pydantic.ValidationError) as e:
-                last_error = f"Lowering failed: {e}"
-                logger.warning("Attempt %d lowering error: %s", attempt + 1, e)
-                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
-                    attempt=attempt + 1,
-                    dsl_json=dsl.model_dump(),
-                    error=last_error,
-                    stage="lowering",
-                ))
-                continue
-
-            logger.debug(
-                "Attempt %d lowered IR: %d render ops, %d styles: %s",
-                attempt + 1,
-                len(diagram_ir.render),
-                len(diagram_ir.styles),
-                [op.kind for op in diagram_ir.render],
-            )
-
-            # IR pipeline
-            try:
-                result = await _run_ir_pipeline(diagram_ir, _renderer)
-            except RuntimeError as e:
-                last_error = str(e)
-                logger.warning("Attempt %d IR pipeline error: %s", attempt + 1, e)
-                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
-                    attempt=attempt + 1,
-                    dsl_json=dsl.model_dump(),
-                    error=last_error,
-                    stage="ir_pipeline",
-                ))
-                continue
-
-            recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
-                attempt=attempt + 1,
-                dsl_json=dsl.model_dump(),
-                error=None,
-                stage="success",
-            ))
-            return StructuredRunResult(
-                diagram_ir=result.diagram_ir,
-                tikz=result.tikz,
-                svg=result.svg,
-                sym_table=result.sym_table,
-                sym_full=result.sym_full,
-                input_tokens=total_input_tokens,
-                output_tokens=total_output_tokens,
-                recipe_metadata=recipe_metadata,
-            )
-
-        raise RuntimeError(
-            f"RecipeStrategy failed after {MAX_RETRIES} attempts. "
-            f"Last error: {last_error}"
-        )
+        llm = get_chat_model(model)
+        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)

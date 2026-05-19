@@ -2,10 +2,12 @@
 import json
 import logging
 
-from pydantic_ai import Agent, ModelRetry
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .stages import RawRunResult, extract_svg_from_messages
+from .llm import get_chat_model
+from .stages import RawRunResult, extract_svg_from_messages, _extract_usage_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -49,23 +51,30 @@ are needed — this confirms the final diagram.
 """
 
 
-def register_svg_render_tool(agent: Agent, retries: int = 3) -> None:
-    """Attach an SVG render_diagram tool to agent."""
+def make_svg_render_tool():
+    """Return an SVG render_diagram tool."""
 
-    @agent.tool_plain(retries=retries)
+    @tool
     def render_diagram(svg: str) -> str:
-        """Submit the completed SVG document for the geometry diagram."""
+        """Submit the completed SVG document for the geometry diagram.
+
+        Args:
+            svg: A complete, self-contained <svg> element.
+        Returns:
+            JSON with svg field on success, or error field on failure.
+        """
         logger.debug("render_diagram called — svg=%d chars", len(svg))
         if not svg.strip().startswith("<svg"):
-            raise ModelRetry("Output must be a valid <svg> element starting with <svg")
+            return json.dumps({"error": "Output must be a valid <svg> element starting with <svg"})
         return json.dumps({"svg": svg})
+
+    return render_diagram
 
 
 class RawSVGStrategy(SubstanceStrategy):
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=self.model_settings)
-        register_svg_render_tool(agent)
-        return agent
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+        llm = get_chat_model(model)
+        return create_react_agent(llm, tools=[make_svg_render_tool()], prompt=DRAFT_INSTRUCTIONS)
 
     async def run(
         self,
@@ -73,10 +82,12 @@ class RawSVGStrategy(SubstanceStrategy):
         model: str = DEFAULT_AGENT_MODEL,
         renderer=None,
     ) -> RawRunResult:
-        result = await self.build_agent(model=model).run(prompt)
-        usage = result.usage()
+        graph = self.build_agent(model=model)
+        state = await graph.ainvoke({"messages": [("user", prompt)]})
+        messages = state["messages"]
+        input_tokens, output_tokens = _extract_usage_from_messages(messages)
         return RawRunResult(
-            svg=extract_svg_from_messages(result.all_messages()),
-            input_tokens=usage.input_tokens or 0,
-            output_tokens=usage.output_tokens or 0,
+            svg=extract_svg_from_messages(messages),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

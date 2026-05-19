@@ -10,11 +10,13 @@ Provides two evaluation modes:
 """
 from __future__ import annotations
 
+import base64
 import re
 
 from pydantic import BaseModel
-from pydantic_ai import Agent
-from strategies.base import cache_model_settings
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from strategies.llm import get_chat_model
 
 _CODE_REVIEW_SYSTEM = """\
 You are an expert geometry teacher and TikZ/tkz-euclide code reviewer.
@@ -129,21 +131,18 @@ async def judge_tikz_code(
     Returns a dict with keys:
       score, geometric_accuracy, labeling, completeness, likely_renders, reasoning
     """
-    agent: Agent[None, _JudgeResult] = Agent(
-        model,
-        system_prompt=_CODE_REVIEW_SYSTEM,
-        output_type=_JudgeResult,
-        model_settings=cache_model_settings(enable_cache),
-    )
+    llm = get_chat_model(model).with_structured_output(_JudgeResult)
 
     parts = [f"User prompt: {prompt}\n\nTikZ code:\n```\n{tikz_code}\n```"]
     if tkzelements_code:
         parts.append(f"\ntkz-elements Lua block:\n```\n{tkzelements_code}\n```")
 
-    user_message = "\n".join(parts)
-    result = await agent.run(user_message)
+    messages = [
+        SystemMessage(content=_CODE_REVIEW_SYSTEM),
+        HumanMessage(content="\n".join(parts)),
+    ]
+    data: _JudgeResult = await llm.ainvoke(messages)
 
-    data = result.output
     return {
         "score": data.score,
         "geometric_accuracy": data.geometric_accuracy,
@@ -182,24 +181,28 @@ async def judge_rendered_diagram(
     if not isinstance(png_data, bytes) or len(png_data) == 0:
         raise ValueError("Failed to convert SVG to PNG for visual judging.")
 
-    from pydantic_ai.messages import BinaryContent
+    b64_image = base64.b64encode(png_data).decode("utf-8")
 
-    agent: Agent[None, _VisualJudgeResult] = Agent(
-        model,
-        system_prompt=_VISUAL_REVIEW_SYSTEM,
-        output_type=_VisualJudgeResult,
-        model_settings=cache_model_settings(enable_cache),
-    )
+    llm = get_chat_model(model).with_structured_output(_VisualJudgeResult)
 
-    user_content: list = [
-        BinaryContent(data=png_data, media_type="image/png"),
-        f"User prompt: {prompt}",
-    ]
+    text_parts: list = [f"User prompt: {prompt}"]
     if tikz_code:
-        user_content.append(f"\nTikZ source (for reference):\n```\n{tikz_code}\n```")
+        text_parts.append(f"\nTikZ source (for reference):\n```\n{tikz_code}\n```")
 
-    result = await agent.run(user_content)
-    data = result.output
+    human_content: list = [
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{b64_image}"},
+        },
+        {"type": "text", "text": "\n".join(text_parts)},
+    ]
+
+    messages = [
+        SystemMessage(content=_VISUAL_REVIEW_SYSTEM),
+        HumanMessage(content=human_content),
+    ]
+    data: _VisualJudgeResult = await llm.ainvoke(messages)
+
     return {
         "score": data.score,
         "geometric_accuracy": data.geometric_accuracy,

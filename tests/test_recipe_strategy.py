@@ -1,12 +1,11 @@
 # tests/test_recipe_strategy.py
 """Mocked LLM tests for RecipeStrategy.
 
-All LLM calls (pydantic_ai.Agent.run) and the IR pipeline are mocked so
+All LLM calls (via get_chat_model) and the IR pipeline are mocked so
 no network, Docker, or renderer is required.
 """
 from __future__ import annotations
 
-import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -34,53 +33,59 @@ SIMPLE_DSL = {
 
 def _make_fake_result() -> StructuredRunResult:
     fake_ir = DiagramIR(define=[], checks=[], render=[])
-    return StructuredRunResult(diagram_ir=fake_ir, tikz="\\tkzInit", svg="<svg/>")
+    return StructuredRunResult(diagram_ir=fake_ir, tikz="\\tkzInit", svg="<svg/>",
+                               sym_table={}, sym_full={})
 
 
-def _make_gen_response(dsl: RecipeDSL | None = None) -> MagicMock:
-    """Build a mock Agent.run() return value for the generation call."""
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 10
-    mock_usage.output_tokens = 20
-
-    mock_response = MagicMock()
-    mock_response.output = dsl if dsl is not None else RecipeDSL.model_validate(SIMPLE_DSL)
-    mock_response.usage.return_value = mock_usage
-    return mock_response
+def _make_raw_response(dsl: RecipeDSL) -> dict:
+    """Wrap a RecipeDSL in the include_raw=True response dict format."""
+    raw = MagicMock()
+    raw.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 8}}
+    return {"raw": raw, "parsed": dsl, "parsing_error": None}
 
 
-def _make_sel_response(body: str | None = None) -> MagicMock:
-    """Build a mock Agent.run() return value for the selector call."""
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 5
-    mock_usage.output_tokens = 8
+def _make_mock_llm(selector_text: str = '{"selected_recipes": [], "unmatched_concepts": []}',
+                   gen_dsl: RecipeDSL | None = None):
+    """Return a mock chat model that handles both selector (ainvoke) and generator (with_structured_output) calls."""
+    if gen_dsl is None:
+        gen_dsl = RecipeDSL.model_validate(SIMPLE_DSL)
 
-    mock_response = MagicMock()
-    mock_response.output = body or '{"selected_recipes": [], "unmatched_concepts": []}'
-    mock_response.usage.return_value = mock_usage
-    return mock_response
+    # Selector response (plain ainvoke)
+    selector_response = MagicMock()
+    selector_response.content = selector_text
+    selector_response.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 8}}
+
+    # Generator structured output mock — returns include_raw=True dict format
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = AsyncMock(return_value=_make_raw_response(gen_dsl))
+
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=selector_response)
+    mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
+
+    return mock_llm
 
 
 # ---------------------------------------------------------------------------
-# Test 1: use_recipes=False — single Agent call, result is StructuredRunResult
+# Test 1: successful run returns StructuredRunResult with metadata
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_recipe_strategy_no_recipes_returns_result():
-    """With use_recipes=False, one Agent call; result carries empty selected_recipes."""
-    strategy = RecipeStrategy(use_recipes=False)
+async def test_recipe_strategy_returns_result():
+    """RecipeStrategy.run() returns a StructuredRunResult with recipe_metadata."""
+    strategy = RecipeStrategy()
     fake_result = _make_fake_result()
-    gen_response = _make_gen_response()
+    mock_llm = _make_mock_llm()
 
     with (
-        patch("strategies.recipe.Agent") as MockAgent,
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
         patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select this"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate this"),
+        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
     ):
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.run = AsyncMock(return_value=gen_response)
-        MockAgent.return_value = mock_agent_instance
-
-        result = await strategy.run("draw two points", model="test-model")
+        result = await strategy.run("draw two points", model="anthropic:claude-haiku-4-5-20251001")
 
     assert isinstance(result, StructuredRunResult)
     assert result.recipe_metadata is not None
@@ -88,68 +93,40 @@ async def test_recipe_strategy_no_recipes_returns_result():
 
 
 # ---------------------------------------------------------------------------
-# Test 2: use_recipes=True — selector called first, then generation
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_recipe_strategy_with_recipes_calls_selector():
-    """With use_recipes=True, Agent is instantiated twice (selector + generator)."""
-    strategy = RecipeStrategy(use_recipes=True)
-    fake_result = _make_fake_result()
-    sel_response = _make_sel_response()
-    gen_response = _make_gen_response()
-
-    call_responses = [sel_response, gen_response]
-
-    with (
-        patch("strategies.recipe.Agent") as MockAgent,
-        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.load_recipe", side_effect=KeyError("not found")),
-    ):
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.run = AsyncMock(side_effect=call_responses)
-        MockAgent.return_value = mock_agent_instance
-
-        result = await strategy.run("draw a triangle", model="test-model")
-
-    assert isinstance(result, StructuredRunResult)
-    assert result.recipe_metadata is not None
-    # Agent was constructed twice (once for selector, once for generator)
-    assert MockAgent.call_count == 2
-
-
-# ---------------------------------------------------------------------------
-# Test 3: retry on lowering error — second attempt succeeds
+# Test 2: retry on lowering error — second attempt succeeds
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_recipe_strategy_retries_on_lowering_error():
     """First lowering raises LoweringError; second attempt succeeds."""
-    strategy = RecipeStrategy(use_recipes=False)
+    strategy = RecipeStrategy()
     fake_result = _make_fake_result()
-    gen_response = _make_gen_response()
+    mock_llm = _make_mock_llm()
+
+    lower_calls = {"count": 0}
+
+    def side_effect_lower(*args, **kwargs):
+        lower_calls["count"] += 1
+        if lower_calls["count"] == 1:
+            raise LoweringError("bad dsl")
+        return MagicMock()
 
     with (
-        patch("strategies.recipe.Agent") as MockAgent,
-        patch(
-            "strategies.recipe.lower_to_ir",
-            side_effect=[LoweringError("bad dsl"), MagicMock()],
-        ),
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("strategies.recipe.lower_to_ir", side_effect=side_effect_lower),
         patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
     ):
-        mock_agent_instance = MagicMock()
-        # Both calls return a valid RecipeDSL response
-        mock_agent_instance.run = AsyncMock(return_value=gen_response)
-        MockAgent.return_value = mock_agent_instance
-
-        result = await strategy.run("draw something", model="test-model")
+        result = await strategy.run("draw something", model="anthropic:claude-haiku-4-5-20251001")
 
     assert isinstance(result, StructuredRunResult)
+    assert lower_calls["count"] == 2
 
 
 # ---------------------------------------------------------------------------
-# Test 4: raises RuntimeError after MAX_RETRIES exhausted
+# Test 3: raises RuntimeError after MAX_RETRIES exhausted
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -157,22 +134,18 @@ async def test_recipe_strategy_raises_after_max_retries():
     """All attempts fail with LoweringError; RuntimeError raised after MAX_RETRIES."""
     from strategies.recipe import MAX_RETRIES
 
-    strategy = RecipeStrategy(use_recipes=False)
-    gen_response = _make_gen_response()
+    strategy = RecipeStrategy()
+    mock_llm = _make_mock_llm()
 
     with (
-        patch("strategies.recipe.Agent") as MockAgent,
-        patch(
-            "strategies.recipe.lower_to_ir",
-            side_effect=LoweringError("always fails"),
-        ),
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("strategies.recipe.lower_to_ir", side_effect=LoweringError("always fails")),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
     ):
-        mock_agent_instance = MagicMock()
-        mock_agent_instance.run = AsyncMock(return_value=gen_response)
-        MockAgent.return_value = mock_agent_instance
-
         with pytest.raises(RuntimeError, match="RecipeStrategy failed after"):
-            await strategy.run("draw something", model="test-model")
+            await strategy.run("draw something", model="anthropic:claude-haiku-4-5-20251001")
 
-    # Agent was constructed MAX_RETRIES times (one per attempt)
-    assert MockAgent.call_count == MAX_RETRIES
+    traces = strategy._partial_recipe_metadata.attempt_traces
+    assert len(traces) == MAX_RETRIES

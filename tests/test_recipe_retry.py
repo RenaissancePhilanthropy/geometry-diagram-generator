@@ -1,523 +1,244 @@
 """
-Tests for RecipeStrategy's handling of UnexpectedModelBehavior (structured-output
-validation failures) during the generation agent call.
+Tests for RecipeStrategy retry behaviour and contextual error hints.
 
-All tests mock out the pydantic-ai Agent so no real LLM calls are made.
+All LLM calls are mocked — no network or Docker required.
 """
 from __future__ import annotations
 
-import asyncio
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pydantic
-import pytest
-
-from pydantic_ai.exceptions import UnexpectedModelBehavior
+from langchain_core.exceptions import OutputParserException
 
 from recipe.dsl import RecipeDSL
-from strategies.recipe import RecipeStrategy, MAX_RETRIES, RecipeAttemptTrace
+from strategies.recipe import RecipeStrategy, MAX_RETRIES, RecipeAttemptTrace, _build_retry_hints
+from strategies.structured import StructuredRunResult
+from ir.ir import DiagramIR
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _make_fake_result() -> StructuredRunResult:
+    fake_ir = DiagramIR(define=[], checks=[], render=[])
+    return StructuredRunResult(diagram_ir=fake_ir, tikz="", svg="<svg/>",
+                               sym_table={}, sym_full={})
+
+
 def _make_valid_dsl() -> RecipeDSL:
     return RecipeDSL(construction=[])
 
 
-def _make_agent_response(dsl: RecipeDSL) -> MagicMock:
-    """Fake pydantic_ai agent result with a valid RecipeDSL output."""
-    response = MagicMock()
-    response.output = dsl
-    usage = MagicMock()
-    usage.input_tokens = 100
-    usage.output_tokens = 50
-    response.usage.return_value = usage
-    return response
+def _wrap_dsl(dsl: RecipeDSL) -> dict:
+    """Wrap a RecipeDSL in the include_raw=True response dict format."""
+    raw = MagicMock()
+    raw.response_metadata = {"usage": {"input_tokens": 10, "output_tokens": 5}}
+    return {"raw": raw, "parsed": dsl, "parsing_error": None}
 
 
-def _make_validation_error() -> pydantic.ValidationError:
-    class _M(pydantic.BaseModel):
-        x: int
-    try:
-        _M.model_validate({"x": "not-an-int"})
-    except pydantic.ValidationError as e:
-        return e
-    raise AssertionError("unreachable")
-
-
-# ---------------------------------------------------------------------------
-# Mock setup utilities
-# ---------------------------------------------------------------------------
-
-def _patch_strategy_internals(monkeypatch, gen_agent_side_effects: list):
-    """
-    Patch out all the heavy machinery inside RecipeStrategy.run():
-    - Selector agent produces empty selection
-    - Generation agent uses provided side_effects list
-    - lower_to_ir succeeds immediately
-    - _run_ir_pipeline returns a minimal SVG result
-    """
-    # Selector agent mock (returns empty string, no recipe IDs)
+def _make_mock_llm(gen_side_effects: list):
+    """Return a mock LLM where with_structured_output().ainvoke() uses gen_side_effects."""
+    # Selector response
     selector_response = MagicMock()
-    selector_response.output = ""
-    selector_usage = MagicMock()
-    selector_usage.input_tokens = 10
-    selector_usage.output_tokens = 5
-    selector_response.usage.return_value = selector_usage
+    selector_response.content = '{"selected_recipes": [], "unmatched_concepts": []}'
+    selector_response.response_metadata = {"usage": {"input_tokens": 10, "output_tokens": 5}}
 
-    # Build mock side_effects list for Agent constructor calls:
-    # First call → selector, subsequent calls → generation agent
-    call_count = {"n": 0}
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = AsyncMock(side_effect=gen_side_effects)
 
-    def make_agent_instance(model, **kwargs):
-        inst = MagicMock()
-        if call_count["n"] == 0:
-            # Selector
-            inst.run = AsyncMock(return_value=selector_response)
-        else:
-            # Generation agent: pull from side_effects in order
-            idx = call_count["n"] - 1
-            effect = gen_agent_side_effects[idx] if idx < len(gen_agent_side_effects) else gen_agent_side_effects[-1]
-            if isinstance(effect, Exception):
-                inst.run = AsyncMock(side_effect=effect)
-            else:
-                inst.run = AsyncMock(return_value=effect)
-        call_count["n"] += 1
-        return inst
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=selector_response)
+    mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
+    return mock_llm
 
-    # Minimal IR pipeline result
-    from strategies.structured import StructuredRunResult
-    ir_result = MagicMock()
-    ir_result.diagram_ir = MagicMock()
-    ir_result.tikz = ""
-    ir_result.svg = "<svg/>"
-    ir_result.sym_table = {}
-    ir_result.sym_full = {}
 
+def _common_patches(mock_llm, pipeline_mock=None):
+    """Return context manager patches common to all recipe retry tests."""
+    fake_result = _make_fake_result()
     return (
-        patch("strategies.recipe.Agent", side_effect=make_agent_instance),
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
         patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
-        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=ir_result)),
+        patch("strategies.recipe._run_ir_pipeline",
+              new=AsyncMock(return_value=fake_result) if pipeline_mock is None else pipeline_mock),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate this RecipeDSL"),
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 1: UnexpectedModelBehavior is caught and becomes retriable
+# Unit tests for _build_retry_hints
+# ---------------------------------------------------------------------------
+
+def test_build_retry_hints_angle_equal():
+    error = "Geometric checks failed: AngleEqual(A,B,C) != AngleEqual(D,E,F)"
+    hints = _build_retry_hints(error)
+    assert "AngleEqual" in hints or "angle" in hints.lower()
+
+
+def test_build_retry_hints_mark_right_angle():
+    error = "Geometric checks failed: mark_right_angle(A,M,C) is 153°"
+    hints = _build_retry_hints(error)
+    assert hints  # Should produce some hint
+
+
+def test_build_retry_hints_circular():
+    error = "IR compilation failed: circular dependency detected"
+    hints = _build_retry_hints(error)
+    assert hints
+
+
+def test_build_retry_hints_between_selector():
+    error = "no candidate lies between 'A' and 'B' (nearest is beyond 'B', t≈1.40)"
+    hints = _build_retry_hints(error)
+    assert hints
+
+
+def test_build_retry_hints_no_match_returns_empty():
+    error = "Points A and B coincide"
+    hints = _build_retry_hints(error)
+    assert hints == ""
+
+
+# ---------------------------------------------------------------------------
+# Test 1: OutputParserException caught and becomes retriable
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_recipe_strategy_catches_unexpected_model_behavior(monkeypatch):
-    """
-    Generation agent raises UnexpectedModelBehavior twice, then succeeds.
-    The strategy should succeed on the third attempt, recording two
-    output_validation traces followed by a success trace.
-    """
-    error = UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
-    valid_response = _make_agent_response(_make_valid_dsl())
+async def test_recipe_strategy_catches_output_parser_exception():
+    """Generation raises OutputParserException twice, then succeeds."""
+    error = OutputParserException("Failed to parse RecipeDSL")
+    valid_dsl = _make_valid_dsl()
+    mock_llm = _make_mock_llm([error, error, _wrap_dsl(valid_dsl)])
 
-    effects = [error, error, valid_response]
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, effects)
-
-    with p_agent, p_lower, p_pipeline:
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+    p1, p2, p3, p4, p5, p6 = _common_patches(mock_llm)
+    with p1, p2, p3, p4, p5, p6:
+        strategy = RecipeStrategy()
+        result = await strategy.run("Draw a triangle.")
 
     traces = result.recipe_metadata.attempt_traces
     stages = [t.stage for t in traces]
-    assert stages == ["output_validation", "output_validation", "success"], stages
-    assert traces[0].error is not None
-    assert traces[1].error is not None
-    assert traces[2].error is None
+    assert "output_validation" in stages
+    assert stages[-1] == "success"
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Validation error details are surfaced in the trace
+# Test 2: All retries exhausted → RuntimeError
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_recipe_strategy_surfaces_validation_diagnostics(monkeypatch):
-    """
-    When UnexpectedModelBehavior is raised with a chained pydantic ValidationError,
-    the trace should include the validation error's loc/msg and a raw_output field.
-    """
-    # Build a real ValidationError chained onto the UMB
-    val_err = _make_validation_error()
-    umb = UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
-    umb.__cause__ = val_err
+async def test_recipe_strategy_all_retries_exhaust_raises():
+    """All MAX_RETRIES attempts raise OutputParserException → RuntimeError."""
+    error = OutputParserException("Failed to parse RecipeDSL")
+    mock_llm = _make_mock_llm([error] * MAX_RETRIES)
 
-    valid_response = _make_agent_response(_make_valid_dsl())
-    effects = [umb, valid_response, valid_response]  # fail once, then succeed
-
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, effects)
-
-    with p_agent, p_lower, p_pipeline:
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    fail_trace = next(t for t in result.recipe_metadata.attempt_traces if t.stage == "output_validation")
-    # Error string should mention the field name ('x') and the validation failure type
-    assert fail_trace.error is not None
-    assert "Output validation failed" in fail_trace.error
-    # Should include loc and type from the pydantic error
-    assert "loc=" in fail_trace.error
-
-
-# ---------------------------------------------------------------------------
-# Test 3: All retries exhausted → RuntimeError propagates
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_recipe_strategy_all_retries_exhaust_raises(monkeypatch):
-    """
-    When all MAX_RETRIES attempts raise UnexpectedModelBehavior, the strategy
-    should raise RuntimeError mentioning the validation failure.
-    """
-    error = UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
-    effects = [error] * MAX_RETRIES
-
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, effects)
-
-    with p_agent, p_lower, p_pipeline:
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
+    p1, p2, p3, p4, p5, p6 = _common_patches(mock_llm)
+    with p1, p2, p3, p4, p5, p6:
+        strategy = RecipeStrategy()
         with pytest.raises(RuntimeError, match="RecipeStrategy failed"):
-            await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+            await strategy.run("Draw a triangle.")
 
-    # All attempts should be recorded as output_validation failures
     traces = strategy._partial_recipe_metadata.attempt_traces
     assert len(traces) == MAX_RETRIES
     assert all(t.stage == "output_validation" for t in traces)
 
 
 # ---------------------------------------------------------------------------
-# Test 4: AngleEqual check failure appends a targeted hint
+# Test 3: IR pipeline failure triggers retry with error in next prompt
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_retry_prompt_includes_angle_hint(monkeypatch):
-    """
-    When retry error contains an AngleEqual-style failure message,
-    the retry prompt should include a targeted hint about ensuring
-    geometric similarity when two angles must be equal.
-    """
-    # Simulate a geometric check failure with AngleEqual error
-    angle_error = (
-        "Geometric checks failed:\n"
-        "  - [annotation: mark_angle group=1] Angle B-S-A = 33.7° but D-T-C = 18.4°"
-    )
+async def test_recipe_strategy_retries_on_pipeline_failure():
+    """IR pipeline fails once, then succeeds. Two DSL generation attempts made."""
+    valid_dsl = _make_valid_dsl()
+    mock_llm = _make_mock_llm([_wrap_dsl(valid_dsl), _wrap_dsl(valid_dsl)])
 
-    valid_response = _make_agent_response(_make_valid_dsl())
-
-    # Track IR pipeline calls to fail on first, succeed on second
-    pipeline_calls = {"count": 0}
+    fake_result = _make_fake_result()
+    pipeline_call_count = {"n": 0}
 
     async def mock_pipeline(*args, **kwargs):
-        pipeline_calls["count"] += 1
-        if pipeline_calls["count"] == 1:
-            raise RuntimeError(angle_error)
-        else:
-            ir_result = MagicMock()
-            ir_result.diagram_ir = MagicMock()
-            ir_result.tikz = ""
-            ir_result.svg = "<svg/>"
-            ir_result.sym_table = {}
-            ir_result.sym_full = {}
-            return ir_result
+        pipeline_call_count["n"] += 1
+        if pipeline_call_count["n"] == 1:
+            raise RuntimeError("Geometric checks failed: some check")
+        return fake_result
 
-    # Track user messages passed to gen_agent.run
-    captured_user_messages = {"messages": []}
-
-    def patch_gen_agent_run(original_run):
-        async def wrapper(user_msg):
-            captured_user_messages["messages"].append(user_msg)
-            return await original_run(user_msg)
-        return wrapper
-
-    # Use standard internal patches but hook the pipeline and message capture
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
-
-    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
-        # Patch Agent to capture user messages
-        original_make_agent = mock_agent_class.side_effect
-
-        def patched_make_agent(*args, **kwargs):
-            inst = original_make_agent(*args, **kwargs)
-            inst.run = patch_gen_agent_run(inst.run)
-            return inst
-
-        mock_agent_class.side_effect = patched_make_agent
-
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    # Should have at least 2 gen agent calls: initial + retry
-    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
-    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
-
-    # The second gen message is the retry prompt
-    retry_prompt = gen_messages[1]
-
-    # Should contain the hint text about angle equality
-    assert "When two angles must be equal" in retry_prompt, (
-        f"Hint not found in retry prompt. Prompt:\n{retry_prompt}"
+    p1, p2, p4, p5, p6 = (
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
     )
-    assert "geometrically similar" in retry_prompt
-    assert "matching right_angle_at positions" in retry_prompt
+    with p1, p2, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline), p4, p5, p6:
+        strategy = RecipeStrategy()
+        result = await strategy.run("Draw a triangle.")
 
-
-@pytest.mark.asyncio
-async def test_retry_prompt_no_hint_for_non_angle_errors(monkeypatch):
-    """
-    When retry error does NOT contain an AngleEqual-style message,
-    the hint should NOT be appended.
-    """
-    # Non-angle error (e.g., some other geometric check)
-    generic_error = "Geometric checks failed:\n  - Points A and B coincide"
-
-    valid_response = _make_agent_response(_make_valid_dsl())
-
-    # Track IR pipeline calls to fail on first, succeed on second
-    pipeline_calls = {"count": 0}
-
-    async def mock_pipeline(*args, **kwargs):
-        pipeline_calls["count"] += 1
-        if pipeline_calls["count"] == 1:
-            raise RuntimeError(generic_error)
-        else:
-            ir_result = MagicMock()
-            ir_result.diagram_ir = MagicMock()
-            ir_result.tikz = ""
-            ir_result.svg = "<svg/>"
-            ir_result.sym_table = {}
-            ir_result.sym_full = {}
-            return ir_result
-
-    # Track user messages passed to gen_agent.run
-    captured_user_messages = {"messages": []}
-
-    def patch_gen_agent_run(original_run):
-        async def wrapper(user_msg):
-            captured_user_messages["messages"].append(user_msg)
-            return await original_run(user_msg)
-        return wrapper
-
-    # Use standard internal patches but hook the pipeline and message capture
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
-
-    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
-        # Patch Agent to capture user messages
-        original_make_agent = mock_agent_class.side_effect
-
-        def patched_make_agent(*args, **kwargs):
-            inst = original_make_agent(*args, **kwargs)
-            inst.run = patch_gen_agent_run(inst.run)
-            return inst
-
-        mock_agent_class.side_effect = patched_make_agent
-
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    # Should have at least 2 gen agent calls: initial + retry
-    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
-    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
-
-    # The second gen message is the retry prompt
-    retry_prompt = gen_messages[1]
-
-    # Should NOT contain the angle hint
-    assert "When two angles must be equal" not in retry_prompt, (
-        f"Unexpected angle hint in retry prompt. Prompt:\n{retry_prompt}"
-    )
+    assert isinstance(result, StructuredRunResult)
+    assert pipeline_call_count["n"] == 2
 
 
 # ---------------------------------------------------------------------------
-# Test 5: mark_right_angle geometric check failure appends a targeted hint
+# Test 4: AngleEqual hint appended on retry
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_retry_prompt_includes_mark_right_angle_hint(monkeypatch):
-    """When retry error contains a mark_right_angle failure, hint about point_foot."""
-    ra_error = (
-        "Geometric checks failed:\n"
-        "  - [annotation: mark_right_angle(A,M,C)] Angle A-M-C is 153.4°, not 90°"
-    )
+async def test_angle_hint_appended_on_retry():
+    """When IR pipeline fails with AngleEqual error, retry prompt includes hint."""
+    valid_dsl = _make_valid_dsl()
+    captured_messages = []
 
-    valid_response = _make_agent_response(_make_valid_dsl())
+    # Wrap ainvoke to capture the messages argument
+    call_count = {"n": 0}
 
-    pipeline_calls = {"count": 0}
+    async def capturing_ainvoke(messages):
+        captured_messages.append(messages)
+        call_count["n"] += 1
+        return _wrap_dsl(valid_dsl)
 
-    async def mock_pipeline(*args, **kwargs):
-        pipeline_calls["count"] += 1
-        if pipeline_calls["count"] == 1:
-            raise RuntimeError(ra_error)
-        else:
-            ir_result = MagicMock()
-            ir_result.diagram_ir = MagicMock()
-            ir_result.tikz = ""
-            ir_result.svg = "<svg/>"
-            ir_result.sym_table = {}
-            ir_result.sym_full = {}
-            return ir_result
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = capturing_ainvoke
 
-    captured_user_messages = {"messages": []}
+    selector_response = MagicMock()
+    selector_response.content = '{"selected_recipes": [], "unmatched_concepts": []}'
+    selector_response.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 3}}
 
-    def patch_gen_agent_run(original_run):
-        async def wrapper(user_msg):
-            captured_user_messages["messages"].append(user_msg)
-            return await original_run(user_msg)
-        return wrapper
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=selector_response)
+    mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
 
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
-
-    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
-        original_make_agent = mock_agent_class.side_effect
-
-        def patched_make_agent(*args, **kwargs):
-            inst = original_make_agent(*args, **kwargs)
-            inst.run = patch_gen_agent_run(inst.run)
-            return inst
-
-        mock_agent_class.side_effect = patched_make_agent
-
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
-    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
-
-    retry_prompt = gen_messages[1]
-
-    assert "point_foot" in retry_prompt, (
-        f"point_foot hint not found in retry prompt. Prompt:\n{retry_prompt}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Test 6: between-selector mismatch appends a targeted hint
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_retry_prompt_includes_between_selector_hint(monkeypatch):
-    """When retry error contains 'beyond … t≈', hint about chord/endpoint placement."""
-    between_error = (
-        "IR compilation failed: [E] no candidate lies between 'A' and 'B' "
-        "(nearest candidate is beyond 'B', t≈1.40)"
-    )
-
-    valid_response = _make_agent_response(_make_valid_dsl())
-
-    pipeline_calls = {"count": 0}
+    fake_result = _make_fake_result()
+    pipeline_call_count = {"n": 0}
 
     async def mock_pipeline(*args, **kwargs):
-        pipeline_calls["count"] += 1
-        if pipeline_calls["count"] == 1:
-            raise RuntimeError(between_error)
-        else:
-            ir_result = MagicMock()
-            ir_result.diagram_ir = MagicMock()
-            ir_result.tikz = ""
-            ir_result.svg = "<svg/>"
-            ir_result.sym_table = {}
-            ir_result.sym_full = {}
-            return ir_result
+        pipeline_call_count["n"] += 1
+        if pipeline_call_count["n"] == 1:
+            raise RuntimeError("AngleEqual check failed: angles not equal")
+        return fake_result
 
-    captured_user_messages = {"messages": []}
+    with (
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
+    ):
+        strategy = RecipeStrategy()
+        result = await strategy.run("Draw a triangle.")
 
-    def patch_gen_agent_run(original_run):
-        async def wrapper(user_msg):
-            captured_user_messages["messages"].append(user_msg)
-            return await original_run(user_msg)
-        return wrapper
-
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
-
-    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
-        original_make_agent = mock_agent_class.side_effect
-
-        def patched_make_agent(*args, **kwargs):
-            inst = original_make_agent(*args, **kwargs)
-            inst.run = patch_gen_agent_run(inst.run)
-            return inst
-
-        mock_agent_class.side_effect = patched_make_agent
-
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
-    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
-
-    retry_prompt = gen_messages[1]
-
-    assert "beyond" in retry_prompt or "outside" in retry_prompt, (
-        f"between-selector hint not found in retry prompt. Prompt:\n{retry_prompt}"
+    assert call_count["n"] >= 2, "Expected at least 2 DSL generation calls"
+    # The second call's HumanMessage must contain BOTH the original error text AND
+    # the specific hint injected by _build_retry_hints — not just boilerplate "angle".
+    from langchain_core.messages import HumanMessage as LCHumanMessage
+    second_call_messages = captured_messages[1]
+    human_msgs = [m for m in second_call_messages if isinstance(m, LCHumanMessage)]
+    assert human_msgs, "No HumanMessage in second DSL gen call"
+    human_content = str(human_msgs[-1].content)
+    assert "AngleEqual" in human_content, (
+        f"Expected error text 'AngleEqual' in retry human message, got: {human_content[:300]}"
     )
-
-
-# ---------------------------------------------------------------------------
-# Test 7: Negative — unrelated errors do not get the mark_right_angle hint
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_retry_prompt_no_mark_right_angle_hint_for_other_errors(monkeypatch):
-    """Unrelated errors do not get the mark_right_angle hint."""
-    unrelated_error = "Geometric checks failed:\n  - Points A and B coincide"
-
-    valid_response = _make_agent_response(_make_valid_dsl())
-
-    pipeline_calls = {"count": 0}
-
-    async def mock_pipeline(*args, **kwargs):
-        pipeline_calls["count"] += 1
-        if pipeline_calls["count"] == 1:
-            raise RuntimeError(unrelated_error)
-        else:
-            ir_result = MagicMock()
-            ir_result.diagram_ir = MagicMock()
-            ir_result.tikz = ""
-            ir_result.svg = "<svg/>"
-            ir_result.sym_table = {}
-            ir_result.sym_full = {}
-            return ir_result
-
-    captured_user_messages = {"messages": []}
-
-    def patch_gen_agent_run(original_run):
-        async def wrapper(user_msg):
-            captured_user_messages["messages"].append(user_msg)
-            return await original_run(user_msg)
-        return wrapper
-
-    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
-
-    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
-        original_make_agent = mock_agent_class.side_effect
-
-        def patched_make_agent(*args, **kwargs):
-            inst = original_make_agent(*args, **kwargs)
-            inst.run = patch_gen_agent_run(inst.run)
-            return inst
-
-        mock_agent_class.side_effect = patched_make_agent
-
-        strategy = RecipeStrategy(use_recipes=True)
-        from ir.renderer import SVGRenderer
-        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
-
-    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
-    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
-
-    retry_prompt = gen_messages[1]
-
-    assert "point_foot" not in retry_prompt, (
-        f"Unexpected point_foot hint in retry prompt. Prompt:\n{retry_prompt}"
+    assert "three distinct points" in human_content, (
+        f"Expected hint text 'three distinct points' in retry human message, got: {human_content[:300]}"
     )

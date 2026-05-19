@@ -33,12 +33,12 @@ Student prompt
 
 ### Step-by-step
 
-1. **Prompt → LLM → DiagramIR.**  A `pydantic-ai` Agent with
-   `output_type=DiagramIR` receives the student prompt plus IR authoring
-   instructions.  The LLM returns structured JSON conforming to the DiagramIR
-   Pydantic schema — geometric definitions (points, segments, circles,
-   polygons, intersections, midpoints, etc.), self-checks (geometric
-   assertions), and render ops (draw, label, and mark commands).
+1. **Prompt → LLM → DiagramIR.**  A LangChain `with_structured_output(DiagramIR)`
+   call receives the student prompt plus IR authoring instructions.  The LLM
+   returns structured JSON conforming to the DiagramIR Pydantic schema —
+   geometric definitions (points, segments, circles, polygons, intersections,
+   midpoints, etc.), self-checks (geometric assertions), and render ops (draw,
+   label, and mark commands).
 
 2. **Compile IR → SymPy.**  `ir/to_sympy.py::compile_defs()` walks the
    definition DAG and builds concrete `sympy.geometry` objects (Point, Segment,

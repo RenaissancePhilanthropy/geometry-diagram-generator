@@ -6,29 +6,33 @@ No LLM or Docker required.
 from __future__ import annotations
 
 import io
+import json
 import sys
 from pathlib import Path
 
 import yaml
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+from langchain_core.messages import AIMessage, ToolMessage
 
 from util.message_helpers import count_tool_calls, extract_tool_call_args, extract_tool_return
 
 
 # ---------------------------------------------------------------------------
-# Helpers — build synthetic message lists
+# Helpers — build synthetic LangChain message lists
 # ---------------------------------------------------------------------------
 
-def _make_return(tool_name: str, content: str) -> ModelRequest:
-    return ModelRequest(parts=[ToolReturnPart(tool_name=tool_name, content=content, tool_call_id="x")])
+def _make_return(tool_name: str, content: str) -> ToolMessage:
+    return ToolMessage(content=content, name=tool_name, tool_call_id="x")
 
 
-def _make_call(tool_name: str, args) -> ModelResponse:
-    if isinstance(args, dict):
-        import json
-        args = json.dumps(args)
-    return ModelResponse(parts=[ToolCallPart(tool_name=tool_name, args=args, tool_call_id="y")])
+def _make_call(tool_name: str, args) -> AIMessage:
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            # Keep as string — will be tested for None result
+            return AIMessage(content="", tool_calls=[{"name": tool_name, "args": args, "id": "y", "type": "tool_call"}])
+    return AIMessage(content="", tool_calls=[{"name": tool_name, "args": args, "id": "y", "type": "tool_call"}])
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +63,8 @@ def test_extract_tool_return_empty_messages():
     assert extract_tool_return([], "render_diagram") is None
 
 
-def test_extract_tool_return_ignores_non_request():
-    messages = [_make_call("render_diagram", "{}")]  # ModelResponse, not ModelRequest
+def test_extract_tool_return_ignores_non_tool_message():
+    messages = [_make_call("render_diagram", {})]  # AIMessage, not ToolMessage
     assert extract_tool_return(messages, "render_diagram") is None
 
 
@@ -68,38 +72,23 @@ def test_extract_tool_return_ignores_non_request():
 # extract_tool_call_args
 # ---------------------------------------------------------------------------
 
-def test_extract_tool_call_args_json_string():
-    messages = [_make_call("render_diagram", '{"tikz": "\\\\tkzDefPoint(0,0){A}"}')]
+def test_extract_tool_call_args_dict():
+    messages = [_make_call("render_diagram", {"tikz": "\\tkzDefPoint(0,0){A}"})]
     result = extract_tool_call_args(messages, "render_diagram")
     assert result == {"tikz": "\\tkzDefPoint(0,0){A}"}
 
 
-def test_extract_tool_call_args_dict():
-    from pydantic_ai.messages import ToolCallPart
-    # ToolCallPart accepts dict directly for args
-    part = ToolCallPart(tool_name="render_diagram", args={"tikz": "code"}, tool_call_id="z")
-    messages = [ModelResponse(parts=[part])]
-    result = extract_tool_call_args(messages, "render_diagram")
-    assert result == {"tikz": "code"}
-
-
-def test_extract_tool_call_args_bad_json():
-    messages = [_make_call("render_diagram", "not valid json {")]
-    result = extract_tool_call_args(messages, "render_diagram")
-    assert result is None
-
-
 def test_extract_tool_call_args_finds_last_call():
     messages = [
-        _make_call("render_diagram", '{"tikz": "first"}'),
-        _make_call("render_diagram", '{"tikz": "second"}'),
+        _make_call("render_diagram", {"tikz": "first"}),
+        _make_call("render_diagram", {"tikz": "second"}),
     ]
     result = extract_tool_call_args(messages, "render_diagram")
     assert result == {"tikz": "second"}
 
 
 def test_extract_tool_call_args_wrong_tool():
-    messages = [_make_call("other_tool", '{"tikz": "code"}')]
+    messages = [_make_call("other_tool", {"tikz": "code"})]
     assert extract_tool_call_args(messages, "render_diagram") is None
 
 
@@ -109,22 +98,22 @@ def test_extract_tool_call_args_wrong_tool():
 
 def test_count_tool_calls_multiple():
     messages = [
-        _make_call("render_diagram", "{}"),
-        _make_call("render_diagram", "{}"),
-        _make_call("other_tool", "{}"),
+        _make_call("render_diagram", {}),
+        _make_call("render_diagram", {}),
+        _make_call("other_tool", {}),
     ]
     assert count_tool_calls(messages, "render_diagram") == 2
 
 
 def test_count_tool_calls_none():
-    messages = [_make_call("other_tool", "{}")]
+    messages = [_make_call("other_tool", {})]
     assert count_tool_calls(messages, "render_diagram") == 0
 
 
 def test_count_tool_calls_ignores_returns():
     messages = [
-        _make_call("render_diagram", "{}"),
-        _make_return("render_diagram", "result"),  # ToolReturn, not call
+        _make_call("render_diagram", {}),
+        _make_return("render_diagram", "result"),  # ToolMessage, not AIMessage
     ]
     assert count_tool_calls(messages, "render_diagram") == 1
 

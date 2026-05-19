@@ -1,22 +1,21 @@
 """Raw SVG with revision strategy: draft SVG then mandatory revision pass."""
 import logging
 
-from pydantic_ai import Agent
+from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .raw_svg import REVISION_FORCE_INSTRUCTIONS, REVISION_PROMPT, register_svg_render_tool
-from .stages import RawRunResult, extract_svg_from_messages
+from .llm import get_chat_model
+from .raw_svg import DRAFT_INSTRUCTIONS, REVISION_FORCE_INSTRUCTIONS, REVISION_PROMPT, make_svg_render_tool
+from .stages import RawRunResult, extract_svg_from_messages, _extract_usage_from_messages
 
 logger = logging.getLogger(__name__)
 
 
 class RawSVGWithReviseStrategy(SubstanceStrategy):
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
         """Return the draft agent for web app use."""
-        from .raw_svg import DRAFT_INSTRUCTIONS
-        agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=self.model_settings)
-        register_svg_render_tool(agent)
-        return agent
+        llm = get_chat_model(model)
+        return create_react_agent(llm, tools=[make_svg_render_tool()], prompt=DRAFT_INSTRUCTIONS)
 
     async def run(
         self,
@@ -25,21 +24,23 @@ class RawSVGWithReviseStrategy(SubstanceStrategy):
         renderer=None,
     ) -> RawRunResult:
         # Draft pass
-        draft_agent = self.build_agent(model=model)
-        draft = await draft_agent.run(prompt)
+        draft_graph = self.build_agent(model=model)
+        draft_state = await draft_graph.ainvoke({"messages": [("user", prompt)]})
+        draft_messages = draft_state["messages"]
 
         # Revision pass — must re-render
-        revision_agent = Agent(model, instructions=REVISION_FORCE_INSTRUCTIONS, model_settings=self.model_settings)
-        register_svg_render_tool(revision_agent)
-        result = await revision_agent.run(
-            REVISION_PROMPT,
-            message_history=draft.all_messages(),
-            usage=draft.usage(),
+        llm = get_chat_model(model)
+        revision_graph = create_react_agent(
+            llm, tools=[make_svg_render_tool()], prompt=REVISION_FORCE_INSTRUCTIONS
         )
+        revision_state = await revision_graph.ainvoke({
+            "messages": list(draft_messages) + [("user", REVISION_PROMPT)]
+        })
+        all_messages = revision_state["messages"]
 
-        usage = result.usage()
+        input_tokens, output_tokens = _extract_usage_from_messages(all_messages)
         return RawRunResult(
-            svg=extract_svg_from_messages(result.all_messages()),
-            input_tokens=usage.input_tokens or 0,
-            output_tokens=usage.output_tokens or 0,
+            svg=extract_svg_from_messages(all_messages),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

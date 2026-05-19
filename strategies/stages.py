@@ -1,7 +1,7 @@
 """Reusable pipeline stages for geometry diagram generation.
 
-Each stage is an async function that creates a pydantic-ai Agent, runs it, and
-returns the RunResult. Stages accept message_history and usage for chaining.
+Each stage is an async function that creates a LangGraph ReAct agent, runs it,
+and returns the result. Stages accept message_history for chaining.
 
 Stage functions:
     run_draft            — generate TikZ and render (single pass)
@@ -10,8 +10,8 @@ Stage functions:
     run_revision         — review and optionally re-render (force_rerender=True by default)
 
 Render tool helpers:
-    register_render_tool                  — standard render_diagram (retries=3)
-    register_render_tool_with_plan_check  — render_diagram + geometry self-check
+    make_render_tool                  — standard render_diagram tool
+    make_render_tool_with_plan_check  — render_diagram tool + geometry self-check
 """
 from __future__ import annotations
 
@@ -21,12 +21,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel
-from pydantic_ai import Agent, ModelRetry
-from pydantic_ai.messages import ModelRequest, ToolReturnPart
+from langchain_core.tools import tool
+from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
 from util.tikz_renderer import render_tikz
 from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
-from pydantic_ai.settings import ModelSettings
 from .base import DEFAULT_AGENT_MODEL
 from .instructions import (
     DRAFT_INSTRUCTIONS,
@@ -46,14 +45,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RawRunResult:
-    """Minimal run result compatible with dry_run._process_one expectations.
-
-    The optional `tikz`, `tkzelements`, `tool_calls`, and `retries` fields are
-    populated by raw-strategy `run()` methods so that `evals/run.py` can record
-    the same per-record fields it records for IR-based strategies. They default
-    to None/0 so older callers (dry_run, raw_svg) that don't set them keep
-    working.
-    """
+    """Minimal run result compatible with evals/run.py expectations."""
     svg: str
     input_tokens: int = 0
     output_tokens: int = 0
@@ -63,20 +55,30 @@ class RawRunResult:
     retries: int = 0
 
 
-def extract_svg_from_messages(messages) -> str:
+def extract_svg_from_messages(messages: list[BaseMessage]) -> str:
     """Return the SVG string from the last successful render_diagram tool return."""
     for msg in reversed(messages):
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart) and part.tool_name == "render_diagram":
-                    try:
-                        return json.loads(part.content)["svg"]
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+        if isinstance(msg, ToolMessage) and msg.name == "render_diagram":
+            try:
+                return json.loads(msg.content)["svg"]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
     return ""
 
 
-# Default retry budgets used by register_render_tool_with_plan_check
+def _extract_usage_from_messages(messages: list[BaseMessage]) -> tuple[int, int]:
+    """Sum token usage from all AIMessage responses in the message list."""
+    input_tokens = 0
+    output_tokens = 0
+    for msg in messages:
+        if isinstance(msg, AIMessage):
+            meta = msg.response_metadata.get("usage", {})
+            input_tokens += meta.get("input_tokens", meta.get("prompt_tokens", 0))
+            output_tokens += meta.get("output_tokens", meta.get("completion_tokens", 0))
+    return input_tokens, output_tokens
+
+
+# Default retry budgets
 COMPILE_RETRIES = 2
 GEOMETRY_RETRIES = 2
 
@@ -105,57 +107,64 @@ class GeometricPlan(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Render tool helpers
+# Render tool factories
 # ---------------------------------------------------------------------------
 
-def register_render_tool(agent: Agent, retries: int = 3) -> None:
-    """Attach a standard render_diagram tool to agent."""
+def make_render_tool():
+    """Return a standard render_diagram tool (errors returned as JSON error strings)."""
 
-    @agent.tool_plain(retries=retries)
+    @tool
     def render_diagram(tikz: str, tkzelements: str = "") -> str:
-        """Render a geometry diagram using TikZ/tkz-euclide code."""
-        logger.debug("render_diagram called — tikz=%d chars, tkzelements=%d chars",
-                     len(tikz), len(tkzelements))
+        """Render a geometry diagram using TikZ/tkz-euclide code.
+
+        Args:
+            tikz: TikZ code for the diagram.
+            tkzelements: Optional tkz-elements code.
+        Returns:
+            JSON with svg field on success, or error field on failure.
+        """
+        logger.debug("render_diagram called — tikz=%d chars", len(tikz))
         logger.info("tikz code:\n%s", tikz)
         try:
             svg = render_tikz(tikz, tkzelements=tkzelements or None)
             logger.info("render_diagram succeeded — svg=%d chars", len(svg))
+            return json.dumps({"svg": svg})
         except RuntimeError as e:
-            logger.warning("render_diagram failed (will retry): %s", e)
-            raise ModelRetry(str(e)) from e
-        return json.dumps({"svg": svg})
+            logger.warning("render_diagram failed: %s", e)
+            return json.dumps({"error": str(e)})
+
+    return render_diagram
 
 
-def register_render_tool_with_plan_check(
-    agent: Agent,
+def make_render_tool_with_plan_check(
     plan: GeometricPlan,
     compile_retries: int = COMPILE_RETRIES,
     geometry_retries: int = GEOMETRY_RETRIES,
-) -> None:
-    """Attach render_diagram with geometry self-check to agent.
+):
+    """Return a render_diagram tool with geometry self-check.
 
-    Compile errors consume the compile_retries budget (via pydantic-ai's built-in
-    retry counter). Geometry self-check failures consume the geometry_retries budget
-    via a separate manual counter; once exhausted, the diagram is accepted gracefully
-    with a geometry_failures field rather than crashing.
+    Compile errors and geometry failures are returned as JSON error strings
+    so the LLM can see them and retry via the ReAct loop.
     """
     geometry_attempts: list[int] = [0]
 
-    @agent.tool_plain(retries=compile_retries + geometry_retries)
+    @tool
     def render_diagram(tikz: str, tkzelements: str = "") -> str:
-        """Render a geometry diagram and validate it against the geometric plan."""
-        logger.debug("render_diagram called — tikz=%d chars, tkzelements=%d chars",
-                     len(tikz), len(tkzelements))
-        logger.info("tikz code:\n%s", tikz)
+        """Render a geometry diagram and validate it against the geometric plan.
+
+        Args:
+            tikz: TikZ code for the diagram.
+            tkzelements: Optional tkz-elements code.
+        Returns:
+            JSON with svg field on success, or error/geometry_failures on failure.
+        """
+        logger.debug("render_diagram called — tikz=%d chars", len(tikz))
         try:
             svg = render_tikz(tikz, tkzelements=tkzelements or None)
-            logger.info("render_diagram succeeded — svg=%d chars", len(svg))
         except RuntimeError as e:
-            logger.warning("render_diagram failed (will retry): %s", e)
-            raise ModelRetry(str(e)) from e
+            logger.warning("render_diagram compile failed: %s", e)
+            return json.dumps({"error": str(e)})
 
-        # Geometry self-check: validate expected properties from the plan.
-        # validate_geometric_property returns True/False/None; only False is a failure.
         if plan.expected_properties:
             coords = resolve_all_coordinates(tikz)
             failures: list[str] = []
@@ -170,102 +179,112 @@ def register_render_tool_with_plan_check(
                 geometry_attempts[0] += 1
                 if geometry_attempts[0] <= geometry_retries:
                     logger.warning(
-                        "render_diagram: geometry self-check failures (attempt %d/%d): %s",
+                        "render_diagram: geometry failures (attempt %d/%d): %s",
                         geometry_attempts[0], geometry_retries, failures,
                     )
-                    raise ModelRetry(
-                        f"The diagram compiled successfully, but these geometric "
-                        f"properties are not satisfied: {', '.join(failures)}. "
-                        f"Review your point coordinates — they must match the plan exactly — "
-                        f"and fix the TikZ code to satisfy these properties."
-                    )
+                    return json.dumps({
+                        "error": (
+                            f"The diagram compiled but these geometric properties are not "
+                            f"satisfied: {', '.join(failures)}. Fix your TikZ coordinates."
+                        )
+                    })
                 else:
                     logger.warning(
-                        "render_diagram: geometry self-check still failing after %d retries "
-                        "(%s) — accepting diagram",
+                        "render_diagram: geometry still failing after %d retries (%s) — accepting",
                         geometry_retries, failures,
                     )
                     return json.dumps({"svg": svg, "geometry_failures": failures})
 
-        geometry_attempts[0] = 0
+            geometry_attempts[0] = 0
+
         return json.dumps({"svg": svg})
+
+    return render_diagram
 
 
 # ---------------------------------------------------------------------------
 # Stage functions
 # ---------------------------------------------------------------------------
 
-async def run_draft(prompt: str, model: str = DEFAULT_AGENT_MODEL, model_settings: ModelSettings = {}):
-    """Draft stage: generate TikZ and render it.
+async def run_draft(
+    prompt: str,
+    model: str = DEFAULT_AGENT_MODEL,
+    model_settings: dict | None = None,
+):
+    """Draft stage: generate TikZ and render it. Returns final graph state."""
+    from .llm import get_chat_model
+    from langgraph.prebuilt import create_react_agent
 
-    Returns an AgentRunResult whose .all_messages() and .usage() can be passed
-    to run_revision for chaining.
-    """
-    agent = Agent(model, instructions=DRAFT_INSTRUCTIONS, model_settings=model_settings)
-    register_render_tool(agent)
-    return await agent.run(prompt)
+    llm = get_chat_model(model)
+    render_tool = make_render_tool()
+    graph = create_react_agent(llm, tools=[render_tool], prompt=DRAFT_INSTRUCTIONS)
+    return await graph.ainvoke({"messages": [("user", prompt)]})
 
 
-async def run_plan(prompt: str, model: str = DEFAULT_AGENT_MODEL, model_settings: ModelSettings = {}):
-    """Plan stage: produce a GeometricPlan for the given prompt.
+async def run_plan(
+    prompt: str,
+    model: str = DEFAULT_AGENT_MODEL,
+    model_settings: dict | None = None,
+) -> tuple[GeometricPlan, dict]:
+    """Plan stage: produce a GeometricPlan. Returns (GeometricPlan, final_state)."""
+    from .llm import get_chat_model
+    from langchain_core.messages import SystemMessage, HumanMessage
 
-    Returns (GeometricPlan, AgentRunResult).
-    """
-    agent = Agent(model, output_type=GeometricPlan, instructions=PLANNER_INSTRUCTIONS, model_settings=model_settings)
-    result = await agent.run(prompt)
+    llm = get_chat_model(model)
+    structured = llm.with_structured_output(GeometricPlan)
+    messages = [
+        SystemMessage(content=PLANNER_INSTRUCTIONS),
+        HumanMessage(content=prompt),
+    ]
+    plan = await structured.ainvoke(messages)
     logger.info(
         "run_plan: %d points, %d constructions, %d expected_properties",
-        len(result.output.points),
-        len(result.output.constructions),
-        len(result.output.expected_properties),
+        len(plan.points), len(plan.constructions), len(plan.expected_properties),
     )
-    return result.output, result
+    return plan, {"plan": plan}
 
 
 async def run_code_from_plan(
     plan: GeometricPlan,
     prompt: str,
     model: str = DEFAULT_AGENT_MODEL,
-    model_settings: ModelSettings = {},
+    model_settings: dict | None = None,
 ):
-    """Code stage: translate a GeometricPlan into TikZ and render it.
+    """Code stage: translate a GeometricPlan into TikZ and render it."""
+    from .llm import get_chat_model
+    from langgraph.prebuilt import create_react_agent
 
-    Includes geometry self-check with separate retry budgets for compile errors
-    and geometric constraint failures.
-    """
-    agent = Agent(model, instructions=CODE_FROM_PLAN_INSTRUCTIONS, model_settings=model_settings)
-    register_render_tool_with_plan_check(agent, plan)
+    llm = get_chat_model(model)
+    render_tool = make_render_tool_with_plan_check(plan)
+    graph = create_react_agent(llm, tools=[render_tool], prompt=CODE_FROM_PLAN_INSTRUCTIONS)
     user_message = (
         f"Original request: {prompt}\n\n"
         f"Geometric plan:\n{plan.model_dump_json(indent=2)}\n\n"
         f"Generate TikZ code for this diagram according to the plan, "
         f"then call render_diagram."
     )
-    return await agent.run(user_message)
+    return await graph.ainvoke({"messages": [("user", user_message)]})
 
 
 async def run_revision(
     model: str,
-    message_history,
-    usage,
+    message_history: list[BaseMessage],
     force_rerender: bool = True,
-    model_settings: ModelSettings = {},
+    model_settings: dict | None = None,
 ):
     """Revision stage: review and re-render the diagram.
 
     Args:
         model: LLM model identifier.
         message_history: Messages from the prior agent run (e.g. draft).
-        usage: Accumulated token usage to carry forward into this run.
-        force_rerender: If True (default), the revision agent MUST call
-            render_diagram at least once, even if no changes are needed.
-            If False, the agent may skip re-rendering if satisfied.
+        force_rerender: If True (default), the revision agent MUST call render_diagram.
     """
+    from .llm import get_chat_model
+    from langgraph.prebuilt import create_react_agent
+
     instructions = REVISION_FORCE_INSTRUCTIONS if force_rerender else REVISION_INSTRUCTIONS
-    agent = Agent(model, instructions=instructions, model_settings=model_settings)
-    register_render_tool(agent)
-    return await agent.run(
-        REVISION_PROMPT,
-        message_history=message_history,
-        usage=usage,
-    )
+    llm = get_chat_model(model)
+    render_tool = make_render_tool()
+    graph = create_react_agent(llm, tools=[render_tool], prompt=instructions)
+    messages = list(message_history) + [("user", REVISION_PROMPT)]
+    return await graph.ainvoke({"messages": messages})

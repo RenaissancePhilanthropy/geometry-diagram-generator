@@ -63,12 +63,8 @@ from evals.reporting import (
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.raw_code import RawCodeStrategy
 from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
-from strategies.plan_and_code import PlanAndCodeStrategy
 from strategies.structured import StructureStrategy, StructuredRunResult
 from strategies.recipe import RecipeStrategy
-from strategies.structured_plus_refine import StructuredPlusRefineStrategy
-from strategies.structured_two_phase import StructuredTwoPhaseStrategy
-from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
 from strategies.stages import RawRunResult
 from util.tikz_renderer import check_renderer_health
 from ir.renderer import Renderer, TikZRenderer, SVGRenderer
@@ -83,21 +79,11 @@ from util.tikz_analysis import (
 from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
-class _RecipeNoRecipesStrategy(RecipeStrategy):
-    def __init__(self, enable_cache: bool = False) -> None:
-        super().__init__(use_recipes=False, enable_cache=enable_cache)
-
-
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
     "raw_code_with_revise": RawCodeWithReviseStrategy,
-    "plan_and_code": PlanAndCodeStrategy,
     "structured": StructureStrategy,
-    "structured_plus_refine": StructuredPlusRefineStrategy,
-    "structured_two_phase": StructuredTwoPhaseStrategy,
-    "progressive_tools": ProgressiveToolsStrategy,
     "recipe": RecipeStrategy,
-    "recipe_no_recipes": _RecipeNoRecipesStrategy,
 }
 
 # Tolerance for geometric checks. Relaxed from 1e-4 to handle LLM-chosen
@@ -122,8 +108,9 @@ async def _run_query_phase(
     Checks the LAST query_diagram tool call (one agent per query, so this
     is the relevant call even if the LLM also calls list_objects first).
     """
-    from pydantic_ai import Agent
-    from strategies.base import cache_model_settings
+    from langchain_core.tools import tool
+    from langgraph.prebuilt import create_react_agent
+    from strategies.llm import get_chat_model
     from strategies.structured import dispatch_query
     from ir.queries import list_objects as _list_objects
 
@@ -136,7 +123,6 @@ async def _run_query_phase(
 
     objects_info = json.dumps(_list_objects(sym))
     results: list[dict[str, Any]] = []
-    _cache_settings = cache_model_settings(len(queries) > 1)
 
     for query_def in queries:
         question = query_def["question"]
@@ -155,31 +141,34 @@ async def _run_query_phase(
         }
 
         try:
-            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS, model_settings=_cache_settings)
+            _sym = sym  # capture for closure
 
-            @agent.tool_plain
-            async def query_diagram(query_type: str, args: dict[str, str]) -> str:
+            @tool
+            def query_diagram(query_type: str, params: dict) -> str:
                 """Query a geometric property of the current diagram.
 
-                query_type and args:
-                  coordinate  {"point": "A"}           -> x, y coords
-                  distance    {"a": "A", "b": "B"}     -> distance between points (use for side lengths too)
+                query_type and params:
+                  coordinate  {"id": "A"}              -> x, y coords
+                  distance    {"id1": "A", "id2": "B"} -> distance between points
                   angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
-                  length      {"segment": "seg_AB"}    -> segment length
-                  radius      {"circle": "c1"}         -> circle radius
-                  area        {"object": "tri_ABC"}    -> area
-                  perimeter   {"object": "tri_ABC"}    -> perimeter
+                  length      {"id": "seg_AB"}          -> segment length
+                  radius      {"id": "c1"}              -> circle radius
+                  area        {"id": "tri_ABC"}         -> area
+                  perimeter   {"id": "tri_ABC"}         -> perimeter
                   list_objects {}                       -> all objects and their types
                 """
-                return dispatch_query(sym, query_type, args)
+                return dispatch_query(_sym, query_type, params)
+
+            llm = get_chat_model(model)
+            graph = create_react_agent(llm, tools=[query_diagram], prompt=_QUERY_EVAL_INSTRUCTIONS)
 
             context_msg = (
                 f"The following objects exist in the diagram: {objects_info}. "
                 f"User question: {question}"
             )
 
-            agent_result = await agent.run(context_msg)
-            messages = agent_result.all_messages()
+            state = await graph.ainvoke({"messages": [("user", context_msg)]})
+            messages = state["messages"]
 
             tc_count = count_tool_calls(messages, "query_diagram")
             qr["tool_called"] = tc_count > 0
@@ -232,7 +221,6 @@ async def run_scenario(
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
     enable_cache: bool = False,
-    reasoning_effort: str | None = None,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -275,14 +263,6 @@ async def run_scenario(
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
     strategy = strategy_cls(enable_cache=enable_cache)
-    if reasoning_effort and model.startswith("openai-responses:"):
-        from strategies.base import build_model_settings
-
-        strategy.model_settings = build_model_settings(
-            model=model,
-            enable_cache=enable_cache,
-            reasoning_effort=reasoning_effort,
-        )
 
     start = time.monotonic()
     try:
@@ -290,13 +270,6 @@ async def run_scenario(
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
-        if isinstance(strategy, ProgressiveToolsStrategy):
-            record["input_tokens"] = getattr(strategy, "_partial_input_tokens", None)
-            record["output_tokens"] = getattr(strategy, "_partial_output_tokens", None)
-            record["tool_calls"] = getattr(strategy, "_partial_tool_calls", None)
-            record["phase_traces"] = getattr(strategy, "_partial_phase_traces", None)
-            record["phase_usage"] = getattr(strategy, "_partial_phase_usage", None)
-            record["retries"] = getattr(strategy, "_partial_repair_cycles", None)
         if isinstance(strategy, RecipeStrategy):
             record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
             record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
@@ -316,20 +289,7 @@ async def run_scenario(
 
     record["duration_s"] = round(time.monotonic() - start, 2)
 
-    if isinstance(result, ProgressiveToolsRunResult):
-        record["tikz_code"] = result.tikz
-        svg = result.svg
-        record["input_tokens"] = result.input_tokens
-        record["output_tokens"] = result.output_tokens
-        record["retries"] = result.repair_cycles
-        record["tool_calls"] = result.tool_calls
-        record["skipped_render_ids"] = result.skipped_render_ids
-        # No diagram_ir or sym_table available for this strategy
-        record["ir_diagnostics"] = None
-        record["sympy_property_checks"] = []
-        record["phase_traces"] = result.phase_traces
-        record["phase_usage"] = result.phase_usage
-    elif isinstance(result, StructuredRunResult):
+    if isinstance(result, StructuredRunResult):
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
         svg = result.svg
@@ -786,12 +746,6 @@ async def main() -> None:
         help="Process only N scenarios after the offset (default: 0 = no limit). Used by chunked-run wrapper.",
     )
     parser.add_argument(
-        "--reasoning-effort",
-        choices=["minimal", "low", "medium", "high"],
-        default=None,
-        help="Override OpenAI Responses reasoning effort (e.g. high for GPT-5.5/5.5-pro). Ignored for non-OpenAI models.",
-    )
-    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -871,7 +825,6 @@ async def main() -> None:
                         visual_judge=args.visual_judge,
                         judge_model=args.judge_model,
                         enable_cache=total > 1,
-                        reasoning_effort=args.reasoning_effort,
                     ),
                     timeout=args.scenario_timeout,
                 )

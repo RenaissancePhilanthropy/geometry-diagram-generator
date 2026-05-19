@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from strategies.raw_code import RawCodeStrategy
 from tests.availability import api_key_available, llm_tests_enabled, renderer_available
@@ -23,7 +24,7 @@ from util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
 )
-from tests.agent_helpers import extract_tikz_from_run
+from tests.agent_helpers import extract_tikz_from_messages
 
 
 pytestmark = [
@@ -42,9 +43,10 @@ pytestmark = [
 ]
 
 
-def _run_agent(prompt: str):
+def _run_agent(prompt: str) -> list:
     agent = RawCodeStrategy().build_agent()
-    return asyncio.run(agent.run(prompt))
+    state = asyncio.run(agent.ainvoke({"messages": [HumanMessage(content=prompt)]}))
+    return state["messages"]
 
 
 # ---------------------------------------------------------------------------
@@ -55,8 +57,8 @@ def test_analysis_finds_named_points_in_right_triangle():
     """
     Agent generates right triangle ABC — analysis must find A, B, C coordinates.
     """
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None, "No TikZ extracted from agent output"
 
     coords = resolve_all_coordinates(tikz)
@@ -72,8 +74,8 @@ def test_analysis_validates_right_angle_in_agent_output():
     Agent generates right triangle ABC at B — validate_geometric_property
     should confirm the right angle using the actual coordinates chosen by the LLM.
     """
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     coords = resolve_all_coordinates(tikz)
@@ -97,8 +99,8 @@ def test_analysis_resolves_midpoint_from_agent_output():
     Agent draws segment AB with midpoint M — analysis resolves M's coordinates
     and validates it is the true midpoint.
     """
-    result = _run_agent("Draw a segment AB and mark its midpoint M")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a segment AB and mark its midpoint M")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     coords = resolve_all_coordinates(tikz)
@@ -121,8 +123,8 @@ def test_analysis_extracts_draw_commands_from_triangle():
     Agent draws a triangle — extract_draw_commands should find at least one
     polygon or segment command.
     """
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     cmds = extract_draw_commands(tikz)
@@ -138,8 +140,8 @@ def test_analysis_extracts_right_angle_mark_from_agent():
     Agent draws a right triangle with a right angle mark — extract_marks
     should find a right_angle mark.
     """
-    result = _run_agent("Draw a right triangle ABC with the right angle at B")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a right triangle ABC with the right angle at B")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     marks = extract_marks(tikz)
@@ -158,8 +160,8 @@ def test_analysis_does_not_crash_on_complex_diagram():
     """
     Complex prompt — analysis may not resolve all points, but must not raise.
     """
-    result = _run_agent("Draw a triangle with its circumscribed circle")
-    tikz = extract_tikz_from_run(result)
+    messages = _run_agent("Draw a triangle with its circumscribed circle")
+    tikz = extract_tikz_from_messages(messages)
     assert tikz is not None
 
     # These must not raise, regardless of what the LLM generated

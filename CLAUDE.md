@@ -19,33 +19,7 @@ source .venv/bin/activate
 
 # Run evals
 uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structured --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
-
-# GenExam dry run — end-to-end test against real LLM, no database writes
-# macOS: prefix with DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib (for cairosvg/libcairo)
-
-# Single prompt — verbose section output by default
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --prompt-id Mathematics_72
-
-# Random sample with judge
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 10 --seed 42
-
-# Verbose section output for a batch run
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 5 --verbose
-
-# Generation only (no AI judge), with outer retry on failure
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --prompt-id Mathematics_15 --no-judge --gen-retries 2
-
-# Filter by difficulty tier (1=easy, 2=medium, 3=hard) before sampling
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --sample 5 --tier 1 --seed 0
-
-# Run all HIGH + MEDIUM-cartesian prompts (91 total), no judge, high concurrency
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m benchmark.genexam.dry_run --all --no-judge --concurrency 8
-
-# Regenerate benchmark/definitions/bench_genexam.yaml from the source JSONL
-.venv/bin/python -m benchmark.genexam.filter_genexam
 ```
-
-Key dry-run flags: `--model` (generation model, default `anthropic:claude-sonnet-4-6`), `--judge-model`, `--renderer svg|tikz` (svg=no Docker required), `--concurrency N`, `--out-dir` (SVGs + `dry_run.jsonl`, default `/tmp/bench_dry_run`), `--gen-retries N` (outer retry loop on generation failure). Output for single-prompt runs uses verbose section headers (Prompt / Generation / AI Judge / Score); use `--verbose` to enable that format for batch runs too.
 
 **Note:** The TikZ renderer container (`docker run -p 8001:8001 tikz-renderer`), the main server (`uv run python -m uvicorn main:app`), the UI dev server (`cd demo-ui && pnpm dev`), and the eval viewer (see below) are typically managed by the user, not started by Claude Code.
 
@@ -64,8 +38,8 @@ This project generates geometric diagrams as SVGs by having an LLM produce geome
 ### Pipeline
 
 ```
-User Request (for "structured" strategy)
-    → Strategy (LLM agent)
+User Request (for "structured" / "recipe" strategy)
+    → Strategy (LangGraph StateGraph)
     → DiagramIR (Pydantic schema)
     → SymPy geometry objects (ir/to_sympy.py)
     → Geometric validation (ir/checks.py)
@@ -90,13 +64,18 @@ The Intermediate Representation is the central abstraction:
 
 ### Strategies (`strategies/`)
 
-Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base.py`):
+Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base.py`). All strategies use LangGraph and LangChain for LLM orchestration.
 
-- **`raw_code.py`**: LLM generates TikZ directly.
+- **`raw_code.py`**: LLM generates TikZ directly via a ReAct agent (`create_react_agent`).
 - **`raw_code_with_revise.py`**: Raw TikZ with a revision loop on validation failure.
-- **`plan_and_code.py`**: Two-stage: planning sub-agent determines coordinates, then generates TikZ.
-- **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. This is more robust and easier to debug than raw code generation. `structured_plus_refine.py` and `structured_two_phase.py` are variants with additional refinement steps.
-- **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Currently the main strategy to use.
+- **`raw_svg.py`**: LLM generates SVG directly.
+- **`raw_svg_with_revise.py`**: Raw SVG with a revision loop.
+- **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. Uses a `StateGraph` retry loop (up to `MAX_RETRIES=3`). This is more robust and easier to debug than raw code generation.
+- **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Uses a two-node `StateGraph`: selector (cheap model picks relevant recipes) → DSL generator → lowering → IR pipeline. Currently the main strategy to use.
+
+**`llm.py`**: Model factory — maps `"anthropic:MODEL"` / `"openai:MODEL"` / `"google:MODEL"` IDs to LangChain chat models (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`). Provides `get_chat_model()`, `extract_usage()`, `make_system_message()`, and `is_gemini_model()`.
+
+**`stages.py`**: Shared rendering tool helpers used by raw strategies.
 
 Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, and related files.
 
@@ -112,32 +91,11 @@ A Docker container running a FastAPI server (port 8001) that compiles LaTeX to S
 - **`tikz_analysis.py`**: Extracts coordinates from TikZ code and validates geometric properties.
 - **`svg_checks.py`**: Validates rendered SVG output properties.
 - **`llm_judge.py`**: LLM-based quality evaluation of rendered diagrams.
+- **`message_helpers.py`**: Helpers for extracting SVG/TikZ/tool content from LangChain message lists.
 
 ### Evals (`evals/`)
 
 Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored). `scenarios.py` provides programmatic scenario loading; `scenarios_query.yaml` defines query-style eval scenarios.
-
-### Benchmark (`benchmark/`)
-
-A standalone benchmarking system with persistent storage and an HTTP API:
-
-- **`db.py`**: Database layer for storing and querying benchmark run results.
-- **`server.py`**: FastAPI HTTP server exposing benchmark data and triggers.
-- **`models.py`**: Pydantic models (`BenchmarkDefinition`, `BenchmarkPrompt`, `RubricItem`) shared across the benchmark system. `RubricItem` has an optional `weight` field; `BenchmarkPrompt` has a `metadata` dict.
-- **`ai_judge.py`**: LLM-based judge for scoring benchmark outputs.
-- **`irr.py`**: Inter-rater reliability computation for human annotation agreement.
-- **`import_run.py`**: Imports eval run results into the benchmark database.
-- **`definitions/bench_genexam.yaml`**: Pre-built benchmark definition from the GenExam-Math dataset (91 prompts: 77 HIGH-relevance + 14 MEDIUM-cartesian). Regenerate with `python -m benchmark.genexam.filter_genexam`.
-
-#### `benchmark/genexam/`
-
-GenExam-Math integration:
-
-- **`Mathematics.jsonl`**: Source dataset (geometry problems with scoring points).
-- **`filter_genexam.py`**: Filters problems by geometric relevance and emits `bench_genexam.yaml`. Relevance tiers: HIGH (77 problems), MEDIUM-cartesian (14), MEDIUM-3d (11), LOW (excluded). Weights come from `scoring_points[].score`; tags from difficulty/img_type/taxonomy.
-- **`dry_run.py`**: End-to-end test harness — runs RecipeStrategy against benchmark prompts with real LLM calls, no database writes. Outputs per-prompt SVGs and `dry_run.jsonl`. See Commands section for usage.
-
-Note: `benchmark/` and `evals/` serve related but distinct purposes — `evals/` is project-specific LLM eval harness (scenarios, repeats, judge scoring), while `benchmark/` is a persistent database-backed system for tracking results over time, potentially across multiple projects or pipelines.
 
 ### Recipe (`recipe/`)
 
@@ -149,10 +107,6 @@ A DSL for declaratively specifying geometry constructions:
 - **`expressions.py`**: Expression evaluation for recipe DSL parameters.
 - **`solve.py`**: Constraint solver used during recipe lowering.
 
-### Benchmark UI (`benchmark-ui/`)
-
-A Vite-based frontend for the benchmark system. Connects to `benchmark/server.py` and provides views for annotation queues, IRR reports, and run lists. Run with `cd benchmark-ui && pnpm dev`.
-
 ### Docs (`docs/`)
 
 - **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
@@ -163,8 +117,7 @@ A Vite-based frontend for the benchmark system. Connects to `benchmark/server.py
 
 - **Focus on test-driven development**: The project is structured around unit tests for each component and end-to-end tests for the full pipeline. This ensures reliability and makes it easier to iterate on strategies. Writing tests first for new features or bug fixes is highly encouraged.
 - **SymPy is the source of truth** for geometric computation. TikZ code is generated from SymPy objects, not from the LLM's coordinate guesses.
-- **Checks are assertions** about the compiled geometry — if an LLM-generated `DiagramIR` fails checks, the strategy can retry or revise.
+- **Checks are assertions** about the compiled geometry — if an LLM-generated `DiagramIR` fails checks, the strategy retries via the LangGraph `StateGraph` retry loop.
 - **The renderer container must be running** for any code path that produces SVG output.
-- The project uses `pydantic-ai` for LLM agent orchestration with Anthropic and OpenAI backends.
+- The project uses **LangGraph** and **LangChain** (`langchain-anthropic`, `langchain-openai`, `langchain-google-genai`) for LLM orchestration. Inner retry loops use `StateGraph`; conversational agents use `create_react_agent`.
 - API keys go in `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
-

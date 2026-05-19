@@ -77,7 +77,7 @@ Cells run in parallel (different API providers), so total wall-clock ≈ slowest
 - [ ] All API keys valid in `.env` (Anthropic, OpenAI, Google) — note: brief flags Gemini key as not-yet-rotated; rotate before launch.
 - [ ] Renderer container running (`docker run -p 8001:8001 tikz-renderer`)
 - [ ] Verifier hardening passes (1, 2, 3) all in main; centroid eval-side + IR-side both committed (this session)
-- [ ] `evals/scenarios_generated.yaml` matches `benchmark/definitions/bench_generated.yaml` (regenerate via `python -m benchmark.genexam.filter_genexam` if drift)
+- [ ] `evals/scenarios_generated.yaml` is up to date (regenerate from source if needed)
 - [ ] Disk space: pilot was ~50 MB per repeat × 18 cells × 3 repeats × (600/30 = 20×) = ~54 GB. Verify free space.
 - [ ] Quota check: hit Anthropic/OpenAI/Google dashboards before launch; bump tiers if at default.
 
