@@ -386,10 +386,10 @@ class RecipeStrategy(SubstanceStrategy):
         result.output_tokens = final_state.get("output_tokens", 0)
         return result
 
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Return a conversational ReAct agent with render_diagram + query_diagram tools."""
         _last_sym: dict | None = None
-        _renderer = TikZRenderer()
+        _renderer = renderer if renderer is not None else TikZRenderer()
 
         @tool
         async def render_diagram(request: str) -> str:

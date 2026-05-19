@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from typing import Any
 
 import sympy as sp
@@ -188,6 +189,13 @@ def _obj_to_tikz_path(
             f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle"
         )
     return None
+
+
+def _to_latex(text: str) -> str:
+    """Convert Unicode math symbols to LaTeX equivalents for use inside $...$."""
+    text = re.sub(r'√([^√\s]*)', lambda m: f'\\sqrt{{{m.group(1)}}}' if m.group(1) else '\\sqrt{}', text)
+    text = text.replace('°', r'^\circ')
+    return text
 
 
 def _emit_op(
@@ -398,7 +406,7 @@ def _emit_op(
                 _cy: Any = pt_obj.y
                 label = label + _tikz_fmt_coord_pair(float(_cx.evalf()), float(_cy.evalf()))
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
-            out.append(f"\\tkzLabelPoint{pos_str}({p}){{${label}$}}")
+            out.append(f"\\tkzLabelPoint{pos_str}({p}){{${_to_latex(label)}$}}")
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
@@ -416,7 +424,7 @@ def _emit_op(
                 opts_parts.append(color_opts.strip("[]"))
             sopts = f"[{','.join(opts_parts)}]" if opts_parts else ""
             a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, "interior")
-            out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${text}$}}")
+            out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${_to_latex(text)}$}}")
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -427,7 +435,7 @@ def _emit_op(
                 return out
             a, b = _seg_pts(seg_id, stmt_by_id)
             sopts = f"[pos={pos}]" if pos is not None else ""
-            out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${text}$}}")
+            out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${_to_latex(text)}$}}")
 
         case ir.LabelFreeText(text=text, at=at, centroid_of=cof):
             if at is not None:

@@ -23,10 +23,11 @@ class SubstanceStrategy(ABC):
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
     @abstractmethod
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> CompiledStateGraph:
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> CompiledStateGraph:
         """Build and return a compiled LangGraph agent for this strategy.
 
         Used by the web app which needs a single runnable graph.
+        renderer: optional Renderer to use (defaults to TikZRenderer if None).
         """
         ...
 

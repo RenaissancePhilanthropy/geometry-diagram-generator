@@ -1105,7 +1105,7 @@ _LATEX_UNICODE: dict[str, str] = {
     "triangle": "△", "angle": "∠", "perp": "⊥", "parallel": "∥",
     "sim": "∼", "cong": "≅",
     # Math symbols
-    "degree": "°", "infty": "∞", "cdot": "·", "times": "×",
+    "degree": "°", "circ": "°", "infty": "∞", "cdot": "·", "times": "×",
     "leq": "≤", "geq": "≥", "neq": "≠", "approx": "≈",
     "pm": "±", "sqrt": "√",
     # Arrows
@@ -1187,6 +1187,8 @@ def _parse_latex(s: str) -> list[dict]:
             i += 1
             if i < len(s) and s[i] == "{":
                 inner, i = _read_braced(s, i)
+            elif i < len(s) and s[i] == "\\":
+                inner, i = _read_latex_cmd(s, i)
             elif i < len(s) and (s[i].isalnum() or s[i] == "_"):
                 j = i
                 while j < len(s) and (s[j].isalnum() or s[j] == "_"):
@@ -1205,6 +1207,8 @@ def _parse_latex(s: str) -> list[dict]:
             i += 1
             if i < len(s) and s[i] == "{":
                 inner, i = _read_braced(s, i)
+            elif i < len(s) and s[i] == "\\":
+                inner, i = _read_latex_cmd(s, i)
             elif i < len(s) and (s[i].isalnum() or s[i] == "_"):
                 j = i
                 while j < len(s) and (s[j].isalnum() or s[j] == "_"):
@@ -1227,6 +1231,22 @@ def _parse_latex(s: str) -> list[dict]:
 
     flush()
     return segments
+
+
+def _read_latex_cmd(s: str, i: int) -> tuple[str, int]:
+    """Read a \\cmd (and optional {arg}) starting at s[i] where s[i]=='\\'.
+    Returns (reconstructed_string, new_i) for use with _apply_substitutions."""
+    assert s[i] == "\\"
+    i += 1
+    j = i
+    while j < len(s) and s[j].isalpha():
+        j += 1
+    cmd = s[i:j]
+    i = j
+    if i < len(s) and s[i] == "{":
+        arg, i = _read_braced(s, i)
+        return f"\\{cmd}{{{arg}}}", i
+    return f"\\{cmd}", i
 
 
 def _read_braced(s: str, i: int) -> tuple[str, int]:

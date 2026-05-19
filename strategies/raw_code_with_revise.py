@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class RawCodeWithReviseStrategy(SubstanceStrategy):
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Return the draft agent (single-pass) for web app use."""
         llm = get_chat_model(model)
         return create_react_agent(llm, tools=[make_render_tool()], prompt=DRAFT_INSTRUCTIONS)

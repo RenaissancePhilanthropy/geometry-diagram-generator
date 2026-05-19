@@ -22,7 +22,7 @@ and call the render_diagram tool. Then briefly explain what you drew.
 
 
 class RawCodeStrategy(SubstanceStrategy):
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL):
+    def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         llm = get_chat_model(model)
 
         @tool
