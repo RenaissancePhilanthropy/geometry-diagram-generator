@@ -17,10 +17,13 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
         from langchain_anthropic import ChatAnthropic
         model_name = model_id.removeprefix("anthropic:")
         if enable_cache:
-            # Enable Anthropic prompt caching beta
-            headers = dict(kwargs.pop("extra_headers", {}))
-            headers.setdefault("anthropic-beta", "prompt-caching-2024-07-31")
-            kwargs["extra_headers"] = headers
+            # Enable Anthropic prompt caching beta via model_kwargs to avoid
+            # LangChain warning about extra_headers being a non-standard parameter.
+            model_kwargs = dict(kwargs.pop("model_kwargs", {}))
+            extra_headers = dict(kwargs.pop("extra_headers", model_kwargs.pop("extra_headers", {})))
+            extra_headers.setdefault("anthropic-beta", "prompt-caching-2024-07-31")
+            model_kwargs["extra_headers"] = extra_headers
+            kwargs["model_kwargs"] = model_kwargs
         return ChatAnthropic(model=model_name, **kwargs)
     elif model_id.startswith("openai:") or model_id.startswith("openai-responses:"):
         from langchain_openai import ChatOpenAI

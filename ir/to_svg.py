@@ -1043,6 +1043,10 @@ def _build_tspans(parent: ET.Element, text: str) -> None:
             _append_tspan(parent, content, baseline_shift="super", font_size="70%")
         elif kind == "overline":
             _append_tspan(parent, content, text_decoration="overline")
+        elif kind == "bold":
+            _append_tspan(parent, content, font_weight="bold")
+        elif kind == "italic":
+            _append_tspan(parent, content, font_style="italic")
 
 
 def _append_text_run(parent: ET.Element, text: str) -> None:
@@ -1071,6 +1075,8 @@ def _append_tspan(
     baseline_shift: str | None = None,
     font_size: str | None = None,
     text_decoration: str | None = None,
+    font_weight: str | None = None,
+    font_style: str | None = None,
 ) -> None:
     attrs: dict[str, str] = {}
     if baseline_shift:
@@ -1079,6 +1085,10 @@ def _append_tspan(
         attrs["font-size"] = font_size
     if text_decoration:
         attrs["text-decoration"] = text_decoration
+    if font_weight:
+        attrs["font-weight"] = font_weight
+    if font_style:
+        attrs["font-style"] = font_style
     span = ET.SubElement(parent, "tspan", attrs)
     span.text = content
 
@@ -1154,6 +1164,14 @@ def _parse_latex(s: str) -> list[dict]:
                     inner, i = _read_braced(s, i)
                     flush()
                     segments.append({"kind": "overline", "content": _apply_substitutions(inner)})
+                elif cmd in ("textbf", "mathbf", "boldsymbol") and i < len(s) and s[i] == "{":
+                    inner, i = _read_braced(s, i)
+                    flush()
+                    segments.append({"kind": "bold", "content": _apply_substitutions(inner)})
+                elif cmd in ("textit", "mathit", "emph") and i < len(s) and s[i] == "{":
+                    inner, i = _read_braced(s, i)
+                    flush()
+                    segments.append({"kind": "italic", "content": _apply_substitutions(inner)})
                 elif cmd == "text" and i < len(s) and s[i] == "{":
                     # \text{...} → plain text (upright)
                     inner, i = _read_braced(s, i)

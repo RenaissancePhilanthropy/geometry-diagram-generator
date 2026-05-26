@@ -451,7 +451,7 @@ def _emit_op(
                 verts = list(obj.vertices)
                 x = sum(_f(v.x) for v in verts) / len(verts)
                 y = sum(_f(v.y) for v in verts) / len(verts)
-            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{${text}$}};")
+            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
 
     return out
 

@@ -36,7 +36,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ async def _run_query_phase(
             _sym = sym  # capture for closure
 
             @tool
-            def query_diagram(query_type: str, params: dict) -> str:
+            def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
                 """Query a geometric property of the current diagram.
 
                 query_type and params:
@@ -157,7 +157,7 @@ async def _run_query_phase(
                   perimeter   {"id": "tri_ABC"}         -> perimeter
                   list_objects {}                       -> all objects and their types
                 """
-                return dispatch_query(_sym, query_type, params)
+                return dispatch_query(_sym, query_type, params or {})
 
             llm = get_chat_model(model)
             graph = create_react_agent(llm, tools=[query_diagram], prompt=_QUERY_EVAL_INSTRUCTIONS)

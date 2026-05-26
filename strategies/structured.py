@@ -303,18 +303,18 @@ class StructureStrategy(SubstanceStrategy):
                 return json.dumps({"error": str(e)})
 
         @tool
-        def query_diagram(query_type: str, params: dict) -> str:
+        def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
             """Query geometric properties of the most recently rendered diagram.
 
             Args:
                 query_type: One of: list_objects, coordinate, distance, angle, length, radius, area, perimeter
-                params: Query arguments (e.g. {"id": "A"} for coordinate)
+                params: Query arguments (e.g. {"id": "A"} for coordinate). Omit or pass {} for list_objects.
             Returns:
                 JSON with query result or error.
             """
             if _last_sym is None:
                 return json.dumps({"error": "No diagram rendered yet"})
-            return dispatch_query(_last_sym, query_type, params)
+            return dispatch_query(_last_sym, query_type, params or {})
 
         llm = get_chat_model(model)
         return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)
