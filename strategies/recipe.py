@@ -28,6 +28,7 @@ from recipe.catalog import (
 )
 from recipe.dsl import RecipeDSL
 from recipe.lower import lower_to_ir, LoweringError
+from ir.errors import IRCompileError
 from ir.renderer import TikZRenderer, Renderer
 
 logger = logging.getLogger(__name__)
@@ -292,7 +293,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
             "result": result,
             "diagram_ir": diagram_ir,
         }
-    except RuntimeError as e:
+    except (IRCompileError, RuntimeError) as e:
         error_msg = str(e)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:

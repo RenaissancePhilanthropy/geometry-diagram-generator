@@ -136,6 +136,27 @@ def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
         return json.dumps({"error": str(e)})
 
 
+# ── prompt helpers ───────────────────────────────────────────────────────────
+
+def _prepare_modification_prompt(request: str, previous_ir: Optional[DiagramIR]) -> str:
+    """Append the previous DiagramIR to *request* when one is available.
+
+    Used by build_agent's render_diagram tool so modification requests carry
+    the full context of the prior construction rather than generating from scratch.
+    """
+    if previous_ir is None:
+        return request
+    return (
+        f"{request}\n\n"
+        "---\n"
+        "The user previously had this diagram rendered successfully. Use it as the "
+        "starting point and apply the requested modifications. Preserve all properties "
+        "(angles, lengths, positions, labels, etc.) that the user did not ask to change.\n\n"
+        f"Previous DiagramIR:\n{previous_ir.model_dump_json(indent=2)}\n"
+        "---"
+    )
+
+
 # ── inner pipeline graph ──────────────────────────────────────────────────────
 
 class StructuredPipelineState(TypedDict):
@@ -212,9 +233,9 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
     renderer = state.get("renderer")
 
     if diagram_ir is None:
+        # _generate_ir_node already incremented attempt on failure — don't double-count.
         return {
             "last_error": "No DiagramIR available to run pipeline",
-            "attempt": state["attempt"] + 1,
         }
 
     try:
@@ -295,7 +316,8 @@ class StructureStrategy(SubstanceStrategy):
             """
             nonlocal _last_sym, _last_ir
             try:
-                result = await self.run(request, model=model, renderer=_renderer)
+                full_request = _prepare_modification_prompt(request, _last_ir)
+                result = await self.run(full_request, model=model, renderer=_renderer)
                 _last_sym = result.sym_full
                 _last_ir = result.diagram_ir
                 return json.dumps({"svg": result.svg})

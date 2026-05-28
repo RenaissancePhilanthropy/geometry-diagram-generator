@@ -149,3 +149,46 @@ async def test_recipe_strategy_raises_after_max_retries():
 
     traces = strategy._partial_recipe_metadata.attempt_traces
     assert len(traces) == MAX_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# Test 4: IRCompileError from IR pipeline triggers retry (not unhandled crash)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_recipe_strategy_retries_on_ir_compile_error():
+    """IRCompileError from _run_ir_pipeline should be caught and trigger a retry,
+    not escape the graph as an unhandled exception.
+
+    Bug: _run_recipe_pipeline_node only catches RuntimeError, missing IRCompileError.
+    A 'references undefined id' UndefinedRefError would crash the graph entirely,
+    leaving _partial_recipe_metadata unset.
+    """
+    from ir.errors import IRCompileError
+
+    strategy = RecipeStrategy()
+    fake_result = _make_fake_result()
+    mock_llm = _make_mock_llm()
+
+    pipeline_calls = {"n": 0}
+
+    async def mock_pipeline(diagram_ir, renderer=None):
+        pipeline_calls["n"] += 1
+        if pipeline_calls["n"] == 1:
+            raise IRCompileError("seg_AB", "references undefined id 'A'")
+        return fake_result
+
+    with (
+        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline),
+        patch("strategies.recipe.load_catalog", return_value=[]),
+        patch("strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
+    ):
+        result = await strategy.run("draw a segment with its midpoint", model="anthropic:claude-haiku-4-5-20251001")
+
+    assert isinstance(result, StructuredRunResult)
+    assert pipeline_calls["n"] == 2, (
+        f"Expected 2 pipeline calls (retry after IRCompileError), got {pipeline_calls['n']}"
+    )
