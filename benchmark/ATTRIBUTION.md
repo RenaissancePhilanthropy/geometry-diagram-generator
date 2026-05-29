@@ -7,6 +7,8 @@ use, modification, and sharing under a Creative Commons license. The grades 6–
 content was adapted, with permission, from materials originally created by Carnegie Learning, Inc.,
 and aligned to the Texas Essential Knowledge and Skills (TEKS).
 
+This work is based on original works of the Texas Education Agency and Carnegie Learning, Inc. This work is made available under a Creative Commons Attribution-Non-Commercial-4.0 International License. This does not in any way imply endorsement by those authors of this work.
+
 ## Source Material & Rightsholders
 
 **Bluebonnet Learning — Secondary Mathematics, Grades 6–8 (Edition 1)**
