@@ -1,0 +1,85 @@
+\section{Results}
+\label{sec:results}
+
+\paragraph{Setup.}
+We evaluate the $12$ (model $\times$ strategy) cells at $600$ scenarios $\times$ $3$ repeats each.
+A subprocess-isolated runner with an OS-level kill timeout caught $62$ pathology scenarios across the \structured cells (LLM-generated IRs that trigger circular-dependency cycles), lifting per-cell coverage to $\geq 91\%$ for every cell except \geminiflash + \structured (blocked at the API layer; see \cref{ssec:gemini_finding}).
+Two cells are marginally partial: \opus + \structured ($574/600$) and \gpt + \structured ($545/600$); marked $^*$ in \cref{tab:headline}.
+The hardening passes (\cref{ssec:ver_defn}) lifted \rawcode pilot pass-rates by $+10$ to $+17$\pp at pilot N, with no effect on \structured rows; the headline run uses the post-hardened verifier throughout.
+
+\begin{table}[t]
+\caption{Headline leaderboard on the $600$-scenario $\times$ $3$-repeat draw (post-hardening). Strict $=$ \texttt{pass}; loose $=$ \texttt{pass}$+$\texttt{soft\_pass}. Cells $^*$ are marginally partial. The $^\dagger$ cell is blocked at the API layer by Google's schema-state cap (\cref{ssec:gemini_finding}).}
+\label{tab:headline}
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
+\midrule
+\gpt & \structured & $2{,}304^*$ & \textbf{94.1\%} & 94.1\% & \dollars{0.075} & 33.6\,s \\
+\sonnet & \structured & $2{,}861$ & 93.4\% & 93.4\% & \dollars{0.088} & 19.0\,s \\
+\opus & \structured & $2{,}292^*$ & 93.3\% & 93.3\% & \dollars{0.532} & 23.9\,s \\
+\gpt & \rawcode & $1{,}800$ & 91.9\% & 95.3\% & \dollars{0.058} & 14.8\,s \\
+\geminipro & \structured & $1{,}140^{*}$ & 83.1\% & 83.1\% & \dollars{0.050} & 75.7\,s \\
+\sonnet & \rawcode & $1{,}800$ & 81.2\% & 95.3\% & \dollars{0.044} & 16.4\,s \\
+\haiku & \structured & $2{,}232$ & 75.3\% & 76.8\% & \dollars{0.032} & 8.0\,s \\
+\opus & \rawcode & $1{,}800$ & 71.6\% & 95.3\% & \dollars{0.262} & 13.8\,s \\
+\haiku & \rawcode & $2{,}403$ & 70.5\% & 76.0\% & \dollars{0.019} & 9.5\,s \\
+\geminipro & \rawcode & $1{,}800$ & 58.4\% & 89.9\% & \dollars{0.049} & 32.9\,s \\
+\geminiflash & \rawcode & $2{,}403$ & 35.9\% & 42.2\% & \dollars{0.012} & 22.1\,s \\
+\midrule
+\geminiflash & \structured & $0^\dagger$ & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Two findings}
+\label{ssec:findings}
+
+\paragraph{Strategy choice helps unevenly.}
+\structured\ lifts every model: \gpt + $2.2$\pp ($91.9\% \to 94.1\%$), \haiku + $4.8$, \sonnet + $12.2$, \opus + $21.7$, \geminipro + $24.7$.
+The lift is largest for the models weakest at \rawcode (\opus, \geminipro) and smallest for the strongest (\gpt).
+
+\paragraph{Frontier convergence: three flagships tie within $1$\pp at \structured.}
+\gpt + \structured ($94.1$\%, \dollars{0.075}/scen), \sonnet + \structured ($93.4$\%, \dollars{0.088}), and \opus + \structured ($93.3$\%, \dollars{0.532}) span only $0.8$\pp at a $\mathbf{7\times}$ cost ratio --- the frontier-tier model carries no measurable quality premium under IR scaffolding.
+At \rawcode, the cross-vendor ranking is \gpt ($91.9$\%) $>$ \sonnet ($81.2$\%) $>$ \opus ($71.6$\%) $\approx$ \haiku ($70.5$\%) $>$ \geminipro ($58.4$\%) $>$ \geminiflash ($35.9$\%); \gpt + \rawcode dominates \opus + \rawcode by $20$\pp at $4.5\times$ lower cost.
+
+\subsection{Pareto and tier-stratified views}
+\label{ssec:pareto}
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/pareto.pdf}
+\subcaption{Pareto frontier (cost vs strict pass, log-x). Seven of eleven cells are non-dominated.}
+\label{fig:pareto}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figures/tier_stratified.pdf}
+\subcaption{Strict pass-rate by tier. \tone\ near-saturated; \ttwo\ where strategy first matters; \tthree\ separates the frontier+\structured cells.}
+\label{fig:tier_stratified}
+\end{minipage}
+\caption{Cost-quality and tier-stratified views of the headline run.}
+\label{fig:pareto_tier}
+\end{figure}
+
+\gpt + \structured is the unique high-quality corner (\cref{fig:pareto}): it Pareto-dominates \sonnet + \structured ($+0.8$\pp at $17\%$ lower cost) and \opus + \structured ($+0.8$\pp at $7\times$ lower cost).
+\opus + \rawcode is the most-dominated cell (\gpt + \rawcode beats it by $20$\pp at $4.5\times$ lower cost); \haiku + \rawcode is statistically tied with \opus + \rawcode at $14\times$ lower cost.
+\geminiflash + \rawcode (\dollars{0.012}, $35.9$\%) is the price-floor frontier point; \geminipro + \structured (\dollars{0.050}, $83.1$\%) is on the frontier with caveat ($83.1$\% measured on \tone--\ttwo only; \tthree\ was throttled by Google's quota).
+The tier breakdown (\cref{fig:tier_stratified}): \tone\ is at $100$\% for every Anthropic/OpenAI \structured cell --- a signal that v2 needs harder \tone\ templates; \ttwo\ is where strategy first matters, with \opus jumping $+43$\pp ($56\% \to 99\%$) and \geminipro $+54$\pp ($38\% \to 92\%$); \tthree\ separates the three frontier+\structured cells (\gpt $93\%$, \sonnet $87\%$, \opus $82\%$).
+
+\paragraph{Per-template heatmap and failure modes.}
+The per-template heatmap (\cref{fig:heatmap}, \cref{app:template_specs}) exposes \textbf{universally easy} (every \tone\ template at or near $100$\% for each model's best strategy), \textbf{universally hard} (\texttt{tpl-t3-trv} at $\leq 16$\% for every cell), and \textbf{discriminating} templates (\texttt{tpl-t2-bis}, \texttt{tpl-t2-ic}, \texttt{tpl-t3-2alt}: model matters more than strategy).
+The failure-mode breakdown (\cref{fig:failure_modes}, \cref{app:failure_coding}) shows failures dominated by geometric-predicate violations on the hardest templates: \propname{corresponding\_angles\_equal} alone accounts for $34$--$48$ failures per cell on \texttt{tpl-t3-trv}; \structured\ failures tilt toward timeout.
+\emph{Most wrong outputs are rendered diagrams with the wrong geometry}, not broken LaTeX.
+
+\subsection{Deployment finding: Gemini's schema-state cap}
+\label{ssec:gemini_finding}
+
+The \structured\ strategy depends on schema-constrained generation; OpenAI and Google compile the schema to a server-side FSM with vendor-specific caps.
+Our \texttt{DiagramIR} schema (a discriminated union of $\sim$20 \texttt{DefStmt} variants) compiles to thousands of FSM states; OpenAI and \geminipro\ accommodate this, \geminiflash\ does not (HTTP 400 in 1.1--1.6\,s with \emph{``the specified schema produces a constraint that has too many states for serving''}).
+This is not a capability gap (no token is generated); it is a cross-vendor portability concern for any benchmark shipping a multi-variant discriminated-union IR.
+We report \geminiflash + \rawcode at $35.9$\% and exclude the blocked \structured cell.
+Per-template case studies (\texttt{tpl-t3-trv} universal failure, \texttt{tpl-t3-tan} strategy discriminator with $-86$\pp \rawcode$\to$\structured gap on \opus, \texttt{tpl-t3-cen} self-referential pass) and the per-cell stability index (\gpt + \structured at $99.8\%$ all-same-verdict; the price-floor cells in the $30$--$70\%$ band) are in \cref{app:case_studies}.

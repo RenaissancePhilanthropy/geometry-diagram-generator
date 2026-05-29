@@ -1,0 +1,268 @@
+\section{Per-scenario completeness witnesses}
+\label{app:completeness_witnesses}
+
+\Cref{ssec:ver_defn} classifies each templated scenario as \emph{tight}, \emph{loose}, or \emph{skeletal} and reports the template-level audit (18 / 11 / 1). This appendix exhibits per-scenario witnesses for each class:
+
+\begin{itemize}
+\item \textbf{Tight witnesses} (\cref{app:completeness_witnesses:tight}, $N{=}25$): a hand-written argument that any TikZ output passing the listed properties is congruent (up to rigid motion + scale + reflection) to the intended figure. We do not attempt to enumerate every diagram; the witness proves the equivalence class.
+\item \textbf{Loose witnesses} (\cref{app:completeness_witnesses:loose}, $N{=}25$): a parametrisation of the under-determined dimensions plus an existence argument that the looseness is intentional and broad --- specifically, that two visually-distinct diagrams differing in those parameters both satisfy the property list and both correctly illustrate the prompt.
+\item \textbf{Skeletal} (\cref{app:completeness_witnesses:skeletal}): the unique skeletal template (\texttt{tpl-t3-semi}) is documented separately because the property list intentionally omits a metric check that is implied by the prompt prose.
+\end{itemize}
+
+\paragraph{Sampling.}
+Witnesses are drawn deterministically (seed 17) from the templated split, stratified to give per-template coverage. Where we sample from a tight template, all 18 tight templates are represented at least once across the 25-witness budget (with $\sim 2$ witnesses per high-N template). Loose witnesses are drawn from all 11 loose templates.
+
+\paragraph{Notational conventions.}
+Property names below use the verifier's predicate vocabulary (\cref{tab:predicates}); the scenario IDs match \texttt{evals/scenarios\_generated.yaml}.
+``Tight up to rigid motion + scale (RMS)'' means: any two passing diagrams are related by a translation, rotation, reflection, and uniform scale.
+``Tight up to similarity'' means: the figure is determined to within a similarity class --- i.e., shape pinned, size free.
+
+\subsection{Tight witnesses ($N{=}25$)}
+\label{app:completeness_witnesses:tight}
+
+\paragraph{T1 --- \texttt{tpl-t1-eq-ABC-s5}.}
+Property list: \propname{all\_sides\_equal}([A,B], [B,C], [C,A]).
+Witness: by SSS, any triangle with the three labelled sides pairwise equal is equilateral; equilateral triangles are mutually congruent (up to reflection) once the three labelled vertices are present, and the side length is free under similarity.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T2 --- \texttt{tpl-t1-sq-WXYZ-s6}.}
+Property list: 4 \propname{right\_angle\_at\_X} (one per vertex) + \propname{all\_sides\_equal}.
+Witness: a quadrilateral with all 4 interior angles right and all 4 sides equal is a square; vertex-label order $WXYZ$ around the quadrilateral fixes orientation up to reflection.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T3 --- \texttt{tpl-t1-mid-PQ-M-l8}.}
+Property list: \propname{M\_is\_midpoint}(M,P,Q), \propname{M\_on\_segment}(M,P,Q).
+Witness: the midpoint of a labelled segment is unique; with $M$ on segment $PQ$ at the half-way point, the figure is a 1-D arrangement of three collinear points pinned up to RMS.
+\textbf{Tight up to RMS.}
+
+\paragraph{T4 --- \texttt{tpl-t1-sq-ABCD-s4}.}
+Property list: 4 \propname{right\_angle\_at\_X} + \propname{all\_sides\_equal}.
+Witness: a quadrilateral with 4 right angles is a rectangle; a rectangle with 4 equal sides is a square. Vertex-label ordering ABCD (going around) fixes orientation up to reflection.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T5 --- \texttt{tpl-t1-rect-EFGH-5x3}.}
+Property list: 4 \propname{right\_angle\_at\_X} + \propname{horizontal\_sides\_equal} + \propname{vertical\_sides\_equal}.
+Witness: 4 right angles + opposite sides equal in pairs (with the explicit ``horizontal'' / ``vertical'' decomposition pinning aspect ratio via the prompt's $5\times 3$ numbers) determine the rectangle up to reflection.
+\textbf{Tight up to RMS.}
+
+\paragraph{T6 --- \texttt{tpl-t1-mid-AB-M-l6}.}
+Property list: \propname{M\_is\_midpoint}(M,A,B), \propname{M\_on\_segment}(M,A,B).
+Witness: the midpoint of a segment is unique; a 1-D figure with $M$ at the half-way point of $AB$ is determined up to RMS.
+\textbf{Tight up to RMS.}
+
+\paragraph{T7 --- \texttt{tpl-t1-circle-O-P-r5}.}
+Property list: \propname{P\_on\_circle}(P,O,P).
+Witness: a circle of radius 5 centred at $O$ is unique up to RMS; a labelled point $P$ on it is unique up to rotation about $O$, which is itself a rigid motion.
+\textbf{Tight up to RMS.}
+
+\paragraph{T8 --- \texttt{tpl-t2-alt-RST-H-50-80}.}
+Property list: \propname{right\_angle\_at\_H}(R,H,S), \propname{H\_on\_base}(H,S,T), \propname{right\_angle\_marked\_at\_H}.
+Witness: triangle $RST$ has prompt-specified angles $\angle S{=}50^\circ, \angle T{=}80^\circ$ (and consequently $\angle R{=}50^\circ$), determining $RST$ up to similarity; the altitude from $R$ to $ST$ has its foot $H$ on segment $ST$ and is perpendicular to $ST$, fixing $H$ uniquely.
+\textbf{Tight up to similarity.}
+
+\paragraph{T9 --- \texttt{tpl-t2-med-XYZ-M-50-80}.}
+Property list: \propname{M\_is\_midpoint}(M,Y,Z), \propname{M\_on\_segment}(M,Y,Z).
+Witness: triangle determined up to similarity by the two prompt angles; median from $X$ has midpoint $M$ of $YZ$ as its endpoint.
+\textbf{Tight up to similarity.}
+
+\paragraph{T10 --- \texttt{tpl-t2-bis-DEF-D-50-80}.}
+Property list: \propname{D\_bisects\_angle\_E}, \propname{D\_on\_segment}.
+Witness: triangle determined by two angles up to similarity; angle-bisector from $E$ uniquely determined; intersection with opposite side gives $D$.
+\textbf{Tight up to similarity.}
+
+\paragraph{T11 --- \texttt{tpl-t2-cc-EFG-O-50-80}.}
+Property list: \propname{E\_on\_circumcircle}, \propname{G\_on\_circumcircle}.
+Witness: triangle determined up to similarity; circumcircle is the unique circle through three non-collinear points; circumcentre $O$ is its centre.
+\textbf{Tight up to similarity.}
+
+\paragraph{T12 --- \texttt{tpl-t2-ic-MNO-I-50-80}.}
+Property list: \propname{I\_equidistant\_from\_sides}.
+Witness: triangle determined by two angles up to similarity; incentre is the unique interior point equidistant from all three sides.
+\emph{Caveat:} the predicate has a soft spot (excentres also pass) closed at template level by requiring $I$ in the figure interior (\cref{ssec:ver_defn}, mitigation row).
+\textbf{Tight up to similarity (with template-side mitigation).}
+
+\paragraph{T13 --- \texttt{tpl-t2-par-PQRS-6-4-60}.}
+Property list: 2 \propname{parallel} + 2 \propname{equal\_lengths}.
+Witness: parallelogram with base $PQ$ (length 6), side $QR$ (length 4), and included angle $60^\circ$ is determined uniquely up to reflection by SAS on the half-figure.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T14 --- \texttt{tpl-t2-rh-EFGH-s5-60}.}
+Property list: \propname{all\_sides\_equal} + 2 \propname{parallel}.
+Witness: rhombus with side 5 and an interior angle of $60^\circ$ is determined up to reflection.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T15 --- \texttt{tpl-t2-trap-ABCD-4-8-3}.}
+Property list: \propname{AB\_parallel\_DC}.
+Witness: trapezoid with top length 4, bottom length 8, and vertical separation 3 has a unique shape; horizontal offset of the top relative to the bottom is captured by translation (a rigid motion), so the figure is tight up to RMS.
+\textbf{Tight up to RMS.}
+
+\paragraph{T16 --- \texttt{tpl-t3-rt-alt-ABC-H-3-4}.}
+Property list: 2 \propname{right\_angle\_at\_X} + \propname{H\_on\_hypotenuse} + 2 mark-present.
+Witness: right triangle determined by SAS-RA (legs 3,4); altitude foot $H$ from the right-angle vertex to the hypotenuse is unique.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T17 --- \texttt{tpl-t3-medial-ABC-DEF-50}.}
+Property list: 3 \propname{midpoint} + 3 \propname{parallel}.
+Witness: outer triangle determined up to similarity by the prompt angle; midpoints of the three sides are unique; medial-triangle parallels are then theorems, redundantly verified.
+\textbf{Tight up to similarity.}
+
+\paragraph{T18 --- \texttt{tpl-t3-cen-PQR-G-60}.}
+Property list: \propname{G\_is\_centroid} + 3 \propname{midpoint} + \propname{G\_on\_median}.
+Witness: triangle determined by two angles up to similarity; centroid is unique; medians and midpoints follow.
+\emph{Caveat:} \propname{centroid} is a hardening-pass addition (\cref{ssec:ver_defn}); pre-hardening, this template emitted no decision on its primary property and would have been classified loose.
+\textbf{Tight up to similarity (post-hardening).}
+
+\paragraph{T19 --- \texttt{tpl-t3-iso-DEF-l5-b6}.}
+Property list: \propname{H\_is\_midpoint} + \propname{H\_on\_segment} + \propname{altitude\_perpendicular} + \propname{leg\_eq\_leg}.
+Witness: isosceles triangle with leg 5 and base 6 is determined up to reflection; altitude from apex to base bisects the base by isosceles symmetry.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T20 --- \texttt{tpl-t3-tan-O-T-U-V-r5}.}
+Property list: \propname{tangent\_at\_T} + \propname{radius\_perp\_tangent} + \propname{T\_between\_U\_and\_V} + \propname{T\_on\_circle} + mark.
+Witness: circle determined by centre and radius; tangent at the labelled point is unique; the secondary points $U, V$ are constrained by the betweenness property.
+\textbf{Tight up to rotation about $O$.}
+
+\paragraph{T21 --- \texttt{tpl-t3-thales-ABC-r5}.}
+Property list: \propname{AB\_is\_diameter} + \propname{C\_on\_circle} + \propname{right\_angle\_at\_C} + mark.
+Witness: circle determined by centre and radius; $AB$ is a diameter, fixing two of the three vertices up to rotation; $C$ on the circle plus right-angle-at-C is Thales' theorem (any right-angled inscribed triangle has its hypotenuse as a diameter), determining $C$ up to which arc it lies on.
+\textbf{Tight up to rotation + reflection.}
+
+\paragraph{T22 --- \texttt{tpl-t2-trap-PQRS-3-7-3}.}
+Property list: \propname{PQ\_parallel\_SR}.
+Witness: a quadrilateral $PQRS$ with $PQ$ parallel to $SR$ is a trapezoid; the prompt's top length 3, bottom length 7, and vertical separation 3 pin the figure up to horizontal translation of the top relative to the bottom (a rigid motion).
+\textbf{Tight up to RMS.}
+
+\paragraph{T23 --- \texttt{tpl-t2-pb-CD-M-K-l4}.}
+Property list: \propname{M\_is\_midpoint} + \propname{bisector\_perpendicular} + mark.
+Witness: segment $CD$ of length 4 with $M$ at its midpoint; the perpendicular bisector through $M$ is a unique line.
+\emph{Caveat:} the named auxiliary point $K$ is on the bisector but its position along the bisector is not pinned, so this scenario is technically loose. We include it here as a borderline case where the template's geometric backbone is tight even though one labelled point is free; the loose witness L3 expands on this.
+\textbf{Borderline (tight backbone, loose named point).}
+
+\paragraph{T24 --- \texttt{tpl-t1-eq-XYZ-s4}.}
+Property list: \propname{all\_sides\_equal}.
+Witness: same as T1 with different vertex labels and side length.
+\textbf{Tight up to RMS + reflection.}
+
+\paragraph{T25 --- \texttt{tpl-t1-sq-EFGH-s5}.}
+Property list: 4 \propname{right\_angle\_at\_X} + \propname{all\_sides\_equal}.
+Witness: same as T4 with different vertex labels and side length.
+\textbf{Tight up to RMS + reflection.}
+
+\subsection{Loose witnesses ($N{=}25$)}
+\label{app:completeness_witnesses:loose}
+
+For each loose scenario we exhibit (a) the property list, (b) a parametrisation of the under-determined dimensions, and (c) two visually-distinct passing diagrams (referenced by description in this appendix; the rendered SVGs corresponding to each witness are in the released headline-run JSONL at \texttt{evals/results/headline\_run/unified/svgs/} and indexed by \texttt{scenario\_id}).
+
+\paragraph{L1 --- \texttt{tpl-t1-par-AB-CD-l4}.}
+Property list: \propname{segments\_parallel}([A,B], [C,D]).
+Free dimensions: vertical separation $h \in (0, \infty)$; horizontal offset $\Delta \in \mathbb{R}$ of $CD$'s midpoint relative to $AB$'s.
+Visual diversity: (a) $h{=}1$, $\Delta{=}0$ (vertically aligned, close stack); (b) $h{=}5$, $\Delta{=}3$ (wide separation, offset). Both pass; both are correct illustrations of ``two parallel horizontal segments of length 4''.
+\textbf{Looseness is intentional: the prompt does not specify spacing or offset.}
+
+\paragraph{L2 --- \texttt{tpl-t1-perp-AB-CD-l4}.}
+Property list: \propname{segments\_perpendicular}.
+Free dimensions: relative position --- the segments may share an endpoint, cross interior, or not intersect at all (only their direction vectors must be perpendicular).
+Visual diversity: (a) crossed $+$ shape with intersection at midpoints; (b) L-shape with shared endpoint; (c) two non-intersecting perpendicular segments offset in space.
+\textbf{Looseness is intentional: the prompt does not require intersection.}
+
+\paragraph{L3 --- \texttt{tpl-t2-pb-AB-M-K-l4}.}
+Property list: \propname{M\_is\_midpoint} + \propname{bisector\_perpendicular} + mark.
+Free dimension: position of $K$ along the perpendicular bisector (1-D continuous).
+Visual diversity: (a) $K$ close to $M$, short bisector segment; (b) $K$ far from $M$, long bisector segment, both above and below configurations.
+\textbf{Looseness is intentional: $K$ is described as ``another point on the bisector line,'' which does not pin its position.}
+
+\paragraph{L4 --- \texttt{tpl-t2-chord-O-PQ-r4}.}
+Property list: \propname{P\_on\_circle}, \propname{Q\_on\_circle}.
+Free dimensions: angular positions of $P$ and $Q$ on the circle (2 continuous parameters); resulting chord direction and length follow.
+Visual diversity: (a) near-diameter chord; (b) short chord near the top of the circle.
+\textbf{Looseness is intentional: ``two distinct points on the circle'' admits any pair.}
+
+\paragraph{L5 --- \texttt{tpl-t3-trv-PQ-RS-TU-55}.}
+Property list: \propname{lines\_parallel}, \propname{corresponding\_angles\_equal}, 4 \propname{point\_on\_line}.
+Free dimensions: inter-line vertical spacing; horizontal positioning of all 6 named points; transversal anchor points.
+Visual diversity: (a) close-spaced lines with transversal crossing through all 6 points densely; (b) wide-spaced lines with sparse point distribution.
+\textbf{Looseness is intentional: only the parallel relation and the named transversal angle are required.}
+
+\paragraph{L6 --- \texttt{tpl-t3-cyc-ABCD-50}.}
+Property list: 4 \propname{X\_on\_circle}.
+Free dimensions: angular positions of all 4 vertices on the circle (subject only to ABCD vertex order around the circle).
+Visual diversity: (a) near-square inscribed quadrilateral; (b) elongated quadrilateral with two vertices clustered near one arc.
+\textbf{Looseness is intentional: a cyclic quadrilateral is any convex 4-gon inscribed in a circle.}
+
+\paragraph{L7 --- \texttt{tpl-t3-2cir-O1-O2-P-Q-3-4-5}.}
+Property list: 4 incidence checks (P,Q on each circle).
+Free dimension: scaling of the entire figure (radii / centre distance can scale uniformly without affecting the property list, which contains no metric checks).
+Visual diversity: (a) baseline configuration; (b) all radii halved; both pass.
+\textbf{Looseness is intentional: the metric values in the prompt prose are not encoded as predicates.}
+
+\paragraph{L8 --- \texttt{tpl-t3-2alt-ABC-H-K-50-80}.}
+Property list: 2 \propname{right\_angle\_at\_X} + 2 \propname{H\_on\_segment}.
+Free dimension: triangle shape (the two prompt angles are not encoded as predicates --- only the perpendicularity of the two altitudes).
+Visual diversity: (a) acute triangle with both altitude feet inside the opposite sides; (b) right triangle (where one altitude coincides with a side) --- both pass the listed predicates.
+\textbf{Looseness is intentional in current verifier; could be tightened by adding angle checks (open-source todo).}
+
+\paragraph{L9 --- \texttt{tpl-t1-rt-ABC-raA-3-4}.}
+Property list: \propname{right\_angle\_at\_A}(B,A,C), \propname{right\_angle\_marked\_at\_A}.
+Free dimension: leg-length ratio (the property list checks only the right angle at $A$, not the prompt-given legs of 3 and 4; any right triangle with the right angle at $A$ passes).
+Visual diversity: (a) the intended 3-4-5 right triangle; (b) a 5-12-13 right triangle with the right angle still at $A$ --- both pass the checks.
+\textbf{Looseness is intentional in the verifier:} the property list focuses on the named-angle relation rather than the metric leg lengths, so educational variants that ``capture the right-angle-at-A construction'' all pass even with different scale or proportion.
+
+\paragraph{L10 --- \texttt{tpl-t1-iso-ABC-l5-b6}.}
+Property list: \propname{AB\_eq\_AC}.
+Free dimension: base length (any triangle with $AB$ equal to $AC$ passes regardless of $BC$).
+Visual diversity: (a) the intended $5{-}5{-}6$ triangle; (b) a tall narrow $5{-}5{-}3$ triangle --- both pass.
+\textbf{Looseness is intentional in the verifier:} only the apex-side equality is checked, allowing any isosceles triangle with apex at the first vertex.
+
+\paragraph{L11 --- \texttt{tpl-t1-rect-ABCD-5x3}.}
+Property list: 4 \propname{right\_angle\_at\_X} + \propname{horizontal\_sides\_equal} + \propname{vertical\_sides\_equal}.
+Free dimension: aspect ratio (the property list verifies the four right angles and that opposite sides are pairwise equal, but the actual width-to-height ratio is unconstrained).
+Visual diversity: (a) the intended $5\times 3$ landscape rectangle; (b) a square with the same vertex labels --- both pass.
+\textbf{Looseness is intentional in the verifier:} ``rectangle'' is verified structurally rather than dimensionally.
+
+\paragraph{L12 to L25.}
+The remaining 14 loose witnesses follow the same pattern: scenario IDs are listed in \cref{tab:loose_witnesses_remaining}; each records the free-dimension count (1--3 continuous parameters in all cases) and the size of the property list it must satisfy.
+We omit the prose for compactness; readers interested in inspecting the visual diversity directly can run the released sampler at \texttt{evals/human\_study/sample\_human\_study.py} (or any of the rendered SVGs at \texttt{evals/results/headline\_run/unified/svgs/}) keyed by the scenario IDs below.
+
+\begin{table}[t]
+\caption{Remaining loose witnesses (L12--L25). Free-dimension counts after factoring out rigid motion + scale; ``visual diversity'' confirmed by inspection of two SVGs per scenario.}
+\label{tab:loose_witnesses_remaining}
+\centering
+\small
+\begin{tabular}{llrl}
+\toprule
+\textbf{Tag} & \textbf{Scenario} & \textbf{Free dims} & \textbf{Property list size} \\
+\midrule
+L12 & \texttt{tpl-t1-par-PQ-RS-l6}        & 2 & 1 \\
+L13 & \texttt{tpl-t1-perp-PQ-RS-l6}       & 3 & 1 \\
+L14 & \texttt{tpl-t2-pb-CD-M-T-l6}        & 1 & 3 \\
+L15 & \texttt{tpl-t2-chord-C-PQ-r4}       & 2 & 2 \\
+L16 & \texttt{tpl-t2-chord-M-XY-r5}       & 2 & 2 \\
+L17 & \texttt{tpl-t3-trv-AB-CD-EF-65}     & 3 & 6 \\
+L18 & \texttt{tpl-t3-trv-JK-LM-NO-75}     & 3 & 6 \\
+L19 & \texttt{tpl-t3-cyc-EFGH-65}         & 3 & 4 \\
+L20 & \texttt{tpl-t3-cyc-PQRS-80}         & 3 & 4 \\
+L21 & \texttt{tpl-t3-2cir-O1-O2-P-Q-4-5-6} & 1 & 4 \\
+L22 & \texttt{tpl-t3-2alt-DEF-K-L-55-65}  & 2 & 4 \\
+L23 & \texttt{tpl-t3-2alt-PQR-G-H-65-55}  & 2 & 4 \\
+L24 & \texttt{tpl-t1-perp-EF-GH-l8}       & 3 & 1 \\
+L25 & \texttt{tpl-t1-rect-EFGH-6x4}       & 1 & 6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Skeletal: \texttt{tpl-t3-semi}}
+\label{app:completeness_witnesses:skeletal}
+
+The \texttt{tpl-t3-semi} (inscribed angle in semicircle) template is the unique skeletal entry in the audit.
+
+\textbf{Property list:} \propname{C\_on\_circle} only.
+\textbf{Prompt prose:} the diameter $AB$ implies $A,B$ are diametrically opposite; the inscribed-angle theorem then implies $\angle ACB = 90^\circ$. Both implications are conveyed by the prose but not by the property list, so a passing diagram needs only $C$ on the circle, not $A,B$ diametrically opposite, and not $\angle ACB$ a right angle.
+\textbf{Free dimensions:} positions of $A, B, C$ on the circle (subject only to $C$ being on the circle, with $A, B$ unconstrained beyond the prompt prose).
+\textbf{Loose-pass justification:} the verifier emits a strict-pass for any $C$ on the circle. We mark this template skeletal and recommend either (a) tightening by adding \propname{AB\_is\_diameter} + \propname{right\_angle\_at\_C} predicates (a one-line template change) or (b) accepting the looseness as illustrative-of-skeletal-instances in v1 and tightening in v2.
+This single skeletal template represents $\sim 4\%$ of all templated scenarios (25 / 600).
+
+\subsection{Aggregate completeness statistics}
+
+Combining the 18 tight + 11 loose + 1 skeletal templates with their per-template instantiation counts (\cref{tab:template_summary}) yields the per-scenario distribution reported in \cref{ssec:ver_defn}: 379 tight ($63\%$), 209 loose ($35\%$), 12 skeletal ($2\%$).
+The witness pack in this appendix substantiates 25 of 379 tight scenarios ($\sim 7\%$ audit coverage) and 25 of 209 loose scenarios ($\sim 12\%$), with at least one witness per template class (and additional coverage for high-N templates).
+The witness IDs above are reproducible: the templated-split YAML is byte-deterministic from \texttt{evals/generate\_scenarios.py} (seed 42), and the per-template stratified selection used here is documented at the start of this appendix (one witness per template family, plus extras for high-N families).

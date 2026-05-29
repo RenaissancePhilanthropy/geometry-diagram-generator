@@ -1,0 +1,104 @@
+name: triangle_angle_extensions
+description: "Triangle with both sides extended beyond each vertex; tip angles marked as vertical to interior angles"
+tags: [triangle, extension, exterior-angle, vertical-angle, intermediate]
+context: "Triangle ABC with all six side-extensions drawn. The angle at each tip equals the corresponding interior angle by vertical angles."
+setup: []
+example:
+  mode: abstract
+  construction:
+    - op: triangle
+      id: T
+      vertices: [A, B, C]
+      spec:
+        angle_A: 50
+        angle_B: 65
+        side_AB: 4
+    # At each vertex, extend BOTH adjacent sides beyond the vertex to form the two arms.
+    # At A: extend [C,A] beyond A and [B,A] beyond A
+    - op: extend_segment
+      id: A_from_C
+      segment: [C, A]
+      beyond: A
+      by: 1.2
+    - op: extend_segment
+      id: A_from_B
+      segment: [B, A]
+      beyond: A
+      by: 1.2
+    # At B: extend [A,B] beyond B and [C,B] beyond B
+    - op: extend_segment
+      id: B_from_A
+      segment: [A, B]
+      beyond: B
+      by: 1.2
+    - op: extend_segment
+      id: B_from_C
+      segment: [C, B]
+      beyond: B
+      by: 1.2
+    # At C: extend [B,C] beyond C and [A,C] beyond C
+    - op: extend_segment
+      id: C_from_B
+      segment: [B, C]
+      beyond: C
+      by: 1.2
+    - op: extend_segment
+      id: C_from_A
+      segment: [A, C]
+      beyond: C
+      by: 1.2
+    # CRITICAL: add explicit segments for each arm so the angle validator accepts the angle triples
+    - op: segment
+      id: arm_AC
+      endpoints: [A, A_from_C]
+    - op: segment
+      id: arm_AB
+      endpoints: [A, A_from_B]
+    - op: segment
+      id: arm_BA
+      endpoints: [B, B_from_A]
+    - op: segment
+      id: arm_BC
+      endpoints: [B, B_from_C]
+    - op: segment
+      id: arm_CB
+      endpoints: [C, C_from_B]
+    - op: segment
+      id: arm_CA
+      endpoints: [C, C_from_A]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: false
+    labels:
+      - kind: label_point
+        point: A
+      - kind: label_point
+        point: B
+      - kind: label_point
+        point: C
+    marks:
+      # Tip angle at A: equals interior angle BAC by vertical angles
+      - kind: mark_angle
+        a: A_from_C
+        vertex: A
+        b: A_from_B
+        group: 1
+      # Tip angle at B: equals interior angle ABC by vertical angles
+      - kind: mark_angle
+        a: B_from_A
+        vertex: B
+        b: B_from_C
+        group: 2
+      # Tip angle at C: equals interior angle BCA by vertical angles
+      - kind: mark_angle
+        a: C_from_B
+        vertex: C
+        b: C_from_A
+        group: 3
+notes:
+  - "Each tip angle equals the corresponding interior angle of triangle ABC by vertical angles."
+  - "Sum of tip angles = angle_A + angle_B + angle_C = 180°."
+  - "CRITICAL: after every extend_segment, add an explicit 'segment' from the vertex to the extended point."
+  - "At each vertex, two arms are created by extending the two adjacent sides beyond the vertex."
+  - "Do NOT try to find tips via 'intersection beyond' — lines AB, BC, CA only intersect at A, B, C themselves."
+  - "mark_angle(A_from_C, A, A_from_B): A_from_C is on extension of CA past A; A_from_B is on extension of BA past A. Not collinear. ✓"

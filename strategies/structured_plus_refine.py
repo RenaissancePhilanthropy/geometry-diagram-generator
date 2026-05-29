@@ -79,9 +79,13 @@ class StructuredPlusRefineStrategy(SubstanceStrategy):
     coordinates, labels, and any visible grid/axes features.
     """
 
+    def __init__(self, enable_cache: bool = False, renderer: Renderer | None = None) -> None:
+        super().__init__(enable_cache=enable_cache)
+        self.renderer = renderer
+
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         # For single-agent UI use, fall back to the verified structured agent.
-        return StructureStrategy().build_agent(model=model)
+        return StructureStrategy(renderer=self.renderer).build_agent(model=model)
 
     async def _run_refinement(
         self,
@@ -89,7 +93,7 @@ class StructuredPlusRefineStrategy(SubstanceStrategy):
         tikz: str,
         model: str,
     ) -> tuple[str, str] | None:
-        agent = Agent(model, instructions=STRUCTURED_REFINE_INSTRUCTIONS)
+        agent = Agent(model, instructions=STRUCTURED_REFINE_INSTRUCTIONS, model_settings=self.model_settings)
         register_render_tool(agent, retries=2)
         user_message = (
             f"Original request: {prompt}\n\n"

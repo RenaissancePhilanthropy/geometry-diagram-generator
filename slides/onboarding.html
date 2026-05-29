@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GeoGenBench — Onboarding</title>
+
+<!-- Electric Studio preset: Manrope (display + body) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+/* ===========================================
+   THEME — Electric Studio preset
+   Edit the variables below to retheme the deck.
+   =========================================== */
+:root {
+  /* Colors */
+  --bg-dark:        #0a0a0a;
+  --bg-white:       #ffffff;
+  --bg-paper:       #f7f7f4;
+  --accent-blue:    #4361ee;
+  --accent-blue-2:  #3a51c9;
+  --text-dark:      #0a0a0a;
+  --text-light:     #ffffff;
+  --text-muted:     #6b6b6b;
+  --line:           rgba(10,10,10,0.10);
+
+  /* Type */
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --font-body:    'Manrope', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+
+  /* Sizes — clamp() everywhere per skill rules */
+  --title-size:    clamp(2.0rem, 6.5vw, 5rem);
+  --h2-size:       clamp(1.4rem, 3.5vw, 2.5rem);
+  --h3-size:       clamp(1.0rem, 2.2vw, 1.4rem);
+  --body-size:     clamp(0.8rem, 1.4vw, 1.05rem);
+  --small-size:    clamp(0.7rem, 1.0vw, 0.85rem);
+
+  --slide-padding: clamp(1.5rem, 4vw, 4rem);
+  --content-gap:   clamp(0.8rem, 2vw, 1.6rem);
+  --element-gap:   clamp(0.4rem, 1vw, 0.9rem);
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration:      0.7s;
+}
+
+/* ===========================================
+   BASE — paste of viewport-base.css (per skill)
+   =========================================== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+  background: var(--bg-dark);
+  color: var(--text-light);
+  font-family: var(--font-body);
+  font-size: var(--body-size);
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+}
+
+.slide {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.slide-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-height: 100%;
+  overflow: hidden;
+  padding: var(--slide-padding);
+}
+
+.card, .container, .content-box {
+  max-width: min(90vw, 1100px);
+  max-height: min(86vh, 760px);
+}
+
+@media (max-height: 700px) {
+  :root {
+    --slide-padding: clamp(0.75rem, 3vw, 2rem);
+    --content-gap:   clamp(0.4rem, 1.5vw, 1rem);
+    --title-size:    clamp(1.5rem, 5vw, 3rem);
+    --h2-size:       clamp(1.1rem, 3vw, 1.9rem);
+  }
+}
+@media (max-height: 600px) {
+  :root {
+    --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+    --title-size:    clamp(1.3rem, 4.5vw, 2.4rem);
+    --body-size:     clamp(0.72rem, 1.2vw, 0.95rem);
+  }
+  .nav-dots, .keyboard-hint, .decorative { display: none; }
+}
+@media (max-height: 500px) {
+  :root {
+    --title-size: clamp(1.1rem, 3.5vw, 1.7rem);
+    --h2-size:    clamp(0.95rem, 2.5vw, 1.3rem);
+    --body-size:  clamp(0.65rem, 1vw, 0.85rem);
+  }
+}
+@media (max-width: 600px) {
+  :root { --title-size: clamp(1.4rem, 7vw, 2.6rem); }
+  .grid { grid-template-columns: 1fr !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.2s !important;
+  }
+  html { scroll-behavior: auto; }
+}
+
+/* ===========================================
+   ANIMATIONS — slides reveal when scrolled into view
+   .visible class is added by IntersectionObserver
+   =========================================== */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity   var(--duration) var(--ease-out-expo),
+    transform var(--duration) var(--ease-out-expo);
+}
+.slide.visible .reveal { opacity: 1; transform: translateY(0); }
+.slide.visible .reveal:nth-child(1) { transition-delay: 0.05s; }
+.slide.visible .reveal:nth-child(2) { transition-delay: 0.18s; }
+.slide.visible .reveal:nth-child(3) { transition-delay: 0.30s; }
+.slide.visible .reveal:nth-child(4) { transition-delay: 0.42s; }
+.slide.visible .reveal:nth-child(5) { transition-delay: 0.54s; }
+.slide.visible .reveal:nth-child(6) { transition-delay: 0.66s; }
+
+/* ===========================================
+   ELECTRIC STUDIO LAYOUTS
+   Two-panel split + accent bar; corners carry brand marks.
+   =========================================== */
+.brand-mark {
+  position: absolute;
+  top: clamp(0.8rem, 2vw, 1.8rem);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--small-size);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  z-index: 5;
+}
+.brand-mark.left  { left:  clamp(0.8rem, 2vw, 1.8rem); }
+.brand-mark.right { right: clamp(0.8rem, 2vw, 1.8rem); }
+
+.slide-num {
+  position: absolute;
+  bottom: clamp(0.8rem, 2vw, 1.8rem);
+  right:  clamp(0.8rem, 2vw, 1.8rem);
+  font-family: var(--font-mono);
+  font-size: var(--small-size);
+  opacity: 0.55;
+  z-index: 5;
+}
+
+/* --- TITLE SLIDE — full-bleed, centered hero --- */
+.slide.title-slide {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(67,97,238,0.25), transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(67,97,238,0.18), transparent 60%),
+    linear-gradient(135deg, #0a0a0a 0%, #131325 50%, #0a0a0a 100%);
+  align-items: stretch;
+  justify-content: center;
+}
+.title-slide .slide-content {
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--content-gap);
+}
+.title-slide .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  font-family: var(--font-mono);
+  font-size: var(--small-size);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+}
+.title-slide .eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: clamp(1.5rem, 4vw, 3rem);
+  height: 2px;
+  background: var(--accent-blue);
+}
+.title-slide h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--title-size);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  max-width: 18ch;
+}
+.title-slide h1 .accent { color: var(--accent-blue); }
+.title-slide .subtitle {
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  font-weight: 400;
+  color: rgba(255,255,255,0.78);
+  max-width: 60ch;
+  line-height: 1.5;
+}
+.title-slide .meta {
+  display: flex;
+  gap: clamp(0.8rem, 3vw, 2.5rem);
+  font-family: var(--font-mono);
+  font-size: var(--small-size);
+  color: rgba(255,255,255,0.55);
+  margin-top: clamp(0.6rem, 2vw, 1.5rem);
+}
+.title-slide .meta strong {
+  display: block;
+  color: var(--text-light);
+  font-weight: 500;
+  margin-top: 0.25em;
+}
+
+/* --- SPLIT-PANEL SLIDE — Electric Studio signature
+   Top half white, bottom half dark; accent bar between them.
+   --- */
+.slide.split-slide { background: var(--bg-white); color: var(--text-dark); }
+.split-slide .top-panel,
+.split-slide .bottom-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--slide-padding);
+  position: relative;
+  min-height: 0;
+}
+.split-slide .top-panel    { background: var(--bg-white); color: var(--text-dark); }
+.split-slide .bottom-panel { background: var(--bg-dark);  color: var(--text-light); }
+.split-slide .accent-bar {
+  height: clamp(4px, 0.8vh, 8px);
+  background: var(--accent-blue);
+  flex: 0 0 auto;
+}
+
+/* --- LIGHT-PANEL SLIDE — single-panel paper background --- */
+.slide.light-slide {
+  background: var(--bg-white);
+  color: var(--text-dark);
+}
+.slide.paper-slide {
+  background: var(--bg-paper);
+  color: var(--text-dark);
+}
+.slide.dark-slide {
+  background: var(--bg-dark);
+  color: var(--text-light);
+}
+
+/* === Common headings === */
+.slide h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--h2-size);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin-bottom: var(--element-gap);
+}
+.slide h2 .accent { color: var(--accent-blue); }
+.slide .lead {
+  font-size: clamp(0.95rem, 1.7vw, 1.2rem);
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 65ch;
+}
+.dark-slide .lead { color: rgba(255,255,255,0.72); }
+
+.eyebrow-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--small-size);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  margin-bottom: var(--element-gap);
+}
+
+/* === Pipeline / step list === */
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(0.5rem, 1.5vw, 1.2rem);
+  margin-top: var(--content-gap);
+}
+.pipeline .step {
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: clamp(0.7rem, 1.6vw, 1.3rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  background: rgba(255,255,255,0.6);
+  position: relative;
+}
+.dark-slide .pipeline .step {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.12);
+}
+.pipeline .step .num {
+  font-family: var(--font-mono);
+  font-size: var(--small-size);
+  color: var(--accent-blue);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+.pipeline .step .name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(0.85rem, 1.4vw, 1.05rem);
+  line-height: 1.2;
+}
+.pipeline .step .detail {
+  font-family: var(--font-mono);
+  font-size: clamp(0.65rem, 0.9vw, 0.8rem);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.dark-slide .pipeline .step .detail { color: rgba(255,255,255,0.6); }
+
+/* === Repo tour grid === */
+.dir-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(0.7rem, 1.6vw, 1.2rem);
+  margin-top: var(--content-gap);
+}
+.dir-grid .dir {
+  border-left: 3px solid var(--accent-blue);
+  padding: clamp(0.6rem, 1.4vw, 1rem) clamp(0.7rem, 1.6vw, 1.2rem);
+  background: rgba(255,255,255,0.6);
+  border-radius: 0 8px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+.dark-slide .dir-grid .dir {
+  background: rgba(255,255,255,0.04);
+  border-left-color: var(--accent-blue);
+}
+.dir-grid .dir .path {
+  font-family: var(--font-mono);
+  font-size: clamp(0.78rem, 1.15vw, 0.95rem);
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.dark-slide .dir-grid .dir .path { color: var(--text-light); }
+.dir-grid .dir .what {
+  font-size: clamp(0.72rem, 1.05vw, 0.88rem);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.dark-slide .dir-grid .dir .what { color: rgba(255,255,255,0.65); }
+
+/* === Bullet list with numeric prefix === */
+.steps-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.7rem, 1.6vw, 1.3rem);
+  margin-top: var(--content-gap);
+}
+.steps-list li {
+  display: grid;
+  grid-template-columns: clamp(2rem, 5vw, 3.5rem) 1fr;
+  gap: clamp(0.6rem, 1.4vw, 1.1rem);
+  align-items: start;
+}
+.steps-list li .n {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  color: var(--accent-blue);
+  line-height: 1;
+  border-top: 2px solid var(--accent-blue);
+  padding-top: 0.25em;
+}
+.steps-list li .body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.steps-list li .body .what {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(0.95rem, 1.6vw, 1.25rem);
+}
+.steps-list li .body .why {
+  font-size: var(--body-size);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.dark-slide .steps-list li .body .why { color: rgba(255,255,255,0.7); }
+
+/* === Code block === */
+pre.code {
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1.05vw, 0.92rem);
+  line-height: 1.55;
+  background: #f1f1ee;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: clamp(0.8rem, 1.8vw, 1.4rem);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  max-height: 50vh;
+  color: #1a1a1a;
+}
+.dark-slide pre.code {
+  background: #131322;
+  color: #e8e8f0;
+  border-color: rgba(255,255,255,0.08);
+}
+pre.code .c   { color: #888; font-style: italic; }
+pre.code .k   { color: var(--accent-blue); font-weight: 700; }
+pre.code .s   { color: #c4694a; }
+
+/* === Two-column for "Read first" slide === */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1rem, 2.5vw, 2rem);
+  align-items: start;
+  margin-top: var(--content-gap);
+}
+.two-col .col h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--h3-size);
+  margin-bottom: var(--element-gap);
+}
+.two-col .col h3 .accent { color: var(--accent-blue); }
+.two-col .col ol,
+.two-col .col ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.4rem, 1vw, 0.8rem);
+  counter-reset: doc;
+}
+.two-col .col ol li {
+  counter-increment: doc;
+  display: grid;
+  grid-template-columns: clamp(1.5rem, 3vw, 2.2rem) 1fr;
+  gap: 0.5em;
+  font-size: var(--body-size);
+  line-height: 1.45;
+}
+.two-col .col ol li::before {
+  content: counter(doc, decimal-leading-zero);
+  font-family: var(--font-mono);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+.two-col .col ul li {
+  display: grid;
+  grid-template-columns: 0.6em 1fr;
+  gap: 0.5em;
+  font-size: var(--body-size);
+  line-height: 1.45;
+}
+.two-col .col ul li::before {
+  content: '▸';
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+.two-col .col code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: rgba(67,97,238,0.10);
+  padding: 0.05em 0.4em;
+  border-radius: 3px;
+  color: var(--accent-blue-2);
+}
+.dark-slide .two-col .col code {
+  background: rgba(67,97,238,0.18);
+  color: #b4c4ff;
+}
+
+/* === Visual contrast layout — two opposing flow cards === */
+.contrast-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(1rem, 3vw, 2.5rem);
+  margin-top: clamp(1.2rem, 3vw, 2.5rem);
+  align-items: stretch;
+}
+.contrast-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.6rem, 1.5vw, 1.2rem);
+  padding: clamp(1rem, 2.5vw, 2rem);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.55);
+  position: relative;
+}
+.contrast-card.us {
+  border-color: var(--accent-blue);
+  background: rgba(67,97,238,0.06);
+}
+.contrast-card .role {
+  font-family: var(--font-mono);
+  font-size: clamp(0.65rem, 0.95vw, 0.78rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.contrast-card.us .role { color: var(--accent-blue); }
+.contrast-card .verb {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 6vw, 4.5rem);
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+  color: var(--text-dark);
+}
+.contrast-card.us .verb { color: var(--accent-blue); }
+.contrast-card .flow {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.5rem, 1.4vw, 1.1rem);
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1.1vw, 0.95rem);
+  color: var(--text-muted);
+  flex-wrap: nowrap;
+}
+.contrast-card .chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.3rem, 0.8vw, 0.6rem) clamp(0.55rem, 1.4vw, 1rem);
+  border: 1.5px solid var(--text-muted);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.contrast-card.us .chip { border-color: var(--accent-blue); color: var(--accent-blue-2); }
+.contrast-card .arr {
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  color: var(--text-muted);
+}
+.contrast-card.us .arr { color: var(--accent-blue); }
+
+/* === Mini-schematic for Pillar slides — function box + outputs === */
+.schema {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.5rem, 1.4vw, 1rem);
+  margin-top: clamp(0.8rem, 1.8vw, 1.4rem);
+  flex-wrap: wrap;
+}
+.schema .box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0.4rem, 1vw, 0.7rem) clamp(0.7rem, 1.6vw, 1.1rem);
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1.05vw, 0.88rem);
+  border: 1.5px solid currentColor;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+.schema .box.solid {
+  background: var(--accent-blue);
+  color: var(--text-light);
+  border-color: var(--accent-blue);
+  font-weight: 600;
+}
+.split-slide .top-panel .schema .box.solid {
+  background: var(--accent-blue);
+  color: #fff;
+}
+.schema .box.outline-strong {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+.schema .arr {
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  color: var(--accent-blue);
+}
+.schema .stack {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.25rem, 0.6vw, 0.45rem);
+}
+.schema .verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  font-family: var(--font-mono);
+  font-size: clamp(0.85rem, 1.4vw, 1.15rem);
+  font-weight: 700;
+}
+.schema .verdict.ok  { color: #2e9b3e; }
+.schema .verdict.bad { color: #c54a3a; }
+.split-slide .bottom-panel .schema .verdict.ok  { color: #6ee07b; }
+.split-slide .bottom-panel .schema .verdict.bad { color: #ff8775; }
+.split-slide .bottom-panel .schema .box {
+  border-color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.85);
+}
+.split-slide .bottom-panel .schema .box.outline-strong {
+  border-color: #8aa2ff;
+  color: #b4c4ff;
+}
+.split-slide .bottom-panel .schema .arr { color: #8aa2ff; }
+
+/* === Pipeline arrows (between cards) === */
+.pipeline { position: relative; }
+.pipeline .step + .step::before {
+  content: '›';
+  position: absolute;
+  left: -0.62em;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent-blue);
+  font-weight: 700;
+  font-size: clamp(1.1rem, 2vw, 1.6rem);
+  opacity: 0.7;
+}
+@media (max-width: 700px) {
+  .pipeline .step + .step::before { display: none; }
+}
+
+/* === Big numbered cards (Slide 7) === */
+.big-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(0.8rem, 2vw, 1.6rem);
+  margin-top: clamp(1.2rem, 3vw, 2rem);
+}
+.big-cards .card {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.5rem, 1.2vw, 0.9rem);
+  padding: clamp(1rem, 2.4vw, 1.8rem);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.55);
+  border: 2px solid var(--line);
+  position: relative;
+  min-height: clamp(8rem, 22vh, 14rem);
+}
+.big-cards .card .num {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 5.5vw, 4rem);
+  line-height: 1;
+  color: var(--accent-blue);
+  letter-spacing: -0.02em;
+}
+.big-cards .card .what {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(0.95rem, 1.6vw, 1.2rem);
+  line-height: 1.25;
+  color: var(--text-dark);
+}
+.big-cards .card .why {
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1vw, 0.85rem);
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: auto;
+}
+@media (max-width: 700px) {
+  .big-cards { grid-template-columns: 1fr; }
+}
+
+/* === Quote/closing slide === */
+.closing-slide {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(67,97,238,0.25), transparent 70%),
+    var(--bg-dark);
+}
+.closing-slide .slide-content {
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+}
+.closing-slide .quote {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.6rem, 4.5vw, 3rem);
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  max-width: 22ch;
+}
+.closing-slide .quote .accent { color: var(--accent-blue); }
+.closing-slide .ask {
+  font-size: clamp(0.9rem, 1.6vw, 1.15rem);
+  color: rgba(255,255,255,0.7);
+  margin-top: var(--content-gap);
+  max-width: 50ch;
+  line-height: 1.55;
+}
+
+/* === Progress bar === */
+.progress-bar {
+  position: fixed;
+  top: 0; left: 0;
+  height: 3px;
+  background: var(--accent-blue);
+  z-index: 100;
+  transition: width 0.25s ease;
+  width: 0%;
+}
+
+/* === Nav dots === */
+.nav-dots {
+  position: fixed;
+  right: clamp(0.6rem, 1.5vw, 1.4rem);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.3rem, 0.9vw, 0.55rem);
+  z-index: 50;
+}
+.nav-dots a {
+  display: block;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: rgba(150,150,150,0.4);
+  transition: all 0.25s ease;
+  text-decoration: none;
+}
+.nav-dots a.active { background: var(--accent-blue); transform: scale(1.4); }
+.nav-dots a:hover  { background: var(--accent-blue); }
+
+/* === Keyboard hint === */
+.keyboard-hint {
+  position: fixed;
+  bottom: clamp(0.6rem, 1.5vw, 1.2rem);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: clamp(0.62rem, 0.9vw, 0.78rem);
+  color: rgba(255,255,255,0.4);
+  z-index: 50;
+  pointer-events: none;
+}
+.light-slide ~ .keyboard-hint,
+body:has(.slide.visible.light-slide) .keyboard-hint,
+body:has(.slide.visible.split-slide) .keyboard-hint,
+body:has(.slide.visible.paper-slide) .keyboard-hint {
+  color: rgba(0,0,0,0.4);
+}
+body.show-notes .keyboard-hint { display: none; }
+
+/* ===========================================
+   SPEAKER NOTES — hidden by default, toggled with `s`
+   When visible, overlay sits at the bottom of the viewport,
+   showing only the notes for the slide currently in view.
+   =========================================== */
+.notes { display: none; }
+
+body.show-notes .slide.visible .notes {
+  display: block;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: clamp(0.9rem, 1.6vw, 1.4rem) clamp(1.5rem, 4vw, 3rem)
+           clamp(1.2rem, 2vw, 1.8rem);
+  background: rgba(10, 10, 10, 0.94);
+  color: #f0f0ec;
+  border-top: 3px solid var(--accent-blue);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  font-family: var(--font-body);
+  font-size: clamp(0.78rem, 1.1vw, 0.95rem);
+  line-height: 1.55;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
+}
+
+.notes header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  margin-bottom: 0.8em;
+  padding-bottom: 0.6em;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+.notes header .tag {
+  font-family: var(--font-mono);
+  font-size: clamp(0.62rem, 0.85vw, 0.74rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+.notes header .meta {
+  font-family: var(--font-mono);
+  font-size: clamp(0.62rem, 0.85vw, 0.74rem);
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.05em;
+}
+.notes p { margin-bottom: 0.7em; }
+.notes p:last-child { margin-bottom: 0; }
+.notes strong { color: #ffffff; font-weight: 700; }
+.notes em { color: rgba(255,255,255,0.85); }
+.notes .label {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  margin-right: 0.5em;
+  font-weight: 700;
+}
+.notes ul {
+  list-style: none;
+  margin: 0.4em 0 0.7em;
+  padding-left: 0;
+}
+.notes ul li {
+  padding-left: 1.1em;
+  position: relative;
+  margin-bottom: 0.35em;
+}
+.notes ul li::before {
+  content: '·';
+  position: absolute;
+  left: 0.3em;
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+.notes code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: rgba(67,97,238,0.18);
+  color: #b4c4ff;
+  padding: 0.05em 0.4em;
+  border-radius: 3px;
+}
+
+/* When notes are visible, dim the audience-facing chrome a touch
+   so the presenter's eyes go to the panel. */
+body.show-notes .nav-dots { opacity: 0.35; }
+body.show-notes .progress-bar { opacity: 0.7; }
+
+/* Tiny corner badge so the presenter knows notes are on,
+   even when scrolled to a slide whose notes are mostly off-screen. */
+.notes-badge {
+  display: none;
+  position: fixed;
+  top: clamp(0.6rem, 1.5vw, 1.2rem);
+  right: clamp(0.6rem, 1.5vw, 1.2rem);
+  z-index: 60;
+  font-family: var(--font-mono);
+  font-size: clamp(0.62rem, 0.85vw, 0.74rem);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+  background: rgba(10,10,10,0.7);
+  padding: 0.3em 0.7em;
+  border-radius: 3px;
+  border: 1px solid rgba(67,97,238,0.45);
+  pointer-events: none;
+}
+body.show-notes .notes-badge { display: block; }
+</style>
+</head>
+
+<body>
+
+<!-- Progress bar (top of viewport) -->
+<div class="progress-bar" id="progress"></div>
+
+<!-- Navigation dots (right side) — generated by JS -->
+<nav class="nav-dots" id="navDots" aria-label="slide navigation"></nav>
+
+<!-- Keyboard hint -->
+<div class="keyboard-hint">← → to navigate · space · scroll · press <strong>S</strong> for speaker notes</div>
+
+<!-- Notes-on indicator (only visible when notes are toggled on) -->
+<div class="notes-badge">SPEAKER NOTES · S to hide</div>
+
+<!-- ============================================================
+     SLIDE 1 — TITLE
+     ============================================================ -->
+<section class="slide title-slide" data-title="Welcome">
+  <span class="brand-mark left">GEOGENBENCH</span>
+  <span class="brand-mark right">ONBOARDING</span>
+  <div class="slide-content">
+    <span class="eyebrow reveal">Onboarding</span>
+    <h1 class="reveal">A benchmark for <span class="accent">generative</span> geometric reasoning.</h1>
+    <p class="subtitle reveal">From <code style="font-family: var(--font-mono); color: rgba(255,255,255,0.95);">git&nbsp;clone</code> to your first eval in 30 minutes.</p>
+  </div>
+  <div class="slide-num">01 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 1">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 01 / 10  ·  ~30 sec</span></header>
+    <p>Welcome. Quick orientation — this project is called <strong>GeoGenBench</strong>, and the easiest way to describe it is: it's a benchmark we built to test whether language models can <em>draw</em> geometry diagrams correctly from a written description. You tell GPT &ldquo;draw an acute triangle with these angles and add the altitude,&rdquo; and we can automatically grade whether what it produced is right.</p>
+    <p>The point of the next ten minutes is just to give you a map. By the end, you'll know what the project actually does, where things live in the repo, and what to type into your terminal to get a smoke test running today. We'll go fast — this is a map, not a manual. You don't need to memorize anything; I'll point at the docs that have the depth.</p>
+    <p><span class="label">Tip</span>If they already know the project at a high level, spend 10 seconds here and skip to slide 2. If brand new, linger long enough to make eye contact and reassure them.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 2 — THE BIG PICTURE
+     ============================================================ -->
+<section class="slide light-slide" data-title="Big picture">
+  <span class="brand-mark left" style="color: var(--text-dark);">GEOGENBENCH</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">The big picture</span>
+    <h2 class="reveal">Can LLMs <span class="accent">draw</span> geometry?</h2>
+    <div class="contrast-grid reveal">
+      <div class="contrast-card">
+        <span class="role">Other benchmarks</span>
+        <div class="flow">
+          <span class="chip">[diagram]</span>
+          <span class="arr">→</span>
+          <span class="chip">"angle X = ?"</span>
+        </div>
+        <span class="verb">READ</span>
+      </div>
+      <div class="contrast-card us">
+        <span class="role">GeoGenBench</span>
+        <div class="flow">
+          <span class="chip">"draw △ABC…"</span>
+          <span class="arr">→</span>
+          <span class="chip">[diagram]</span>
+        </div>
+        <span class="verb">DRAW</span>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num" style="color: var(--text-muted);">02 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 2">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 02 / 10  ·  ~1 min</span></header>
+    <p>Here's the gap we noticed. There are tons of geometry benchmarks out there — but they all do it the <em>opposite</em> way. They show a model a diagram and ask &ldquo;how big is angle X?&rdquo; or &ldquo;is this triangle isosceles?&rdquo; That's a <strong>reading task</strong>.</p>
+    <p>Nobody was testing the <strong>production task</strong> — can the model take a sentence like &ldquo;draw a circle with these three points on it&rdquo; and actually produce a correct figure. Which is weird, because that's the deployed task. When teachers use LLMs to author worksheets, when slide decks get generated, when technical documentation gets illustrated — the LLM is <em>making</em> the diagram, not reading one.</p>
+    <p>So we built the benchmark for that. <strong>Eight hundred prompts</strong>, each paired with a machine-checkable rubric that tells you exactly which clauses must be true for the diagram to count as correct. The trick that makes the whole thing work — and this is the part that's actually novel — is that rubric. We'll get to it on the next slide.</p>
+    <p><span class="label">Emphasize</span>&ldquo;Generative&rdquo; is the key word: the model is <em>producing</em>, not interpreting. Machine-checkable, deterministic, no humans — that's the differentiator.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 3 — METHODOLOGY (TWO PILLARS)
+     ============================================================ -->
+<section class="slide split-slide" data-title="Two pillars">
+  <span class="brand-mark left" style="color: var(--text-dark);">METHODOLOGY</span>
+  <span class="brand-mark right" style="color: var(--text-dark);">TWO PILLARS</span>
+  <div class="top-panel">
+    <span class="eyebrow-tag reveal">Pillar 1 · Co-generation</span>
+    <h2 class="reveal" style="font-size: clamp(1.2rem, 2.5vw, 1.9rem);">One function. <span class="accent">Two outputs.</span></h2>
+    <div class="schema reveal">
+      <span class="box solid">f()</span>
+      <span class="arr">→</span>
+      <span class="stack">
+        <span class="box outline-strong">prompt</span>
+        <span class="box outline-strong">rubric</span>
+      </span>
+    </div>
+  </div>
+  <div class="accent-bar"></div>
+  <div class="bottom-panel">
+    <span class="eyebrow-tag reveal" style="color: #8aa2ff;">Pillar 2 · Symbolic verify</span>
+    <h2 class="reveal" style="font-size: clamp(1.2rem, 2.5vw, 1.9rem);">No human. <span class="accent" style="color: #8aa2ff;">No judge.</span></h2>
+    <div class="schema reveal">
+      <span class="box">TikZ</span>
+      <span class="arr">→</span>
+      <span class="box outline-strong">SymPy</span>
+      <span class="arr">→</span>
+      <span class="stack">
+        <span class="verdict ok">✓</span>
+        <span class="verdict ok">✓</span>
+        <span class="verdict bad">✗</span>
+      </span>
+    </div>
+  </div>
+  <div class="slide-num" style="color: rgba(255,255,255,0.55);">03 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 3">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 03 / 10  ·  ~2 min  ·  the most important slide</span></header>
+    <p>Okay — this is <strong>the</strong> most important slide. If you remember nothing else, remember these two ideas. They're the whole methodological contribution.</p>
+    <p><span class="label">Pillar 1</span><strong>Procedural co-generation.</strong> Imagine you wanted to make 600 geometry problems by hand. You'd write each prompt, then write each grading rubric, and somewhere along the way they'd drift apart — you'd grade for a 90&deg; angle that the prompt actually said was 60&deg;. So we don't write them by hand. Each scenario is generated by a <strong>single Python function</strong> that emits both the prompt prose <em>and</em> the property-list rubric, from the same source code. They literally cannot disagree because they came from one source. As a bonus: when reviewers worry the model memorized our benchmark, we just re-roll the engine with a new seed and produce a fresh split.</p>
+    <p><span class="label">Pillar 2</span><strong>Render-then-symbolic-verify.</strong> When a model gives us TikZ — TikZ is the LaTeX language for drawing diagrams — we don't eyeball it, and we don't ask another LLM to be the judge. We <strong>compile</strong> the TikZ into actual SymPy geometry objects: real points, lines, circles, with real coordinates. Then we evaluate the rubric symbolically: &ldquo;is angle A 90&deg;? Is point H actually on segment EF?&rdquo; Math expressions, decided in microseconds, deterministic, free.</p>
+    <p><span class="label">Likely Q</span>&ldquo;Why not LLM-as-judge?&rdquo; → LLMs disagree with themselves run-to-run, can be gamed, and are expensive. SymPy gives pass/fail in microseconds, free, every time the same answer.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 4 — PIPELINE (5 STAGES)
+     ============================================================ -->
+<section class="slide dark-slide" data-title="Pipeline">
+  <span class="brand-mark left">PIPELINE</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">Prompt to verdict, in five stages</span>
+    <h2 class="reveal">The pipeline.</h2>
+    <div class="pipeline reveal">
+      <div class="step"><span class="num">01</span><span class="name">Prompt</span><span class="detail">text in</span></div>
+      <div class="step"><span class="num">02</span><span class="name">Strategy</span><span class="detail">LLM → TikZ</span></div>
+      <div class="step"><span class="num">03</span><span class="name">Render</span><span class="detail">TikZ → SVG</span></div>
+      <div class="step"><span class="num">04</span><span class="name">Compile</span><span class="detail">TikZ → SymPy</span></div>
+      <div class="step"><span class="num">05</span><span class="name">Verify</span><span class="detail">predicates decide</span></div>
+    </div>
+  </div>
+  <div class="slide-num">04 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 4">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 04 / 10  ·  ~1.5 min</span></header>
+    <p>That was the philosophy. Now here's what actually happens to one scenario, end to end.</p>
+    <p>We start with a <strong>prompt</strong> — a natural-language sentence describing what to draw. It can come from our procedural template engine, or from the curriculum-extracted set.</p>
+    <p>That goes through a <strong>strategy</strong> — that's the LLM call. We have three reference strategies (next-next slide). The output is always TikZ — TikZ is our universal currency.</p>
+    <p>Then <strong>render</strong>: we ship a Docker container running LuaLaTeX that takes TikZ in and gives an SVG out. That's what we'd ship to a real user as the rendered diagram. In parallel, <strong>compile</strong>: same TikZ, but instead of going to LaTeX, we extract coordinates and instantiate SymPy points, lines, circles. Finally <strong>verify</strong>: each predicate in the rubric is a Python function that takes the SymPy objects and returns true or false.</p>
+    <p><span class="label">Internalize</span>Steps 4 and 5 don't need an LLM. Once the model has produced TikZ, the rest of the pipeline is pure code. That's why this benchmark is essentially free to run repeatedly, and why it's reproducible.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 5 — REPO TOUR
+     ============================================================ -->
+<section class="slide paper-slide" data-title="Repo tour">
+  <span class="brand-mark left" style="color: var(--text-dark);">REPO TOUR</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">Where things live</span>
+    <h2 class="reveal">Six folders.</h2>
+    <div class="dir-grid reveal">
+      <div class="dir"><span class="path">ir/</span><span class="what">geometry data + SymPy compiler<br/><em>read this first</em></span></div>
+      <div class="dir"><span class="path">strategies/</span><span class="what">how models generate<br/><code>raw_code</code> · <code>structured</code> · <code>recipe</code></span></div>
+      <div class="dir"><span class="path">recipe/</span><span class="what">DSL of named constructions<br/>lowers to IR</span></div>
+      <div class="dir"><span class="path">evals/</span><span class="what">benchmark harness<br/>runner · analysis · plots</span></div>
+      <div class="dir"><span class="path">renderer/</span><span class="what">LaTeX in Docker, port 8001<br/><em>must be running</em></span></div>
+      <div class="dir"><span class="path">paper/</span><span class="what">NeurIPS draft<br/>the <em>why</em></span></div>
+    </div>
+  </div>
+  <div class="slide-num" style="color: var(--text-muted);">05 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 5">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 05 / 10  ·  ~2 min</span></header>
+    <p>Six folders that map directly to the pipeline.</p>
+    <ul>
+      <li><strong><code>ir/</code></strong> — the heart of the project. IR = &ldquo;intermediate representation,&rdquo; the typed data structure that geometry passes through. Pydantic models in <code>ir/ir.py</code>; SymPy compiler in <code>ir/to_sympy.py</code>; predicates in <code>ir/checks.py</code>. <em>If you read just one folder, read this one.</em></li>
+      <li><strong><code>strategies/</code></strong> — three ways to ask a model to draw. <code>raw_code</code> is &ldquo;just give me TikZ.&rdquo; <code>structured</code> is &ldquo;fill out this typed JSON form, we'll compile it.&rdquo; <code>recipe</code> is &ldquo;pick from our menu of named constructions.&rdquo; Same prompt, three very different things to do.</li>
+      <li><strong><code>recipe/</code></strong> — small DSL we built. Lego kit of geometric constructions: <code>triangle()</code>, <code>altitude()</code>, <code>circumcircle()</code>. Lowers into the IR.</li>
+      <li><strong><code>evals/</code></strong> — the benchmark harness. <code>run.py</code> is the runner; <code>leaderboard_analyze.py</code> makes the tables; <code>leaderboard_plot.py</code> makes the figures.</li>
+      <li><strong><code>renderer/</code></strong> — the Docker container with LaTeX. Has to be running on port 8001 before any SVG can come out.</li>
+      <li><strong><code>paper/</code></strong> — 35-page LaTeX project. If you want the <em>why</em>, the paper is your answer.</li>
+    </ul>
+    <p><span class="label">Emphasize</span>IR is the glue — everything passes through it. Renderer being Docker is intentional: it isolates LaTeX from your laptop, which is a huge sanity win.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 6 — SETUP
+     ============================================================ -->
+<section class="slide dark-slide" data-title="Setup">
+  <span class="brand-mark left">SETUP</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">First 10 minutes</span>
+    <h2 class="reveal">Get it running.</h2>
+<pre class="code reveal"><span class="c"># install</span>
+uv sync
+
+<span class="c"># one provider key is enough</span>
+echo <span class="s">"ANTHROPIC_API_KEY=sk-ant-…"</span> &gt; .env
+
+<span class="c"># renderer (port 8001)</span>
+docker run -d -p 8001:8001 tikz-renderer
+
+<span class="c"># smoke test</span>
+.venv/bin/python -m benchmark.genexam.dry_run \
+    --prompt-id Mathematics_72</pre>
+  </div>
+  <div class="slide-num">06 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 6">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 06 / 10  ·  ~1 min  ·  hands on keyboard</span></header>
+    <p>Four commands and you're up.</p>
+    <p><strong><code>uv sync</code></strong> installs the Python deps. We use <code>uv</code> instead of pip — it's much faster, and the lockfile is committed.</p>
+    <p>Add an API key. <strong>Anthropic is the cheapest one to start with</strong>, and we have plenty of credit for it as of today. You only need <em>one</em> provider to start; the runner just routes around any provider that's down.</p>
+    <p>Then start the renderer — Docker container on port 8001. If you don't have Docker, get it from docker.com (free for individuals). Once it's up, <code>curl localhost:8001/health</code> confirms.</p>
+    <p>Last command runs the smoke test — <code>dry_run</code> picks one scenario and runs the full pipeline against it. About 30 seconds end-to-end. If that works, your environment is good.</p>
+    <p><span class="label">Tip</span><strong>Actually run this on screen</strong> if there's time. Watching a real SVG come out is way more convincing than describing it. The <code>DYLD_FALLBACK_LIBRARY_PATH</code> thing is a macOS quirk — Linux skips it.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 7 — YOUR FIRST 30 MINUTES
+     ============================================================ -->
+<section class="slide light-slide" data-title="First 30 min">
+  <span class="brand-mark left" style="color: var(--text-dark);">YOUR FIRST 30 MIN</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">Do these in order</span>
+    <h2 class="reveal">Three tasks. Thirty minutes.</h2>
+    <div class="big-cards reveal">
+      <div class="card">
+        <span class="num">01</span>
+        <span class="what">Read <code style="font-family: var(--font-mono);">CLAUDE.md</code></span>
+        <span class="why">commands · architecture · the canonical map</span>
+      </div>
+      <div class="card">
+        <span class="num">02</span>
+        <span class="what">Skim the paper<br/>(intro + §3)</span>
+        <span class="why">9 pages · Figures 1, 2, 4 do the work</span>
+      </div>
+      <div class="card">
+        <span class="num">03</span>
+        <span class="what">Run the dry-run<br/>open the SVG</span>
+        <span class="why">if a triangle comes out, you're onboarded</span>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num" style="color: var(--text-muted);">07 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 7">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 07 / 10  ·  ~30 sec  ·  concrete plan</span></header>
+    <p>Concrete plan for after this meeting. Three tasks, in order, done in about thirty minutes.</p>
+    <p><strong>One: read <code>CLAUDE.md</code>.</strong> The developer brief at the root of the repo. Every command, the architecture summary, and pointers to everything else. The canonical map. Don't skip it — it'll save you an hour of wandering around.</p>
+    <p><strong>Two: skim the paper</strong> — just intro and section 3, pages 1&ndash;9. Look at Figures 1, 2, and 4: the worked example, procedural co-generation diagram, and the three-strategies-side-by-side. Together those three figures explain the project visually in five minutes.</p>
+    <p><strong>Three: run a dry-run.</strong> When it finishes, open the SVG. Path is in the script's output. Sanity-check that the pipeline actually produced something that looks like a geometry diagram.</p>
+    <p><span class="label">Emphasize</span>This is a checklist, not a suggestion — they should literally do all three today. Task 3 is the canary: if the smoke test fails, surface it immediately, don't silently struggle.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 8 — WHAT TO READ FIRST
+     ============================================================ -->
+<section class="slide paper-slide" data-title="Read first">
+  <span class="brand-mark left" style="color: var(--text-dark);">READ FIRST</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">When stuck, look here</span>
+    <h2 class="reveal">Cheat-sheet.</h2>
+    <div class="two-col reveal">
+      <div class="col">
+        <h3>Code</h3>
+        <ol>
+          <li><code>ir/ir.py</code></li>
+          <li><code>ir/to_sympy.py</code></li>
+          <li><code>ir/checks.py</code></li>
+          <li><code>strategies/structured.py</code></li>
+          <li><code>evals/run.py</code></li>
+        </ol>
+      </div>
+      <div class="col">
+        <h3>Docs</h3>
+        <ol>
+          <li><code>CLAUDE.md</code></li>
+          <li><code>paper/geogenbench.pdf</code></li>
+          <li><code>docs/geometry-dsl-spec.md</code></li>
+          <li><code>docs/datasheet.md</code></li>
+          <li><code>benchmark/definitions/README.md</code></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num" style="color: var(--text-muted);">08 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 8">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 08 / 10  ·  ~30 sec  ·  reference slide</span></header>
+    <p>This is a reference slide. Don't try to absorb it now — bookmark this presentation and come back when something's broken or you're confused.</p>
+    <p>For <strong>code</strong>, this is the order: <code>ir/ir.py</code> for the data shapes, <code>ir/to_sympy.py</code> for how compilation works, <code>ir/checks.py</code> for how predicates are decided. Those three files are most of the cleverness. After that, <code>strategies/structured.py</code> shows the IR being used end to end. <code>evals/run.py</code> is the runner — when an evaluation hangs or behaves weirdly, that's where you'll be debugging.</p>
+    <p>For <strong>docs</strong>, <code>CLAUDE.md</code> is first because it has the commands. The PDF is second because it explains the <em>why</em>. The DSL spec is the formal definition of the IR if you ever need to know exactly what's allowed. The datasheet is the dataset card in Gebru-et-al. format — useful for provenance/licensing questions. The HF dataset card is the polished public version of the same content.</p>
+    <p><span class="label">Tip</span>&ldquo;Take a screenshot of this slide and you'll never have to ask 'where's the thing about X' again.&rdquo;</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 9 — COMMON WORKFLOWS
+     ============================================================ -->
+<section class="slide dark-slide" data-title="Workflows">
+  <span class="brand-mark left">COMMON WORKFLOWS</span>
+  <div class="slide-content">
+    <span class="eyebrow-tag reveal">Five commands you'll run weekly</span>
+    <h2 class="reveal">Workflows.</h2>
+<pre class="code reveal"><span class="c"># test</span>
+pytest tests/
+
+<span class="c"># run an eval cell</span>
+uv run python -m evals.run \
+    --strategies structured --model anthropic:claude-sonnet-4-6 \
+    --repeats 3 --output evals/results
+
+<span class="c"># browse results visually</span>
+uv run python evals/eval_viewer.py
+
+<span class="c"># rebuild paper</span>
+docker run --rm -v <span class="s">"$(pwd):/work"</span> -w /work \
+    texlive/texlive:latest latexmk -lualatex geogenbench.tex
+
+<span class="c"># re-grade existing runs · no new LLM calls</span>
+uv run python -m evals.regrade --input-dir evals/results/&lt;run&gt;</pre>
+  </div>
+  <div class="slide-num">09 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 9">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 09 / 10  ·  ~1 min  ·  weekly commands</span></header>
+    <p>These are the commands you'll run weekly once you're up to speed.</p>
+    <p><strong><code>pytest tests/</code></strong> — runs the unit tests. We're test-driven on the IR layer especially. Every PR keeps these green.</p>
+    <p><strong><code>evals.run</code></strong> — runs a benchmark cell. Flags here say &ldquo;one strategy, one model, three repeats per scenario.&rdquo; Output is JSONL, one record per scenario per repeat.</p>
+    <p><strong><code>eval_viewer.py</code></strong> — pops up a local web UI for browsing results. Backend on port 8002, frontend on a Vite dev server. Super useful for visually inspecting what each model produced — flip through SVGs side by side.</p>
+    <p><strong>Rebuild the paper</strong> — anytime you edit a <code>.tex</code> file, rebuild via the texlive Docker container. Takes about thirty seconds.</p>
+    <p><strong><code>evals.regrade</code></strong> — magic command for verifier changes. Because we store every model's TikZ verbatim in the JSONL, we can re-run the verifier against a different commit's check semantics <em>without spending another dollar on LLM calls</em>. Saves us hundreds per audit. <span class="label">Tip</span>This is one of the project's quiet superpowers — make sure to mention it.</p>
+  </aside>
+</section>
+
+<!-- ============================================================
+     SLIDE 10 — CLOSING / WHO TO ASK
+     ============================================================ -->
+<section class="slide closing-slide" data-title="Closing">
+  <span class="brand-mark left">WELCOME ABOARD</span>
+  <span class="brand-mark right">QUESTIONS?</span>
+  <div class="slide-content">
+    <p class="quote reveal">If you can't <span class="accent">smoke-test</span> in 30 minutes, ping me — that's the bug.</p>
+    <p class="ask reveal">Welcome to GeoGenBench.</p>
+  </div>
+  <div class="slide-num">10 / 10</div>
+  <aside class="notes" aria-label="Speaker notes for slide 10">
+    <header><span class="tag">Speaker notes</span><span class="meta">slide 10 / 10  ·  ~30 sec  ·  open the floor</span></header>
+    <p>That's the tour. The thing on the screen is a <strong>real promise</strong> — if you can't get a smoke test running in 30 minutes, that's not your fault, that's a documentation bug, and I want to know about it. Tell me, and I'll fix the docs so the <em>next</em> person doesn't hit the same wall.</p>
+    <p>Three things to do today: read <code>CLAUDE.md</code>, skim the paper intro, run the dry-run command.</p>
+    <p>When you're stuck — and you will be, that's normal — open an issue in the repo, ping me directly, or grab time on my calendar. Don't sit on it for a day. Faster you're unblocked, faster you're useful, and honestly faster I learn what's confusing.</p>
+    <p><strong>Welcome to GeoGenBench. Questions?</strong></p>
+    <p><span class="label">Tip</span>End with the floor genuinely open — &ldquo;Questions?&rdquo; is the most important word in the talk. Most onboarding decks fail because the audience absorbs passively. Pause, make eye contact, wait.</p>
+  </aside>
+</section>
+
+<script>
+/* ===========================================
+   PRESENTATION CONTROLLER
+   - keyboard nav (←/→/space/PgUp/PgDn/Home/End)
+   - touch swipe (mobile)
+   - mouse wheel (debounced)
+   - scroll-driven progress bar
+   - generated nav dots
+   - IntersectionObserver triggers .visible for reveal animations
+   =========================================== */
+class SlidePresentation {
+  constructor() {
+    this.slides = Array.from(document.querySelectorAll('.slide'));
+    this.currentSlide = 0;
+    this.progress = document.getElementById('progress');
+    this.navDotsContainer = document.getElementById('navDots');
+    this.setupNavDots();
+    this.setupIntersectionObserver();
+    this.setupKeyboardNav();
+    this.setupTouchNav();
+    this.setupWheelNav();
+    this.setupScrollProgress();
+  }
+
+  setupNavDots() {
+    // Always clear before generating — re-saving HTML would otherwise duplicate dots.
+    this.navDotsContainer.innerHTML = '';
+    this.slides.forEach((slide, i) => {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.dataset.idx = i;
+      a.title = slide.dataset.title || `Slide ${i + 1}`;
+      a.setAttribute('aria-label', a.title);
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.goTo(i);
+      });
+      this.navDotsContainer.appendChild(a);
+    });
+    this.dots = Array.from(this.navDotsContainer.children);
+  }
+
+  setupIntersectionObserver() {
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.intersectionRatio > 0.55) {
+          entry.target.classList.add('visible');
+          const idx = this.slides.indexOf(entry.target);
+          if (idx !== -1) {
+            this.currentSlide = idx;
+            this.dots.forEach((d, di) => d.classList.toggle('active', di === idx));
+          }
+        }
+      });
+    }, { threshold: [0, 0.25, 0.55, 0.85] });
+    this.slides.forEach((s) => obs.observe(s));
+  }
+
+  setupKeyboardNav() {
+    document.addEventListener('keydown', (e) => {
+      // Don't hijack keys when user is editing a contenteditable element
+      if (e.target.isContentEditable) return;
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case 'PageDown':
+        case ' ':
+          e.preventDefault();
+          this.next();
+          break;
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'PageUp':
+          e.preventDefault();
+          this.prev();
+          break;
+        case 'Home':
+          e.preventDefault();
+          this.goTo(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          this.goTo(this.slides.length - 1);
+          break;
+        case 's':
+        case 'S':
+          e.preventDefault();
+          document.body.classList.toggle('show-notes');
+          break;
+      }
+    });
+  }
+
+  setupTouchNav() {
+    let startY = null;
+    document.addEventListener('touchstart', (e) => {
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+      if (startY === null) return;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dy) > 60) {
+        if (dy < 0) this.next(); else this.prev();
+      }
+      startY = null;
+    }, { passive: true });
+  }
+
+  setupWheelNav() {
+    // Native scroll-snap handles wheel events; this is a backup that also
+    // smooths very-fast trackpad flicks into one slide step at a time.
+    let wheelLock = false;
+    document.addEventListener('wheel', (e) => {
+      if (wheelLock) return;
+      if (Math.abs(e.deltaY) < 30) return;
+      wheelLock = true;
+      setTimeout(() => { wheelLock = false; }, 700);
+    }, { passive: true });
+  }
+
+  setupScrollProgress() {
+    const update = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      const pct = max > 0 ? (window.scrollY / max) * 100 : 0;
+      this.progress.style.width = pct + '%';
+    };
+    document.addEventListener('scroll', update, { passive: true });
+    update();
+  }
+
+  goTo(idx) {
+    idx = Math.max(0, Math.min(this.slides.length - 1, idx));
+    this.slides[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  next() { this.goTo(this.currentSlide + 1); }
+  prev() { this.goTo(this.currentSlide - 1); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  new SlidePresentation();
+  // Make the title slide visible immediately (it's already on screen on load).
+  const first = document.querySelector('.slide');
+  if (first) first.classList.add('visible');
+});
+</script>
+</body>
+</html>

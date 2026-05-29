@@ -1,0 +1,36 @@
+\section{Introduction}
+\label{sec:intro}
+
+Modern frontier LLMs author entire visual artifacts: slide decks, worksheets, technical illustrations, engineering diagrams.
+The most-deployed visual artifact in the K--12 educational market is the geometry diagram --- a 2D plane figure paired with a problem statement.
+Yet every existing geometry benchmark we are aware of evaluates the inverse direction: given a diagram, answer a question about it.
+None measures whether a model can \emph{produce} a correct diagram from a textual description.
+This is the gap \GeoGenBench fills.
+
+\paragraph{Motivating example.}
+\textit{``Draw an acute triangle $EFG$ with vertex angles $60^\circ$, $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''}
+A correct rendering satisfies: $\angle E = 60^\circ$, $\angle F = 70^\circ$, $H$ on segment $EF$ (not its extension), $\angle GHE = 90^\circ$, triangle acute.
+\GeoGenBench encodes each clause as a machine-checkable predicate against the SymPy-compiled coordinates of the model's rendered TikZ output: in our pilot, \haiku\ and \opus\ pass under both strategies; \gpt + \rawcode\ places $H$ on the line $EF$ but \emph{outside} the segment; \sonnet + \rawcode\ draws an obtuse triangle.
+The verifier flags each failure with a specific predicate verdict, not a holistic score (\cref{fig:cogen} illustrates the prompt$\to$rubric pipeline; the rendered-then-verified pipeline is in \cref{ssec:ver_defn}).
+
+\paragraph{Methodology vs.\ instance.}
+We use \textbf{\GeoGen} for the methodology: (i) procedural co-generation of prompts and property-list rubrics from shared source code, and (ii) a render-then-symbolic-verify pipeline driven by a declarative predicate language (\cref{sec:design}).
+\textbf{\GeoGenBench} is the 801-prompt plane-geometry instance.
+The distinction matters: future \GeoGen-family benchmarks for coordinate-plane algebra, 3D solids, and engineering drawings would inherit the methodology while extending the per-domain symbolic primitives.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item \textbf{The \GeoGen methodology and reusable verification toolkit} --- procedural co-generation eliminating prompt/rubric drift; render-then-symbolic-verify with a versioned 17-predicate declarative language; a hardening audit (\cref{ssec:ver_defn}) that closed $4.6\%$ of silently-skipped pilot checks across three passes.
+We release the engine, verifier, predicate language v1, and Docker renderer as reusable code.
+\item \textbf{The \GeoGenBench instance} --- 801 prompts (600 procedurally co-generated, 201 LLM-extracted from a curriculum scaffold), six frontier models from three vendors $\times$ two strategies, on a $600$-scenario $\times$ $3$-repeat draw.
+Headline findings: a strict-pass spread of $58$\pp ($35.9\% \to 94.1\%$) across eleven measurable cells; a $7\times$ cost spread at equivalent quality between \gpt + \structured ($94.1\%$, \dollars{0.075}/scen) and \opus + \structured ($93.3\%$, \dollars{0.532}/scen); and a portability finding (\cref{ssec:gemini_finding}: \geminiflash's schema-state cap blocks structured generation).
+A pre-registered $N{=}200$ human-correlation study (\cref{ssec:human}) finds moderate auto/expert agreement ($\kappa{=}0.455$) with one-directional verifier lenience concentrated on the loose-completeness templates we identify in \cref{ssec:ver_defn}.
+The dataset, template engine, verification toolkit, and leaderboard data are all released under permissive licenses.
+\end{enumerate}
+
+\paragraph{Headline empirical results.}
+The \structured strategy lifts every model by $+2.2$ to $+24.7$\pp: \gpt + $2.2$, \haiku + $4.8$, \sonnet + $12.2$, \opus + $21.7$, \geminipro + $24.7$\pp.
+Models strong at raw TikZ (\gpt) gain little from scaffolding; models weak at raw (\opus, \geminipro) gain the most.
+Under \structured, \gpt ($94.1$\%, \dollars{0.075}/scen), \sonnet ($93.4$\%, \dollars{0.088}), and \opus ($93.3$\%, \dollars{0.532}) span only $0.8$\pp at a $7\times$ cost ratio.
+\opus + \rawcode (\dollars{0.262}/scen, $71.6$\%) is the most decisively dominated cell: \gpt + \rawcode (\dollars{0.058}, $91.9$\%) gives $20$\pp better pass at $4.5\times$ lower cost.
+The Pareto frontier collapses such that all three frontier+IR cells co-locate.

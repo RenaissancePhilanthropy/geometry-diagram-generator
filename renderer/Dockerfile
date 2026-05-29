@@ -1,7 +1,8 @@
+# Build from project root: docker build -f renderer/Dockerfile .
 FROM reitzig/texlive-base-luatex:latest
 
 # Install TeX packages
-COPY Texlivefile /tmp/Texlivefile
+COPY renderer/Texlivefile /tmp/Texlivefile
 RUN tlmgr update --self && \
     xargs -a /tmp/Texlivefile tlmgr install && \
     tlmgr path add
@@ -10,9 +11,13 @@ RUN tlmgr update --self && \
 RUN apk add --no-cache python3 py3-pip
 RUN pip install --break-system-packages --no-cache-dir fastapi uvicorn pydantic
 
+RUN apk add --no-cache fontconfig
+COPY assets/fonts /usr/local/share/fonts/NunitoSans/
+RUN fc-cache -fv
+
 # API server
 WORKDIR /srv
-COPY app /srv/app
+COPY renderer/app /srv/app
 
 
 EXPOSE 8001

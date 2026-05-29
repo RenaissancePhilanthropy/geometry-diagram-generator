@@ -1,0 +1,26 @@
+name: circumcircle
+description: "Circumscribed circle passing through all three vertices of a triangle"
+tags: [triangle, circle, circumcenter, basic]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: circumcircle
+      id: cc
+      of: T
+      center: O
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "The circumcenter O is outside the triangle for obtuse triangles"
+  - "When combining with perpendicular bisectors: construct the bisectors first (perpendicular_bisector op), define their intersection as a named point, then pass that point as the circumcircle center. Do not construct the circumcircle independently and add bisectors after — construction order matters."
+  - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."

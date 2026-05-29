@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import pydantic
@@ -135,18 +136,20 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True) -> None:
-        super().__init__()
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None) -> None:
+        super().__init__(enable_cache=enable_cache)
         self.use_recipes = use_recipes
+        self.catalog = catalog
+        self.renderer = renderer
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
-        _renderer = TikZRenderer()
+        _renderer = self.renderer if self.renderer is not None else TikZRenderer()
         _strategy = self
         _last_sym: dict | None = None
         _last_dsl_json: dict | None = None  # last successful DSL for edit context
 
-        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS)
+        agent = Agent(model, instructions=_BUILD_AGENT_INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=MAX_RETRIES)
         async def render_diagram(request: str) -> str:
@@ -196,12 +199,13 @@ class RecipeStrategy(SubstanceStrategy):
         recipe_metadata = RecipeMetadata()
 
         if self.use_recipes:
-            catalog = load_catalog()
+            catalog = load_catalog(self.catalog)
             selection_prompt = build_selection_prompt(prompt, catalog)
             selector_agent: Agent[None, str] = Agent(
                 _SELECTOR_MODEL,
                 instructions=RECIPE_SELECTION_SYSTEM,
                 output_type=str,
+                model_settings=self.model_settings,
             )
             sel_response = await selector_agent.run(selection_prompt)
             sel_usage = sel_response.usage()
@@ -228,7 +232,7 @@ class RecipeStrategy(SubstanceStrategy):
             recipes: list[Recipe] = []
             for rid in selected_ids:
                 try:
-                    recipes.append(load_recipe(rid))
+                    recipes.append(load_recipe(rid, catalog=self.catalog))
                     recipe_metadata.selected_recipes.append(rid)
                 except KeyError:
                     logger.warning("Selected recipe %r not found in catalog; skipping", rid)
@@ -262,16 +266,65 @@ class RecipeStrategy(SubstanceStrategy):
         for attempt in range(MAX_RETRIES):
             user_message = generation_prompt
             if attempt > 0:
-                user_message = (
-                    f"{generation_prompt}\n\n"
-                    f"Previous attempt failed: {last_error}\n"
-                    f"Please produce a corrected RecipeDSL."
-                )
+                retry_msg = f"{generation_prompt}\n\nPrevious attempt failed: {last_error}\n"
+
+                # Check if error is AngleEqual-style and append targeted hint
+                if re.search(r"Angle \S+ = [\d.]+° but \S+ = [\d.]+", last_error):
+                    retry_msg += (
+                        "\nHINT: When two angles must be equal across separate constructions (e.g.\n"
+                        "mark_angle group), ensure the triangles are geometrically similar.\n"
+                        "For triangle ops: use the same angle values in both specs, OR use\n"
+                        "proportional side lengths with matching right_angle_at positions\n"
+                        "(e.g. legs 2:3 and 10:15 produce identical base angles).\n"
+                        "For free points: derive the second construction's coordinates from\n"
+                        "the first using the same ratios or rotation angles.\n"
+                    )
+
+                # Hint B: mark_right_angle geometric check failure
+                if re.search(r"mark_right_angle\(.*?\).*?not 90", last_error):
+                    retry_msg += (
+                        "\nHINT: A mark_right_angle annotation failed because the angle at that"
+                        " vertex is not 90°. The annotation declares an intent — the construction"
+                        " must make it true. Use point_foot to project the point onto the line:"
+                        " `{op: 'point_foot', id: 'X', source: 'P', onto: 'seg_AB'}` guarantees"
+                        " angle P-X-endpoint = 90°. Do not place the foot manually with"
+                        " point_along or fixed coordinates — only point_foot guarantees the right"
+                        " angle.\n"
+                    )
+
+                # Hint C: circular dependency caused by triangle id matching a vertex name
+                if re.search(r"[Cc]ircular dependency.*nodes are in a cycle", last_error):
+                    retry_msg += (
+                        "\nHINT: A circular dependency was detected — this almost always means a"
+                        " triangle (or other shape) op has an `id` that is the same as one of its"
+                        " own vertex names. For example, `{op:'triangle', id:'T', vertices:['R','S','T']}`"
+                        " creates a cycle because the shape object and vertex point share the id 'T'."
+                        " Fix: give the triangle a distinct id that does not appear in its vertices"
+                        " list, e.g. `id:'tri_RST'`.\n"
+                    )
+
+                # Hint D: between-selector mismatch (intersection outside the segment)
+                if re.search(r"beyond|before .+, t≈", last_error):
+                    retry_msg += (
+                        "\nHINT: The intersection exists but is outside the segment"
+                        " (t<0 = before the start point, t>1 = beyond the end point). This"
+                        " usually means the two objects' endpoints are placed so they don't"
+                        " actually cross between the named points. Reposition the endpoints so"
+                        " the two lines/segments genuinely intersect between the selector's"
+                        " reference points. For chords: ensure both chords span the interior of"
+                        " the circle and cross each other. For an angle bisector: verify the"
+                        " vertex angle is what the problem states (check the actual angle in"
+                        " your coords).\n"
+                    )
+
+                retry_msg += "Please produce a corrected RecipeDSL."
+                user_message = retry_msg
 
             gen_agent: Agent[None, RecipeDSL] = Agent(
                 model,
                 instructions=RECIPE_GENERATION_SYSTEM,
                 output_type=RecipeDSL,
+                model_settings=self.model_settings,
             )
             with capture_run_messages() as agent_messages:
                 try:

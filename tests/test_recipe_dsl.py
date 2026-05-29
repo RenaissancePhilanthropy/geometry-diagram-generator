@@ -21,17 +21,67 @@ from recipe.dsl import (
 # ---- Foundation ops ----
 
 def test_triangle_op_angles():
-    op = TriangleOp(id="T", vertices=["A","B","C"], spec={"angle_A": 60, "angle_B": 70})
+    op = TriangleOp(id="T", vertices=["A","B","C"], spec={"angle_A": 60, "angle_B": 70, "side_AB": 3})
     assert op.op == "triangle"
-    assert op.spec["angle_A"] == 60
+    assert op.spec.angle_A == 60
 
 def test_triangle_op_sides():
     op = TriangleOp(id="T", vertices=["A","B","C"], spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})
-    assert op.spec["side_AB"] == 3
+    assert op.spec.side_AB == 3
 
 def test_triangle_op_right_angle():
     op = TriangleOp(id="T", vertices=["A","B","C"], spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})
-    assert op.spec["right_angle_at"] == "B"
+    assert op.spec.right_angle_at == "B"
+
+
+# --- TriangleSpec model ---
+
+def test_triangle_spec_sss():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})
+    from recipe.dsl import TriangleSpec
+    assert isinstance(op.spec, TriangleSpec)
+    assert op.spec.side_AB == 3.0
+
+def test_triangle_spec_sas():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"side_AB": 4, "angle_B": 60, "side_BC": 3})
+    assert op.spec.angle_B == 60.0
+
+def test_triangle_spec_right_at():
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                    spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})
+    assert op.spec.right_angle_at == "B"
+
+def test_triangle_spec_underdetermined_raises():
+    """2 constraints (no right_angle_at) should fail."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"side_AB": 3, "side_BC": 4})
+
+def test_triangle_spec_aaa_raises():
+    """Three angles, no side — AAA is underdetermined."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "angle_C": 60})
+
+def test_triangle_spec_right_at_needs_two_constraints():
+    """right_angle_at alone is underdetermined (needs 2 more)."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"right_angle_at": "B"})
+
+def test_triangle_spec_extra_key_raises():
+    """extra='forbid' means unknown keys raise at parse time."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"side_AB": 3, "side_BC": 4, "side_CA": 5, "oops": 1})
+
+def test_triangle_spec_right_angle_at_invalid_slot_raises():
+    """right_angle_at must be A, B, or C."""
+    with pytest.raises(ValidationError):
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"right_angle_at": "D", "side_AB": 3, "side_BC": 4})
 
 def test_circle_op_radius():
     op = CircleOp(id="c", center="O", radius=5)
@@ -58,6 +108,23 @@ def test_point_op():
 def test_point_external_op():
     op = PointExternalOp(id="E", relative_to="c", direction="right", distance_ratio=1.5)
     assert op.op == "point_external"
+
+def test_point_external_direction_cardinal():
+    op = PointExternalOp(id="E", relative_to="c", direction="right", distance_ratio=1.5)
+    assert op.direction == "right"
+
+def test_point_external_direction_float():
+    op = PointExternalOp(id="E", relative_to="c", direction=45.0, distance_ratio=1.5)
+    assert op.direction == 45.0
+
+def test_point_external_direction_string_coerced_to_float():
+    """Pydantic v2 coerces '45' → 45.0 for Union[Literal[...], float]."""
+    op = PointExternalOp(id="E", relative_to="c", direction="45", distance_ratio=1.5)
+    assert op.direction == 45.0
+
+def test_point_external_direction_invalid_string_raises():
+    with pytest.raises(ValidationError):
+        PointExternalOp(id="E", relative_to="c", direction="diagonal", distance_ratio=1.5)
 
 def test_canvas_op():
     op = CanvasOp(id="_canvas", x_range=[-2, 8], y_range=[-2, 8])
@@ -120,6 +187,44 @@ def test_circumcircle_op():
 def test_incircle_op():
     op = IncircleOp(id="ic", of="T", center="I")
     assert op.op == "incircle"
+
+
+# --- CircumcircleOp / IncircleOp ---
+
+def test_circumcircle_of_triangle():
+    """Existing form still works."""
+    op = CircumcircleOp(id="cc", of="T", center="O")
+    assert op.of == "T"
+    assert op.points is None
+
+def test_circumcircle_of_points():
+    op = CircumcircleOp(id="cc", points=["A", "B", "C"], center="O")
+    assert op.points == ["A", "B", "C"]
+    assert op.of is None
+
+def test_circumcircle_neither_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", center="O")  # neither of nor points
+
+def test_circumcircle_both_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", of="T", points=["A", "B", "C"], center="O")
+
+def test_circumcircle_wrong_point_count_raises():
+    with pytest.raises(ValidationError):
+        CircumcircleOp(id="cc", points=["A", "B"], center="O")  # needs exactly 3
+
+def test_incircle_of_triangle():
+    op = IncircleOp(id="ic", of="T", center="I")
+    assert op.of == "T"
+
+def test_incircle_of_points():
+    op = IncircleOp(id="ic", points=["A", "B", "C"], center="I")
+    assert op.points == ["A", "B", "C"]
+
+def test_incircle_neither_raises():
+    with pytest.raises(ValidationError):
+        IncircleOp(id="ic", center="I")
 
 def test_perpendicular_bisector_op():
     op = PerpendicularBisectorOp(id="pb", of=["A","B"], mid="M")
@@ -247,7 +352,7 @@ def test_recipe_dsl_minimal():
         mode="abstract",
         construction=[
             {"op": "triangle", "id": "T", "vertices": ["A","B","C"],
-             "spec": {"angle_A": 60, "angle_B": 70}},
+             "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 3}},
         ]
     )
     assert dsl.mode == "abstract"
@@ -296,3 +401,332 @@ def test_point_on_segment_op():
     op = PointOnSegmentOp(id="D", segment=["A","B"], ratio=0.5)
     assert op.op == "point_on_segment"
     assert op.ratio == 0.5
+
+
+def test_arc_op_reflex_parses():
+    from recipe.dsl import ArcOp
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[
+            {"op": "arc", "id": "a", "center": "O", "start": "A", "end": "B", "reflex": True}
+        ],
+    )
+    arc_op = dsl.construction[0]
+    assert isinstance(arc_op, ArcOp)
+    assert arc_op.reflex is True
+
+
+def test_arc_op_reflex_default_false():
+    from recipe.dsl import ArcOp
+    op = ArcOp(id="a", center="O", start="A", end="B")
+    assert op.reflex is False
+
+
+# ---- PolygonFromSidesOp ----
+
+def test_polygon_from_sides_op_parses():
+    from recipe.dsl import PolygonFromSidesOp
+    op = PolygonFromSidesOp(id="pent", vertices=["A","B","C","D","E"],
+                            side_lengths=[5, 7, 8, 6, 4])
+    assert op.op == "polygon_from_sides"
+    assert op.vertices == ["A","B","C","D","E"]
+    assert op.side_lengths == [5, 7, 8, 6, 4]
+    assert op.center is None
+
+
+def test_polygon_from_sides_op_mismatched_lengths():
+    from recipe.dsl import PolygonFromSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromSidesOp(id="quad", vertices=["A","B","C","D"],
+                           side_lengths=[3, 4, 5])
+
+
+def test_polygon_from_sides_op_too_few_vertices():
+    from recipe.dsl import PolygonFromSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromSidesOp(id="seg", vertices=["A","B"],
+                           side_lengths=[3, 4])
+
+
+# ---- Selector → PickRule ----
+
+def test_intersection_selector_accepts_pick_rule_dict():
+    """Dict coerced to PickRule at parse time."""
+    op = IntersectionOp(
+        id="P", of=["L1", "C1"],
+        selector={"kind": "upper_of_line", "a": "A", "b": "B"},
+    )
+    from ir.ir import PickUpperOfLine
+    assert isinstance(op.selector, PickUpperOfLine)
+
+def test_intersection_selector_accepts_none():
+    op = IntersectionOp(id="P", of=["L1", "C1"])
+    assert op.selector is None
+
+def test_intersection_selector_rejects_invalid_kind():
+    """Invalid kind raises ValidationError at parse time, not lowering time."""
+    with pytest.raises(ValidationError):
+        IntersectionOp(
+            id="P", of=["L1", "C1"],
+            selector={"kind": "not_a_real_kind"},
+        )
+
+def test_tangent_line_selector_accepts_pick_rule_dict():
+    op = TangentLineOp(
+        id="T", circle="C", from_point="P",
+        selector={"kind": "closest_to", "p": "Q"},
+    )
+    from ir.ir import PickClosestTo
+    assert isinstance(op.selector, PickClosestTo)
+
+def test_tangent_line_selector_rejects_invalid():
+    with pytest.raises(ValidationError):
+        TangentLineOp(
+            id="T", circle="C", from_point="P",
+            selector={"kind": "bogus"},
+        )
+
+
+# ---- Label pos field ----
+
+def test_label_segment_has_pos_field_defaulting_to_auto():
+    from recipe.dsl import LabelSegment
+    lbl = LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4")
+    assert lbl.pos == "auto"
+
+def test_label_segment_pos_above():
+    from recipe.dsl import LabelSegment
+    lbl = LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4", pos="above")
+    assert lbl.pos == "above"
+
+def test_label_segment_pos_invalid_raises():
+    from recipe.dsl import LabelSegment
+    with pytest.raises(ValidationError):
+        LabelSegment(kind="label_segment", endpoints=["A", "B"], text="4", pos="diagonal")
+
+def test_label_angle_has_pos_field_defaulting_to_auto():
+    from recipe.dsl import LabelAngle
+    lbl = LabelAngle(kind="label_angle", a="A", vertex="B", b="C", text="60°")
+    assert lbl.pos == "auto"
+
+
+# --- RectangleSpec model ---
+
+def test_rectangle_spec_two_adjacent_sides():
+    from recipe.dsl import RectangleOp, RectangleSpec
+    op = RectangleOp(id="R", vertices=["A","B","C","D"],
+                     spec={"side_AB": 4, "side_BC": 3})
+    assert isinstance(op.spec, RectangleSpec)
+    assert op.spec.side_AB == 4.0
+    assert op.spec.side_BC == 3.0
+
+def test_rectangle_spec_with_rotation():
+    from recipe.dsl import RectangleOp
+    op = RectangleOp(id="R", vertices=["A","B","C","D"],
+                     spec={"side_AB": 4, "side_BC": 3, "rotation": 30.0})
+    assert op.spec.rotation == 30.0
+
+def test_rectangle_spec_opposite_sides_raises():
+    """side_AB + side_CD are opposite, not adjacent — should fail."""
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4, "side_CD": 4})
+
+def test_rectangle_spec_only_one_side_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4})
+
+def test_rectangle_spec_extra_key_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(ValidationError):
+        RectangleOp(id="R", vertices=["A","B","C","D"],
+                    spec={"side_AB": 4, "side_BC": 3, "oops": 1})
+
+
+# --- DSLCheck union ---
+
+def test_dsl_check_distance():
+    from recipe.dsl import CheckDistance
+    c = CheckDistance(points=["A", "B"], expected=5.0)
+    assert c.check == "distance"
+
+def test_dsl_check_parallel():
+    from recipe.dsl import CheckParallel
+    c = CheckParallel(seg1=["A", "B"], seg2=["C", "D"])
+    assert c.check == "parallel"
+
+def test_recipe_dsl_checks_field_accepts_typed_checks():
+    from recipe.dsl import CheckDistance, CheckPerpendicular
+    r = RecipeDSL(
+        construction=[PointOp(id="A", coords=[0, 0]), PointOp(id="B", coords=[3, 0])],
+        checks=[
+            {"check": "distance", "points": ["A", "B"], "expected": 3.0},
+            {"check": "perpendicular", "seg1": ["A", "B"], "seg2": ["B", "C"]},
+        ],
+    )
+    assert len(r.checks) == 2
+    assert isinstance(r.checks[0], CheckDistance)
+
+def test_recipe_dsl_checks_rejects_unknown_kind():
+    with pytest.raises(ValidationError):
+        RecipeDSL(
+            construction=[PointOp(id="A", coords=[0, 0])],
+            checks=[{"check": "nonexistent_kind", "foo": "bar"}],
+        )
+
+
+# ---- PolygonFromAnglesAndSidesOp ----
+
+def test_polygon_from_angles_and_sides_op_parses():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="para",
+        vertices=["E", "F", "G", "H"],
+        side_lengths=[5.0, 5.0, 5.0, 5.0],
+        angles=[100.0, 80.0, 100.0, 80.0],
+    )
+    assert op.op == "polygon_from_angles_and_sides"
+    assert op.vertices == ["E", "F", "G", "H"]
+    assert op.side_lengths == [5.0, 5.0, 5.0, 5.0]
+    assert op.angles == [100.0, 80.0, 100.0, 80.0]
+    assert op.center is None
+
+
+def test_polygon_from_angles_and_sides_op_n_minus_1_angles_valid():
+    """N-1 angles accepted — last is inferred from sum constraint."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="para",
+        vertices=["E", "F", "G", "H"],
+        side_lengths=[5.0, 5.0, 5.0, 5.0],
+        angles=[100.0, 80.0, 100.0],  # 3 angles for 4 vertices — valid
+    )
+    assert len(op.angles) == 3
+
+
+def test_polygon_from_angles_and_sides_op_too_few_angles_raises():
+    """N-2 angles (< N-1) should raise ValidationError."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[90.0, 90.0],  # 2 angles for 4 vertices — too few
+        )
+
+
+def test_polygon_from_angles_and_sides_op_too_many_angles_raises():
+    """N+1 angles should raise ValidationError."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[90.0, 90.0, 90.0, 90.0, 90.0],  # 5 angles for 4 vertices
+        )
+
+
+def test_polygon_from_angles_and_sides_op_roundtrips_json():
+    """DSLOp union parses polygon_from_angles_and_sides from raw dict."""
+    from recipe.dsl import RecipeDSL
+    raw = {
+        "construction": [{
+            "op": "polygon_from_angles_and_sides",
+            "id": "para",
+            "vertices": ["E", "F", "G", "H"],
+            "side_lengths": [5.0, 5.0, 5.0, 5.0],
+            "angles": [100.0, 80.0, 100.0, 80.0],
+        }]
+    }
+    dsl = RecipeDSL.model_validate(raw)
+    op = dsl.construction[0]
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    assert isinstance(op, PolygonFromAnglesAndSidesOp)
+
+
+def test_pfas_base_and_ref_point_valid():
+    """base + ref_point accepted; side_lengths can be N-1 (omit base edge)."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="pent",
+        vertices=["B","C","G","H","I"],
+        side_lengths=[5.0, 4.0, 4.0, 4.0],  # N-1 = 4, no base edge
+        angles=[108.0, 108.0, 108.0, 108.0],  # N-1, last inferred
+        base=["B","C"],
+        ref_point="X",
+    )
+    assert op.base == ["B","C"]
+    assert op.ref_point == "X"
+    assert len(op.side_lengths) == 4
+
+def test_pfas_base_n_side_lengths_accepted():
+    """base + N side_lengths: side_lengths[0] is the claimed base edge length."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="pent",
+        vertices=["B","C","G","H","I"],
+        side_lengths=[5.0, 5.0, 4.0, 4.0, 4.0],  # N = 5, includes base edge
+        angles=[108.0, 108.0, 108.0, 108.0],
+        base=["B","C"],
+        ref_point="X",
+    )
+    assert len(op.side_lengths) == 5
+
+def test_pfas_base_without_ref_point_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"],
+        )
+
+def test_pfas_base_with_center_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="X",
+            center=[2.0, 2.0],
+        )
+
+def test_pfas_base_with_rotation_raises():
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="X",
+            rotation=15.0,
+        )
+
+def test_pfas_base_vertices_must_start_with_base():
+    """vertices[0:2] must equal base[0:2]."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["X","Y","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0, 4.0],
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="R",
+        )
+
+def test_pfas_base_too_few_side_lengths_raises():
+    """N-2 side_lengths with base is too few (need N-1 or N)."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    with pytest.raises(ValidationError):
+        PolygonFromAnglesAndSidesOp(
+            id="pent", vertices=["B","C","G","H","I"],
+            side_lengths=[5.0, 4.0, 4.0],  # N-2 = 3, too few
+            angles=[108.0, 108.0, 108.0, 108.0],
+            base=["B","C"], ref_point="R",
+        )

@@ -61,11 +61,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Object {obj!r} unexpectedly contains point {p!r}"
 
             case ir.Parallel(l1=l1, l2=l2):
-                ok = _to_bool(_as_linear(sym[l1]).is_parallel(_as_linear(sym[l2])))
+                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not parallel"
 
             case ir.NotParallel(l1=l1, l2=l2):
-                ok = not _to_bool(_as_linear(sym[l1]).is_parallel(_as_linear(sym[l2])))
+                ok = not _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are unexpectedly parallel"
 
             case ir.Perpendicular(l1=l1, l2=l2):
@@ -75,9 +75,13 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             case ir.RightAngle(angle=angle):
                 av = _angle_at(sym[angle.a], sym[angle.o], sym[angle.b])
                 ok = abs(av - math.pi / 2) < t
-                msg = "" if ok else (
-                    f"Angle {angle.a}-{angle.o}-{angle.b} is {math.degrees(av):.3f}°, not 90°"
-                )
+                if ok:
+                    msg = ""
+                else:
+                    msg = f"Angle {angle.a}-{angle.o}-{angle.b} is {math.degrees(av):.3f}°, not 90°"
+                    cands = _candidate_angles_at(angle.o, sym, 90.0, t)
+                    if cands:
+                        msg += f" | right angles at {angle.o}: {', '.join(cands)}"
 
             case ir.AngleEqual(a1=a1, a2=a2):
                 v1 = _angle_at(sym[a1.a], sym[a1.o], sym[a1.b])
@@ -110,6 +114,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 else:
                     pairs = ", ".join(f"{s}={l:.4f}" for s, l in zip(segs, lengths))
                     msg = f"Segment lengths not equal: {pairs}"
+
+            case ir.DistanceEquals(seg=seg, expected=expected):
+                length = float(_seg_length(sym[seg]).evalf())
+                ok = abs(length - expected) < t * max(expected, 1.0)
+                msg = "" if ok else f"Segment {seg!r} length {length:.4f} ≠ expected {expected:.4f}"
 
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
                 l1 = float(_seg_length(sym[s1]).evalf())
@@ -171,6 +180,22 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Points {p!r} and {q!r} are not on the same side of line {line_a!r}-{line_b!r}"
                 )
 
+            case ir.Centroid(g=g, a=a, b=b, c=c):
+                ga = sym[g]
+                aa = sym[a]
+                ba = sym[b]
+                ca = sym[c]
+                cx = (float(aa.x.evalf()) + float(ba.x.evalf()) + float(ca.x.evalf())) / 3.0
+                cy = (float(aa.y.evalf()) + float(ba.y.evalf()) + float(ca.y.evalf())) / 3.0
+                dx = float(ga.x.evalf()) - cx
+                dy = float(ga.y.evalf()) - cy
+                ok = max(abs(dx), abs(dy)) <= t
+                msg = "" if ok else (
+                    f"Point {g!r} is not the centroid of triangle "
+                    f"{a!r}{b!r}{c!r}: expected ({cx:.4f}, {cy:.4f}), "
+                    f"got ({float(ga.x.evalf()):.4f}, {float(ga.y.evalf()):.4f})"
+                )
+
             case _:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True
@@ -187,6 +212,25 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _is_parallel(obj1, obj2, tol: float = 1e-9) -> bool:
+    """Check parallelism symbolically, falling back to numerical cross-product for float coords."""
+    try:
+        result = _to_bool(obj1.is_parallel(obj2))
+        if result:
+            return True
+    except Exception:
+        pass
+    # Numerical fallback: cross product of direction vectors
+    try:
+        d1 = obj1.direction
+        d2 = obj2.direction
+        cross = float(d1.x * d2.y - d1.y * d2.x)
+        norm = (float(abs(d1.x) + abs(d1.y))) * (float(abs(d2.x) + abs(d2.y)))
+        return abs(cross) < tol * norm if norm > 0 else True
+    except Exception:
+        return False
+
 
 def _to_bool(expr: Any) -> bool:
     if isinstance(expr, bool):
@@ -357,13 +401,14 @@ def _validate_triple(
     errors: list[str],
 ) -> None:
     a, o, b = angle.a, angle.o, angle.b
+    hint = f" (to mark an angle at {o}, draw a segment from {o} to each leg point)"
     if frozenset([a, o]) not in pairs:
         errors.append(
-            f"{kind}: point {a!r} does not lie on any line/segment/ray through vertex {o!r}"
+            f"{kind}: point {a!r} does not lie on any line/segment/ray through vertex {o!r}{hint}"
         )
     if frozenset([b, o]) not in pairs:
         errors.append(
-            f"{kind}: point {b!r} does not lie on any line/segment/ray through vertex {o!r}"
+            f"{kind}: point {b!r} does not lie on any line/segment/ray through vertex {o!r}{hint}"
         )
 
 

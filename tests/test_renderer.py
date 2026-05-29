@@ -5,7 +5,8 @@ NOTE: Tests that call TikZRenderer.render() require the renderer Docker containe
 """
 from __future__ import annotations
 
-from ir.renderer import Renderer, RenderResult, TikZRenderer
+from ir.font import FontConfig, default_font_config
+from ir.renderer import Renderer, RenderResult, SVGRenderer, TikZRenderer
 
 
 # ---------------------------------------------------------------------------
@@ -42,3 +43,26 @@ def test_tikz_renderer_accepts_custom_url():
     """TikZRenderer stores a custom renderer_url without error."""
     r = TikZRenderer(renderer_url="http://custom:9999")
     assert r._url == "http://custom:9999"
+
+
+def test_svg_renderer_default_font_config():
+    """SVGRenderer stores a FontConfig, defaulting to NunitoSans."""
+    r = SVGRenderer()
+    assert r._font_config.family == "NunitoSans"
+
+
+def test_svg_renderer_custom_font_config():
+    cfg = FontConfig(family="Roboto")
+    r = SVGRenderer(font_config=cfg)
+    assert r._font_config.family == "Roboto"
+
+
+def test_tikz_renderer_default_font_config():
+    r = TikZRenderer()
+    assert r._font_config.family == "NunitoSans"
+
+
+def test_tikz_renderer_custom_font_config():
+    cfg = FontConfig(family="Roboto")
+    r = TikZRenderer(font_config=cfg)
+    assert r._font_config.family == "Roboto"

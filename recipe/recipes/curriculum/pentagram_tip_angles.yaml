@@ -1,0 +1,102 @@
+name: pentagram_tip_angles
+description: "Regular pentagram (5-pointed star) with all five tip angles marked equal"
+tags: [star, pentagram, pentagon, circle, angle, advanced]
+context: "A regular 5-pointed star (pentagram) inscribed in a circle. The five tip angles are each 36° and sum to 180°."
+setup:
+  - op: point
+    id: O
+    coords: [0, 0]
+  - op: circle
+    id: circ
+    center: O
+    radius: 3
+example:
+  mode: abstract
+  construction:
+    # Reference point on circle at 0° (used for rotations)
+    - op: point
+      id: ref
+      coords: [3, 0]
+      visible: false
+    # Place 5 vertices evenly around the circle, starting at top (90°), every 72°
+    - op: rotation
+      id: A
+      point: ref
+      center: O
+      angle: 90
+    - op: rotation
+      id: B
+      point: ref
+      center: O
+      angle: 162
+    - op: rotation
+      id: C
+      point: ref
+      center: O
+      angle: 234
+    - op: rotation
+      id: D
+      point: ref
+      center: O
+      angle: 306
+    - op: rotation
+      id: E
+      point: ref
+      center: O
+      angle: 18
+    # Draw the 5 star sides: connect every other vertex to form the pentagram
+    # Traversal order A→C→E→B→D→A traces the {5/2} star polygon
+    - op: segment
+      id: side_AC
+      endpoints: [A, C]
+    - op: segment
+      id: side_CE
+      endpoints: [C, E]
+    - op: segment
+      id: side_EB
+      endpoints: [E, B]
+    - op: segment
+      id: side_BD
+      endpoints: [B, D]
+    - op: segment
+      id: side_DA
+      endpoints: [D, A]
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+    marks:
+      # All five tip angles are equal (36° each) — use the same group to show equality
+      - kind: mark_angle
+        a: D
+        vertex: A
+        b: C
+        group: 1
+      - kind: mark_angle
+        a: E
+        vertex: B
+        b: D
+        group: 1
+      - kind: mark_angle
+        a: A
+        vertex: C
+        b: E
+        group: 1
+      - kind: mark_angle
+        a: B
+        vertex: D
+        b: A
+        group: 1
+      - kind: mark_angle
+        a: C
+        vertex: E
+        b: B
+        group: 1
+notes:
+  - "Pentagram {5/2}: connect every other vertex of a regular pentagon inscribed in a circle."
+  - "Each tip angle = 36°. Sum of all five tip angles = 180° (same as a triangle's angle sum)."
+  - "Rotation starts at ref=(3,0) (0°). Vertices at 90°, 162°, 234°, 306°, 18° — spacing of 72°."
+  - "CRITICAL: use 'rotation' to place points on the circle, NOT point_on_segment."
+  - "Star traversal A→C→E→B→D→A skips one vertex each step, tracing the {5/2} star polygon."
+  - "mark_angle(D, A, C): incoming arm D→A and outgoing arm A→C — these are the two sides of the tip at A. Not collinear. ✓"
+  - "All 5 marks share group 1 to visually indicate all tip angles are equal."
+  - "The five intersection points inside form a regular inner pentagon (not drawn here)."

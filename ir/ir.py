@@ -315,6 +315,31 @@ class CircleThrough3(DefBase):
     c: PointId
 
 
+class ArcCenterStartEnd(DefBase):
+    """Circular arc between `start` and `end` around `center`.
+    Draws the minor (≤180°) arc by default; set `reflex=True` for the >180° arc."""
+    kind: Literal["arc_center_start_end"] = "arc_center_start_end"
+    center: PointId
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
+class SectorCenterStartEnd(DefBase):
+    """Closed circular sector between `start` and `end` around `center`.
+
+    Represents the pie-slice region bounded by two radii and an arc.
+    Minor sector (≤180°) by default; set `reflex=True` for the >180° sector.
+    Unlike ArcCenterStartEnd (which is just the curved edge), this is a
+    closed region and can be used as the `obj` of a Fill render op.
+    """
+    kind: Literal["sector_center_start_end"] = "sector_center_start_end"
+    center: PointId
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
 class EllipseCenterAxes(DefBase):
     """Axis-aligned ellipse defined by center and semi-axis lengths."""
     kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
@@ -387,6 +412,31 @@ class PolygonExterior(DefBase):
     b: PointId    # second edge endpoint (polygon vertex 1)
     ref: PointId  # reference point — polygon is placed on the OPPOSITE side
     sides: int = 4  # number of sides (4=square, 3=equilateral triangle)
+    vertex_names: Optional[list[str]] = None  # explicit names for all n vertices; if set, used instead of {id}_v{i}
+
+
+class PolygonOnEdge(DefBase):
+    """Irregular polygon built on edge (a→b), placed on the opposite side from ref.
+
+    Analogous to PolygonExterior but supports arbitrary side lengths and angles.
+
+    vertex_names: all N vertex names ([0]=a, [1]=b, [2..N-1]=new vertices)
+    side_lengths: exactly N-1 values (non-base sides):
+        side_lengths[0] = b→vertices[2]
+        side_lengths[1] = vertices[2]→vertices[3]
+        ...
+        side_lengths[N-2] = vertices[N-1]→a  (closing side)
+    angles: N values (fully expanded), sum = (N-2)*180
+    claimed_base_length: if set, validated against |a-b| at compile time
+    """
+    kind: Literal["polygon_on_edge"] = "polygon_on_edge"
+    a: PointId
+    b: PointId
+    ref: PointId
+    vertex_names: list[str]
+    side_lengths: list[float]    # N-1 non-base sides
+    angles: list[float]          # N angles
+    claimed_base_length: Optional[float] = None
 
 
 class PointMidpoint(DefBase):
@@ -483,8 +533,10 @@ DefStmt = Annotated[
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+        ArcCenterStartEnd,
+        SectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-        Triangle, Polygon, PolygonExterior,
+        Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     ],
     Field(discriminator="kind")
 ]
@@ -588,6 +640,12 @@ class EqualLength(CheckBase):
     segs: List[SegmentId]  # 2+
 
 
+class DistanceEquals(CheckBase):
+    kind: Literal["distance_equals"] = "distance_equals"
+    seg: SegmentId
+    expected: float
+
+
 class RightAngle(CheckBase):
     """Angle a-o-b is 90 degrees."""
     kind: Literal["right_angle"] = "right_angle"
@@ -619,6 +677,20 @@ class SameSide(CheckBase):
     line_b: PointId
 
 
+class Centroid(CheckBase):
+    """Point g is the centroid of triangle abc, i.e. g = (a + b + c) / 3.
+
+    Symmetric to the eval-side `centroid` predicate in
+    `util/tikz_geometry.py`; lets `structured` self-validate centroid
+    derivations before TikZ emission.
+    """
+    kind: Literal["centroid"] = "centroid"
+    g: PointId
+    a: PointId
+    b: PointId
+    c: PointId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -626,10 +698,11 @@ Check = Annotated[
         Contains, NotContains,
         Parallel, NotParallel, Perpendicular,
         RightAngle, AngleEqual,
-        EqualLength, RatioEqual,
+        EqualLength, DistanceEquals, RatioEqual,
         SimilarTriangles,
         Tangent,
         OppositeSide, SameSide,
+        Centroid,
     ],
     Field(discriminator="kind")
 ]
@@ -678,6 +751,7 @@ class LabelPoint(RenderBase):
         "auto", "above", "below", "left", "right",
         "above left", "above right", "below left", "below right"
     ] = "auto"
+    show_coords: bool = False
 
 
 class LabelAngle(RenderBase):
@@ -694,6 +768,26 @@ class LabelSegment(RenderBase):
     pos: Optional[float] = None
 
 
+class LabelFreeText(RenderBase):
+    """Place arbitrary text at explicit coordinates or at a polygon/triangle centroid.
+
+    Exactly one of ``at`` or ``centroid_of`` must be set.
+    ``text`` follows the same LaTeX notation as other labels (^{}, _{}, \\pi, etc.).
+    """
+    kind: Literal["label_free_text"] = "label_free_text"
+    text: str
+    at: Optional[List[float]] = None       # [x, y] in construction coordinates
+    centroid_of: Optional[ObjId] = None    # polygon/triangle ID → auto-compute centroid
+
+    @model_validator(mode="after")
+    def _check_exactly_one(self) -> "LabelFreeText":
+        has_at = self.at is not None
+        has_cof = self.centroid_of is not None
+        if has_at == has_cof:
+            raise ValueError("LabelFreeText requires exactly one of 'at' or 'centroid_of'")
+        return self
+
+
 class MarkRightAngles(RenderBase):
     """Emits the square symbol at each angle. Distinct from MarkAngles (arc)."""
     kind: Literal["mark_right_angles"] = "mark_right_angles"
@@ -701,9 +795,14 @@ class MarkRightAngles(RenderBase):
 
 
 class Fill(RenderBase):
-    """Fill a closed object (polygon, triangle, circle) with optional opacity."""
+    """Fill a closed object (polygon, triangle, circle) with optional opacity.
+
+    If ``holes`` is non-empty the fill is rendered with the even-odd rule so
+    each hole-shape punches a transparent cutout in the outer ``obj`` shape.
+    """
     kind: Literal["fill"] = "fill"
     obj: ObjId
+    holes: List[ObjId] = Field(default_factory=list)
     opacity: float = 1.0
 
 
@@ -711,7 +810,7 @@ RenderOp = Annotated[
     Union[
         Draw, DrawPoints, Fill,
         MarkAngles, MarkRightAngles, MarkSegments,
-        LabelPoint, LabelAngle, LabelSegment,
+        LabelPoint, LabelAngle, LabelSegment, LabelFreeText,
     ],
     Field(discriminator="kind")
 ]

@@ -1,0 +1,68 @@
+\section{Models and strategies}
+\label{sec:strategies}
+
+\paragraph{Models.}
+We evaluate six production frontier models spanning $\sim$$20\times$ in price across three vendors:
+\opus\ (\dollars{15}/\$75 per M input/output tokens), \sonnet\ (\dollars{3}/\$15), \haiku\ (\dollars{1}/\$5), \gpt\ (\dollars{5}/\$20), \geminipro\ (\dollars{1.25}/\$10), and \geminiflash\ (\dollars{0.30}/\$2.50).
+All runs use temperature $1.0$; costs use each model's published per-token rate as of April 2026.
+
+\paragraph{Strategies.}
+\GeoGenBench ships two reference strategies on a spectrum from ``maximum LLM freedom'' to ``schema-constrained intermediate representation''; both share a common \texttt{SubstanceStrategy} interface and either can be replaced by any text-emitting model.
+\Cref{fig:strategies_compare} shows what the LLM emits in each on the same prompt.
+\textbf{\rawcode}: the LLM is given the prompt plus a TikZ tutorial system prompt and produces TikZ directly via a \texttt{render\_diagram(tikz: str)} tool call.
+It may revise based on the rendered output but no symbolic checks are run.
+This is the zero-scaffolding baseline.
+\textbf{\structured}: the LLM is given a Pydantic schema for a typed intermediate representation \texttt{DiagramIR} (point declarations, segments, intersections, circles, render ops, \emph{check} declarations) and emits IR JSON; \emph{code} (not the LLM) compiles IR $\to$ SymPy $\to$ TikZ $\to$ SVG.
+The IR's check list runs \emph{before} render, so the strategy self-corrects: if a declared check fails, the strategy revises (up to $N{=}3$ retries).
+This is the strategy we recommend for production deployment.
+The codebase additionally ships \texttt{strategies/raw\_svg.py} (text $\to$ SVG, no TeX); we exclude it from the headline since it measures essentially the same task as raw TikZ.
+
+\begin{figure}[t]
+\centering
+\small
+\fbox{\begin{minipage}{0.97\linewidth}
+\textit{Common prompt:} ``Draw an acute triangle $EFG$ with $\angle E = 60^{\circ}$, $\angle F = 70^{\circ}$. Construct the altitude from $G$ meeting $EF$ at $H$.''
+\end{minipage}}\\[6pt]
+\newlength{\stratcolwd}\setlength{\stratcolwd}{0.47\linewidth}
+\newlength{\stratcodeht}\setlength{\stratcodeht}{42mm}
+
+\begin{minipage}[t]{\stratcolwd}
+\centering
+{\textbf{\rawcode}}\\
+{\scriptsize\itshape zero scaffolding --- LLM emits TikZ directly}\\[2pt]
+\fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
+\ttfamily\tiny
+\textbackslash coordinate (E) at (0,0);\\
+\textbackslash coordinate (F) at (5,0);\\
+\textbackslash coordinate (G) at (3.07,5.31);\\
+\textbackslash coordinate (H) at (3.07,0);\\
+\textbackslash draw (E)--(F)--(G)--cycle;\\
+\textbackslash draw[densely dashed] (G) -- (H);
+\end{minipage}}
+\end{minipage}\hfill
+\begin{minipage}[t]{\stratcolwd}
+\centering
+{\textbf{\structured}}\\
+{\scriptsize\itshape schema-constrained IR --- LLM emits typed JSON, we compile to TikZ}\\[2pt]
+\fbox{\begin{minipage}[t][\stratcodeht][t]{\dimexpr\stratcolwd-2\fboxsep-2\fboxrule\relax}
+\ttfamily\tiny
+\{ "points": [\\
+\hphantom{x}\{"name":"E","type":"free"\},\\
+\hphantom{x}\{"name":"F","type":"free"\},\\
+\hphantom{x}\{"name":"G","type":"by\_angles",\\
+\hphantom{xx}"from":"E","to":"F",\\
+\hphantom{xx}"ang\_at\_from":60,"ang\_at\_to":70\}],\\
+\hphantom{x}"intersections":[\{"name":"H",\\
+\hphantom{xx}"lines":[["G","perp\_EF"],["E","F"]]\}],\\
+\hphantom{x}"checks":[\{"type":"right\_angle",\\
+\hphantom{xx}"args":["G","H","E"]\}]\}
+\end{minipage}}
+\end{minipage}
+\caption{The two reference strategies on the same prompt. Both converge to the same TikZ$\to$SVG$\to$SymPy$\to$predicate-verdict pipeline.}
+\label{fig:strategies_compare}
+\end{figure}
+
+\paragraph{Cost and latency.}
+For each (model, strategy, scenario, repeat) we record (a)~total input/output tokens including retries, (b)~wall-clock duration from prompt submission to rendered SVG, and (c)~the token-multiplied USD cost.
+The \emph{mean cost per scenario} reported in \cref{sec:results} is the arithmetic mean across the headline run including failed scenarios.
+The headline run draws each of the $600$ templated scenarios with three repeats per cell, with up to three internal IR-check retries on \structured.

@@ -6,6 +6,7 @@ from pydantic_ai import Agent, ModelRetry
 from util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .instructions import RAW_TIKZ_INSTRUCTIONS
+from .stages import RawRunResult, extract_svg_from_messages
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ and call the render_diagram tool. Then briefly explain what you drew.
 
 class RawCodeStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
-        agent = Agent(model, instructions=INSTRUCTIONS)
+        agent = Agent(model, instructions=INSTRUCTIONS, model_settings=self.model_settings)
 
         @agent.tool_plain(retries=3)
         def render_diagram(tikz: str, tkzelements: str = "") -> str:
@@ -37,3 +38,21 @@ class RawCodeStrategy(SubstanceStrategy):
             return json.dumps({"svg": svg})
 
         return agent
+
+    async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:  # noqa: ARG002
+        from util.message_helpers import count_tool_calls, extract_tool_call_args
+
+        result = await self.build_agent(model=model).run(prompt)
+        usage = result.usage()
+        messages = result.all_messages()
+        tool_args = extract_tool_call_args(messages, "render_diagram") or {}
+        tool_calls = count_tool_calls(messages, "render_diagram")
+        return RawRunResult(
+            svg=extract_svg_from_messages(messages),
+            input_tokens=usage.input_tokens or 0,
+            output_tokens=usage.output_tokens or 0,
+            tikz=tool_args.get("tikz"),
+            tkzelements=tool_args.get("tkzelements") or None,
+            tool_calls=tool_calls,
+            retries=max(0, tool_calls - 1),
+        )

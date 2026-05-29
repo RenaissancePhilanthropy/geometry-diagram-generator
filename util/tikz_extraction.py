@@ -84,6 +84,7 @@ def point_names_match(expected: str, actual: str) -> bool:
 # Point names may contain trailing primes: A, A', A''
 _POINT_NAME = r"\w+'{0,3}"
 
+# Literal-coordinate fast path: \tkzDefPoint(2.5,3){A}
 _DEF_POINT_RE = re.compile(
     rf"\\tkzDefPoint\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*\{{({_POINT_NAME})\}}"
 )
@@ -91,16 +92,204 @@ _COORDINATE_RE = re.compile(
     rf"\\coordinate\s*\(({_POINT_NAME})\)\s*at\s*\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
 )
 
+# Slow path for expression-style coords: \tkzDefPoint({...},{...}){B}
+# We capture the (potentially nested-parenthesis) coordinate group as a raw
+# string and evaluate it via a tiny pgfmath-compatible expression engine.
+_DEF_POINT_HEAD_RE = re.compile(r"\\tkzDefPoint\s*\(")
+_GET_NAME_AFTER_RE = re.compile(rf"\s*\{{({_POINT_NAME})\}}")
+
+# \pgfmathsetmacro{\name}{expr} — register macro for substitution.
+_PGF_SETMACRO_RE = re.compile(r"\\pgfmathsetmacro\s*\{\\(\w+)\}\s*\{([^}]+)\}")
+
+
+def _read_balanced_parens(source: str, start: int) -> tuple[str, int] | None:
+    r"""Read a parenthesized substring starting at ``source[start] == '('``.
+
+    Returns (inner_text_without_outer_parens, index_after_closing_paren), or
+    None if parens don't balance. Tracks depth across both ``(`` and ``{``
+    so coordinate expressions like ``({\side*cos(-35)},{...})`` parse.
+    """
+    if start >= len(source) or source[start] != "(":
+        return None
+    depth = 1
+    i = start + 1
+    paren_depth = 1
+    brace_depth = 0
+    while i < len(source) and depth > 0:
+        c = source[i]
+        if c == "(":
+            paren_depth += 1
+            depth += 1
+        elif c == ")":
+            paren_depth -= 1
+            depth -= 1
+            if depth == 0:
+                return source[start + 1 : i], i + 1
+        elif c == "{":
+            brace_depth += 1
+            depth += 1
+        elif c == "}":
+            brace_depth -= 1
+            depth -= 1
+        i += 1
+    return None
+
+
+def _split_top_level_comma(s: str) -> list[str]:
+    """Split *s* on commas that are not inside ``(``...``)`` or ``{``...``}``."""
+    out: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    for c in s:
+        if c in "({":
+            depth += 1
+        elif c in ")}":
+            depth -= 1
+        if c == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+    out.append("".join(cur))
+    return [p.strip() for p in out]
+
+
+def _extract_pgfmath_macros(tikz: str) -> dict[str, float]:
+    """Evaluate \\pgfmathsetmacro definitions in source order.
+
+    Macros may reference earlier macros; unresolvable definitions are
+    silently skipped (their value stays absent from the table).
+    """
+    table: dict[str, float] = {}
+    for m in _PGF_SETMACRO_RE.finditer(tikz):
+        name, expr = m.group(1), m.group(2)
+        try:
+            table[name] = _eval_pgf_expr(expr, table)
+        except Exception:
+            continue
+    return table
+
+
+def _eval_pgf_expr(expr: str, macros: dict[str, float]) -> float:
+    """Evaluate a pgfmath-style scalar expression to a float.
+
+    Supports:
+      - decimal literals, unary minus
+      - ``+ - * /`` and parentheses
+      - ``cos(d)``, ``sin(d)``, ``tan(d)`` with d in degrees (pgfmath default)
+      - ``sqrt(x)``, ``abs(x)``
+      - ``\\macro`` references resolved via *macros*
+
+    Raises ValueError on any unsupported construct.
+    """
+    import ast
+    import math
+
+    # Strip surrounding braces ({\side*cos(-35)} -> \side*cos(-35))
+    s = expr.strip()
+    while s.startswith("{") and s.endswith("}"):
+        s = s[1:-1].strip()
+
+    # Substitute \macro references with their numeric values.
+    def _sub(match: re.Match) -> str:
+        name = match.group(1)
+        if name not in macros:
+            raise ValueError(f"undefined macro \\{name}")
+        return repr(float(macros[name]))
+
+    s = re.sub(r"\\(\w+)", _sub, s)
+
+    # Parse with Python's ast and walk a restricted node set.
+    try:
+        tree = ast.parse(s, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"parse error: {exc}") from exc
+
+    funcs = {
+        "cos": lambda x: math.cos(math.radians(x)),
+        "sin": lambda x: math.sin(math.radians(x)),
+        "tan": lambda x: math.tan(math.radians(x)),
+        "sqrt": math.sqrt,
+        "abs": abs,
+    }
+
+    def _walk(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return _walk(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.UnaryOp):
+            v = _walk(node.operand)
+            if isinstance(node.op, ast.USub):
+                return -v
+            if isinstance(node.op, ast.UAdd):
+                return +v
+            raise ValueError(f"unsupported unary op: {type(node.op).__name__}")
+        if isinstance(node, ast.BinOp):
+            l = _walk(node.left)
+            r = _walk(node.right)
+            if isinstance(node.op, ast.Add):
+                return l + r
+            if isinstance(node.op, ast.Sub):
+                return l - r
+            if isinstance(node.op, ast.Mult):
+                return l * r
+            if isinstance(node.op, ast.Div):
+                return l / r
+            if isinstance(node.op, ast.Pow):
+                return l ** r
+            raise ValueError(f"unsupported binary op: {type(node.op).__name__}")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            fn = funcs.get(node.func.id)
+            if fn is None:
+                raise ValueError(f"unsupported function: {node.func.id}")
+            args = [_walk(a) for a in node.args]
+            return float(fn(*args))
+        raise ValueError(f"unsupported node: {type(node).__name__}")
+
+    return _walk(tree)
+
 
 def extract_defined_points(tikz: str) -> dict[str, tuple[float, float]]:
-    """Extract explicitly defined points from \\tkzDefPoint(x,y){Name} and \\coordinate(name) at (x,y) commands."""
+    """Extract explicitly defined points from \\tkzDefPoint(x,y){Name} and
+    \\coordinate(name) at (x,y) commands. Handles literal-only coordinates
+    on the fast path; falls back to a pgfmath-style expression evaluator
+    for coordinates wrapped in ``{}`` or containing macro references.
+    """
     points: dict[str, tuple[float, float]] = {}
+
     for m in _DEF_POINT_RE.finditer(tikz):
         x, y, name = float(m.group(1)), float(m.group(2)), m.group(3)
         points[name] = (x, y)
+
     for m in _COORDINATE_RE.finditer(tikz):
         name, x, y = m.group(1), float(m.group(2)), float(m.group(3))
         points[name] = (x, y)
+
+    macros = _extract_pgfmath_macros(tikz)
+
+    for head in _DEF_POINT_HEAD_RE.finditer(tikz):
+        paren_open = head.end() - 1  # the '(' itself
+        balanced = _read_balanced_parens(tikz, paren_open)
+        if balanced is None:
+            continue
+        coord_text, after = balanced
+        name_match = _GET_NAME_AFTER_RE.match(tikz, after)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        if name in points:
+            continue  # literal extractor already got it
+        parts = _split_top_level_comma(coord_text)
+        if len(parts) != 2:
+            continue
+        try:
+            x = _eval_pgf_expr(parts[0], macros)
+            y = _eval_pgf_expr(parts[1], macros)
+        except Exception:
+            continue
+        points[name] = (x, y)
+
     return points
 
 
@@ -109,12 +298,28 @@ def extract_defined_points(tikz: str) -> dict[str, tuple[float, float]]:
 # ---------------------------------------------------------------------------
 
 _GET_POINT_RE = re.compile(rf"\\tkzGetPoint\s*\{{({_POINT_NAME})\}}")
+# \tkzGetPoints{X}{Y} (plural) — names the two intersection points produced
+# by \tkzInterCC or \tkzInterLC.
+_GET_POINTS_RE = re.compile(
+    rf"\\tkzGetPoints\s*\{{({_POINT_NAME})\}}\s*\{{({_POINT_NAME})\}}"
+)
 _MID_POINT_RE = re.compile(r"\\tkzDefMidPoint\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
 _CIRCUM_CENTER_RE = re.compile(
     r"\\tkzCircumCenter\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
 )
 _INTER_LL_RE = re.compile(
     r"\\tkzInterLL\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)"
+)
+# \tkzInterCC(O,A)(C,B) — circle through A centered at O, circle through B
+# centered at C; the two intersection points are then named via
+# \tkzGetPoints{P}{Q}.
+_INTER_CC_RE = re.compile(
+    r"\\tkzInterCC\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)"
+)
+# \tkzInterLC(A,B)(O,T) — line AB intersected with circle centered at O
+# passing through T.
+_INTER_LC_RE = re.compile(
+    r"\\tkzInterLC\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)"
 )
 _ORTHO_CENTER_RE = re.compile(
     r"\\tkzOrthoCenter\s*\(\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)"
@@ -147,7 +352,8 @@ def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
     # Pair each computation command with the following \\tkzGetPoint
     # by scanning positionally through the source.
     tokens = list(re.finditer(
-        r"(\\tkzDefMidPoint|\\tkzCircumCenter|\\tkzInterLL|\\tkzGetPoint"
+        r"(\\tkzDefMidPoint|\\tkzCircumCenter|\\tkzInterLL|\\tkzInterCC"
+        r"|\\tkzInterLC|\\tkzGetPoints|\\tkzGetPoint"
         r"|\\tkzOrthoCenter|\\tkzCentroid|\\tkzDefTriangleCenter|\\tkzDefPointBy)\b",
         tikz,
     ))
@@ -176,6 +382,22 @@ def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
             if m:
                 pending = {
                     "type": "inter_ll",
+                    "args": [m.group(1), m.group(2), m.group(3), m.group(4)],
+                }
+
+        elif cmd == "\\tkzInterCC":
+            m = _INTER_CC_RE.match(rest)
+            if m:
+                pending = {
+                    "type": "inter_cc",
+                    "args": [m.group(1), m.group(2), m.group(3), m.group(4)],
+                }
+
+        elif cmd == "\\tkzInterLC":
+            m = _INTER_LC_RE.match(rest)
+            if m:
+                pending = {
+                    "type": "inter_lc",
                     "args": [m.group(1), m.group(2), m.group(3), m.group(4)],
                 }
 
@@ -230,6 +452,15 @@ def extract_computed_points(tikz: str) -> dict[str, dict[str, Any]]:
             m = _GET_POINT_RE.match(rest)
             if m and pending is not None:
                 computed[m.group(1)] = pending
+                pending = None
+
+        elif cmd == "\\tkzGetPoints":
+            m = _GET_POINTS_RE.match(rest)
+            # \tkzGetPoints names two intersection candidates from the most
+            # recent multi-solution computation (\tkzInterCC, \tkzInterLC).
+            if m and pending is not None and pending.get("type") in {"inter_cc", "inter_lc"}:
+                computed[m.group(1)] = {**pending, "which": 0}
+                computed[m.group(2)] = {**pending, "which": 1}
                 pending = None
 
     return computed

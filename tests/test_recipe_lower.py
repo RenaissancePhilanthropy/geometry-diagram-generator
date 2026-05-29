@@ -14,8 +14,9 @@ from recipe.dsl import (
     LineThroughOp, SegmentOp, IntersectionOp, CircleOp, CanvasOp,
     PolygonOp, PointOp, ReflectionOp, RotationOp, PointOnSegmentOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
-    PointFootOp, CircleThrough3Op,
+    PointFootOp, CircleThrough3Op, TangentLineOp, RectangleOp,
 )
+from ir.ir import Contains
 from recipe.lower import lower_to_ir, LoweringError
 from ir.ir import (
     DiagramIR, PointFixed, PointMidpoint, PointFoot, PointTriangleCenter,
@@ -75,6 +76,33 @@ def test_triangle_point_fixed_coords_are_floats():
     for f in fixed:
         assert isinstance(float(f.x), float)
         assert isinstance(float(f.y), float)
+
+
+def test_triangle_lowering_with_non_abc_vertices():
+    """Non-ABC vertices with positional spec should lower correctly."""
+    dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
+                            spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})])
+    ir = lower_to_ir(dsl)
+    # side_AB means side_PQ=3, side_BC means side_QR=4, side_CA means side_RP=5
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 3
+    assert kinds.count("triangle") == 1
+
+def test_triangle_right_angle_at_b_generates_check():
+    """right_angle_at='B' with non-ABC vertices maps to the correct vertex."""
+    dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
+                            spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})])
+    ir = lower_to_ir(dsl)
+    from ir.ir import RightAngle
+    ra_checks = [c for c in ir.checks if isinstance(c, RightAngle)]
+    assert len(ra_checks) == 1
+    # B slot → Q vertex
+    assert ra_checks[0].angle.o == "Q"
+
+def test_remap_triangle_spec_no_longer_exists():
+    """_remap_triangle_spec should be deleted."""
+    import recipe.lower as lower_mod
+    assert not hasattr(lower_mod, "_remap_triangle_spec")
 
 
 # ---------------------------------------------------------------------------
@@ -219,55 +247,6 @@ def test_perpendicular_bisector_no_duplicate_segment_when_explicit():
     assert len(segs) == 1, "Should have exactly one segment A-B, not a duplicate"
 
 
-# ---------------------------------------------------------------------------
-# Triangle spec key remapping
-# ---------------------------------------------------------------------------
-
-from recipe.lower import _remap_triangle_spec
-
-
-def test_remap_triangle_spec_noop_when_abc_vertices():
-    """No remapping when vertices include A, B, or C."""
-    spec = {"angle_A": 60, "side_AB": 3}
-    assert _remap_triangle_spec(["A", "B", "C"], spec) == spec
-
-
-def test_remap_triangle_spec_noop_when_partial_abc_overlap():
-    """No remapping when even one vertex is A/B/C."""
-    spec = {"angle_A": 60, "angle_B": 70, "side_AB": 3}
-    assert _remap_triangle_spec(["A", "D", "E"], spec) == spec
-
-
-def test_remap_triangle_spec_remaps_angles_and_sides():
-    """Full remap for vertices completely disjoint from {A, B, C}."""
-    spec = {"angle_A": 50, "angle_B": 70, "side_AB": 5}
-    result = _remap_triangle_spec(["D", "E", "F"], spec)
-    assert result == {"angle_D": 50, "angle_E": 70, "side_DE": 5}
-
-
-def test_remap_triangle_spec_right_angle_at():
-    """right_angle_at value is also remapped."""
-    spec = {"right_angle_at": "A", "side_AB": 3, "side_CA": 4}
-    result = _remap_triangle_spec(["P", "Q", "R"], spec)
-    assert result["right_angle_at"] == "P"
-    assert "side_PQ" in result
-    assert "side_RP" in result
-
-
-def test_remap_triangle_spec_integration_similar_triangles():
-    """Two triangles: second with D/E/F vertices and generic A/B/C spec keys should lower."""
-    dsl = _dsl([
-        TriangleOp(id="triABC", vertices=["A", "B", "C"],
-                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 3},
-                   center=[2.0, 1.5]),
-        TriangleOp(id="triDEF", vertices=["D", "E", "F"],
-                   spec={"angle_A": 50, "angle_B": 70, "side_AB": 5},  # generic keys
-                   center=[7.0, 2.5]),
-    ])
-    ir = lower_to_ir(dsl)  # should not raise
-    assert any(d.id == "D" for d in ir.define)
-    assert any(d.id == "E" for d in ir.define)
-    assert any(d.id == "F" for d in ir.define)
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +374,90 @@ def test_intersection_with_selector():
     assert p.kind == "point_intersection"
     assert p.pick is not None
     assert p.pick.kind == "upper_of_line"
+
+
+# ---------------------------------------------------------------------------
+# point_on_segment ratio semantics (Group F)
+# ---------------------------------------------------------------------------
+
+def test_point_on_segment_ratio_float_lowers_to_point_between():
+    """PointOnSegmentOp with float ratio lowers to PointBetween with same ratio."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio=1/3),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.a == "B"
+    assert m.b == "C"
+    assert abs(float(m.ratio) - 1/3) < 1e-9
+
+
+def test_point_on_segment_ratio_string_colon_lowers_correctly():
+    """ratio='1:2' means 1/(1+2) = 1/3 from segment[0].
+
+    For 'M on BC with MC=2·MB': MB:MC=1:2 → ratio='1:2' with segment=[B,C].
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio="1:2"),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.a == "B"
+    assert m.b == "C"
+    # ratio string is passed through to IR as-is; SymPy layer parses "1:2" → 1/3
+    assert m.ratio == "1:2"
+
+
+def test_point_on_segment_ratio_2_colon_1_lowers_correctly():
+    """ratio='2:1' means 2/(2+1) = 2/3 from segment[0].
+
+    If a problem says 'MC=2·MB', the LLM must use ratio='1:2' (not '2:1').
+    '2:1' gives 2/3 from B, meaning MB=2·MC — the inverse.
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="M", segment=["B","C"], ratio="2:1"),
+    ])
+    ir = lower_to_ir(dsl)
+    m = next(d for d in ir.define if d.id == "M")
+    assert m.kind == "point_between"
+    assert m.ratio == "2:1"
+
+
+def test_point_on_segment_ratio_af_fd_1_2():
+    """'AF:FD=1:2' → F is 1/3 from A → segment=[A,D], ratio='1:2'.
+
+    TriangleSpec uses positional angle_A/B/C regardless of vertex names.
+    """
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","D","X"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="F", segment=["A","D"], ratio="1:2"),
+    ])
+    ir = lower_to_ir(dsl)
+    f = next(d for d in ir.define if d.id == "F")
+    assert f.kind == "point_between"
+    assert f.a == "A"
+    assert f.b == "D"
+    assert f.ratio == "1:2"
+
+
+def test_point_on_segment_degenerate_same_endpoints_raises():
+    """segment=[A,A] must raise LoweringError with helpful message."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        PointOnSegmentOp(id="G", segment=["A","A"], ratio=0.5),
+    ])
+    with pytest.raises(LoweringError, match="both endpoints are the same point"):
+        lower_to_ir(dsl)
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +639,7 @@ def test_multiple_triangles_circumcircle():
         {"op": "triangle", "id": "T1", "vertices": ["A","B","C"],
          "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 4}},
         {"op": "triangle", "id": "T2", "vertices": ["P","Q","R"],
-         "spec": {"angle_P": 50, "angle_Q": 60, "side_PQ": 4}},
+         "spec": {"angle_A": 50, "angle_B": 60, "side_AB": 4}},
         {"op": "circumcircle", "id": "cc2", "of": "T2", "center": "O2"},
     ])
     ir = lower_to_ir(dsl)
@@ -717,7 +780,7 @@ def test_two_triangles_with_centers_non_overlapping():
         {"op": "triangle", "id": "t1", "vertices": ["A", "B", "C"],
          "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 3}, "center": [2, 2]},
         {"op": "triangle", "id": "t2", "vertices": ["D", "E", "F"],
-         "spec": {"angle_D": 50, "angle_E": 70, "side_DE": 5}, "center": [8, 2]},
+         "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 5}, "center": [8, 2]},
     ])
     ir = lower_to_ir(dsl)
     coords = {d.id: (d.x, d.y) for d in ir.define if hasattr(d, 'x') and hasattr(d, 'y')}
@@ -884,7 +947,7 @@ def test_mark_right_angle_emits_check():
     from ir.ir import RightAngle
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
-         "spec": {"right_angle_at": "C"}},
+         "spec": {"right_angle_at": "C", "side_AB": 5, "side_BC": 3}},
     ], annotations={"marks": [{"kind": "mark_right_angle", "a": "A", "vertex": "C", "b": "B"}]})
     ir = lower_to_ir(dsl)
     ra_checks = [c for c in ir.checks if c.kind == "right_angle"]
@@ -994,7 +1057,7 @@ def test_mark_right_angle_at_of_shorthand():
     """mark_right_angle with at/of shorthand produces correct AnglePoints."""
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
-         "spec": {"right_angle_at": "C"}},
+         "spec": {"right_angle_at": "C", "side_AB": 5, "side_BC": 3}},
     ], annotations={"marks": [
         {"kind": "mark_right_angle", "at": "C", "of": "T"},
     ]})
@@ -1182,3 +1245,745 @@ def test_ellipse_op_foci_lowers():
     assert ellipses[0].focus1 == "F1"
     assert ellipses[0].focus2 == "F2"
     assert ellipses[0].major_axis == 10
+
+
+# ---------------------------------------------------------------------------
+# RectangleOp lowering
+# ---------------------------------------------------------------------------
+
+def test_rectangle_op_lowers_to_four_points_and_polygon():
+    from recipe.dsl import RectangleOp
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].points == ["A", "B", "C", "D"]
+
+
+def test_rectangle_op_correct_side_lengths():
+    import math
+    from recipe.dsl import RectangleOp
+    from ir.to_sympy import compile_defs
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ]))
+    sym = compile_defs(ir)
+    a = sym["A"]
+    b = sym["B"]
+    c = sym["C"]
+    ab = float(a.distance(b))
+    bc = float(b.distance(c))
+    assert abs(ab - 4.0) < 1e-6
+    assert abs(bc - 3.0) < 1e-6
+
+
+def test_rectangle_op_auto_right_angle_triple():
+    from recipe.dsl import RectangleOp
+    from recipe.lower import _Lowerer
+    dsl = _dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+    ])
+    lowerer = _Lowerer()
+    lowerer.lower(dsl)
+    # (B, A, D) triple should be registered
+    triples = lowerer._right_angle_triples
+    assert any(t[1] == "A" for t in triples)
+
+
+def test_rectangle_op_bad_spec_raises():
+    from recipe.dsl import RectangleOp
+    with pytest.raises(Exception):
+        lower_to_ir(_dsl([
+            RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4}),
+        ]))
+
+
+# ---------------------------------------------------------------------------
+# FillOp lowering
+# ---------------------------------------------------------------------------
+
+def test_fill_op_lowers_to_fill_render_op():
+    from recipe.dsl import RectangleOp, FillOp
+    from ir.ir import Fill
+    ir = lower_to_ir(_dsl([
+        RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
+        CircleOp(id="circ", center="A", radius=1),
+        FillOp(id="shade", obj="circ", holes=["rect"], opacity=0.3),
+    ]))
+    fill_ops = [r for r in ir.render if isinstance(r, Fill)]
+    assert len(fill_ops) == 1
+    assert fill_ops[0].obj == "circ"
+    assert fill_ops[0].holes == ["rect"]
+    assert abs(fill_ops[0].opacity - 0.3) < 1e-9
+
+
+def test_fill_op_without_holes():
+    from recipe.dsl import FillOp
+    from ir.ir import Fill
+    ir = lower_to_ir(_dsl([
+        CircleOp(id="circ", center="O", radius=2),
+        PointOp(id="O", coords=[0.0, 0.0]),
+        FillOp(id="shade", obj="circ", opacity=0.5),
+    ], mode="grid"))
+    fill_ops = [r for r in ir.render if isinstance(r, Fill)]
+    assert len(fill_ops) == 1
+    assert fill_ops[0].holes == []
+
+
+# ---------------------------------------------------------------------------
+# ArcOp
+# ---------------------------------------------------------------------------
+
+def test_arc_op_lowers_to_arc_def_and_is_drawable():
+    from recipe.dsl import ArcOp
+    from ir.ir import ArcCenterStartEnd
+    ir = lower_to_ir(_dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="A", coords=[1.0, 0.0]),
+        PointOp(id="B", coords=[0.0, 1.0]),
+        ArcOp(id="arc1", center="O", start="A", end="B"),
+    ], mode="grid", annotations=DSLAnnotations(
+        auto_draw_all=True, auto_label_points=False,
+    )))
+    arc_defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd)]
+    assert len(arc_defs) == 1
+    assert arc_defs[0].id == "arc1"
+    assert arc_defs[0].center == "O"
+    assert arc_defs[0].start == "A"
+    assert arc_defs[0].end == "B"
+    # auto_draw_all should emit a Draw op for the arc
+    assert any(r.kind == "draw" and r.obj == "arc1" for r in ir.render)
+
+
+def test_arc_op_reflex_flag_flows_through():
+    from recipe.dsl import ArcOp
+    from ir.ir import ArcCenterStartEnd
+    ir = lower_to_ir(_dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="A", coords=[1.0, 0.0]),
+        PointOp(id="B", coords=[0.0, 1.0]),
+        ArcOp(id="a", center="O", start="A", end="B", reflex=True),
+    ], mode="grid", annotations=DSLAnnotations(
+        auto_draw_all=True, auto_label_points=False,
+    )))
+    arc_defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd)]
+    assert len(arc_defs) == 1
+    assert arc_defs[0].reflex is True
+
+
+# ---------------------------------------------------------------------------
+# PolygonFromSidesOp lowering
+# ---------------------------------------------------------------------------
+
+def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
+    """polygon_from_sides emits N PointFixed defs + 1 Polygon def."""
+    from recipe.dsl import PolygonFromSidesOp
+    ir = lower_to_ir(_dsl([
+        PolygonFromSidesOp(id="quad", vertices=["A","B","C","D"],
+                           side_lengths=[7, 24, 20, 15]),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].id == "quad"
+    assert polygons[0].points == ["A", "B", "C", "D"]
+    ids = _ids(ir)
+    for v in ["A", "B", "C", "D"]:
+        assert v in ids
+
+
+def test_polygon_from_angles_and_sides_lowers_to_n_point_fixed_and_polygon():
+    """polygon_from_angles_and_sides emits N PointFixed defs + 1 Polygon def."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    ir = lower_to_ir(_dsl([
+        PolygonFromAnglesAndSidesOp(
+            id="para",
+            vertices=["E", "F", "G", "H"],
+            side_lengths=[5.0, 5.0, 5.0, 5.0],
+            angles=[100.0, 80.0, 100.0, 80.0],
+        ),
+    ]))
+    kinds = _kinds(ir)
+    assert kinds.count("point_fixed") == 4
+    polygons = [d for d in ir.define if d.kind == "polygon"]
+    assert len(polygons) == 1
+    assert polygons[0].id == "para"
+    assert polygons[0].points == ["E", "F", "G", "H"]
+    ids = _ids(ir)
+    for v in ["E", "F", "G", "H"]:
+        assert v in ids
+
+
+# ---------------------------------------------------------------------------
+# Label pos field lowering
+# ---------------------------------------------------------------------------
+
+def test_label_segment_pos_above_lowered_to_90_degrees():
+    """label_segment with pos='above' lowers to IR pos=90.0."""
+    from recipe.dsl import LabelSegment as DSLLabelSegment
+    from ir.ir import LabelSegment as IRLabelSegment
+    dsl = _dsl(
+        [TriangleOp(id="T", vertices=["A", "B", "C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            labels=[DSLLabelSegment(kind="label_segment", endpoints=["A", "B"],
+                                    text="3", pos="above")],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    seg_labels = [r for r in ir.render if isinstance(r, IRLabelSegment)]
+    assert len(seg_labels) == 1
+    assert seg_labels[0].pos == 90.0
+
+
+def test_label_segment_pos_auto_lowered_to_none():
+    """label_segment with pos='auto' (default) lowers to IR pos=None."""
+    from recipe.dsl import LabelSegment as DSLLabelSegment
+    from ir.ir import LabelSegment as IRLabelSegment
+    dsl = _dsl(
+        [TriangleOp(id="T", vertices=["A", "B", "C"],
+                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
+        annotations=DSLAnnotations(
+            auto_draw_all=False,
+            auto_label_points=False,
+            labels=[DSLLabelSegment(kind="label_segment", endpoints=["A", "B"],
+                                    text="3")],  # default pos="auto"
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    seg_labels = [r for r in ir.render if isinstance(r, IRLabelSegment)]
+    assert seg_labels[0].pos is None
+
+
+def test_rectangle_lowering_with_non_abcd_vertices():
+    """Non-ABCD vertices with positional spec should lower correctly."""
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_AB": 4, "side_BC": 3})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    assert kinds.count("polygon") == 1
+    # Check that the correct dimensions were used (P and Q are 4 apart)
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    import math
+    pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
+    assert abs(pq_dist - 4.0) < 1e-6
+
+
+def test_rectangle_lowering_bc_cd():
+    """BC + CD adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_BC": 3, "side_CD": 4})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    assert kinds.count("polygon") == 1
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # QR distance should be side_BC = 3
+    qr_dist = math.hypot(pts["R"][0] - pts["Q"][0], pts["R"][1] - pts["Q"][1])
+    assert abs(qr_dist - 3.0) < 1e-6
+
+
+def test_rectangle_lowering_cd_da():
+    """CD + DA adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_CD": 4, "side_DA": 3})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # RS distance should be side_CD = 4
+    rs_dist = math.hypot(pts["S"][0] - pts["R"][0], pts["S"][1] - pts["R"][1])
+    assert abs(rs_dist - 4.0) < 1e-6
+
+
+def test_rectangle_lowering_da_ab():
+    """DA + AB adjacent pair should lower correctly."""
+    import math
+    from recipe.dsl import RectangleOp
+    dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
+                             spec={"side_DA": 3, "side_AB": 4})])
+    ir = lower_to_ir(dsl)
+    kinds = [d.kind for d in ir.define]
+    assert kinds.count("point_fixed") == 4
+    pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
+    # PQ distance should be side_AB = 4
+    pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
+    assert abs(pq_dist - 4.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# CircumcircleOp / IncircleOp points= path
+# ---------------------------------------------------------------------------
+
+def test_circumcircle_from_points_creates_implicit_triangle():
+    """CircumcircleOp with points= should create an implicit triangle and circumcircle."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        PointOp(id="C", coords=[2.0, 3.0]),
+        CircumcircleOp(id="cc", points=["A", "B", "C"], center="O"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids_ = [d.id for d in ir.define]
+    assert "__cc_tri" in ids_          # implicit triangle
+    assert "O" in ids_                 # circumcenter
+    assert "cc" in ids_                # circumcircle
+    contains = [c for c in ir.checks if isinstance(c, Contains)]
+    assert len(contains) == 3          # all three points on the circle
+
+def test_incircle_from_points_creates_implicit_triangle():
+    """IncircleOp with points= should create an implicit triangle and incircle."""
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        PointOp(id="C", coords=[2.0, 3.0]),
+        IncircleOp(id="ic", points=["A", "B", "C"], center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids_ = [d.id for d in ir.define]
+    assert "__ic_tri" in ids_
+    assert "I" in ids_
+    assert "ic" in ids_
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: self-intersection error
+# ---------------------------------------------------------------------------
+
+def test_self_intersection_error():
+    """intersection(obj, obj) should give a clear 'with itself' error, not a cryptic SymPy error."""
+    from ir.to_sympy import compile_defs
+    from ir.errors import IRCompileError
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        IntersectionOp(id="X", of=["c1", "c1"]),
+    ])
+    ir = lower_to_ir(dsl)
+    with pytest.raises(IRCompileError, match="itself"):
+        compile_defs(ir)
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: incircle of polygon
+# ---------------------------------------------------------------------------
+
+def test_incircle_of_square():
+    """IncircleOp should work with a square polygon, producing center at centroid and radius = half side."""
+    dsl = _dsl([
+        RectangleOp(
+            id="sq", vertices=["A", "B", "C", "D"],
+            spec={"side_AB": 4.0, "side_BC": 4.0},
+            center=None,
+        ),
+        IncircleOp(id="ic", of="sq", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids = [d.id for d in ir.define]
+    assert "I" in ids
+    assert "ic" in ids
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    assert isinstance(circle_def.radius, (int, float))
+    # Inscribed circle of a 4x4 square has radius 2
+    assert abs(circle_def.radius - 2.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: tangent at point on circle
+# ---------------------------------------------------------------------------
+
+def test_tangent_at_point_on_circle():
+    """tangent_line with at= should emit a line perpendicular to the radius at that point."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ])
+    ir = lower_to_ir(dsl)
+    ids = [d.id for d in ir.define]
+    assert "__tang_radius" in ids
+    assert "tang" in ids
+    radius_def = next(d for d in ir.define if d.id == "__tang_radius")
+    tang_def = next(d for d in ir.define if d.id == "tang")
+    assert radius_def.kind == "line_through"
+    assert set([radius_def.p, radius_def.q]) == {"O", "P"}
+    assert tang_def.kind == "line_perp_through"
+    assert tang_def.through == "P"
+    assert tang_def.to_line == "__tang_radius"
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: self-intersection error — additional cases
+# ---------------------------------------------------------------------------
+
+def test_self_intersection_error_segment():
+    """intersection(seg, seg) with the same segment should also raise 'itself'."""
+    from ir.to_sympy import compile_defs
+    from ir.errors import IRCompileError
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[4.0, 0.0]),
+        SegmentOp(id="s1", endpoints=["A", "B"]),
+        IntersectionOp(id="X", of=["s1", "s1"]),
+    ])
+    ir = lower_to_ir(dsl)
+    with pytest.raises(IRCompileError, match="itself"):
+        compile_defs(ir)
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: incircle of polygon — additional cases
+# ---------------------------------------------------------------------------
+
+def test_incircle_of_rectangle_radius_is_min_half_side():
+    """Inscribed circle of a 4x6 rectangle has radius 2 (= half the shorter side)."""
+    dsl = _dsl([
+        RectangleOp(
+            id="rect", vertices=["A", "B", "C", "D"],
+            spec={"side_AB": 6.0, "side_BC": 4.0},
+            center=None,
+        ),
+        IncircleOp(id="ic", of="rect", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    assert abs(circle_def.radius - 2.0) < 1e-6
+
+
+def test_incircle_of_polygon_op():
+    """IncircleOp works with an explicit PolygonOp whose vertices are already placed."""
+    # 6x6 square via raw PolygonOp with pre-placed points
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[6.0, 0.0]),
+        PointOp(id="C", coords=[6.0, 6.0]),
+        PointOp(id="D", coords=[0.0, 6.0]),
+        PolygonOp(id="sq", vertices=["A", "B", "C", "D"]),
+        IncircleOp(id="ic", of="sq", center="I"),
+    ])
+    ir = lower_to_ir(dsl)
+    circle_def = next(d for d in ir.define if d.id == "ic")
+    center_def = next(d for d in ir.define if d.id == "I")
+    assert abs(circle_def.radius - 3.0) < 1e-6
+    # Center should be at centroid (3, 3)
+    assert abs(center_def.x - 3.0) < 1e-6
+    assert abs(center_def.y - 3.0) < 1e-6
+
+
+def test_incircle_unknown_id_error_lists_available():
+    """IncircleOp referencing an unknown id should name available triangles and polygons."""
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A", "B", "C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        IncircleOp(id="ic", of="nosuchpoly", center="I"),
+    ])
+    with pytest.raises(LoweringError, match="nosuchpoly"):
+        lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: tangent at point — additional cases
+# ---------------------------------------------------------------------------
+
+def test_tangent_at_point_is_drawable():
+    """The tangent line emitted by at= should appear in renders when auto_draw_all=True."""
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=5.0),
+        PointOp(id="P", coords=[0.0, 5.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ], annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False))
+    ir = lower_to_ir(dsl)
+    drawn_ids = {r.obj for r in ir.render if r.kind == "draw"}
+    assert "tang" in drawn_ids
+    # The helper radius line is implicit — should not be auto-drawn
+    assert "__tang_radius" not in drawn_ids
+
+
+def test_tangent_at_point_geometric_correctness():
+    """The compiled tangent line should pass through P and be perpendicular to the radius."""
+    import sympy.geometry as spg
+    from ir.to_sympy import compile_defs
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="c1", at="P"),
+    ])
+    ir = lower_to_ir(dsl)
+    sym = compile_defs(ir)
+    tang = sym["tang"]
+    radius_line = sym["__tang_radius"]
+    p = sym["P"]
+    # Tangent passes through P
+    assert tang.contains(p)
+    # Tangent is perpendicular to the radius line
+    assert tang.is_perpendicular(radius_line)
+
+
+def test_tangent_at_unknown_circle_raises():
+    """TangentLineOp with at= referencing an unknown circle raises LoweringError."""
+    dsl = _dsl([
+        PointOp(id="P", coords=[3.0, 0.0]),
+        TangentLineOp(id="tang", circle="no_such_circle", at="P"),
+    ])
+    with pytest.raises(LoweringError, match="no_such_circle"):
+        lower_to_ir(dsl)
+
+
+def test_polygon_on_edge_lowers_to_polygon_on_edge_ir_def():
+    """Edge-anchored mode emits PolygonOnEdge IR def; G is NOT PointFixed."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from ir.ir import PolygonOnEdge, PointFixed
+    ir_out = lower_to_ir(_dsl([
+        PointOp(id="B", coords=[3.0, 0.0]),
+        PointOp(id="C", coords=[8.0, 0.0]),
+        PointOp(id="R", coords=[5.5, -1.0]),  # ref_point below BC
+        PolygonFromAnglesAndSidesOp(
+            id="tri",
+            vertices=["B","C","G"],
+            side_lengths=[5.0, 5.0],   # N-1 = 2 sides (CG and GB)
+            angles=[60.0, 60.0, 60.0],
+            base=["B","C"],
+            ref_point="R",
+        ),
+    ]))
+    pol = [d for d in ir_out.define if isinstance(d, PolygonOnEdge)]
+    assert len(pol) == 1, f"Expected 1 PolygonOnEdge, got {len(pol)}"
+    p = pol[0]
+    assert p.a == "B" and p.b == "C" and p.ref == "R"
+    assert p.vertex_names == ["B","C","G"]
+    assert len(p.side_lengths) == 2  # N-1
+    assert p.claimed_base_length is None  # not provided
+    # G must NOT be a PointFixed
+    fixed_ids = {d.id for d in ir_out.define if isinstance(d, PointFixed)}
+    assert "G" not in fixed_ids
+
+def test_polygon_on_edge_n_side_lengths_sets_claimed_base():
+    """N side_lengths: claimed_base_length set to side_lengths[0]."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from ir.ir import PolygonOnEdge
+    ir_out = lower_to_ir(_dsl([
+        PointOp(id="B", coords=[0.0, 0.0]),
+        PointOp(id="C", coords=[5.0, 0.0]),
+        PointOp(id="R", coords=[2.5, -1.0]),
+        PolygonFromAnglesAndSidesOp(
+            id="tri",
+            vertices=["B","C","G"],
+            side_lengths=[5.0, 5.0, 5.0],  # N=3; side_lengths[0]=5.0 is the claimed base
+            angles=[60.0, 60.0, 60.0],
+            base=["B","C"],
+            ref_point="R",
+        ),
+    ]))
+    pol = [d for d in ir_out.define if isinstance(d, PolygonOnEdge)]
+    assert pol[0].claimed_base_length == 5.0
+    assert len(pol[0].side_lengths) == 2  # non-base sides only in IR
+
+
+def test_sector_op_lowers_to_sector_def():
+    """SectorOp lowers to a SectorCenterStartEnd def and is drawable."""
+    from recipe.dsl import SectorOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        SectorOp(id="sec", center="A", start="B", end="C"),
+    ])
+    ir = lower_to_ir(dsl)
+    defs = {d.id: d for d in ir.define}
+    assert "sec" in defs
+    sec = defs["sec"]
+    assert isinstance(sec, SectorCenterStartEnd)
+    assert sec.center == "A"
+    assert sec.start == "B"
+    assert sec.end == "C"
+    assert sec.reflex is False
+
+
+def test_sector_op_reflex():
+    from recipe.dsl import SectorOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        TriangleOp(id="T", vertices=["A","B","C"],
+                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+        SectorOp(id="sec", center="A", start="B", end="C", reflex=True),
+    ])
+    ir = lower_to_ir(dsl)
+    sec = next(d for d in ir.define if d.id == "sec")
+    assert isinstance(sec, SectorCenterStartEnd)
+    assert sec.reflex is True
+
+
+# ---------------------------------------------------------------------------
+# RegularSectorsOp
+# ---------------------------------------------------------------------------
+
+def test_regular_sectors_emits_n_sectors():
+    """RegularSectorsOp with n=4 emits 4 SectorCenterStartEnd defs."""
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=3.0, n=4),
+    ])
+    ir = lower_to_ir(dsl)
+    sectors = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
+    assert len(sectors) == 4
+
+
+def test_regular_sectors_spoke_points_on_circle():
+    """Spoke points are at the correct distance from center."""
+    import math
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import PointFixed
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=2.0, n=4),
+    ])
+    ir = lower_to_ir(dsl)
+    spokes = [d for d in ir.define if isinstance(d, PointFixed) and "__r" in d.id]
+    assert len(spokes) == 4
+    for sp in spokes:
+        dist = math.hypot(float(sp.x), float(sp.y))
+        assert dist == pytest.approx(2.0, abs=1e-9)
+
+
+def test_regular_sectors_start_angle():
+    """start_angle=90 rotates first spoke to point north."""
+    import math
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import PointFixed
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="spokes", center="O", radius=1.0, n=4, start_angle=90.0),
+    ])
+    ir = lower_to_ir(dsl)
+    spoke0 = next(d for d in ir.define if d.id == "spokes__r0")
+    assert float(spoke0.x) == pytest.approx(0.0, abs=1e-9)
+    assert float(spoke0.y) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_regular_sectors_sectors_share_boundary_points():
+    """Adjacent sectors share spoke endpoint IDs (sector k end == sector k+1 start)."""
+    from recipe.dsl import RegularSectorsOp
+    from ir.ir import SectorCenterStartEnd
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        RegularSectorsOp(id="w", center="O", radius=3.0, n=3),
+    ])
+    ir = lower_to_ir(dsl)
+    sectors = sorted(
+        [d for d in ir.define if isinstance(d, SectorCenterStartEnd)],
+        key=lambda s: s.id,
+    )
+    assert len(sectors) == 3
+    # Each sector's end matches the next sector's start
+    for i in range(3):
+        assert sectors[i].end == sectors[(i + 1) % 3].start
+
+
+# ---------------------------------------------------------------------------
+# mark_angle label_only mode
+# ---------------------------------------------------------------------------
+
+def test_mark_angle_label_only_skips_geometric_check():
+    """mark_angle with label_only=True and inconsistent expected value lowers without error.
+
+    Triangle with sides AB=12, BC=18 (right-angle at B). The actual angle at C
+    is ~33.7°. Marking it as 30° with label_only=True should succeed because the
+    geometric assertion is suppressed.
+    """
+    dsl = RecipeDSL(construction=[
+        {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+         "spec": {"right_angle_at": "B", "side_AB": 12, "side_BC": 18}},
+    ], annotations={"marks": [
+        {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
+         "expected": 30, "label_only": True},
+    ]})
+    ir = lower_to_ir(dsl)  # must not raise
+    assert ir is not None
+    # The MarkAngles render op must still be emitted
+    from ir.ir import MarkAngles
+    mark_ops = [op for op in ir.render if isinstance(op, MarkAngles)]
+    assert len(mark_ops) >= 1
+
+
+def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
+    """Without label_only, an expected value far from actual raises LoweringError.
+
+    The actual angle at C is ~33.7°. Using expected=60 (>5° away) triggers the check.
+    """
+    with pytest.raises(LoweringError):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+             "spec": {"right_angle_at": "B", "side_AB": 12, "side_BC": 18}},
+        ], annotations={"marks": [
+            {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
+             "expected": 60},
+        ]}))
+
+
+# ---------------------------------------------------------------------------
+# polygon_from_angles_and_sides: N-1 side_lengths (infer closing side)
+# ---------------------------------------------------------------------------
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_l_shape():
+    """L-shape hexagon: 6 angles, 5 explicit sides → infer 6th (A→F = 4)."""
+    from recipe.solve import solve_polygon_from_angles_and_sides
+    vertices = ["F", "E", "D", "C", "B", "A"]
+    angles   = [90, 90, 90, 270, 90, 90]
+    sides_5  = [6.0, 2.0, 3.0, 2.0, 3.0]   # omit A→F = 4
+    coords = solve_polygon_from_angles_and_sides(vertices, sides_5, angles)
+    assert set(coords.keys()) == set(vertices)
+    # A→F distance should be ~4
+    ax, ay = coords["A"]
+    fx, fy = coords["F"]
+    assert abs(math.hypot(ax - fx, ay - fy) - 4.0) < 0.01
+
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_rectangle():
+    """Rectangle: 4 angles (all 90), 3 explicit sides → infer 4th."""
+    from recipe.solve import solve_polygon_from_angles_and_sides
+    vertices = ["A", "B", "C", "D"]
+    angles   = [90, 90, 90, 90]
+    sides_3  = [5.0, 3.0, 5.0]   # omit D→A = 3
+    coords = solve_polygon_from_angles_and_sides(vertices, sides_3, angles)
+    ax, ay = coords["A"]
+    dx, dy = coords["D"]
+    assert abs(math.hypot(ax - dx, ay - dy) - 3.0) < 0.01
+
+
+def test_polygon_from_angles_and_sides_n_minus_1_sides_inconsistent_raises():
+    """Wildly wrong side length → SpecError on closing direction mismatch."""
+    from recipe.solve import solve_polygon_from_angles_and_sides, SpecError
+    vertices = ["F", "E", "D", "C", "B", "A"]
+    angles   = [90, 90, 90, 270, 90, 90]
+    bad_5    = [6.0, 2.0, 3.0, 2.0, 999.0]   # last side wildly wrong
+    with pytest.raises(SpecError, match="inconsistent"):
+        solve_polygon_from_angles_and_sides(vertices, bad_5, angles)
+
+
+def test_polygon_from_angles_and_sides_dsl_n_minus_1_sides_accepted():
+    """DSL validator accepts N-1 side_lengths in standalone mode."""
+    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    op = PolygonFromAnglesAndSidesOp(
+        id="lshape",
+        vertices=["F","E","D","C","B","A"],
+        side_lengths=[6.0, 2.0, 3.0, 2.0, 3.0],   # 5 of 6
+        angles=[90, 90, 90, 270, 90, 90],
+    )
+    assert len(op.side_lengths) == 5

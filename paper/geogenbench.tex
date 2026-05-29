@@ -1,0 +1,64 @@
+% GeoGenBench: A Benchmark for Generative Geometric Reasoning with Symbolic Verification
+%
+% (GeoGen = the methodology; GeoGenBench = the released benchmark.)
+%
+% Target venue: NeurIPS 2026 Evaluations & Datasets Track
+% (renamed from "Datasets & Benchmarks Track" for 2026; default review mode is now double-blind)
+%
+% Build:  make            (uses latexmk + lualatex)
+%         make watch      (continuous rebuild on save)
+%         make clean
+%
+% See README.md for Docker / Overleaf alternatives.
+
+\documentclass{article}
+
+% ============================================================
+% Switch between submission and camera-ready by toggling the
+% [final] option below. NeurIPS submissions are anonymised by
+% default (no [final]), camera-ready uses [final].
+% ============================================================
+% [nonatbib] avoids package clash since we load natbib ourselves in preamble.tex.
+\usepackage[nonatbib]{style/neurips_2026}              % anonymous submission (current)
+% \usepackage[final,nonatbib]{style/neurips_2026}      % camera-ready
+% \usepackage[preprint,nonatbib]{style/neurips_2026}   % preprint with author names visible
+
+\input{preamble}
+
+\title{GeoGenBench: A Benchmark for Generative Geometric Reasoning \\ with Symbolic Verification}
+
+% Anonymise for submission; un-comment for preprint/camera-ready.
+\author{%
+  Anonymous Authors\\
+  Affiliation\\
+  \texttt{anon@example.org}
+}
+
+\begin{document}
+
+\maketitle
+
+\input{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_benchmark_design}
+\input{sections/04_verification_reliability}
+\input{sections/05_models_strategies}
+\input{sections/06_results}
+\input{sections/07_discussion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\appendix
+\input{appendices/A_template_specs}
+\input{appendices/B_property_reference}
+\input{appendices/C_completeness_witnesses}
+\input{appendices/D_reproduction}
+\input{appendices/E_human_study}
+\input{appendices/F_failure_coding}
+\input{appendices/G_case_studies}
+\input{appendices/H_neurips_checklist}
+
+\end{document}

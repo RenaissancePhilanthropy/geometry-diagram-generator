@@ -69,6 +69,7 @@ from strategies.recipe import RecipeStrategy
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
+from strategies.stages import RawRunResult
 from util.tikz_renderer import check_renderer_health
 from ir.renderer import Renderer, TikZRenderer, SVGRenderer
 from util.tikz_analysis import (
@@ -83,8 +84,8 @@ from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 class _RecipeNoRecipesStrategy(RecipeStrategy):
-    def __init__(self) -> None:
-        super().__init__(use_recipes=False)
+    def __init__(self, enable_cache: bool = False) -> None:
+        super().__init__(use_recipes=False, enable_cache=enable_cache)
 
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
@@ -122,6 +123,7 @@ async def _run_query_phase(
     is the relevant call even if the LLM also calls list_objects first).
     """
     from pydantic_ai import Agent
+    from strategies.base import cache_model_settings
     from strategies.structured import dispatch_query
     from ir.queries import list_objects as _list_objects
 
@@ -134,6 +136,7 @@ async def _run_query_phase(
 
     objects_info = json.dumps(_list_objects(sym))
     results: list[dict[str, Any]] = []
+    _cache_settings = cache_model_settings(len(queries) > 1)
 
     for query_def in queries:
         question = query_def["question"]
@@ -152,7 +155,7 @@ async def _run_query_phase(
         }
 
         try:
-            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS)
+            agent = Agent(model, instructions=_QUERY_EVAL_INSTRUCTIONS, model_settings=_cache_settings)
 
             @agent.tool_plain
             async def query_diagram(query_type: str, args: dict[str, str]) -> str:
@@ -228,6 +231,8 @@ async def run_scenario(
     llm_judge: bool = False,
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
+    enable_cache: bool = False,
+    reasoning_effort: str | None = None,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -269,7 +274,15 @@ async def run_scenario(
     }
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
-    strategy = strategy_cls()
+    strategy = strategy_cls(enable_cache=enable_cache)
+    if reasoning_effort and model.startswith("openai-responses:"):
+        from strategies.base import build_model_settings
+
+        strategy.model_settings = build_model_settings(
+            model=model,
+            enable_cache=enable_cache,
+            reasoning_effort=reasoning_effort,
+        )
 
     start = time.monotonic()
     try:
@@ -368,6 +381,21 @@ async def run_scenario(
                     {"question": q["question"], "tool_called": False, "error": "sym_full unavailable"}
                     for q in queries
                 ]
+    elif isinstance(result, RawRunResult):
+        # Raw strategies (raw_code, raw_svg, *_with_revise) return a slim
+        # RawRunResult dataclass that already extracted the SVG and TikZ from
+        # the message history. We don't have message_history here, so checks
+        # below that depend on diagram_ir / sym_table will be skipped.
+        record["input_tokens"] = result.input_tokens
+        record["output_tokens"] = result.output_tokens
+        record["tool_calls"] = result.tool_calls
+        record["retries"] = result.retries
+        record["tikz_code"] = result.tikz
+        record["tkzelements_code"] = result.tkzelements
+        svg = result.svg
+        if not svg:
+            record["error"] = "RawRunResult contained no SVG"
+            return record
     else:
         messages = result.all_messages()
         usage = result.usage()
@@ -486,6 +514,7 @@ async def run_scenario(
                     tikz_code=tikz_code,
                     tkzelements_code=record["tkzelements_code"],
                     model=judge_model,
+                    enable_cache=enable_cache,
                 )
                 record["llm_judge_score"] = judge_result["score"]
                 record["llm_judge_reasoning"] = judge_result["reasoning"]
@@ -506,6 +535,7 @@ async def run_scenario(
                 svg=svg,
                 tikz_code=tikz_code,
                 model=judge_model,
+                enable_cache=enable_cache,
             )
             record["visual_judge_score"] = visual_result["score"]
             record["visual_judge_reasoning"] = visual_result["reasoning"]
@@ -737,6 +767,35 @@ async def main() -> None:
         default="tikz",
         help="Renderer backend: 'tikz' (default, requires Docker) or 'svg' (direct, no Docker needed)",
     )
+    parser.add_argument(
+        "--scenario-timeout",
+        type=int,
+        default=180,
+        help="Per-scenario hard timeout in seconds (default: 180). Prevents SymPy/network hangs from blocking the run.",
+    )
+    parser.add_argument(
+        "--scenario-offset",
+        type=int,
+        default=0,
+        help="Skip the first N scenarios (default: 0). Used by chunked-run wrapper.",
+    )
+    parser.add_argument(
+        "--scenario-limit",
+        type=int,
+        default=0,
+        help="Process only N scenarios after the offset (default: 0 = no limit). Used by chunked-run wrapper.",
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["minimal", "low", "medium", "high"],
+        default=None,
+        help="Override OpenAI Responses reasoning effort (e.g. high for GPT-5.5/5.5-pro). Ignored for non-OpenAI models.",
+    )
+    parser.add_argument(
+        "--benchmark-name",
+        default=None,
+        help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -750,7 +809,15 @@ async def main() -> None:
         raw_scenarios = yaml.safe_load(f)
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
-    benchmark = scenarios_path.stem
+    benchmark = args.benchmark_name or scenarios_path.stem
+
+    # Apply --scenario-offset / --scenario-limit slicing for chunked runs
+    if args.scenario_offset or args.scenario_limit:
+        n_total = len(scenarios)
+        start = max(0, args.scenario_offset)
+        end = (start + args.scenario_limit) if args.scenario_limit > 0 else n_total
+        scenarios = scenarios[start:end]
+        print(f"Slicing to scenarios [{start}:{end}] = {len(scenarios)} of {n_total}")
 
     # Build run ID and output path
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -790,18 +857,45 @@ async def main() -> None:
         repeat_index: int,
     ) -> dict[str, Any]:
         async with semaphore:
-            return await run_scenario(
-                scenario,
-                strategy_name,
-                args.model,
-                repeat_index,
-                svg_output_dir,
-                benchmark,
-                renderer=renderer,
-                llm_judge=args.llm_judge,
-                visual_judge=args.visual_judge,
-                judge_model=args.judge_model,
-            )
+            try:
+                return await asyncio.wait_for(
+                    run_scenario(
+                        scenario,
+                        strategy_name,
+                        args.model,
+                        repeat_index,
+                        svg_output_dir,
+                        benchmark,
+                        renderer=renderer,
+                        llm_judge=args.llm_judge,
+                        visual_judge=args.visual_judge,
+                        judge_model=args.judge_model,
+                        enable_cache=total > 1,
+                        reasoning_effort=args.reasoning_effort,
+                    ),
+                    timeout=args.scenario_timeout,
+                )
+            except asyncio.TimeoutError:
+                # Build a minimal failure record that downstream reporting/aggregation
+                # treats like any other gate=fail row. Prevents one hung scenario
+                # (e.g. SymPy on a degenerate IR) from stalling the whole cell.
+                return {
+                    "scenario_id": scenario.get("id", "?"),
+                    "strategy": strategy_name,
+                    "model": args.model,
+                    "repeat_index": repeat_index,
+                    "user_prompt": scenario.get("prompt", ""),
+                    "duration_s": float(args.scenario_timeout),
+                    "error": f"scenario timed out after {args.scenario_timeout}s",
+                    "gate_status": "fail",
+                    "gate_failures": ["timeout"],
+                    "generation_success": False,
+                    "svg_rendered": False,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "tool_calls": 0,
+                    "retries": 0,
+                }
 
     for strategy_name in args.strategies:
         print(f"Strategy: {strategy_name}  model: {args.model}")
@@ -812,13 +906,60 @@ async def main() -> None:
         ]
 
         for finished in asyncio.as_completed(tasks):
-            record = await finished
+            try:
+                record = await finished
+            except Exception as e:
+                # An unhandled exception in run_scenario's post-strategy
+                # processing (sympy checks, query phase, etc.) used to
+                # propagate through `await finished` and silently kill the
+                # entire as_completed loop, leaving the remaining 1000+
+                # scenarios un-run. Catch it here, write a failure stub,
+                # and keep going.
+                logger.exception("Per-task exception (continuing)")
+                record = {
+                    "scenario_id": "?",
+                    "strategy": strategy_name,
+                    "model": args.model,
+                    "error": f"runner exception: {type(e).__name__}: {e}",
+                    "gate_status": "fail",
+                    "gate_failures": ["runner_exception"],
+                    "generation_success": False,
+                    "svg_rendered": False,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "tool_calls": 0,
+                    "retries": 0,
+                    "duration_s": 0.0,
+                }
             record["run_id"] = run_id
             record["timestamp"] = datetime.now(timezone.utc).isoformat()
-            _externalize_traces(record, traces_output_dir)
-            _print_record(record)
-            _append_jsonl(output_path, record)
+            try:
+                _externalize_traces(record, traces_output_dir)
+            except Exception:
+                logger.exception("_externalize_traces failed (continuing)")
+            try:
+                _print_record(record)
+            except Exception:
+                logger.exception("_print_record failed (continuing)")
+            try:
+                _append_jsonl(output_path, record)
+            except Exception:
+                logger.exception("_append_jsonl failed (continuing)")
             all_records.append(record)
+
+            # Periodic memory cleanup. Long structured-strategy runs accumulate
+            # SymPy's global expression cache (singletons + cached evaluations)
+            # which grows unbounded across scenarios; this caused 17GB+ RSS and
+            # eventual OOM SIGKILL around record 600-700 on 1800-scenario cells.
+            # Clear SymPy cache + force gc every 25 records to keep memory flat.
+            if len(all_records) % 25 == 0:
+                try:
+                    from sympy.core.cache import clear_cache
+                    import gc
+                    clear_cache()
+                    gc.collect()
+                except Exception:
+                    logger.exception("periodic cache clear failed (continuing)")
 
     _print_summary(all_records)
     print(f"\nResults written to {output_path}")

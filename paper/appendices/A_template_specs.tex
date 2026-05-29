@@ -1,0 +1,285 @@
+\section{Full template specifications}
+\label{app:template_specs}
+
+This appendix enumerates the 30 templates that generate the templated split (600 scenarios = 30 templates $\times$ $\sim 20$ instantiations per template).
+Source of truth: \texttt{evals/generate\_scenarios.py}; the YAML output \texttt{evals/scenarios\_generated.yaml} is regenerated from it deterministically (seed 42), and the JSONL release artefact \texttt{benchmark/definitions/bench\_generated.jsonl} is byte-identical across re-runs (\cref{app:reproduction}).
+
+Each template draws prompt phrasing from a shared 7-opener pool (\verb|Draw|, \verb|Sketch|, \verb|Construct|, \verb|Make a diagram of|, \verb|Show|, \verb|Create a diagram showing|, \verb|I need a drawing of|), cycled deterministically across instantiations.
+Each scenario the template emits has the same shape: \texttt{(id, tier, tags, prompt, required\_labels, expected\_properties, [required\_entities])}.
+
+\subsection{Summary table}
+\label{app:template_specs:summary}
+
+\Cref{tab:template_summary} indexes all 30 templates by tier, geometric category, and completeness class (\cref{ssec:ver_defn}).
+\Cref{fig:heatmap} shows the per-template strict pass-rate at headline N, with universally hard templates (e.g.\ \texttt{tpl-t3-trv} at $\leq 16$\% for every cell) highlighted in the $\ttwo$--$\tthree$ rows.
+Total scenario counts per template depend on the cardinality of its parameter sweep (vertex-label set, numeric parameter grid).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\linewidth]{figures/per_template_heatmap.pdf}
+\caption{Per-template strict pass-rate, best strategy per model. \texttt{tpl-t3-trv} (corresponding-angles transversal) is the universal hard cell ($\leq 16$\%); \texttt{tpl-t2-bis}, \texttt{tpl-t2-ic}, \texttt{tpl-t3-2alt} are model-discriminating; \tone\ templates saturate.}
+\label{fig:heatmap}
+\end{figure}
+
+\begin{table}[t]
+\caption{All 30 templates in the templated split. \textbf{Class}: T=tight, L=loose, S=skeletal (\cref{ssec:ver_defn}). \textbf{N}: scenarios emitted per template (verified against \texttt{evals/scenarios\_generated.yaml}). Aggregate: 600 scenarios; 18 tight templates, 11 loose, 1 skeletal.}
+\label{tab:template_summary}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lllp{0.50\linewidth}rl@{}}
+\toprule
+\textbf{ID prefix} & \textbf{Tier} & \textbf{Topic} & \textbf{Construction} & \textbf{N} & \textbf{Class} \\
+\midrule
+\multicolumn{6}{l}{\textit{Tier 1 --- single shape, no auxiliary constructions}} \\
+\texttt{tpl-t1-rt} & T1 & triangle & Right triangle, named right angle, two leg lengths & 25 & L \\
+\texttt{tpl-t1-eq} & T1 & triangle & Equilateral triangle, vertex labels, side length & 25 & T \\
+\texttt{tpl-t1-iso} & T1 & triangle & Isosceles triangle (apex-vertex first), leg \& base & 24 & L \\
+\texttt{tpl-t1-sq} & T1 & quadrilateral & Square, four vertices in order, side length & 24 & T \\
+\texttt{tpl-t1-rect} & T1 & quadrilateral & Rectangle, width $\times$ height & 24 & L \\
+\texttt{tpl-t1-mid} & T1 & segment & Segment with marked midpoint and length & 24 & T \\
+\texttt{tpl-t1-par} & T1 & segment & Two parallel horizontal segments of equal length & 15 & L \\
+\texttt{tpl-t1-perp} & T1 & segment & Two perpendicular segments of equal length & 15 & L \\
+\texttt{tpl-t1-circle} & T1 & circle & Circle with named centre, one labelled point on it & 24 & T \\
+\midrule
+\multicolumn{6}{l}{\textit{Tier 2 --- one shape with one auxiliary construction}} \\
+\texttt{tpl-t2-alt} & T2 & triangle & Triangle with altitude from one vertex & 21 & T \\
+\texttt{tpl-t2-med} & T2 & triangle & Triangle with median from one vertex & 21 & T \\
+\texttt{tpl-t2-bis} & T2 & triangle & Triangle with angle-bisector from one vertex & 21 & T \\
+\texttt{tpl-t2-pb} & T2 & segment & Segment with its perpendicular bisector & 21 & L \\
+\texttt{tpl-t2-cc} & T2 & circle & Triangle with circumcircle, labelled circumcentre & 21 & T \\
+\texttt{tpl-t2-ic} & T2 & circle & Triangle with incircle, labelled incentre & 20 & T \\
+\texttt{tpl-t2-par} & T2 & quadrilateral & Parallelogram, base $\times$ side $\times$ angle & 20 & T \\
+\texttt{tpl-t2-rh} & T2 & quadrilateral & Rhombus, side $\times$ angle & 20 & T \\
+\texttt{tpl-t2-trap} & T2 & quadrilateral & Trapezoid, top $\times$ bottom $\times$ height & 20 & T \\
+\texttt{tpl-t2-chord} & T2 & circle & Two-point chord in a circle & 15 & L \\
+\midrule
+\multicolumn{6}{l}{\textit{Tier 3 --- multi-step / composed constructions}} \\
+\texttt{tpl-t3-rt-alt} & T3 & triangle & Right triangle with altitude to hypotenuse & 20 & T \\
+\texttt{tpl-t3-medial} & T3 & triangle & Triangle with its medial triangle (3 midpoints) & 20 & T \\
+\texttt{tpl-t3-cen} & T3 & triangle & Triangle with three medians intersecting at centroid & 20 & T \\
+\texttt{tpl-t3-trv} & T3 & lines & Two parallel lines + transversal at named angle & 16 & L \\
+\texttt{tpl-t3-iso} & T3 & triangle & Isosceles triangle: altitude bisects the base & 20 & T \\
+\texttt{tpl-t3-tan} & T3 & circle & Tangent line to a circle at a named point & 19 & T \\
+\texttt{tpl-t3-cyc} & T3 & circle & Cyclic quadrilateral inscribed in a circle & 19 & L \\
+\texttt{tpl-t3-2cir} & T3 & circle & Two circles intersecting at two named points & 16 & L \\
+\texttt{tpl-t3-thales} & T3 & circle & Thales: right triangle with hypotenuse as diameter & 19 & T \\
+\texttt{tpl-t3-2alt} & T3 & triangle & Triangle with altitudes from two distinct vertices & 19 & L \\
+\texttt{tpl-t3-semi} & T3 & circle & Inscribed angle in semicircle (Thales corollary) & 12 & S \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The remainder of this appendix expands each template's specification: parameter sweep, generated property list, required labels, and one example prompt.
+We omit per-template rendered example SVGs to keep the appendix compact; the canonical example for each template is the first scenario it emits, viewable at \texttt{evals/results/headline\_run/unified/svgs/<id>.svg}.
+
+\subsection{Tier 1: single-shape constructions}
+
+\subsubsection{\texttt{tpl-t1-rt} --- right triangle}
+
+\textbf{Parameter sweep:} 25 scenarios = vertex-label triples $\times$ right-angle position $\times$ Pythagorean leg pair $\{(3,4), (5,12)\}$.\\
+\textbf{Required labels:} all three vertices of the triangle.\\
+\textbf{Property list (per instance):} \propname{right\_angle\_at\_X} (symbolic, where $X$ is the named right-angle vertex), \propname{right\_angle\_marked\_at\_X} (mark presence).\\
+\textbf{Completeness class:} loose. The property list pins the right angle at the named vertex but does not constrain the leg lengths --- a model that emits a right triangle with the right angle at $A$ but legs of any non-zero length passes.\\
+\textbf{Example:} \texttt{Draw a right triangle ABC with the right angle at A. The two legs adjacent to A have lengths 3 and 4. Label all three vertices and mark the right angle at A.}
+
+\subsubsection{\texttt{tpl-t1-eq} --- equilateral triangle}
+
+\textbf{Parameter sweep:} 25 scenarios = vertex-label triples $\times$ side lengths $\{3, 4, 5\}$.\\
+\textbf{Property list:} \propname{all\_sides\_equal}(AB, BC, CA).\\
+\textbf{Completeness class:} tight. Three equal-length sides + vertex-label assignment uniquely determine the figure up to rigid motion + reflection (and similarity for the side-length parameter).\\
+\textbf{Example:} \texttt{Sketch an equilateral triangle ABC where every side has length 3. Label all three vertices.}
+
+\subsubsection{\texttt{tpl-t1-iso} --- isosceles triangle}
+
+\textbf{Parameter sweep:} 24 scenarios = vertex-label triples $\times$ (leg, base) pairs. Apex is the first vertex.\\
+\textbf{Property list:} \propname{AB\_eq\_AC} (apex-side equality between the two legs adjacent to the first vertex).\\
+\textbf{Completeness class:} loose. The property list pins the legs as equal but does not constrain the base length, so any isosceles triangle with apex at $A$ passes regardless of the prompt's numeric base value.\\
+\textbf{Example:} \texttt{Construct an isosceles triangle ABC where AB and AC both have length 5 and the base BC has length 6. Label all three vertices.}
+
+\subsubsection{\texttt{tpl-t1-sq} --- square}
+
+\textbf{Parameter sweep:} 24 scenarios = vertex-label quads $\times$ side lengths $\{3,4,5,6\}$.\\
+\textbf{Property list:} 4 \propname{right\_angle\_at\_X} (one per vertex) + \propname{all\_sides\_equal}.\\
+\textbf{Completeness class:} tight. Quadrilateral with 4 right angles + 4 equal sides $=$ square; vertex-label order fixes orientation.
+
+\subsubsection{\texttt{tpl-t1-rect} --- rectangle}
+
+\textbf{Parameter sweep:} 24 scenarios = vertex-label quads $\times$ (width, height) pairs.\\
+\textbf{Property list:} 4 \propname{right\_angle\_at\_X} + \propname{horizontal\_sides\_equal} + \propname{vertical\_sides\_equal}.\\
+\textbf{Completeness class:} loose. The property list verifies the rectangle relations (4 right angles, opposite sides equal) but the aspect ratio (width-to-height) is left free --- any rectangle satisfies all checks regardless of the prompt's $w \times h$ numbers.
+
+\subsubsection{\texttt{tpl-t1-mid} --- segment with midpoint}
+
+\textbf{Parameter sweep:} 24 scenarios = endpoint-label pairs $\times$ lengths $\{4, 6, 8, 10\}$.\\
+\textbf{Property list:} \propname{M\_is\_midpoint}, \propname{M\_on\_segment}.\\
+\textbf{Completeness class:} tight (1D up to rigid motion + scale).
+
+\subsubsection{\texttt{tpl-t1-par} --- parallel segments}
+
+\textbf{Parameter sweep:} 5 label-quad pairs $\times$ 3 lengths $\{4, 6, 8\}$ $=$ 15 scenarios.\\
+\textbf{Property list:} \propname{segments\_parallel}.\\
+\textbf{Completeness class:} loose. Two parallel segments of equal length leave the inter-segment vertical separation and horizontal offset free (\cref{app:completeness_witnesses:loose} witness L1).\\
+\textbf{Example:} \texttt{Draw two parallel horizontal segments of length 4: AB on top and CD below it. Label all four endpoints.}
+
+\subsubsection{\texttt{tpl-t1-perp} --- perpendicular segments}
+
+\textbf{Parameter sweep:} 5 label-quad pairs $\times$ 3 lengths $\{4, 6, 8\}$ $=$ 15 scenarios.\\
+\textbf{Property list:} \propname{segments\_perpendicular}.\\
+\textbf{Completeness class:} loose. Two segments of equal length perpendicular to each other; the relative position (where they cross, or whether they cross at all) is free (\cref{app:completeness_witnesses:loose} witness L2).
+
+\subsubsection{\texttt{tpl-t1-circle} --- circle with one point on it}
+
+\textbf{Parameter sweep:} 24 scenarios = (centre, point) label pairs $\times$ radii $\{3, 4, 5, 6, 7\}$.\\
+\textbf{Property list:} \propname{P\_on\_circle}.\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} tight up to rotation (which is a rigid motion).
+
+\subsection{Tier 2: shape with one auxiliary construction}
+
+\subsubsection{\texttt{tpl-t2-alt} --- triangle with altitude}
+
+\textbf{Parameter sweep:} 21 scenarios = vertex-label triples $\times$ acute-angle specifications. Acute specs fix $\angle B$, $\angle C$, and base length so the altitude foot lands inside segment $BC$.\\
+\textbf{Property list:} \propname{right\_angle\_at\_H}, \propname{H\_on\_base}, \propname{right\_angle\_marked\_at\_H}.\\
+\textbf{Completeness class:} tight. The two prompt-given angles determine the triangle up to similarity; the altitude is then determined by the perpendicular-from-A condition.
+
+\subsubsection{\texttt{tpl-t2-med} --- triangle with median}
+
+\textbf{Parameter sweep:} 21 scenarios = vertex-label triples $\times$ acute-angle specifications.\\
+\textbf{Property list:} \propname{M\_is\_midpoint} (of opposite side), \propname{M\_on\_segment}.\\
+\textbf{Completeness class:} tight up to similarity.
+
+\subsubsection{\texttt{tpl-t2-bis} --- triangle with angle bisector}
+
+\textbf{Parameter sweep:} 21 scenarios = vertex-label triples $\times$ acute-angle specifications.\\
+\textbf{Property list:} \propname{D\_bisects\_angle\_A}, \propname{D\_on\_segment}.\\
+\textbf{Completeness class:} tight up to similarity.
+
+\subsubsection{\texttt{tpl-t2-pb} --- perpendicular bisector}
+
+\textbf{Parameter sweep:} 21 scenarios = endpoint pairs $\times$ lengths.\\
+\textbf{Property list:} \propname{M\_is\_midpoint}, \propname{bisector\_perpendicular}, \propname{right\_angle\_marked\_at\_M}.\\
+\textbf{Completeness class:} loose. The named auxiliary point $X$ on the bisector line is free along that line (\cref{app:completeness_witnesses:loose} witness L3).
+
+\subsubsection{\texttt{tpl-t2-cc} --- triangle with circumcircle}
+
+\textbf{Parameter sweep:} 21 scenarios = vertex-label triples $\times$ acute-angle specifications.\\
+\textbf{Property list:} two \propname{X\_on\_circumcircle} checks (the third vertex's circumcircle membership follows by construction).\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} tight up to similarity (triangle determined by two angles; circumcircle determined by the triangle).
+
+\subsubsection{\texttt{tpl-t2-ic} --- triangle with incircle}
+
+\textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ acute-angle specifications.\\
+\textbf{Property list:} \propname{I\_equidistant\_from\_sides}.\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} tight up to similarity. \emph{Note:} the \propname{equidistant\_from\_sides} predicate has a documented soft spot --- the three excentres also pass --- mitigated by template-side pairing in \cref{ssec:ver_defn}.
+
+\subsubsection{\texttt{tpl-t2-par} --- parallelogram}
+
+\textbf{Parameter sweep:} 20 scenarios = label quads $\times$ (base, side, angle) tuples.\\
+\textbf{Property list:} two \propname{parallel} checks (opposite-side pairs) + two \propname{equal\_lengths} checks.\\
+\textbf{Completeness class:} tight (base + side + included angle determine the parallelogram up to rigid motion + reflection).
+
+\subsubsection{\texttt{tpl-t2-rh} --- rhombus}
+
+\textbf{Parameter sweep:} 20 scenarios = label quads $\times$ (side, angle) pairs.\\
+\textbf{Property list:} \propname{all\_sides\_equal} + two \propname{parallel} checks.\\
+\textbf{Completeness class:} tight (side + one interior angle determine the rhombus up to rigid motion + reflection).
+
+\subsubsection{\texttt{tpl-t2-trap} --- trapezoid}
+
+\textbf{Parameter sweep:} 20 scenarios = label quads $\times$ (top, bottom, height) tuples.\\
+\textbf{Property list:} \propname{AB\_parallel\_DC} (one parallel-pair only).\\
+\textbf{Completeness class:} tight (top + bottom + height determine the trapezoid \emph{up to horizontal positioning of the top relative to the bottom}; the pre-registered audit accepts this single 1-D ambiguity as ``tight up to rigid motion'' since horizontal offset is captured by translation).
+
+\subsubsection{\texttt{tpl-t2-chord} --- chord in a circle}
+
+\textbf{Parameter sweep:} 15 scenarios = (centre, P, Q) label triples $\times$ radii.\\
+\textbf{Property list:} \propname{P\_on\_circle}, \propname{Q\_on\_circle}.\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} loose. Two named points on the circle do not specify the chord's angular position or length (\cref{app:completeness_witnesses:loose} witness L4).
+
+\subsection{Tier 3: composed / multi-step constructions}
+
+\subsubsection{\texttt{tpl-t3-rt-alt} --- right triangle with altitude to hypotenuse}
+
+\textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ (leg1, leg2) pairs.\\
+\textbf{Property list:} \propname{right\_angle\_at\_C}, \propname{right\_angle\_at\_H}, \propname{H\_on\_hypotenuse}, plus two mark-presence checks.\\
+\textbf{Completeness class:} tight. Right angle + 2 leg lengths $\to$ triangle; altitude foot determined by perpendicular-from-vertex condition.
+
+\subsubsection{\texttt{tpl-t3-medial} --- medial triangle}
+
+\textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ angle specifications.\\
+\textbf{Property list:} 3 \propname{midpoint} checks (D, E, F at sides) + 3 \propname{parallel} checks (medial sides parallel to outer sides).\\
+\textbf{Completeness class:} tight up to similarity.
+
+\subsubsection{\texttt{tpl-t3-cen} --- centroid via medians}
+
+\textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ angle specifications.\\
+\textbf{Property list:} \propname{G\_is\_centroid} + 3 \propname{midpoint} checks + 1 \propname{point\_on\_segment} (G on one of the medians).\\
+\textbf{Completeness class:} tight up to similarity. \emph{Note:} \propname{centroid} was added in the hardening pass (\cref{ssec:ver_defn}); pre-hardening this template silently emitted no decision on its primary property.
+
+\subsubsection{\texttt{tpl-t3-trv} --- transversal of two parallel lines}
+
+\textbf{Parameter sweep:} 16 scenarios = label sextuples $\times$ transversal angles.\\
+\textbf{Property list:} \propname{lines\_parallel}, \propname{corresponding\_angles\_equal}, plus 4 \propname{point\_on\_line} incidence checks (P,Q on first line; R,S on second).\\
+\textbf{Completeness class:} loose. Inter-line spacing and horizontal positions of the transversal are free.
+
+\subsubsection{\texttt{tpl-t3-iso} --- isosceles altitude bisects the base}
+
+\textbf{Parameter sweep:} 20 scenarios = vertex-label triples $\times$ (leg, base) pairs.\\
+\textbf{Property list:} \propname{H\_is\_midpoint} (foot bisects base) + \propname{H\_on\_segment} + \propname{altitude\_perpendicular} + \propname{leg\_eq\_leg}.\\
+\textbf{Completeness class:} tight.
+
+\subsubsection{\texttt{tpl-t3-tan} --- tangent line to circle}
+
+\textbf{Parameter sweep:} 19 scenarios = (centre, T, U, V) tuples $\times$ radii.\\
+\textbf{Property list:} \propname{tangent\_at\_T}, \propname{radius\_perp\_tangent}, \propname{T\_between\_U\_and\_V}, \propname{T\_on\_circle}, plus mark-presence.\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} tight up to rotation. \emph{Note:} \propname{tangent} alone has a soft spot (verifies line at radial distance but not that $T$ lies on the circle), mitigated by template-side pairing with \propname{point\_on\_circle} (\cref{ssec:ver_defn}).
+
+\subsubsection{\texttt{tpl-t3-cyc} --- cyclic quadrilateral}
+
+\textbf{Parameter sweep:} 19 scenarios = label quads $\times$ angle configurations.\\
+\textbf{Property list:} 4 \propname{X\_on\_circle} checks (one per vertex).\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} loose. Inscribed quadrilateral with 4 vertices on a circle but no angle / side constraints --- many shapes pass.
+
+\subsubsection{\texttt{tpl-t3-2cir} --- two intersecting circles}
+
+\textbf{Parameter sweep:} 16 scenarios = (O1, O2, P, Q) tuples $\times$ (r1, r2, distance) configurations.\\
+\textbf{Property list:} \propname{P\_on\_circle1}, \propname{P\_on\_circle2}, \propname{Q\_on\_circle1}, \propname{Q\_on\_circle2}.\\
+\textbf{Required entities:} 2 circles.\\
+\textbf{Completeness class:} loose. The shared chord PQ is determined once the circles are fixed, but the radii / centre distance are free across instantiations and the prompt does not enforce specific numeric values via property checks.
+
+\subsubsection{\texttt{tpl-t3-thales} --- right triangle inscribed via diameter}
+
+\textbf{Parameter sweep:} 19 scenarios = vertex-label triples $\times$ radii.\\
+\textbf{Property list:} \propname{AB\_is\_diameter}, \propname{C\_on\_circle}, \propname{right\_angle\_at\_C}, \propname{right\_angle\_marked\_at\_C}.\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} tight up to similarity (the right-angle-on-semicircle uniquely positions $C$ on the circle's upper arc up to rigid motion).
+
+\subsubsection{\texttt{tpl-t3-2alt} --- triangle with two altitudes}
+
+\textbf{Parameter sweep:} 19 scenarios = (vertex labels + altitude-foot labels) tuples $\times$ acute-angle specs.\\
+\textbf{Property list:} 2 \propname{right\_angle\_at\_H} + 2 \propname{H\_on\_segment}.\\
+\textbf{Completeness class:} loose. Triangle shape free; only the perpendicularity of two named altitudes is enforced.
+
+\subsubsection{\texttt{tpl-t3-semi} --- inscribed angle in semicircle}
+
+\textbf{Parameter sweep:} 12 scenarios = vertex triples $\times$ radii.\\
+\textbf{Property list:} \propname{C\_on\_circle} only (the semicircle property is implied by the prompt diameter but not enforced beyond incidence).\\
+\textbf{Required entities:} circle.\\
+\textbf{Completeness class:} skeletal. The property list checks only point-on-circle incidence; the semicircle relationship and the right-angle-at-C consequence are prompt prose, not properties. This is the unique skeletal template in the audit.
+
+\subsection{Total scenario count}
+
+Summing the per-template $N$ from \cref{tab:template_summary}:
+\begin{itemize}
+\item Tier 1 (9 templates): $25{+}25{+}24{+}24{+}24{+}24{+}15{+}15{+}24 = 200$.
+\item Tier 2 (10 templates): $21{+}21{+}21{+}21{+}21{+}20{+}20{+}20{+}20{+}15 = 200$.
+\item Tier 3 (11 templates): $20{+}20{+}20{+}16{+}20{+}19{+}19{+}16{+}19{+}19{+}12 = 200$.
+\end{itemize}
+Total: 600 scenarios, exact (\cref{tab:template_summary}). The release artefact is committed at \texttt{benchmark/definitions/bench\_generated.jsonl} (600 records, sha256 \texttt{5e116307...}).
+The 200/200/200 per-tier balance is intentional and matches the tier-stratified analysis in \cref{ssec:pareto}.

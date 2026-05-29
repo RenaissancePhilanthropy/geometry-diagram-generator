@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ir.ir import PickRule
+
 
 # ---------------------------------------------------------------------------
 # Shared validators
@@ -41,12 +43,65 @@ class DSLOpBase(BaseModel):
 # Foundation ops
 # ---------------------------------------------------------------------------
 
+class TriangleSpec(BaseModel):
+    """Triangle constraints using positional A/B/C slots.
+
+    A=vertices[0], B=vertices[1], C=vertices[2] always.
+    Provide any combination of sides and angles that uniquely determines
+    the triangle. right_angle_at takes priority over angle constraints.
+
+    Supported forms:
+        SSS:       side_AB, side_BC, side_CA
+        SAS:       two sides + included angle (e.g. side_AB, angle_B, side_BC)
+        ASA/AAS:   two angles + one side
+        right_at:  right_angle_at + at least 2 other constraints
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    side_AB: Optional[float] = None
+    side_BC: Optional[float] = None
+    side_CA: Optional[float] = None
+    angle_A: Optional[float] = None
+    angle_B: Optional[float] = None
+    angle_C: Optional[float] = None
+    right_angle_at: Optional[Literal["A", "B", "C"]] = None
+
+    @model_validator(mode="after")
+    def _validate_sufficient_constraints(self) -> "TriangleSpec":
+        sides = [k for k in ["side_AB", "side_BC", "side_CA"]
+                 if getattr(self, k) is not None]
+        angles = [k for k in ["angle_A", "angle_B", "angle_C"]
+                  if getattr(self, k) is not None]
+
+        if self.right_angle_at is not None:
+            if len(sides) + len(angles) + 1 < 3:
+                raise ValueError(
+                    "right_angle_at triangle needs at least 2 additional constraints "
+                    "(sides and/or angles)"
+                )
+            return self
+
+        total = len(sides) + len(angles)
+        if total < 3:
+            raise ValueError(
+                f"Triangle needs at least 3 constraints, got {total}. "
+                "Supported: SSS, SAS, ASA, AAS, or right_angle_at+2."
+            )
+        if len(sides) == 0:
+            raise ValueError(
+                "At least one side length is required (AAA is underdetermined — "
+                "infinitely many similar triangles)"
+            )
+        return self
+
+
 class TriangleOp(DSLOpBase):
-    """Triangle defined by angles/sides (abstract) or vertices (grid)."""
+    """Triangle defined by angles/sides. A/B/C in spec are positional slots:
+    A=vertices[0], B=vertices[1], C=vertices[2]."""
     op: Literal["triangle"] = "triangle"
     vertices: list[str]  # exactly 3 names for the vertices
-    spec: dict[str, Any]  # keys: angle_A/B/C, side_AB/BC/CA, right_angle_at
-    center: Optional[list[float]] = None  # [x, y] centroid target; default (2, 2)
+    spec: TriangleSpec
+    center: Optional[list[float]] = None
 
 
 class CircleOp(DSLOpBase):
@@ -127,7 +182,7 @@ class PointExternalOp(DSLOpBase):
     """Point outside a circle at a given direction and distance ratio."""
     op: Literal["point_external"] = "point_external"
     relative_to: str   # circle id
-    direction: str     # "left", "right", "above", "below", or angle in degrees as str
+    direction: Union[Literal["left", "right", "above", "below"], float]  # Cardinals or numeric angle in degrees
     distance_ratio: float  # multiple of radius
 
 
@@ -152,7 +207,7 @@ class MidpointOp(DSLOpBase):
 class IntersectionOp(DSLOpBase):
     op: Literal["intersection"] = "intersection"
     of: list[str]  # exactly [obj1, obj2]
-    selector: Optional[dict[str, Any]] = None  # PickRule dict for disambiguation
+    selector: Optional[PickRule] = None
 
 
 class PerpendicularOp(DSLOpBase):
@@ -208,7 +263,7 @@ class TangentLineOp(DSLOpBase):
     circle: str
     at: Optional[str] = None          # point on the circle → tangent at that point
     from_point: Optional[str] = None  # external point → tangent lines from there
-    selector: Optional[dict[str, Any]] = None
+    selector: Optional[PickRule] = None
 
     @model_validator(mode="after")
     def _validate_exactly_one_point(self) -> "TangentLineOp":
@@ -246,17 +301,49 @@ class AltitudeOp(DSLOpBase):
 
 
 class CircumcircleOp(DSLOpBase):
-    """Circumscribed circle of a triangle."""
+    """Circumscribed circle of a triangle or three points.
+
+    Specify exactly one of:
+      - ``of``: a triangle ID (existing form)
+      - ``points``: exactly 3 point IDs
+    """
     op: Literal["circumcircle"] = "circumcircle"
-    of: str    # triangle id
-    center: str  # name for circumcenter point
+    of: Optional[str] = None        # triangle id
+    points: Optional[list[str]] = None  # OR exactly 3 point IDs
+    center: str                     # name for circumcenter point
+
+    @model_validator(mode="after")
+    def _of_xor_points(self) -> "CircumcircleOp":
+        if not self.of and not self.points:
+            raise ValueError("CircumcircleOp requires 'of' (triangle) or 'points' (3 points)")
+        if self.of and self.points:
+            raise ValueError("CircumcircleOp: specify 'of' or 'points', not both")
+        if self.points is not None and len(self.points) != 3:
+            raise ValueError(f"'points' must have exactly 3 point IDs, got {len(self.points)}")
+        return self
 
 
 class IncircleOp(DSLOpBase):
-    """Inscribed circle of a triangle."""
+    """Inscribed circle of a triangle or three points.
+
+    Specify exactly one of:
+      - ``of``: a triangle ID (existing form)
+      - ``points``: exactly 3 point IDs
+    """
     op: Literal["incircle"] = "incircle"
-    of: str    # triangle id
-    center: str  # name for incenter point
+    of: Optional[str] = None
+    points: Optional[list[str]] = None
+    center: str
+
+    @model_validator(mode="after")
+    def _of_xor_points(self) -> "IncircleOp":
+        if not self.of and not self.points:
+            raise ValueError("IncircleOp requires 'of' (triangle) or 'points' (3 points)")
+        if self.of and self.points:
+            raise ValueError("IncircleOp: specify 'of' or 'points', not both")
+        if self.points is not None and len(self.points) != 3:
+            raise ValueError(f"'points' must have exactly 3 point IDs, got {len(self.points)}")
+        return self
 
 
 class PerpendicularBisectorOp(DSLOpBase):
@@ -264,6 +351,7 @@ class PerpendicularBisectorOp(DSLOpBase):
     op: Literal["perpendicular_bisector"] = "perpendicular_bisector"
     of: list[str]   # [P, Q]
     mid: str        # name for midpoint
+    point_on_line: Optional[str] = None  # optional named point on the bisector line (useful for mark_right_angle)
 
 
 class AngleBisectorOp(DSLOpBase):
@@ -307,7 +395,7 @@ class PolygonExteriorOp(DSLOpBase):
     base: list[str]   # [P, Q] — edge
     ref_point: str    # polygon placed on opposite side from this point
     n: int            # number of sides (3=equilateral triangle, 4=square)
-    vertices: list[str]  # names for the computed vertices (v2..v_{n-1})
+    vertices: list[str] = Field(default_factory=list)  # names for computed vertices (v2..v_{n-1}); omitted entries get auto-names {id}_v{k}
 
 
 class RegularPolygonOp(DSLOpBase):
@@ -379,6 +467,266 @@ class CircleThrough3Op(DSLOpBase):
     center: str         # name for the circumcenter point
 
 
+class RectangleSpec(BaseModel):
+    """Rectangle dimensions using positional A/B/C/D slots.
+
+    A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3] always.
+    Provide at least two adjacent side lengths. Adjacent pairs:
+        AB+BC, BC+CD, CD+DA, DA+AB
+    Opposite pairs (AB+CD, BC+DA) are not sufficient.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    side_AB: Optional[float] = None
+    side_BC: Optional[float] = None
+    side_CD: Optional[float] = None
+    side_DA: Optional[float] = None
+    rotation: float = 0.0  # degrees CCW
+
+    @model_validator(mode="after")
+    def _validate_two_adjacent(self) -> "RectangleSpec":
+        provided = [k for k in ["side_AB", "side_BC", "side_CD", "side_DA"]
+                    if getattr(self, k) is not None]
+        if len(provided) < 2:
+            raise ValueError(
+                "Rectangle needs at least 2 side lengths. "
+                "Provide two adjacent sides, e.g. side_AB and side_BC."
+            )
+        ADJACENT = {
+            ("side_AB", "side_BC"), ("side_BC", "side_CD"),
+            ("side_CD", "side_DA"), ("side_DA", "side_AB"),
+        }
+        pairs = [(provided[i], provided[j])
+                 for i in range(len(provided)) for j in range(i + 1, len(provided))]
+        if not any((a, b) in ADJACENT or (b, a) in ADJACENT for a, b in pairs):
+            raise ValueError(
+                "Rectangle needs two adjacent side lengths (sharing a vertex). "
+                "Opposite sides (side_AB + side_CD or side_BC + side_DA) are not sufficient."
+            )
+        return self
+
+
+class RectangleOp(DSLOpBase):
+    """Axis-aligned rectangle with labeled side lengths.
+
+    ``vertices`` lists the 4 corner names in perimeter order: A, B, C, D
+    where AB and BC are adjacent sides. A/B/C/D in ``spec`` are positional
+    slots: A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3].
+
+    ``spec`` keys:
+    - ``side_AB``, ``side_BC``, etc.: lengths for positional slot pairs.
+      Provide at least two adjacent sides.
+    - ``rotation`` (optional, degrees CCW, default 0).
+
+    ``center`` (optional): [x, y] override for the rectangle centroid; default (2, 2).
+
+    Default layout (rotation=0): A top-left, B top-right, C bottom-right, D bottom-left.
+    """
+    op: Literal["rectangle"] = "rectangle"
+    vertices: list[str]
+    spec: RectangleSpec
+    center: Optional[list[float]] = None
+
+    @field_validator("vertices")
+    @classmethod
+    def _four_vertices(cls, v: list[str]) -> list[str]:
+        if len(v) != 4:
+            raise ValueError(f"RectangleOp requires exactly 4 vertices, got {len(v)}")
+        return v
+
+
+class PolygonFromSidesOp(DSLOpBase):
+    """Polygon constructed from given consecutive side lengths.
+
+    Vertices are placed to form the maximum-area polygon.
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    """
+    op: Literal["polygon_from_sides"] = "polygon_from_sides"
+    vertices: list[str]
+    side_lengths: list[float]
+    center: Optional[list[float]] = None
+
+    @model_validator(mode="after")
+    def _check_lengths_match(self) -> "PolygonFromSidesOp":
+        if len(self.vertices) != len(self.side_lengths):
+            raise ValueError(
+                f"polygon_from_sides: len(vertices)={len(self.vertices)} "
+                f"must equal len(side_lengths)={len(self.side_lengths)}"
+            )
+        if len(self.vertices) < 3:
+            raise ValueError(
+                f"polygon_from_sides requires at least 3 vertices, got {len(self.vertices)}"
+            )
+        return self
+
+
+class PolygonFromAnglesAndSidesOp(DSLOpBase):
+    """Polygon constructed from consecutive side lengths AND interior angles.
+
+    Uses turtle-graphics placement: vertex[0] at origin, heading east, walking
+    each side and turning left by the exterior angle at each successive vertex.
+
+    side_lengths[i] = distance from vertices[i] to vertices[(i+1) % N].
+    angles[i] = interior angle (degrees) at vertices[i].
+
+    angles may have N or N-1 entries:
+      N entries: validated to sum to (N-2)*180.
+      N-1 entries: the last angle is inferred from the sum constraint.
+    More than N or fewer than N-1 angles is an error.
+    """
+    op: Literal["polygon_from_angles_and_sides"] = "polygon_from_angles_and_sides"
+    vertices: list[str]
+    side_lengths: list[float]
+    angles: list[float]
+    center: Optional[list[float]] = None
+    rotation: float = 0.0   # degrees CCW, standalone mode only
+    base: Optional[list[str]] = None       # [P, Q] — anchors vertices[0] and vertices[1]
+    ref_point: Optional[str] = None        # required when base is set
+
+    @model_validator(mode="after")
+    def _check_counts_match(self) -> "PolygonFromAnglesAndSidesOp":
+        n = len(self.vertices)
+        if n < 3:
+            raise ValueError(
+                f"polygon_from_angles_and_sides requires at least 3 vertices, got {n}"
+            )
+
+        # side_lengths count check
+        ns = len(self.side_lengths)
+        if self.base is not None:
+            # Edge-anchored: N-1 (base edge omitted) or N (base edge included for validation)
+            if ns < n - 1 or ns > n:
+                raise ValueError(
+                    f"polygon_from_angles_and_sides with base: len(side_lengths)={ns} "
+                    f"must be N-1={n-1} (omit base edge) or N={n} (include for validation)"
+                )
+        else:
+            # Standalone: N (all sides given) or N-1 (last side inferred from closure)
+            if ns < n - 1 or ns > n:
+                raise ValueError(
+                    f"polygon_from_angles_and_sides: len(side_lengths)={ns} "
+                    f"must be N={n} or N-1={n - 1} (last side inferred from closure)"
+                )
+
+        # angles count check (N-1 or N, both modes)
+        na = len(self.angles)
+        if na > n:
+            raise ValueError(
+                f"polygon_from_angles_and_sides: len(angles)={na} exceeds "
+                f"len(vertices)={n}; provide at most N angles"
+            )
+        if na < n - 1:
+            raise ValueError(
+                f"polygon_from_angles_and_sides: len(angles)={na} is too few for "
+                f"{n} vertices; provide N-1 (last inferred) or N angles"
+            )
+
+        # base / ref_point rules
+        if self.base is not None:
+            if len(self.base) != 2:
+                raise ValueError("polygon_from_angles_and_sides: base must be a list of exactly 2 point ids")
+            if self.ref_point is None:
+                raise ValueError("polygon_from_angles_and_sides: ref_point is required when base is set")
+            if self.center is not None:
+                raise ValueError("polygon_from_angles_and_sides: center and base are mutually exclusive")
+            if self.rotation != 0.0:
+                raise ValueError("polygon_from_angles_and_sides: rotation and base are mutually exclusive")
+            if len(self.vertices) >= 2 and (self.vertices[0] != self.base[0] or self.vertices[1] != self.base[1]):
+                raise ValueError(
+                    f"polygon_from_angles_and_sides: vertices[0:2]={self.vertices[:2]} "
+                    f"must equal base={self.base}"
+                )
+        else:
+            if self.ref_point is not None:
+                raise ValueError("polygon_from_angles_and_sides: ref_point requires base to be set")
+
+        return self
+
+
+class ArcOp(DSLOpBase):
+    """Circular arc from ``start`` CCW to the ray through ``end``.
+
+    Radius = |center − start|.  The arc sweeps counter-clockwise starting at
+    ``start`` until it reaches the ray from ``center`` through ``end``.
+    ``end`` need not lie on the circle; only its direction from ``center`` is
+    used.  For a full-circle sweep, use a ``circle`` op instead.
+
+    Example (quarter-arc of the unit circle from the +x axis to the +y axis):
+      {op: "arc", id: "arc1", center: "O", start: "A", end: "B"}
+    """
+    op: Literal["arc"] = "arc"
+    center: str
+    start: str
+    end: str
+    reflex: bool = False
+
+
+class SectorOp(DSLOpBase):
+    """A closed, fillable circular sector (pie slice).
+
+    The sector region is bounded by two radii (center→start and center→end)
+    and the arc between them.  Use Fill to shade it; use Draw to stroke the
+    outline (both radii + arc).
+
+    ``center``, ``start``, and ``end`` must all be defined point IDs.
+    The radius is inferred as distance(center, start) — ensure start and end
+    lie on the same circle.
+
+    ``reflex=True`` selects the major sector (>180°); default is the minor.
+
+    Example:
+      {op: "sector", id: "sec1", center: "O", start: "A", end: "B"}
+      {op: "fill", id: "shade", obj: "sec1", style: {"fill": "lightblue"}, opacity: 0.4}
+    """
+    op: Literal["sector"] = "sector"
+    center: str
+    start: str
+    end: str
+    reflex: bool = False
+
+
+class RegularSectorsOp(DSLOpBase):
+    """Divide a circle into N equal sectors and emit all as Sector defs.
+
+    Generates N spoke-endpoint points (``{id}__r0`` … ``{id}__r{N-1}``) and
+    N sector defs (``{id}__0`` … ``{id}__{N-1}``), all drawable by default.
+
+    ``center``: ID of the center point (must have known coordinates at lower time).
+    ``radius``: numeric radius of the circle.
+    ``n``: number of equal sectors.
+    ``start_angle``: angle in degrees of the first spoke (default 0 = east).
+
+    Example — 6 equal sectors, center O, radius 3:
+      {op: "regular_sectors", id: "pie", center: "O", radius: 3, n: 6}
+    Then fill individual sectors:
+      {op: "fill", id: "f0", obj: "pie__0", style: {"fill": "red"}, opacity: 0.4}
+    Or draw all at once with auto_draw_all (sectors are in _drawable).
+    """
+    op: Literal["regular_sectors"] = "regular_sectors"
+    center: str
+    radius: float
+    n: int
+    start_angle: float = 0.0
+
+
+class FillOp(DSLOpBase):
+    """Fill a closed shape, optionally punching holes with the even-odd rule.
+
+    ``obj``: the outer closed shape to fill (polygon, circle, triangle id).
+    ``holes``: list of shape IDs that cut transparent regions from ``obj``.
+    ``opacity``: fill opacity (0.0–1.0).
+    ``style``: named style key or inline style dict (same as DrawObj).
+
+    Example (shade ring between circle and quadrilateral):
+      {op: "fill", id: "shade", obj: "circ", holes: ["quad"], opacity: 0.3}
+    """
+    op: Literal["fill"] = "fill"
+    obj: str
+    holes: list[str] = Field(default_factory=list)
+    opacity: float = 1.0
+    style: Optional[Union[str, dict[str, Any]]] = None
+
+
 # ---------------------------------------------------------------------------
 # DSLOp discriminated union
 # ---------------------------------------------------------------------------
@@ -395,9 +743,11 @@ DSLOp = Annotated[
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
         # Foundation (continued)
-        RegularPolygonOp,
+        RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp, SectorOp, RegularSectorsOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
+        # Render-only
+        FillOp,
     ],
     Field(discriminator="op")
 ]
@@ -418,6 +768,7 @@ class MarkAngle(BaseModel):
     of: Optional[str] = None  # triangle id (shorthand)
     group: Optional[int] = None  # tick-group for equal-angle marking
     expected: Optional[Union[float, Literal["acute", "right", "obtuse"]]] = None
+    label_only: bool = False  # when True, skip geometric assertion; emit only visual arc
 
     @model_validator(mode="after")
     def _check_form(self) -> "MarkAngle":
@@ -487,6 +838,10 @@ class LabelSegment(BaseModel):
     kind: Literal["label_segment"] = "label_segment"
     endpoints: list[str]  # [A, B]
     text: str
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right",
+    ] = "auto"
 
 
 class LabelPoint(BaseModel):
@@ -495,6 +850,9 @@ class LabelPoint(BaseModel):
     When a point already has an auto-generated label (auto_label_points=true),
     a matching label_point entry overrides its text and/or position.  Omit
     ``text`` to keep the point id but change only ``pos``.
+
+    Set ``show_coords=True`` to append the point's compiled (x, y) coordinates
+    to the label text.  Useful for coordinate geometry problems.
     """
     model_config = ConfigDict(extra="forbid")
     kind: Literal["label_point"] = "label_point"
@@ -504,6 +862,7 @@ class LabelPoint(BaseModel):
         "auto", "above", "below", "left", "right",
         "above left", "above right", "below left", "below right",
     ] = "auto"
+    show_coords: bool = False
 
 
 class LabelAngle(BaseModel):
@@ -523,6 +882,10 @@ class LabelAngle(BaseModel):
     at: Optional[str] = None  # vertex name within triangle (shorthand)
     of: Optional[str] = None  # triangle id (shorthand)
     text: str
+    pos: Literal[
+        "auto", "above", "below", "left", "right",
+        "above left", "above right", "below left", "below right",
+    ] = "auto"
 
     @model_validator(mode="after")
     def _check_form(self) -> "LabelAngle":
@@ -540,8 +903,107 @@ AnnotationMark = Annotated[
     Field(discriminator="kind")
 ]
 
+
+# ---------------------------------------------------------------------------
+# DSL checks (typed; validated at parse time; lowering consumption TBD)
+# ---------------------------------------------------------------------------
+
+class CheckDistance(BaseModel):
+    """Assert distance between two points equals expected."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["distance"] = "distance"
+    points: list[str]   # [A, B]
+    expected: float
+
+
+class CheckParallel(BaseModel):
+    """Assert two segments are parallel."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["parallel"] = "parallel"
+    seg1: list[str]     # [A, B]
+    seg2: list[str]     # [C, D]
+
+
+class CheckPerpendicular(BaseModel):
+    """Assert two segments are perpendicular."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["perpendicular"] = "perpendicular"
+    seg1: list[str]
+    seg2: list[str]
+
+
+class CheckAngleEquals(BaseModel):
+    """Assert angle at vertex (a–vertex–b) equals expected degrees."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["angle_equals"] = "angle_equals"
+    points: list[str]   # [a, vertex, b]
+    expected: float     # degrees
+
+
+class CheckCollinear(BaseModel):
+    """Assert 3+ points are collinear."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["collinear"] = "collinear"
+    points: list[str]   # 3 or more point IDs
+
+
+class CheckPointOnCircle(BaseModel):
+    """Assert a point lies on a circle."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["on_circle"] = "on_circle"
+    point: str
+    circle: str
+
+
+class CheckTangent(BaseModel):
+    """Assert two objects are tangent."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["tangent"] = "tangent"
+    obj1: str
+    obj2: str
+
+
+DSLCheck = Annotated[
+    Union[
+        CheckDistance, CheckParallel, CheckPerpendicular,
+        CheckAngleEquals, CheckCollinear, CheckPointOnCircle,
+        CheckTangent,
+    ],
+    Field(discriminator="check"),
+]
+
+class LabelFreeText(BaseModel):
+    """Place arbitrary text at explicit coordinates or at a polygon/triangle centroid.
+
+    Use ``at`` for explicit placement or ``centroid_of`` to automatically
+    place the label at the geometric centroid of a named polygon or triangle.
+    ``text`` supports LaTeX notation: ``^{2}`` (superscript), ``_{n}`` (subscript),
+    ``\\pi``, ``\\sqrt{3}``, etc.
+
+    Examples::
+
+        {"kind": "label_free_text", "text": "S_1", "centroid_of": "poly1"}
+        {"kind": "label_free_text", "text": "s^{2} = r^{2} + h^{2}", "at": [3.0, 1.5]}
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_free_text"] = "label_free_text"
+    text: str
+    at: Optional[list[float]] = None
+    centroid_of: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check_exactly_one(self) -> "LabelFreeText":
+        has_at = self.at is not None
+        has_cof = self.centroid_of is not None
+        if has_at == has_cof:
+            raise ValueError(
+                "label_free_text: specify exactly one of 'at' or 'centroid_of'"
+            )
+        return self
+
+
 AnnotationLabel = Annotated[
-    Union[LabelSegment, LabelPoint, LabelAngle],
+    Union[LabelSegment, LabelPoint, LabelAngle, LabelFreeText],
     Field(discriminator="kind")
 ]
 
@@ -598,18 +1060,32 @@ class RecipeDSL(BaseModel):
     mode: Literal["abstract", "grid", "mixed"] = "abstract"
     construction: list[DSLOp]
     annotations: DSLAnnotations = Field(default_factory=DSLAnnotations)
-    checks: list[dict[str, Any]] = Field(default_factory=list)
+    checks: list[DSLCheck] = Field(default_factory=list)
+    # Note: checks are validated at parse time but not yet consumed by the lowerer.
+    # Lowerer auto-generates checks from construction ops. Explicit check
+    # consumption is a planned follow-on (see design spec section 2.3).
 
     @model_validator(mode="before")
     @classmethod
     def check_reserved_ids(cls, data: Any) -> Any:
-        """Reject any construction op whose id starts with '__'."""
+        """Reject any construction op whose id starts with '__', or that references
+        a '__'-prefixed ID in its 'of' field (e.g. intersection targets)."""
         construction = data.get("construction", [])
         for op in construction:
-            if isinstance(op, dict):
-                id_ = op.get("id", "")
-                if isinstance(id_, str) and id_.startswith("__"):
-                    raise ValueError(
-                        f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}"
-                    )
+            if not isinstance(op, dict):
+                continue
+            id_ = op.get("id", "")
+            if isinstance(id_, str) and id_.startswith("__"):
+                raise ValueError(
+                    f"IDs starting with '__' are reserved for lowering intermediates; got {id_!r}"
+                )
+            # Also check reference fields that take object IDs
+            of_ = op.get("of")
+            if isinstance(of_, list):
+                for ref in of_:
+                    if isinstance(ref, str) and ref.startswith("__"):
+                        raise ValueError(
+                            f"Op '{id_}': reference {ref!r} in 'of' starts with '__', "
+                            "which is reserved. Use the actual op id (without '__')."
+                        )
         return data

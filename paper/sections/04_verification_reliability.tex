@@ -1,0 +1,50 @@
+\section{Verification reliability}
+\label{sec:verification}
+
+This section defines what verification means in \GeoGenBench, audits the verifier for completeness and adversarial soundness, and reports the headline result of a pre-registered $N{=}200$ human-correlation study.
+Full per-claim methodology and supporting analyses are in \cref{app:human_study,app:completeness_witnesses}.
+
+\subsection{Completeness, soundness, hardening}
+\label{ssec:ver_defn}
+
+A property list $\mathcal{P}$ is \emph{complete} for scenario $\mathcal{S}$ if every diagram passing all of $\mathcal{P}$ is congruent (up to rigid motion + scale) to the intended construction.
+We classify each templated scenario along a \textbf{completeness spectrum}: \textbf{tight} (uniquely determines the figure), \textbf{loose} (named relations pinned, continuous parameters free; intentional, matching educational practice), \textbf{skeletal} (only incidence).
+The audit yields $18 / 11 / 1$ tight / loose / skeletal templates, giving an aggregate $63\%$ tight / $35\%$ loose / $2\%$ skeletal at the scenario level (379 / 209 / 12 of 600); per-scenario witnesses for 25 tight + 25 loose are in \cref{app:completeness_witnesses}.
+
+\paragraph{Adversarial soundness.}
+For each of the 17 implemented symbolic predicates we attempt to construct a TikZ output that passes the predicate but contradicts the prompt.
+Five predicates show measurable soft spots --- \propname{midpoint}, \propname{point\_on\_segment} (pre-hardening), \propname{parallel}, \propname{tangent}, and \propname{equidistant\_from\_sides} --- all addressable by hardening or template-side pairing (full table in \cref{app:human_study} adversarial subsection).
+Constructed adversarial examples pass the verifier; we estimate $<5\%$ of strict passes are vulnerable to such constructions in the wild because templates pair check types in ways that close single-check loopholes (e.g.\ midpoint scenarios always include the segment context that makes the perpendicular-bisector escape unphysical).
+
+\paragraph{Hardening pass.}
+Three changes to the verifier addressing pilot-data soft spots: (a) closed-form solver for \texttt{\textbackslash tkzInterCC} / \texttt{\textbackslash tkzInterLC} runtime intersections; (b) a pgfmath-style coordinate evaluator (AST walker over \texttt{\textbackslash pgfmathsetmacro} chains); (c) the \propname{centroid} predicate (added; pre-hardening it emitted no decision on \texttt{tpl-t3-cen}).
+Aggregate impact on the pilot: 23 of 498 records ($4.6\%$) promote \texttt{soft\_pass} $\to$ \texttt{pass}; 0 demotions.
+The strategy-effect (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp after, indicating about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
+\Cref{sec:results} reports post-hardening numbers as canonical.
+
+\subsection{Human-correlation study ($N{=}200$, two domain-expert raters)}
+\label{ssec:human}
+
+We pre-register and run a human-correlation study against the canonical post-hardening pilot ($N{=}498$); the pre-registration is committed to \texttt{docs/human\_study\_protocol.md} prior to data collection, with full methodology in \cref{app:human_study}.
+The deterministic stratified sample (seed 42, restricted to {\rawcode}/{\structured}; deviation D-1) takes all 28 \texttt{soft\_pass} records, all 21 rendered-but-failed records, plus 151 \texttt{pass} records balanced across (tier $\times$ strategy $\times$ model).
+Two domain-expert raters (PhD mathematician + K--12 mathematics educator, both authors --- mitigated by Q1 blinding and per-rater $\kappa$ reporting) annotate independently.
+\textbf{Q1 (blind):} ``Does the diagram correctly satisfy every claim in the prompt?'' \{yes / partially / no\}; the rating tool reveals neither the auto-verdict nor any per-predicate values until Q1 is submitted.
+\textbf{Q2 (post-Q1):} per-predicate \{agrees-pass / agrees-fail / disagrees / unsure\}.
+After independent annotation, raters meet ($\leq 90$ minutes) to discuss Q1 disagreements to convergence, producing one consensus label per item.
+The pre-registered primary endpoint is $\kappa(\text{auto}, \text{consensus}) \geq 0.70$ on the binary collapse, with the bootstrap-CI lower bound also exceeding $0.70$.
+
+\paragraph{Headline result.}
+$\boldsymbol{\kappa = 0.455}$ on the binary collapse, $N{=}200$, 95\% bootstrap CI $[0.304,\ 0.590]$ over 1000 resamples; balanced accuracy $0.684$.
+The point estimate falls in the protocol's middle response-tree branch ($0.40 \leq \kappa < 0.70$), so we report the result as \textbf{moderate agreement}, with the lower bound below the pre-registered $0.70$ threshold (the headline-validation hypothesis is not supported).
+Inter-rater agreement before consensus is substantial ($\kappa = 0.704$), so the rating instrument is consistent --- the gap is between the two raters as a unit and the auto-verdict, not between the raters.
+
+\paragraph{Interpretation: one-directional lenience.}
+The disagreement is one-directional: $36$ of $200$ records have the verifier accepting where humans reject ($18\%$ of strict-pass records overturn to \texttt{fail} on consensus review), and \emph{zero} records have the reverse.
+The verifier is systematically lenient relative to expert humans, never strict.
+Per-tier $\kappa$: $\tone\ = 0.651$ (substantial), $\ttwo\ = 0.160$ (slight), $\tthree\ = 0.796$ (substantial); the entire disagreement concentrates on \ttwo, where the property list checks the named auxiliary construction (altitude perpendicular, median to midpoint) but not the prompt's specific numeric angle / side parameters.
+This is the loose-completeness pattern (\cref{ssec:ver_defn}) made empirical: in the qualitative coding (\cref{app:human_study:disagreement_coding}), $32 / 36$ disagreements ($89\%$) code as ``verifier missed prompt-numeric constraint.''
+
+\paragraph{Implications for the leaderboard.}
+The headline pass-rates in \cref{sec:results} should be read with one caveat: the auto-verdict is one-directionally lenient relative to expert humans, with the lenience concentrated on \ttwo\ auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
+Concretely, the strict pass-rates in \cref{tab:headline} are \emph{conservative against the verifier-bias axis} (true expert-rated rates would be lower, not inflated by spurious fails), and rate \emph{differences} between cells are largely preserved because the lenience applies uniformly across (model, strategy) cells on the affected templates.
+\GeoGenBench\ pass-rate is a moderately-but-not-perfectly-correlated proxy for expert agreement, with the gap concretely localised and the v2 fix (template-side numeric predicates lifting affected \ttwo\ templates from loose to tight) committed as follow-up work.

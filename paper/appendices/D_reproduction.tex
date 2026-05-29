@@ -1,0 +1,101 @@
+\section{Reproduction instructions}
+\label{app:reproduction}
+
+\subsection{Pinned versions}
+\label{app:pinned_versions}
+
+All results in this paper were produced against repository commit \texttt{db17ae5} on \texttt{master} (with the paper-only commits in \texttt{feat/geogen-paper} layered on top). The pilot dataset in \cref{sec:results} was scored by the verifier at that commit; we re-graded all 498 pilot records against the same commit's verification logic and confirmed zero \texttt{gate\_status} drift versus the as-collected JSONL records.
+
+The renderer Docker image is pinned to the tag \texttt{tikz-renderer:db17ae5}, built from the \texttt{renderer/} directory at the same commit. The renderer was migrated mid-development from a DVI pipeline to a PDF+\texttt{fontspec} pipeline (master commit \texttt{a74970f}); reproductions before that commit will produce visually different SVGs but should yield identical strict-pass verdicts because the verifier operates on the SymPy-compiled coordinate set extracted from the TikZ source, not on rendered SVG bytes.
+
+\subsection{Quickstart}
+
+Clone the repository, install the Python deps with \texttt{uv sync}, start the renderer container:
+\begin{lstlisting}
+git clone https://github.com/<anon>/geogen
+cd geogen
+git checkout db17ae5             # paper-pinned commit
+uv sync
+docker run -d -p 8001:8001 \
+    ghcr.io/<anon>/tikz-renderer:db17ae5
+\end{lstlisting}
+
+\subsection{Reproducing the headline numbers}
+
+The headline run in \cref{sec:results} can be reproduced with:
+\begin{lstlisting}
+bash evals/leaderboard_launch.sh
+\end{lstlisting}
+This iterates over (model $\times$ strategy) combinations against \texttt{evals/scenarios\_generated.yaml}, writing per-combo JSONL files into \texttt{evals/results/headline\_run/}.
+Subsequent analysis:
+\begin{lstlisting}
+uv run python -m evals.leaderboard_analyze \
+    --input-dir evals/results/headline_run/unified \
+    --output-md REPORT.md --output-csv leaderboard.csv
+
+uv run python -m evals.leaderboard_plot \
+    --input-dir evals/results/headline_run/unified \
+    --output-dir docs/figures/geogen-pilot
+\end{lstlisting}
+
+\subsection{Re-rolling the dataset}
+
+To generate a contamination-free re-roll of the templated split with a different seed:
+\begin{lstlisting}
+uv run python -m evals.generate_scenarios \
+    --output evals/scenarios_generated_v2.yaml \
+    --seed 42
+\end{lstlisting}
+The procedural variant generator preserves the 30-template / 200-per-tier structure and is the recommended defence against suspected contamination.
+
+\subsection{Re-grading without LLM calls}
+
+Because the headline-run JSONL files store every model's TikZ output verbatim, the verifier can be re-run against a different commit's check semantics without spending another dollar on LLM tokens:
+\begin{lstlisting}
+uv run python -m evals.regrade \
+    --input-dir evals/results/leaderboard_pilot_v2 \
+    --output-dir evals/results/leaderboard_pilot_v3
+\end{lstlisting}
+We used this exact invocation to materialise \texttt{leaderboard\_pilot\_v3} from \texttt{leaderboard\_pilot\_v2} after pass~3 of \cref{ssec:ver_defn} (the \propname{centroid} predicate): 10/498 records promoted, 0 demotions.
+The same pattern audited verdict stability across the renderer/IR migration described in \cref{app:pinned_versions} (498 records, zero gate-status changes pre-pass-3), and is also the right tool for any future hardening pass: re-grade first, re-run only if the verdicts shift in a way the new code cannot reproduce.
+
+\subsection{Docker images and dataset card}
+
+We release:
+\begin{itemize}
+\item \texttt{ghcr.io/<anon>/tikz-renderer:db17ae5} --- the TikZ$\to$SVG renderer (LuaLaTeX + \texttt{fontspec} + \texttt{tkz-euclide}, pinned to the paper commit). A floating \texttt{:latest} tag tracks the current \texttt{master} for active development; reviewers should pull the pinned tag.
+\item \texttt{ghcr.io/<anon>/geogen-eval:db17ae5} --- the full Python evaluator with all dependencies pre-installed.
+\item \texttt{datasets/geogen-v1.0} on Hugging Face --- the 801-scenario benchmark in JSONL (\texttt{bench\_generated.jsonl} with 600 templated records and \texttt{bench\_curriculum.jsonl} with 201 curriculum records), generated deterministically from the YAML sources in \texttt{benchmark/definitions/} by \texttt{benchmark/definitions/build\_release\_jsonl.py}.
+\end{itemize}
+
+\subsection{Croissant metadata and datasheet}
+
+A \textbf{Croissant 1.0} metadata file accompanies the release at \texttt{benchmark/definitions/croissant.json}.
+It conforms to \texttt{http://mlcommons.org/croissant/1.0}, declares both released JSONL files with their SHA-256 checksums, and exposes per-record \texttt{id}, \texttt{prompt}, \texttt{tier}, and \texttt{tags} fields for both the \texttt{templated} and \texttt{curriculum} splits.
+The file additionally carries the Croissant Responsible-AI vocabulary fields covering data collection, annotation, preprocessing, biases, limitations, recommended uses, and social impact (mined from the Gebru et al.\ datasheet, \texttt{docs/datasheet.md}, and the discussion sections of this paper).
+Validation passes against the reference \texttt{mlcroissant} Python implementation v1.1.0:
+\begin{lstlisting}
+.venv/bin/python -c "
+import mlcroissant as mlc
+ds = mlc.Dataset(jsonld='benchmark/definitions/croissant.json')
+print(ds.metadata.ctx.issues.report() or 'OK')"
+\end{lstlisting}
+The complete \GeoGen datasheet (\citealp{gebru2021datasheets} format) is at \texttt{docs/datasheet.md}; the Hugging-Face-ready dataset card is at \texttt{benchmark/definitions/README.md} and uses the same content.
+
+\subsection{Curriculum source attribution and licensing}
+\label{app:curriculum_attribution}
+
+The 201 curriculum-extracted scenarios (\cref{ssec:sources}) were prompted by lesson-level topical structure drawn from \textit{Bluebonnet Learning} K--12 mathematics, the open educational curriculum produced by Carnegie Learning, Inc.\ for the Texas Education Agency under the Texas State Board of Education's Instructional Materials and Technology Allotment process \citep{bluebonnet2024}.
+Specifically, we used the Teacher's Editions of the Grade 6, Grade 7, Grade 8, and high-school Geometry volumes.
+The Bluebonnet Learning materials are made publicly available by the Texas Education Agency at \url{https://learn.texas.gov/} for use by Texas public schools and the broader education community.
+
+\paragraph{What we use from Bluebonnet, and what we release.}
+Our pipeline uses Bluebonnet only as a \emph{topical scaffold}: we extract the lesson-level structure (chapter titles, lesson topics, and the geometric concepts each lesson exercises), and we prompt an LLM (\sonnet) to author a fresh, student-style diagram-drawing request that exercises that concept.
+We do not redistribute, paraphrase, or otherwise include any portion of the Bluebonnet textbook prose, figures, problem statements, solutions, or pedagogical commentary in the released benchmark.
+The released artefacts are: (a) our LLM-generated diagram-drawing prompts (each is a short, self-contained natural-language request with no excerpted Bluebonnet text); (b) the corresponding property-list rubrics we authored against those prompts; and (c) the per-scenario lineage tags identifying which Bluebonnet chapter and lesson \emph{topic} a scenario was inspired by, so that downstream users can replicate or extend the topical coverage.
+The Bluebonnet attribution lives in each curriculum scenario's \texttt{metadata.lineage} field in the released JSONL.
+
+\paragraph{Licensing.}
+The Bluebonnet Learning curriculum carries its own publication terms set by the Texas Education Agency and Carnegie Learning, Inc.\ for the Bluebonnet programme; we do not assert any rights in those source materials, and any use of the Bluebonnet curriculum itself must be made under those terms.
+Our derivative artefacts --- the LLM-generated prompt rewrites, the property-list rubrics, the verifier code, the renderer, the Croissant metadata, the datasheet, and this paper --- are released under the MIT License.
+Users wishing to access the underlying Bluebonnet Learning materials should obtain them directly from the Texas Education Agency Bluebonnet portal (\url{https://learn.texas.gov/}); we do not redistribute any Bluebonnet content.

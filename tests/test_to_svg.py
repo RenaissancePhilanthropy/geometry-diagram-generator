@@ -14,6 +14,7 @@ from ir.ir import (
     DrawPoints,
     Fill,
     LabelAngle,
+    LabelFreeText,
     LabelPoint,
     LabelSegment,
     LineThrough,
@@ -36,6 +37,15 @@ from ir.to_svg import (
     _angle_to_offset,
     _angle_to_anchor,
     _build_incident_angles,
+    _bisector_angle,
+    _segment_label_side,
+    _estimate_text_width,
+    _label_bbox,
+    _bboxes_overlap,
+    _LabelPlacement,
+    _ANGLE_ARC_R,
+    _ANGLE_LABEL_R,
+    _FONT_SIZE,
 )
 from util.svg_checks import check_svg_wellformed, check_svg_has_content, check_svg_reasonable_size
 
@@ -298,6 +308,31 @@ def test_segment_tick_marks():
     root = _parse(svg_str)
     lines = _findall(root, "line")
     assert len(lines) >= 1
+
+
+def test_parallel_mark_renders_chevrons():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["AB"], group="parallel_1")],
+    )
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    root = _parse(svg_str)
+    lines = [
+        el for el in _findall(root, "line")
+        if el.get("data-group") == "parallel_1"
+    ]
+    # A chevron has two arms
+    assert len(lines) >= 2
+    # Chevron arms on a horizontal segment are NOT perpendicular (x1 != x2)
+    for el in lines:
+        assert el.get("x1") != el.get("x2"), (
+            f"Expected non-perpendicular chevron line but got x1==x2=={el.get('x1')}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -565,9 +600,8 @@ def test_mark_right_angle_has_metadata():
     sym = compile_defs(diagram)
     svg_str = ir_to_svg(diagram, sym)
     root = _parse(svg_str)
-    paths = _findall(root, "path")
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "mark-right-angle"]
     assert len(paths) >= 1
-    assert paths[0].get("data-role") == "mark-right-angle"
     assert paths[0].get("data-angle") == "A,B,C"
 
 
@@ -583,8 +617,8 @@ def test_mark_angle_has_metadata():
     sym = compile_defs(diagram)
     svg_str = ir_to_svg(diagram, sym)
     root = _parse(svg_str)
-    paths = _findall(root, "path")
-    assert all(p.get("data-role") == "mark-angle" for p in paths)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "mark-angle"]
+    assert len(paths) >= 1
     assert all(p.get("data-angle") == "A,O,B" for p in paths)
     assert all(p.get("data-group") == "2" for p in paths)
 
@@ -671,6 +705,17 @@ def test_parse_latex_overline():
     assert any(s["kind"] == "overline" and s["content"] == "AB" for s in result)
 
 
+def test_parse_latex_widehat():
+    # \widehat{AT} should render as overline (arc notation), not literal "widehat"
+    result = _parse_latex(r"\widehat{AT}")
+    assert any(s["kind"] == "overline" and s["content"] == "AT" for s in result), (
+        f"Expected overline segment for widehat, got: {result}"
+    )
+    # Ensure the word "widehat" does not appear literally
+    all_text = "".join(s["content"] for s in result)
+    assert "widehat" not in all_text
+
+
 def test_parse_latex_geometry_symbols():
     result = _parse_latex(r"\triangle ABC")
     combined = "".join(s["content"] for s in result)
@@ -683,6 +728,45 @@ def test_parse_latex_dollar_stripped():
     # the label-in-diagram test above. Here test stripping directly.
     result = _parse_latex("A")  # already stripped
     assert result[0]["content"] == "A"
+
+
+def test_parse_latex_inline_dollar_stripped():
+    """Inline $...$ within mixed text should not produce literal $ characters."""
+    # e.g. "arc $= 2\\pi r$" should render without dollar signs
+    result = _parse_latex("arc $= 2\\pi r$")
+    combined = "".join(seg["content"] for seg in result)
+    assert "$" not in combined, f"Dollar signs found in output: {combined!r}"
+    assert "arc" in combined
+    assert "π" in combined
+
+
+def test_parse_latex_frac_unicode():
+    """\\frac{1}{3} should produce the Unicode fraction character ⅓."""
+    result = _parse_latex(r"\frac{1}{3}")
+    combined = "".join(seg["content"] for seg in result)
+    assert combined == "⅓", f"Expected '⅓', got {combined!r}"
+
+
+def test_parse_latex_frac_half():
+    """\\frac{1}{2} should produce ½."""
+    result = _parse_latex(r"\frac{1}{2}")
+    combined = "".join(seg["content"] for seg in result)
+    assert combined == "½", f"Expected '½', got {combined!r}"
+
+
+def test_parse_latex_frac_generic():
+    """\\frac{a}{b} with no Unicode shortcut should produce 'a/b'."""
+    result = _parse_latex(r"\frac{a}{b}")
+    combined = "".join(seg["content"] for seg in result)
+    assert "/" in combined, f"Expected slash in output, got {combined!r}"
+    assert "a" in combined and "b" in combined
+
+
+def test_parse_latex_frac_not_in_output():
+    """'frac' literal text should not appear in \\frac output."""
+    result = _parse_latex(r"\frac{1}{3}")
+    combined = "".join(seg["content"] for seg in result)
+    assert "frac" not in combined, f"'frac' literal found in output: {combined!r}"
 
 
 def test_label_with_subscript_produces_tspan():
@@ -997,3 +1081,791 @@ def test_ellipse_fill_renders_as_filled_ellipse():
     filled = [e for e in ellipses if e.get("data-role") == "fill"]
     assert len(filled) == 1
     assert filled[0].get("fill") not in (None, "none")
+
+
+# ---------------------------------------------------------------------------
+# Fill with holes (even-odd)
+# ---------------------------------------------------------------------------
+
+def test_fill_with_holes_emits_evenodd_path():
+    """Circle filled with a polygon hole should produce a <path fill-rule='evenodd'>."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="quad", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["quad"], opacity=0.3)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [e for e in _findall(root, "path") if e.get("data-role") == "fill"]
+    assert len(paths) == 1
+    assert paths[0].get("fill-rule") == "evenodd"
+    d = paths[0].get("d", "")
+    assert "M" in d and "Z" in d
+    assert paths[0].get("fill") not in (None, "none")
+
+
+def test_fill_with_holes_d_has_two_subpaths():
+    """The compound path d-attribute should contain two closed subpaths (two 'Z')."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            PointFixed(id="C", x=-1, y=0),
+            Polygon(id="tri", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="circ", holes=["tri"], opacity=0.3)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [e for e in _findall(root, "path") if e.get("data-role") == "fill"]
+    d = paths[0].get("d", "")
+    assert d.count("Z") == 2
+
+
+def test_fill_without_holes_unchanged():
+    """Fill without holes still renders a <circle> element, not a <path>."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Fill(obj="circ", opacity=0.5)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    circles = _findall(root, "circle")
+    filled = [c for c in circles if c.get("data-role") == "fill"]
+    assert len(filled) == 1
+
+
+# ---------------------------------------------------------------------------
+# Arc rendering
+# ---------------------------------------------------------------------------
+
+def test_arc_emits_svg_path_with_arc_command():
+    """Arc should render as <path data-type='arc'> with an SVG 'A' arc segment."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    arcs = [e for e in _findall(root, "path") if e.get("data-type") == "arc"]
+    assert len(arcs) == 1
+    d = arcs[0].get("d", "")
+    assert d.startswith("M ")
+    assert " A " in d
+    assert arcs[0].get("fill") == "none"
+
+
+def test_arc_large_arc_flag_for_major_sweep():
+    """A reflex arc (>180°) should set large-arc-flag=1 and sweep-flag=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            # start at 0°, end at 270° — reflex=True to get the >180° arc
+            PointFixed(id="S", x=1, y=0),
+            PointFixed(id="E", x=0, y=-1),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    arcs = [e for e in _findall(root, "path") if e.get("data-type") == "arc"]
+    d = arcs[0].get("d", "")
+    # SVG path format: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+    # Parse out the portion after 'A '
+    a_parts = d.split(" A ", 1)[1].split()
+    large_arc_flag = a_parts[3]
+    sweep_flag = a_parts[4]
+    assert large_arc_flag == "1"
+    assert sweep_flag == "0"
+
+
+def _parse_arc_flags(svg_str: str) -> tuple[str, str]:
+    """Return (large_arc_flag, sweep_flag) from the first arc path in the SVG."""
+    root = ET.fromstring(svg_str)
+    arcs = [e for e in root.iter() if e.get("data-type") == "arc"]
+    d = arcs[0].get("d", "")
+    a_parts = d.split(" A ", 1)[1].split()
+    return a_parts[3], a_parts[4]
+
+
+def test_arc_minor_default_renders_correct_flags():
+    """Minor arc (default) around O=(0,-1) between endpoints on x-axis gives large=0, sweep=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc, sweep = _parse_arc_flags(_compile_svg(diagram))
+    assert large_arc == "0"
+    assert sweep == "0"
+
+    # Order-independence: swapping start/end gives the same flags
+    diagram2 = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="B", end="A"),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc2, sweep2 = _parse_arc_flags(_compile_svg(diagram2))
+    assert large_arc2 == "0"
+    assert sweep2 == "0"
+
+
+def test_arc_reflex_gives_large_arc():
+    """Reflex arc around O=(0,-1) between endpoints on x-axis gives large=1, sweep=0."""
+    from ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=-1),
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=1, y=0),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B", reflex=True),
+        ],
+        render=[Draw(obj="arc1")],
+    )
+    large_arc, sweep = _parse_arc_flags(_compile_svg(diagram))
+    assert large_arc == "1"
+    assert sweep == "0"
+
+
+# ---------------------------------------------------------------------------
+# Angle bisector
+# ---------------------------------------------------------------------------
+
+class TestBisectorAngle:
+    def test_normal_case(self):
+        """30° and 90° → bisector at 60°."""
+        da = math.radians(30)
+        db = math.radians(90)
+        result = _bisector_angle(da, db)
+        assert abs(result - math.radians(60)) < 1e-9
+
+    def test_straddling_pi(self):
+        """170° and -170° (=190°) → bisector at 180°, not 0°."""
+        da = math.radians(170)
+        db = math.radians(-170)  # same as 190°
+        result = _bisector_angle(da, db)
+        # Bisector should be near 180°, definitely not near 0°
+        result_deg = math.degrees(result % (2 * math.pi))
+        assert abs(result_deg - 180.0) < 1.0
+
+    def test_same_angle(self):
+        """Equal angles → bisector = that angle."""
+        da = math.radians(45)
+        result = _bisector_angle(da, da)
+        assert abs((result % (2 * math.pi)) - math.radians(45)) < 1e-9
+
+    def test_right_angle(self):
+        """0° and 90° → bisector at 45°."""
+        result = _bisector_angle(0.0, math.pi / 2)
+        assert abs(result - math.pi / 4) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Segment label side selection
+# ---------------------------------------------------------------------------
+
+class TestSegmentLabelSide:
+    def test_no_other_points_defaults_positive(self):
+        """With no surrounding points, return +1 (CCW side)."""
+        side = _segment_label_side(0, 0, 0, 1, [])
+        assert side == 1.0
+
+    def test_points_on_positive_side_gives_negative(self):
+        """If more points are on +ny side (below in SVG), label goes on -ny (above)."""
+        # Midpoint at (0, 0), ny=1 (downward in SVG). Points below midpoint → positive side.
+        other = [(0, 50), (10, 80), (-5, 60)]  # py > my=0 → positive side
+        side = _segment_label_side(0, 0, 0, 1, other)
+        assert side == -1.0
+
+    def test_points_on_negative_side_gives_positive(self):
+        """If more points are on -ny side (above in SVG), label goes on +ny (below)."""
+        # Midpoint at (0, 100), ny=1. Points above midpoint (py < 100) → negative side.
+        other = [(0, 50), (10, 20)]  # py < my=100 → negative side
+        side = _segment_label_side(0, 100, 0, 1, other)
+        assert side == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Text width estimation
+# ---------------------------------------------------------------------------
+
+class TestEstimateTextWidth:
+    def test_single_char(self):
+        w = _estimate_text_width("A")
+        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+
+    def test_greek_command(self):
+        """\\alpha is one command → width ~ 1 char."""
+        w = _estimate_text_width(r"\alpha")
+        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+
+    def test_longer_text(self):
+        w5 = _estimate_text_width("ABCDE")
+        w1 = _estimate_text_width("A")
+        assert w5 == pytest.approx(5 * w1, rel=0.01)
+
+    def test_dollar_stripped(self):
+        w = _estimate_text_width("$A$")
+        assert w == pytest.approx(_estimate_text_width("A"), rel=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Label bbox and overlap
+# ---------------------------------------------------------------------------
+
+class TestLabelBbox:
+    def _lp(self, x, y, text="A", anchor="middle"):
+        w = _estimate_text_width(text)
+        return _LabelPlacement(x=x, y=y, text=text, color="black", anchor=anchor, width_est=w)
+
+    def test_middle_anchor_centered(self):
+        lp = self._lp(100, 50, anchor="middle")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs((x0 + x1) / 2 - 100) < 0.1
+
+    def test_start_anchor_left_edge_at_x(self):
+        lp = self._lp(100, 50, anchor="start")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs(x0 - 100) < 0.1
+
+    def test_end_anchor_right_edge_at_x(self):
+        lp = self._lp(100, 50, anchor="end")
+        x0, y0, x1, y1 = _label_bbox(lp)
+        assert abs(x1 - 100) < 0.1
+
+    def test_bboxes_overlap_same_position(self):
+        lp = self._lp(100, 50)
+        bb = _label_bbox(lp)
+        assert _bboxes_overlap(bb, bb)
+
+    def test_bboxes_no_overlap_far_apart(self):
+        lp1 = self._lp(10, 10)
+        lp2 = self._lp(500, 500)
+        assert not _bboxes_overlap(_label_bbox(lp1), _label_bbox(lp2))
+
+
+# ---------------------------------------------------------------------------
+# Angle label is beyond the arc marker
+# ---------------------------------------------------------------------------
+
+def test_angle_label_beyond_arc():
+    """Angle label must be placed farther from vertex than the arc radius."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            DrawPoints(points=["A", "B", "C"]),
+            MarkAngles(angles=[AnglePoints(a="B", o="A", b="C")]),
+            LabelAngle(angle=AnglePoints(a="B", o="A", b="C"), text="α"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+
+    # Find the vertex A position in SVG
+    pts = _findall(root, "circle")
+    a_pt = next(el for el in pts if el.get("data-ir-id") == "A")
+    vx, vy = float(a_pt.get("cx")), float(a_pt.get("cy"))
+
+    # Find the angle label
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-angle"]
+    assert len(labels) == 1
+    lx, ly = float(labels[0].get("x")), float(labels[0].get("y"))
+
+    dist = math.hypot(lx - vx, ly - vy)
+    assert dist > _ANGLE_ARC_R, f"Label at dist={dist:.1f}px, arc radius={_ANGLE_ARC_R}px"
+    assert dist >= _ANGLE_LABEL_R - 2, f"Label should be at ~{_ANGLE_LABEL_R}px, got {dist:.1f}"
+
+
+# ---------------------------------------------------------------------------
+# Duplicate right-angle marks are deduplicated
+# ---------------------------------------------------------------------------
+
+def test_duplicate_right_angle_marks_deduplicated():
+    """Two MarkRightAngles ops with the same triple produce only one path."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=0, y=1),
+        ],
+        render=[
+            MarkRightAngles(angles=[AnglePoints(a="A", o="B", b="C")]),
+            MarkRightAngles(angles=[AnglePoints(a="A", o="B", b="C")]),  # duplicate
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    ra_paths = [el for el in _findall(root, "path") if el.get("data-role") == "mark-right-angle"]
+    assert len(ra_paths) == 1
+
+
+# ---------------------------------------------------------------------------
+# Coincident point labels are deduplicated
+# ---------------------------------------------------------------------------
+
+def test_coincident_point_labels_deduplicated():
+    """Two points at the same location produce only one label."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=0, y=0),  # same position
+        ],
+        render=[
+            DrawPoints(points=["A", "B"]),
+            LabelPoint(p="A"),
+            LabelPoint(p="B"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    point_labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-point"]
+    assert len(point_labels) == 1
+
+
+# ---------------------------------------------------------------------------
+# Segment label goes to the uncrowded side
+# ---------------------------------------------------------------------------
+
+def test_segment_label_avoids_crowded_side():
+    """For a horizontal segment, label should go to the side with fewer other points."""
+    # Segment A-B with C well below: label should go above (negative SVG y direction)
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=5),
+            PointFixed(id="B", x=4, y=5),
+            PointFixed(id="C", x=2, y=0),  # below the segment
+            Segment(id="seg_AB", a="A", b="B"),
+        ],
+        render=[
+            Draw(obj="seg_AB"),
+            DrawPoints(points=["A", "B", "C"]),
+            LabelSegment(seg="seg_AB", text="4"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+
+    # Find label and the SVG y-coordinate of A (both endpoints share same y)
+    ax, ay = None, None
+    for el in _findall(root, "circle"):
+        if el.get("data-ir-id") == "A":
+            ax, ay = float(el.get("cx")), float(el.get("cy"))
+    assert ay is not None
+
+    seg_label = next(
+        el for el in _findall(root, "text") if el.get("data-role") == "label-segment"
+    )
+    ly = float(seg_label.get("y"))
+    # C is below in geometry = higher SVG y. Label should be above segment (lower SVG y than segment).
+    assert ly < ay, f"Expected label above segment (ly={ly:.1f} < ay={ay:.1f})"
+
+
+# ---------------------------------------------------------------------------
+# LabelFreeText
+# ---------------------------------------------------------------------------
+
+def _triangle_ir(extra_render=None):
+    return DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=(extra_render or []),
+    )
+
+
+def test_label_free_text_at_renders_svg_text():
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text="hello", at=[2.0, 1.5]),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    # Should have some x/y coordinate
+    assert float(labels[0].get("x")) > 0
+    assert float(labels[0].get("y")) > 0
+
+
+def test_label_free_text_centroid_of_renders_at_centroid():
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text="I", centroid_of="T"),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    # Centroid of (0,0),(4,0),(2,3) is (2,1); must land inside the SVG bounds
+    assert float(labels[0].get("x")) > 0
+    assert float(labels[0].get("y")) > 0
+
+
+# ---------------------------------------------------------------------------
+# Arrow style
+# ---------------------------------------------------------------------------
+
+def test_arrow_style_renders_marker_defs():
+    """SVG output should contain arrowhead marker definitions."""
+    diagram = _triangle_ir([Draw(obj="T")])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    markers = _findall(root, "marker")
+    marker_ids = {m.get("id") for m in markers}
+    assert "arrowhead" in marker_ids
+    assert "arrowhead-start" in marker_ids
+
+
+def test_arrow_style_end_adds_marker_end():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="seg", a="A", b="B"),
+        ],
+        styles={"arr": {"->": True}},
+        render=[Draw(obj="seg", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    seg_lines = [l for l in lines if l.get("marker-end")]
+    assert len(seg_lines) == 1
+    assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
+
+
+def test_arrow_style_both_adds_both_markers():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="seg", a="A", b="B"),
+        ],
+        styles={"arr": {"<->": True}},
+        render=[Draw(obj="seg", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    seg_lines = [l for l in lines if l.get("marker-end")]
+    assert len(seg_lines) == 1
+    assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
+    assert seg_lines[0].get("marker-start") == "url(#arrowhead-start)"
+
+
+# ---------------------------------------------------------------------------
+# Canvas bounds — circles/ellipses must not be clipped
+# ---------------------------------------------------------------------------
+
+def _svg_viewbox(svg_text: str) -> tuple[float, float, float, float]:
+    """Parse viewBox='x y w h' from SVG root element."""
+    root = ET.fromstring(svg_text)
+    vb = root.get("viewBox", "").split()
+    return tuple(float(v) for v in vb)  # (x, y, width, height)
+
+
+def test_canvas_expands_for_large_circle_with_explicit_canvas():
+    """A circle with radius 3 at origin should produce canvas well beyond [-1, 1]."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=1, ymin=-1, ymax=1),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Draw(obj="circ"), DrawPoints(points=["O"])],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    # The circle extends from -3 to +3 in both axes; viewBox should cover that
+    vb_x, vb_y, vb_w, vb_h = _svg_viewbox(svg)
+    # SVG coordinate system has y flipped, so just check that both dimensions
+    # are large enough to contain a radius-3 circle with some padding
+    assert vb_w >= 6 * 40, f"SVG width {vb_w} too small to contain circle (r=3)"
+    assert vb_h >= 6 * 40, f"SVG height {vb_h} too small to contain circle (r=3)"
+
+
+def test_canvas_expands_for_circle_without_explicit_canvas():
+    """With no canvas, compute_bounds should already handle circles correctly."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="circ", center="O", radius=3),
+        ],
+        render=[Draw(obj="circ"), DrawPoints(points=["O"])],
+    )
+    sym = compile_defs(diagram)
+    svg = ir_to_svg(diagram, sym)
+    vb_x, vb_y, vb_w, vb_h = _svg_viewbox(svg)
+    assert vb_w >= 6 * 40, f"SVG width {vb_w} too small to contain circle (r=3)"
+    assert vb_h >= 6 * 40, f"SVG height {vb_h} too small to contain circle (r=3)"
+
+
+def test_auto_canvas_expands_for_circle_in_lowerer():
+    """_auto_canvas() should consider circle radii when no explicit canvas is given."""
+    from recipe.dsl import RecipeDSL
+    from recipe.lower import lower_to_ir
+
+    dsl = RecipeDSL.model_validate({
+        "mode": "abstract",
+        "construction": [
+            {"op": "point", "id": "O", "coords": [0, 0]},
+            {"op": "circle", "id": "circ", "center": "O", "radius": 3},
+        ],
+        "annotations": {"auto_draw_all": True},
+        "checks": [],
+    })
+    ir = lower_to_ir(dsl)
+    # Canvas should extend at least to ±3 + padding in both axes
+    assert ir.canvas.xmin <= -3, f"xmin={ir.canvas.xmin} doesn't cover circle extent"
+    assert ir.canvas.xmax >= 3, f"xmax={ir.canvas.xmax} doesn't cover circle extent"
+    assert ir.canvas.ymin <= -3, f"ymin={ir.canvas.ymin} doesn't cover circle extent"
+    assert ir.canvas.ymax >= 3, f"ymax={ir.canvas.ymax} doesn't cover circle extent"
+
+
+# ---------------------------------------------------------------------------
+# Font injection
+# ---------------------------------------------------------------------------
+
+from ir.font import FontConfig
+
+
+def test_svg_has_font_face_defs():
+    """SVG output includes @font-face rules in <defs><style>."""
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg)
+    assert "@font-face" in svg_str
+    assert "NunitoSans-Regular.ttf" in svg_str
+    assert "NunitoSans-Bold.ttf" in svg_str
+
+
+def test_svg_font_family_attribute():
+    """Text elements use the configured font family."""
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[LabelPoint(p="A", text="A")],
+    )
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg)
+    assert 'font-family' in svg_str
+    # Should not contain old hardcoded families
+    assert '"serif"' not in svg_str
+    assert '"sans-serif"' not in svg_str
+    assert "NunitoSans" in svg_str
+
+
+def test_svg_embed_fonts_uses_data_uri(tmp_path, monkeypatch):
+    """embed_fonts=True uses data: URIs instead of URL paths."""
+    import ir.font as font_mod
+    fake_ttf = b"\x00fake"
+    font_dir = tmp_path
+    for variant in ("Regular", "Bold", "Italic", "BoldItalic"):
+        (font_dir / f"NunitoSans-{variant}.ttf").write_bytes(fake_ttf)
+    monkeypatch.setattr(font_mod, "_FONTS_DIR", font_dir)
+
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    cfg = FontConfig(family="NunitoSans")
+    svg_str = ir_to_svg(diagram, sym, font_config=cfg, embed_fonts=True)
+    assert "data:font/ttf;base64," in svg_str
+    assert "/fonts/NunitoSans" not in svg_str
+
+
+def test_svg_no_font_config_uses_default():
+    """Passing font_config=None uses default_font_config() (NunitoSans)."""
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)],
+                        render=[DrawPoints(points=["A"])])
+    sym = compile_defs(diagram)
+    svg_str = ir_to_svg(diagram, sym)
+    assert "NunitoSans" in svg_str
+
+
+def test_fill_sector_emits_path_element():
+    """Fill of a sector produces a <path> element (not polygon/circle)."""
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=0.4)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    assert "M" in d
+    assert "A" in d   # arc command
+    assert "Z" in d   # closed path
+    assert float(paths[0].get("fill-opacity", 0)) == pytest.approx(0.4)
+
+
+def test_fill_sector_path_starts_at_center():
+    """The fill path starts at the sector center (M cx cy)."""
+    import re
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=4, y=0),
+            PointFixed(id="B", x=0, y=4),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Fill(obj="sec", opacity=1.0)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    d = paths[0].get("d", "")
+    # First command should be M at the center pixel position
+    m = re.match(r"M\s+([\d.]+)\s+([\d.]+)", d)
+    assert m is not None
+
+
+def test_fill_sector_with_hole_uses_evenodd():
+    """Sector as outer shape with a polygon hole uses even-odd fill rule."""
+    from ir.ir import SectorCenterStartEnd, Triangle
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=5, y=0),
+            PointFixed(id="B", x=0, y=5),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+            PointFixed(id="P1", x=1, y=0),
+            PointFixed(id="P2", x=2, y=0),
+            PointFixed(id="P3", x=1, y=1),
+            Triangle(id="hole", a="P1", b="P2", c="P3"),
+        ],
+        render=[Fill(obj="sec", holes=["hole"], opacity=0.5)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    assert paths[0].get("fill-rule") == "evenodd"
+
+
+def test_draw_sector_emits_path():
+    from ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-type") == "sector"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    assert "M" in d and "L" in d and "A" in d
+
+
+def test_parse_latex_rightarrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("\\rightarrow")
+    assert len(segs) == 1
+    assert segs[0]["content"] == "→"
+
+def test_parse_latex_to_arrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("A \\to B")
+    text = "".join(s["content"] for s in segs)
+    assert "→" in text
+    assert "to" not in text
+
+def test_parse_latex_leftarrow():
+    from ir.to_svg import _parse_latex
+    segs = _parse_latex("\\leftarrow")
+    assert segs[0]["content"] == "←"
+
+
+# ---------------------------------------------------------------------------
+# Fix 5: LabelPoint show_coords
+# ---------------------------------------------------------------------------
+
+def test_label_point_show_coords_appends_coordinate_text():
+    """LabelPoint with show_coords=True includes the point's (x, y) in the SVG text."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=6, ymin=-1, ymax=6),
+        define=[PointFixed(id="P", x=3, y=4)],
+        render=[
+            Draw(obj="P"),
+            LabelPoint(p="P", text="P", show_coords=True),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    assert "(3" in svg_str and "4)" in svg_str, (
+        f"Expected coordinate text '(3, 4)' in SVG output, got:\n{svg_str[:500]}"
+    )
+
+
+def test_label_point_show_coords_false_no_coordinate_text():
+    """LabelPoint with show_coords=False (default) does not append coordinates."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=6, ymin=-1, ymax=6),
+        define=[PointFixed(id="P", x=3, y=4)],
+        render=[
+            Draw(obj="P"),
+            LabelPoint(p="P", text="P", show_coords=False),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    # Should contain the label "P" but not coordinate notation
+    assert "P" in svg_str
+    assert "(3" not in svg_str or "4)" not in svg_str

@@ -344,7 +344,7 @@ def _call_llm(
     response = client.messages.create(
         model=MODEL,
         max_tokens=16000,
-        system=system,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_msg}],
     )
     elapsed = time.time() - t0

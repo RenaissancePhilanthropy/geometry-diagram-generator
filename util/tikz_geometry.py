@@ -136,13 +136,86 @@ def _inter_ll(
     return (x, y)
 
 
+def _inter_cc(
+    o1: tuple[float, float],
+    p1: tuple[float, float],
+    o2: tuple[float, float],
+    p2: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Intersection of circle 1 (center o1, through p1) with circle 2 (center
+    o2, through p2). Returns the two intersection points sorted by (y, x)
+    ascending so the assignment to which=0/which=1 is deterministic. Returns
+    None if the circles are coincident, fully separate, or one contains the
+    other (no real intersection).
+    """
+    r1 = _dist(o1, p1)
+    r2 = _dist(o2, p2)
+    dx = o2[0] - o1[0]
+    dy = o2[1] - o1[1]
+    d = math.sqrt(dx * dx + dy * dy)
+    # No intersection: too far apart, or one inside the other, or coincident
+    if d < 1e-12:
+        return None
+    if d > r1 + r2 + 1e-9:
+        return None
+    if d < abs(r1 - r2) - 1e-9:
+        return None
+    # a = distance from o1 to the chord midpoint along the line o1->o2
+    a = (r1 * r1 - r2 * r2 + d * d) / (2 * d)
+    h_sq = r1 * r1 - a * a
+    h = math.sqrt(max(0.0, h_sq))
+    mx = o1[0] + a * dx / d
+    my = o1[1] + a * dy / d
+    rx = -dy * (h / d)
+    ry = dx * (h / d)
+    p_a = (mx + rx, my + ry)
+    p_b = (mx - rx, my - ry)
+    # Sort for deterministic which=0 / which=1 assignment.
+    return tuple(sorted([p_a, p_b], key=lambda p: (p[1], p[0])))  # type: ignore[return-value]
+
+
+def _inter_lc(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    o: tuple[float, float],
+    t: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Intersection of line AB with circle (center o, through t). Returns the
+    pair of intersection points (which may coincide if the line is tangent).
+    Returns None if the line misses the circle entirely.
+    """
+    r = _dist(o, t)
+    dx = b[0] - a[0]
+    dy = b[1] - a[1]
+    fx = a[0] - o[0]
+    fy = a[1] - o[1]
+    A = dx * dx + dy * dy
+    if A < 1e-12:
+        return None
+    B = 2 * (fx * dx + fy * dy)
+    C = fx * fx + fy * fy - r * r
+    disc = B * B - 4 * A * C
+    if disc < -1e-9:
+        return None
+    disc = max(0.0, disc)
+    sqrt_disc = math.sqrt(disc)
+    t1 = (-B - sqrt_disc) / (2 * A)
+    t2 = (-B + sqrt_disc) / (2 * A)
+    p_a = (a[0] + t1 * dx, a[1] + t1 * dy)
+    p_b = (a[0] + t2 * dx, a[1] + t2 * dy)
+    return tuple(sorted([p_a, p_b], key=lambda p: (p[1], p[0])))  # type: ignore[return-value]
+
+
 def resolve_all_coordinates(tikz: str) -> dict[str, tuple[float, float]]:
     """
     Build a full coordinate map combining explicit definitions with
     computable derived points.
 
-    Points that require runtime rendering (e.g. \\tkzInterCC) are omitted
-    rather than guessed.
+    Two-solution constructions like ``\\tkzInterCC`` and ``\\tkzInterLC`` are
+    resolved by computing both candidates and assigning them to the names
+    paired by ``\\tkzGetPoints`` using a deterministic (y, x)-ascending sort.
+    Constructions whose inputs cannot be resolved are silently omitted rather
+    than guessed.
     """
     coords = extract_defined_points(tikz)
     computed = extract_computed_points(tikz)
@@ -172,6 +245,18 @@ def resolve_all_coordinates(tikz: str) -> dict[str, tuple[float, float]]:
                     result = _inter_ll(*pts)
                     if result is not None:
                         coords[name] = result
+                        resolved_any = True
+                elif t == "inter_cc" and len(args) == 4:
+                    pts = [coords[a] for a in args]
+                    pair = _inter_cc(*pts)
+                    if pair is not None:
+                        coords[name] = pair[info.get("which", 0)]
+                        resolved_any = True
+                elif t == "inter_lc" and len(args) == 4:
+                    pts = [coords[a] for a in args]
+                    pair = _inter_lc(*pts)
+                    if pair is not None:
+                        coords[name] = pair[info.get("which", 0)]
                         resolved_any = True
                 elif t == "centroid" and len(args) == 3:
                     pts = [coords[a] for a in args]
@@ -291,6 +376,7 @@ def validate_geometric_property(
     property_type values:
       - "right_angle":     args = [A, vertex, C] — angle at vertex is 90°
       - "midpoint":        args = [M, A, B] — M is the midpoint of AB
+      - "centroid":        args = [G, A, B, C] — G = (A + B + C) / 3
       - "collinear":       args = [A, B, C] — three points are collinear
       - "equal_lengths":   args = [[P1,P2], [P3,P4], ...] — all segments equal
       - "parallel":        args = [[A,B], [C,D]] — lines AB and CD are parallel
@@ -327,6 +413,18 @@ def validate_geometric_property(
             return (
                 abs(m[0] - expected[0]) <= tolerance
                 and abs(m[1] - expected[1]) <= tolerance
+            )
+
+        elif property_type == "centroid":
+            # Componentwise check on (A + B + C) / 3, parallel to the midpoint
+            # decision rule. The equivalent "G lies on each median" form would
+            # be a numerically equivalent but more expensive consequence.
+            g_name, a_name, b_name, c_name = args
+            g = coords[g_name]
+            expected = _centroid(coords[a_name], coords[b_name], coords[c_name])
+            return (
+                abs(g[0] - expected[0]) <= tolerance
+                and abs(g[1] - expected[1]) <= tolerance
             )
 
         elif property_type == "collinear":

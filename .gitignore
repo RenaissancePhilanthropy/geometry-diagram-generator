@@ -18,12 +18,15 @@ node_modules/
 demo-ui/pnpm-workspace.yaml
 
 # LLM agent state and cache
-.claude/
-# Allow skills
+.claude/*
+# Allow skills (negation only works if parent isn't fully ignored)
 !.claude/skills/
 
 # Evals results
 evals/results/
+
+# Eval-viewer static data dump (regenerated locally; do not commit)
+eval-viewer-ui/public/data/
 
 # macOS files
 .DS_Store
@@ -36,6 +39,7 @@ docs/superpowers/
 
 # Temporary files
 tmp/
+logs/
 
 # Curriculum extraction artifacts
 curriculum/textbooks/

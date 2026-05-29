@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GeoGenBench rating</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --panel: #ffffff;
+    --panel-soft: #fbfaf7;
+    --ink: #1c1c1a;
+    --ink-soft: #4a4a47;
+    --muted: #76766f;
+    --line: #e7e6e0;
+    --line-strong: #d3d2cc;
+    --accent: #1f6feb;
+    --accent-soft: #e8f0fe;
+    --pass: #1a7f37;
+    --pass-soft: #e6f4ea;
+    --fail: #b62a2a;
+    --fail-soft: #fdecec;
+    --soft: #b5740b;
+    --soft-soft: #fbf1de;
+    --unsure: #7a5dc7;
+    --unsure-soft: #efebfb;
+    --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.04), 0 1px 3px rgba(20, 20, 18, 0.06);
+    --shadow-md: 0 2px 4px rgba(20, 20, 18, 0.05), 0 4px 12px rgba(20, 20, 18, 0.06);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+
+    /* Reserved height above the main grid (header + progress + tips + filter). */
+    --chrome-h: 88px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .header-inner {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 20px;
+    max-width: 1700px; margin: 0 auto;
+  }
+  .brand {
+    font-size: 13px; font-weight: 700; color: var(--ink);
+    letter-spacing: -0.005em; white-space: nowrap;
+  }
+  .brand .dot { color: var(--accent); }
+  .header-meta {
+    display: flex; gap: 12px; align-items: center; font-size: 12.5px; color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .header-meta b { color: var(--ink); font-weight: 600; }
+  .position-badge {
+    background: var(--panel-soft); border: 1px solid var(--line);
+    padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;
+    color: var(--ink); font-weight: 500; font-size: 12.5px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .position-badge.complete { background: var(--pass-soft); border-color: #c5e8d0; color: var(--pass); }
+  .tally {
+    display: inline-flex; gap: 8px; align-items: center;
+    font-variant-numeric: tabular-nums; font-size: 12px;
+  }
+  .tally .t-item { display: inline-flex; align-items: center; gap: 3px; }
+  .tally .t-pass { color: var(--pass); }
+  .tally .t-soft { color: var(--soft); }
+  .tally .t-fail { color: var(--fail); }
+  .tally .t-rem  { color: var(--muted); }
+
+  .hdr-jump {
+    color: var(--accent); cursor: pointer; text-decoration: none; font-weight: 500;
+    font-size: 12.5px;
+  }
+  .hdr-jump:hover { text-decoration: underline; }
+
+  .save-state {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 500;
+    padding: 4px 11px; border-radius: 999px;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .save-state .dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+  .save-state.ok      { background: var(--pass-soft); color: var(--pass); }
+  .save-state.saving  { background: var(--soft-soft); color: var(--soft); }
+  .save-state.error   { background: var(--fail-soft); color: var(--fail); }
+  .save-state.saving .dot { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .hdr-help-btn {
+    border: 1px solid var(--line); background: var(--panel-soft);
+    padding: 4px 9px; border-radius: 5px;
+    font: inherit; font-size: 12px; color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .hdr-help-btn:hover { background: #f3f1ec; }
+
+  #progress {
+    height: 3px; background: var(--line);
+  }
+  #progress > div {
+    height: 100%; background: var(--accent); transition: width 0.25s ease-out;
+  }
+
+  /* ---------- Tips banner ---------- */
+  .tips-banner {
+    background: var(--accent-soft); border-bottom: 1px solid #d4e2fc;
+    padding: 6px 20px; font-size: 12.5px; color: #143b85;
+  }
+  .tips-banner .tips-inner {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    max-width: 1700px; margin: 0 auto; width: 100%;
+  }
+  .tips-banner b { font-weight: 600; }
+  .tips-banner code {
+    background: rgba(31, 111, 235, 0.1); padding: 1px 5px; border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  }
+  .tips-close {
+    margin-left: auto; background: transparent; border: 0; cursor: pointer;
+    color: #143b85; font: inherit; padding: 2px 6px; border-radius: 4px; font-size: 12.5px;
+  }
+  .tips-close:hover { background: rgba(31, 111, 235, 0.12); }
+
+  /* ---------- Main grid ---------- */
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px; padding: 12px 20px; max-width: 1700px; margin: 0 auto;
+    align-items: stretch;
+    height: calc(100vh - var(--chrome-h));
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .card-title {
+    padding: 7px 14px; border-bottom: 1px solid var(--line);
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 700;
+    background: var(--panel-soft);
+    display: flex; align-items: center; gap: 10px; min-height: 30px;
+  }
+  .card-title .right { margin-left: auto; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px; }
+  .card-body { padding: 12px 14px; }
+
+  /* ---------- Diagram ---------- */
+  #diagram-card {
+    display: flex; flex-direction: column;
+    height: 100%;
+  }
+  #diagram-card .card-body {
+    flex: 1; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      linear-gradient(45deg, transparent 49.5%, rgba(0,0,0,0.012) 49.5% 50.5%, transparent 50.5%) 0/20px 20px,
+      #ffffff;
+    overflow: hidden;
+    position: relative;
+  }
+  #diagram-host {
+    width: 100%; height: 100%; padding: 16px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  /* ---------- Measure toolbar ---------- */
+  .measure-toolbar {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 11;
+    display: flex; align-items: center; gap: 4px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 6px;
+    box-shadow: var(--shadow-md);
+  }
+  .measure-toolbar button {
+    border: 1px solid transparent; background: transparent;
+    padding: 4px 10px; border-radius: 999px;
+    font: inherit; font-size: 12px; cursor: pointer; color: var(--ink-soft);
+    transition: all 120ms ease; white-space: nowrap;
+  }
+  .measure-toolbar button:hover { background: var(--panel-soft); color: var(--ink); }
+  .measure-toolbar button.active {
+    background: var(--accent-soft); border-color: var(--accent);
+    color: var(--accent); font-weight: 600;
+  }
+  .measure-toolbar .measure-sep {
+    width: 1px; height: 16px; background: var(--line); margin: 0 2px;
+  }
+
+  #diagram-host img, #diagram-host svg {
+    max-width: 100%; max-height: 100%; height: auto;
+    background: #fff;
+    border-radius: 4px;
+  }
+  .diagram-empty {
+    color: var(--muted); font-size: 13px; text-align: center; padding: 24px;
+    line-height: 1.55;
+  }
+  .diagram-empty .em { color: var(--ink); font-weight: 600; display: block; margin-bottom: 4px; font-size: 14px; }
+
+  /* ---------- Aside (right column) ---------- */
+  .rubric-aside {
+    display: flex; flex-direction: column; gap: 12px;
+    min-height: 0; height: 100%;
+  }
+  .rubric-aside .card { flex: none; }
+  .rubric-aside .card.flexible { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .rubric-aside .card.flexible .card-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+  /* ---------- Prompt ---------- */
+  /* The label sits on the wrapper so #prompt-text's overflow doesn't clip it. */
+  .prompt-wrap {
+    position: relative;
+    margin-top: 8px;  /* room for the floating label above */
+  }
+  .prompt-label {
+    position: absolute; top: -8px; left: 12px; z-index: 1;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #8a6814; background: #fdf9e6;
+    padding: 1px 7px; border-radius: 3px;
+    border: 1px solid #f0e4be;
+  }
+  #prompt-text {
+    font-size: 15.5px; line-height: 1.55; white-space: pre-wrap;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: -0.003em;
+    padding: 12px 14px 12px 16px;
+    background: linear-gradient(135deg, #fefbef 0%, #fdf9e6 100%);
+    border: 1px solid #f0e4be;
+    border-left: 4px solid #d4a72c;
+    border-radius: 6px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    max-height: 150px; overflow-y: auto;
+  }
+  .meta-row {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--line);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 9px; font-size: 11px; background: var(--panel-soft);
+    color: var(--ink-soft); font-weight: 500;
+  }
+  .chip.tier-T1 { color: #0f6b2c; background: #e9f6ed; border-color: #c5e8d0; }
+  .chip.tier-T2 { color: #8a5407; background: #faf0db; border-color: #efdfb6; }
+  .chip.tier-T3 { color: #94221d; background: #fbe5e5; border-color: #efc6c6; }
+  .chip.strat   { background: #f0eef9; border-color: #ddd6f4; color: #4a3aa3; }
+
+  details.meta-details { margin-top: 6px; font-size: 11.5px; }
+  details.meta-details > summary {
+    cursor: pointer; color: var(--muted); font-size: 11px;
+    list-style: none; user-select: none;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  details.meta-details > summary::-webkit-details-marker { display: none; }
+  details.meta-details > summary::before { content: "▸"; font-size: 9px; transition: transform 120ms ease; }
+  details.meta-details[open] > summary::before { transform: rotate(90deg); }
+  details.meta-details > summary:hover { color: var(--ink); }
+  .meta-grid {
+    display: grid; grid-template-columns: 70px 1fr; gap: 2px 10px;
+    font-size: 11.5px; color: var(--muted); margin-top: 6px;
+  }
+  .meta-grid dt { font-weight: 600; color: var(--ink); }
+  .meta-grid dd { margin: 0; word-break: break-word; }
+
+  /* ---------- Q1 ---------- */
+  .question { margin-bottom: 12px; }
+  .question:last-child { margin-bottom: 0; }
+  .q-label {
+    font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 2px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .q-help {
+    font-size: 11.5px; color: var(--muted); margin-bottom: 8px; line-height: 1.4;
+  }
+
+  /* Q1 horizontal: 3 buttons in a row */
+  .q1-options {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+  }
+  .q1-options .opt {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 8px 10px; min-height: 44px;
+    border: 1.5px solid var(--line); background: var(--panel);
+    border-radius: var(--radius-sm);
+    cursor: pointer; user-select: none;
+    transition: border-color 120ms ease, background 120ms ease, transform 80ms ease;
+    font-size: 13px; text-align: center;
+  }
+  .q1-options .opt:hover { border-color: var(--accent); }
+  .q1-options .opt:active { transform: translateY(1px); }
+  .q1-options .opt .icon {
+    width: 22px; height: 22px; border-radius: 999px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .q1-options .opt .label { font-weight: 600; }
+  .q1-options .opt .kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 3px; padding: 0 5px;
+    background: var(--panel-soft);
+  }
+
+  .q1-options .opt-yes .icon     { background: var(--pass-soft); color: var(--pass); }
+  .q1-options .opt-partial .icon { background: var(--soft-soft); color: var(--soft); }
+  .q1-options .opt-no .icon      { background: var(--fail-soft); color: var(--fail); }
+
+  .q1-options .opt.selected.opt-yes     { background: var(--pass-soft); border-color: var(--pass); }
+  .q1-options .opt.selected.opt-partial { background: var(--soft-soft); border-color: var(--soft); }
+  .q1-options .opt.selected.opt-no      { background: var(--fail-soft); border-color: var(--fail); }
+  .q1-options .opt.selected .kbd { background: rgba(255,255,255,0.7); }
+
+  /* ---------- Q2 ---------- */
+  .q2-locked {
+    background: var(--panel-soft); border: 1px dashed var(--line-strong);
+    border-radius: var(--radius-sm); padding: 10px 12px; color: var(--muted);
+    font-size: 12.5px; line-height: 1.45;
+  }
+  .q2-locked .lock-icon { font-size: 14px; margin-right: 4px; }
+
+  .q2-list { display: flex; flex-direction: column; gap: 6px; }
+  .q2-row {
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 7px 10px; background: var(--panel);
+  }
+  .q2-row.row-answered { background: var(--panel-soft); }
+  .q2-row .q2-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+    flex-wrap: wrap;
+  }
+  .q2-row .pred {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px; color: var(--ink); font-weight: 500;
+    flex: 0 1 auto; min-width: 0;
+    word-break: break-all;
+  }
+  .q2-row .pred-type {
+    font-size: 10px; color: var(--muted); font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 1px 6px; background: var(--panel-soft);
+    border: 1px solid var(--line); border-radius: 3px; white-space: nowrap;
+  }
+  .q2-row .auto-verdict {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .q2-row .auto-verdict.pass { background: var(--pass-soft); color: var(--pass); }
+  .q2-row .auto-verdict.fail { background: var(--fail-soft); color: var(--fail); }
+  .q2-row .auto-verdict.skip { background: var(--soft-soft); color: var(--soft); }
+
+  .q2-buttons {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+  }
+  .q2-buttons .opt {
+    border: 1px solid var(--line); background: var(--panel);
+    padding: 6px 8px; border-radius: var(--radius-sm);
+    font-size: 12px; color: var(--ink-soft);
+    cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    transition: all 120ms ease; min-height: 28px;
+  }
+  .q2-buttons .opt:hover { border-color: var(--accent); color: var(--ink); }
+  .q2-buttons .opt .kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 9.5px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 3px; padding: 0 4px;
+    background: var(--panel-soft);
+  }
+
+  .q2-buttons .opt.selected.opt-agree    { background: var(--pass-soft); border-color: var(--pass); color: var(--pass); }
+  .q2-buttons .opt.selected.opt-disagree { background: var(--fail-soft); border-color: var(--fail); color: var(--fail); }
+  .q2-buttons .opt.selected.opt-unsure   { background: var(--unsure-soft); border-color: var(--unsure); color: var(--unsure); }
+  .q2-buttons .opt.selected .kbd { background: rgba(255,255,255,0.7); }
+
+  /* ---------- Notes (collapsed by default) ---------- */
+  .notes-wrap {
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+  }
+  .notes-toggle {
+    background: transparent; border: 0; padding: 0;
+    color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .notes-toggle:hover { color: var(--ink); }
+  .notes-toggle .plus { font-size: 14px; line-height: 1; }
+  .notes-toggle.has-content { color: var(--accent); font-weight: 500; }
+  .notes-area {
+    margin-top: 6px;
+  }
+  .notes-area textarea {
+    width: 100%; min-height: 50px; padding: 7px 9px;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    font: inherit; font-size: 12.5px; resize: vertical;
+    background: var(--panel-soft);
+  }
+  .notes-area textarea:focus {
+    outline: none; background: var(--panel); border-color: var(--accent);
+  }
+
+  /* ---------- Nav ---------- */
+  .nav-row {
+    display: flex; gap: 6px; align-items: center;
+    padding: 8px 14px; border-top: 1px solid var(--line);
+    background: var(--panel-soft);
+  }
+  .nav-row button {
+    padding: 7px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--panel); cursor: pointer; font: inherit; font-size: 12.5px;
+    color: var(--ink); transition: all 120ms ease;
+  }
+  .nav-row button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .nav-row button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+  }
+  .nav-row button.primary:hover:not(:disabled) { background: #1758be; border-color: #1758be; color: #fff; }
+  .nav-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .nav-row .nav-status { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .nav-row .nav-status.ready { color: var(--pass); font-weight: 600; }
+
+  /* ---------- Intro ---------- */
+  body.intro-mode { overflow: auto; }
+  #intro {
+    max-width: 640px; margin: 60px auto; padding: 32px 36px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  }
+  #intro h2 { margin: 0 0 6px 0; font-size: 22px; letter-spacing: -0.01em; }
+  #intro .subtitle { color: var(--muted); margin: 0 0 22px 0; font-size: 14px; }
+  #intro h3 { font-size: 13.5px; margin: 18px 0 6px 0; color: var(--ink); }
+  #intro ul { padding-left: 20px; margin: 6px 0 0 0; color: var(--ink-soft); font-size: 13.5px; }
+  #intro ul li { margin-bottom: 4px; }
+  #intro .rater-input-wrap {
+    margin-top: 22px; display: flex; gap: 8px; align-items: stretch;
+  }
+  #intro input {
+    font: inherit; padding: 10px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); flex: 1; font-size: 14px;
+  }
+  #intro input:focus { outline: none; border-color: var(--accent); }
+  #intro button {
+    font: inherit; font-weight: 600; font-size: 14px;
+    padding: 10px 22px; border-radius: var(--radius-sm);
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+    cursor: pointer;
+  }
+  #intro button:hover { background: #1758be; }
+  #intro .convention {
+    background: var(--accent-soft); border: 1px solid #cfdcf6; color: #143b85;
+    padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12.5px;
+    margin-top: 14px;
+  }
+  #intro .convention code {
+    background: rgba(31, 111, 235, 0.12); padding: 1px 5px; border-radius: 3px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .kbd-inline {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+    background: var(--panel-soft); margin: 0 1px;
+  }
+
+  /* ---------- Help modal ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(20, 20, 18, 0.4);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    max-width: 520px; width: 100%; padding: 26px 30px;
+  }
+  .modal h2 { margin: 0 0 12px 0; font-size: 17px; }
+  .modal table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .modal table td { padding: 6px 4px; vertical-align: top; }
+  .modal table td:first-child { width: 50%; color: var(--muted); }
+  .modal table td:last-child { font-weight: 500; }
+  .modal kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; padding: 2px 6px;
+    background: var(--panel-soft); border: 1px solid var(--line);
+    border-radius: 4px; margin: 0 2px;
+  }
+  .modal .close-btn {
+    margin-top: 14px; border: 1px solid var(--line); background: var(--panel-soft);
+    padding: 7px 14px; border-radius: var(--radius-sm); cursor: pointer; font: inherit;
+  }
+  .modal .close-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  pre.tikz {
+    margin-top: 6px; padding: 10px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px; background: #1c1c1a; color: #d3d2cc;
+    border-radius: var(--radius-sm); max-height: 180px; overflow: auto;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ Intro ============================================================ -->
+<div id="intro" style="display:none">
+  <h2>GeoGenBench rating</h2>
+  <p class="subtitle">Rate ~200 (prompt, diagram) pairs against the geometry verifier.</p>
+
+  <h3>What you'll do</h3>
+  <ul>
+    <li><b>Q1 (overall):</b> answered <i>blind</i> — auto-verdict hidden until you submit.</li>
+    <li><b>Q2 (per-property):</b> for each predicate the verifier checked, agree / disagree / unsure.</li>
+    <li><b>Notes</b> are optional — record edge cases or disagreement reasoning.</li>
+  </ul>
+
+  <h3>Throughput tips</h3>
+  <ul>
+    <li>Keyboard: <span class="kbd-inline">1</span><span class="kbd-inline">2</span><span class="kbd-inline">3</span> for Q1, <span class="kbd-inline">a</span><span class="kbd-inline">d</span><span class="kbd-inline">u</span> for Q2, <span class="kbd-inline">←</span><span class="kbd-inline">→</span> to navigate, <span class="kbd-inline">?</span> for help.</li>
+    <li>Auto-saves on every click — the indicator at top-right shows status.</li>
+    <li>Stop and resume any time. Progress is restored from the server.</li>
+  </ul>
+
+  <div class="convention">
+    <b>Naming convention:</b> use <code>rater_a</code> or <code>rater_b</code> so analysis picks up your CSV without flags. Other names work too — pass <code>--raters &lt;your-name&gt;,&lt;partner-name&gt;</code> to <code>compute_kappa</code>.
+  </div>
+
+  <div class="rater-input-wrap">
+    <input id="rater-input" placeholder="e.g. rater_a" autocomplete="off" />
+    <button id="rater-go">Begin →</button>
+  </div>
+</div>
+
+<!-- ============================================================ App ============================================================ -->
+<header style="display:none" id="header">
+  <div class="header-inner">
+    <span class="brand">GeoGen<span class="dot">·</span>rating</span>
+    <span class="header-meta">
+      <span><b id="hdr-rater"></b></span>
+      <span class="position-badge" id="hdr-pos"></span>
+      <span class="tally" id="hdr-tally"></span>
+      <a class="hdr-jump" id="jump-unanswered" title="Jump to next unanswered Q1">↷ next unanswered</a>
+    </span>
+    <span class="save-state ok" id="save-state">
+      <span class="dot"></span><span id="save-text">saved</span>
+    </span>
+    <button class="hdr-help-btn" id="help-btn" title="Keyboard shortcuts (?)">? Help</button>
+  </div>
+  <div id="progress"><div></div></div>
+</header>
+
+<div class="tips-banner" id="tips-banner" style="display:none">
+  <div class="tips-inner">
+    <span><b>Workflow:</b> read prompt → eyeball diagram → answer <b>Q1</b> blind → <b>Q2</b> unlocks per-predicate. Press <code>?</code> for shortcuts.</span>
+    <button class="tips-close" id="tips-close">Got it ✕</button>
+  </div>
+</div>
+
+<main id="main" style="display:none">
+  <!-- Diagram -->
+  <section class="card" id="diagram-card">
+    <div class="card-title">Diagram <span class="right" id="diag-meta"></span></div>
+    <div class="card-body">
+      <div id="diagram-host"></div>
+      <div class="measure-toolbar" id="measure-toolbar" style="display:none">
+        <button id="tool-ruler" title="Ruler: click two points to measure distance">📏 Ruler</button>
+        <button id="tool-protractor" title="Protractor: click ray · vertex · ray to measure angle">∠ Protractor</button>
+        <span class="measure-sep" style="display:none"></span>
+        <button id="tool-clear" style="display:none">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right column -->
+  <aside class="rubric-aside">
+    <section class="card">
+      <div class="card-title">Prompt <span class="right" id="prompt-chips-inline"></span></div>
+      <div class="card-body" style="padding-bottom: 10px;">
+        <div class="prompt-wrap">
+          <span class="prompt-label">Task</span>
+          <div id="prompt-text"></div>
+        </div>
+        <details class="meta-details">
+          <summary>Item metadata + TikZ source</summary>
+          <dl class="meta-grid" id="meta-grid"></dl>
+          <pre class="tikz" id="tikz-source"></pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="card flexible">
+      <div class="card-title">Rubric</div>
+      <div class="card-body">
+
+        <div class="question">
+          <div class="q-label">Q1 — Overall verdict</div>
+          <div class="q-help">Does the diagram correctly satisfy every claim in the prompt? <i>(auto-verdict hidden until you answer)</i> · <b>Yes</b> = fully satisfied · <b>Partial</b> = some clauses violated · <b>No</b> = major violation / unrelated</div>
+          <div class="q1-options" id="q1-options">
+            <div class="opt opt-yes" data-q1="yes">
+              <span class="icon">✓</span><span class="label">Yes</span><span class="kbd">1</span>
+            </div>
+            <div class="opt opt-partial" data-q1="partial">
+              <span class="icon">~</span><span class="label">Partial</span><span class="kbd">2</span>
+            </div>
+            <div class="opt opt-no" data-q1="no">
+              <span class="icon">✗</span><span class="label">No</span><span class="kbd">3</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="question">
+          <div class="q-label">Q2 — Per-property agreement</div>
+          <div class="q-help">For each property the verifier checked, do you agree with its verdict?</div>
+          <div id="q2-host"></div>
+        </div>
+
+        <div class="notes-wrap">
+          <button class="notes-toggle" id="notes-toggle"><span class="plus">+</span><span id="notes-toggle-text">Add notes</span></button>
+          <div class="notes-area" id="notes-area" style="display:none">
+            <textarea id="notes" placeholder="e.g. verifier missed an obtuse-angle assumption…"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button id="prev-btn" title="Previous (←)">◀ Prev</button>
+        <button id="next-btn" class="primary" title="Next (→)">Next ▶</button>
+        <span class="nav-status" id="nav-status"></span>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<!-- Help modal -->
+<div class="modal-backdrop" id="help-modal">
+  <div class="modal">
+    <h2>Keyboard shortcuts</h2>
+    <table>
+      <tr><td>Q1 — Yes / Partial / No</td><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td></tr>
+      <tr><td>Q2 — Agree / Disagree / Unsure (next unanswered predicate)</td><td><kbd>a</kbd> <kbd>d</kbd> <kbd>u</kbd></td></tr>
+      <tr><td>Navigate</td><td><kbd>←</kbd> <kbd>→</kbd></td></tr>
+      <tr><td>Show this help</td><td><kbd>?</kbd></td></tr>
+      <tr><td>Close help</td><td><kbd>Esc</kbd></td></tr>
+      <tr><td>Measure tools</td><td>Toolbar at bottom of diagram</td></tr>
+    </table>
+    <p style="font-size:12px; color:var(--muted); margin-top:12px; line-height:1.5;">
+      The notes textarea captures keystrokes — click out of it before using shortcuts.
+    </p>
+    <button class="close-btn" id="help-close">Close</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const Q1_OPTIONS = ["yes", "partial", "no"];
+const Q1_KEYS = { "1": "yes", "2": "partial", "3": "no" };
+const Q2_KEYS = { "a": "agree", "d": "disagree", "u": "unsure" };
+
+function uiToSchemaQ2(uiChoice, autoVerdict) {
+  if (uiChoice === "unsure") return "unsure";
+  if (uiChoice === "disagree") return "disagree";
+  if (autoVerdict === "pass") return "agree-pass";
+  return "agree-fail";
+}
+
+function schemaToUiQ2(schemaValue) {
+  if (schemaValue === "agree-pass" || schemaValue === "agree-fail") return "agree";
+  if (schemaValue === "disagree") return "disagree";
+  if (schemaValue === "unsure") return "unsure";
+  return "";
+}
+
+function humanizePredicateName(name) {
+  if (!name) return "(unnamed)";
+  return name.replace(/_/g, " ");
+}
+
+const TYPE_LABELS = {
+  "right_angle": "right angle", "point_on_circle": "on circle",
+  "equal_lengths": "equal length", "parallel": "parallel",
+  "midpoint": "midpoint", "mark_present": "mark",
+  "point_on_segment": "on segment", "point_on_line": "on line",
+  "perpendicular": "perp", "angle_equal": "equal angle",
+  "angle_bisector": "bisector", "tangent": "tangent",
+  "equidistant_from_sides": "incenter", "centroid": "centroid",
+};
+function humanizePredicateType(t) {
+  if (!t) return "";
+  return TYPE_LABELS[t] || t.replace(/_/g, " ");
+}
+
+const state = {
+  rater: null,
+  sample: null,
+  index: 0,
+  responses: {},
+  saveTimer: null,
+  saveInFlight: false,
+  saveQueued: false,
+  notesExpanded: false,
+};
+
+const measureState = {
+  tool: null,          // null | 'ruler' | 'protractor'
+  pending: [],         // [{x, y}, ...] normalised fractions, incomplete measurement
+  measurements: [],    // completed: {type:'ruler'|'protractor', points:[{x,y},...]}
+};
+
+let _measureOverlay = null;
+function getMeasureOverlay() {
+  if (!_measureOverlay) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'measure-overlay';
+    svg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; z-index:10; pointer-events:none; cursor:default; background:none;';
+    svg.addEventListener('mousedown', e => e.preventDefault());
+    svg.addEventListener('click', onOverlayClick);
+    _measureOverlay = svg;
+  }
+  return _measureOverlay;
+}
+
+function updateClearBtn() {
+  const clearBtn = document.getElementById('tool-clear');
+  if (!clearBtn) return;
+  const hasMeasurements = measureState.measurements.length > 0 || measureState.pending.length > 0;
+  clearBtn.style.display = hasMeasurements ? '' : 'none';
+  const sep = document.querySelector('.measure-toolbar .measure-sep');
+  if (sep) sep.style.display = hasMeasurements ? '' : 'none';
+}
+
+function setTool(name) {
+  measureState.tool = (measureState.tool === name) ? null : name;
+  measureState.pending = [];
+
+  const rulerBtn = document.getElementById('tool-ruler');
+  const protractorBtn = document.getElementById('tool-protractor');
+  const overlaySvg = getMeasureOverlay();
+
+  rulerBtn.classList.toggle('active', measureState.tool === 'ruler');
+  protractorBtn.classList.toggle('active', measureState.tool === 'protractor');
+
+  const active = measureState.tool !== null;
+  overlaySvg.style.pointerEvents = active ? 'all' : 'none';
+  overlaySvg.style.cursor = active ? 'crosshair' : 'default';
+
+  updateClearBtn();
+  renderOverlay();
+}
+
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+
+function setSaveState(stateName, text) {
+  const el = $("#save-state");
+  el.classList.remove("saving", "ok", "error");
+  el.classList.add(stateName);
+  $("#save-text").textContent = text;
+}
+
+async function loadSample() {
+  const r = await fetch("sample.json");
+  if (!r.ok) throw new Error("Failed to load sample.json");
+  return await r.json();
+}
+
+async function loadResponses(rater) {
+  try {
+    const r = await fetch(`/human_study/load?rater=${encodeURIComponent(rater)}`);
+    if (!r.ok) return {};
+    const data = await r.json();
+    const byItem = {};
+    for (const row of data.rows || []) {
+      const id = row.item_id;
+      if (!byItem[id]) byItem[id] = { q1: "", notes: "", q2: {} };
+      if (row.q2_predicate) byItem[id].q2[row.q2_predicate] = row.q2_agreement || "";
+      if (row.q1_overall && !byItem[id].q1) byItem[id].q1 = row.q1_overall;
+      if (row.notes && !byItem[id].notes) byItem[id].notes = row.notes;
+    }
+    return byItem;
+  } catch (e) { console.error(e); return {}; }
+}
+
+function flatRowsForCsv() {
+  const rows = [];
+  const now = new Date().toISOString();
+  for (const item of state.sample.items) {
+    const resp = state.responses[item.item_id];
+    if (!resp || !resp.q1) continue;
+    const preds = (item.predicate_checks && item.predicate_checks.length) ? item.predicate_checks : [{ name: "" }];
+    for (const pred of preds) {
+      rows.push({
+        item_id: item.item_id, scenario_id: item.scenario_id,
+        model: item.model, strategy: item.strategy, tier: item.tier,
+        auto_verdict: item.auto_verdict || "",
+        q1_overall: resp.q1, q2_predicate: pred.name || "",
+        q2_agreement: (resp.q2 && resp.q2[pred.name]) || "",
+        notes: resp.notes || "", rater_id: state.rater, answered_at: now,
+      });
+    }
+  }
+  return rows;
+}
+
+function scheduleSave() {
+  clearTimeout(state.saveTimer);
+  setSaveState("saving", "saving…");
+  state.saveTimer = setTimeout(actuallySave, 350);
+}
+
+async function actuallySave() {
+  if (state.saveInFlight) { state.saveQueued = true; return; }
+  state.saveInFlight = true;
+  try {
+    const r = await fetch("/human_study/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rater_id: state.rater, rows: flatRowsForCsv() }),
+    });
+    const data = await r.json();
+    if (data.ok) setSaveState("ok", `saved · ${data.wrote} rows`);
+    else setSaveState("error", `error: ${data.error || "unknown"}`);
+  } catch (e) {
+    setSaveState("error", "save failed"); console.error(e);
+  } finally {
+    state.saveInFlight = false;
+    if (state.saveQueued) { state.saveQueued = false; scheduleSave(); }
+  }
+}
+
+function render() {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id] || { q1: "", q2: {}, notes: "" };
+  state.responses[item.item_id] = resp;
+
+  const total = state.sample.items.length;
+  const counts = countAnswered();
+  const itemComplete = isItemComplete(item, resp);
+
+  // Position badge — appended ✓ when complete
+  const posBadge = $("#hdr-pos");
+  posBadge.textContent = `Item ${state.index + 1} / ${total}${itemComplete ? "  ✓" : ""}`;
+  posBadge.classList.toggle("complete", itemComplete);
+
+  // Tally
+  $("#hdr-tally").innerHTML =
+    `<span class="t-item t-pass">✓ ${counts.q1Yes}</span>` +
+    `<span class="t-item t-soft">~ ${counts.q1Partial}</span>` +
+    `<span class="t-item t-fail">✗ ${counts.q1No}</span>` +
+    `<span class="t-item t-rem">${total - counts.q1Done} left</span>`;
+  $("#progress > div").style.width = `${(counts.q1Done / total) * 100}%`;
+
+  // Diagram meta inline
+  $("#diag-meta").textContent = `${item.scenario_id} · ${shortModel(item.model)} · ${item.strategy}`;
+
+  // Prompt
+  $("#prompt-text").textContent = item.user_prompt || "(no prompt text)";
+
+  // Inline chips in card title
+  const chipsHost = $("#prompt-chips-inline");
+  chipsHost.innerHTML = "";
+  const chips = [];
+  if (item.tier) chips.push({ text: item.tier, cls: `tier-${item.tier}` });
+  if (item.strategy) chips.push({ text: item.strategy, cls: "strat" });
+  for (const c of chips) {
+    const el = document.createElement("span");
+    el.className = "chip " + c.cls; el.textContent = c.text;
+    chipsHost.appendChild(el);
+  }
+
+  // Metadata
+  $("#meta-grid").innerHTML = "";
+  const meta = [
+    ["scenario", item.scenario_id],
+    ["model", item.model],
+    ["strategy", item.strategy],
+    ["item_id", item.item_id],
+    ["tags", (item.tags || []).join(", ") || "(none)"],
+  ];
+  for (const [k, v] of meta) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    $("#meta-grid").appendChild(dt); $("#meta-grid").appendChild(dd);
+  }
+  $("#tikz-source").textContent = item.tikz_code || "(none)";
+
+  // Diagram
+  const host = $("#diagram-host");
+  host.innerHTML = "";
+  const overlaySvg = getMeasureOverlay();
+  const toolbar = document.getElementById('measure-toolbar');
+
+  if (item.svg_path) {
+    const img = document.createElement("img");
+    img.alt = item.scenario_id;
+    // Set handlers before src so cached images don't miss onload
+    img.onload = () => renderOverlay();
+    img.onerror = () => {
+      host.innerHTML = `<div class="diagram-empty"><span class="em">Failed to load SVG</span><code>${item.svg_path}</code></div>`;
+      host.appendChild(overlaySvg);
+      overlaySvg.style.pointerEvents = 'none';
+      if (toolbar) toolbar.style.display = 'none';
+    };
+    img.src = "/" + item.svg_path;   // set src AFTER handlers (cached images fire onload synchronously)
+    if (img.complete) renderOverlay();  // handle already-cached case
+    host.appendChild(img);
+    host.appendChild(overlaySvg);   // re-attach after innerHTML wipe
+    // Restore pointer-events to match current tool state
+    overlaySvg.style.pointerEvents = measureState.tool ? 'all' : 'none';
+    overlaySvg.style.cursor = measureState.tool ? 'crosshair' : 'default';
+    if (toolbar) toolbar.style.display = '';
+  } else {
+    host.innerHTML = `<div class="diagram-empty"><span class="em">No SVG available</span>The model produced unparseable output. Q2 is N/A — record a Q1 verdict (likely "No") and continue.</div>`;
+    host.appendChild(overlaySvg);
+    overlaySvg.style.pointerEvents = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+  }
+
+  // Q1
+  for (const opt of $$("#q1-options .opt")) {
+    opt.classList.toggle("selected", opt.dataset.q1 === resp.q1);
+  }
+
+  // Q2
+  renderQ2(item, resp);
+
+  // Notes
+  $("#notes").value = resp.notes || "";
+  const hasNotes = !!(resp.notes && resp.notes.trim());
+  const expand = state.notesExpanded || hasNotes;
+  $("#notes-area").style.display = expand ? "block" : "none";
+  $("#notes-toggle-text").textContent = hasNotes ? `Notes (${resp.notes.length} chars)` : (expand ? "Hide notes" : "Add notes");
+  $("#notes-toggle").classList.toggle("has-content", hasNotes);
+
+  // Nav
+  $("#prev-btn").disabled = state.index === 0;
+  $("#next-btn").disabled = state.index >= total - 1;
+  const navStatus = $("#nav-status");
+  if (itemComplete) {
+    navStatus.textContent = "complete · press → for next";
+    navStatus.classList.add("ready");
+  } else {
+    navStatus.textContent = `${counts.q1Done}/${total} Q1 done`;
+    navStatus.classList.remove("ready");
+  }
+}
+
+function renderQ2(item, resp) {
+  const host = $("#q2-host");
+  host.innerHTML = "";
+
+  if (!resp.q1) {
+    host.innerHTML = `<div class="q2-locked"><span class="lock-icon">🔒</span>Submit Q1 to unlock per-property questions <i>(blinding)</i></div>`;
+    return;
+  }
+
+  const checks = item.predicate_checks || [];
+  if (!checks.length) {
+    host.innerHTML = `<div class="q2-locked">No automatic predicates were checked on this diagram (typically because the model output was unparseable). Q2 is N/A.</div>`;
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "q2-list";
+
+  for (const pred of checks) {
+    const stored = (resp.q2 && resp.q2[pred.name]) || "";
+    const uiSel = schemaToUiQ2(stored);
+
+    const row = document.createElement("div");
+    row.className = "q2-row" + (uiSel ? " row-answered" : "");
+
+    const head = document.createElement("div");
+    head.className = "q2-head";
+
+    // Auto verdict first so it's the leftmost element the eye lands on.
+    const av = document.createElement("span");
+    av.className = "auto-verdict " + (pred.verdict || "skip");
+    av.textContent = "Auto: " + (pred.verdict || "skip");
+    head.appendChild(av);
+
+    const name = document.createElement("div");
+    name.className = "pred";
+    name.textContent = humanizePredicateName(pred.name);
+    head.appendChild(name);
+
+    if (pred.type) {
+      const typeBadge = document.createElement("span");
+      typeBadge.className = "pred-type";
+      typeBadge.textContent = humanizePredicateType(pred.type);
+      head.appendChild(typeBadge);
+    }
+
+    row.appendChild(head);
+
+    const btns = document.createElement("div");
+    btns.className = "q2-buttons";
+    const choices = [
+      { ui: "agree",    label: "Agree",    kbd: "a", cls: "opt-agree" },
+      { ui: "disagree", label: "Disagree", kbd: "d", cls: "opt-disagree" },
+      { ui: "unsure",   label: "Unsure",   kbd: "u", cls: "opt-unsure" },
+    ];
+    for (const c of choices) {
+      const opt = document.createElement("div");
+      opt.className = "opt " + c.cls + (uiSel === c.ui ? " selected" : "");
+      opt.dataset.predicate = pred.name;
+      opt.dataset.q2ui = c.ui;
+      opt.dataset.autoVerdict = pred.verdict || "skip";
+      opt.innerHTML = `<span>${c.label}</span><span class="kbd">${c.kbd}</span>`;
+      btns.appendChild(opt);
+    }
+    row.appendChild(btns);
+    list.appendChild(row);
+  }
+  host.appendChild(list);
+}
+
+function countAnswered() {
+  let q1Done = 0, q2Done = 0, q1Yes = 0, q1Partial = 0, q1No = 0;
+  for (const item of state.sample.items) {
+    const resp = state.responses[item.item_id];
+    if (!resp) continue;
+    if (resp.q1) {
+      q1Done++;
+      if (resp.q1 === "yes") q1Yes++;
+      else if (resp.q1 === "partial") q1Partial++;
+      else if (resp.q1 === "no") q1No++;
+    }
+    const checks = item.predicate_checks || [];
+    if (checks.length === 0) {
+      if (resp.q1) q2Done++;
+    } else if (resp.q2 && checks.every(p => resp.q2[p.name])) {
+      q2Done++;
+    }
+  }
+  return { q1Done, q2Done, q1Yes, q1Partial, q1No };
+}
+
+function isItemComplete(item, resp) {
+  if (!resp.q1) return false;
+  const checks = item.predicate_checks || [];
+  if (checks.length === 0) return true;
+  return checks.every(p => resp.q2 && resp.q2[p.name]);
+}
+
+function shortModel(m) {
+  if (!m) return "?";
+  return m.split(":").pop();
+}
+
+function selectQ1(value) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id] = state.responses[item.item_id] || { q1: "", q2: {}, notes: "" };
+  resp.q1 = value;
+  render();
+  scheduleSave();
+}
+
+function selectQ2(predicate, uiChoice, autoVerdict) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id];
+  if (!resp || !resp.q1) return;
+  resp.q2 = resp.q2 || {};
+  resp.q2[predicate] = uiToSchemaQ2(uiChoice, autoVerdict);
+  render();
+  scheduleSave();
+}
+
+function setNotes(text) {
+  const item = state.sample.items[state.index];
+  const resp = state.responses[item.item_id];
+  if (!resp) return;
+  resp.notes = text;
+  scheduleSave();
+}
+
+function nav(delta) {
+  const total = state.sample.items.length;
+  state.index = Math.max(0, Math.min(total - 1, state.index + delta));
+  state.notesExpanded = false; // collapse notes on nav
+  measureState.pending = [];
+  measureState.measurements = [];
+  render();
+  updateClearBtn();   // sync after render (render may have shown/hidden toolbar)
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+function jumpToFirst(predicate) {
+  for (let i = 0; i < state.sample.items.length; i++) {
+    if (predicate(state.sample.items[i])) { state.index = i; render(); return; }
+  }
+  alert("All items satisfy that filter — nothing to jump to.");
+}
+
+function openHelp() { $("#help-modal").classList.add("open"); }
+function closeHelp() { $("#help-modal").classList.remove("open"); }
+
+function normalize2d(dx, dy) {
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return { x: 0, y: 0 };
+  return { x: dx / len, y: dy / len };
+}
+
+function projectPt(frac, hostRect) {
+  return {
+    x: frac.x * hostRect.width,
+    y: frac.y * hostRect.height,
+  };
+}
+
+function makeSvgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function renderOverlay() {
+  const svg = getMeasureOverlay();
+  const host = $("#diagram-host");
+  const img = host ? host.querySelector('img') : null;
+
+  // Clear previous drawing
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+
+  const hostRect = host.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${hostRect.width} ${hostRect.height}`);
+
+  const ACCENT = 'var(--accent)';
+  const ARC_R = 30;
+
+  function dot(pt, opacity) {
+    const { x, y } = projectPt(pt, hostRect);
+    return makeSvgEl('circle', { cx: x, cy: y, r: 4, fill: ACCENT, opacity: opacity ?? 1 });
+  }
+
+  function labelRect(x, y, text) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const approxW = text.length * 6.5 + 8;
+    const bg = makeSvgEl('rect', {
+      x: x - approxW / 2, y: y - 9, width: approxW, height: 18,
+      rx: 3, fill: 'white', stroke: ACCENT, 'stroke-width': 1, opacity: 0.92,
+    });
+    const t = makeSvgEl('text', {
+      x, y, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+      'font-size': '11', 'font-family': 'ui-monospace, monospace', fill: '#1c1c1a',
+    });
+    t.textContent = text;
+    g.appendChild(bg); g.appendChild(t);
+    return g;
+  }
+
+  for (const m of measureState.measurements) {
+    if (m.type === 'ruler') {
+      const [a, b] = m.points.map(p => projectPt(p, hostRect));
+      svg.appendChild(makeSvgEl('line', {
+        x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: ACCENT, 'stroke-width': 1.5,
+      }));
+      svg.appendChild(dot(m.points[0]));
+      svg.appendChild(dot(m.points[1]));
+      const dist = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
+      svg.appendChild(labelRect((a.x + b.x) / 2, (a.y + b.y) / 2, `${dist} px`));
+
+    } else if (m.type === 'protractor') {
+      const [A1, V, A2] = m.points.map(p => projectPt(p, hostRect));
+      const d1 = normalize2d(A1.x - V.x, A1.y - V.y);
+      const d2 = normalize2d(A2.x - V.x, A2.y - V.y);
+
+      // Rays extended 20px beyond arm points
+      const len1 = Math.hypot(A1.x - V.x, A1.y - V.y) + 20;
+      const len2 = Math.hypot(A2.x - V.x, A2.y - V.y) + 20;
+      svg.appendChild(makeSvgEl('line', {
+        x1: V.x, y1: V.y, x2: V.x + d1.x * len1, y2: V.y + d1.y * len1,
+        stroke: ACCENT, 'stroke-width': 1,
+      }));
+      svg.appendChild(makeSvgEl('line', {
+        x1: V.x, y1: V.y, x2: V.x + d2.x * len2, y2: V.y + d2.y * len2,
+        stroke: ACCENT, 'stroke-width': 1,
+      }));
+
+      // Arc — always sweep the non-reflex angle (≤ 180°)
+      const startX = V.x + ARC_R * d1.x, startY = V.y + ARC_R * d1.y;
+      const endX   = V.x + ARC_R * d2.x, endY   = V.y + ARC_R * d2.y;
+      // In screen coords (Y-down), cross > 0 means A2 is CW from A1.
+      // SVG sweep-flag=1 means clockwise. To sweep the non-reflex arc, go CW when A2 is CW from A1.
+      const cross  = (A1.x - V.x) * (A2.y - V.y) - (A1.y - V.y) * (A2.x - V.x);
+      const sweepFlag = cross > 0 ? 1 : 0;   // SVG: 1=clockwise
+      svg.appendChild(makeSvgEl('path', {
+        d: `M ${startX} ${startY} A ${ARC_R} ${ARC_R} 0 0 ${sweepFlag} ${endX} ${endY}`,
+        fill: 'none', stroke: ACCENT, 'stroke-width': 1.5,
+      }));
+
+      // Dots
+      svg.appendChild(dot(m.points[0]));
+      svg.appendChild(dot(m.points[1]));
+      svg.appendChild(dot(m.points[2]));
+
+      // Angle value (always non-reflex)
+      const dotProd = (A1.x - V.x) * (A2.x - V.x) + (A1.y - V.y) * (A2.y - V.y);
+      const angleDeg = Math.abs(Math.atan2(Math.abs(cross), dotProd) * 180 / Math.PI);
+
+      // Label at bisector, 44px from vertex; fallback perpendicular for 180°
+      let bisect = normalize2d(d1.x + d2.x, d1.y + d2.y);
+      if (bisect.x === 0 && bisect.y === 0) bisect = { x: -d1.y, y: d1.x };
+      svg.appendChild(labelRect(V.x + 44 * bisect.x, V.y + 44 * bisect.y, `${angleDeg.toFixed(1)}°`));
+    }
+  }
+
+  // Pending dots (faint)
+  for (const pt of measureState.pending) {
+    svg.appendChild(dot(pt, 0.4));
+  }
+}
+
+function onOverlayClick(e) {
+  if (!measureState.tool) return;
+
+  const host = $("#diagram-host");
+  if (!host || !host.querySelector('img')) return;
+
+  const hostRect = host.getBoundingClientRect();
+  // Normalise click to [0,1] within the full diagram host area
+  const fx = Math.max(0, Math.min(1, (e.clientX - hostRect.left) / hostRect.width));
+  const fy = Math.max(0, Math.min(1, (e.clientY - hostRect.top)  / hostRect.height));
+  const pt = { x: fx, y: fy };
+
+  measureState.pending.push(pt);
+
+  if (measureState.tool === 'ruler' && measureState.pending.length === 2) {
+    measureState.measurements.push({ type: 'ruler', points: [...measureState.pending] });
+    measureState.pending = [];
+  } else if (measureState.tool === 'protractor' && measureState.pending.length === 3) {
+    measureState.measurements.push({ type: 'protractor', points: [...measureState.pending] });
+    measureState.pending = [];
+  }
+
+  updateClearBtn();
+  renderOverlay();
+}
+
+function attachHandlers() {
+  $("#q1-options").addEventListener("click", (e) => {
+    const opt = e.target.closest(".opt"); if (!opt) return;
+    selectQ1(opt.dataset.q1);
+  });
+  $("#q2-host").addEventListener("click", (e) => {
+    const opt = e.target.closest(".opt"); if (!opt) return;
+    selectQ2(opt.dataset.predicate, opt.dataset.q2ui, opt.dataset.autoVerdict);
+  });
+  $("#notes").addEventListener("input", (e) => setNotes(e.target.value));
+  $("#notes-toggle").addEventListener("click", () => {
+    state.notesExpanded = !state.notesExpanded;
+    render();
+    if (state.notesExpanded) $("#notes").focus();
+  });
+  $("#prev-btn").addEventListener("click", () => nav(-1));
+  $("#next-btn").addEventListener("click", () => nav(1));
+  $("#jump-unanswered").addEventListener("click", () => {
+    jumpToFirst(it => !state.responses[it.item_id] || !state.responses[it.item_id].q1);
+  });
+  $("#help-btn").addEventListener("click", openHelp);
+  $("#help-close").addEventListener("click", closeHelp);
+  $("#help-modal").addEventListener("click", (e) => { if (e.target.id === "help-modal") closeHelp(); });
+  $("#tips-close").addEventListener("click", () => {
+    $("#tips-banner").style.display = "none";
+    document.documentElement.style.setProperty("--chrome-h", "56px");
+    try { localStorage.setItem("geogen.tips.dismissed", "1"); } catch (_) {}
+  });
+
+  document.getElementById('tool-ruler').addEventListener('click', () => setTool('ruler'));
+  document.getElementById('tool-protractor').addEventListener('click', () => setTool('protractor'));
+  document.getElementById('tool-clear').addEventListener('click', () => {
+    measureState.measurements = [];
+    measureState.pending = [];
+    updateClearBtn();
+    renderOverlay();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === "Escape") { closeHelp(); return; }
+    if (e.key === "?") { e.preventDefault(); openHelp(); return; }
+
+    if (e.key === "ArrowRight") { nav(1); e.preventDefault(); return; }
+    if (e.key === "ArrowLeft") { nav(-1); e.preventDefault(); return; }
+
+    if (Q1_KEYS[e.key]) { selectQ1(Q1_KEYS[e.key]); e.preventDefault(); return; }
+
+    const k = e.key.toLowerCase();
+    if (Q2_KEYS[k]) {
+      const item = state.sample.items[state.index];
+      const resp = state.responses[item.item_id];
+      if (!resp || !resp.q1) return;
+      const checks = item.predicate_checks || [];
+      const next = checks.find(p => !(resp.q2 && resp.q2[p.name]));
+      if (next) selectQ2(next.name, Q2_KEYS[k], next.verdict || "skip");
+      e.preventDefault();
+    }
+  });
+}
+
+async function start(rater) {
+  state.rater = rater;
+  $("#hdr-rater").textContent = rater;
+  $("#intro").style.display = "none";
+  $("#header").style.display = "block";
+  $("#main").style.display = "grid";
+  document.body.classList.remove("intro-mode");
+
+  let tipsDismissed = false;
+  try { tipsDismissed = localStorage.getItem("geogen.tips.dismissed") === "1"; } catch (_) {}
+  if (!tipsDismissed) {
+    $("#tips-banner").style.display = "block";
+  } else {
+    document.documentElement.style.setProperty("--chrome-h", "56px");
+  }
+
+  state.sample = await loadSample();
+  state.responses = await loadResponses(rater);
+
+  for (let i = 0; i < state.sample.items.length; i++) {
+    const it = state.sample.items[i];
+    if (!state.responses[it.item_id] || !state.responses[it.item_id].q1) {
+      state.index = i; break;
+    }
+  }
+  attachHandlers();
+  render();
+  new ResizeObserver(() => renderOverlay()).observe($("#diagram-host"));
+}
+
+(function bootstrap() {
+  const params = new URLSearchParams(location.search);
+  const rater = params.get("rater") || "";
+  if (rater) {
+    start(rater).catch(e => alert("Failed to start: " + e.message));
+  } else {
+    document.body.classList.add("intro-mode");
+    $("#intro").style.display = "block";
+    $("#rater-go").addEventListener("click", () => {
+      const v = $("#rater-input").value.trim();
+      if (!v) { alert("Please enter a rater name"); return; }
+      const url = new URL(location.href); url.searchParams.set("rater", v);
+      location.href = url.toString();
+    });
+    $("#rater-input").addEventListener("keydown", e => { if (e.key === "Enter") $("#rater-go").click(); });
+    $("#rater-input").focus();
+  }
+})();
+</script>
+
+</body>
+</html>

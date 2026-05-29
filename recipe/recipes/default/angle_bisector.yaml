@@ -1,0 +1,33 @@
+name: angle_bisector
+description: "Line bisecting an angle at a vertex into two equal angles"
+tags: [triangle, angle, bisector, basic]
+context: "Given a triangle T with vertices A, B, C."
+setup:
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec:
+      angle_A: 60
+      angle_B: 70
+      side_AB: 4
+example:
+  mode: abstract
+  construction:
+    - op: angle_bisector
+      id: bis_B
+      vertex: B
+      ray1_toward: A
+      ray2_toward: C
+    - op: intersection
+      id: D
+      of: [bis_B, T]
+      selector:
+        kind: between
+        a: A
+        b: C
+  annotations:
+    auto_draw_all: true
+    auto_label_points: true
+notes:
+  - "The intersection with the opposite side uses a 'between' selector to get the interior point"
+  - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."
