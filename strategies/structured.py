@@ -80,6 +80,10 @@ async def _run_ir_pipeline(
         msgs = "; ".join(r.message for r in must_failures)
         raise RuntimeError(f"Geometric checks failed: {msgs}")
 
+    for r in results:
+        if not r.passed and r.check.level == "prefer":
+            logger.warning("Preferred check not satisfied: %s", r.message)
+
     angle_failures = await asyncio.to_thread(check_render_angles, diagram_ir, sym)
     if angle_failures:
         triples = ", ".join(str(t) for t in angle_failures)

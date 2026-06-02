@@ -101,6 +101,25 @@ def _build_retry_hints(last_error: str) -> str:
     return "\n".join(hints)
 
 
+def _prepare_recipe_modification_prompt(request: str, previous_dsl: Optional[RecipeDSL]) -> str:
+    """Append the previous RecipeDSL to *request* when one is available.
+
+    Used by build_agent's render_diagram tool so modification requests carry
+    the full context of the prior construction rather than generating from scratch.
+    """
+    if previous_dsl is None:
+        return request
+    return (
+        f"{request}\n\n"
+        "---\n"
+        "The user previously had this diagram rendered successfully. Use it as the "
+        "starting point and apply the requested modifications. Preserve all properties "
+        "(angles, lengths, positions, labels, etc.) that the user did not ask to change.\n\n"
+        f"Previous RecipeDSL:\n{previous_dsl.model_dump_json(indent=2)}\n"
+        "---"
+    )
+
+
 # ── inner pipeline graph ──────────────────────────────────────────────────────
 
 class RecipePipelineState(TypedDict):
@@ -204,12 +223,18 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     llm = get_chat_model(model_id, enable_cache=enable_cache)
     structured = llm.with_structured_output(RecipeDSL, include_raw=True)
 
+    raw_content: str | None = None
+    in_tok = out_tok = 0
     try:
         # include_raw=True makes ainvoke return a dict at runtime, not BaseModel
         response: Any = await structured.ainvoke(messages)
         raw_msg = response.get("raw")
         dsl = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+
+        # Capture raw content for failure diagnostics
+        if raw_msg is not None:
+            raw_content = raw_msg.content if isinstance(raw_msg.content, str) else str(raw_msg.content)
 
         if dsl is None:
             parsing_error = response.get("parsing_error") or "Failed to parse RecipeDSL"
@@ -239,11 +264,14 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             dsl_json=None,
             error=error_msg,
             stage="output_validation",
+            raw_output=raw_content,
         ))
         return {
             "dsl": None,
             "last_error": error_msg,
             "attempt": attempt + 1,
+            "input_tokens": state.get("input_tokens", 0) + in_tok,
+            "output_tokens": state.get("output_tokens", 0) + out_tok,
         }
     except Exception as exc:
         error_msg = str(exc)
@@ -253,11 +281,14 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             dsl_json=None,
             error=error_msg,
             stage="output_validation",
+            raw_output=raw_content,
         ))
         return {
             "dsl": None,
             "last_error": error_msg,
             "attempt": attempt + 1,
+            "input_tokens": state.get("input_tokens", 0) + in_tok,
+            "output_tokens": state.get("output_tokens", 0) + out_tok,
         }
 
 
@@ -390,6 +421,7 @@ class RecipeStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Return a conversational ReAct agent with render_diagram + query_diagram tools."""
         _last_sym: dict | None = None
+        _last_dsl: RecipeDSL | None = None
         _renderer = renderer if renderer is not None else TikZRenderer()
 
         @tool
@@ -401,10 +433,15 @@ class RecipeStrategy(SubstanceStrategy):
             Returns:
                 JSON with svg field on success, or error field on failure.
             """
-            nonlocal _last_sym
+            nonlocal _last_sym, _last_dsl
             try:
-                result = await self.run(request, model=model, renderer=_renderer)
+                full_request = _prepare_recipe_modification_prompt(request, _last_dsl)
+                result = await self.run(full_request, model=model, renderer=_renderer)
                 _last_sym = result.sym_full
+                if result.recipe_metadata and result.recipe_metadata.attempt_traces:
+                    last_trace = result.recipe_metadata.attempt_traces[-1]
+                    if last_trace.stage == "success" and last_trace.dsl_json:
+                        _last_dsl = RecipeDSL.model_validate(last_trace.dsl_json)
                 return json.dumps({"svg": result.svg})
             except Exception as e:
                 return json.dumps({"error": str(e)})

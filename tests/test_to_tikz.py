@@ -667,7 +667,7 @@ def test_label_free_text_at_renders_node():
         ],
     )
     tikz = _compile_tikz(diagram)
-    assert r"\node at (2,1.5) {$hello$};" in tikz
+    assert r"\node at (2,1.5) {hello};" in tikz
 
 
 def test_label_free_text_centroid_of_renders_node():
@@ -686,7 +686,7 @@ def test_label_free_text_centroid_of_renders_node():
     )
     tikz = _compile_tikz(diagram)
     # Centroid of (0,0),(6,0),(3,3) = (3,1)
-    assert r"\node at (3,1) {$I$};" in tikz
+    assert r"\node at (3,1) {I};" in tikz
 
 
 def test_fill_sector_tikz():
