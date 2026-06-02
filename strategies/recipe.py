@@ -98,6 +98,13 @@ def _build_retry_hints(last_error: str) -> str:
             "Hint: An intersection point is outside the expected range. "
             "Check that intersecting objects actually cross within the diagram bounds."
         )
+    if re.search(r"point_along.*from.*toward.*same|from.*toward.*same point|direction is undefined", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: A point_along op has 'from' and 'toward' pointing to the same point, making direction undefined. "
+            "Choose a distinct point for 'toward' that is not the same as 'from'. "
+            "For a perpendicular bisector, use a point on the original segment (like A or B) as 'toward', "
+            "not the midpoint M."
+        )
     return "\n".join(hints)
 
 

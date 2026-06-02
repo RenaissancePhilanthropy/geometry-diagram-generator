@@ -1156,3 +1156,75 @@ def test_validate_expected_points_reports_missing_and_mismatch():
     assert result["passed"] is False
     assert result["missing"] == ["C"]
     assert "B" in result["mismatches"]
+
+
+# ---------------------------------------------------------------------------
+# not_between
+# ---------------------------------------------------------------------------
+
+def test_not_between_beyond_endpoint():
+    # D is beyond C on line BC — not between B and C
+    coords = {"B": (0.0, 0.0), "C": (2.0, 0.0), "D": (3.0, 0.0)}
+    assert validate_geometric_property(coords, "not_between", ["D", "B", "C"]) is True
+
+
+def test_not_between_before_start():
+    # D is before B on line BC — not between B and C
+    coords = {"B": (1.0, 0.0), "C": (3.0, 0.0), "D": (-1.0, 0.0)}
+    assert validate_geometric_property(coords, "not_between", ["D", "B", "C"]) is True
+
+
+def test_not_between_fails_when_strictly_between():
+    # M is the midpoint of BC — is between B and C
+    coords = {"B": (0.0, 0.0), "C": (4.0, 0.0), "M": (2.0, 0.0)}
+    assert validate_geometric_property(coords, "not_between", ["M", "B", "C"]) is False
+
+
+def test_not_between_off_line():
+    # D is not collinear with B and C — trivially not between them
+    coords = {"B": (0.0, 0.0), "C": (2.0, 0.0), "D": (1.0, 1.0)}
+    assert validate_geometric_property(coords, "not_between", ["D", "B", "C"]) is True
+
+
+def test_not_between_missing_coord_returns_none():
+    coords = {"B": (0.0, 0.0), "C": (2.0, 0.0)}
+    assert validate_geometric_property(coords, "not_between", ["D", "B", "C"]) is None
+
+
+# ---------------------------------------------------------------------------
+# opposite_side
+# ---------------------------------------------------------------------------
+
+def test_opposite_side_passes():
+    # G1 is above line BC, A is below line BC
+    coords = {
+        "B": (0.0, 0.0), "C": (4.0, 0.0),
+        "A": (2.0, -2.0),   # below BC (y < 0)
+        "G1": (2.0, 2.0),   # above BC (y > 0)
+    }
+    assert validate_geometric_property(coords, "opposite_side", ["G1", "A", "B", "C"]) is True
+
+
+def test_opposite_side_fails_same_side():
+    # Both A and G are above BC
+    coords = {
+        "B": (0.0, 0.0), "C": (4.0, 0.0),
+        "A": (2.0, 1.0),
+        "G": (1.0, 3.0),
+    }
+    assert validate_geometric_property(coords, "opposite_side", ["G", "A", "B", "C"]) is False
+
+
+def test_opposite_side_on_line_returns_none():
+    # G lies exactly on line BC — ambiguous
+    coords = {
+        "B": (0.0, 0.0), "C": (4.0, 0.0),
+        "A": (2.0, -1.0),
+        "G": (2.0, 0.0),
+    }
+    assert validate_geometric_property(coords, "opposite_side", ["G", "A", "B", "C"]) is None
+
+
+def test_opposite_side_missing_coord_returns_none():
+    coords = {"B": (0.0, 0.0), "C": (4.0, 0.0), "A": (2.0, -1.0)}
+    assert validate_geometric_property(coords, "opposite_side", ["G", "A", "B", "C"]) is None

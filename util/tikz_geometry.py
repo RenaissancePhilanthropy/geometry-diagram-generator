@@ -390,6 +390,8 @@ def validate_geometric_property(
       - "intersects":      args = [[A,B], [C,D], P] — lines AB and CD intersect at P
       - "label_present":   args = ["A"] — label for point A exists (requires tikz=)
       - "mark_present":    args = ["right_angle", "B"] — mark at vertex B (requires tikz=)
+      - "not_between":     args = [D, B, C] — D is NOT strictly between B and C
+      - "opposite_side":   args = [P, A, B, C] — P is on the opposite side of line BC from A
 
     Returns True/False if the property can be checked, None if any required
     coordinates are missing.
@@ -561,6 +563,34 @@ def validate_geometric_property(
             d2 = _point_to_line_distance(p, b, c)
             d3 = _point_to_line_distance(p, c, a)
             return abs(d1 - d2) <= tolerance and abs(d2 - d3) <= tolerance
+
+        elif property_type == "not_between":
+            # args = [D, B, C] — D is NOT strictly between B and C on segment BC
+            d_name, b_name, c_name = args
+            d = coords[d_name]
+            b = coords[b_name]
+            c = coords[c_name]
+            # D is "between" B and C iff collinear and dist(B,D)+dist(D,C) ≈ dist(B,C)
+            area = (c[0] - b[0]) * (d[1] - b[1]) - (c[1] - b[1]) * (d[0] - b[0])
+            if abs(area) > tolerance:
+                return True  # Not collinear → definitely not between
+            return abs(_dist(b, d) + _dist(d, c) - _dist(b, c)) > tolerance
+
+        elif property_type == "opposite_side":
+            # args = [P, A, B, C] — P is on the opposite side of line BC from A
+            p_name, a_name, b_name, c_name = args
+            p = coords[p_name]
+            a = coords[a_name]
+            b = coords[b_name]
+            c = coords[c_name]
+            # Signed area of triangle (B, C, X) = cross product of (C-B) and (X-B)
+            def _signed_area(x: tuple[float, float]) -> float:
+                return (c[0] - b[0]) * (x[1] - b[1]) - (c[1] - b[1]) * (x[0] - b[0])
+            sa_a = _signed_area(a)
+            sa_p = _signed_area(p)
+            if abs(sa_a) <= tolerance or abs(sa_p) <= tolerance:
+                return None  # One point lies on line BC — ambiguous
+            return (sa_a * sa_p) < 0
 
     except KeyError:
         return None  # A required coordinate is not in the map
