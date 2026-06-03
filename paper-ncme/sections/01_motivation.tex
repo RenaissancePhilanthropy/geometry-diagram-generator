@@ -1,0 +1,21 @@
+\section{Introduction}
+\label{sec:motivation}
+
+Language models are now asked to make pictures, not just text: slides, worksheets, and technical figures. In K--12 mathematics, the picture that matters most is the geometry diagram. Asking a model to draw one is harder than it looks. Take a simple request:
+
+\begin{quote}
+\emph{``Draw an acute triangle $ABC$ with $\angle A = 60^\circ$ and $\angle B = 70^\circ$, then draw the altitude from $C$, meeting $AB$ at $H$.''}
+\end{quote}
+
+To be correct, the drawing has to get several things \emph{exactly} right: angle $A$ is $60^\circ$, the point $H$ lies \emph{on} the segment $AB$ (not past its end), and the altitude meets $AB$ at a true right angle. If a model produces a drawing by guessing coordinates, these facts hold only by luck. And when they fail, they fail \emph{silently}: the result still looks like a triangle with a line through it, even if the angle is really $88^\circ$ or the foot of the altitude slipped just past $B$.
+
+This also makes such diagrams hard to \emph{grade}. Almost every geometry benchmark runs the task backwards---it shows the model a finished diagram and asks a question about it \citep{lu2021intergps,lu2024mathvista}---so none checks whether a model can \emph{produce} a correct figure in the first place. The benchmarks that do grade generated pictures were built for everyday images and rely on an AI ``judge'' that looks at the output \citep{huang2025t2icompbenchpp,wang2025genexam}. A judge can say a shape \emph{looks like} a right triangle, but it cannot certify that an angle is exactly $90^\circ$.
+
+Our idea is to stop guessing and stop looking. We have the model \emph{describe} the construction in words---``$H$ is the foot of the perpendicular from $C$ to $AB$''---and hand that description to a geometry engine that computes the exact coordinates. The model chooses \emph{what} to build; the engine works out \emph{where} every point goes. That single move buys two things at once:
+
+\begin{itemize}
+\item \textbf{Better drawings.} The hard arithmetic is done by a solver, so a right angle comes out exactly right instead of merely close.
+\item \textbf{Automatic grading.} Because the finished figure is now exact numbers, we can check each requirement directly---``is this angle $90^\circ$?''---rather than asking a judge what the picture looks like.
+\end{itemize}
+
+The rest of the paper walks through how the model describes a diagram (\cref{sec:pipeline}), how grading falls out of that same description for free (\cref{sec:scoring}), what we found running it on six large models (\cref{sec:benchmark}), and why this is useful for educational measurement (\cref{sec:measurement}).

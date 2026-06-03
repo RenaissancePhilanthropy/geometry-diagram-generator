@@ -1,0 +1,8 @@
+\section{Putting it to the test}
+\label{sec:benchmark}
+
+To show the approach works beyond a single example, we built \GeoGenBench: 801 prompts, all graded automatically by the checker of \cref{sec:scoring}. Six hundred come from the templates described above; another 201 are drawn from a real K--12 mathematics curriculum \citep{bluebonnet2024}. We ran six large models from three companies, each in two modes: writing drawing code by hand, and using the structured description.
+
+The structured approach helped \emph{every} model---and helped the weakest ones the most, raising pass rates by anywhere from 2 to 25 percentage points. In other words, handing a model the geometry engine matters most when the model is poor at drawing by hand. More striking still: once they used the structured approach, the three strongest models landed within a single point of one another, even though they differ sevenfold in price. On this task, the method does more of the work than the model does.
+
+We also hit one practical snag worth flagging for anyone building something similar: one vendor's system refused our structured form outright for being too complex, so the structured mode could not run there at all. The full results---a complete leaderboard, cost comparisons, and the expert study---appear in a companion paper. Here they make a single point: generation-then-grading holds up at scale.

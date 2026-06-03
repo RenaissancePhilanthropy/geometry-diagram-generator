@@ -1,0 +1,56 @@
+\section{How the model draws a diagram}
+\label{sec:pipeline}
+
+A request becomes a picture in four steps, shown in \cref{fig:trace}. The model writes a short, structured \emph{description} of the construction; a geometry engine turns that description into exact coordinates; and a renderer turns the coordinates into a drawing. The important idea is the division of labour: \textbf{the model decides what to build, and the engine decides where the points go.} The model never writes a number.
+
+\begin{figure*}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\scriptsize,
+  box/.style={draw, rounded corners, align=left, inner sep=3pt, text width=24mm, minimum height=23mm, anchor=center},
+  code/.style={box, fill=blue!4, font=\ttfamily\tiny},
+  hd/.style={font=\scriptsize\bfseries},
+  ar/.style={-{Stealth[length=2mm]}, thick, gray!55!black},
+  arl/.style={font=\tiny\itshape, color=gray!45!black, align=center}
+]
+\def\dx{3.5}
+\node[box, fill=yellow!10] (p) at (0,0) {\scriptsize ``Draw an acute triangle $ABC$ with $\angle A{=}60^\circ$, $\angle B{=}70^\circ$; construct the altitude from $C$ meeting $AB$ at $H$.''};
+\node[code] (ir) at (\dx,0) {A, B: free\\C: by\_angles(\\\ \ A, B, 60, 70)\\H: inter(\\\ \ line A--B,\\\ \ perp thru C)\\seg C--H\\\textbf{check}\\\ \ right\_angle(C,H,A)};
+\node[code] (sp) at (2*\dx,0) {A = (0, 0)\\B = (5, 0)\\C = (3.07, 5.31)\\H = (3.07, 0)};
+\node[code] (tk) at (3*\dx,0) {\textbackslash tkzDefPoint\\\ \ (0,0)\{A\}\ \dots\\\textbackslash tkzDrawPolygon\\\ \ (A,B,C)\\\textbackslash tkzDrawSegment\\\ \ (C,H)};
+\node[box, fill=green!6] (svg) at (4*\dx,0) {\centering
+  \begin{tikzpicture}[scale=0.30]
+    \coordinate (A) at (0,0);\coordinate (B) at (5,0);
+    \coordinate (C) at (3.07,5.31);\coordinate (H) at (3.07,0);
+    \draw[thick] (A)--(B)--(C)--cycle;
+    \draw[densely dashed] (C)--(H);
+    \draw (H)++(-0.55,0)--++(0,0.55)--++(0.55,0);
+    \foreach \q in {A,B,C,H}{\fill (\q) circle (5pt);}
+    \node[below left=-2pt,font=\tiny]  at (A) {$A$};
+    \node[below right=-2pt,font=\tiny] at (B) {$B$};
+    \node[above=-2pt,font=\tiny]       at (C) {$C$};
+    \node[below right=-2pt,font=\tiny] at (H) {$H$};
+  \end{tikzpicture}};
+\foreach \n/\t in {p/{Prompt}, ir/{Description (IR)}, sp/{Coordinates}, tk/{Drawing code}, svg/{Figure}}{
+  \node[hd, above=1.5mm of \n] {\t};}
+\draw[ar] (p)  -- (ir) node[arl, midway, above] {model\\describes};
+\draw[ar] (ir) -- (sp) node[arl, midway, above] {engine\\solves};
+\draw[ar] (sp) -- (tk) node[arl, midway, above] {emit};
+\draw[ar] (tk) -- (svg) node[arl, midway, above] {render};
+\end{tikzpicture}}
+\caption{One request, start to finish. The model writes a description of the construction; the geometry engine solves it for exact coordinates; the system emits drawing code and renders it. Because the model writes relationships (``$H$ is the foot of the perpendicular from $C$'') rather than numbers, the geometry is computed rather than guessed---and those same coordinates are what we grade against in \cref{sec:scoring}.}
+\label{fig:trace}
+\end{figure*}
+
+\paragraph{Step 1: a description, not coordinates.}
+The model fills in a simple, typed form---we call it the intermediate representation, or IR. The form offers about twenty kinds of building block: points, segments, lines, circles, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$''---never ``$H = (3.07, 0)$.'' Because the form is typed, obvious mistakes (a missing point, the wrong number of arguments) are caught right away, before any geometry is computed.
+
+\paragraph{Step 2: the engine solves for the points.}
+A geometry engine---we use SymPy, a symbolic-mathematics library---reads the description and works out the coordinates, handling the building blocks in dependency order. When a step is ambiguous (two circles cross at two points), the description simply says which one to keep (``the higher one''). The engine, not the model, produces every coordinate. This is what makes the right angle in our example \emph{exactly} $90^\circ$ rather than approximately so.
+
+\paragraph{Step 3: render.}
+From the exact coordinates the system writes standard drawing code and compiles it to an image. Fiddly details an author should not have to manage---such as clipping a line at the edge of the canvas---are handled automatically.
+
+\paragraph{Two ways to drive it.}
+The model can fill in the form directly, or it can use a short ``recipe'' language that names a construction---\texttt{perp\_bisector(A,B)}---which then expands into the same form. Either way, the description can carry its own requirements, tested \emph{before} the figure is drawn, so the model can catch a mistake and retry. We compare both against a plain baseline in which the model just writes drawing code by hand, with no engine and no checks; that baseline is how we measure what the structured approach is worth (\cref{sec:benchmark}).

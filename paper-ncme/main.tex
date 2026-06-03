@@ -1,0 +1,43 @@
+% From Language to Verified Diagram: Symbolic Compilation for Geometry Generation
+%
+% NCME submission. NCME uses the ACL format, so we typeset with the official
+% ACL style (acl.sty).
+%   [preprint] => ACL two-column layout + page numbers, but NO line numbers and
+%   NO "Anonymous ACL submission" text (those appear only in [review] mode).
+% Put real author names in \author{} when ready. If NCME wants a line-numbered
+% anonymous review copy, switch [preprint] -> [review].
+%
+% Build with pdfLaTeX (make) or Overleaf.
+
+\documentclass[11pt]{article}
+\usepackage[preprint]{acl}
+
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+% \usepackage{inconsolata}   % optional ACL typewriter font; omit if not installed
+\usepackage{graphicx}
+
+% Project macros + math/tikz/tables. acl.sty already provides xcolor, natbib,
+% hyperref, geometry, caption, url, so those are not reloaded in preamble.tex.
+\input{preamble}
+
+\title{From Language to Verified Diagram: Symbolic Compilation for Geometry Generation}
+\author{Anonymous submission}
+
+\begin{document}
+\maketitle
+
+\input{abstract}
+
+\input{sections/01_motivation}
+\input{sections/02_pipeline}
+\input{sections/03_scoring}
+\input{sections/04_benchmark}
+\input{sections/05_measurement}
+
+\bibliography{refs}
+
+\end{document}

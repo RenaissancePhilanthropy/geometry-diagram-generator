@@ -1,0 +1,65 @@
+\section{Grading comes for free}
+\label{sec:scoring}
+
+Because the finished diagram is just exact coordinates, grading needs no special machinery. Each requirement in the prompt becomes a small test run directly on the numbers. ``Is the angle at $H$ a right angle?'' is settled by a one-line calculation on the coordinates---in a fraction of a millisecond---not by asking a judge whether the picture looks square.
+
+\paragraph{The question and its answer key are written together.}
+Here is the move that makes this practical: each item and its answer key come from the \emph{same} short program (\cref{fig:cogen}). One template produces both the wording shown to the model and the checklist used to grade it. The two can never disagree, because they are two faces of the same object. This has a useful side effect for test security---an author can re-run the template with a new random seed to mint a fresh, equivalent item---and the checklist is never shown to the model while it works.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+    every node/.style={font=\small},
+    func/.style={draw, rounded corners, fill=blue!8, align=center,
+                 text width=70mm, minimum height=10mm, font=\ttfamily\small},
+    outbox/.style={draw, rounded corners, fill=green!6, align=center,
+                text width=53mm, minimum height=18mm, inner sep=4pt},
+    role/.style={font=\scriptsize\itshape, color=gray!50!black, align=center},
+    >=Stealth, line width=0.5pt
+]
+  \node[func] (fn) {altitude\_template($A,B,C,H$,\ ang$_A$,\ ang$_B$):};
+  \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.4)$) {%
+    \textbf{Prompt (shown to the model)}\\[2pt]
+    \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
+    Construct the altitude from $C$ meeting $AB$ at $H$.''};
+  \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.4)$) {%
+    \textbf{Answer key (used to grade)}\\[2pt]
+    \scriptsize\ttfamily right\_angle($C, H, A$)\\
+    point\_on\_segment($H, A, B$)\\
+    angle\_equal($\angle BAC$, $60^\circ$)};
+  \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (prompt.north);
+  \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (rubric.north);
+  \node[role, below=1mm of prompt, text width=53mm] {what the model sees};
+  \node[role, below=1mm of rubric, text width=53mm] {hidden from the model};
+\end{tikzpicture}
+\caption{One template produces both the question and its answer key, so the two cannot drift apart.}
+\label{fig:cogen}
+\end{figure*}
+
+\paragraph{A small, readable checklist.}
+Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:predicates}): is this a right angle, is this the midpoint, are these lines parallel, does this point lie on that segment, and so on. There are 17 such checks in the current version, and each is decided exactly on the coordinates (within a tiny rounding tolerance). A diagram \emph{passes} only if every check on its list passes. The list is, in plain terms, the definition of what the item is testing.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l p{0.5\columnwidth}@{}}
+\toprule
+\textbf{Check} & \textbf{What it confirms}\\
+\midrule
+\propname{right\_angle}                     & an angle is a right angle\\
+\propname{midpoint}                         & a point is halfway along a segment\\
+\propname{collinear} / \propname{parallel}  & points lie on a line / lines never meet\\
+\propname{point\_on\_segment}               & a point lies between two endpoints\\
+\propname{equal\_lengths}                   & two segments have equal length\\
+\propname{angle\_equal}                     & an angle equals a stated value\\
+\bottomrule
+\end{tabular}
+\caption{Six of the 17 checks in the grading vocabulary. Each is decided exactly on the computed coordinates; an item's list of checks is, in plain terms, the definition of a correct answer.}
+\label{tab:predicates}
+\end{table}
+
+\paragraph{Does the automatic grade match a human's?}
+An automatic grade is only worth having if it agrees with an expert, so we checked. After fixing a few blind spots found on pilot data, we ran a pre-registered study: two experts---a mathematician and a K--12 teacher---graded 200 diagrams by hand, without seeing the automatic verdict, and we compared.
+
+Agreement was \emph{moderate}: Cohen's $\kappa = 0.46$, on a scale where $1.0$ is perfect and $0$ is chance. Two things make that number reassuring rather than worrying. First, the disagreements all run \emph{one way}. In 36 of the 200 cases the automatic grader was too \emph{generous}---it passed a diagram the experts failed---and in \emph{zero} cases was it too harsh. So the scores we report are best-case ceilings; they never penalise a model unfairly. Second, the disagreements cluster in one place: items with an added construction (like our altitude), where the checklist confirms the construction is correct but does not separately re-check the prompt's exact angles. The two experts agreed closely with \emph{each other} ($\kappa = 0.70$), so it is the grader, not the rubric, that needs tightening---and the fix, adding the missing numeric checks, is straightforward and underway.

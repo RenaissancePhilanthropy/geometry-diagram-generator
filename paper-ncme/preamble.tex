@@ -1,0 +1,23 @@
+% Preamble — NCME submission "From Language to Verified Diagram" (ACL format).
+% Loaded AFTER \usepackage[preprint]{acl} in main.tex, so acl.sty has already
+% provided xcolor, natbib (author-year), hyperref, geometry, caption, url.
+% Add only what ACL does not provide, plus the project macros.
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+
+\usepackage{xspace}
+\usepackage{enumitem}
+\setlist[itemize]{itemsep=3pt, topsep=4pt}
+
+% cleveref last (after hyperref, which acl.sty loads)
+\usepackage[capitalize,noabbrev]{cleveref}
+
+% --- macros ---
+\newcommand{\GeoGen}{\textsc{GeoGen}\xspace}
+\newcommand{\GeoGenBench}{\textsc{GeoGenBench}\xspace}
+\newcommand{\propname}[1]{\texttt{#1}}
