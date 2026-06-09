@@ -15,9 +15,9 @@ import asyncio
 import pytest
 from langchain_core.messages import HumanMessage
 
-from strategies.raw_code import RawCodeStrategy
+from geometry_diagrams.strategies.raw_code import RawCodeStrategy
 from tests.availability import api_key_available, llm_tests_enabled, renderer_available
-from util.tikz_analysis import (
+from geometry_diagrams.util.tikz_analysis import (
     extract_defined_points,
     extract_draw_commands,
     extract_marks,

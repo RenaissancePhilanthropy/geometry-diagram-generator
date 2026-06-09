@@ -17,11 +17,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from recipe.catalog import load_recipe
-from recipe.dsl import RecipeDSL
-from recipe.lower import lower_to_ir
-from ir.to_sympy import compile_defs
-from ir.to_svg import ir_to_svg
+from geometry_diagrams.recipe.catalog import load_recipe
+from geometry_diagrams.recipe.dsl import RecipeDSL
+from geometry_diagrams.recipe.lower import lower_to_ir
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.to_svg import ir_to_svg
 
 
 def main() -> None:

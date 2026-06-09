@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     AnglePoints,
     Canvas,
     DiagramIR,
@@ -29,8 +29,8 @@ from ir.ir import (
     Polygon,
     EllipseCenterAxes,
 )
-from ir.to_sympy import compile_defs
-from ir.to_svg import (
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.to_svg import (
     ir_to_svg,
     _parse_latex,
     _auto_label_direction,
@@ -47,7 +47,7 @@ from ir.to_svg import (
     _ANGLE_LABEL_R,
     _FONT_SIZE,
 )
-from util.svg_checks import check_svg_wellformed, check_svg_has_content, check_svg_reasonable_size
+from geometry_diagrams.util.svg_checks import check_svg_wellformed, check_svg_has_content, check_svg_reasonable_size
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -917,7 +917,7 @@ class TestBuildIncidentAngles:
             render=[Draw(obj="s"), LabelPoint(p="A"), LabelPoint(p="B")],
         )
         sym = compile_defs(diagram)
-        from ir.render_util import extract_coords, synthesize_helpers
+        from geometry_diagrams.ir.render_util import extract_coords, synthesize_helpers
         coords = extract_coords(sym)
         stmt_by_id = {s.id: s for s in diagram.define}
         helpers = synthesize_helpers(diagram, sym, coords)
@@ -930,7 +930,7 @@ class TestBuildIncidentAngles:
 
     def test_intersection_point_gets_both_line_angles(self):
         """A point lying on a drawn line (but not a defining endpoint) gets angles."""
-        from ir.ir import LineThrough, PointFixed, PointIntersection
+        from geometry_diagrams.ir.ir import LineThrough, PointFixed, PointIntersection
         diagram = DiagramIR(
             define=[
                 PointFixed(id="A", x=0, y=0),
@@ -947,7 +947,7 @@ class TestBuildIncidentAngles:
             ],
         )
         sym = compile_defs(diagram)
-        from ir.render_util import extract_coords, synthesize_helpers
+        from geometry_diagrams.ir.render_util import extract_coords, synthesize_helpers
         coords = extract_coords(sym)
         stmt_by_id = {s.id: s for s in diagram.define}
         helpers = synthesize_helpers(diagram, sym, coords)
@@ -970,7 +970,7 @@ class TestBuildIncidentAngles:
             render=[LabelPoint(p="A")],  # no Draw op
         )
         sym = compile_defs(diagram)
-        from ir.render_util import extract_coords, synthesize_helpers
+        from geometry_diagrams.ir.render_util import extract_coords, synthesize_helpers
         coords = extract_coords(sym)
         stmt_by_id = {s.id: s for s in diagram.define}
         helpers = synthesize_helpers(diagram, sym, coords)
@@ -1155,7 +1155,7 @@ def test_fill_without_holes_unchanged():
 
 def test_arc_emits_svg_path_with_arc_command():
     """Arc should render as <path data-type='arc'> with an SVG 'A' arc segment."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -1178,7 +1178,7 @@ def test_arc_emits_svg_path_with_arc_command():
 
 def test_arc_large_arc_flag_for_major_sweep():
     """A reflex arc (>180°) should set large-arc-flag=1 and sweep-flag=0."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -1214,7 +1214,7 @@ def _parse_arc_flags(svg_str: str) -> tuple[str, str]:
 
 def test_arc_minor_default_renders_correct_flags():
     """Minor arc (default) around O=(0,-1) between endpoints on x-axis gives large=0, sweep=0."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -1247,7 +1247,7 @@ def test_arc_minor_default_renders_correct_flags():
 
 def test_arc_reflex_gives_large_arc():
     """Reflex arc around O=(0,-1) between endpoints on x-axis gives large=1, sweep=0."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -1647,8 +1647,8 @@ def test_canvas_expands_for_circle_without_explicit_canvas():
 
 def test_auto_canvas_expands_for_circle_in_lowerer():
     """_auto_canvas() should consider circle radii when no explicit canvas is given."""
-    from recipe.dsl import RecipeDSL
-    from recipe.lower import lower_to_ir
+    from geometry_diagrams.recipe.dsl import RecipeDSL
+    from geometry_diagrams.recipe.lower import lower_to_ir
 
     dsl = RecipeDSL.model_validate({
         "mode": "abstract",
@@ -1671,7 +1671,7 @@ def test_auto_canvas_expands_for_circle_in_lowerer():
 # Font injection
 # ---------------------------------------------------------------------------
 
-from ir.font import FontConfig
+from geometry_diagrams.ir.font import FontConfig
 
 
 def test_svg_has_font_face_defs():
@@ -1704,7 +1704,7 @@ def test_svg_font_family_attribute():
 
 def test_svg_embed_fonts_uses_data_uri(tmp_path, monkeypatch):
     """embed_fonts=True uses data: URIs instead of URL paths."""
-    import ir.font as font_mod
+    import geometry_diagrams.ir.font as font_mod
     fake_ttf = b"\x00fake"
     font_dir = tmp_path
     for variant in ("Regular", "Bold", "Italic", "BoldItalic"):
@@ -1731,7 +1731,7 @@ def test_svg_no_font_config_uses_default():
 
 def test_fill_sector_emits_path_element():
     """Fill of a sector produces a <path> element (not polygon/circle)."""
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),
@@ -1755,7 +1755,7 @@ def test_fill_sector_emits_path_element():
 def test_fill_sector_path_starts_at_center():
     """The fill path starts at the sector center (M cx cy)."""
     import re
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),
@@ -1776,7 +1776,7 @@ def test_fill_sector_path_starts_at_center():
 
 def test_fill_sector_with_hole_uses_evenodd():
     """Sector as outer shape with a polygon hole uses even-odd fill rule."""
-    from ir.ir import SectorCenterStartEnd, Triangle
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd, Triangle
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),
@@ -1798,7 +1798,7 @@ def test_fill_sector_with_hole_uses_evenodd():
 
 
 def test_draw_sector_emits_path():
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),
@@ -1817,20 +1817,20 @@ def test_draw_sector_emits_path():
 
 
 def test_parse_latex_rightarrow():
-    from ir.to_svg import _parse_latex
+    from geometry_diagrams.ir.to_svg import _parse_latex
     segs = _parse_latex("\\rightarrow")
     assert len(segs) == 1
     assert segs[0]["content"] == "→"
 
 def test_parse_latex_to_arrow():
-    from ir.to_svg import _parse_latex
+    from geometry_diagrams.ir.to_svg import _parse_latex
     segs = _parse_latex("A \\to B")
     text = "".join(s["content"] for s in segs)
     assert "→" in text
     assert "to" not in text
 
 def test_parse_latex_leftarrow():
-    from ir.to_svg import _parse_latex
+    from geometry_diagrams.ir.to_svg import _parse_latex
     segs = _parse_latex("\\leftarrow")
     assert segs[0]["content"] == "←"
 

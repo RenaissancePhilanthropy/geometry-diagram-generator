@@ -21,7 +21,7 @@ from tests.availability import api_key_available, llm_tests_enabled
 # ---------------------------------------------------------------------------
 
 def test_parse_visual_response_extracts_scores():
-    from util.llm_judge import _parse_visual_response
+    from geometry_diagrams.util.llm_judge import _parse_visual_response
 
     text = """\
 Geometric accuracy: 4/5
@@ -40,14 +40,14 @@ The diagram correctly shows a right triangle.
 
 
 def test_parse_visual_response_defaults_to_3_on_parse_failure():
-    from util.llm_judge import _parse_visual_response
+    from geometry_diagrams.util.llm_judge import _parse_visual_response
     result = _parse_visual_response("No scores here at all.")
     assert result["score"] == 3
     assert result["geometric_accuracy"] == 3
 
 
 def test_parse_visual_response_clamps_out_of_range():
-    from util.llm_judge import _parse_visual_response
+    from geometry_diagrams.util.llm_judge import _parse_visual_response
     text = "Overall score: 7\nGeometric accuracy: 0"
     result = _parse_visual_response(text)
     assert 1 <= result["score"] <= 5
@@ -55,7 +55,7 @@ def test_parse_visual_response_clamps_out_of_range():
 
 
 def test_parse_visual_response_includes_reasoning_text():
-    from util.llm_judge import _parse_visual_response
+    from geometry_diagrams.util.llm_judge import _parse_visual_response
     text = "Overall score: 4. The triangle looks correct and all points are labeled."
     result = _parse_visual_response(text)
     assert isinstance(result["reasoning"], str)
@@ -121,7 +121,7 @@ def _run(coro):
 @_SKIP_LIVE
 def test_judge_scores_good_tikz_highly():
     """Known-correct right triangle should score >= 4."""
-    from util.llm_judge import judge_tikz_code
+    from geometry_diagrams.util.llm_judge import judge_tikz_code
     result = _run(judge_tikz_code(_PROMPT_RIGHT_TRIANGLE, _GOOD_RIGHT_TRIANGLE_TIKZ))
     assert result["score"] >= 4, (
         f"Expected good TikZ to score >= 4, got {result['score']}. "
@@ -135,7 +135,7 @@ def test_judge_scores_wrong_geometry_low():
     Prompt asks for right angle at B, but coordinates make an acute triangle
     with no right angle mark. Should score <= 3.
     """
-    from util.llm_judge import judge_tikz_code
+    from geometry_diagrams.util.llm_judge import judge_tikz_code
     result = _run(judge_tikz_code(_PROMPT_RIGHT_TRIANGLE, _BAD_TIKZ_WRONG_ANGLE))
     assert result["score"] <= 3, (
         f"Expected bad geometry to score <= 3, got {result['score']}. "
@@ -146,7 +146,7 @@ def test_judge_scores_wrong_geometry_low():
 @_SKIP_LIVE
 def test_judge_detects_missing_labels():
     """TikZ with no label commands should score labeling <= 2."""
-    from util.llm_judge import judge_tikz_code
+    from geometry_diagrams.util.llm_judge import judge_tikz_code
     result = _run(judge_tikz_code(_PROMPT_LABELED_TRIANGLE, _BAD_TIKZ_NO_LABELS))
     assert result["labeling"] <= 2, (
         f"Expected labeling score <= 2, got {result['labeling']}. "
@@ -157,7 +157,7 @@ def test_judge_detects_missing_labels():
 @_SKIP_LIVE
 def test_judge_detects_incomplete_diagram():
     """Prompt asks for triangle + circle but only triangle drawn. completeness <= 3."""
-    from util.llm_judge import judge_tikz_code
+    from geometry_diagrams.util.llm_judge import judge_tikz_code
     result = _run(judge_tikz_code(_PROMPT_CIRCUMSCRIBED, _INCOMPLETE_TIKZ_NO_CIRCLE))
     assert result["completeness"] <= 3, (
         f"Expected completeness score <= 3, got {result['completeness']}. "
@@ -168,7 +168,7 @@ def test_judge_detects_incomplete_diagram():
 @_SKIP_LIVE
 def test_judge_returns_all_expected_keys():
     """Sanity check: judge always returns all required fields in valid ranges."""
-    from util.llm_judge import judge_tikz_code
+    from geometry_diagrams.util.llm_judge import judge_tikz_code
     result = _run(judge_tikz_code(_PROMPT_RIGHT_TRIANGLE, _GOOD_RIGHT_TRIANGLE_TIKZ))
 
     for key in ("score", "geometric_accuracy", "labeling", "completeness", "likely_renders", "reasoning"):

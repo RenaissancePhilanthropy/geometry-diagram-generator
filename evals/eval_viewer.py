@@ -35,14 +35,14 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from ir.errors import IRCompileError
-from ir.ir import DiagramIR
-from ir.to_sympy import compile_defs
-from ir.checks import run_checks
-from ir.renderer import Renderer, SVGRenderer, TikZRenderer
-from recipe.dsl import RecipeDSL
-from recipe.lower import LoweringError, lower_to_ir
-from util.tikz_renderer import render_tikz
+from geometry_diagrams.ir.errors import IRCompileError
+from geometry_diagrams.ir.ir import DiagramIR
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.checks import run_checks
+from geometry_diagrams.ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from geometry_diagrams.recipe.dsl import RecipeDSL
+from geometry_diagrams.recipe.lower import LoweringError, lower_to_ir
+from geometry_diagrams.util.tikz_renderer import render_tikz
 
 load_dotenv()
 

@@ -24,8 +24,8 @@ from pydantic import BaseModel
 from langchain_core.tools import tool
 from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 
-from util.tikz_renderer import render_tikz
-from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
+from geometry_diagrams.util.tikz_renderer import render_tikz
+from geometry_diagrams.util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
 from .base import DEFAULT_AGENT_MODEL
 from .instructions import (
     DRAFT_INSTRUCTIONS,

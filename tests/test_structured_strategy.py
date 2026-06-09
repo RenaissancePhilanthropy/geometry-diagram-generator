@@ -9,9 +9,9 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
-from strategies.structured import StructureStrategy, MAX_RETRIES, _build_structured_graph
-from strategies.structured import StructuredRunResult
-from ir.ir import DiagramIR
+from geometry_diagrams.strategies.structured import StructureStrategy, MAX_RETRIES, _build_structured_graph
+from geometry_diagrams.strategies.structured import StructuredRunResult
+from geometry_diagrams.ir.ir import DiagramIR
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ async def test_ir_gen_failure_leaves_two_pipeline_attempts():
 
 def test_prepare_modification_prompt_includes_previous_ir():
     """_prepare_modification_prompt should embed the previous DiagramIR JSON in the prompt."""
-    from strategies.structured import _prepare_modification_prompt
+    from geometry_diagrams.strategies.structured import _prepare_modification_prompt
 
     previous_ir = DiagramIR(define=[], checks=[], render=[])
     prompt = _prepare_modification_prompt("now label the hypotenuse", previous_ir)
@@ -143,7 +143,7 @@ def test_prepare_modification_prompt_includes_previous_ir():
 
 def test_prepare_modification_prompt_first_call_unchanged():
     """When previous_ir is None, prompt is returned unchanged."""
-    from strategies.structured import _prepare_modification_prompt
+    from geometry_diagrams.strategies.structured import _prepare_modification_prompt
 
     prompt = _prepare_modification_prompt("draw a right triangle", None)
     assert prompt == "draw a right triangle"
@@ -152,7 +152,7 @@ def test_prepare_modification_prompt_first_call_unchanged():
 @pytest.mark.asyncio
 async def test_build_agent_passes_previous_ir_on_second_render():
     """Second render_diagram invocation should include previous DiagramIR in the run() prompt."""
-    from strategies.structured import _prepare_modification_prompt
+    from geometry_diagrams.strategies.structured import _prepare_modification_prompt
 
     fake_result = _make_fake_result()
     run_prompts: list[str] = []

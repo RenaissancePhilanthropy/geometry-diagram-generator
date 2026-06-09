@@ -8,8 +8,8 @@ import asyncio
 import pytest
 
 from tests.availability import renderer_available
-from util.tikz_renderer import render_tikz
-from util.svg_checks import run_svg_checks
+from geometry_diagrams.util.tikz_renderer import render_tikz
+from geometry_diagrams.util.svg_checks import run_svg_checks
 
 pytestmark = pytest.mark.skipif(
     not renderer_available(),

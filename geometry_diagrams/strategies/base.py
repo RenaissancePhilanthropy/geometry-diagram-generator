@@ -7,7 +7,7 @@ from logging import getLogger
 from langgraph.graph.state import CompiledStateGraph
 
 if TYPE_CHECKING:
-    from ir.renderer import Renderer
+    from geometry_diagrams.ir.renderer import Renderer
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 

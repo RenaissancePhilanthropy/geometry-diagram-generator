@@ -2,7 +2,7 @@
 """Tests for recipe catalog loader and prompt builders."""
 import pytest
 from pathlib import Path
-from recipe.catalog import (
+from geometry_diagrams.recipe.catalog import (
     RecipeSummary, Recipe, RecipeSelection,
     load_catalog, load_recipe, build_selection_prompt, build_generation_prompt,
     clear_cache, DSL_DOCS,
@@ -147,7 +147,7 @@ def test_catalog_path_traversal_rejected():
 
 def test_catalog_cache_is_independent(tmp_path, monkeypatch):
     """Two catalogs load independently; each has only its own recipes."""
-    import recipe.catalog as cat_module
+    import geometry_diagrams.recipe.catalog as cat_module
 
     # Build two minimal catalogs in a tmp directory
     cat_a = tmp_path / "alpha"

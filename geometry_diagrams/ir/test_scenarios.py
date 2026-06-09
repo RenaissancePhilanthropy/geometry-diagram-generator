@@ -5,7 +5,7 @@ Run: python -m ir.test_scenarios
 from __future__ import annotations
 import math
 import sys
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     DiagramIR,
     PointFixed, PointFree, PointOn, PointMidpoint, PointRotate,
     PointTriangleCenter, PointIntersection,

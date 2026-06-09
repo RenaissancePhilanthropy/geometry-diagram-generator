@@ -12,8 +12,8 @@ from typing import Any
 
 import sympy.geometry as spg
 
-from ir.checks import _angle_at
-from ir.to_sympy import SymTable
+from geometry_diagrams.ir.checks import _angle_at
+from geometry_diagrams.ir.to_sympy import SymTable
 
 
 def _get(sym: SymTable, obj_id: str) -> Any:

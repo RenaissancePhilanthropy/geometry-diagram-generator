@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ir.ir import PickRule
+from geometry_diagrams.ir.ir import PickRule
 
 
 # ---------------------------------------------------------------------------

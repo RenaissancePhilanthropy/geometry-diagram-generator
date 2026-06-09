@@ -18,10 +18,10 @@ import asyncio
 import pytest
 from langchain_core.messages import HumanMessage
 
-from strategies.raw_code import RawCodeStrategy
+from geometry_diagrams.strategies.raw_code import RawCodeStrategy
 from tests.availability import api_key_available, llm_tests_enabled, renderer_available
-from util.svg_checks import run_svg_checks
-from util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
+from geometry_diagrams.util.svg_checks import run_svg_checks
+from geometry_diagrams.util.tikz_analysis import resolve_all_coordinates, validate_geometric_property
 from tests.agent_helpers import (
     count_tool_calls,
     extract_svg_from_messages,
@@ -197,7 +197,7 @@ def test_parallel_lines_prompt():
     assert tikz is not None
 
     # Should draw at least two lines/segments
-    from util.tikz_analysis import extract_draw_commands
+    from geometry_diagrams.util.tikz_analysis import extract_draw_commands
     cmds = extract_draw_commands(tikz)
     line_cmds = [c for c in cmds if c["type"] in ("line", "segment", "polygon")]
     assert len(line_cmds) >= 2, (

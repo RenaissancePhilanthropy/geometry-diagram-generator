@@ -20,10 +20,10 @@ renderer_name = os.environ.get("RENDERER", "tikz")
 
 def _make_renderer():
     if renderer_name == "svg":
-        from ir.renderer import SVGRenderer
+        from geometry_diagrams.ir.renderer import SVGRenderer
         return SVGRenderer()
     elif renderer_name == "tikz":
-        from ir.renderer import TikZRenderer
+        from geometry_diagrams.ir.renderer import TikZRenderer
         return TikZRenderer()
     else:
         raise ValueError(f"Unknown RENDERER: {renderer_name!r}. Supported: tikz, svg")
@@ -32,23 +32,23 @@ def _make_renderer():
 def _make_strategy():
     if strategy_name in ("raw_code", "raw_svg"):
         if strategy_name == "raw_svg" or renderer_name == "svg":
-            from strategies.raw_svg import RawSVGStrategy
+            from geometry_diagrams.strategies.raw_svg import RawSVGStrategy
             return RawSVGStrategy(enable_cache=True)
         else:
-            from strategies.raw_code import RawCodeStrategy
+            from geometry_diagrams.strategies.raw_code import RawCodeStrategy
             return RawCodeStrategy(enable_cache=True)
     elif strategy_name in ("raw_code_with_revise", "raw_svg_with_revise"):
         if strategy_name == "raw_svg_with_revise" or renderer_name == "svg":
-            from strategies.raw_svg_with_revise import RawSVGWithReviseStrategy
+            from geometry_diagrams.strategies.raw_svg_with_revise import RawSVGWithReviseStrategy
             return RawSVGWithReviseStrategy(enable_cache=True)
         else:
-            from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
+            from geometry_diagrams.strategies.raw_code_with_revise import RawCodeWithReviseStrategy
             return RawCodeWithReviseStrategy(enable_cache=True)
     elif strategy_name == "structured":
-        from strategies.structured import StructureStrategy
+        from geometry_diagrams.strategies.structured import StructureStrategy
         return StructureStrategy(enable_cache=True)
     elif strategy_name == "recipe":
-        from strategies.recipe import RecipeStrategy
+        from geometry_diagrams.strategies.recipe import RecipeStrategy
         return RecipeStrategy(enable_cache=True)
     else:
         raise ValueError(

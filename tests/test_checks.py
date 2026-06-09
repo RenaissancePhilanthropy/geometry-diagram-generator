@@ -2,8 +2,8 @@
 """Tests for ir/checks.py."""
 import sympy.geometry as spg
 
-from ir.ir import AngleEqual, AnglePoints
-from ir.checks import run_checks
+from geometry_diagrams.ir.ir import AngleEqual, AnglePoints
+from geometry_diagrams.ir.checks import run_checks
 
 
 def test_angle_equal_failure_shows_candidates():
@@ -57,8 +57,8 @@ def test_angle_equal_pass_produces_empty_message():
 def test_contains_ellipse_point_on_boundary():
     """Contains check passes for a point on the ellipse boundary."""
     import math
-    from ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
+    from geometry_diagrams.ir.to_sympy import compile_defs
 
     # Ellipse centered at (1,3), hradius=1.5, vradius=2
     # Point at (1 + 1.5, 3) = (2.5, 3) is on the boundary
@@ -74,8 +74,8 @@ def test_contains_ellipse_point_on_boundary():
 
 def test_contains_ellipse_point_outside():
     """Contains check fails for a point clearly outside the ellipse."""
-    from ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.ir import Contains, PointFixed, EllipseCenterAxes, DiagramIR
+    from geometry_diagrams.ir.to_sympy import compile_defs
 
     sym = compile_defs(DiagramIR(define=[
         PointFixed(id="O", x=0, y=0),
@@ -94,8 +94,8 @@ def test_contains_ellipse_point_outside():
 def test_distance_equals_passes_when_segment_has_expected_length():
     """DistanceEquals passes when the segment has the expected length."""
     import math
-    from ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
+    from geometry_diagrams.ir.to_sympy import compile_defs
 
     sym = compile_defs(DiagramIR(define=[
         PointFixed(id="A", x=0, y=0),
@@ -110,8 +110,8 @@ def test_distance_equals_passes_when_segment_has_expected_length():
 
 def test_distance_equals_fails_when_segment_has_wrong_length():
     """DistanceEquals fails when the segment length differs from expected."""
-    from ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.ir import DistanceEquals, Segment, PointFixed, DiagramIR
+    from geometry_diagrams.ir.to_sympy import compile_defs
 
     sym = compile_defs(DiagramIR(define=[
         PointFixed(id="A", x=0, y=0),
@@ -132,7 +132,7 @@ def test_centroid_passes_for_average_of_vertices():
         "C": spg.Point2D(0, 6),
         "G": spg.Point2D(2, 2),
     }
-    from ir.ir import Centroid
+    from geometry_diagrams.ir.ir import Centroid
 
     checks = [Centroid(g="G", a="A", b="B", c="C")]
     results = run_checks(checks, sym)
@@ -148,7 +148,7 @@ def test_centroid_fails_when_offset():
         "C": spg.Point2D(0, 6),
         "G": spg.Point2D(3, 2),
     }
-    from ir.ir import Centroid
+    from geometry_diagrams.ir.ir import Centroid
 
     checks = [Centroid(g="G", a="A", b="B", c="C")]
     results = run_checks(checks, sym)
@@ -167,7 +167,7 @@ def test_centroid_irrational_equilateral():
         "C": spg.Point2D(0.5, math.sqrt(3) / 2),
         "G": spg.Point2D(0.5, math.sqrt(3) / 6),
     }
-    from ir.ir import Centroid
+    from geometry_diagrams.ir.ir import Centroid
 
     checks = [Centroid(g="G", a="A", b="B", c="C")]
     results = run_checks(checks, sym)

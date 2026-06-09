@@ -23,7 +23,7 @@ import yaml
 from collections import Counter
 from pathlib import Path
 
-from util.tikz_geometry import resolve_all_coordinates, validate_geometric_property
+from geometry_diagrams.util.tikz_geometry import resolve_all_coordinates, validate_geometric_property
 
 # Match the production tolerance from evals/run.py
 _TIKZ_CHECK_TOLERANCE = 1e-2

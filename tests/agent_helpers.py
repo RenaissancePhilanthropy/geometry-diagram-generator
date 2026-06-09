@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 
-from util.message_helpers import (
+from geometry_diagrams.util.message_helpers import (
     count_tool_calls,
     extract_tool_call_args,
     extract_tool_return,

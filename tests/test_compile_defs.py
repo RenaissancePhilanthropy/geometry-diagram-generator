@@ -11,7 +11,7 @@ import pytest
 import sympy as sp
 import sympy.geometry as spg
 
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     Canvas, Params,
     DiagramIR,
     PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointRotate, PointReflect,
@@ -26,12 +26,12 @@ from ir.ir import (
     SameSideConstraint, NotNearConstraint,
     PickIndex, PickClosestTo, PickOnObject,
 )
-from ir.to_sympy import compile_defs
-from ir.errors import IRCompileError, UndefinedRefError, IntersectionError, PickError, ExprEvalError
-from ir.auto_checks import generate_auto_checks, run_auto_checks
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.errors import IRCompileError, UndefinedRefError, IntersectionError, PickError, ExprEvalError
+from geometry_diagrams.ir.auto_checks import generate_auto_checks, run_auto_checks
 
 # Import the scenario registry populated at module load time
-import ir.test_scenarios as _ts
+import geometry_diagrams.ir.test_scenarios as _ts
 SCENARIOS = _ts.SCENARIOS
 
 
@@ -399,7 +399,7 @@ def test_ellipse_foci_through_point():
 
 
 def test_ellipse_foci_non_axis_aligned_raises():
-    from ir.errors import IRCompileError
+    from geometry_diagrams.ir.errors import IRCompileError
     with pytest.raises(IRCompileError, match="axis-aligned"):
         _compile(
             PointFixed(id="F1", x=0, y=0),
@@ -916,7 +916,7 @@ class TestPolygonExterior:
                 )
 
     def test_ref_on_line_raises(self):
-        from ir.errors import IRCompileError
+        from geometry_diagrams.ir.errors import IRCompileError
         stmts = [
             PointFixed(id="A", x=0, y=0),
             PointFixed(id="B", x=2, y=0),
@@ -988,7 +988,7 @@ class TestPolygonExterior:
         assert float(sym["E"].distance(cbde_verts[3]).evalf()) < 1e-9
 
     def test_sides_less_than_3_raises(self):
-        from ir.errors import IRCompileError
+        from geometry_diagrams.ir.errors import IRCompileError
         stmts = [
             PointFixed(id="A", x=0, y=0),
             PointFixed(id="B", x=1, y=0),
@@ -1105,7 +1105,7 @@ class TestToposort:
         """Real-world pattern: reflect D over perpendicular bisector 'axis' defined later."""
         # This mirrors what the LLM generates for isosceles trapezoid:
         # D and C defined before 'axis', but axis is listed after them in DSL.
-        from ir.ir import LineThrough, LinePerpendicularThrough
+        from geometry_diagrams.ir.ir import LineThrough, LinePerpendicularThrough
         stmts = [
             PointFixed(id="A", x=-2, y=0),
             PointFixed(id="B", x=2, y=0),
@@ -1122,7 +1122,7 @@ class TestToposort:
 
     def test_arc_with_rotation_forward_ref(self):
         """Arc defined before its end point (a PointRotate) — topo sort must reorder."""
-        from ir.ir import ArcCenterStartEnd
+        from geometry_diagrams.ir.ir import ArcCenterStartEnd
         import math
         stmts = [
             PointFixed(id="O", x=0, y=0),
@@ -1139,8 +1139,8 @@ class TestToposort:
 # ---------------------------------------------------------------------------
 
 def test_def_references_arc_includes_start_end():
-    from ir.refs import def_references
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.refs import def_references
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     refs = def_references(ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"))
     assert refs == {"O", "A", "B"}
 
@@ -1151,7 +1151,7 @@ def test_def_references_arc_includes_start_end():
 
 def test_polygon_on_edge_equilateral_triangle_above():
     """Equilateral triangle on AB (ref below) → C above the baseline."""
-    from ir.ir import PointFixed, PolygonOnEdge
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
     defs = [
         PointFixed(id="A", x=0.0, y=0.0),
         PointFixed(id="B", x=5.0, y=0.0),
@@ -1176,7 +1176,7 @@ def test_polygon_on_edge_equilateral_triangle_above():
 
 def test_polygon_on_edge_ref_flips_side():
     """Flipping ref_point to the other side places the polygon on the other side."""
-    from ir.ir import PointFixed, PolygonOnEdge
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
     defs_ref_below = [
         PointFixed(id="A", x=0.0, y=0.0),
         PointFixed(id="B", x=5.0, y=0.0),
@@ -1202,8 +1202,8 @@ def test_polygon_on_edge_ref_flips_side():
 
 def test_polygon_on_edge_claimed_base_length_wrong_raises():
     """Wrong claimed_base_length raises IRCompileError with hint."""
-    from ir.ir import PointFixed, PolygonOnEdge
-    from ir.errors import IRCompileError
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
+    from geometry_diagrams.ir.errors import IRCompileError
     defs = [
         PointFixed(id="A", x=0.0, y=0.0),
         PointFixed(id="B", x=5.0, y=0.0),
@@ -1218,7 +1218,7 @@ def test_polygon_on_edge_claimed_base_length_wrong_raises():
 
 def test_polygon_on_edge_parallelogram_correct_shape():
     """Parallelogram anchored to a base edge has correct side lengths."""
-    from ir.ir import PointFixed, PolygonOnEdge
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
     defs = [
         PointFixed(id="A", x=0.0, y=0.0),
         PointFixed(id="B", x=5.0, y=0.0),
@@ -1236,21 +1236,21 @@ def test_polygon_on_edge_parallelogram_correct_shape():
 
 
 def test_sector_ir_kind():
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B")
     assert s.kind == "sector_center_start_end"
     assert s.reflex is False
 
 
 def test_sector_ir_reflex_flag():
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B", reflex=True)
     assert s.reflex is True
 
 
 def test_sector_compiles_to_sector_wrapper():
-    from ir.ir import PointFixed, SectorCenterStartEnd
-    from ir.to_sympy import Sector
+    from geometry_diagrams.ir.ir import PointFixed, SectorCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import Sector
     sym = _compile(
         PointFixed(id="O", x=0, y=0),
         PointFixed(id="A", x=3, y=0),
@@ -1270,7 +1270,7 @@ def test_sector_compiles_to_sector_wrapper():
 
 def test_intersection_circle_and_line_normal():
     """Circle-line intersection with a proper LineThrough produces two points."""
-    from ir.ir import PickIndex
+    from geometry_diagrams.ir.ir import PickIndex
     sym = _compile(
         PointFixed(id="O", x=0, y=0),
         PointFixed(id="A", x=3, y=0),
@@ -1286,7 +1286,7 @@ def test_intersection_circle_and_line_normal():
 
 def test_intersection_two_circles_descriptive_error_on_no_points():
     """Two non-intersecting circles raise IntersectionError with meaningful message."""
-    from ir.errors import IntersectionError
+    from geometry_diagrams.ir.errors import IntersectionError
     with pytest.raises(IntersectionError, match="no intersection"):
         _compile(
             PointFixed(id="O1", x=0, y=0),

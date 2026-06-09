@@ -12,15 +12,15 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from strategies.llm import get_chat_model, is_gemini_model, extract_usage, make_system_message
-from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
-from ir.ir import DiagramIR
-from ir.to_sympy import compile_defs
-from ir.checks import run_checks, check_render_angles, CheckResult
-from ir.renderer import Renderer, TikZRenderer
-from ir.errors import IRCompileError
-from ir.queries import (
+from geometry_diagrams.strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from geometry_diagrams.strategies.llm import get_chat_model, is_gemini_model, extract_usage, make_system_message
+from geometry_diagrams.strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
+from geometry_diagrams.ir.ir import DiagramIR
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.checks import run_checks, check_render_angles, CheckResult
+from geometry_diagrams.ir.renderer import Renderer, TikZRenderer
+from geometry_diagrams.ir.errors import IRCompileError
+from geometry_diagrams.ir.queries import (
     query_coordinate, query_distance, query_angle,
     query_length, query_radius, query_area, query_perimeter, list_objects,
 )

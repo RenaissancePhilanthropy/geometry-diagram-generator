@@ -5,7 +5,7 @@ No Docker or renderer required — pure Python logic.
 
 import pytest
 
-from util.tikz_analysis import (
+from geometry_diagrams.util.tikz_analysis import (
     extract_canvas_features,
     extract_defined_points,
     extract_computed_points,
@@ -688,7 +688,7 @@ def test_validate_required_entities_empty_required():
 
 def test_extract_coordinate_command():
     tikz = r"\coordinate (P) at (1.5, 2.5)"
-    from util.tikz_analysis import extract_defined_points
+    from geometry_diagrams.util.tikz_analysis import extract_defined_points
     pts = extract_defined_points(tikz)
     assert "P" in pts
     assert pts["P"] == pytest.approx((1.5, 2.5))

@@ -6,7 +6,7 @@ No SymPy or rendering required.
 """
 import math
 import pytest
-from recipe.dsl import (
+from geometry_diagrams.recipe.dsl import (
     RecipeDSL, DSLAnnotations,
     TriangleOp, AltitudeOp, CircumcircleOp, IncircleOp,
     PerpendicularBisectorOp, AngleBisectorOp, CentroidOp, MedianOp,
@@ -16,9 +16,9 @@ from recipe.dsl import (
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     PointFootOp, CircleThrough3Op, TangentLineOp, RectangleOp,
 )
-from ir.ir import Contains
-from recipe.lower import lower_to_ir, LoweringError
-from ir.ir import (
+from geometry_diagrams.ir.ir import Contains
+from geometry_diagrams.recipe.lower import lower_to_ir, LoweringError
+from geometry_diagrams.ir.ir import (
     DiagramIR, PointFixed, PointMidpoint, PointFoot, PointTriangleCenter,
     LineThrough, LinePerpendicularThrough, LineParallelThrough,
     LineAngleBisector, CircleCenterPoint, CircleCenterRadius,
@@ -93,7 +93,7 @@ def test_triangle_right_angle_at_b_generates_check():
     dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
                             spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})])
     ir = lower_to_ir(dsl)
-    from ir.ir import RightAngle
+    from geometry_diagrams.ir.ir import RightAngle
     ra_checks = [c for c in ir.checks if isinstance(c, RightAngle)]
     assert len(ra_checks) == 1
     # B slot → Q vertex
@@ -101,7 +101,7 @@ def test_triangle_right_angle_at_b_generates_check():
 
 def test_remap_triangle_spec_no_longer_exists():
     """_remap_triangle_spec should be deleted."""
-    import recipe.lower as lower_mod
+    import geometry_diagrams.recipe.lower as lower_mod
     assert not hasattr(lower_mod, "_remap_triangle_spec")
 
 
@@ -136,7 +136,7 @@ def test_altitude_expansion():
     assert foot.onto == "__alt_A_base"
 
 def test_altitude_auto_generates_perpendicular_check():
-    from ir.ir import Perpendicular
+    from geometry_diagrams.ir.ir import Perpendicular
     dsl = _dsl([
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"angle_A": 60, "angle_B": 70, "side_AB": 4}),
@@ -696,7 +696,7 @@ def test_visible_false_excluded_from_auto_draw():
 
 def test_mark_angle_lowered():
     """marks: [{kind: mark_angle, ...}] → MarkAngles render op."""
-    from ir.ir import MarkAngles
+    from geometry_diagrams.ir.ir import MarkAngles
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -712,7 +712,7 @@ def test_mark_angle_lowered():
 
 def test_mark_right_angle_lowered():
     """marks: [{kind: mark_right_angle, ...}] → MarkRightAngles render op."""
-    from ir.ir import MarkRightAngles
+    from geometry_diagrams.ir.ir import MarkRightAngles
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -726,7 +726,7 @@ def test_mark_right_angle_lowered():
 
 def test_mark_equal_lengths_lowered():
     """marks: [{kind: mark_equal_lengths, ...}] → MarkSegments + implicit segment defs."""
-    from ir.ir import MarkSegments, Segment
+    from geometry_diagrams.ir.ir import MarkSegments, Segment
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -745,7 +745,7 @@ def test_mark_equal_lengths_lowered():
 
 def test_label_segment_lowered():
     """labels: [{kind: label_segment, ...}] → LabelSegment render op."""
-    from ir.ir import LabelSegment
+    from geometry_diagrams.ir.ir import LabelSegment
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -797,7 +797,7 @@ def test_two_triangles_with_centers_non_overlapping():
 
 def _tri_dsl(**ann_kwargs):
     """Helper: 3-4-5 right triangle DSL with custom annotation kwargs."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     ann = DSLAnnotations(**ann_kwargs)
     return RecipeDSL(
         construction=[
@@ -810,7 +810,7 @@ def _tri_dsl(**ann_kwargs):
 
 def test_explicit_draw_with_style_string():
     """draws list with a style string produces a styled Draw render op."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = _tri_dsl(
         auto_draw_all=False,
         auto_label_points=False,
@@ -825,7 +825,7 @@ def test_explicit_draw_with_style_string():
 
 def test_explicit_draw_with_inline_style_dict():
     """Inline style dict is registered in DiagramIR.styles and referenced by auto-key."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = _tri_dsl(
         auto_draw_all=False,
         auto_label_points=False,
@@ -843,7 +843,7 @@ def test_explicit_draw_with_inline_style_dict():
 
 def test_explicit_draw_vertex_pair_shorthand():
     """draws with endpoints auto-creates a segment def and draws it styled."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = _tri_dsl(
         auto_draw_all=False,
         auto_label_points=False,
@@ -874,7 +874,7 @@ def test_empty_draws_with_auto_draw_all_false_warns():
 
 def test_named_styles_forwarded_to_ir_styles():
     """annotations.styles are forwarded into DiagramIR.styles."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = RecipeDSL(
         construction=[
             {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
@@ -897,7 +897,7 @@ def test_named_styles_forwarded_to_ir_styles():
 
 def test_vertex_pair_shorthand_reuses_existing_segment():
     """If a segment [A,B] already exists in construction, draws reuses it."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = RecipeDSL(
         construction=[
             {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
@@ -918,7 +918,7 @@ def test_vertex_pair_shorthand_reuses_existing_segment():
 
 def test_auto_draw_all_with_explicit_draw_deduplicates():
     """When auto_draw_all=true, objects in explicit draws are not auto-drawn."""
-    from recipe.dsl import DrawObj
+    from geometry_diagrams.recipe.dsl import DrawObj
     dsl = RecipeDSL(
         construction=[
             {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
@@ -944,7 +944,7 @@ def test_auto_draw_all_with_explicit_draw_deduplicates():
 
 def test_mark_right_angle_emits_check():
     """MarkRightAngle on explicit vertices emits a RightAngle check with source."""
-    from ir.ir import RightAngle
+    from geometry_diagrams.ir.ir import RightAngle
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
          "spec": {"right_angle_at": "C", "side_AB": 5, "side_BC": 3}},
@@ -960,7 +960,7 @@ def test_mark_right_angle_emits_check():
 
 def test_mark_angle_group_emits_angle_equal_checks():
     """Two MarkAngles with the same group emit one AngleEqual check with source."""
-    from ir.ir import AngleEqual
+    from geometry_diagrams.ir.ir import AngleEqual
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -980,7 +980,7 @@ def test_mark_angle_group_emits_angle_equal_checks():
 
 def test_mark_angle_group_three_emits_pairwise():
     """Three MarkAngles with group=1 emit three pairwise AngleEqual checks."""
-    from ir.ir import AngleEqual
+    from geometry_diagrams.ir.ir import AngleEqual
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [1, 0]},
@@ -1003,7 +1003,7 @@ def test_mark_angle_group_three_emits_pairwise():
 
 def test_mark_equal_lengths_emits_check():
     """MarkEqualLengths on 2 segments emits an EqualLength check with source."""
-    from ir.ir import EqualLength
+    from geometry_diagrams.ir.ir import EqualLength
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -1021,7 +1021,7 @@ def test_mark_equal_lengths_emits_check():
 
 def test_mark_parallel_emits_check():
     """MarkParallel on 2 segments emits one Parallel check with source."""
-    from ir.ir import Parallel
+    from geometry_diagrams.ir.ir import Parallel
     dsl = RecipeDSL(construction=[
         {"op": "point", "id": "A", "coords": [0, 0]},
         {"op": "point", "id": "B", "coords": [3, 0]},
@@ -1038,7 +1038,7 @@ def test_mark_parallel_emits_check():
 
 def test_mark_angle_at_of_shorthand():
     """mark_angle with at/of shorthand produces correct AnglePoints."""
-    from ir.ir import MarkAngles
+    from geometry_diagrams.ir.ir import MarkAngles
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
          "spec": {"angle_A": 60, "angle_B": 60, "side_AB": 3}},
@@ -1180,8 +1180,8 @@ def test_mark_angle_expected_skips_without_coords():
 
 def test_annotation_check_source_in_message():
     """Mismatched MarkRightAngle annotation → failure message contains [annotation: mark_right_angle."""
-    from ir.to_sympy import compile_defs
-    from ir.checks import run_checks
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.checks import run_checks
 
     # 3-4-5 right triangle, right angle at C; mark a non-right angle at A
     dsl = RecipeDSL(construction=[
@@ -1202,8 +1202,8 @@ def test_annotation_check_source_in_message():
 # ---------------------------------------------------------------------------
 
 def test_ellipse_op_center_axes_lowers():
-    from recipe.dsl import EllipseOp
-    from ir.ir import EllipseCenterAxes, PointFixed
+    from geometry_diagrams.recipe.dsl import EllipseOp
+    from geometry_diagrams.ir.ir import EllipseCenterAxes, PointFixed
 
     ir = lower_to_ir(_dsl([
         PointOp(id="O", coords=[1.0, 3.0]),
@@ -1217,8 +1217,8 @@ def test_ellipse_op_center_axes_lowers():
 
 
 def test_ellipse_op_bbox_lowers():
-    from recipe.dsl import EllipseOp
-    from ir.ir import EllipseBBox
+    from geometry_diagrams.recipe.dsl import EllipseOp
+    from geometry_diagrams.ir.ir import EllipseBBox
 
     ir = lower_to_ir(_dsl([
         PointOp(id="C1", coords=[0.0, 1.0]),
@@ -1232,8 +1232,8 @@ def test_ellipse_op_bbox_lowers():
 
 
 def test_ellipse_op_foci_lowers():
-    from recipe.dsl import EllipseOp
-    from ir.ir import EllipseFoci
+    from geometry_diagrams.recipe.dsl import EllipseOp
+    from geometry_diagrams.ir.ir import EllipseFoci
 
     ir = lower_to_ir(_dsl([
         PointOp(id="F1", coords=[-3.0, 0.0]),
@@ -1252,7 +1252,7 @@ def test_ellipse_op_foci_lowers():
 # ---------------------------------------------------------------------------
 
 def test_rectangle_op_lowers_to_four_points_and_polygon():
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     ir = lower_to_ir(_dsl([
         RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
     ]))
@@ -1265,8 +1265,8 @@ def test_rectangle_op_lowers_to_four_points_and_polygon():
 
 def test_rectangle_op_correct_side_lengths():
     import math
-    from recipe.dsl import RectangleOp
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.recipe.dsl import RectangleOp
+    from geometry_diagrams.ir.to_sympy import compile_defs
     ir = lower_to_ir(_dsl([
         RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
     ]))
@@ -1281,8 +1281,8 @@ def test_rectangle_op_correct_side_lengths():
 
 
 def test_rectangle_op_auto_right_angle_triple():
-    from recipe.dsl import RectangleOp
-    from recipe.lower import _Lowerer
+    from geometry_diagrams.recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.lower import _Lowerer
     dsl = _dsl([
         RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
     ])
@@ -1294,7 +1294,7 @@ def test_rectangle_op_auto_right_angle_triple():
 
 
 def test_rectangle_op_bad_spec_raises():
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     with pytest.raises(Exception):
         lower_to_ir(_dsl([
             RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4}),
@@ -1306,8 +1306,8 @@ def test_rectangle_op_bad_spec_raises():
 # ---------------------------------------------------------------------------
 
 def test_fill_op_lowers_to_fill_render_op():
-    from recipe.dsl import RectangleOp, FillOp
-    from ir.ir import Fill
+    from geometry_diagrams.recipe.dsl import RectangleOp, FillOp
+    from geometry_diagrams.ir.ir import Fill
     ir = lower_to_ir(_dsl([
         RectangleOp(id="rect", vertices=["A","B","C","D"], spec={"side_AB": 4, "side_BC": 3}),
         CircleOp(id="circ", center="A", radius=1),
@@ -1321,8 +1321,8 @@ def test_fill_op_lowers_to_fill_render_op():
 
 
 def test_fill_op_without_holes():
-    from recipe.dsl import FillOp
-    from ir.ir import Fill
+    from geometry_diagrams.recipe.dsl import FillOp
+    from geometry_diagrams.ir.ir import Fill
     ir = lower_to_ir(_dsl([
         CircleOp(id="circ", center="O", radius=2),
         PointOp(id="O", coords=[0.0, 0.0]),
@@ -1338,8 +1338,8 @@ def test_fill_op_without_holes():
 # ---------------------------------------------------------------------------
 
 def test_arc_op_lowers_to_arc_def_and_is_drawable():
-    from recipe.dsl import ArcOp
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.recipe.dsl import ArcOp
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     ir = lower_to_ir(_dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         PointOp(id="A", coords=[1.0, 0.0]),
@@ -1359,8 +1359,8 @@ def test_arc_op_lowers_to_arc_def_and_is_drawable():
 
 
 def test_arc_op_reflex_flag_flows_through():
-    from recipe.dsl import ArcOp
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.recipe.dsl import ArcOp
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     ir = lower_to_ir(_dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         PointOp(id="A", coords=[1.0, 0.0]),
@@ -1380,7 +1380,7 @@ def test_arc_op_reflex_flag_flows_through():
 
 def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
     """polygon_from_sides emits N PointFixed defs + 1 Polygon def."""
-    from recipe.dsl import PolygonFromSidesOp
+    from geometry_diagrams.recipe.dsl import PolygonFromSidesOp
     ir = lower_to_ir(_dsl([
         PolygonFromSidesOp(id="quad", vertices=["A","B","C","D"],
                            side_lengths=[7, 24, 20, 15]),
@@ -1398,7 +1398,7 @@ def test_polygon_from_sides_lowers_to_n_point_fixed_and_polygon():
 
 def test_polygon_from_angles_and_sides_lowers_to_n_point_fixed_and_polygon():
     """polygon_from_angles_and_sides emits N PointFixed defs + 1 Polygon def."""
-    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    from geometry_diagrams.recipe.dsl import PolygonFromAnglesAndSidesOp
     ir = lower_to_ir(_dsl([
         PolygonFromAnglesAndSidesOp(
             id="para",
@@ -1424,8 +1424,8 @@ def test_polygon_from_angles_and_sides_lowers_to_n_point_fixed_and_polygon():
 
 def test_label_segment_pos_above_lowered_to_90_degrees():
     """label_segment with pos='above' lowers to IR pos=90.0."""
-    from recipe.dsl import LabelSegment as DSLLabelSegment
-    from ir.ir import LabelSegment as IRLabelSegment
+    from geometry_diagrams.recipe.dsl import LabelSegment as DSLLabelSegment
+    from geometry_diagrams.ir.ir import LabelSegment as IRLabelSegment
     dsl = _dsl(
         [TriangleOp(id="T", vertices=["A", "B", "C"],
                     spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
@@ -1444,8 +1444,8 @@ def test_label_segment_pos_above_lowered_to_90_degrees():
 
 def test_label_segment_pos_auto_lowered_to_none():
     """label_segment with pos='auto' (default) lowers to IR pos=None."""
-    from recipe.dsl import LabelSegment as DSLLabelSegment
-    from ir.ir import LabelSegment as IRLabelSegment
+    from geometry_diagrams.recipe.dsl import LabelSegment as DSLLabelSegment
+    from geometry_diagrams.ir.ir import LabelSegment as IRLabelSegment
     dsl = _dsl(
         [TriangleOp(id="T", vertices=["A", "B", "C"],
                     spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})],
@@ -1463,7 +1463,7 @@ def test_label_segment_pos_auto_lowered_to_none():
 
 def test_rectangle_lowering_with_non_abcd_vertices():
     """Non-ABCD vertices with positional spec should lower correctly."""
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
                              spec={"side_AB": 4, "side_BC": 3})])
     ir = lower_to_ir(dsl)
@@ -1480,7 +1480,7 @@ def test_rectangle_lowering_with_non_abcd_vertices():
 def test_rectangle_lowering_bc_cd():
     """BC + CD adjacent pair should lower correctly."""
     import math
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
                              spec={"side_BC": 3, "side_CD": 4})])
     ir = lower_to_ir(dsl)
@@ -1496,7 +1496,7 @@ def test_rectangle_lowering_bc_cd():
 def test_rectangle_lowering_cd_da():
     """CD + DA adjacent pair should lower correctly."""
     import math
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
                              spec={"side_CD": 4, "side_DA": 3})])
     ir = lower_to_ir(dsl)
@@ -1511,7 +1511,7 @@ def test_rectangle_lowering_cd_da():
 def test_rectangle_lowering_da_ab():
     """DA + AB adjacent pair should lower correctly."""
     import math
-    from recipe.dsl import RectangleOp
+    from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
                              spec={"side_DA": 3, "side_AB": 4})])
     ir = lower_to_ir(dsl)
@@ -1564,8 +1564,8 @@ def test_incircle_from_points_creates_implicit_triangle():
 
 def test_self_intersection_error():
     """intersection(obj, obj) should give a clear 'with itself' error, not a cryptic SymPy error."""
-    from ir.to_sympy import compile_defs
-    from ir.errors import IRCompileError
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.errors import IRCompileError
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         CircleOp(id="c1", center="O", radius=3.0),
@@ -1631,8 +1631,8 @@ def test_tangent_at_point_on_circle():
 
 def test_self_intersection_error_segment():
     """intersection(seg, seg) with the same segment should also raise 'itself'."""
-    from ir.to_sympy import compile_defs
-    from ir.errors import IRCompileError
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.errors import IRCompileError
     dsl = _dsl([
         PointOp(id="A", coords=[0.0, 0.0]),
         PointOp(id="B", coords=[4.0, 0.0]),
@@ -1716,7 +1716,7 @@ def test_tangent_at_point_is_drawable():
 def test_tangent_at_point_geometric_correctness():
     """The compiled tangent line should pass through P and be perpendicular to the radius."""
     import sympy.geometry as spg
-    from ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_sympy import compile_defs
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         CircleOp(id="c1", center="O", radius=3.0),
@@ -1746,8 +1746,8 @@ def test_tangent_at_unknown_circle_raises():
 
 def test_polygon_on_edge_lowers_to_polygon_on_edge_ir_def():
     """Edge-anchored mode emits PolygonOnEdge IR def; G is NOT PointFixed."""
-    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
-    from ir.ir import PolygonOnEdge, PointFixed
+    from geometry_diagrams.recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from geometry_diagrams.ir.ir import PolygonOnEdge, PointFixed
     ir_out = lower_to_ir(_dsl([
         PointOp(id="B", coords=[3.0, 0.0]),
         PointOp(id="C", coords=[8.0, 0.0]),
@@ -1774,8 +1774,8 @@ def test_polygon_on_edge_lowers_to_polygon_on_edge_ir_def():
 
 def test_polygon_on_edge_n_side_lengths_sets_claimed_base():
     """N side_lengths: claimed_base_length set to side_lengths[0]."""
-    from recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
-    from ir.ir import PolygonOnEdge
+    from geometry_diagrams.recipe.dsl import PolygonFromAnglesAndSidesOp, PointOp
+    from geometry_diagrams.ir.ir import PolygonOnEdge
     ir_out = lower_to_ir(_dsl([
         PointOp(id="B", coords=[0.0, 0.0]),
         PointOp(id="C", coords=[5.0, 0.0]),
@@ -1796,8 +1796,8 @@ def test_polygon_on_edge_n_side_lengths_sets_claimed_base():
 
 def test_sector_op_lowers_to_sector_def():
     """SectorOp lowers to a SectorCenterStartEnd def and is drawable."""
-    from recipe.dsl import SectorOp
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.recipe.dsl import SectorOp
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     dsl = _dsl([
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
@@ -1815,8 +1815,8 @@ def test_sector_op_lowers_to_sector_def():
 
 
 def test_sector_op_reflex():
-    from recipe.dsl import SectorOp
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.recipe.dsl import SectorOp
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     dsl = _dsl([
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
@@ -1834,8 +1834,8 @@ def test_sector_op_reflex():
 
 def test_regular_sectors_emits_n_sectors():
     """RegularSectorsOp with n=4 emits 4 SectorCenterStartEnd defs."""
-    from recipe.dsl import RegularSectorsOp
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.recipe.dsl import RegularSectorsOp
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         RegularSectorsOp(id="spokes", center="O", radius=3.0, n=4),
@@ -1848,8 +1848,8 @@ def test_regular_sectors_emits_n_sectors():
 def test_regular_sectors_spoke_points_on_circle():
     """Spoke points are at the correct distance from center."""
     import math
-    from recipe.dsl import RegularSectorsOp
-    from ir.ir import PointFixed
+    from geometry_diagrams.recipe.dsl import RegularSectorsOp
+    from geometry_diagrams.ir.ir import PointFixed
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         RegularSectorsOp(id="spokes", center="O", radius=2.0, n=4),
@@ -1865,8 +1865,8 @@ def test_regular_sectors_spoke_points_on_circle():
 def test_regular_sectors_start_angle():
     """start_angle=90 rotates first spoke to point north."""
     import math
-    from recipe.dsl import RegularSectorsOp
-    from ir.ir import PointFixed
+    from geometry_diagrams.recipe.dsl import RegularSectorsOp
+    from geometry_diagrams.ir.ir import PointFixed
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         RegularSectorsOp(id="spokes", center="O", radius=1.0, n=4, start_angle=90.0),
@@ -1879,8 +1879,8 @@ def test_regular_sectors_start_angle():
 
 def test_regular_sectors_sectors_share_boundary_points():
     """Adjacent sectors share spoke endpoint IDs (sector k end == sector k+1 start)."""
-    from recipe.dsl import RegularSectorsOp
-    from ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.recipe.dsl import RegularSectorsOp
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
     dsl = _dsl([
         PointOp(id="O", coords=[0.0, 0.0]),
         RegularSectorsOp(id="w", center="O", radius=3.0, n=3),
@@ -1917,7 +1917,7 @@ def test_mark_angle_label_only_skips_geometric_check():
     ir = lower_to_ir(dsl)  # must not raise
     assert ir is not None
     # The MarkAngles render op must still be emitted
-    from ir.ir import MarkAngles
+    from geometry_diagrams.ir.ir import MarkAngles
     mark_ops = [op for op in ir.render if isinstance(op, MarkAngles)]
     assert len(mark_ops) >= 1
 
@@ -1943,7 +1943,7 @@ def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
 
 def test_polygon_from_angles_and_sides_n_minus_1_sides_l_shape():
     """L-shape hexagon: 6 angles, 5 explicit sides → infer 6th (A→F = 4)."""
-    from recipe.solve import solve_polygon_from_angles_and_sides
+    from geometry_diagrams.recipe.solve import solve_polygon_from_angles_and_sides
     vertices = ["F", "E", "D", "C", "B", "A"]
     angles   = [90, 90, 90, 270, 90, 90]
     sides_5  = [6.0, 2.0, 3.0, 2.0, 3.0]   # omit A→F = 4
@@ -1957,7 +1957,7 @@ def test_polygon_from_angles_and_sides_n_minus_1_sides_l_shape():
 
 def test_polygon_from_angles_and_sides_n_minus_1_sides_rectangle():
     """Rectangle: 4 angles (all 90), 3 explicit sides → infer 4th."""
-    from recipe.solve import solve_polygon_from_angles_and_sides
+    from geometry_diagrams.recipe.solve import solve_polygon_from_angles_and_sides
     vertices = ["A", "B", "C", "D"]
     angles   = [90, 90, 90, 90]
     sides_3  = [5.0, 3.0, 5.0]   # omit D→A = 3
@@ -1969,7 +1969,7 @@ def test_polygon_from_angles_and_sides_n_minus_1_sides_rectangle():
 
 def test_polygon_from_angles_and_sides_n_minus_1_sides_inconsistent_raises():
     """Wildly wrong side length → SpecError on closing direction mismatch."""
-    from recipe.solve import solve_polygon_from_angles_and_sides, SpecError
+    from geometry_diagrams.recipe.solve import solve_polygon_from_angles_and_sides, SpecError
     vertices = ["F", "E", "D", "C", "B", "A"]
     angles   = [90, 90, 90, 270, 90, 90]
     bad_5    = [6.0, 2.0, 3.0, 2.0, 999.0]   # last side wildly wrong
@@ -1979,7 +1979,7 @@ def test_polygon_from_angles_and_sides_n_minus_1_sides_inconsistent_raises():
 
 def test_polygon_from_angles_and_sides_dsl_n_minus_1_sides_accepted():
     """DSL validator accepts N-1 side_lengths in standalone mode."""
-    from recipe.dsl import PolygonFromAnglesAndSidesOp
+    from geometry_diagrams.recipe.dsl import PolygonFromAnglesAndSidesOp
     op = PolygonFromAnglesAndSidesOp(
         id="lshape",
         vertices=["F","E","D","C","B","A"],

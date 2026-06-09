@@ -9,11 +9,11 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from recipe.dsl import RecipeDSL
-from strategies.recipe import RecipeStrategy
-from strategies.structured import StructuredRunResult
-from ir.ir import DiagramIR
-from recipe.lower import LoweringError
+from geometry_diagrams.recipe.dsl import RecipeDSL
+from geometry_diagrams.strategies.recipe import RecipeStrategy
+from geometry_diagrams.strategies.structured import StructuredRunResult
+from geometry_diagrams.ir.ir import DiagramIR
+from geometry_diagrams.recipe.lower import LoweringError
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ async def test_recipe_strategy_retries_on_lowering_error():
 @pytest.mark.asyncio
 async def test_recipe_strategy_raises_after_max_retries():
     """All attempts fail with LoweringError; RuntimeError raised after MAX_RETRIES."""
-    from strategies.recipe import MAX_RETRIES
+    from geometry_diagrams.strategies.recipe import MAX_RETRIES
 
     strategy = RecipeStrategy()
     mock_llm = _make_mock_llm()
@@ -164,7 +164,7 @@ async def test_recipe_strategy_retries_on_ir_compile_error():
     A 'references undefined id' UndefinedRefError would crash the graph entirely,
     leaving _partial_recipe_metadata unset.
     """
-    from ir.errors import IRCompileError
+    from geometry_diagrams.ir.errors import IRCompileError
 
     strategy = RecipeStrategy()
     fake_result = _make_fake_result()

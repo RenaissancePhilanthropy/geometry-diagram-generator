@@ -6,7 +6,7 @@ import json
 import pytest
 import sympy.geometry as spg
 
-from strategies.structured import dispatch_query
+from geometry_diagrams.strategies.structured import dispatch_query
 
 
 @pytest.fixture

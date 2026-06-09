@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
-import ir.ir as ir
+import geometry_diagrams.ir.ir as ir
 
 
 @dataclass

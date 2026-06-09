@@ -1,7 +1,7 @@
 """Regression test: is_parallel with float-coordinate segments (Math_52 case)."""
 import math
 import sympy.geometry as spg
-from ir.checks import _is_parallel
+from geometry_diagrams.ir.checks import _is_parallel
 
 
 def test_parallel_float_coords_turtle_walk():
@@ -36,5 +36,5 @@ def test_parallel_float_coords_turtle_walk():
         "If this now passes, the workaround may be unnecessary — remove _is_parallel fallback"
 
     # Our helper must return True
-    from ir.checks import _is_parallel as ip
+    from geometry_diagrams.ir.checks import _is_parallel as ip
     assert ip(seg_AB, seg_DC), "Numerical fallback must detect parallelism"

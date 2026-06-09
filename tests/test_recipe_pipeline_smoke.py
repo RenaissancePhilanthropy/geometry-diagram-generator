@@ -5,11 +5,11 @@ Does NOT require the Docker renderer (skips render_tikz).
 Verifies lowering + SymPy compilation + TikZ codegen work end-to-end.
 """
 import pytest
-from recipe.dsl import RecipeDSL, DSLAnnotations, TriangleOp, AltitudeOp, CircumcircleOp
-from recipe.lower import lower_to_ir
-from ir.to_sympy import compile_defs
-from ir.checks import run_checks
-from ir.to_tikz import ir_to_tikz
+from geometry_diagrams.recipe.dsl import RecipeDSL, DSLAnnotations, TriangleOp, AltitudeOp, CircumcircleOp
+from geometry_diagrams.recipe.lower import lower_to_ir
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.checks import run_checks
+from geometry_diagrams.ir.to_tikz import ir_to_tikz
 
 
 @pytest.fixture
@@ -71,9 +71,9 @@ def test_circumcircle_compiles():
 
 def test_corner_square_at_right_angle_vertex_compiles():
     """Corner-square pattern: point_along+perpendicular+intersection → right angles."""
-    from recipe.lower import lower_to_ir
-    from ir.to_sympy import compile_defs
-    from recipe.dsl import RecipeDSL
+    from geometry_diagrams.recipe.lower import lower_to_ir
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.recipe.dsl import RecipeDSL
 
     dsl = RecipeDSL.model_validate({
         "mode": "grid",
@@ -113,9 +113,9 @@ def test_corner_square_at_right_angle_vertex_compiles():
 
 def test_fill_on_polygon_compiles_to_fill_render_op():
     """FillOp referencing a polygon id lowers to a Fill render op."""
-    from recipe.lower import lower_to_ir
-    from recipe.dsl import RecipeDSL
-    from ir.ir import Fill
+    from geometry_diagrams.recipe.lower import lower_to_ir
+    from geometry_diagrams.recipe.dsl import RecipeDSL
+    from geometry_diagrams.ir.ir import Fill
 
     dsl = RecipeDSL.model_validate({
         "mode": "grid",

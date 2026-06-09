@@ -6,7 +6,7 @@ to avoid sensitivity to layout rotation choices.
 """
 import math
 import pytest
-from recipe.solve import solve_triangle, SpecError
+from geometry_diagrams.recipe.solve import solve_triangle, SpecError
 
 
 def dist(p1, p2):
@@ -195,7 +195,7 @@ def test_aaa_no_sides():
 # solve_rectangle
 # ---------------------------------------------------------------------------
 
-from recipe.solve import solve_rectangle
+from geometry_diagrams.recipe.solve import solve_rectangle
 
 def _dist(p1, p2):
     return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
@@ -259,7 +259,7 @@ def test_solve_rectangle_wrong_vertex_count_raises():
 # solve_polygon_from_sides
 # ---------------------------------------------------------------------------
 
-from recipe.solve import solve_polygon_from_sides
+from geometry_diagrams.recipe.solve import solve_polygon_from_sides
 
 
 def test_polygon_from_sides_quad_7_24_20_15():
@@ -367,7 +367,7 @@ def test_polygon_from_sides_mismatched_counts():
 # solve_polygon_from_angles_and_sides
 # ---------------------------------------------------------------------------
 
-from recipe.solve import solve_polygon_from_angles_and_sides
+from geometry_diagrams.recipe.solve import solve_polygon_from_angles_and_sides
 
 
 def test_pfa_parallelogram_side_lengths():

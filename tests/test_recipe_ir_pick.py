@@ -1,7 +1,7 @@
 # tests/test_recipe_ir_pick.py
 import pytest
 from pydantic import ValidationError
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     PickBetween, PickBeyond, PickInterior, PickExterior,
     PickOppositeSide, PickUpperOfLine, PickLowerOfLine, PickChain,
     PickRule,

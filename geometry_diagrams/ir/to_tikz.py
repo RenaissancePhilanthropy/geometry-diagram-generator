@@ -8,9 +8,9 @@ from typing import Any
 import sympy as sp
 import sympy.geometry as spg
 
-import ir.ir as ir
-from ir.to_sympy import Arc, Sector, SymTable
-from ir.render_util import (
+import geometry_diagrams.ir.ir as ir
+from geometry_diagrams.ir.to_sympy import Arc, Sector, SymTable
+from geometry_diagrams.ir.render_util import (
     BOUNDS_PADDING,
     arc_params,
     circle_center_through,

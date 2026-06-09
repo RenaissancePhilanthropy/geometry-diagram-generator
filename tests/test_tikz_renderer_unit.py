@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
-from util.tikz_renderer import render_tikz
+from geometry_diagrams.util.tikz_renderer import render_tikz
 
 
 def _ok_response() -> MagicMock:

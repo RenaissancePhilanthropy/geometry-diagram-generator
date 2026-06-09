@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     DiagramIR, PointFixed, PointMidpoint, PointIntersection,
     PointOn, PointOnParam, Segment, LineThrough, Triangle,
     CircleCenterPoint,

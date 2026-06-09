@@ -1,5 +1,5 @@
 """Tests for ir/plan.py — ConstructionPlan schema."""
-from ir.plan import ConstructionPlan, ConstructionStep
+from geometry_diagrams.ir.plan import ConstructionPlan, ConstructionStep
 
 
 def test_construction_plan_roundtrip():

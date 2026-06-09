@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     AnglePoints,
     Canvas,
     DiagramIR,
@@ -27,9 +27,9 @@ from ir.ir import (
     EllipseCenterAxes,
 )
 import sympy.geometry as spg
-from ir.checks import check_render_angles
-from ir.to_sympy import compile_defs
-from ir.to_tikz import _style_str, ir_to_tikz
+from geometry_diagrams.ir.checks import check_render_angles
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.to_tikz import _style_str, ir_to_tikz
 
 
 def _compile_tikz(diagram: DiagramIR) -> str:
@@ -394,7 +394,7 @@ def test_check_render_angles_line_perp_through():
     # P_up is a point on the perp line.
     # Angle triple (A, M, P_up) must be valid:
     #   {A,M} via midpoint virtual segment; {M,P_up} via perp line (new fix).
-    from ir.ir import PointMidpoint
+    from geometry_diagrams.ir.ir import PointMidpoint
     diagram = DiagramIR(
         define=[
             PointFixed(id="A", x=0, y=0),
@@ -430,7 +430,7 @@ def test_check_render_angles_geometric_collinearity_with_sym():
     # D is placed as a PointFixed on the parallel line (geometrically), but not
     # structurally connected to l_par or H. Without sym, D-H pair fails.
     # With sym, the geometric check should accept it.
-    from ir.ir import LineParallelThrough, PointIntersection
+    from geometry_diagrams.ir.ir import LineParallelThrough, PointIntersection
     diagram = DiagramIR(
         define=[
             PointFixed(id="A", x=0, y=0),
@@ -572,7 +572,7 @@ def test_ellipse_fill_renders_raw_tikz():
 
 def test_fill_with_holes_emits_evenodd_rule():
     """Circle filled with a polygon hole should emit \\fill[...,even odd rule]."""
-    from ir.ir import CircleCenterRadius, Polygon
+    from geometry_diagrams.ir.ir import CircleCenterRadius, Polygon
     diagram = DiagramIR(
         canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
         define=[
@@ -594,7 +594,7 @@ def test_fill_with_holes_emits_evenodd_rule():
 
 def test_fill_without_holes_uses_tkz_command():
     """Fill without holes should still use \\tkzFillCircle."""
-    from ir.ir import CircleCenterRadius
+    from geometry_diagrams.ir.ir import CircleCenterRadius
     diagram = DiagramIR(
         canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
         define=[
@@ -614,7 +614,7 @@ def test_fill_without_holes_uses_tkz_command():
 
 def test_arc_emits_raw_draw_arc_command():
     """Arc draws via raw \\draw ... arc[...] with start_angle/end_angle/radius."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -635,7 +635,7 @@ def test_arc_emits_raw_draw_arc_command():
 
 def test_arc_sweep_ccw_crosses_zero_degree_boundary():
     """Reflex arc from 180° to 90° (going the long way CCW) must emit end_angle=450°."""
-    from ir.ir import ArcCenterStartEnd
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
     diagram = DiagramIR(
         canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
         define=[
@@ -691,7 +691,7 @@ def test_label_free_text_centroid_of_renders_node():
 
 def test_fill_sector_tikz():
     """Fill of a sector uses \\fill with arc syntax."""
-    from ir.ir import SectorCenterStartEnd, Fill
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd, Fill
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),
@@ -710,7 +710,7 @@ def test_fill_sector_tikz():
 
 def test_draw_sector_tikz():
     """Draw of a sector emits \\draw with arc syntax."""
-    from ir.ir import SectorCenterStartEnd, Draw
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd, Draw
     diagram = DiagramIR(
         define=[
             PointFixed(id="O", x=0, y=0),

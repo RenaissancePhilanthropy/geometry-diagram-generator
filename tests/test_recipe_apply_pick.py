@@ -2,13 +2,13 @@
 import pytest
 import sympy as sp
 import sympy.geometry as spg
-from ir.to_sympy import _apply_pick
-from ir.ir import (
+from geometry_diagrams.ir.to_sympy import _apply_pick
+from geometry_diagrams.ir.ir import (
     PickBetween, PickBeyond, PickInterior, PickExterior,
     PickOppositeSide, PickUpperOfLine, PickLowerOfLine, PickChain,
     PickClosestTo,
 )
-from ir.errors import PickError
+from geometry_diagrams.ir.errors import PickError
 
 # Candidate points
 O  = spg.Point(0, 0)

@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pydantic
 from langchain_core.exceptions import OutputParserException
 
-from recipe.dsl import RecipeDSL
-from strategies.recipe import RecipeStrategy, MAX_RETRIES, RecipeAttemptTrace, _build_retry_hints
-from strategies.structured import StructuredRunResult
-from ir.ir import DiagramIR
+from geometry_diagrams.recipe.dsl import RecipeDSL
+from geometry_diagrams.strategies.recipe import RecipeStrategy, MAX_RETRIES, RecipeAttemptTrace, _build_retry_hints
+from geometry_diagrams.strategies.structured import StructuredRunResult
+from geometry_diagrams.ir.ir import DiagramIR
 
 
 # ---------------------------------------------------------------------------

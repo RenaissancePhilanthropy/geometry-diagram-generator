@@ -14,7 +14,7 @@ import yaml
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from util.message_helpers import count_tool_calls, extract_tool_call_args, extract_tool_return
+from geometry_diagrams.util.message_helpers import count_tool_calls, extract_tool_call_args, extract_tool_return
 
 
 # ---------------------------------------------------------------------------

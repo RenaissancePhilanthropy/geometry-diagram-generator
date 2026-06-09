@@ -1,7 +1,7 @@
 """Tests for PickBetween diagnostic messages in to_sympy."""
 import pytest
-from ir import ir
-from ir.to_sympy import compile_defs
+from geometry_diagrams.ir import ir
+from geometry_diagrams.ir.to_sympy import compile_defs
 
 
 def _build_ir(define, checks=None):

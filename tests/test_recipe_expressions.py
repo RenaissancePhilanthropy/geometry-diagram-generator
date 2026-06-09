@@ -1,7 +1,7 @@
 import pytest
 import sympy as sp
 import sympy.geometry as spg
-from recipe.expressions import eval_expr, ExpressionError
+from geometry_diagrams.recipe.expressions import eval_expr, ExpressionError
 
 SYM = {
     "A": spg.Point(0, 0),

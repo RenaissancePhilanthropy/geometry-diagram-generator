@@ -6,7 +6,7 @@ progressive_tools (state.py) for dependency tracking.
 """
 from __future__ import annotations
 
-import ir.ir as ir
+import geometry_diagrams.ir.ir as ir
 
 # Fields that hold point/object reference IDs in DefStmt models
 _REF_FIELDS = {

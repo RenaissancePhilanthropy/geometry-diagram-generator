@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 from tests.availability import renderer_available
-from util.tikz_renderer import render_tikz
-from util.svg_checks import (
+from geometry_diagrams.util.tikz_renderer import render_tikz
+from geometry_diagrams.util.svg_checks import (
     check_svg_has_content,
     check_svg_reasonable_size,
     check_svg_wellformed,

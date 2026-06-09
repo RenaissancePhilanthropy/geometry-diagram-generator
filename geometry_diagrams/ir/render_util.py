@@ -12,8 +12,8 @@ from typing import Any
 
 import sympy.geometry as spg
 
-import ir.ir as ir
-from ir.to_sympy import Arc, SymTable
+import geometry_diagrams.ir.ir as ir
+from geometry_diagrams.ir.to_sympy import Arc, SymTable
 
 
 # ---------------------------------------------------------------------------

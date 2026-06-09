@@ -5,8 +5,8 @@ NOTE: Tests that call TikZRenderer.render() require the renderer Docker containe
 """
 from __future__ import annotations
 
-from ir.font import FontConfig, default_font_config
-from ir.renderer import Renderer, RenderResult, SVGRenderer, TikZRenderer
+from geometry_diagrams.ir.font import FontConfig, default_font_config
+from geometry_diagrams.ir.renderer import Renderer, RenderResult, SVGRenderer, TikZRenderer
 
 
 # ---------------------------------------------------------------------------

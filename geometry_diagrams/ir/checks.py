@@ -6,8 +6,8 @@ from typing import Any
 import sympy.geometry as spg
 from pydantic import BaseModel
 
-import ir.ir as ir
-from ir.to_sympy import SymTable
+import geometry_diagrams.ir.ir as ir
+from geometry_diagrams.ir.to_sympy import SymTable
 
 
 class CheckResult(BaseModel):

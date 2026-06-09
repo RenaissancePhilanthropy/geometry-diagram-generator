@@ -1,12 +1,12 @@
 """Tests for LabelPoint, LabelAngle, and LabelFreeText DSL ops lowering to DiagramIR."""
 import pytest
-from recipe.dsl import (
+from geometry_diagrams.recipe.dsl import (
     RecipeDSL, DSLAnnotations, TriangleOp,
     LabelSegment, LabelPoint as DSLLabelPoint, LabelAngle as DSLLabelAngle,
     LabelFreeText as DSLLabelFreeText,
 )
-from recipe.lower import lower_to_ir
-from ir.ir import (
+from geometry_diagrams.recipe.lower import lower_to_ir
+from geometry_diagrams.ir.ir import (
     LabelPoint as IRLabelPoint,
     LabelAngle as IRLabelAngle,
     LabelSegment as IRLabelSegment,

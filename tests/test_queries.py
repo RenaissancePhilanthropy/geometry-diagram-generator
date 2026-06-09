@@ -6,7 +6,7 @@ import math
 import pytest
 import sympy.geometry as spg
 
-from ir.queries import (
+from geometry_diagrams.ir.queries import (
     query_coordinate, query_distance, query_angle,
     query_length, query_radius, query_area, query_perimeter,
     list_objects,

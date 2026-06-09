@@ -60,15 +60,15 @@ from evals.reporting import (
     _print_record,
     _print_summary,
 )
-from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from strategies.raw_code import RawCodeStrategy
-from strategies.raw_code_with_revise import RawCodeWithReviseStrategy
-from strategies.structured import StructureStrategy, StructuredRunResult
-from strategies.recipe import RecipeStrategy
-from strategies.stages import RawRunResult
-from util.tikz_renderer import check_renderer_health
-from ir.renderer import Renderer, TikZRenderer, SVGRenderer
-from util.tikz_analysis import (
+from geometry_diagrams.strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from geometry_diagrams.strategies.raw_code import RawCodeStrategy
+from geometry_diagrams.strategies.raw_code_with_revise import RawCodeWithReviseStrategy
+from geometry_diagrams.strategies.structured import StructureStrategy, StructuredRunResult
+from geometry_diagrams.strategies.recipe import RecipeStrategy
+from geometry_diagrams.strategies.stages import RawRunResult
+from geometry_diagrams.util.tikz_renderer import check_renderer_health
+from geometry_diagrams.ir.renderer import Renderer, TikZRenderer, SVGRenderer
+from geometry_diagrams.util.tikz_analysis import (
     resolve_all_coordinates,
     validate_geometric_property,
     validate_expected_points,
@@ -76,8 +76,8 @@ from util.tikz_analysis import (
     validate_required_labels,
     validate_required_entities,
 )
-from util.svg_checks import run_svg_checks
-from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
+from geometry_diagrams.util.svg_checks import run_svg_checks
+from geometry_diagrams.util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code": RawCodeStrategy,
@@ -110,9 +110,9 @@ async def _run_query_phase(
     """
     from langchain_core.tools import tool
     from langgraph.prebuilt import create_react_agent
-    from strategies.llm import get_chat_model
-    from strategies.structured import dispatch_query
-    from ir.queries import list_objects as _list_objects
+    from geometry_diagrams.strategies.llm import get_chat_model
+    from geometry_diagrams.strategies.structured import dispatch_query
+    from geometry_diagrams.ir.queries import list_objects as _list_objects
 
     _QUERY_EVAL_INSTRUCTIONS = (
         "You are a geometry assistant. A diagram has already been rendered. "
@@ -468,7 +468,7 @@ async def run_scenario(
     if llm_judge and tikz_code:
         if strategy_name not in ("structured",):
             try:
-                from util.llm_judge import judge_tikz_code
+                from geometry_diagrams.util.llm_judge import judge_tikz_code
                 judge_result = await judge_tikz_code(
                     prompt=scenario["prompt"],
                     tikz_code=tikz_code,
@@ -489,7 +489,7 @@ async def run_scenario(
     # Visual judge (SVG → image → LLM)
     if visual_judge:
         try:
-            from util.llm_judge import judge_rendered_diagram
+            from geometry_diagrams.util.llm_judge import judge_rendered_diagram
             visual_result = await judge_rendered_diagram(
                 prompt=scenario["prompt"],
                 svg=svg,

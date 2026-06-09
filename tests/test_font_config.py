@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ir.font import FontConfig, FONT_VARIANTS, default_font_config, _FONTS_DIR
+from geometry_diagrams.ir.font import FontConfig, FONT_VARIANTS, default_font_config, _FONTS_DIR
 
 
 def test_font_variants_tuple():

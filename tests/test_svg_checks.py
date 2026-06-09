@@ -3,7 +3,7 @@ Unit tests for util/svg_checks.py.
 No Docker or renderer required — uses static SVG strings.
 """
 
-from util.svg_checks import (
+from geometry_diagrams.util.svg_checks import (
     check_svg_has_content,
     check_svg_reasonable_size,
     check_svg_wellformed,

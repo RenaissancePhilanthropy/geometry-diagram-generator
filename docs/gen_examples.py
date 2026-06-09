@@ -7,16 +7,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ir.ir import (
+from geometry_diagrams.ir.ir import (
     DiagramIR, Canvas,
     PointFixed, Segment, Triangle, Polygon, PolygonExterior,
     PointTriangleCenter, CircleCenterPoint, CircleThrough3,
     LineThrough, PointMidpoint, PointFoot,
     Draw, DrawPoints, LabelPoint, MarkRightAngles, Fill,
 )
-from ir.to_sympy import compile_defs
-from ir.to_tikz import ir_to_tikz
-from util.tikz_renderer import render_tikz
+from geometry_diagrams.ir.to_sympy import compile_defs
+from geometry_diagrams.ir.to_tikz import ir_to_tikz
+from geometry_diagrams.util.tikz_renderer import render_tikz
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "examples")
 

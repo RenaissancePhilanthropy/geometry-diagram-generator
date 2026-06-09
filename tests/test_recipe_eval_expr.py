@@ -2,8 +2,8 @@
 import pytest
 import sympy as sp
 import sympy.geometry as spg
-from ir.to_sympy import _eval_expr
-from ir.errors import ExprEvalError
+from geometry_diagrams.ir.to_sympy import _eval_expr
+from geometry_diagrams.ir.errors import ExprEvalError
 
 # Minimal sym table for testing
 SYM = {
