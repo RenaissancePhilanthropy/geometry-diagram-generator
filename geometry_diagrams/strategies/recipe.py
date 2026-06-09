@@ -132,6 +132,7 @@ def _prepare_recipe_modification_prompt(request: str, previous_dsl: Optional[Rec
 class RecipePipelineState(TypedDict):
     prompt: str
     model_id: str
+    selector_model: str
     enable_cache: bool
     generation_prompt: str
     attempt: int
@@ -151,7 +152,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     catalog = load_catalog()
     selection_prompt = build_selection_prompt(state["prompt"], catalog)
 
-    llm = get_chat_model(_SELECTOR_MODEL)
+    llm = get_chat_model(state.get("selector_model") or _SELECTOR_MODEL)
     from langchain_core.messages import SystemMessage, HumanMessage
     messages = [
         SystemMessage(content=RECIPE_SELECTION_SYSTEM),
@@ -384,6 +385,10 @@ class RecipeStrategy(SubstanceStrategy):
     _partial_input_tokens: int = 0
     _partial_output_tokens: int = 0
 
+    def __init__(self, enable_cache: bool = False, selector_model: str = _SELECTOR_MODEL):
+        super().__init__(enable_cache)
+        self.selector_model = selector_model
+
     async def run(
         self,
         prompt: str,
@@ -394,6 +399,7 @@ class RecipeStrategy(SubstanceStrategy):
         initial_state: RecipePipelineState = {
             "prompt": prompt,
             "model_id": model,
+            "selector_model": self.selector_model,
             "enable_cache": self.enable_cache,
             "generation_prompt": "",
             "attempt": 0,
