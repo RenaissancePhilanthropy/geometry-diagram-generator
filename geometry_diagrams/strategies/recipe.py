@@ -464,8 +464,16 @@ class RecipeStrategy(SubstanceStrategy):
             """Query geometric properties of the most recently rendered diagram.
 
             Args:
-                query_type: One of: list_objects, coordinate, distance, angle, length, radius, area, perimeter
-                params: Query arguments (e.g. {"id": "A"} for coordinate). Omit or pass {} for list_objects.
+                query_type: Type of query. One of:
+                    - "list_objects": list all IDs and types. params={}
+                    - "coordinate": point coordinates. params={"point": "A"}
+                    - "distance": distance between two points. params={"a": "A", "b": "B"}
+                    - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
+                    - "length": segment length. params={"segment": "seg_AB"}
+                    - "radius": circle radius. params={"circle": "circ"}
+                    - "area": polygon area. params={"object": "tri_ABC"}
+                    - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
+                params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.
             """

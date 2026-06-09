@@ -61,6 +61,9 @@ _strategy = _make_strategy()
 _renderer = _make_renderer() if strategy_name in ("structured", "recipe") else None
 _model = os.environ.get("MODEL", "anthropic:claude-sonnet-4-6")
 
+# Build agent once at startup so _last_sym persists across conversational turns.
+_agent = _strategy.build_agent(model=_model, renderer=_renderer) if hasattr(_strategy, "build_agent") else None
+
 
 async def invoke(request: Request) -> JSONResponse:
     """POST /api/invoke — run the strategy and return SVG."""
@@ -90,7 +93,7 @@ async def agent(request: Request) -> StreamingResponse:
         elif role == "assistant":
             lc_messages.append(AIMessage(content=content))
 
-    graph = _strategy.build_agent(model=_model, renderer=_renderer)
+    graph = _agent or _strategy.build_agent(model=_model, renderer=_renderer)
 
     async def generate():
         def sse(event: dict) -> str:
