@@ -12,7 +12,7 @@ RUN apk add --no-cache python3 py3-pip
 RUN pip install --break-system-packages --no-cache-dir fastapi uvicorn pydantic
 
 RUN apk add --no-cache fontconfig
-COPY assets/fonts /usr/local/share/fonts/NunitoSans/
+COPY geometry_diagrams/assets/fonts /usr/local/share/fonts/NunitoSans/
 RUN fc-cache -fv
 
 # API server
