@@ -78,12 +78,12 @@ async def test_recipe_strategy_returns_result():
     mock_llm = _make_mock_llm()
 
     with (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select this"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate this"),
-        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select this"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate this"),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
     ):
         result = await strategy.run("draw two points", model="anthropic:claude-haiku-4-5-20251001")
 
@@ -112,12 +112,12 @@ async def test_recipe_strategy_retries_on_lowering_error():
         return MagicMock()
 
     with (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", side_effect=side_effect_lower),
-        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", side_effect=side_effect_lower),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate"),
     ):
         result = await strategy.run("draw something", model="anthropic:claude-haiku-4-5-20251001")
 
@@ -138,11 +138,11 @@ async def test_recipe_strategy_raises_after_max_retries():
     mock_llm = _make_mock_llm()
 
     with (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", side_effect=LoweringError("always fails")),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", side_effect=LoweringError("always fails")),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate"),
     ):
         with pytest.raises(RuntimeError, match="RecipeStrategy failed after"):
             await strategy.run("draw something", model="anthropic:claude-haiku-4-5-20251001")
@@ -179,12 +179,12 @@ async def test_recipe_strategy_retries_on_ir_compile_error():
         return fake_result
 
     with (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
-        patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate"),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=mock_pipeline),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate"),
     ):
         result = await strategy.run("draw a segment with its midpoint", model="anthropic:claude-haiku-4-5-20251001")
 

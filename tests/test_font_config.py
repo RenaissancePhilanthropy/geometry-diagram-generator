@@ -42,7 +42,7 @@ def test_font_config_data_uri(tmp_path):
     (tmp_path / f"{family}-Regular.ttf").write_bytes(fake_ttf)
 
     cfg = FontConfig(family=family)
-    with patch("ir.font._FONTS_DIR", tmp_path):
+    with patch("geometry_diagrams.ir.font._FONTS_DIR", tmp_path):
         uri = cfg.data_uri("Regular")
 
     expected_b64 = base64.b64encode(fake_ttf).decode("ascii")

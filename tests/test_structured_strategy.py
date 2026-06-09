@@ -74,8 +74,8 @@ async def test_ir_gen_failure_costs_one_attempt():
         return fake_result
 
     with (
-        patch("strategies.structured.get_chat_model", return_value=mock_llm),
-        patch("strategies.structured._run_ir_pipeline", new=mock_pipeline),
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=mock_pipeline),
     ):
         strategy = StructureStrategy()
         result = await strategy.run("draw a circle", model="anthropic:claude-sonnet-4-6")
@@ -112,8 +112,8 @@ async def test_ir_gen_failure_leaves_two_pipeline_attempts():
         return fake_result
 
     with (
-        patch("strategies.structured.get_chat_model", return_value=mock_llm),
-        patch("strategies.structured._run_ir_pipeline", new=mock_pipeline),
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=mock_pipeline),
     ):
         strategy = StructureStrategy()
         result = await strategy.run("draw a circle", model="anthropic:claude-sonnet-4-6")

@@ -58,13 +58,13 @@ def _common_patches(mock_llm, pipeline_mock=None):
     """Return context manager patches common to all recipe retry tests."""
     fake_result = _make_fake_result()
     return (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
-        patch("strategies.recipe._run_ir_pipeline",
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline",
               new=AsyncMock(return_value=fake_result) if pipeline_mock is None else pipeline_mock),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate this RecipeDSL"),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate this RecipeDSL"),
     )
 
 
@@ -165,13 +165,13 @@ async def test_recipe_strategy_retries_on_pipeline_failure():
         return fake_result
 
     p1, p2, p4, p5, p6 = (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
     )
-    with p1, p2, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline), p4, p5, p6:
+    with p1, p2, patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=mock_pipeline), p4, p5, p6:
         strategy = RecipeStrategy()
         result = await strategy.run("Draw a triangle.")
 
@@ -218,12 +218,12 @@ async def test_angle_hint_appended_on_retry():
         return fake_result
 
     with (
-        patch("strategies.recipe.get_chat_model", return_value=mock_llm),
-        patch("strategies.recipe.lower_to_ir", return_value=MagicMock()),
-        patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline),
-        patch("strategies.recipe.load_catalog", return_value=[]),
-        patch("strategies.recipe.build_selection_prompt", return_value="select"),
-        patch("strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=mock_pipeline),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate RecipeDSL"),
     ):
         strategy = RecipeStrategy()
         result = await strategy.run("Draw a triangle.")
