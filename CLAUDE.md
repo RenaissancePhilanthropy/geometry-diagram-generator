@@ -41,15 +41,23 @@ This project generates geometric diagrams as SVGs by having an LLM produce geome
 User Request (for "structured" / "recipe" strategy)
     → Strategy (LangGraph StateGraph)
     → DiagramIR (Pydantic schema)
-    → SymPy geometry objects (ir/to_sympy.py)
-    → Geometric validation (ir/checks.py)
-    → TikZ code (ir/to_tikz.py)
+    → SymPy geometry objects (geometry_diagrams/ir/to_sympy.py)
+    → Geometric validation (geometry_diagrams/ir/checks.py)
+    → TikZ code (geometry_diagrams/ir/to_tikz.py)
     → LaTeX → SVG (renderer Docker container via HTTP)
 ```
 
 Other strategies may skip the IR and go straight to TikZ.
 
-### IR Layer (`ir/`)
+### Package (`geometry_diagrams/`)
+
+All core code lives under `geometry_diagrams/`, which is also the unit that gets copied into other projects. The public facade is:
+
+- **`__init__.py`**: Re-exports `render_diagram` (LangChain `@tool`), `render_geometry_diagram` (async), `render_geometry_diagram_sync`, `DiagramResult`, `GeometryConfig`.
+- **`facade.py`**: Single entry point — wraps `RecipeStrategy` + renderer selection behind one callable. Use `render_diagram` as a drop-in LangGraph tool; use `render_geometry_diagram` for async node wiring.
+- **`config.py`**: `GeometryConfig` dataclass consolidating renderer, model, selector_model, renderer_url, font_family. `GeometryConfig.from_env()` reads env vars; individual fields can be overridden per-call.
+
+### IR Layer (`geometry_diagrams/ir/`)
 
 The Intermediate Representation is the central abstraction:
 
@@ -60,9 +68,9 @@ The Intermediate Representation is the central abstraction:
 - **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison.
 - **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
 - **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.
-- **`renderer.py`**: Dispatch layer that selects the appropriate rendering backend.
+- **`renderer.py`**: Dispatch layer — `TikZRenderer` (HTTP to Docker container) and `SVGRenderer` (in-process, no Docker needed).
 
-### Strategies (`strategies/`)
+### Strategies (`geometry_diagrams/strategies/`)
 
 Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base.py`). All strategies use LangGraph and LangChain for LLM orchestration.
 
@@ -71,7 +79,7 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 - **`raw_svg.py`**: LLM generates SVG directly.
 - **`raw_svg_with_revise.py`**: Raw SVG with a revision loop.
 - **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. Uses a `StateGraph` retry loop (up to `MAX_RETRIES=3`). This is more robust and easier to debug than raw code generation.
-- **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Uses a two-node `StateGraph`: selector (cheap model picks relevant recipes) → DSL generator → lowering → IR pipeline. Currently the main strategy to use.
+- **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Uses a two-node `StateGraph`: selector (configurable cheap model picks relevant recipes) → DSL generator → lowering → IR pipeline. Currently the main strategy to use.
 
 **`llm.py`**: Model factory — maps `"anthropic:MODEL"` / `"openai:MODEL"` / `"google:MODEL"` IDs to LangChain chat models (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`). Provides `get_chat_model()`, `extract_usage()`, `make_system_message()`, and `is_gemini_model()`.
 
@@ -84,9 +92,9 @@ Prompt templates are split across `instructions_structured.py`, `instructions_re
 A Docker container running a FastAPI server (port 8001) that compiles LaTeX to SVG:
 - `POST /render` accepts LaTeX, runs `lualatex` → `dvisvgm`, returns SVG.
 - Uses `tkz-euclide` and `tkz-elements` TeX packages for geometric drawing primitives.
-- The HTTP client is `util/tikz_renderer.py`.
+- The HTTP client is `geometry_diagrams/util/tikz_renderer.py`.
 
-### Utilities (`util/`)
+### Utilities (`geometry_diagrams/util/`)
 
 - **`tikz_analysis.py`**: Extracts coordinates from TikZ code and validates geometric properties.
 - **`svg_checks.py`**: Validates rendered SVG output properties.
@@ -97,7 +105,7 @@ A Docker container running a FastAPI server (port 8001) that compiles LaTeX to S
 
 Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored). `scenarios.py` provides programmatic scenario loading; `scenarios_query.yaml` defines query-style eval scenarios.
 
-### Recipe (`recipe/`)
+### Recipe (`geometry_diagrams/recipe/`)
 
 A DSL for declaratively specifying geometry constructions:
 
@@ -118,6 +126,6 @@ A DSL for declaratively specifying geometry constructions:
 - **Focus on test-driven development**: The project is structured around unit tests for each component and end-to-end tests for the full pipeline. This ensures reliability and makes it easier to iterate on strategies. Writing tests first for new features or bug fixes is highly encouraged.
 - **SymPy is the source of truth** for geometric computation. TikZ code is generated from SymPy objects, not from the LLM's coordinate guesses.
 - **Checks are assertions** about the compiled geometry — if an LLM-generated `DiagramIR` fails checks, the strategy retries via the LangGraph `StateGraph` retry loop.
-- **The renderer container must be running** for any code path that produces SVG output.
+- **The renderer container must be running** for any code path that uses `TikZRenderer`. The `SVGRenderer` path needs no container — it renders in-process from SymPy.
 - The project uses **LangGraph** and **LangChain** (`langchain-anthropic`, `langchain-openai`, `langchain-google-genai`) for LLM orchestration. Inner retry loops use `StateGraph`; conversational agents use `create_react_agent`.
 - API keys go in `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
