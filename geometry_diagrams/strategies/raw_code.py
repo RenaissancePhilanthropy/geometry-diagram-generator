@@ -51,7 +51,7 @@ class RawCodeStrategy(SubstanceStrategy):
         from geometry_diagrams.util.message_helpers import count_tool_calls, extract_tool_call_args
 
         graph = self.build_agent(model=model)
-        state = await graph.ainvoke({"messages": [("user", prompt)]})
+        state = await graph.ainvoke({"messages": [("user", prompt)]}, config=self._run_config)
         messages = state["messages"]
         input_tokens, output_tokens = _extract_usage_from_messages(messages)
         tool_args = extract_tool_call_args(messages, "render_diagram") or {}

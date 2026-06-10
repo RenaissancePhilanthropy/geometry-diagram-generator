@@ -295,7 +295,7 @@ class StructureStrategy(SubstanceStrategy):
             "output_tokens": 0,
             "renderer": renderer,
         }
-        final_state = await graph.ainvoke(initial_state)
+        final_state = await graph.ainvoke(initial_state, config=self._run_config)
         if final_state.get("result") is None:
             raise RuntimeError(
                 f"StructureStrategy failed after {MAX_RETRIES} attempts. "

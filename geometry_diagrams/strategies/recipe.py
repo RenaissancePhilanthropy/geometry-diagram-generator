@@ -413,7 +413,7 @@ class RecipeStrategy(SubstanceStrategy):
             "renderer": renderer,
             "selection_done": False,
         }
-        final_state = await graph.ainvoke(initial_state)
+        final_state = await graph.ainvoke(initial_state, config=self._run_config)
 
         # Expose partial metadata for eval harness
         self._partial_recipe_metadata = final_state.get("recipe_metadata")

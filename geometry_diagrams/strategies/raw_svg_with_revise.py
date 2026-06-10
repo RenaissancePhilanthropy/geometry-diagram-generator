@@ -25,7 +25,7 @@ class RawSVGWithReviseStrategy(SubstanceStrategy):
     ) -> RawRunResult:
         # Draft pass
         draft_graph = self.build_agent(model=model)
-        draft_state = await draft_graph.ainvoke({"messages": [("user", prompt)]})
+        draft_state = await draft_graph.ainvoke({"messages": [("user", prompt)]}, config=self._run_config)
         draft_messages = draft_state["messages"]
 
         # Revision pass — must re-render
@@ -33,9 +33,10 @@ class RawSVGWithReviseStrategy(SubstanceStrategy):
         revision_graph = create_react_agent(
             llm, tools=[make_svg_render_tool()], prompt=REVISION_FORCE_INSTRUCTIONS
         )
-        revision_state = await revision_graph.ainvoke({
-            "messages": list(draft_messages) + [("user", REVISION_PROMPT)]
-        })
+        revision_state = await revision_graph.ainvoke(
+            {"messages": list(draft_messages) + [("user", REVISION_PROMPT)]},
+            config=self._run_config,
+        )
         all_messages = revision_state["messages"]
 
         input_tokens, output_tokens = _extract_usage_from_messages(all_messages)

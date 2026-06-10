@@ -83,7 +83,7 @@ class RawSVGStrategy(SubstanceStrategy):
         renderer=None,
     ) -> RawRunResult:
         graph = self.build_agent(model=model)
-        state = await graph.ainvoke({"messages": [("user", prompt)]})
+        state = await graph.ainvoke({"messages": [("user", prompt)]}, config=self._run_config)
         messages = state["messages"]
         input_tokens, output_tokens = _extract_usage_from_messages(messages)
         return RawRunResult(
