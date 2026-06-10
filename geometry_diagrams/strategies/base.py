@@ -22,6 +22,12 @@ class SubstanceStrategy(ABC):
         self.enable_cache = enable_cache
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
+    @property
+    def _run_config(self) -> dict:
+        from geometry_diagrams.util.tracing import get_callback_handler
+        h = get_callback_handler()
+        return {"callbacks": [h]} if h else {}
+
     @abstractmethod
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> CompiledStateGraph:
         """Build and return a compiled LangGraph agent for this strategy.
@@ -44,5 +50,8 @@ class SubstanceStrategy(ABC):
         """
         from langchain_core.messages import HumanMessage
         graph = self.build_agent(model=model)
-        result = await graph.ainvoke({"messages": [HumanMessage(content=prompt)]})
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content=prompt)]},
+            config=self._run_config,
+        )
         return result
