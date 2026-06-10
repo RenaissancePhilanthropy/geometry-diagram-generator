@@ -59,14 +59,10 @@ def test_returns_handler_when_all_vars_set(monkeypatch):
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
     mock_cls = MagicMock(return_value=mock_handler)
-    with patch.dict("sys.modules", {"langfuse": MagicMock(), "langfuse.callback": MagicMock(CallbackHandler=mock_cls)}):
+    with patch.dict("sys.modules", {"langfuse": MagicMock(), "langfuse.langchain": MagicMock(CallbackHandler=mock_cls)}):
         from geometry_diagrams.util.tracing import get_callback_handler
         result = get_callback_handler()
-    mock_cls.assert_called_once_with(
-        public_key="pk-test",
-        secret_key="sk-test",
-        host="https://langfuse.example.com",  # CallbackHandler kwarg is still `host`
-    )
+    mock_cls.assert_called_once_with()
     assert result is mock_handler
 
 
@@ -76,7 +72,7 @@ def test_returns_cached_handler_on_second_call(monkeypatch):
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
     mock_cls = MagicMock(return_value=mock_handler)
-    with patch.dict("sys.modules", {"langfuse": MagicMock(), "langfuse.callback": MagicMock(CallbackHandler=mock_cls)}):
+    with patch.dict("sys.modules", {"langfuse": MagicMock(), "langfuse.langchain": MagicMock(CallbackHandler=mock_cls)}):
         from geometry_diagrams.util.tracing import get_callback_handler
         r1 = get_callback_handler()
         r2 = get_callback_handler()
@@ -88,7 +84,7 @@ def test_helpful_error_when_langfuse_not_installed(monkeypatch):
     monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
-    with patch.dict("sys.modules", {"langfuse": None, "langfuse.callback": None}):
+    with patch.dict("sys.modules", {"langfuse": None, "langfuse.langchain": None}):
         from geometry_diagrams.util.tracing import get_callback_handler
         with pytest.raises(RuntimeError, match="package is not installed"):
             get_callback_handler()

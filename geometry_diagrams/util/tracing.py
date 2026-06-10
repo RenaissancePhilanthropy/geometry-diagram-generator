@@ -36,17 +36,13 @@ def get_callback_handler():
         )
 
     try:
-        from langfuse.callback import CallbackHandler
+        from langfuse.langchain import CallbackHandler
     except ImportError:
         raise RuntimeError(
             "LANGFUSE_BASE_URL is set but the 'langfuse' package is not installed. "
-            "Install it with: uv sync --group tracing"
+            "Install it with: uv sync"
         )
-    _handler = CallbackHandler(
-        public_key=public_key,
-        secret_key=secret_key,
-        host=base_url,
-    )
+    _handler = CallbackHandler()
     _initialized = True
     return _handler
 
