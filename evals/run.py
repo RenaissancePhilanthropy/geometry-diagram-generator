@@ -124,6 +124,11 @@ async def _run_query_phase(
     objects_info = json.dumps(_list_objects(sym))
     results: list[dict[str, Any]] = []
 
+    from geometry_diagrams.util.tracing import get_callback_handler
+    from langchain_core.runnables import RunnableConfig
+    _h = get_callback_handler()
+    _qconfig: RunnableConfig | None = RunnableConfig(callbacks=[_h]) if _h else None
+
     for query_def in queries:
         question = query_def["question"]
         expected_tc = query_def.get("expected_tool_call") or {}
@@ -167,7 +172,7 @@ async def _run_query_phase(
                 f"User question: {question}"
             )
 
-            state = await graph.ainvoke({"messages": [("user", context_msg)]})
+            state = await graph.ainvoke({"messages": [("user", context_msg)]}, config=_qconfig)
             messages = state["messages"]
 
             tc_count = count_tool_calls(messages, "query_diagram")
