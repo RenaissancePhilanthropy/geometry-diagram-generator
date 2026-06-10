@@ -30,10 +30,11 @@ class RawCodeWithReviseStrategy(SubstanceStrategy):
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:
         """Run draft then mandatory revision via message history chaining."""
-        draft_state = await run_draft(prompt, model=model)
+        run_config = self._run_config
+        draft_state = await run_draft(prompt, model=model, run_config=run_config)
         draft_messages = draft_state["messages"]
 
-        revision_state = await run_revision(model, message_history=draft_messages, force_rerender=True)
+        revision_state = await run_revision(model, message_history=draft_messages, force_rerender=True, run_config=run_config)
         all_messages = revision_state["messages"]
 
         input_tokens, output_tokens = _extract_usage_from_messages(all_messages)

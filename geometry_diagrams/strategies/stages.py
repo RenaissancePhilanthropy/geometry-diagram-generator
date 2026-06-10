@@ -210,6 +210,7 @@ async def run_draft(
     prompt: str,
     model: str = DEFAULT_AGENT_MODEL,
     model_settings: dict | None = None,
+    run_config: dict | None = None,
 ):
     """Draft stage: generate TikZ and render it. Returns final graph state."""
     from .llm import get_chat_model
@@ -218,7 +219,7 @@ async def run_draft(
     llm = get_chat_model(model)
     render_tool = make_render_tool()
     graph = create_react_agent(llm, tools=[render_tool], prompt=DRAFT_INSTRUCTIONS)
-    return await graph.ainvoke({"messages": [("user", prompt)]})
+    return await graph.ainvoke({"messages": [("user", prompt)]}, config=run_config or {})
 
 
 async def run_plan(
@@ -271,6 +272,7 @@ async def run_revision(
     message_history: list[BaseMessage],
     force_rerender: bool = True,
     model_settings: dict | None = None,
+    run_config: dict | None = None,
 ):
     """Revision stage: review and re-render the diagram.
 
@@ -287,4 +289,4 @@ async def run_revision(
     render_tool = make_render_tool()
     graph = create_react_agent(llm, tools=[render_tool], prompt=instructions)
     messages = list(message_history) + [("user", REVISION_PROMPT)]
-    return await graph.ainvoke({"messages": messages})
+    return await graph.ainvoke({"messages": messages}, config=run_config or {})
