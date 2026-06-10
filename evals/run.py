@@ -125,9 +125,8 @@ async def _run_query_phase(
     results: list[dict[str, Any]] = []
 
     from geometry_diagrams.util.tracing import get_callback_handler
-    from langchain_core.runnables import RunnableConfig
     _h = get_callback_handler()
-    _qconfig: RunnableConfig | None = RunnableConfig(callbacks=[_h]) if _h else None
+    _qconfig: dict = {"callbacks": [_h]} if _h else {}
 
     for query_def in queries:
         question = query_def["question"]
