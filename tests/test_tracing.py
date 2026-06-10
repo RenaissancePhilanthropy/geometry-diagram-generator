@@ -12,7 +12,7 @@ def reset_tracing():
 
 
 def test_disabled_when_no_host(monkeypatch):
-    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -20,14 +20,14 @@ def test_disabled_when_no_host(monkeypatch):
 
 
 def test_second_call_returns_same_none(monkeypatch):
-    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
     assert get_callback_handler() is None
     assert get_callback_handler() is None
 
 
 def test_fatal_when_host_set_public_key_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -36,7 +36,7 @@ def test_fatal_when_host_set_public_key_missing(monkeypatch):
 
 
 def test_fatal_when_host_set_secret_key_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -45,7 +45,7 @@ def test_fatal_when_host_set_secret_key_missing(monkeypatch):
 
 
 def test_fatal_when_host_set_both_keys_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -54,7 +54,7 @@ def test_fatal_when_host_set_both_keys_missing(monkeypatch):
 
 
 def test_returns_handler_when_all_vars_set(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
@@ -65,13 +65,13 @@ def test_returns_handler_when_all_vars_set(monkeypatch):
     mock_cls.assert_called_once_with(
         public_key="pk-test",
         secret_key="sk-test",
-        host="https://langfuse.example.com",
+        host="https://langfuse.example.com",  # CallbackHandler kwarg is still `host`
     )
     assert result is mock_handler
 
 
 def test_returns_cached_handler_on_second_call(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
@@ -85,7 +85,7 @@ def test_returns_cached_handler_on_second_call(monkeypatch):
 
 
 def test_helpful_error_when_langfuse_not_installed(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     with patch.dict("sys.modules", {"langfuse": None, "langfuse.callback": None}):

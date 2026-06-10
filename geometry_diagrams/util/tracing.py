@@ -7,9 +7,9 @@ _initialized = False
 
 
 def get_callback_handler():
-    """Return a LangFuse CallbackHandler when LANGFUSE_HOST is set, else None.
+    """Return a LangFuse CallbackHandler when LANGFUSE_BASE_URL is set, else None.
 
-    LANGFUSE_HOST being set is the enable flag. If it is set,
+    LANGFUSE_BASE_URL being set is the enable flag. If it is set,
     LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must also be present
     or a RuntimeError is raised.
 
@@ -19,8 +19,8 @@ def get_callback_handler():
     if _initialized:
         return _handler
 
-    host = os.getenv("LANGFUSE_HOST")
-    if not host:
+    base_url = os.getenv("LANGFUSE_BASE_URL")
+    if not base_url:
         _initialized = True
         return None
 
@@ -32,20 +32,20 @@ def get_callback_handler():
     ] if not val]
     if missing:
         raise RuntimeError(
-            f"LANGFUSE_HOST is set but required env vars are missing: {', '.join(missing)}"
+            f"LANGFUSE_BASE_URL is set but required env vars are missing: {', '.join(missing)}"
         )
 
     try:
         from langfuse.callback import CallbackHandler
     except ImportError:
         raise RuntimeError(
-            "LANGFUSE_HOST is set but the 'langfuse' package is not installed. "
+            "LANGFUSE_BASE_URL is set but the 'langfuse' package is not installed. "
             "Install it with: uv sync --group tracing"
         )
     _handler = CallbackHandler(
         public_key=public_key,
         secret_key=secret_key,
-        host=host,
+        host=base_url,
     )
     _initialized = True
     return _handler
