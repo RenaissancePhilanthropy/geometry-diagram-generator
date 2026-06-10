@@ -49,7 +49,7 @@ def test_fatal_when_host_set_both_keys_missing(monkeypatch):
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
-    with pytest.raises(RuntimeError, match="LANGFUSE_PUBLIC_KEY"):
+    with pytest.raises(RuntimeError, match="LANGFUSE_PUBLIC_KEY.*LANGFUSE_SECRET_KEY"):
         get_callback_handler()
 
 
@@ -82,3 +82,13 @@ def test_returns_cached_handler_on_second_call(monkeypatch):
         r2 = get_callback_handler()
     assert r1 is r2
     assert mock_cls.call_count == 1
+
+
+def test_helpful_error_when_langfuse_not_installed(monkeypatch):
+    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    with patch.dict("sys.modules", {"langfuse": None, "langfuse.callback": None}):
+        from geometry_diagrams.util.tracing import get_callback_handler
+        with pytest.raises(RuntimeError, match="package is not installed"):
+            get_callback_handler()

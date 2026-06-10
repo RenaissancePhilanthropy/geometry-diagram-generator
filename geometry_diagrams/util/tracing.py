@@ -35,7 +35,13 @@ def get_callback_handler():
             f"LANGFUSE_HOST is set but required env vars are missing: {', '.join(missing)}"
         )
 
-    from langfuse.callback import CallbackHandler
+    try:
+        from langfuse.callback import CallbackHandler
+    except ImportError:
+        raise RuntimeError(
+            "LANGFUSE_HOST is set but the 'langfuse' package is not installed. "
+            "Install it with: uv sync --group tracing"
+        )
     _handler = CallbackHandler(
         public_key=public_key,
         secret_key=secret_key,
