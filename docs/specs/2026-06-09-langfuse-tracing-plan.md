@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add opt-in LangFuse observability so every LangGraph strategy run produces a hierarchical trace (graph nodes as spans → LLM calls as child spans) when `LANGFUSE_HOST` is set.
+**Goal:** Add opt-in LangFuse observability so every LangGraph strategy run produces a hierarchical trace (graph nodes as spans → LLM calls as child spans) when `LANGFUSE_BASE_URL` is set.
 
-**Architecture:** A new `tracing.py` module owns the LangFuse handler lifecycle — it returns a cached `CallbackHandler` when `LANGFUSE_HOST` is set, raises `RuntimeError` if keys are missing, and returns `None` otherwise. The `SubstanceStrategy` base class exposes a `_run_config` property that wraps that handler into a LangGraph config dict. Every `graph.ainvoke()` call across all strategies passes `config=self._run_config`, which causes LangGraph to propagate the callback down through all nodes and all LLM calls automatically.
+**Architecture:** A new `tracing.py` module owns the LangFuse handler lifecycle — it returns a cached `CallbackHandler` when `LANGFUSE_BASE_URL` is set, raises `RuntimeError` if keys are missing, and returns `None` otherwise. The `SubstanceStrategy` base class exposes a `_run_config` property that wraps that handler into a LangGraph config dict. Every `graph.ainvoke()` call across all strategies passes `config=self._run_config`, which causes LangGraph to propagate the callback down through all nodes and all LLM calls automatically.
 
 **Tech Stack:** `langfuse>=2.0` (optional dep), LangGraph `config={"callbacks": [...]}` propagation, `pytest` with `monkeypatch` for unit tests.
 
@@ -54,7 +54,7 @@ def reset_tracing():
 
 
 def test_disabled_when_no_host(monkeypatch):
-    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -62,14 +62,14 @@ def test_disabled_when_no_host(monkeypatch):
 
 
 def test_second_call_returns_same_none(monkeypatch):
-    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
     assert get_callback_handler() is None
     assert get_callback_handler() is None
 
 
 def test_fatal_when_host_set_public_key_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -78,7 +78,7 @@ def test_fatal_when_host_set_public_key_missing(monkeypatch):
 
 
 def test_fatal_when_host_set_secret_key_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -87,7 +87,7 @@ def test_fatal_when_host_set_secret_key_missing(monkeypatch):
 
 
 def test_fatal_when_host_set_both_keys_missing(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
     from geometry_diagrams.util.tracing import get_callback_handler
@@ -96,7 +96,7 @@ def test_fatal_when_host_set_both_keys_missing(monkeypatch):
 
 
 def test_returns_handler_when_all_vars_set(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
@@ -113,7 +113,7 @@ def test_returns_handler_when_all_vars_set(monkeypatch):
 
 
 def test_returns_cached_handler_on_second_call(monkeypatch):
-    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://langfuse.example.com")
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
     mock_handler = MagicMock()
@@ -146,9 +146,9 @@ _initialized = False
 
 
 def get_callback_handler():
-    """Return a LangFuse CallbackHandler when LANGFUSE_HOST is set, else None.
+    """Return a LangFuse CallbackHandler when LANGFUSE_BASE_URL is set, else None.
 
-    LANGFUSE_HOST being set is the enable flag. If it is set,
+    LANGFUSE_BASE_URL being set is the enable flag. If it is set,
     LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must also be present
     or a RuntimeError is raised.
 
@@ -158,7 +158,7 @@ def get_callback_handler():
     if _initialized:
         return _handler
 
-    host = os.getenv("LANGFUSE_HOST")
+    host = os.getenv("LANGFUSE_BASE_URL")
     if not host:
         _initialized = True
         return None
@@ -171,7 +171,7 @@ def get_callback_handler():
     ] if not val]
     if missing:
         raise RuntimeError(
-            f"LANGFUSE_HOST is set but required env vars are missing: {', '.join(missing)}"
+            f"LANGFUSE_BASE_URL is set but required env vars are missing: {', '.join(missing)}"
         )
 
     from langfuse.callback import CallbackHandler
@@ -262,7 +262,7 @@ Replace the class body with (keep `__init__`, `logger`, `build_agent` unchanged 
 .venv/bin/python -m pytest tests/ -v --ignore=tests/test_agent_e2e.py -x
 ```
 
-Expected: all existing tests pass (tracing is disabled — no `LANGFUSE_HOST` set).
+Expected: all existing tests pass (tracing is disabled — no `LANGFUSE_BASE_URL` set).
 
 - [ ] **Step 3: Commit**
 
@@ -586,7 +586,7 @@ This task requires a running LangFuse instance and valid credentials in `.env`.
 
 Add to `.env` (do not commit):
 ```
-LANGFUSE_HOST=https://your-langfuse-host
+LANGFUSE_BASE_URL=https://your-langfuse-host
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 ```

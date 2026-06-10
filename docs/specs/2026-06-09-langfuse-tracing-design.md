@@ -32,8 +32,8 @@ get_callback_handler() -> CallbackHandler | None
 ```
 
 Behaviour:
-- If `LANGFUSE_HOST` is **not set** → return `None` (tracing disabled, no imports attempted).
-- If `LANGFUSE_HOST` **is set** → tracing is enabled. If either `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` is missing, raise `RuntimeError` immediately (misconfiguration is fatal, not silently swallowed).
+- If `LANGFUSE_BASE_URL` is **not set** → return `None` (tracing disabled, no imports attempted).
+- If `LANGFUSE_BASE_URL` **is set** → tracing is enabled. If either `LANGFUSE_PUBLIC_KEY` or `LANGFUSE_SECRET_KEY` is missing, raise `RuntimeError` immediately (misconfiguration is fatal, not silently swallowed).
 - On first successful call, create a `langfuse.callback.CallbackHandler` and cache it as a module-level singleton. Subsequent calls return the cached instance.
 - The `langfuse` import lives inside the function body so the package is never imported when tracing is disabled.
 
@@ -74,13 +74,13 @@ Every concrete strategy overrides `run()` with its own `graph.ainvoke()` call. T
 
 ## Configuration
 
-All three env vars must be set together. `LANGFUSE_HOST` is the enable flag.
+All three env vars must be set together. `LANGFUSE_BASE_URL` is the enable flag.
 
 | Env var | Required when | Notes |
 |---|---|---|
-| `LANGFUSE_HOST` | Always (to enable) | URL of the self-hosted LangFuse instance, e.g. `https://langfuse.example.com` |
-| `LANGFUSE_PUBLIC_KEY` | When `LANGFUSE_HOST` is set | Fatal error if absent |
-| `LANGFUSE_SECRET_KEY` | When `LANGFUSE_HOST` is set | Fatal error if absent |
+| `LANGFUSE_BASE_URL` | Always (to enable) | URL of the self-hosted LangFuse instance, e.g. `https://langfuse.example.com` |
+| `LANGFUSE_PUBLIC_KEY` | When `LANGFUSE_BASE_URL` is set | Fatal error if absent |
+| `LANGFUSE_SECRET_KEY` | When `LANGFUSE_BASE_URL` is set | Fatal error if absent |
 
 Add to `.env.example` (or equivalent documentation) alongside existing `ANTHROPIC_API_KEY`.
 
@@ -122,9 +122,9 @@ The eval harness query phase (`_run_query_phase`) produces a separate trace per 
 
 ## Error handling
 
-- `LANGFUSE_HOST` absent → `None` returned, tracing silently disabled. No log message.
-- `LANGFUSE_HOST` present, keys missing → `RuntimeError` raised at first call to `get_callback_handler()`. This surfaces at strategy invocation time, not at import time.
-- `langfuse` package not installed but `LANGFUSE_HOST` is set → `ImportError` propagates (the user opted in to tracing and must install the package).
+- `LANGFUSE_BASE_URL` absent → `None` returned, tracing silently disabled. No log message.
+- `LANGFUSE_BASE_URL` present, keys missing → `RuntimeError` raised at first call to `get_callback_handler()`. This surfaces at strategy invocation time, not at import time.
+- `langfuse` package not installed but `LANGFUSE_BASE_URL` is set → `ImportError` propagates (the user opted in to tracing and must install the package).
 - LangFuse server unreachable at runtime → LangFuse SDK handles this internally (queues and retries); pipeline execution is not blocked.
 
 ---
