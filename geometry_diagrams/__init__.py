@@ -7,13 +7,13 @@ Public API:
   DiagramResult           — result dataclass (svg, tikz, input_tokens, output_tokens)
   GeometryConfig          — configuration dataclass
 """
-from geometry_diagrams.facade import (
+from .facade import (
     render_diagram,
     render_geometry_diagram,
     render_geometry_diagram_sync,
     DiagramResult,
 )
-from geometry_diagrams.config import GeometryConfig
+from .config import GeometryConfig
 
 __all__ = [
     "render_diagram",

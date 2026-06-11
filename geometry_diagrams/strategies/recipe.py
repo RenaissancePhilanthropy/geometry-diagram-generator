@@ -14,11 +14,11 @@ from langchain_core.exceptions import OutputParserException
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from geometry_diagrams.strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from geometry_diagrams.strategies.structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
-from geometry_diagrams.strategies.llm import get_chat_model, extract_usage, make_system_message
-from geometry_diagrams.strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
-from geometry_diagrams.recipe.catalog import (
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from .structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
+from .llm import get_chat_model, extract_usage, make_system_message
+from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
+from ..recipe.catalog import (
     load_catalog,
     load_recipe,
     build_selection_prompt,
@@ -26,10 +26,10 @@ from geometry_diagrams.recipe.catalog import (
     DSL_DOCS,
     Recipe,
 )
-from geometry_diagrams.recipe.dsl import RecipeDSL
-from geometry_diagrams.recipe.lower import lower_to_ir, LoweringError
-from geometry_diagrams.ir.errors import IRCompileError
-from geometry_diagrams.ir.renderer import TikZRenderer, Renderer
+from ..recipe.dsl import RecipeDSL
+from ..recipe.lower import lower_to_ir, LoweringError
+from ..ir.errors import IRCompileError
+from ..ir.renderer import TikZRenderer, Renderer
 
 logger = logging.getLogger(__name__)
 

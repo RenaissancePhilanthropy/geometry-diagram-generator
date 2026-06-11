@@ -7,9 +7,9 @@ actually lie on both parent objects).
 """
 from __future__ import annotations
 
-import geometry_diagrams.ir.ir as ir
-from geometry_diagrams.ir.checks import CheckResult, run_checks
-from geometry_diagrams.ir.to_sympy import SymTable
+from . import ir
+from .checks import CheckResult, run_checks
+from .to_sympy import SymTable
 
 
 def generate_auto_checks(diagram: ir.DiagramIR) -> list[ir.Check]:

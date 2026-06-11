@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from geometry_diagrams.ir.ir import (
+from ..ir.ir import (
     DiagramIR, Canvas, Params,
     PointFixed, PointOn, PointOnParam, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
     PointReflect, PointRotate, PointIntersection, PointAlias,
@@ -28,7 +28,7 @@ from geometry_diagrams.ir.ir import (
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
     RenderOp, DefStmt, PickRule,
 )
-from geometry_diagrams.recipe.dsl import (
+from .dsl import (
     RecipeDSL, DSLAnnotations,
     TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
@@ -45,7 +45,7 @@ from geometry_diagrams.recipe.dsl import (
     LabelFreeText as DSLLabelFreeText,
     DrawObj,
 )
-from geometry_diagrams.recipe.solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
+from .solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
 
 
 class LoweringError(ValueError):

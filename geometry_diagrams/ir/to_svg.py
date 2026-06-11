@@ -23,10 +23,10 @@ from typing import Any
 
 import sympy.geometry as spg
 
-import geometry_diagrams.ir.ir as ir
-from geometry_diagrams.ir.font import FontConfig, FONT_VARIANTS, default_font_config
-from geometry_diagrams.ir.to_sympy import Arc, Sector, SymTable
-from geometry_diagrams.ir.render_util import (
+from . import ir
+from .font import FontConfig, FONT_VARIANTS, default_font_config
+from .to_sympy import Arc, Sector, SymTable
+from .render_util import (
     BOUNDS_PADDING,
     arc_params,
     circle_center_through,

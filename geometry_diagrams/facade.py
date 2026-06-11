@@ -7,10 +7,10 @@ from typing import Optional
 
 from langchain_core.tools import tool
 
-from geometry_diagrams.config import GeometryConfig, resolve_config
-from geometry_diagrams.ir.font import FontConfig
-from geometry_diagrams.ir.renderer import Renderer, SVGRenderer, TikZRenderer
-from geometry_diagrams.strategies.recipe import RecipeStrategy
+from .config import GeometryConfig, resolve_config
+from .ir.font import FontConfig
+from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from .strategies.recipe import RecipeStrategy
 
 
 @dataclass

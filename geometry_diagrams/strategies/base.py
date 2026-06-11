@@ -7,7 +7,7 @@ from logging import getLogger
 from langgraph.graph.state import CompiledStateGraph
 
 if TYPE_CHECKING:
-    from geometry_diagrams.ir.renderer import Renderer
+    from ..ir.renderer import Renderer
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 
@@ -24,7 +24,7 @@ class SubstanceStrategy(ABC):
 
     @property
     def _run_config(self) -> dict:
-        from geometry_diagrams.util.tracing import get_callback_handler
+        from ..util.tracing import get_callback_handler
         h = get_callback_handler()
         return {"callbacks": [h]} if h else {}
 

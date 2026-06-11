@@ -8,9 +8,9 @@ from typing import Any
 import sympy as sp
 import sympy.geometry as spg
 
-import geometry_diagrams.ir.ir as ir
-from geometry_diagrams.ir.errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
-from geometry_diagrams.ir.refs import def_references
+from . import ir
+from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
+from .refs import def_references
 
 # Symbol table: maps definition id -> SymPy geometry object
 SymTable = dict[str, Any]

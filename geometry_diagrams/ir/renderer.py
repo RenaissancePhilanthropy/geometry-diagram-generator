@@ -11,9 +11,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from geometry_diagrams.ir.font import FontConfig, default_font_config
-from geometry_diagrams.ir.ir import DiagramIR
-from geometry_diagrams.ir.to_sympy import SymTable
+from .font import FontConfig, default_font_config
+from .ir import DiagramIR
+from .to_sympy import SymTable
 
 
 @dataclass
@@ -69,7 +69,7 @@ class SVGRenderer(Renderer):
         Returns:
             RenderResult(output=svg, format="svg", intermediate="")
         """
-        from geometry_diagrams.ir.to_svg import ir_to_svg
+        from .to_svg import ir_to_svg
         svg = ir_to_svg(
             diagram, sym,
             warnings=warnings,
@@ -111,8 +111,8 @@ class TikZRenderer(Renderer):
             RuntimeError: If TikZ generation or SVG rendering fails.
         """
         # Import here to avoid circular import at module load time
-        from geometry_diagrams.ir.to_tikz import ir_to_tikz
-        from geometry_diagrams.util.tikz_renderer import render_tikz
+        from .to_tikz import ir_to_tikz
+        from ..util.tikz_renderer import render_tikz
 
         tikz = ir_to_tikz(diagram, sym, warnings=warnings)
         svg = render_tikz(tikz, renderer_url=self._url, font_family=self._font_config.family)
@@ -120,5 +120,5 @@ class TikZRenderer(Renderer):
 
     def check_health(self) -> bool:
         """Return True if the renderer container is reachable."""
-        from geometry_diagrams.util.tikz_renderer import check_renderer_health
+        from ..util.tikz_renderer import check_renderer_health
         return check_renderer_health(self._url)

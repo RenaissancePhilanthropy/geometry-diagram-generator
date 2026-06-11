@@ -4,7 +4,7 @@ import logging
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
-from geometry_diagrams.util.tikz_renderer import render_tikz
+from ..util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import get_chat_model
 from .instructions import RAW_TIKZ_INSTRUCTIONS
@@ -48,7 +48,7 @@ class RawCodeStrategy(SubstanceStrategy):
         return create_react_agent(llm, tools=[render_diagram], prompt=INSTRUCTIONS)
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:
-        from geometry_diagrams.util.message_helpers import count_tool_calls, extract_tool_call_args
+        from ..util.message_helpers import count_tool_calls, extract_tool_call_args
 
         graph = self.build_agent(model=model)
         state = await graph.ainvoke({"messages": [("user", prompt)]}, config=self._run_config)

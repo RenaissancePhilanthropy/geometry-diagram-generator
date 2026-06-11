@@ -16,7 +16,7 @@ import re
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from geometry_diagrams.strategies.llm import get_chat_model
+from ..strategies.llm import get_chat_model
 
 _CODE_REVIEW_SYSTEM = """\
 You are an expert geometry teacher and TikZ/tkz-euclide code reviewer.

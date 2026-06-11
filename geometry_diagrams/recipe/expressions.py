@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from geometry_diagrams.ir.to_sympy import _eval_expr
-from geometry_diagrams.ir.errors import ExprEvalError
+from ..ir.to_sympy import _eval_expr
+from ..ir.errors import ExprEvalError
 
 
 class ExpressionError(ValueError):
