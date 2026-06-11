@@ -40,7 +40,7 @@ def get_callback_handler():
     except ImportError:
         raise RuntimeError(
             "LANGFUSE_BASE_URL is set but the 'langfuse' package is not installed. "
-            "Install it with: uv sync"
+            "Install it with: pip install langfuse"
         )
     _handler = CallbackHandler()
     _initialized = True
