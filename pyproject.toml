@@ -1,32 +1,40 @@
 [project]
-name = "geometry-tikz-demo"
+name = "geometry-diagrams"
 version = "0.1.0"
-description = "Generate geometry diagrams in TikZ using LLMs."
+description = "Generate geometry diagrams using LLMs and TikZ/SVG."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "cairosvg>=2.9.0",
     "httpx>=0.28.1",
     "langchain>=1.3.6",
     "langchain-anthropic>=1.4.4",
-    "langchain-google-genai>=4.2.5",
-    "langchain-openai>=1.3.0",
     "langgraph>=1.2.0",
-    "matplotlib>=3.10.9",
-    "python-dotenv>=1.2.2",
+    "pydantic>=2.0",
     "pyyaml>=6.0.3",
-    "starlette>=1.0.1",
     "sympy>=1.14.0",
-    "uvicorn>=0.49.0",
-    "langfuse>=4.0,<5"
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["geometry_diagrams"]
 
 [dependency-groups]
 dev = [
+    "cairosvg>=2.9.0",
+    "langchain-google-genai>=4.2.5",
+    "langchain-openai>=1.3.0",
+    "langfuse>=4.0,<5",
+    "matplotlib>=3.10.9",
     "mlcroissant>=1.1.0",
     "pymupdf>=1.27.2.3",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24",
+    "python-dotenv>=1.2.2",
+    "starlette>=1.0.1",
+    "uvicorn>=0.49.0",
 ]
 
 [tool.pytest.ini_options]

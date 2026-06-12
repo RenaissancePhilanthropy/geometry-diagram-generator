@@ -2,14 +2,21 @@
 
 A quick guide for developers who want to copy this package into their own project.
 
-## How to vendor
+## Installation
 
-1. Copy the entire `geometry_diagrams/` directory into your host project.
-2. All internal imports are relative, so the package works under any name or nesting depth:
-   - `myapp/geometry_diagrams/`
-   - `myapp/vendor/geom/`
-   - etc.
-3. If you rename the directory, update your import statements to match the new name (`import myapp.geometry_diagrams` → `import myapp.vendor.geom`). The internal imports inside the package will still work unchanged.
+**Recommended: install as a git dependency**
+
+```bash
+# uv
+uv add git+https://github.com/gordonstein/geometry-tikz-demo
+
+# pip
+pip install git+https://github.com/gordonstein/geometry-tikz-demo
+```
+
+**Alternative: manual copy (vendor)**
+
+If you prefer to copy the source directly rather than using pip/uv, copy the entire `geometry_diagrams/` directory into your project. All internal imports are relative so it works under any name or nesting depth. You are responsible for adding the runtime dependencies listed below to your own project.
 
 ## Runtime dependencies
 
