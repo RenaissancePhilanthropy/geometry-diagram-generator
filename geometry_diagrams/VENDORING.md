@@ -8,10 +8,10 @@ A quick guide for developers who want to copy this package into their own projec
 
 ```bash
 # uv
-uv add git+https://github.com/gordonstein/geometry-tikz-demo
+uv add git+https://github.com/RenaissancePhilanthropy/geometry-diagram-generator
 
 # pip
-pip install git+https://github.com/gordonstein/geometry-tikz-demo
+pip install git+https://github.com/RenaissancePhilanthropy/geometry-diagram-generator
 ```
 
 **Alternative: manual copy (vendor)**
