@@ -95,11 +95,73 @@ Full docstrings are in `__init__.py`. Summary:
 
 | Symbol | Description |
 |---|---|
-| `render_geometry_diagram(prompt, *, config=None, ...)` | Main async entry point |
-| `render_geometry_diagram_sync(prompt, ...)` | Sync wrapper (raises if called inside a running event loop) |
+| `render_geometry_diagram(prompt, *, config=None, renderer=None, model=None, selector_model=None, renderer_url=None, font_family=None, previous_dsl=None, run_config=None, callbacks=None)` | Main async entry point |
+| `render_geometry_diagram_sync(prompt, ...)` | Sync wrapper — same keyword args as above (raises if called inside a running event loop) |
+| `edit_geometry_diagram(prompt, previous_dsl, *, ...)` | Async convenience wrapper for iterative edits; `previous_dsl` is required |
+| `edit_geometry_diagram_sync(prompt, previous_dsl, **kwargs)` | Sync version of the above |
 | `render_diagram` | LangChain `@tool`, reads config from environment |
 | `GeometryConfig` / `GeometryConfig.from_env()` | Config dataclass |
-| `DiagramResult` | Return type: `svg`, `tikz`, `input_tokens`, `output_tokens` |
+| `DiagramResult` | Return type: `svg`, `tikz`, `input_tokens`, `output_tokens`, `dsl`, `diagram_ir`, `recipes` |
+
+`DiagramResult` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `svg` | `str \| None` | Rendered SVG markup |
+| `tikz` | `str \| None` | Generated TikZ/LaTeX source (TikZ renderer only) |
+| `input_tokens` | `int` | LLM input tokens consumed |
+| `output_tokens` | `int` | LLM output tokens consumed |
+| `dsl` | `dict \| None` | DSL representation of the diagram (JSON-serializable); pass as `previous_dsl` to edit |
+| `diagram_ir` | `dict \| None` | Compiled intermediate representation (diagnostic use) |
+| `recipes` | `list[str] \| None` | Recipe names selected during construction |
+
+## Integration with parent-app tracing and cost tracking
+
+Pass a LangChain callback handler via `callbacks` for lightweight token tracking, or use `run_config` for richer tracing integrations such as LangFuse.
+
+```python
+from langchain_community.callbacks import get_openai_callback
+from geometry_diagrams import render_geometry_diagram_sync
+
+# Token tracking via a LangChain callback
+with get_openai_callback() as cb:
+    result = render_geometry_diagram_sync(
+        "Draw a right triangle with legs 3 and 4",
+        callbacks=[cb],
+    )
+print(f"Tokens used: {cb.total_tokens}")
+
+# Richer tracing via run_config (e.g. LangFuse)
+result = render_geometry_diagram_sync(
+    "Draw a right triangle",
+    run_config={"callbacks": [langfuse_handler], "metadata": {"session_id": "abc"}},
+)
+```
+
+Both `callbacks` and `run_config` are forwarded directly to the underlying LangGraph execution. They are independent — you can use either or both.
+
+## Iterative editing
+
+Use `edit_geometry_diagram` / `edit_geometry_diagram_sync` to refine an existing diagram while preserving all properties you did not mention. Pass the `dsl` field from a previous result as `previous_dsl`.
+
+```python
+from geometry_diagrams import render_geometry_diagram_sync, edit_geometry_diagram_sync
+
+# First render
+result = render_geometry_diagram_sync("Draw an equilateral triangle")
+print(result.svg)
+
+# Edit preserving all unrequested properties
+result2 = edit_geometry_diagram_sync(
+    "Make it isosceles with the apex angle 30 degrees",
+    previous_dsl=result.dsl,
+)
+print(result2.svg)
+
+# result2.dsl can be saved and reused for further edits
+```
+
+`result.dsl` is a plain dict (JSON-serializable) — it can be stored in a database or checkpoint and passed back to `edit_geometry_diagram` in a later session. It is `None` if the diagram failed to compile.
 
 ## Quick start (SVG, no Docker needed)
 
