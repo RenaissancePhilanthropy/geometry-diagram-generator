@@ -146,9 +146,6 @@ async def test_render_geometry_diagram_forwards_config_to_strategy(monkeypatch):
     """config= and callbacks= passed to render_geometry_diagram reach RecipeStrategy.run."""
     captured = {}
 
-    h_env = MagicMock(name="env_handler")
-    h_caller = MagicMock(name="caller_handler")
-
     fake_result = _make_fake_structured_result(
         recipe_metadata=RecipeMetadata(
             selected_recipes=["triangle"],
@@ -171,13 +168,15 @@ async def test_render_geometry_diagram_forwards_config_to_strategy(monkeypatch):
 
     monkeypatch.setattr("geometry_diagrams.strategies.recipe.RecipeStrategy.run", fake_run)
 
+    h_caller = MagicMock(name="caller_handler")
     await render_geometry_diagram(
         "draw a triangle",
-        config=None,  # rendered via the facade — no explicit config here
+        run_config={"callbacks": [h_caller], "tags": ["test"]},
+        callbacks=[],
     )
-    # The facade calls strategy.run; captured["config"] and ["callbacks"] were recorded
-    # The key assertion: the call reached our fake_run without error
-    assert fake_result is not None  # facade returned successfully
+    # Assert callbacks were forwarded to strategy.run
+    assert captured["config"] == {"callbacks": [h_caller], "tags": ["test"]}
+    assert captured["callbacks"] == []
 
 
 # ---------------------------------------------------------------------------

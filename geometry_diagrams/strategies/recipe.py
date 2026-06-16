@@ -404,9 +404,11 @@ class RecipeStrategy(SubstanceStrategy):
         graph = _build_recipe_graph()
         effective_prompt = prompt
         if previous_dsl is not None:
-            effective_prompt = _prepare_recipe_modification_prompt(
-                prompt, RecipeDSL.model_validate(previous_dsl)
-            )
+            try:
+                prior = RecipeDSL.model_validate(previous_dsl)
+            except Exception as exc:
+                raise ValueError(f"previous_dsl is not a valid RecipeDSL: {exc}") from exc
+            effective_prompt = _prepare_recipe_modification_prompt(prompt, prior)
         initial_state: RecipePipelineState = {
             "prompt": effective_prompt,
             "model_id": model,

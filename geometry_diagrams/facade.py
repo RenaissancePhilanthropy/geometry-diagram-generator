@@ -48,6 +48,8 @@ async def render_geometry_diagram(
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
     previous_dsl: Optional[dict] = None,
+    run_config: Optional[dict] = None,
+    callbacks: Optional[list] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -63,6 +65,10 @@ async def render_geometry_diagram(
         renderer_url: Override TikZ renderer URL (only used when renderer="tikz").
         font_family: Override font family name.
         previous_dsl: Prior DSL dict (from DiagramResult.dsl) to anchor an edit.
+        run_config: LangChain RunnableConfig dict to thread into LLM calls (e.g. for
+            LangFuse tracing or get_anthropic_callback cost tracking). Its "callbacks"
+            list is merged with the package's env-driven handler and any `callbacks` arg.
+        callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
     """
     cfg = resolve_config(
         config,
@@ -78,6 +84,8 @@ async def render_geometry_diagram(
         model=cfg.model,
         renderer=_make_renderer(cfg),
         previous_dsl=previous_dsl,
+        config=run_config,
+        callbacks=callbacks,
     )
     # Extract structured artifacts if available
     _recipes = None
@@ -90,8 +98,7 @@ async def render_geometry_diagram(
             if trace.stage == "success" and trace.dsl_json:
                 _dsl = trace.dsl_json  # already a plain dict
                 break
-    if result.diagram_ir is not None:
-        _diagram_ir = result.diagram_ir.model_dump()
+    _diagram_ir = result.diagram_ir.model_dump()
     return DiagramResult(
         svg=result.svg,
         tikz=result.tikz,
@@ -129,6 +136,7 @@ async def render_diagram(prompt: str) -> str:
             "dsl": result.dsl,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
+            # diagram_ir and recipes intentionally omitted (size/utility tradeoff for agent context)
         })
     except Exception as exc:
         return json.dumps({"error": str(exc)})
@@ -144,6 +152,8 @@ async def edit_geometry_diagram(
     selector_model: Optional[str] = None,
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
+    run_config: Optional[dict] = None,
+    callbacks: Optional[list] = None,
 ) -> DiagramResult:
     """Edit an existing geometry diagram by applying the described changes.
 
@@ -165,6 +175,8 @@ async def edit_geometry_diagram(
         selector_model=selector_model,
         renderer_url=renderer_url,
         font_family=font_family,
+        run_config=run_config,
+        callbacks=callbacks,
     )
 
 
