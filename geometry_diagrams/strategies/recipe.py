@@ -406,7 +406,7 @@ class RecipeStrategy(SubstanceStrategy):
         if previous_dsl is not None:
             try:
                 prior = RecipeDSL.model_validate(previous_dsl)
-            except Exception as exc:
+            except pydantic.ValidationError as exc:
                 raise ValueError(f"previous_dsl is not a valid RecipeDSL: {exc}") from exc
             effective_prompt = _prepare_recipe_modification_prompt(prompt, prior)
         initial_state: RecipePipelineState = {

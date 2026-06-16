@@ -393,18 +393,15 @@ async def test_previous_dsl_none_passes_bare_prompt(monkeypatch):
     assert captured_state.get("prompt") == original_prompt
 
 
-def test_previous_dsl_invalid_raises_value_error():
+@pytest.mark.asyncio
+async def test_previous_dsl_invalid_raises_value_error():
     """Passing an invalid dict as previous_dsl raises ValueError."""
-    import asyncio
-
     strategy = RecipeStrategy()
     with pytest.raises(ValueError, match="previous_dsl is not a valid RecipeDSL"):
-        asyncio.run(
-            strategy.run(
-                "edit it",
-                model=DEFAULT_AGENT_MODEL,
-                previous_dsl={"invalid_field": 123},
-            )
+        await strategy.run(
+            "edit it",
+            model=DEFAULT_AGENT_MODEL,
+            previous_dsl={"invalid_field": 123},
         )
 
 
