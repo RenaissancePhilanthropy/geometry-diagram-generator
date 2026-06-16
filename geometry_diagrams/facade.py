@@ -20,6 +20,9 @@ class DiagramResult:
     tikz: str        # empty string when renderer == "svg"
     input_tokens: int
     output_tokens: int
+    dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump())
+    diagram_ir: Optional[dict] = None   # serialized DiagramIR (ir.model_dump())
+    recipes: Optional[list[str]] = None # selected recipe IDs
 
 
 def _make_renderer(cfg: GeometryConfig) -> Renderer:
@@ -44,6 +47,7 @@ async def render_geometry_diagram(
     selector_model: Optional[str] = None,
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
+    previous_dsl: Optional[dict] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -58,6 +62,7 @@ async def render_geometry_diagram(
         selector_model: Override recipe selector model id.
         renderer_url: Override TikZ renderer URL (only used when renderer="tikz").
         font_family: Override font family name.
+        previous_dsl: Prior DSL dict (from DiagramResult.dsl) to anchor an edit.
     """
     cfg = resolve_config(
         config,
@@ -68,12 +73,33 @@ async def render_geometry_diagram(
         font_family=font_family,
     )
     strategy = _make_strategy(cfg)
-    result = await strategy.run(prompt, model=cfg.model, renderer=_make_renderer(cfg))
+    result = await strategy.run(
+        prompt,
+        model=cfg.model,
+        renderer=_make_renderer(cfg),
+        previous_dsl=previous_dsl,
+    )
+    # Extract structured artifacts if available
+    _recipes = None
+    _dsl = None
+    _diagram_ir = None
+    if result.recipe_metadata is not None:
+        _recipes = result.recipe_metadata.selected_recipes or None
+        traces = result.recipe_metadata.attempt_traces or []
+        for trace in reversed(traces):
+            if trace.stage == "success" and trace.dsl_json:
+                _dsl = trace.dsl_json  # already a plain dict
+                break
+    if result.diagram_ir is not None:
+        _diagram_ir = result.diagram_ir.model_dump()
     return DiagramResult(
         svg=result.svg,
         tikz=result.tikz,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
+        dsl=_dsl,
+        diagram_ir=_diagram_ir,
+        recipes=_recipes,
     )
 
 
@@ -90,12 +116,61 @@ def render_geometry_diagram_sync(prompt: str, **kwargs) -> DiagramResult:
 async def render_diagram(prompt: str) -> str:
     """Render a geometry diagram from a natural-language description.
 
-    Returns a JSON string with keys "svg" and "tikz" on success,
-    or {"error": "..."} on failure. Configuration (renderer, model, etc.)
-    is read from environment variables via GeometryConfig.from_env().
+    Returns a JSON string with keys "svg", "tikz", "dsl", "input_tokens",
+    and "output_tokens" on success, or {"error": "..."} on failure.
+    Configuration (renderer, model, etc.) is read from environment variables
+    via GeometryConfig.from_env().
     """
     try:
         result = await render_geometry_diagram(prompt)
-        return json.dumps({"svg": result.svg, "tikz": result.tikz})
+        return json.dumps({
+            "svg": result.svg,
+            "tikz": result.tikz,
+            "dsl": result.dsl,
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+        })
     except Exception as exc:
         return json.dumps({"error": str(exc)})
+
+
+async def edit_geometry_diagram(
+    prompt: str,
+    previous_dsl: dict,
+    *,
+    config: Optional[GeometryConfig] = None,
+    renderer: Optional[str] = None,
+    model: Optional[str] = None,
+    selector_model: Optional[str] = None,
+    renderer_url: Optional[str] = None,
+    font_family: Optional[str] = None,
+) -> DiagramResult:
+    """Edit an existing geometry diagram by applying the described changes.
+
+    Convenience wrapper around render_geometry_diagram with previous_dsl pre-filled.
+    The prior DSL (from DiagramResult.dsl) anchors the edit — only the properties
+    you describe in prompt will be changed.
+
+    Args:
+        prompt: Natural-language description of the change to apply.
+        previous_dsl: The dsl dict from a prior DiagramResult.
+        Remaining kwargs: same as render_geometry_diagram.
+    """
+    return await render_geometry_diagram(
+        prompt,
+        previous_dsl=previous_dsl,
+        config=config,
+        renderer=renderer,
+        model=model,
+        selector_model=selector_model,
+        renderer_url=renderer_url,
+        font_family=font_family,
+    )
+
+
+def edit_geometry_diagram_sync(prompt: str, previous_dsl: dict, **kwargs) -> DiagramResult:
+    """Synchronous wrapper around edit_geometry_diagram.
+
+    Note: Will raise RuntimeError if called from within a running event loop.
+    """
+    return asyncio.run(edit_geometry_diagram(prompt, previous_dsl, **kwargs))

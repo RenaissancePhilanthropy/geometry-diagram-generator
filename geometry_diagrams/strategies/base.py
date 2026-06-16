@@ -28,7 +28,11 @@ class SubstanceStrategy(ABC):
         config: "Optional[RunnableConfig]" = None,
         callbacks: "Optional[list]" = None,
     ) -> dict:
-        """Build a LangGraph run config merging caller callbacks with env handler."""
+        """Build a LangGraph run config merging caller callbacks with env handler.
+
+        Note: when ``config["callbacks"]`` is a non-list BaseCallbackManager, the
+        ``callbacks`` arg is also silently ignored (the manager is returned as-is).
+        """
         from ..util.tracing import get_callback_handler
 
         result = dict(config) if config else {}

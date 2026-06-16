@@ -399,10 +399,16 @@ class RecipeStrategy(SubstanceStrategy):
         renderer: Renderer | None = None,
         config: "Optional[RunnableConfig]" = None,
         callbacks: "Optional[list]" = None,
+        previous_dsl: Optional[dict] = None,
     ) -> StructuredRunResult:
         graph = _build_recipe_graph()
+        effective_prompt = prompt
+        if previous_dsl is not None:
+            effective_prompt = _prepare_recipe_modification_prompt(
+                prompt, RecipeDSL.model_validate(previous_dsl)
+            )
         initial_state: RecipePipelineState = {
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "model_id": model,
             "selector_model": self.selector_model,
             "enable_cache": self.enable_cache,
