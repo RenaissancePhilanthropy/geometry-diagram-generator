@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from logging import getLogger
 from langgraph.graph.state import CompiledStateGraph
 
 if TYPE_CHECKING:
     from ..ir.renderer import Renderer
+    from langchain_core.runnables import RunnableConfig
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 
@@ -22,11 +23,44 @@ class SubstanceStrategy(ABC):
         self.enable_cache = enable_cache
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
+    def _build_run_config(
+        self,
+        config: "Optional[RunnableConfig]" = None,
+        callbacks: "Optional[list]" = None,
+    ) -> dict:
+        """Build a LangGraph run config merging caller callbacks with env handler."""
+        from ..util.tracing import get_callback_handler
+
+        result = dict(config) if config else {}
+
+        existing_callbacks = result.get("callbacks")
+
+        if existing_callbacks is not None and not isinstance(existing_callbacks, list):
+            # Non-list callback manager — don't attempt to merge; return as-is.
+            return result
+
+        # Collect callbacks into a list.
+        merged: list = list(existing_callbacks) if existing_callbacks else []
+        if "callbacks" in result:
+            del result["callbacks"]
+
+        if callbacks:
+            for cb in callbacks:
+                if cb is not None:
+                    merged.append(cb)
+
+        h = get_callback_handler()
+        if h is not None and all(cb is not h for cb in merged):
+            merged.append(h)
+
+        if merged:
+            result["callbacks"] = merged
+
+        return result
+
     @property
     def _run_config(self) -> dict:
-        from ..util.tracing import get_callback_handler
-        h = get_callback_handler()
-        return {"callbacks": [h]} if h else {}
+        return self._build_run_config()
 
     @abstractmethod
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> CompiledStateGraph:

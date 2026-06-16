@@ -5,7 +5,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Optional, TypedDict
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
 
 import pydantic
 from langchain_core.tools import tool
@@ -394,6 +397,8 @@ class RecipeStrategy(SubstanceStrategy):
         prompt: str,
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
+        config: "Optional[RunnableConfig]" = None,
+        callbacks: "Optional[list]" = None,
     ) -> StructuredRunResult:
         graph = _build_recipe_graph()
         initial_state: RecipePipelineState = {
@@ -413,7 +418,7 @@ class RecipeStrategy(SubstanceStrategy):
             "renderer": renderer,
             "selection_done": False,
         }
-        final_state = await graph.ainvoke(initial_state, config=self._run_config)
+        final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 
         # Expose partial metadata for eval harness
         self._partial_recipe_metadata = final_state.get("recipe_metadata")
