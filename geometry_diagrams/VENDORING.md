@@ -107,8 +107,8 @@ Full docstrings are in `__init__.py`. Summary:
 
 | Field | Type | Description |
 |---|---|---|
-| `svg` | `str \| None` | Rendered SVG markup |
-| `tikz` | `str \| None` | Generated TikZ/LaTeX source (TikZ renderer only) |
+| `svg` | `str` | Rendered SVG markup |
+| `tikz` | `str` | Generated TikZ/LaTeX source; empty string when `renderer="svg"` |
 | `input_tokens` | `int` | LLM input tokens consumed |
 | `output_tokens` | `int` | LLM output tokens consumed |
 | `dsl` | `dict \| None` | DSL representation of the diagram (JSON-serializable); pass as `previous_dsl` to edit |
