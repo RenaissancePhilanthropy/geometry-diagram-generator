@@ -3,9 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from langchain_core.tools import tool
+
+if TYPE_CHECKING:
+    from langchain_core.callbacks import BaseCallbackManager
 
 from .config import GeometryConfig, resolve_config
 from .ir.font import FontConfig
@@ -49,7 +52,7 @@ async def render_geometry_diagram(
     font_family: Optional[str] = None,
     previous_dsl: Optional[dict] = None,
     run_config: Optional[dict] = None,
-    callbacks: Optional[list] = None,
+    callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -153,7 +156,7 @@ async def edit_geometry_diagram(
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
     run_config: Optional[dict] = None,
-    callbacks: Optional[list] = None,
+    callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
 ) -> DiagramResult:
     """Edit an existing geometry diagram by applying the described changes.
 

@@ -118,15 +118,35 @@ class TestBuildRunConfig:
         assert result["metadata"] == {"trace": "x"}
         assert result["tags"] == ["foo"]
 
-    def test_build_run_config_nonlist_manager_returned_as_is(self):
-        """Non-list callback manager → returned as-is; env handler NOT added."""
+    def test_build_run_config_callback_manager_in_config_handlers_extracted(self):
+        """BaseCallbackManager in config["callbacks"] → handlers extracted and merged."""
+        from langchain_core.callbacks import BaseCallbackManager
         strategy = _StubStrategy()
-        manager_mock = MagicMock(name="manager")  # not a list
+        h1 = MagicMock(name="h1")
+        h2 = MagicMock(name="h2")
+        manager = MagicMock(spec=BaseCallbackManager)
+        manager.handlers = [h1]
         env_handler = MagicMock(name="env_handler")
         with patch("geometry_diagrams.util.tracing.get_callback_handler", return_value=env_handler):
-            result = strategy._build_run_config(config={"callbacks": manager_mock})
-        assert result == {"callbacks": manager_mock}
-        assert env_handler not in result.get("callbacks", [])
+            result = strategy._build_run_config(
+                config={"callbacks": manager},
+                callbacks=[h2],
+            )
+        cbs = result["callbacks"]
+        assert h1 in cbs
+        assert h2 in cbs
+        assert env_handler in cbs
+
+    def test_build_run_config_callback_manager_as_callbacks_arg(self):
+        """BaseCallbackManager passed as callbacks= arg → handlers extracted and merged."""
+        from langchain_core.callbacks import BaseCallbackManager
+        strategy = _StubStrategy()
+        h1 = MagicMock(name="h1")
+        manager = MagicMock(spec=BaseCallbackManager)
+        manager.handlers = [h1]
+        with patch("geometry_diagrams.util.tracing.get_callback_handler", return_value=None):
+            result = strategy._build_run_config(callbacks=manager)
+        assert h1 in result["callbacks"]
 
     def test_run_config_property_delegates(self):
         """_run_config property returns same result as _build_run_config()."""

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from logging import getLogger
 from langgraph.graph.state import CompiledStateGraph
@@ -9,6 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 if TYPE_CHECKING:
     from ..ir.renderer import Renderer
     from langchain_core.runnables import RunnableConfig
+    from langchain_core.callbacks import BaseCallbackManager
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 
@@ -26,32 +27,35 @@ class SubstanceStrategy(ABC):
     def _build_run_config(
         self,
         config: "Optional[RunnableConfig]" = None,
-        callbacks: "Optional[list]" = None,
+        callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
     ) -> dict:
-        """Build a LangGraph run config merging caller callbacks with env handler.
+        """Build a LangGraph run config merging caller callbacks with env handler."""
+        from langchain_core.callbacks import BaseCallbackManager
 
-        Note: when ``config["callbacks"]`` is a non-list BaseCallbackManager, the
-        ``callbacks`` arg is also silently ignored (the manager is returned as-is).
-        """
         from ..util.tracing import get_callback_handler
 
         result = dict(config) if config else {}
 
         existing_callbacks = result.get("callbacks")
 
-        if existing_callbacks is not None and not isinstance(existing_callbacks, list):
-            # Non-list callback manager — don't attempt to merge; return as-is.
-            return result
+        # Normalize existing_callbacks from config: extract handlers if it's a manager.
+        if isinstance(existing_callbacks, BaseCallbackManager):
+            existing_list: list = list(existing_callbacks.handlers)
+        elif existing_callbacks is not None:
+            existing_list = list(existing_callbacks)
+        else:
+            existing_list = []
 
-        # Collect callbacks into a list.
-        merged: list = list(existing_callbacks) if existing_callbacks else []
         if "callbacks" in result:
             del result["callbacks"]
 
-        if callbacks:
-            for cb in callbacks:
-                if cb is not None:
-                    merged.append(cb)
+        # Normalize the explicit callbacks arg: extract handlers if it's a manager.
+        if isinstance(callbacks, BaseCallbackManager):
+            extra: list = list(callbacks.handlers)
+        else:
+            extra = [cb for cb in (callbacks or []) if cb is not None]
+
+        merged = existing_list + extra
 
         h = get_callback_handler()
         if h is not None and all(cb is not h for cb in merged):

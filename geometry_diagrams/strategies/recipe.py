@@ -5,9 +5,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Optional, TypedDict, Union
 
 if TYPE_CHECKING:
+    from langchain_core.callbacks import BaseCallbackManager
     from langchain_core.runnables import RunnableConfig
 
 import pydantic
@@ -398,7 +399,7 @@ class RecipeStrategy(SubstanceStrategy):
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
         config: "Optional[RunnableConfig]" = None,
-        callbacks: "Optional[list]" = None,
+        callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
         previous_dsl: Optional[dict] = None,
     ) -> StructuredRunResult:
         graph = _build_recipe_graph()
