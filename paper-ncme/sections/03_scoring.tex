@@ -1,10 +1,10 @@
-\section{Grading comes for free}
+\section{Scoring comes for free}
 \label{sec:scoring}
 
-Because the finished diagram is just exact coordinates, grading needs no special machinery. Each requirement in the prompt becomes a small test run directly on the numbers. ``Is the angle at $H$ a right angle?'' is settled by a one-line calculation on the coordinates---in a fraction of a millisecond---not by asking a judge whether the picture looks square.
+Because the finished diagram is just exact coordinates, scoring needs no special machinery. Each requirement in the prompt becomes a small test run directly on the numbers. ``Is the angle at $H$ a right angle?'' is settled by a one-line calculation on the coordinates---in a fraction of a millisecond---not by asking a judge whether the picture looks square.
 
 \paragraph{The question and its answer key are written together.}
-Here is the move that makes this practical: each item and its answer key come from the \emph{same} short program (\cref{fig:cogen}). One template produces both the wording shown to the model and the checklist used to grade it. The two can never disagree, because they are two faces of the same object. This has a useful side effect for test security---an author can re-run the template with a new random seed to mint a fresh, equivalent item---and the checklist is never shown to the model while it works.
+Here is the move that makes this practical: each item and its answer key come from the \emph{same} short program (\cref{fig:cogen}). One template produces both the wording shown to the model and the checklist used to score it. The two can never disagree, because they are two faces of the same object. This has a useful side effect for test security---an author can re-run the template with a new random seed to mint a fresh, equivalent item---and the checklist is never shown to the model while it works.
 
 \begin{figure*}[t]
 \centering
@@ -23,10 +23,9 @@ Here is the move that makes this practical: each item and its answer key come fr
     \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
     Construct the altitude from $C$ meeting $AB$ at $H$.''};
   \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.4)$) {%
-    \textbf{Answer key (used to grade)}\\[2pt]
+    \textbf{Answer key (used to score)}\\[2pt]
     \scriptsize\ttfamily right\_angle($C, H, A$)\\
-    point\_on\_segment($H, A, B$)\\
-    angle\_equal($\angle BAC$, $60^\circ$)};
+    point\_on\_segment($H, A, B$)};
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (prompt.north);
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (rubric.north);
   \node[role, below=1mm of prompt, text width=53mm] {what the model sees};
@@ -37,7 +36,7 @@ Here is the move that makes this practical: each item and its answer key come fr
 \end{figure*}
 
 \paragraph{A small, readable checklist.}
-Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:predicates}): is this a right angle, is this the midpoint, are these lines parallel, does this point lie on that segment, and so on. There are 17 such checks in the current version, and each is decided exactly on the coordinates (within a tiny rounding tolerance). A diagram \emph{passes} only if every check on its list passes. The list is, in plain terms, the definition of what the item is testing.
+Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:predicates}): is this a right angle, is this the midpoint, are these lines parallel, does this point lie on that segment, and so on. There are 15 such checks in the current version, and each is decided exactly on the coordinates (within a tiny rounding tolerance). A diagram passes only if every check on its list passes. The list is, in plain terms, the definition of what the item is testing.
 
 \begin{table}[t]
 \centering
@@ -55,11 +54,14 @@ Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:p
 \propname{angle\_equal}                     & an angle equals a stated value\\
 \bottomrule
 \end{tabular}
-\caption{Six of the 17 checks in the grading vocabulary. Each is decided exactly on the computed coordinates; an item's list of checks is, in plain terms, the definition of a correct answer.}
+\caption{A sample of the 15 checks in the scoring vocabulary. Each is decided exactly on the computed coordinates; an item's list of checks is, in plain terms, the definition of a correct answer.}
 \label{tab:predicates}
 \end{table}
 
-\paragraph{Does the automatic grade match a human's?}
-An automatic grade is only worth having if it agrees with an expert, so we checked. After fixing a few blind spots found on pilot data, we ran a pre-registered study: two experts---a mathematician and a K--12 teacher---graded 200 diagrams by hand, without seeing the automatic verdict, and we compared.
+\paragraph{Does the automatic score match a human's?}
+An automatic score is only worth having if it agrees with a careful human grader, so we checked. After fixing a few blind spots found on pilot data, we ran a pre-registered study. We set the bar in advance: the automatic score had to match the human verdict at Cohen's $\kappa \ge 0.70$ (on a scale where $1.0$ is perfect agreement and $0$ is chance). Two graduate-level graders then scored 200 diagrams by hand, without seeing the automatic verdict.
 
-Agreement was \emph{moderate}: Cohen's $\kappa = 0.46$, on a scale where $1.0$ is perfect and $0$ is chance. Two things make that number reassuring rather than worrying. First, the disagreements all run \emph{one way}. In 36 of the 200 cases the automatic grader was too \emph{generous}---it passed a diagram the experts failed---and in \emph{zero} cases was it too harsh. So the scores we report are best-case ceilings; they never penalise a model unfairly. Second, the disagreements cluster in one place: items with an added construction (like our altitude), where the checklist confirms the construction is correct but does not separately re-check the prompt's exact angles. The two experts agreed closely with \emph{each other} ($\kappa = 0.70$), so it is the grader, not the rubric, that needs tightening---and the fix, adding the missing numeric checks, is straightforward and underway.
+We did not clear that bar. Agreement was moderate---Cohen's $\kappa = 0.46$, short of the $0.70$ we had set. Two things, though, make the gap reassuring rather than worrying. First, the disagreements all run \emph{one way}. In 36 of the 200 cases the automatic scorer was too generous---it passed a diagram the graders failed---and in \emph{zero} cases was it too harsh. So the scores we report are best-case ceilings; they never penalise a model unfairly. Second, the disagreements cluster in one place: items with an added construction (like our altitude), where the checklist confirms the construction is correct but does not separately re-check the prompt's exact angles. The two graders agreed with each other at that same $0.70$ mark ($\kappa = 0.70$)---the level we had asked the automatic scorer to reach---so it is the automatic scorer, not the human grading, that needs tightening, and the fix, adding the missing numeric checks, is straightforward and underway.
+
+\paragraph{What the checks cannot see.}
+That particular gap closes with more checks. A deeper one does not. The checks read the geometry---the coordinates---and nothing else; they never look at how the figure is drawn. A diagram can satisfy every requirement and still mislead a reader: a right-angle mark placed on the outside of the corner, an angle labelled on the wrong side, or a perfectly correct figure laid out so awkwardly that no reader could follow it. This is the mirror image of the AI judge from \cref{sec:motivation}. A judge sees how a picture looks but cannot certify its geometry; our checks certify the geometry but cannot see how it looks. The two are complementary: the checks settle whether a diagram is \emph{correct}, while whether it is \emph{clear} is still best judged by eye.

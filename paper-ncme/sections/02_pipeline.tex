@@ -1,7 +1,7 @@
 \section{How the model draws a diagram}
 \label{sec:pipeline}
 
-A request becomes a picture in four steps, shown in \cref{fig:trace}. The model writes a short, structured \emph{description} of the construction; a geometry engine turns that description into exact coordinates; and a renderer turns the coordinates into a drawing. The important idea is the division of labour: \textbf{the model decides what to build, and the engine decides where the points go.} The model never writes a number.
+A request becomes a picture in three steps, shown in \cref{fig:trace}. The model writes a short, structured description of the construction; a geometry engine turns that description into exact coordinates; and a renderer turns the coordinates into a drawing. The important idea is the division of labour: \textbf{the model decides what to build, and the engine decides where the points go.} The model never writes a coordinate.
 
 \begin{figure*}[t]
 \centering
@@ -39,7 +39,7 @@ A request becomes a picture in four steps, shown in \cref{fig:trace}. The model 
 \draw[ar] (sp) -- (tk) node[arl, midway, above] {emit};
 \draw[ar] (tk) -- (svg) node[arl, midway, above] {render};
 \end{tikzpicture}}
-\caption{One request, start to finish. The model writes a description of the construction; the geometry engine solves it for exact coordinates; the system emits drawing code and renders it. Because the model writes relationships (``$H$ is the foot of the perpendicular from $C$'') rather than numbers, the geometry is computed rather than guessed---and those same coordinates are what we grade against in \cref{sec:scoring}.}
+\caption{One request, start to finish. The model writes a description of the construction; the geometry engine solves it for exact coordinates; the system emits drawing code and renders it. Because the model writes relationships (``$H$ is the foot of the perpendicular from $C$'') rather than numbers, the geometry is computed rather than guessed---and those same coordinates are what we score against in \cref{sec:scoring}.}
 \label{fig:trace}
 \end{figure*}
 
@@ -47,10 +47,10 @@ A request becomes a picture in four steps, shown in \cref{fig:trace}. The model 
 The model fills in a simple, typed form---we call it the intermediate representation, or IR. The form offers about twenty kinds of building block: points, segments, lines, circles, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$''---never ``$H = (3.07, 0)$.'' Because the form is typed, obvious mistakes (a missing point, the wrong number of arguments) are caught right away, before any geometry is computed.
 
 \paragraph{Step 2: the engine solves for the points.}
-A geometry engine---we use SymPy, a symbolic-mathematics library---reads the description and works out the coordinates, handling the building blocks in dependency order. When a step is ambiguous (two circles cross at two points), the description simply says which one to keep (``the higher one''). The engine, not the model, produces every coordinate. This is what makes the right angle in our example \emph{exactly} $90^\circ$ rather than approximately so.
+A geometry engine---we use SymPy, a symbolic-mathematics library---reads the description and works out the coordinates, handling the building blocks in dependency order. Symbolic methods have made headlines for solving olympiad geometry~\citep{trinh2024alphageometry}; here the engine does a humbler job, working out where the points of a described figure go. When a step is ambiguous (two circles cross at two points), the description simply says which one to keep (``the higher one''). The engine, not the model, produces every coordinate. This is what makes the right angle in our example exactly $90^\circ$ rather than approximately so.
 
 \paragraph{Step 3: render.}
 From the exact coordinates the system writes standard drawing code and compiles it to an image. Fiddly details an author should not have to manage---such as clipping a line at the edge of the canvas---are handled automatically.
 
 \paragraph{Two ways to drive it.}
-The model can fill in the form directly, or it can use a short ``recipe'' language that names a construction---\texttt{perp\_bisector(A,B)}---which then expands into the same form. Either way, the description can carry its own requirements, tested \emph{before} the figure is drawn, so the model can catch a mistake and retry. We compare both against a plain baseline in which the model just writes drawing code by hand, with no engine and no checks; that baseline is how we measure what the structured approach is worth (\cref{sec:benchmark}).
+The model can fill in the form directly, or it can use a short ``recipe'' language that names a construction---\texttt{perp\_bisector(A,B)}---which then expands into the same form. Either way, the description can carry its own requirements, tested \emph{before} the figure is drawn, so the model can catch a mistake and retry. We compare both against a plain baseline in which the model just writes drawing code by hand, with no engine and no checks; that baseline is how we measure what the structured approach is worth (\cref{sec:benchmark}). Having a model write drawing code directly is itself an active line of work~\citep{belouadi2024automatikz,belouadi2024detikzify}; that work asks how closely the output resembles a target picture, whereas we ask whether its geometry is exactly right.

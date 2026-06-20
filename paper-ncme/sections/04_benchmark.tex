@@ -1,8 +1,28 @@
 \section{Putting it to the test}
 \label{sec:benchmark}
 
-To show the approach works beyond a single example, we built \GeoGenBench: 801 prompts, all graded automatically by the checker of \cref{sec:scoring}. Six hundred come from the templates described above; another 201 are drawn from a real K--12 mathematics curriculum \citep{bluebonnet2024}. We ran six large models from three companies, each in two modes: writing drawing code by hand, and using the structured description.
+To show the approach works beyond a single example, we built \GeoGenBench: 801 prompts, all scored automatically by the checker of \cref{sec:scoring}. Six hundred come from the templates described above; another 201 are drawn from a real K--12 mathematics curriculum \citep{bluebonnet2024}. We ran six large models from three companies, each in two modes: writing drawing code by hand, and using the structured description.
 
-The structured approach helped \emph{every} model---and helped the weakest ones the most, raising pass rates by anywhere from 2 to 25 percentage points. In other words, handing a model the geometry engine matters most when the model is poor at drawing by hand. More striking still: once they used the structured approach, the three strongest models landed within a single point of one another, even though they differ sevenfold in price. On this task, the method does more of the work than the model does.
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Model} & \textbf{By hand} & \textbf{Structured} & \textbf{\$/item}\\
+\midrule
+GPT-5.5            & 91.9\% & \textbf{94.1\%} & 0.075\\
+Claude Sonnet 4.6  & 81.2\% & 93.4\% & 0.088\\
+Claude Opus 4.7    & 71.6\% & 93.3\% & 0.53\\
+Claude Haiku 4.5   & 70.5\% & 75.3\% & 0.032\\
+Gemini 2.5 Pro     & 58.4\% & 83.1\% & 0.050\\
+Gemini 2.5 Flash   & 35.9\% & blocked & ---\\
+\bottomrule
+\end{tabular}
+\caption{Share of the $600$ templated prompts whose geometry is exactly correct---drawing by hand versus using the structured description---with the average cost of one structured generation in US dollars. Every model improves, the weakest most; the three strongest converge near $93$--$94\%$ despite a sevenfold cost spread. Gemini~2.5~Flash could not run the structured form (rejected as too complex; see text).}
+\label{tab:results}
+\end{table}
 
-We also hit one practical snag worth flagging for anyone building something similar: one vendor's system refused our structured form outright for being too complex, so the structured mode could not run there at all. The full results---a complete leaderboard, cost comparisons, and the expert study---appear in a companion paper. Here they make a single point: generation-then-grading holds up at scale.
+The structured approach helped \emph{every} model (\cref{tab:results})---and helped the weakest ones the most, raising pass rates by anywhere from 2 to 25 percentage points. In other words, handing a model the geometry engine matters most when the model is poor at drawing by hand. More striking still: once they used the structured approach, the three strongest models landed within a single point of one another, even though they differ sevenfold in price. On this task, the method does more of the work than the model does.
+
+We also hit one practical snag worth flagging for anyone building something similar: Gemini~2.5~Flash refused our structured form outright for being too complex, so the structured mode could not run there at all. The full results---a complete leaderboard, cost comparisons, and the human study---appear in a companion paper. Here they make a single point: generation-then-scoring holds up at scale.

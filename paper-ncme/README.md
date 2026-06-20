@@ -1,4 +1,4 @@
-# NCME submission — *From Language to Verified Diagram*
+# NCME submission — *Machine-Verifiable Item Models for Geometry Diagram Generation*
 
 A 6-page, plain-language paper condensed from the full GeoGenBench paper
 (`../paper/`, branch `feat/geogen-paper`), prepared for NCME.
