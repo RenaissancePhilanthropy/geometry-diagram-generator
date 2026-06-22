@@ -1,8 +1,8 @@
-# Uncommitted Changes — Overview
+# feat/recipe-improvements — Change Inventory
 
 _Last updated: 2026-06-22_
 
-**Baseline:** last commit `db17ae5` on `master`. Everything below is uncommitted working-tree change vs that baseline. Analysis of whether the changes actually helped (GEPA payoff, CoT-analysis usefulness, etc.) is deferred — this file is just an inventory of what changed and why.
+**Baseline:** last commit `db17ae5` on `master`. Everything below is the content of the `feat/recipe-improvements` branch (commit `19c5230`, pushed to `origin`) vs that baseline. Analysis of whether the changes actually helped (GEPA payoff, CoT-analysis usefulness, etc.) is deferred — this file is just an inventory of what changed and why.
 
 ---
 
