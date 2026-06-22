@@ -1,16 +1,19 @@
 """
 Phase 0 capability gate: can Qwen2.5-7B produce valid GeoGen constructions?
 
-SCAFFOLD — run/verify on the big (>=32 GB) Apple-Silicon machine; it has NOT
-been executed yet. Loads Qwen2.5-7B-Instruct on MPS (bf16), prompts it with the
-project's recipe-DSL system instructions on a few geometry prompts, and prints
-the output. The automated parse -> lower -> compile -> check grade is left as a
-clearly-marked TODO (module pointers below); first just eyeball whether the
-output looks like a valid RecipeDSL.
+Loads a local HF model on MPS (bf16), prompts it with the project's recipe-DSL
+system instructions on a sample of GeoGenBench prompts, and grades each output
+through the project's real pipeline (parse -> lower -> compile -> check) via
+interp.grade. Prints a per-prompt result and an overall valid-construction rate.
 
-Run from the repo root:
-    python interp/capability_check.py
-    python interp/capability_check.py --model Qwen/Qwen2.5-3B-Instruct
+The gate: if the rate is too low to build interp on, bump to Qwen2.5-14B or add
+few-shot exemplars BEFORE any capture/probe work.
+
+Run from the repo root (downloads ~15 GB on first run):
+    python interp/capability_check.py                          # 7B, 20 prompts
+    python interp/capability_check.py --model Qwen/Qwen2.5-3B-Instruct --n 10
+    python interp/capability_check.py --tier 1 --n 30          # easy tier only
+    python interp/capability_check.py --print-output           # dump completions
 """
 from __future__ import annotations
 
@@ -18,19 +21,42 @@ import argparse
 import pathlib
 import sys
 
-# allow `from strategies...` / `from recipe...` when run from the repo root
+# allow `from strategies...` / `from recipe...` / `from interp...` from repo root
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-# A few representative GeoGenBench-style prompts. Once the auto-grade is wired,
-# load the real set from benchmark/definitions/bench_genexam.yaml instead.
-PROMPTS = [
+from interp.grade import grade_completion  # noqa: E402
+
+BENCH_YAML = REPO / "benchmark" / "definitions" / "bench_genexam.yaml"
+
+# Fallback prompts if the benchmark YAML can't be loaded.
+FALLBACK_PROMPTS = [
     "Draw an acute triangle ABC with angle A = 60 degrees and angle B = 70 "
     "degrees, then draw the altitude from C, meeting AB at H.",
     "In a square ABCD, let E be the midpoint of side BC. Draw segment AE.",
     "Draw a circle with center O and a point P outside it; construct the "
     "tangent from P touching the circle at T.",
 ]
+
+
+def load_prompts(n: int, tier: int | None) -> list[tuple[str, str]]:
+    """Return [(id, prompt_text), ...] from the GenExam benchmark YAML.
+
+    Falls back to FALLBACK_PROMPTS (with synthetic ids) if the YAML is missing.
+    """
+    try:
+        import yaml
+
+        data = yaml.safe_load(BENCH_YAML.read_text())
+        items = data["prompts"]
+        if tier is not None:
+            items = [p for p in items if p.get("tier") == tier]
+        out = [(p["id"], p["prompt"]) for p in items[:n]]
+        if out:
+            return out
+    except Exception as e:  # noqa: BLE001
+        print(f"(could not load {BENCH_YAML.name}: {e}; using fallback prompts)")
+    return [(f"fallback_{i}", p) for i, p in enumerate(FALLBACK_PROMPTS[:n], 1)]
 
 
 def build_messages(prompt: str) -> list[dict]:
@@ -52,7 +78,13 @@ def main() -> None:
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="mps")
     ap.add_argument("--max-new-tokens", type=int, default=1024)
+    ap.add_argument("--n", type=int, default=20, help="number of prompts to test")
+    ap.add_argument("--tier", type=int, default=None, help="filter by difficulty tier (1/2/3)")
+    ap.add_argument("--print-output", action="store_true", help="dump each completion")
     args = ap.parse_args()
+
+    prompts = load_prompts(args.n, args.tier)
+    print(f"loaded {len(prompts)} prompt(s)" + (f" (tier {args.tier})" if args.tier else ""))
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -65,7 +97,9 @@ def main() -> None:
         .eval()
     )
 
-    for i, prompt in enumerate(PROMPTS, 1):
+    n_ok = 0
+    stage_counts: dict[str, int] = {}
+    for i, (pid, prompt) in enumerate(prompts, 1):
         text = tok.apply_chat_template(
             build_messages(prompt), tokenize=False, add_generation_prompt=True
         )
@@ -77,16 +111,22 @@ def main() -> None:
         completion = tok.decode(
             out[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
         )
-        print(f"\n{'=' * 72}\n[{i}] PROMPT: {prompt}\n{'-' * 72}\n{completion}\n")
 
-    # TODO (wire the auto-grade -> valid-construction rate over the benchmark):
-    #   from recipe.dsl import RecipeDSL        # parse the model's JSON output
-    #   from recipe.lower import <lower fn>     # RecipeDSL -> DiagramIR
-    #   from ir.to_sympy import compile_defs    # DiagramIR -> SymPy symbol table
-    #   from ir.checks import run_checks        # -> pass/fail per predicate
-    # Inspect recipe/lower.py and strategies/recipe.py for the exact call order
-    # (the API-based RecipeStrategy already does parse->lower->compile->check;
-    #  reuse that path, just swapping the LLM call for this local model).
+        grade = grade_completion(completion)
+        n_ok += int(grade.ok)
+        stage_counts[grade.stage] = stage_counts.get(grade.stage, 0) + 1
+
+        flag = "✓" if grade.ok else "✗"
+        print(f"[{i:>3}/{len(prompts)}] {flag} {pid:<24} {grade.summary}")
+        if args.print_output:
+            print(f"{'-' * 72}\n{completion}\n{'-' * 72}")
+
+    total = len(prompts)
+    rate = n_ok / total if total else 0.0
+    print(f"\n{'=' * 72}")
+    print(f"valid-construction rate: {n_ok}/{total} = {rate:.0%}")
+    print("stage breakdown (furthest stage reached): " +
+          ", ".join(f"{k}={v}" for k, v in sorted(stage_counts.items())))
 
 
 if __name__ == "__main__":
