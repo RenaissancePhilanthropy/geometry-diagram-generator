@@ -1,18 +1,18 @@
 \section{Human-correlation study materials and results}
 \label{app:human_study}
 
-This appendix accompanies the headline trust claim that the \GeoGenBench automatic verdict agrees with expert human judgment (\cref{ssec:human}, \cref{ssec:ver_defn}).
+This appendix accompanies the headline trust claim that the \GeoGenBench automatic verdict agrees with human judgment (\cref{ssec:human}, \cref{ssec:ver_defn}).
 The pre-registered protocol was committed to the project repository at \texttt{docs/human\_study\_protocol.md} \emph{before} annotation began; this appendix is its paper-facing counterpart.
 We separate \textbf{methodology} (frozen pre-collection) from \textbf{results} (filled at study completion) to make the pre-registration auditable: changes to the methodology subsections after \texttt{2026-05-02} are logged in the protocol's \emph{deviation log} and surfaced here.
 
 \subsection{Raters}
 \label{app:human_study:raters}
 
-Two domain-expert raters annotate the full sample independently:
+Two trained raters annotate the full sample independently:
 
 \begin{itemize}
-\item \textbf{Rater A}: PhD in mathematics; co-author.
-\item \textbf{Rater B}: award-winning K--12 mathematics educator with middle-school teaching experience; co-author.
+\item \textbf{Rater A}: PhD in mathematics; award-winning mathematics educator; co-author.
+\item \textbf{Rater B}: engineer with mathematics-teaching experience; co-author.
 \end{itemize}
 
 Both raters are paper authors --- a real but standard limitation for benchmark papers --- which we mitigate by (a)~Q1 blinding, (b)~independent annotation prior to consensus, and (c)~reporting per-rater $\kappa$ against the auto-verdict alongside the consensus statistic so reviewers can read how much consensus discussion shifted the headline number.
@@ -296,8 +296,8 @@ This is consistent with the methodology being well-calibrated: the property lang
 
 \paragraph{Direction of bias.}
 Across all $36$ disagreements, the auto-verdict is \emph{never stricter than the human consensus}.
-This one-directional bias is informative: the verifier systematically under-reports failure relative to expert humans on the templated split, with a magnitude of roughly $36/179 \approx 20\%$ of auto-pass records overturning to \texttt{fail} on consensus review.
-The implication for the headline numbers (\cref{sec:results}): the reported strict pass-rates are conservative against the verifier's lenience axis (i.e., the true expert-rated pass-rates would be \emph{lower} by roughly $5$--$10$\pp on the strictest reading); they are not inflated by spurious fails.
+This one-directional bias is informative: the verifier systematically under-reports failure relative to the human raters on the templated split, with a magnitude of roughly $36/179 \approx 20\%$ of auto-pass records overturning to \texttt{fail} on consensus review.
+The implication for the headline numbers (\cref{sec:results}): the reported strict pass-rates are conservative against the verifier's lenience axis (i.e., the true human-rated pass-rates would be \emph{lower} by roughly $5$--$10$\pp on the strictest reading); they are not inflated by spurious fails.
 
 \paragraph{Implications for v2.}
 The single dominant code (verifier missed prompt-numeric constraint) is addressable in two ways without changing the verifier's predicate language: (a) augment template generators to emit \propname{angle\_equal} or \propname{equal\_lengths} predicates that cite the prompt's numeric parameters explicitly, lifting all affected \ttwo\ templates from loose to tight; or (b) report a separate ``prompt-numerics tolerance'' metric alongside strict / loose pass.

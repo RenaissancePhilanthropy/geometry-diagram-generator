@@ -22,12 +22,12 @@ Aggregate impact on the pilot: 23 of 498 records ($4.6\%$) promote \texttt{soft\
 The strategy-effect (structured vs raw\_code) shrinks from $+10$--$30$\pp pre-hardening to $+4$--$20$\pp after, indicating about half of the prior gap was verifier weakness on \rawcode outputs, not model weakness.
 \Cref{sec:results} reports post-hardening numbers as canonical.
 
-\subsection{Human-correlation study ($N{=}200$, two domain-expert raters)}
+\subsection{Human-correlation study ($N{=}200$, two trained raters)}
 \label{ssec:human}
 
 We pre-register and run a human-correlation study against the canonical post-hardening pilot ($N{=}498$); the pre-registration is committed to \texttt{docs/human\_study\_protocol.md} prior to data collection, with full methodology in \cref{app:human_study}.
 The deterministic stratified sample (seed 42, restricted to {\rawcode}/{\structured}; deviation D-1) takes all 28 \texttt{soft\_pass} records, all 21 rendered-but-failed records, plus 151 \texttt{pass} records balanced across (tier $\times$ strategy $\times$ model).
-Two domain-expert raters (PhD mathematician + K--12 mathematics educator, both authors --- mitigated by Q1 blinding and per-rater $\kappa$ reporting) annotate independently.
+Two trained raters (one a PhD mathematician and award-winning mathematics educator, the other an engineer with mathematics-teaching experience; both authors --- mitigated by Q1 blinding and per-rater $\kappa$ reporting) annotate independently.
 \textbf{Q1 (blind):} ``Does the diagram correctly satisfy every claim in the prompt?'' \{yes / partially / no\}; the rating tool reveals neither the auto-verdict nor any per-predicate values until Q1 is submitted.
 \textbf{Q2 (post-Q1):} per-predicate \{agrees-pass / agrees-fail / disagrees / unsure\}.
 After independent annotation, raters meet ($\leq 90$ minutes) to discuss Q1 disagreements to convergence, producing one consensus label per item.
@@ -40,11 +40,10 @@ Inter-rater agreement before consensus is substantial ($\kappa = 0.704$), so the
 
 \paragraph{Interpretation: one-directional lenience.}
 The disagreement is one-directional: $36$ of $200$ records have the verifier accepting where humans reject ($18\%$ of strict-pass records overturn to \texttt{fail} on consensus review), and \emph{zero} records have the reverse.
-The verifier is systematically lenient relative to expert humans, never strict.
+The verifier is systematically lenient relative to the human raters, never strict.
 Per-tier $\kappa$: $\tone\ = 0.651$ (substantial), $\ttwo\ = 0.160$ (slight), $\tthree\ = 0.796$ (substantial); the entire disagreement concentrates on \ttwo, where the property list checks the named auxiliary construction (altitude perpendicular, median to midpoint) but not the prompt's specific numeric angle / side parameters.
 This is the loose-completeness pattern (\cref{ssec:ver_defn}) made empirical: in the qualitative coding (\cref{app:human_study:disagreement_coding}), $32 / 36$ disagreements ($89\%$) code as ``verifier missed prompt-numeric constraint.''
 
 \paragraph{Implications for the leaderboard.}
-The headline pass-rates in \cref{sec:results} should be read with one caveat: the auto-verdict is one-directionally lenient relative to expert humans, with the lenience concentrated on \ttwo\ auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
-Concretely, the strict pass-rates in \cref{tab:headline} are \emph{conservative against the verifier-bias axis} (true expert-rated rates would be lower, not inflated by spurious fails), and rate \emph{differences} between cells are largely preserved because the lenience applies uniformly across (model, strategy) cells on the affected templates.
-\GeoGenBench\ pass-rate is a moderately-but-not-perfectly-correlated proxy for expert agreement, with the gap concretely localised and the v2 fix (template-side numeric predicates lifting affected \ttwo\ templates from loose to tight) committed as follow-up work.
+The headline rates in \cref{sec:results} are upper bounds against human review (lenient, never strict) and \emph{differences} between cells are largely preserved because the lenience applies uniformly across (model, strategy) on the affected templates.
+The v2 fix --- template-side numeric predicates lifting affected \ttwo\ templates from loose to tight --- is committed as follow-up work.

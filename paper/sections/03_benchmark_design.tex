@@ -1,14 +1,12 @@
 \section{Methodology and instance}
 \label{sec:design}
 
-\GeoGen is a methodology for building automatically-verifiable benchmarks of generative geometric reasoning; \GeoGenBench is its first instantiation, for plane Euclidean geometry.
-The methodology rests on two pillars.
+\GeoGen rests on two pillars; \GeoGenBench is its plane-Euclidean instantiation.
 
 \paragraph{Pillar 1: Procedural co-generation of prompts and rubrics.}
-Both the natural-language prompt and the machine-checkable property list are emitted from the same Python source code (\cref{fig:cogen}).
-A single \texttt{altitude\_template($A,B,C,H$)} function returns both a prose request to draw the altitude and the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]} that any correct rendering must satisfy.
-This eliminates rubric/question drift and provides a contamination defence (reviewers can re-roll the engine with new seeds for fresh splits at the same difficulty distribution).
-For domains where procedural co-generation is impractical (3D, multi-step proofs), the methodology supports a fallback mode: hand- or LLM-extracted prompts paired with hand-authored property lists, with metrics reported separately by source.
+A single Python template emits both the natural-language prompt and the machine-checkable property list (\cref{fig:cogen}): \texttt{altitude\_template($A,B,C,H$)} returns a prose request together with the predicate list \texttt{[right\_angle($A$, $H$, $B$), point\_on\_segment($H$, $B$, $C$)]}.
+This eliminates prompt/rubric drift and supplies a contamination defence (reviewers re-roll with new seeds).
+For domains where procedural co-generation is impractical (3D, multi-step proofs), the methodology supports a fallback: hand- or LLM-extracted prompts paired with hand-authored property lists, reported separately by source.
 
 \begin{figure}[t]
 \centering
@@ -41,8 +39,8 @@ For domains where procedural co-generation is impractical (3D, multi-step proofs
 \end{figure}
 
 \paragraph{Pillar 2: Render-then-symbolic-verify with a declarative predicate language.}
-The model emits TikZ; a containerised LuaLaTeX renderer compiles to SVG; an extractor compiles the same source to a coordinate-bearing SymPy representation; a fixed-vocabulary, typed predicate language (\cref{tab:predicates}) is decided against the SymPy representation in microseconds per predicate.
-The language is \emph{declarative} (prompt authors specify \emph{what} must be true, not \emph{how} to check it), \emph{versioned} (\cref{app:property_reference} formalises v1: 17 symbolic + 2 source-string predicates; future instantiations extend without disturbing existing benchmarks), and \emph{renderer-agnostic} (we ship an alternate SVG-output strategy alongside TikZ to demonstrate the swap is a one-paragraph change).
+The model emits TikZ; a containerised LuaLaTeX renderer compiles to SVG; an extractor compiles the same source to coordinate-bearing SymPy; a typed predicate language (\cref{tab:predicates}) is decided against SymPy in microseconds per predicate.
+The language is \emph{declarative}, \emph{versioned} (v1: 17 symbolic + 2 source-string predicates; \cref{app:property_reference}), and \emph{renderer-agnostic} (we ship an alternate SVG-output strategy alongside TikZ).
 
 \subsection{Task formulation}
 \label{ssec:task}

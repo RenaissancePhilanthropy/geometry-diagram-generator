@@ -10,11 +10,10 @@ Headline-run findings are templated-split findings.
 
 \paragraph{Threats to validity.}
 The procedural template engine ships with the benchmark, allowing reviewers to roll fresh contamination-free splits.
-The adversarial probe found 5 predicate soft spots all addressable by hardening or template-side mitigation, yielding $<5\%$ vulnerability to constructed adversarial examples; the human-correlation study (\cref{ssec:human}) found a larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but expert raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
+The adversarial probe found 5 predicate soft spots all addressable by hardening or template-side mitigation, yielding $<5\%$ vulnerability to constructed adversarial examples; the human-correlation study (\cref{ssec:human}) found a larger $\sim 18\%$ rate of \emph{naturally-occurring} model outputs the verifier accepts but human raters reject, concentrated on auxiliary-construction templates whose property lists do not enforce prompt-specified numerics.
 
 \paragraph{Deployment and conclusion.}
-For raw TikZ, \gpt + \rawcode\ dominates (beats \opus\ + \rawcode\ by $20$\pp at $4.5\times$ lower cost; \haiku\ + \rawcode\ tied with \opus\ + \rawcode\ at $14\times$ lower cost).
-At the high-quality end, the three frontier+\structured\ cells converge within $1$\pp at $7\times$ cost spread; \gpt + \structured\ is the unique Pareto corner.
-\GeoGen's two pillars (\cref{sec:design}) extend beyond plane geometry: procedural co-generation reuses wherever a domain admits a Python-expressible construction, and render-then-symbolic-verify extends along the predicate-language axis (versioned, additive).
-Two extensions are in flight: a GenExam-Math integration \citep{wang2025genexam} re-encoding a 91-prompt geometry subset for empirical comparison between automatic verification and vision-LM judges, and a coordinate-plane / 3D-solid extension.
+The recommendation is concrete: \gpt + \rawcode\ at the price-conscious end, \gpt + \structured\ as the unique Pareto corner at the quality end (\cref{sec:results}).
+\GeoGen's two pillars extend beyond plane geometry: procedural co-generation reuses wherever a domain admits a Python-expressible construction, and render-then-symbolic-verify extends additively along the predicate-language axis.
+Two extensions are in flight: a GenExam-Math \citep{wang2025genexam} integration comparing automatic verification with vision-LM judges, and a coordinate-plane / 3D-solid extension.
 We release the dataset, template engine, verification toolkit, and Docker renderer under permissive licenses.
