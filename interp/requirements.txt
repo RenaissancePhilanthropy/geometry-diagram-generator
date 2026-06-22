@@ -1,0 +1,25 @@
+# Interpretability deps — install on the big (>=32GB) Apple-Silicon machine:
+#   pip install -r interp/requirements.txt
+# Kept separate from the project's uv/pyproject so it won't disturb `uv sync`.
+
+# core: model loading + capability check (Phase 0)
+torch              # macOS wheel ships the MPS backend; no CUDA on Apple Silicon
+transformers
+accelerate
+einops
+pyyaml             # load prompts from benchmark/definitions/*.yaml
+tqdm
+
+# probing (Phase 2)
+scikit-learn
+numpy
+pandas
+
+# activation capture / interventions (Phase 1+) — wraps arbitrary HF models,
+# the reliable choice for Qwen2.5's architecture
+nnsight
+
+# --- optional / later ---
+# transformer-lens   # only if it lists Qwen2.5 as a supported arch; else use nnsight
+# sae-lens           # Phase 4: run Qwen-Scope pretrained SAEs
+# matplotlib         # decodability-vs-layer plots

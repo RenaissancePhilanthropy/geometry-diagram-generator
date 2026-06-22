@@ -1,0 +1,10 @@
+# Don't commit large interp artifacts
+activations/
+caches/
+*.pt
+*.pth
+*.npz
+*.npy
+*.safetensors
+*.parquet
+figures/
