@@ -19,18 +19,23 @@ A request becomes a picture in three steps, shown in \cref{fig:trace}. The model
 \node[code] (ir) at (\dx,0) {A, B: free\\C: by\_angles(\\\ \ A, B, 60, 70)\\H: inter(\\\ \ line A--B,\\\ \ perp thru C)\\seg C--H\\\textbf{check}\\\ \ right\_angle(C,H,A)};
 \node[code] (sp) at (2*\dx,0) {A = (0, 0)\\B = (5, 0)\\C = (3.07, 5.31)\\H = (3.07, 0)};
 \node[code] (tk) at (3*\dx,0) {\textbackslash tkzDefPoint\\\ \ (0,0)\{A\}\ \dots\\\textbackslash tkzDrawPolygon\\\ \ (A,B,C)\\\textbackslash tkzDrawSegment\\\ \ (C,H)};
-\node[box, fill=green!6] (svg) at (4*\dx,0) {\centering
-  \begin{tikzpicture}[scale=0.30]
-    \coordinate (A) at (0,0);\coordinate (B) at (5,0);
-    \coordinate (C) at (3.07,5.31);\coordinate (H) at (3.07,0);
+\node[box, fill=green!6, align=center] (svg) at (4*\dx,0) {%
+  \begin{tikzpicture}[line width=0.4pt]
+    % direct cm coords (= the solved figure scaled 0.26, angles preserved)
+    \coordinate (A) at (0,0);
+    \coordinate (B) at (1.3,0);
+    \coordinate (C) at (0.80,1.38);
+    \coordinate (H) at (0.80,0);
+    \useasboundingbox (-0.34,-0.44) rectangle (1.64,1.96);
     \draw[thick] (A)--(B)--(C)--cycle;
     \draw[densely dashed] (C)--(H);
-    \draw (H)++(-0.55,0)--++(0,0.55)--++(0.55,0);
-    \foreach \q in {A,B,C,H}{\fill (\q) circle (5pt);}
-    \node[below left=-2pt,font=\tiny]  at (A) {$A$};
-    \node[below right=-2pt,font=\tiny] at (B) {$B$};
-    \node[above=-2pt,font=\tiny]       at (C) {$C$};
-    \node[below right=-2pt,font=\tiny] at (H) {$H$};
+    \draw (H)+(-0.12,0)--+(-0.12,0.12)--+(0,0.12); % right-angle mark
+    \foreach \q in {A,B,C,H}{\fill (\q) circle (1pt);}
+    % labels at explicit points (center anchor) so none drift to the box edge
+    \node[font=\tiny, inner sep=0pt] at (-0.17,-0.17) {$A$};
+    \node[font=\tiny, inner sep=0pt] at ( 1.47,-0.17) {$B$};
+    \node[font=\tiny, inner sep=0pt] at ( 0.94,-0.18) {$H$};
+    \node[font=\tiny, inner sep=0pt] at ( 0.80, 1.57) {$C$};
   \end{tikzpicture}};
 \foreach \n/\t in {p/{Prompt}, ir/{Description (IR)}, sp/{Coordinates}, tk/{Drawing code}, svg/{Figure}}{
   \node[hd, above=1.5mm of \n] {\t};}
@@ -44,7 +49,7 @@ A request becomes a picture in three steps, shown in \cref{fig:trace}. The model
 \end{figure*}
 
 \paragraph{Step 1: a description, not coordinates.}
-The model fills in a simple, typed form---we call it the intermediate representation, or IR. The form offers about twenty kinds of building block: points, segments, lines, circles, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$''---never ``$H = (3.07, 0)$.'' Because the form is typed, obvious mistakes (a missing point, the wrong number of arguments) are caught right away, before any geometry is computed.
+The model fills in a simple, typed form---we call it the intermediate representation, or IR. The form offers 31 kinds of building block: points, segments, lines, circles, ellipses, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$''---never ``$H = (3.07, 0)$.'' Because the form is typed, obvious mistakes (a missing point, the wrong number of arguments) are caught right away, before any geometry is computed.
 
 \paragraph{Step 2: the engine solves for the points.}
 A geometry engine---we use SymPy, a symbolic-mathematics library---reads the description and works out the coordinates, handling the building blocks in dependency order. Symbolic methods have made headlines for solving olympiad geometry~\citep{trinh2024alphageometry}; here the engine does a humbler job, working out where the points of a described figure go. When a step is ambiguous (two circles cross at two points), the description simply says which one to keep (``the higher one''). The engine, not the model, produces every coordinate. This is what makes the right angle in our example exactly $90^\circ$ rather than approximately so.
@@ -53,4 +58,4 @@ A geometry engine---we use SymPy, a symbolic-mathematics library---reads the des
 From the exact coordinates the system writes standard drawing code and compiles it to an image. Fiddly details an author should not have to manage---such as clipping a line at the edge of the canvas---are handled automatically.
 
 \paragraph{Two ways to drive it.}
-The model can fill in the form directly, or it can use a short ``recipe'' language that names a construction---\texttt{perp\_bisector(A,B)}---which then expands into the same form. Either way, the description can carry its own requirements, tested \emph{before} the figure is drawn, so the model can catch a mistake and retry. We compare both against a plain baseline in which the model just writes drawing code by hand, with no engine and no checks; that baseline is how we measure what the structured approach is worth (\cref{sec:benchmark}). Having a model write drawing code directly is itself an active line of work~\citep{belouadi2024automatikz,belouadi2024detikzify}; that work asks how closely the output resembles a target picture, whereas we ask whether its geometry is exactly right.
+The model can fill in the form directly, or it can use a short ``recipe'' language that names a construction---\texttt{perp\_bisector(A,B)}---which then expands into the same form. Either way, the description can carry its own requirements, tested \emph{before} the figure is drawn, so the model can catch a mistake and retry. We compare both against a plain baseline in which the model just writes drawing code by hand, with no engine and no checks; that baseline is how we measure what the structured approach is worth (\cref{sec:benchmark}). Having a model write drawing code directly is itself an active line of work~\citep{belouadi2024automatikz,belouadi2024detikzify}; that work asks how closely the output resembles a target picture, whereas we ask whether its geometry checks out.
