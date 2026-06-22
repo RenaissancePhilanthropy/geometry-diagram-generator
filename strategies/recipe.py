@@ -8,12 +8,13 @@ from dataclasses import dataclass, field
 
 import pydantic
 from pydantic_ai import Agent, capture_run_messages
-from pydantic_ai.exceptions import UnexpectedModelBehavior, ToolRetryError
-from pydantic_ai.messages import ModelResponse, ModelRequest, ToolCallPart, TextPart, RetryPromptPart
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, ToolRetryError
+from pydantic_ai.messages import ModelResponse, ModelRequest, ToolCallPart, TextPart, RetryPromptPart, ThinkingPart
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from strategies.structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
+from strategies.structured import StructureStrategy, StructuredRunResult, _run_ir_pipeline, dispatch_query
 from strategies.instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
+from strategies.recipe_hints import HINT_PATTERNS, HINT_TEXTS
 from recipe.catalog import (
     load_catalog,
     load_recipe,
@@ -29,7 +30,7 @@ from ir.renderer import TikZRenderer, Renderer
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
-_SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
+_SELECTOR_MODEL = "ollama:gemma4:31b-cloud"
 
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
@@ -55,6 +56,23 @@ class RecipeAttemptTrace:
     error: str | None       # error message if this attempt failed
     stage: str              # "lowering", "ir_pipeline", "output_validation", or "success"
     raw_output: str | None = None  # raw payload from model on output_validation failure
+    cot: str | None = None  # chain-of-thought (ThinkingPart content) captured for this attempt
+
+
+def _extract_cot(messages: list) -> str | None:
+    """Join all ThinkingPart contents from the captured agent messages.
+
+    Returns the concatenated chain-of-thought, or None if no thinking was
+    produced (e.g. thinking disabled, or a model/provider that doesn't emit it).
+    Used for downstream confidence analysis of the produced answer.
+    """
+    parts: list[str] = []
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ThinkingPart) and part.content:
+                    parts.append(part.content)
+    return "\n\n".join(parts) if parts else None
 
 
 def _extract_failure_diagnostics(
@@ -84,7 +102,10 @@ def _extract_failure_diagnostics(
     cause = exc.__cause__
     while cause is not None:
         if isinstance(cause, pydantic.ValidationError):
-            for err in cause.errors(include_url=False):
+            raw_errors = cause.errors(include_url=False)
+            from recipe.dsl import enrich_extra_forbidden_errors
+            enriched_errors = enrich_extra_forbidden_errors(raw_errors)
+            for err in enriched_errors:
                 loc = ".".join(str(x) for x in err.get("loc", ()))
                 error_lines.append(f"  loc={loc!r} type={err.get('type')!r} msg={err.get('msg')!r}")
             break
@@ -96,7 +117,9 @@ def _extract_failure_diagnostics(
             if isinstance(msg, ModelRequest):
                 for part in msg.parts:
                     if isinstance(part, RetryPromptPart) and isinstance(part.content, list):
-                        for err_detail in part.content:
+                        from recipe.dsl import enrich_extra_forbidden_errors
+                        enriched_content = enrich_extra_forbidden_errors(part.content)
+                        for err_detail in enriched_content:
                             loc = ".".join(str(x) for x in err_detail.get("loc", ()))
                             error_lines.append(
                                 f"  loc={loc!r} type={err_detail.get('type')!r} msg={err_detail.get('msg')!r}"
@@ -120,6 +143,7 @@ class RecipeMetadata:
     selection_input_tokens: int = 0
     selection_output_tokens: int = 0
     attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
+    cot: str | None = None  # chain-of-thought of the successful attempt (the answer's reasoning)
 
 
 class RecipeStrategy(SubstanceStrategy):
@@ -136,11 +160,12 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None) -> None:
-        super().__init__(enable_cache=enable_cache)
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None, thinking: bool = False, prompt_overrides: dict[str, str] | None = None) -> None:
+        super().__init__(enable_cache=enable_cache, thinking=thinking)
         self.use_recipes = use_recipes
         self.catalog = catalog
         self.renderer = renderer
+        self.prompt_overrides = prompt_overrides or {}
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
@@ -203,7 +228,7 @@ class RecipeStrategy(SubstanceStrategy):
             selection_prompt = build_selection_prompt(prompt, catalog)
             selector_agent: Agent[None, str] = Agent(
                 _SELECTOR_MODEL,
-                instructions=RECIPE_SELECTION_SYSTEM,
+                instructions=self.prompt_overrides.get("selection_system", RECIPE_SELECTION_SYSTEM),
                 output_type=str,
                 model_settings=self.model_settings,
             )
@@ -238,9 +263,9 @@ class RecipeStrategy(SubstanceStrategy):
                     logger.warning("Selected recipe %r not found in catalog; skipping", rid)
 
             recipe_metadata.unmatched_concepts = unmatched_concepts
-            generation_prompt = build_generation_prompt(prompt, recipes, DSL_DOCS)
+            generation_prompt = build_generation_prompt(prompt, recipes, self.prompt_overrides.get("dsl_docs", DSL_DOCS))
         else:
-            generation_prompt = build_generation_prompt(prompt, [], DSL_DOCS)
+            generation_prompt = build_generation_prompt(prompt, [], self.prompt_overrides.get("dsl_docs", DSL_DOCS))
 
         if previous_dsl_json is not None:
             generation_prompt = (
@@ -268,61 +293,76 @@ class RecipeStrategy(SubstanceStrategy):
             if attempt > 0:
                 retry_msg = f"{generation_prompt}\n\nPrevious attempt failed: {last_error}\n"
 
-                # Check if error is AngleEqual-style and append targeted hint
-                if re.search(r"Angle \S+ = [\d.]+° but \S+ = [\d.]+", last_error):
-                    retry_msg += (
-                        "\nHINT: When two angles must be equal across separate constructions (e.g.\n"
-                        "mark_angle group), ensure the triangles are geometrically similar.\n"
-                        "For triangle ops: use the same angle values in both specs, OR use\n"
-                        "proportional side lengths with matching right_angle_at positions\n"
-                        "(e.g. legs 2:3 and 10:15 produce identical base angles).\n"
-                        "For free points: derive the second construction's coordinates from\n"
-                        "the first using the same ratios or rotation angles.\n"
-                    )
+                # Append targeted hints based on error patterns
+                for pattern, hint_key in HINT_PATTERNS:
+                    if pattern.search(last_error):
+                        hint_text = self.prompt_overrides.get(hint_key, HINT_TEXTS[hint_key])
+                        retry_msg += f"\nHINT: {hint_text}\n"
 
-                # Hint B: mark_right_angle geometric check failure
-                if re.search(r"mark_right_angle\(.*?\).*?not 90", last_error):
-                    retry_msg += (
-                        "\nHINT: A mark_right_angle annotation failed because the angle at that"
-                        " vertex is not 90°. The annotation declares an intent — the construction"
-                        " must make it true. Use point_foot to project the point onto the line:"
-                        " `{op: 'point_foot', id: 'X', source: 'P', onto: 'seg_AB'}` guarantees"
-                        " angle P-X-endpoint = 90°. Do not place the foot manually with"
-                        " point_along or fixed coordinates — only point_foot guarantees the right"
-                        " angle.\n"
-                    )
+                        # Dynamic context for specific hint types
+                        if hint_key == "hint_right_angle":
+                            # Extract candidate right-angle triples from the error message.
+                            candidates = re.findall(
+                                r"right angles at (\S+): ((?:\S+=90\.0°(?:, )?)+)",
+                                last_error,
+                            )
+                            if candidates:
+                                retry_msg += (
+                                    " The checker found right angles at the same vertex using"
+                                    " DIFFERENT point triples — use one of these instead:\n"
+                                )
+                                for vertex, cands in candidates:
+                                    retry_msg += f"    At {vertex}: {cands}\n"
+                                retry_msg += (
+                                    " Change your mark_right_angle to use one of these triples"
+                                    " (a, vertex, b) that actually measure 90°.\n"
+                                )
+                            else:
+                                retry_msg += (
+                                    " Use point_foot to project the point onto the line:"
+                                    " `{op: 'point_foot', id: 'X', source: 'P', onto: 'seg_AB'}`"
+                                    " guarantees angle P-X-endpoint = 90°. Do not place the foot"
+                                    " manually with point_along or fixed coordinates — only"
+                                    " point_foot guarantees the right angle.\n"
+                                )
 
-                # Hint C: circular dependency caused by triangle id matching a vertex name
-                if re.search(r"[Cc]ircular dependency.*nodes are in a cycle", last_error):
-                    retry_msg += (
-                        "\nHINT: A circular dependency was detected — this almost always means a"
-                        " triangle (or other shape) op has an `id` that is the same as one of its"
-                        " own vertex names. For example, `{op:'triangle', id:'T', vertices:['R','S','T']}`"
-                        " creates a cycle because the shape object and vertex point share the id 'T'."
-                        " Fix: give the triangle a distinct id that does not appear in its vertices"
-                        " list, e.g. `id:'tri_RST'`.\n"
-                    )
+                        elif hint_key == "hint_mark_angle":
+                            # Extract candidates from both lowering and geometric-check formats
+                            lowering_cands = re.findall(
+                                r"MarkAngle at (\S+):.*?candidates: ((?:\S+=\S+?°(?:, )?)+)",
+                                last_error,
+                            )
+                            geo_cands = re.findall(
+                                r"at (\S+) try: ((?:\S+=\S+?°(?:; )?)+)",
+                                last_error,
+                            )
+                            all_cands = lowering_cands + geo_cands
+                            if all_cands:
+                                retry_msg += (
+                                    " The checker found angle pairs that ARE"
+                                    " equal at the same vertex(es) — use one of these instead:\n"
+                                )
+                                for vertex, cands in all_cands:
+                                    retry_msg += f"    At {vertex}: {cands}\n"
+                                retry_msg += (
+                                    " Change your mark_angle to use point triples that actually"
+                                    " produce equal angles. If using two separate triangles, ensure"
+                                    " they are geometrically similar (same angles or proportional sides).\n"
+                                )
 
-                # Hint D: between-selector mismatch (intersection outside the segment)
-                if re.search(r"beyond|before .+, t≈", last_error):
-                    retry_msg += (
-                        "\nHINT: The intersection exists but is outside the segment"
-                        " (t<0 = before the start point, t>1 = beyond the end point). This"
-                        " usually means the two objects' endpoints are placed so they don't"
-                        " actually cross between the named points. Reposition the endpoints so"
-                        " the two lines/segments genuinely intersect between the selector's"
-                        " reference points. For chords: ensure both chords span the interior of"
-                        " the circle and cross each other. For an angle bisector: verify the"
-                        " vertex angle is what the problem states (check the actual angle in"
-                        " your coords).\n"
-                    )
+                        elif hint_key == "hint_undefined_id":
+                            undef_ids = re.findall(r"references undefined id '([^']+)'", last_error)
+                            retry_msg += (
+                                " Your DSL references id(s) that are not defined in the"
+                                " construction list: " + ", ".join(repr(i) for i in set(undef_ids)) + ".\n"
+                            )
 
                 retry_msg += "Please produce a corrected RecipeDSL."
                 user_message = retry_msg
 
             gen_agent: Agent[None, RecipeDSL] = Agent(
                 model,
-                instructions=RECIPE_GENERATION_SYSTEM,
+                instructions=self.prompt_overrides.get("generation_system", RECIPE_GENERATION_SYSTEM),
                 output_type=RecipeDSL,
                 model_settings=self.model_settings,
             )
@@ -341,8 +381,10 @@ class RecipeStrategy(SubstanceStrategy):
                         error=last_error,
                         stage="output_validation",
                         raw_output=raw_payload,
+                        cot=_extract_cot(agent_messages),
                     ))
                     continue
+            cot = _extract_cot(agent_messages)
             usage = response.usage()
             total_input_tokens += usage.input_tokens or 0
             total_output_tokens += usage.output_tokens or 0
@@ -359,7 +401,12 @@ class RecipeStrategy(SubstanceStrategy):
             # Lowering
             try:
                 diagram_ir = lower_to_ir(dsl)
-            except (LoweringError, pydantic.ValidationError) as e:
+            except Exception as e:
+                # Broadened from (LoweringError, pydantic.ValidationError): SymPy
+                # and other lowering-stage errors (e.g. ValueError, AttributeError)
+                # must also be caught so the already-captured CoT is preserved in
+                # the attempt trace and the loop can retry, rather than propagating
+                # and discarding both the trace and the CoT.
                 last_error = f"Lowering failed: {e}"
                 logger.warning("Attempt %d lowering error: %s", attempt + 1, e)
                 recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
@@ -367,6 +414,7 @@ class RecipeStrategy(SubstanceStrategy):
                     dsl_json=dsl.model_dump(),
                     error=last_error,
                     stage="lowering",
+                    cot=cot,
                 ))
                 continue
 
@@ -381,7 +429,13 @@ class RecipeStrategy(SubstanceStrategy):
             # IR pipeline
             try:
                 result = await _run_ir_pipeline(diagram_ir, _renderer)
-            except RuntimeError as e:
+            except Exception as e:
+                # Broadened from RuntimeError: the IR pipeline compiles to SymPy,
+                # which can raise ValueError/AttributeError (e.g.
+                # "Line2D.__new__ requires two unique Points.", "Point2D has no
+                # attribute 'perpendicular_line'") on degenerate geometry. Catching
+                # these preserves the captured CoT in the attempt trace and lets
+                # the loop retry / fall back instead of propagating.
                 last_error = str(e)
                 logger.warning("Attempt %d IR pipeline error: %s", attempt + 1, e)
                 recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
@@ -389,6 +443,7 @@ class RecipeStrategy(SubstanceStrategy):
                     dsl_json=dsl.model_dump(),
                     error=last_error,
                     stage="ir_pipeline",
+                    cot=cot,
                 ))
                 continue
 
@@ -397,7 +452,9 @@ class RecipeStrategy(SubstanceStrategy):
                 dsl_json=dsl.model_dump(),
                 error=None,
                 stage="success",
+                cot=cot,
             ))
+            recipe_metadata.cot = cot
             return StructuredRunResult(
                 diagram_ir=result.diagram_ir,
                 tikz=result.tikz,
@@ -409,7 +466,82 @@ class RecipeStrategy(SubstanceStrategy):
                 recipe_metadata=recipe_metadata,
             )
 
+        # --- Fallback: try Structured strategy (with one retry for transient API errors) ---
+        logger.info(
+            "RecipeStrategy exhausted %d retries, falling back to StructuredStrategy",
+            MAX_RETRIES,
+        )
+        fallback_strategy = StructureStrategy(enable_cache=False, thinking=self.thinking)
+        fallback_exc: Exception | None = None
+        for fallback_attempt in range(2):  # 2 attempts to handle transient API errors
+            try:
+                fallback_result = await fallback_strategy.run(
+                    prompt, model=model, renderer=_renderer,
+                )
+                fallback_result.input_tokens += total_input_tokens
+                fallback_result.output_tokens += total_output_tokens
+                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                    attempt=MAX_RETRIES + 1 + fallback_attempt,
+                    dsl_json=None,
+                    error=None,
+                    stage="fallback_structured_success",
+                ))
+                # When every recipe attempt failed (so `recipe_metadata.cot`
+                # was never set on a success), fall back to the last attempt
+                # that *did* capture thinking. The failing recipe attempts'
+                # CoT is the informative signal for the confidence judge and
+                # for diagnosing *where* generation went wrong — the
+                # StructuredStrategy fallback does not collect CoT, so without
+                # this the record's top-level `cot` would be None and
+                # cot-analysis would skip it entirely.
+                if recipe_metadata.cot is None:
+                    recipe_metadata.cot = next(
+                        (t.cot for t in reversed(recipe_metadata.attempt_traces) if t.cot),
+                        None,
+                    )
+                fallback_result.recipe_metadata = recipe_metadata
+                return fallback_result
+            except Exception as exc:
+                fallback_exc = exc
+                # Log the request body that triggered the error for debugging
+                if isinstance(exc, ModelHTTPError) and exc.status_code == 400:
+                    cause = exc.__cause__
+                    if cause is not None and hasattr(cause, 'response') and hasattr(cause.response, 'request'):
+                        try:
+                            req_body = cause.response.request.content.decode('utf-8')[:5000]
+                            logger.warning(
+                                "StructuredStrategy fallback attempt %d failed with 400: %s\nRequest body:\n%s",
+                                fallback_attempt + 1,
+                                exc,
+                                req_body,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "StructuredStrategy fallback attempt %d failed: %s",
+                                fallback_attempt + 1,
+                                exc,
+                            )
+                    else:
+                        logger.warning(
+                            "StructuredStrategy fallback attempt %d failed: %s",
+                            fallback_attempt + 1,
+                            exc,
+                        )
+                else:
+                    logger.warning(
+                        "StructuredStrategy fallback attempt %d failed: %s",
+                        fallback_attempt + 1,
+                        exc,
+                    )
+                recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
+                    attempt=MAX_RETRIES + 1 + fallback_attempt,
+                    dsl_json=None,
+                    error=str(exc),
+                    stage="fallback_structured_failure",
+                ))
+        # Both fallback attempts failed
+        self._partial_recipe_metadata = recipe_metadata
         raise RuntimeError(
             f"RecipeStrategy failed after {MAX_RETRIES} attempts. "
             f"Last error: {last_error}"
-        )
+        ) from fallback_exc

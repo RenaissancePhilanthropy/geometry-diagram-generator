@@ -282,38 +282,94 @@ def extract_draw_commands(tikz: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 _RIGHT_ANGLE_RE = re.compile(
-    rf"\\tkzMarkRightAngle(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
+    rf"\\tkzMarkRightAngle(?:\[([^\]]*)\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
 _ANGLE_MARK_RE = re.compile(
-    rf"\\tkzMarkAngle(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
+    rf"\\tkzMarkAngle(?:\[([^\]]*)\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
 _SEGMENT_MARK_RE = re.compile(
-    rf"\\tkzMarkSegment(?:\[[^\]]*\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
+    rf"\\tkzMarkSegment(?:\[([^\]]*)\])?\s*\(\s*({_POINT_NAME})\s*,\s*({_POINT_NAME})\s*\)"
 )
+
+# Match the mark symbol inside an option string, e.g. "mark=||" -> "||".
+_TICK_SYMBOL_RE = re.compile(r"mark\s*=\s*([^,\]\s]+)")
+# Match the tkz-euclide arc option, e.g. "arc=ll" -> "ll".
+_ARC_OPTION_RE = re.compile(r"arc\s*=\s*(l+)")
+
+
+def _segment_mark_info(opts: str | None) -> tuple[str, int, str]:
+    """Return (mark_type, count, symbol) for a segment-mark option string.
+
+    tkz-euclide encodes equal-length tick marks as ``mark=|`` (1), ``||`` (2),
+    ``|||`` (3) and slash variants ``s``/``s|``/``s||``; parallel marks use
+    ``mark=>``/``>>``/``>>>``. We split these into two kinds so a tick check
+    never matches a parallel arrow: ``>``-family → ``parallel_mark``, everything
+    else → ``segment_mark`` (a tick). ``count`` is the stroke multiplicity.
+    """
+    if not opts:
+        return "segment_mark", 1, "|"
+    m = _TICK_SYMBOL_RE.search(opts)
+    if not m:
+        return "segment_mark", 1, "|"
+    symbol = m.group(1)
+    if ">" in symbol:
+        return "parallel_mark", max(symbol.count(">"), 1), symbol
+    n = symbol.count("|")
+    return "segment_mark", (n if n >= 1 else 1), symbol
+
+
+def _arc_count(opts: str | None) -> int:
+    """Return the arc stroke count for an angle-mark option string.
+
+    tkz-euclide encodes arc multiplicity as ``arc=l`` (1), ``arc=ll`` (2),
+    ``arc=lll`` (3). Absent → 1 (a single arc is the default).
+    """
+    if not opts:
+        return 1
+    m = _ARC_OPTION_RE.search(opts)
+    return len(m.group(1)) if m else 1
 
 
 def extract_marks(tikz: str) -> list[dict[str, Any]]:
-    """Extract mark commands: right angles, angles, segment tick marks."""
+    """Extract mark commands: right angles, angles, segment tick marks.
+
+    Each mark dict carries the legacy ``from``/``to``/``vertex`` fields plus a
+    ``count`` (stroke multiplicity) and ``symbol``. Segment marks are split by
+    kind: ``>``-family parallel arrows → ``type="parallel_mark"``; ``|``/``s``
+    -family ticks → ``type="segment_mark"`` — so a tick check never matches a
+    parallel arrow. ``right_angle``/``angle`` marks carry an arc ``count``.
+    """
     marks: list[dict[str, Any]] = []
 
     for m in _RIGHT_ANGLE_RE.finditer(tikz):
         marks.append({
             "type": "right_angle",
-            "from": m.group(1),
-            "vertex": m.group(2),
-            "to": m.group(3),
+            "from": m.group(2),
+            "vertex": m.group(3),
+            "to": m.group(4),
+            "count": 1,
         })
 
     for m in _ANGLE_MARK_RE.finditer(tikz):
+        opts = m.group(1)
         marks.append({
             "type": "angle",
-            "from": m.group(1),
-            "vertex": m.group(2),
-            "to": m.group(3),
+            "from": m.group(2),
+            "vertex": m.group(3),
+            "to": m.group(4),
+            "count": _arc_count(opts),
         })
 
     for m in _SEGMENT_MARK_RE.finditer(tikz):
-        marks.append({"type": "segment_mark", "from": m.group(1), "to": m.group(2)})
+        opts = m.group(1)
+        mtype, count, symbol = _segment_mark_info(opts)
+        marks.append({
+            "type": mtype,
+            "from": m.group(2),
+            "to": m.group(3),
+            "count": count,
+            "symbol": symbol,
+        })
 
     return marks
 
@@ -328,6 +384,22 @@ _LABEL_POINTS_RE = re.compile(
 _LABEL_POINT_RE = re.compile(
     rf"\\tkzLabelPoint(?:\[[^\]]*\])?\s*\(({_POINT_NAME})\)\s*\{{([^}}]+)\}}"
 )
+# Free-floating text labels placed via \node or a bare path-style `node` op,
+# e.g. `\node at (5.5,2.3) {$m$};` or `\draw (A)--(B) node[midway] {$x$};`.
+# These are how LLMs label lines, regions, and axes (vs. points, which use
+# \tkzLabelPoint). Captures the text inside the first {...} group.
+_NODE_LABEL_RE = re.compile(
+    r"(?:\\node|(?<![\w\\])node)\b[^;{}]*?\{([^{}]*)\}"
+)
+# Segment/angle labels: the label text lives in braces; the parenthesized
+# args are point ids (not the label). e.g. \tkzLabelAngle(A,B,C){$1$}.
+_LABEL_SEGMENT_RE = re.compile(
+    r"\\tkzLabelSegment(?:\[[^\]]*\])?\s*\([^)]*\)\s*\{([^}]+)\}"
+)
+_LABEL_ANGLE_RE = re.compile(
+    r"\\tkzLabelAngle(?:\[[^\]]*\])?\s*\([^)]*\)\s*\{([^}]+)\}"
+)
+_MATH_SEG_RE = re.compile(r"\$([^$]+)\$")
 _TKZ_GRID_RE = re.compile(r"\\tkzGrid\b")
 _TKZ_AXES_RE = re.compile(r"\\tkzAxeXY\b")
 _RAW_GRID_RE = re.compile(
@@ -338,6 +410,27 @@ _RAW_AXIS_DRAW_RE = re.compile(
     r"\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)\s*--\s*"
     r"\(\s*([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)\s*\)"
 )
+
+
+def label_text_tokens(inner: str) -> list[str]:
+    """Extract label tokens from the text/brace content of a label.
+
+    Prefers inline-math segments ($...$); falls back to the whole stripped
+    content when there is no math delimiter. Empty tokens are dropped.
+
+    Used for both free `\\node` text labels and the text of `\\tkzLabelPoint`
+    (where the human-readable label often lives, distinct from the point id).
+    """
+    tokens: list[str] = []
+    for m in _MATH_SEG_RE.finditer(inner):
+        s = m.group(1).strip()
+        if s:
+            tokens.append(s)
+    if not tokens:
+        s = inner.strip().strip("$").strip()
+        if s:
+            tokens.append(s)
+    return tokens
 
 
 def extract_labels(tikz: str) -> list[dict[str, Any]]:
@@ -351,7 +444,40 @@ def extract_labels(tikz: str) -> list[dict[str, Any]]:
     for m in _LABEL_POINT_RE.finditer(tikz):
         labels.append({"type": "label_point", "point": m.group(1), "text": m.group(2)})
 
+    for m in _NODE_LABEL_RE.finditer(tikz):
+        for token in label_text_tokens(m.group(1)):
+            labels.append({"type": "node_label", "text": token})
+
+    for m in _LABEL_SEGMENT_RE.finditer(tikz):
+        for token in label_text_tokens(m.group(1)):
+            labels.append({"type": "segment_label", "text": token})
+
+    for m in _LABEL_ANGLE_RE.finditer(tikz):
+        for token in label_text_tokens(m.group(1)):
+            labels.append({"type": "angle_label", "text": token})
+
     return labels
+
+
+def collect_label_names(tikz: str) -> list[str]:
+    """All candidate label names in *tikz*: point ids plus label text tokens.
+
+    Unified source for label-presence checks (`validate_required_labels`,
+    `label_present`). Covers `\\tkzLabelPoint[s]` (point id and text),
+    `\\tkzLabelSegment`/`\\tkzLabelAngle` text, and free `\\node` text.
+    """
+    names: list[str] = []
+    for label in extract_labels(tikz):
+        t = label.get("type")
+        if t == "label_points":
+            names.extend(label["points"])
+        elif t == "label_point":
+            names.append(label["point"])
+            names.extend(label_text_tokens(label["text"]))
+        elif "text" in label:
+            # node_label / segment_label / angle_label — text already tokenized.
+            names.append(label["text"])
+    return names
 
 
 # ---------------------------------------------------------------------------

@@ -10,11 +10,14 @@ Provides two evaluation modes:
 """
 from __future__ import annotations
 
+import json
 import re
+import logfire  # used only by the commented-out instrumentation below
+# from logfire import ConsoleOptions  # uncomment with the verbose console option below
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from strategies.base import cache_model_settings
+from strategies.base import DEFAULT_AGENT_MODEL, cache_model_settings
 
 _CODE_REVIEW_SYSTEM = """\
 You are an expert geometry teacher and TikZ/tkz-euclide code reviewer.
@@ -119,7 +122,7 @@ async def judge_tikz_code(
     prompt: str,
     tikz_code: str,
     tkzelements_code: str | None = None,
-    model: str = "anthropic:claude-sonnet-4-6",
+    model: str = "openai:Qwen3.6-35B-A3B-Q8K.gguf",  #"ollama:gemma4:latest", # gemma4:31b-cloud",#qwen3-coder-next:cloud",#"openrouter:google/gemma-4-31b-it:free", #deepseek/deepseek-v4-flash:free",# "anthropic:claude-sonnet-4-6",
     enable_cache: bool = False,
 ) -> dict:
     """
@@ -129,6 +132,22 @@ async def judge_tikz_code(
     Returns a dict with keys:
       score, geometric_accuracy, labeling, completeness, likely_renders, reasoning
     """
+
+    # --- Logfire / pydantic-ai instrumentation (OFF by default) ---
+    # Uncomment to troubleshoot agent runs. Two knobs matter:
+    #   - send_to_logfire=False : no Logfire cloud export (no `logfire auth`
+    #     token needed); spans still go to the local SQLite DB (`logfire view`).
+    #     Cloud mode raises LogfireConfigError without a token and nulled every
+    #     judge score in eval runs.
+    #   - console=False : silence stdout. A verbose console
+    #     (ConsoleOptions(min_log_level='trace', verbose=True, ...)) floods
+    #     stdout with every pydantic-ai span once instrument_pydantic_ai() runs.
+    #     Flip to `console=ConsoleOptions(...)` only when actively debugging.
+    # In logfire 4.34+ `local=True` is NOT the offline knob — it returns a
+    # non-global instance — so use `send_to_logfire=False`.
+    # logfire.configure(send_to_logfire=False, console=False)
+    # logfire.instrument_pydantic_ai()
+
     agent: Agent[None, _JudgeResult] = Agent(
         model,
         system_prompt=_CODE_REVIEW_SYSTEM,
@@ -141,6 +160,7 @@ async def judge_tikz_code(
         parts.append(f"\ntkz-elements Lua block:\n```\n{tkzelements_code}\n```")
 
     user_message = "\n".join(parts)
+
     result = await agent.run(user_message)
 
     data = result.output
@@ -158,7 +178,7 @@ async def judge_rendered_diagram(
     prompt: str,
     svg: str,
     tikz_code: str | None = None,
-    model: str = "anthropic:claude-sonnet-4-6",
+    model: str = "openai:Qwen3.6-35B-A3B-Q8K.gguf",#"ollama:gemma4:31b-cloud", #"anthropic:claude-sonnet-4-6",
     enable_cache: bool = False,
 ) -> dict:
     """
@@ -207,4 +227,105 @@ async def judge_rendered_diagram(
         "completeness": data.completeness,
         "visual_quality": data.visual_quality,
         "reasoning": data.reasoning,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Mode 3: CoT-analysis (confidence judge)
+# ---------------------------------------------------------------------------
+
+_COT_ANALYSIS_SYSTEM = """\
+You are an expert evaluator analyzing a geometry-diagram model's chain-of-thought
+to judge how reliable its answer is.
+
+You are given:
+- the user's geometry prompt,
+- the RecipeDSL the model produced (its answer),
+- the model's chain-of-thought (CoT) emitted while producing that answer.
+
+Your job is NOT to re-grade the geometry itself, but to assess the PROCESS: how
+much should we trust this answer given how the model reasoned?
+
+Fill every field:
+- confidence (1-5): how reliable the answer is, given the CoT. High = coherent
+  CoT that matches the prompt and DSL, explicit verification, few unresolved
+  guesses. Low = hedging, arbitrary assumptions, self-contradictions, or CoT
+  that doesn't match the produced DSL.
+- confidence_reasoning: one short sentence.
+- signals.hedging: count of uncertainty markers ('maybe', 'I think', 'not
+  sure', 'perhaps').
+- signals.explicit_assumptions: count of arbitrary/unjustified choices the
+  model flagged (e.g. 'pick reasonable values 3, 4').
+- signals.self_corrections: count of backtracks or revised decisions
+  ('Wait, ...', reconsidering a prior choice).
+- signals.verification_steps: count of times the model checked its own work
+  (raises trust).
+- signals.cot_answer_mismatch: true if the CoT reasoning contradicts the
+  produced RecipeDSL.
+- signals.cot_prompt_mismatch: true if the CoT misreads or ignores part of
+  the prompt.
+- signals.reasoning_depth (1-5): how thoroughly the CoT explores the problem
+  (1 = superficial, 5 = exhaustive).
+
+Be precise with counts. Default both mismatch flags to false unless clearly
+present.
+"""
+
+
+class CotSignals(BaseModel):
+    hedging: int = Field(ge=0, description="Count of uncertainty markers ('maybe', 'I think', 'not sure', 'perhaps').")
+    explicit_assumptions: int = Field(ge=0, description="Count of arbitrary/unjustified choices the model flagged (e.g. 'pick reasonable values 3, 4').")
+    self_corrections: int = Field(ge=0, description="Count of backtracks or revised decisions ('Wait, ...').")
+    verification_steps: int = Field(ge=0, description="Count of times the model checked its own work (raises trust).")
+    cot_answer_mismatch: bool = Field(description="True if the CoT contradicts the produced RecipeDSL.")
+    cot_prompt_mismatch: bool = Field(description="True if the CoT misreads or ignores part of the prompt.")
+    reasoning_depth: int = Field(ge=1, le=5, description="How thoroughly the CoT explores the problem (1=superficial, 5=exhaustive).")
+
+
+class CotAnalysisResult(BaseModel):
+    confidence: int = Field(ge=1, le=5, description="Overall reliability of the answer given the CoT, 1-5.")
+    confidence_reasoning: str = Field(description="One short sentence explaining the confidence score.")
+    signals: CotSignals
+
+
+async def analyze_cot_llm(
+    prompt: str,
+    dsl_json: dict,
+    cot: str,
+    model: str = DEFAULT_AGENT_MODEL,
+    enable_cache: bool = False,
+) -> dict:
+    """
+    Ask an LLM to evaluate the model's chain-of-thought and estimate how
+    reliable the produced answer is. Text-only (no rendering required).
+
+    NOTE: this is the ORIGINAL LLM CoT judge, retained as `analyze_cot_llm`
+    for comparison. It undercounts uncertainty markers in long CoTs and
+    returned a near-constant confidence=5, so the default `analyze_cot` is
+    now the deterministic text analyzer in `util/cot_analyzer.py`. This LLM
+    version is not called by the eval harness by default.
+
+    Returns a dict with keys:
+      score (1-5 confidence), reasoning (one-sentence), signals (dict of the
+      seven CoT signals).
+    """
+    agent: Agent[None, CotAnalysisResult] = Agent(
+        model,
+        system_prompt=_COT_ANALYSIS_SYSTEM,
+        output_type=CotAnalysisResult,
+        model_settings=cache_model_settings(enable_cache),
+    )
+
+    user_message = (
+        f"User prompt:\n{prompt}\n\n"
+        f"Produced RecipeDSL:\n```json\n{json.dumps(dsl_json, indent=2)}\n```\n\n"
+        f"Chain-of-thought:\n{cot}"
+    )
+
+    result = await agent.run(user_message)
+    data = result.output
+    return {
+        "score": data.confidence,
+        "reasoning": data.confidence_reasoning,
+        "signals": data.signals.model_dump(),
     }

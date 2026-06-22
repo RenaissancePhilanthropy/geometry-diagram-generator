@@ -358,6 +358,62 @@ def test_recipe_dsl_minimal():
     assert dsl.mode == "abstract"
     assert len(dsl.construction) == 1
 
+
+# ---- annotations shape coercion (models emit list/string instead of object) ----
+
+def _minimal_dsl(annotations):
+    return RecipeDSL(
+        mode="abstract",
+        construction=[{"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
+                       "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 3}}],
+        annotations=annotations,
+    )
+
+
+def test_annotations_list_of_marks_coerced_to_object():
+    dsl = _minimal_dsl([
+        {"kind": "mark_equal_lengths", "segments": [["A", "B"], ["A", "C"]], "group": 1},
+    ])
+    assert isinstance(dsl.annotations, DSLAnnotations)
+    assert len(dsl.annotations.marks) == 1
+    assert dsl.annotations.marks[0].kind == "mark_equal_lengths"
+    assert dsl.annotations.labels == []
+
+
+def test_annotations_list_mixes_marks_and_labels_by_kind():
+    dsl = _minimal_dsl([
+        {"kind": "mark_equal_lengths", "segments": [["A", "B"], ["C", "D"]], "group": 1},
+        {"kind": "label_point", "point": "A", "text": "A"},
+    ])
+    assert len(dsl.annotations.marks) == 1
+    assert len(dsl.annotations.labels) == 1
+
+
+def test_annotations_json_string_coerced():
+    import json
+    obj = {"auto_draw_all": True, "marks": [{"kind": "mark_right_angle", "a": "A", "vertex": "C", "b": "B"}]}
+    dsl = _minimal_dsl(json.dumps(obj))
+    assert dsl.annotations.auto_draw_all is True
+    assert len(dsl.annotations.marks) == 1
+
+
+def test_annotations_unparseable_string_defaults_gracefully():
+    # Non-JSON string must not fail the whole construction; annotations default.
+    dsl = _minimal_dsl("some prose, not json")
+    assert isinstance(dsl.annotations, DSLAnnotations)
+    assert dsl.annotations.marks == []
+
+
+def test_annotations_none_defaults():
+    dsl = _minimal_dsl(None)
+    assert isinstance(dsl.annotations, DSLAnnotations)
+
+
+def test_annotations_object_passes_through():
+    dsl = _minimal_dsl({"auto_draw_all": False, "marks": [], "labels": []})
+    assert dsl.annotations.auto_draw_all is False
+
+
 def test_recipe_dsl_reserved_id_rejected():
     """IDs starting with __ are reserved for lowering intermediates."""
     with pytest.raises(ValidationError):

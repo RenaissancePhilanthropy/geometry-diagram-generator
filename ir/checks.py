@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import math
+import traceback
 from typing import Any
 
 import sympy.geometry as spg
@@ -8,6 +10,8 @@ from pydantic import BaseModel
 
 import ir.ir as ir
 from ir.to_sympy import SymTable
+
+logger = logging.getLogger(__name__)
 
 
 class CheckResult(BaseModel):
@@ -190,7 +194,18 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
         return CheckResult(check=check, passed=ok, message=msg)
 
     except Exception as exc:
-        return CheckResult(check=check, passed=False, message=f"Error in {check.kind!r}: {exc}")
+        # Capture the full traceback at this site so the originating line number
+        # is visible to the caller (strategy retry prompts only get a one-liner;
+        # the full traceback is logged at debug level for forensic inspection).
+        tb = traceback.format_exc()
+        last_frame = traceback.extract_tb(exc.__traceback__)[-1] if exc.__traceback__ else None
+        location = f"{last_frame.filename}:{last_frame.lineno}" if last_frame else "<unknown>"
+        logger.debug("Unhandled error in check %r:\n%s", check.kind, tb)
+        return CheckResult(
+            check=check,
+            passed=False,
+            message=f"Error in {check.kind!r}: {exc} (at {location})",
+        )
 
 
 # ---------------------------------------------------------------------------

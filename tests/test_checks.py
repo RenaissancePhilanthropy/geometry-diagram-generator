@@ -122,3 +122,48 @@ def test_distance_equals_fails_when_segment_has_wrong_length():
     results = run_checks(checks, sym)
     assert not results[0].passed
     assert "s" in results[0].message
+
+
+# ---------------------------------------------------------------------------
+# Error reporting: traceback location should appear in the message
+# ---------------------------------------------------------------------------
+
+def test_check_error_includes_file_and_line_in_message(monkeypatch):
+    """When a check body raises, the returned message should include the
+    originating file:line of the failing frame so the strategy retry prompt
+    (and human logs) can pinpoint the bug without rerunning with a debugger.
+
+    Regression test for the altitude/parallel-marks scenario where we only
+    had the bare 'Error in perpendicular: float has no attribute evalf'
+    string and couldn't tell which check body actually failed.
+    """
+    import ir.checks as cm
+    from ir.ir import Perpendicular, LineThrough, PointFixed, DiagramIR
+    from ir.to_sympy import compile_defs
+
+    def _raise(*_args, **_kwargs):
+        raise ValueError("simulated failure for test")
+
+    monkeypatch.setattr(cm, "_to_bool", _raise)
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=1, y=0),
+        LineThrough(id="L1", p="A", q="B"),
+        LineThrough(id="L2", p="A", q="B"),
+    ]))
+    checks = [Perpendicular(l1="L1", l2="L2")]
+    results = run_checks(checks, sym)
+
+    assert len(results) == 1
+    assert not results[0].passed
+    msg = results[0].message
+    assert "Error in 'perpendicular'" in msg
+    assert "simulated failure for test" in msg
+    # New: location must be appended in the form "(at <file>:<line>)"
+    import re
+    m = re.search(r"\(at ([^:]+):(\d+)\)$", msg)
+    assert m, f"expected trailing '(at <file>:<line>)' in message, got: {msg!r}"
+    # The innermost frame is the monkey-patched _to_bool in this test file,
+    # which is the correct location of the actual raise. In production this
+    # will be a real check body inside ir/checks.py or one of its helpers.

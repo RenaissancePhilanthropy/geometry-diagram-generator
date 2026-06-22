@@ -152,6 +152,37 @@ def test_extract_segment_mark():
     assert sm[0]["to"] == "B"
 
 
+def test_extract_segment_mark_tick_multiplicity():
+    assert extract_marks(r"\tkzMarkSegment[mark=|](A,B)")[0]["count"] == 1
+    assert extract_marks(r"\tkzMarkSegment[mark=||](A,B)")[0]["count"] == 2
+    assert extract_marks(r"\tkzMarkSegment[mark=|||](A,B)")[0]["count"] == 3
+    # the count is the number of | strokes: s| has one, s|| has two
+    assert extract_marks(r"\tkzMarkSegment[mark=s|](A,B)")[0]["count"] == 1
+    assert extract_marks(r"\tkzMarkSegment[mark=s||](A,B)")[0]["count"] == 2
+    # bare segment mark (no options) defaults to a single tick
+    assert extract_marks(r"\tkzMarkSegment(A,B)")[0]["count"] == 1
+
+
+def test_extract_segment_mark_parallel_arrows_are_distinct_kind():
+    # Parallel arrows must not be classified as ticks.
+    m = extract_marks(r"\tkzMarkSegment[mark=>](A,B)")[0]
+    assert m["type"] == "parallel_mark"
+    assert m["count"] == 1
+    assert extract_marks(r"\tkzMarkSegment[mark=>>](A,B)")[0]["count"] == 2
+    # Ticks remain segment_mark.
+    assert extract_marks(r"\tkzMarkSegment[mark=|](A,B)")[0]["type"] == "segment_mark"
+
+
+def test_extract_angle_mark_arc_multiplicity():
+    assert extract_marks(r"\tkzMarkAngle[size=0.5](B,A,C)")[0]["count"] == 1
+    assert extract_marks(r"\tkzMarkAngle[size=0.5,arc=ll](B,A,C)")[0]["count"] == 2
+    assert extract_marks(r"\tkzMarkAngle[size=0.5,arc=lll](B,A,C)")[0]["count"] == 3
+
+
+def test_extract_right_angle_mark_has_count():
+    assert extract_marks(r"\tkzMarkRightAngle(A,B,C)")[0]["count"] == 1
+
+
 # ---------------------------------------------------------------------------
 # extract_labels
 # ---------------------------------------------------------------------------
@@ -172,6 +203,40 @@ def test_extract_label_point_with_text():
     assert len(lp) == 1
     assert lp[0]["point"] == "A"
     assert lp[0]["text"] == "$A$"
+
+
+def test_extract_node_label_explicit():
+    # Free-floating \node text labels (e.g. for lines/regions) must be captured.
+    tikz = r"\node at (5.5,2.3) {$m$};" + "\n" + r"\node at (4.5,0.7) {$n$};"
+    labels = extract_labels(tikz)
+    nl = [l for l in labels if l["type"] == "node_label"]
+    assert {l["text"] for l in nl} == {"m", "n"}
+
+
+def test_extract_node_label_bare_path_style():
+    # Bare `node` as a path operation (mid-path labels) must also be captured.
+    tikz = r"\draw (A) -- (B) node[midway] {$x$};"
+    labels = extract_labels(tikz)
+    nl = [l for l in labels if l["type"] == "node_label"]
+    assert len(nl) == 1
+    assert nl[0]["text"] == "x"
+
+
+def test_extract_node_label_with_options_and_name():
+    tikz = r"\node[below] (P) at (2,2) {$P$};"
+    labels = extract_labels(tikz)
+    nl = [l for l in labels if l["type"] == "node_label"]
+    assert len(nl) == 1
+    assert nl[0]["text"] == "P"
+
+
+def test_extract_segment_and_angle_labels():
+    tikz = r"\tkzLabelSegment(A,B){$m$}" + "\n" + r"\tkzLabelAngle(A,B,C){$1$}"
+    labels = extract_labels(tikz)
+    seg = [l for l in labels if l["type"] == "segment_label"]
+    ang = [l for l in labels if l["type"] == "angle_label"]
+    assert len(seg) == 1 and seg[0]["text"] == "m"
+    assert len(ang) == 1 and ang[0]["text"] == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +615,20 @@ def test_validate_label_present_no_tikz_returns_none():
     assert validate_geometric_property(coords, "label_present", ["A"]) is None
 
 
+def test_validate_label_present_via_node_text():
+    tikz = r"\node at (2,2) {$P$};"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "label_present", ["P"], tikz=tikz) is True
+    assert validate_geometric_property(coords, "label_present", ["A"], tikz=tikz) is False
+
+
+def test_validate_label_present_text_not_point_id():
+    # Label text is P' but point id is P2; required label is P'.
+    tikz = r"\tkzLabelPoint[below left](P2){$P'$}"
+    coords: dict = {}
+    assert validate_geometric_property(coords, "label_present", ["P'"], tikz=tikz) is True
+
+
 # ---------------------------------------------------------------------------
 # mark_present
 # ---------------------------------------------------------------------------
@@ -569,6 +648,75 @@ def test_validate_mark_present_missing():
 def test_validate_mark_present_no_tikz_returns_none():
     coords: dict = {}
     assert validate_geometric_property(coords, "mark_present", ["right_angle", "B"]) is None
+
+
+# --- tick multiplicity (segment marks) -------------------------------------
+
+def test_validate_mark_present_tick_single_point_vertex():
+    # Scenario arg ["tick", "A"] — point-style vertex on segment AB.
+    tikz = r"\tkzMarkSegment[mark=|](A,B)"
+    assert validate_geometric_property({}, "mark_present", ["tick", "A"], tikz=tikz) is True
+    assert validate_geometric_property({}, "mark_present", ["tick", "C"], tikz=tikz) is False
+
+
+def test_validate_mark_present_tick_single_segment_vertex():
+    # Scenario arg ["tick_single", "AB"] — segment-name vertex.
+    tikz = r"\tkzMarkSegment[mark=|](A,B)"
+    assert validate_geometric_property({}, "mark_present", ["tick_single", "AB"], tikz=tikz) is True
+    assert validate_geometric_property({}, "mark_present", ["tick_single", "AC"], tikz=tikz) is False
+
+
+def test_validate_mark_present_tick_double_matches_two_strokes():
+    tikz = r"\tkzMarkSegment[mark=||](B,C)"
+    assert validate_geometric_property({}, "mark_present", ["tick_double", "BC"], tikz=tikz) is True
+    # a single tick must NOT satisfy a double-tick expectation
+    tikz1 = r"\tkzMarkSegment[mark=|](B,C)"
+    assert validate_geometric_property({}, "mark_present", ["tick_double", "BC"], tikz=tikz1) is False
+
+
+def test_validate_mark_present_tick_triple_matches_three_strokes():
+    tikz = r"\tkzMarkSegment[mark=|||](D,E)"
+    assert validate_geometric_property({}, "mark_present", ["tick_triple", "DE"], tikz=tikz) is True
+    tikz2 = r"\tkzMarkSegment[mark=||](D,E)"
+    assert validate_geometric_property({}, "mark_present", ["tick_triple", "DE"], tikz=tikz2) is False
+
+
+def test_validate_mark_present_segment_vertex_via_coords_split():
+    # Multi-char point names: "A1" + "B" — only resolvable with coords.
+    tikz = r"\tkzMarkSegment[mark=|](A1,B)"
+    coords = {"A1": (0.0, 0.0), "B": (3.0, 0.0)}
+    assert validate_geometric_property(coords, "mark_present", ["tick_single", "A1B"], tikz=tikz) is True
+
+
+def test_validate_mark_present_tick_excludes_parallel_arrow():
+    # A parallel arrow on MN must not satisfy a midpoint tick check at M.
+    tikz = r"\tkzMarkSegment[mark=>](M,N)"
+    assert validate_geometric_property({}, "mark_present", ["segment_mark", "M"], tikz=tikz) is False
+    assert validate_geometric_property({}, "mark_present", ["parallel", "M"], tikz=tikz) is True
+
+
+# --- arc multiplicity (angle marks) ----------------------------------------
+
+def test_validate_mark_present_arc_single():
+    tikz = r"\tkzMarkAngle[size=0.5](A,B,C)"
+    assert validate_geometric_property({}, "mark_present", ["arc", "B"], tikz=tikz) is True
+    assert validate_geometric_property({}, "mark_present", ["arc", "A"], tikz=tikz) is False
+
+
+def test_validate_mark_present_angle_double_matches_two_arcs():
+    tikz = r"\tkzMarkAngle[size=0.5,arc=ll](A,B,C)"
+    assert validate_geometric_property({}, "mark_present", ["angle_double", "B"], tikz=tikz) is True
+    tikz1 = r"\tkzMarkAngle[size=0.5](A,B,C)"
+    assert validate_geometric_property({}, "mark_present", ["angle_double", "B"], tikz=tikz1) is False
+
+
+# --- semantic mark types stay unimplemented (not fudged) -------------------
+
+def test_validate_mark_present_unknown_type_returns_false():
+    tikz = r"\tkzMarkSegment[mark=|](A,B)\tkzLabelPoint(A){r}"
+    # "radius"/"midpoint" are semantic features, not tick/arc marks.
+    assert validate_geometric_property({}, "mark_present", ["radius", "O"], tikz=tikz) is False
+    assert validate_geometric_property({}, "mark_present", ["midpoint", "E"], tikz=tikz) is False
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +756,46 @@ def test_validate_required_labels_coordinate_style_label():
     tikz = r"\tkzLabelPoint[below](A){$A\,(0,0)$}"
     result = validate_required_labels(tikz, ["A"])
     assert result["passed"] is True
+
+
+def test_validate_required_labels_via_node_text():
+    # Labels attached only as free \node text (not via \tkzLabelPoint) must count.
+    tikz = r"\node at (5.5,2.3) {$m$};" + "\n" + r"\node at (4.5,0.7) {$n$};"
+    result = validate_required_labels(tikz, ["m", "n"])
+    assert result["passed"] is True
+    assert result["missing"] == []
+
+
+def test_validate_required_labels_node_text_prime_variant():
+    tikz = r"\node at (2,2) {$P'$};"
+    result = validate_required_labels(tikz, ["Pprime"])
+    assert result["passed"] is True
+
+
+def test_validate_required_labels_text_not_point_id():
+    # The label text carries the real name; the point id (P2) won't match it.
+    tikz = r"\tkzLabelPoint[below left](P2){$P'$}"
+    result = validate_required_labels(tikz, ["P'"])
+    assert result["passed"] is True
+    assert result["missing"] == []
+
+
+def test_validate_required_labels_text_double_prime_spelled_id():
+    tikz = r"\tkzLabelPoint[below](A_dprime){$A''$}"
+    result = validate_required_labels(tikz, ["A''"])
+    assert result["passed"] is True
+
+
+def test_validate_required_labels_angle_numbers():
+    # Angle labels (1,2,3) placed via \tkzLabelAngle must satisfy required_labels.
+    tikz = (
+        r"\tkzLabelAngle(A,B,C){$1$}" + "\n"
+        + r"\tkzLabelAngle(C,B,D){$2$}" + "\n"
+        + r"\tkzLabelAngle(D,B,E){$3$}"
+    )
+    result = validate_required_labels(tikz, ["1", "2", "3"])
+    assert result["passed"] is True
+    assert result["missing"] == []
 
 
 # ---------------------------------------------------------------------------

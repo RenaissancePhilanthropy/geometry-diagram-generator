@@ -1,0 +1,433 @@
+- id: geo-m1-t3-l3-act31-reflection-coordinate-plane-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - coordinate-plane
+  - trapezoid
+  prompt: Draw a coordinate plane with trapezoid ABCD where A is at (1,2), B is at
+    (4,2), C is at (3,4), D is at (2,4). Reflect the trapezoid across the y-axis and
+    label the image A'B'C'D'. Then reflect the original ABCD across the x-axis and
+    label that image A''B''C''D''. Label all twelve vertices and draw tick marks showing
+    equal distances from each axis for corresponding points.
+  expected_properties:
+  - name: reflection_across_y_axis_A
+    type: equal_lengths
+    args:
+    - - A
+      - A'
+    - - A
+      - A'
+  - name: equal_lengths_AB_AprimeBprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A'
+      - B'
+  - name: equal_lengths_AB_AdprimeBdprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A''
+      - B''
+  - name: label_Aprime_present
+    type: label_present
+    args:
+    - A'
+  - name: label_Adprimeprime_present
+    type: label_present
+    args:
+    - A''
+  - name: parallel_AA_prime
+    type: perpendicular
+    args:
+    - - A
+      - A'
+    - - C
+      - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - A'
+  - B'
+  - C'
+  - D'
+  - A''
+  - B''
+  - C''
+  - D''
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l4-act42-concentric-circles-rotation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - concentric-circles
+  - central-angle
+  prompt: Draw three concentric circles all centered at point E. Place triangle PQR
+    so that vertex P is on the smallest circle, vertex Q is on the middle circle,
+    and vertex R is on the largest circle. Then rotate the triangle about E by 65
+    degrees counterclockwise to get triangle P'Q'R'. Draw the angle of rotation for
+    each vertex — arcs from P to P', Q to Q', and R to R' — and mark the 65° central
+    angle at E. Label E, P, Q, R, P', Q', R'.
+  expected_properties:
+  - name: P_on_inner_circle
+    type: point_on_circle
+    args:
+    - P
+    - E
+    - P
+  - name: Pprime_on_inner_circle
+    type: point_on_circle
+    args:
+    - P'
+    - E
+    - P
+  - name: Q_on_middle_circle
+    type: point_on_circle
+    args:
+    - Q
+    - E
+    - Q
+  - name: Qprime_on_middle_circle
+    type: point_on_circle
+    args:
+    - Q'
+    - E
+    - Q
+  - name: equal_dist_EP_EPprime
+    type: equal_lengths
+    args:
+    - - E
+      - P
+    - - E
+      - P'
+  - name: equal_dist_EQ_EQprime
+    type: equal_lengths
+    args:
+    - - E
+      - Q
+    - - E
+      - Q'
+  - name: equal_lengths_PQ_PprimeQprime
+    type: equal_lengths
+    args:
+    - - P
+      - Q
+    - - P'
+      - Q'
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  structural_checks: []
+  required_labels:
+  - E
+  - P
+  - Q
+  - R
+  - P'
+  - Q'
+  - R'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l2-ssa-ambiguity-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - SSA
+  - ambiguous-case
+  - circle-construction
+  - non-congruence
+  prompt: 'Draw an SSA ambiguity diagram to show why SSA doesn''t prove congruence.
+    Start with a base angle at vertex A — draw a ray from A. Mark a side length AB
+    = 8 units along the ray and mark angle A = 40 degrees. Now from point B, draw
+    a circle with radius 5 units. Show that this circle intersects the other ray from
+    A at TWO different points — label them C1 and C2. This gives two different triangles:
+    ABC1 and ABC2, both with the same angle at A, same side AB, and same length BC,
+    but the triangles are different shapes. Label all points.'
+  expected_properties:
+  - name: C1_on_circle_centered_at_B
+    type: point_on_circle
+    args:
+    - C1
+    - B
+    - C1
+  - name: C2_on_circle_centered_at_B
+    type: point_on_circle
+    args:
+    - C2
+    - B
+    - C2
+  - name: BC1_equals_BC2
+    type: equal_lengths
+    args:
+    - - B
+      - C1
+    - - B
+      - C2
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C1_present
+    type: label_present
+    args:
+    - C1
+  - name: label_C2_present
+    type: label_present
+    args:
+    - C2
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C1
+  - C2
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t1-l2-a1-rectangle-inscribed-circle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - inscribed-quadrilateral
+  - rectangle
+  - diameter
+  prompt: 'Draw a circle with center O. Draw two diameters: one from A to C and another
+    from B to D, where the two diameters are NOT perpendicular. Connect A to B, B
+    to C, C to D, and D to A to form a quadrilateral ABCD inscribed in the circle.
+    Label all four vertices and the center O. Mark the four right angles at A, B,
+    C, and D (each inscribed angle intercepts a semicircle), and mark the two diagonals
+    AC and BD as equal in length since they''re both diameters.'
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - C
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - C
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: D_on_circle
+    type: point_on_circle
+    args:
+    - D
+    - O
+    - A
+  - name: O_on_diagonal_AC
+    type: point_on_segment
+    args:
+    - O
+    - A
+    - C
+  - name: O_on_diagonal_BD
+    type: point_on_segment
+    args:
+    - O
+    - B
+    - D
+  - name: equal_diagonals
+    type: equal_lengths
+    args:
+    - - A
+      - C
+    - - B
+      - D
+  - name: right_angle_at_A
+    type: right_angle
+    args:
+    - D
+    - A
+    - B
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  - C
+  - D
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-a66-mixed-circle-theorems-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - inscribed-angle
+  - interior-angle
+  - exterior-angle
+  - arc-measures
+  prompt: 'Draw a circle with several features: two chords intersecting inside at
+    point P (endpoints A, B and C, D on the circle), an inscribed angle at point E
+    on the circle intercepting arc FG, and an external point H with two secants hitting
+    the circle at points I, J and K, L. Label specific arc measures: arc AB = 100°,
+    arc CD = 40°, arc FG = 72°, arc IJ = 120°, arc KL = 50°. Ask me to find the interior
+    angle at P, the inscribed angle at E, and the exterior angle at H.'
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: D_on_circle
+    type: point_on_circle
+    args:
+    - D
+    - O
+    - A
+  - name: E_on_circle
+    type: point_on_circle
+    args:
+    - E
+    - O
+    - A
+  - name: P_inside_chords
+    type: point_on_segment
+    args:
+    - P
+    - A
+    - B
+  structural_checks: []
+  required_labels:
+  - P
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m3-t1-l2-act21-aa-similarity-vertical-angles-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - AA-similarity
+  - vertical-angles
+  - right-angles
+  - similar-triangles
+  prompt: Can you draw two triangles that share a common vertex in the middle where
+    two lines cross, creating vertical angles? Label the crossing point as E, and
+    label the four outer vertices A, B, C, D so that triangle AEB and triangle CED
+    are formed. Mark the vertical angles at E as equal. Also mark angle A and angle
+    C as equal (both 40 degrees), and mark angle B and angle D as equal (both 70 degrees).
+    This should show the AA similarity theorem using vertical angles.
+  expected_properties:
+  - name: angle_equal_vertical_at_E
+    type: angle_equal
+    args:
+    - - A
+      - E
+      - B
+    - - C
+      - E
+      - D
+  - name: angle_equal_A_C
+    type: angle_equal
+    args:
+    - - B
+      - A
+      - E
+    - - D
+      - C
+      - E
+  - name: angle_equal_B_D
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - E
+    - - C
+      - D
+      - E
+  - name: collinear_A_E_C
+    type: collinear
+    args:
+    - A
+    - E
+    - C
+  - name: collinear_B_E_D
+    type: collinear
+    args:
+    - B
+    - E
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []

@@ -1,0 +1,195 @@
+- id: geo-m1-t1-l0-a1-pythagorean-distance-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - coordinate-grid
+  - pythagorean-theorem
+  - right-triangle
+  - distance
+  prompt: Can you draw a coordinate grid and plot two points — let's call them A at
+    (1, 2) and B at (7, 6)? Then draw a right triangle by adding a third point C at
+    (7, 2) so that AC is horizontal and BC is vertical. Label all three points, show
+    the right angle at C, and mark the lengths of the two legs. I need to see how
+    the hypotenuse AB connects the original two points.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: collinear_A_C_horizontal
+    type: collinear
+    args:
+    - A
+    - C
+    - B
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  - name: right_angle_mark_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t1-l1-a12-ray-vs-segment-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - ray
+  - line-segment
+  - endpoint
+  - notation
+  - defined-terms
+  prompt: Please draw two separate figures side by side. In the first figure, draw
+    ray AB — starting at endpoint A and going through B and continuing forever in
+    that direction. In the second figure, draw line segment CD with endpoints C and
+    D, and mark it as 4 units long. Label all points and use an arrow on the ray to
+    show it goes on forever. I want to see the difference between a ray and a segment
+    clearly.
+  expected_properties:
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  - name: label_D_present
+    type: label_present
+    args:
+    - D
+  - name: B_on_ray_from_A
+    type: point_on_line
+    args:
+    - B
+    - A
+    - B
+  - name: C_endpoint_of_segment
+    type: point_on_segment
+    args:
+    - C
+    - C
+    - D
+  - name: D_endpoint_of_segment
+    type: point_on_segment
+    args:
+    - D
+    - C
+    - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t1-l1-gs-points-lines-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - points
+  - lines
+  - collinear
+  - undefined-terms
+  - naming-conventions
+  prompt: Draw a flat plane and put several labeled points on it — A, B, C, D, and
+    E. Make points A, B, and C all sit on the same straight line and label that line
+    with a lowercase letter like 'm'. Then put points D and E somewhere off that line
+    so they are NOT collinear with A, B, C. Draw a second line through D and E and
+    label it 'n'. I want to see clearly which points are collinear on line m and which
+    ones are not.
+  expected_properties:
+  - name: A_B_C_collinear_on_m
+    type: collinear
+    args:
+    - A
+    - B
+    - C
+  - name: A_on_line_m
+    type: point_on_line
+    args:
+    - A
+    - B
+    - C
+  - name: B_on_line_m
+    type: point_on_line
+    args:
+    - B
+    - A
+    - C
+  - name: C_on_line_m
+    type: point_on_line
+    args:
+    - C
+    - A
+    - B
+  - name: D_on_line_n
+    type: point_on_line
+    args:
+    - D
+    - D
+    - E
+  - name: E_on_line_n
+    type: point_on_line
+    args:
+    - E
+    - D
+    - E
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_D_present
+    type: label_present
+    args:
+    - D
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - m
+  - n
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []

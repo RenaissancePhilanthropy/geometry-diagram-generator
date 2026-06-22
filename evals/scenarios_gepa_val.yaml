@@ -1,0 +1,719 @@
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - - A
+      - B
+    - - A
+      - C
+    name: AB_equals_AC_isosceles
+    type: equal_lengths
+  - args:
+    - - D
+      - E
+    - - E
+      - F
+    - - F
+      - D
+    name: DE_EF_FD_equal_equilateral
+    type: equal_lengths
+  - args:
+    - tick
+    - A
+    name: tick_mark_AB
+    type: mark_present
+  - args:
+    - tick
+    - C
+    name: tick_mark_AC
+    type: mark_present
+  - args:
+    - A
+    name: label_A_present
+    type: label_present
+  - args:
+    - D
+    name: label_D_present
+    type: label_present
+  - args:
+    - E
+    name: label_E_present
+    type: label_present
+  - args:
+    - F
+    name: label_F_present
+    type: label_present
+  id: geo-m1-t1-l1-a12-congruent-segments-triangle-1
+  prompt: Draw two triangles next to each other. The first one is triangle ABC where sides AB and AC are the same length — mark them both with a single tick mark to show they're congruent. This is an isosceles triangle. The second one is triangle DEF where all three sides DE, EF, and FD are the same length — mark them all with double tick marks to show they're all congruent. Label all six vertices.
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - congruent-segments
+  - tick-marks
+  - isosceles-triangle
+  - equilateral-triangle
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - - K
+      - J
+      - L
+    - - Y
+      - X
+      - Z
+    name: angle_J_equals_angle_X
+    type: angle_equal
+  - args:
+    - - J
+      - K
+      - L
+    - - X
+      - Y
+      - Z
+    name: angle_K_equals_angle_Y
+    type: angle_equal
+  - args:
+    - - K
+      - L
+    - - Y
+      - Z
+    name: KL_equals_YZ
+    type: equal_lengths
+  - args:
+    - J
+    name: label_J_present
+    type: label_present
+  - args:
+    - L
+    name: label_L_present
+    type: label_present
+  - args:
+    - X
+    name: label_X_present
+    type: label_present
+  - args:
+    - Z
+    name: label_Z_present
+    type: label_present
+  id: geo-m1-t4-l2-aas-congruence-1
+  prompt: Draw two triangles to illustrate the AAS congruence theorem. Label the first one JKL and the second one XYZ. Mark angle J = angle X with one arc each, angle K = angle Y with two arcs each, and the non-included side KL = YZ with one tick mark each. Note that KL and YZ are NOT between the two marked angles — they're opposite angle J and angle X respectively. Label all six vertices clearly.
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - J
+  - K
+  - L
+  - X
+  - Y
+  - Z
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - AAS
+  - congruence
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - A
+    - O
+    - B
+    name: A_on_circle
+    type: point_on_circle
+  - args:
+    - B
+    - O
+    - A
+    name: B_on_circle
+    type: point_on_circle
+  - args:
+    - C
+    - O
+    - A
+    name: C_on_circle
+    type: point_on_circle
+  - args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - A
+    name: equal_sides_triangle
+    type: equal_lengths
+  - args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+    name: equal_radii
+    type: equal_lengths
+  - args:
+    - - A
+      - B
+    - - O
+      - A
+    name: chord_equals_radius
+    type: equal_lengths
+  id: geo-m2-t1-l3-a0-equilateral-triangle-circle-1
+  prompt: Draw a circle with center O and radius OA. Using the radius length as the chord length, mark point B on the circle so that AB equals the radius OA. Then mark C so BC also equals the radius. Connect A to B to C and back to A to form an equilateral triangle inscribed in the circle. Draw radii OA, OB, and OC. Label all points, mark all three sides of the triangle as equal, and label each central angle (AOB, BOC, COA) as 60 degrees.
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - O
+  - A
+  - B
+  - C
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - equilateral-triangle
+  - inscribed-polygon
+  - radius-chord
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - M
+    - P
+    - R
+    name: M_midpoint_of_PR
+    type: midpoint
+  - args:
+    - M
+    - A
+    - G
+    name: M_midpoint_of_AG
+    type: midpoint
+  - args:
+    - - P
+      - A
+    - - G
+      - R
+    name: PA_parallel_GR
+    type: parallel
+  - args:
+    - - P
+      - G
+    - - A
+      - R
+    name: PG_parallel_AR
+    type: parallel
+  - args:
+    - - P
+      - A
+    - - G
+      - R
+    name: opposite_sides_PA_GR_equal
+    type: equal_lengths
+  - args:
+    - - P
+      - G
+    - - A
+      - R
+    name: opposite_sides_PG_AR_equal
+    type: equal_lengths
+  - args:
+    - - P
+      - M
+    - - M
+      - R
+    name: equal_diagonal_halves_PM_MR
+    type: equal_lengths
+  - args:
+    - - A
+      - M
+    - - M
+      - G
+    name: equal_diagonal_halves_AM_MG
+    type: equal_lengths
+  - args:
+    - M
+    - P
+    - R
+    name: M_on_diagonal_PR
+    type: point_on_segment
+  - args:
+    - M
+    - A
+    - G
+    name: M_on_diagonal_AG
+    type: point_on_segment
+  id: geo-m2-t3-l3-a1-parallelogram-diagonals-1
+  prompt: 'Draw parallelogram PARG where P is top-left, A is top-right, R is bottom-right, and G is bottom-left. Draw both diagonals PR and AG, and label the point where they cross as M. Mark PM and MR with tick marks to show they''re equal, and mark AM and MG with double tick marks to show they''re equal — this is to illustrate that the diagonals bisect each other. Also mark both pairs of opposite sides as parallel using arrows: PA parallel to GR, and PG parallel to AR. Mark opposite sides with matching tick marks to show PA equals GR and PG equals AR. Label all five points P, A, R, G, and M.'
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - P
+  - A
+  - R
+  - G
+  - M
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - parallelogram
+  - diagonals
+  - midpoint
+  - bisect
+  - congruence
+  - proof
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - - V
+      - A
+    - - B
+      - K
+    name: VA_equals_BK
+    type: equal_lengths
+  - args:
+    - - A
+      - R
+    - - K
+      - F
+    name: AR_equals_KF
+    type: equal_lengths
+  - args:
+    - - V
+      - R
+    - - B
+      - F
+    name: VR_equals_BF
+    type: equal_lengths
+  - args:
+    - - A
+      - V
+      - R
+    - - K
+      - B
+      - F
+    name: angle_V_equals_angle_B
+    type: angle_equal
+  - args:
+    - - V
+      - A
+      - R
+    - - B
+      - K
+      - F
+    name: angle_A_equals_angle_K
+    type: angle_equal
+  - args:
+    - - V
+      - R
+      - A
+    - - B
+      - F
+      - K
+    name: angle_R_equals_angle_F
+    type: angle_equal
+  - args:
+    - V
+    name: label_V_present
+    type: label_present
+  - args:
+    - K
+    name: label_K_present
+    type: label_present
+  id: geo-m1-t4-l2-sss-congruence-triangles-1
+  prompt: 'Draw two triangles side by side: triangle VAR and triangle BKF. Mark them so that VA = BK (one tick mark each), AR = KF (two tick marks each), and VR = BF (three tick marks each). Label all 6 vertices clearly. I also need the corresponding angles marked with arc marks — angle V = angle B (one arc each), angle A = angle K (two arcs each), and angle R = angle F (three arcs each). This is to show SSS congruence.'
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - V
+  - A
+  - R
+  - B
+  - K
+  - F
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - SSS
+  - congruence
+  - CPCTC
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - M
+    - A
+    - B
+    name: M_is_midpoint_AB
+    type: midpoint
+  - args:
+    - - P
+      - M
+    - - A
+      - B
+    name: PM_perp_AB
+    type: perpendicular
+  - args:
+    - - A
+      - M
+    - - M
+      - B
+    name: AM_equals_MB
+    type: equal_lengths
+  - args:
+    - - P
+      - A
+    - - P
+      - B
+    name: PA_equals_PB
+    type: equal_lengths
+  - args:
+    - A
+    - M
+    - P
+    name: right_angle_at_M
+    type: right_angle
+  - args:
+    - P
+    - M
+    - l_end
+    name: P_on_perp_bisector
+    type: point_on_line
+  id: geo-m2-t2-l4-a41-perpendicular-bisector-theorem-1
+  prompt: Draw a line segment AB with midpoint M. Draw the perpendicular bisector through M — call it line l. Place a point P somewhere on line l above the segment. Draw segments PA and PB. Put a right angle mark where line l crosses AB at M. Put single tick marks on AM and MB to show they're equal. Put double tick marks on PA and PB to show they're equal. This diagram shows the perpendicular bisector theorem.
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - A
+  - B
+  - M
+  - P
+  - l
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - perpendicular-bisector
+  - CPCTC
+  - congruent-triangles
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - D
+    - A
+    - B
+    name: D_midpoint_AB
+    type: midpoint
+  - args:
+    - E
+    - B
+    - C
+    name: E_midpoint_BC
+    type: midpoint
+  - args:
+    - F
+    - C
+    - A
+    name: F_midpoint_CA
+    type: midpoint
+  - args:
+    - - A
+      - B
+    - - P
+      - D
+    name: perp_bisector_AB
+    type: perpendicular
+  - args:
+    - - B
+      - C
+    - - P
+      - E
+    name: perp_bisector_BC
+    type: perpendicular
+  - args:
+    - - C
+      - A
+    - - P
+      - F
+    name: perp_bisector_CA
+    type: perpendicular
+  - args:
+    - A
+    - D
+    - P
+    name: right_angle_at_D
+    type: right_angle
+  - args:
+    - B
+    - E
+    - P
+    name: right_angle_at_E
+    type: right_angle
+  - args:
+    - C
+    - F
+    - P
+    name: right_angle_at_F
+    type: right_angle
+  - args:
+    - - P
+      - A
+    - - P
+      - B
+    - - P
+      - C
+    name: equal_circumradii
+    type: equal_lengths
+  - args:
+    - A
+    - P
+    - B
+    name: A_on_circumcircle
+    type: point_on_circle
+  - args:
+    - B
+    - P
+    - A
+    name: B_on_circumcircle
+    type: point_on_circle
+  - args:
+    - C
+    - P
+    - A
+    name: C_on_circumcircle
+    type: point_on_circle
+  id: geo-m2-t1-l5-a1-circumcenter-acute-triangle-1
+  prompt: 'Draw an acute triangle ABC. Construct the perpendicular bisector of each side: the perpendicular bisector of AB (mark the midpoint as D), the perpendicular bisector of BC (mark the midpoint as E), and the perpendicular bisector of CA (mark the midpoint as F). All three perpendicular bisectors should meet at a single point — label that point P (the circumcenter). Then draw a circle centered at P that passes through A, B, and C. Mark the right angles at D, E, and F, and show with equal tick marks that PA = PB = PC (the circumradius). The circumcenter P should be inside the triangle.'
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - P
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - triangle
+  - circumcenter
+  - perpendicular-bisector
+  - circumscribed-circle
+  tier: 3
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - A
+    - O
+    - C
+    name: A_on_circle
+    type: point_on_circle
+  - args:
+    - C
+    - O
+    - A
+    name: C_on_circle
+    type: point_on_circle
+  - args:
+    - B
+    - O
+    - A
+    name: B_on_circle
+    type: point_on_circle
+  - args:
+    - A
+    - O
+    - C
+    name: AC_is_diameter
+    type: collinear
+  - args:
+    - A
+    - B
+    - C
+    name: right_angle_at_B
+    type: right_angle
+  id: geo-m2-t2-l6-a62-inscribed-right-triangle-1
+  prompt: 'Draw a circle with center O and diameter AC (so A and C are endpoints of a diameter on opposite sides). Place a point B on the circle above the diameter. Draw triangle ABC inscribed in the circle. Mark the right angle at B with a small square. Label the arc AC as a semicircle = 180°. This diagram shows the inscribed right triangle-diameter theorem: if one side of an inscribed triangle is a diameter, the inscribed angle opposite it is 90°.'
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - inscribed-right-triangle
+  - diameter
+  - semicircle
+  - two-column-proof
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - M
+    - R
+    - B
+    name: midpoint_M_on_RB
+    type: midpoint
+  - args:
+    - P
+    - M
+    - R
+    name: right_angle_PMR
+    type: right_angle
+  - args:
+    - P
+    - M
+    - B
+    name: right_angle_PMB
+    type: right_angle
+  - args:
+    - - R
+      - M
+    - - M
+      - B
+    name: equal_lengths_RM_MB
+    type: equal_lengths
+  - args:
+    - - P
+      - R
+    - - P
+      - B
+    name: equal_lengths_PR_PB
+    type: equal_lengths
+  - args:
+    - P
+    - M
+    - P
+    name: P_on_perpendicular_bisector
+    type: point_on_line
+  - args:
+    - P
+    name: label_P_present
+    type: label_present
+  id: geo-m1-t3-l3-act34-perpendicular-bisector-theorem-1
+  prompt: Draw segment RB horizontally with R on the left and B on the right. Construct the perpendicular bisector of RB, crossing at midpoint M. Place a point P somewhere on the perpendicular bisector above M. Draw segments PR and PB with dashed lines. Mark RM equal to MB with tick marks. Mark PM as a shared segment. I want this to look like a proof diagram showing that P is equidistant from R and B because it's on the perpendicular bisector. Label points R, B, M, and P.
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - R
+  - B
+  - M
+  - P
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - perpendicular-bisector-theorem
+  - equidistant
+  - proof
+  tier: 2
+- coordinate_tolerance: 0.0001
+  expected_points: {}
+  expected_properties:
+  - args:
+    - M
+    - A
+    - B
+    name: M_midpoint_AB
+    type: midpoint
+  - args:
+    - - M
+      - X
+    - - A
+      - B
+    name: line_l_perpendicular_to_AB
+    type: perpendicular
+  - args:
+    - M
+    - M
+    - X
+    name: M_on_line_l
+    type: point_on_line
+  - args:
+    - X
+    - M
+    - X
+    name: X_on_line_l
+    type: point_on_line
+  - args:
+    - - A
+      - M
+    - - M
+      - B
+    name: equal_halves
+    type: equal_lengths
+  - args:
+    - - X
+      - A
+    - - X
+      - B
+    name: X_equidistant_from_A_and_B
+    type: equal_lengths
+  - args:
+    - - A
+      - B
+    - - C
+      - D
+    name: AB_equals_CD
+    type: equal_lengths
+  id: geo-m1-t4-l2-perpendicular-bisector-reflection-1
+  prompt: 'Draw two separate congruent segments: segment AB that is horizontal and segment CD that is tilted at an angle. Then draw the perpendicular bisector of AB and label it line l, with the midpoint of AB labeled M. Show that a reflection across line l maps A to B and B to A. Mark the two equal halves AM and MB with tick marks. Also label a point X on line l and show with dashed lines that XA equals XB.'
+  queries: []
+  required_canvas: {}
+  required_entities: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - M
+  - X
+  - l
+  structural_checks: []
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - perpendicular-bisector
+  - congruent-segments
+  tier: 2

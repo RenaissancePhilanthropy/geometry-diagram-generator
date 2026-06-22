@@ -175,22 +175,34 @@ async def test_recipe_strategy_all_retries_exhaust_raises(monkeypatch):
     """
     When all MAX_RETRIES attempts raise UnexpectedModelBehavior, the strategy
     should raise RuntimeError mentioning the validation failure.
+    The structured fallback is also mocked to fail, producing two fallback traces
+    (the fallback retries once on transient API errors).
     """
     error = UnexpectedModelBehavior("Exceeded maximum retries (1) for output validation")
     effects = [error] * MAX_RETRIES
 
     p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, effects)
 
-    with p_agent, p_lower, p_pipeline:
+    with (
+        p_agent,
+        p_lower,
+        p_pipeline,
+        patch(
+            "strategies.recipe.StructureStrategy.run",
+            new=AsyncMock(side_effect=RuntimeError("StructureStrategy failed after 3 attempts")),
+        ),
+    ):
         strategy = RecipeStrategy(use_recipes=True)
         from ir.renderer import SVGRenderer
         with pytest.raises(RuntimeError, match="RecipeStrategy failed"):
             await strategy.run("Draw a triangle.", renderer=SVGRenderer())
 
-    # All attempts should be recorded as output_validation failures
+    # MAX_RETRIES recipe attempts + 2 fallback attempts
     traces = strategy._partial_recipe_metadata.attempt_traces
-    assert len(traces) == MAX_RETRIES
-    assert all(t.stage == "output_validation" for t in traces)
+    assert len(traces) == MAX_RETRIES + 2
+    assert all(t.stage == "output_validation" for t in traces[:MAX_RETRIES])
+    assert traces[-2].stage == "fallback_structured_failure"
+    assert traces[-1].stage == "fallback_structured_failure"
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +355,8 @@ async def test_retry_prompt_no_hint_for_non_angle_errors(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retry_prompt_includes_mark_right_angle_hint(monkeypatch):
-    """When retry error contains a mark_right_angle failure, hint about point_foot."""
+    """When retry error contains a mark_right_angle failure with no candidates,
+    hint about point_foot."""
     ra_error = (
         "Geometric checks failed:\n"
         "  - [annotation: mark_right_angle(A,M,C)] Angle A-M-C is 153.4°, not 90°"
@@ -521,3 +534,486 @@ async def test_retry_prompt_no_mark_right_angle_hint_for_other_errors(monkeypatc
     assert "point_foot" not in retry_prompt, (
         f"Unexpected point_foot hint in retry prompt. Prompt:\n{retry_prompt}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 7b: mark_right_angle hint includes candidate triples when available
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_right_angle_candidates(monkeypatch):
+    """When mark_right_angle fails and the checker provides candidate triples
+    that ARE 90°, the hint should list them so the LLM can use one directly
+    instead of guessing or using point_foot."""
+
+    ra_error_with_candidates = (
+        "Geometric checks failed:\n"
+        "  - [annotation: mark_right_angle(B,C,A)] Angle B-C-A is 45.000°, not 90°"
+        " | right angles at C: B-C-X_front=90.0°\n"
+        "  - [annotation: mark_right_angle(C,A,B)] Angle C-A-B is 45.000°, not 90°"
+        " | right angles at A: B-A-X_front=90.0°\n"
+    )
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(ra_error_with_candidates)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2, f"Expected at least 2 gen messages, got {len(gen_messages)}"
+
+    retry_prompt = gen_messages[1]
+
+    # Should include the candidate triples from the error
+    assert "B-C-X_front=90.0°" in retry_prompt, (
+        f"Candidate 'B-C-X_front=90.0°' not found in retry prompt. Prompt:\n{retry_prompt}"
+    )
+    assert "B-A-X_front=90.0°" in retry_prompt, (
+        f"Candidate 'B-A-X_front=90.0°' not found in retry prompt. Prompt:\n{retry_prompt}"
+    )
+    # Should NOT suggest point_foot since candidates are available
+    assert "point_foot" not in retry_prompt, (
+        f"point_foot hint should not appear when candidates are available. Prompt:\n{retry_prompt}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 8: SSA / triangle spec ambiguity hint
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_triangle_spec_hint(monkeypatch):
+    """When triangle spec is SSA-ambiguous or violates inequality, hint lists
+    valid spec forms."""
+
+    ssa_error = (
+        "Lowering failed: Triangle 'tri1': SSA (two sides + non-included angle) is ambiguous; "
+        "use AAS, SAS, SSS, or ASA instead."
+    )
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(ssa_error)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2
+
+    retry_prompt = gen_messages[1]
+    assert "SAS" in retry_prompt and "ASA" in retry_prompt and "SSS" in retry_prompt, (
+        f"Expected SAS/ASA/SSS in hint. Prompt:\n{retry_prompt}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 9: mark_angle mismatch hint with candidates
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_mark_angle_candidates(monkeypatch):
+    """When mark_angle fails and checker provides candidate angle triples,
+    the hint should list them."""
+
+    angle_error = (
+        "Lowering failed: MarkAngle at O: expected 70.0° but A-O-C = 110.0° "
+        "| candidates: A-O-D = 70.0°, B-O-C = 70.0°"
+    )
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(angle_error)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2
+
+    retry_prompt = gen_messages[1]
+    assert "A-O-D = 70.0°" in retry_prompt, (
+        f"Candidate 'A-O-D = 70.0°' not found. Prompt:\n{retry_prompt}"
+    )
+    assert "B-O-C = 70.0°" in retry_prompt, (
+        f"Candidate 'B-O-C = 70.0°' not found. Prompt:\n{retry_prompt}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 10: undefined id reference hint
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_undefined_id_hint(monkeypatch):
+    """When DSL references undefined id, hint explains grid-mode point requirement."""
+
+    undef_error = "IR compilation failed: [seg_AB] references undefined id 'A'"
+
+    valid_response = _make_agent_response(_make_valid_dsl())
+
+    pipeline_calls = {"count": 0}
+
+    async def mock_pipeline(*args, **kwargs):
+        pipeline_calls["count"] += 1
+        if pipeline_calls["count"] == 1:
+            raise RuntimeError(undef_error)
+        else:
+            ir_result = MagicMock()
+            ir_result.diagram_ir = MagicMock()
+            ir_result.tikz = ""
+            ir_result.svg = "<svg/>"
+            ir_result.sym_table = {}
+            ir_result.sym_full = {}
+            return ir_result
+
+    captured_user_messages = {"messages": []}
+
+    def patch_gen_agent_run(original_run):
+        async def wrapper(user_msg):
+            captured_user_messages["messages"].append(user_msg)
+            return await original_run(user_msg)
+        return wrapper
+
+    p_agent, p_lower, p_pipeline = _patch_strategy_internals(monkeypatch, [valid_response, valid_response])
+
+    with p_agent as mock_agent_class, p_lower, patch("strategies.recipe._run_ir_pipeline", new=mock_pipeline):
+        original_make_agent = mock_agent_class.side_effect
+
+        def patched_make_agent(*args, **kwargs):
+            inst = original_make_agent(*args, **kwargs)
+            inst.run = patch_gen_agent_run(inst.run)
+            return inst
+
+        mock_agent_class.side_effect = patched_make_agent
+
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    gen_messages = [m for m in captured_user_messages["messages"] if "RecipeDSL" in m]
+    assert len(gen_messages) >= 2
+
+    retry_prompt = gen_messages[1]
+    assert "'A'" in retry_prompt, (
+        f"Undefined id 'A' not named in hint. Prompt:\n{retry_prompt}"
+    )
+    assert "point" in retry_prompt.lower(), (
+        f"Expected point-op suggestion in hint. Prompt:\n{retry_prompt}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 12: Structured fallback succeeds after recipe retries exhausted
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_structured_fallback_succeeds_after_recipe_failure(monkeypatch):
+    """
+    When all recipe retries fail, RecipeStrategy falls back to StructuredStrategy.
+    If the fallback succeeds, the result is returned with recipe_metadata
+    annotated with a fallback_structured_success trace.
+    """
+    error = UnexpectedModelBehavior("Exceeded maximum retries for output validation")
+    recipe_responses = [error] * (MAX_RETRIES + 1)  # ensure all retries fail
+
+    # Recipe pipeline mock — always fail
+    ir_result = MagicMock()
+    ir_result.diagram_ir = MagicMock()
+    ir_result.tikz = ""
+    ir_result.svg = "<svg/>"
+    ir_result.sym_table = {}
+    ir_result.sym_full = {}
+
+    # Structured fallback mock — succeed
+    from strategies.structured import StructuredRunResult
+    fallback_result = StructuredRunResult(
+        diagram_ir=MagicMock(),
+        tikz="",
+        svg="<svg>fallback</svg>",
+        sym_table={},
+        sym_full={},
+        input_tokens=200,
+        output_tokens=100,
+    )
+
+    selector_response = MagicMock()
+    selector_response.output = ""
+    selector_usage = MagicMock()
+    selector_usage.input_tokens = 10
+    selector_usage.output_tokens = 5
+    selector_response.usage.return_value = selector_usage
+
+    call_count = {"n": 0}
+
+    def make_agent_instance(model, **kwargs):
+        inst = MagicMock()
+        if call_count["n"] == 0:
+            # Selector agent
+            inst.run = AsyncMock(return_value=selector_response)
+        else:
+            # Generation agent — always fail
+            inst.run = AsyncMock(side_effect=error)
+        call_count["n"] += 1
+        return inst
+
+    with (
+        patch("strategies.recipe.Agent", side_effect=make_agent_instance),
+        patch("strategies.recipe.lower_to_ir", side_effect=RuntimeError("lowering failed")),
+        patch(
+            "strategies.recipe.StructureStrategy.run",
+            new=AsyncMock(return_value=fallback_result),
+        ),
+    ):
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    # Should return the fallback result, not raise
+    assert result.svg == "<svg>fallback</svg>"
+    traces = result.recipe_metadata.attempt_traces
+    stages = [t.stage for t in traces]
+    # All MAX_RETRIES attempts should be output_validation failures, then a fallback success
+    assert stages[-1] == "fallback_structured_success", stages
+    # Token counts should include both recipe and fallback tokens
+    assert result.input_tokens >= 200  # at least fallback tokens
+    assert result.output_tokens >= 100
+
+
+@pytest.mark.asyncio
+async def test_fallback_success_preserves_recipe_cot(monkeypatch):
+    """
+    When every recipe attempt fails but each captured a chain-of-thought, and
+    the StructuredStrategy fallback then succeeds, the top-level CoT should be
+    populated from the last recipe attempt that captured thinking — NOT left
+    None. StructuredStrategy does not collect CoT, so without this propagation
+    the record's `cot` would be empty and cot-analysis would skip the failure
+    entirely, discarding the model's reasoning about *where* generation went
+    wrong.
+    """
+    error = UnexpectedModelBehavior("Exceeded maximum retries for output validation")
+    recipe_responses = [error] * (MAX_RETRIES + 1)  # all retries fail
+
+    from strategies.structured import StructuredRunResult
+    fallback_result = StructuredRunResult(
+        diagram_ir=MagicMock(),
+        tikz="",
+        svg="<svg>fallback</svg>",
+        sym_table={},
+        sym_full={},
+        input_tokens=200,
+        output_tokens=100,
+    )
+
+    selector_response = MagicMock()
+    selector_response.output = ""
+    selector_usage = MagicMock()
+    selector_usage.input_tokens = 10
+    selector_usage.output_tokens = 5
+    selector_response.usage.return_value = selector_usage
+
+    call_count = {"n": 0}
+
+    def make_agent_instance(model, **kwargs):
+        inst = MagicMock()
+        if call_count["n"] == 0:
+            inst.run = AsyncMock(return_value=selector_response)
+        else:
+            inst.run = AsyncMock(side_effect=error)
+        call_count["n"] += 1
+        return inst
+
+    # Simulate real thinking captured on every (failing) recipe attempt.
+    cot_values = iter([
+        "thinking-attempt-1",
+        "thinking-attempt-2",
+        "thinking-attempt-3",
+    ])
+
+    def fake_extract_cot(messages):
+        # Reflects _extract_cot's real signature; returns the attempt's CoT.
+        return next(cot_values, None)
+
+    with (
+        patch("strategies.recipe.Agent", side_effect=make_agent_instance),
+        patch("strategies.recipe.lower_to_ir", side_effect=RuntimeError("lowering failed")),
+        patch("strategies.recipe._extract_cot", side_effect=fake_extract_cot),
+        patch(
+            "strategies.recipe.StructureStrategy.run",
+            new=AsyncMock(return_value=fallback_result),
+        ),
+    ):
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        result = await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    assert result.svg == "<svg>fallback</svg>"
+    # The fallback succeeded, so recipe_metadata.cot would be None without the
+    # propagation fix. It must instead hold the last captured recipe CoT.
+    assert result.recipe_metadata.cot == "thinking-attempt-3"
+    # And every recipe attempt trace still carries its own CoT.
+    recipe_traces = [
+        t for t in result.recipe_metadata.attempt_traces
+        if t.stage == "output_validation"
+    ]
+    assert [t.cot for t in recipe_traces] == [
+        "thinking-attempt-1",
+        "thinking-attempt-2",
+        "thinking-attempt-3",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Test 13: Structured fallback also fails — original error raised
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_structured_fallback_also_fails(monkeypatch):
+    """
+    When all recipe retries fail AND the structured fallback also fails,
+    RuntimeError is raised with the original recipe error message,
+    and the trace includes a fallback_structured_failure entry.
+    """
+    error = UnexpectedModelBehavior("Exceeded maximum retries for output validation")
+
+    selector_response = MagicMock()
+    selector_response.output = ""
+    selector_usage = MagicMock()
+    selector_usage.input_tokens = 10
+    selector_usage.output_tokens = 5
+    selector_response.usage.return_value = selector_usage
+
+    call_count = {"n": 0}
+
+    def make_agent_instance(model, **kwargs):
+        inst = MagicMock()
+        if call_count["n"] == 0:
+            inst.run = AsyncMock(return_value=selector_response)
+        else:
+            inst.run = AsyncMock(side_effect=error)
+        call_count["n"] += 1
+        return inst
+
+    with (
+        patch("strategies.recipe.Agent", side_effect=make_agent_instance),
+        patch("strategies.recipe.lower_to_ir", side_effect=RuntimeError("lowering failed")),
+        patch(
+            "strategies.recipe.StructureStrategy.run",
+            new=AsyncMock(side_effect=RuntimeError("StructureStrategy failed after 3 attempts")),
+        ),
+    ):
+        strategy = RecipeStrategy(use_recipes=True)
+        from ir.renderer import SVGRenderer
+        with pytest.raises(RuntimeError, match="RecipeStrategy failed after"):
+            await strategy.run("Draw a triangle.", renderer=SVGRenderer())
+
+    # Check that _partial_recipe_metadata has the fallback traces (2 attempts)
+    traces = strategy._partial_recipe_metadata.attempt_traces
+    stages = [t.stage for t in traces]
+    fallback_failures = [s for s in stages if s == "fallback_structured_failure"]
+    assert len(fallback_failures) == 2, f"Expected 2 fallback_structured_failure traces, got {len(fallback_failures)}: {stages}"
+

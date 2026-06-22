@@ -67,7 +67,7 @@ def test_parse_visual_response_includes_reasoning_text():
 # ---------------------------------------------------------------------------
 
 _SKIP_LIVE = pytest.mark.skipif(
-    not llm_tests_enabled() or not api_key_available(),
+    not llm_tests_enabled() or (not api_key_available() and not api_key_available("OPENROUTER_API_KEY")),
     reason="Live tests disabled (set RUN_LLM_TESTS=true and ANTHROPIC_API_KEY)",
 )
 

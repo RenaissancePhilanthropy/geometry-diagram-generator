@@ -1,0 +1,218 @@
+- id: geo-m1-t3-l3-act31-reflection-coordinate-plane-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - coordinate-plane
+  - trapezoid
+  prompt: Draw a coordinate plane with trapezoid ABCD where A is at (1,2), B is at
+    (4,2), C is at (3,4), D is at (2,4). Reflect the trapezoid across the y-axis and
+    label the image A'B'C'D'. Then reflect the original ABCD across the x-axis and
+    label that image A''B''C''D''. Label all twelve vertices and draw tick marks showing
+    equal distances from each axis for corresponding points.
+  expected_properties:
+  - name: reflection_across_y_axis_A
+    type: equal_lengths
+    args:
+    - - A
+      - A'
+    - - A
+      - A'
+  - name: equal_lengths_AB_AprimeBprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A'
+      - B'
+  - name: equal_lengths_AB_AdprimeBdprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A''
+      - B''
+  - name: label_Aprime_present
+    type: label_present
+    args:
+    - A'
+  - name: label_Adprimeprime_present
+    type: label_present
+    args:
+    - A''
+  - name: parallel_AA_prime
+    type: perpendicular
+    args:
+    - - A
+      - A'
+    - - C
+      - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - A'
+  - B'
+  - C'
+  - D'
+  - A''
+  - B''
+  - C''
+  - D''
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l4-act42-concentric-circles-rotation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - concentric-circles
+  - central-angle
+  prompt: Draw three concentric circles all centered at point E. Place triangle PQR
+    so that vertex P is on the smallest circle, vertex Q is on the middle circle,
+    and vertex R is on the largest circle. Then rotate the triangle about E by 65
+    degrees counterclockwise to get triangle P'Q'R'. Draw the angle of rotation for
+    each vertex — arcs from P to P', Q to Q', and R to R' — and mark the 65° central
+    angle at E. Label E, P, Q, R, P', Q', R'.
+  expected_properties:
+  - name: P_on_inner_circle
+    type: point_on_circle
+    args:
+    - P
+    - E
+    - P
+  - name: Pprime_on_inner_circle
+    type: point_on_circle
+    args:
+    - P'
+    - E
+    - P
+  - name: Q_on_middle_circle
+    type: point_on_circle
+    args:
+    - Q
+    - E
+    - Q
+  - name: Qprime_on_middle_circle
+    type: point_on_circle
+    args:
+    - Q'
+    - E
+    - Q
+  - name: equal_dist_EP_EPprime
+    type: equal_lengths
+    args:
+    - - E
+      - P
+    - - E
+      - P'
+  - name: equal_dist_EQ_EQprime
+    type: equal_lengths
+    args:
+    - - E
+      - Q
+    - - E
+      - Q'
+  - name: equal_lengths_PQ_PprimeQprime
+    type: equal_lengths
+    args:
+    - - P
+      - Q
+    - - P'
+      - Q'
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  structural_checks: []
+  required_labels:
+  - E
+  - P
+  - Q
+  - R
+  - P'
+  - Q'
+  - R'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m3-t1-l2-act21-aa-similarity-vertical-angles-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - AA-similarity
+  - vertical-angles
+  - right-angles
+  - similar-triangles
+  prompt: Can you draw two triangles that share a common vertex in the middle where
+    two lines cross, creating vertical angles? Label the crossing point as E, and
+    label the four outer vertices A, B, C, D so that triangle AEB and triangle CED
+    are formed. Mark the vertical angles at E as equal. Also mark angle A and angle
+    C as equal (both 40 degrees), and mark angle B and angle D as equal (both 70 degrees).
+    This should show the AA similarity theorem using vertical angles.
+  expected_properties:
+  - name: angle_equal_vertical_at_E
+    type: angle_equal
+    args:
+    - - A
+      - E
+      - B
+    - - C
+      - E
+      - D
+  - name: angle_equal_A_C
+    type: angle_equal
+    args:
+    - - B
+      - A
+      - E
+    - - D
+      - C
+      - E
+  - name: angle_equal_B_D
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - E
+    - - C
+      - D
+      - E
+  - name: collinear_A_E_C
+    type: collinear
+    args:
+    - A
+    - E
+    - C
+  - name: collinear_B_E_D
+    type: collinear
+    args:
+    - B
+    - E
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []

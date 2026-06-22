@@ -13,8 +13,8 @@ from typing import Any
 from .tikz_extraction import (
     extract_defined_points,
     extract_computed_points,
-    extract_labels,
     extract_marks,
+    collect_label_names,
     point_names_match,
 )
 
@@ -254,26 +254,106 @@ def _angle_at_vertex(
 
 def _validate_label_present(tikz: str, point_name: str) -> bool:
     """Return True if a label for point_name exists in the TikZ source."""
-    for label in extract_labels(tikz):
-        if label["type"] == "label_points":
-            if any(point_names_match(point_name, p) for p in label["points"]):
-                return True
-        if label["type"] == "label_point":
-            if point_names_match(point_name, label["point"]):
-                return True
-    return False
+    return any(
+        point_names_match(point_name, lab) for lab in collect_label_names(tikz)
+    )
 
 
-def _validate_mark_present(tikz: str, mark_type: str, vertex: str) -> bool:
-    """Return True if a mark of mark_type exists with the given vertex."""
+# Maps the scenario ``mark_type`` vocabulary to (extractor kind, expected count).
+# ``count=None`` means "any multiplicity". The extractor emits kinds
+# ``right_angle`` / ``angle`` / ``segment_mark``; scenario authors use a richer
+# vocabulary (tick, tick_single/double/triple, arc, angle_single/double, ...).
+# Only the genuinely achievable mark types are mapped here; semantic "marks"
+# (midpoint, radius, slant_height, ...) are intentionally absent so they keep
+# failing — they are mis-specified, not checker bugs.
+_MARK_TYPE_NORMALIZATION: dict[str, tuple[str, int | None]] = {
+    # segment tick marks (mark=| / || / |||)
+    "tick": ("segment_mark", 1),
+    "tick1": ("segment_mark", 1),
+    "tick_single": ("segment_mark", 1),
+    "tick2": ("segment_mark", 2),
+    "tick_double": ("segment_mark", 2),
+    "tick3": ("segment_mark", 3),
+    "tick_triple": ("segment_mark", 3),
+    "segment_mark": ("segment_mark", None),
+    # parallel arrows (mark=> / >> / >>>) — distinct from ticks
+    "parallel": ("parallel_mark", None),
+    "parallel_single": ("parallel_mark", 1),
+    "parallel_double": ("parallel_mark", 2),
+    "parallel_triple": ("parallel_mark", 3),
+    # angle arcs (arc=l / ll / lll)
+    "arc": ("angle", 1),
+    "arc_single": ("angle", 1),
+    "arc_double": ("angle", 2),
+    "arc_triple": ("angle", 3),
+    "angle": ("angle", None),
+    "angle_single": ("angle", 1),
+    "angle_double": ("angle", 2),
+    "angle_triple": ("angle", 3),
+    # right-angle squares
+    "right_angle": ("right_angle", None),
+}
+
+
+def _mark_vertex_matches(
+    vertex: str, mark: dict, coords: dict[str, tuple[float, float]] | None
+) -> bool:
+    """Return True if *vertex* refers to the given mark.
+
+    *vertex* may name either a point (e.g. ``"A"`` for a segment endpoint or
+    the angle vertex) or a segment as the concatenation of its two endpoints
+    (e.g. ``"AB"``). For angle / right-angle marks only the angle *vertex*
+    counts (a ray endpoint is not "the marked angle"). When *coords* is
+    available, segment names are split against known points so multi-character
+    point names (``A1``, ``PA1``) are resolved unambiguously; otherwise we
+    fall back to raw concatenation.
+    """
+    kind = mark.get("type")
+
+    if kind in ("segment_mark", "parallel_mark"):
+        fr, to = mark.get("from"), mark.get("to")
+        # Point-style: vertex names a segment endpoint.
+        if (fr and point_names_match(vertex, fr)) or (to and point_names_match(vertex, to)):
+            return True
+        if not fr or not to:
+            return False
+        # Segment-style: vertex names the segment as endpoint concatenation.
+        if coords:
+            for i in range(1, len(vertex)):
+                p, q = vertex[:i], vertex[i:]
+                if p in coords and q in coords:
+                    if (point_names_match(p, fr) and point_names_match(q, to)) or (
+                        point_names_match(p, to) and point_names_match(q, fr)
+                    ):
+                        return True
+        return vertex == f"{fr}{to}" or vertex == f"{to}{fr}"
+
+    # angle / right_angle: the marked angle is identified by its vertex.
+    mv = mark.get("vertex")
+    return bool(mv and point_names_match(vertex, mv))
+
+
+def _validate_mark_present(
+    tikz: str,
+    mark_type: str,
+    vertex: str,
+    coords: dict[str, tuple[float, float]] | None = None,
+) -> bool:
+    """Return True if a mark of mark_type exists with the given vertex.
+
+    ``mark_type`` is normalized against :data:`_MARK_TYPE_NORMALIZATION`; an
+    unmapped type (e.g. a semantic ``"radius"`` expectation) returns False.
+    """
+    norm = _MARK_TYPE_NORMALIZATION.get(mark_type)
+    if norm is None:
+        return False
+    expected_kind, expected_count = norm
     for mark in extract_marks(tikz):
-        if mark["type"] != mark_type:
+        if mark.get("type") != expected_kind:
             continue
-        if point_names_match(vertex, mark.get("vertex", "")):
-            return True
-        if point_names_match(vertex, mark.get("from", "")):
-            return True
-        if point_names_match(vertex, mark.get("to", "")):
+        if expected_count is not None and mark.get("count", 1) != expected_count:
+            continue
+        if _mark_vertex_matches(vertex, mark, coords):
             return True
     return False
 
@@ -451,7 +531,7 @@ def validate_geometric_property(
             if tikz is None:
                 return None
             mark_type, vertex = args[0], args[1]
-            return _validate_mark_present(tikz, mark_type, vertex)
+            return _validate_mark_present(tikz, mark_type, vertex, coords)
 
         elif property_type == "equidistant_from_sides":
             # args = [P, A, B, C] — P is equidistant from lines AB, BC, CA

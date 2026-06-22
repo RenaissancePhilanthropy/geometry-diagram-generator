@@ -25,11 +25,12 @@ from ir.ir import (
     Segment,
     Triangle,
     EllipseCenterAxes,
+    Ray,
 )
 import sympy.geometry as spg
 from ir.checks import check_render_angles
 from ir.to_sympy import compile_defs
-from ir.to_tikz import _style_str, ir_to_tikz
+from ir.to_tikz import _emit_op, _style_str, ir_to_tikz
 
 
 def _compile_tikz(diagram: DiagramIR) -> str:
@@ -724,3 +725,15 @@ def test_draw_sector_tikz():
     tikz = ir_to_tikz(diagram, sym)
     assert "\\draw" in tikz
     assert "arc" in tikz
+
+
+def test_emit_draw_ray_with_style_merges_opts():
+    # A styled Ray must merge the add= option with the style options via comma,
+    # not glue the [style] bracket onto 'add=0 and 1' (which yields invalid TikZ
+    # like `add=0 and 1[thick,->]`). Regression for a model-agnostic render bug.
+    sym = {"r": spg.Ray(spg.Point(0, 0), spg.Point(1, 0))}
+    stmt_by_id = {"r": Ray(id="r", a="A", b="B")}
+    styles = {"arrow": {"thick": True, "->": True}}
+    out = _emit_op(Draw(obj="r", style="arrow"), sym, stmt_by_id, {}, styles)
+    assert out == [r"\tkzDrawLine[add=0 and 1,thick,->](A,B)"]
+    assert "1[" not in out[0]  # no bracket glued directly after the add spec

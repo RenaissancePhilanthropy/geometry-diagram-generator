@@ -1,0 +1,14 @@
+- id: circumscribed-circle
+  tier: 2
+  tags: [circle, core, smoke]
+  prompt: "Draw a triangle ABC with its circumscribed circle. Label the circumcenter O and all three vertices A, B, and C."
+  required_labels: [A, B, C, O]
+  required_entities:
+    - type: circle
+  expected_properties:
+    - name: A_on_circumcircle
+      type: point_on_circle
+      args: [A, O, B]
+    - name: C_on_circumcircle
+      type: point_on_circle
+      args: [C, O, B]

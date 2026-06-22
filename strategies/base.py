@@ -33,9 +33,28 @@ class SubstanceStrategy(ABC):
 
     logger = getLogger(__name__)
 
-    def __init__(self, enable_cache: bool = False):
+    def __init__(self, enable_cache: bool = False, thinking: bool = False):
         super().__init__()
+        self.thinking = thinking
         self.model_settings: ModelSettings = cache_model_settings(enable_cache)
+        if thinking:
+            # Unified `thinking: True` is honored by providers whose model
+            # profile sets `supports_thinking` (Anthropic, Gemini 2.5+, OpenAI
+            # reasoning models). It is silently DROPPED for OpenAI-compatible
+            # providers whose profile resolves to `supports_thinking=False`
+            # — notably `ollama:gemma4` (the `gemma` prefix maps to
+            # `google_model_profile`, which only enables thinking for
+            # `gemini-2.5`/`gemini-3` names). pydantic-ai's
+            # `OpenAIChatModel._translate_thinking` reads `openai_reasoning_effort`
+            # before that profile gate, so adding it makes `--thinking` actually
+            # engage reasoning for ollama (and other OpenAIChatModel providers).
+            # It is ignored by providers that don't read it (Anthropic, native
+            # Google), where `thinking: True` already works.
+            self.model_settings = {
+                **self.model_settings,
+                'thinking': True,
+                'openai_reasoning_effort': 'medium',
+            }
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
     @abstractmethod

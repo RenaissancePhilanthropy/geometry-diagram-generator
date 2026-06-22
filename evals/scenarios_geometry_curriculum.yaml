@@ -4119,6 +4119,15 @@
       - H
     - - F
       - G
+  # NOTE (mis-specified, pending decision): the four *_mark checks below use
+  # mark_present:[midpoint, X], which always fails. The prompt does not request
+  # tick marks at the midpoints (only "find and mark/label"), the midpoint is
+  # already verified by the E/F/G/H_midpoint_* geometric checks plus
+  # required_labels, and "midpoint" is not a tick/arc mark_type the extractor
+  # recognizes (segment_mark / angle / right_angle). Do NOT reclassify to
+  # segment_mark here — models correctly draw no ticks and the prompt doesn't
+  # ask for them, so that would be an unfair fail. Intended fix: delete these
+  # four checks as redundant (left in place pending review).
   - name: E_mark
     type: mark_present
     args:
@@ -4201,6 +4210,13 @@
       - N
     - - D
       - C
+  # NOTE (mis-specified, pending decision): mark_present:[midpoint, M/N] below
+  # always fails — "midpoint" is not a recognized tick/arc mark_type. The prompt
+  # says "mark M and N as midpoints" but does NOT say "with tick marks", and the
+  # midpoint is already verified by M/N_midpoint_* geometric checks plus
+  # required_labels. Ambiguous: reclassify to segment_mark only if "mark as
+  # midpoints" is read as requesting ticks (models happen to draw them), else
+  # delete as redundant. Left in place pending review.
   - name: M_mark
     type: mark_present
     args:
@@ -4908,12 +4924,12 @@
   - name: M_mark
     type: mark_present
     args:
-    - midpoint
+    - segment_mark
     - M
   - name: N_mark
     type: mark_present
     args:
-    - midpoint
+    - segment_mark
     - N
   structural_checks: []
   required_labels:
@@ -5270,17 +5286,17 @@
   - name: D_mark
     type: mark_present
     args:
-    - midpoint
+    - segment_mark
     - D
   - name: E_mark
     type: mark_present
     args:
-    - midpoint
+    - segment_mark
     - E
   - name: F_mark
     type: mark_present
     args:
-    - midpoint
+    - segment_mark
     - F
   structural_checks: []
   required_labels:

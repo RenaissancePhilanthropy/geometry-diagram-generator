@@ -7,6 +7,7 @@ Usage:
                         [--max-concurrency N]
                         [--llm-judge] [--no-llm-judge]
                         [--visual-judge] [--judge-model MODEL]
+                        [--cot-analysis] [--no-cot-analysis] [--thinking]
 
 Each scenario is run against each strategy. Results are appended as JSONL
 records to a file in the output directory.
@@ -22,12 +23,16 @@ Result fields:
   output_tokens, duration_s, error,
   query_results,
   llm_judge_score, llm_judge_reasoning,
-  human_score, human_notes
+  human_score, human_notes,
+  cot (chain-of-thought of the successful attempt; None if thinking disabled),
+  cot_analysis_score, cot_analysis_reasoning, cot_analysis_signals,
+  confidence_calibration (agree/overconfident/underconfident/neutral vs gate)
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -83,8 +88,8 @@ from util.svg_checks import run_svg_checks
 from util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 class _RecipeNoRecipesStrategy(RecipeStrategy):
-    def __init__(self, enable_cache: bool = False) -> None:
-        super().__init__(use_recipes=False, enable_cache=enable_cache)
+    def __init__(self, enable_cache: bool = False, thinking: bool = False) -> None:
+        super().__init__(use_recipes=False, enable_cache=enable_cache, thinking=thinking)
 
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
@@ -219,6 +224,53 @@ async def _run_query_phase(
     return results
 
 
+def _timeout_record(scenario: dict, strategy_name: str, model: str, repeat_index: int, timeout: int) -> dict:
+    """Create a result dict for a scenario that exceeded the per-scenario timeout."""
+    return {
+        "scenario_id": scenario.get("id", "unknown"),
+        "benchmark": scenario.get("benchmark", ""),
+        "tier": scenario.get("tier"),
+        "tags": scenario.get("tags", []),
+        "strategy": strategy_name,
+        "model": model,
+        "user_prompt": scenario.get("prompt", ""),
+        "repeat_index": repeat_index,
+        "svg_path": None,
+        "tikz_code": None,
+        "diagram_ir": None,
+        "tkzelements_code": None,
+        "generation_success": False,
+        "svg_rendered": False,
+        "svg_checks": None,
+        "tikz_checks": None,
+        "canvas_checks": None,
+        "expected_point_checks": None,
+        "deterministic_pass": None,
+        "gate_status": "fail",
+        "gate_failures": [],
+        "tool_calls": 0,
+        "retries": 0,
+        "input_tokens": None,
+        "output_tokens": None,
+        "duration_s": float(timeout),
+        "error": f"Timeout after {timeout}s",
+        "ir_diagnostics": None,
+        "sympy_property_checks": [],
+        "structural_checks": None,
+        "query_results": [],
+        "llm_judge_score": None,
+        "llm_judge_reasoning": None,
+        "human_score": None,
+        "human_notes": None,
+        "cot": None,
+        "cot_analysis_score": None,
+        "cot_analysis_reasoning": None,
+        "cot_analysis_signals": None,
+        "cot_analysis_details": None,
+        "confidence_calibration": None,
+    }
+
+
 async def run_scenario(
     scenario: dict,
     strategy_name: str,
@@ -231,6 +283,9 @@ async def run_scenario(
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
     enable_cache: bool = False,
+    thinking: bool = False,
+    cot_analysis: bool = False,
+    prompt_overrides: dict[str, str] | None = None,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -269,10 +324,23 @@ async def run_scenario(
         "llm_judge_reasoning": None,
         "human_score": None,
         "human_notes": None,
+        "cot": None,
+        "cot_analysis_score": None,
+        "cot_analysis_reasoning": None,
+        "cot_analysis_signals": None,
+        "cot_analysis_details": None,
+        "confidence_calibration": None,
     }
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
-    strategy = strategy_cls(enable_cache=enable_cache)
+    # Only pass prompt_overrides to strategies whose constructor accepts it
+    # (currently RecipeStrategy). This enables prompt-only ablations: the
+    # same code/checkers run, but with swapped prompt text (e.g. pre-GEPA).
+    init_params = inspect.signature(strategy_cls.__init__).parameters
+    ctor_kwargs: dict[str, Any] = {"enable_cache": enable_cache, "thinking": thinking}
+    if prompt_overrides and "prompt_overrides" in init_params:
+        ctor_kwargs["prompt_overrides"] = prompt_overrides
+    strategy = strategy_cls(**ctor_kwargs)
 
     start = time.monotonic()
     try:
@@ -298,10 +366,34 @@ async def run_scenario(
                     "selection_input_tokens": partial_meta.selection_input_tokens,
                     "selection_output_tokens": partial_meta.selection_output_tokens,
                     "attempt_traces": [
-                        {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                        {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage, "cot": t.cot}
                         for t in partial_meta.attempt_traces
                     ],
                 }
+                record["attempts"] = len(partial_meta.attempt_traces)
+                record["used_fallback"] = any(
+                    t.stage in ("fallback_structured_success", "fallback_structured_failure")
+                    for t in partial_meta.attempt_traces
+                )
+                # Top-level CoT on failure = last attempt's captured CoT (no
+                # success attempt exists). Lets the CoT-analysis judge fire on
+                # gate-failures too.
+                record["cot"] = next(
+                    (t.cot for t in reversed(partial_meta.attempt_traces) if t.cot),
+                    None,
+                )
+        # Run CoT-analysis on the failure path too, using the partial metadata
+        # (best-effort DSL from the last attempt) so scored failures produce a
+        # confidence score + calibration instead of None.
+        await _maybe_run_cot_analysis(
+            record, partial_meta if isinstance(strategy, RecipeStrategy) else None,
+            scenario=scenario, cot_analysis=cot_analysis,
+            judge_model=judge_model, enable_cache=enable_cache,
+        )
+        # Finalize gate + calibration on the failure path too (otherwise the
+        # failure record keeps gate_status='fail' from the default but never
+        # gets gate_failures or confidence_calibration populated).
+        _finalize_gate_status(record)
         return record
 
     record["duration_s"] = round(time.monotonic() - start, 2)
@@ -348,12 +440,39 @@ async def run_scenario(
                 "selection_input_tokens": result.recipe_metadata.selection_input_tokens,
                 "selection_output_tokens": result.recipe_metadata.selection_output_tokens,
                 "attempt_traces": [
-                    {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                    {
+                        "attempt": t.attempt,
+                        "dsl_json": t.dsl_json,
+                        "error": t.error,
+                        "stage": t.stage,
+                        "cot": t.cot,
+                    }
                     for t in result.recipe_metadata.attempt_traces
                 ],
             }
+            record["attempts"] = len(result.recipe_metadata.attempt_traces)
+            record["used_fallback"] = any(
+                t.stage in ("fallback_structured_success", "fallback_structured_failure")
+                for t in result.recipe_metadata.attempt_traces
+            )
+            # Top-level CoT = successful attempt's chain-of-thought (the answer's
+            # reasoning). None when thinking was disabled or no thinking emitted.
+            record["cot"] = result.recipe_metadata.cot
         else:
             record["recipe_metadata"] = None
+            record["cot"] = None
+
+        # CoT-analysis (confidence judge). Text-only; reuses the configured
+        # judge_model. Runs only when --cot-analysis is on AND a CoT was
+        # captured (i.e. --thinking was on). Unlike the code judge, it does not
+        # depend on tikz_code, so it works for the recipe + svg path. On a
+        # gate-failure it analyzes the last attempt's best-effort DSL so a
+        # scored failure still yields a confidence score + calibration.
+        await _maybe_run_cot_analysis(
+            record, result.recipe_metadata,
+            scenario=scenario, cot_analysis=cot_analysis,
+            judge_model=judge_model, enable_cache=enable_cache,
+        )
 
         # Query eval phase — test follow-up questions via query_diagram tool
         queries = scenario.get("queries", [])
@@ -678,6 +797,90 @@ def _finalize_gate_status(record: dict) -> None:
     else:
         record["gate_status"] = "fail"
 
+    # Confidence calibration: compare the CoT-analysis confidence score against
+    # the deterministic gate outcome. Free (no extra LLM call). None when no
+    # confidence score was produced (CoT-analysis off or no CoT).
+    record["confidence_calibration"] = _confidence_calibration(
+        record.get("cot_analysis_score"), record["gate_status"]
+    )
+
+
+def _confidence_calibration(score: int | None, gate_status: str) -> str | None:
+    """Map (confidence score, gate status) to a calibration label.
+
+    >=4 & pass, or <=2 & fail -> 'agree'
+    >=4 & fail               -> 'overconfident'
+    <=2 & pass               -> 'underconfident'
+    score 3, soft_pass, or no score -> 'neutral'
+    Returns None when there is no confidence score.
+    """
+    if score is None:
+        return None
+    passed = gate_status == "pass"
+    failed = gate_status == "fail"
+    if score >= 4:
+        return "agree" if passed else ("overconfident" if failed else "neutral")
+    if score <= 2:
+        return "agree" if failed else ("underconfident" if passed else "neutral")
+    return "neutral"
+
+
+async def _maybe_run_cot_analysis(
+    record: dict,
+    rm,
+    *,
+    scenario: dict,
+    cot_analysis: bool,
+    judge_model: str,
+    enable_cache: bool,
+) -> None:
+    """Run the CoT confidence judge when --cot-analysis is on and a CoT was
+    captured. Text-only; reuses the configured judge_model. Unlike the code
+    judge it does not depend on tikz_code, so it works for the recipe + svg
+    path. Works on both success AND failure records: on a gate-failure it
+    analyzes the model's best-effort DSL (the last attempt that produced one)
+    against the captured CoT, so a scored failure yields a confidence score and
+    a calibration label (e.g. 'overconfident') instead of None.
+    """
+    if not cot_analysis:
+        return
+    cot_text = record.get("cot")
+    if not cot_text:
+        record["cot_analysis_reasoning"] = "(skipped: no CoT — run with --thinking)"
+        return
+    # Prefer the successful attempt's DSL; on failure fall back to the last
+    # attempt that produced a DSL (the model's best-effort answer).
+    target_dsl: dict | None = None
+    if rm is not None:
+        for t in rm.attempt_traces:
+            if t.stage == "success" and t.dsl_json is not None:
+                target_dsl = t.dsl_json
+                break
+        if target_dsl is None:
+            for t in reversed(rm.attempt_traces):
+                if t.dsl_json is not None:
+                    target_dsl = t.dsl_json
+                    break
+    if target_dsl is None:
+        record["cot_analysis_reasoning"] = "(skipped: no DSL to analyze)"
+        return
+    try:
+        from util.cot_analyzer import analyze_cot
+        cot_result = analyze_cot(
+            prompt=scenario["prompt"],
+            dsl_json=target_dsl,
+            cot=cot_text,
+            model=judge_model,
+            enable_cache=enable_cache,
+        )
+        record["cot_analysis_score"] = cot_result["score"]
+        record["cot_analysis_reasoning"] = cot_result["reasoning"]
+        record["cot_analysis_signals"] = cot_result["signals"]
+        record["cot_analysis_details"] = cot_result
+    except Exception as e:
+        record["cot_analysis_score"] = None
+        record["cot_analysis_reasoning"] = f"CoT-analysis error: {e}"
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -732,6 +935,14 @@ async def main() -> None:
         help="Enable visual LLM judge (SVG → image review). Requires cairosvg.",
     )
     parser.add_argument(
+        "--cot-analysis",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable CoT-analysis confidence judge (ingests the captured chain-of-thought "
+        "and the produced DSL; emits a 1-5 confidence score + structured signals). "
+        "Only runs when --thinking is on (so a CoT was captured). Default: off.",
+    )
+    parser.add_argument(
         "--judge-model",
         default=DEFAULT_AGENT_MODEL,
         help="Model to use for LLM-as-judge evaluation",
@@ -742,7 +953,40 @@ async def main() -> None:
         default="tikz",
         help="Renderer backend: 'tikz' (default, requires Docker) or 'svg' (direct, no Docker needed)",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Per-scenario timeout in seconds (default: 300). Covers all retries, fallback, and judge calls.",
+    )
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        default=False,
+        help="Enable LLM thinking/reasoning mode (e.g. gemma4 <|think|>). Increases quality but adds latency and token cost.",
+    )
+    parser.add_argument(
+        "--use-optimized-prompts",
+        action="store_true",
+        default=False,
+        help="Use the current on-disk (GEPA-optimized) recipe prompts. When NOT passed, "
+        "runs with the prior (pre-GEPA) prompts loaded from strategies/recipe_original_prompts_overrides.json, "
+        "so a before/after prompt ablation can be run with all other code held fixed.",
+    )
     args = parser.parse_args()
+
+    # Prompt ablation: by default use the prior (pre-GEPA) prompts; pass --use-optimized-prompts
+    # to opt back into the current on-disk (GEPA-optimized) prompts (no overrides applied).
+    prior_prompts_path = Path(__file__).resolve().parent.parent / "strategies" / "recipe_original_prompts_overrides.json"
+    prompt_overrides: dict[str, str] | None = None
+    if args.use_optimized_prompts:
+        print("Prompts: GEPA-optimized (on-disk)")
+    elif prior_prompts_path.exists():
+        with open(prior_prompts_path) as f:
+            prompt_overrides = json.load(f)
+        print(f"Prompts: prior (pre-GEPA) from {prior_prompts_path.name}  ({len(prompt_overrides)} keys)")
+    else:
+        print(f"Prompts: GEPA-optimized (on-disk)  [prior file not found: {prior_prompts_path.name}]")
 
     if args.repeats < 1:
         raise ValueError("--repeats must be >= 1")
@@ -795,19 +1039,31 @@ async def main() -> None:
         repeat_index: int,
     ) -> dict[str, Any]:
         async with semaphore:
-            return await run_scenario(
-                scenario,
-                strategy_name,
-                args.model,
-                repeat_index,
-                svg_output_dir,
-                benchmark,
-                renderer=renderer,
-                llm_judge=args.llm_judge,
-                visual_judge=args.visual_judge,
-                judge_model=args.judge_model,
-                enable_cache=total > 1,
-            )
+            try:
+                record = await asyncio.wait_for(
+                    run_scenario(
+                        scenario,
+                        strategy_name,
+                        args.model,
+                        repeat_index,
+                        svg_output_dir,
+                        benchmark,
+                        renderer=renderer,
+                        llm_judge=args.llm_judge,
+                        visual_judge=args.visual_judge,
+                        judge_model=args.judge_model,
+                        enable_cache=total > 1,
+                        thinking=args.thinking,
+                        cot_analysis=args.cot_analysis,
+                        prompt_overrides=prompt_overrides,
+                    ),
+                    timeout=args.timeout,
+                )
+            except asyncio.TimeoutError:
+                record = _timeout_record(
+                    scenario, strategy_name, args.model, repeat_index, args.timeout,
+                )
+        return record
 
     for strategy_name in args.strategies:
         print(f"Strategy: {strategy_name}  model: {args.model}")
@@ -817,6 +1073,9 @@ async def main() -> None:
             for repeat_index in range(1, args.repeats + 1)
         ]
 
+        strategy_start = time.monotonic()
+        strategy_done = 0
+        strategy_total = len(tasks)
         for finished in asyncio.as_completed(tasks):
             record = await finished
             record["run_id"] = run_id
@@ -825,6 +1084,11 @@ async def main() -> None:
             _print_record(record)
             _append_jsonl(output_path, record)
             all_records.append(record)
+            strategy_done += 1
+            elapsed = time.monotonic() - strategy_start
+            rate = strategy_done / elapsed if elapsed > 0 else 0
+            remaining = (strategy_total - strategy_done) / rate if rate > 0 else 0
+            print(f"  [{strategy_done}/{strategy_total}] {elapsed:.0f}s elapsed, ~{remaining:.0f}s remaining")
 
     _print_summary(all_records)
     print(f"\nResults written to {output_path}")

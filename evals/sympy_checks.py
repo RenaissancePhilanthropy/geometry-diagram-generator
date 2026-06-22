@@ -5,6 +5,84 @@ float-coordinate symbol table produced by the structured strategy.
 """
 from __future__ import annotations
 
+import re
+
+
+def _resolve_point_name(name: str, sym_float: dict) -> tuple[float, float] | None:
+    """Look up a point name in sym_float, trying prime-notation variants.
+
+    Scenario YAMLs use mathematical prime notation (A', A'') but the model
+    may produce alternatives like A_prime, Aprime, A_double, A_p, etc.
+    This function tries the exact name first, then common variants.
+    """
+    # Try exact match first
+    p = sym_float.get(name)
+    if p is not None:
+        return p
+
+    # Generate candidate variants for prime notation
+    candidates = []
+
+    # Handle trailing primes: A'' has 2, A' has 1
+    # Also handle embedded primes: C'1, C'2 (where a suffix follows the prime)
+    match = re.match(r"^(.*?)('+)(\d*)$", name)
+    if match:
+        base = match.group(1)
+        primes = match.group(2)
+        suffix = match.group(3)
+        n_primes = len(primes)
+
+        # Full word forms for each prime count
+        prime_words = {1: "prime", 2: "double", 3: "triple"}
+        word = prime_words.get(n_primes, f"prime{n_primes}")
+        # Short forms (A_p for A', A_p2 for A'')
+        p_word = {1: "p", 2: "p2", 3: "p3"}.get(n_primes, f"p{n_primes}")
+
+        if suffix:
+            # C'1 → C_prime_1, C_prime1, C_p_1, C_p1, C1_prime, C1_p
+            candidates.extend([
+                f"{base}_{word}_{suffix}",    # C_prime_1
+                f"{base}_{word}{suffix}",     # C_prime1
+                f"{base}{word}_{suffix}",     # Aprime_1
+                f"{base}{word}{suffix}",      # Aprime1
+                f"{base}_{p_word}_{suffix}",   # C_p_1
+                f"{base}_{p_word}{suffix}",    # C_p1
+                f"{base}{p_word}_{suffix}",   # Ap_1
+                f"{base}{p_word}{suffix}",    # Ap1
+                f"{base}{suffix}_{word}",     # C1_prime
+                f"{base}{suffix}_{p_word}",   # C1_p
+                f"{base}{suffix}{word}",      # C1prime
+                f"{base}{suffix}{p_word}",    # C1p
+                f"{base}_{n_primes}_{suffix}", # C_1_1  (unlikely but harmless)
+            ])
+        else:
+            # A' → A_prime, Aprime, A_p, A1
+            # A'' → A_double, A_double_prime, Adouble, A_p2, A2
+            candidates.extend([
+                f"{base}_{word}",          # A_prime, A_double
+                f"{base}_{word}_prime",    # A_double_prime (for A'')
+                f"{base}{word}",           # Aprime, Adouble
+                f"{base}{word}prime",      # Aprimeprime, Adoubleprime
+                f"{base}{word}_prime",     # Adouble_prime
+                f"{base}_{p_word}",        # A_p, A_p2
+                f"{base}{p_word}",         # Ap, Ap2
+                f"{base}_{n_primes}",      # A_1, A_2
+                f"{base}{n_primes}",        # A1, A2
+            ])
+            # Also try just stripping primes: A'' → A (rarely useful)
+            if base != name:
+                candidates.append(base)
+    else:
+        # No primes found — name is already in canonical form
+        return None
+
+    for c in candidates:
+        p = sym_float.get(c)
+        if p is not None:
+            return p
+
+    return None
+
 
 def _validate_properties_sympy(
     expected_properties: list[dict],
@@ -32,7 +110,7 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
     import math
 
     def pt(name: str) -> tuple[float, float]:
-        p = sym_float.get(name)
+        p = _resolve_point_name(name, sym_float)
         if p is None:
             raise KeyError(f"Point {name!r} not in symbol table")
         return p

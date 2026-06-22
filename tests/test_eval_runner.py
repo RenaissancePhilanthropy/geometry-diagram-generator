@@ -6,6 +6,7 @@ No LLM or Docker required.
 from __future__ import annotations
 
 import io
+import json
 import sys
 from pathlib import Path
 
@@ -263,6 +264,40 @@ def test_finalize_gate_status_fail_on_generation_failure():
     _finalize_gate_status(record)
     assert record["gate_status"] == "fail"
     assert "generation" in record["gate_failures"]
+
+
+def test_rescore_gate_flips_false_positive_node_label(tmp_path):
+    """Re-scoring must turn a label-FP failure (label only in \\node text) into a pass."""
+    from evals.rescore_gate import rescore_run
+    from evals.run import _finalize_gate_status
+
+    # Scenario requires labels m, n — placed only as free \node text (the FP case).
+    scenario = {
+        "id": "lines-mn",
+        "tier": 1,
+        "tags": [],
+        "prompt": "Draw two lines m and n.",
+        "required_labels": ["m", "n"],
+        "expected_properties": [],
+        "structural_checks": [],
+    }
+    scen_path = tmp_path / "scenarios.yaml"
+    scen_path.write_text(yaml.safe_dump([scenario]))
+
+    tikz = r"\node at (5.5,2.3) {$m$};" + "\n" + r"\node at (4.5,0.7) {$n$};"
+    record = _base_record(scenario_id="lines-mn", tikz_code=tikz, tikz_checks=None)
+    # Simulate the pre-fix gate: required_labels reported missing.
+    record["tikz_checks"] = {"required_labels": {"passed": False, "missing": ["m", "n"]}}
+    _finalize_gate_status(record)
+    assert record["gate_status"] == "fail"  # pre-fix expectation
+
+    run_path = tmp_path / "run.jsonl"
+    run_path.write_text(json.dumps(record) + "\n")
+
+    out = rescore_run(run_path, scen_path)
+    recs = [json.loads(l) for l in out.read_text().splitlines()]
+    assert recs[0]["gate_status"] == "pass"
+    assert recs[0]["tikz_checks"]["required_labels"]["passed"] is True
 
 
 def test_core_scenarios_include_grid_cases():

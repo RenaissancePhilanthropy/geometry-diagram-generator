@@ -223,7 +223,8 @@ def _emit_op(
                 out.append(f"\\tkzDrawLine[{opts}]({p1},{p2})")
             elif isinstance(sym_obj, spg.Ray):
                 stmt = stmt_by_id[obj_id]
-                out.append(f"\\tkzDrawLine[add=0 and 1{sopts}]({stmt.a},{stmt.b})")
+                opts = _merge_opts("add=0 and 1", sopts)
+                out.append(f"\\tkzDrawLine[{opts}]({stmt.a},{stmt.b})")
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzDrawCircle{sopts}({center},{through})")

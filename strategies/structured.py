@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 import sympy.geometry as spg
 
-from pydantic_ai import Agent, ModelRetry
+from pydantic_ai import Agent, ModelRetry, capture_run_messages
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
+from pydantic_ai.messages import ModelResponse, TextPart
 
 from strategies.base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from strategies.instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
@@ -62,6 +64,40 @@ def _arg(args: dict[str, str], *keys: str) -> str:
     raise KeyError(f"Missing required arg — expected one of: {', '.join(keys)}")
 
 
+def _extract_diagram_ir_from_text(messages: list) -> DiagramIR | None:
+    """Try to extract a DiagramIR from model text responses in captured messages.
+
+    When a model returns DiagramIR JSON as plain text (in markdown code fences)
+    instead of calling the output tool, this function attempts to parse it.
+    Returns a DiagramIR on success, or None if no valid JSON is found.
+    """
+    import re
+
+    for msg in reversed(messages):
+        if not isinstance(msg, ModelResponse):
+            continue
+        for part in msg.parts:
+            if not isinstance(part, TextPart):
+                continue
+            text = part.content
+            # Try to extract JSON from markdown code fences first
+            json_match = re.search(r'```(?:json)?\s*\n(.*?)\n\s*```', text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            elif text.strip().startswith('{'):
+                # Raw JSON without code fences
+                json_str = text.strip()
+            else:
+                continue
+            try:
+                data = json.loads(json_str)
+                return DiagramIR.model_validate(data)
+            except (json.JSONDecodeError, Exception):
+                # JSON parse or DiagramIR validation failed, try next part
+                continue
+    return None
+
+
 def dispatch_query(sym: dict, query_type: str, args: dict[str, str]) -> str:
     """Dispatch a query_type + args to the appropriate ir.queries function."""
     try:
@@ -112,8 +148,8 @@ class StructureStrategy(SubstanceStrategy):
     error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, enable_cache: bool = False, renderer: Renderer | None = None) -> None:
-        super().__init__(enable_cache=enable_cache)
+    def __init__(self, enable_cache: bool = False, renderer: Renderer | None = None, thinking: bool = False) -> None:
+        super().__init__(enable_cache=enable_cache, thinking=thinking)
         self.renderer = renderer
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
@@ -179,17 +215,45 @@ class StructureStrategy(SubstanceStrategy):
                 )
 
             # Step 1: LLM generates DiagramIR
+            diagram_ir = None
             ir_agent = Agent(
                 model,
                 instructions=STRUCTURED_STRATEGY_IR_INSTRUCTIONS,
                 output_type=DiagramIR,
                 model_settings=self.model_settings,
             )
-            response = await ir_agent.run(user_prompt)
-            usage = response.usage()
-            total_input_tokens += usage.input_tokens or 0
-            total_output_tokens += usage.output_tokens or 0
-            diagram_ir = response.output
+            with capture_run_messages() as messages:
+                try:
+                    response = await ir_agent.run(user_prompt)
+                    diagram_ir = response.output
+                    total_input_tokens += response.usage().input_tokens or 0
+                    total_output_tokens += response.usage().output_tokens or 0
+                except UnexpectedModelBehavior as exc:
+                    # The model may have returned valid DiagramIR JSON as text
+                    # instead of calling the output tool. Try to parse it.
+                    diagram_ir = _extract_diagram_ir_from_text(messages)
+                    if diagram_ir is not None:
+                        logger.info(
+                            "Attempt %d: recovered DiagramIR from text response (%d defs, %d checks, %d render ops)",
+                            attempt + 1,
+                            len(diagram_ir.define),
+                            len(diagram_ir.checks),
+                            len(diagram_ir.render),
+                        )
+                    else:
+                        last_error = f"Model behavior error: {exc}"
+                        logger.warning("StructureStrategy attempt %d model behavior error: %s", attempt + 1, exc)
+                        continue
+                except ModelHTTPError as exc:
+                    logger.warning("StructureStrategy attempt %d got HTTP %d error: %s", attempt + 1, exc.status_code, exc)
+                    raise
+
+            if diagram_ir is None:
+                # Should not happen — response.output should always be set
+                last_error = "No DiagramIR produced"
+                logger.warning("Attempt %d: no DiagramIR produced", attempt + 1)
+                continue
+
             logger.info(
                 "Attempt %d: DiagramIR has %d defs, %d checks, %d render ops",
                 attempt + 1,

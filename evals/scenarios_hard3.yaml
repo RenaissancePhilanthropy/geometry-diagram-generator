@@ -1,0 +1,287 @@
+- id: geo-m2-t1-l5-a1-circumcenter-acute-triangle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - triangle
+  - circumcenter
+  - perpendicular-bisector
+  - circumscribed-circle
+  prompt: 'Draw an acute triangle ABC. Construct the perpendicular bisector of each
+    side: the perpendicular bisector of AB (mark the midpoint as D), the perpendicular
+    bisector of BC (mark the midpoint as E), and the perpendicular bisector of CA
+    (mark the midpoint as F). All three perpendicular bisectors should meet at a single
+    point — label that point P (the circumcenter). Then draw a circle centered at
+    P that passes through A, B, and C. Mark the right angles at D, E, and F, and show
+    with equal tick marks that PA = PB = PC (the circumradius). The circumcenter P
+    should be inside the triangle.'
+  expected_properties:
+  - name: D_midpoint_AB
+    type: midpoint
+    args:
+    - D
+    - A
+    - B
+  - name: E_midpoint_BC
+    type: midpoint
+    args:
+    - E
+    - B
+    - C
+  - name: F_midpoint_CA
+    type: midpoint
+    args:
+    - F
+    - C
+    - A
+  - name: perp_bisector_AB
+    type: perpendicular
+    args:
+    - - A
+      - B
+    - - P
+      - D
+  - name: perp_bisector_BC
+    type: perpendicular
+    args:
+    - - B
+      - C
+    - - P
+      - E
+  - name: perp_bisector_CA
+    type: perpendicular
+    args:
+    - - C
+      - A
+    - - P
+      - F
+  - name: right_angle_at_D
+    type: right_angle
+    args:
+    - A
+    - D
+    - P
+  - name: right_angle_at_E
+    type: right_angle
+    args:
+    - B
+    - E
+    - P
+  - name: right_angle_at_F
+    type: right_angle
+    args:
+    - C
+    - F
+    - P
+  - name: equal_circumradii
+    type: equal_lengths
+    args:
+    - - P
+      - A
+    - - P
+      - B
+    - - P
+      - C
+  - name: A_on_circumcircle
+    type: point_on_circle
+    args:
+    - A
+    - P
+    - B
+  - name: B_on_circumcircle
+    type: point_on_circle
+    args:
+    - B
+    - P
+    - A
+  - name: C_on_circumcircle
+    type: point_on_circle
+    args:
+    - C
+    - P
+    - A
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - P
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m3-t1-l6-act63-partition-triangle-proportionality-coordinate-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - directed-line-segment
+  - triangle-proportionality
+  - coordinate-plane
+  - parallel-lines
+  - partition
+  prompt: Draw a coordinate plane with directed segment from A at (0, 0) to B at (6,
+    9). Add an auxiliary point C at (6, 0) to form right triangle ABC. I want to divide
+    the segment AC (the horizontal leg) into three equal parts and draw lines parallel
+    to BC through those division points, hitting AB at partition points. Label the
+    division points on AC as D1 at (2, 0) and D2 at (4, 0). Draw lines through D1
+    and D2 parallel to BC and label where they intersect AB as P1 and P2. The point
+    P1 should partition AB in a 1:2 ratio. Label P1 with its coordinates.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: point_D1_on_AC
+    type: point_on_segment
+    args:
+    - D1
+    - A
+    - C
+  - name: point_D2_on_AC
+    type: point_on_segment
+    args:
+    - D2
+    - A
+    - C
+  - name: parallel_D1P1_BC
+    type: parallel
+    args:
+    - - D1
+      - P1
+    - - B
+      - C
+  - name: parallel_D2P2_BC
+    type: parallel
+    args:
+    - - D2
+      - P2
+    - - B
+      - C
+  - name: point_P1_on_AB
+    type: point_on_segment
+    args:
+    - P1
+    - A
+    - B
+  - name: point_P2_on_AB
+    type: point_on_segment
+    args:
+    - P2
+    - A
+    - B
+  - name: equal_AD1_D1D2
+    type: equal_lengths
+    args:
+    - - A
+      - D1
+    - - D1
+      - D2
+  - name: equal_D1D2_D2C
+    type: equal_lengths
+    args:
+    - - D1
+      - D2
+    - - D2
+      - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D1
+  - D2
+  - P1
+  - P2
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-a22-cube-cross-sections-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - cube
+  - polygon
+  - plane
+  prompt: Draw four separate diagrams of a cube ABCDEFGH where ABCD is the bottom
+    face and EFGH is the top face (E above A, F above B, G above C, H above D). In
+    the first cube, show a cross-section parallel to the base that gives a square
+    — label it. In the second cube, show a diagonal cross-section connecting midpoints
+    of edges that forms a rectangle. In the third cube, show a cross-section cutting
+    three faces that forms a triangle — mark where the plane hits the three edges.
+    In the fourth cube, show a cross-section cutting through six faces to form a hexagon.
+    Label all vertices on each cube and shade each cross-section differently.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  - name: label_present_F
+    type: label_present
+    args:
+    - F
+  - name: label_present_G
+    type: label_present
+    args:
+    - G
+  - name: label_present_H
+    type: label_present
+    args:
+    - H
+  - name: parallel_square_cross_section
+    type: parallel
+    args:
+    - - A
+      - B
+    - - E
+      - F
+  - name: equal_cube_edges
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - A
+      - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []

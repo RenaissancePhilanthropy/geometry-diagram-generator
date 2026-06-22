@@ -7,6 +7,7 @@ rejected at parse time.
 """
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1065,6 +1066,59 @@ class RecipeDSL(BaseModel):
     # Lowerer auto-generates checks from construction ops. Explicit check
     # consumption is a planned follow-on (see design spec section 2.3).
 
+    @field_validator("annotations", mode="before")
+    @classmethod
+    def _coerce_annotations(cls, v: Any) -> Any:
+        """Tolerate the alternate shapes models emit for `annotations`.
+
+        `annotations` is an object, but models sometimes serialize it as a JSON
+        array of mark/label dicts, or as a stringified object, or omit it. Since
+        annotations are cosmetic (marks/labels/draw-flags), recover what we can
+        and default the rest rather than failing the whole construction — this
+        keeps the pipeline robust across models with unreliable structured output.
+        """
+        if v is None:
+            return {}
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith("```"):  # strip markdown code fences
+                s = s.split("```", 2)[1] if s.count("```") >= 2 else s[3:]
+                if s.startswith("json"):
+                    s = s[4:]
+                s = s.strip()
+            try:
+                v = json.loads(s)
+            except json.JSONDecodeError:
+                return {}  # unrecoverable -> default annotations
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, list):
+            marks: list[dict] = []
+            labels: list[dict] = []
+            draws: list[dict] = []
+            for item in v:
+                if not isinstance(item, dict):
+                    continue
+                kind = str(item.get("kind", ""))
+                if "label" in kind:
+                    labels.append(item)
+                elif "mark" in kind:
+                    marks.append(item)
+                elif "obj" in item or "endpoints" in item:
+                    draws.append(item)
+                # unrecognized items are dropped (graceful degradation)
+            out: dict = {}
+            if marks:
+                out["marks"] = marks
+            if labels:
+                out["labels"] = labels
+            if draws:
+                out["draws"] = draws
+            return out
+        # Already a DSLAnnotations instance, or any other value Pydantic can
+        # accept — pass through untouched (let Pydantic validate normally).
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def check_reserved_ids(cls, data: Any) -> Any:
@@ -1089,3 +1143,198 @@ class RecipeDSL(BaseModel):
                             "which is reserved. Use the actual op id (without '__')."
                         )
         return data
+
+
+# ---------------------------------------------------------------------------
+# Error enrichment: make "Extra inputs are not permitted" actionable
+# ---------------------------------------------------------------------------
+
+# Discriminator-to-model mappings for the three discriminated unions
+# and the nested spec/annotation models. Used by enrich_extra_forbidden_errors
+# to resolve a loc path to the Pydantic model class that rejected the field,
+# so we can list its permitted fields.
+
+_OP_DISPATCH: dict[str, type[BaseModel]] = {
+    "triangle": TriangleOp,
+    "circle": CircleOp,
+    "ellipse": EllipseOp,
+    "polygon": PolygonOp,
+    "point": PointOp,
+    "point_external": PointExternalOp,
+    "canvas": CanvasOp,
+    "midpoint": MidpointOp,
+    "intersection": IntersectionOp,
+    "perpendicular": PerpendicularOp,
+    "parallel": ParallelOp,
+    "line_through": LineThroughOp,
+    "segment": SegmentOp,
+    "ray": RayOp,
+    "reflection": ReflectionOp,
+    "rotation": RotationOp,
+    "point_on_segment": PointOnSegmentOp,
+    "tangent_line": TangentLineOp,
+    "point_foot": PointFootOp,
+    "circle_through_3": CircleThrough3Op,
+    "altitude": AltitudeOp,
+    "circumcircle": CircumcircleOp,
+    "incircle": IncircleOp,
+    "perpendicular_bisector": PerpendicularBisectorOp,
+    "angle_bisector": AngleBisectorOp,
+    "centroid": CentroidOp,
+    "median": MedianOp,
+    "polygon_exterior": PolygonExteriorOp,
+    "regular_polygon": RegularPolygonOp,
+    "rectangle": RectangleOp,
+    "polygon_from_sides": PolygonFromSidesOp,
+    "polygon_from_angles_and_sides": PolygonFromAnglesAndSidesOp,
+    "arc": ArcOp,
+    "sector": SectorOp,
+    "regular_sectors": RegularSectorsOp,
+    "point_along": PointAlongOp,
+    "extend_segment": ExtendSegmentOp,
+    "fill": FillOp,
+}
+
+_CHECK_DISPATCH: dict[str, type[BaseModel]] = {
+    "distance": CheckDistance,
+    "parallel": CheckParallel,
+    "perpendicular": CheckPerpendicular,
+    "angle_equals": CheckAngleEquals,
+    "collinear": CheckCollinear,
+    "on_circle": CheckPointOnCircle,
+    "tangent": CheckTangent,
+}
+
+_MARK_DISPATCH: dict[str, type[BaseModel]] = {
+    "mark_angle": MarkAngle,
+    "mark_right_angle": MarkRightAngle,
+    "mark_equal_lengths": MarkEqualLengths,
+    "mark_parallel": MarkParallel,
+    "mark_proportional": MarkProportional,
+}
+
+_LABEL_DISPATCH: dict[str, type[BaseModel]] = {
+    "label_segment": LabelSegment,
+    "label_point": LabelPoint,
+    "label_angle": LabelAngle,
+    "label_free_text": LabelFreeText,
+}
+
+# Annotation list field names → their discriminator value → model class
+_ANNOTATION_FIELD_DISPATCH: dict[str, dict[str, type[BaseModel]]] = {
+    "marks": _MARK_DISPATCH,
+    "labels": _LABEL_DISPATCH,
+}
+
+
+def _resolve_model_at_loc(loc: tuple[Any, ...]) -> type[BaseModel] | None:
+    """Walk a Pydantic error loc path against RecipeDSL's model structure
+    to find the model class that owns the rejected extra field.
+
+    Returns the model class if resolution succeeds, None otherwise.
+
+    Loc paths seen in practice:
+      Full paths (from RecipeDSL validation):
+        ('construction', N, <op_type>, <field>)             — DSLOp extra field
+        ('construction', N, <op_type>, 'spec', <field>)      — spec model extra field
+        ('checks', N, <check_type>, <field>)                  — DSLCheck extra field
+        ('annotations', 'marks', N, <kind>, <field>)          — annotation extra field
+        ('annotations', 'labels', N, <kind>, <field>)         — label extra field
+        ('annotations', <field>)                              — DSLAnnotations extra field
+        (<field>,)                                            — top-level RecipeDSL extra field
+      Short paths (from direct nested model validation):
+        ('spec', <field>)          — TriangleSpec/RectangleSpec extra field
+        (<field>,)                  — any model's extra field (fallback)
+    """
+    import typing as _t
+
+    if not loc:
+        return None
+
+    first = loc[0]
+
+    # --- Full paths from RecipeDSL validation ---
+
+    # construction.N.<op_type>[.spec].<field>
+    if first == "construction" and len(loc) >= 3:
+        op_type = loc[2]
+        op_cls = _OP_DISPATCH.get(op_type)
+        if op_cls is None:
+            return None
+        if len(loc) == 4:
+            # Extra field directly on the op: construction.N.<op_type>.<field>
+            return op_cls
+        if len(loc) >= 5 and loc[3] == "spec":
+            # Extra field on the spec sub-model
+            spec_field = op_cls.model_fields.get("spec")
+            if spec_field is not None:
+                ann = spec_field.annotation
+                origin = _t.get_origin(ann)
+                if origin is Union:
+                    args = [a for a in _t.get_args(ann) if a is not type(None)]
+                    if args:
+                        return args[0]
+                if isinstance(ann, type):
+                    return ann
+            return None
+
+    # checks.N.<check_type>.<field>
+    if first == "checks" and len(loc) >= 3:
+        check_type = loc[2]
+        return _CHECK_DISPATCH.get(check_type)
+
+    # annotations.[marks|labels].N.<kind>.<field> or annotations.<field>
+    if first == "annotations":
+        if len(loc) == 2:
+            # Extra field on DSLAnnotations itself
+            return DSLAnnotations
+        if len(loc) >= 4:
+            list_field = loc[1]  # 'marks' or 'labels'
+            kind = loc[3]
+            dispatch = _ANNOTATION_FIELD_DISPATCH.get(list_field, {})
+            return dispatch.get(kind)
+        return None
+
+    # --- Short paths from direct nested model validation ---
+
+    # spec.<field> — TriangleSpec or RectangleSpec
+    if first == "spec" and len(loc) == 2:
+        # Can't determine which spec without context, but both have
+        # similar-enough fields. Return TriangleSpec as the more common case;
+        # RectangleSpec's fields are a subset pattern.
+        return TriangleSpec
+
+    # <field> alone — try known spec models, then fallback
+    if len(loc) == 1:
+        # Could be any model. Check if the field name is recognizable:
+        # If it starts with 'side_' or 'angle_', likely TriangleSpec/RectangleSpec
+        field_name = loc[0]
+        if field_name.startswith("side_") or field_name.startswith("angle_") or field_name == "right_angle_at":
+            return TriangleSpec
+        # If it's a known top-level RecipeDSL field, return RecipeDSL
+        if field_name in RecipeDSL.model_fields:
+            return RecipeDSL
+        # Otherwise, return RecipeDSL as the most general model
+        return RecipeDSL
+
+    return None
+
+
+def enrich_extra_forbidden_errors(errors: list[dict]) -> list[dict]:
+    """Enrich 'extra_forbidden' error dicts with permitted field names.
+
+    For each extra_forbidden error in the list, appends
+    " Permitted fields: <sorted list of field names>" to the error message,
+    resolving the target model class from the loc path.
+
+    Returns a new list with enriched messages (the original dicts are not mutated).
+    """
+    enriched = []
+    for err in errors:
+        if err.get("type") == "extra_forbidden":
+            model_cls = _resolve_model_at_loc(err.get("loc", ()))
+            if model_cls is not None:
+                permitted = sorted(model_cls.model_fields.keys())
+                err = {**err, "msg": f"{err['msg']}. Permitted fields: {', '.join(permitted)}"}
+        enriched.append(err)
+    return enriched

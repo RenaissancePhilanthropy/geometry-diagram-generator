@@ -1,0 +1,4568 @@
+- id: equilateral-triangle
+  tier: 1
+  tags:
+  - triangle
+  prompt: Draw an equilateral triangle ABC with all sides equal. Label all three vertices
+    A, B, and C.
+  required_labels:
+  - A
+  - B
+  - C
+  expected_properties:
+  - name: equal_sides
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - A
+- id: geo-m1-t1-l0-a1-pythagorean-distance-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - coordinate-grid
+  - pythagorean-theorem
+  - right-triangle
+  - distance
+  prompt: Can you draw a coordinate grid and plot two points — let's call them A at
+    (1, 2) and B at (7, 6)? Then draw a right triangle by adding a third point C at
+    (7, 2) so that AC is horizontal and BC is vertical. Label all three points, show
+    the right angle at C, and mark the lengths of the two legs. I need to see how
+    the hypotenuse AB connects the original two points.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: collinear_A_C_horizontal
+    type: collinear
+    args:
+    - A
+    - C
+    - B
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  - name: right_angle_mark_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t1-l1-tt-labeled-diagram-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - points
+  - lines
+  - plane
+  - symbolic-notation
+  - naming
+  prompt: 'Draw a diagram showing a flat plane — you can draw it as a parallelogram
+    shape and label the plane with the letter P. Put three labeled points on the plane:
+    X, Y, and Z. Draw a line through X and Y and label it line ''l''. Make Z a separate
+    point not on line l but still on the plane. I need to be able to name the plane,
+    the line, and all three points from this diagram.'
+  expected_properties:
+  - name: X_on_line_l
+    type: point_on_line
+    args:
+    - X
+    - X
+    - Y
+  - name: Y_on_line_l
+    type: point_on_line
+    args:
+    - Y
+    - X
+    - Y
+  - name: X_Y_Z_not_collinear
+    type: collinear
+    args:
+    - X
+    - Y
+    - Z
+  - name: label_X_present
+    type: label_present
+    args:
+    - X
+  - name: label_Y_present
+    type: label_present
+    args:
+    - Y
+  - name: label_Z_present
+    type: label_present
+    args:
+    - Z
+  - name: label_plane_P_present
+    type: label_present
+    args:
+    - P
+  structural_checks: []
+  required_labels:
+  - X
+  - Y
+  - Z
+  - P
+  - l
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l3-gs-perpendicular-bisector-RB-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - perpendicular-bisector
+  - construction
+  prompt: Draw a line segment from point R to point B, where R is on the left and
+    B is on the right. Then construct the perpendicular bisector of segment RB — draw
+    it as a vertical line crossing RB at its midpoint M. Mark the right angle where
+    the bisector crosses RB, and mark M as the midpoint. Show that RM equals MB with
+    tick marks.
+  expected_properties:
+  - name: midpoint_M_on_RB
+    type: midpoint
+    args:
+    - M
+    - R
+    - B
+  - name: perpendicular_bisector_at_M
+    type: perpendicular
+    args:
+    - - R
+      - B
+    - - M
+      - M
+  - name: right_angle_at_M
+    type: right_angle
+    args:
+    - R
+    - M
+    - B
+  - name: equal_lengths_RM_MB
+    type: equal_lengths
+    args:
+    - - R
+      - M
+    - - M
+      - B
+  - name: label_R_present
+    type: label_present
+    args:
+    - R
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_M_present
+    type: label_present
+    args:
+    - M
+  structural_checks: []
+  required_labels:
+  - R
+  - B
+  - M
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l4-gs-rotation-function-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - angle-of-rotation
+  - rigid-motion
+  prompt: Draw a simple L-shaped figure (pre-image) and then show it rotated 90 degrees
+    counterclockwise about a point E to create the image. Mark point E as the center
+    of rotation. Draw an arc with an arrow curving from the pre-image to the image
+    to show the 90° counterclockwise rotation. Label the center of rotation E and
+    mark the 90° angle of rotation.
+  expected_properties:
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  - name: mark_rotation_angle
+    type: mark_present
+    args:
+    - arc
+    - E
+  - name: equal_dist_preimage_image_from_E
+    type: equal_lengths
+    args:
+    - - E
+      - A
+    - - E
+      - A'
+  structural_checks: []
+  required_labels:
+  - E
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l1-hexagon-symmetry-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflectional-symmetry
+  - rotational-symmetry
+  - regular-polygon
+  prompt: Can you draw a regular hexagon with all 6 lines of symmetry drawn in? Label
+    the center point O and label the vertices A, B, C, D, E, F going around. Draw
+    the lines of symmetry as dashed lines through the center — some should go through
+    opposite vertices and some should go through midpoints of opposite sides. I need
+    to see all of them at once.
+  expected_properties:
+  - name: center_labeled
+    type: label_present
+    args:
+    - O
+  - name: vertex_A_labeled
+    type: label_present
+    args:
+    - A
+  - name: vertex_B_labeled
+    type: label_present
+    args:
+    - B
+  - name: vertex_C_labeled
+    type: label_present
+    args:
+    - C
+  - name: vertex_D_labeled
+    type: label_present
+    args:
+    - D
+  - name: vertex_E_labeled
+    type: label_present
+    args:
+    - E
+  - name: vertex_F_labeled
+    type: label_present
+    args:
+    - F
+  - name: symmetry_axis_vertex_to_vertex
+    type: collinear
+    args:
+    - A
+    - O
+    - D
+  - name: symmetry_axis_vertex_to_vertex_2
+    type: collinear
+    args:
+    - B
+    - O
+    - E
+  - name: symmetry_axis_vertex_to_vertex_3
+    type: collinear
+    args:
+    - C
+    - O
+    - F
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-gs-parallel-transversal-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - parallel-lines
+  - transversal
+  - corresponding-angles
+  - alternate-interior-angles
+  prompt: 'Draw two horizontal parallel lines — call them line m and line n — cut
+    by a diagonal transversal line t. Label the intersection points: where t meets
+    m call it point P, and where t meets n call it point Q. Number all eight angles
+    formed: angles 1, 2, 3, 4 at point P (going clockwise from upper-left) and angles
+    5, 6, 7, 8 at point Q (going clockwise from upper-left). Mark the parallel lines
+    with arrows to show they''re parallel.'
+  expected_properties:
+  - name: lines_m_n_parallel
+    type: parallel
+    args:
+    - - P
+      - m_end
+    - - Q
+      - n_end
+  - name: corresponding_1_5
+    type: angle_equal
+    args:
+    - - ref1
+      - P
+      - ref2
+    - - ref3
+      - Q
+      - ref4
+  structural_checks: []
+  required_labels:
+  - m
+  - n
+  - t
+  - P
+  - Q
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+  - '6'
+  - '7'
+  - '8'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-gs-clock-arcs-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - arc-measure
+  - central-angle
+  - arc-addition-postulate
+  prompt: Draw a circle with center O representing a clock face. Mark 12 points on
+    the circle for the clock hours and label them 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11. Draw radii from O to the 12 and to the 4. Label the central angle between
+    those two radii. Shade the minor arc from 12 to 4 and label it with its degree
+    measure (120°). Also draw the radius to 8 and shade the arc from 4 to 8, labeling
+    it 120° too, to illustrate the arc addition postulate.
+  expected_properties:
+  - name: 12_on_circle
+    type: point_on_circle
+    args:
+    - '12'
+    - O
+    - '4'
+  - name: 4_on_circle
+    type: point_on_circle
+    args:
+    - '4'
+    - O
+    - '12'
+  - name: 8_on_circle
+    type: point_on_circle
+    args:
+    - '8'
+    - O
+    - '12'
+  structural_checks: []
+  required_labels:
+  - O
+  - '12'
+  - '4'
+  - '8'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t1-l2-talktalk-ferris-wheel-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - circles
+  - arc-length
+  - sectors
+  - real-world
+  prompt: Draw a circle representing a Ferris wheel with center O and radius labeled
+    50 ft. Divide the circle into 18 equal sectors — like slices of a pie — by drawing
+    18 radii evenly spaced. Label two adjacent radii as OA and OB and shade the arc
+    AB between them. I need to find the arc length of that one steel arc, so label
+    the central angle for one sector as 20 degrees (since 360 ÷ 18 = 20).
+  expected_properties:
+  - name: label_center_O
+    type: label_present
+    args:
+    - O
+  - name: label_A
+    type: label_present
+    args:
+    - A
+  - name: label_B
+    type: label_present
+    args:
+    - B
+  - name: equal_radii_OA_OB
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-a22-sphere-cross-sections-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - sphere
+  - great-circle
+  - circle
+  prompt: Draw two spheres with center O and radius r. On the first sphere, draw a
+    plane passing directly through center O to create a great circle cross-section
+    — shade the great circle, label its center O, and mark the radius r. On the second
+    sphere, draw a plane cutting through the sphere but NOT through the center to
+    create a smaller circular cross-section — shade that smaller circle and label
+    it to show its radius is less than r. Label both spheres with center O and radius
+    r.
+  expected_properties:
+  - name: label_present_O
+    type: label_present
+    args:
+    - O
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: great_circle_center_at_O
+    type: point_on_circle
+    args:
+    - O
+    - O
+    - r_point
+  - name: radius_marked
+    type: mark_present
+    args:
+    - radius
+    - O
+  structural_checks: []
+  required_labels:
+  - O
+  - r
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l3-a33-sphere-labeled-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - sphere
+  - hemisphere
+  - radius
+  - diameter
+  - volume
+  prompt: 'Draw a sphere with center O. Draw and label the radius r from O to a point
+    P on the surface, and the diameter d = 2r as a straight line through O from point
+    A to point B on opposite sides of the sphere. Draw a dashed great circle (equator)
+    around the middle of the sphere. Next to the sphere, draw a hemisphere (the top
+    half) with the flat circular base showing — label the radius r on the flat base
+    and mark the center O. Label the volume formulas: V = (4/3)πr³ for the sphere
+    and V = (2/3)πr³ for the hemisphere.'
+  expected_properties:
+  - name: label_present_O
+    type: label_present
+    args:
+    - O
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_P
+    type: label_present
+    args:
+    - P
+  - name: diameter_through_center
+    type: point_on_segment
+    args:
+    - O
+    - A
+    - B
+  - name: radius_to_surface
+    type: point_on_circle
+    args:
+    - P
+    - O
+    - P
+  - name: equal_radii
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - P
+  structural_checks: []
+  required_labels:
+  - O
+  - r
+  - d
+  - A
+  - B
+  - P
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-a42-sphere-surface-area-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - sphere
+  - hemisphere
+  - surface-area
+  - great-circle
+  prompt: Draw a sphere with center O and radius r labeled. Next to it, draw a hemisphere
+    (flat side facing right) with center O and radius r labeled. On the hemisphere,
+    mark the curved surface on top (lateral surface area = 2πr²) and the flat circular
+    base (area = πr²). Draw a dashed line showing the great circle that forms the
+    flat base of the hemisphere. Label the total surface area of the full sphere as
+    SA = 4πr² and the total surface area of the hemisphere as SA = 3πr² (2πr² curved
+    + πr² flat base).
+  expected_properties:
+  - name: label_present_O
+    type: label_present
+    args:
+    - O
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: radius_sphere
+    type: point_on_circle
+    args:
+    - r_point
+    - O
+    - r_point
+  - name: equal_radii_sphere_hemisphere
+    type: equal_lengths
+    args:
+    - - O
+      - P1
+    - - O
+      - P2
+  structural_checks: []
+  required_labels:
+  - O
+  - r
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: isosceles-triangle
+  tier: 1
+  tags:
+  - triangle
+  prompt: Draw an isosceles triangle ABC where AB equals AC. Label all three vertices
+    A, B, and C.
+  required_labels:
+  - A
+  - B
+  - C
+  expected_properties:
+  - name: AB_equals_AC
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A
+      - C
+- id: midpoint
+  tier: 1
+  tags:
+  - segment
+  - midpoint
+  - smoke
+  prompt: Draw a segment AB and mark its midpoint M. Label points A, B, and M.
+  required_labels:
+  - A
+  - B
+  - M
+  expected_properties:
+  - name: M_is_midpoint
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: M_between_A_and_B
+    type: point_on_segment
+    args:
+    - M
+    - A
+    - B
+- id: perpendicular-bisector
+  tier: 1
+  tags:
+  - segment
+  - bisector
+  prompt: Draw a segment AB and its perpendicular bisector through the midpoint M.
+    Label points A, B, and M.
+  required_labels:
+  - A
+  - B
+  - M
+  required_entities:
+  - type: line
+  expected_properties:
+  - name: M_is_midpoint
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: right_angle_at_M
+    type: mark_present
+    args:
+    - right_angle
+    - M
+- id: right-triangle
+  tier: 1
+  tags:
+  - triangle
+  - right-angle
+  - smoke
+  prompt: Draw a right triangle ABC with the right angle at B. Label all three vertices
+    A, B, and C.
+  required_labels:
+  - A
+  - B
+  - C
+  expected_properties:
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  - name: right_angle_marked_at_B
+    type: mark_present
+    args:
+    - right_angle
+    - B
+- id: square
+  tier: 1
+  tags:
+  - quadrilateral
+  - smoke
+  prompt: Draw a square ABCD, labeling all four vertices A, B, C, and D in order.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  expected_properties:
+  - name: right_angle_at_A
+    type: right_angle
+    args:
+    - D
+    - A
+    - B
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - B
+    - C
+    - D
+  - name: right_angle_at_D
+    type: right_angle
+    args:
+    - C
+    - D
+    - A
+  - name: all_sides_equal
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - D
+    - - D
+      - A
+- id: exterior-angle
+  tier: 2
+  tags:
+  - triangle
+  prompt: Draw a triangle ABC and extend side BC beyond C to a point D, forming the
+    exterior angle ACD. Label all four points A, B, C, and D.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  expected_properties:
+  - name: B_C_D_collinear
+    type: collinear
+    args:
+    - B
+    - C
+    - D
+- id: geo-m1-t1-l2-a21-conditional-midpoint-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - conditional-statement
+  - midpoint
+  - congruent-segments
+  - collinear
+  - counterexample
+  prompt: 'I need a diagram to show a counterexample to the conditional: ''If M is
+    a point where AM = MB, then M is the midpoint of segment AB.'' Draw point A and
+    point B connected by a segment. Then draw point M somewhere NOT on segment AB
+    — like off to the side — but make AM and MB the same length. Mark the equal lengths
+    with tick marks. Label all three points. This shows M can be equidistant from
+    A and B without being the midpoint of AB.'
+  expected_properties:
+  - name: AM_equals_MB
+    type: equal_lengths
+    args:
+    - - A
+      - M
+    - - M
+      - B
+  - name: M_not_on_segment_AB
+    type: not_between
+    args:
+    - M
+    - A
+    - B
+  - name: tick_mark_AM
+    type: mark_present
+    args:
+    - tick
+    - M
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_M_present
+    type: label_present
+    args:
+    - M
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - M
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l1-act12-dilation-vs-translation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - translation
+  - dilation
+  - rigid-motion
+  - congruence
+  prompt: Draw two diagrams side by side. In the first, show triangle ABC with A at
+    (0,0), B at (3,0), C at (1,2), and its translated image A'B'C' shifted 4 units
+    right so A' is at (4,0). In the second diagram, show the same triangle ABC but
+    this time show a dilated (non-congruent) image A''B''C'' where every coordinate
+    is doubled, so A'' is at (0,0), B'' is at (6,0), C'' is at (2,4). Label all vertices
+    in both diagrams so I can see why one is a rigid motion and the other isn't.
+  expected_properties:
+  - name: congruent_translation_image
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A'
+      - B'
+  - name: non_congruent_dilation_image
+    type: equal_lengths
+    args:
+    - - A''
+      - B''
+    - - A
+      - C
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_Aprimeprime_present
+    type: label_present
+    args:
+    - A''
+  - name: parallel_translation_vectors
+    type: parallel
+    args:
+    - - A
+      - A'
+    - - B
+      - B'
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - A'
+  - B'
+  - C'
+  - A''
+  - B''
+  - C''
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l2-gs-trapezoid-sequence-translations-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - translation
+  - sequence-of-transformations
+  - pythagorean-theorem
+  - coordinate-plane
+  prompt: Draw trapezoid ABCD on a coordinate plane with A at (1,1), B at (4,1), C
+    at (3,3), D at (2,3). Then draw its translated image A'B'C'D' where A' is at (4,4),
+    showing the translation as a diagonal directed line segment from A to A'. Also
+    draw a right triangle using the horizontal and vertical components of that directed
+    line segment — a horizontal leg of 3 units and a vertical leg of 3 units — to
+    show how the diagonal distance relates to the Pythagorean Theorem. Label the legs
+    3 and 3 and the hypotenuse with its length.
+  expected_properties:
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_Aprime_present
+    type: label_present
+    args:
+    - A'
+  - name: congruent_sides_AB_AprimeBprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A'
+      - B'
+  - name: parallel_AA_prime_BB_prime
+    type: parallel
+    args:
+    - - A
+      - A'
+    - - B
+      - B'
+  - name: right_angle_in_component_triangle
+    type: right_angle
+    args:
+    - A
+    - A
+    - A'
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - A'
+  - B'
+  - C'
+  - D'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l3-act32-reflection-function-triangles-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - line-of-reflection
+  - perpendicular-bisector
+  prompt: Draw triangle PQR with P at (1,3), Q at (3,1), R at (3,4). Draw a diagonal
+    line m going from the bottom-left to the upper-right of the diagram. Reflect triangle
+    PQR across line m to get triangle P'Q'R'. Draw dashed segments connecting P to
+    P', Q to Q', and R to R', and mark where those dashed segments cross line m as
+    the midpoints. Show with right-angle marks that line m is perpendicular to each
+    dashed connector segment. Label all vertices and the line m.
+  expected_properties:
+  - name: perpendicular_PP_prime_to_m
+    type: perpendicular
+    args:
+    - - P
+      - P'
+    - - Q
+      - Q'
+  - name: midpoint_PP_prime_on_m
+    type: point_on_line
+    args:
+    - M
+    - P
+    - P'
+  - name: equal_lengths_PQ_PprimeQprime
+    type: equal_lengths
+    args:
+    - - P
+      - Q
+    - - P'
+      - Q'
+  - name: label_m_present
+    type: label_present
+    args:
+    - m
+  - name: label_Pprime_present
+    type: label_present
+    args:
+    - P'
+  - name: equal_dist_P_Pprime_across_m
+    type: equal_lengths
+    args:
+    - - P
+      - M
+    - - M
+      - P'
+  structural_checks: []
+  required_labels:
+  - P
+  - Q
+  - R
+  - P'
+  - Q'
+  - R'
+  - m
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l2-perpendicular-bisector-reflection-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - perpendicular-bisector
+  - congruent-segments
+  prompt: 'Draw two separate congruent segments: segment AB that is horizontal and
+    segment CD that is tilted at an angle. Then draw the perpendicular bisector of
+    AB and label it line l, with the midpoint of AB labeled M. Show that a reflection
+    across line l maps A to B and B to A. Mark the two equal halves AM and MB with
+    tick marks. Also label a point X on line l and show with dashed lines that XA
+    equals XB.'
+  expected_properties:
+  - name: M_midpoint_AB
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: line_l_perpendicular_to_AB
+    type: perpendicular
+    args:
+    - - M
+      - X
+    - - A
+      - B
+  - name: M_on_line_l
+    type: point_on_line
+    args:
+    - M
+    - M
+    - X
+  - name: X_on_line_l
+    type: point_on_line
+    args:
+    - X
+    - M
+    - X
+  - name: equal_halves
+    type: equal_lengths
+    args:
+    - - A
+      - M
+    - - M
+      - B
+  - name: X_equidistant_from_A_and_B
+    type: equal_lengths
+    args:
+    - - X
+      - A
+    - - X
+      - B
+  - name: AB_equals_CD
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - C
+      - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - M
+  - X
+  - l
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t1-l3-a0-equilateral-triangle-circle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - equilateral-triangle
+  - inscribed-polygon
+  - radius-chord
+  prompt: Draw a circle with center O and radius OA. Using the radius length as the
+    chord length, mark point B on the circle so that AB equals the radius OA. Then
+    mark C so BC also equals the radius. Connect A to B to C and back to A to form
+    an equilateral triangle inscribed in the circle. Draw radii OA, OB, and OC. Label
+    all points, mark all three sides of the triangle as equal, and label each central
+    angle (AOB, BOC, COA) as 60 degrees.
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: equal_sides_triangle
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - A
+  - name: equal_radii
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+  - name: chord_equals_radius
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - O
+      - A
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-a21-corresponding-angles-algebraic-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - corresponding-angles-theorem
+  - parallel-lines
+  - algebraic-expressions
+  prompt: Draw two parallel lines (mark them with arrows) cut by a transversal. At
+    the top intersection point P, label one angle as (4x + 15)°. At the bottom intersection
+    point Q, label the corresponding angle — in the same position relative to the
+    intersection — as (7x - 18)°. I need to set those equal and solve for x to practice
+    the corresponding angles theorem.
+  expected_properties:
+  - name: corresponding_angles_equal
+    type: angle_equal
+    args:
+    - - ref1
+      - P
+      - ref2
+    - - ref1
+      - Q
+      - ref2
+  - name: lines_parallel
+    type: parallel
+    args:
+    - - P
+      - left
+    - - Q
+      - left
+  structural_checks: []
+  required_labels:
+  - P
+  - Q
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-a22-same-side-interior-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - same-side-interior-angles
+  - supplementary-angles
+  - flow-chart-proof
+  prompt: Draw two parallel lines cut by a transversal. Label the intersections as
+    points E (top) and F (bottom). At E, label the interior angle on the right side
+    as (2x + 40)°. At F, label the interior angle on the right side — it's on the
+    same side as the first one, between the parallel lines — as (3x + 25)°. These
+    two same-side interior angles should add up to 180°. Mark the parallel lines with
+    tick arrows.
+  expected_properties:
+  - name: parallel_lines
+    type: parallel
+    args:
+    - - E
+      - left_E
+    - - F
+      - left_F
+  structural_checks: []
+  required_labels:
+  - E
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-a23-alternate-interior-angles-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - alternate-interior-angles
+  - two-column-proof
+  - flow-chart-proof
+  prompt: 'Draw two parallel lines cut by a transversal, with intersections at points
+    G (top line) and H (bottom line). I want to see the two alternate interior angles
+    highlighted: the angle below line-G on the left of the transversal, and the angle
+    above line-H on the right of the transversal. Label them angle 3 and angle 6.
+    Put matching arc marks on them to show they''re equal.'
+  expected_properties:
+  - name: alternate_interior_equal
+    type: angle_equal
+    args:
+    - - ref1
+      - G
+      - ref2
+    - - ref3
+      - H
+      - ref4
+  - name: parallel_lines
+    type: parallel
+    args:
+    - - G
+      - left
+    - - H
+      - left
+  structural_checks: []
+  required_labels:
+  - G
+  - H
+  - '3'
+  - '6'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-a25-perpendicular-parallel-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - perpendicular-lines
+  - parallel-lines
+  - perpendicular-parallel-theorem
+  prompt: Draw three horizontal lines — label the top one l, the middle one m, and
+    the bottom one n. Now draw a vertical transversal line t crossing all three. Put
+    right angle marks at the intersections of t with l and t with m to show those
+    two lines are perpendicular to t. I want to see that this means l is parallel
+    to m. Mark l and m as parallel with arrows.
+  expected_properties:
+  - name: l_perp_t
+    type: perpendicular
+    args:
+    - - l_left
+      - l_right
+    - - t_top
+      - t_bottom
+  - name: m_perp_t
+    type: perpendicular
+    args:
+    - - m_left
+      - m_right
+    - - t_top
+      - t_bottom
+  - name: l_parallel_m
+    type: parallel
+    args:
+    - - l_left
+      - l_right
+    - - m_left
+      - m_right
+  structural_checks: []
+  required_labels:
+  - l
+  - m
+  - n
+  - t
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l2-tt-eight-angles-labeled-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - parallel-lines
+  - transversal
+  - all-angle-pairs
+  prompt: 'Draw two parallel lines p and q cut by transversal r. Label all eight angles:
+    angles 1, 2, 3, 4 at the upper intersection (point M) and angles 5, 6, 7, 8 at
+    the lower intersection (point N), numbered clockwise from upper-left at each.
+    Mark the parallel lines with double arrows. I want to reference all eight angles
+    when I practice identifying corresponding, alternate interior, alternate exterior,
+    and same-side interior pairs.'
+  expected_properties:
+  - name: lines_parallel
+    type: parallel
+    args:
+    - - M
+      - p_end
+    - - N
+      - q_end
+  - name: corresponding_1_5
+    type: angle_equal
+    args:
+    - - ref1
+      - M
+      - ref2
+    - - ref5
+      - N
+      - ref6
+  structural_checks: []
+  required_labels:
+  - p
+  - q
+  - r
+  - M
+  - N
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+  - '6'
+  - '7'
+  - '8'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l3-a32-polygon-diagonals-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - polygon
+  - diagonals
+  - interior-angle-sum
+  prompt: 'Draw three polygons side by side: a quadrilateral ABCD, a pentagon ABCDE,
+    and a hexagon ABCDEF. In each one, draw all diagonals from vertex A only — this
+    divides each polygon into triangles. Label the triangles in each polygon. Under
+    each polygon write the number of triangles formed and multiply by 180 degrees
+    to show the interior angle sum formula 180(n-2).'
+  expected_properties:
+  - name: diagonal_AC_quad
+    type: point_on_segment
+    args:
+    - A
+    - A
+    - C
+  - name: diagonal_AC_pent
+    type: point_on_segment
+    args:
+    - A
+    - A
+    - C
+  - name: diagonal_AD_pent
+    type: point_on_segment
+    args:
+    - A
+    - A
+    - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l3-gs-triangle-rotation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - triangle-sum-theorem
+  - rotation
+  - translation
+  - straight-angle
+  prompt: Draw triangle ABC. Then show a translated and rotated copy so that angle
+    A, angle B, and angle C all end up touching each other and lying flat along a
+    straight horizontal line. Label the three adjacent angles as angle A, angle B,
+    angle C in a row along the line to show they form a 180-degree straight angle.
+    This illustrates why the interior angles of a triangle sum to 180 degrees.
+  expected_properties:
+  - name: angles_sum_straight
+    type: collinear
+    args:
+    - A_ray
+    - B_vertex
+    - C_ray
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l4-a41-perpendicular-bisector-theorem-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - perpendicular-bisector
+  - CPCTC
+  - congruent-triangles
+  prompt: Draw a line segment AB with midpoint M. Draw the perpendicular bisector
+    through M — call it line l. Place a point P somewhere on line l above the segment.
+    Draw segments PA and PB. Put a right angle mark where line l crosses AB at M.
+    Put single tick marks on AM and MB to show they're equal. Put double tick marks
+    on PA and PB to show they're equal. This diagram shows the perpendicular bisector
+    theorem.
+  expected_properties:
+  - name: M_is_midpoint_AB
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: PM_perp_AB
+    type: perpendicular
+    args:
+    - - P
+      - M
+    - - A
+      - B
+  - name: AM_equals_MB
+    type: equal_lengths
+    args:
+    - - A
+      - M
+    - - M
+      - B
+  - name: PA_equals_PB
+    type: equal_lengths
+    args:
+    - - P
+      - A
+    - - P
+      - B
+  - name: right_angle_at_M
+    type: right_angle
+    args:
+    - A
+    - M
+    - P
+  - name: P_on_perp_bisector
+    type: point_on_line
+    args:
+    - P
+    - M
+    - l_end
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - M
+  - P
+  - l
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-a61-inscribed-angle-three-cases-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - inscribed-angle-theorem
+  - circle
+  - three-cases
+  prompt: Draw three separate circles, each with center O. In circle 1, draw inscribed
+    angle BAC where the center O lies ON side AC of the angle. In circle 2, draw inscribed
+    angle BAC where O is in the INTERIOR of the angle. In circle 3, draw inscribed
+    angle BAC where O is in the EXTERIOR of the angle. Label all three with points
+    A, B, C, O and draw the intercepted arc BC in each. Label the central angle BOC
+    in each circle.
+  expected_properties:
+  - name: A_on_circle_1
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: B_on_circle_1
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: C_on_circle_1
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-a62-inscribed-right-triangle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - inscribed-right-triangle
+  - diameter
+  - semicircle
+  - two-column-proof
+  prompt: 'Draw a circle with center O and diameter AC (so A and C are endpoints of
+    a diameter on opposite sides). Place a point B on the circle above the diameter.
+    Draw triangle ABC inscribed in the circle. Mark the right angle at B with a small
+    square. Label the arc AC as a semicircle = 180°. This diagram shows the inscribed
+    right triangle-diameter theorem: if one side of an inscribed triangle is a diameter,
+    the inscribed angle opposite it is 90°.'
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - C
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: AC_is_diameter
+    type: collinear
+    args:
+    - A
+    - O
+    - C
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-a63-interior-angles-circle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - interior-angles-circle
+  - intersecting-chords
+  - arc-measures
+  prompt: Draw a circle with two chords that intersect inside the circle at point
+    P. Label the four endpoints of the chords as A, B, C, D so chord AB and chord
+    CD cross at P. Label arc AC as 80° and arc BD as 60°. Put a label on angle APC
+    showing it equals (80° + 60°)/2 = 70°. This is the interior angles of a circle
+    theorem.
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: D_on_circle
+    type: point_on_circle
+    args:
+    - D
+    - O
+    - A
+  - name: P_on_chord_AB
+    type: point_on_segment
+    args:
+    - P
+    - A
+    - B
+  - name: P_on_chord_CD
+    type: point_on_segment
+    args:
+    - P
+    - C
+    - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - P
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t3-l2-a1-tangent-circles-external-tangent-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - tangent
+  - tangent-circles
+  - external-tangent
+  prompt: Draw two circles that are tangent to each other externally — they touch
+    at exactly one point, call it T. Label the center of the smaller circle as O1
+    and the center of the larger circle as O2. Draw a common external tangent line
+    that touches the smaller circle at point A and the larger circle at point B. Label
+    all four points O1, O2, A, B, and T. I need this to practice problems about tangent
+    circles and tangent segments.
+  expected_properties:
+  - name: tangent_line_AB_to_circle_O1
+    type: tangent
+    args:
+    - - A
+      - B
+    - O1
+    - A
+  - name: tangent_line_AB_to_circle_O2
+    type: tangent
+    args:
+    - - A
+      - B
+    - O2
+    - B
+  - name: T_on_circle_O1
+    type: point_on_circle
+    args:
+    - T
+    - O1
+    - T
+  - name: T_on_circle_O2
+    type: point_on_circle
+    args:
+    - T
+    - O2
+    - T
+  - name: label_T
+    type: label_present
+    args:
+    - T
+  structural_checks: []
+  required_labels:
+  - O1
+  - O2
+  - A
+  - B
+  - T
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t3-l2-gs-broken-plate-chord-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - chord
+  - perpendicular-bisector
+  - diameter
+  - real-world
+  prompt: Draw a circle that looks like a broken plate — only show roughly the top
+    two-thirds of the circle, like the bottom part broke off. Draw two chords inside
+    the fragment, call their endpoints A, B for the first chord and C, D for the second
+    chord. Then draw the perpendicular bisector of chord AB and the perpendicular
+    bisector of chord CD, and mark the point where these two perpendicular bisectors
+    cross as point P. P should be right at the center of the original circle. Label
+    all points A, B, C, D, and P, and mark the right angles where the bisectors meet
+    the chords.
+  expected_properties:
+  - name: perpendicular_bisector_of_AB
+    type: perpendicular
+    args:
+    - - A
+      - B
+    - - P
+      - A
+  - name: perpendicular_bisector_of_CD
+    type: perpendicular
+    args:
+    - - C
+      - D
+    - - P
+      - C
+  - name: P_is_center_on_circle
+    type: label_present
+    args:
+    - P
+  - name: midpoint_of_AB
+    type: midpoint
+    args:
+    - P
+    - A
+    - B
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - P
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t3-l3-a3-isosceles-trapezoid-base-angles-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - trapezoid
+  - isosceles
+  - base-angles
+  - auxiliary-line
+  - congruent
+  - proof
+  prompt: 'Draw isosceles trapezoid TRAP where T is top-left, R is top-right, A is
+    bottom-right, and P is bottom-left. Make TP the top base and AR the bottom base
+    — mark TP and AR as parallel with arrows. Make the legs TA and PR equal in length
+    and mark them with tick marks. Draw the two diagonals TA... wait, let me redo
+    this: draw the diagonals TR and PA and mark them with double tick marks to show
+    they''re congruent. Also mark the base angles at A and P with matching arcs to
+    show angle P equals angle A (the base angles are congruent). Now draw an auxiliary
+    line from T that is parallel to PR and hits PA at a new point X. Label all points
+    T, R, A, P, and X. Mark the right angles or matching angles created by the auxiliary
+    line.'
+  expected_properties:
+  - name: TP_parallel_AR
+    type: parallel
+    args:
+    - - T
+      - P
+    - - A
+      - R
+  - name: equal_legs_TA_PR
+    type: equal_lengths
+    args:
+    - - T
+      - A
+    - - P
+      - R
+  - name: equal_diagonals_TR_PA
+    type: equal_lengths
+    args:
+    - - T
+      - R
+    - - P
+      - A
+  - name: base_angles_equal
+    type: angle_equal
+    args:
+    - - T
+      - P
+      - A
+    - - R
+      - A
+      - P
+  - name: TX_parallel_PR
+    type: parallel
+    args:
+    - - T
+      - X
+    - - P
+      - R
+  - name: X_on_segment_PA
+    type: point_on_segment
+    args:
+    - X
+    - P
+    - A
+  structural_checks: []
+  required_labels:
+  - T
+  - R
+  - A
+  - P
+  - X
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m3-t1-l1-gs-dilation-origin-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - dilation
+  - coordinate-plane
+  - scale-factor
+  - similarity
+  prompt: Can you draw triangle ABC on a coordinate plane where A is at (1, 2), B
+    is at (3, 1), and C is at (2, 4)? Then show the dilation of triangle ABC from
+    the origin with a scale factor of 2, labeling the image vertices A', B', and C'.
+    Draw rays from the origin through each pair of corresponding vertices (like from
+    O through A to A') so I can see how the dilation works.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_A_prime
+    type: label_present
+    args:
+    - A'
+  - name: label_present_B_prime
+    type: label_present
+    args:
+    - B'
+  - name: label_present_C_prime
+    type: label_present
+    args:
+    - C'
+  - name: collinear_O_A_Aprime
+    type: collinear
+    args:
+    - O
+    - A
+    - A'
+  - name: collinear_O_B_Bprime
+    type: collinear
+    args:
+    - O
+    - B
+    - B'
+  - name: collinear_O_C_Cprime
+    type: collinear
+    args:
+    - O
+    - C
+    - C'
+  - name: equal_OA_to_OAprime_ratio
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - A
+      - A'
+  - name: equal_OB_to_OBprime_ratio
+    type: equal_lengths
+    args:
+    - - O
+      - B
+    - - B
+      - B'
+  - name: equal_OC_to_OCprime_ratio
+    type: equal_lengths
+    args:
+    - - O
+      - C
+    - - C
+      - C'
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - A'
+  - B'
+  - C'
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t1-l3-act32-segment-area-90deg-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circles
+  - segment-area
+  - sector
+  - triangle
+  - 90-degree
+  prompt: 'Draw a circle with center O and radius 8. Draw a chord AB so that the central
+    angle AOB is exactly 90 degrees. Shade the circular segment between chord AB and
+    the arc AB (the smaller region). Draw the triangle OAB inside the sector. I need
+    to find the segment area by doing: area of sector AOB minus area of triangle OAB.
+    Mark the right angle at O and label OA = OB = 8.'
+  expected_properties:
+  - name: right_angle_at_O
+    type: right_angle
+    args:
+    - A
+    - O
+    - B
+  - name: equal_radii_OA_OB
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+  - name: label_O
+    type: label_present
+    args:
+    - O
+  - name: label_A
+    type: label_present
+    args:
+    - A
+  - name: label_B
+    type: label_present
+    args:
+    - B
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t1-l4-gs-circle-equation-origin-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circles
+  - coordinate-geometry
+  - pythagorean-theorem
+  - equation-of-circle
+  prompt: Draw a coordinate plane with a circle centered at the origin O. Pick a point
+    (x, y) on the circle and draw a right triangle with the right angle at point F
+    = (x, 0) on the x-axis. The legs go from O to F along the x-axis (length x) and
+    from F straight up to the point (x, y) (length y), and the hypotenuse goes from
+    O to (x, y) — that's the radius r. Label all three sides x, y, and r, and mark
+    the right angle at F. Write x² + y² = r² next to the triangle.
+  expected_properties:
+  - name: right_angle_at_F
+    type: right_angle
+    args:
+    - O
+    - F
+    - P
+  - name: label_O
+    type: label_present
+    args:
+    - O
+  - name: label_F
+    type: label_present
+    args:
+    - F
+  - name: F_on_x_axis_collinear_with_O
+    type: collinear
+    args:
+    - O
+    - F
+    - P
+  structural_checks: []
+  required_labels:
+  - O
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-a11-rotation-solids-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - cylinder
+  - cone
+  - sphere
+  - 2d-to-3d
+  prompt: 'Draw three side-by-side diagrams showing 2D shapes spinning around a vertical
+    axis to form 3D solids. First: a rectangle with width r and height h spinning
+    to form a cylinder — label r and h on both the rectangle and the cylinder. Second:
+    a semicircle with radius r spinning around its flat diameter edge to form a sphere
+    — label r on both. Third: a right triangle with legs r and h spinning around the
+    leg of length h to form a cone — label r and h on both the triangle and the cone.
+    Draw arrows showing the direction of rotation for each.'
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: right_angle_in_triangle
+    type: right_angle
+    args:
+    - r_point
+    - vertex
+    - h_point
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-a13-right-oblique-prisms-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - isometric
+  - prism
+  - oblique
+  - right-prism
+  - translation
+  prompt: On isometric dot paper, draw two triangular prisms side by side. The first
+    one should be a right triangular prism where triangle ABC is the base and the
+    lateral edges go straight up vertically to points D, E, F directly above A, B,
+    C. The second one should be an oblique triangular prism where triangle ABC is
+    the base but the top triangle GHI is shifted diagonally so the lateral edges are
+    slanted. Label all vertices on both prisms and mark the lateral faces. Use dashed
+    lines for hidden edges.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  - name: label_present_F
+    type: label_present
+    args:
+    - F
+  - name: right_prism_vertical_edges
+    type: perpendicular
+    args:
+    - - A
+      - D
+    - - A
+      - B
+  - name: equal_lateral_edges_right
+    type: equal_lengths
+    args:
+    - - A
+      - D
+    - - B
+      - E
+    - - C
+      - F
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  - I
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-gs-rectangle-rotation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - 3d-solids
+  - cylinder
+  - transformation
+  prompt: Can you draw a rectangle ABCD where AB is the top edge, DC is the bottom
+    edge, and DC lies on a vertical axis? Then show the rectangle rotating around
+    that axis to trace out a cylinder. Label the axis, mark the radius as the width
+    of the rectangle (from the axis to point B), and show the resulting cylinder with
+    height equal to AD. I want to see both the original rectangle and the 3D cylinder
+    it creates.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: axis_along_DC
+    type: collinear
+    args:
+    - D
+    - C
+    - axis_point
+  - name: right_angle_at_D
+    type: right_angle
+    args:
+    - A
+    - D
+    - C
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - D
+    - C
+    - B
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-tt-cone-rotation-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - cone
+  - right-triangle
+  - volume
+  prompt: Draw right triangle ABC where angle C is 90 degrees, leg BC has length r
+    (the radius), and leg AC has length h (the height). Show the triangle rotating
+    around leg AC (the vertical leg) to form a cone. Draw the resulting cone next
+    to the triangle with radius r at the base and height h, and label both dimensions
+    on the cone too. Mark the right angle at C and draw an arrow showing the direction
+    of rotation.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: rotation_axis_AC
+    type: collinear
+    args:
+    - A
+    - C
+    - axis_bottom
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-a21-plane-intersections-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - cone
+  - sphere
+  - plane
+  - intersection
+  prompt: Draw two diagrams of a cone. In the first diagram, show a horizontal plane
+    touching just the very tip (apex) of the cone at point P to produce a single point
+    cross-section — label the apex P. In the second diagram, show a vertical plane
+    cutting through the cone passing exactly through the apex and two sides, making
+    a triangular cross-section — label the apex V and the two base intersection points
+    A and B. Mark the cross-sections clearly.
+  expected_properties:
+  - name: label_present_P
+    type: label_present
+    args:
+    - P
+  - name: label_present_V
+    type: label_present
+    args:
+    - V
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: apex_on_cross_section_plane
+    type: point_on_line
+    args:
+    - V
+    - A
+    - B
+  structural_checks: []
+  required_labels:
+  - P
+  - V
+  - A
+  - B
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-a22-cylinder-cross-sections-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - cylinder
+  - circle
+  - ellipse
+  - rectangle
+  prompt: Draw three copies of the same cylinder with radius r and height h. On the
+    first cylinder, draw a horizontal cutting plane parallel to the base that creates
+    a circular cross-section — shade the circle and label it 'circle cross-section'.
+    On the second cylinder, draw a vertical cutting plane perpendicular to the base
+    that creates a rectangular cross-section — shade the rectangle and label its dimensions
+    2r by h. On the third cylinder, draw a diagonal cutting plane at an angle that
+    creates an elliptical cross-section — shade the ellipse and label it 'ellipse
+    cross-section'. Label r and h on each cylinder.
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: parallel_cross_section_to_base
+    type: parallel
+    args:
+    - - A
+      - B
+    - - C
+      - D
+  - name: perpendicular_cross_section_to_base
+    type: perpendicular
+    args:
+    - - E
+      - F
+    - - G
+      - H
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-tt-pentagonal-pyramid-cross-sections-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - pyramid
+  - pentagon
+  - rectangle
+  prompt: Draw two diagrams of the same pentagonal pyramid with apex V and pentagonal
+    base ABCDE. In the first diagram, draw a horizontal cutting plane parallel to
+    the base ABCDE that slices through the pyramid about halfway up — shade the pentagonal
+    cross-section and label it. In the second diagram, draw a vertical cutting plane
+    perpendicular to the base that passes through apex V and the midpoint of edge
+    AB — shade the triangular cross-section and label its three vertices. Label V,
+    A, B, C, D, E on both pyramids.
+  expected_properties:
+  - name: label_present_V
+    type: label_present
+    args:
+    - V
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  - name: parallel_cross_section_to_base
+    type: parallel
+    args:
+    - - A
+      - B
+    - - cross1
+      - cross2
+  structural_checks: []
+  required_labels:
+  - V
+  - A
+  - B
+  - C
+  - D
+  - E
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l3-a31-cube-pyramid-layers-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - pyramid
+  - prism
+  - volume
+  - ratio
+  - centimeter-cubes
+  prompt: 'Draw two diagrams side by side. First: a 3-layer staircase pyramid made
+    of centimeter cubes — the bottom layer is a 3×3 arrangement of cubes, the middle
+    layer is a 2×2 arrangement, and the top layer is a single cube. Label the total
+    height as 3 units and the base as 3×3. Second: the corresponding rectangular prism
+    that has the same 3×3 base and height of 3 units. Label all dimensions. I want
+    to compare the volume of the pyramid (which is about 1/3 of the prism) vs. the
+    full prism.'
+  expected_properties:
+  - name: label_present_height
+    type: label_present
+    args:
+    - height
+  - name: label_present_base
+    type: label_present
+    args:
+    - base
+  - name: equal_base_dimensions
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - C
+      - D
+  structural_checks: []
+  required_labels:
+  - height
+  - base
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l3-a32-cone-cylinder-comparison-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cone
+  - cylinder
+  - volume
+  - comparison
+  prompt: Draw a cylinder and a cone side by side where both have exactly the same
+    base radius r and the same height h. Label r and h on both. On the cylinder write
+    V = πr²h, and on the cone write V = (1/3)πr²h. Draw a bracket or arrow showing
+    that the cone's volume is exactly 1/3 of the cylinder's volume. Mark the right
+    angle where the height meets the base on both shapes.
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: equal_base_radii
+    type: equal_lengths
+    args:
+    - - O1
+      - r1
+    - - O2
+      - r2
+  - name: equal_heights
+    type: equal_lengths
+    args:
+    - - h1_bottom
+      - h1_top
+    - - h2_bottom
+      - h2_top
+  - name: right_angle_height_base_cylinder
+    type: right_angle
+    args:
+    - top_center
+    - O1
+    - edge_r
+  - name: right_angle_height_base_cone
+    type: right_angle
+    args:
+    - apex
+    - O2
+    - edge_r2
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-a41-cone-net-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - net
+  - cone
+  - surface-area
+  - slant-height
+  - lateral-face
+  prompt: 'Draw the net (unfolded surface) of a right cone with base radius r, height
+    h, and slant height s. The net should show a circular sector (the unrolled lateral
+    surface) with radius equal to slant height s, and a circle of radius r (the base)
+    attached below. Label s as the slant height on the sector''s curved edge, label
+    r on the base circle, and label the arc length of the sector as 2πr. Write the
+    lateral surface area formula = πrs and total surface area formula = πr² + πrs.
+    Also draw a small right triangle next to it showing how s relates to r and h using
+    the Pythagorean theorem: s² = r² + h².'
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: label_present_s
+    type: label_present
+    args:
+    - s
+  - name: right_angle_in_slant_triangle
+    type: right_angle
+    args:
+    - h_top
+    - base_center
+    - r_edge
+  - name: pythagorean_sides
+    type: mark_present
+    args:
+    - slant_height
+    - s
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  - s
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-a41-cylinder-net-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - net
+  - cylinder
+  - surface-area
+  - lateral-face
+  prompt: 'Draw the net (unfolded surface) of a right cylinder with radius r and height
+    h. The net should show a large rectangle (the lateral face) with width equal to
+    the circumference 2πr and height h, with one circle of radius r attached to the
+    top edge and another circle of radius r attached to the bottom edge. Label the
+    rectangle dimensions as 2πr and h, label r on each circle, and write the area
+    formulas: rectangle area = 2πrh, each circle area = πr². Also write the total
+    surface area formula SA = 2πr² + 2πrh at the bottom.'
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: equal_circle_radii
+    type: equal_lengths
+    args:
+    - - O1
+      - P1
+    - - O2
+      - P2
+  - name: rectangle_width_equals_circumference
+    type: mark_present
+    args:
+    - circumference_label
+    - rectangle_top
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-a41-square-pyramid-net-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - net
+  - pyramid
+  - surface-area
+  - slant-height
+  - triangular-face
+  prompt: Draw the net (unfolded surface) of a right square pyramid with square base
+    side length ℓ and slant height s. The net should show the square base ABCD in
+    the middle, with four congruent isosceles triangles unfolded outward — one on
+    each side of the square. Label the square side as ℓ and the slant height (triangle
+    height) as s on each triangular face. Mark that all four triangles are congruent
+    with tick marks. Write the lateral surface area formula = 2ℓs and total surface
+    area formula = ℓ² + 2ℓs at the bottom.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_s
+    type: label_present
+    args:
+    - s
+  - name: equal_square_sides
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - D
+    - - D
+      - A
+  - name: equal_triangular_faces
+    type: equal_lengths
+    args:
+    - - apex1
+      - mid1
+    - - apex2
+      - mid2
+    - - apex3
+      - mid3
+    - - apex4
+      - mid4
+  - name: right_angle_base_corner
+    type: right_angle
+    args:
+    - D
+    - A
+    - B
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - s
+  - ℓ
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-gs-rotation-lateral-faces-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - cylinder
+  - cone
+  - lateral-face
+  - surface-area
+  prompt: 'Draw three rotation diagrams. First: rectangle ABCD with DC on the axis
+    of rotation — show it rotating to form a cylinder, and highlight the rectangular
+    lateral face in a different color. Label A, B, C, D and mark the axis along DC.
+    Second: right triangle DEF with EF on the axis of rotation — show it rotating
+    to form a cone, and highlight the curved lateral surface. Label D, E, F. Third:
+    rectangle JKLM rotating about an external vertical axis (not touching the rectangle)
+    — show the resulting hollow cylinder (like a tube). Label J, K, L, M and show
+    the axis to the left of J.'
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  - name: label_present_F
+    type: label_present
+    args:
+    - F
+  - name: label_present_J
+    type: label_present
+    args:
+    - J
+  - name: label_present_M
+    type: label_present
+    args:
+    - M
+  - name: rotation_axis_DC
+    type: collinear
+    args:
+    - D
+    - C
+    - axis_point
+  - name: rotation_axis_EF
+    type: collinear
+    args:
+    - E
+    - F
+    - axis_point2
+  - name: right_angle_rectangle_ABCD
+    type: right_angle
+    args:
+    - A
+    - D
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - J
+  - K
+  - L
+  - M
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-tt-cone-slant-height-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cone
+  - slant-height
+  - pythagorean-theorem
+  - surface-area
+  prompt: Draw a right cone with apex V at the top, center of base O, and a point
+    on the base edge labeled A. Label the height VO = 8 (a vertical dashed line from
+    V straight down to O), the radius OA = 6, and the slant height VA = s (a solid
+    line from the apex to the base edge). Inside the cone, highlight the right triangle
+    VOA where the right angle is at O. Show the calculation s² = 6² + 8² = 100 so
+    s = 10 next to the diagram. Then write the lateral surface area = πrs = π(6)(10)
+    = 60π next to it.
+  expected_properties:
+  - name: label_present_V
+    type: label_present
+    args:
+    - V
+  - name: label_present_O
+    type: label_present
+    args:
+    - O
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_s
+    type: label_present
+    args:
+    - s
+  - name: right_angle_at_O
+    type: right_angle
+    args:
+    - V
+    - O
+    - A
+  - name: height_perpendicular_to_base
+    type: perpendicular
+    args:
+    - - V
+      - O
+    - - O
+      - A
+  - name: slant_height_VA
+    type: point_on_segment
+    args:
+    - O
+    - V
+    - A
+  structural_checks: []
+  required_labels:
+  - V
+  - O
+  - A
+  - s
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: median
+  tier: 2
+  tags:
+  - triangle
+  prompt: Draw a triangle ABC and the median from vertex A to the midpoint M of BC.
+    Label all four points A, B, C, and M.
+  required_labels:
+  - A
+  - B
+  - C
+  - M
+  expected_properties:
+  - name: M_is_midpoint
+    type: midpoint
+    args:
+    - M
+    - B
+    - C
+- id: altitude-circumcircle
+  tier: 3
+  tags:
+  - triangle
+  - altitude
+  - circle
+  - generalization
+  prompt: Draw a triangle ABC with the altitude from C to side AB, meeting AB at foot
+    H. Also draw the circumscribed circle through A, B, C with center O. Label A,
+    B, C, H, and O.
+  required_labels:
+  - A
+  - B
+  - C
+  - H
+  - O
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: altitude_perpendicular
+    type: right_angle
+    args:
+    - C
+    - H
+    - A
+  - name: H_on_AB
+    type: point_on_line
+    args:
+    - H
+    - A
+    - B
+  - name: A_on_circumcircle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: C_on_circumcircle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - B
+- id: angle-in-semicircle
+  tier: 3
+  tags:
+  - circle
+  - theorem
+  - generalization
+  prompt: Draw a circle with center O and a diameter AB. Place a point C on the circle
+    (not at A or B). Draw triangle ACB and mark the right angle at C, illustrating
+    Thales' theorem. Label A, B, C, and O.
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: O_is_midpoint_of_AB
+    type: midpoint
+    args:
+    - O
+    - A
+    - B
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+- id: chord-diameter-perpendicular
+  tier: 3
+  tags:
+  - circle
+  - chord
+  - generalization
+  prompt: Draw a circle with center O and a diameter AB. Draw a chord CD perpendicular
+    to the diameter, intersecting AB at point P. Label A, B, C, D, O, and P.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - O
+  - P
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: O_midpoint_AB
+    type: midpoint
+    args:
+    - O
+    - A
+    - B
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: D_on_circle
+    type: point_on_circle
+    args:
+    - D
+    - O
+    - A
+  - name: CD_perpendicular_AB
+    type: perpendicular
+    args:
+    - - C
+      - D
+    - - A
+      - B
+  - name: P_on_AB
+    type: point_on_line
+    args:
+    - P
+    - A
+    - B
+  - name: P_on_CD
+    type: point_on_line
+    args:
+    - P
+    - C
+    - D
+- id: cyclic-quadrilateral
+  tier: 3
+  tags:
+  - circle
+  - quadrilateral
+  prompt: Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Label
+    all five points A, B, C, D, and O.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - O
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: all_equidistant_from_O
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+    - - O
+      - D
+- id: cyclic-quadrilateral-diagonals
+  tier: 3
+  tags:
+  - circle
+  - quadrilateral
+  - generalization
+  prompt: Draw a cyclic quadrilateral ABCD inscribed in a circle with center O. Draw
+    both diagonals AC and BD, intersecting at point P. Label A, B, C, D, O, and P.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - O
+  - P
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: all_on_circle
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+    - - O
+      - D
+  - name: P_on_AC
+    type: point_on_line
+    args:
+    - P
+    - A
+    - C
+  - name: P_on_BD
+    type: point_on_line
+    args:
+    - P
+    - B
+    - D
+- id: euler-line
+  tier: 3
+  tags:
+  - triangle-centers
+  prompt: 'Draw a triangle ABC showing three triangle centers: the circumcenter O,
+    centroid G, and orthocenter H, indicating that they are collinear on the Euler
+    line. Label all six points A, B, C, O, G, and H.'
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  - G
+  - H
+  expected_properties:
+  - name: euler_line_collinear
+    type: collinear
+    args:
+    - O
+    - G
+    - H
+  - name: O_is_circumcenter
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+  - name: H_altitude_from_C
+    type: perpendicular
+    args:
+    - - C
+      - H
+    - - A
+      - B
+  - name: H_altitude_from_A
+    type: perpendicular
+    args:
+    - - A
+      - H
+    - - B
+      - C
+  - name: G_is_centroid
+    type: centroid
+    args:
+    - G
+    - A
+    - B
+    - C
+- id: geo-m1-t1-l2-a22-spherical-triangle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - spherical-geometry
+  - great-circle
+  - non-euclidean
+  - angle-sum
+  prompt: Draw a sphere and show three great circles on it that form a triangle on
+    the surface. Label the three vertices of the spherical triangle as A, B, and C.
+    Make each angle of the triangle look like it's 90 degrees — so this is a triangle
+    where all three angles are right angles, which is possible on a sphere but not
+    in flat geometry. Mark each right angle with a small square. I want this to illustrate
+    how spherical geometry is different from Euclidean geometry.
+  expected_properties:
+  - name: right_angle_at_A
+    type: right_angle
+    args:
+    - B
+    - A
+    - C
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: mark_at_A
+    type: mark_present
+    args:
+    - right_angle
+    - A
+  - name: mark_at_B
+    type: mark_present
+    args:
+    - right_angle
+    - B
+  - name: mark_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l3-act35-sequence-reflection-translation-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - translation
+  - sequence-of-transformations
+  - congruence
+  prompt: 'Draw two congruent triangles ABC and A''B''C'' in different positions on
+    a plane (not on a coordinate grid). Show a sequence of transformations mapping
+    ABC to A''B''C'': first draw dashed segments connecting A to A'', B to B'', C
+    to C'', mark their midpoints, and draw the perpendicular bisector through those
+    midpoints as the line of reflection. Then show a small arrow indicating a translation
+    to finish mapping the reflected figure to A''B''C''. Label all six vertices and
+    the line of reflection as line ℓ.'
+  expected_properties:
+  - name: equal_lengths_AB_AprimeBprime
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A'
+      - B'
+  - name: equal_lengths_BC_BprimeC prime
+    type: equal_lengths
+    args:
+    - - B
+      - C
+    - - B'
+      - C'
+  - name: label_Aprime_present
+    type: label_present
+    args:
+    - A'
+  - name: midpoint_AA_prime
+    type: midpoint
+    args:
+    - M
+    - A
+    - A'
+  - name: perpendicular_AA_prime_to_reflection_line
+    type: perpendicular
+    args:
+    - - A
+      - A'
+    - - B
+      - B'
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - A'
+  - B'
+  - C'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l4-act43-center-of-rotation-perpendicular-bisectors-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - center-of-rotation
+  - perpendicular-bisector
+  - construction
+  prompt: Draw triangle ABC and its rotated image A'B'C' somewhere on the plane without
+    a grid. Connect A to A' with a dashed segment and find its midpoint, then draw
+    the perpendicular bisector of AA'. Do the same for B to B'. Show where the two
+    perpendicular bisectors intersect and label that intersection point O — that's
+    the center of rotation. Draw arcs from A to A' and B to B' centered at O to show
+    the angle of rotation. Label all six vertices, the midpoints, and O.
+  expected_properties:
+  - name: midpoint_AA_prime
+    type: midpoint
+    args:
+    - M1
+    - A
+    - A'
+  - name: midpoint_BB_prime
+    type: midpoint
+    args:
+    - M2
+    - B
+    - B'
+  - name: perpendicular_AA_prime_bisector
+    type: perpendicular
+    args:
+    - - A
+      - A'
+    - - M1
+      - O
+  - name: perpendicular_BB_prime_bisector
+    type: perpendicular
+    args:
+    - - B
+      - B'
+    - - M2
+      - O
+  - name: equal_dist_OA_OAprime
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - A'
+  - name: equal_dist_OB_OBprime
+    type: equal_lengths
+    args:
+    - - O
+      - B
+    - - O
+      - B'
+  - name: label_O_present
+    type: label_present
+    args:
+    - O
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - A'
+  - B'
+  - C'
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l4-act44-sequence-rigid-motions-congruence-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - sequence-of-transformations
+  - rotation
+  - reflection
+  - translation
+  - congruence
+  prompt: 'Draw two congruent triangles XYZ and X''Y''Z'' in different positions and
+    orientations on a plane. Show a three-step sequence that maps XYZ onto X''Y''Z'':
+    first draw a dashed arrow showing a translation, then draw a line of reflection
+    ℓ with the reflected intermediate triangle X''''Y''''Z'''', then show a rotation
+    arc about a center point O to finish mapping to X''Y''Z''. Label all nine vertices
+    X, Y, Z, X'', Y'', Z'', X'''', Y'''', Z'''', the line ℓ, and rotation center O.'
+  expected_properties:
+  - name: equal_lengths_XY_XprimeYprime
+    type: equal_lengths
+    args:
+    - - X
+      - Y
+    - - X'
+      - Y'
+  - name: equal_lengths_XY_XdprimeYdprime
+    type: equal_lengths
+    args:
+    - - X
+      - Y
+    - - X''
+      - Y''
+  - name: equal_dist_OXprimeprime_OXprime
+    type: equal_lengths
+    args:
+    - - O
+      - X''
+    - - O
+      - X'
+  - name: label_O_present
+    type: label_present
+    args:
+    - O
+  - name: label_Xdprimeprime_present
+    type: label_present
+    args:
+    - X''
+  structural_checks: []
+  required_labels:
+  - X
+  - Y
+  - Z
+  - X'
+  - Y'
+  - Z'
+  - X''
+  - Y''
+  - Z''
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l5-ttt-composition-three-step-rectangle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - composition
+  - reflection
+  - rotation
+  - translation
+  - rectangle
+  - coordinate-plane
+  prompt: 'Draw rectangle EFGH on a coordinate plane with E at (1,1), F at (3,1),
+    G at (3,2), H at (1,2). Apply a three-step composition: step 1 — reflect across
+    the x-axis to get E''F''G''H''; step 2 — rotate 90 degrees counterclockwise about
+    the origin to get E''''F''''G''''H''''; step 3 — translate 2 units up to get E''''''F''''''G''''''H''''''.
+    Draw and label all four versions of the rectangle and mark the origin O.'
+  expected_properties:
+  - name: equal_lengths_EF_EprimeF prime
+    type: equal_lengths
+    args:
+    - - E
+      - F
+    - - E'
+      - F'
+  - name: equal_lengths_EF_EdprimeF dprime
+    type: equal_lengths
+    args:
+    - - E
+      - F
+    - - E''
+      - F''
+  - name: equal_lengths_EF_Etripleprime_Ftripleprime
+    type: equal_lengths
+    args:
+    - - E
+      - F
+    - - E'''
+      - F'''
+  - name: equal_dist_OE_OEprimeprime
+    type: equal_lengths
+    args:
+    - - O
+      - E'
+    - - O
+      - E''
+  - name: parallel_translation_step3
+    type: parallel
+    args:
+    - - E''
+      - E'''
+    - - F''
+      - F'''
+  - name: equal_translation_vectors_step3
+    type: equal_lengths
+    args:
+    - - E''
+      - E'''
+    - - F''
+      - F'''
+  - name: label_Etripleprime_present
+    type: label_present
+    args:
+    - E'''
+  structural_checks: []
+  required_labels:
+  - E
+  - F
+  - G
+  - H
+  - E'
+  - F'
+  - G'
+  - H'
+  - E''
+  - F''
+  - G''
+  - H''
+  - E'''
+  - F'''
+  - G'''
+  - H'''
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l2-sas-proof-circle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - SAS
+  - congruence-proof
+  - reflection
+  - circle
+  prompt: Draw two triangles ABC and DEF where AB = DE (mark with one tick), angle
+    B = angle E (mark with one arc), and BC = EF (mark with two ticks). Then in a
+    separate diagram, show the SAS reflection proof step where we've already mapped
+    segment AB onto segment DE, so now we're looking at point C and point F. Draw
+    a circle centered at E with radius equal to BC (= EF), and show two dashed lines
+    from E to two possible positions where C' (the image of C) could land on the circle.
+    Label the two possible positions C'1 and C'2. This shows why the included angle
+    matters for pinning down the unique location.
+  expected_properties:
+  - name: AB_equals_DE
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - D
+      - E
+  - name: BC_equals_EF
+    type: equal_lengths
+    args:
+    - - B
+      - C
+    - - E
+      - F
+  - name: angle_B_equals_angle_E
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - C
+    - - D
+      - E
+      - F
+  - name: C_prime_1_on_circle
+    type: point_on_circle
+    args:
+    - C'1
+    - E
+    - F
+  - name: C_prime_2_on_circle
+    type: point_on_circle
+    args:
+    - C'2
+    - E
+    - F
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  - name: label_F_present
+    type: label_present
+    args:
+    - F
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - C'1
+  - C'2
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l3-tt-star-exterior-angles-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - exterior-angles
+  - star-polygon
+  - triangle-sum
+  prompt: Draw a triangle with vertices A, B, C. Extend all three sides beyond each
+    vertex to form a six-pointed star shape, creating points P (from extending sides
+    at A), Q (from extending sides at B), and R (from extending sides at C). Label
+    the five starred tip angles. I want to find the sum of those tip angles using
+    the exterior angle theorem and triangle sum theorem.
+  expected_properties:
+  - name: P_on_line_through_A
+    type: collinear
+    args:
+    - P
+    - A
+    - B
+  - name: Q_on_line_through_B
+    type: collinear
+    args:
+    - Q
+    - B
+    - C
+  - name: R_on_line_through_C
+    type: collinear
+    args:
+    - R
+    - C
+    - A
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - P
+  - Q
+  - R
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l6-a64-exterior-angle-secant-tangent-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - exterior-angles-circle
+  - secant
+  - tangent
+  - external-point
+  prompt: 'Draw three separate circles showing the three cases of exterior angles
+    of a circle. Circle 1: external point E with a secant through points A and B (farther
+    and closer on the circle) and a tangent touching at point T. Label arc AT as the
+    far arc and arc BT as the near arc. Label the exterior angle at E. Circle 2: external
+    point E with two secants hitting the circle at A, B (one secant) and C, D (other
+    secant). Circle 3: external point E with two tangents touching at points T1 and
+    T2. Label the intercepted arcs in each case.'
+  expected_properties:
+  - name: T_on_circle_1
+    type: point_on_circle
+    args:
+    - T
+    - O
+    - A
+  - name: A_on_circle_1
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - T
+  - name: B_on_circle_1
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - T
+  - name: tangent_at_T
+    type: tangent
+    args:
+    - - E
+      - T
+    - O
+    - T
+  structural_checks: []
+  required_labels:
+  - E
+  - A
+  - B
+  - T
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t3-l2-talk-broken-plate-two-chords-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - chord
+  - perpendicular-bisector
+  - center
+  - diameter
+  - real-world
+  prompt: 'Draw the situation for finding the center of a broken circular plate. Show
+    a partial circle (the fragment — maybe just the top arc). Inside the fragment,
+    draw two chords: chord PQ and chord RS, where P, Q, R, S are all on the arc. Draw
+    the perpendicular bisector of PQ and mark its midpoint as M. Draw the perpendicular
+    bisector of RS and mark its midpoint as N. Label the point where the two perpendicular
+    bisectors intersect as O — this is the center of the full circle. Draw the full
+    circle with center O in a dashed line so I can see the original plate. Mark the
+    right angles at M and N with squares, and mark OM as the radius. Label all points
+    P, Q, R, S, M, N, and O.'
+  expected_properties:
+  - name: M_midpoint_PQ
+    type: midpoint
+    args:
+    - M
+    - P
+    - Q
+  - name: N_midpoint_RS
+    type: midpoint
+    args:
+    - N
+    - R
+    - S
+  - name: perp_bisector_PQ
+    type: perpendicular
+    args:
+    - - P
+      - Q
+    - - O
+      - M
+  - name: perp_bisector_RS
+    type: perpendicular
+    args:
+    - - R
+      - S
+    - - O
+      - N
+  - name: right_angle_at_M
+    type: right_angle
+    args:
+    - P
+    - M
+    - O
+  - name: right_angle_at_N
+    type: right_angle
+    args:
+    - R
+    - N
+    - O
+  - name: right_angle_mark_M
+    type: mark_present
+    args:
+    - right_angle
+    - M
+  - name: right_angle_mark_N
+    type: mark_present
+    args:
+    - right_angle
+    - N
+  - name: O_on_perp_bisector_PQ
+    type: point_on_line
+    args:
+    - O
+    - M
+    - P
+  - name: O_on_perp_bisector_RS
+    type: point_on_line
+    args:
+    - O
+    - N
+    - R
+  structural_checks: []
+  required_labels:
+  - P
+  - Q
+  - R
+  - S
+  - M
+  - N
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t1-l5-talktalk-point-on-circle-perpendicular-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - circles
+  - coordinate-geometry
+  - points-on-circle
+  - pythagorean-theorem
+  - perpendicular-radius
+  prompt: Draw a coordinate plane with a circle centered at point O = (6, −5) with
+    radius 10. Draw two perpendicular radii OA and OB — let OA go straight up to A
+    = (6, 5). Then I know there's a point C on the circle whose x-coordinate is 12.
+    Draw a vertical dashed line at x = 12 that intersects the circle at point C. Draw
+    the right triangle from O to a point D = (12, −5) directly to the right of O,
+    and then up to C. Label O, A, B, C, D, mark the right angle at D, and show the
+    legs OD = 6 and DC = 8 so I can verify OC = 10.
+  expected_properties:
+  - name: right_angle_at_D
+    type: right_angle
+    args:
+    - O
+    - D
+    - C
+  - name: OA_perpendicular_OB
+    type: perpendicular
+    args:
+    - - O
+      - A
+    - - O
+      - B
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - A
+  - name: equal_radii_OA_OC
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - C
+  - name: label_O
+    type: label_present
+    args:
+    - O
+  - name: label_A
+    type: label_present
+    args:
+    - A
+  - name: label_C
+    type: label_present
+    args:
+    - C
+  - name: label_D
+    type: label_present
+    args:
+    - D
+  - name: D_collinear_with_O_horizontal
+    type: collinear
+    args:
+    - O
+    - D
+    - B
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  - C
+  - D
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l2-a22-cube-cross-sections-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - cross-section
+  - cube
+  - polygon
+  - plane
+  prompt: Draw four separate diagrams of a cube ABCDEFGH where ABCD is the bottom
+    face and EFGH is the top face (E above A, F above B, G above C, H above D). In
+    the first cube, show a cross-section parallel to the base that gives a square
+    — label it. In the second cube, show a diagonal cross-section connecting midpoints
+    of edges that forms a rectangle. In the third cube, show a cross-section cutting
+    three faces that forms a triangle — mark where the plane hits the three edges.
+    In the fourth cube, show a cross-section cutting through six faces to form a hexagon.
+    Label all vertices on each cube and shade each cross-section differently.
+  expected_properties:
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_B
+    type: label_present
+    args:
+    - B
+  - name: label_present_C
+    type: label_present
+    args:
+    - C
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  - name: label_present_E
+    type: label_present
+    args:
+    - E
+  - name: label_present_F
+    type: label_present
+    args:
+    - F
+  - name: label_present_G
+    type: label_present
+    args:
+    - G
+  - name: label_present_H
+    type: label_present
+    args:
+    - H
+  - name: parallel_square_cross_section
+    type: parallel
+    args:
+    - - A
+      - B
+    - - E
+      - F
+  - name: equal_cube_edges
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - A
+      - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l3-a34-composite-solids-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - composite-solids
+  - pyramid
+  - prism
+  - hemisphere
+  - cone
+  - volume
+  prompt: 'Draw two composite solids. First: a rectangular prism with length 8, width
+    6, and height 4 as the base, topped by a square pyramid with the same 8×6 base
+    and a height of 3 — label all dimensions and mark the boundary between the two
+    solids with a dashed line. Second: a hemisphere sitting flat-side down with radius
+    5, with a cone sitting on top of it (cone''s base matches the hemisphere''s flat
+    circle, radius 5, cone height 7) — label all dimensions and mark the flat circle
+    boundary between hemisphere and cone. Show these side by side.'
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: shared_base_prism_pyramid
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - P
+      - Q
+  - name: shared_radius_hemisphere_cone
+    type: equal_lengths
+    args:
+    - - O
+      - R1
+    - - O
+      - R2
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l4-a43-composite-surface-area-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - composite-solids
+  - surface-area
+  - hemisphere
+  - cone
+  - cylinder
+  prompt: 'Draw a composite solid made of a hemisphere on the bottom (flat side up,
+    radius r = 4), a cylinder in the middle (same radius r = 4, height h = 6), and
+    a cone on top (same radius r = 4, slant height s = 5). Label all dimensions: r
+    = 4 on each piece, h = 6 on the cylinder, s = 5 on the cone. Draw dashed lines
+    at the junctions between pieces to show where they connect. Mark with X''s or
+    shading the two circular faces where the pieces join (top of hemisphere = bottom
+    of cylinder, and top of cylinder = bottom of cone) to show those interior faces
+    are NOT included in surface area. Label visible surfaces.'
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: label_present_s
+    type: label_present
+    args:
+    - s
+  - name: equal_radii_all_sections
+    type: equal_lengths
+    args:
+    - - O1
+      - R1
+    - - O2
+      - R2
+    - - O3
+      - R3
+  - name: perpendicular_cylinder_axis
+    type: perpendicular
+    args:
+    - - top_center
+      - bottom_center
+    - - left_edge
+      - right_edge
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  - s
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: isosceles-trapezoid-circle
+  tier: 3
+  tags:
+  - circle
+  - quadrilateral
+  - parallel
+  - generalization
+  prompt: Draw a convex isosceles trapezoid ABCD inscribed in a circle with center
+    O. AB is the longer base and CD is the shorter base, with AB parallel to CD. The
+    legs AD and BC are equal. Vertices go in order A, B, C, D around the shape. Label
+    A, B, C, D, and O.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - O
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: all_on_circle
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+    - - O
+      - D
+  - name: AB_parallel_CD
+    type: parallel
+    args:
+    - - A
+      - B
+    - - C
+      - D
+  - name: equal_legs
+    type: equal_lengths
+    args:
+    - - A
+      - D
+    - - B
+      - C
+  - name: AB_CD_on_opposite_sides
+    type: opposite_side
+    args:
+    - A
+    - C
+    - B
+    - D
+  - name: convex_AD_side
+    type: same_side
+    args:
+    - A
+    - B
+    - C
+    - D
+- id: kite-diagonals
+  tier: 3
+  tags:
+  - quadrilateral
+  - generalization
+  prompt: Draw a kite ABCD where AB equals AD and CB equals CD. Draw both diagonals
+    AC and BD. Mark the right angle where the diagonals intersect. Label A, B, C,
+    and D.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  expected_properties:
+  - name: AB_equals_AD
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A
+      - D
+  - name: CB_equals_CD
+    type: equal_lengths
+    args:
+    - - C
+      - B
+    - - C
+      - D
+  - name: diagonals_perpendicular
+    type: perpendicular
+    args:
+    - - A
+      - C
+    - - B
+      - D
+- id: medial-triangle
+  tier: 3
+  tags:
+  - triangle
+  - midpoint
+  - generalization
+  prompt: Draw a triangle ABC. Mark the midpoints D of BC, E of AC, and F of AB. Connect
+    D, E, F to form the medial triangle DEF. Label all six points A, B, C, D, E, and
+    F.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  expected_properties:
+  - name: D_midpoint_BC
+    type: midpoint
+    args:
+    - D
+    - B
+    - C
+  - name: E_midpoint_AC
+    type: midpoint
+    args:
+    - E
+    - A
+    - C
+  - name: F_midpoint_AB
+    type: midpoint
+    args:
+    - F
+    - A
+    - B
+  - name: DE_parallel_AB
+    type: parallel
+    args:
+    - - D
+      - E
+    - - A
+      - B
+  - name: EF_parallel_BC
+    type: parallel
+    args:
+    - - E
+      - F
+    - - B
+      - C
+  - name: DF_parallel_AC
+    type: parallel
+    args:
+    - - D
+      - F
+    - - A
+      - C
+- id: napoleon-theorem
+  tier: 3
+  tags:
+  - triangle
+  - theorem
+  - construction
+  prompt: 'Draw triangle ABC. On each side, construct an equilateral triangle pointing
+    outward: triangle on BC with outer vertex P, on CA with outer vertex Q, on AB
+    with outer vertex R. Find the centroids G1 (of triangle on BC), G2 (of triangle
+    on CA), G3 (of triangle on AB). Label A, B, C, P, Q, R, G1, G2, G3 and show that
+    G1, G2, G3 form an equilateral triangle.'
+  required_labels:
+  - A
+  - B
+  - C
+  - G1
+  - G2
+  - G3
+  expected_properties:
+  - name: G1G2G3_equilateral
+    type: equal_lengths
+    args:
+    - - G1
+      - G2
+    - - G2
+      - G3
+    - - G3
+      - G1
+  - name: G1_opposite_A_from_BC
+    type: opposite_side
+    args:
+    - G1
+    - A
+    - B
+    - C
+  - name: G2_opposite_B_from_CA
+    type: opposite_side
+    args:
+    - G2
+    - B
+    - C
+    - A
+  - name: G3_opposite_C_from_AB
+    type: opposite_side
+    args:
+    - G3
+    - C
+    - A
+    - B
+  structural_checks:
+  - name: outer_triangles
+    type: polygon_count
+    args:
+      min: 4
+      sides: 3
+- id: pythagorean-theorem
+  tier: 3
+  tags:
+  - triangle
+  - theorem
+  prompt: Draw a right triangle ABC with the right angle at C. Construct squares on
+    each of the three sides to illustrate the Pythagorean theorem. Label the vertices
+    A, B, and C.
+  required_labels:
+  - A
+  - B
+  - C
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: right_angle_marked_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  structural_checks:
+  - name: three_squares
+    type: polygon_count
+    args:
+      min: 3
+      sides: 4
+- id: rhombus-diagonals
+  tier: 3
+  tags:
+  - quadrilateral
+  - generalization
+  prompt: Draw a rhombus ABCD with all sides equal. Draw both diagonals AC and BD
+    intersecting at point O. Mark the right angle at O. Label A, B, C, D, and O.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - O
+  expected_properties:
+  - name: all_sides_equal
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - D
+    - - D
+      - A
+  - name: diagonals_perpendicular
+    type: perpendicular
+    args:
+    - - A
+      - C
+    - - B
+      - D
+  - name: O_on_AC
+    type: point_on_line
+    args:
+    - O
+    - A
+    - C
+  - name: O_on_BD
+    type: point_on_line
+    args:
+    - O
+    - B
+    - D
+- id: simson-line
+  tier: 3
+  tags:
+  - circle
+  - triangle
+  - collinear
+  - generalization
+  prompt: 'Draw a triangle ABC with its circumscribed circle (center O). Place a point
+    P on the circle (distinct from A, B, C). Drop perpendiculars from P to each side
+    of the triangle: D is the foot on BC, E is the foot on line AC, and F is the foot
+    on line AB. Draw the segments PD, PE, and PF, marking the right angles at D, E,
+    and F. Show that D, E, F are collinear (the Simson line). Label all seven points
+    A, B, C, O, P, D, E, F.'
+  required_labels:
+  - A
+  - B
+  - C
+  - O
+  - P
+  - D
+  - E
+  - F
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: P_on_circumcircle
+    type: point_on_circle
+    args:
+    - P
+    - O
+    - A
+  - name: A_on_circumcircle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: C_on_circumcircle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - B
+  - name: right_angle_at_D
+    type: right_angle
+    args:
+    - P
+    - D
+    - B
+  - name: right_angle_at_E
+    type: right_angle
+    args:
+    - P
+    - E
+    - A
+  - name: right_angle_at_F
+    type: right_angle
+    args:
+    - P
+    - F
+    - A
+  - name: D_on_BC
+    type: point_on_line
+    args:
+    - D
+    - B
+    - C
+  - name: E_on_AC
+    type: point_on_line
+    args:
+    - E
+    - A
+    - C
+  - name: F_on_AB
+    type: point_on_line
+    args:
+    - F
+    - A
+    - B
+  - name: DEF_collinear
+    type: collinear
+    args:
+    - D
+    - E
+    - F
+- id: tangent-incircle-foot
+  tier: 3
+  tags:
+  - circle
+  - tangent
+  - incircle
+  - generalization
+  prompt: Draw a triangle ABC with its inscribed circle centered at I. Mark the point
+    T where the incircle touches side BC. Draw segment IT and mark the right angle
+    at T. Label A, B, C, I, and T.
+  required_labels:
+  - A
+  - B
+  - C
+  - I
+  - T
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: I_equidistant_from_sides
+    type: equidistant_from_sides
+    args:
+    - I
+    - A
+    - B
+    - C
+  - name: T_on_BC
+    type: point_on_line
+    args:
+    - T
+    - B
+    - C
+  - name: IT_perpendicular_to_BC
+    type: right_angle
+    args:
+    - I
+    - T
+    - B
+- id: tangent-secant-external
+  tier: 3
+  tags:
+  - circle
+  - tangent
+  - generalization
+  prompt: Draw a circle with center O. From an external point P, draw a tangent line
+    touching the circle at T and a secant line passing through the circle at points
+    A and B (with A between P and B). Mark the right angle at T. Label O, P, T, A,
+    and B.
+  required_labels:
+  - O
+  - P
+  - T
+  - A
+  - B
+  required_entities:
+  - type: circle
+  expected_properties:
+  - name: tangent_perpendicular
+    type: right_angle
+    args:
+    - P
+    - T
+    - O
+  - name: T_on_circle
+    type: point_on_circle
+    args:
+    - T
+    - O
+    - A
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: P_A_B_collinear
+    type: collinear
+    args:
+    - P
+    - A
+    - B
+- id: triangle-proportionality
+  tier: 3
+  tags:
+  - triangle
+  - theorem
+  prompt: Draw a diagram demonstrating the triangle proportionality theorem. A line
+    DE parallel to BC divides the triangle, with D on AB and E on AC. Label all five
+    points A, B, C, D, and E.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  expected_properties:
+  - name: DE_parallel_to_BC
+    type: parallel
+    args:
+    - - D
+      - E
+    - - B
+      - C
+  - name: D_on_AB
+    type: point_on_line
+    args:
+    - D
+    - A
+    - B
+  - name: E_on_AC
+    type: point_on_line
+    args:
+    - E
+    - A
+    - C
+- id: varignon-parallelogram
+  tier: 3
+  tags:
+  - quadrilateral
+  - midpoint
+  - generalization
+  prompt: Draw a general (non-special) quadrilateral ABCD. Mark E as the midpoint
+    of AB, F as the midpoint of BC, G as the midpoint of CD, and H as the midpoint
+    of DA. Connect E, F, G, H in order to form quadrilateral EFGH and show that it
+    is a parallelogram. Label all eight points A, B, C, D, E, F, G, and H.
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  expected_properties:
+  - name: E_midpoint_AB
+    type: midpoint
+    args:
+    - E
+    - A
+    - B
+  - name: F_midpoint_BC
+    type: midpoint
+    args:
+    - F
+    - B
+    - C
+  - name: G_midpoint_CD
+    type: midpoint
+    args:
+    - G
+    - C
+    - D
+  - name: H_midpoint_DA
+    type: midpoint
+    args:
+    - H
+    - D
+    - A
+  - name: EF_parallel_HG
+    type: parallel
+    args:
+    - - E
+      - F
+    - - H
+      - G
+  - name: FG_parallel_EH
+    type: parallel
+    args:
+    - - F
+      - G
+    - - E
+      - H

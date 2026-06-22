@@ -49,3 +49,29 @@ curriculum/*.zip
 
 # Benchmark run data
 benchmark/data/
+
+# GEPA optimization run data (logs + candidate outputs)
+gepa_runs/
+
+# Vim swap files
+*.swp
+*.swo
+
+# Eval run console captures / test run logs
+output_run_*.txt
+output_run_*.log
+test_run*.txt
+nohup.out
+ollama_run.txt
+
+# Scratch / conversation dumps / personal notes / PDFs
+2026-05-20-*.txt
+command_smoke_scenarios.txt
+project_discovery.md
+geogenbench_1.pdf
+
+# Generated scenario-id lists
+evals/*_scenario_list.txt
+
+# Extra eval results dir (evals/results/ is already ignored above)
+evals/results_smoke_glm3/
