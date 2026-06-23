@@ -73,27 +73,58 @@ def _recipe_generation_system() -> str:
     return mod.RECIPE_GENERATION_SYSTEM
 
 
-def load_fewshot_recipes(mode: str) -> list:
-    """Return recipe objects to include as few-shot exemplars in the user prompt.
+def load_catalog_recipes() -> list:
+    """Load every recipe object in the default catalog (each carries a worked
+    RecipeDSL .example that pins the exact op vocabulary)."""
+    from recipe.catalog import load_catalog, load_recipe
 
-    mode="none" -> [] (bare DSL docs only, like RecipeStrategy(use_recipes=False));
-    mode="all"  -> every recipe in the default catalog (the production few-shot
-                   mechanism, minus the LLM selector);
-    mode=<int>  -> the first N catalog recipes — a small, deterministic subset.
+    return [load_recipe(s.id, catalog="default") for s in load_catalog("default")]
 
-    Each recipe carries a worked RecipeDSL .example that pins the exact op
-    vocabulary. NOTE: every recipe adds ~430 prompt tokens; "all" (20) pushes
-    the prompt to ~14k tokens, which OOMs MPS attention (O(seq^2), fully
-    materialized by MPS SDPA). Keep N small (~5) on Apple Silicon.
+
+import re as _re
+
+_WORD = _re.compile(r"[a-z]+")
+
+
+def _keywords(text: str) -> set[str]:
+    return set(_WORD.findall(text.lower()))
+
+
+def select_recipes(prompt: str, all_recipes: list, mode: str) -> list:
+    """Pick few-shot exemplars for one prompt.
+
+    mode="none"        -> [] (bare DSL docs only, use_recipes=False path);
+    mode="all"         -> every catalog recipe (OOMs MPS at ~14k tok; fine on GPU);
+    mode=<int>         -> the first N catalog recipes (deterministic, prompt-agnostic);
+    mode="relevant[:K]"-> the K recipes whose tags/name/description best overlap the
+                          prompt's words (default K=4). This is a local stand-in for
+                          production's LLM recipe selector — it spends a small
+                          exemplar budget on RELEVANT examples (e.g. a "square"
+                          prompt pulls square_on_segment) instead of a fixed subset.
+
+    NOTE: every recipe adds ~430 prompt tokens. "all" (20) ~14k tokens OOMs MPS
+    attention (O(seq^2)); keep the budget small on Apple Silicon, unlimited on GPU.
     """
     if mode == "none":
         return []
-    from recipe.catalog import load_catalog, load_recipe
+    if mode == "all":
+        return all_recipes
+    if mode.startswith("relevant"):
+        k = int(mode.split(":", 1)[1]) if ":" in mode else 4
+        pw = _keywords(prompt)
 
-    specs = load_catalog("default")
-    if mode != "all":
-        specs = specs[: int(mode)]
-    return [load_recipe(s.id, catalog="default") for s in specs]
+        def score(r) -> int:
+            strong = set(r.tags) | _keywords(r.name)          # tags/name: weight 2
+            weak = _keywords(r.description) - strong          # description: weight 1
+            return 2 * len(strong & pw) + len(weak & pw)
+
+        ranked = sorted(
+            range(len(all_recipes)),
+            key=lambda i: (-score(all_recipes[i]), i),        # ties -> catalog order
+        )
+        top = [all_recipes[i] for i in ranked if score(all_recipes[i]) > 0][:k]
+        return top or all_recipes[:k]                         # always provide K
+    return all_recipes[: int(mode)]
 
 
 def build_messages(prompt: str, recipes: list | None = None) -> list[dict]:
@@ -119,15 +150,16 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=20, help="number of prompts to test")
     ap.add_argument("--tier", type=int, default=None, help="filter by difficulty tier (1/2/3)")
     ap.add_argument("--few-shot", default="none",
-                    help="few-shot exemplars: 'none', 'all', or an int N "
-                         "(first N catalog recipes; keep small on MPS — ~5)")
+                    help="few-shot exemplars: 'none', 'all', an int N (first N "
+                         "catalog recipes), or 'relevant[:K]' (top-K by prompt "
+                         "relevance, default K=4). 'all' OOMs MPS — use on GPU.")
     ap.add_argument("--print-output", action="store_true", help="dump each completion")
     args = ap.parse_args()
 
     prompts = load_prompts(args.n, args.tier)
-    recipes = load_fewshot_recipes(args.few_shot)
+    all_recipes = [] if args.few_shot == "none" else load_catalog_recipes()
     print(f"loaded {len(prompts)} prompt(s)" + (f" (tier {args.tier})" if args.tier else "")
-          + f"; few-shot={args.few_shot} ({len(recipes)} recipes)")
+          + f"; few-shot={args.few_shot} (catalog of {len(all_recipes)} recipes)")
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -144,6 +176,7 @@ def main() -> None:
     n_ok = 0
     stage_counts: dict[str, int] = {}
     for i, (pid, prompt) in enumerate(prompts, 1):
+        recipes = select_recipes(prompt, all_recipes, args.few_shot)
         text = tok.apply_chat_template(
             build_messages(prompt, recipes), tokenize=False, add_generation_prompt=True
         )
