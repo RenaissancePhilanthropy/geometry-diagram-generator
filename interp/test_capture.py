@@ -61,31 +61,35 @@ def test_capture_shapes_and_alignment():
     model, tok = _tiny_model_and_tok()
     prompt = "Construct the figure:"
     completion = '{"mode":"abstract","construction":[{"op":"triangle"}]}'
+    prompt_ids = tok(prompt, add_special_tokens=False).input_ids
+    completion_ids = tok(completion, add_special_tokens=False).input_ids
 
     n_hs = model.config.num_hidden_layers + 1
     layers = resolve_layers("all", n_hs)
-    cap = capture_activations(model, tok, prompt, completion, layers, device="cpu")
+    cap = capture_activations(model, tok, prompt_ids, completion_ids, layers, "cpu")
 
-    n_comp = len(tok(completion, add_special_tokens=False).input_ids)
+    n_comp = len(completion_ids)
     # acts: [n_layers, n_completion_tokens, d_model]
     assert cap["acts"].shape == (n_hs, n_comp, HIDDEN), cap["acts"].shape
     assert str(cap["acts"].dtype) == "float16"
-    # one offset + one token string per completion position
+    # one offset / token string / special-flag per completion position
     assert len(cap["offsets"]) == n_comp
     assert len(cap["tokens"]) == n_comp
-    # offsets index back into the completion text correctly
-    s, e = cap["offsets"][0]
-    assert completion[s:e] != "" or (s == e)
-    # prompt_len matches the prompt tokenization (no chat template here)
-    assert cap["prompt_len"] == len(tok(prompt, add_special_tokens=False).input_ids)
+    assert len(cap["is_special"]) == n_comp
+    # offsets are monotonic non-decreasing and index the decoded completion
+    for (s, e) in cap["offsets"]:
+        assert 0 <= s <= e <= len(cap["completion"])
+    assert cap["completion"].startswith("{")
+    assert cap["prompt_len"] == len(prompt_ids)
     assert cap["layer_ids"] == layers
     print(f"ok  capture shapes {cap['acts'].shape}, {n_comp} aligned positions")
 
 
 def test_layer_subset_selected():
     model, tok = _tiny_model_and_tok()
-    cap = capture_activations(model, tok, "p:", '{"construction":[]}', [0, 2, 4], "cpu")
-    # empty construction still tokenizes to >0 tokens; just check layer dim
+    cids = tok('{"construction":[]}', add_special_tokens=False).input_ids
+    cap = capture_activations(model, tok, tok("p:", add_special_tokens=False).input_ids,
+                              cids, [0, 2, 4], "cpu")
     assert cap["acts"].shape[0] == 3
     assert cap["layer_ids"] == [0, 2, 4]
     print("ok  layer subset")
@@ -93,7 +97,7 @@ def test_layer_subset_selected():
 
 def test_empty_completion_returns_none():
     model, tok = _tiny_model_and_tok()
-    assert capture_activations(model, tok, "p:", "", [0], "cpu") is None
+    assert capture_activations(model, tok, [1, 2, 3], [], [0], "cpu") is None
     print("ok  empty completion -> None")
 
 

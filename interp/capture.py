@@ -60,46 +60,63 @@ def resolve_layers(spec: str, n_hidden_states: int) -> list[int]:
     return out
 
 
-def capture_activations(model, tok, prompt_text: str, completion_text: str,
+def _char_offsets(tok, comp_ids: list[int]) -> tuple[list[list[int]], str]:
+    """Char span of each completion token within the decoded completion text.
+
+    Built by cumulative decode (O(n^2) but n is small) so it stays exact under
+    BPE merges. Special tokens decode to "" -> a zero-width span, which also
+    flags them for the probe to drop. skip_special_tokens=True keeps the spans
+    consistent with the saved completion text.
+    """
+    text, offs = "", []
+    for k in range(len(comp_ids)):
+        s = len(text)
+        text = tok.decode(comp_ids[: k + 1], skip_special_tokens=True)
+        offs.append([s, len(text)])
+    return offs, text
+
+
+def capture_activations(model, tok, prompt_ids: list[int], completion_ids: list[int],
                         layers, device: str):
-    """Pure capture core (no generation): forward [prompt + completion] once and
-    return the residual stream at ``layers`` for the completion positions.
+    """Pure capture core (no generation): forward [prompt + completion] once over
+    the EXACT realized token ids and return the residual stream at ``layers`` for
+    the completion positions. Using the realized generated ids (not a re-tokenized
+    decode) avoids detok/retok drift, so position p's activation is the one the
+    model actually computed for that generated token.
 
     Returns a dict:
       acts          float16 ndarray [n_layers, n_completion_tokens, d_model]
       layer_ids     list[int]                  the hidden-state indices saved
-      tokens        list[str]                  decoded piece per completion token
-      offsets       list[[start,end]]          char span of each token in completion_text
-      prompt_len    int                        # prompt tokens (completion starts after)
+      tokens        list[str]                  token string per completion position
+      offsets       list[[start,end]]          char span in the decoded completion
+      is_special    list[bool]                 special-token flag (probe drops these)
+      completion    str                         decoded completion text
+      prompt_len    int                         # prompt tokens
     """
     import numpy as np
     import torch
 
-    prompt_ids = tok(prompt_text, add_special_tokens=False).input_ids
-    comp_enc = tok(completion_text, add_special_tokens=False, return_offsets_mapping=True)
-    comp_ids = comp_enc.input_ids
-    offsets = [list(o) for o in comp_enc["offset_mapping"]]
-    if len(comp_ids) == 0:
+    if len(completion_ids) == 0:
         return None  # nothing generated to probe
 
-    input_ids = torch.tensor([prompt_ids + comp_ids], device=device)
+    input_ids = torch.tensor([list(prompt_ids) + list(completion_ids)], device=device)
     with torch.no_grad():
         out = model(input_ids, output_hidden_states=True, use_cache=False)
     hs = out.hidden_states  # tuple len = n_hidden_states, each [1, seq, d_model]
 
     p = len(prompt_ids)
-    sel = []
-    for li in layers:
-        layer = hs[li][0, p:, :]           # [n_completion_tokens, d_model]
-        sel.append(layer.to(torch.float16).cpu().numpy())
+    sel = [hs[li][0, p:, :].to(torch.float16).cpu().numpy() for li in layers]
     acts = np.stack(sel, axis=0)           # [n_layers, n_comp_tokens, d_model]
 
-    tokens = [tok.convert_ids_to_tokens(t) for t in comp_ids]
+    offsets, completion = _char_offsets(tok, list(completion_ids))
+    special = set(tok.all_special_ids)
     return {
         "acts": acts,
         "layer_ids": list(layers),
-        "tokens": tokens,
+        "tokens": [tok.convert_ids_to_tokens(t) for t in completion_ids],
         "offsets": offsets,
+        "is_special": [int(t in special) for t in completion_ids],
+        "completion": completion,
         "prompt_len": p,
     }
 
@@ -145,11 +162,13 @@ def run_capture(args) -> None:
                 build_messages(prompt, recipes), tokenize=False, add_generation_prompt=True
             )
             inputs = tok(text, return_tensors="pt").to(args.device)
+            prompt_ids = inputs.input_ids[0].tolist()
             with torch.no_grad():
                 gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
                                      do_sample=False)
-            completion = tok.decode(gen[0][inputs.input_ids.shape[1]:],
-                                    skip_special_tokens=True)
+            # the REALIZED generated ids (drift-free); capture forwards over these
+            completion_ids = gen[0].tolist()[len(prompt_ids):]
+            completion = tok.decode(completion_ids, skip_special_tokens=True)
             del gen, inputs
             if args.device == "mps":
                 torch.mps.empty_cache()
@@ -161,7 +180,8 @@ def run_capture(args) -> None:
                 print(f"[{i:>3}/{len(prompts)}] skip {pid} (grade {grade.stage})")
                 continue
 
-            cap = capture_activations(model, tok, text, completion, layers, args.device)
+            cap = capture_activations(model, tok, prompt_ids, completion_ids,
+                                      layers, args.device)
             if cap is None:
                 print(f"[{i:>3}/{len(prompts)}] skip {pid} (empty completion)")
                 continue
@@ -171,12 +191,14 @@ def run_capture(args) -> None:
                 acts=cap["acts"],
                 layer_ids=np.array(cap["layer_ids"]),
                 offsets=np.array(cap["offsets"]),
+                is_special=np.array(cap["is_special"]),
             )
             meta_f.write(json.dumps({
                 "pid": pid,
                 "prompt": prompt,
                 "completion": completion,
                 "tokens": cap["tokens"],
+                "is_special": cap["is_special"],
                 "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
                 "construction": _safe_construction(completion),
                 "acts_shape": list(cap["acts"].shape),

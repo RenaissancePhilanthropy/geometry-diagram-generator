@@ -49,7 +49,15 @@ def _norm_token(t: str) -> str:
 
 
 def label_relation(rec: dict) -> dict[int, str]:
-    """Label each token whose text names a geometric relation with that relation."""
+    """SANITY/BASELINE labeler — label each token whose text names a geometric
+    relation with that relation.
+
+    CAVEAT: this decodes the CURRENT token's identity, which late layers encode
+    near-trivially (it is what the unembedding reads out). A rising curve here is
+    a plumbing sanity check, NOT a spatial-representation result. The real targets
+    decode properties that are NOT the current token — see METHODOLOGY.md and the
+    coordinate/angle/intersection labelers to be added.
+    """
     out: dict[int, str] = {}
     for i, tok in enumerate(rec["tokens"]):
         nt = _norm_token(tok)
@@ -92,21 +100,28 @@ def load_dataset(act_dir: pathlib.Path) -> list[dict]:
 
 
 def build_xy(records: list[dict], layer_pos: int, labeler):
-    """Stack (activation, label) pairs at one layer across all records."""
+    """Stack (activation, label, group) at one layer across all records.
+
+    ``group`` is the prompt index, so the train/test split can keep all positions
+    of a prompt on one side (no within-prompt leakage). Special-token positions
+    (zero-width offset / flagged) are dropped — they carry no geometric content.
+    """
     import numpy as np
 
-    X, y = [], []
-    for rec in records:
-        labels = labeler(rec["meta"] if "tokens" not in rec else _rec_for_labeler(rec))
+    X, y, groups = [], [], []
+    for gi, rec in enumerate(records):
+        labels = labeler(_rec_for_labeler(rec))
         acts = rec["acts"]               # [L, P, D]
         P = acts.shape[1]
+        special = rec["meta"].get("is_special", [0] * P)
         for pos, lab in labels.items():
-            if 0 <= pos < P:
+            if 0 <= pos < P and not special[pos]:
                 X.append(acts[layer_pos, pos, :].astype("float32"))
                 y.append(lab)
+                groups.append(gi)
     if not X:
-        return np.empty((0, 0)), np.array([])
-    return np.stack(X), np.array(y)
+        return np.empty((0, 0)), np.array([]), np.array([])
+    return np.stack(X), np.array(y), np.array(groups)
 
 
 def _rec_for_labeler(rec: dict) -> dict:
@@ -119,7 +134,9 @@ def _rec_for_labeler(rec: dict) -> dict:
 def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: int):
     import numpy as np
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import GroupShuffleSplit
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
 
     records = load_dataset(act_dir)
     if not records:
@@ -129,24 +146,32 @@ def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: 
     layer_ids = records[0]["layer_ids"]
     print(f"{len(records)} prompts, {n_layers} layers; labeler={labeler_name}")
 
+    # one PROMPT-LEVEL split, reused across layers so the curve is comparable
+    splitter = GroupShuffleSplit(n_splits=1, test_size=test_frac, random_state=seed)
+
     curve = []
     for li in range(n_layers):
-        X, y = build_xy(records, li, labeler)
+        X, y, groups = build_xy(records, li, labeler)
         classes, counts = np.unique(y, return_counts=True)
-        if len(y) < 10 or len(classes) < 2:
+        n_train_groups = len(set(groups)) if len(groups) else 0
+        if len(y) < 10 or len(classes) < 2 or n_train_groups < 2:
             print(f"layer {layer_ids[li]:>3}: too few labeled samples "
-                  f"({len(y)} pts, {len(classes)} classes) — skipping")
+                  f"({len(y)} pts, {len(classes)} classes, {n_train_groups} prompts) — skipping")
             continue
-        Xtr, Xte, ytr, yte = train_test_split(
-            X, y, test_size=test_frac, random_state=seed, stratify=y)
-        clf = LogisticRegression(max_iter=2000, C=1.0)
-        clf.fit(Xtr, ytr)
-        acc = clf.score(Xte, yte)
-        baseline = counts.max() / counts.sum()  # majority-class
+        tr, te = next(splitter.split(X, y, groups))   # prompts disjoint across tr/te
+        # standardize per layer (residual-stream norm grows with depth)
+        clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
+        clf.fit(X[tr], y[tr])
+        acc = clf.score(X[te], y[te])
+        # baseline = majority class measured on the TEST fold
+        _, te_counts = np.unique(y[te], return_counts=True)
+        baseline = te_counts.max() / te_counts.sum()
         curve.append({"layer": int(layer_ids[li]), "acc": round(float(acc), 4),
-                      "baseline": round(float(baseline), 4), "n": int(len(y))})
+                      "baseline": round(float(baseline), 4), "n": int(len(y)),
+                      "n_test": int(len(te))})
         bar = "#" * int(acc * 40)
-        print(f"layer {layer_ids[li]:>3}: acc={acc:.3f} (base {baseline:.3f}) n={len(y):<5} {bar}")
+        print(f"layer {layer_ids[li]:>3}: acc={acc:.3f} (base {baseline:.3f}) "
+              f"n={len(y):<5} {bar}")
 
     out = {"act_dir": str(act_dir), "labeler": labeler_name, "curve": curve}
     out_path = act_dir / f"probe_{labeler_name}.json"

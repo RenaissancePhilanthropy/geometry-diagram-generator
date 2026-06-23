@@ -2,7 +2,9 @@
 
 Mechanistic-interpretability probe of how an LLM represents geometric
 relationships when it writes a GeoGen construction. See **[PLAN.md](PLAN.md)**
-for the full research plan.
+for the research plan and **[METHODOLOGY.md](METHODOLOGY.md)** for the probing
+protocol (what we decode, at which position, prompt-level splits, and the
+trivial-vs-non-trivial target rule).
 
 > **Status:** Phase 0 done; Phase 1–2 infrastructure built and offline-tested.
 > Heavy runs (few-shot capability, activation capture) are a **GPU** job —
