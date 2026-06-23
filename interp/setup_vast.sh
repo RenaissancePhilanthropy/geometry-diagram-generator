@@ -18,6 +18,12 @@ echo "==> sanity: CUDA torch present?"
 python -c "import torch; assert torch.cuda.is_available(), 'no CUDA!'; \
 print('torch', torch.__version__, '| cuda', torch.version.cuda, '|', torch.cuda.get_device_name(0))"
 
+echo "==> ensure git is installed (the pytorch -runtime images often lack it)"
+if ! command -v git >/dev/null 2>&1; then
+  apt-get update -qq && apt-get install -y -qq git || \
+    { echo "could not install git — install it manually then re-run"; exit 1; }
+fi
+
 echo "==> clone repo @ ${BRANCH}"
 if [ ! -d "${WORKDIR}" ]; then
   git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${WORKDIR}"
