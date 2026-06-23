@@ -59,17 +59,55 @@ def load_prompts(n: int, tier: int | None) -> list[tuple[str, str]]:
     return [(f"fallback_{i}", p) for i, p in enumerate(FALLBACK_PROMPTS[:n], 1)]
 
 
-def build_messages(prompt: str) -> list[dict]:
-    # confirmed exported names in strategies/instructions_recipe.py
-    from strategies.instructions_recipe import (
-        RECIPE_DSL_QUICK_REF,
-        RECIPE_GENERATION_SYSTEM,
-    )
+def _recipe_generation_system() -> str:
+    """RECIPE_GENERATION_SYSTEM, loaded WITHOUT importing the `strategies`
+    package (whose __init__ pulls in pydantic_ai, absent from this venv).
+    instructions_recipe.py is pure strings, so loading it standalone is safe.
+    """
+    import importlib.util
 
-    system = RECIPE_GENERATION_SYSTEM + "\n\n" + RECIPE_DSL_QUICK_REF
+    path = REPO / "strategies" / "instructions_recipe.py"
+    spec = importlib.util.spec_from_file_location("_instructions_recipe", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod.RECIPE_GENERATION_SYSTEM
+
+
+def load_fewshot_recipes(mode: str) -> list:
+    """Return recipe objects to include as few-shot exemplars in the user prompt.
+
+    mode="none" -> [] (bare DSL docs only, like RecipeStrategy(use_recipes=False));
+    mode="all"  -> every recipe in the default catalog (the production few-shot
+                   mechanism, minus the LLM selector);
+    mode=<int>  -> the first N catalog recipes — a small, deterministic subset.
+
+    Each recipe carries a worked RecipeDSL .example that pins the exact op
+    vocabulary. NOTE: every recipe adds ~430 prompt tokens; "all" (20) pushes
+    the prompt to ~14k tokens, which OOMs MPS attention (O(seq^2), fully
+    materialized by MPS SDPA). Keep N small (~5) on Apple Silicon.
+    """
+    if mode == "none":
+        return []
+    from recipe.catalog import load_catalog, load_recipe
+
+    specs = load_catalog("default")
+    if mode != "all":
+        specs = specs[: int(mode)]
+    return [load_recipe(s.id, catalog="default") for s in specs]
+
+
+def build_messages(prompt: str, recipes: list | None = None) -> list[dict]:
+    """Mirror RecipeStrategy's generation call: system = RECIPE_GENERATION_SYSTEM,
+    user = build_generation_prompt(prompt, recipes, DSL_DOCS). With recipes=[] this
+    is the use_recipes=False path; with the catalog passed it is the few-shot path
+    (production normally selects a relevant subset via a cheap LLM; we pass a fixed
+    set to keep the gate local-only).
+    """
+    from recipe.catalog import DSL_DOCS, build_generation_prompt
+
     return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": prompt},
+        {"role": "system", "content": _recipe_generation_system()},
+        {"role": "user", "content": build_generation_prompt(prompt, recipes or [], DSL_DOCS)},
     ]
 
 
@@ -77,22 +115,28 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="mps")
-    ap.add_argument("--max-new-tokens", type=int, default=1024)
+    ap.add_argument("--max-new-tokens", type=int, default=2048)
     ap.add_argument("--n", type=int, default=20, help="number of prompts to test")
     ap.add_argument("--tier", type=int, default=None, help="filter by difficulty tier (1/2/3)")
+    ap.add_argument("--few-shot", default="none",
+                    help="few-shot exemplars: 'none', 'all', or an int N "
+                         "(first N catalog recipes; keep small on MPS — ~5)")
     ap.add_argument("--print-output", action="store_true", help="dump each completion")
     args = ap.parse_args()
 
     prompts = load_prompts(args.n, args.tier)
-    print(f"loaded {len(prompts)} prompt(s)" + (f" (tier {args.tier})" if args.tier else ""))
+    recipes = load_fewshot_recipes(args.few_shot)
+    print(f"loaded {len(prompts)} prompt(s)" + (f" (tier {args.tier})" if args.tier else "")
+          + f"; few-shot={args.few_shot} ({len(recipes)} recipes)")
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     print(f"loading {args.model} on {args.device} (bf16) — first run downloads ~15 GB ...")
     tok = AutoTokenizer.from_pretrained(args.model)
+    # transformers >=5 renamed torch_dtype -> dtype (torch_dtype kept for BC).
     model = (
-        AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=torch.bfloat16)
+        AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.bfloat16)
         .to(args.device)
         .eval()
     )
@@ -101,7 +145,7 @@ def main() -> None:
     stage_counts: dict[str, int] = {}
     for i, (pid, prompt) in enumerate(prompts, 1):
         text = tok.apply_chat_template(
-            build_messages(prompt), tokenize=False, add_generation_prompt=True
+            build_messages(prompt, recipes), tokenize=False, add_generation_prompt=True
         )
         inputs = tok(text, return_tensors="pt").to(args.device)
         with torch.no_grad():
@@ -111,6 +155,16 @@ def main() -> None:
         completion = tok.decode(
             out[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
         )
+
+        # Release this iteration's device tensors and reclaim the MPS pool.
+        # Without this the allocator accumulates KV-cache/activation buffers
+        # across prompts and eventually OOMs mid-prefill (esp. 7B + long
+        # few-shot prompts) even when physical RAM is free. See PLAN.md risks.
+        del out, inputs
+        if args.device == "mps":
+            torch.mps.empty_cache()
+        elif args.device == "cuda":
+            torch.cuda.empty_cache()
 
         grade = grade_completion(completion)
         n_ok += int(grade.ok)

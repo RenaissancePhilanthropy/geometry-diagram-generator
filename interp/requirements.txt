@@ -10,6 +10,12 @@ einops
 pyyaml             # load prompts from benchmark/definitions/*.yaml
 tqdm
 
+# project pipeline used by the render-free grader (interp/grade.py):
+# RecipeDSL.model_validate -> lower_to_ir -> compile_defs -> run_checks.
+# Needed because this is a standalone venv, not the project's uv .venv.
+sympy>=1.14.0
+pydantic>=2
+
 # probing (Phase 2)
 scikit-learn
 numpy

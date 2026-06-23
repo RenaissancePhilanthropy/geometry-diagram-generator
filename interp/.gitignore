@@ -1,4 +1,5 @@
 # Don't commit large interp artifacts
+.venv/
 activations/
 caches/
 *.pt
