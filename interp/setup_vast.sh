@@ -4,13 +4,19 @@
 # Assumes a PyTorch+CUDA base image (torch already installed with CUDA — do NOT
 # let pip reinstall a CPU torch over it). Run from the box's home dir:
 #
-#   export GH_PAT=ghp_xxx          # GitHub fine-grained PAT, read access to the repo
-#   export HF_TOKEN=hf_xxx         # Hugging Face token (faster, un-throttled downloads)
+#   export HF_TOKEN=hf_xxx         # optional: faster, un-throttled model download
+#   export GH_PAT=ghp_xxx          # optional: only if the repo is private again
 #   bash setup_vast.sh
 #
+# The repo is currently PUBLIC, so no GitHub auth is needed.
 set -euo pipefail
 
-REPO_URL="https://${GH_PAT}@github.com/RenaissancePhilanthropy/geometry-diagram-generator.git"
+# Use a PAT only if one is provided (repo is public; PAT optional).
+if [ -n "${GH_PAT:-}" ]; then
+  REPO_URL="https://${GH_PAT}@github.com/RenaissancePhilanthropy/geometry-diagram-generator.git"
+else
+  REPO_URL="https://github.com/RenaissancePhilanthropy/geometry-diagram-generator.git"
+fi
 BRANCH="feat/spatial-interp"
 WORKDIR="${HOME}/geometry-diagram-generator"
 
@@ -43,8 +49,12 @@ pip install --no-input -c /tmp/torch_constraint.txt -r /tmp/reqs_notorch.txt
 echo "==> verify CUDA torch survived the install"
 python -c "import torch; assert torch.cuda.is_available(), 'torch lost CUDA — a dep clobbered it'; print('ok, cuda still available')"
 
-echo "==> hugging face auth"
-python -c "from huggingface_hub import login; import os; login(os.environ['HF_TOKEN'])"
+if [ -n "${HF_TOKEN:-}" ]; then
+  echo "==> hugging face auth"
+  python -c "from huggingface_hub import login; import os; login(os.environ['HF_TOKEN'])"
+else
+  echo "==> no HF_TOKEN set — downloading Qwen2.5 anonymously (public model, slower)"
+fi
 
 echo "==> READY. Example gate runs (note --device cuda):"
 cat <<'EOF'
