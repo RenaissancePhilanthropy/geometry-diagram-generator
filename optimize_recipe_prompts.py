@@ -157,7 +157,20 @@ def main():
     parser.add_argument(
         "--model",
         default="ollama:gemma4:31b-cloud",
-        help="LLM model for the recipe strategy (default: %(default)s)",
+        help="LLM model for the recipe strategy. Acts as the default for both "
+        "--train-model and --val-model when those are not given (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--train-model",
+        default=None,
+        help="Generation model for TRAIN (optimization) scenarios. Defaults to "
+        "--model. When set, the prompt is optimized against this model's outputs.",
+    )
+    parser.add_argument(
+        "--val-model",
+        default=None,
+        help="Generation model for VAL (held-out) scenarios. Defaults to --model. "
+        "When set, validation measures cross-model generalization from the train model.",
     )
     parser.add_argument(
         "--reflection-lm",
@@ -282,9 +295,16 @@ def main():
     reflection_lm = args.reflection_lm.replace(":", "/", 1) if args.reflection_lm.startswith("ollama:") else args.reflection_lm
     logger.info("Reflection LM (litellm format): %s", reflection_lm)
 
+    # Resolve generation models. --train-model/--val-model default to --model so
+    # the older single-model scripts work unchanged. When the split flags are set,
+    # the prompt is optimized on train_model and validated on val_model (cross-model
+    # generalization). Per-scenario routing by id is handled inside the adapter.
+    train_model = args.train_model or args.model
+    val_model = args.val_model or args.model
     # The judge model uses pydantic-ai format (same as --model), not litellm format.
-    # It's passed directly to judge_rendered_diagram which uses pydantic-ai Agent.
-    judge_model = args.model
+    # It's passed directly to judge_tikz_code/judge_rendered_diagram (pydantic-ai).
+    # Defaults to --model so train and val are scored by the same judge.
+    judge_model = args.judge_model or args.model
 
     # Create adapter
     adapter = RecipeGEPAAdapter(
@@ -296,6 +316,10 @@ def main():
         timeout_per_scenario=args.timeout,
         use_recipes=not args.no_recipes,
         thinking=thinking,
+        train_model=train_model,
+        val_model=val_model,
+        train_ids={s.id for s in trainset},
+        val_ids={s.id for s in valset},
     )
 
     # Store seed globally for the progress callback to reference
@@ -304,11 +328,14 @@ def main():
 
     # Run GEPA optimization
     logger.info(
-        "Starting GEPA optimization: %d train, %d val, max_metric_calls=%d, model=%s, thinking=%s, renderer=%s",
+        "Starting GEPA optimization: %d train, %d val, max_metric_calls=%d, "
+        "train_model=%s, val_model=%s, judge_model=%s, thinking=%s, renderer=%s",
         len(trainset),
         len(valset),
         args.max_metric_calls,
-        args.model,
+        train_model,
+        val_model,
+        judge_model,
         thinking,
         args.renderer,
     )

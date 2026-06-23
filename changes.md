@@ -300,3 +300,60 @@ A direct check on whether the before's extra timeouts are a real quality differe
 - n=1 per cell; none of the before→after deltas are separable from run-to-run backend noise at this sample size. A repeats≥3 re-run on both models and both prompt sets is the way to confirm, especially the deepseek negative.
 - The residual `radius_marked` and other semantic mark_types remain uncheckable by design and floor all runs equally (visible as `radius_marked` in every run's top gate-failures).
 - The deepseek −9.9pp is robust to the timeout convention: incl-timeout = −7pp, excl-all-timeouts = −12.5pp, retry-aware = −9.9pp; net flips −3 in all three.
+## GEPA intersection run — candidate-15 evaluation (2026-06-23)
+
+A second GEPA optimization step (`gepa_runs/intersection`) re-optimized only the recipe `generation_system` prompt, starting from the on-disk optimized prompt (the first-GEPA "after" prompt above) as its seed. 18 candidates, best = idx 15 (val score 0.8614 vs seed 0.8162, +4.5pp on 28 val scenarios, clear max). Candidate 15's prompt (27013 chars) was written into `strategies/instructions_recipe.py` (`RECIPE_GENERATION_SYSTEM`), so `--use-optimized-prompts` now selects it. The seed = prior on-disk optimized prompt; recoverable via `gepa_runs/intersection/seed_candidate.json` and git commit `19c5230`. `RECIPE_SELECTION_SYSTEM` and `RECIPE_DSL_QUICK_REF` were unchanged by this run and remain unchanged.
+
+### Runs compared (clean runs; n=43 hard-intersection)
+
+| label | jsonl | strategy / model | prompts |
+|---|---|---|---|
+| April ref (gate-rescored) | `20260413-170204_rescored_rescored_gate.jsonl` | structured / sonnet-4-6 | — (published) |
+| recipe before, gemma4 | `20260622-123558.jsonl` | recipe / gemma4:31b-cloud | prior (pre-GEPA) |
+| recipe after, gemma4 | `20260620-194957.jsonl` | recipe / gemma4:31b-cloud | first-GEPA-opt |
+| recipe cand15, gemma4 | `20260623-093231.jsonl` | recipe / gemma4:31b-cloud | intersection-GEPA |
+| recipe before, deepseek | `20260622-123632.jsonl` | recipe / deepseek-v4-flash:cloud | prior (pre-GEPA) |
+| recipe after, deepseek | `20260620-195029.jsonl` | recipe / deepseek-v4-flash:cloud | first-GEPA-opt |
+| recipe cand15, deepseek | `20260623-093338.jsonl` | recipe / deepseek-v4-flash:cloud | intersection-GEPA |
+| recipe cand15, qwen3.5 | `20260623-095106.jsonl` | recipe / qwen3.5:cloud | intersection-GEPA |
+
+All recipe runs: tikz renderer, `--thinking --cot-analysis`, judge `ollama:gemma4:31b-cloud`, repeats=1. qwen3.5 has no pre-GEPA / first-GEPA baseline (first time run on this set). April reference: same rescored-gate file as the 2026-06-22 section (tikz gate recomputed from saved `tikz_code` with current checkers via `evals/rescore_gate.py`).
+
+### Results on the 43 scenarios (gate = pass+soft)
+
+| run | gate | gen/svg | timeouts | judge | CoT conf | dur median |
+|---|---|---|---|---|---|---|
+| April ref (sonnet/structured) | 8+3 = 25.6% | 40/43 | 0 | n/a | n/a | 14s |
+| gemma4 before (prior) | 9+3 = 27.9% | 37/43 | 6 | 3.51 | 3.41 | 95s |
+| gemma4 after (first-GEPA) | 11+4 = 34.9% | 42/43 | 1 | 3.52 | 4.88 | 75s |
+| gemma4 cand15 (intersection) | 10+5 = 34.9% | 40/43 | 3 | 3.73 | 3.73 | 98s |
+| deepseek before (prior) | 12+6 = 41.9% | 35/43 | 7 | 3.57 | 2.53 | 73s |
+| deepseek after (first-GEPA) | 11+4 = 34.9% | 38/43 | 3 | 3.58 | 4.95 | 31s |
+| deepseek cand15 (intersection) | 13+6 = 44.2% | 41/43 | 1 | 3.88 | 2.64 | 49s |
+| qwen3.5 cand15 (intersection) | 10+2 = 27.9% | 35/43 | 8 | 3.74 | 4.17 | 108s |
+
+All candidate-15 timeouts are backend-slow (single 300s hit, zero retries, `attempts` unset), not retry-driven.
+
+### Per-scenario gate flips (pass+soft set)
+
+vs April ref: gemma4 cand15 +5/−1 (net +4); deepseek cand15 +8/−0 (net +8); qwen3.5 cand15 +3/−2 (net +1).
+
+Across the same-model progression:
+- gemma4: before→first-GEPA +4/−1 (net +3); first-GEPA→cand15 +3/−3 (net 0, churn); before→cand15 +3/−0 (net +3, clean).
+- deepseek: before→first-GEPA +0/−3 (net −3); first-GEPA→cand15 +4/−0 (net +4); before→cand15 +2/−1 (net +1).
+
+### Findings
+
+1. **Candidate 15 is Pareto-better than both prior prompts across the two benchmarked models.** The first-GEPA run was lopsided: it lifted gemma4 (+7pp, 27.9→34.9) but hurt deepseek (−7pp, 41.9→34.9) while inflating deepseek CoT confidence (2.53→4.95) — overconfidence vs a lower gate. Candidate 15 keeps the gemma4 gain (flat vs first-GEPA, +3 net vs pre-GEPA with no losses) and recovers deepseek (34.9→44.2, +4 net vs first-GEPA with no losses; +1 net vs its own pre-GEPA baseline). Net vs the pre-GEPA baseline: gemma4 +3, deepseek +1. Net vs April (rescored): gemma4 +4, deepseek +8.
+
+2. **CoT confidence moves back toward pre-GEPA levels under candidate 15.** gemma4 4.88→3.73, deepseek 4.95→2.64 — i.e. the intersection prompt trades the first-GEPA run's verbose confidence for correctness, the healthier direction (deepseek: lower confidence, higher gate). Judge scores also peak at candidate 15 for both (gemma4 3.52→3.73; deepseek 3.58→3.88).
+
+3. **All three candidate-15 runs beat the gate-rescored April reference on the deterministic gate** (gemma4 34.9% vs 25.6% = +9.3pp; deepseek 44.2% vs 25.6% = +18.6pp; qwen3.5 27.9% vs 25.6% = +2.3pp). April still leads raw robustness/speed (40/43 gen, 0 timeouts, 14s median); the recipe runs on ollama-cloud backends pay in timeouts/latency but produce more geometrically-correct diagrams.
+
+4. **qwen3.5 (new model, candidate-15 only) is the weakest on robustness:** 8 backend timeouts, 35/43 generated. Gate (27.9%) still clears April but barely; no pre-GEPA/first-GEPA baseline exists to say whether candidate 15 helps qwen specifically.
+
+### Caveats
+
+- n=1 per cell; the deepseek +4 vs first-GEPA and the gemma4 +3/−3 churn are not separable from run-to-run backend noise. A repeats≥3 re-run across all three prompt sets (prior / first-GEPA / candidate-15) on gemma4 and deepseek is the way to confirm the deepseek recovery and the gemma4 churn-vs-flat.
+- April has no judge/CoT cells (predates those), so only the gate column is directly comparable there.
+- The residual `radius_marked` and other semantic mark_types remain uncheckable by design and floor all runs equally.

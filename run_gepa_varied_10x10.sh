@@ -23,7 +23,7 @@ python -u optimize_recipe_prompts.py \
   --reflection-lm ollama:gemma4:31b-cloud \ #ollama:deepseek-v4-pro:cloud \ 
   --max-metric-calls 100 \
   --components generation_system \
-  --renderer svg \
+  --renderer tikz \
   --thinking \
   --llm-judge \
   --output-dir gepa_runs/gepa_varied_10x10 \

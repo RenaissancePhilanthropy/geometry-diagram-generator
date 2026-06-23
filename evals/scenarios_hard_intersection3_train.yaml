@@ -1,0 +1,919 @@
+- id: geo-m1-t1-l0-a1-pythagorean-distance-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - coordinate-grid
+  - pythagorean-theorem
+  - right-triangle
+  - distance
+  prompt: Can you draw a coordinate grid and plot two points — let's call them A at (1, 2) and B at (7,
+    6)? Then draw a right triangle by adding a third point C at (7, 2) so that AC is horizontal and BC
+    is vertical. Label all three points, show the right angle at C, and mark the lengths of the two legs.
+    I need to see how the hypotenuse AB connects the original two points.
+  expected_properties:
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: collinear_A_C_horizontal
+    type: collinear
+    args:
+    - A
+    - C
+    - B
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  - name: right_angle_mark_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t1-l1-a12-congruent-segments-triangle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - congruent-segments
+  - tick-marks
+  - isosceles-triangle
+  - equilateral-triangle
+  prompt: Draw two triangles next to each other. The first one is triangle ABC where sides AB and AC are
+    the same length — mark them both with a single tick mark to show they're congruent. This is an isosceles
+    triangle. The second one is triangle DEF where all three sides DE, EF, and FD are the same length
+    — mark them all with double tick marks to show they're all congruent. Label all six vertices.
+  expected_properties:
+  - name: AB_equals_AC_isosceles
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A
+      - C
+  - name: DE_EF_FD_equal_equilateral
+    type: equal_lengths
+    args:
+    - - D
+      - E
+    - - E
+      - F
+    - - F
+      - D
+  - name: tick_mark_AB
+    type: mark_present
+    args:
+    - tick
+    - A
+  - name: tick_mark_AC
+    type: mark_present
+    args:
+    - tick
+    - C
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_D_present
+    type: label_present
+    args:
+    - D
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  - name: label_F_present
+    type: label_present
+    args:
+    - F
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t1-l2-a22-spherical-triangle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - spherical-geometry
+  - great-circle
+  - non-euclidean
+  - angle-sum
+  prompt: Draw a sphere and show three great circles on it that form a triangle on the surface. Label
+    the three vertices of the spherical triangle as A, B, and C. Make each angle of the triangle look
+    like it's 90 degrees — so this is a triangle where all three angles are right angles, which is possible
+    on a sphere but not in flat geometry. Mark each right angle with a small square. I want this to illustrate
+    how spherical geometry is different from Euclidean geometry.
+  expected_properties:
+  - name: right_angle_at_A
+    type: right_angle
+    args:
+    - B
+    - A
+    - C
+  - name: right_angle_at_B
+    type: right_angle
+    args:
+    - A
+    - B
+    - C
+  - name: right_angle_at_C
+    type: right_angle
+    args:
+    - A
+    - C
+    - B
+  - name: mark_at_A
+    type: mark_present
+    args:
+    - right_angle
+    - A
+  - name: mark_at_B
+    type: mark_present
+    args:
+    - right_angle
+    - B
+  - name: mark_at_C
+    type: mark_present
+    args:
+    - right_angle
+    - C
+  - name: label_A_present
+    type: label_present
+    args:
+    - A
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_C_present
+    type: label_present
+    args:
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l3-act33-angle-bisector-construction-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - angle-bisector
+  - construction
+  - compass-straightedge
+  prompt: Draw angle ABC where A is up and to the right, B is the vertex at the bottom middle, and C is
+    up and to the left, making about a 60-degree angle. Then construct the angle bisector from B — draw
+    the bisector ray BD going straight up from B between the two sides. Mark the two equal angles on either
+    side of BD with single arc marks to show they're congruent. Label points A, B, C, and D.
+  expected_properties:
+  - name: angle_bisector_BD
+    type: angle_bisector
+    args:
+    - D
+    - B
+    - A
+    - C
+  - name: equal_angles_ABD_DBC
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - D
+    - - D
+      - B
+      - C
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_D_present
+    type: label_present
+    args:
+    - D
+  - name: mark_angle_ABD
+    type: mark_present
+    args:
+    - arc
+    - B
+  - name: point_D_on_bisector_ray
+    type: point_on_line
+    args:
+    - D
+    - B
+    - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t3-l3-gs-perpendicular-bisector-RB-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflection
+  - perpendicular-bisector
+  - construction
+  prompt: Draw a line segment from point R to point B, where R is on the left and B is on the right. Then
+    construct the perpendicular bisector of segment RB — draw it as a vertical line crossing RB at its
+    midpoint M. Mark the right angle where the bisector crosses RB, and mark M as the midpoint. Show that
+    RM equals MB with tick marks.
+  expected_properties:
+  - name: midpoint_M_on_RB
+    type: midpoint
+    args:
+    - M
+    - R
+    - B
+  - name: perpendicular_bisector_at_M
+    type: perpendicular
+    args:
+    - - R
+      - B
+    - - M
+      - M
+  - name: right_angle_at_M
+    type: right_angle
+    args:
+    - R
+    - M
+    - B
+  - name: equal_lengths_RM_MB
+    type: equal_lengths
+    args:
+    - - R
+      - M
+    - - M
+      - B
+  - name: label_R_present
+    type: label_present
+    args:
+    - R
+  - name: label_B_present
+    type: label_present
+    args:
+    - B
+  - name: label_M_present
+    type: label_present
+    args:
+    - M
+  structural_checks: []
+  required_labels:
+  - R
+  - B
+  - M
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l1-equilateral-triangle-symmetry-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - reflectional-symmetry
+  - rotational-symmetry
+  - equilateral-triangle
+  prompt: 'Draw an equilateral triangle with vertices labeled A (top), B (bottom-left), and C (bottom-right).
+    Label the midpoints of each side: M on AB, N on BC, and P on AC. Then draw all 3 lines of symmetry
+    as dashed lines — one from vertex A down to midpoint N, one from vertex B to midpoint P, and one from
+    vertex C to midpoint M. All three dashed lines should meet at the center point labeled O. Mark all
+    three sides as equal with tick marks.'
+  expected_properties:
+  - name: all_sides_equal
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - A
+      - C
+  - name: M_midpoint_AB
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: N_midpoint_BC
+    type: midpoint
+    args:
+    - N
+    - B
+    - C
+  - name: P_midpoint_AC
+    type: midpoint
+    args:
+    - P
+    - A
+    - C
+  - name: symmetry_line_A_to_N_through_O
+    type: collinear
+    args:
+    - A
+    - O
+    - N
+  - name: symmetry_line_B_to_P_through_O
+    type: collinear
+    args:
+    - B
+    - O
+    - P
+  - name: symmetry_line_C_to_M_through_O
+    type: collinear
+    args:
+    - C
+    - O
+    - M
+  - name: tick_marks_equal_sides
+    type: mark_present
+    args:
+    - tick1
+    - A
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - M
+  - N
+  - P
+  - O
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m1-t4-l2-sas-proof-circle-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - SAS
+  - congruence-proof
+  - reflection
+  - circle
+  prompt: Draw two triangles ABC and DEF where AB = DE (mark with one tick), angle B = angle E (mark with
+    one arc), and BC = EF (mark with two ticks). Then in a separate diagram, show the SAS reflection proof
+    step where we've already mapped segment AB onto segment DE, so now we're looking at point C and point
+    F. Draw a circle centered at E with radius equal to BC (= EF), and show two dashed lines from E to
+    two possible positions where C' (the image of C) could land on the circle. Label the two possible
+    positions C'1 and C'2. This shows why the included angle matters for pinning down the unique location.
+  expected_properties:
+  - name: AB_equals_DE
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - D
+      - E
+  - name: BC_equals_EF
+    type: equal_lengths
+    args:
+    - - B
+      - C
+    - - E
+      - F
+  - name: angle_B_equals_angle_E
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - C
+    - - D
+      - E
+      - F
+  - name: C_prime_1_on_circle
+    type: point_on_circle
+    args:
+    - C'1
+    - E
+    - F
+  - name: C_prime_2_on_circle
+    type: point_on_circle
+    args:
+    - C'2
+    - E
+    - F
+  - name: label_E_present
+    type: label_present
+    args:
+    - E
+  - name: label_F_present
+    type: label_present
+    args:
+    - F
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - C'1
+  - C'2
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t1-l3-a0-equilateral-triangle-circle-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - circle
+  - equilateral-triangle
+  - inscribed-polygon
+  - radius-chord
+  prompt: Draw a circle with center O and radius OA. Using the radius length as the chord length, mark
+    point B on the circle so that AB equals the radius OA. Then mark C so BC also equals the radius. Connect
+    A to B to C and back to A to form an equilateral triangle inscribed in the circle. Draw radii OA,
+    OB, and OC. Label all points, mark all three sides of the triangle as equal, and label each central
+    angle (AOB, BOC, COA) as 60 degrees.
+  expected_properties:
+  - name: A_on_circle
+    type: point_on_circle
+    args:
+    - A
+    - O
+    - B
+  - name: B_on_circle
+    type: point_on_circle
+    args:
+    - B
+    - O
+    - A
+  - name: C_on_circle
+    type: point_on_circle
+    args:
+    - C
+    - O
+    - A
+  - name: equal_sides_triangle
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - B
+      - C
+    - - C
+      - A
+  - name: equal_radii
+    type: equal_lengths
+    args:
+    - - O
+      - A
+    - - O
+      - B
+    - - O
+      - C
+  - name: chord_equals_radius
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - O
+      - A
+  structural_checks: []
+  required_labels:
+  - O
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t1-l4-a1-isosceles-base-angles-1
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - triangle
+  - isosceles
+  - base-angles
+  - congruent
+  prompt: 'Draw an isosceles triangle ABC where AB equals AC (the two equal sides meet at vertex A). Mark
+    the two equal sides AB and AC with tick marks. The base is BC. I want to show the base angles conjecture:
+    that angle B equals angle C. Mark those two base angles as equal with arc marks. Label all three vertices.'
+  expected_properties:
+  - name: equal_legs_AB_AC
+    type: equal_lengths
+    args:
+    - - A
+      - B
+    - - A
+      - C
+  - name: equal_base_angles_B_C
+    type: angle_equal
+    args:
+    - - A
+      - B
+      - C
+    - - A
+      - C
+      - B
+  - name: AB_tick_mark
+    type: mark_present
+    args:
+    - tick
+    - A
+  - name: label_A
+    type: label_present
+    args:
+    - A
+  - name: label_B
+    type: label_present
+    args:
+    - B
+  - name: label_C
+    type: label_present
+    args:
+    - C
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l3-a33-exterior-angles-polygon-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - exterior-angles
+  - polygon
+  - 360-degrees
+  prompt: Draw a convex pentagon ABCDE. At each vertex, extend one side to show the exterior angle. Label
+    the exterior angles as angle 1 at A, angle 2 at B, angle 3 at C, angle 4 at D, and angle 5 at E. Put
+    a small arc at each exterior angle. I want to see that all five exterior angles together add up to
+    360 degrees.
+  expected_properties:
+  - name: exterior_angle_at_A
+    type: mark_present
+    args:
+    - arc
+    - A
+  - name: exterior_angle_at_B
+    type: mark_present
+    args:
+    - arc
+    - B
+  - name: exterior_angle_at_C
+    type: mark_present
+    args:
+    - arc
+    - C
+  - name: exterior_angle_at_D
+    type: mark_present
+    args:
+    - arc
+    - D
+  - name: exterior_angle_at_E
+    type: mark_present
+    args:
+    - arc
+    - E
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - '1'
+  - '2'
+  - '3'
+  - '4'
+  - '5'
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t2-l4-a41-perpendicular-bisector-theorem-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - perpendicular-bisector
+  - CPCTC
+  - congruent-triangles
+  prompt: Draw a line segment AB with midpoint M. Draw the perpendicular bisector through M — call it
+    line l. Place a point P somewhere on line l above the segment. Draw segments PA and PB. Put a right
+    angle mark where line l crosses AB at M. Put single tick marks on AM and MB to show they're equal.
+    Put double tick marks on PA and PB to show they're equal. This diagram shows the perpendicular bisector
+    theorem.
+  expected_properties:
+  - name: M_is_midpoint_AB
+    type: midpoint
+    args:
+    - M
+    - A
+    - B
+  - name: PM_perp_AB
+    type: perpendicular
+    args:
+    - - P
+      - M
+    - - A
+      - B
+  - name: AM_equals_MB
+    type: equal_lengths
+    args:
+    - - A
+      - M
+    - - M
+      - B
+  - name: PA_equals_PB
+    type: equal_lengths
+    args:
+    - - P
+      - A
+    - - P
+      - B
+  - name: right_angle_at_M
+    type: right_angle
+    args:
+    - A
+    - M
+    - P
+  - name: P_on_perp_bisector
+    type: point_on_line
+    args:
+    - P
+    - M
+    - l_end
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - M
+  - P
+  - l
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m2-t3-l3-a3-trapezoid-midsegment-1
+  tier: 3
+  tags:
+  - curriculum
+  - grade-geometry
+  - trapezoid
+  - midsegment
+  - midpoint
+  - parallel
+  - triangle-midsegment
+  - proof
+  prompt: 'Draw trapezoid MDSG where M is top-left, D is top-right, S is bottom-right, and G is bottom-left.
+    Mark MD as the top base and GS as the bottom base, with arrows showing MD is parallel to GS. Now find
+    the midpoints of the two legs: let J be the midpoint of leg MG and let E be the midpoint of leg DS.
+    Draw the midsegment JE connecting those two midpoints and mark it as parallel to both bases with arrows.
+    Mark J as the midpoint of MG with tick marks, and mark E as the midpoint of DS with tick marks. Also
+    draw an auxiliary point T by extending side MD and drawing a diagonal from G through D to hit the
+    extension at T — this creates the triangle used in the triangle midsegment theorem proof. Label all
+    points M, D, S, G, J, E, and T.'
+  expected_properties:
+  - name: MD_parallel_GS
+    type: parallel
+    args:
+    - - M
+      - D
+    - - G
+      - S
+  - name: JE_parallel_MD
+    type: parallel
+    args:
+    - - J
+      - E
+    - - M
+      - D
+  - name: JE_parallel_GS
+    type: parallel
+    args:
+    - - J
+      - E
+    - - G
+      - S
+  - name: J_midpoint_MG
+    type: midpoint
+    args:
+    - J
+    - M
+    - G
+  - name: E_midpoint_DS
+    type: midpoint
+    args:
+    - E
+    - D
+    - S
+  - name: D_on_segment_MT
+    type: point_on_segment
+    args:
+    - D
+    - M
+    - T
+  structural_checks: []
+  required_labels:
+  - M
+  - D
+  - S
+  - G
+  - J
+  - E
+  - T
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m3-t1-l2-act22-sss-similarity-proportional-sides-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - SSS-similarity
+  - proportional-sides
+  - similar-triangles
+  prompt: 'Draw two triangles side by side to show the SSS similarity theorem. Label the first triangle
+    ABC with side lengths AB = 4, BC = 6, and AC = 5. Label the second triangle DEF with side lengths
+    DE = 8, EF = 12, and DF = 10. These are similar because every pair of corresponding sides has the
+    same ratio of 2. Mark the corresponding sides with matching tick marks: one tick on AB and DE, two
+    ticks on BC and EF, three ticks on AC and DF.'
+  expected_properties:
+  - name: mark_AB_DE_equal_ratio
+    type: mark_present
+    args:
+    - tick_single
+    - AB
+  - name: mark_DE_single
+    type: mark_present
+    args:
+    - tick_single
+    - DE
+  - name: mark_BC_double
+    type: mark_present
+    args:
+    - tick_double
+    - BC
+  - name: mark_EF_double
+    type: mark_present
+    args:
+    - tick_double
+    - EF
+  - name: mark_AC_triple
+    type: mark_present
+    args:
+    - tick_triple
+    - AC
+  - name: mark_DF_triple
+    type: mark_present
+    args:
+    - tick_triple
+    - DF
+  - name: label_present_A
+    type: label_present
+    args:
+    - A
+  - name: label_present_D
+    type: label_present
+    args:
+    - D
+  structural_checks: []
+  required_labels:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-a14-cylinder-disc-stack-1
+  tier: 2
+  tags:
+  - curriculum
+  - grade-geometry
+  - cylinder
+  - volume
+  - disc
+  - cross-section
+  prompt: Draw a cylinder with radius r and height h, then show it being built by stacking a bunch of
+    thin disc cross-sections on top of each other. Label one disc with area = π r². Draw a horizontal
+    dashed line through the middle of the cylinder to show where one disc sits, and label its thickness
+    as a tiny value. Also label the total height h and radius r on the cylinder. I want to see how the
+    volume formula V = πr²h comes from stacking all those discs.
+  expected_properties:
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: label_present_h
+    type: label_present
+    args:
+    - h
+  - name: disc_cross_section_circle
+    type: mark_present
+    args:
+    - cross_section
+    - O
+  structural_checks: []
+  required_labels:
+  - r
+  - h
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []
+- id: geo-m4-t2-l1-gs-disc-definition-2
+  tier: 1
+  tags:
+  - curriculum
+  - grade-geometry
+  - rotation
+  - disc
+  - circle
+  - 2d-to-3d
+  prompt: Draw a circle with center O and radius r labeled. Then next to it draw a filled-in disc (a solid
+    circle) with the same center O and radius r. Label the disc and show that it has area π times r squared.
+    I'm trying to understand the difference between just the outline of a circle and a fully filled disc.
+  expected_properties:
+  - name: label_present_O
+    type: label_present
+    args:
+    - O
+  - name: label_present_r
+    type: label_present
+    args:
+    - r
+  - name: radius_marked
+    type: mark_present
+    args:
+    - radius
+    - O
+  structural_checks: []
+  required_labels:
+  - O
+  - r
+  required_entities: []
+  required_canvas: {}
+  expected_points: {}
+  coordinate_tolerance: 0.0001
+  queries: []

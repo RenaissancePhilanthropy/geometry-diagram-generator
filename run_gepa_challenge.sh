@@ -36,7 +36,7 @@ python -u optimize_recipe_prompts.py \
   --reflection-lm ollama:kimi-k2.6:cloud \
   --max-metric-calls 1720 \
   --components generation_system \
-  --renderer svg \
+  --renderer tikz \
   --thinking \
   --llm-judge \
   --max-concurrency 5 \

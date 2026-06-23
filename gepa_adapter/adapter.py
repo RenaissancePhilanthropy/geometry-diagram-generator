@@ -23,7 +23,12 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from evals.run import _finalize_gate_status, _collect_check_outcomes
+from evals.run import (
+    _TIKZ_CHECK_TOLERANCE,
+    _collect_check_outcomes,
+    _finalize_gate_status,
+    _run_structural_checks,
+)
 from evals.sympy_checks import _validate_properties_sympy
 from gepa_adapter.dataset import ScenarioData
 from gepa_adapter.scoring import ScenarioResult, compute_score, build_failure_feedback
@@ -77,8 +82,14 @@ class RecipeGEPAAdapter:
         timeout_per_scenario: int = 300,
         use_recipes: bool = True,
         thinking: bool = True,
+        train_model: str | None = None,
+        val_model: str | None = None,
+        train_ids: set[str] | None = None,
+        val_ids: set[str] | None = None,
     ) -> None:
-        self.model = model
+        self.model = model  # fallback for scenarios not in train/val sets; also the judge/log default
+        self.train_model = train_model or model
+        self.val_model = val_model or model
         self.renderer = renderer or TikZRenderer()
         self.llm_judge = llm_judge
         self.judge_model = judge_model
@@ -91,6 +102,19 @@ class RecipeGEPAAdapter:
         # Per-scenario baselines from the seed evaluation, used for efficiency scoring.
         # Populated lazily from the first evaluate() call (which is always the seed).
         self._baselines: dict[str, dict] = {}  # scenario_id → {"attempts": int, "duration_s": float}
+        # Per-scenario generation-model routing: train scenarios → train_model,
+        # val scenarios → val_model. Lets GEPA optimize the prompt on one model
+        # (train) and measure cross-model generalization on another (val), with no
+        # change to GEPA's batch protocol — batches are routed by scenario id.
+        self._scenario_model: dict[str, str] = {}
+        for sid in train_ids or ():
+            self._scenario_model[sid] = self.train_model
+        for sid in val_ids or ():
+            self._scenario_model[sid] = self.val_model
+
+    def _model_for(self, scenario_id: str) -> str:
+        """Return the generation model for a scenario (train or val), else fallback."""
+        return self._scenario_model.get(scenario_id, self.model)
 
     def evaluate(
         self,
@@ -209,17 +233,18 @@ class RecipeGEPAAdapter:
         start_time = time.monotonic()
 
         try:
+            gen_model = self._model_for(scenario.id)
             async with semaphore:
                 result = await asyncio.wait_for(
-                    strategy.run(scenario.prompt, model=self.model, renderer=self.renderer),
+                    strategy.run(scenario.prompt, model=gen_model, renderer=self.renderer),
                     timeout=self.timeout,
                 )
             elapsed = time.monotonic() - start_time
             logger.info(
-                "Scenario %s: strategy returned type=%s, svg=%s in %.1fs",
+                "Scenario %s: strategy returned type=%s, svg=%s in %.1fs (model=%s)",
                 scenario.id, type(result).__name__,
                 "yes" if hasattr(result, 'svg') and result.svg else "no",
-                elapsed,
+                elapsed, gen_model,
             )
         except asyncio.TimeoutError:
             elapsed = time.monotonic() - start_time
@@ -347,7 +372,7 @@ class RecipeGEPAAdapter:
                         prop["type"],
                         prop["args"],
                         tikz=tikz_code,
-                        tolerance=0.01,  # _TIKZ_CHECK_TOLERANCE
+                        tolerance=_TIKZ_CHECK_TOLERANCE,
                     )
                 except (ValueError, KeyError, TypeError):
                     prop_result = None
@@ -396,6 +421,23 @@ class RecipeGEPAAdapter:
                 result.sym_table,
             )
 
+        # --- Structural checks (polygon_count, etc.) — mirrors evals/run.py ---
+        # _run_structural_checks prefers the IR (counts polygon/triangle defs)
+        # and falls back to regex-counting \tkzDrawPolygon in the tikz source.
+        # The recipe pipeline always produces diagram_ir regardless of renderer,
+        # so this check fires under both svg and tikz renderers.
+        if scenario.structural_checks:
+            ir_dict = (
+                result.diagram_ir.model_dump(mode="json")
+                if result.diagram_ir is not None
+                else None
+            )
+            record["structural_checks"] = _run_structural_checks(
+                scenario.structural_checks,
+                ir_dict,
+                tikz_code or None,
+            )
+
         # --- Finalize gate status ---
         _finalize_gate_status(record)
 
@@ -434,22 +476,41 @@ class RecipeGEPAAdapter:
         result: StructuredRunResult,
         result_data: ScenarioResult,
     ) -> ScenarioResult:
-        """Run the LLM judge on the rendered diagram and update the result."""
-        from util.llm_judge import judge_rendered_diagram
+        """Run the LLM judge and update the result.
 
+        Prefers the code-review judge (``judge_tikz_code``) when TikZ source is
+        available — this matches ``evals/run.py``'s ``--llm-judge`` path for the
+        recipe strategy and runs under the tikz renderer. Falls back to the
+        visual judge (``judge_rendered_diagram``) on the SVG when no TikZ is
+        present (the svg-renderer path). Requires at least one of tikz/svg.
+        """
+        from util.llm_judge import judge_rendered_diagram, judge_tikz_code
+
+        tikz_code = result.tikz
         svg = result.svg
-        if not svg:
-            logger.info("Scenario %s: skipping LLM judge (no SVG)", scenario.id)
+        if not tikz_code and not svg:
+            logger.info("Scenario %s: skipping LLM judge (no TikZ or SVG)", scenario.id)
             return result_data
 
         logger.info("Scenario %s: running LLM judge (model=%s)", scenario.id, self.judge_model)
         try:
-            judge_result = await judge_rendered_diagram(
-                prompt=scenario.prompt,
-                svg=svg,
-                tikz_code=result.tikz,
-                model=self.judge_model,
-            )
+            if tikz_code:
+                # Code review — matches evals/run.py --llm-judge for the recipe
+                # strategy. The recipe pipeline emits tkz-euclide (via ir_to_tikz),
+                # not a tkz-elements Lua block, so tkzelements_code stays None.
+                judge_result = await judge_tikz_code(
+                    prompt=scenario.prompt,
+                    tikz_code=tikz_code,
+                    tkzelements_code=None,
+                    model=self.judge_model,
+                )
+            else:
+                judge_result = await judge_rendered_diagram(
+                    prompt=scenario.prompt,
+                    svg=svg,
+                    tikz_code=result.tikz,
+                    model=self.judge_model,
+                )
             result_data.llm_judge_score = judge_result.get("score")
             result_data.llm_judge_reasoning = judge_result.get("reasoning")
             logger.info("Scenario %s: LLM judge score=%.1f", scenario.id, result_data.llm_judge_score or 0)
