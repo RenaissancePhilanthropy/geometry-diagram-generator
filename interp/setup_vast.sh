@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Bootstrap a rented vast.ai (or any CUDA) box to run the Phase-0 capability gate.
+#
+# Assumes a PyTorch+CUDA base image (torch already installed with CUDA — do NOT
+# let pip reinstall a CPU torch over it). Run from the box's home dir:
+#
+#   export GH_PAT=ghp_xxx          # GitHub fine-grained PAT, read access to the repo
+#   export HF_TOKEN=hf_xxx         # Hugging Face token (faster, un-throttled downloads)
+#   bash setup_vast.sh
+#
+set -euo pipefail
+
+REPO_URL="https://${GH_PAT}@github.com/RenaissancePhilanthropy/geometry-diagram-generator.git"
+BRANCH="feat/spatial-interp"
+WORKDIR="${HOME}/geometry-diagram-generator"
+
+echo "==> sanity: CUDA torch present?"
+python -c "import torch; assert torch.cuda.is_available(), 'no CUDA!'; \
+print('torch', torch.__version__, '| cuda', torch.version.cuda, '|', torch.cuda.get_device_name(0))"
+
+echo "==> clone repo @ ${BRANCH}"
+if [ ! -d "${WORKDIR}" ]; then
+  git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${WORKDIR}"
+fi
+cd "${WORKDIR}"
+
+echo "==> install deps — PIN the image's CUDA torch so nothing can replace it"
+# Drop the torch line from requirements, and pin the already-installed torch via
+# a constraints file. Constraints stop transitive deps (e.g. nnsight) from
+# downgrading/reinstalling torch with a CPU wheel.
+grep -viE '^\s*torch(\s|$|>|=|<)' interp/requirements.txt > /tmp/reqs_notorch.txt
+python - <<'PY' > /tmp/torch_constraint.txt
+import torch; print(f"torch=={torch.__version__.split('+')[0]}")
+PY
+echo "    pinning $(cat /tmp/torch_constraint.txt)"
+pip install --no-input -c /tmp/torch_constraint.txt -r /tmp/reqs_notorch.txt
+echo "==> verify CUDA torch survived the install"
+python -c "import torch; assert torch.cuda.is_available(), 'torch lost CUDA — a dep clobbered it'; print('ok, cuda still available')"
+
+echo "==> hugging face auth"
+python -c "from huggingface_hub import login; import os; login(os.environ['HF_TOKEN'])"
+
+echo "==> READY. Example gate runs (note --device cuda):"
+cat <<'EOF'
+
+  cd ~/geometry-diagram-generator
+
+  # zero-shot baseline (matches what we ran on the Mac)
+  python interp/capability_check.py --model Qwen/Qwen2.5-7B-Instruct \
+      --device cuda --tier 1 --n 20 --few-shot none
+
+  # the one MPS could NOT do — all 20 catalog exemplars (~14k-token prompts)
+  python interp/capability_check.py --model Qwen/Qwen2.5-7B-Instruct \
+      --device cuda --tier 1 --n 20 --few-shot all
+
+  # full sweep, more output, dump completions for inspection
+  python interp/capability_check.py --model Qwen/Qwen2.5-7B-Instruct \
+      --device cuda --n 50 --few-shot all --print-output
+
+EOF
