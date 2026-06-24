@@ -55,8 +55,7 @@ def label_relation(rec: dict) -> dict[int, str]:
     CAVEAT: this decodes the CURRENT token's identity, which late layers encode
     near-trivially (it is what the unembedding reads out). A rising curve here is
     a plumbing sanity check, NOT a spatial-representation result. The real targets
-    decode properties that are NOT the current token — see METHODOLOGY.md and the
-    coordinate/angle/intersection labelers to be added.
+    decode properties that are NOT the current token — see METHODOLOGY.md.
     """
     out: dict[int, str] = {}
     for i, tok in enumerate(rec["tokens"]):
@@ -68,7 +67,51 @@ def label_relation(rec: dict) -> dict[int, str]:
     return out
 
 
-LABELERS = {"relation": label_relation}
+def _id_token_positions(rec: dict, entity_id: str) -> list[int]:
+    """Token positions where ``entity_id`` is written as a quoted JSON value.
+
+    Uses the saved char offsets to map every occurrence of "<id>" in the
+    completion back to the covering token(s). Quoting avoids matching the id as a
+    substring of another name (e.g. "A" inside "AB").
+    """
+    completion = rec.get("completion", "") or ""
+    offsets = rec.get("offsets")
+    if offsets is None or not completion:
+        return []
+    needle = f'"{entity_id}"'
+    spans, start = [], 0
+    while True:
+        j = completion.find(needle, start)
+        if j == -1:
+            break
+        spans.append((j + 1, j + 1 + len(entity_id)))  # the id chars, inside quotes
+        start = j + 1
+    out = []
+    for pos, (s, e) in enumerate(offsets):
+        if any(s < ce and e > cs for (cs, ce) in spans):   # token span ∩ id span
+            out.append(pos)
+    return out
+
+
+def label_entity_relation(rec: dict) -> dict[int, str]:
+    """NON-TRIVIAL — at each token that writes an entity's name, label it with the
+    geometric RELATION that entity embodies (midpoint / perpendicular /
+    intersection / tangent / ...), sourced from the ground-truth defs.
+
+    The token string is just a name (e.g. "M"); whether M is a *midpoint* is not
+    in the token — it comes from how M was constructed. So a rising decodability
+    curve here is real evidence the model represents the relation, not token id.
+    """
+    gt = (rec.get("meta") or {}).get("ground_truth") or {}
+    rels = gt.get("entity_relations") or {}
+    out: dict[int, str] = {}
+    for entity_id, relation in rels.items():
+        for pos in _id_token_positions(rec, entity_id):
+            out[pos] = relation
+    return out
+
+
+LABELERS = {"relation": label_relation, "entity_relation": label_entity_relation}
 
 
 # ----- dataset loading -----
@@ -94,7 +137,9 @@ def load_dataset(act_dir: pathlib.Path) -> list[dict]:
             "acts": d["acts"],                 # [L, P, D] float16
             "layer_ids": list(d["layer_ids"]),
             "tokens": meta[pid]["tokens"],
-            "meta": meta[pid],
+            "offsets": d["offsets"].tolist() if "offsets" in d else None,
+            "completion": meta[pid].get("completion", ""),
+            "meta": meta[pid],                 # carries ground_truth, grade, etc.
         })
     return records
 
@@ -110,7 +155,7 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
 
     X, y, groups = [], [], []
     for gi, rec in enumerate(records):
-        labels = labeler(_rec_for_labeler(rec))
+        labels = labeler(rec)
         acts = rec["acts"]               # [L, P, D]
         P = acts.shape[1]
         special = rec["meta"].get("is_special", [0] * P)
@@ -122,13 +167,6 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
     if not X:
         return np.empty((0, 0)), np.array([]), np.array([])
     return np.stack(X), np.array(y), np.array(groups)
-
-
-def _rec_for_labeler(rec: dict) -> dict:
-    # labelers expect a meta-like dict with "tokens"; capture stores tokens in meta too
-    m = dict(rec["meta"])
-    m.setdefault("tokens", rec["tokens"])
-    return m
 
 
 def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: int):

@@ -77,6 +77,61 @@ def test_probe_recovers_planted_signal():
     print(f"\nok  probe recovered signal: layer accs {curve}")
 
 
+def test_id_token_positions():
+    from interp.probe import _id_token_positions
+    completion = '[{"id":"M"},{"id":"L"}]'
+    offsets = [[i, i + 1] for i in range(len(completion))]   # one token per char
+    rec = {"completion": completion, "offsets": offsets}
+    pm = _id_token_positions(rec, "M")
+    pl = _id_token_positions(rec, "L")
+    assert len(pm) == 1 and len(pl) == 1, (pm, pl)
+    assert completion[offsets[pm[0]][0]] == "M"
+    assert completion[offsets[pl[0]][0]] == "L"
+    print("ok  _id_token_positions maps quoted ids to the right token")
+
+
+def _make_entity_synthetic(act_dir: pathlib.Path, n=40, D=16, seed=1):
+    """Each prompt writes ids M (midpoint) and L (perpendicular); the relation is
+    linearly encoded at layer 2 at those id positions, noise at layer 0."""
+    import numpy as np
+
+    act_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    completion = '[{"id":"M"},{"id":"L"}]'
+    offsets = [[i, i + 1] for i in range(len(completion))]
+    P, L = len(completion), 3
+    dirs = {"midpoint": rng.normal(size=D) * 3, "perpendicular": rng.normal(size=D) * 3}
+    pos_M = completion.index('"M"') + 1
+    pos_L = completion.index('"L"') + 1
+
+    with (act_dir / "meta.jsonl").open("w") as mf:
+        for p in range(n):
+            acts = rng.normal(size=(L, P, D)).astype(np.float16)  # layer0/1 noise
+            acts[2, pos_M] = (dirs["midpoint"] + rng.normal(size=D) * 0.5)
+            acts[2, pos_L] = (dirs["perpendicular"] + rng.normal(size=D) * 0.5)
+            pid = f"ent_{p}"
+            np.savez_compressed(act_dir / f"{pid}.npz", acts=acts,
+                                layer_ids=np.array([0, 1, 2]),
+                                offsets=np.array(offsets))
+            mf.write(json.dumps({
+                "pid": pid, "tokens": list(completion), "completion": completion,
+                "ground_truth": {"entity_relations": {"M": "midpoint", "L": "perpendicular"}},
+            }) + "\n")
+
+
+def test_entity_relation_probe():
+    from interp.probe import run_probe
+    d = SCRATCH.parent / "probe_entity_synth"
+    _make_entity_synthetic(d)
+    out = run_probe(d, "entity_relation", test_frac=0.3, seed=0)
+    curve = {c["layer"]: c["acc"] for c in out["curve"]}
+    assert curve.get(2, 0) > 0.85, curve
+    assert curve[2] > curve[0] + 0.3, curve
+    print(f"ok  entity_relation probe recovered relation-from-defs: {curve}")
+
+
 if __name__ == "__main__":
     test_probe_recovers_planted_signal()
+    test_id_token_positions()
+    test_entity_relation_probe()
     print("\nPROBE SMOKE TEST PASSED")

@@ -18,8 +18,9 @@ trivial-vs-non-trivial target rule).
 |------|-------|------|
 | `grade.py` | 0 | Render-free grader: completion → parse → validate → lower → compile → check. |
 | `capability_check.py` | 0 | Prompt the model on benchmark prompts, grade each, report valid-construction rate. Supports few-shot exemplars. |
-| `capture.py` | 1 | Generate + forward-pass; save residual stream at chosen layers for completion positions, with token offsets + parsed DSL for labeling. |
-| `probe.py` | 2 | Train per-layer linear probes over captured activations → decodability-vs-layer curve. |
+| `capture.py` | 1 | Generate + forward-pass; save residual stream per completion token + ground-truth geometry for labeling. |
+| `geometry_labels.py` | 1–2 | Extract spatial ground truth (entity→relation, point coords, check facts) from a construction — the bridge for non-trivial probes. |
+| `probe.py` | 2 | Per-layer linear probes → decodability-vs-layer. `entity_relation` (real, def-sourced) + `relation` (trivial baseline). |
 | `test_capture.py`, `test_probe.py` | — | Offline smoke tests (tiny random model / synthetic data). |
 | `setup_vast.sh` | — | Bootstrap a rented CUDA box: clone, pin CUDA torch, install, run. |
 

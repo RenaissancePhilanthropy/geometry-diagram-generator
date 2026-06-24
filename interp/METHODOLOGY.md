@@ -47,19 +47,23 @@ token's own string.**
 
 ## Target labelers (Phase 2 work, in priority order)
 
-Each is a `meta-record → {pos: label}` function added to `probe.LABELERS`. The
-capture record already carries `tokens`, `offsets` (char spans), `construction`
-(parsed DSL), and `completion` — enough to locate positions and join to truth.
+Each is a `record → {pos: label}` function in `probe.LABELERS`. The capture
+record carries `tokens`, `offsets` (char spans), `completion`, and — via
+`geometry_labels.ground_truth` — `meta.ground_truth` with `entity_relations`
+(def-sourced relation per id), `point_coords` (compiled SymPy), and
+`relation_facts` (the checks). `_id_token_positions` maps an id to the tokens
+where it's written.
 
+0. **entity_relation** ✅ DONE — at the token writing a point/line's name, decode
+   the geometric relation it embodies (midpoint / perpendicular / intersection /
+   tangent / ...), sourced from the defs. Non-trivial (the name token doesn't
+   reveal the relation). The first real spatial-representation probe; tested.
 1. **angle value** — find the angle literal token(s); label = the numeric angle.
-   Decodability across layers = "where does the angle live?" (regression or
-   binned classification). Cleanest first real result.
-2. **relation type of the construction** — label a fixed structural position
-   (e.g. first completion token) with the dominant relation in the *compiled*
-   figure (perpendicular / parallel / midpoint / tangent). One label per prompt.
-3. **point coordinates** — at each point's name token, regress the SymPy (x, y).
-   Needs joining DSL point ids → compiled coords (use `ir.to_sympy` / `queries`).
-4. **intersection disambiguation** — at an intersection's output token, classify
+   (regression or binned classification). Add next.
+2. **point coordinates** — at each point's name token, regress the SymPy (x, y)
+   from `ground_truth.point_coords`. Needs a regression path in run_probe
+   (Ridge + R²) alongside the current classification path.
+3. **intersection disambiguation** — at an intersection's output token, classify
    the `pick` choice ("higher"/"index 0/1"). The headline non-trivial target.
 
 ## Phase 3 — causal check (after decodability)
@@ -74,7 +78,10 @@ representation is *causal* there, not merely correlated. Decodability locates
 
 - [x] grader, capability gate, relevant few-shot selection — done, tested.
 - [x] capture over realized ids; prompt-level split; per-layer scaling — done.
+- [x] ground-truth extraction (`geometry_labels`) wired into capture meta — done.
+- [x] first non-trivial probe (`entity_relation`) implemented + tested.
 - [x] offline smoke tests pass (no GPU).
-- [ ] **On GPU:** confirm capability rate is usable (`--few-shot all`/`relevant`).
-- [ ] capture a tier-1 `--only-valid` run; eyeball `meta.jsonl` token alignment.
-- [ ] implement the **angle** labeler (target #1) and read its curve.
+- [ ] **On GPU:** raise capability/yield (`--few-shot all`, capture many prompts).
+- [ ] capture a broad `--only-valid` run; eyeball `meta.jsonl` ground_truth.
+- [ ] run `probe.py --labeler entity_relation` → first real decodability curve.
+- [ ] add the **angle** and **coordinate** labelers (targets #1–2).

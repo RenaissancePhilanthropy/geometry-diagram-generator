@@ -193,6 +193,10 @@ def run_capture(args) -> None:
                 offsets=np.array(cap["offsets"]),
                 is_special=np.array(cap["is_special"]),
             )
+            from interp.grade import extract_recipe_json
+            from interp.geometry_labels import ground_truth
+            obj = extract_recipe_json(completion)
+            gt = ground_truth(obj)
             meta_f.write(json.dumps({
                 "pid": pid,
                 "prompt": prompt,
@@ -200,7 +204,14 @@ def run_capture(args) -> None:
                 "tokens": cap["tokens"],
                 "is_special": cap["is_special"],
                 "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
-                "construction": _safe_construction(completion),
+                "construction": obj.get("construction") if isinstance(obj, dict) else None,
+                # ground-truth geometry for non-trivial probing (see geometry_labels)
+                "ground_truth": {
+                    "stage": gt["stage"],
+                    "entity_relations": gt["entity_relations"],
+                    "point_coords": gt["point_coords"],
+                    "relation_facts": gt["relation_facts"],
+                },
                 "acts_shape": list(cap["acts"].shape),
                 "layer_ids": cap["layer_ids"],
             }) + "\n")
@@ -210,16 +221,6 @@ def run_capture(args) -> None:
                   f"grade={'OK' if grade.ok else grade.stage}")
 
     print(f"\ncaptured {n_saved} prompt(s) -> {out_dir} (+ {meta_path.name})")
-
-
-def _safe_construction(completion: str):
-    """The parsed RecipeDSL construction list, or None — for offline labeling."""
-    try:
-        from interp.grade import extract_recipe_json
-        obj = extract_recipe_json(completion)
-        return obj.get("construction") if isinstance(obj, dict) else None
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def main() -> None:
