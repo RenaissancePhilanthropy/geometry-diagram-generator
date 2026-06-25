@@ -127,17 +127,39 @@ def select_recipes(prompt: str, all_recipes: list, mode: str) -> list:
     return all_recipes[: int(mode)]
 
 
-def build_messages(prompt: str, recipes: list | None = None) -> list[dict]:
+# Targeted addendum for the recurring schema mistakes observed in capability runs
+# (regular_polygon.center as coords, label_* ops, AAA triangles, circle.hradius).
+# Appended to the system prompt for the GATE/CAPTURE only — does not touch the
+# production RecipeStrategy. Each line corresponds to a real validation failure.
+DSL_GOTCHAS = """\
+
+Avoid these common mistakes (they fail validation):
+- Labels are NOT construction ops. Do not emit `label_point`, `label_angle`, or
+  `angle` ops. Put labels in the `annotations` block instead.
+- `regular_polygon` / `polygon` `center` must be a POINT ID (a string like "O"),
+  never a coordinate pair. Define the center point first, then reference its id.
+- A `triangle` `spec` needs at least one SIDE length (SSS/SAS/ASA/AAS). Angles
+  alone (AAA) are rejected. Use only fields: side_AB, side_BC, side_CA, angle_A,
+  angle_B, angle_C, right_angle_at.
+- A `circle` uses `radius` (not `hradius`/`vradius` — those are for `ellipse`).
+- Only reference ids you have already defined earlier in the construction.
+"""
+
+
+def build_messages(prompt: str, recipes: list | None = None,
+                   gotchas: bool = True) -> list[dict]:
     """Mirror RecipeStrategy's generation call: system = RECIPE_GENERATION_SYSTEM,
     user = build_generation_prompt(prompt, recipes, DSL_DOCS). With recipes=[] this
     is the use_recipes=False path; with the catalog passed it is the few-shot path
     (production normally selects a relevant subset via a cheap LLM; we pass a fixed
-    set to keep the gate local-only).
+    set to keep the gate local-only). ``gotchas`` appends DSL_GOTCHAS to the system
+    prompt to suppress the recurring schema slips (gate/capture only).
     """
     from recipe.catalog import DSL_DOCS, build_generation_prompt
 
+    system = _recipe_generation_system() + (DSL_GOTCHAS if gotchas else "")
     return [
-        {"role": "system", "content": _recipe_generation_system()},
+        {"role": "system", "content": system},
         {"role": "user", "content": build_generation_prompt(prompt, recipes or [], DSL_DOCS)},
     ]
 

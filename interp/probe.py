@@ -135,11 +135,26 @@ def label_point_coord(rec: dict) -> dict[int, list]:
     return out
 
 
+def label_angle(rec: dict) -> dict[int, list]:
+    """NON-TRIVIAL (regression) — at each token writing a triangle vertex's name,
+    target = that vertex's interior angle in degrees (from compiled geometry).
+    A 1-number target (less data-hungry than 2-D coords); the vertex name doesn't
+    encode its angle."""
+    gt = (rec.get("meta") or {}).get("ground_truth") or {}
+    angles = gt.get("vertex_angles") or {}
+    out: dict[int, list] = {}
+    for vid, deg in angles.items():
+        for pos in _id_token_positions(rec, vid):
+            out[pos] = [float(deg)]
+    return out
+
+
 # name -> (labeler, task). task "clf" = classification, "reg" = regression.
 LABELERS = {
     "relation": (label_relation, "clf"),
     "entity_relation": (label_entity_relation, "clf"),
     "point_coord": (label_point_coord, "reg"),
+    "angle": (label_angle, "reg"),
 }
 
 
@@ -218,12 +233,25 @@ def _token_identity_baseline(toks, y, groups, tr, te) -> float:
     return correct / len(te) if len(te) else 0.0
 
 
-def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: int):
+def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: int,
+              pca: int = 100):
     import numpy as np
+    from sklearn.decomposition import PCA
     from sklearn.linear_model import LogisticRegression, Ridge
     from sklearn.model_selection import GroupShuffleSplit
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
+
+    def _pipeline(estimator, n_train, n_features):
+        # PCA before the linear probe: residual dim (3584) >> #samples otherwise,
+        # which makes regression overfit (negative R^2). Components must be
+        # < n_train and <= n_features.
+        steps = [StandardScaler()]
+        if pca and pca > 0:
+            n_comp = max(2, min(pca, n_train - 1, n_features))
+            steps.append(PCA(n_components=n_comp, random_state=0))
+        steps.append(estimator)
+        return make_pipeline(*steps)
 
     records = load_dataset(act_dir)
     if not records:
@@ -251,7 +279,7 @@ def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: 
         tr, te = next(splitter.split(X, y, groups))   # prompts disjoint across tr/te
 
         if task == "clf":
-            model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
+            model = _pipeline(LogisticRegression(max_iter=2000, C=1.0), len(tr), X.shape[1])
             model.fit(X[tr], y[tr])
             score = model.score(X[te], y[te])          # accuracy
             _, te_counts = np.unique(y[te], return_counts=True)
@@ -260,7 +288,7 @@ def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: 
                 tok_base = _token_identity_baseline(toks, y, groups, tr, te)
             metric = "acc"
         else:  # regression (e.g. coordinates): R^2, baseline 0 = predicting the mean
-            model = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
+            model = _pipeline(Ridge(alpha=1.0), len(tr), X.shape[1])
             Y = np.stack(y)
             model.fit(X[tr], Y[tr])
             score = model.score(X[te], Y[te])          # R^2 (avg over outputs)
@@ -297,8 +325,10 @@ def main() -> None:
     ap.add_argument("--labeler", default="relation", choices=list(LABELERS))
     ap.add_argument("--test-frac", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--pca", type=int, default=100,
+                    help="PCA components before the probe (0 = off). Cap < n_train.")
     args = ap.parse_args()
-    run_probe(pathlib.Path(args.act_dir), args.labeler, args.test_frac, args.seed)
+    run_probe(pathlib.Path(args.act_dir), args.labeler, args.test_frac, args.seed, args.pca)
 
 
 if __name__ == "__main__":

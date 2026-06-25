@@ -102,6 +102,7 @@ def ground_truth(construction_obj: dict | None) -> dict:
         return result
 
     result["point_coords"] = _point_coords(sym)
+    result["vertex_angles"] = _vertex_angles(diagram_ir, sym)
     result["stage"] = "compiled"
     result["ok"] = True
     return result
@@ -131,6 +132,27 @@ def _relation_facts(diagram_ir) -> list[dict]:
             # real object ids have no spaces/colons (filters annotation descriptions)
             ids += [x for x in vals if isinstance(x, str) and " " not in x and ":" not in x]
         out.append({"relation": rel, "ids": ids})
+    return out
+
+
+def _vertex_angles(diagram_ir, sym) -> dict[str, float]:
+    """Interior angle (degrees) at each triangle vertex, from the compiled
+    geometry. Non-trivial probe target: a vertex name doesn't encode its angle."""
+    from ir.queries import query_angle
+
+    out: dict[str, float] = {}
+    for d in diagram_ir.define:
+        if type(d).__name__ != "Triangle":
+            continue
+        try:
+            a, b, c = d.a, d.b, d.c
+        except AttributeError:
+            continue
+        for v, p, q in ((a, b, c), (b, a, c), (c, a, b)):   # angle at v
+            try:
+                out[v] = query_angle(sym, p, v, q)["angle_degrees"]
+            except Exception:  # noqa: BLE001
+                pass
     return out
 
 

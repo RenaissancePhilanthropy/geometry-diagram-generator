@@ -37,20 +37,28 @@ trivial-vs-non-trivial target rule).
   selector, so a small budget is spent on relevant recipes (a square prompt gets
   `square_on_segment`, etc.).
 
-## On a GPU box (after `setup_vast.sh`)
+## On a GPU box (after `setup_vast.sh`) — high-powered run
+
+Rent **≥60 GB disk** (a 32 GB box only fits ~8 layers) and a **PyTorch image**.
 
 ```bash
-# Phase 0' — the capability run MPS could not do: all exemplars, relevant subset
+# Phase 0' — capability gate (DSL_GOTCHAS addendum on by default)
 python interp/capability_check.py --device cuda --tier 1 --n 20 --few-shot all
-python interp/capability_check.py --device cuda --tier 1 --n 20 --few-shot relevant:4
 
-# Phase 1 — capture activations from valid constructions
-python interp/capture.py --device cuda --tier 1 --n 100 --few-shot relevant:4 \
-    --only-valid --layers all --out-dir interp/activations/tier1
+# Phase 1 — capture: all 29 layers, multi-sample for data, lean disk
+python interp/capture.py --device cuda --n 100 --few-shot all \
+    --samples 4 --require-ground-truth --layers all \
+    --out-dir interp/activations/run
 
-# Phase 2 — where does relation identity become linearly decodable?
-python interp/probe.py --act-dir interp/activations/tier1 --labeler relation
+# Phase 2 — non-trivial probes (PCA-100 by default; CPU-only, no GPU)
+python interp/probe.py --act-dir interp/activations/run --labeler point_coord
+python interp/probe.py --act-dir interp/activations/run --labeler angle
+python interp/probe.py --act-dir interp/activations/run --labeler entity_relation  # +token baseline
 ```
+
+`--samples 4` ≈ 4× the labeled positions (the first coord probe was under-powered
+at ~240). `--require-ground-truth` skips junk so 29 layers fit disk. `scp
+interp/activations/run` to your Mac to keep probing offline (free).
 
 ## Local dev (no GPU)
 

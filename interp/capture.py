@@ -154,6 +154,19 @@ def run_capture(args) -> None:
     layers = resolve_layers(args.layers, n_hs)
     print(f"model has {n_hs} hidden states; saving layers {layers}")
 
+    from interp.grade import extract_recipe_json
+    from interp.geometry_labels import ground_truth
+
+    def _empty_cache():
+        if args.device == "mps":
+            torch.mps.empty_cache()
+        elif args.device == "cuda":
+            torch.cuda.empty_cache()
+
+    def _usable(gt: dict) -> bool:
+        return bool(gt["entity_relations"] or gt["point_coords"]
+                    or gt.get("vertex_angles"))
+
     n_saved = 0
     with meta_path.open("w") as meta_f:
         for i, (pid, prompt) in enumerate(prompts, 1):
@@ -163,64 +176,74 @@ def run_capture(args) -> None:
             )
             inputs = tok(text, return_tensors="pt").to(args.device)
             prompt_ids = inputs.input_ids[0].tolist()
-            with torch.no_grad():
-                gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
-                                     do_sample=False)
-            # the REALIZED generated ids (drift-free); capture forwards over these
-            completion_ids = gen[0].tolist()[len(prompt_ids):]
-            completion = tok.decode(completion_ids, skip_special_tokens=True)
-            del gen, inputs
-            if args.device == "mps":
-                torch.mps.empty_cache()
-            elif args.device == "cuda":
-                torch.cuda.empty_cache()
 
-            grade = grade_completion(completion)
-            if args.only_valid and not grade.ok:
-                print(f"[{i:>3}/{len(prompts)}] skip {pid} (grade {grade.stage})")
-                continue
+            for s in range(args.samples):
+                rid = pid if args.samples == 1 else f"{pid}_s{s}"
+                with torch.no_grad():
+                    if args.samples == 1:
+                        gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
+                                             do_sample=False)
+                    else:                       # diverse samples -> more probe data
+                        torch.manual_seed(1000 + s)
+                        gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
+                                             do_sample=True, temperature=args.temperature,
+                                             top_p=0.95)
+                completion_ids = gen[0].tolist()[len(prompt_ids):]
+                completion = tok.decode(completion_ids, skip_special_tokens=True)
+                del gen
+                _empty_cache()
 
-            cap = capture_activations(model, tok, prompt_ids, completion_ids,
-                                      layers, args.device)
-            if cap is None:
-                print(f"[{i:>3}/{len(prompts)}] skip {pid} (empty completion)")
-                continue
+                grade = grade_completion(completion)
+                if args.only_valid and not grade.ok:
+                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (grade {grade.stage})")
+                    continue
+                obj = extract_recipe_json(completion)
+                gt = ground_truth(obj)
+                if args.require_ground_truth and not _usable(gt):
+                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (no ground truth)")
+                    continue
 
-            np.savez_compressed(
-                out_dir / f"{pid}.npz",
-                acts=cap["acts"],
-                layer_ids=np.array(cap["layer_ids"]),
-                offsets=np.array(cap["offsets"]),
-                is_special=np.array(cap["is_special"]),
-            )
-            from interp.grade import extract_recipe_json
-            from interp.geometry_labels import ground_truth
-            obj = extract_recipe_json(completion)
-            gt = ground_truth(obj)
-            meta_f.write(json.dumps({
-                "pid": pid,
-                "prompt": prompt,
-                "completion": completion,
-                "tokens": cap["tokens"],
-                "is_special": cap["is_special"],
-                "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
-                "construction": obj.get("construction") if isinstance(obj, dict) else None,
-                # ground-truth geometry for non-trivial probing (see geometry_labels)
-                "ground_truth": {
-                    "stage": gt["stage"],
-                    "entity_relations": gt["entity_relations"],
-                    "point_coords": gt["point_coords"],
-                    "relation_facts": gt["relation_facts"],
-                },
-                "acts_shape": list(cap["acts"].shape),
-                "layer_ids": cap["layer_ids"],
-            }) + "\n")
-            meta_f.flush()
-            n_saved += 1
-            print(f"[{i:>3}/{len(prompts)}] saved {pid}  acts={cap['acts'].shape}  "
-                  f"grade={'OK' if grade.ok else grade.stage}")
+                cap = capture_activations(model, tok, prompt_ids, completion_ids,
+                                          layers, args.device)
+                if cap is None:
+                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (empty completion)")
+                    continue
 
-    print(f"\ncaptured {n_saved} prompt(s) -> {out_dir} (+ {meta_path.name})")
+                np.savez_compressed(
+                    out_dir / f"{rid}.npz",
+                    acts=cap["acts"],
+                    layer_ids=np.array(cap["layer_ids"]),
+                    offsets=np.array(cap["offsets"]),
+                    is_special=np.array(cap["is_special"]),
+                )
+                meta_f.write(json.dumps({
+                    "pid": rid,
+                    "prompt": prompt,
+                    "completion": completion,
+                    "tokens": cap["tokens"],
+                    "is_special": cap["is_special"],
+                    "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
+                    "construction": obj.get("construction") if isinstance(obj, dict) else None,
+                    # ground-truth geometry for non-trivial probing (geometry_labels)
+                    "ground_truth": {
+                        "stage": gt["stage"],
+                        "entity_relations": gt["entity_relations"],
+                        "point_coords": gt["point_coords"],
+                        "vertex_angles": gt.get("vertex_angles", {}),
+                        "relation_facts": gt["relation_facts"],
+                    },
+                    "acts_shape": list(cap["acts"].shape),
+                    "layer_ids": cap["layer_ids"],
+                }) + "\n")
+                meta_f.flush()
+                n_saved += 1
+                print(f"[{i:>3}/{len(prompts)}] saved {rid}  acts={cap['acts'].shape}  "
+                      f"grade={'OK' if grade.ok else grade.stage}")
+
+            del inputs
+            _empty_cache()
+
+    print(f"\ncaptured {n_saved} record(s) -> {out_dir} (+ {meta_path.name})")
 
 
 def main() -> None:
@@ -236,6 +259,14 @@ def main() -> None:
                     help="'all' | 'even' | 'every:K' | comma list of hidden-state indices")
     ap.add_argument("--only-valid", action="store_true",
                     help="capture only completions that grade OK (clean probe set)")
+    ap.add_argument("--require-ground-truth", action="store_true",
+                    help="skip records with no usable ground truth (lean disk; "
+                         "keeps only constructions that lowered to defs/coords/angles)")
+    ap.add_argument("--samples", type=int, default=1,
+                    help="completions per prompt (>1 samples at temperature for more "
+                         "probe data; each saved as <pid>_s<k>)")
+    ap.add_argument("--temperature", type=float, default=0.8,
+                    help="sampling temperature when --samples > 1")
     ap.add_argument("--out-dir", default="interp/activations/run")
     args = ap.parse_args()
     run_capture(args)

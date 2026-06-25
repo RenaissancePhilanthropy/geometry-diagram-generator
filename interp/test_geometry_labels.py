@@ -50,6 +50,15 @@ def test_point_coords_are_truthful():
     print(f"ok  point_coords M={[round(v,2) for v in c['M']]} = midpoint(A,B)")
 
 
+def test_vertex_angles():
+    gt = ground_truth(SELF_CONTAINED)   # equilateral SSS triangle
+    angles = gt["vertex_angles"]
+    assert set(angles) >= {"A", "B", "C"}, angles
+    for v in "ABC":
+        assert math.isclose(angles[v], 60.0, abs_tol=1e-3), angles
+    print(f"ok  vertex_angles (equilateral) = {[round(angles[v],1) for v in 'ABC']}")
+
+
 def test_failures_degrade_gracefully():
     assert ground_truth(None)["stage"] == "parse"
     assert ground_truth({"not": "a recipe"})["stage"] == "validate"
@@ -72,6 +81,7 @@ def test_catalog_example_coords():
 if __name__ == "__main__":
     test_entity_relations_from_defs()
     test_point_coords_are_truthful()
+    test_vertex_angles()
     test_failures_degrade_gracefully()
     test_catalog_example_coords()
     print("\nALL GEOMETRY-LABEL TESTS PASSED")
