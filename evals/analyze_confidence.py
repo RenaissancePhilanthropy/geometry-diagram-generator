@@ -77,9 +77,12 @@ logger = logging.getLogger(__name__)
 CONFIDENCE_SCORE_MAX = 100
 
 # Truth label: only these gate_status values contribute observations.
-# soft_pass is dropped (ambiguous: rendered, no checks to fail); timeouts have
-# no recipe_metadata and drop naturally.
+# soft_pass is dropped by default (ambiguous: rendered, no checks to fail);
+# timeouts have no recipe_metadata and drop naturally. With --lenient, soft_pass
+# is counted as a success alongside pass (more data; soft_pass records did render
+# + pass svg_checks, so they are real successes, just with skipped property checks).
 GATE_PASS = "pass"
+GATE_SOFT_PASS = "soft_pass"
 GATE_FAIL = "fail"
 
 # The three self-reported dimensions emitted by the model.
@@ -259,7 +262,7 @@ def _contradictions(meta: Any) -> bool | None:
     return bool(v) if isinstance(v, bool) else None
 
 
-def extract_observations(records: list[dict]) -> dict:
+def extract_observations(records: list[dict], lenient: bool = False) -> dict:
     hard_obs: list[dict] = []   # record-level
     soft_obs: list[dict] = []   # attempt-level
     cot_obs: list[dict] = []
@@ -269,16 +272,19 @@ def extract_observations(records: list[dict]) -> dict:
     contra_total = 0
     contra_fail = 0
 
+    # Lenient: count soft_pass as a success (alongside pass) for more data;
+    # strict (default): only pass is a success, soft_pass dropped. Timeouts
+    # (gate=fail, no recipe_metadata) drop naturally as fails-with-no-score.
+    success = (GATE_PASS, GATE_SOFT_PASS) if lenient else (GATE_PASS,)
+    accept = success + (GATE_FAIL,)
+
     for r in records:
         model = r.get("model", "?")
         tier = r.get("tier")
         gate = r.get("gate_status")
-        # Strict-pass label; drop soft_pass and timeouts (timeouts have no
-        # recipe_metadata, so hard is None and they drop naturally, but be
-        # explicit so they never enter the denominator).
-        if gate not in (GATE_PASS, GATE_FAIL):
+        if gate not in accept:
             continue
-        label = gate == GATE_PASS
+        label = gate in success
         rm = r.get("recipe_metadata") or {}
         hard_meta = rm.get("evaluation_metadata_hard")
         # Defensive fallback: on complete-failure records the record-level hard
@@ -467,8 +473,10 @@ def _cell_report(model: str, tier: Any, cells: dict, n_boot: int) -> str:
     return "\n".join(lines)
 
 
-def analyze(records: list[dict], n_boot: int = DEFAULT_N_BOOT, seed: int = DEFAULT_SEED) -> dict:
-    obs = extract_observations(records)
+def analyze(records: list[dict], n_boot: int = DEFAULT_N_BOOT, seed: int = DEFAULT_SEED, lenient: bool = False) -> dict:
+    obs = extract_observations(records, lenient=lenient)
+    success = (GATE_PASS, GATE_SOFT_PASS) if lenient else (GATE_PASS,)
+    accept = success + (GATE_FAIL,)
 
     def cell_key(o):
         return (o["model"], o["tier"])
@@ -505,15 +513,18 @@ def analyze(records: list[dict], n_boot: int = DEFAULT_N_BOOT, seed: int = DEFAU
     # in the cell metrics; here we add a cross-cell note using record-level pairs.
     summary = {
         "n_records": len(records),
-        "n_records_strict_pass_fail": len(obs["hard"]) + sum(
-            1 for r in records if r.get("gate_status") in (GATE_PASS, GATE_FAIL)
+        "lenient": lenient,
+        "n_records_labeled": len(obs["hard"]) + sum(
+            1 for r in records if r.get("gate_status") in accept
         ),
         "coverage": obs["coverage"],
         "contradictions": obs["contradictions"],
         "cells": report_cells,
     }
     header = [
-        f"records={len(records)}  (strict pass/fail used; soft_pass/timeouts dropped)",
+        f"records={len(records)}  "
+        + ("(lenient: pass+soft_pass vs fail; timeouts drop as no-score fails)"
+           if lenient else "(strict pass/fail used; soft_pass/timeouts dropped)"),
         f"coverage gap: {obs['coverage']['no_soft']}/{obs['coverage']['total']} attempts had no soft "
         f"({obs['coverage']['no_soft_fail']} of those failed) — soft unavailable on unparseable outputs",
         f"contradictions_found=True: {obs['contradictions']['total_true']} records, "
@@ -546,15 +557,19 @@ def main() -> None:
     parser.add_argument("--out", default=None, help="Write full report JSON here.")
     parser.add_argument("--n-boot", type=int, default=DEFAULT_N_BOOT, help="Bootstrap iterations for AUC CIs.")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Bootstrap RNG seed.")
+    parser.add_argument("--lenient", action="store_true", default=False,
+                        help="Count soft_pass as a success alongside pass (vs fail). "
+                             "Default: strict (only pass is success; soft_pass dropped).")
     args = parser.parse_args()
 
     records = _load_records(args.results)
     if not records:
         print("No records found.", file=sys.stderr)
         sys.exit(1)
-    print(f"Loaded {len(records)} records from {len(args.results)} file(s)")
+    print(f"Loaded {len(records)} records from {len(args.results)} file(s)"
+          + ("  [lenient: pass+soft_pass vs fail]" if args.lenient else ""))
 
-    summary = analyze(records, n_boot=args.n_boot, seed=args.seed)
+    summary = analyze(records, n_boot=args.n_boot, seed=args.seed, lenient=args.lenient)
     print()
     print(summary["text"])
 

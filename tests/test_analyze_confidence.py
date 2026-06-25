@@ -114,6 +114,21 @@ def test_strict_pass_drops_soft_pass():
     assert len(obs["soft"]) == 2  # soft_pass record's trace also dropped (record excluded)
 
 
+def test_lenient_counts_soft_pass_as_success():
+    recs = [
+        _record(gate="pass", hard_geo=80, soft_attempts=[(80, "success")]),
+        _record(gate="soft_pass", hard_geo=70, soft_attempts=[(70, "success")]),
+        _record(gate="fail", hard_geo=30, soft_attempts=[(30, "lowering")]),
+    ]
+    obs = extract_observations(recs, lenient=True)
+    # soft_pass now labeled True (success) -> 2 passes + 1 fail, all kept.
+    assert len(obs["hard"]) == 3
+    labels = {o["score"]: o["label"] for o in obs["hard"]}
+    assert labels[80.0] is True
+    assert labels[70.0] is True   # soft_pass counted as success
+    assert labels[30.0] is False
+
+
 def test_coverage_gap_counts_unparseable_attempts():
     # A fail record whose only attempt produced no soft (output_validation).
     recs = [
