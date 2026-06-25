@@ -458,124 +458,179 @@ v2 deepseek run: done (negative — see above). v2 gemma4 run: in progress. Reve
 - DSL_DOCS is a GEPA-able surface; a future GEPA run could mutate it. The inline notes and `DSL_CONSTRUCTION_RULES` are written terse/rule-like to survive optimization.
 - The cross-cutting "coordinate/canvas convention" (`axes:true` + `show_coords:true`) was deliberately NOT added — DSL_DOCS already has a dedicated "Coordinate geometry canvas setup" section covering it; elevating it would duplicate.
 
-## Self-reported, metadata-first confidence (structured self-report)
+## Self-reported, metadata-first confidence
 
-New experiment to extract model confidence cheaply for online use (single model
-call; multi-shot entropy is infeasible online). Prior approaches — the LLM judge
-and the deterministic `cot_analyzer` (post-hoc, reviewing an artifact the model
-already committed to) — did not produce a valuable signal. New approach: ask the
-model to emit a structured self-assessment BEFORE it commits to the construction
-(prospective prediction, not retrospective review), recorded per eval record for
-calibration/discrimination analysis against ground-truth labels.
+> **TL;DR** — We asked the model to rate its own confidence *before* it builds the
+> diagram (not after). The verdict: it is a real **ranking** signal — it
+> separates passing diagrams from failing ones better than the free CoT analyzer
+> and the expensive LLM judge on the hard tier — but it is **not a trustable
+> number**: failures still come scored 85–100, so you can't gate on an absolute
+> threshold. Use it as a relative "flag the least-confident" signal after
+> per-model recalibration, not as a probability. One pre-construction call
+> ("hard") carries the signal; the in-call structured field ("soft") is flat.
+> The three reported dimensions are redundant. The earliest pipeline failures
+> (unparseable output) are invisible to it by construction.
 
-### Implementation
+### Why we tried this
 
-- **`strategies/confidence.py`** — shared `EvaluationMetadata` schema (three
-  INDEPENDENT dimensions: `geometric_correctness`, `request_ambiguity`,
-  `end_to_end`, each 0-100 + `flags`; plus `contradictions_found` +
-  `contradiction_detail`; `extra="ignore"` so stray keys in free-text prelude
-  JSON are dropped, not fatal). Two elicitation methods sharing one schema:
-  - **soft** — `evaluation_metadata` is the FIRST field of a `RecipeGenerationOutput`
-    wrapper around `RecipeDSL` (schema field order → emitted before the
-    construction); pydantic-ai validation + auto-retry preserved.
-  - **hard** — an independent fenced `[[INTERNAL_METADATA]]…[[END_METADATA]]`
-    prelude call (`output_type=str`); metadata produced with no construction
-    tokens at all. Independent agent (no shared context) so the hard score is not
-    anchored to the soft score.
-  - `METADATA_INSTRUCTION` (soft, prepended to the generation system prompt) and
-    `PRELUDE_OUTPUT_INSTRUCTION` (hard, the fence `## Output` section) are
-    composed from shared `_METADATA_SCHEMA` / `_METADATA_DIMENSIONS` so the two
-    stay in sync.
-- **Prelude input matches the real call as closely as possible.** The prelude's
-  SYSTEM prompt is the generation system prompt (`RECIPE_GENERATION_SYSTEM` or
-  the GEPA override's `generation_system`) with its output-format line stripped
-  via `strip_generation_output_instruction` — so it carries the same rules
-  without a confusing "output RecipeDSL" instruction that would contradict the
-  fence request. The prelude's USER message is `build_prelude_prompt` =
-  assessment intro + `build_generation_body` (DSL reference + recipe examples +
-  request — the SAME body the real call uses) + `PRELUDE_OUTPUT_INSTRUCTION`
-  (fence output). The real generation call keeps the output-format line
-  unchanged (it's useful; `output_type` enforces the schema regardless). The
-  strip is runtime so it works in both the GEPA-optimized and pre-GEPA override
-  arms (both embed the line; only the prelude drops it). This was driven by a
-  drift bug found in the first run: feeding `generation_prompt` to the prelude
-  made the model emit a RecipeDSL construction instead of the fence (hard
-  metadata on only 3/23 records); after the fix, hard is captured on ~all records.
-- **`RecipeStrategy.confidence_mode`** — `none` (default for existing callers;
-  control, preserves the pre-confidence pipeline) / `structured` / `prelude` /
-  `both` (hard + soft, for direct per-record comparison). Eval default = `both`.
-- **Persistence** — `evaluation_metadata_hard/soft` on `RecipeAttemptTrace` +
-  `RecipeMetadata` (populated on success AND on lowering/ir-pipeline failure; on
-  output-validation failure the hard score from the prelude still survives in
-  `both`). Serialized into the eval record's `recipe_metadata` block + flat
-  `self_confidence_hard_score` / `self_confidence_soft_score`
-  (geometric_correctness) for easy filtering; `None` on timeout.
-- **`evals/analyze_confidence.py`** — pure-stdlib analyzer (no
-  numpy/scipy/sklearn in this env): AUC-ROC via the Mann-Whitney rank formula
-  (tie-handled) with bootstrap 95% CIs; Brier; ECE (10 bins); Cohen's d;
-  precision/recall of "flag score<T → fail"; silently-overconfident rate
-  (fail ∧ score≥80); `contradictions_found` precision-for-fail; per-dimension
-  AUC; coverage gap. All knobs are named constants (see the quick-reference
-  table in the module docstring). Truth label = strict `gate_status=="pass"`
-  (soft_pass/timeouts dropped); hard unit = record-level; soft unit = all
-  attempts. Never pooled across models; stratified by tier. Decision gate per
-  (model×tier) cell: `AUC>0.5` (CI excludes 0.5) ∧ `beats-cot` ∧ `overconf-ok`.
-- **CLI** — `evals/run.py --confidence-mode {none,structured,prelude,both}`
-  (default `both`); `evals/analyze_confidence.py --results <jsonl…> [--out …]`.
+We want a cheap model-internal confidence signal for generated diagrams, usable
+online — where sampling many candidates to measure entropy is too slow. Two
+prior signals failed to be useful:
+
+- the **LLM judge** reviews the *finished* diagram and tends to rationalize it
+  (returned a near-constant score);
+- the deterministic **`cot_analyzer`** scans the chain-of-thought *after* the
+  fact and inverts on terse-confident models (it flags clean passes and misses
+  terse-wrong fails).
+
+Both are *post-hoc* — they assess an artifact the model already committed to.
+The hypothesis here: elicit the assessment **before** the model commits to the
+construction (a *prospective* prediction), so it can't anchor on / rationalize
+its own output.
+
+### The idea: hard vs soft
+
+One shared schema (`EvaluationMetadata`: three 0–100 dimensions —
+`geometric_correctness`, `request_ambiguity`, `end_to_end` — plus a
+`contradictions_found` flag). Two ways to elicit it, differing in how strongly
+the assessment precedes the construction:
+
+- **hard** — a *separate, independent* model call that emits a fenced
+  `[[INTERNAL_METADATA]]…[[END_METADATA]]` block before any construction
+  exists. Strongest pre-commitment guarantee (no construction tokens at all).
+- **soft** — `evaluation_metadata` as the **first field** of the structured
+  generation output, emitted before the `recipe` construction within the same
+  call. Weaker guarantee (the model is already in "build mode").
+
+Both see the same prompt context (DSL reference + selected recipes + the
+request) and the same generation rules. The prelude reuses the generation system
+prompt with only its "output RecipeDSL" line stripped (so it doesn't contradict
+the fence request); the real generation call keeps that line. The prelude is an
+independent agent, so the hard score is not anchored to the soft score — they're
+directly comparable per record.
+
+### What we found
+
+Two runs (deepseek-v4-flash + gemma4, 43 hard-intersection scenarios each,
+repeats=1). Tier-2 is the only adequately-powered cell (n≈22); tier-3 is n=3–6
+(directional only). Numbers below are the lenient label (pass+soft_pass vs fail);
+the strict label (pass vs fail) agrees within ~0.02 on tier-2.
+
+**1. Hard discriminates; soft is flat — the pre-commitment ordering wins.**
+
+| cell | hard AUC [95% CI] | soft AUC | cot (free) | judge (costly) |
+|---|---|---|---|---|
+| deepseek t2 | **0.82 [0.65, 0.96]** | 0.55 | 0.62 | 0.57 |
+| gemma4 t2   | **0.69 [0.57, 0.81]** | 0.50 | 0.58 | 0.68 |
+
+Hard beats the free CoT baseline on both and beats the costly judge on deepseek.
+Soft is flat (~0.50: passes and fails both score ~93–100). The pure-prospective
+prelude is more honest than the structured field emitted mid-construction — the
+anti-anchoring hypothesis holds. **The extra prelude call earns its keep; soft
+is not worth gating on.**
+
+**2. But it is badly miscalibrated and silently overconfident — not a trustable
+probability.** Brier 0.5–0.67, ECE 0.5–0.67. Failures score 85–100; the
+silently-overconfident rate (fail ∧ score ≥ 80) is 86–100% on adequate cells.
+Absolute-threshold flagging is useless (`score<40 → fail` recall ~0.06–0.14 —
+failures sit at ~85–92, not low). The score is a **ranking signal, not a
+probability.** The decision gate (`AUC>0.5 ∧ beats-cot ∧ overconf-ok`) fails the
+last condition everywhere — real discrimination, but not safe for absolute-
+threshold trust-gating.
+
+**3. The three dimensions are redundant — no per-dimension value.**
+`geometric_correctness` and `end_to_end` are nearly identical (corr ~0.985;
+literally equal 33% of deepseek runs / 76% of gemma4). `request_ambiguity` is
+weakly distinct (corr ~0.5) but *not* consistently better (weaker on deepseek,
+marginally better on gemma4 t2). No dimension dominates; the headline hard AUC
+(uses `geometric_correctness`) is representative. **Collapse to a single
+confidence; don't expect per-subsystem diagnosis.**
+
+**4. No pipeline-stage correlation — and the worst failures are invisible.**
+Record-level failures are almost all one bucket: the diagram rendered but a
+deterministic geometric/label property was wrong (only ~1 generation failure).
+At the attempt level, confidence exists only for `success` and `ir_pipeline`
+stages — `lowering`/`output_validation` failures have **no soft score** because
+the output didn't parse. So confidence is structurally blind to the earliest
+(worst) failures. The one faint signal: deepseek scores ~4–5 points lower on
+attempts that fail at ir_pipeline; gemma4 is flat at 100. (A coverage-gap note:
+gemma4 had 14/61 attempts with no soft, all 14 failed — soft AUC is over the
+parseable subset only; hard covers those.)
+
+**5. Model-dependent; gemma4 inverts on the hard tier.** deepseek's hard
+confidence spreads on tier-3 (passes ~80, fails as low as 0/20/60). gemma4
+*inverts* on tier-3 (more confident on the scenarios it fails) — the
+terse-confident-wrong pattern. n=3–5, directional only, but it means hard can't
+be trusted as a raw signal for gemma4 on hard tiers without per-model
+recalibration.
+
+**6. `contradictions_found` is a marginal binary booster** — 0.75 precision-
+for-fail (4 records flagged, 3 failed), tiny n. Not stage-correlated, just
+weakly fail-correlated.
+
+### What to do with this
+
+- **Keep hard; don't gate on soft.** Record both (soft is free — it's a field in
+  the call we already make), but only hard is actionable.
+- **Don't use the raw 0–100 as a trust probability.** For online use, either
+  recalibrate per model (isotonic/Platt on a labeled set, so the 85–100 band maps
+  to real fail rates) or use it **relatively** (flag the bottom-N per batch), not
+  an absolute threshold.
+- **Get more, independent data.** Prefer the 201-scenario curriculum **once** over
+  43×3. 201×1 gives 201 independent (confidence, outcome) pairs and is the
+  online-relevant quantity (one draw per request); 43×3 gives 129 records but only
+  43 independent scenarios (pseudoreplication — the record-level bootstrap CIs
+  would be anti-conservative), and it averages over draws you won't have in
+  production. 201×1 also firms up tier-3 and tests generalization beyond the
+  intersection slice.
+- **If per-stage diagnosis becomes a goal**, elicit confidence *after*
+  lowering/compile (a two-pass reflection) — the pre-construction prelude can't
+  see unparseable-output failures by design.
+
+### How it's wired (reference)
+
+- **`strategies/confidence.py`** — `EvaluationMetadata` schema (3 dims +
+  contradictions, `extra="ignore"`); `RecipeGenerationOutput` wrapper (soft);
+  fence parser + `PRELUDE_OUTPUT_INSTRUCTION` (hard);
+  `strip_generation_output_instruction` (strips the generation output-format
+  line for the prelude only); `geo_correctness_score` helper.
+- **`strategies/recipe.py`** — `RecipeStrategy.confidence_mode: none|structured|
+  prelude|both`. Class default `none` (so the web app / `dry_run` keep the old
+  pipeline); eval default `both`. Hard/soft metadata persisted on
+  `RecipeAttemptTrace` and `RecipeMetadata` (on success and on lowering/ir-
+  pipeline failure; on output-validation failure the hard prelude score still
+  survives). On the failure path the nested fields fall back to the last
+  attempt's metadata (consistent with the flat fields), so complete failures
+  aren't silently dropped from the analysis.
+- **`evals/run.py`** — `--confidence-mode` flag; per-record flat
+  `self_confidence_hard_score` / `self_confidence_soft_score` and nested
+  `recipe_metadata.evaluation_metadata_{hard,soft}`.
+- **`evals/analyze_confidence.py`** — pure-stdlib analyzer (no numpy/scipy/
+  sklearn in this env): AUC-ROC via Mann-Whitney ranks + bootstrap 95% CIs,
+  Brier, ECE, Cohen's d, PR of `flag<T→fail`, silently-overconfident rate,
+  contradictions precision, coverage gap. Stratified by model×tier (never
+  pooled). Truth label: strict `pass vs fail` (default) or `--lenient`
+  (pass+soft_pass vs fail). Decision gate per cell. All knobs are named
+  constants (quick-reference table in the module docstring).
 - **Tests** — `tests/test_confidence.py` (24) + `tests/test_analyze_confidence.py`
-  (11): schema/field-order; fence parser variants; the four modes; hard/soft
-  independence; `test_prelude_uses_generation_rules_as_system_prompt` (pins the
-  strip + the real-call-keeps-the-line invariant); metadata capture on lowering
-  failure; analyzer stats (perfect/useless/tie AUC, strict-pass drops soft_pass,
-  coverage gap, contradictions, CLI).
+  (13): schema/field-order, fence-parser variants, the four modes, hard/soft
+  independence, the prelude-uses-generation-rules-and-real-call-keeps-the-line
+  invariant, metadata capture on lowering failure, the hard-on-complete-failure
+  fallback, and lenient vs strict labels.
 
-### Caveats
-- Forced self-report always fills scores even without basis → likely noise on
-  easy scenarios (confirmed — see Results).
-- Mode `both` costs one extra small prelude call per generation attempt.
-- The StructuredStrategy fallback path produces no metadata → `None` on fallback
-  records (analyze recipe-path records only).
-- Both GEPA ablation arms get the metadata instruction prepended to the
-  generation system prompt (consistent across arms; not comparable to
-  pre-confidence runs on the prompt-ablation axis).
+### Reproducing the numbers
 
-### Results (2 runs, deepseek-v4-flash + gemma4, hard-intersection scenarios, n=43 each, repeats=1)
-
-Source: `output_run_hard_intersect_tikz_{deepseek-v4-flash_1_7,gemma4_1_9}.txt`
+Source runs: `output_run_hard_intersect_tikz_{deepseek-v4-flash_1_7,gemma4_1_9}.txt`
 → `evals/results/20260625-134136.jsonl` (deepseek) and
-`evals/results/20260625-134130.jsonl` (gemma4). Analyzed with
-`python -m evals.analyze_confidence --results <jsonl> --n-boot 2000`. Tier=2 cells
-are the only adequately-powered ones (n=20–22); tier=3 is n=3–5 (wide CIs,
-treat as directional).
+`evals/results/20260625-134130.jsonl` (gemma4).
 
-- **Hard discriminates, soft is flat — the stronger ordering wins.** On tier=2:
-  deepseek hard AUC=0.84 [0.66,0.97] vs soft 0.55; gemma4 hard AUC=0.69
-  [0.57,0.81] vs soft 0.50. Soft's mean(pass)≈mean(fail)≈93–100 (no separation);
-  hard has a small but real gap (deepseek pass 99/fail 87; gemma4 pass 100/fail
-  92). The pure-prospective prelude is more honest than the structured field
-  emitted right before the construction — confirming the anti-anchoring
-  hypothesis. **The prelude call earns its keep; soft is not worth gating on.**
-- **Hard beats the free cot baseline** on the meaningful cells (deepseek t2
-  0.84 vs 0.62; gemma4 t2 0.69 vs 0.58) and beats/ties the expensive LLM judge
-  on deepseek t2 (0.84 vs 0.57) — clears the "valuable vs free" bar on
-  discrimination.
-- **But it's badly miscalibrated and silently overconfident — not safe as a raw
-  trust signal.** Brier 0.5–0.67, ECE 0.5–0.67. Silently-overconfident 86–100%
-  on adequate cells (deepseek t2: 12/13 failures scored ≥80). Thresholding is
-  useless: flag score<40 → fail recall ~0.06–0.14 (failures sit at ~85–92, not
-  low). The decision gate is NOT met anywhere — discrimination yes,
-  calibration/safety no.
-- **gemma4 tier=3 hard AUC=0.00** (2 failures scored 92, 1 pass scored 70) — the
-  terse-confident-wrong inversion the cot-analyzer memory warns about; n=3,
-  directional only.
-- **`contradictions_found` precision-for-fail=0.75** for both models (4 flagged,
-  3 failed) — a near-free binary booster; tiny n.
-- **Coverage gap confirms soft's selection bias:** gemma4 had 14/61 attempts
-  with no soft, all 14 failed (unparseable outputs) — soft AUC is over the
-  parseable subset only; hard covers those failures. Another point for hard.
+```
+python -m evals.analyze_confidence --results <jsonl> --n-boot 2000          # strict
+python -m evals.analyze_confidence --results <jsonl> --n-boot 2000 --lenient # pass+soft_pass vs fail
+```
 
-**Conclusion:** keep hard (the prelude), don't gate on soft. But the raw 0–100
-score is a ranking signal, not a probability — for online use it needs
-recalibration (isotonic/Platt on a labeled set) so the 85–100 band maps to real
-fail rates, or use it relatively (flag the bottom-N per batch), not an absolute
-threshold. Need repeats≥3 to firm up tier=2 and make tier=3 interpretable.
+Caveats on these two runs: repeats=1 (wide CIs, especially tier-3 n=3–6 — treat
+tier-3 as directional); the hard-intersection slice is narrow (intersection
+problems only, not the full curriculum); both runs used the GEPA-optimized
+on-disk prompts. Strict and lenient agree on the tier-2 headline (0.82 / 0.69),
+so the conclusion is robust to the label choice.
