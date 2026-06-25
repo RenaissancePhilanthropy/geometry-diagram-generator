@@ -1,8 +1,8 @@
 # feat/recipe-improvements — Change Inventory
 
-_Last updated: 2026-06-22_
+_Last updated: 2026-06-25_
 
-**Baseline:** last commit `db17ae5` on `master`. Everything below is the content of the `feat/recipe-improvements` branch (commit `19c5230`, pushed to `origin`) vs that baseline. Analysis of whether the changes actually helped (GEPA payoff, CoT-analysis usefulness, etc.) is deferred — this file is just an inventory of what changed and why.
+**Baseline:** last commit `db17ae5` on `master`. Everything below is the content of the `feat/recipe-improvements` branch (tip `dc61c41`, pushed to `origin`) vs that baseline. The top of this file is a **change inventory** (what changed and why, by theme); the **Results data** sections below record the experiments and whether they actually helped (GEPA payoff, CoT-analysis, self-reported confidence, DSL_DOCS lift, etc.) — each leads with a TL;DR.
 
 ---
 
@@ -13,6 +13,7 @@ _Last updated: 2026-06-22_
 - **Fallback path** — when the recipe strategy runs out of retries, try the structured strategy so a diagram is still produced.
 - **GEPA prompt work** — optimized prompts, plus a way to run the optimized vs the prior prompts with everything else unchanged.
 - **Confidence signal from CoT** — read the model's reasoning to flag low-confidence outputs and compare against the pass/fail gate.
+- **Self-reported confidence (metadata-first)** — ask the model to rate its confidence *before* it constructs the diagram (prospective, not retrospective). A cheap ranking signal that beats the CoT analyzer and the LLM judge on the hard tier, but miscalibrated — a ranking, not a trustable probability.
 - **Fix false-positives in checkers** — labels and marks were flagged as missing on correct diagrams.
 - **Eval harness upgrades** — timeouts, thinking, CoT analysis, prompt switching, and scoring on failures (not just successes).
 - **Re-score without regenerating** — recompute saved runs from their stored TikZ/CoT so old results match the current checkers.
@@ -39,6 +40,7 @@ _Last updated: 2026-06-22_
 - **LLM CoT judge kept** — the original LLM-based CoT judge is still available as an alternative. — `util/llm_judge.py`
 - **Eval-harness integration** — `--cot-analysis` runs the confidence judge on both success and failure paths, captures top-level CoT, and derives a calibration label (agree/over/under-confident) vs the deterministic gate. *Why: score confidence even on failures and catch overconfidence.* — `evals/run.py`
 - **CoT backfill** — recover CoT that was captured in attempt traces but never reached the top-level field (the all-fail-then-fallback path), and re-run analysis without regenerating. *Why: repair pre-fix runs.* — `evals/rescore_cot.py` (new), `strategies/recipe.py` (fallback now sets CoT)
+- **Self-reported, metadata-first confidence** — ask the model to emit a structured self-assessment *before* it commits to the construction (prospective, not retrospective). Two elicitation methods share one schema: **hard** (a separate fenced `[[INTERNAL_METADATA]]` prelude call) and **soft** (the first field of the structured generation output); a `confidence_mode` toggle selects none/structured/prelude/both. *Why: post-hoc signals (the CoT analyzer, the LLM judge) rationalize the artifact the model already produced; a prospective self-report avoids that anchoring. Findings: hard discriminates on the hard tier and beats the CoT analyzer + LLM judge; soft is flat; all are miscalibrated (silently overconfident) — a ranking signal, not a probability.* See the **Self-reported, metadata-first confidence** section below. — `strategies/confidence.py` (new), `strategies/recipe.py`, `evals/run.py` (`--confidence-mode`), `evals/analyze_confidence.py` (new)
 
 ## Checker fixes (false-positive elimination)
 
@@ -57,6 +59,7 @@ _Last updated: 2026-06-22_
 - **Per-scenario timeout** — each scenario is capped (default 300s, intentional guardrail against slow cloud backends); on timeout a zeroed record with an error is written. *Why: one stuck scenario can't stall the batch.* — `evals/run.py`
 - **Thinking + CoT-analysis flags** — `--thinking` and `--cot-analysis` passed through to strategies and the judge; failure-path CoT capture so scored failures still get a confidence score. — `evals/run.py`
 - **Enriched records** — `attempts`, `used_fallback`, top-level `cot`, CoT-analysis score/signals/reasoning, and `confidence_calibration` added to result records. — `evals/run.py`
+- **Confidence mode** — `--confidence-mode {none,structured,prelude,both}` (default `both`) selects the self-reported-confidence elicitation; records carry flat `self_confidence_hard_score` / `self_confidence_soft_score` and nested `recipe_metadata.evaluation_metadata_{hard,soft}`. — `evals/run.py`
 - **Curriculum scenario tweaks** — small edits to the curriculum scenarios. — `evals/scenarios_geometry_curriculum.yaml`
 - **New scenario files** — hard-intersection / hard3 / hard-failures / hard-stress / smoke variants and GEPA train/val/challenge sets, for running failing and stress subsets. — `evals/scenarios_*.yaml` (new)
 
@@ -69,7 +72,7 @@ _Last updated: 2026-06-22_
 
 ## Tests (new + expanded)
 
-- New: `tests/test_cot_analyzer.py`, `tests/test_cot_analysis_failure.py`, `tests/test_dsl_validation.py`, `tests/test_gepa_adapter.py`, `tests/test_sympy_checks.py`, `tests/test_ollama_compat.py`
+- New: `tests/test_cot_analyzer.py`, `tests/test_cot_analysis_failure.py`, `tests/test_dsl_validation.py`, `tests/test_gepa_adapter.py`, `tests/test_sympy_checks.py`, `tests/test_ollama_compat.py`, `tests/test_confidence.py`, `tests/test_analyze_confidence.py`
 - Expanded: `tests/test_recipe_retry.py` (fallback + new hints), `tests/test_tikz_analysis.py` (label/mark multiplicity), `tests/test_recipe_dsl.py` (annotations coercion), `tests/test_checks.py` (error provenance), `tests/test_eval_runner.py` (label re-scoring), `tests/test_to_tikz.py`, `tests/test_llm_judge.py`
 
 ## Dependencies & build
