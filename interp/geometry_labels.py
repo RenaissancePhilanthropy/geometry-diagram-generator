@@ -118,18 +118,21 @@ def ground_truth(construction_obj: dict | None) -> dict:
 
     try:
         diagram_ir = lower_to_ir(dsl)
-    except (LoweringError, pydantic.ValidationError):
+    except Exception:  # noqa: BLE001 — LoweringError/ValidationError/anything malformed
         result["stage"] = "lower"
         return result
 
     # relations are available from the lowered IR even if compile/checks fail
-    result["entity_relations"] = _entity_relations(diagram_ir)
-    result["relation_facts"] = _relation_facts(diagram_ir)
+    try:
+        result["entity_relations"] = _entity_relations(diagram_ir)
+        result["relation_facts"] = _relation_facts(diagram_ir)
+    except Exception:  # noqa: BLE001
+        pass
     result["stage"] = "lower"
 
     try:
         sym = compile_defs(diagram_ir)
-    except IRCompileError:
+    except Exception:  # noqa: BLE001 — IRCompileError or SymPy errors on degenerate objs
         result["stage"] = "compile"
         return result
 

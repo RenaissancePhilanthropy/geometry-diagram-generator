@@ -142,15 +142,22 @@ def grade_completion(text: str) -> GradeResult:
         diagram_ir = lower_to_ir(dsl)
     except (LoweringError, pydantic.ValidationError) as e:
         return GradeResult(ok=False, stage="lower", error=_short(e), n_ops=n_ops)
+    except Exception as e:  # noqa: BLE001 — malformed model output can throw anything
+        return GradeResult(ok=False, stage="lower", error=_short(e), n_ops=n_ops)
 
     try:
         sym = compile_defs(diagram_ir)
     except IRCompileError as e:
         return GradeResult(ok=False, stage="compile", error=_short(e), n_ops=n_ops)
+    except Exception as e:  # noqa: BLE001 — e.g. SymPy AttributeError on degenerate objs
+        return GradeResult(ok=False, stage="compile", error=_short(e), n_ops=n_ops)
 
-    results = run_checks(diagram_ir.checks, sym)
-    must_failures = [r for r in results if not r.passed and r.check.level == "must"]
-    angle_errors = check_render_angles(diagram_ir, sym)
+    try:
+        results = run_checks(diagram_ir.checks, sym)
+        must_failures = [r for r in results if not r.passed and r.check.level == "must"]
+        angle_errors = check_render_angles(diagram_ir, sym)
+    except Exception as e:  # noqa: BLE001 — never let a check crash the run
+        return GradeResult(ok=False, stage="check", error=_short(e), n_ops=n_ops)
 
     if must_failures or angle_errors:
         msgs = [r.message for r in must_failures] + list(angle_errors)

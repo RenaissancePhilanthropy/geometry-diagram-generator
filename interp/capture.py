@@ -179,83 +179,88 @@ def run_capture(args) -> None:
 
             for s in range(args.samples):
                 rid = pid if args.samples == 1 else f"{pid}_s{s}"
-                with torch.no_grad():
-                    if args.samples == 1:
-                        gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
-                                             do_sample=False)
-                    else:                       # diverse samples -> more probe data
-                        torch.manual_seed(1000 + s)
-                        gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
-                                             do_sample=True, temperature=args.temperature,
-                                             top_p=0.95)
-                completion_ids = gen[0].tolist()[len(prompt_ids):]
-                completion = tok.decode(completion_ids, skip_special_tokens=True)
-                del gen
-                _empty_cache()
+                try:                            # one bad sample must not kill the run
+                    with torch.no_grad():
+                        if args.samples == 1:
+                            gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
+                                                 do_sample=False)
+                        else:                   # diverse samples -> more probe data
+                            torch.manual_seed(1000 + s)
+                            gen = model.generate(**inputs, max_new_tokens=args.max_new_tokens,
+                                                 do_sample=True, temperature=args.temperature,
+                                                 top_p=0.95)
+                    completion_ids = gen[0].tolist()[len(prompt_ids):]
+                    completion = tok.decode(completion_ids, skip_special_tokens=True)
+                    del gen
+                    _empty_cache()
 
-                grade = grade_completion(completion)
-                if args.only_valid and not grade.ok:
-                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (grade {grade.stage})")
-                    continue
-                obj = extract_recipe_json(completion)
-                gt = ground_truth(obj)
-                if args.require_ground_truth and not _usable(gt):
-                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (no ground truth)")
-                    continue
-
-                cap = capture_activations(model, tok, prompt_ids, completion_ids,
-                                          layers, args.device)
-                if cap is None:
-                    print(f"[{i:>3}/{len(prompts)}] skip {rid} (empty completion)")
-                    continue
-
-                # Keep only the token positions a probe will read (the entity-name
-                # tokens) — ~25x smaller on disk, so we can afford many --samples.
-                save_kwargs = {}
-                acts_to_save = cap["acts"]
-                if args.keep_positions == "entities":
-                    from interp.geometry_labels import entity_ids, id_positions
-                    keep = set()
-                    for eid in entity_ids(gt):
-                        keep.update(id_positions(cap["completion"], cap["offsets"], eid))
-                    keep = sorted(p for p in keep if 0 <= p < acts_to_save.shape[1])
-                    if not keep:
-                        print(f"[{i:>3}/{len(prompts)}] skip {rid} (no entity positions)")
+                    grade = grade_completion(completion)
+                    if args.only_valid and not grade.ok:
+                        print(f"[{i:>3}/{len(prompts)}] skip {rid} (grade {grade.stage})")
                         continue
-                    acts_to_save = acts_to_save[:, keep, :]
-                    save_kwargs["positions"] = np.array(keep)
+                    obj = extract_recipe_json(completion)
+                    gt = ground_truth(obj)
+                    if args.require_ground_truth and not _usable(gt):
+                        print(f"[{i:>3}/{len(prompts)}] skip {rid} (no ground truth)")
+                        continue
 
-                np.savez_compressed(
-                    out_dir / f"{rid}.npz",
-                    acts=acts_to_save,
-                    layer_ids=np.array(cap["layer_ids"]),
-                    offsets=np.array(cap["offsets"]),
-                    is_special=np.array(cap["is_special"]),
-                    **save_kwargs,
-                )
-                meta_f.write(json.dumps({
-                    "pid": rid,
-                    "prompt": prompt,
-                    "completion": completion,
-                    "tokens": cap["tokens"],
-                    "is_special": cap["is_special"],
-                    "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
-                    "construction": obj.get("construction") if isinstance(obj, dict) else None,
-                    # ground-truth geometry for non-trivial probing (geometry_labels)
-                    "ground_truth": {
-                        "stage": gt["stage"],
-                        "entity_relations": gt["entity_relations"],
-                        "point_coords": gt["point_coords"],
-                        "vertex_angles": gt.get("vertex_angles", {}),
-                        "relation_facts": gt["relation_facts"],
-                    },
-                    "acts_shape": list(cap["acts"].shape),
-                    "layer_ids": cap["layer_ids"],
-                }) + "\n")
-                meta_f.flush()
-                n_saved += 1
-                print(f"[{i:>3}/{len(prompts)}] saved {rid}  acts={acts_to_save.shape}  "
-                      f"grade={'OK' if grade.ok else grade.stage}")
+                    cap = capture_activations(model, tok, prompt_ids, completion_ids,
+                                              layers, args.device)
+                    if cap is None:
+                        print(f"[{i:>3}/{len(prompts)}] skip {rid} (empty completion)")
+                        continue
+
+                    # Keep only the token positions a probe will read (entity-name
+                    # tokens) — ~25x smaller on disk, so we can afford many --samples.
+                    save_kwargs = {}
+                    acts_to_save = cap["acts"]
+                    if args.keep_positions == "entities":
+                        from interp.geometry_labels import entity_ids, id_positions
+                        keep = set()
+                        for eid in entity_ids(gt):
+                            keep.update(id_positions(cap["completion"], cap["offsets"], eid))
+                        keep = sorted(p for p in keep if 0 <= p < acts_to_save.shape[1])
+                        if not keep:
+                            print(f"[{i:>3}/{len(prompts)}] skip {rid} (no entity positions)")
+                            continue
+                        acts_to_save = acts_to_save[:, keep, :]
+                        save_kwargs["positions"] = np.array(keep)
+
+                    np.savez_compressed(
+                        out_dir / f"{rid}.npz",
+                        acts=acts_to_save,
+                        layer_ids=np.array(cap["layer_ids"]),
+                        offsets=np.array(cap["offsets"]),
+                        is_special=np.array(cap["is_special"]),
+                        **save_kwargs,
+                    )
+                    meta_f.write(json.dumps({
+                        "pid": rid,
+                        "prompt": prompt,
+                        "completion": completion,
+                        "tokens": cap["tokens"],
+                        "is_special": cap["is_special"],
+                        "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
+                        "construction": obj.get("construction") if isinstance(obj, dict) else None,
+                        # ground-truth geometry for non-trivial probing (geometry_labels)
+                        "ground_truth": {
+                            "stage": gt["stage"],
+                            "entity_relations": gt["entity_relations"],
+                            "point_coords": gt["point_coords"],
+                            "vertex_angles": gt.get("vertex_angles", {}),
+                            "relation_facts": gt["relation_facts"],
+                        },
+                        "acts_shape": list(cap["acts"].shape),
+                        "layer_ids": cap["layer_ids"],
+                    }) + "\n")
+                    meta_f.flush()
+                    n_saved += 1
+                    print(f"[{i:>3}/{len(prompts)}] saved {rid}  acts={acts_to_save.shape}  "
+                          f"grade={'OK' if grade.ok else grade.stage}")
+                except Exception as e:  # noqa: BLE001 — log & skip, never abort the run
+                    print(f"[{i:>3}/{len(prompts)}] ERROR {rid}: {type(e).__name__}: {e}")
+                    _empty_cache()
+                    continue
 
             del inputs
             _empty_cache()
