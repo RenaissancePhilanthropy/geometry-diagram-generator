@@ -209,12 +209,29 @@ def run_capture(args) -> None:
                     print(f"[{i:>3}/{len(prompts)}] skip {rid} (empty completion)")
                     continue
 
+                # Keep only the token positions a probe will read (the entity-name
+                # tokens) — ~25x smaller on disk, so we can afford many --samples.
+                save_kwargs = {}
+                acts_to_save = cap["acts"]
+                if args.keep_positions == "entities":
+                    from interp.geometry_labels import entity_ids, id_positions
+                    keep = set()
+                    for eid in entity_ids(gt):
+                        keep.update(id_positions(cap["completion"], cap["offsets"], eid))
+                    keep = sorted(p for p in keep if 0 <= p < acts_to_save.shape[1])
+                    if not keep:
+                        print(f"[{i:>3}/{len(prompts)}] skip {rid} (no entity positions)")
+                        continue
+                    acts_to_save = acts_to_save[:, keep, :]
+                    save_kwargs["positions"] = np.array(keep)
+
                 np.savez_compressed(
                     out_dir / f"{rid}.npz",
-                    acts=cap["acts"],
+                    acts=acts_to_save,
                     layer_ids=np.array(cap["layer_ids"]),
                     offsets=np.array(cap["offsets"]),
                     is_special=np.array(cap["is_special"]),
+                    **save_kwargs,
                 )
                 meta_f.write(json.dumps({
                     "pid": rid,
@@ -237,7 +254,7 @@ def run_capture(args) -> None:
                 }) + "\n")
                 meta_f.flush()
                 n_saved += 1
-                print(f"[{i:>3}/{len(prompts)}] saved {rid}  acts={cap['acts'].shape}  "
+                print(f"[{i:>3}/{len(prompts)}] saved {rid}  acts={acts_to_save.shape}  "
                       f"grade={'OK' if grade.ok else grade.stage}")
 
             del inputs
@@ -262,6 +279,9 @@ def main() -> None:
     ap.add_argument("--require-ground-truth", action="store_true",
                     help="skip records with no usable ground truth (lean disk; "
                          "keeps only constructions that lowered to defs/coords/angles)")
+    ap.add_argument("--keep-positions", choices=("all", "entities"), default="all",
+                    help="'entities' stores only entity-name token positions "
+                         "(~25x less disk -> afford many --samples); 'all' keeps every token")
     ap.add_argument("--samples", type=int, default=1,
                     help="completions per prompt (>1 samples at temperature for more "
                          "probe data; each saved as <pid>_s<k>)")

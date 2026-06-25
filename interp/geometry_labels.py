@@ -59,6 +59,38 @@ CHECK_RELATION = {
 }
 
 
+def id_positions(completion: str, offsets, entity_id: str) -> list[int]:
+    """Token positions where ``entity_id`` is written as a quoted JSON value.
+
+    Maps every occurrence of "<id>" in the completion back to the covering
+    token(s) via the saved char offsets. Quoting avoids matching the id as a
+    substring of another name ("A" inside "AB"). Shared by capture (to decide
+    which positions to keep) and probe (to place labels) so they stay aligned.
+    """
+    if offsets is None or not completion:
+        return []
+    needle = f'"{entity_id}"'
+    spans, start = [], 0
+    while True:
+        j = completion.find(needle, start)
+        if j == -1:
+            break
+        spans.append((j + 1, j + 1 + len(entity_id)))   # id chars, inside quotes
+        start = j + 1
+    return [pos for pos, (s, e) in enumerate(offsets)
+            if any(s < ce and e > cs for (cs, ce) in spans)]
+
+
+def entity_ids(gt: dict) -> set[str]:
+    """All ids referenced by any ground-truth target (points, relations, angles)
+    — the union of token positions a probe could ever use."""
+    ids: set[str] = set()
+    ids |= set((gt.get("entity_relations") or {}).keys())
+    ids |= set((gt.get("point_coords") or {}).keys())
+    ids |= set((gt.get("vertex_angles") or {}).keys())
+    return ids
+
+
 def ground_truth(construction_obj: dict | None) -> dict:
     """Extract spatial ground truth from a parsed RecipeDSL object.
 

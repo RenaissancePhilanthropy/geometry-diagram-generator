@@ -39,26 +39,30 @@ trivial-vs-non-trivial target rule).
 
 ## On a GPU box (after `setup_vast.sh`) — high-powered run
 
-Rent **≥60 GB disk** (a 32 GB box only fits ~8 layers) and a **PyTorch image**.
+PyTorch image; disk is a non-issue with `--keep-positions entities` (~3 GB even
+at 29 layers × 30 samples, since only entity-name tokens are stored).
 
 ```bash
 # Phase 0' — capability gate (DSL_GOTCHAS addendum on by default)
 python interp/capability_check.py --device cuda --tier 1 --n 20 --few-shot all
 
-# Phase 1 — capture: all 29 layers, multi-sample for data, lean disk
+# Phase 1 — BIG capture: all 29 layers, 30 samples/prompt, entity tokens only.
+# ~91 prompts x 30 ≈ 2700 generations ≈ ~2 h; thousands of labeled positions.
 python interp/capture.py --device cuda --n 100 --few-shot all \
-    --samples 4 --require-ground-truth --layers all \
-    --out-dir interp/activations/run
+    --samples 30 --require-ground-truth --keep-positions entities --layers all \
+    --out-dir interp/activations/big
 
-# Phase 2 — non-trivial probes (PCA-100 by default; CPU-only, no GPU)
-python interp/probe.py --act-dir interp/activations/run --labeler point_coord
-python interp/probe.py --act-dir interp/activations/run --labeler angle
-python interp/probe.py --act-dir interp/activations/run --labeler entity_relation  # +token baseline
+# Phase 2 — non-trivial probes (PCA-100 default; CPU-only, no GPU)
+python interp/probe.py --act-dir interp/activations/big --labeler point_coord
+python interp/probe.py --act-dir interp/activations/big --labeler angle
+python interp/probe.py --act-dir interp/activations/big --labeler entity_relation  # +token baseline
 ```
 
-`--samples 4` ≈ 4× the labeled positions (the first coord probe was under-powered
-at ~240). `--require-ground-truth` skips junk so 29 layers fit disk. `scp
-interp/activations/run` to your Mac to keep probing offline (free).
+Why this is justified: only 91 prompts exist, so `--samples 30` (diverse temperature
+samples) is how we reach the thousands of labeled positions a 100-dim PCA probe
+needs (the first run had ~240 → under-powered). `--keep-positions entities` stores
+only the ~10–20 tokens per construction the probes actually read, so the dataset
+stays ~3 GB and scp's to your Mac for unlimited offline probing.
 
 ## Local dev (no GPU)
 

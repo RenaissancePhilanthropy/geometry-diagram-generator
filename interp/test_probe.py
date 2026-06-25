@@ -163,6 +163,41 @@ def _make_coord_synthetic(act_dir: pathlib.Path, n=40, D=16, seed=2):
                                  "ground_truth": {"point_coords": raw}}) + "\n")
 
 
+def test_kept_positions_mapping():
+    """Capture-side position subsetting: npz stores only entity positions + a
+    `positions` array; the probe must map original positions -> stored slots."""
+    import numpy as np
+    from interp.probe import run_probe
+
+    d = SCRATCH.parent / "probe_kept_synth"
+    d.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(3)
+    completion = '[{"id":"M"},{"id":"L"}]'
+    offsets = [[i, i + 1] for i in range(len(completion))]
+    pos_M = completion.index('"M"') + 1
+    pos_L = completion.index('"L"') + 1
+    D, L = 16, 3
+    dirs = {"midpoint": rng.normal(size=D) * 3, "perpendicular": rng.normal(size=D) * 3}
+    with (d / "meta.jsonl").open("w") as mf:
+        for p in range(40):
+            # store ONLY the two entity slots (mimicking --keep-positions entities)
+            acts = rng.normal(size=(L, 2, D)).astype(np.float16)
+            acts[2, 0] = dirs["midpoint"] + rng.normal(size=D) * 0.5      # slot 0 = M
+            acts[2, 1] = dirs["perpendicular"] + rng.normal(size=D) * 0.5  # slot 1 = L
+            pid = f"kp_{p}"
+            np.savez_compressed(d / f"{pid}.npz", acts=acts, layer_ids=np.array([0, 1, 2]),
+                                offsets=np.array(offsets),
+                                positions=np.array([pos_M, pos_L]))   # orig indices
+            mf.write(json.dumps({"pid": pid, "tokens": list(completion),
+                                 "completion": completion,
+                                 "ground_truth": {"entity_relations":
+                                                  {"M": "midpoint", "L": "perpendicular"}}}) + "\n")
+    out = run_probe(d, "entity_relation", test_frac=0.3, seed=0)
+    curve = {c["layer"]: c["score"] for c in out["curve"]}
+    assert curve.get(2, 0) > 0.85, curve   # signal recovered THROUGH the position map
+    print(f"ok  kept-positions mapping works: {curve}")
+
+
 def test_point_coord_regression():
     from interp.probe import run_probe
     d = SCRATCH.parent / "probe_coord_synth"
@@ -179,5 +214,6 @@ if __name__ == "__main__":
     test_probe_recovers_planted_signal()
     test_id_token_positions()
     test_entity_relation_probe()
+    test_kept_positions_mapping()
     test_point_coord_regression()
     print("\nPROBE SMOKE TEST PASSED")

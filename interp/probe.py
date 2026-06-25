@@ -68,29 +68,9 @@ def label_relation(rec: dict) -> dict[int, str]:
 
 
 def _id_token_positions(rec: dict, entity_id: str) -> list[int]:
-    """Token positions where ``entity_id`` is written as a quoted JSON value.
-
-    Uses the saved char offsets to map every occurrence of "<id>" in the
-    completion back to the covering token(s). Quoting avoids matching the id as a
-    substring of another name (e.g. "A" inside "AB").
-    """
-    completion = rec.get("completion", "") or ""
-    offsets = rec.get("offsets")
-    if offsets is None or not completion:
-        return []
-    needle = f'"{entity_id}"'
-    spans, start = [], 0
-    while True:
-        j = completion.find(needle, start)
-        if j == -1:
-            break
-        spans.append((j + 1, j + 1 + len(entity_id)))  # the id chars, inside quotes
-        start = j + 1
-    out = []
-    for pos, (s, e) in enumerate(offsets):
-        if any(s < ce and e > cs for (cs, ce) in spans):   # token span ∩ id span
-            out.append(pos)
-    return out
+    """Completion-token positions where ``entity_id`` is written (shared logic)."""
+    from interp.geometry_labels import id_positions
+    return id_positions(rec.get("completion", "") or "", rec.get("offsets"), entity_id)
 
 
 def label_entity_relation(rec: dict) -> dict[int, str]:
@@ -176,13 +156,19 @@ def load_dataset(act_dir: pathlib.Path) -> list[dict]:
         if pid not in meta:
             continue
         d = np.load(npz_path)
+        # If capture kept only a subset of token positions, `positions` holds the
+        # ORIGINAL completion-token index of each stored slot -> map orig->slot.
+        pos_map = None
+        if "positions" in d:
+            pos_map = {int(orig): i for i, orig in enumerate(d["positions"].tolist())}
         records.append({
             "pid": pid,
-            "acts": d["acts"],                 # [L, P, D] float16
+            "acts": d["acts"],                 # [L, n_stored, D] float16
             "layer_ids": list(d["layer_ids"]),
             "tokens": meta[pid]["tokens"],
             "offsets": d["offsets"].tolist() if "offsets" in d else None,
             "completion": meta[pid].get("completion", ""),
+            "pos_map": pos_map,                # None = all positions stored
             "meta": meta[pid],                 # carries ground_truth, grade, etc.
         })
     return records
@@ -200,16 +186,27 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
     X, y, groups, toks = [], [], [], []
     for gi, rec in enumerate(records):
         labels = labeler(rec)
-        acts = rec["acts"]               # [L, P, D]
-        P = acts.shape[1]
-        special = rec["meta"].get("is_special", [0] * P)
+        acts = rec["acts"]               # [L, n_stored, D]
+        pos_map = rec.get("pos_map")     # orig completion idx -> stored slot, or None
+        special = rec["meta"].get("is_special") or []
         tokens = rec["tokens"]
-        for pos, lab in labels.items():
-            if 0 <= pos < P and not special[pos]:
-                X.append(acts[layer_pos, pos, :].astype("float32"))
-                y.append(lab)
-                groups.append(gi)
-                toks.append(tokens[pos] if pos < len(tokens) else "")
+        for pos, lab in labels.items():   # pos = ORIGINAL completion-token index
+            if pos < 0:
+                continue
+            if special and pos < len(special) and special[pos]:
+                continue
+            if pos_map is None:
+                if pos >= acts.shape[1]:
+                    continue
+                ai = pos
+            else:
+                ai = pos_map.get(pos)
+                if ai is None:            # this position wasn't stored
+                    continue
+            X.append(acts[layer_pos, ai, :].astype("float32"))
+            y.append(lab)
+            groups.append(gi)
+            toks.append(tokens[pos] if pos < len(tokens) else "")
     if not X:
         return np.empty((0, 0)), np.array([]), np.array([]), np.array([])
     return np.stack(X), np.array(y), np.array(groups), np.array(toks)
