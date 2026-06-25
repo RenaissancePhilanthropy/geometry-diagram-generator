@@ -69,6 +69,7 @@ _Last updated: 2026-06-25_
 - **Renderer start script** — start the bare-metal TikZ renderer. — `start_tikz_renderer.sh`
 - **Profiling** — per-phase timing of one scenario (selection → generation → lowering → IR → judge). — `profile_single_scenario.py`
 - **Failing-scenario extraction** — build a new scenarios YAML from the gate-failures of one or more runs (intersection/union). *Why: re-run evals over just what's failing.* — `evals/extract_failing_scenarios.py`
+- **Confidence analysis** — wrapper for `evals/analyze_confidence.py`: pick results JSONL(s) (defaults to newest `evals/results/*.jsonl`), strict/lenient truth label, bootstrap CIs, optional JSON report; `--help` documents all params inline. *Why: one-command confidence-vs-gate analysis with the help/params in the script itself.* — `analyze_confidence.sh`
 
 ## Tests (new + expanded)
 
