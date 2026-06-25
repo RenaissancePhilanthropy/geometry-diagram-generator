@@ -111,7 +111,36 @@ def label_entity_relation(rec: dict) -> dict[int, str]:
     return out
 
 
-LABELERS = {"relation": label_relation, "entity_relation": label_entity_relation}
+def label_point_coord(rec: dict) -> dict[int, list]:
+    """NON-TRIVIAL (regression) — at each token writing a point's name, the target
+    is that point's position, normalized to [0,1] within the figure's bounding box.
+
+    A point's coordinates are NOT in its name token, and normalizing per-figure
+    removes the trivial "canvas scale" cue, so this asks: does the residual stream
+    encode WHERE the point sits in the construction? Sourced from compiled SymPy.
+    """
+    gt = (rec.get("meta") or {}).get("ground_truth") or {}
+    coords = gt.get("point_coords") or {}
+    if len(coords) < 2:
+        return {}
+    xs = [c[0] for c in coords.values()]
+    ys = [c[1] for c in coords.values()]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    wx, wy = (x1 - x0) or 1.0, (y1 - y0) or 1.0
+    out: dict[int, list] = {}
+    for pid, (x, y) in coords.items():
+        norm = [(x - x0) / wx, (y - y0) / wy]
+        for pos in _id_token_positions(rec, pid):
+            out[pos] = norm
+    return out
+
+
+# name -> (labeler, task). task "clf" = classification, "reg" = regression.
+LABELERS = {
+    "relation": (label_relation, "clf"),
+    "entity_relation": (label_entity_relation, "clf"),
+    "point_coord": (label_point_coord, "reg"),
+}
 
 
 # ----- dataset loading -----
@@ -153,25 +182,45 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
     """
     import numpy as np
 
-    X, y, groups = [], [], []
+    X, y, groups, toks = [], [], [], []
     for gi, rec in enumerate(records):
         labels = labeler(rec)
         acts = rec["acts"]               # [L, P, D]
         P = acts.shape[1]
         special = rec["meta"].get("is_special", [0] * P)
+        tokens = rec["tokens"]
         for pos, lab in labels.items():
             if 0 <= pos < P and not special[pos]:
                 X.append(acts[layer_pos, pos, :].astype("float32"))
                 y.append(lab)
                 groups.append(gi)
+                toks.append(tokens[pos] if pos < len(tokens) else "")
     if not X:
-        return np.empty((0, 0)), np.array([]), np.array([])
-    return np.stack(X), np.array(y), np.array(groups)
+        return np.empty((0, 0)), np.array([]), np.array([]), np.array([])
+    return np.stack(X), np.array(y), np.array(groups), np.array(toks)
+
+
+def _token_identity_baseline(toks, y, groups, tr, te) -> float:
+    """CONTROL — predict the (clf) label from the TOKEN STRING alone (no
+    activations): majority label per token on train, applied to test. If the
+    residual-stream probe barely beats this, the 'decodability' is just naming
+    convention, not a computed representation.
+    """
+    from collections import Counter, defaultdict
+    by_tok = defaultdict(Counter)
+    for i in tr:
+        by_tok[toks[i]][y[i]] += 1
+    global_major = Counter(y[i] for i in tr).most_common(1)[0][0]
+    correct = 0
+    for i in te:
+        pred = by_tok[toks[i]].most_common(1)[0][0] if by_tok.get(toks[i]) else global_major
+        correct += (pred == y[i])
+    return correct / len(te) if len(te) else 0.0
 
 
 def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: int):
     import numpy as np
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.linear_model import LogisticRegression, Ridge
     from sklearn.model_selection import GroupShuffleSplit
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
@@ -179,45 +228,66 @@ def run_probe(act_dir: pathlib.Path, labeler_name: str, test_frac: float, seed: 
     records = load_dataset(act_dir)
     if not records:
         raise SystemExit(f"no .npz records found in {act_dir}")
-    labeler = LABELERS[labeler_name]
+    labeler, task = LABELERS[labeler_name]
     n_layers = records[0]["acts"].shape[0]
     layer_ids = records[0]["layer_ids"]
-    print(f"{len(records)} prompts, {n_layers} layers; labeler={labeler_name}")
+    print(f"{len(records)} prompts, {n_layers} layers; labeler={labeler_name} ({task})")
 
     # one PROMPT-LEVEL split, reused across layers so the curve is comparable
     splitter = GroupShuffleSplit(n_splits=1, test_size=test_frac, random_state=seed)
+    tok_base = None
 
     curve = []
     for li in range(n_layers):
-        X, y, groups = build_xy(records, li, labeler)
-        classes, counts = np.unique(y, return_counts=True)
+        X, y, groups, toks = build_xy(records, li, labeler)
         n_train_groups = len(set(groups)) if len(groups) else 0
-        if len(y) < 10 or len(classes) < 2 or n_train_groups < 2:
-            print(f"layer {layer_ids[li]:>3}: too few labeled samples "
-                  f"({len(y)} pts, {len(classes)} classes, {n_train_groups} prompts) — skipping")
+        if len(y) < 10 or n_train_groups < 2:
+            print(f"layer {layer_ids[li]:>3}: too few samples ({len(y)} pts, "
+                  f"{n_train_groups} prompts) — skipping")
+            continue
+        if task == "clf" and len(np.unique(y)) < 2:
+            print(f"layer {layer_ids[li]:>3}: <2 classes — skipping")
             continue
         tr, te = next(splitter.split(X, y, groups))   # prompts disjoint across tr/te
-        # standardize per layer (residual-stream norm grows with depth)
-        clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
-        clf.fit(X[tr], y[tr])
-        acc = clf.score(X[te], y[te])
-        # baseline = majority class measured on the TEST fold
-        _, te_counts = np.unique(y[te], return_counts=True)
-        baseline = te_counts.max() / te_counts.sum()
-        curve.append({"layer": int(layer_ids[li]), "acc": round(float(acc), 4),
+
+        if task == "clf":
+            model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=1.0))
+            model.fit(X[tr], y[tr])
+            score = model.score(X[te], y[te])          # accuracy
+            _, te_counts = np.unique(y[te], return_counts=True)
+            baseline = te_counts.max() / te_counts.sum()   # majority class
+            if tok_base is None:                        # token-identity control (once)
+                tok_base = _token_identity_baseline(toks, y, groups, tr, te)
+            metric = "acc"
+        else:  # regression (e.g. coordinates): R^2, baseline 0 = predicting the mean
+            model = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
+            Y = np.stack(y)
+            model.fit(X[tr], Y[tr])
+            score = model.score(X[te], Y[te])          # R^2 (avg over outputs)
+            baseline = 0.0
+            metric = "R2"
+
+        curve.append({"layer": int(layer_ids[li]), "score": round(float(score), 4),
                       "baseline": round(float(baseline), 4), "n": int(len(y)),
                       "n_test": int(len(te))})
-        bar = "#" * int(acc * 40)
-        print(f"layer {layer_ids[li]:>3}: acc={acc:.3f} (base {baseline:.3f}) "
+        bar = "#" * max(0, int(score * 40))
+        print(f"layer {layer_ids[li]:>3}: {metric}={score:.3f} (base {baseline:.3f}) "
               f"n={len(y):<5} {bar}")
 
-    out = {"act_dir": str(act_dir), "labeler": labeler_name, "curve": curve}
+    out = {"act_dir": str(act_dir), "labeler": labeler_name, "task": task,
+           "token_baseline": tok_base, "curve": curve}
     out_path = act_dir / f"probe_{labeler_name}.json"
     out_path.write_text(json.dumps(out, indent=2))
     if curve:
-        best = max(curve, key=lambda c: c["acc"])
-        print(f"\npeak decodability: layer {best['layer']} acc={best['acc']:.3f} "
-              f"(baseline {best['baseline']:.3f}) -> {out_path.name}")
+        best = max(curve, key=lambda c: c["score"])
+        print(f"\npeak: layer {best['layer']} score={best['score']:.3f} "
+              f"(baseline {best['baseline']:.3f})")
+        if tok_base is not None:
+            verdict = ("⚠️ probe barely beats naming — likely a token-identity confound"
+                       if best["score"] <= tok_base + 0.03
+                       else "✓ probe beats the token-only baseline — real signal beyond naming")
+            print(f"token-identity baseline (clf): {tok_base:.3f}  →  {verdict}")
+        print(f"-> {out_path.name}")
     return out
 
 

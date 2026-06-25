@@ -69,7 +69,7 @@ def test_probe_recovers_planted_signal():
 
     _make_synthetic(SCRATCH)
     out = run_probe(SCRATCH, "relation", test_frac=0.3, seed=0)
-    curve = {c["layer"]: c["acc"] for c in out["curve"]}
+    curve = {c["layer"]: c["score"] for c in out["curve"]}
     assert set(curve) == {0, 1, 2}, curve
     # planted layer 2 should be strongly decodable; noise layers near baseline
     assert curve[2] > 0.85, f"signal layer too low: {curve}"
@@ -124,14 +124,60 @@ def test_entity_relation_probe():
     d = SCRATCH.parent / "probe_entity_synth"
     _make_entity_synthetic(d)
     out = run_probe(d, "entity_relation", test_frac=0.3, seed=0)
-    curve = {c["layer"]: c["acc"] for c in out["curve"]}
+    curve = {c["layer"]: c["score"] for c in out["curve"]}
     assert curve.get(2, 0) > 0.85, curve
     assert curve[2] > curve[0] + 0.3, curve
+    # token-identity baseline should exist for a clf task
+    assert out["token_baseline"] is not None
     print(f"ok  entity_relation probe recovered relation-from-defs: {curve}")
+
+
+def _make_coord_synthetic(act_dir: pathlib.Path, n=40, D=16, seed=2):
+    """Each prompt has 3 points A,B,C with random coords; the (normalized) coords
+    are linearly embedded at layer 2, noise at layer 0."""
+    import numpy as np
+
+    act_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    completion = '[{"id":"A"},{"id":"B"},{"id":"C"}]'
+    offsets = [[i, i + 1] for i in range(len(completion))]
+    P, L = len(completion), 3
+    proj = rng.normal(size=(D, 2)) * 3        # fixed 2D -> D embedding for layer 2
+    pos = {p: completion.index(f'"{p}"') + 1 for p in "ABC"}
+
+    with (act_dir / "meta.jsonl").open("w") as mf:
+        for k in range(n):
+            raw = {p: [float(rng.normal() * 10), float(rng.normal() * 10)] for p in "ABC"}
+            xs = [c[0] for c in raw.values()]; ys = [c[1] for c in raw.values()]
+            x0, y0 = min(xs), min(ys)
+            wx = (max(xs) - x0) or 1.0; wy = (max(ys) - y0) or 1.0
+            acts = rng.normal(size=(L, P, D)).astype(np.float16)
+            for p in "ABC":
+                norm = np.array([(raw[p][0] - x0) / wx, (raw[p][1] - y0) / wy])
+                acts[2, pos[p]] = proj @ norm + rng.normal(size=D) * 0.1
+            pid = f"co_{k}"
+            np.savez_compressed(act_dir / f"{pid}.npz", acts=acts,
+                                layer_ids=np.array([0, 1, 2]), offsets=np.array(offsets))
+            mf.write(json.dumps({"pid": pid, "tokens": list(completion),
+                                 "completion": completion,
+                                 "ground_truth": {"point_coords": raw}}) + "\n")
+
+
+def test_point_coord_regression():
+    from interp.probe import run_probe
+    d = SCRATCH.parent / "probe_coord_synth"
+    _make_coord_synthetic(d)
+    out = run_probe(d, "point_coord", test_frac=0.3, seed=0)
+    curve = {c["layer"]: c["score"] for c in out["curve"]}   # R^2
+    assert out["task"] == "reg"
+    assert curve.get(2, -9) > 0.8, curve          # coords recoverable at signal layer
+    assert curve[2] > curve[0] + 0.3, curve        # and not at the noise layer
+    print(f"ok  point_coord regression recovered coords (R2): {curve}")
 
 
 if __name__ == "__main__":
     test_probe_recovers_planted_signal()
     test_id_token_positions()
     test_entity_relation_probe()
+    test_point_coord_regression()
     print("\nPROBE SMOKE TEST PASSED")

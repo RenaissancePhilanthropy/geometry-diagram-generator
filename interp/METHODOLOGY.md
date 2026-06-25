@@ -54,17 +54,22 @@ record carries `tokens`, `offsets` (char spans), `completion`, and — via
 `relation_facts` (the checks). `_id_token_positions` maps an id to the tokens
 where it's written.
 
-0. **entity_relation** ✅ DONE — at the token writing a point/line's name, decode
-   the geometric relation it embodies (midpoint / perpendicular / intersection /
-   tangent / ...), sourced from the defs. Non-trivial (the name token doesn't
-   reveal the relation). The first real spatial-representation probe; tested.
-1. **angle value** — find the angle literal token(s); label = the numeric angle.
-   (regression or binned classification). Add next.
-2. **point coordinates** — at each point's name token, regress the SymPy (x, y)
-   from `ground_truth.point_coords`. Needs a regression path in run_probe
-   (Ridge + R²) alongside the current classification path.
+0. **entity_relation** ✅ — relation per entity from defs. CAVEAT: confounded by
+   naming convention (the model names midpoints "M" etc.), so run_probe now
+   prints a **token-identity baseline**; on real run2 the probe ≈ baseline →
+   mostly naming, little computed signal. Use as a control, not a headline.
+1. **point_coord** ✅ — at each point's name token, regress its (x,y) normalized
+   to the figure's bbox (`ground_truth.point_coords`). Coords are NOT in the
+   name and per-figure normalization removes the canvas-scale cue → a clean
+   non-trivial test. Regression path (Ridge + R²) in run_probe; tested.
+2. **angle value** — angle literal token(s); label = numeric angle. Add next.
 3. **intersection disambiguation** — at an intersection's output token, classify
-   the `pick` choice ("higher"/"index 0/1"). The headline non-trivial target.
+   the `pick` choice ("higher"/"index 0/1"). Identical token, different geometry
+   — the headline non-trivial target. Needs pick extraction in geometry_labels.
+
+**Controls:** run_probe auto-prints the token-identity baseline for clf tasks. A
+probe is only a real representation result if it clears that baseline AND (ideally)
+rises across layers rather than being flat-from-layer-0.
 
 ## Phase 3 — causal check (after decodability)
 
