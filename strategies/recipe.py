@@ -20,17 +20,72 @@ from recipe.catalog import (
     load_recipe,
     build_selection_prompt,
     build_generation_prompt,
+    build_prelude_prompt,
     DSL_DOCS,
     Recipe,
 )
 from recipe.dsl import RecipeDSL
 from recipe.lower import lower_to_ir, LoweringError
 from ir.renderer import TikZRenderer, Renderer
+from strategies.confidence import (
+    METADATA_INSTRUCTION,
+    PRELUDE_OUTPUT_INSTRUCTION,
+    RecipeGenerationOutput,
+    parse_metadata_fence,
+    strip_generation_output_instruction,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 _SELECTOR_MODEL = "ollama:gemma4:31b-cloud"
+
+# Confidence elicitation modes (see strategies/confidence.py).
+_CONFIDENCE_MODES = ("none", "structured", "prelude", "both")
+
+
+async def _run_prelude_metadata(
+    model: str,
+    prompt: str,
+    model_settings,
+    instructions: str,
+) -> tuple[dict | None, int, int]:
+    """Run the independent hard-fence metadata call (prelude elicitation).
+
+    Returns (metadata_dict_or_None, input_tokens, output_tokens). The call is
+    independent of the generation call (fresh agent, no shared context) so its
+    confidence is not anchored to the soft score. Best-effort: any failure
+    (model error or unparseable fence) yields (None, tokens, tokens) and the
+    pipeline continues — in `both` mode the soft score still survives.
+
+    `instructions` is the generation system prompt (output-stripped) so the
+    prelude's system prompt matches the real call's — only the user-message
+    output format differs (the fence, via build_prelude_prompt). The shared
+    body (DSL reference + examples + request) also matches, giving the prelude
+    the most similar input to the real call.
+    """
+    # Uses the module-level `Agent` so tests can patch `strategies.recipe.Agent`
+    # uniformly for both the prelude and generation calls.
+    agent: Agent[None, str] = Agent(
+        model,
+        instructions=instructions,
+        output_type=str,
+        model_settings=model_settings,
+    )
+    try:
+        resp = await agent.run(prompt)
+    except Exception as e:  # model/transport error — don't fail the generation
+        logger.warning("Prelude metadata call failed: %s", e)
+        return None, 0, 0
+    usage = resp.usage()
+    meta = parse_metadata_fence(resp.output)
+    if meta is None:
+        logger.warning(
+            "Prelude metadata fence did not parse. Raw head: %r",
+            (resp.output or "")[:200],
+        )
+    return (meta.model_dump() if meta is not None else None,
+            usage.input_tokens or 0, usage.output_tokens or 0)
 
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. When the user asks you to draw a diagram, \
@@ -57,6 +112,13 @@ class RecipeAttemptTrace:
     stage: str              # "lowering", "ir_pipeline", "output_validation", or "success"
     raw_output: str | None = None  # raw payload from model on output_validation failure
     cot: str | None = None  # chain-of-thought (ThinkingPart content) captured for this attempt
+    # Self-reported confidence (see strategies/confidence.py). `hard` comes
+    # from the independent fenced prelude call; `soft` from the first field of
+    # the structured generation output. Either may be None (mode-dependent, or
+    # parse/validation failure). Populated even on lowering/ir-pipeline
+    # failures since the metadata is in hand by then.
+    evaluation_metadata_hard: dict | None = None
+    evaluation_metadata_soft: dict | None = None
 
 
 def _extract_cot(messages: list) -> str | None:
@@ -144,6 +206,11 @@ class RecipeMetadata:
     selection_output_tokens: int = 0
     attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
     cot: str | None = None  # chain-of-thought of the successful attempt (the answer's reasoning)
+    # Self-reported confidence of the successful attempt (see
+    # strategies/confidence.py). None when confidence_mode='none', when no
+    # attempt succeeded, or when the relevant elicitation failed to parse.
+    evaluation_metadata_hard: dict | None = None
+    evaluation_metadata_soft: dict | None = None
 
 
 class RecipeStrategy(SubstanceStrategy):
@@ -160,12 +227,20 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None, thinking: bool = False, prompt_overrides: dict[str, str] | None = None) -> None:
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None, thinking: bool = False, prompt_overrides: dict[str, str] | None = None, confidence_mode: str = "none") -> None:
         super().__init__(enable_cache=enable_cache, thinking=thinking)
         self.use_recipes = use_recipes
         self.catalog = catalog
         self.renderer = renderer
         self.prompt_overrides = prompt_overrides or {}
+        if confidence_mode not in _CONFIDENCE_MODES:
+            raise ValueError(
+                f"confidence_mode must be one of {_CONFIDENCE_MODES}, got {confidence_mode!r}"
+            )
+        # `none` preserves the pre-confidence pipeline (plain output_type=RecipeDSL,
+        # no prelude call) for existing callers (web app, dry_run). The eval harness
+        # passes `both` (or another mode) explicitly.
+        self.confidence_mode = confidence_mode
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
@@ -222,6 +297,8 @@ class RecipeStrategy(SubstanceStrategy):
 
         # --- Step 1: Recipe selection (optional) ---
         recipe_metadata = RecipeMetadata()
+        recipes: list[Recipe] = []
+        dsl_docs = self.prompt_overrides.get("dsl_docs", DSL_DOCS)
 
         if self.use_recipes:
             catalog = load_catalog(self.catalog)
@@ -263,9 +340,7 @@ class RecipeStrategy(SubstanceStrategy):
                     logger.warning("Selected recipe %r not found in catalog; skipping", rid)
 
             recipe_metadata.unmatched_concepts = unmatched_concepts
-            generation_prompt = build_generation_prompt(prompt, recipes, self.prompt_overrides.get("dsl_docs", DSL_DOCS))
-        else:
-            generation_prompt = build_generation_prompt(prompt, [], self.prompt_overrides.get("dsl_docs", DSL_DOCS))
+        generation_prompt = build_generation_prompt(prompt, recipes, dsl_docs)
 
         if previous_dsl_json is not None:
             generation_prompt = (
@@ -287,6 +362,50 @@ class RecipeStrategy(SubstanceStrategy):
         total_output_tokens: int = recipe_metadata.selection_output_tokens
         self._partial_input_tokens = total_input_tokens
         self._partial_output_tokens = total_output_tokens
+
+        # Confidence elicitation config (see strategies/confidence.py).
+        # `structured`/`both` wrap the generation output so `evaluation_metadata`
+        # is the FIRST field (soft, schema-field-order anti-anchoring). The
+        # metadata instruction is prepended IN CODE (not in the template) so it
+        # is present under both the GEPA-optimized and pre-GEPA prompt arms —
+        # injecting it via the template would be absent in whichever arm
+        # replaces `generation_system` wholesale and confound the ablation.
+        use_structured_meta = self.confidence_mode in ("structured", "both")
+        # The real generation call keeps the generation system prompt AS-IS
+        # (including its "Output ONLY valid JSON that parses as RecipeDSL" line —
+        # a useful instruction for the real call, whose output_type enforces the
+        # schema). The PRELUDE reuses these same rules as its system prompt but
+        # must NOT see that output-format line (it would contradict the fence
+        # request and make the model emit a construction), so it is stripped
+        # only when building the prelude's system prompt below.
+        base_gen_system = self.prompt_overrides.get("generation_system", RECIPE_GENERATION_SYSTEM)
+        if use_structured_meta:
+            gen_instructions = METADATA_INSTRUCTION + "\n" + base_gen_system
+            gen_output_type: type = RecipeGenerationOutput
+        else:
+            gen_instructions = base_gen_system
+            gen_output_type = RecipeDSL
+
+        # Hard-fence prelude (independent call). Runs once, up-front — it is a
+        # prospective prediction about the request, not per-retry. Fresh agent,
+        # no shared context with the generation call, so the hard score is not
+        # anchored to the soft score. Its system prompt is the same generation
+        # rules with the output-format line stripped (so it doesn't contradict
+        # the fence request), and its user message is the same body as the real
+        # call (via build_prelude_prompt) — only the output format differs (the
+        # fence, via PRELUDE_OUTPUT_INSTRUCTION), giving the prelude the most
+        # similar input to the real call.
+        hard_meta: dict | None = None
+        if self.confidence_mode in ("prelude", "both"):
+            prelude_system = strip_generation_output_instruction(base_gen_system)
+            prelude_prompt = build_prelude_prompt(prompt, recipes, dsl_docs, PRELUDE_OUTPUT_INSTRUCTION)
+            hard_meta, pre_in, pre_out = await _run_prelude_metadata(
+                model, prelude_prompt, self.model_settings, prelude_system,
+            )
+            total_input_tokens += pre_in
+            total_output_tokens += pre_out
+            self._partial_input_tokens = total_input_tokens
+            self._partial_output_tokens = total_output_tokens
 
         for attempt in range(MAX_RETRIES):
             user_message = generation_prompt
@@ -360,10 +479,10 @@ class RecipeStrategy(SubstanceStrategy):
                 retry_msg += "Please produce a corrected RecipeDSL."
                 user_message = retry_msg
 
-            gen_agent: Agent[None, RecipeDSL] = Agent(
+            gen_agent: Agent = Agent(
                 model,
-                instructions=self.prompt_overrides.get("generation_system", RECIPE_GENERATION_SYSTEM),
-                output_type=RecipeDSL,
+                instructions=gen_instructions,
+                output_type=gen_output_type,
                 model_settings=self.model_settings,
             )
             with capture_run_messages() as agent_messages:
@@ -375,6 +494,10 @@ class RecipeStrategy(SubstanceStrategy):
                     logger.warning("Attempt %d output validation failure:\n%s", attempt + 1, diag_summary)
                     if raw_payload:
                         logger.debug("Attempt %d failed payload: %s", attempt + 1, raw_payload[:2000])
+                    # The whole output object failed to validate, so there is no
+                    # soft score. The hard score (prelude) is still available if
+                    # that mode ran — useful: the model's upfront prediction for a
+                    # request whose construction it then failed to even emit.
                     recipe_metadata.attempt_traces.append(RecipeAttemptTrace(
                         attempt=attempt + 1,
                         dsl_json=None,
@@ -382,6 +505,8 @@ class RecipeStrategy(SubstanceStrategy):
                         stage="output_validation",
                         raw_output=raw_payload,
                         cot=_extract_cot(agent_messages),
+                        evaluation_metadata_hard=hard_meta,
+                        evaluation_metadata_soft=None,
                     ))
                     continue
             cot = _extract_cot(agent_messages)
@@ -390,7 +515,13 @@ class RecipeStrategy(SubstanceStrategy):
             total_output_tokens += usage.output_tokens or 0
             self._partial_input_tokens = total_input_tokens
             self._partial_output_tokens = total_output_tokens
-            dsl = response.output
+            gen_output = response.output
+            if use_structured_meta:
+                dsl = gen_output.recipe
+                soft_meta = gen_output.evaluation_metadata.model_dump()
+            else:
+                dsl = gen_output
+                soft_meta = None
             logger.info(
                 "Attempt %d: RecipeDSL has %d construction ops",
                 attempt + 1,
@@ -415,6 +546,8 @@ class RecipeStrategy(SubstanceStrategy):
                     error=last_error,
                     stage="lowering",
                     cot=cot,
+                    evaluation_metadata_hard=hard_meta,
+                    evaluation_metadata_soft=soft_meta,
                 ))
                 continue
 
@@ -444,6 +577,8 @@ class RecipeStrategy(SubstanceStrategy):
                     error=last_error,
                     stage="ir_pipeline",
                     cot=cot,
+                    evaluation_metadata_hard=hard_meta,
+                    evaluation_metadata_soft=soft_meta,
                 ))
                 continue
 
@@ -453,8 +588,12 @@ class RecipeStrategy(SubstanceStrategy):
                 error=None,
                 stage="success",
                 cot=cot,
+                evaluation_metadata_hard=hard_meta,
+                evaluation_metadata_soft=soft_meta,
             ))
             recipe_metadata.cot = cot
+            recipe_metadata.evaluation_metadata_hard = hard_meta
+            recipe_metadata.evaluation_metadata_soft = soft_meta
             return StructuredRunResult(
                 diagram_ir=result.diagram_ir,
                 tikz=result.tikz,
@@ -497,6 +636,23 @@ class RecipeStrategy(SubstanceStrategy):
                 if recipe_metadata.cot is None:
                     recipe_metadata.cot = next(
                         (t.cot for t in reversed(recipe_metadata.attempt_traces) if t.cot),
+                        None,
+                    )
+                # Same propagation for self-reported confidence: the fallback
+                # (StructuredStrategy) does not produce metadata, so carry the
+                # last recipe attempt's hard/soft scores. These were predictions
+                # for a construction that ultimately failed — still informative
+                # ("model expected trouble, and there was trouble").
+                if recipe_metadata.evaluation_metadata_hard is None:
+                    recipe_metadata.evaluation_metadata_hard = next(
+                        (t.evaluation_metadata_hard for t in reversed(recipe_metadata.attempt_traces)
+                         if t.evaluation_metadata_hard is not None),
+                        None,
+                    )
+                if recipe_metadata.evaluation_metadata_soft is None:
+                    recipe_metadata.evaluation_metadata_soft = next(
+                        (t.evaluation_metadata_soft for t in reversed(recipe_metadata.attempt_traces)
+                         if t.evaluation_metadata_soft is not None),
                         None,
                     )
                 fallback_result.recipe_metadata = recipe_metadata

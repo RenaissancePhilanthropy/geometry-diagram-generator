@@ -74,6 +74,7 @@ from strategies.recipe import RecipeStrategy
 from strategies.structured_plus_refine import StructuredPlusRefineStrategy
 from strategies.structured_two_phase import StructuredTwoPhaseStrategy
 from strategies.progressive_tools import ProgressiveToolsStrategy, ProgressiveToolsRunResult
+from strategies.confidence import geo_correctness_score
 from util.tikz_renderer import check_renderer_health
 from ir.renderer import Renderer, TikZRenderer, SVGRenderer
 from util.tikz_analysis import (
@@ -268,6 +269,11 @@ def _timeout_record(scenario: dict, strategy_name: str, model: str, repeat_index
         "cot_analysis_signals": None,
         "cot_analysis_details": None,
         "confidence_calibration": None,
+        # Self-reported, metadata-first confidence (see strategies/confidence.py).
+        # Flat geometric_correctness scores for easy filtering; full per-dimension
+        # metadata lives under record["recipe_metadata"]["evaluation_metadata_*"].
+        "self_confidence_hard_score": None,
+        "self_confidence_soft_score": None,
     }
 
 
@@ -286,6 +292,7 @@ async def run_scenario(
     thinking: bool = False,
     cot_analysis: bool = False,
     prompt_overrides: dict[str, str] | None = None,
+    confidence_mode: str = "both",
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -330,6 +337,8 @@ async def run_scenario(
         "cot_analysis_signals": None,
         "cot_analysis_details": None,
         "confidence_calibration": None,
+        "self_confidence_hard_score": None,
+        "self_confidence_soft_score": None,
     }
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
@@ -340,6 +349,8 @@ async def run_scenario(
     ctor_kwargs: dict[str, Any] = {"enable_cache": enable_cache, "thinking": thinking}
     if prompt_overrides and "prompt_overrides" in init_params:
         ctor_kwargs["prompt_overrides"] = prompt_overrides
+    if "confidence_mode" in init_params:
+        ctor_kwargs["confidence_mode"] = confidence_mode
     strategy = strategy_cls(**ctor_kwargs)
 
     start = time.monotonic()
@@ -366,9 +377,19 @@ async def run_scenario(
                     "selection_input_tokens": partial_meta.selection_input_tokens,
                     "selection_output_tokens": partial_meta.selection_output_tokens,
                     "attempt_traces": [
-                        {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage, "cot": t.cot}
+                        {
+                            "attempt": t.attempt,
+                            "dsl_json": t.dsl_json,
+                            "error": t.error,
+                            "stage": t.stage,
+                            "cot": t.cot,
+                            "evaluation_metadata_hard": t.evaluation_metadata_hard,
+                            "evaluation_metadata_soft": t.evaluation_metadata_soft,
+                        }
                         for t in partial_meta.attempt_traces
                     ],
+                    "evaluation_metadata_hard": partial_meta.evaluation_metadata_hard,
+                    "evaluation_metadata_soft": partial_meta.evaluation_metadata_soft,
                 }
                 record["attempts"] = len(partial_meta.attempt_traces)
                 record["used_fallback"] = any(
@@ -380,6 +401,26 @@ async def run_scenario(
                 # gate-failures too.
                 record["cot"] = next(
                     (t.cot for t in reversed(partial_meta.attempt_traces) if t.cot),
+                    None,
+                )
+                # Self-reported confidence: surface the geometric_correctness
+                # score from whichever attempt last produced metadata (the
+                # success path sets these on recipe_metadata directly; on the
+                # failure path, fall back to the last attempt that had any).
+                record["self_confidence_hard_score"] = geo_correctness_score(
+                    partial_meta.evaluation_metadata_hard
+                ) or next(
+                    (geo_correctness_score(t.evaluation_metadata_hard)
+                     for t in reversed(partial_meta.attempt_traces)
+                     if t.evaluation_metadata_hard is not None),
+                    None,
+                )
+                record["self_confidence_soft_score"] = geo_correctness_score(
+                    partial_meta.evaluation_metadata_soft
+                ) or next(
+                    (geo_correctness_score(t.evaluation_metadata_soft)
+                     for t in reversed(partial_meta.attempt_traces)
+                     if t.evaluation_metadata_soft is not None),
                     None,
                 )
         # Run CoT-analysis on the failure path too, using the partial metadata
@@ -446,9 +487,13 @@ async def run_scenario(
                         "error": t.error,
                         "stage": t.stage,
                         "cot": t.cot,
+                        "evaluation_metadata_hard": t.evaluation_metadata_hard,
+                        "evaluation_metadata_soft": t.evaluation_metadata_soft,
                     }
                     for t in result.recipe_metadata.attempt_traces
                 ],
+                "evaluation_metadata_hard": result.recipe_metadata.evaluation_metadata_hard,
+                "evaluation_metadata_soft": result.recipe_metadata.evaluation_metadata_soft,
             }
             record["attempts"] = len(result.recipe_metadata.attempt_traces)
             record["used_fallback"] = any(
@@ -458,6 +503,14 @@ async def run_scenario(
             # Top-level CoT = successful attempt's chain-of-thought (the answer's
             # reasoning). None when thinking was disabled or no thinking emitted.
             record["cot"] = result.recipe_metadata.cot
+            # Self-reported confidence (geometric_correctness score). None when
+            # confidence_mode='none' or when the elicitation failed to parse.
+            record["self_confidence_hard_score"] = geo_correctness_score(
+                result.recipe_metadata.evaluation_metadata_hard
+            )
+            record["self_confidence_soft_score"] = geo_correctness_score(
+                result.recipe_metadata.evaluation_metadata_soft
+            )
         else:
             record["recipe_metadata"] = None
             record["cot"] = None
@@ -973,6 +1026,17 @@ async def main() -> None:
         "runs with the prior (pre-GEPA) prompts loaded from strategies/recipe_original_prompts_overrides.json, "
         "so a before/after prompt ablation can be run with all other code held fixed.",
     )
+    parser.add_argument(
+        "--confidence-mode",
+        choices=["none", "structured", "prelude", "both"],
+        default="both",
+        help="Self-reported, metadata-first confidence elicitation for recipe strategies "
+        "(see strategies/confidence.py). 'both' (default): record hard-fence (prelude call) "
+        "AND soft-field (structured output first field) confidence per record for direct "
+        "comparison. 'structured'/'prelude': one method only. 'none': disable (control; "
+        "preserves the pre-confidence pipeline). Only affects strategies whose constructor "
+        "accepts confidence_mode (RecipeStrategy and subclasses).",
+    )
     args = parser.parse_args()
 
     # Prompt ablation: by default use the prior (pre-GEPA) prompts; pass --use-optimized-prompts
@@ -1056,6 +1120,7 @@ async def main() -> None:
                         thinking=args.thinking,
                         cot_analysis=args.cot_analysis,
                         prompt_overrides=prompt_overrides,
+                        confidence_mode=args.confidence_mode,
                     ),
                     timeout=args.timeout,
                 )

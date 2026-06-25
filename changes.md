@@ -357,3 +357,225 @@ Across the same-model progression:
 - n=1 per cell; the deepseek +4 vs first-GEPA and the gemma4 +3/−3 churn are not separable from run-to-run backend noise. A repeats≥3 re-run across all three prompt sets (prior / first-GEPA / candidate-15) on gemma4 and deepseek is the way to confirm the deepseek recovery and the gemma4 churn-vs-flat.
 - April has no judge/CoT cells (predates those), so only the gate column is directly comparable there.
 - The residual `radius_marked` and other semantic mark_types remain uncheckable by design and floor all runs equally.
+## DSL_DOCS guidance lift + op-coverage gaps (2026-06-23)
+
+Two-pronged improvement to the recipe-strategy **DSL reference** (`DSL_DOCS` in `recipe/catalog.py`), the always-on text injected into every generation prompt via `build_generation_prompt`. This is the *other* GEPA-able prompt surface (alongside `RECIPE_GENERATION_SYSTEM`); `RECIPE_SELECTION_SYSTEM`, `RECIPE_DSL_QUICK_REF` (still dead code), and the candidate-15 generation prompt are unchanged.
+
+Motivation: the recipe selector picks 0 recipes ~49% of the time, so half of generations go through a "freehand" path that gets the DSL reference but **no** recipe `notes` (those are only delivered when a recipe is selected). The freehand path therefore never sees the cross-cutting survival rules the recipe notes encode, and — worse — DSL_DOCS itself was missing several ops the recipes actively use.
+
+### Method: note-filtering pass
+
+Dumped all 92 `notes` items across the 20 recipes in `recipe/recipes/default/*.yaml` (via `load_recipe`, i.e. exactly what `build_generation_prompt` sends on selection) and classified each into three tiers. Full mapping in `tmp/dsl_docs_note_mapping.md` (scratch, gitignored).
+
+- **Tier 1 — cross-cutting (→ new general-rules block):** 5 rules recurring across recipes, not owned by a single op.
+- **Tier 2 — op-generic (→ inline next to the op's reference line):** guidance that applies whenever that DSL op is used.
+- **Tier 3 — recipe-specific (→ stays in the YAML):** per-recipe construction rationale, coordinate choices, vertex naming, domain math facts, and the transversal angle-pair scheme. ~50–55 of 92. Already delivered on the selection path; lifting would be noise for the 51% of generations where the recipe is irrelevant.
+
+### What changed in DSL_DOCS (12,628 → 18,459 chars)
+
+1. **New "Construction rules (apply to every op)" block** near the top, with the 5 Tier-1 rules: define-before-reference / construction order; hide scaffolding (`visible:false` for helper points, symmetry axes, transversal guides, infinite lines); prefer named constructions over hand-placed coords (let SymPy compute); disambiguate every intersection (concrete selector, never bare/`index`); inconsistent constraints → closest valid build + `label_only`.
+
+2. **Inline per-op HOW notes** (Tier 2): altitude (foot outside base for obtuse), circumcircle (circumcenter outside for obtuse), perpendicular_bisector (infinite line → `visible:false` + segments; define P/Q first; `mid` field), angle_bisector (`between` selector for opposite-side hit), ellipse (hradius = axis/2; prefer `show_coords` over hardcoded text), polygon_exterior (`ref_point`/`vertices` semantics), polygon_from_angles_and_sides (index semantics, angle-sum = (N−2)·180, parallelogram angle pattern, closure-failure handling), tangent_line (P outside circle; selector disambiguation; segment not line), plus a `mark_right_angle` addendum (mark at the real foot/tangent point, not a free interior point).
+
+3. **Op-coverage gaps (higher-leverage than the prose — ops the recipes use but DSL_DOCS never documented):**
+   - `polygon_from_sides` — a separate op from the Foundation `polygon` (computes vertices from side lengths; max-area/cyclic placement; polygon inequality; no angle constraints); the recipe literally named after it used an op the model had never been shown.
+   - `circle_through_3` — circumcircle through any 3 points (chain after the polygon when circumscribing).
+   - `point_foot` — foot of perpendicular from a point onto a segment/line/ray, with its `CRITICAL` constraint that `onto` MUST be a segment id, not a Triangle id.
+   - `mark_equal_lengths` / `mark_parallel` / `mark_proportional` — added in a new `annotations.marks` subsection (DSL_DOCS previously documented only `mark_angle`/`mark_right_angle`).
+
+### Verification
+
+`recipe.catalog` imports; `build_generation_prompt` builds (18,738 chars, new header present); 145 recipe/eval tests + 37 catalog tests pass (`test_recipe_catalog.py` only asserts `DSL_DOCS` is a `str` of length >100, so unaffected). No renderer/LLM needed — this is a prompt-text change.
+
+### Validation results — first run (DSL_DOCS v1: 5-rule block + inline notes + op entries)
+
+A/B vs the candidate-15 baseline (pre-DSL_DOCS-edit) on the 43 hard-intersection scenarios. Same config (tikz, `--thinking --cot-analysis`, judge `ollama:gemma4:31b-cloud`, repeats=1). Run files: deepseek `20260623-150256.jsonl`, gemma4 `20260623-150218.jsonl` (still running at analysis time, 37/43).
+
+| run | n | gate (pass+soft) | gen/svg | timeouts | judge | CoT conf | dur med |
+|---|---|---|---|---|---|---|---|
+| deepseek cand15 (base) | 43 | 44.2% (13+6) | 41/43 | 1 | 3.88 | 2.64 | 49s |
+| deepseek DSL_DOCS v1 | 43 | 37.2% (12+4) | 37/43 | 6 | 4.08 | 2.89 | 45s |
+| gemma4 cand15 (base, same 37) | 37 | 40.5% (10+5) | 34/37 | 3 | 3.82 | 3.71 | 98s |
+| gemma4 DSL_DOCS v1 (37/43) | 37 | 40.5% (11+4) | 33/37 | 4 | 3.70 | 4.00 | 105s |
+
+Per-scenario gate flips vs base: deepseek **+0 / −3** (net −3); gemma4 (same 37) **+2 / −2** (net 0). Label/geometry failure counts dipped slightly (deepseek label 15→9, geometry 20→17; gemma4 geometry 27→23) but that did not translate into gate gains — offset by more timeouts and lost scenarios.
+
+**Verdict: not an improvement.** deepseek regressed (−7pp, +5 timeouts, −3 net flips); gemma4 net-neutral on the same 37 (pass+soft count identical at 15, +2/−2 flips). The +5 deepseek timeouts coincided with US-morning cloud load (a likely confounder — some timeouts plausibly transient), but the DSL_DOCS v1 prompt was also ~5.8k chars larger (12,628→18,459), which raises latency/timeout pressure on the slow backend. n=1 per cell → not separable from run noise; repeats≥3 needed to confirm the deepseek regression.
+
+### Validation results — v2 run (deepseek + gemma4, 2026-06-23)
+
+v2 = DSL_DOCS with the 5-rule block held out (op-entries + inline notes only, 16,677 chars) + the `perpendicular_bisector` note fix. Run files: deepseek `20260623-175648.jsonl` (43), gemma4 `20260623-191432.jsonl` (43).
+
+| run | n | gate (pass+soft) | gen/svg | timeouts | judge | CoT conf | dur med |
+|---|---|---|---|---|---|---|---|
+| deepseek cand15 (base) | 43 | 44.2% (13+6) | 41/43 | 1 | 3.88 | 2.64 | 49s |
+| deepseek DSL_DOCS v1 | 43 | 37.2% (12+4) | 37/43 | 6 | 4.08 | 2.89 | 45s |
+| deepseek DSL_DOCS v2 | 43 | 34.9% (10+5) | 39/43 | 3 | 3.87 | 2.98 | 46s |
+| gemma4 cand15 (base) | 43 | 34.9% (10+5) | 40/43 | 3 | 3.73 | 3.73 | 98s |
+| gemma4 DSL_DOCS v1 | 43 | 34.9% (11+4) | 37/43 | 6 | 3.62 | 3.97 | 105s |
+| gemma4 DSL_DOCS v2 | 43 | 32.6% (10+4) | 41/43 | 2 | 3.76 | 3.83 | 89s |
+
+Per-scenario flips vs base: **deepseek v2 +0 / −4** (net −4); **gemma4 v2 +0 / −1** (net −1; lost `rotation-function`). v2 vs v1: deepseek +1 / −2 (net −1); gemma4 +1 / −2 (net −1; recovered `perpendicular-bisector-theorem`, lost `trapezoid-midsegment` + `quadrilateral-hierarchy`).
+
+**Combined verdict across all 4 runs (deepseek v1/v2 + gemma4 v1/v2): the DSL_DOCS change is net-negative-to-neutral, never positive.** The decisive signal: **+0 gained vs base in all four runs** — the DSL_DOCS edit (any variant, either model) did not unlock a single new pass that base was failing. The op-coverage hypothesis (newly-documented ops help the freehand path) is not borne out: deepseek likely already used those ops adequately (strong model), and gemma4's variance is dominated by selection/freehand noise, not op availability. Net per model: deepseek clearly negative (v1 −3, v2 −4; gate 44.2→37.2→34.9); gemma4 neutral-to-slightly-negative (v1 0, v2 −1; gate 34.9→34.9→32.6, within n=1 noise).
+
+**Two real but non-decisive effects of the v2 trim:** (1) robustness improved — gemma4 v2 gen 41/43, timeouts 2, dur 89s (best of the three); deepseek v2 timeouts 6→3, gen 37→39. Supports the smaller-prompt → less-timeout-pressure hypothesis, partly confounded by run timing (v2 off-peak evening vs v1/base daytime). (2) The `perpendicular_bisector` fix was **model-dependent**: it recovered `perpendicular-bisector-theorem` for gemma4 (v1 fail missing `['l']` → v2 soft_pass) but NOT for deepseek (still fail missing `['l']`). So inline-note micro-tuning has weak and inconsistent causal leverage on the gate relative to run noise.
+
+**The v2 losses are generation/selection variance, not op-spec defects:**
+- deepseek `exterior-angles-polygon`: base selected `polygon_from_sides` (pass); v1+v2 both went freehand (selection drift unrelated to DSL_DOCS); v2 failed `exterior_angle_at_B/C`. Freehand variance.
+- deepseek `shadow-similar-triangles`: same recipe (`similar_triangles`) in base/v1/v2; v2 failed `right_angle_at_B/D` + perpendicularity. Generation variance within an unchanged recipe.
+- deepseek `trapezoid-midsegment`: still fails `D_on_segment_MT` (freehand, persistent v1→v2).
+- gemma4 `rotation-function`: lost in v1 and v2 (`mark_rotation_angle`, freehand) — likely the uncheckable-semantic-mark floor or mark noise.
+
+**Decision: revert DSL_DOCS to pre-edit (git HEAD).** The DSL_DOCS surface isn't paying off — it costs deepseek ~7-9pp and gains nothing on either model — so the clean state is candidate-15 alone as the optimized generation prompt. The experiment record is preserved in this changes.md section + the `DSL_CONSTRUCTION_RULES` constant + `tmp/dsl_docs_note_mapping.md` for any future evidence-driven re-introduction. The op-coverage gaps (`polygon_from_sides`, `circle_through_3`, `point_foot`, the mark kinds) are real documentation gaps, but documenting them did not help the gate, so they revert to undocumented for now (recoverable from git diff).
+
+**Revert applied (2026-06-23):** `git checkout HEAD -- recipe/catalog.py` — DSL_DOCS back to 12,628 chars (pre-edit), `DSL_CONSTRUCTION_RULES` constant removed. `recipe/catalog.py` clean at HEAD; only `changes.md` carries the experiment record. Optimized prompt remains candidate-15 (`RECIPE_GENERATION_SYSTEM` in `strategies/instructions_recipe.py`, unchanged). Next eval A/B should use this clean baseline.
+
+### Root-cause dive on the lost scenarios
+
+Inspected each lost scenario's failing checks + construction (base-pass vs new-fail):
+
+- **`perpendicular_bisector_theorem` — deepseek AND gemma4 (the only shared regression).** Same recipe selected in base and new (`perpendicular_bisector`), so this is a generation change, not selection. Both new runs failed `required_labels` **missing `['l']`** — the perpendicular bisector line the prompt explicitly says to "call it line l" was not drawn/labeled. Root cause: the v1 inline `perpendicular_bisector` note said "It is an infinite line — set visible:false and draw what to show as explicit segment ops"; the model applied "hide the infinite line" to line `l`, which is the *requested* object, not scaffolding. Read as a specific, reproducible (both models) op-spec defect at the time. **A fix was applied for v2** (condition `visible:false` on scaffolding-vs-requested); the v2 run showed it was **model-dependent** — it recovered the scenario for gemma4 (v1 fail → v2 soft_pass) but NOT for deepseek (still fail missing `['l']`). The earlier "reproducible defect" read was over-confident; the outcome is dominated by run/model variance, not the note text (see "Validation results — v2 run" above).
+- **`sas_proof_circle` — deepseek.** `required_labels` missing `C'1, C'2`. Selection changed (base `similar_triangles` → new `polygon_from_angles_and_sides`, a newly-documented op); the new op didn't produce/label the constructed third-vertex labels the scenario expects. Mixed: a mis-selection (likely noise — the selection prompt and catalog descriptions were not touched) plus a possible labeling gap in `polygon_from_angles_and_sides` usage. Not cleanly attributable at n=1.
+- **`trapezoid_midsegment` — deepseek.** `D_on_segment_MT` (geometry). Both runs freehand (`sel=[]`); new placed D off segment MT. Freehand coordinate slip — plausibly noise.
+- **`rotation_function` — gemma4.** `mark_rotation_angle` (mark). Both freehand. A mark check flipped — likely the uncheckable-semantic-mark floor (see memory `mark-present-checker-fix`) or mark noise. Not op-spec-tied.
+
+Summary: 1 clear op-spec defect (`perpendicular_bisector` `visible:false` over-generalization, both models — fixed); 1 ambiguous (`polygon_from_angles_and_sides` mis-selection + labeling); 2 likely-noise freehand slips.
+
+### DSL_DOCS v2 (current on-disk state)
+
+Two changes after the v1 analysis:
+
+1. **5-rule "Construction rules" block held out** (ablation, per the op-coverage-only hypothesis). The block text is preserved as a separate `DSL_CONSTRUCTION_RULES` constant in `recipe/catalog.py` (not injected into the prompt) so it can be edited and re-injected later (fold into `DSL_DOCS`, or pass via `prompt_overrides["dsl_docs"]` for a clean A/B). `DSL_DOCS` is now op-entries + inline per-op notes only (18,459 → 16,677 chars). This is the smaller-prompt variant that should cut the timeout pressure while keeping the coverage.
+2. **`perpendicular_bisector` inline note fixed** to condition `visible:false` on scaffolding-vs-requested: "If the prompt asks for the bisector itself (e.g. 'call it line l'), DRAW and LABEL it. Only set visible:false when the bisector is pure scaffolding." The same EXCEPTION caveat was added to `DSL_CONSTRUCTION_RULES` rule 2 so re-injection won't reintroduce the bug. **Note: the v2 deepseek run showed this fix was ineffective for its target scenario** (see v2 results above).
+
+v2 deepseek run: done (negative — see above). v2 gemma4 run: in progress. Revert decision held pending gemma4.
+
+### Caveats
+
+- n=1 per cell throughout; the deepseek −7pp / −3 flips / +5 timeouts are not separable from run-to-run backend noise (compounded by US-morning cloud load on the timeout count). repeats≥3 on deepseek (cand15-base vs DSL_DOCS v2) is the way to confirm.
+- DSL_DOCS is always injected, so the edit affects both the selected-recipe and freehand paths.
+- DSL_DOCS is a GEPA-able surface; a future GEPA run could mutate it. The inline notes and `DSL_CONSTRUCTION_RULES` are written terse/rule-like to survive optimization.
+- The cross-cutting "coordinate/canvas convention" (`axes:true` + `show_coords:true`) was deliberately NOT added — DSL_DOCS already has a dedicated "Coordinate geometry canvas setup" section covering it; elevating it would duplicate.
+
+## Self-reported, metadata-first confidence (structured self-report)
+
+New experiment to extract model confidence cheaply for online use (single model
+call; multi-shot entropy is infeasible online). Prior approaches — the LLM judge
+and the deterministic `cot_analyzer` (post-hoc, reviewing an artifact the model
+already committed to) — did not produce a valuable signal. New approach: ask the
+model to emit a structured self-assessment BEFORE it commits to the construction
+(prospective prediction, not retrospective review), recorded per eval record for
+calibration/discrimination analysis against ground-truth labels.
+
+### Implementation
+
+- **`strategies/confidence.py`** — shared `EvaluationMetadata` schema (three
+  INDEPENDENT dimensions: `geometric_correctness`, `request_ambiguity`,
+  `end_to_end`, each 0-100 + `flags`; plus `contradictions_found` +
+  `contradiction_detail`; `extra="ignore"` so stray keys in free-text prelude
+  JSON are dropped, not fatal). Two elicitation methods sharing one schema:
+  - **soft** — `evaluation_metadata` is the FIRST field of a `RecipeGenerationOutput`
+    wrapper around `RecipeDSL` (schema field order → emitted before the
+    construction); pydantic-ai validation + auto-retry preserved.
+  - **hard** — an independent fenced `[[INTERNAL_METADATA]]…[[END_METADATA]]`
+    prelude call (`output_type=str`); metadata produced with no construction
+    tokens at all. Independent agent (no shared context) so the hard score is not
+    anchored to the soft score.
+  - `METADATA_INSTRUCTION` (soft, prepended to the generation system prompt) and
+    `PRELUDE_OUTPUT_INSTRUCTION` (hard, the fence `## Output` section) are
+    composed from shared `_METADATA_SCHEMA` / `_METADATA_DIMENSIONS` so the two
+    stay in sync.
+- **Prelude input matches the real call as closely as possible.** The prelude's
+  SYSTEM prompt is the generation system prompt (`RECIPE_GENERATION_SYSTEM` or
+  the GEPA override's `generation_system`) with its output-format line stripped
+  via `strip_generation_output_instruction` — so it carries the same rules
+  without a confusing "output RecipeDSL" instruction that would contradict the
+  fence request. The prelude's USER message is `build_prelude_prompt` =
+  assessment intro + `build_generation_body` (DSL reference + recipe examples +
+  request — the SAME body the real call uses) + `PRELUDE_OUTPUT_INSTRUCTION`
+  (fence output). The real generation call keeps the output-format line
+  unchanged (it's useful; `output_type` enforces the schema regardless). The
+  strip is runtime so it works in both the GEPA-optimized and pre-GEPA override
+  arms (both embed the line; only the prelude drops it). This was driven by a
+  drift bug found in the first run: feeding `generation_prompt` to the prelude
+  made the model emit a RecipeDSL construction instead of the fence (hard
+  metadata on only 3/23 records); after the fix, hard is captured on ~all records.
+- **`RecipeStrategy.confidence_mode`** — `none` (default for existing callers;
+  control, preserves the pre-confidence pipeline) / `structured` / `prelude` /
+  `both` (hard + soft, for direct per-record comparison). Eval default = `both`.
+- **Persistence** — `evaluation_metadata_hard/soft` on `RecipeAttemptTrace` +
+  `RecipeMetadata` (populated on success AND on lowering/ir-pipeline failure; on
+  output-validation failure the hard score from the prelude still survives in
+  `both`). Serialized into the eval record's `recipe_metadata` block + flat
+  `self_confidence_hard_score` / `self_confidence_soft_score`
+  (geometric_correctness) for easy filtering; `None` on timeout.
+- **`evals/analyze_confidence.py`** — pure-stdlib analyzer (no
+  numpy/scipy/sklearn in this env): AUC-ROC via the Mann-Whitney rank formula
+  (tie-handled) with bootstrap 95% CIs; Brier; ECE (10 bins); Cohen's d;
+  precision/recall of "flag score<T → fail"; silently-overconfident rate
+  (fail ∧ score≥80); `contradictions_found` precision-for-fail; per-dimension
+  AUC; coverage gap. All knobs are named constants (see the quick-reference
+  table in the module docstring). Truth label = strict `gate_status=="pass"`
+  (soft_pass/timeouts dropped); hard unit = record-level; soft unit = all
+  attempts. Never pooled across models; stratified by tier. Decision gate per
+  (model×tier) cell: `AUC>0.5` (CI excludes 0.5) ∧ `beats-cot` ∧ `overconf-ok`.
+- **CLI** — `evals/run.py --confidence-mode {none,structured,prelude,both}`
+  (default `both`); `evals/analyze_confidence.py --results <jsonl…> [--out …]`.
+- **Tests** — `tests/test_confidence.py` (24) + `tests/test_analyze_confidence.py`
+  (11): schema/field-order; fence parser variants; the four modes; hard/soft
+  independence; `test_prelude_uses_generation_rules_as_system_prompt` (pins the
+  strip + the real-call-keeps-the-line invariant); metadata capture on lowering
+  failure; analyzer stats (perfect/useless/tie AUC, strict-pass drops soft_pass,
+  coverage gap, contradictions, CLI).
+
+### Caveats
+- Forced self-report always fills scores even without basis → likely noise on
+  easy scenarios (confirmed — see Results).
+- Mode `both` costs one extra small prelude call per generation attempt.
+- The StructuredStrategy fallback path produces no metadata → `None` on fallback
+  records (analyze recipe-path records only).
+- Both GEPA ablation arms get the metadata instruction prepended to the
+  generation system prompt (consistent across arms; not comparable to
+  pre-confidence runs on the prompt-ablation axis).
+
+### Results (2 runs, deepseek-v4-flash + gemma4, hard-intersection scenarios, n=43 each, repeats=1)
+
+Source: `output_run_hard_intersect_tikz_{deepseek-v4-flash_1_7,gemma4_1_9}.txt`
+→ `evals/results/20260625-134136.jsonl` (deepseek) and
+`evals/results/20260625-134130.jsonl` (gemma4). Analyzed with
+`python -m evals.analyze_confidence --results <jsonl> --n-boot 2000`. Tier=2 cells
+are the only adequately-powered ones (n=20–22); tier=3 is n=3–5 (wide CIs,
+treat as directional).
+
+- **Hard discriminates, soft is flat — the stronger ordering wins.** On tier=2:
+  deepseek hard AUC=0.84 [0.66,0.97] vs soft 0.55; gemma4 hard AUC=0.69
+  [0.57,0.81] vs soft 0.50. Soft's mean(pass)≈mean(fail)≈93–100 (no separation);
+  hard has a small but real gap (deepseek pass 99/fail 87; gemma4 pass 100/fail
+  92). The pure-prospective prelude is more honest than the structured field
+  emitted right before the construction — confirming the anti-anchoring
+  hypothesis. **The prelude call earns its keep; soft is not worth gating on.**
+- **Hard beats the free cot baseline** on the meaningful cells (deepseek t2
+  0.84 vs 0.62; gemma4 t2 0.69 vs 0.58) and beats/ties the expensive LLM judge
+  on deepseek t2 (0.84 vs 0.57) — clears the "valuable vs free" bar on
+  discrimination.
+- **But it's badly miscalibrated and silently overconfident — not safe as a raw
+  trust signal.** Brier 0.5–0.67, ECE 0.5–0.67. Silently-overconfident 86–100%
+  on adequate cells (deepseek t2: 12/13 failures scored ≥80). Thresholding is
+  useless: flag score<40 → fail recall ~0.06–0.14 (failures sit at ~85–92, not
+  low). The decision gate is NOT met anywhere — discrimination yes,
+  calibration/safety no.
+- **gemma4 tier=3 hard AUC=0.00** (2 failures scored 92, 1 pass scored 70) — the
+  terse-confident-wrong inversion the cot-analyzer memory warns about; n=3,
+  directional only.
+- **`contradictions_found` precision-for-fail=0.75** for both models (4 flagged,
+  3 failed) — a near-free binary booster; tiny n.
+- **Coverage gap confirms soft's selection bias:** gemma4 had 14/61 attempts
+  with no soft, all 14 failed (unparseable outputs) — soft AUC is over the
+  parseable subset only; hard covers those failures. Another point for hard.
+
+**Conclusion:** keep hard (the prelude), don't gate on soft. But the raw 0–100
+score is a ranking signal, not a probability — for online use it needs
+recalibration (isotonic/Platt on a labeled set) so the 85–100 band maps to real
+fail rates, or use it relatively (flag the bottom-N per batch), not an absolute
+threshold. Need repeats≥3 to firm up tier=2 and make tier=3 interpretable.

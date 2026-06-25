@@ -59,6 +59,7 @@ uv run python -u -m evals.run \
   --renderer tikz \
   --thinking \
   --cot-analysis \
+  --timeout 600 \
   --use-optimized-prompts \
   --judge-model ollama:gemma4:31b-cloud \
   > "$OUTPUT_LOG" 2>&1

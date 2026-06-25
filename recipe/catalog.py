@@ -156,23 +156,22 @@ def build_selection_prompt(user_request: str, catalog: list[RecipeSummary]) -> s
     )
 
 
-def build_generation_prompt(
+def build_generation_body(
     user_request: str,
     recipes: list[Recipe],
     dsl_docs: str,
 ) -> str:
-    """Build the prompt for the DSL generation model.
+    """Shared prompt body: DSL reference + recipe examples + user request.
 
-    The `setup` field of each recipe is NOT included (it's for tests only).
-    The `context` + `example` of each recipe IS included.
+    No intro and no output-format section — the caller prepends an intro and
+    appends an output-format section. This lets the real generation call and the
+    confidence prelude share the SAME context (so the prelude's input matches the
+    real call as closely as possible), differing only in intro + output format.
+
+    The `setup` field of each recipe is NOT included (it's for tests only);
+    `context` + `example` are.
     """
-    sections: list[str] = []
-
-    sections.append(
-        "You are a geometry diagram assistant. Generate a RecipeDSL JSON object "
-        "that describes the requested diagram.\n\n"
-        f"DSL Reference:\n{dsl_docs}"
-    )
+    sections: list[str] = [f"DSL Reference:\n{dsl_docs}"]
 
     if recipes:
         sections.append("## Relevant Construction Examples\n")
@@ -189,12 +188,66 @@ def build_generation_prompt(
             )
 
     sections.append(f"## User Request\n{user_request}")
-    sections.append(
-        "## Output\nRespond with a valid RecipeDSL JSON object only. "
-        "Do not include markdown fences or explanations."
+    return "\n\n".join(sections)
+
+
+# Intro + output-format sections for the REAL generation call. The output format
+# is also enforced by `output_type` (RecipeDSL / RecipeGenerationOutput), so this
+# section is the user-message-level restatement. (The generation system prompt no
+# longer carries an output-format line — it was extracted out to avoid confusing
+# the prelude, which reuses that system prompt.)
+_GEN_INTRO = (
+    "You are a geometry diagram assistant. Generate a RecipeDSL JSON object "
+    "that describes the requested diagram."
+)
+_GEN_OUTPUT_SECTION = (
+    "## Output\nRespond with a valid RecipeDSL JSON object only. "
+    "Do not include markdown fences or explanations."
+)
+
+
+def build_generation_prompt(
+    user_request: str,
+    recipes: list[Recipe],
+    dsl_docs: str,
+) -> str:
+    """Build the prompt for the DSL generation model (intro + body + output section)."""
+    return (
+        _GEN_INTRO + "\n\n"
+        + build_generation_body(user_request, recipes, dsl_docs)
+        + "\n\n" + _GEN_OUTPUT_SECTION
     )
 
-    return "\n\n".join(sections)
+
+def build_prelude_prompt(
+    user_request: str,
+    recipes: list[Recipe],
+    dsl_docs: str,
+    output_instruction: str,
+) -> str:
+    """Build the prompt for the confidence prelude (hard-fence) call.
+
+    Reuses `build_generation_body` so the prelude gets the SAME context (DSL
+    reference + recipe examples + user request) as the real generation call —
+    only the intro and output-format section differ. `output_instruction` is the
+    fenced-metadata "## Output" section (see strategies.confidence.
+    PRELUDE_OUTPUT_INSTRUCTION); it asks for the fence, NOT a RecipeDSL
+    construction. Feeding the raw `generation_prompt` here instead re-introduces
+    the prelude drift bug (the model follows its "respond with RecipeDSL only"
+    line and emits a construction).
+    """
+    prelude_intro = (
+        "You are assessing your confidence for a geometry diagram request BEFORE "
+        "constructing it — a prospective prediction, not a review of an artifact. "
+        "Do NOT produce a RecipeDSL construction; emit only the output format "
+        "specified below. The DSL reference and examples are context for your "
+        "assessment, not a request to construct."
+    )
+    return (
+        prelude_intro + "\n\n"
+        + build_generation_body(user_request, recipes, dsl_docs)
+        + "\n\n" + output_instruction
+    )
 
 
 # ---------------------------------------------------------------------------
