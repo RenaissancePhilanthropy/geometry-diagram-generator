@@ -281,6 +281,16 @@ def extract_observations(records: list[dict]) -> dict:
         label = gate == GATE_PASS
         rm = r.get("recipe_metadata") or {}
         hard_meta = rm.get("evaluation_metadata_hard")
+        # Defensive fallback: on complete-failure records the record-level hard
+        # may be None even though the prelude ran and stored it on each attempt
+        # trace (hard is one up-front prelude shared across attempts). Fall back
+        # to the last attempt that has it so the worst failures aren't silently
+        # dropped (they're the most informative silently-overconfident cases).
+        if hard_meta is None:
+            for t in reversed(rm.get("attempt_traces") or []):
+                if t.get("evaluation_metadata_hard"):
+                    hard_meta = t.get("evaluation_metadata_hard")
+                    break
         soft_meta_record = rm.get("evaluation_metadata_soft")
 
         hard = geo_correctness_score(hard_meta)

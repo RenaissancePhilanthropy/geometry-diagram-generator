@@ -159,6 +159,30 @@ def test_attempt_level_soft_uses_stage_label():
     assert labels == [False, True]
 
 
+def test_hard_falls_back_to_attempt_trace_when_record_level_none():
+    """A complete-failure record (record-level hard None) still contributes a
+    hard observation via the attempt-trace fallback — so the worst failures
+    (the most informative silently-overconfident cases) aren't dropped.
+    """
+    # gate=fail; record-level hard None, but attempt 1 carried hard=20.
+    rec = {
+        "model": "m1", "tier": 3, "gate_status": "fail",
+        "cot_analysis_score": None, "llm_judge_score": None,
+        "recipe_metadata": {
+            "evaluation_metadata_hard": None,  # record-level missing (complete failure)
+            "evaluation_metadata_soft": None,
+            "attempt_traces": [
+                {"attempt": 1, "stage": "lowering", "dsl_json": None, "error": "boom",
+                 "cot": None, "evaluation_metadata_hard": _meta(20), "evaluation_metadata_soft": None},
+            ],
+        },
+    }
+    obs = extract_observations([rec, _record(gate="pass", hard_geo=80, soft_attempts=[(80, "success")])])
+    assert len(obs["hard"]) == 2  # the fail-with-fallback + the pass
+    hard_fail = [h for h in obs["hard"] if not h["label"]][0]
+    assert hard_fail["score"] == 20.0
+
+
 # ---------------------------------------------------------------------------
 # End-to-end analyze()
 # ---------------------------------------------------------------------------

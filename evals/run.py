@@ -371,6 +371,26 @@ async def run_scenario(
             record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
             partial_meta = getattr(strategy, "_partial_recipe_metadata", None)
             if partial_meta is not None:
+                # Self-reported confidence: the success path sets these on
+                # recipe_metadata directly; on the failure path the record-level
+                # metadata is None, so fall back to the last attempt that had
+                # any (hard is a single up-front prelude shared across attempts,
+                # soft is the last attempt's). Resolve the dicts ONCE and use
+                # them for BOTH the nested recipe_metadata block and the flat
+                # fields — otherwise the nested field stayed None on complete
+                # failures while the flat field fell back, and the analyzer
+                # (which reads the nested) silently dropped those worst-failure
+                # records.
+                hard_meta_fb = partial_meta.evaluation_metadata_hard or next(
+                    (t.evaluation_metadata_hard for t in reversed(partial_meta.attempt_traces)
+                     if t.evaluation_metadata_hard is not None),
+                    None,
+                )
+                soft_meta_fb = partial_meta.evaluation_metadata_soft or next(
+                    (t.evaluation_metadata_soft for t in reversed(partial_meta.attempt_traces)
+                     if t.evaluation_metadata_soft is not None),
+                    None,
+                )
                 record["recipe_metadata"] = {
                     "selected_recipes": partial_meta.selected_recipes,
                     "unmatched_concepts": partial_meta.unmatched_concepts,
@@ -388,8 +408,8 @@ async def run_scenario(
                         }
                         for t in partial_meta.attempt_traces
                     ],
-                    "evaluation_metadata_hard": partial_meta.evaluation_metadata_hard,
-                    "evaluation_metadata_soft": partial_meta.evaluation_metadata_soft,
+                    "evaluation_metadata_hard": hard_meta_fb,
+                    "evaluation_metadata_soft": soft_meta_fb,
                 }
                 record["attempts"] = len(partial_meta.attempt_traces)
                 record["used_fallback"] = any(
@@ -403,26 +423,8 @@ async def run_scenario(
                     (t.cot for t in reversed(partial_meta.attempt_traces) if t.cot),
                     None,
                 )
-                # Self-reported confidence: surface the geometric_correctness
-                # score from whichever attempt last produced metadata (the
-                # success path sets these on recipe_metadata directly; on the
-                # failure path, fall back to the last attempt that had any).
-                record["self_confidence_hard_score"] = geo_correctness_score(
-                    partial_meta.evaluation_metadata_hard
-                ) or next(
-                    (geo_correctness_score(t.evaluation_metadata_hard)
-                     for t in reversed(partial_meta.attempt_traces)
-                     if t.evaluation_metadata_hard is not None),
-                    None,
-                )
-                record["self_confidence_soft_score"] = geo_correctness_score(
-                    partial_meta.evaluation_metadata_soft
-                ) or next(
-                    (geo_correctness_score(t.evaluation_metadata_soft)
-                     for t in reversed(partial_meta.attempt_traces)
-                     if t.evaluation_metadata_soft is not None),
-                    None,
-                )
+                record["self_confidence_hard_score"] = geo_correctness_score(hard_meta_fb)
+                record["self_confidence_soft_score"] = geo_correctness_score(soft_meta_fb)
         # Run CoT-analysis on the failure path too, using the partial metadata
         # (best-effort DSL from the last attempt) so scored failures produce a
         # confidence score + calibration instead of None.
