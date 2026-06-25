@@ -87,6 +87,19 @@ _Last updated: 2026-06-22_
 
 ## Model Latency & Quality Benchmarks (2026-06-05)
 
+> **TL;DR** — LLM API calls are 90–99% of total latency; local compute
+> (lowering, IR pipeline, SVG render) is 20–250 ms regardless of model. On the
+> hard scenario, five models solve first-try at 4–5/5 — deepseek-v4-flash
+> (55s, 4/5), qwen3.5:397b (64s, 5/5), kimi-k2.6 (77s, 5/5), gemini-3-flash
+> (102s, 4/5), deepseek-v4-pro (166s, 5/5); qwen3.5 is the quality+speed sweet
+> spot. Retry cost is the hidden killer — models that fail output validation
+> burn 100s of seconds (GLM-5.1 439s, nemotron-ultra 188s).
+
+**Why:** profile single scenarios to choose which models drive the recipe
+strategy — separating the cheap, fixed local-IR cost from the dominant,
+variable LLM cost, and finding the tier that solves hard problems without
+retries.
+
 Single-scenario profiling using `profile_single_scenario.py` (recipe strategy, SVG renderer, thinking ON, gemma4:31b-cloud as visual judge where applicable).
 
 ### Easy Scenario — Right triangle on coordinate grid
@@ -133,6 +146,21 @@ Single-scenario profiling using `profile_single_scenario.py` (recipe strategy, S
 ---
 
 ## GEPA Prompt Optimization (2026-06-08)
+
+> **TL;DR** — This section bundles three changes from the GEPA pass: (1) the
+> recipe `generation_system` prompt was evolved — the empty prompt won
+> (0.911 vs seed 0.802) but isn't production-viable, so **candidate 10** (0.900,
+> a 2.4× longer JSON-wrapped prompt adding property/3D/rotation guidance) is the
+> practical winner. (2) **Efficiency scoring** (retry + duration, weights
+> 0.08/0.04) was added to the GEPA fitness so evolution rewards fewer retries
+> and faster runs. (3) **Prime-notation normalization** in eval checks
+> eliminated 129/130 false-negative property failures (noise GEPA was climbing
+> against), +4.0pp pass rate.
+
+**Why:** optimize the recipe generation prompt by evolution (GEPA); while
+doing so, fix two things GEPA exposed — the fitness function didn't penalize
+retry/latency, and the eval checker's prime-notation mismatch was injecting
+false-negative noise into the very score GEPA was optimizing.
 
 ### What is GEPA?
 
@@ -241,6 +269,15 @@ Use **candidate 10** as the new seed for a next round, or manually merge its add
 
 ## GEPA prompt ablation vs April reference (2026-06-22)
 
+> **TL;DR** — On the 43 hard-intersection scenarios, every recipe run beats the
+> gate-rescored April reference (structured/sonnet) on the deterministic gate
+> (best +16pp), while April still leads on raw robustness/speed (40/43 gen, 0
+> timeouts, 14s median). GEPA-optimized vs prior prompts is **mixed and
+> model-dependent**: gemma4 +4.9pp (retry-aware), deepseek −9.9pp — and
+> deepseek's optimized run is overconfident (CoT 4.95 vs a 37.5% gate). n=1 per
+> cell, so none of the before→after deltas are separable from run-to-run
+> backend noise yet.
+
 This is the deferred analysis: does the recipe strategy with the current harness/checker changes and the GEPA-optimized prompts actually beat the prior prompts and the published April reference, on the 43 hard-intersection scenarios (`evals/scenarios_hard_intersection3.yaml`)? All code and checkers held fixed; only the recipe prompt text swaps between prior (pre-GEPA, git-HEAD) and on-disk GEPA-optimized via `--use-optimized-prompts`.
 
 ### Runs compared (clean runs only)
@@ -302,6 +339,14 @@ A direct check on whether the before's extra timeouts are a real quality differe
 - The deepseek −9.9pp is robust to the timeout convention: incl-timeout = −7pp, excl-all-timeouts = −12.5pp, retry-aware = −9.9pp; net flips −3 in all three.
 ## GEPA intersection run — candidate-15 evaluation (2026-06-23)
 
+> **TL;DR** — Candidate 15 (a second GEPA step seeded from the first-GEPA
+> optimized prompt) is **Pareto-better across both benchmarked models**: it
+> keeps gemma4's first-GEPA gain (flat vs first-GEPA, +3 net vs pre-GEPA with no
+> losses) and recovers deepseek (34.9→44.2%, +4 net flips vs first-GEPA with no
+> losses). CoT confidence moves back toward healthy levels (deepseek 4.95→2.64
+> alongside a *higher* gate). All three cand15 runs beat the gate-rescored
+> April reference. n=1 per cell — not separable from backend noise.
+
 A second GEPA optimization step (`gepa_runs/intersection`) re-optimized only the recipe `generation_system` prompt, starting from the on-disk optimized prompt (the first-GEPA "after" prompt above) as its seed. 18 candidates, best = idx 15 (val score 0.8614 vs seed 0.8162, +4.5pp on 28 val scenarios, clear max). Candidate 15's prompt (27013 chars) was written into `strategies/instructions_recipe.py` (`RECIPE_GENERATION_SYSTEM`), so `--use-optimized-prompts` now selects it. The seed = prior on-disk optimized prompt; recoverable via `gepa_runs/intersection/seed_candidate.json` and git commit `19c5230`. `RECIPE_SELECTION_SYSTEM` and `RECIPE_DSL_QUICK_REF` were unchanged by this run and remain unchanged.
 
 ### Runs compared (clean runs; n=43 hard-intersection)
@@ -358,6 +403,14 @@ Across the same-model progression:
 - April has no judge/CoT cells (predates those), so only the gate column is directly comparable there.
 - The residual `radius_marked` and other semantic mark_types remain uncheckable by design and floor all runs equally.
 ## DSL_DOCS guidance lift + op-coverage gaps (2026-06-23)
+
+> **TL;DR** — Lifted cross-cutting rules + per-op notes + missing-op docs into
+> `DSL_DOCS` (the always-on DSL reference). A/B'd across 4 runs (deepseek +
+> gemma4 × v1/v2): **net-negative-to-neutral, never positive** — +0 new passes
+> vs base in all four runs. Decision: **reverted** to HEAD
+> (`recipe/catalog.py` back to 12,628 chars); candidate-15 alone remains the
+> optimized generation prompt. The op-coverage gaps are real docs gaps, but
+> documenting them did not help the gate. n=1 per cell.
 
 Two-pronged improvement to the recipe-strategy **DSL reference** (`DSL_DOCS` in `recipe/catalog.py`), the always-on text injected into every generation prompt via `build_generation_prompt`. This is the *other* GEPA-able prompt surface (alongside `RECIPE_GENERATION_SYSTEM`); `RECIPE_SELECTION_SYSTEM`, `RECIPE_DSL_QUICK_REF` (still dead code), and the candidate-15 generation prompt are unchanged.
 
