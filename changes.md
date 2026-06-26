@@ -518,15 +518,19 @@ v2 deepseek run: done (negative — see above). v2 gemma4 run: in progress. Reve
 ## Self-reported, metadata-first confidence
 
 > **TL;DR** — We asked the model to rate its own confidence *before* it builds the
-> diagram (not after). The verdict: it is a real **ranking** signal — it
-> separates passing diagrams from failing ones better than the free CoT analyzer
-> and the expensive LLM judge on the hard tier — but it is **not a trustable
-> number**: failures still come scored 85–100, so you can't gate on an absolute
-> threshold. Use it as a relative "flag the least-confident" signal after
-> per-model recalibration, not as a probability. One pre-construction call
-> ("hard") carries the signal; the in-call structured field ("soft") is flat.
-> The three reported dimensions are redundant. The earliest pipeline failures
-> (unparseable output) are invisible to it by construction.
+> diagram (not after). It is a **real but modest ranking signal**: on the full
+> 201-scenario curriculum, hard tier-2 AUC is ~0.60 (CI excludes 0.5), beating the
+> free CoT analyzer and roughly tying the expensive LLM judge — **not** the ~0.8
+> the 43-scenario hard-intersection slice suggested (that slice was fail-heavy and
+> inflated the signal by ~0.15–0.20). The encouraging nuance: hard is **most
+> trustworthy exactly where it matters** — on the hard tier (deepseek t3 AUC 0.77,
+> only 43% silently overconfident vs 70–92% on easier tiers). It is **not a
+> trustable probability** (miscalibrated, overconfident on most cells) — use it as
+> a relative "flag the least-confident" signal, after per-model recalibration,
+> not an absolute threshold. One pre-construction call ("hard") carries the
+> signal; the in-call structured field ("soft") is flat. The three reported
+> dimensions are redundant. The earliest pipeline failures (unparseable output)
+> are invisible to it by construction.
 
 ### Why we tried this
 
@@ -568,62 +572,75 @@ directly comparable per record.
 
 ### What we found
 
-Two runs (deepseek-v4-flash + gemma4, 43 hard-intersection scenarios each,
-repeats=1). Tier-2 is the only adequately-powered cell (n≈22); tier-3 is n=3–6
-(directional only). Numbers below are the lenient label (pass+soft_pass vs fail);
-the strict label (pass vs fail) agrees within ~0.02 on tier-2.
+Two phases of runs, both deepseek-v4-flash + gemma4, repeats=1, lenient label
+(pass+soft_pass vs fail): a **43-scenario hard-intersection slice** (preliminary,
+fail-heavy) and the **full 201-scenario curriculum** (the honest baseline). The
+201 curriculum has real power: tier-2 n=127 hard, tier-1/3 n≈35.
 
-**1. Hard discriminates; soft is flat — the pre-commitment ordering wins.**
+**0. The 43-slice inflated the signal by ~0.15–0.20 — a methodological lesson.**
+The 43 hard-intersection scenarios are cherry-picked hard (fail-heavy), which
+inflates AUC. The 201 curriculum is the full difficulty range. **Validate signal
+estimates on the broad curriculum, not the failing subset.**
 
-| cell | hard AUC [95% CI] | soft AUC | cot (free) | judge (costly) |
-|---|---|---|---|---|
-| deepseek t2 | **0.82 [0.65, 0.96]** | 0.55 | 0.62 | 0.57 |
-| gemma4 t2   | **0.69 [0.57, 0.81]** | 0.50 | 0.58 | 0.68 |
+| cell | 43-slice hard AUC | **201 hard AUC [95% CI]** | 201 soft | 201 cot | 201 judge | 201 overconf |
+|---|---|---|---|---|---|---|
+| deepseek t2 | 0.82 | **0.63 [0.52, 0.75]** | 0.58 | 0.59 | 0.59 | 82% |
+| deepseek t3 | 0.88 | **0.77 [0.59, 0.92]** | 0.75 | 0.58 | 0.79 | **43%** |
+| gemma4 t2   | 0.69 | **0.60 [0.51, 0.69]** | 0.49 | 0.57 | 0.63 | 92% |
+| gemma4 t3   | 0.50 | **0.67 [0.47, 0.89]** | 0.47 | 0.45 | 0.65 | 100% |
 
-Hard beats the free CoT baseline on both and beats the costly judge on deepseek.
-Soft is flat (~0.50: passes and fails both score ~93–100). The pure-prospective
-prelude is more honest than the structured field emitted mid-construction — the
-anti-anchoring hypothesis holds. **The extra prelude call earns its keep; soft
-is not worth gating on.**
+**1. Hard is a real but modest ranking signal.** On the 201 curriculum, hard
+tier-2 AUC is 0.63 (deepseek) / 0.60 (gemma4), both CIs exclude 0.5 — real, not
+noise. It beats the free CoT baseline on every meaningful cell and roughly ties
+the expensive LLM judge (deepseek t2 0.63 vs judge 0.59; gemma4 t2 0.60 vs judge
+0.63). Not dominant — in the judge's league, clearly above cot — and far from the
+~0.8 the 43-slice suggested. The pre-commitment (hard) ordering beats the in-call
+(soft) field; the extra prelude call earns its keep.
 
-**2. But it is badly miscalibrated and silently overconfident — not a trustable
-probability.** Brier 0.5–0.67, ECE 0.5–0.67. Failures score 85–100; the
-silently-overconfident rate (fail ∧ score ≥ 80) is 86–100% on adequate cells.
-Absolute-threshold flagging is useless (`score<40 → fail` recall ~0.06–0.14 —
-failures sit at ~85–92, not low). The score is a **ranking signal, not a
-probability.** The decision gate (`AUC>0.5 ∧ beats-cot ∧ overconf-ok`) fails the
-last condition everywhere — real discrimination, but not safe for absolute-
-threshold trust-gating.
+**2. Hard scales with difficulty — and is most trustworthy exactly where it
+matters.** deepseek hard AUC rises by tier — t1 0.58 → t2 0.63 → t3 0.77 — and
+silently-overconfident **falls** to **43%** on tier-3 (vs 70–92% on easier tiers).
+So on the hard scenarios where a wrong diagram actually matters, hard is both
+more discriminative *and* less overconfident. The decision gate
+(`AUC>0.5 ∧ beats-cot ∧ overconf-ok`) is met **only on deepseek tier-3**. On easy
+scenarios hard is overconfident but harmless (they mostly pass anyway). This is
+the usable pattern: flag the least-confident **hard-tier** diagrams for review.
 
-**3. The three dimensions are redundant — no per-dimension value.**
-`geometric_correctness` and `end_to_end` are nearly identical (corr ~0.985;
-literally equal 33% of deepseek runs / 76% of gemma4). `request_ambiguity` is
-weakly distinct (corr ~0.5) but *not* consistently better (weaker on deepseek,
-marginally better on gemma4 t2). No dimension dominates; the headline hard AUC
-(uses `geometric_correctness`) is representative. **Collapse to a single
-confidence; don't expect per-subsystem diagnosis.**
+**3. Still not a trustable probability.** Miscalibrated (Brier/ECE ~0.2),
+silently-overconfident (70–100%) on every cell except deepseek t3. Absolute-
+threshold flagging is useless (failures sit at 84–99, not low). The raw 0–100 is
+a ranking signal, not a probability — use it relatively or after per-model
+recalibration, not as an absolute threshold.
 
-**4. No pipeline-stage correlation — and the worst failures are invisible.**
-Record-level failures are almost all one bucket: the diagram rendered but a
-deterministic geometric/label property was wrong (only ~1 generation failure).
-At the attempt level, confidence exists only for `success` and `ir_pipeline`
-stages — `lowering`/`output_validation` failures have **no soft score** because
-the output didn't parse. So confidence is structurally blind to the earliest
-(worst) failures. The one faint signal: deepseek scores ~4–5 points lower on
-attempts that fail at ir_pipeline; gemma4 is flat at 100. (A coverage-gap note:
-gemma4 had 14/61 attempts with no soft, all 14 failed — soft AUC is over the
-parseable subset only; hard covers those.)
+**4. Soft is weak/inverted; not worth gating on.** deepseek soft is weaker than
+hard on t1/t2 (t1 0.42 *inverted*; t2 0.58) and only catches up on t3 (0.75).
+gemma4 soft is flat/inverted everywhere (0.47–0.50, pass 100 / fail 100). And
+gemma4 had **84/313 attempts with no soft** (all fails — unparseable output), so
+its soft AUC is selection-biased to the parseable subset; hard covers those.
 
-**5. Model-dependent; gemma4 inverts on the hard tier.** deepseek's hard
-confidence spreads on tier-3 (passes ~80, fails as low as 0/20/60). gemma4
-*inverts* on tier-3 (more confident on the scenarios it fails) — the
-terse-confident-wrong pattern. n=3–5, directional only, but it means hard can't
-be trusted as a raw signal for gemma4 on hard tiers without per-model
+**5. The three dimensions are redundant.** `geometric_correctness` and
+`end_to_end` are nearly identical (corr ~0.985; often literally equal);
+`request_ambiguity` is weakly distinct (corr ~0.5) but *not* consistently
+better. No dimension dominates; the headline hard AUC (uses
+`geometric_correctness`) is representative. Collapse to a single confidence;
+don't expect per-subsystem diagnosis.
+
+**6. No pipeline-stage correlation — and the worst failures are invisible.**
+Record-level failures are almost all one bucket (rendered but a deterministic
+geometric/label property was wrong). At the attempt level, confidence exists
+only for `success` and `ir_pipeline` stages — `lowering`/`output_validation`
+failures have no soft score (output didn't parse). Confidence is structurally
+blind to the earliest (worst) failures.
+
+**7. `contradictions_found` is not a useful booster** — precision-for-fail
+dropped to **0.42–0.45** on the 201 curriculum (was 0.75 on the 43-slice — also
+inflation), near the base fail rate. Drop it.
+
+**8. Model-dependent.** deepseek is the model where hard is usable (t3 AUC 0.77,
+overconf 43%). gemma4's 43-slice tier-3 inversion (AUC 0.00) softened to 0.67
+[0.47, 0.89] with more data — directional, but gemma4 stays flat/overconfident
+(100% on t1/t3). Don't trust hard as a raw signal for gemma4 without per-model
 recalibration.
-
-**6. `contradictions_found` is a marginal binary booster** — 0.75 precision-
-for-fail (4 records flagged, 3 failed), tiny n. Not stage-correlated, just
-weakly fail-correlated.
 
 ### What to do with this
 
@@ -633,13 +650,13 @@ weakly fail-correlated.
   recalibrate per model (isotonic/Platt on a labeled set, so the 85–100 band maps
   to real fail rates) or use it **relatively** (flag the bottom-N per batch), not
   an absolute threshold.
-- **Get more, independent data.** Prefer the 201-scenario curriculum **once** over
-  43×3. 201×1 gives 201 independent (confidence, outcome) pairs and is the
-  online-relevant quantity (one draw per request); 43×3 gives 129 records but only
-  43 independent scenarios (pseudoreplication — the record-level bootstrap CIs
-  would be anti-conservative), and it averages over draws you won't have in
-  production. 201×1 also firms up tier-3 and tests generalization beyond the
-  intersection slice.
+- **Use it where it's trustworthy: the hard tier (deepseek).** The decision gate
+  is met only on deepseek tier-3 — that's the cell to gate "flag for review" on.
+  Gate gemma4 only after recalibration; it's flat/overconfident as-is.
+- **Validate on the broad curriculum, not the hard slice.** The 43-slice
+  inflated AUC by ~0.15–0.20; the 201 curriculum is the honest baseline going
+  forward. (We now have 201×1 data for both models — the recommended design: one
+  draw per request, 201 independent pairs, no pseudoreplication.)
 - **If per-stage diagnosis becomes a goal**, elicit confidence *after*
   lowering/compile (a two-pass reflection) — the pre-construction prelude can't
   see unparseable-output failures by design.
@@ -677,17 +694,25 @@ weakly fail-correlated.
 
 ### Reproducing the numbers
 
-Source runs: `output_run_hard_intersect_tikz_{deepseek-v4-flash_1_7,gemma4_1_9}.txt`
-→ `evals/results/20260625-134136.jsonl` (deepseek) and
-`evals/results/20260625-134130.jsonl` (gemma4).
+Two phases of source runs:
+
+- **43-scenario hard-intersection slice** (preliminary):
+  `output_run_hard_intersect_tikz_{deepseek-v4-flash_1_7,gemma4_1_9}.txt`
+  → `evals/results/20260625-134136.jsonl` (deepseek) and
+  `evals/results/20260625-134130.jsonl` (gemma4).
+- **201-scenario curriculum** (the honest baseline, headline numbers above):
+  `output_run_curricullum_tikz_{deepseek-v4-flash_1_1,gemma4_1_1}.txt`
+  → `evals/results/20260625-182733.jsonl` (deepseek) and
+  `evals/results/20260625-182703.jsonl` (gemma4).
 
 ```
-python -m evals.analyze_confidence --results <jsonl> --n-boot 2000          # strict
-python -m evals.analyze_confidence --results <jsonl> --n-boot 2000 --lenient # pass+soft_pass vs fail
+./analyze_confidence.sh --lenient evals/results/<jsonl>          # wrapper, with --help
+python -m evals.analyze_confidence --results <jsonl> --n-boot 2000 --lenient
 ```
 
-Caveats on these two runs: repeats=1 (wide CIs, especially tier-3 n=3–6 — treat
-tier-3 as directional); the hard-intersection slice is narrow (intersection
-problems only, not the full curriculum); both runs used the GEPA-optimized
-on-disk prompts. Strict and lenient agree on the tier-2 headline (0.82 / 0.69),
-so the conclusion is robust to the label choice.
+Caveats: repeats=1 throughout (the 201 tier-2 CIs are tight at n=127; tier-1/3
+n≈35, so tier-1/3 CIs still include 0.5 on gemma4 — treat as directional). Both
+runs used the GEPA-optimized on-disk prompts. Strict and lenient agree on the
+tier-2 headline, so the conclusion is robust to the label choice. The 43-slice
+numbers are kept only to show the inflation; the 201 curriculum is the
+authoritative result.
