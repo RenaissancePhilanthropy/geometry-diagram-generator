@@ -174,7 +174,14 @@ def load_model(model_name: str, device: str, quant: str = "none"):
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(model_name)
-    if quant == "4bit":
+    if quant == "awq":
+        # Pre-quantized AWQ 4-bit checkpoint (e.g. Qwen/Qwen3-32B-AWQ): ~18GB on
+        # disk (vs ~66GB bf16), so it fits a 32GB disk. Quant config is baked in;
+        # just load directly (needs autoawq). fp16 compute.
+        print(f"loading {model_name} (AWQ 4-bit, prequantized) ...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, dtype=torch.float16, device_map={"": 0}).eval()
+    elif quant == "4bit":
         from transformers import BitsAndBytesConfig
         bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
                                  bnb_4bit_compute_dtype=torch.bfloat16,
@@ -193,7 +200,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="mps")
-    ap.add_argument("--quant", choices=("none", "4bit"), default="none",
+    ap.add_argument("--quant", choices=("none", "4bit", "awq"), default="none",
                     help="'4bit' = NF4 quant (fits big models on 48GB; muddies activations)")
     ap.add_argument("--max-new-tokens", type=int, default=2048)
     ap.add_argument("--n", type=int, default=20, help="number of prompts to test")

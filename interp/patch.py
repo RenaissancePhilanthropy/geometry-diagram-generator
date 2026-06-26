@@ -155,7 +155,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--quant", choices=("none", "4bit"), default="none",
+    ap.add_argument("--quant", choices=("none", "4bit", "awq"), default="none",
                     help="'4bit' = NF4 quant (fits big models on 48GB; muddies activations)")
     ap.add_argument("--out", default="interp/activations/patch_angle.json")
     args = ap.parse_args()
