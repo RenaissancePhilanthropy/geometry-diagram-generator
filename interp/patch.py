@@ -155,16 +155,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--quant", choices=("none", "4bit"), default="none",
+                    help="'4bit' = NF4 quant (fits big models on 48GB; muddies activations)")
     ap.add_argument("--out", default="interp/activations/patch_angle.json")
     args = ap.parse_args()
 
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    print(f"loading {args.model} on {args.device} ...")
-    tok = AutoTokenizer.from_pretrained(args.model)
-    model = (AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.bfloat16)
-             .to(args.device).eval())
+    from interp.capability_check import load_model
+    tok, model = load_model(args.model, args.device, args.quant)
 
     out = run_patching(model, tok, args.device)
     pathlib.Path(args.out).parent.mkdir(parents=True, exist_ok=True)

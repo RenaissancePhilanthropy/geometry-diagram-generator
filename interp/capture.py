@@ -123,12 +123,12 @@ def capture_activations(model, tok, prompt_ids: list[int], completion_ids: list[
 
 def run_capture(args) -> None:
     import numpy as np
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import torch  # noqa: F401  (used in the capture loop)
 
     from interp.capability_check import (
         build_messages,
         load_catalog_recipes,
+        load_model,
         load_prompts,
         select_recipes,
     )
@@ -143,13 +143,7 @@ def run_capture(args) -> None:
           + (f" (tier {args.tier})" if args.tier else "")
           + f"; few-shot={args.few_shot}; out={out_dir}")
 
-    print(f"loading {args.model} on {args.device} (bf16) ...")
-    tok = AutoTokenizer.from_pretrained(args.model)
-    model = (
-        AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.bfloat16)
-        .to(args.device)
-        .eval()
-    )
+    tok, model = load_model(args.model, args.device, args.quant)
     n_hs = model.config.num_hidden_layers + 1
     layers = resolve_layers(args.layers, n_hs)
     print(f"model has {n_hs} hidden states; saving layers {layers}")
@@ -272,6 +266,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--quant", choices=("none", "4bit"), default="none",
+                    help="'4bit' = NF4 quant (fits big models on 48GB; muddies activations)")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--tier", type=int, default=None)
     ap.add_argument("--few-shot", default="relevant:4",

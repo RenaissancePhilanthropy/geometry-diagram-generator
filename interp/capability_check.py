@@ -164,10 +164,37 @@ def build_messages(prompt: str, recipes: list | None = None,
     ]
 
 
+def load_model(model_name: str, device: str, quant: str = "none"):
+    """Load tokenizer + model. quant='none' -> bf16 (clean activations, preferred
+    for probing); quant='4bit' -> NF4 4-bit via bitsandbytes (compute in bf16) so
+    big models fit a single 48GB card. NOTE: 4-bit distorts activations — use only
+    for capability tests or size comparisons WITH a 4-bit control, never as the
+    sole basis for a representation claim. CUDA only for 4-bit."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tok = AutoTokenizer.from_pretrained(model_name)
+    if quant == "4bit":
+        from transformers import BitsAndBytesConfig
+        bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
+                                 bnb_4bit_compute_dtype=torch.bfloat16,
+                                 bnb_4bit_use_double_quant=True)
+        print(f"loading {model_name} in 4-bit (NF4, bf16 compute) ...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, quantization_config=bnb, device_map={"": 0}).eval()
+    else:
+        print(f"loading {model_name} on {device} (bf16) ...")
+        model = (AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
+                 .to(device).eval())
+    return tok, model
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--device", default="mps")
+    ap.add_argument("--quant", choices=("none", "4bit"), default="none",
+                    help="'4bit' = NF4 quant (fits big models on 48GB; muddies activations)")
     ap.add_argument("--max-new-tokens", type=int, default=2048)
     ap.add_argument("--n", type=int, default=20, help="number of prompts to test")
     ap.add_argument("--tier", type=int, default=None, help="filter by difficulty tier (1/2/3)")
@@ -183,17 +210,8 @@ def main() -> None:
     print(f"loaded {len(prompts)} prompt(s)" + (f" (tier {args.tier})" if args.tier else "")
           + f"; few-shot={args.few_shot} (catalog of {len(all_recipes)} recipes)")
 
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    print(f"loading {args.model} on {args.device} (bf16) — first run downloads ~15 GB ...")
-    tok = AutoTokenizer.from_pretrained(args.model)
-    # transformers >=5 renamed torch_dtype -> dtype (torch_dtype kept for BC).
-    model = (
-        AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.bfloat16)
-        .to(args.device)
-        .eval()
-    )
+    import torch  # noqa: F401  (used in the generation loop below)
+    tok, model = load_model(args.model, args.device, args.quant)
 
     n_ok = 0
     stage_counts: dict[str, int] = {}
