@@ -83,6 +83,17 @@ class EvaluationMetadata(BaseModel):
     contradiction_detail: list[str] = Field(default_factory=list)
 
 
+# Shared field description for the think-before-write geometric analysis.
+_ANALYSIS_FIELD_DESCRIPTION = (
+    "Free-form geometric planning, emitted FIRST. Describe how the "
+    "geometry will work before constructing it: key points and their "
+    "placement, the relationships that must hold (collinearity, right "
+    "angles, ratios, tangency), and the numerical checks you will "
+    "perform (cross products for collinearity, dot products for right "
+    "angles, distances for equal lengths). At least 40 characters."
+)
+
+
 class RecipeGenerationOutput(BaseModel):
     """Wrapper used as `output_type` for the soft (structured) elicitation.
 
@@ -90,9 +101,44 @@ class RecipeGenerationOutput(BaseModel):
     `recipe` construction (anti-anchoring via schema field order). `recipe`
     stays a structured `RecipeDSL` sub-object — no string-escaping — so
     pydantic-ai validation + auto-retry apply to both halves.
+
+    This is the DEFAULT wrapper (no think-before-write analysis). The
+    analysis field lives on the opt-in types below, gated by
+    `RecipeStrategy(geometric_planning=True)`.
     """
     model_config = ConfigDict(extra="forbid")
 
+    evaluation_metadata: EvaluationMetadata
+    recipe: RecipeDSL
+
+
+class RecipeAnalysisOutput(BaseModel):
+    """Opt-in think-before-write wrapper (analysis, no confidence).
+
+    Used when `geometric_planning=True` AND confidence elicitation is OFF
+    (confidence_mode none/prelude). `geometric_analysis` is the FIRST field —
+    a free-form planning string (min_length=40) the model MUST emit before the
+    construction (see ANALYSIS_INSTRUCTION). Content is unchecked beyond min
+    length; the point is to force the reasoning to happen before the
+    construction ops, not to verify what it says.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    geometric_analysis: str = Field(min_length=40, description=_ANALYSIS_FIELD_DESCRIPTION)
+    recipe: RecipeDSL
+
+
+class RecipeAnalysisGenerationOutput(BaseModel):
+    """Opt-in think-before-write + confidence wrapper.
+
+    Used when `geometric_planning=True` AND confidence_mode is structured/both.
+    Field order: `geometric_analysis` (think-before-write) FIRST, then
+    `evaluation_metadata` (anti-anchoring), then `recipe`. See the individual
+    docstrings above for the rationale on each half.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    geometric_analysis: str = Field(min_length=40, description=_ANALYSIS_FIELD_DESCRIPTION)
     evaluation_metadata: EvaluationMetadata
     recipe: RecipeDSL
 
@@ -159,14 +205,47 @@ Dimensions (each INDEPENDENT, 0 = no confidence, 100 = certain):
   (e.g. "undefined-intersection-branch", "qualitative-placement",
   "possible-degeneracy"). Empty list if none."""
 
-# Soft elicitation: prepended to the generation system prompt for structured/both
-# modes. evaluation_metadata is the FIRST field of the structured output, emitted
-# before the recipe construction (anti-anchoring via schema field order).
-METADATA_INSTRUCTION = f"""\
-## Self-Reported Confidence (emit FIRST, before the construction)
+# Think-before-write analysis: prepended to the generation system prompt ONLY
+# when RecipeStrategy(geometric_planning=True). `geometric_analysis` is the FIRST
+# field of the opt-in wrapper (RecipeAnalysisOutput / RecipeAnalysisGenerationOutput),
+# emitted before the construction (and before evaluation_metadata when both are
+# on). Schema field order makes the model emit the analysis before it can emit
+# any construction op — the soft ordering guarantee. Opt-in because the A/B on
+# deepseek-v4-flash showed no geometric-accuracy benefit (the model writes the
+# plan then ignores it); kept available for re-testing on stronger models.
+ANALYSIS_INSTRUCTION = """\
+## Geometric Analysis (emit FIRST — think before you write)
 
-Your response's FIRST field is `evaluation_metadata` — a self-assessment you
-MUST complete BEFORE you design or emit the construction. This is a prospective
+Your response's FIRST field is `geometric_analysis` — a free-form planning
+string you MUST write BEFORE you design or emit anything else. This is a
+think-before-write stage, deliberately separated from the construction:
+reasoning that happens *while* writing the construction tends to produce
+geometrically inconsistent results, so commit to your plan up front.
+
+Write out how the geometry will work:
+- The key points and where they go (coordinates / qualitative placement).
+- The relationships that must hold (collinearity, right angles, side ratios,
+  tangency, midpoints) and which points each involves.
+- The numerical checks you will perform before finalizing — cross products for
+  collinearity, dot products for right angles, distances for equal lengths /
+  ratios, midpoint averages.
+
+Do NOT emit the construction until you have written this analysis. It must be
+at least 40 characters; longer and more concrete is better. The content is not
+checked beyond that — what matters is that the reasoning actually happens here,
+in this field, before the construction.
+"""
+
+# Soft elicitation: prepended to the generation system prompt for structured/both
+# modes. `evaluation_metadata` is the FIRST field of RecipeGenerationOutput (or
+# the SECOND field when ANALYSIS_INSTRUCTION is also prepended, i.e. geometric_planning
+# + structured/both), emitted before the `recipe` construction (anti-anchoring via
+# schema field order).
+METADATA_INSTRUCTION = f"""\
+## Self-Reported Confidence (emit before the construction)
+
+Your response's `evaluation_metadata` field is a self-assessment you MUST
+complete BEFORE you design or emit the construction. This is a prospective
 prediction, not a review of an artifact you already produced. Be honest; low
 scores are fine and useful.
 

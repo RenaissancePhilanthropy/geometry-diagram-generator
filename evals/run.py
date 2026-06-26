@@ -293,6 +293,7 @@ async def run_scenario(
     cot_analysis: bool = False,
     prompt_overrides: dict[str, str] | None = None,
     confidence_mode: str = "both",
+    geometric_planning: bool = False,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict."""
     record: dict[str, Any] = {
@@ -304,6 +305,8 @@ async def run_scenario(
         "model": model,
         "user_prompt": scenario["prompt"],
         "repeat_index": repeat_index,
+        "confidence_mode": confidence_mode,
+        "geometric_planning": geometric_planning,
         "svg_path": None,
         "tikz_code": None,
         "diagram_ir": None,
@@ -351,6 +354,8 @@ async def run_scenario(
         ctor_kwargs["prompt_overrides"] = prompt_overrides
     if "confidence_mode" in init_params:
         ctor_kwargs["confidence_mode"] = confidence_mode
+    if "geometric_planning" in init_params:
+        ctor_kwargs["geometric_planning"] = geometric_planning
     strategy = strategy_cls(**ctor_kwargs)
 
     start = time.monotonic()
@@ -391,6 +396,11 @@ async def run_scenario(
                      if t.evaluation_metadata_soft is not None),
                     None,
                 )
+                geo_analysis_fb = partial_meta.geometric_analysis or next(
+                    (t.geometric_analysis for t in reversed(partial_meta.attempt_traces)
+                     if t.geometric_analysis is not None),
+                    None,
+                )
                 record["recipe_metadata"] = {
                     "selected_recipes": partial_meta.selected_recipes,
                     "unmatched_concepts": partial_meta.unmatched_concepts,
@@ -405,11 +415,13 @@ async def run_scenario(
                             "cot": t.cot,
                             "evaluation_metadata_hard": t.evaluation_metadata_hard,
                             "evaluation_metadata_soft": t.evaluation_metadata_soft,
+                            "geometric_analysis": t.geometric_analysis,
                         }
                         for t in partial_meta.attempt_traces
                     ],
                     "evaluation_metadata_hard": hard_meta_fb,
                     "evaluation_metadata_soft": soft_meta_fb,
+                    "geometric_analysis": geo_analysis_fb,
                 }
                 record["attempts"] = len(partial_meta.attempt_traces)
                 record["used_fallback"] = any(
@@ -491,11 +503,13 @@ async def run_scenario(
                         "cot": t.cot,
                         "evaluation_metadata_hard": t.evaluation_metadata_hard,
                         "evaluation_metadata_soft": t.evaluation_metadata_soft,
+                        "geometric_analysis": t.geometric_analysis,
                     }
                     for t in result.recipe_metadata.attempt_traces
                 ],
                 "evaluation_metadata_hard": result.recipe_metadata.evaluation_metadata_hard,
                 "evaluation_metadata_soft": result.recipe_metadata.evaluation_metadata_soft,
+                "geometric_analysis": result.recipe_metadata.geometric_analysis,
             }
             record["attempts"] = len(result.recipe_metadata.attempt_traces)
             record["used_fallback"] = any(
@@ -1039,6 +1053,18 @@ async def main() -> None:
         "preserves the pre-confidence pipeline). Only affects strategies whose constructor "
         "accepts confidence_mode (RecipeStrategy and subclasses).",
     )
+    parser.add_argument(
+        "--geometric-planning",
+        action="store_true",
+        default=False,
+        help="Opt-in geometric planning ('think before you write'): prepend a "
+        "`geometric_analysis` field (free-form planning string, min 40 chars) that the "
+        "model must emit BEFORE the construction. Off by default — an A/B on "
+        "deepseek-v4-flash showed no geometric-accuracy benefit (the model writes the "
+        "plan then ignores it). Kept for re-testing on stronger models. Only affects "
+        "strategies whose constructor accepts geometric_planning (RecipeStrategy and "
+        "subclasses).",
+    )
     args = parser.parse_args()
 
     # Prompt ablation: by default use the prior (pre-GEPA) prompts; pass --use-optimized-prompts
@@ -1123,6 +1149,7 @@ async def main() -> None:
                         cot_analysis=args.cot_analysis,
                         prompt_overrides=prompt_overrides,
                         confidence_mode=args.confidence_mode,
+                        geometric_planning=args.geometric_planning,
                     ),
                     timeout=args.timeout,
                 )

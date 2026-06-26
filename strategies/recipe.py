@@ -28,8 +28,11 @@ from recipe.dsl import RecipeDSL
 from recipe.lower import lower_to_ir, LoweringError
 from ir.renderer import TikZRenderer, Renderer
 from strategies.confidence import (
+    ANALYSIS_INSTRUCTION,
     METADATA_INSTRUCTION,
     PRELUDE_OUTPUT_INSTRUCTION,
+    RecipeAnalysisGenerationOutput,
+    RecipeAnalysisOutput,
     RecipeGenerationOutput,
     parse_metadata_fence,
     strip_generation_output_instruction,
@@ -119,6 +122,13 @@ class RecipeAttemptTrace:
     # failures since the metadata is in hand by then.
     evaluation_metadata_hard: dict | None = None
     evaluation_metadata_soft: dict | None = None
+    # Think-before-write geometric analysis (see strategies/confidence.py).
+    # The FIRST field of the structured generation output, emitted before the
+    # construction. None when confidence_mode is not structured/both (no
+    # wrapper), when output validation failed (no gen_output in hand), or when
+    # the model omitted it. Populated on lowering/ir-pipeline failures too,
+    # like the confidence metadata, since the analysis was already emitted.
+    geometric_analysis: str | None = None
 
 
 def _extract_cot(messages: list) -> str | None:
@@ -211,6 +221,10 @@ class RecipeMetadata:
     # attempt succeeded, or when the relevant elicitation failed to parse.
     evaluation_metadata_hard: dict | None = None
     evaluation_metadata_soft: dict | None = None
+    # Think-before-write geometric analysis of the successful attempt (see
+    # strategies/confidence.py). None when confidence_mode is not structured/
+    # both, when no attempt succeeded, or when the model omitted the field.
+    geometric_analysis: str | None = None
 
 
 class RecipeStrategy(SubstanceStrategy):
@@ -227,7 +241,7 @@ class RecipeStrategy(SubstanceStrategy):
     the error description for up to MAX_RETRIES attempts.
     """
 
-    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None, thinking: bool = False, prompt_overrides: dict[str, str] | None = None, confidence_mode: str = "none") -> None:
+    def __init__(self, use_recipes: bool = True, enable_cache: bool = False, catalog: str = "default", renderer: Renderer | None = None, thinking: bool = False, prompt_overrides: dict[str, str] | None = None, confidence_mode: str = "none", geometric_planning: bool = False) -> None:
         super().__init__(enable_cache=enable_cache, thinking=thinking)
         self.use_recipes = use_recipes
         self.catalog = catalog
@@ -241,6 +255,16 @@ class RecipeStrategy(SubstanceStrategy):
         # no prelude call) for existing callers (web app, dry_run). The eval harness
         # passes `both` (or another mode) explicitly.
         self.confidence_mode = confidence_mode
+        # Opt-in geometric planning ("think before you write"): when True, the
+        # generation output wrapper gains a `geometric_analysis` first field
+        # (free-form planning string, min 40 chars) the model must emit before
+        # the construction, and ANALYSIS_INSTRUCTION is prepended to the system
+        # prompt. Orthogonal to confidence_mode — works in any mode (none/
+        # prelude get an analysis-only wrapper; structured/both get
+        # analysis+metadata). Opt-in because the A/B on deepseek-v4-flash
+        # showed no geometric-accuracy benefit; kept for re-testing on stronger
+        # models.
+        self.geometric_planning = geometric_planning
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL) -> Agent:
         """Return a conversational agent with render_diagram and query_diagram tools."""
@@ -379,11 +403,31 @@ class RecipeStrategy(SubstanceStrategy):
         # request and make the model emit a construction), so it is stripped
         # only when building the prelude's system prompt below.
         base_gen_system = self.prompt_overrides.get("generation_system", RECIPE_GENERATION_SYSTEM)
+        # Compose the system prompt prefix and pick the output schema from the
+        # two orthogonal toggles: use_structured_meta (confidence) and
+        # geometric_planning (think-before-write). ANALYSIS_INSTRUCTION is
+        # prepended FIRST (its field is emitted first), then METADATA_INSTRUCTION
+        # when confidence is on. Both are prepended IN CODE (not in the template)
+        # so they are present under both the GEPA-optimized and pre-GEPA prompt
+        # arms — injecting via the template would be absent in whichever arm
+        # replaces `generation_system` wholesale and confound the ablation.
+        prefix_parts: list[str] = []
+        if self.geometric_planning:
+            prefix_parts.append(ANALYSIS_INSTRUCTION)
         if use_structured_meta:
-            gen_instructions = METADATA_INSTRUCTION + "\n" + base_gen_system
-            gen_output_type: type = RecipeGenerationOutput
+            prefix_parts.append(METADATA_INSTRUCTION)
+        if prefix_parts:
+            gen_instructions = "\n".join(prefix_parts) + "\n" + base_gen_system
         else:
             gen_instructions = base_gen_system
+        # Output schema: analysis+metadata+recipe > analysis+recipe > metadata+recipe > recipe.
+        if self.geometric_planning and use_structured_meta:
+            gen_output_type: type = RecipeAnalysisGenerationOutput
+        elif self.geometric_planning:
+            gen_output_type = RecipeAnalysisOutput
+        elif use_structured_meta:
+            gen_output_type = RecipeGenerationOutput
+        else:
             gen_output_type = RecipeDSL
 
         # Hard-fence prelude (independent call). Runs once, up-front — it is a
@@ -516,12 +560,25 @@ class RecipeStrategy(SubstanceStrategy):
             self._partial_input_tokens = total_input_tokens
             self._partial_output_tokens = total_output_tokens
             gen_output = response.output
-            if use_structured_meta:
+            if hasattr(gen_output, "recipe"):
+                # Any wrapper (RecipeGenerationOutput / RecipeAnalysisOutput /
+                # RecipeAnalysisGenerationOutput): unwrap the construction. The
+                # confidence wrappers carry evaluation_metadata; the
+                # analysis-only wrapper (geometric_planning + none/prelude) does
+                # not, so guard it. Plain RecipeDSL (no wrapper) takes the else.
                 dsl = gen_output.recipe
-                soft_meta = gen_output.evaluation_metadata.model_dump()
+                if hasattr(gen_output, "evaluation_metadata"):
+                    soft_meta = gen_output.evaluation_metadata.model_dump()
+                else:
+                    soft_meta = None
             else:
                 dsl = gen_output
                 soft_meta = None
+            # geometric_analysis is present only on the opt-in analysis wrappers
+            # (RecipeAnalysisOutput / RecipeAnalysisGenerationOutput); absent (and
+            # thus None) on RecipeGenerationOutput and plain RecipeDSL. getattr
+            # covers all four output_type cases uniformly.
+            geo_analysis: str | None = getattr(gen_output, "geometric_analysis", None)
             logger.info(
                 "Attempt %d: RecipeDSL has %d construction ops",
                 attempt + 1,
@@ -548,6 +605,7 @@ class RecipeStrategy(SubstanceStrategy):
                     cot=cot,
                     evaluation_metadata_hard=hard_meta,
                     evaluation_metadata_soft=soft_meta,
+                    geometric_analysis=geo_analysis,
                 ))
                 continue
 
@@ -579,6 +637,7 @@ class RecipeStrategy(SubstanceStrategy):
                     cot=cot,
                     evaluation_metadata_hard=hard_meta,
                     evaluation_metadata_soft=soft_meta,
+                    geometric_analysis=geo_analysis,
                 ))
                 continue
 
@@ -590,10 +649,12 @@ class RecipeStrategy(SubstanceStrategy):
                 cot=cot,
                 evaluation_metadata_hard=hard_meta,
                 evaluation_metadata_soft=soft_meta,
+                geometric_analysis=geo_analysis,
             ))
             recipe_metadata.cot = cot
             recipe_metadata.evaluation_metadata_hard = hard_meta
             recipe_metadata.evaluation_metadata_soft = soft_meta
+            recipe_metadata.geometric_analysis = geo_analysis
             return StructuredRunResult(
                 diagram_ir=result.diagram_ir,
                 tikz=result.tikz,
@@ -653,6 +714,18 @@ class RecipeStrategy(SubstanceStrategy):
                     recipe_metadata.evaluation_metadata_soft = next(
                         (t.evaluation_metadata_soft for t in reversed(recipe_metadata.attempt_traces)
                          if t.evaluation_metadata_soft is not None),
+                        None,
+                    )
+                # Same propagation for the think-before-write geometric
+                # analysis: the fallback (StructuredStrategy) does not produce
+                # one, so carry the last recipe attempt's analysis. It is the
+                # plan the model committed to before a construction that
+                # ultimately failed — still informative for diagnosing where
+                # the reasoning went wrong.
+                if recipe_metadata.geometric_analysis is None:
+                    recipe_metadata.geometric_analysis = next(
+                        (t.geometric_analysis for t in reversed(recipe_metadata.attempt_traces)
+                         if t.geometric_analysis is not None),
                         None,
                     )
                 fallback_result.recipe_metadata = recipe_metadata

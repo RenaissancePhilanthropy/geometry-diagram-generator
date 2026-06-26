@@ -18,6 +18,8 @@ from recipe.dsl import RecipeDSL
 from strategies.confidence import (
     DimensionScore,
     EvaluationMetadata,
+    RecipeAnalysisGenerationOutput,
+    RecipeAnalysisOutput,
     RecipeGenerationOutput,
     FENCE_START,
     FENCE_END,
@@ -66,6 +68,13 @@ def _fence(meta: dict) -> str:
     return f"{FENCE_START}\n{json.dumps(meta)}\n{FENCE_END}"
 
 
+# A valid think-before-write geometric analysis (>= min_length=40).
+_ANALYSIS = (
+    "Place A at (0,0) and B at (3,0). Segment AB is horizontal so the y-values "
+    "match. No right angles or ratios to verify for this simple segment."
+)
+
+
 def _make_fake_ir_result() -> StructuredRunResult:
     fake_ir = DiagramIR(define=[], checks=[], render=[])
     return StructuredRunResult(diagram_ir=fake_ir, tikz="\\tkzInit", svg="<svg/>")
@@ -81,7 +90,10 @@ def _usage(inp: int = 10, out: int = 20):
 
 
 def _gen_response_structured(geo: int = 80) -> MagicMock:
-    """Generation response whose .output is a RecipeGenerationOutput."""
+    """Generation response whose .output is a RecipeGenerationOutput (no analysis).
+
+    Used for confidence_mode structured/both with geometric_planning=False (default).
+    """
     m = _usage()
     m.output = RecipeGenerationOutput.model_validate(
         {"evaluation_metadata": _meta_dict(geo=geo), "recipe": SIMPLE_DSL}
@@ -89,8 +101,35 @@ def _gen_response_structured(geo: int = 80) -> MagicMock:
     return m
 
 
+def _gen_response_analysis(geo: int = 80, analysis: str = _ANALYSIS) -> MagicMock:
+    """Generation response whose .output is a RecipeAnalysisGenerationOutput.
+
+    analysis + metadata + recipe — used for geometric_planning=True with
+    confidence_mode structured/both.
+    """
+    m = _usage()
+    m.output = RecipeAnalysisGenerationOutput.model_validate(
+        {"geometric_analysis": analysis, "evaluation_metadata": _meta_dict(geo=geo),
+         "recipe": SIMPLE_DSL}
+    )
+    return m
+
+
+def _gen_response_analysis_only(analysis: str = _ANALYSIS) -> MagicMock:
+    """Generation response whose .output is a RecipeAnalysisOutput.
+
+    analysis + recipe (no confidence) — used for geometric_planning=True with
+    confidence_mode none/prelude.
+    """
+    m = _usage()
+    m.output = RecipeAnalysisOutput.model_validate(
+        {"geometric_analysis": analysis, "recipe": SIMPLE_DSL}
+    )
+    return m
+
+
 def _gen_response_plain() -> MagicMock:
-    """Generation response whose .output is a plain RecipeDSL (none/prelude)."""
+    """Generation response whose .output is a plain RecipeDSL (none/prelude, no analysis)."""
     m = _usage()
     m.output = RecipeDSL.model_validate(SIMPLE_DSL)
     return m
@@ -147,11 +186,10 @@ def test_evaluation_metadata_required_dims_and_contradictions():
 
 
 def test_recipe_generation_output_field_order():
-    # evaluation_metadata MUST be the first field so the model emits it before
-    # the construction (the soft anti-anchoring guarantee).
+    # DEFAULT wrapper (no analysis): evaluation_metadata FIRST, then recipe
+    # (anti-anchoring via schema field order). No geometric_analysis field.
     fields = list(RecipeGenerationOutput.model_fields.keys())
-    assert fields[0] == "evaluation_metadata"
-    assert fields[1] == "recipe"
+    assert fields == ["evaluation_metadata", "recipe"]
 
 
 def test_recipe_generation_output_round_trip():
@@ -160,6 +198,57 @@ def test_recipe_generation_output_round_trip():
     )
     assert isinstance(obj.recipe, RecipeDSL)
     assert obj.evaluation_metadata.geometric_correctness.confidence_score == 42
+    assert not hasattr(obj, "geometric_analysis")
+
+
+def test_recipe_generation_output_rejects_analysis_field():
+    # The default wrapper has extra="forbid" and no analysis field; an analysis
+    # key must be rejected so the two wrappers stay cleanly separable.
+    with pytest.raises(ValidationError):
+        RecipeGenerationOutput.model_validate(
+            {"geometric_analysis": _ANALYSIS, "evaluation_metadata": _meta_dict(), "recipe": SIMPLE_DSL}
+        )
+
+
+def test_recipe_analysis_output_field_order():
+    # Opt-in analysis-only wrapper (geometric_planning=True, no confidence):
+    # geometric_analysis FIRST, then recipe.
+    fields = list(RecipeAnalysisOutput.model_fields.keys())
+    assert fields == ["geometric_analysis", "recipe"]
+
+
+def test_recipe_analysis_generation_output_field_order():
+    # Opt-in analysis + confidence wrapper (geometric_planning=True,
+    # confidence_mode structured/both): geometric_analysis FIRST, then
+    # evaluation_metadata, then recipe.
+    fields = list(RecipeAnalysisGenerationOutput.model_fields.keys())
+    assert fields == ["geometric_analysis", "evaluation_metadata", "recipe"]
+
+
+def test_recipe_analysis_generation_output_round_trip():
+    obj = RecipeAnalysisGenerationOutput.model_validate(
+        {"geometric_analysis": _ANALYSIS, "evaluation_metadata": _meta_dict(geo=42), "recipe": SIMPLE_DSL}
+    )
+    assert isinstance(obj.recipe, RecipeDSL)
+    assert obj.evaluation_metadata.geometric_correctness.confidence_score == 42
+    assert obj.geometric_analysis == _ANALYSIS
+
+
+def test_recipe_analysis_output_requires_analysis():
+    # Missing the analysis field -> rejected (it is required).
+    with pytest.raises(ValidationError):
+        RecipeAnalysisOutput.model_validate({"recipe": SIMPLE_DSL})
+
+
+def test_recipe_analysis_output_min_length():
+    # Below the 40-char min_length -> rejected, so pydantic-ai auto-retries
+    # when the model skimps on the think-before-write stage.
+    too_short = "short plan"  # 10 chars
+    assert len(too_short) < 40
+    with pytest.raises(ValidationError):
+        RecipeAnalysisOutput.model_validate(
+            {"geometric_analysis": too_short, "recipe": SIMPLE_DSL}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +382,80 @@ async def test_structured_mode_records_soft_only():
     assert soft is not None
     assert geo_correctness_score(soft) == 64
     assert MockAgent.call_count == 1  # no prelude
+    # geometric_planning defaults to OFF, so no think-before-write analysis is
+    # captured even in structured mode (the wrapper has no analysis field).
+    assert result.recipe_metadata.geometric_analysis is None
+
+
+@pytest.mark.asyncio
+async def test_geometric_planning_structured_captures_analysis_and_soft():
+    """geometric_planning=True + structured: analysis AND soft score both captured."""
+    strategy = RecipeStrategy(
+        use_recipes=False, confidence_mode="structured", geometric_planning=True
+    )
+    fake = _make_fake_ir_result()
+    gen = _gen_response_analysis(geo=64)
+
+    with (
+        patch("strategies.recipe.Agent") as MockAgent,
+        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake)),
+    ):
+        inst = MagicMock()
+        inst.run = AsyncMock(return_value=gen)
+        MockAgent.return_value = inst
+        result = await strategy.run("draw two points", model="test-model")
+
+    assert geo_correctness_score(result.recipe_metadata.evaluation_metadata_soft) == 64
+    assert result.recipe_metadata.evaluation_metadata_hard is None
+    # The think-before-write analysis is captured on the success trace and
+    # promoted to the top-level recipe metadata.
+    assert result.recipe_metadata.geometric_analysis == _ANALYSIS
+    success_traces = [t for t in result.recipe_metadata.attempt_traces if t.stage == "success"]
+    assert success_traces and success_traces[-1].geometric_analysis == _ANALYSIS
+
+
+@pytest.mark.asyncio
+async def test_geometric_planning_none_captures_analysis_only():
+    """geometric_planning=True + none: analysis captured, no confidence (analysis-only wrapper)."""
+    strategy = RecipeStrategy(
+        use_recipes=False, confidence_mode="none", geometric_planning=True
+    )
+    fake = _make_fake_ir_result()
+    gen = _gen_response_analysis_only()
+
+    with (
+        patch("strategies.recipe.Agent") as MockAgent,
+        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake)),
+    ):
+        inst = MagicMock()
+        inst.run = AsyncMock(return_value=gen)
+        MockAgent.return_value = inst
+        result = await strategy.run("draw two points", model="test-model")
+
+    # Analysis-only wrapper: no confidence metadata, but analysis is captured.
+    assert result.recipe_metadata.evaluation_metadata_hard is None
+    assert result.recipe_metadata.evaluation_metadata_soft is None
+    assert result.recipe_metadata.geometric_analysis == _ANALYSIS
+    assert MockAgent.call_count == 1  # no prelude
+
+
+@pytest.mark.asyncio
+async def test_none_mode_has_no_analysis():
+    """confidence_mode=none, geometric_planning=False: plain RecipeDSL, no analysis captured."""
+    strategy = RecipeStrategy(use_recipes=False, confidence_mode="none")
+    fake = _make_fake_ir_result()
+    gen = _gen_response_plain()
+
+    with (
+        patch("strategies.recipe.Agent") as MockAgent,
+        patch("strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake)),
+    ):
+        inst = MagicMock()
+        inst.run = AsyncMock(return_value=gen)
+        MockAgent.return_value = inst
+        result = await strategy.run("draw two points", model="test-model")
+
+    assert result.recipe_metadata.geometric_analysis is None
 
 
 @pytest.mark.asyncio
@@ -386,6 +549,48 @@ async def test_both_mode_metadata_captured_on_lowering_failure():
     # The prelude ran once up-front; generation ran MAX_RETRIES times.
     from strategies.recipe import MAX_RETRIES
     assert MockAgent.call_count == 1 + MAX_RETRIES
+    # geometric_planning defaults to OFF, so no analysis is captured even though
+    # the soft metadata is (the wrapper has no analysis field). On the failure
+    # path `run` raises, so inspect the partial metadata.
+    partial = strategy._partial_recipe_metadata
+    assert partial is not None
+    lowering = [t for t in partial.attempt_traces if t.stage == "lowering"]
+    assert len(lowering) == MAX_RETRIES
+    assert all(t.geometric_analysis is None for t in lowering)
+    assert all(t.evaluation_metadata_soft is not None for t in lowering)
+
+
+@pytest.mark.asyncio
+async def test_geometric_planning_captures_analysis_on_lowering_failure():
+    """With geometric_planning=True the analysis is on every lowering-failure trace."""
+    from recipe.lower import LoweringError
+
+    strategy = RecipeStrategy(
+        use_recipes=False, confidence_mode="both", geometric_planning=True
+    )
+    prelude = _prelude_response(_meta_dict(geo=20))
+    gen = _gen_response_analysis(geo=25)
+
+    with (
+        patch("strategies.recipe.Agent") as MockAgent,
+        patch("strategies.recipe.lower_to_ir", side_effect=LoweringError("bad")),
+    ):
+        inst = MagicMock()
+        inst.run = AsyncMock(side_effect=[prelude, gen, gen, gen])
+        MockAgent.return_value = inst
+        with pytest.raises(RuntimeError, match="RecipeStrategy failed after"):
+            await strategy.run("draw something", model="test-model")
+
+    from strategies.recipe import MAX_RETRIES
+    assert MockAgent.call_count == 1 + MAX_RETRIES
+    # The analysis was emitted before each failing construction, so it is on
+    # every lowering-failure trace (it is in hand by then).
+    partial = strategy._partial_recipe_metadata
+    assert partial is not None
+    lowering = [t for t in partial.attempt_traces if t.stage == "lowering"]
+    assert len(lowering) == MAX_RETRIES
+    assert all(t.geometric_analysis == _ANALYSIS for t in lowering)
+    assert all(t.evaluation_metadata_soft is not None for t in lowering)
 
 
 @pytest.mark.asyncio
