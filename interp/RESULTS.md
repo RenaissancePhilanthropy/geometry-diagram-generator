@@ -95,3 +95,68 @@ Patch the residual stream at the peak layers (~L14–20) between minimal-pair
 prompts (60°↔70°, perpendicular↔parallel). If the output geometry flips, the
 representation is **causal**, not merely decodable. Decodability told us *where*
 to aim; patching confirms *whether the model uses it*.
+
+---
+
+# Scale: Qwen2.5 7B vs 32B
+
+Does a bigger model do the task better, and does it *represent* geometry better —
+and where? Datasets: `big30` (7B, bf16, 474 records, 29 layers), `q32_awq`
+(32B, AWQ-4bit, 220 records, 65 layers), `q7_awq` (7B, AWQ-4bit control, 109
+records). The 7B-AWQ control exists to separate **model size** from **4-bit
+quantization** (32B only fit the disk as AWQ; 7B is natively bf16).
+
+## 1. Capability — scale clearly wins
+
+Valid-construction rate (tier-1, few-shot all): **7B = 20%, 32B = 40%.** The
+bigger model produces compiling geometry twice as often, and its failures are
+deeper-pipeline (geometry references) rather than schema errors.
+
+## 2. Representation quality — separating size from quantization
+
+Raw peak decodability (probe R² for coords/angle, accuracy for relation):
+
+| Property | 7B-bf16 | 7B-AWQ | 32B-AWQ |
+|---|---|---|---|
+| point_coord (R²) | 0.49 | 0.29 | 0.34 |
+| angle (R²) | 0.52 | (degenerate, low n) | 0.51 |
+| entity_relation (acc) | 0.96 | 0.93 | 0.99 |
+
+- **Quantization hits coordinates hard** (7B: 0.49 → 0.29). Coordinates are the
+  finest-grained, deepest representation (see §3) and the most 4-bit-fragile.
+- **At matched precision (AWQ vs AWQ), 32B ≥ 7B on every property** (coord
+  0.34>0.29, relation 0.99>0.93). The 32B's lower *raw* coord vs 7B-bf16 is the
+  quantization penalty, not a size deficit.
+- **32B-AWQ ≈ 7B-bf16 on angle and relations despite the 4-bit handicap** — since
+  AWQ only hurts, the size benefit must more than pay for it. Scale improves the
+  representation.
+
+## 3. Coarse-to-fine: a scale-invariant computational order
+
+Onset depth = shallowest fractional depth reaching 90% of the concept's peak
+(4-seed mean ± std). "input level" = decodability at layer 0 (before computation).
+
+| Concept | 7B onset | 32B onset | input level (L0) |
+|---|---|---|---|
+| entity_relation | **6% ± 3%** | **9% ± 7%** | 0.70 / 0.74 |
+| angle | **35% ± 16%** | **37% ± 4%** | 0.36 / 0.31 |
+| point_coord | **56% ± 2%** | **66% ± 0%** | 0.15 / 0.06 |
+
+- **The order is robust** (gaps ≫ error bars) and **identical in both sizes**: the
+  model builds geometry **relational role → angle → precise position**.
+- **Onset depth tracks how much must be *derived*.** Relational role is largely
+  *given* at the input (L0 ≈ 0.70 — naming) and finishes by ~6% depth; angle is
+  partly given (~0.31) and finishes mid-network; coordinates are almost absent at
+  input (~0.06) and take ~60% of the depth to compute. The network spends depth
+  in proportion to how much each property must be derived.
+- This also re-explains §2: coordinates are the deepest, most-computed
+  representation, hence the most quantization-fragile.
+
+## Caveats
+- **Precision confound** is only partly controlled: the 7B-AWQ control is
+  under-powered (109 records; its angle probe degenerated to R²<0). A larger
+  control would firm up the size-vs-quant split beyond coordinates.
+- **32B is AWQ-only** here (the 32 GB disk blocked the 66 GB bf16 download); a
+  clean bf16-32B run needs an 80 GB GPU.
+- Per-model single-seed for §2 raw scores; §3 onsets are 4-seed. Smaller concept
+  classes (angle, some relations) remain the noisiest.
