@@ -182,9 +182,15 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
     (zero-width offset / flagged) are dropped — they carry no geometric content.
     """
     import numpy as np
+    import re
 
     X, y, groups, toks = [], [], [], []
     for gi, rec in enumerate(records):
+        # Group by BASE PROMPT (strip a trailing _s<N> sample suffix), not by
+        # record/sample. Multi-sample captures store K completions of one prompt
+        # (same point names + geometry); grouping by sample would let the split
+        # put siblings on both sides -> leakage. Falls back to gi if no pid.
+        base = re.sub(r"_s\d+$", "", rec.get("pid", str(gi))) or str(gi)
         labels = labeler(rec)
         acts = rec["acts"]               # [L, n_stored, D]
         pos_map = rec.get("pos_map")     # orig completion idx -> stored slot, or None
@@ -205,7 +211,7 @@ def build_xy(records: list[dict], layer_pos: int, labeler):
                     continue
             X.append(acts[layer_pos, ai, :].astype("float32"))
             y.append(lab)
-            groups.append(gi)
+            groups.append(base)
             toks.append(tokens[pos] if pos < len(tokens) else "")
     if not X:
         return np.empty((0, 0)), np.array([]), np.array([]), np.array([])

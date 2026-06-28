@@ -3,6 +3,32 @@
 **Date:** 2026-06-25 · **Model:** Qwen2.5-7B-Instruct (bf16) · **Method:** see
 [METHODOLOGY.md](METHODOLOGY.md)
 
+> ## ⚠️ CORRECTION (2026-06-28) — read first
+>
+> A code review (Codex) found a **train/test leakage bug**: the probe split
+> grouped by *captured sample*, but the capture runs have many temperature
+> **samples of the same prompt** (same point names + geometry). Siblings landed
+> on both sides of the split, so the probe **memorized prompts** rather than
+> generalizing. Fixed by grouping the split on **base prompt** (probe.py).
+>
+> The numbers below (coord R²≈0.4–0.5, angle≈0.5–0.7) were **inflated by this
+> leakage.** Re-evaluated leak-free (held-out *prompts*):
+>
+> | property | as-written (leaky) | leak-free | verdict |
+> |---|---|---|---|
+> | entity_relation | acc 0.96 | **acc 0.70, lift +0.37 over naming** | **holds** |
+> | point_coord | R² 0.49 | **R² ~0.12–0.16** | mostly was leakage |
+> | angle | R² 0.52 | **R² ~−0.2 to +0.4 (unstable)** | unsupported |
+> | coherent map (shape) | 0.57 | **0.26 (n=9 figures)** | weak hint, underpowered |
+>
+> **Root cause beyond the bug:** every dataset has only **35–50 *unique*
+> prompts** (multi-sampling inflated record counts, not construction diversity).
+> Fine-grained cross-prompt targets (coords, angle) are **data-starved**; only
+> the **relational-role** result is robust leak-free (all 4 datasets, both sizes).
+> Capability numbers (40% vs 20%) are unaffected (no probe). The deeper, original
+> single-pass logic below stands; the magnitudes do not. **Next run needs many
+> more *unique* prompts, not more samples.**
+
 ## Headline
 
 When the model writes a geometry construction, **point coordinates, vertex
