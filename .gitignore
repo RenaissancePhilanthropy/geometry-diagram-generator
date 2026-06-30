@@ -24,6 +24,8 @@ demo-ui/pnpm-workspace.yaml
 
 # Evals results
 evals/results/
+# Embedding judge outputs (runs.jsonl, matrix.csv, cache, etc.)
+evals/embedding_judge_out/
 
 # macOS files
 .DS_Store

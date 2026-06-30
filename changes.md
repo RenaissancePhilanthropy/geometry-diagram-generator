@@ -41,6 +41,7 @@ _Last updated: 2026-06-25_
 - **Eval-harness integration** — `--cot-analysis` runs the confidence judge on both success and failure paths, captures top-level CoT, and derives a calibration label (agree/over/under-confident) vs the deterministic gate. *Why: score confidence even on failures and catch overconfidence.* — `evals/run.py`
 - **CoT backfill** — recover CoT that was captured in attempt traces but never reached the top-level field (the all-fail-then-fallback path), and re-run analysis without regenerating. *Why: repair pre-fix runs.* — `evals/rescore_cot.py` (new), `strategies/recipe.py` (fallback now sets CoT)
 - **Self-reported, metadata-first confidence** — ask the model to emit a structured self-assessment *before* it commits to the construction (prospective, not retrospective). Two elicitation methods share one schema: **hard** (a separate fenced `[[INTERNAL_METADATA]]` prelude call) and **soft** (the first field of the structured generation output); a `confidence_mode` toggle selects none/structured/prelude/both. *Why: post-hoc signals (the CoT analyzer, the LLM judge) rationalize the artifact the model already produced; a prospective self-report avoids that anchoring. Findings: hard discriminates on the hard tier and beats the CoT analyzer + LLM judge; soft is flat; all are miscalibrated (silently overconfident) — a ranking signal, not a probability.* See the **Self-reported, metadata-first confidence** section below. — `strategies/confidence.py` (new), `strategies/recipe.py`, `evals/run.py` (`--confidence-mode`), `evals/analyze_confidence.py` (new)
+- **Embedding judge (cosine cot↔answer)** — an offline, model-agnostic judge that embeds the CoT and four text renderings of the produced diagram (`flat_dsl`, `raw_dsl`, `nl_ir`, `tikz`) via a local OpenAI-compatible `embeddinggemma` endpoint, then scores cosine(cot, answer) per representation **kept separate** plus a naive `cos_combined`, aggregated per `(model × scenario)` with `model` used **verbatim** (no normalization — botched names stay own buckets, easy to discard). The runner defaults to **all** `evals/results/*.jsonl` (the originals already carry CoT in `attempt_traces` — the `.cotbackfill.jsonl` files are redundant, not required) and the tool dedups the same run across original / `*_rescored` / `*.cotbackfill` variants (rescored > original > backfill, by run identity) so nothing is double-counted. An internal-coherence signal read alongside gate/pass, not a correctness judge; `repr_signal.txt` reports each representation's AUC vs pass so a future single-score formula can be weighted once we know which constituent tracks correctness. *Why: a cheap, continuous, model-agnostic consistency signal that complements the deterministic CoT analyzer and the LLM judge, with the four representations kept separate until the data says which to keep. CoTs are **chunked** to the 2048-token `embeddinggemma` cap (the old prefix-truncation silently dropped 57% of CoT tokens, 72% of runs) and each rep is scored under 3 aggregations — `max`/`mean`/`pooled` — kept separate.* — `evals/embedding_judge.py` (new), `util/embeddings.py` (new), `run_embedding_judge.sh` (new). See the **Embedding judge** results section below.
 
 ## Checker fixes (false-positive elimination)
 
@@ -70,10 +71,11 @@ _Last updated: 2026-06-25_
 - **Profiling** — per-phase timing of one scenario (selection → generation → lowering → IR → judge). — `profile_single_scenario.py`
 - **Failing-scenario extraction** — build a new scenarios YAML from the gate-failures of one or more runs (intersection/union). *Why: re-run evals over just what's failing.* — `evals/extract_failing_scenarios.py`
 - **Confidence analysis** — wrapper for `evals/analyze_confidence.py`: pick results JSONL(s) (defaults to newest `evals/results/*.jsonl`), strict/lenient truth label, bootstrap CIs, optional JSON report; `--help` documents all params inline. *Why: one-command confidence-vs-gate analysis with the help/params in the script itself.* — `analyze_confidence.sh`
+- **Embedding judge runner** — wrapper for `evals/embedding_judge.py`: score cosine(cot, answer) over cot-bearing eval runs against the local `embeddinggemma` endpoint; defaults to all `evals/results/*.jsonl` (deduped in-tool), chunks long CoTs to the 2048-token cap with halve-on-stall, `--with-prompt-baseline` adds a reasoning-relevance axis; `--help` documents all params inline. *Why: one-command embedding-judge run with the gotchas (chunk size, model id `embeddinggemma`) baked in.* — `run_embedding_judge.sh`
 
 ## Tests (new + expanded)
 
-- New: `tests/test_cot_analyzer.py`, `tests/test_cot_analysis_failure.py`, `tests/test_dsl_validation.py`, `tests/test_gepa_adapter.py`, `tests/test_sympy_checks.py`, `tests/test_ollama_compat.py`, `tests/test_confidence.py`, `tests/test_analyze_confidence.py`
+- New: `tests/test_cot_analyzer.py`, `tests/test_cot_analysis_failure.py`, `tests/test_dsl_validation.py`, `tests/test_gepa_adapter.py`, `tests/test_sympy_checks.py`, `tests/test_ollama_compat.py`, `tests/test_confidence.py`, `tests/test_analyze_confidence.py`, `tests/test_embedding_judge.py`
 - Expanded: `tests/test_recipe_retry.py` (fallback + new hints), `tests/test_tikz_analysis.py` (label/mark multiplicity), `tests/test_recipe_dsl.py` (annotations coercion), `tests/test_checks.py` (error provenance), `tests/test_eval_runner.py` (label re-scoring), `tests/test_to_tikz.py`, `tests/test_llm_judge.py`
 
 ## Dependencies & build
@@ -716,3 +718,99 @@ runs used the GEPA-optimized on-disk prompts. Strict and lenient agree on the
 tier-2 headline, so the conclusion is robust to the label choice. The 43-slice
 numbers are kept only to show the inflation; the 201 curriculum is the
 authoritative result.
+
+## Embedding judge — cosine(cot, answer) consistency (2026-06-30)
+
+**TL;DR** — **Not useful as a standalone quality judge; marginally useful as a cheap complementary feature, on the hard tier, for some models.** Pooled across 1996 pass/fail runs, every (rep × agg) AUC is ≤ 0.5 (range 0.38–0.50) and `fail_mean > pass_mean` — cot↔answer cosine is, if anything, *higher* for failing runs. Per (model × tier) it's mostly below the existing signals (cot-analysis, LLM judge, self-reported confidence) and near-chance for gemma4 (the largest model, n=967). One real bright spot: **deepseek-v4-flash hard tier (t3), `raw_dsl_mean` AUC 0.696 [0.585, 0.796]** — beats cot-analysis (0.645), though below the LLM judge (0.766) and self-reported confidence (0.791). And it's **complementary, not redundant** (Spearman ≈ 0.1–0.3 with the baselines): rank-averaging `raw_dsl_mean` with cot-analysis lifts deepseek-t3 **0.645 → 0.719 (+0.074)** and qwen3.5-t2 **0.683 → 0.734 (+0.052)** — a cheap ensemble (no LLM call) approaching the expensive signals. But it **hurts** gemma4 (noise) and easy tiers (anti-correlated), so any use must be per-(model×tier) gated. **Aggregation matters:** `raw_dsl_mean` (score combination) is consistently the best variant; `max` and `pooled` (vector pooling) are often near/below chance — confirming the Sentence-Transformers caveat that averaging chunk *vectors* converges and loses signal.
+
+An offline, model-agnostic judge: for each run with a recoverable chain-of-thought, embed the CoT and four text renderings of the diagram the model produced, then score `cosine(cot, answer)` per **representation × aggregation**, kept **separate** (nothing discarded):
+
+- **reps:** `flat_dsl` (flattened construction), `raw_dsl` (full DSL JSON), `nl_ir` (NL from compiled `diagram_ir`), `tikz` (`tikz_code` — usually `None` in eval files)
+- **aggregations** (the CoT is chunked; each turns the chunk vectors into one score):
+  - `max` — best-matching chunk ("does some part of the reasoning match the answer?")
+  - `mean` — average per-chunk agreement
+  - `pooled` — cosine of the char-length-weighted, L2-normalized mean chunk vector
+- `cos_combined_<agg>` — naive mean of the available `cos_<rep>_<agg>` (placeholder; a real single score can be weighted once we know which (rep, agg) tracks)
+
+**Long-text chunking (the 2048-token cap — the real fix).** `embeddinggemma` caps at 2048 tokens and silently truncates over-cap inputs to ~the first 2048 tokens (and sometimes stalls). Measured impact: **72.5% of cot-bearing runs exceed the cap; 57% of all CoT tokens were silently dropped** by the old prefix-truncation. Each text is now chunked into ≤~1400-token windows (boundary-aware, with overlap), embedded per chunk, and aggregated — so every CoT token is embedded. A chunk that still exceeds the cap (token-dense text) is halved on-stall until it embeds. Chunk vectors are cached (sha256-keyed), so re-runs are free. (Late chunking would preserve cross-chunk context but needs a long-context model + token-level embeddings — we have neither, so naive chunking + aggregation is the available approach.)
+
+This is an **internal-coherence** signal (does the reasoning match the artifact the model built), read alongside the gate/pass — not a correctness judge (a terse parrot-CoT scores high; rich exploration scores low). Runs are bucketed by `model` **verbatim** (no normalization — a botched name is its own bucket, easy to discard). `repr_signal.txt` reports each representation's AUC for predicting `gate_status==pass` (informational, not a discard directive) so a future single-score formula can weight the constituents deliberately.
+
+Reuses `evals.rescore_cot._backfill_cot` / `_target_dsl` (CoT recovery + DSL selection), `evals.compare.load_results`, and `evals.analyze_confidence.auc_roc` (pure-stdlib AUC). The embeddings client (`util/embeddings.py`) is OpenAI-compatible with a sqlite disk cache (sha256-keyed, resumable); `cosine` is pure stdlib (no numpy).
+
+**Coverage / dedup (verified offline):** the runner takes **all** `evals/results/*.jsonl`; the tool recovers CoT from `attempt_traces` (no backfill needed), drops no-CoT records, and dedups the same run across original / `*_rescored` / `*.cotbackfill` variants (rescored > original > backfill, by run identity). Across the current `evals/results/` that is **2325 unique cot-bearing runs** from the 4 thinking-enabled models (gemma4 1116, deepseek-v4-flash 902, qwen3.5:cloud 240, glm-5.2:cloud 67); all other/older/botched-name runs have no CoT and drop out (11273 records seen, 7578 no-CoT dropped, 1370 duplicate variants merged). The `.cotbackfill.jsonl` files are redundant copies — they're folded into the original's run identity, not double-counted.
+
+### Operational notes
+
+- **Endpoint:** `embeddinggemma` at `http://192.168.178.31:11434/v1/embeddings`, 768-dim. The served id is `embeddinggemma` (NOT `gemma4` — the wrong id silently returns nothing).
+- **Chunking (the real fix):** the old "batch of 64 stalls" was the 2048-token cap, not batch count — large whole-CoT inputs stalled/truncated. Now every text is chunked to ≤~1000–1500 tokens (`--max-chars 3000`, `--overlap 300`, on whitespace boundaries). The cache makes re-runs free.
+- **Over-cap chunks handled defensively:** a chunk of *token-dense* content (code, coordinate lists, LaTeX — ~2x denser than prose) can still exceed 2048 tokens even at 3000 chars; ollama rejects it with `the input length exceeds the context length`. We detect that error and **halve immediately, no retries** (an over-cap chunk will always fail — retrying just spams the log). `resolve_chunk` halves on a whitespace boundary and recurses until each piece embeds, so no CoT content is lost. Verified live: 0 unresolved chunks.
+- **Gentle client (no "aborting embedding request" storm):** ollama logs `aborting embedding request due to client closing the connection` when the client drops a request mid-flight — caused here by concurrency 6 + batch 16 overloading the single server → synchronized 30s timeouts → a fallback fan-out cascade. Fixed: `--concurrency 3` + `--batch-size 8` (don't overload), `--per-call-timeout 90` (let slow requests finish, don't abort), retry-with-backoff **before** fanning out (no cascade), `asyncio.gather(..., return_exceptions=True)` (one failure doesn't cancel/abort the rest), openai SDK `max_retries=0` (no abort-retry churn), and `await client.aclose()` at the end (clean pool close). Verified live: 196 chunks, zero `None`, exit 0.
+- **Progress:** the run prints `… {done}/{total} chunks ({pct}%) — {rate} chunks/s, ETA {eta}s` every ~15s during the bulk embed (and a final `embedded N chunks in Ts`), so a 30–40-min full run isn't silent.
+- **`--with-prompt-baseline`** adds `cos_prompt = cosine(cot, user_prompt)` — a reasoning-**relevance** axis (does the CoT talk about the geometry the prompt asked for), distinct from the four answer-consistency scores. High `cos_prompt` + low `cos_*` answer = the model reasoned about the right problem but built something inconsistent with that reasoning.
+- **AUC data caveat:** failing runs are disproportionately no-CoT (dropped), so cot-bearing runs skew pass-heavy and `repr_signal.txt` AUC shows `-` on a single all-pass file. Pool files with cot-bearing fails for a meaningful AUC — e.g. `20260619-213519` (95 pass/77 fail), `20260619-220616` (100/76), `20260620-194957` (11/27), `20260620-195029` (11/25); deepseek files like `20260620-154154` (0 pass/40 fail) supply the fail side. The script default (all `*.jsonl`, deduped) already pools these.
+
+### Reproducing
+
+```
+./run_embedding_judge.sh                                   # all evals/results/*.jsonl (deduped in-tool)
+./run_embedding_judge.sh --with-prompt-baseline            # add the cos_prompt column
+./run_embedding_judge.sh --help                            # full docs
+```
+
+Outputs land in `evals/embedding_judge_out/` (gitignored): `runs.jsonl` (per run: `cos_<rep>_<agg>` + `cos_combined_<agg>` + chunk counts), `matrix.csv`, `summary.txt`, `coverage.txt` (per-model CoT coverage + per-rep availability), `repr_signal.txt` (the **rep × agg AUC grid** vs pass — the table to read when choosing what to keep), `embeddings_cache.sqlite` (resumable cache).
+
+Tests: `tests/test_embedding_judge.py` (28 — cosine, chunking/boundaries/overlap, pool, the 3 aggregations, halve-on-stall, verbatim bucketing, dedup, cache/batching with mocked endpoint, end-to-end with a fake client incl. a long-CoT chunking case). Full suite green (1386 pass, 49 skip). Verified live on a 28-record file (26 kept, 196 chunks; the 3 aggregations diverge correctly on multi-chunk CoTs — e.g. `max 0.605 > pooled 0.591 > mean 0.589`).
+
+### Results
+
+Run: all 132 `evals/results/*.jsonl`, deduped → **2325 unique cot-bearing runs** (gemma4 1116, deepseek-v4-flash 902, qwen3.5:cloud 240, glm-5.2:cloud 67); 1996 with a definite pass/fail gate. Availability: flat_dsl/raw_dsl 2313/2325, nl_ir 2306, tikz 1882.
+
+**Pooled rep × agg AUC (all ≤ 0.5; `fail_mean > pass_mean` in nearly every cell):**
+
+| rep | best agg | AUC | pass_mean | fail_mean |
+|---|---|---|---|---|
+| raw_dsl | mean | 0.497 | 0.710 | 0.711 |
+| flat_dsl | mean | 0.493 | 0.632 | 0.634 |
+| combined | mean | 0.466 | 0.642 | 0.648 |
+| nl_ir | mean | 0.458 | 0.603 | 0.612 |
+| tikz | max | 0.384 | 0.650 | 0.680 |
+
+**Per (model × tier) head-to-head (AUC, n in parens; * = CI excludes 0.5):**
+
+| cell | n | pass% | best emb | cot_analysis | llm_judge | self-reported (hard/soft) |
+|---|---|---|---|---|---|---|
+| deepseek t1 | 179 | 49% | 0.457 (anti) | 0.535 | 0.537 | 0.578 / 0.623* |
+| deepseek t2 | 450 | 58% | **0.573*** (raw_dsl_mean) | 0.554* | 0.625* | 0.640* / 0.688* |
+| deepseek t3 | 110 | 58% | **0.696*** (raw_dsl_mean) | 0.645* | 0.766* | 0.769* / 0.791* |
+| gemma4 t1 | 225 | 52% | 0.459 (anti) | 0.506 | 0.535 | 0.512 / 0.500 |
+| gemma4 t2 | 591 | 64% | 0.500 | 0.576* | 0.625* | 0.631* / 0.496 |
+| gemma4 t3 | 151 | 71% | 0.547 | 0.603* | 0.713* | 0.550 / 0.548 |
+| qwen3.5 t1 | 47 | 83% | 0.670* | 0.622* | 0.312 | n/a |
+| qwen3.5 t2 | 147 | 91% | 0.633* | 0.683* | 0.615* | n/a |
+| qwen3.5 t3 | 44 | 95% | 0.750* | 0.696* | n/a | n/a |
+
+(qwen3.5 t2/t3 and glm-5.2 have few fails → wide CIs; glm-5.2 n≈25/tier, inconclusive. n/a = no self-reported metadata for those runs.)
+
+**Complementary, not redundant:** Spearman(emb_raw_dsl_mean, baselines) ≈ +0.13–0.30 (near-independent). **Ensemble (rank-average `raw_dsl_mean` + baseline) deltas:**
+
+| cell | baseline | base AUC | ensemble AUC | Δ |
+|---|---|---|---|---|
+| deepseek t3 | cot_analysis | 0.645 | **0.719** | **+0.074** |
+| qwen3.5 t2 | cot_analysis | 0.683 | 0.734 | +0.052 |
+| deepseek t2 | cot_analysis | 0.554 | 0.582 | +0.028 |
+| deepseek t2 | hard_conf | 0.640 | 0.659 | +0.019 |
+| gemma4 t1/t2/t3 | (any) | — | — | **−0.01 to −0.13** (hurts) |
+| deepseek t1 | (any) | — | — | −0.04 to −0.08 (hurts) |
+
+### Analysis
+
+**Verdict: not a useful standalone quality signal; a cheap, selectively-useful complementary feature.**
+
+- **Standalone: no.** Pooled it's near-chance and slightly *anti*-correlated (failing runs have higher cot↔answer cosine). Per (model×tier) it's below the existing top signals everywhere; for gemma4 (the largest model, n=967) it's pure noise (AUC ≈ 0.5, ensemble hurts). Even at its best (deepseek t3, 0.696) it's dominated by the LLM judge (0.766) and self-reported confidence (0.791).
+- **Complementary: yes, on the hard tier for some models.** It's near-independent of the baselines (Spearman 0.1–0.3), so it adds a different axis. Rank-averaging `raw_dsl_mean` with cot-analysis lifts deepseek-t3 0.645→0.719 (+0.074) and qwen3.5-t2 0.683→0.734 (+0.052) — a **cheap** ensemble (no LLM call, no elicitation) that approaches the expensive signals. But it **hurts** gemma4 and easy tiers, so it must be **per-(model×tier) gated** (only use where validated).
+- **Aggregation finding:** `raw_dsl_mean` (per-chunk score combination) is consistently the best variant; `max` and `pooled` (vector pooling) are often near/below chance. This confirms the Sentence-Transformers maintainer's caveat — averaging chunk *vectors* converges and loses discriminability; combining per-chunk *cosines* (mean) survives. **Keep `raw_dsl_mean`; the other reps/aggs can be dropped.**
+- **Mechanism (hypothesis):** the direction *flips by tier* — anti-correlated on easy scenarios, positive on hard. Plausible: on easy scenarios a failing run over-explains (long CoT echoing the DSL → high cosine), while on hard scenarios coherent reasoning actually tracks success. This makes a single global threshold useless; any use must be per-cell calibrated.
+- **AUC-data caveat confirmed:** fails are disproportionately no-CoT (dropped), and several cot-bearing cells are very pass-heavy (qwen3.5 83–95% pass, glm-5.2 19% pass with n≈25), so the achievable AUC is capped and the bright spots (deepseek t3, qwen3.5) rest on modest fail counts — confirm on more fail-bearing data before relying on them.
+
+**Recommendation:** keep `raw_dsl_mean` as a cheap feature; do **not** use it standalone or as a replacement for the LLM judge / self-reported confidence. Use it only as an ensemble member with cot-analysis, gated to the hard tier for models where it's been validated (deepseek, and qwen3.5 pending more fails). Drop `flat_dsl`/`nl_ir`/`tikz`/`max`/`pooled` from the headline outputs (they're in `runs.jsonl` for reference). Do not invest further in the embedding judge as a correctness signal; the signal isn't strong enough — its value is "cheap complementary feature for the hard tier," which the ensemble check already showed.
