@@ -814,3 +814,33 @@ Run: all 132 `evals/results/*.jsonl`, deduped → **2325 unique cot-bearing runs
 - **AUC-data caveat confirmed:** fails are disproportionately no-CoT (dropped), and several cot-bearing cells are very pass-heavy (qwen3.5 83–95% pass, glm-5.2 19% pass with n≈25), so the achievable AUC is capped and the bright spots (deepseek t3, qwen3.5) rest on modest fail counts — confirm on more fail-bearing data before relying on them.
 
 **Recommendation:** keep `raw_dsl_mean` as a cheap feature; do **not** use it standalone or as a replacement for the LLM judge / self-reported confidence. Use it only as an ensemble member with cot-analysis, gated to the hard tier for models where it's been validated (deepseek, and qwen3.5 pending more fails). Drop `flat_dsl`/`nl_ir`/`tikz`/`max`/`pooled` from the headline outputs (they're in `runs.jsonl` for reference). Do not invest further in the embedding judge as a correctness signal; the signal isn't strong enough — its value is "cheap complementary feature for the hard tier," which the ensemble check already showed.
+
+### Embedding-model comparison — gemma 0.3B (chunked) vs qwen4b 4B vs qwen8b 8B (whole-CoT)
+
+Two further runs used stronger embedders with larger context (`--max-chars 30000`, so whole-CoT, essentially no chunking — qwen8b: 2231/2325 runs are 1 chunk) over the **same 2325 runs**, both with `--with-prompt-baseline`: qwen4b (`evals/embedding_judge_out_qwene4b/`) and qwen8b (`evals/embedding_judge_out_qwene8b/`).
+
+**Pooled:** bigger is not better. gemma: all AUCs ≤ 0.50 (anti). qwen4b: `nl_ir` flips slightly positive (~0.52), rest ≤ 0.50. **qwen8b is the worst** — all ≤ 0.50 and *more* anti-correlated than qwen4b (`nl_ir` 0.49, `raw_dsl` 0.44, `fail_mean > pass_mean` everywhere).
+
+**Per (model × tier), best embedding AUC (ensemble with cot_analysis in parens):**
+
+| cell | n | cot_analysis | gemma 0.3B | qwen4b 4B | qwen8b 8B | winner |
+|---|---|---|---|---|---|---|
+| deepseek t1 | 179 | 0.535 | 0.457 (0.498) | 0.426 (0.468) | 0.427 (0.471) | gemma (all anti) |
+| deepseek t2 | 450 | 0.554 | 0.573 (0.582) | 0.514 (0.543) | 0.487 (0.524) | gemma |
+| deepseek t3 (hard) | 110 | 0.645 | **0.696 (0.719)** | 0.651 (0.701) | 0.542 (0.620) | gemma |
+| gemma4 t1 | 225 | 0.506 | 0.464 (0.489) | 0.498 (0.506) | 0.496 (0.505) | qwen4b ≈ qwen8b |
+| gemma4 t2 | 591 | 0.576 | 0.500 (0.559) | **0.578 (0.610)** | 0.522 (0.570) | qwen4b |
+| gemma4 t3 (hard) | 151 | 0.603 | 0.547 (0.589) | **0.610 (0.666)** | 0.580 (0.639) | qwen4b |
+| qwen3.5 t1 | 47 | 0.622 | 0.670 (0.771) | 0.567 (0.702) | 0.554 (0.678) | gemma |
+| qwen3.5 t2 | 147 | 0.683 | 0.633 (0.753) | 0.625 (0.739) | 0.590 (0.677) | gemma |
+| qwen3.5 t3 | 44 | 0.696 | 0.750 (0.798) | 0.536 (0.690) | 0.488 (0.655) | gemma (n=44, 2 fails) |
+
+**Findings:**
+
+- **Bigger is NOT better — qwen8b (8B) is the weakest of the three and never wins a cell.** It underperforms qwen4b everywhere and underperforms gemma everywhere except gemma4 (where it sits *between* them: qwen4b 0.610 > qwen8b 0.580 > gemma 0.547). Scaling 4B→8B *degraded* the signal (gemma4 t3 0.610→0.580; deepseek t3 0.651→0.542). The signal is **not bottlenecked by embedding-model quality** — it's bottlenecked by the weak fundamental relation between cot↔answer similarity and correctness; a stronger embedder just yields higher-fidelity vectors of a weak (and for 8B, more over-smoothed) signal.
+- **The optima are non-monotonic in size.** gemma (0.3B, chunked `raw_dsl_mean`) wins **deepseek** and **qwen3.5**; qwen4b (4B, whole-CoT `nl_ir`/`flat_dsl`) wins **gemma4** — the one model where gemma-embedding was noise. On gemma4 t2/t3, qwen4b's embedding **beats cot-analysis** (0.578/0.610 vs 0.576/0.603), ensemble 0.610/0.666 (+0.03/+0.06) — the best *cheap* signal for gemma4's hard tier (still below the LLM judge's 0.713). qwen8b adds nothing over qwen4b.
+- **Chunking is a different signal, not just a context workaround.** gemma's chunked `raw_dsl_mean` (deepseek t3 0.696 / ensemble 0.719) beats both whole-CoT embedders (qwen4b 0.651, qwen8b 0.542) — mean-of-cosines over chunks captures something on deepseek's verbose CoT that whole-CoT embedding misses.
+- **Rep vs aggregation:** with chunking (gemma), aggregation matters — `raw_dsl_mean` wins, `max`/`pooled` lose. Without chunking (qwen4b/qwen8b, 1 chunk → max=mean=pooled identical), only the **rep** matters, favoring `nl_ir`/`flat_dsl`.
+- **`--with-prompt-baseline` (`cos_prompt`) does NOT help for either qwen run.** qwen4b: anti-correlated (deepseek t1 0.315, qwen3.5 t3 0.095), ensemble(cot_analysis+prompt) hurts 8/9 cells, and adding prompt to the answer-rep ensemble *degrades* it. qwen8b: ensemble hurts 7/9 cells (qwen3.5 t3 prompt AUC 0.167). A failing run echoes the prompt at length → high cot↔prompt cosine → anti-correlated. **Drop the prompt baseline.**
+
+**Refined verdict (3 embedders):** the cot↔answer cosine remains a weak, **model-specific** complementary feature — not a standalone judge — and **scaling the embedder up does not help (8B is the worst)**. Practical recipe: per generation model, use whichever embedding model validates (gemma 0.3B chunked for deepseek/qwen3.5, qwen4b 4B for gemma4 — *not* qwen8b), ensemble with cot-analysis, gated to the hard tier; drop `cos_prompt`. Best cheap ensembles: deepseek t3 0.719 (gemma), gemma4 t3 0.666 (qwen4b), qwen3.5 t2 0.753 (gemma) — still trailing the LLM judge / self-reported confidence. Caveats unchanged: qwen3.5/gemma4-t3 rest on modest fail counts; "best rep per cell" is partly overfit (the fixed-rep story — gemma `raw_dsl_mean`, qwen4b `nl_ir` — is the same, slightly weaker).
