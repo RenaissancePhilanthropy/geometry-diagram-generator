@@ -27,6 +27,7 @@ evals/results/
 # Embedding judge outputs (runs.jsonl, matrix.csv, cache, etc.) — default and
 # per-embedding-model variants (e.g. evals/embedding_judge_out_qwene4b/).
 evals/embedding_judge_out*/
+evals/embedding_convergence_out/
 
 # macOS files
 .DS_Store

@@ -844,3 +844,72 @@ Two further runs used stronger embedders with larger context (`--max-chars 30000
 - **`--with-prompt-baseline` (`cos_prompt`) does NOT help for either qwen run.** qwen4b: anti-correlated (deepseek t1 0.315, qwen3.5 t3 0.095), ensemble(cot_analysis+prompt) hurts 8/9 cells, and adding prompt to the answer-rep ensemble *degrades* it. qwen8b: ensemble hurts 7/9 cells (qwen3.5 t3 prompt AUC 0.167). A failing run echoes the prompt at length → high cot↔prompt cosine → anti-correlated. **Drop the prompt baseline.**
 
 **Refined verdict (3 embedders):** the cot↔answer cosine remains a weak, **model-specific** complementary feature — not a standalone judge — and **scaling the embedder up does not help (8B is the worst)**. Practical recipe: per generation model, use whichever embedding model validates (gemma 0.3B chunked for deepseek/qwen3.5, qwen4b 4B for gemma4 — *not* qwen8b), ensemble with cot-analysis, gated to the hard tier; drop `cos_prompt`. Best cheap ensembles: deepseek t3 0.719 (gemma), gemma4 t3 0.666 (qwen4b), qwen3.5 t2 0.753 (gemma) — still trailing the LLM judge / self-reported confidence. Caveats unchanged: qwen3.5/gemma4-t3 rest on modest fail counts; "best rep per cell" is partly overfit (the fixed-rep story — gemma `raw_dsl_mean`, qwen4b `nl_ir` — is the same, slightly weaker).
+
+### Length-confound correction — gemma's deepseek "win" was a cot-length proxy; cot length itself is a strong free signal
+
+Re-examining the numbers per-run (not just AUCs) surfaced two things the raw AUCs hid.
+
+**(1) gemma's deepseek-t3 signal is almost entirely a cot-length artifact.** On deepseek t3, fail cots are ~2.4× longer than pass cots (median 30,052 vs 12,612 chars) — struggling/retrying → longer CoT. gemma *chunks* the CoT, so a long fail cot becomes ~15 chunks vs ~4 for a pass, and `raw_dsl_mean` (mean cosine over all chunk pairs) is dragged down by divergent tail chunks. So gemma `raw_dsl_mean` correlates **−0.71 with cot length**, and once length is partialed out its AUC collapses **0.696 → 0.457** (below chance). I.e., gemma's "bright spot" on deepseek was rediscovering "long cot → fail" via the chunked-mean mechanism, **not** a semantic coherence signal. **qwen4b** (whole-CoT, 1 vector) correlates only −0.15 with length and retains **0.651 → 0.610** after partialing — the *genuine* embedding signal on deepseek t3. This **reverses** the earlier "gemma wins deepseek" call: the honest embedding signal there is qwen4b, not gemma.
+
+**(2) cot length itself is a strong, *free* fail signal on deepseek that we'd missed entirely.** `cot_chars` (no embedding, no LLM) predicts fail with flipped AUC deepseek t1 0.646 / t2 0.593 / **t3 0.813** — stronger than cot-analysis (0.645) and any embedding. (On gemma4/qwen3.5, length is ~not a signal, AUC ≈ 0.50–0.53, and on qwen3.5 it's mildly anti — passes are longer.)
+
+**Corrected cheap ensembles (rank-average, cot_analysis + (−cot_length) + qwen4b `nl_ir_mean`):**
+
+| cell | cot_analysis | (−cot_length) | qwen4b nl_ir | cotA+len | **cotA+len+qwen4b** |
+|---|---|---|---|---|---|
+| deepseek t3 | 0.645 | **0.813** | 0.647 | 0.766 | **0.791** |
+| deepseek t2 | 0.554 | 0.593 | 0.511 | 0.577 | 0.578 |
+| gemma4 t3 | 0.603 | 0.511 | 0.581 | 0.593 | 0.615 |
+| gemma4 t2 | 0.576 | 0.504 | 0.578 | 0.551 | 0.589 |
+| qwen3.5 t2 | 0.683 | 0.466 | 0.622 | 0.556 | 0.649 |
+
+**Corrected verdict:** the embedding signal's honest contribution is smaller than the raw AUCs suggested, and it's **qwen4b** (length-independent) that carries the genuine part — gemma's chunked signal is length-confounded wherever fails are longer (deepseek) and only genuine where they aren't (qwen3.5: resid 0.596 ≈ raw 0.603). Practical recipe, revised:
+- **deepseek**: cot **length** is the primary cheap fail signal (free, t3 0.813); add cot_analysis (+ qwen4b `nl_ir` for +0.02–0.03). Best cheap ensemble **0.791** on t3 — matches self-reported confidence (0.791) **with no LLM call / no elicitation**. Do **not** credit gemma's raw_dsl_mean here (length artifact).
+- **gemma4**: cot_analysis + **qwen4b** `nl_ir` (0.610/0.643); length irrelevant.
+- **qwen3.5**: cot_analysis + qwen4b or gemma (0.736); length *hurts* (passes longer).
+- Drop `cos_prompt`; do not use qwen8b.
+
+**Methodological note:** any future "this embedding signal works" claim must be checked against cot length (Spearman + residual AUC) — the chunked-mean aggregation is inherently length-sensitive, and cot length is a cheap, strong, model-specific fail correlate that can masquerade as a semantic signal.
+
+### Across-run convergence (a second, cleaner embedding signal)
+
+A different embedding signal from the in-run cot↔answer cosine: **does a generator model produce similar results for the same scenario across its runs, at each stage?** For each `(generator_model × scenario)` — pooling all cot-bearing runs across run_ids (per the design decision; 452 groups with ≥2 runs) — and each stage (`cot`, `flat_dsl`, `raw_dsl`, `nl_ir`, `tikz`) and embedding model (gemma/qwen4b/qwen8b), reconstruct each run's stage embedding from the existing caches (99.0% cache hit rate, no re-embedding) and score convergence: `mean_pairwise_cos` + `mean_cos_to_centroid` + `spread`. 5434 convergence rows. (`evals/embedding_convergence.py`, `tests/test_embedding_convergence.py` — 9 tests.)
+
+**Convergence is high overall** — models are quite consistent across runs for the same scenario: mean pairwise cosine ~0.89–0.97. `raw_dsl`/`tikz` most convergent (~0.96–0.97 — the diagram spec is nearly identical across runs), `nl_ir` ~0.94, `cot` ~0.89–0.92 (reasoning varies more), `flat_dsl` ~0.88–0.90 (op-sequence varies).
+
+**Scenario-level correlation (group convergence vs that (model×scenario)'s pass rate, Spearman ρ):**
+
+| stage | gemma ρ | qwen4b ρ | qwen8b ρ | read |
+|---|---|---|---|---|
+| `tikz` | **0.226** | **0.175** | **0.165** | strongest — same TikZ across runs ↔ higher pass |
+| `nl_ir` | 0.128 | 0.138 | 0.112 | weak positive |
+| `raw_dsl` | 0.127 | 0.099 | 0.080 | weak positive |
+| `flat_dsl` | 0.070 | 0.121 | 0.075 | weak positive |
+| `cot` | **−0.065** | −0.023 | −0.002 | ~0 / negative — same reasoning across runs ≠ pass |
+
+**Findings:**
+- **Answer-stage convergence weakly tracks pass; cot convergence does not.** `tikz`/`raw_dsl`/`nl_ir` convergence ρ ≈ 0.10–0.23 (scenarios where the model converges on the same *diagram* across runs pass slightly more); `cot` convergence ≈ 0 or **negative** — reasoning-similarity across runs doesn't predict pass, and **for gemma4 it anti-predicts (cot ρ −0.16 to −0.19)**: scenarios where gemma4 reasons similarly across runs tend to *fail* more (it gets stuck in the same wrong reasoning).
+- **Robust across embedding models** — gemma/qwen4b/qwen8b give similar convergence values and ρ (unlike the in-run cosine, which differed a lot by embedder). Convergence is the more stable of the two embedding signals.
+- **Per generator model:** qwen3.5 answer-convergence tracks pass best (`flat_dsl`/`raw_dsl` ρ 0.25–0.27); gemma4 answer-convergence weakly positive (`tikz` 0.19–0.23) but cot negative; deepseek `tikz` 0.19–0.24.
+
+**Verdict:** the convergence **score** per `(scenario × model × emb × stage)` is a useful descriptive consistency metric (the deliverable). As a pass-rate predictor it's **weak** (ρ ≤ 0.27) — limited by the high baseline convergence (~0.9+, little dynamic range) — but the pattern is clean and **not length-confounded** (it's answer-vs-answer across runs, unlike the in-run cot↔answer cosine). Net: across-run `tikz`/`nl_ir` convergence is a weak, clean, model-robust scenario-level signal; `cot` convergence is not useful (and anti for gemma4). Of the two embedding signals, across-run convergence is the cleaner one; both are weak complementary features, not standalone judges. Outputs: `evals/embedding_convergence_out/{convergence.csv, correlation.txt, coverage.txt}`.
+
+#### Per-generator-model determinism — "high convergence + low pass-correlation = capability-limited" is true for deepseek, not for gemma4/qwen3.5
+
+The question: if answers converge across runs but convergence doesn't track pass/fail, does that mean we're hitting prompt/model *capability* limits (not run-to-run variance), and that online would reproduce the eval pass/fail rate? Breaking it out per generator model (the pooled "85% deterministic" was deepseek-dominated and hid the difference):
+
+| model (cot-bearing runs) | groups | % deterministic | all-fail | all-pass | mixed | fail-group conv (nl_ir) |
+|---|---|---|---|---|---|---|
+| **deepseek** (902) | 159 | **86%** | 38 | 99 | 22 | **0.922** |
+| **gemma4** (1116) | 167 | **58%** | **1** | 97 | 69 | 0.933 (n=1) |
+| **qwen3.5** (240) | 40 | **47%** | 0 | 19 | 21 | n/a (0 all-fail) |
+| glm-5.2 (67) | 11 | 72% | 6 | 2 | 3 | 0.963 |
+
+(`% deterministic` = groups that are all-pass or all-fail; `mixed` median pass: deepseek 0.67, gemma4 0.25, qwen3.5 0.50.)
+
+**Model-specific conclusion:**
+- **deepseek** is the deterministic, capability-limited model. 86% of its scenarios are all-pass/all-fail, and its **all-fail groups still converge to 0.922** — when deepseek can't do a scenario it produces the *same wrong answer* every time (38 scenarios, reliably wrong). Convergence↔pass is weak (ρ 0.06–0.19) precisely because it converges in both pass and fail. So for deepseek: the bottleneck is **capability/prompt, not variance** → the eval pass/fail rate is a reliable predictor of online (same model+prompt+conditions), and **repeats=1 is largely enough** (only 14% mixed). This is the clean confirmation of the hypothesis.
+- **gemma4 is the opposite — variance matters.** Only 58% deterministic and **just 1 all-fail group**: gemma4 almost never *reliably* fails; its hard scenarios are **mixed** (69 groups, median pass 0.25 — it usually fails but sometimes passes). So gemma4 *can* often do those scenarios — it's inconsistent, not reliably-wrong. The lever is **both capability and variance**: more repeats genuinely help estimate the true rate on the 69 mixed scenarios, and a single online run could differ from the eval. Its `cot` convergence anti-predicts (ρ −0.19: same reasoning across runs → fails more).
+- **qwen3.5 is the most variance-driven** (47% deterministic, 0 all-fail, 21/40 mixed borderline at ~0.5; 90% pass overall). Failures are borderline scenarios with real run-to-run variance — online rate estimation needs repeats.
+
+**Corrected headline:** "high convergence + low pass-correlation ⇒ capability-limited and online-reproduces-eval" is **true for deepseek** (86% deterministic, fails consistently at 0.92 convergence) but **not uniformly** — gemma4 (58%) and qwen3.5 (47%) have enough run-to-run variance on mixed scenarios that online could differ from a single eval run; there, repeats matter and the lever is capability *and* variance. Practical: for deepseek, invest in capability (model/prompt) and trust one run; for gemma4/qwen3.5, run repeats on their mixed scenarios to estimate the true rate, and still invest in capability.
