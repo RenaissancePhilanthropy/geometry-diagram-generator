@@ -14,7 +14,7 @@ records to a file in the output directory.
 Result fields:
   run_id, timestamp, scenario_id, strategy, model, user_prompt,
     repeat_index, svg_path,
-  tikz_code, tkzelements_code,
+  tikz_code,
   generation_success, svg_rendered, svg_checks,
   tikz_checks, canvas_checks, expected_point_checks,
   deterministic_pass, gate_status, gate_failures,
@@ -239,7 +239,6 @@ async def run_scenario(
         "svg_path": None,
         "tikz_code": None,
         "diagram_ir": None,
-        "tkzelements_code": None,
         "generation_success": False,
         "svg_rendered": False,
         "svg_checks": None,
@@ -355,7 +354,6 @@ async def run_scenario(
         record["tool_calls"] = result.tool_calls
         record["retries"] = result.retries
         record["tikz_code"] = result.tikz
-        record["tkzelements_code"] = result.tkzelements
         svg = result.svg
         if not svg:
             record["error"] = "RawRunResult contained no SVG"
@@ -375,7 +373,6 @@ async def run_scenario(
         tool_args = extract_tool_call_args(messages, "render_diagram")
         if tool_args is not None:
             record["tikz_code"] = tool_args.get("tikz")
-            record["tkzelements_code"] = tool_args.get("tkzelements") or None
 
         # Extract SVG from the tool return JSON
         tool_return = extract_tool_return(messages, "render_diagram")
@@ -476,7 +473,6 @@ async def run_scenario(
                 judge_result = await judge_tikz_code(
                     prompt=scenario["prompt"],
                     tikz_code=tikz_code,
-                    tkzelements_code=record["tkzelements_code"],
                     model=judge_model,
                     enable_cache=enable_cache,
                 )

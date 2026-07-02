@@ -41,11 +41,7 @@ Your TikZ code will be placed inside \\begin{tikzpicture}...\\end{tikzpicture} \
 automatically. Do NOT include \\documentclass, \\usepackage, \\begin{document}, \
 or \\begin{tikzpicture} in your code.
 
-Available packages: tikz, tkz-euclide, tkz-elements.
-
-For complex diagrams requiring computed coordinates, you can use the tkzelements \
-parameter to provide a tkz-elements Lua block that runs before the tikzpicture. \
-Leave tkzelements empty for simple diagrams.
+Available packages: tikz, tkz-euclide.
 
 Common tkz-euclide patterns:
 - Define points:        \\tkzDefPoint(x,y){A}
@@ -71,7 +67,7 @@ PLAN_CODER_TIKZ_INSTRUCTIONS = """\
 TikZ code rules:
 - Code goes inside \\begin{tikzpicture}...\\end{tikzpicture} automatically.
 - Do NOT include \\documentclass, \\usepackage, \\begin{document}, or \\begin{tikzpicture}.
-- Available packages: tikz, tkz-euclide, tkz-elements.
+- Available packages: tikz, tkz-euclide.
 - Use the exact numeric coordinates from the plan; do not invent different values.
 
 Common tkz-euclide patterns:

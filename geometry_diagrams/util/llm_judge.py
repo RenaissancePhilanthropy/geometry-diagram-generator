@@ -120,7 +120,6 @@ def _parse_visual_response(text: str) -> dict:
 async def judge_tikz_code(
     prompt: str,
     tikz_code: str,
-    tkzelements_code: str | None = None,
     model: str = "anthropic:claude-sonnet-4-6",
     enable_cache: bool = False,
 ) -> dict:
@@ -134,8 +133,6 @@ async def judge_tikz_code(
     llm = get_chat_model(model).with_structured_output(_JudgeResult)
 
     parts = [f"User prompt: {prompt}\n\nTikZ code:\n```\n{tikz_code}\n```"]
-    if tkzelements_code:
-        parts.append(f"\ntkz-elements Lua block:\n```\n{tkzelements_code}\n```")
 
     messages = [
         SystemMessage(content=_CODE_REVIEW_SYSTEM),
