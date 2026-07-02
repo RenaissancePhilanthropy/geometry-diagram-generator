@@ -26,19 +26,18 @@ class RawCodeStrategy(SubstanceStrategy):
         llm = get_chat_model(model)
 
         @tool
-        def render_diagram(tikz: str, tkzelements: str = "") -> str:
+        def render_diagram(tikz: str) -> str:
             """Render a geometry diagram using TikZ/tkz-euclide code.
 
             Args:
                 tikz: TikZ code for the diagram.
-                tkzelements: Optional tkz-elements code.
             Returns:
                 JSON with svg field on success, or error field on failure.
             """
             logger.debug("render_diagram called — tikz=%d chars", len(tikz))
             logger.info("tikz code:\n%s", tikz)
             try:
-                svg = render_tikz(tikz, tkzelements=tkzelements or None)
+                svg = render_tikz(tikz)
                 logger.info("render_diagram succeeded — svg=%d chars", len(svg))
                 return json.dumps({"svg": svg})
             except RuntimeError as e:
@@ -61,7 +60,6 @@ class RawCodeStrategy(SubstanceStrategy):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             tikz=tool_args.get("tikz"),
-            tkzelements=tool_args.get("tkzelements") or None,
             tool_calls=tool_calls,
             retries=max(0, tool_calls - 1),
         )

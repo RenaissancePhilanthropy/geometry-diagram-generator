@@ -40,7 +40,6 @@ def check_renderer_health(renderer_url: str | None = None) -> bool:
 def render_tikz(
     tikz: str,
     *,
-    tkzelements: str | None = None,
     renderer_url: str | None = None,
     font_family: str | None = None,
 ) -> str:
@@ -49,7 +48,6 @@ def render_tikz(
 
     Args:
         tikz: TikZ code to place inside \\begin{tikzpicture}...\\end{tikzpicture}.
-        tkzelements: Optional tkz-elements Lua code block.
         renderer_url: Base URL of the renderer. Defaults to TIKZ_RENDERER_URL env
                       var or http://localhost:8001.
         font_family: Optional font family name to pass to the renderer.
@@ -64,8 +62,6 @@ def render_tikz(
     endpoint = f"{url}/render"
 
     payload: dict = {"tikz": tikz}
-    if tkzelements:
-        payload["tkzelements"] = tkzelements
     if font_family:
         payload["font_family"] = font_family
 

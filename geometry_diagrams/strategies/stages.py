@@ -50,7 +50,6 @@ class RawRunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     tikz: str | None = None
-    tkzelements: str | None = None
     tool_calls: int = 0
     retries: int = 0
 
@@ -114,19 +113,18 @@ def make_render_tool():
     """Return a standard render_diagram tool (errors returned as JSON error strings)."""
 
     @tool
-    def render_diagram(tikz: str, tkzelements: str = "") -> str:
+    def render_diagram(tikz: str) -> str:
         """Render a geometry diagram using TikZ/tkz-euclide code.
 
         Args:
             tikz: TikZ code for the diagram.
-            tkzelements: Optional tkz-elements code.
         Returns:
             JSON with svg field on success, or error field on failure.
         """
         logger.debug("render_diagram called — tikz=%d chars", len(tikz))
         logger.info("tikz code:\n%s", tikz)
         try:
-            svg = render_tikz(tikz, tkzelements=tkzelements or None)
+            svg = render_tikz(tikz)
             logger.info("render_diagram succeeded — svg=%d chars", len(svg))
             return json.dumps({"svg": svg})
         except RuntimeError as e:
@@ -149,18 +147,17 @@ def make_render_tool_with_plan_check(
     geometry_attempts: list[int] = [0]
 
     @tool
-    def render_diagram(tikz: str, tkzelements: str = "") -> str:
+    def render_diagram(tikz: str) -> str:
         """Render a geometry diagram and validate it against the geometric plan.
 
         Args:
             tikz: TikZ code for the diagram.
-            tkzelements: Optional tkz-elements code.
         Returns:
             JSON with svg field on success, or error/geometry_failures on failure.
         """
         logger.debug("render_diagram called — tikz=%d chars", len(tikz))
         try:
-            svg = render_tikz(tikz, tkzelements=tkzelements or None)
+            svg = render_tikz(tikz)
         except RuntimeError as e:
             logger.warning("render_diagram compile failed: %s", e)
             return json.dumps({"error": str(e)})
