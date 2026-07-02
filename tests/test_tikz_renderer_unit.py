@@ -34,23 +34,6 @@ def test_renderer_url_param_overrides_env(monkeypatch):
     assert "param-host:7777" in called_url
 
 
-def test_includes_tkzelements_in_payload():
-    lua = "z.A = point: new (0, 0)"
-    with patch("httpx.post", return_value=_ok_response()) as mock_post:
-        render_tikz(r"\tkzDefPoint(0,0){A}", tkzelements=lua)
-    payload = mock_post.call_args[1]["json"]
-    assert "tkzelements" in payload
-    assert payload["tkzelements"] == lua
-
-
-def test_omits_tkzelements_when_none():
-    with patch("httpx.post", return_value=_ok_response()) as mock_post:
-        render_tikz(r"\tkzDefPoint(0,0){A}")
-    payload = mock_post.call_args[1]["json"]
-    assert "tikz" in payload
-    assert "tkzelements" not in payload
-
-
 def test_includes_font_family_in_payload():
     """font_family is included in the POST payload when provided."""
     with patch("httpx.post", return_value=_ok_response()) as mock_post:

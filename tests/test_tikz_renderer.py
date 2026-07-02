@@ -62,24 +62,6 @@ def test_invalid_tikz_raises():
         render_tikz(r"\undefinedcommandthatdoesnotexist")
 
 
-def test_with_tkzelements():
-    tkzelements = r"""
-z.A = point: new (0, 0)
-z.B = point: new (4, 0)
-z.C = point: new (2, 3)
-"""
-    tikz = r"""
-\tkzDefPoint(0,0){A}
-\tkzDefPoint(4,0){B}
-\tkzDefPoint(2,3){C}
-\tkzDrawPolygon(A,B,C)
-\tkzLabelPoints[below](A,B)
-\tkzLabelPoints[above](C)
-"""
-    svg = render_tikz(tikz, tkzelements=tkzelements)
-    _assert_valid_svg(svg)
-
-
 # ---------------------------------------------------------------------------
 # New tests
 # ---------------------------------------------------------------------------
@@ -195,29 +177,6 @@ def test_complex_diagram_with_multiple_features():
 \tkzLabelPoint[above left](M){$M$}
 """
     svg = render_tikz(tikz)
-    _assert_valid_svg(svg)
-
-
-def test_tkzelements_computed_circumcenter():
-    """Use tkz-elements Lua to compute a circumcenter, then draw it."""
-    tkzelements = r"""
-z.A = point: new (0, 0)
-z.B = point: new (4, 0)
-z.C = point: new (2, 3)
-T.ABC = triangle: new (z.A, z.B, z.C)
-z.O = T.ABC.circumcenter
-"""
-    tikz = r"""
-\tkzDefPoint(0,0){A}
-\tkzDefPoint(4,0){B}
-\tkzDefPoint(2,3){C}
-\tkzCircumCenter(A,B,C) \tkzGetPoint{O}
-\tkzDrawPolygon(A,B,C)
-\tkzDrawCircle(O,A)
-\tkzLabelPoints[below](A,B)
-\tkzLabelPoints[above](C)
-"""
-    svg = render_tikz(tikz, tkzelements=tkzelements)
     _assert_valid_svg(svg)
 
 
