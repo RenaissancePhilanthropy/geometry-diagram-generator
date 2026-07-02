@@ -21,7 +21,7 @@ User request
   → SymPy geometry objects       ← source of truth for coordinates
   → Geometric validation
   → TikZ code
-  → lualatex (with tkz-euclide and tkz-elements) + dvisvgm (Docker)
+  → lualatex (with tkz-euclide) + dvisvgm (Docker)
   → SVG
 ```
 

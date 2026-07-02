@@ -104,7 +104,7 @@ Prompt templates are split across `instructions_structured.py`, `instructions_re
 
 A Docker container running a FastAPI server (port 8001) that compiles LaTeX to SVG:
 - `POST /render` accepts LaTeX, runs `lualatex` → `dvisvgm`, returns SVG.
-- Uses `tkz-euclide` and `tkz-elements` TeX packages for geometric drawing primitives.
+- Uses `tkz-euclide` TeX package for geometric drawing primitives.
 - The HTTP client is `util/tikz_renderer.py`.
 
 ### Utilities (`util/`)
