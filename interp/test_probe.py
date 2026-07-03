@@ -210,10 +210,57 @@ def test_point_coord_regression():
     print(f"ok  point_coord regression recovered coords (R2): {curve}")
 
 
+def _make_correctness_synthetic(act_dir: pathlib.Path, n=48, D=16, seed=5):
+    """Each prompt stores only its entity slots (M, L) + a `positions` array, and
+    carries a per-generation grade. Whether the construction is 'ok' is linearly
+    encoded at layer 2 at the LAST stored position (L, the correctness read site),
+    noise at layer 0 — mimics --keep-positions entities so the labeler's
+    max(pos_map) read + build_xy position mapping are both exercised."""
+    import numpy as np
+
+    act_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    completion = '[{"id":"M"},{"id":"L"}]'
+    offsets = [[i, i + 1] for i in range(len(completion))]
+    pos_M = completion.index('"M"') + 1
+    pos_L = completion.index('"L"') + 1          # later -> the read site max(pos_map)
+    L = 3
+    dir_ok, dir_fail = rng.normal(size=D) * 3, rng.normal(size=D) * 3
+    with (act_dir / "meta.jsonl").open("w") as mf:
+        for p in range(n):
+            ok = (p % 2 == 0)                    # balanced pass/fail
+            acts = rng.normal(size=(L, 2, D)).astype(np.float16)   # 2 stored slots
+            # plant correctness at layer 2, slot 1 (= pos_L, the last stored position)
+            acts[2, 1] = (dir_ok if ok else dir_fail) + rng.normal(size=D) * 0.5
+            pid = f"cx_{p}"
+            np.savez_compressed(act_dir / f"{pid}.npz", acts=acts,
+                                layer_ids=np.array([0, 1, 2]), offsets=np.array(offsets),
+                                positions=np.array([pos_M, pos_L]))   # orig indices
+            mf.write(json.dumps({
+                "pid": pid, "tokens": list(completion), "completion": completion,
+                "grade": {"ok": ok, "stage": "success" if ok else "compile"},
+                "ground_truth": {"entity_relations": {"M": "midpoint", "L": "perpendicular"}},
+            }) + "\n")
+
+
+def test_correctness_probe():
+    from interp.probe import run_probe
+    d = SCRATCH.parent / "probe_correctness_synth"
+    _make_correctness_synthetic(d)
+    out = run_probe(d, "correctness", test_frac=0.3, seed=0)
+    curve = {c["layer"]: c["score"] for c in out["curve"]}
+    assert out["task"] == "clf"
+    assert curve.get(2, 0) > 0.85, curve           # pass/fail decodable at signal layer
+    assert curve[2] > curve[0] + 0.3, curve         # not at the noise layer
+    assert out["token_baseline"] is not None        # clf token-identity control present
+    print(f"ok  correctness probe recovered pass/fail direction: {curve}")
+
+
 if __name__ == "__main__":
     test_probe_recovers_planted_signal()
     test_id_token_positions()
     test_entity_relation_probe()
     test_kept_positions_mapping()
     test_point_coord_regression()
+    test_correctness_probe()
     print("\nPROBE SMOKE TEST PASSED")

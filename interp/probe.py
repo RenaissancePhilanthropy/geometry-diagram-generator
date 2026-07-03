@@ -12,9 +12,13 @@ No model / GPU needed — pure sklearn over saved float16 arrays.
         --labeler relation
 
 Labelers (extend `LABELERS`):
-  relation : multiclass over geometric-relation tokens (perp / parallel /
-             midpoint / tangent / intersection / bisector) — "is the relation
-             identity linearly decodable here, and at which layer?"
+  relation    : multiclass over geometric-relation tokens (perp / parallel /
+                midpoint / tangent / intersection / bisector) — "is the relation
+                identity linearly decodable here, and at which layer?"
+  correctness : METACOGNITION — binary ok/fail of the whole construction (from the
+                render-free grade), read at one position per generation. "Does the
+                residual stream encode whether the construction is RIGHT, and where
+                does that self-assessment emerge relative to the geometry itself?"
 Richer targets (point coordinates via SymPy, the prompt's numeric angle,
 intersection disambiguation) plug in as new labelers returning {pos: label}.
 """
@@ -129,12 +133,120 @@ def label_angle(rec: dict) -> dict[int, list]:
     return out
 
 
+def _grade_label(rec: dict) -> str | None:
+    """'ok'/'fail' for the whole construction from the captured grade, or None."""
+    grade = (rec.get("meta") or {}).get("grade") or {}
+    return None if grade.get("ok") is None else ("ok" if grade["ok"] else "fail")
+
+
+def _grade_read_pos(rec: dict, which: str = "last") -> int | None:
+    """The single completion-token position to read a per-generation label at: the
+    first/last STORED position (an entity token under --keep-positions entities), or
+    the first/last non-special token if all positions were stored. Confidence-slot
+    positions are excluded so this stays the last/first ENTITY even on an
+    --elicit-confidence capture (the conf digits, appended last, would otherwise win
+    max()). Always exists for a saved record, so no grade class is ever dropped."""
+    meta = rec.get("meta") or {}
+    conf = set(meta.get("conf_positions") or [])
+    if meta.get("conf_decision_pos") is not None:
+        conf.add(meta["conf_decision_pos"])
+    pos_map = rec.get("pos_map")
+    if pos_map:
+        cand = [p for p in pos_map if p not in conf] or list(pos_map)
+        return (max if which == "last" else min)(cand)
+    special = (rec.get("meta") or {}).get("is_special") or []
+    cand = [i for i in range(len(rec.get("tokens") or []))
+            if not (i < len(special) and special[i]) and i not in conf]
+    if not cand:
+        return None
+    return cand[-1] if which == "last" else cand[0]
+
+
+def label_correctness(rec: dict) -> dict[int, str]:
+    """METACOGNITION — label ONE position per construction with whether the whole
+    construction GRADES OK (compiles + passes every ``must``-check), read straight
+    off ``meta['grade']['ok']`` (interp.grade, computed at capture time).
+
+    Unlike the geometry labelers ("WHAT did the model build"), this asks whether the
+    residual stream encodes whether what it built is CORRECT — is there a linear
+    'this construction is right' direction, and at which layer does it emerge?
+
+    Read site: the LAST stored token (``max(pos_map)`` under --keep-positions
+    entities; else the last non-special token). Exists for every saved record
+    regardless of grade (failing constructions are not dropped) and carries no
+    within-record pseudo-replication (one label per generation).
+
+    CONFOUND WARNING (see interp/analysis/confidence_vs_difficulty.py): the last
+    entity token's POSITION moves with the number of entities, which itself tracks
+    the grade — so this read site is confounded by output shape. For a clean read,
+    use a fixed-position confidence token (label_correctness_conf) once captured.
+
+    Correctness is in no single token string, so a rising curve is genuine
+    self-assessment, not naming. NEEDS a capture that KEPT failing completions
+    (no --only-valid); otherwise there is one class and every layer is skipped.
+    """
+    lab = _grade_label(rec)
+    if lab is None:
+        return {}
+    pos = _grade_read_pos(rec, "last")
+    return {pos: lab} if pos is not None else {}
+
+
+def label_correctness_first(rec: dict) -> dict[int, str]:
+    """Like label_correctness but reads the FIRST stored token (``min(pos_map)``).
+    The first entity sits near the construction's start, so its position barely
+    moves with entity count — a partial control for the output-shape confound that
+    cripples the last-token read on existing (entity-only) captures."""
+    lab = _grade_label(rec)
+    if lab is None:
+        return {}
+    pos = _grade_read_pos(rec, "first")
+    return {pos: lab} if pos is not None else {}
+
+
+def label_correctness_conf(rec: dict) -> dict[int, str]:
+    """FIXED-SLOT metacognition read — label the confidence DECISION token with the
+    whole construction's grade. The decision token (``conf_decision_pos``: the
+    ':'/space that GENERATES the number, from an --elicit-confidence capture) is where
+    the model reads out its confidence, and its local context is identical on every
+    record, so its layer-0 embedding cannot encode the answer: layer 0 should be
+    ~chance and any mid-late signal is genuine computed self-assessment, free of the
+    entity read-site confound that sinks label_correctness. Falls back to the last
+    digit token if no decision position was stored (older captures). Empty unless
+    captured with --elicit-confidence."""
+    lab = _grade_label(rec)
+    if lab is None:
+        return {}
+    meta = rec.get("meta") or {}
+    dpos = meta.get("conf_decision_pos")
+    if dpos is not None:
+        return {dpos: lab}
+    conf = meta.get("conf_positions") or []
+    return {max(conf): lab} if conf else {}
+
+
+def label_correctness_conf_digit(rec: dict) -> dict[int, str]:
+    """Comparison read site — at the confidence DIGIT (last number token): the state
+    AFTER the model commits the value. Contrast with label_correctness_conf (the
+    decision token that generates it) to see whether reading post-commitment leaks the
+    emitted value vs the pre-commitment internal state."""
+    lab = _grade_label(rec)
+    if lab is None:
+        return {}
+    conf = (rec.get("meta") or {}).get("conf_positions") or []
+    return {max(conf): lab} if conf else {}
+
+
 # name -> (labeler, task). task "clf" = classification, "reg" = regression.
 LABELERS = {
     "relation": (label_relation, "clf"),
     "entity_relation": (label_entity_relation, "clf"),
     "point_coord": (label_point_coord, "reg"),
     "angle": (label_angle, "reg"),
+    "correctness": (label_correctness, "clf"),
+    "correctness_first": (label_correctness_first, "clf"),
+    "correctness_conf": (label_correctness_conf, "clf"),
+    "correctness_conf_digit": (label_correctness_conf_digit, "clf"),
 }
 
 

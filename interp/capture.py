@@ -165,8 +165,16 @@ def run_capture(args) -> None:
     with meta_path.open("w") as meta_f:
         for i, (pid, prompt) in enumerate(prompts, 1):
             recipes = select_recipes(prompt, all_recipes, args.few_shot)
+            messages = build_messages(prompt, recipes)
+            if args.elicit_confidence:
+                from interp.confidence import add_confidence_request
+                messages = add_confidence_request(messages)
+            # enable_thinking=False pre-closes the <think> block on hybrid reasoners
+            # (GLM-4.x) so they answer directly; harmlessly ignored by templates that
+            # don't use it (e.g. Qwen2.5).
+            tmpl_kwargs = {"enable_thinking": False} if args.no_think else {}
             text = tok.apply_chat_template(
-                build_messages(prompt, recipes), tokenize=False, add_generation_prompt=True
+                messages, tokenize=False, add_generation_prompt=True, **tmpl_kwargs
             )
             inputs = tok(text, return_tensors="pt").to(args.device)
             prompt_ids = inputs.input_ids[0].tolist()
@@ -198,24 +206,62 @@ def run_capture(args) -> None:
                         print(f"[{i:>3}/{len(prompts)}] skip {rid} (no ground truth)")
                         continue
 
-                    cap = capture_activations(model, tok, prompt_ids, completion_ids,
-                                              layers, args.device)
+                    if args.confidence_followup:
+                        # TWO-TURN (clean): turn 1 (the construction above) stays
+                        # uncontaminated; now elicit confidence in a 2nd turn with the
+                        # construction in context, and capture activations at the
+                        # confidence token there. Decouples the read from construction
+                        # generation (no trailing-instruction truncation) and gives a
+                        # fixed, content-neutral read site.
+                        from interp.confidence import build_confidence_followup
+                        msgs2 = build_confidence_followup(messages, completion)
+                        text2 = tok.apply_chat_template(
+                            msgs2, tokenize=False, add_generation_prompt=True, **tmpl_kwargs)
+                        inputs2 = tok(text2, return_tensors="pt").to(args.device)
+                        pids2 = inputs2.input_ids[0].tolist()
+                        with torch.no_grad():
+                            gen2 = model.generate(**inputs2, max_new_tokens=32, do_sample=False)
+                        conf_ids = gen2[0].tolist()[len(pids2):]
+                        del gen2, inputs2
+                        _empty_cache()
+                        cap = capture_activations(model, tok, pids2, conf_ids,
+                                                  layers, args.device)
+                    else:
+                        cap = capture_activations(model, tok, prompt_ids, completion_ids,
+                                                  layers, args.device)
                     if cap is None:
                         print(f"[{i:>3}/{len(prompts)}] skip {rid} (empty completion)")
                         continue
+                    conf_completion = cap["completion"] if args.confidence_followup else None
+
+                    # Verbalized confidence (if elicited): stated value + read sites.
+                    # decision_pos = the token that GENERATES the number (content-
+                    # neutral, causal readout); digits = state after committing it.
+                    # For two-turn, cap["completion"] IS the turn-2 confidence answer.
+                    conf_positions, conf_decision_pos, conf_value = [], None, None
+                    if args.elicit_confidence or args.confidence_followup:
+                        from interp.confidence import confidence_read_positions, parse_confidence
+                        conf_value = parse_confidence(cap["completion"])
+                        _n = cap["acts"].shape[1]
+                        _dpos, _digits = confidence_read_positions(cap["completion"], cap["offsets"])
+                        conf_positions = [p for p in _digits if 0 <= p < _n]
+                        conf_decision_pos = _dpos if (_dpos is not None and 0 <= _dpos < _n) else None
 
                     # Keep only the token positions a probe will read (entity-name
-                    # tokens) — ~25x smaller on disk, so we can afford many --samples.
+                    # tokens + the confidence slot) — ~25x smaller on disk, so we can
+                    # afford many --samples.
                     save_kwargs = {}
                     acts_to_save = cap["acts"]
                     if args.keep_positions == "entities":
                         from interp.geometry_labels import entity_ids, id_positions
-                        keep = set()
+                        keep = set(conf_positions)         # always keep the confidence slot(s)
+                        if conf_decision_pos is not None:
+                            keep.add(conf_decision_pos)
                         for eid in entity_ids(gt):
                             keep.update(id_positions(cap["completion"], cap["offsets"], eid))
                         keep = sorted(p for p in keep if 0 <= p < acts_to_save.shape[1])
                         if not keep:
-                            print(f"[{i:>3}/{len(prompts)}] skip {rid} (no entity positions)")
+                            print(f"[{i:>3}/{len(prompts)}] skip {rid} (no entity/conf positions)")
                             continue
                         acts_to_save = acts_to_save[:, keep, :]
                         save_kwargs["positions"] = np.array(keep)
@@ -235,6 +281,10 @@ def run_capture(args) -> None:
                         "tokens": cap["tokens"],
                         "is_special": cap["is_special"],
                         "grade": {"ok": grade.ok, "stage": grade.stage, "n_ops": grade.n_ops},
+                        "conf_value": conf_value,
+                        "conf_positions": conf_positions,
+                        "conf_decision_pos": conf_decision_pos,
+                        "conf_completion": conf_completion,
                         "construction": obj.get("construction") if isinstance(obj, dict) else None,
                         # ground-truth geometry for non-trivial probing (geometry_labels)
                         "ground_truth": {
@@ -283,6 +333,18 @@ def main() -> None:
     ap.add_argument("--keep-positions", choices=("all", "entities"), default="all",
                     help="'entities' stores only entity-name token positions "
                          "(~25x less disk -> afford many --samples); 'all' keeps every token")
+    ap.add_argument("--elicit-confidence", action="store_true",
+                    help="append a 'Confidence: N' request to the prompt and store the "
+                         "stated value + digit-token positions (a fixed, content-neutral "
+                         "read site for the correctness probe)")
+    ap.add_argument("--no-think", action="store_true",
+                    help="pass enable_thinking=False to the chat template — disables the "
+                         "<think> reasoning block on hybrid reasoners (GLM-4.x)")
+    ap.add_argument("--confidence-followup", action="store_true",
+                    help="TWO-TURN confidence: generate the construction cleanly, then "
+                         "elicit 'Confidence: N' in a second turn and capture activations "
+                         "at that fixed token (avoids the single-turn --elicit-confidence "
+                         "instruction truncating the construction JSON)")
     ap.add_argument("--samples", type=int, default=1,
                     help="completions per prompt (>1 samples at temperature for more "
                          "probe data; each saved as <pid>_s<k>)")
