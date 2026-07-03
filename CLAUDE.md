@@ -158,6 +158,52 @@ A Vite-based frontend for the benchmark system. Connects to `benchmark/server.py
 - **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
 - **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
 - **`examples/`**: Pre-rendered SVG examples used for documentation.
+- **`human_study_protocol.md`**: Pre-registered protocol for the human-correlation rating study.
+
+### Interpretability (`interp/`)
+
+Mechanistic-interpretability probe of how an LLM (Qwen2.5) represents geometric relationships while writing a GeoGen construction. Standalone from the main pipeline; has its own `requirements.txt` and offline smoke tests. See `interp/README.md`, `PLAN.md`, `METHODOLOGY.md`, `RESULTS.md`, and `CONFIDENCE.md`.
+
+- **`grade.py`** (Phase 0): render-free grader — completion → parse → validate → lower → compile → check.
+- **`capability_check.py`** (Phase 0): prompts the model on benchmark prompts and reports valid-construction rate; supports few-shot exemplars (`--few-shot none|3|all|relevant:K`).
+- **`capture.py`** (Phase 1): generate + forward-pass, saving the residual stream per completion token plus ground-truth geometry. `--keep-positions entities` stores only entity-name tokens to keep datasets small.
+- **`geometry_labels.py`** (Phase 1–2): extracts spatial ground truth (entity→relation, point coords, check facts) from a construction — the bridge for non-trivial probes.
+- **`probe.py`** (Phase 2): per-layer linear probes → decodability-vs-layer.
+- **`patch.py`** (Phase 3): activation-patching harness for causal tests.
+- **`confidence.py`**: fixed-slot confidence-token experiment (see `CONFIDENCE.md`).
+- **`setup_vast.sh`**: bootstraps a rented CUDA box. Heavy runs need a GPU — Apple Silicon/MPS lacks FlashAttention, so long few-shot prompts OOM.
+
+### Paper (`paper/`)
+
+LaTeX source for the **GeoGenBench** NeurIPS Datasets & Benchmarks paper. Naming: **GeoGen** = the methodology/pipeline (text → TikZ → SymPy → automatic verification); **GeoGenBench** = the released benchmark (801 prompts with machine-checkable property lists). `geogenbench.tex` is the main file; sections in `sections/`, appendices in `appendices/`, figures symlink to `docs/figures/`. Build with the `Makefile`. `scripts/` holds figure-refresh and supplementary-bundle helpers.
+
+### Curriculum (`curriculum/`)
+
+Pipeline that extracts geometry curriculum structure from Carnegie textbook PDFs and generates student-style prompts for the eval suite: `convert_pdfs.py` (PDF → Markdown via marker-pdf in its own `.marker-venv`) → `extract_curriculum.py` (Markdown → JSON, Claude Sonnet) → `generate_prompts.py` (JSON → scenario YAML). `to_benchmark.py` emits benchmark definitions. See `curriculum/README.md`.
+
+### Human study (`evals/human_study/`)
+
+Human-correlation rating study for the paper: raters judge whether they agree with the auto-verifier's `pass`/`soft_pass`/`fail` on (prompt, diagram) pairs. `serve.py` + `viewer.html` present items; responses saved as `responses_*.csv`; `compute_kappa.py` computes inter-rater agreement (Cohen's kappa). `sample_human_study.py` builds the sample. See its `README.md` and `docs/human_study_protocol.md`.
+
+### Slides (`slides/`)
+
+Self-contained onboarding presentation (`onboarding.html`) with `SPEAKER_NOTES.md` for new contributors.
+
+### Interpretability (`interp/`)
+
+A research sub-project probing **where — and whether — the model represents spatial reasoning and its own correctness (metacognition)** in the residual stream, using the geometry-construction task as the probe domain. It has its **own venv** (`interp/.venv`, separate from the repo's `.venv`) and `requirements.txt`. Linear probes and analyses run **offline on CPU**; activation **capture is a GPU job** (typically a rented cloud box — see `setup_vast.sh`). Captured activations live in `interp/activations/` (gitignored, multi-GB).
+
+Phased pipeline:
+- **`grade.py`**: render-free auto-grader — runs a model completion through `parse → validate → lower → compile → check` and returns pass/fail + furthest stage. The ground-truth correctness signal.
+- **`capability_check.py`** (Phase 0 gate): can the model produce valid constructions? Prompts a local HF model, grades each, reports the valid-construction rate. `load_model` handles bf16 / AWQ / 4-bit; `build_messages` mirrors RecipeStrategy's prompt.
+- **`capture.py`** (Phase 1): generate + grade + one forward pass with `output_hidden_states`, saving the residual stream (float16 `.npz` + `meta.jsonl`) at chosen token positions. Key flags: `--keep-positions entities`, `--elicit-confidence` (single-turn "Confidence: N"), `--confidence-followup` (**two-turn**: generate the construction cleanly, then elicit confidence separately — avoids the single-turn instruction truncating the JSON), `--no-think` (disable hybrid-reasoner `<think>`, e.g. GLM-4.x).
+- **`geometry_labels.py`**: extracts ground-truth spatial facts (entity relations, point coords, vertex angles) from the compiled construction, for non-trivial probe targets.
+- **`probe.py`** (Phase 2): per-layer linear probes (StandardScaler → PCA → LogReg/Ridge) with a **base-prompt-grouped** train/test split and a token-identity baseline. Labelers: `relation`, `entity_relation`, `point_coord`, `angle`, plus the metacognition set `correctness` (last entity token), `correctness_conf` (the fixed confidence **decision** token), `correctness_conf_digit`.
+- **`patch.py`** (Phase 3): activation patching / logit-difference recovery for causal claims.
+- **`confidence.py`**: confidence elicitation (single- and two-turn) + read-site location — `confidence_read_positions` returns the **decision token** (the `:`/space that generates the number, content-neutral) and the digit tokens.
+- **`analysis/`**: `confidence_vs_difficulty.py` (difficulty + within-prompt + surface controls; `--read last|first|conf|conf_digit`), `verbalized_vs_internal.py` (stated vs internal confidence), plus `ordering.py` / `consistency.py` / `coherent_map.py`.
+
+Docs: `METHODOLOGY.md` (protocol), `RESULTS.md` (spatial-decodability curves), `CONFIDENCE.md` (the metacognition sub-study + GPU runbook + decision rules), `PLAN.md`, `PROPOSAL.md`. Offline tests run as scripts, e.g. `interp/.venv/bin/python interp/test_confidence.py`.
 
 ## Key Design Notes
 

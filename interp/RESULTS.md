@@ -3,6 +3,11 @@
 **Date:** 2026-06-25 · **Model:** Qwen2.5-7B-Instruct (bf16) · **Method:** see
 [METHODOLOGY.md](METHODOLOGY.md)
 
+> **See also [CONFIDENCE.md](CONFIDENCE.md)** — the metacognition sub-study ("does the
+> model know when its construction is wrong?"): correctness is decodable but
+> confound-explained (difficulty + read-site), with a fixed-slot `Confidence:`-token
+> experiment built and ready to run.
+
 > ## ⚠️ CORRECTION (2026-06-28) — read first
 >
 > A code review (Codex) found a **train/test leakage bug**: the probe split
