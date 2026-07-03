@@ -3,6 +3,10 @@
 **Date:** 2026-07-01 · **Model:** Qwen2.5-7B-Instruct (bf16), Qwen2.5-32B-AWQ ·
 **Depends on:** [METHODOLOGY.md](METHODOLOGY.md), [RESULTS.md](RESULTS.md)
 
+> **📓 Central write-up: [LAB_NOTEBOOK.md](LAB_NOTEBOOK.md)** — the consolidated methods +
+> results (including the definitive Qwen-vs-GLM two-turn comparison). *This* doc is the
+> design rationale + read-site backstory that led there.
+
 ## Question
 When the model writes a geometry construction, does its residual stream carry a signal
 of whether that construction is **correct** (compiles + passes every `must`-check)? If
@@ -44,7 +48,7 @@ GLM's activation adds a real **+0.10** beyond #ops — **+0.00 at layer 0 rising
 
 **Verdict:** with a proper read-site + difficulty + #ops control, **GLM-4.7-Flash has a genuine, computed internal signal of its own correctness that survives all three confounds; Qwen-7B does not.** Together with GLM's calibrated verbalized confidence, this suggests **metacognition emerges/sharpens with capability.**
 
-**Caveats:** Qwen was single-turn / digit-read vs GLM two-turn / decision-read — a **Qwen two-turn re-run** would make the comparison fully apples-to-apples (and rule out that read-site/elicitation, not scale, drives the gap). Qwen's data is thinner (21 vs 44 mixed-outcome prompts). Single-seed; linear probes at a single token. Analyses: `incremental_ops.py`, `confidence_vs_difficulty.py`, `verbalized_vs_internal.py`.
+**Caveats:** Qwen was single-turn / digit-read vs GLM two-turn / decision-read. **UPDATE (2026-07-03): the Qwen two-turn re-run is done — see [LAB_NOTEBOOK.md](LAB_NOTEBOOK.md).** It confirmed verbalized calibration is a *scale* effect (Qwen stayed collapsed at ~0.52 even two-turn), and that the computed-signal gap is a *gradient* (Qwen +0.02 vs GLM +0.10) that the single-turn comparison had overstated (Qwen single-turn was −0.15). Qwen's data is thinner (21 vs 44 mixed-outcome prompts). Single-seed; linear probes at a single token. Analyses: `incremental_ops.py`, `confidence_vs_difficulty.py`, `verbalized_vs_internal.py`.
 
 ## The cascade of controls (how we avoided fooling ourselves)
 
