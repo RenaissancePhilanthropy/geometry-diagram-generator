@@ -15,7 +15,7 @@ load_dotenv()
 basicConfig(level=INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 strategy_name = os.environ.get("STRATEGY", "raw_code")
-renderer_name = os.environ.get("RENDERER", "tikz")
+renderer_name = os.environ.get("RENDERER", "svg")
 
 
 def _make_renderer():

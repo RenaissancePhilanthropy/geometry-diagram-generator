@@ -792,24 +792,54 @@ def test_label_with_superscript_produces_tspan():
     assert any(ts.get("baseline-shift") == "super" for ts in tspans)
 
 
-def test_label_greek_uses_unicode():
+def test_label_greek_renders_as_mathtext_path():
+    r"""Labels with \alpha and other math commands render via mathtext as vector paths.
+
+    Previously the old tspan parser substituted \alpha → unicode 'α'.  Now it
+    routes through the mathtext engine and produces a self-contained SVG <path>
+    element, which is visually superior (correct glyph, no font-fallback).
+    """
     diagram = DiagramIR(
         define=[PointFixed(id="P", x=1, y=1)],
         render=[LabelPoint(p="P", text=r"\alpha")],
     )
     svg = _compile_svg(diagram)
-    assert "α" in svg
+    root = _parse(svg)
+    # Must have a label element carrying a mathtext path, not a bare unicode α
+    label_els = [el for el in root.iter() if el.get("data-role") == "label-point"]
+    assert label_els, "Expected a label-point element"
+    # At least one should be a <g> wrapping a <path> (mathtext), not <text>
+    math_labels = [
+        el for el in label_els
+        if (el.tag.split("}")[-1] if "}" in el.tag else el.tag) == "g"
+    ]
+    assert math_labels, (
+        r"Expected \alpha to render as a mathtext <g><path/></g> element, "
+        f"but label elements are: {[el.tag for el in label_els]}"
+    )
 
 
-def test_label_overline_produces_tspan():
+def test_label_overline_renders_as_mathtext_path():
+    r"""Labels with \overline render via mathtext as vector paths.
+
+    Previously the old tspan parser produced a tspan with text-decoration:overline.
+    Now it routes through the mathtext engine and produces a self-contained <path>.
+    """
     diagram = DiagramIR(
         define=[PointFixed(id="P", x=1, y=1)],
         render=[LabelPoint(p="P", text=r"\overline{AB}")],
     )
     svg = _compile_svg(diagram)
     root = _parse(svg)
-    tspans = _findall(root, "tspan")
-    assert any(ts.get("text-decoration") == "overline" for ts in tspans)
+    label_els = [el for el in root.iter() if el.get("data-role") == "label-point"]
+    assert label_els, "Expected a label-point element"
+    math_labels = [
+        el for el in label_els
+        if (el.tag.split("}")[-1] if "}" in el.tag else el.tag) == "g"
+    ]
+    assert math_labels, (
+        r"Expected \overline{AB} to render as a mathtext <g><path/></g> element"
+    )
 
 
 # ---------------------------------------------------------------------------

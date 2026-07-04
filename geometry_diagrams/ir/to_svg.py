@@ -25,6 +25,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .font import FontConfig, FONT_VARIANTS, default_font_config
+from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
@@ -79,6 +80,9 @@ class _LabelPlacement:
     attrs: dict[str, str] = field(default_factory=dict)
     width_est: float = 0.0
     height_est: float = float(_FONT_SIZE)
+    # When non-None, this label should be emitted as an SVG <path> (mathtext
+    # vector glyph) rather than as a <text>/<tspan> element.
+    math_glyph: MathGlyph | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -245,15 +249,18 @@ def ir_to_svg(
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
-    # Pre-compute group → tick-count / chevron-count for MarkSegments
+    # Pre-compute group → mark symbol / chevron-count for MarkSegments.
+    # Equal-length groups cycle through _MARK_SYMBOLS (matching TikZ's tkz-euclide).
+    # Parallel groups cycle through chevron counts.
+    _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
         if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_tick_counts: dict[str, int] = {}
-    group_chevron_counts: dict[str, int] = {}
+    group_mark_symbols: dict[str, str] = {}   # equal-length: symbol like "|", "s|", …
+    group_chevron_counts: dict[str, int] = {}  # parallel: 1/2/3 chevrons
     equal_idx = 0
     parallel_idx = 0
     for g in seg_groups:
@@ -261,7 +268,7 @@ def ir_to_svg(
             group_chevron_counts[g] = (parallel_idx % 3) + 1
             parallel_idx += 1
         else:
-            group_tick_counts[g] = (equal_idx % 3) + 1
+            group_mark_symbols[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
             equal_idx += 1
 
     # Pre-compute incident angles for smart auto label placement
@@ -279,7 +286,7 @@ def ir_to_svg(
     for op in sorted_ops:
         _emit_svg_op(
             op, svg, sym, stmt_by_id, coords, helpers, _styles,
-            group_tick_counts, pt, gxy, scale, xmin, xmax, ymin, ymax,
+            group_mark_symbols, pt, gxy, scale, xmin, xmax, ymin, ymax,
             group_chevron_counts=group_chevron_counts,
             incident_angles=incident_angles,
             warnings=warnings,
@@ -293,14 +300,19 @@ def ir_to_svg(
     # Deduplicate coincident point labels (keep first occurrence at each position)
     _dedup_coincident_labels(pending_labels)
 
-    # Nudge labels away from drawn lines/segments that pass through them
+    # Nudge labels away from drawn lines/segments, then resolve label-label
+    # collisions, then nudge again — collision resolution can push labels back
+    # into segments, so the second pass re-establishes segment clearance.
     _nudge_labels_from_lines(pending_labels, drawn_segments)
-
-    # Resolve label-label collisions and emit
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
+    _nudge_labels_from_lines(pending_labels, drawn_segments)
     for lp in pending_labels:
-        _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_config.family)
+        _append_label(
+            svg, lp.x, lp.y, lp.text, lp.color,
+            anchor=lp.anchor, extra_attrs=lp.attrs,
+            font_family=font_config.family,
+            math_glyph=lp.math_glyph,
+        )
 
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
@@ -318,7 +330,7 @@ def _emit_svg_op(
     coords: dict,
     helpers: dict,
     styles: dict,
-    group_tick_counts: dict[str, int],
+    group_mark_symbols: dict[str, str],
     pt,
     gxy,
     scale: float,
@@ -697,9 +709,14 @@ def _emit_svg_op(
                     n_chevrons = group_chevron_counts.get(group, 1)
                     _append_seg_chevrons(svg, a, b, pt, stroke, n_chevrons, extra_attrs=mark_attrs)
                 else:
-                    # Equal-length segments: use tick marks (proportional_ falls through here)
-                    n_ticks = group_tick_counts.get(group, 1) if group else 1
-                    _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
+                    # Equal-length segments: dispatch on mark symbol
+                    mark_sym = group_mark_symbols.get(group, "|") if group else "|"
+                    n_slashes = mark_sym.count("s")
+                    n_ticks = mark_sym.count("|")
+                    if n_slashes:
+                        _append_seg_slash(svg, a, b, pt, stroke, extra_attrs=mark_attrs)
+                    if n_ticks:
+                        _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
@@ -719,16 +736,15 @@ def _emit_svg_op(
                 ox, oy = _label_offset(pos, _LABEL_OFFSET)
                 anchor = _pos_to_anchor(pos)
             color = _color_from_style(style, styles) or "black"
-            lp = _LabelPlacement(
+            lp = _make_label_placement(
                 x=px + ox, y=py + oy, text=label, color=color, anchor=anchor,
                 attrs={"data-role": "label-point", "data-for": p},
-                width_est=_estimate_text_width(label),
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_family)
+                      font_family=font_family, math_glyph=lp.math_glyph)
 
         case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
@@ -749,16 +765,15 @@ def _emit_svg_op(
             ly -= math.sin(bisector) * _ANGLE_LABEL_R
             label_text = text or ""
             color = _color_from_style(style, styles) or "black"
-            lp = _LabelPlacement(
+            lp = _make_label_placement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
                 attrs={"data-role": "label-angle", "data-for": f"{angle.a},{angle.o},{angle.b}"},
-                width_est=_estimate_text_width(label_text),
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_family)
+                      font_family=font_family, math_glyph=lp.math_glyph)
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
             if seg_id not in stmt_by_id:
@@ -784,16 +799,15 @@ def _emit_svg_op(
             lx = mx + nx * _LABEL_OFFSET * side
             ly = my + ny * _LABEL_OFFSET * side
             color = _color_from_style(style, styles) or "black"
-            lp = _LabelPlacement(
+            lp = _make_label_placement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
                 attrs={"data-role": "label-segment", "data-for": seg_id},
-                width_est=_estimate_text_width(label_text),
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_family)
+                      font_family=font_family, math_glyph=lp.math_glyph)
 
         case ir.LabelFreeText(text=text, at=at, centroid_of=cof, style=style):
             if at is not None:
@@ -809,16 +823,15 @@ def _emit_svg_op(
                 lx, ly = gxy(cx, cy)
             label_text = text or ""
             color = _color_from_style(style, styles) or "black"
-            lp = _LabelPlacement(
+            lp = _make_label_placement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
                 attrs={"data-role": "label-free-text"},
-                width_est=_estimate_text_width(label_text),
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
-                      font_family=font_family)
+                      font_family=font_family, math_glyph=lp.math_glyph)
 
 
 # ---------------------------------------------------------------------------
@@ -912,6 +925,45 @@ def _append_angle_arc(
             "stroke-width": "1.5",
             "fill": "none",
         })
+
+
+def _append_seg_slash(
+    svg: ET.Element,
+    a_id: str,
+    b_id: str,
+    pt,
+    stroke: str,
+    extra_attrs: dict[str, str] | None = None,
+) -> None:
+    """Draw a diagonal slash mark at the midpoint of segment AB.
+
+    The slash is a short line drawn at 45° from the segment direction — visually
+    distinct from the perpendicular tick mark.  This corresponds to the ``s``
+    mark symbol in tkz-euclide's set ``["|", "||", "|||", "s", "s|", "s||"]``.
+    """
+    ax, ay = pt(a_id)
+    bx, by = pt(b_id)
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    dx, dy = bx - ax, by - ay
+    mag = math.hypot(dx, dy) or 1
+    # Unit vector along the segment
+    along_x, along_y = dx / mag, dy / mag
+    # Perpendicular unit vector
+    perp_x, perp_y = -dy / mag, dx / mag
+    # Slash direction: bisect between along and perp (45° from segment)
+    slash_x = (along_x + perp_x) / math.sqrt(2)
+    slash_y = (along_y + perp_y) / math.sqrt(2)
+    # Half-length of slash line
+    half = _TICK_LEN
+    ET.SubElement(svg, "line", {
+        **(extra_attrs or {}),
+        "x1": f"{mx - slash_x * half:.2f}",
+        "y1": f"{my - slash_y * half:.2f}",
+        "x2": f"{mx + slash_x * half:.2f}",
+        "y2": f"{my + slash_y * half:.2f}",
+        "stroke": stroke,
+        "stroke-width": "1.5",
+    })
 
 
 def _append_seg_ticks(
@@ -1008,19 +1060,69 @@ def _append_label(
     anchor: str = "middle",
     extra_attrs: dict[str, str] | None = None,
     font_family: str = "serif",
+    math_glyph: MathGlyph | None = None,
 ) -> None:
-    """Append a <text> element with LaTeX-to-SVG tspan conversion."""
-    el = ET.SubElement(svg, "text", {
-        **(extra_attrs or {}),
-        "x": f"{x:.2f}",
-        "y": f"{y:.2f}",
-        "font-family": font_family,
-        "font-size": str(_FONT_SIZE),
-        "fill": color,
-        "text-anchor": anchor,
-        "dominant-baseline": "central",
+    """Append a label element to *svg*.
+
+    If *math_glyph* is provided (a pre-rendered mathtext path), emit a ``<g>``
+    containing a ``<path>`` using the glyph's ``d`` string, positioned so that
+    the label is horizontally anchored per *anchor* and vertically centred on *y*.
+    Otherwise, fall back to a ``<text>`` element with tspan LaTeX substitutions.
+    """
+    if math_glyph is not None:
+        _append_math_label(svg, x, y, color, anchor, extra_attrs or {}, math_glyph)
+    else:
+        el = ET.SubElement(svg, "text", {
+            **(extra_attrs or {}),
+            "x": f"{x:.2f}",
+            "y": f"{y:.2f}",
+            "font-family": font_family,
+            "font-size": str(_FONT_SIZE),
+            "fill": color,
+            "text-anchor": anchor,
+            "dominant-baseline": "central",
+        })
+        _build_tspans(el, text)
+
+
+def _append_math_label(
+    svg: ET.Element,
+    x: float,
+    y: float,
+    color: str,
+    anchor: str,
+    extra_attrs: dict[str, str],
+    glyph: MathGlyph,
+) -> None:
+    """Emit a mathtext glyph as a ``<g><path /></g>`` at the requested position.
+
+    The path's local coordinate system has its origin at the left edge of the
+    glyph bounding box, at the SVG pixel row corresponding to the top of the
+    bounding box.  We apply a ``translate`` transform to position it correctly:
+
+    * Horizontally: honour *anchor* (start/middle/end) relative to *x*.
+    * Vertically: centre the glyph on *y* (matching ``dominant-baseline:central``
+      used by the ``<text>`` path).
+    """
+    # Horizontal offset based on anchor
+    if anchor == "middle":
+        tx = x - glyph.x_min - glyph.width / 2
+    elif anchor == "end":
+        tx = x - glyph.x_min - glyph.width
+    else:  # "start"
+        tx = x - glyph.x_min
+
+    # Vertical: centre glyph height on y
+    ty = y - glyph.y_min - glyph.height / 2
+
+    g = ET.SubElement(svg, "g", {
+        **extra_attrs,
+        "transform": f"translate({tx:.3f},{ty:.3f})",
     })
-    _build_tspans(el, text)
+    ET.SubElement(g, "path", {
+        "d": glyph.d,
+        "fill": color,
+    })
 
 
 def _build_tspans(parent: ET.Element, text: str) -> None:
@@ -1980,25 +2082,44 @@ def _nudge_labels_from_lines(
     labels: list[_LabelPlacement],
     drawn_segments: list[tuple[float, float, float, float]],
 ) -> None:
-    """Nudge labels whose center is too close to a drawn line or segment.
+    """Nudge labels whose bbox overlaps or is too close to a drawn line or segment.
 
-    Uses up to 3 iterations so a label nudged away from one line doesn't land
-    on another.
+    Uses up to 4 iterations so a label nudged away from one line doesn't land
+    on another.  The required clearance uses the support function of the label
+    bbox in the nudge direction: half_extent = |W/2·|dx|| + |H/2·|dy||.
+    This correctly handles wide math labels on diagonal/vertical segments where
+    a height-only threshold would leave the bbox corners crossing the segment.
     """
-    min_dist = _FONT_SIZE * 0.7  # minimum distance from label center to any line
-    for _ in range(3):
+    _MARGIN = _FONT_SIZE * 0.35
+    for _ in range(4):
         moved = False
         for lp in labels:
             for x1, y1, x2, y2 in drawn_segments:
-                dist, nx, ny = _point_to_segment_distance(lp.x, lp.y, x1, y1, x2, y2)
-                if dist < min_dist and dist > 0.1:
-                    dx = lp.x - nx
-                    dy = lp.y - ny
-                    mag = math.hypot(dx, dy)
-                    nudge = min_dist - dist + 2.0
-                    lp.x += (dx / mag) * nudge
-                    lp.y += (dy / mag) * nudge
-                    moved = True
+                dist, near_x, near_y = _point_to_segment_distance(lp.x, lp.y, x1, y1, x2, y2)
+
+                # Compute the nudge direction first — needed for the support function.
+                if dist < 1e-6:
+                    # Label center is on the segment; push 90° CCW from it.
+                    sdx, sdy = x2 - x1, y2 - y1
+                    smag = math.hypot(sdx, sdy) or 1.0
+                    dx, dy = -sdy / smag, sdx / smag
+                else:
+                    # Push away from the nearest point on the segment.
+                    dx = (lp.x - near_x) / dist
+                    dy = (lp.y - near_y) / dist
+
+                # Support function: extent of the label bbox in the nudge direction.
+                # This is the minimum center-to-segment distance for the bbox to clear.
+                half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+                min_dist = half_extent + _MARGIN
+
+                if dist >= min_dist:
+                    continue
+
+                nudge = min_dist - dist + _MARGIN
+                lp.x += dx * nudge
+                lp.y += dy * nudge
+                moved = True
         if not moved:
             break
 
@@ -2018,19 +2139,27 @@ def _segment_label_side(
     nx: float, ny: float,
     other_points: list[tuple[float, float]],
 ) -> float:
-    """Return +1 or -1 for the perpendicular side that has fewer nearby points.
+    """Return +1 or -1 for the perpendicular side that has less nearby weight.
 
     (mx, my) is the midpoint of the segment in SVG pixel space.
     (nx, ny) is the unit CCW perpendicular vector in SVG pixel space.
     Positive side = direction of (nx, ny).
+
+    Each point's vote is weighted by 1/(distance+1) so a close point
+    (e.g. the opposite triangle vertex) outweighs many distant ones.
     """
-    pos_count = sum(
-        1 for px, py in other_points
-        if (px - mx) * nx + (py - my) * ny > 0
-    )
-    neg_count = len(other_points) - pos_count
-    # Place label on the side with fewer points (opposite the majority)
-    return -1.0 if pos_count > neg_count else 1.0
+    pos_weight = 0.0
+    neg_weight = 0.0
+    for px, py in other_points:
+        proj = (px - mx) * nx + (py - my) * ny
+        dist = math.hypot(px - mx, py - my) + 1.0
+        w = 1.0 / dist
+        if proj > 0:
+            pos_weight += w
+        else:
+            neg_weight += w
+    # Place label on the side with lower weighted presence
+    return -1.0 if pos_weight > neg_weight else 1.0
 
 
 def _estimate_text_width(text: str) -> float:
@@ -2044,6 +2173,37 @@ def _estimate_text_width(text: str) -> float:
     # Drop grouping chars
     t = re.sub(r"[{}_^]", "", t)
     return max(len(t), 1) * _FONT_SIZE * 0.65
+
+
+def _make_label_placement(
+    x: float,
+    y: float,
+    text: str,
+    color: str,
+    anchor: str,
+    attrs: dict[str, str],
+) -> _LabelPlacement:
+    """Build a ``_LabelPlacement``, using mathtext metrics when appropriate.
+
+    If *text* is a math expression (as classified by :func:`label_needs_mathtext`),
+    we render it via the mathtext engine to obtain an accurate bounding box and
+    store the :class:`MathGlyph` for later emission.  Otherwise we fall back to
+    the approximate char-count estimator and a plain ``<text>`` path.
+    """
+    if label_needs_mathtext(text):
+        glyph = render_math_to_svg(text, font_size=float(_FONT_SIZE))
+        if glyph is not None:
+            return _LabelPlacement(
+                x=x, y=y, text=text, color=color, anchor=anchor, attrs=attrs,
+                width_est=glyph.width,
+                height_est=glyph.height,
+                math_glyph=glyph,
+            )
+    # Fallback: plain text path with approximate sizing
+    return _LabelPlacement(
+        x=x, y=y, text=text, color=color, anchor=anchor, attrs=attrs,
+        width_est=_estimate_text_width(text),
+    )
 
 
 def _label_bbox(lp: _LabelPlacement) -> tuple[float, float, float, float]:
@@ -2084,33 +2244,41 @@ def _dedup_coincident_labels(labels: list[_LabelPlacement]) -> None:
 
 
 def _resolve_label_collisions(labels: list[_LabelPlacement], svg_w: float, svg_h: float) -> None:
-    """Nudge overlapping labels apart in-place. O(n²) per pass, up to 4 passes."""
-    padding = 2.0  # extra gap between labels
-    for _ in range(4):
+    """Nudge overlapping labels apart in-place. O(n²) per pass, up to 6 passes.
+
+    Both colliding labels are displaced symmetrically so no label is
+    permanently anchored (the previous code only moved label i, leaving j fixed).
+    """
+    padding = 2.0
+    margin = _FONT_SIZE
+    for _ in range(6):
         moved = False
         for i in range(len(labels)):
-            bb_i = _label_bbox(labels[i])
             for j in range(i):
+                bb_i = _label_bbox(labels[i])
                 bb_j = _label_bbox(labels[j])
-                # Expand bb_j by padding to enforce a minimum gap
-                bb_j_pad = (bb_j[0] - padding, bb_j[1] - padding, bb_j[2] + padding, bb_j[3] + padding)
+                bb_j_pad = (bb_j[0] - padding, bb_j[1] - padding,
+                            bb_j[2] + padding, bb_j[3] + padding)
                 if not _bboxes_overlap(bb_i, bb_j_pad):
                     continue
                 dx = labels[i].x - labels[j].x
                 dy = labels[i].y - labels[j].y
                 dist = math.hypot(dx, dy)
                 if dist < 1e-6:
-                    # Exactly coincident: nudge upward
                     dx, dy, dist = 0.0, -1.0, 1.0
-                nudge = _FONT_SIZE * 1.2
-                labels[i].x += (dx / dist) * nudge
-                labels[i].y += (dy / dist) * nudge
-                # Clamp to SVG viewport with a small margin
-                margin = _FONT_SIZE
-                labels[i].x = max(margin, min(svg_w - margin, labels[i].x))
-                labels[i].y = max(margin, min(svg_h - margin, labels[i].y))
+                # Push both labels apart by half the nudge each
+                half = _FONT_SIZE * 0.8
+                nx_step = (dx / dist) * half
+                ny_step = (dy / dist) * half
+                labels[i].x += nx_step
+                labels[i].y += ny_step
+                labels[j].x -= nx_step
+                labels[j].y -= ny_step
+                for lp in (labels[i], labels[j]):
+                    lp.x = max(margin, min(svg_w - margin, lp.x))
+                    lp.y = max(margin, min(svg_h - margin, lp.y))
                 moved = True
-                break  # recompute bb_i from updated position
+                break  # recompute bboxes after each move
         if not moved:
             break
 
