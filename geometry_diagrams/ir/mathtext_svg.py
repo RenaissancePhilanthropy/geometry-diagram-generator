@@ -181,6 +181,17 @@ def render_math_to_svg(latex: str, font_size: float) -> MathGlyph | None:
     else:
         mathtext_input = f"${stripped}$"
 
+    # --- substitute commands unsupported by matplotlib mathtext ---
+    # \square and \Box → unicode open square (□); matplotlib raises ParseFatalException.
+    # \lvert / \rvert → plain | (AMS delimiter variant, not in matplotlib's parser).
+    mathtext_input = (
+        mathtext_input
+        .replace(r"\square", "□")
+        .replace(r"\Box", "□")
+        .replace(r"\lvert", "|")
+        .replace(r"\rvert", "|")
+    )
+
     # --- render via matplotlib mathtext ---
     fp = mfm.FontProperties(size=font_size)
     try:
