@@ -102,6 +102,48 @@ Same protocol as GLM (two-turn, decision-site) → apples-to-apples. Read-site f
 single-turn's −0.15, so part of the original gap was read-site/elicitation. → the scale story
 survives but is a **gradient**, and was **overstated** by the single-turn comparison.
 
+### 2026-07-05 — 3-turn TEMPORAL confidence across 4 modern models (geometry)
+
+A major extension: a **3-turn protocol** — pre-task confidence → produce the construction →
+post-task confidence — run on **four current ~24–30B models spanning architectures**, all graded
+by the render-free checker (grade never shown to the model). 91 GeoGenBench prompts × 4 samples
+= 364 records/model. Pre-registered plan: [QA_STUDY_PLAN.md](QA_STUDY_PLAN.md). Capture:
+`capture_temporal.py` (VLM-aware load); analysis: `analysis/confidence_temporal.py` (bootstrap CIs,
+surface-length control). Reads: content-neutral `Confidence:` decision token (pre & post) + the
+no-elicitation last-prompt token.
+
+| geometry, 3-turn | Qwen3.6-27B (hybrid-Mamba) | GLM-4.7-Flash (MoE) | Mistral-Small-24B (dense) | Gemma-4-26B-A4B (MoE-VLM) |
+|---|---|---|---|---|
+| pass rate | 39% | 24% | 21% | 22% |
+| PRE-conf AUROC | 0.57 | 0.62 | 0.52 | 0.58 |
+| **POST-conf AUROC** | **0.70** | 0.66 | 0.66 | 0.66 |
+| self-correction Δ(fail) / Δ(ok) | **−27** / −5 | −9 / −2 | −5 / +5 | −13 / −5 |
+| downward-revision → fail AUROC | 0.68 | 0.63 | 0.70 | 0.64 |
+| internal probe (post, best layer) | 0.83 | 0.75 | 0.84 | 0.75 |
+| internal > verbalized? | ✅ | ✅ | ✅ | ✅ |
+| **within-question post** (difficulty fixed) | **0.68** | 0.55 | 0.45 | 0.53 |
+
+**Finding 1 — the phenomena are architecture-general.** All four (hybrid-Mamba / MoE / dense /
+MoE-VLM) show **post > pre** calibration, **internal > verbalized** ("knows more than it says"),
+and **blind self-correction** — confidence drops more on failures with the grade never revealed
+(grading is external). Bootstrap CIs are non-overlapping where it matters (e.g. Qwen PRE 0.57
+[0.53, 0.61] vs POST 0.70 [0.65, 0.75]); confidence clears the surface-length baseline (~0.40) on all.
+
+**Finding 2 — genuine per-attempt self-monitoring is a Qwen3.6 standout.** Only Qwen3.6 (**0.68**)
+tracks *this attempt's* correctness at fixed difficulty (within-question). GLM / Gemma-4 / Mistral
+(0.45–0.55 ≈ chance) calibrate mostly on **difficulty** (which problem is hard), not on whether a
+*particular* attempt is right. So cross-problem calibration is universal; **per-attempt
+metacognition is not** — it separates Qwen3.6 from the pack.
+
+**Caveats.** High internal *PRE* reads on some models (Mistral 0.88 @ L20, Gemma-4 0.70 @ L2)
+largely reflect **difficulty decodable from the prompt**, not metacognition — hence within-question
+is the metric for the "genuine self-monitoring" claim. Single dataset seed; within-question data is
+thin (21–42 mixed-outcome prompts). Gemma-4 needed `--max-new-tokens 2560` (its verbose pretty-printed
+JSON truncated at 1024 → false parse failures).
+
+**Next:** the same 3-turn protocol on QA benchmarks (MMLU / MedQA / GSM8K) to test **cross-domain**
+generalization — pilot (Gemma-4 × MedQA) in progress.
+
 ---
 
 ## Caveats & open questions
