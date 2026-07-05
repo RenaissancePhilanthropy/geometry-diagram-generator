@@ -118,3 +118,52 @@ def confidence_read_positions(completion: str, offsets):
         if first > 0:
             decision_pos = first - 1          # token immediately before the number
     return decision_pos, digit_positions
+
+
+# --- 3-turn (pre-task / task / post-task) confidence -----------------------
+# The temporal design: ask confidence BEFORE the attempt, do the task, ask
+# again AFTER. Turn 1 elicits a pre-attempt (difficulty) confidence; turn 2 is
+# the actual construction (graded); turn 3 re-elicits confidence now that the
+# construction is in context. Both confidence turns use the same "Confidence: N"
+# format, so confidence_read_positions() locates the (content-neutral) decision
+# token on either one. The pre-task INTERNAL signal can also be read with no
+# elicitation at all — at the last prompt token before generation.
+PRETASK_QUERY = (
+    "Before writing anything, estimate how likely you are to produce a correct, valid "
+    "construction for this problem. Reply with EXACTLY one line and nothing else:\n"
+    "Confidence: N\n"
+    "where N is an integer from 0 (certain to fail) to 100 (certain to succeed). "
+    "Do NOT write the construction yet."
+)
+TASK_QUERY = (
+    "Now produce the construction for the problem above. Output only the RecipeDSL "
+    "JSON object, nothing else."
+)
+
+
+def build_pretask_turn(messages: list[dict]) -> list[dict]:
+    """Turn 1: append PRETASK_QUERY to the task prompt so the model states a
+    pre-attempt confidence before constructing anything. Non-mutating."""
+    out = [dict(m) for m in messages]
+    for m in reversed(out):
+        if m.get("role") == "user":
+            m["content"] = (m.get("content") or "") + "\n\n" + PRETASK_QUERY
+            return out
+    out.append({"role": "user", "content": PRETASK_QUERY})
+    return out
+
+
+def build_task_turn(pretask_messages: list[dict], pre_completion: str) -> list[dict]:
+    """Turn 2: after the model's pre-confidence reply, ask for the construction."""
+    return list(pretask_messages) + [
+        {"role": "assistant", "content": pre_completion or ""},
+        {"role": "user", "content": TASK_QUERY},
+    ]
+
+
+def build_posttask_turn(task_messages: list[dict], construction: str) -> list[dict]:
+    """Turn 3: after the construction, re-elicit confidence (reuses CONFIDENCE_QUERY)."""
+    return list(task_messages) + [
+        {"role": "assistant", "content": construction or ""},
+        {"role": "user", "content": CONFIDENCE_QUERY},
+    ]

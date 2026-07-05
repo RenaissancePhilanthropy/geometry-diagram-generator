@@ -191,8 +191,14 @@ def load_model(model_name: str, device: str, quant: str = "none"):
             model_name, quantization_config=bnb, device_map={"": 0}).eval()
     else:
         print(f"loading {model_name} on {device} (bf16) ...")
-        model = (AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
-                 .to(device).eval())
+        try:
+            model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
+        except (ValueError, KeyError) as e:            # VLM configs (Gemma3/4, Mistral3, ...)
+            from transformers import AutoModelForImageTextToText
+            print(f"  (not a CausalLM config [{type(e).__name__}]; "
+                  "loading as VLM / ImageTextToText, text-only)")
+            model = AutoModelForImageTextToText.from_pretrained(model_name, dtype=torch.bfloat16)
+        model = model.to(device).eval()
     return tok, model
 
 
