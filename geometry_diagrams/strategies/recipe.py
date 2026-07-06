@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict, Union
 
 if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackManager
@@ -69,9 +69,24 @@ class RecipeAttemptTrace:
 
 
 @dataclass
+class RecipeSelectionResult:
+    """Result of the recipe-selection step, exposed as a public API type.
+
+    Callers can inspect ``confidence`` and ``unmatched_concepts`` to decide
+    whether to proceed to the expensive DSL-generation step.
+    """
+    selected_recipes: list[str]
+    unmatched_concepts: list[str]
+    confidence: Literal["high", "medium", "low"]
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass
 class RecipeMetadata:
     selected_recipes: list[str] = field(default_factory=list)
     unmatched_concepts: list[str] = field(default_factory=list)
+    confidence: Literal["high", "medium", "low"] = "high"
     selection_input_tokens: int = 0
     selection_output_tokens: int = 0
     attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
@@ -170,6 +185,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     # Parse JSON response
     selected_recipes = []
     unmatched_concepts = []
+    confidence: Literal["high", "medium", "low"] = "high"
     try:
         # Try to find JSON in the response
         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -177,6 +193,9 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
             parsed = json.loads(json_match.group())
             selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
             unmatched_concepts = parsed.get("unmatched_concepts", [])
+            raw_conf = parsed.get("confidence", "high")
+            if raw_conf in ("high", "medium", "low"):
+                confidence = raw_conf
     except (json.JSONDecodeError, AttributeError):
         logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
 
@@ -196,6 +215,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     metadata = RecipeMetadata(
         selected_recipes=valid_recipe_ids,
         unmatched_concepts=unmatched_concepts,
+        confidence=confidence,
         selection_input_tokens=in_tok,
         selection_output_tokens=out_tok,
     )
@@ -378,6 +398,87 @@ def _build_recipe_graph():
     builder.add_conditional_edges("generate_dsl", _after_generate_dsl_router)
     builder.add_conditional_edges("run_recipe_pipeline", _after_pipeline_router)
     return builder.compile()
+
+
+# ── standalone selection entrypoint ──────────────────────────────────────────
+
+async def select_recipes(
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+) -> RecipeSelectionResult:
+    """Run only the cheap recipe-selection step, without DSL generation.
+
+    Useful as a scope gate: callers can inspect ``confidence`` and
+    ``unmatched_concepts`` to decide whether to proceed to the expensive
+    ``render_geometry_diagram()`` call.
+
+    Args:
+        prompt: Natural-language description of the diagram.
+        model: Override the selector model id (e.g. ``"anthropic:claude-haiku-4-5-20251001"``).
+            Defaults to the package-internal Haiku selector model.
+
+    Returns:
+        A :class:`RecipeSelectionResult` with ``selected_recipes``,
+        ``unmatched_concepts``, ``confidence``, and token counts.
+    """
+    selector_model = model or _SELECTOR_MODEL
+    catalog = load_catalog()
+    selection_prompt = build_selection_prompt(prompt, catalog)
+
+    llm = get_chat_model(selector_model)
+    from langchain_core.messages import SystemMessage, HumanMessage
+    messages = [
+        SystemMessage(content=RECIPE_SELECTION_SYSTEM),
+        HumanMessage(content=selection_prompt),
+    ]
+    response = await llm.ainvoke(messages)
+    raw_text = response.content if hasattr(response, "content") else str(response)
+    in_tok, out_tok = extract_usage(response)
+
+    selected_recipes: list[str] = []
+    unmatched_concepts: list[str] = []
+    confidence: Literal["high", "medium", "low"] = "high"
+    try:
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
+            unmatched_concepts = parsed.get("unmatched_concepts", [])
+            raw_conf = parsed.get("confidence", "high")
+            if raw_conf in ("high", "medium", "low"):
+                confidence = raw_conf
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
+
+    # Filter to valid recipe IDs only (mirrors _select_recipes_node behaviour)
+    valid_ids = []
+    for recipe_id in selected_recipes:
+        try:
+            load_recipe(recipe_id)
+            valid_ids.append(recipe_id)
+        except Exception:
+            pass
+
+    return RecipeSelectionResult(
+        selected_recipes=valid_ids,
+        unmatched_concepts=unmatched_concepts,
+        confidence=confidence,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+    )
+
+
+def select_recipes_sync(
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+) -> RecipeSelectionResult:
+    """Synchronous wrapper around :func:`select_recipes`.
+
+    Not usable inside a running event loop (use ``await select_recipes()`` there).
+    """
+    return asyncio.run(select_recipes(prompt, model=model))
 
 
 # ── strategy class ────────────────────────────────────────────────────────────
