@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -40,7 +41,8 @@ def run(args) -> None:
     from interp.capture import capture_activations, resolve_layers
     from interp.capability_check import load_model
     from interp.confidence import parse_confidence, confidence_read_positions
-    from interp.tasks_qa import QA_TASKS, QA_PRETASK_QUERY, QA_POSTTASK_QUERY
+    from interp.tasks_qa import (QA_TASKS, QA_PRETASK_QUERY, QA_POSTTASK_QUERY,
+                                 _LETTERS)
 
     task = QA_TASKS[args.task]
     out_dir = pathlib.Path(args.out_dir)
@@ -79,10 +81,12 @@ def run(args) -> None:
         elif args.device == "mps":
             torch.mps.empty_cache()
 
-    def render(msgs, think):
+    def render_text(msgs, think):
         kw = {} if think is None else {"enable_thinking": think}
-        text = _tmpl.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, **kw)
-        return tok(text, return_tensors="pt").input_ids
+        return _tmpl.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, **kw)
+
+    def render(msgs, think):
+        return tok(render_text(msgs, think), return_tensors="pt").input_ids
 
     def gen(ids, max_new):
         ids = ids.to(args.device)
@@ -102,6 +106,76 @@ def run(args) -> None:
         if dpos is None or not (0 <= dpos < n):
             return None, False
         return cap["acts"][:, dpos, :].astype(np.float16), True
+
+    # --- output-distribution confidence baselines (Kadavath et al. 2022) -----------
+    # The novelty control for "internal >> verbalized": if the model's own token
+    # probabilities already predict correctness as well as the residual-stream probe,
+    # the probe adds nothing beyond the (known-calibrated) output distribution. All
+    # three are TEACHER-FORCED forwards — no generation, no RNG, ~3 extra passes/record.
+    P_TRUE_QUERY = ("Consider your final answer above. Is it correct? "
+                    "Reply with exactly one word: True or False.")
+
+    def _next_logprobs(ids):
+        with torch.no_grad():
+            logits = model(input_ids=ids.to(args.device)).logits[0, -1, :].float()
+        return torch.log_softmax(logits, dim=-1).cpu()
+
+    def _first_ids(word):
+        """First-token ids of ' word' and 'word' (tokenizer-robust variant set)."""
+        out = set()
+        for s in (word, " " + word):
+            t = tok(s, add_special_tokens=False).input_ids
+            if t:
+                out.add(t[0])
+        return sorted(out)
+
+    _ANS_RE = re.compile(r"ANSWER\s*(?:IS)?\s*[:=]?\s*\(?([A-J])\b")
+
+    def mc_logprobs(task_ids, ans_ids, n_opt):
+        """logP of each option letter at the final answer slot, ON-POLICY: teacher-force
+        the model's own generated ids up to (not including) the letter token, and read
+        the next-token distribution there — exactly the state that generated the letter.
+        (Re-encoding the decoded text instead shifts tokenization at whitespace
+        boundaries and reads a slightly different distribution — caught in smoke.)"""
+        raw = tok.decode(ans_ids, skip_special_tokens=False)
+        m = list(_ANS_RE.finditer(raw.upper()))
+        if not m:
+            return None
+        cut = m[-1].start(1)                    # char index of the final answer letter
+        lo, hi = 0, len(ans_ids)                # smallest prefix whose decode passes `cut`
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if len(tok.decode(ans_ids[:mid], skip_special_tokens=False)) <= cut:
+                lo = mid + 1
+            else:
+                hi = mid
+        k = max(0, lo - 1)                      # ans_ids[k] is the letter-bearing token
+        full = torch.cat([task_ids, torch.tensor([ans_ids[:k]], dtype=task_ids.dtype)], dim=1)
+        lp = _next_logprobs(full)
+        out = {_LETTERS[i]: float(torch.logsumexp(lp[_first_ids(_LETTERS[i])], 0))
+               for i in range(n_opt)}
+        out["_gen_token_lp"] = float(lp[ans_ids[k]])   # actually-generated token's logP
+        return out
+
+    def mean_answer_logp(task_ids, ans_ids):
+        """Mean teacher-forced logP of the generated answer tokens (self-perplexity)."""
+        full = torch.cat([task_ids, torch.tensor([ans_ids])], dim=1).to(args.device)
+        plen = task_ids.shape[1]
+        with torch.no_grad():
+            logits = model(input_ids=full).logits[0, plen - 1: plen - 1 + len(ans_ids), :].float()
+        lp = torch.log_softmax(logits, dim=-1)
+        tgt = torch.tensor(ans_ids, device=lp.device)
+        return float(lp.gather(1, tgt[:, None]).mean())
+
+    def p_true(msgs_task, answer, think):
+        """P(True) readout: branch from the task turn (NOT the confidence turn), ask
+        'is it correct?', read next-token mass on True vs False — no generation."""
+        msgs = list(msgs_task) + [{"role": "assistant", "content": answer},
+                                  {"role": "user", "content": P_TRUE_QUERY}]
+        lp = _next_logprobs(render(msgs, think))
+        pt = float(torch.logsumexp(lp[_first_ids("True")], 0).exp())
+        pf = float(torch.logsumexp(lp[_first_ids("False")], 0).exp())
+        return pt / (pt + pf) if (pt + pf) > 0 else None
 
     done = {p.stem for p in out_dir.glob("*.npz")}
     if done:
@@ -158,6 +232,19 @@ def run(args) -> None:
                     post_conf = parse_confidence(post_completion)
                     post_dtoken, post_ok = dtoken(post_ids[0].tolist(), post_c)
                     _empty()
+                    # output-distribution baselines (teacher-forced; no RNG consumed)
+                    baselines = {}
+                    if not args.no_logprob_baselines:
+                        try:
+                            baselines["p_true"] = p_true(msgs_task, answer, conf_think)
+                            baselines["mean_logp_answer"] = mean_answer_logp(task_ids, ans_c)
+                            if task.get("is_mc"):
+                                mlp = mc_logprobs(task_ids, ans_c, len(item["options"]))
+                                if mlp is not None:
+                                    baselines["mc_logprobs"] = mlp
+                        except Exception as e:  # noqa: BLE001 — never lose the record
+                            baselines["baseline_err"] = f"{type(e).__name__}: {e}"
+                        _empty()
 
                     save = {"prompt_dtoken": prompt_dtoken, "layer_ids": np.array(layers)}
                     if pre_dtoken is not None:
@@ -171,6 +258,7 @@ def run(args) -> None:
                         "grade": {"ok": ok, "stage": "correct" if ok else "incorrect", "n_ops": None},
                         "answer": answer[:200], "gold": item.get("answer"), "extracted": extracted,
                         "pre_read_ok": pre_ok, "post_read_ok": post_ok,
+                        **baselines,
                         "ground_truth": {"stage": "na", "entity_relations": {},
                                          "point_coords": {}, "vertex_angles": {}},
                     }) + "\n")
@@ -207,6 +295,8 @@ def main() -> None:
     ap.add_argument("--no-think", action="store_true")
     ap.add_argument("--per-turn-think", action="store_true",
                     help="answer turn think-ON, confidence turns think-OFF (hybrid reasoners)")
+    ap.add_argument("--no-logprob-baselines", action="store_true",
+                    help="skip the P(True) / answer-logprob output-distribution baselines")
     ap.add_argument("--out-dir", default="interp/activations/qa")
     ap.add_argument("--seed", type=int, default=0)
     run(ap.parse_args())

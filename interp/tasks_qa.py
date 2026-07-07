@@ -198,6 +198,29 @@ def _math_grade(completion, item):
     return _math_eq(_math_extract(completion, item), item["answer"])
 
 
+def _gpqa_load(n, seed):
+    """GPQA-Diamond (198 graduate-level science MCQs) — the contamination-robust,
+    genuinely-hard benchmark (expect ~30-50% for ~27B models -> within-question power).
+    GATED on HF: needs HF_TOKEN with accepted terms (hf.co/datasets/Idavidrein/gpqa);
+    canary-protected — never train on it. 4 options, correct answer position seeded
+    per item so the gold letter is uniform."""
+    from datasets import load_dataset
+    ds = load_dataset("Idavidrein/gpqa", "gpqa_diamond", split="train")
+    idx = list(range(len(ds)))
+    random.Random(seed).shuffle(idx)
+    out = []
+    for i in idx[:n]:
+        r = ds[i]
+        opts = [str(r["Correct Answer"]).strip(), str(r["Incorrect Answer 1"]).strip(),
+                str(r["Incorrect Answer 2"]).strip(), str(r["Incorrect Answer 3"]).strip()]
+        order = list(range(4))
+        random.Random(seed * 100003 + i).shuffle(order)
+        out.append({"id": f"gpqa_{i}", "question": r["Question"],
+                    "options": [opts[j] for j in order],
+                    "answer": _LETTERS[order.index(0)]})
+    return out
+
+
 def _mc_task(loader):
     ex = lambda c, it: _pick_letter(c, len(it["options"]))
     return {"load": loader, "system": lambda: MC_SYSTEM, "is_mc": True,
@@ -210,6 +233,7 @@ QA_TASKS = {
     "mmlu": _mc_task(_mmlu_load),
     "mmlu_pro": _mc_task(_mmlupro_load),
     "medqa": _mc_task(_medqa_load),
+    "gpqa": _mc_task(_gpqa_load),
     "gsm8k": {"load": _gsm8k_load, "is_mc": False,
               "system": lambda: "Solve the math word problem. End with 'Answer: <number>'.",
               "prompt": lambda it: it["question"],
