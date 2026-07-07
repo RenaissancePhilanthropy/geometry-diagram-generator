@@ -212,6 +212,92 @@ use band-mean. Single dataset seed. GSM8K is ceiling'd for Gemma-4/Qwen3.6/Mistr
 signal) but not GLM (45%). Per-turn thinking was global-off (`--no-think`) on Qwen3.6/GLM here, so
 those two answered below peak — the re-run fixes this too.
 
+### 2026-07-07 — Expert review (feedback) + tiered forward plan
+
+Full self-audit with the mech-interp-reviewer hat on. **Strengths:** the control discipline
+(read-site, within-question, grouped OOF, grader validation, pre-registration + §10 deviations log,
+band-mean readout, self-caught bugs + one retraction); 4-architecture × 4-domain breadth; the MATH
+knowing–saying gap as a crisp headline. **Weaknesses, ranked by threat:**
+
+1. **No causal evidence — the top gap.** Probing ≠ use. `patch_confidence.py` (RQ8: dose-response
+   steering at the decision token, random-direction control, log-prob-diff readout) is built but was
+   **never run to completion** (no results file). Until steering moves behavior, this is a
+   descriptive probing study.
+2. **Missing output-distribution baseline.** Kadavath et al. 2022: token-level probabilities are
+   calibrated where words aren't. If answer-logprob / P(True) matches the internal probe,
+   "internal ≫ verbalized" is already known. Logits aren't stored → the re-run must capture
+   **answer-token logprobs + a P(True) turn**. The novelty test: does the *residual stream* beat the
+   *output distribution*?
+3. **Surface-incremental control never run on the matrix probes** — and several POST curves peak
+   *early* (Gemma-4 MATH best L5/30, Qwen3.6 MATH L11/64), hinting the probe may partly read surface
+   features of the in-context answer. Offline-fixable.
+4. **Layer-0 = 0.39 is not "≈ chance"** — a systematically reversed signal. Diagnose (fold-pooling
+   artifact vs real leak); don't hand-wave.
+5. **GLM's within-question "win" is partly a power artifact** (50% pass ⇒ 30× more mixed-outcome
+   prompts than Gemma-4). Frame as "detectable when powered"; cross-model comparison needs
+   difficulty-matched items.
+6. **Positioning.** Prior art: Kadavath (P(True)/P(IK)), Azaria & Mitchell (internal truthfulness),
+   Burns (CCS), Marks & Tegmark (truth directions), semantic entropy (Farquhar/Kuhn), RepE (Zou),
+   verbalized-calibration (Lin, Tian), introspection (Binder; Anthropic 2025). **What's ours:**
+   temporal pre/post within *own attempts*; **blind** (no-feedback) confidence updating; the
+   knowing–saying dissociation *by domain*; own-output correctness (not truth of a given statement)
+   at a content-neutral read site, ×4 architectures.
+
+**The groundbreaking path:** close the knowing–saying gap **causally** — steer the probe direction
+at the confidence decision token on MATH and show verbalized calibration jumps (target 0.66→~0.85)
+*without changing the answers* (specificity control), dose-responsive, random-direction-controlled,
+across the 4 architectures. Multipliers: (a) a **domain-general correctness direction** (cross-domain
+probe transfer — zero GPU, data in hand); (b) **probe > logprob** (needs the re-run capture).
+
+**Forward plan (tiers) — the standing to-do:**
+- **Tier 1 — offline now, no GPU (`analysis/tier1_review.py`):** ① cross-domain + cross-site probe
+  transfer at a fixed 0.7-depth layer + direction cosines; ② surface-incremental control on the
+  matrix probes (+ early-layer diagnosis); ③ pre/post decomposition (residualize post-scores on
+  pre-scores → attempt-specific component) + within-question *internal* AUROC; ④ internal-probe
+  selective prediction vs verbalized; ⑤ paired bootstrap per cell + the layer-0 pooled-vs-per-fold
+  diagnosis.
+- **Tier 2 — corrected re-run additions (tasks #11–#13):** answer-token logprobs + P(True) turn;
+  5–8 samples/question on MMLU-Pro + MATH (drop ceiling'd GSM8K); GPQA-Diamond; consider one
+  **base-model** arm (is the knowing–saying gap an RLHF artifact?).
+- **Tier 3 — causal session (GPU):** run RQ8 steering on the 27B models at the decision token
+  (dose-response, random-direction + answer-invariance controls); the MATH gap-closing demo; if it
+  works, one mechanism sketch (attention attribution into the decision token).
+
+**Tier-1 RESULTS (run same day; `analysis/tier1_review.py`, full dump
+`tier1_review.json` + scratchpad/tier1_full.txt; fixed 0.7-depth layer throughout):**
+
+1. **TRANSFER — the correctness direction is largely domain-general.** Off-diagonal/diagonal
+   AUROC retention ≈ 87–90% (Qwen3.6 0.71/0.81, GLM 0.66/0.77, Mistral 0.68/0.75; Gemma-4 79%).
+   Within QA sometimes lossless (Qwen3.6 MMLU-Pro→MATH 0.863 vs in-domain 0.910; Gemma-4
+   MMLU-Pro→MATH 0.792 vs 0.797); QA↔QA direction cosines 0.42–0.85. Geometry is partially
+   special (lower cosines); Gemma-4 geometry→QA *anti-transfers* (0.31–0.39) while QA→geometry
+   works (~0.70) — geometry-trained probes latch onto task-specific features, QA-trained probes
+   find the general direction.
+2. **Within-question INTERNAL (new — previously verbalized-only): genuine per-attempt
+   self-monitoring, representationally.** Powered cells: GLM×GSM8K **0.917** (n=108 mixed) vs
+   verbalized 0.565; GLM×MATH 0.805 (n=118) vs 0.631; GLM×MMLU-Pro 0.712 (n=73); Qwen3.6×MATH
+   1.00 (n=17). Decomposition: residualizing post-scores on pre-scores leaves AUROC 0.59–0.87 →
+   the post signal is attempt-specific, **not re-expressed difficulty**; cross-site post→pre
+   transfer is weak (0.39–0.67) → the post direction is largely distinct from the pre/difficulty
+   direction.
+3. **Layer-0 = 0.39 RESOLVED — a fold-pooling artifact, 16/16 cells.** Per-fold layer-0 AUROC is
+   exactly **0.500 in every cell** (pooling OOF scores across folds with different offsets drags
+   the pooled number off 0.5); deep layers unaffected (per-fold ≈ pooled). Read-site control
+   passes cleanly.
+4. **Surface-incremental control passes: 15/16 cells**, mean increment **+0.22** over
+   surface-only. Exception: GLM geometry *across*-question (surface 0.73 ≈ act 0.71) — the old
+   within-prompt +0.10 (incremental_ops) remains the relevant GLM-geometry number.
+5. **Paired bootstrap (internal − verbalized), fixed layer:** significant-positive **10/16**,
+   positive 14/16, never significantly negative. **Selective prediction:** internal abstention ≫
+   verbalized where verbalized fails — GLM×GSM8K cov40%: **0.81 vs 0.43** (verbalized abstention
+   there is worse than random).
+6. **New caveat — the MATH early-layer channel.** On MATH, the 0.15-depth layer matches/beats
+   0.7-depth (Qwen3.6 0.953, Gemma-4 0.907), NOT explained by the crude surface features; the
+   boxed answer is adjacent to the read site, so an answer-*lexical* channel (weird-looking
+   answers are more often wrong) may contribute — and within-question cannot fully exclude it
+   (attempts differ exactly in answer text). **The Tier-3 steering test is the discriminator.**
+   (QA surface features are also right-censored: stored answers truncate at 200 chars.)
+
 ---
 
 ## Caveats & open questions
