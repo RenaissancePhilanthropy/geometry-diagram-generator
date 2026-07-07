@@ -68,7 +68,14 @@ def run(args) -> None:
     tok, model = load_model(args.model, args.device, args.quant)
     n_hs = _num_hidden_layers(model) + 1
     layers = resolve_layers(args.layers, n_hs)
-    tmpl = {"enable_thinking": False} if args.no_think else {}
+    # Per-turn thinking: confidence turns think-off (clean 1-line read); construction
+    # turn think-on for hybrid reasoners. --no-think = global-off; --per-turn-think = split.
+    if args.per_turn_think:
+        answer_think, conf_think = True, False
+    elif args.no_think:
+        answer_think, conf_think = False, False
+    else:
+        answer_think, conf_think = None, None
     _tmpl_obj = tok                                   # VLMs template via the processor, not the tokenizer
     if getattr(tok, "chat_template", None) is None:
         try:
@@ -86,8 +93,9 @@ def run(args) -> None:
         elif args.device == "mps":
             torch.mps.empty_cache()
 
-    def render(msgs) -> list[int]:
-        text = _tmpl_obj.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, **tmpl)
+    def render(msgs, think) -> list[int]:
+        kw = {} if think is None else {"enable_thinking": think}
+        text = _tmpl_obj.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True, **kw)
         return tok(text, return_tensors="pt").input_ids
 
     def generate(ids, max_new: int) -> list[int]:
@@ -131,7 +139,7 @@ def run(args) -> None:
                         torch.manual_seed(1000 + s)
 
                     # pre-task internal signal WITHOUT elicitation: last prompt token
-                    base_ids = render(base)
+                    base_ids = render(base, answer_think)
                     with torch.no_grad():
                         hs = model(base_ids.to(args.device), output_hidden_states=True).hidden_states
                     prompt_dtoken = np.stack([h[0, -1, :].float().cpu().numpy()
@@ -141,7 +149,7 @@ def run(args) -> None:
 
                     # TURN 1 — pre-task confidence
                     msgs_pre = build_pretask_turn(base)
-                    pre_ids = render(msgs_pre)
+                    pre_ids = render(msgs_pre, conf_think)
                     pre_comp = generate(pre_ids, args.conf_max_new_tokens)
                     pre_completion = tok.decode(pre_comp, skip_special_tokens=True)
                     pre_conf = parse_confidence(pre_completion)
@@ -150,7 +158,7 @@ def run(args) -> None:
 
                     # TURN 2 — construction
                     msgs_task = build_task_turn(msgs_pre, pre_completion)
-                    task_ids = render(msgs_task)
+                    task_ids = render(msgs_task, answer_think)
                     task_comp = generate(task_ids, args.max_new_tokens)
                     construction = tok.decode(task_comp, skip_special_tokens=True)
                     grade = grade_completion(construction)
@@ -179,7 +187,7 @@ def run(args) -> None:
 
                     # TURN 3 — post-task confidence
                     msgs_post = build_posttask_turn(msgs_task, construction)
-                    post_ids = render(msgs_post)
+                    post_ids = render(msgs_post, conf_think)
                     post_comp = generate(post_ids, args.conf_max_new_tokens)
                     post_completion = tok.decode(post_comp, skip_special_tokens=True)
                     post_conf = parse_confidence(post_completion)
@@ -238,6 +246,8 @@ def main() -> None:
     ap.add_argument("--layers", default="all")
     ap.add_argument("--keep-positions", choices=("decisions", "entities", "all"), default="entities")
     ap.add_argument("--no-think", action="store_true")
+    ap.add_argument("--per-turn-think", action="store_true",
+                    help="construction turn think-ON, confidence turns think-OFF (hybrid reasoners)")
     ap.add_argument("--out-dir", default="interp/activations/temporal")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()

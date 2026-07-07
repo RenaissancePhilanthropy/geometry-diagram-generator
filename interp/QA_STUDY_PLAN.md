@@ -77,3 +77,43 @@ prior and test whether it holds on standard benchmarks.
 `capture_qa.py` (3-turn QA capture, VLM-aware) + `tasks_qa.py` (per-benchmark load/prompt/**validated** grade)
 → same meta/npz format as geometry → `analysis/confidence_temporal.py` (+ the surface/CI/logprob additions
 listed in §4–5). Task-agnostic below the grader, so geometry and QA are analyzed identically.
+
+## 10. Amendments & deviations (logged post-data; §§1–9 above are the frozen pre-registration)
+
+Transparency log of everything that changed after data collection.
+
+**A. Benchmark set (difficulty calibration).** Planned MC set was MMLU / MedQA / GSM8K. Pilots showed
+**MMLU and MedQA ceiling'd** (~92%) for these models → almost no failures → nothing to calibrate.
+Replaced with **MMLU-Pro** (harder, real spread) and added **MATH**. Final set: **MMLU-Pro, GSM8K,
+MATH**. GSM8K was *also* ceiling'd for 3/4 models (90–95%) but retained — well-powered for GLM (45%
+pass) and a within-model difficulty contrast. *Lesson: metacognition is failure-hungry; pick benchmarks
+by the target model's error rate, not popularity.*
+
+**B. Within-question power (H5).** At 2 samples/item, high-accuracy models yield very few
+mixed-outcome questions (2–35), so H5 is underpowered for them. It is well-powered only near 50% pass
+(**GLM**: 73–118 mixed prompts/cell, within-question 0.55–0.71). *Lesson: H5 needs the right difficulty
+(a ~50%-pass model) or many more samples/item — n alone doesn't fix it.* Bumping samples to 5–8 is the
+clean fix (staged in the re-run).
+
+**C. H3 readout (best-layer → band-mean).** Reporting the **best** layer's OOF AUROC is optimistic
+(selection over 30–64 honest per-layer estimates). Headline switched to a **band-mean** (0.5–0.9 depth)
++ **fixed@0.7-depth** readout (`analysis/matrix_report.py`). Internal > verbalized still holds in
+**15/16 cells** (mean +0.11) under the honest readout — H3 survives.
+
+**D. Label-validity control fired (§5 worked).** Extraction-failure was 0%, but the MATH grader's
+**equivalence match** false-negatived formatting-equivalent answers (`\frac{a}{b}` vs `a/b`, `\$`,
+decimal↔fraction) — under-counting pass and polluting "failures". Fixed with **`math_verify`** + offline
+re-grade from stored completions (`analysis/regrade_math.py`; rescued 5–9%/model, 0 demoted).
+*Lesson: extraction-success ≠ grading-correct; validate the match, not just that something was extracted.*
+
+**E. QA confidence-prompt bug → QA POST numbers are provisional.** `capture_qa.py` reused the
+**geometry-worded** confidence prompts on the QA confidence turns (asked about a "construction" being
+"geometrically correct"). Turn-2 answers were correctly task-worded (accuracy/grading unaffected), but
+the QA **POST and elicited-PRE internal reads are provisional** pending a corrected re-run. The bug-free
+**no-elicitation PRE** read is unaffected and already supports H3. Corrected QA-worded prompts +
+**per-turn thinking** (a deviation from the global `--no-think` used here, which ran Qwen3.6/GLM below
+peak) are staged in `rerun_driver.sh`. **Re-run pending (task #11); Qwen3.6 full-n geometry re-capture
+pending (task #12).**
+
+**F. Not yet run.** GPQA cross-check (§3, contamination robustness) — task #13, optional. Answer-token
+log-prob / P(True) triangulation (§4.3) — deferred until the corrected re-run.

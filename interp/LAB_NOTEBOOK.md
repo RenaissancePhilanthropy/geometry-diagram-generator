@@ -50,19 +50,27 @@ Metric: **AUROC** (robust to the heavy pass/fail imbalance), cross-prompt and wi
 
 ---
 
-## Verdict (as of 2026-07-03)
-**Metacognition here is a capability *gradient*, not a switch.**
-- **Read-site fix is robust** — content-neutral `Confidence:` slot gives layer-0 ≈ 0.5 on both
-  models (vs 0.74–0.83 at the entity token).
-- **Verbalized calibration scales cleanly** — Qwen-7B's stated confidence is useless
-  (AUROC ~0.52, mode-collapsed at ~99) **regardless of elicitation**; GLM-Flash's is
-  genuinely calibrated (0.72). The difference is the model, **not** the method.
-- **Computed self-assessment (beyond output-shape) is clear at 30B, marginal at 7B** — the
-  #ops-incremental gain is **+0.10 (GLM)** vs **+0.02 (Qwen, two-turn)**.
-- **"Knows more than it says"** holds on both (internal probe ≫ verbalized).
-- **The read-site/elicitation mattered more than expected:** Qwen's incremental went
-  **−0.15 (single-turn) → +0.02 (two-turn)**, so the *single-turn* cross-model comparison
-  had **overstated** the gap. What survives at matched protocol is real but smaller.
+## Verdict (as of 2026-07-07)
+**"Knows more than it says" is robust and architecture-general; per-attempt self-monitoring
+needs the right task difficulty; and the internal↔verbalized gap is largest where errors are silent.**
+- **Internal ≫ verbalized in 15/16 cells** across 4 models × 4 domains (geometry, MMLU-Pro,
+  GSM8K, MATH). Honest **band-mean** readout (mean over the 0.5–0.9 depth band, *not* the
+  cherry-picked best layer): mean gap **+0.11**; robust to layer selection.
+- **Largest on MATH — a "knowing vs saying" gap.** Verbalized is near-useless (0.52–0.73,
+  post < pre) while internal is the strongest domain (band 0.76–0.90, best up to 0.96): the model
+  silently knows its `\boxed{}` answer is wrong but reports high confidence.
+- **Read-site fix holds** — content-neutral `Confidence:` decision token gives layer-0 AUROC
+  ≈ 0.39 (≪ the 0.76–0.90 deep signal), so the signal is genuinely computed mid/late.
+- **Per-attempt self-monitoring (within-question, difficulty fixed) is real but power-limited** —
+  it shows up where a model has enough mixed-outcome attempts (GLM at ~50% pass: **0.55–0.71**).
+  The earlier "Qwen3.6 within-question standout" was thin-data (3 mixed prompts) and does **not**
+  replicate on better-powered QA.
+- **Small-model backstory (still true):** at 7B computed self-assessment beyond output-shape is
+  marginal (#ops-incremental +0.02) vs clear at 30B (+0.10) — a scale *gradient*.
+- **Two corrections in flight:** a QA confidence-prompt wording bug (geometry text leaked into the
+  QA confidence turns) and a MATH grader bug (fixed offline). Corrected re-run staged (tasks
+  #11/#12); the bug-free no-elicitation PRE read already supports "internal > verbalized," and the
+  bug degrades rather than inflates, so the headline is expected to hold.
 
 ## Results table (within-prompt AUROC unless noted; decision-site read for two-turn)
 | | Qwen-7B (single) | Qwen-7B (two-turn) | GLM-Flash (two-turn) |
@@ -135,6 +143,12 @@ tracks *this attempt's* correctness at fixed difficulty (within-question). GLM /
 *particular* attempt is right. So cross-problem calibration is universal; **per-attempt
 metacognition is not** — it separates Qwen3.6 from the pack.
 
+> **[Superseded 2026-07-07]** This Qwen3.6 "standout" does **not** hold up. It rests on very thin
+> data — the current `qwen36_temporal` is only n=77 with **3** mixed-outcome prompts — and on
+> better-powered QA, Qwen3.6's within-question is 0.42–0.53 (unremarkable). **GLM** (at ~50% pass,
+> 73–118 mixed prompts/cell) is the real within-question performer (0.55–0.71). Full-n Qwen3.6
+> geometry re-capture is pending (task #12). See the 2026-07-07 entry.
+
 **Caveats.** High internal *PRE* reads on some models (Mistral 0.88 @ L20, Gemma-4 0.70 @ L2)
 largely reflect **difficulty decodable from the prompt**, not metacognition — hence within-question
 is the metric for the "genuine self-monitoring" claim. Single dataset seed; within-question data is
@@ -143,6 +157,60 @@ JSON truncated at 1024 → false parse failures).
 
 **Next:** the same 3-turn protocol on QA benchmarks (MMLU / MedQA / GSM8K) to test **cross-domain**
 generalization — pilot (Gemma-4 × MedQA) in progress.
+
+### 2026-07-07 — 3-turn TEMPORAL confidence on QA (4 models × MMLU-Pro/GSM8K/MATH) + rigor pass
+
+Cross-domain extension: same 4 models × {MMLU-Pro, GSM8K, MATH}, n=250 × 2 samples = 500
+records/cell (12 cells). Capture `capture_qa.py` (task adapters in `tasks_qa.py`); grading =
+letter-match (MC) / numeric (GSM8K) / symbolic-equivalence (MATH). Same content-neutral
+`Confidence:` decision-token reads. Aggregated + rigor-corrected by `analysis/matrix_report.py`.
+
+**POST-confidence AUROC — verbalized → internal (honest band-mean over 0.5–0.9 depth), (pass rate):**
+| | MMLU-Pro | GSM8K | MATH |
+|---|---|---|---|
+| Qwen3.6-27B | 0.67→**0.84** (.78) | 0.59→0.77 (.94) | 0.66→**0.90** (.85) |
+| GLM-4.7-Flash | 0.67→0.77 (.50) | 0.56→**0.85** (.45) | 0.66→0.76 (.44) |
+| Mistral-24B | 0.69→0.78 (.68) | 0.57→0.63 (.90) | 0.73→0.80 (.67) |
+| Gemma-4-26B | 0.72→0.76 (.84) | 0.51→0.63 (.95) | 0.52→**0.78** (.92) |
+
+**Finding 1 — "internal > verbalized" is universal and robust to layer selection.** Internal
+band-mean beats verbalized POST in **15/16 cells** (incl. geometry), mean gap **+0.11**. Best-layer
+was optimistic (inflates ~+0.05–0.13) but the band-mean still clears, so this is not a
+multiple-comparison artifact. Read-site control passes: POST layer-0 AUROC mean **0.39** (≪ 0.76–0.90 deep).
+
+**Finding 2 — MATH is a "knowing vs saying" gap, the largest of any domain (+0.17 mean).**
+Verbalized on MATH is near-useless (0.52–0.73, and post < pre), yet internal is the *strongest*
+domain (band 0.76–0.90; best up to **0.96**, Qwen3.6). The model silently knows whether its
+`\boxed{}` answer is right almost perfectly but doesn't say so — the gap is largest exactly where a
+wrong answer looks as clean as a right one. Internal POST > PRE on MATH too, so the "MATH
+self-assessment inverts" seen in the *verbalized* numbers is a verbalization failure, not a
+representational one.
+
+**Finding 3 — per-attempt self-monitoring needs the right difficulty; GLM supplies it.** GLM sits
+at ~50% pass → **73–118 mixed-outcome prompts/cell** (vs 2–35 for the others) → within-question
+AUROC **0.55–0.71** (difficulty held fixed). Genuine per-attempt metacognition *is* present on QA;
+you need a model failing often enough to measure it.
+
+**Correction to 2026-07-05 Finding 2** (noted inline above): the Qwen3.6 within-question "standout"
+does not replicate; GLM is the real performer; Qwen3.6 geometry re-capture pending (task #12).
+
+**Two grading/prompt issues (both material, both handled):**
+- *MATH grader* — the string-normalize grader false-negatived formatting-equivalent answers
+  (`\frac{a}{b}` vs `a/b`, `\$`, decimal↔fraction), under-counting pass and polluting "failures".
+  Fixed with **`math_verify`** offline (`analysis/regrade_math.py`, re-grades from stored
+  completions — no GPU): rescued **5–9%/model, 0 demoted**. Pass rates above are post-fix.
+- *QA confidence-prompt bug* — `capture_qa.py` reused the **geometry-worded** confidence prompts
+  ("produce a correct, valid **construction**" / "**geometrically correct and valid**") on QA
+  confidence turns 1 & 3 (turn-2 answers were correctly task-worded). So the QA internal
+  POST/elicited-PRE reads sit on a mildly nonsensical prompt. **Mitigations:** the *no-elicitation*
+  PRE read (`prompt_dtoken`) is bug-free and still beats verbalized PRE (e.g. Mistral geometry 0.88
+  vs 0.52); the odd wording would *degrade*, not inflate. Corrected code (QA-worded prompts +
+  per-turn thinking) is staged in `rerun_driver.sh`; clean re-run tracked as **task #11**.
+
+**Caveats.** POST/elicited-PRE reads await the corrected re-run. Best-layer AUROC is optimistic —
+use band-mean. Single dataset seed. GSM8K is ceiling'd for Gemma-4/Qwen3.6/Mistral (90–95%, low
+signal) but not GLM (45%). Per-turn thinking was global-off (`--no-think`) on Qwen3.6/GLM here, so
+those two answered below peak — the re-run fixes this too.
 
 ---
 
@@ -171,10 +239,14 @@ python interp/analysis/incremental_ops.py          --act-dir <run>
 ```
 
 ## Data & code index
-- **Datasets** (local `interp/activations/`, gitignored): `conf7b` (Qwen single-turn),
-  `qwen7_2turn`, `glm7_2turn`.
-- **Code:** `confidence.py`, `capture.py` (`--elicit-confidence`/`--confidence-followup`/
-  `--no-think`), `probe.py` (`correctness*` labelers), `analysis/{confidence_vs_difficulty,
-  verbalized_vs_internal,incremental_ops}.py`, tests `test_confidence.py`.
+- **Datasets** (local `interp/activations/`, gitignored): 7B/GLM scale study `conf7b`,
+  `qwen7_2turn`, `glm7_2turn`; geometry 3-turn `{gemma4,qwen36,glm,mistral}_temporal`
+  (qwen36 only n=77 → re-capture task #12); QA matrix `mtx_{gemma4,qwen36,glm,mistral}_{mmlu_pro,gsm8k,math}`
+  (12 cells, MATH re-graded); pilots `gemma4_{medqa,mmlupro}`.
+- **Code:** `confidence.py`, `capture.py` / `capture_temporal.py` (geometry 3-turn) /
+  `capture_qa.py` (QA 3-turn) with `--no-think` / `--per-turn-think`, `tasks_qa.py` (per-benchmark
+  load/prompt/validated-grade), `probe.py` (`correctness*` labelers), `analysis/{confidence_temporal,
+  matrix_report,regrade_math,confidence_vs_difficulty,verbalized_vs_internal,incremental_ops}.py`,
+  `rerun_driver.sh` (corrected re-run), tests `test_confidence.py`.
 - **Related docs:** `CONFIDENCE.md` (design + read-site backstory), `METHODOLOGY.md`
   (general probing protocol), `RESULTS.md` (spatial decodability, 7B/32B).

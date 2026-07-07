@@ -36,6 +36,25 @@ def _auroc(scores, y):
     return float(roc_auc_score(y, scores))
 
 
+def _auroc_ci(scores, y, n_boot=1000, seed=0):
+    """AUROC + bootstrap 95% CI (resample items)."""
+    y = np.asarray(y)
+    scores = np.asarray(scores)
+    base = _auroc(scores, y)
+    if np.isnan(base):
+        return base, float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    b = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, n)
+        if len(set(y[idx].tolist())) == 2:
+            b.append(_auroc(scores[idx], y[idx]))
+    if not b:
+        return base, float("nan"), float("nan")
+    return base, float(np.percentile(b, 2.5)), float(np.percentile(b, 97.5))
+
+
 def _ece(conf01, y, bins=10):
     conf01 = np.asarray(conf01, float); y = np.asarray(y, float)
     edges = np.linspace(0, 1, bins + 1)
@@ -126,9 +145,14 @@ def main() -> None:
 
     # 2. calibration -------------------------------------------------------
     print("\n=== 2. VERBALIZED CALIBRATION (does low confidence predict failure?) ===")
+    # surface control: a trivial answer/construction-length feature — confidence must beat it
+    lens = np.array([len((r.get("answer") or r.get("construction") or "")) for r in recs], float)[have]
+    sa, slo, shi = _auroc_ci(lens, ok_v)
+    print(f"  SURFACE (answer length): AUROC={sa:.3f} [{slo:.3f},{shi:.3f}]  <- confidence must clear this")
     for name, c in [("PRE ", pre_v), ("POST", post_v)]:
-        print(f"  {name}: AUROC={_auroc(c, ok_v):.3f}  ECE={_ece(c/100, ok_v):.3f}  "
-              f"Brier={np.mean((c/100 - ok_v)**2):.3f}")
+        a, lo, hi = _auroc_ci(c, ok_v)
+        print(f"  {name}: AUROC={a:.3f} [95% CI {lo:.3f},{hi:.3f}]  "
+              f"ECE={_ece(c/100, ok_v):.3f}  Brier={np.mean((c/100 - ok_v)**2):.3f}")
         for lab, cnt, acc, mc in _reliability(c, ok_v):
             print(f"      conf {lab}: n={cnt:>3}  success={acc:.2f}  (mean conf {mc})")
 
