@@ -27,6 +27,7 @@ from ..recipe.catalog import (
     load_recipe,
     build_selection_prompt,
     build_generation_prompt,
+    build_generation_prompt_static_block,
     DSL_DOCS,
     Recipe,
 )
@@ -247,9 +248,23 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         )
 
     from langchain_core.messages import HumanMessage
+
+    # The DSL reference block is identical on every call (it's always built
+    # from the DSL_DOCS constant), so when caching is on, split it into its
+    # own cached content block instead of resending it uncached every attempt.
+    static_block = build_generation_prompt_static_block(DSL_DOCS)
+    if enable_cache and user_message.startswith(static_block):
+        dynamic_part = user_message[len(static_block):].lstrip("\n")
+        human_content = [
+            {"type": "text", "text": static_block, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": dynamic_part},
+        ]
+    else:
+        human_content = user_message
+
     messages = [
         make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache),
-        HumanMessage(content=user_message),
+        HumanMessage(content=human_content),
     ]
 
     llm = get_chat_model(model_id, enable_cache=enable_cache)

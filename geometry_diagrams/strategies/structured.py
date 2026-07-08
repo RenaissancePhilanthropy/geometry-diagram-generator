@@ -58,6 +58,7 @@ class StructuredRunResult:
     input_tokens: int = 0
     output_tokens: int = 0
     recipe_metadata: Any = None
+    retries: int = 0
 
 
 # ── IR pipeline (deterministic, no LLM) ──────────────────────────────────────
@@ -244,6 +245,7 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
 
     try:
         result = await _run_ir_pipeline(diagram_ir, renderer)
+        result.retries = state["attempt"]
         return {"result": result}
     except (IRCompileError, RuntimeError) as e:
         return {

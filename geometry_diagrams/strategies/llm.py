@@ -40,8 +40,12 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
 
 
 def make_system_message(content: str, enable_cache: bool = False) -> SystemMessage:
-    """Create a SystemMessage, optionally marked for Anthropic prompt caching."""
-    if enable_cache:
+    """Create a SystemMessage, optionally marked for Anthropic prompt caching.
+
+    Anthropic rejects cache_control on empty text blocks, so empty/falsy
+    content falls back to an uncached message rather than 400ing.
+    """
+    if enable_cache and content:
         return SystemMessage(content=[{
             "type": "text",
             "text": content,

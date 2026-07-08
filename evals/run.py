@@ -288,6 +288,7 @@ async def run_scenario(
                         for t in partial_meta.attempt_traces
                     ],
                 }
+                record["retries"] = max(0, len(partial_meta.attempt_traces) - 1)
         return record
 
     record["duration_s"] = round(time.monotonic() - start, 2)
@@ -295,6 +296,7 @@ async def run_scenario(
     if isinstance(result, StructuredRunResult):
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
+        record["retries"] = result.retries
         svg = result.svg
 
         ir_diagnostics_data = None
@@ -325,6 +327,7 @@ async def run_scenario(
                     for t in result.recipe_metadata.attempt_traces
                 ],
             }
+            record["retries"] = max(0, len(result.recipe_metadata.attempt_traces) - 1)
         else:
             record["recipe_metadata"] = None
 

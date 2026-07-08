@@ -125,6 +125,31 @@ async def test_ir_gen_failure_leaves_two_pipeline_attempts():
     )
 
 
+@pytest.mark.asyncio
+async def test_result_reports_number_of_retries():
+    """result.retries should count failed attempts before the eventual success."""
+    fake_ir = DiagramIR(define=[], checks=[], render=[])
+    fake_result = _make_fake_result()
+
+    # Succeeds on the very first attempt — should report 0 retries.
+    mock_llm = _make_mock_llm([_make_raw_ir_response(fake_ir)])
+    with (
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+    ):
+        result = await StructureStrategy().run("draw a circle", model="anthropic:claude-sonnet-4-6")
+    assert result.retries == 0
+
+    # IR gen fails once, then succeeds — should report 1 retry.
+    mock_llm = _make_mock_llm([_make_raw_ir_fail_response(), _make_raw_ir_response(fake_ir)])
+    with (
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+    ):
+        result = await StructureStrategy().run("draw a circle", model="anthropic:claude-sonnet-4-6")
+    assert result.retries == 1
+
+
 # ---------------------------------------------------------------------------
 # Bug 2: build_agent should include previous DiagramIR in modification requests
 # ---------------------------------------------------------------------------

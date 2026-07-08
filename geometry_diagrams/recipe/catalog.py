@@ -156,6 +156,21 @@ def build_selection_prompt(user_request: str, catalog: list[RecipeSummary]) -> s
     )
 
 
+def build_generation_prompt_static_block(dsl_docs: str) -> str:
+    """The leading section of the generation prompt: the DSL reference.
+
+    This text is identical on every call (dsl_docs is always the DSL_DOCS
+    constant), so callers that want Anthropic prompt caching should mark it
+    as its own cached content block rather than resending it uncached inside
+    the full concatenated prompt.
+    """
+    return (
+        "You are a geometry diagram assistant. Generate a RecipeDSL JSON object "
+        "that describes the requested diagram.\n\n"
+        f"DSL Reference:\n{dsl_docs}"
+    )
+
+
 def build_generation_prompt(
     user_request: str,
     recipes: list[Recipe],
@@ -166,13 +181,7 @@ def build_generation_prompt(
     The `setup` field of each recipe is NOT included (it's for tests only).
     The `context` + `example` of each recipe IS included.
     """
-    sections: list[str] = []
-
-    sections.append(
-        "You are a geometry diagram assistant. Generate a RecipeDSL JSON object "
-        "that describes the requested diagram.\n\n"
-        f"DSL Reference:\n{dsl_docs}"
-    )
+    sections: list[str] = [build_generation_prompt_static_block(dsl_docs)]
 
     if recipes:
         sections.append("## Relevant Construction Examples\n")
