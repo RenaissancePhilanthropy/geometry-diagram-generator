@@ -2,20 +2,16 @@ name: intersecting_chords
 description: "Two chords of a circle crossing at an interior point, with the intersection explicitly named"
 tags: [circle, chord, intersection, angle, intermediate]
 context: "Given a circle c with center O and two chords."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: point
-    id: A
-    coords: [3, 0]
-  - op: circle
-    id: c
-    center: O
-    radius: 3
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: point
+      id: A
+      coords: [3, 0]
     - op: rotation
       id: B
       point: A

@@ -2,17 +2,17 @@ name: intersecting_chords_similar_triangles
 description: "Two chords AC and BD intersecting at P inside a circle, with similar triangles APB and DPC marked"
 tags: [circle, chord, intersection, similar-triangles, inscribed-angle, intermediate]
 context: "A circle with two chords AC and BD intersecting at interior point P. Triangles APB and DPC are similar by AA (equal inscribed angles)."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: circle
-    id: circ
-    center: O
-    radius: 3
+setup: []
 example:
   mode: abstract
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: circle
+      id: circ
+      center: O
+      radius: 3
     - op: point
       id: ref
       coords: [3, 0]

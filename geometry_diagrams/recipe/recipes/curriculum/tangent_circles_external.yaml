@@ -2,24 +2,24 @@ name: tangent_circles_external
 description: "Two circles externally tangent at point T, with a common external tangent segment AB"
 tags: [circle, tangent, external, common-tangent, intermediate]
 context: "Two circles with centers O1 and O2 that are externally tangent (touching at one point T). A common external tangent touches the smaller circle at A and larger at B."
-setup:
-  - op: point
-    id: O1
-    coords: [0, 0]
-  - op: point
-    id: O2
-    coords: [5, 0]
-  - op: circle
-    id: c1
-    center: O1
-    radius: 2
-  - op: circle
-    id: c2
-    center: O2
-    radius: 3
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: O1
+      coords: [0, 0]
+    - op: point
+      id: O2
+      coords: [5, 0]
+    - op: circle
+      id: c1
+      center: O1
+      radius: 2
+    - op: circle
+      id: c2
+      center: O2
+      radius: 3
     # Tangent point T: on segment O1O2, at distance r1=2 from O1
     - op: intersection
       id: T

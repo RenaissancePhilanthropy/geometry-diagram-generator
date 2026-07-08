@@ -2,17 +2,17 @@ name: altitude
 description: "Drop a perpendicular from a vertex to the opposite side, creating a foot point"
 tags: [triangle, perpendicular, foot, basic]
 context: "Given a triangle T with vertices B, C, A (isoceles: A at apex above BC)."
-setup:
-  - op: triangle
-    id: T
-    vertices: [B, C, A]
-    spec:
-      angle_B: 70
-      angle_C: 70
-      side_BC: 4
+setup: []
 example:
   mode: abstract
   construction:
+    - op: triangle
+      id: T
+      vertices: [B, C, A]
+      spec:
+        angle_B: 70
+        angle_C: 70
+        side_BC: 4
     - op: altitude
       id: alt_A
       from_vertex: A

@@ -2,22 +2,22 @@ name: parallel_transversal_angles
 description: "Two parallel lines AB and CD cut by a transversal, with corresponding, alternate interior, and alternate exterior angle pairs marked"
 tags: [parallel, transversal, angle, annotation-heavy, intermediate]
 context: "Given points A, B on the first line and C, D on the second line."
-setup:
-  - op: point
-    id: A
-    coords: [0, 0]
-  - op: point
-    id: B
-    coords: [4, 0]
-  - op: point
-    id: C
-    coords: [0, 2]
-  - op: point
-    id: D
-    coords: [4, 2]
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: A
+      coords: [0, 0]
+    - op: point
+      id: B
+      coords: [4, 0]
+    - op: point
+      id: C
+      coords: [0, 2]
+    - op: point
+      id: D
+      coords: [4, 2]
     - op: line_through
       id: L1
       points: [A, B]

@@ -2,17 +2,13 @@ name: parallel_lines_circle
 description: "Circle with a chord AC and a parallel line through center O, showing equal arcs"
 tags: [circle, chord, parallel, arc, diameter, intermediate]
 context: "Circle with center O. Chord AC. A line through O parallel to AC intersects the circle at D and E."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: circle
-    id: circ
-    center: O
-    radius: 3
+setup: []
 example:
   mode: abstract
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
     # Reference point on circle at 0° (used for rotations)
     - op: point
       id: ref

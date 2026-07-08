@@ -2,19 +2,16 @@ name: segment_ratio
 description: "Point P on segment AB dividing it in ratio m:n (e.g. AP:PB = 2:3)"
 tags: [segment, ratio, midpoint, point, basic]
 context: "Given a segment AB and a point P dividing it in a given ratio."
-setup:
-  - op: point
-    id: A
-    coords: [0, 0]
-  - op: point
-    id: B
-    coords: [5, 0]
-  - op: segment
-    id: seg_AB
-    endpoints: [A, B]
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: A
+      coords: [0, 0]
+    - op: point
+      id: B
+      coords: [5, 0]
     - op: point_on_segment
       id: P
       segment: [A, B]

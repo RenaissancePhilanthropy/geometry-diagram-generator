@@ -2,20 +2,20 @@ name: tangent_secant_external
 description: "From an external point, one tangent to a circle and one secant passing through two points on the circle"
 tags: [circle, tangent, secant, external-point, intermediate]
 context: "Given a circle c with center O and an external point P."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: point
-    id: P
-    coords: [5, 0]
-  - op: circle
-    id: c
-    center: O
-    radius: 2
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: point
+      id: P
+      coords: [5, 0]
+    - op: circle
+      id: c
+      center: O
+      radius: 2
     - op: tangent_line
       id: t1
       circle: c

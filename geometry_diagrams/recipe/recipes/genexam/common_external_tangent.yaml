@@ -2,28 +2,28 @@ name: common_external_tangent
 description: "Two circles of different radii connected by their common external tangent lines"
 tags: [circle, tangent, external, homothety, advanced]
 context: "Given two circles c1 and c2 with different radii and their common external tangents."
-setup:
-  - op: point
-    id: O1
-    coords: [0, 0]
-  - op: point
-    id: O2
-    coords: [6, 0]
-  - op: circle
-    id: c1
-    center: O1
-    radius: 3
-  - op: circle
-    id: c2
-    center: O2
-    radius: 1
-  - op: point
-    id: E
-    coords: [9, 0]
-    visible: false
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: O1
+      coords: [0, 0]
+    - op: point
+      id: O2
+      coords: [6, 0]
+    - op: circle
+      id: c1
+      center: O1
+      radius: 3
+    - op: circle
+      id: c2
+      center: O2
+      radius: 1
+    - op: point
+      id: E
+      coords: [9, 0]
+      visible: false
     - op: tangent_line
       id: tang_upper
       circle: c1

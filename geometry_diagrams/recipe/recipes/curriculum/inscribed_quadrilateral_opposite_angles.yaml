@@ -2,21 +2,17 @@ name: inscribed_quadrilateral_opposite_angles
 description: "Cyclic quadrilateral ABCD inscribed in a circle with opposite angles labeled to show they are supplementary"
 tags: [circle, quadrilateral, inscribed, cyclic, opposite-angles, supplementary, intermediate]
 context: "Given a circle with center O. Quadrilateral ABCD is inscribed with all four vertices on the circle."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: circle
-    id: circ
-    center: O
-    radius: 3
-  - op: point
-    id: ref
-    coords: [3, 0]
-    visible: false
+setup: []
 example:
   mode: abstract
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: point
+      id: ref
+      coords: [3, 0]
+      visible: false
     # Arc positions derived from inscribed angle theorem:
     #   ∠A = (arc BC + arc CD)/2 = 110°  →  arc BCD = 220°
     #   ∠B = (arc CD + arc DA)/2 = 85°   →  arc CDA = 170°

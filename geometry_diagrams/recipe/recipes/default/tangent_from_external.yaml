@@ -2,20 +2,20 @@ name: tangent_from_external
 description: "Tangent lines from an external point to a circle, shown as segments to the touch points"
 tags: [circle, tangent, external-point, intermediate]
 context: "Given a circle c with center O and an external point P."
-setup:
-  - op: point
-    id: O
-    coords: [0, 0]
-  - op: point
-    id: P
-    coords: [4, 0]
-  - op: circle
-    id: c
-    center: O
-    radius: 2
+setup: []
 example:
   mode: grid
   construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: point
+      id: P
+      coords: [4, 0]
+    - op: circle
+      id: c
+      center: O
+      radius: 2
     - op: tangent_line
       id: t1
       circle: c

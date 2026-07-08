@@ -2,17 +2,17 @@ name: median
 description: "Segment from a vertex to the midpoint of the opposite side"
 tags: [triangle, midpoint, segment, basic]
 context: "Given a triangle T with vertices A, B, C."
-setup:
-  - op: triangle
-    id: T
-    vertices: [A, B, C]
-    spec:
-      angle_A: 60
-      angle_B: 70
-      side_AB: 4
+setup: []
 example:
   mode: abstract
   construction:
+    - op: triangle
+      id: T
+      vertices: [A, B, C]
+      spec:
+        angle_A: 60
+        angle_B: 70
+        side_AB: 4
     - op: median
       id: med_A
       from_vertex: A
