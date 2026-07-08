@@ -252,11 +252,15 @@ def run(args) -> None:
                     if post_dtoken is not None:
                         save["post_dtoken"] = post_dtoken
                     np.savez_compressed(out_dir / f"{rid}.npz", **save)
+                    # FULL texts (not truncated): the Tier-3 steering session rebuilds
+                    # the exact turn-3 context from meta alone — truncation would force
+                    # a full re-generation there.
                     mf.write(json.dumps({
-                        "pid": rid, "prompt": task["prompt"](item)[:300],
+                        "pid": rid, "prompt": task["prompt"](item),
                         "pre_conf": pre_conf, "post_conf": post_conf,
+                        "pre_completion": pre_completion, "post_completion": post_completion,
                         "grade": {"ok": ok, "stage": "correct" if ok else "incorrect", "n_ops": None},
-                        "answer": answer[:200], "gold": item.get("answer"), "extracted": extracted,
+                        "answer": answer, "gold": item.get("answer"), "extracted": extracted,
                         "pre_read_ok": pre_ok, "post_read_ok": post_ok,
                         **baselines,
                         "ground_truth": {"stage": "na", "entity_relations": {},
