@@ -212,7 +212,12 @@ def build_generation_prompt(
 
 DSL_DOCS = """\
 RecipeDSL is a JSON object with these top-level fields:
-- mode: "abstract" (default) or "grid"
+- mode: "abstract" (default) or "grid" — only affects whether triangle/rectangle/
+  regular_polygon/polygon_from_* vertices get solver-chosen coordinates (abstract)
+  or must be placed by hand (grid). Every OTHER point — a lone segment's endpoints,
+  a circle's center, the P/Q in perpendicular_bisector/midpoint/angle_bisector,
+  etc. — is never auto-created in either mode: place it with an explicit
+  {"op":"point","id":...,"coords":[x,y]} op before referencing it anywhere.
 - construction: ordered list of ops (each has "op" and "id")
 - annotations: optional batch flags and explicit marks/labels
 
@@ -230,10 +235,16 @@ spec fields (A/B/C are positional slots: A=vertices[0], B=vertices[1], C=vertice
 | ASA  | two angles + included side | {"angle_A": 45, "side_AB": 5, "angle_B": 60} |
 | AAS  | two angles + non-included side | {"angle_A": 45, "angle_B": 60, "side_BC": 4} |
 | right_at | right_angle_at + 2 constraints | {"right_angle_at": "B", "side_AB": 3, "side_BC": 4} |
+| equilateral | one side + at most one angle | {"side_AB": 4}  — angles default to 60° |
 
 IMPORTANT: A/B/C always refer to the first, second, and third entry in `vertices`, regardless
 of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) in the spec.
+Side keys MUST use exactly this cyclic order: side_AB, side_BC, side_CA — "side_AC" (reversed)
+is invalid; the segment between A and C is always side_CA.
   NOT supported: SSA (ambiguous)
+  NOT supported: three angles alone, e.g. {"angle_A":60,"angle_B":60,"angle_C":60} — AAA fixes
+  shape but not scale (infinitely many sizes). This includes equilateral triangles: even though
+  all three angles are 60°, you must still supply at least one side length.
 - circle: {op, id, center, radius} or {op, id, center, through}
 - ellipse: axis-aligned ellipse. Exactly one form:
     center_axes: {op, id, center:<pt_id>, hradius:<number>, vradius:<number>}
@@ -265,6 +276,18 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
 - circumcircle: {op, id, of:<triangle_id>, center}
 - incircle: {op, id, of:<triangle_id>, center}
 - perpendicular_bisector: {op, id, of:[P,Q], mid}
+  P and Q are NOT auto-created — unlike triangle/rectangle/polygon vertices, which
+  the op itself defines, of:[P,Q] here requires P and Q to already exist. In
+  "abstract" mode that means placing them first with two point_free-style ops (or
+  reusing points already defined by an earlier triangle/segment/etc.), e.g. for
+  "segment AB and its perpendicular bisector through midpoint M":
+    {op:"point", id:"A"} {op:"point", id:"B"}   # abstract mode still needs these two
+    {op:"segment", id:"seg_AB", endpoints:["A","B"]}
+    {op:"perpendicular_bisector", id:"pb", of:["A","B"], mid:"M"}
+  This same rule applies to every op below that takes point IDs (midpoint's of,
+  angle_bisector's vertex/ray1_toward/ray2_toward, segment's endpoints, etc.) —
+  none of them create their point arguments; all of them require the points to
+  already exist.
 - angle_bisector: {op, id, vertex, ray1_toward, ray2_toward}
 - centroid: {op, id, of:<triangle_id>}
 - median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
@@ -398,6 +421,11 @@ distance from segment[0].
       Useful for coordinate geometry problems. Combine with axes:true on
       the canvas for full coordinate-plane diagrams.
 
+Label objects do NOT take a "visible" field (that's a construction-op-only field).
+To hide a point's label, either set visible:false on the point's own construction
+op (suppresses draw + label together) or set auto_label_points:false and only add
+label_point entries for the points you actually want labeled.
+
 ### Coordinate geometry canvas setup
 For problems that require displaying x/y coordinates on a grid:
   canvas: {op:"canvas", id:"canvas", x_range:[-1,8], y_range:[-1,6],
@@ -459,4 +487,17 @@ Explicit checks in this field are supplemental assertions.
 ## ID rules
 - All IDs must be unique
 - IDs starting with __ are reserved (used internally during lowering)
+
+## There is no implicit ID creation
+Every point/segment/line ID used anywhere — including inside a composite op's own
+fields, e.g. perpendicular_bisector's of:[P,Q], midpoint's of:[P,Q], angle_bisector's
+vertex/ray1_toward/ray2_toward — must already exist as the id of an earlier op in
+`construction` (a point op, a vertex of a triangle/rectangle/polygon op, or the
+output of another op like intersection). Concatenating two point names (e.g. "AC"
+for the segment between A and C) does NOT reference an implicit segment — you must
+create it first, e.g. {"op":"segment","id":"seg_AC","endpoints":["A","C"]}, or pass
+of:["A","C"] directly to ops that take two point IDs (most composite ops do, and
+don't require a separate segment op at all). Likewise there is no implicit "xaxis"/
+"yaxis" — construct an axis as an explicit line, e.g. two point ops at (0,-k) and
+(0,k) plus a line_through op, if you need to reference one.
 """

@@ -7,6 +7,11 @@ from geometry_diagrams.recipe.catalog import (
     load_catalog, load_recipe, build_selection_prompt, build_generation_prompt,
     clear_cache, DSL_DOCS,
 )
+from geometry_diagrams.recipe.dsl import RecipeDSL
+from geometry_diagrams.recipe.lower import lower_to_ir, LoweringError
+from geometry_diagrams.ir.errors import IRCompileError
+
+_ALL_CATALOGS = "default,curriculum,genexam"
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +73,55 @@ def test_setup_and_example_ids_disjoint_all_recipes(recipe_id):
     assert setup_ids.isdisjoint(example_ids), (
         f"{recipe_id}: setup and example share IDs: {setup_ids & example_ids}"
     )
+
+# Recipes whose `example.construction` silently depends on a point/circle-center
+# id that only exists in `setup` (never shown to the LLM) — found 2026-07-08 while
+# investigating why perpendicular_bisector-style scenarios kept retrying on
+# "references undefined id". perpendicular_bisector itself was fixed (its example
+# now creates its own points); these are tracked as known follow-up work rather
+# than fixed inline, to keep this test from blocking on a large recipe-editing pass.
+_KNOWN_NON_SELF_CONTAINED_RECIPES = {
+    # triangle-based: lower priority — triangle construction is its own
+    # thoroughly-documented foundation op, so a model is more likely to already
+    # know how to build one even without seeing it in this specific example.
+    "altitude", "angle_bisector", "circumcircle", "euler_line", "incircle", "median",
+    "exterior_angle",
+    # circle/point-based: same bug class as the fixed perpendicular_bisector —
+    # a circle center or lone point is never auto-created by any op.
+    "congruent_chords_circle", "inscribed_angle_isosceles_proof",
+    "inscribed_quadrilateral_opposite_angles", "intersecting_chords_similar_triangles",
+    "parallel_lines_circle", "pentagram_tip_angles", "tangent_circles_external",
+    "parallel_transversal_angles", "parallel_transversal_basic",
+    "tangent_from_external", "tangent_secant_external",
+    "common_external_tangent", "intersecting_chords", "segment_ratio",
+}
+
+
+@pytest.mark.parametrize("recipe_id", [e.id for e in load_catalog(_ALL_CATALOGS)])
+def test_recipe_example_is_self_contained(recipe_id):
+    """The `example.construction` shown to the LLM must not silently depend on
+    ids that only exist in `setup` — the LLM never sees `setup`, so if the
+    example only lowers successfully with setup prepended, the LLM is being
+    taught an incomplete pattern it can never actually reproduce on its own.
+    """
+    recipe = load_recipe(recipe_id, catalog=_ALL_CATALOGS)
+    setup_ids = {op.get("id") for op in recipe.setup if isinstance(op, dict)}
+    if not setup_ids:
+        return  # nothing hidden from the LLM; trivially self-contained
+
+    if recipe_id in _KNOWN_NON_SELF_CONTAINED_RECIPES:
+        pytest.xfail(f"{recipe_id}: known non-self-contained example, tracked for follow-up fix")
+
+    dsl = RecipeDSL.model_validate(recipe.example)
+    try:
+        lower_to_ir(dsl)
+    except (LoweringError, IRCompileError) as e:
+        pytest.fail(
+            f"{recipe_id}: example.construction is not self-contained — lowering it "
+            f"alone (without `setup`, which the LLM never sees) failed: {e}. "
+            f"setup-only ids: {sorted(setup_ids)}"
+        )
+
 
 def test_load_nonexistent_recipe_raises():
     with pytest.raises(KeyError):

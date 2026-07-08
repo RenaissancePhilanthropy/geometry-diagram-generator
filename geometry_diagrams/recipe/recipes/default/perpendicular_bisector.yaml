@@ -2,16 +2,16 @@ name: perpendicular_bisector
 description: "Line perpendicular to a segment at its midpoint, with optional right-angle mark"
 tags: [perpendicular, midpoint, segment, basic]
 context: "Given a segment AB, construct its perpendicular bisector through midpoint M."
-setup:
-  - op: point
-    id: A
-    coords: [-2, 0]
-  - op: point
-    id: B
-    coords: [2, 0]
+setup: []
 example:
   mode: abstract
   construction:
+    - op: point
+      id: A
+      coords: [-2, 0]
+    - op: point
+      id: B
+      coords: [2, 0]
     - op: segment
       id: seg_AB
       endpoints: [A, B]
@@ -29,7 +29,7 @@ example:
         segments: [[A, M], [M, B]]
         group: 1
 notes:
-  - "CRITICAL: always define A and B as explicit point ops before using them in segment or perpendicular_bisector ops."
+  - "CRITICAL: segment and perpendicular_bisector do NOT create their point arguments — A and B must already exist. Always define them with explicit point ops first (as shown above), even in abstract mode."
   - "The perpendicular_bisector op defines line l through midpoint M, perpendicular to AB."
   - "Do NOT use visible: false — this hides the line and causes the 'required_entities: line' check to fail."
   - "M is automatically created at the midpoint via the 'mid' field; do not define M separately."

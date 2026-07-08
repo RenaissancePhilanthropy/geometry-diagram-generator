@@ -36,8 +36,14 @@ default below is safe to leave out entirely — do not spell it out for clarity.
     construction ops; this field is not yet consumed even if populated.
 
 Key rules:
-- In "abstract" mode, never specify coordinates. The solver handles placement.
-- In "grid" mode, use explicit "point" ops with "coords".
+- "Abstract" mode only means the VERTICES of a triangle/rectangle/regular_polygon/
+  polygon_from_* op get solver-chosen coordinates — never specify coords for those.
+  It does NOT mean no point ever needs coordinates: a standalone point that is not
+  a shape's vertex (e.g., an anchor for a lone segment, circle center, or the P/Q
+  in perpendicular_bisector/midpoint/angle_bisector) is never auto-created by any
+  op — you must place it yourself with an explicit point op + coords, in any mode.
+  There is no "free point, solver picks the location" op.
+- In "grid" mode, use explicit "point" ops with "coords" for every point.
 - IDs starting with __ are reserved for lowering intermediates — never use them,
   not even as references in 'of' fields. Always use the actual op id you defined.
 - If recipe examples are provided, follow their patterns closely.

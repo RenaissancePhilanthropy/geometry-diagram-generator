@@ -77,6 +77,21 @@ def test_triangle_spec_extra_key_raises():
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"side_AB": 3, "side_BC": 4, "side_CA": 5, "oops": 1})
 
+def test_triangle_spec_accepts_reversed_side_key_aliases():
+    """side_AC/side_BA/side_CB (reversed pairs) are accepted as aliases for
+    side_CA/side_AB/side_BC — a side has no direction, and models commonly
+    name it after the two points in the order they appear in the request."""
+    op = TriangleOp(id="T", vertices=["A", "B", "C"],
+                     spec={"side_AB": 3, "side_BC": 4, "side_AC": 5})
+    assert op.spec.side_CA == 5.0
+    assert not hasattr(op.spec, "side_AC")
+
+def test_triangle_spec_reversed_alias_does_not_override_canonical_key():
+    """If both the canonical and reversed key are given, canonical wins."""
+    op = TriangleOp(id="T", vertices=["A", "B", "C"],
+                     spec={"side_AB": 3, "side_BC": 4, "side_CA": 5, "side_AC": 99})
+    assert op.spec.side_CA == 5.0
+
 def test_triangle_spec_right_angle_at_invalid_slot_raises():
     """right_angle_at must be A, B, or C."""
     with pytest.raises(ValidationError):

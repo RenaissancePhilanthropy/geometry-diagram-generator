@@ -66,6 +66,23 @@ class TriangleSpec(BaseModel):
     angle_C: Optional[float] = None
     right_angle_at: Optional[Literal["A", "B", "C"]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_reversed_side_keys(cls, data: Any) -> Any:
+        """A side has no direction, so side_AC/side_BA/side_CB (reversed pairs)
+        are accepted as aliases for side_CA/side_AB/side_BC — this is a very
+        common, natural naming choice (the model tends to name a segment by
+        the two points it read in the order it read them)."""
+        if not isinstance(data, dict):
+            return data
+        aliases = {"side_AC": "side_CA", "side_BA": "side_AB", "side_CB": "side_BC"}
+        for reversed_key, canonical_key in aliases.items():
+            if reversed_key in data:
+                data = dict(data)
+                value = data.pop(reversed_key)
+                data.setdefault(canonical_key, value)
+        return data
+
     @model_validator(mode="after")
     def _validate_sufficient_constraints(self) -> "TriangleSpec":
         sides = [k for k in ["side_AB", "side_BC", "side_CA"]
