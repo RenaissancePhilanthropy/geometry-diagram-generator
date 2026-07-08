@@ -26,6 +26,7 @@ class DiagramResult:
     dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump())
     diagram_ir: Optional[dict] = None   # serialized DiagramIR (ir.model_dump())
     recipes: Optional[list[str]] = None # selected recipe IDs
+    retry_count: int = 0 # number of DSL-generation attempts (len of attempt_traces)
 
 
 def _make_renderer(cfg: GeometryConfig) -> Renderer:
@@ -94,6 +95,7 @@ async def render_geometry_diagram(
     _recipes = None
     _dsl = None
     _diagram_ir = None
+    traces = []
     if result.recipe_metadata is not None:
         _recipes = result.recipe_metadata.selected_recipes or None
         traces = result.recipe_metadata.attempt_traces or []
@@ -110,6 +112,7 @@ async def render_geometry_diagram(
         dsl=_dsl,
         diagram_ir=_diagram_ir,
         recipes=_recipes,
+        retry_count=len(traces),
     )
 
 

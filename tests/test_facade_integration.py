@@ -243,6 +243,7 @@ async def test_diagram_result_artifacts_populated(monkeypatch):
     assert result.recipes == ["triangle"]
     assert result.input_tokens == 10
     assert result.output_tokens == 5
+    assert result.retry_count == 1
 
 
 @pytest.mark.asyncio
@@ -275,6 +276,30 @@ async def test_diagram_result_dsl_none_when_no_success_trace(monkeypatch):
 
     result = await render_geometry_diagram("draw something")
     assert result.dsl is None
+    assert result.retry_count == 1
+
+
+@pytest.mark.asyncio
+async def test_diagram_result_retry_count_zero_when_no_recipe_metadata(monkeypatch):
+    """When recipe_metadata is None (e.g. a non-recipe strategy path), retry_count stays 0."""
+    ir_mock = MagicMock()
+    ir_mock.model_dump = MagicMock(return_value={"canvas": {}})
+
+    fake_result = _make_fake_structured_result(
+        diagram_ir=ir_mock,
+        recipe_metadata=None,
+    )
+
+    async def fake_run(self, prompt, *, model=None, renderer=None,
+                       config=None, callbacks=None, previous_dsl=None):
+        return fake_result
+
+    monkeypatch.setattr("geometry_diagrams.strategies.recipe.RecipeStrategy.run", fake_run)
+
+    result = await render_geometry_diagram("draw something")
+    assert result.retry_count == 0
+    assert result.dsl is None
+    assert result.recipes is None
 
 
 @pytest.mark.asyncio
@@ -313,6 +338,7 @@ async def test_diagram_result_uses_last_successful_dsl(monkeypatch):
 
     result = await render_geometry_diagram("draw a triangle")
     assert result.dsl == {"mode": "grid"}
+    assert result.retry_count == 2
 
 
 # ---------------------------------------------------------------------------
