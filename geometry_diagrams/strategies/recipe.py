@@ -73,12 +73,18 @@ class RecipeAttemptTrace:
 class RecipeSelectionResult:
     """Result of the recipe-selection step, exposed as a public API type.
 
-    Callers can inspect ``confidence`` and ``unmatched_concepts`` to decide
-    whether to proceed to the expensive DSL-generation step.
+    Callers should use ``is_geometry_request`` as the scope-gate signal to decide
+    whether to proceed to the expensive DSL-generation step — it directly answers
+    "is this asking for a geometric diagram at all," independent of whether the
+    catalog has a matching recipe. ``selected_recipes``/``unmatched_concepts``
+    answer a different question (catalog coverage, a cost/latency optimization)
+    and ``confidence`` is not a reliable domain-relevance signal — it can vary
+    across calls on identical input and does not track "is this geometry."
     """
     selected_recipes: list[str]
     unmatched_concepts: list[str]
     confidence: Literal["high", "medium", "low"]
+    is_geometry_request: bool
     input_tokens: int
     output_tokens: int
 
@@ -88,6 +94,7 @@ class RecipeMetadata:
     selected_recipes: list[str] = field(default_factory=list)
     unmatched_concepts: list[str] = field(default_factory=list)
     confidence: Literal["high", "medium", "low"] = "high"
+    is_geometry_request: bool = True
     selection_input_tokens: int = 0
     selection_output_tokens: int = 0
     attempt_traces: list[RecipeAttemptTrace] = field(default_factory=list)
@@ -187,6 +194,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     selected_recipes = []
     unmatched_concepts = []
     confidence: Literal["high", "medium", "low"] = "high"
+    is_geometry_request = True
     try:
         # Try to find JSON in the response
         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
@@ -197,6 +205,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
             raw_conf = parsed.get("confidence", "high")
             if raw_conf in ("high", "medium", "low"):
                 confidence = raw_conf
+            is_geometry_request = bool(parsed.get("is_geometry_request", True))
     except (json.JSONDecodeError, AttributeError):
         logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
 
@@ -217,6 +226,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
         selected_recipes=valid_recipe_ids,
         unmatched_concepts=unmatched_concepts,
         confidence=confidence,
+        is_geometry_request=is_geometry_request,
         selection_input_tokens=in_tok,
         selection_output_tokens=out_tok,
     )
@@ -424,9 +434,11 @@ async def select_recipes(
 ) -> RecipeSelectionResult:
     """Run only the cheap recipe-selection step, without DSL generation.
 
-    Useful as a scope gate: callers can inspect ``confidence`` and
-    ``unmatched_concepts`` to decide whether to proceed to the expensive
-    ``render_geometry_diagram()`` call.
+    Useful as a scope gate: callers should check ``is_geometry_request`` to
+    decide whether to proceed to the expensive ``render_geometry_diagram()``
+    call. ``selected_recipes``/``unmatched_concepts`` answer a separate
+    question (does the catalog have a template for this) and ``confidence``
+    is not a reliable domain-relevance signal.
 
     Args:
         prompt: Natural-language description of the diagram.
@@ -434,8 +446,9 @@ async def select_recipes(
             Defaults to the package-internal Haiku selector model.
 
     Returns:
-        A :class:`RecipeSelectionResult` with ``selected_recipes``,
-        ``unmatched_concepts``, ``confidence``, and token counts.
+        A :class:`RecipeSelectionResult` with ``is_geometry_request``,
+        ``selected_recipes``, ``unmatched_concepts``, ``confidence``, and
+        token counts.
     """
     selector_model = model or _SELECTOR_MODEL
     catalog = load_catalog()
@@ -454,6 +467,7 @@ async def select_recipes(
     selected_recipes: list[str] = []
     unmatched_concepts: list[str] = []
     confidence: Literal["high", "medium", "low"] = "high"
+    is_geometry_request = True
     try:
         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if json_match:
@@ -463,6 +477,7 @@ async def select_recipes(
             raw_conf = parsed.get("confidence", "high")
             if raw_conf in ("high", "medium", "low"):
                 confidence = raw_conf
+            is_geometry_request = bool(parsed.get("is_geometry_request", True))
     except (json.JSONDecodeError, AttributeError):
         logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
 
@@ -479,6 +494,7 @@ async def select_recipes(
         selected_recipes=valid_ids,
         unmatched_concepts=unmatched_concepts,
         confidence=confidence,
+        is_geometry_request=is_geometry_request,
         input_tokens=in_tok,
         output_tokens=out_tok,
     )

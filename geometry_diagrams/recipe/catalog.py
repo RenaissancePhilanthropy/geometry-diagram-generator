@@ -61,6 +61,7 @@ class RecipeSelection(BaseModel):
     selected_recipes: list[str] = []
     unmatched_concepts: list[str] = []
     confidence: str = "high"  # "high" | "medium" | "low"
+    is_geometry_request: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -149,10 +150,18 @@ def build_selection_prompt(user_request: str, catalog: list[RecipeSummary]) -> s
         f"User request: {user_request}\n\n"
         "Available recipes:\n"
         f"{catalog_text}\n\n"
-        "Select the recipes most relevant to this request. "
+        "First, judge whether the request is asking for a geometric diagram at all. "
+        "Judge this from what is actually being asked for, not from whether the wording "
+        "happens to reuse words that also appear in this catalog (e.g. \"recipe\") — those "
+        "words are this system's internal vocabulary for its own templates, not evidence "
+        "about the request's subject matter.\n\n"
+        "Then, only if it is a geometry request, select the recipes most relevant to it. "
         "For each selected recipe, the ID must exactly match one of the available recipe IDs above.\n\n"
         "Respond with JSON only:\n"
-        '{"selected_recipes": [...], "unmatched_concepts": [...], "confidence": "high"|"medium"|"low"}'
+        '{"is_geometry_request": true|false, "selected_recipes": [...], '
+        '"unmatched_concepts": [...], "confidence": "high"|"medium"|"low"}\n\n'
+        "If is_geometry_request is false, leave selected_recipes and unmatched_concepts empty — "
+        "do not list any part of the non-geometry request as an unmatched concept."
     )
 
 
