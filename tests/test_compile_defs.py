@@ -259,6 +259,22 @@ def test_point_triangle_center_all():
         assert isinstance(sym[key], spg.Point), f"{key} should be a Point"
 
 
+def test_point_triangle_center_on_non_polygon_raises_clear_error():
+    """PointTriangleCenter (e.g. the 'centroid' op) on an object with no such
+    property — a segment, line, or circle instead of a triangle/polygon —
+    used to crash with a bare AttributeError ('Segment2D' object has no
+    attribute 'centroid'). It should raise a clear, actionable IRCompileError
+    instead, since this is exactly the kind of mistake an LLM-driven caller
+    can make (e.g. referencing a segment id where a triangle id was needed)."""
+    with pytest.raises(IRCompileError, match="centroid"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="seg_AB", a="A", b="B"),
+            PointTriangleCenter(id="G", tri="seg_AB", which="centroid"),
+        )
+
+
 # ---------------------------------------------------------------------------
 # 3. Lines
 # ---------------------------------------------------------------------------

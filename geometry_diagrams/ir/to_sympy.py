@@ -235,6 +235,14 @@ def _compile_one(
 
         case ir.PointTriangleCenter(tri=tri_id, which=which):
             tri = ref(tri_id)
+            if not hasattr(tri, which):
+                raise IRCompileError(
+                    did,
+                    f"{which}: '{tri_id}' must be a triangle or polygon object (needs a "
+                    f"'.{which}' property), got {type(tri).__name__}. Check that '{tri_id}' "
+                    "was created by a triangle, polygon, or polygon_exterior op — not a "
+                    "segment, line, or circle."
+                )
             return getattr(tri, which)
 
         case ir.PointIntersection(obj1=obj1_id, obj2=obj2_id, pick=pick):
