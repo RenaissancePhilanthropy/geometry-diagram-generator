@@ -322,6 +322,9 @@ is invalid; the segment between A and C is always side_CA.
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
 - point_foot: {op, id, source, onto}
   Foot of the perpendicular dropped from `source` onto the line/segment `onto`.
+  `onto` MUST be a segment/line/ray id — it CANNOT be a triangle id. To drop a
+  foot onto one side of a triangle, first name that side as its own segment,
+  e.g. {op:"segment", id:"seg_BC", endpoints:["B","C"]}, then use onto:"seg_BC".
   Does NOT auto-annotate the right angle — follow with an explicit mark_right_angle
   (source, id, other-endpoint-of-onto) to make it visible.
 
