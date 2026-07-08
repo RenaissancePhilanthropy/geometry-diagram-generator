@@ -1,6 +1,6 @@
 [project]
 name = "geometry-diagrams"
-version = "0.1.1"
+version = "0.1.2"
 description = "Generate geometry diagrams using LLMs and TikZ/SVG."
 readme = "README.md"
 requires-python = ">=3.11"
