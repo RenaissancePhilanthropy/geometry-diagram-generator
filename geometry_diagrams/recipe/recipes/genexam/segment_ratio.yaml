@@ -17,8 +17,6 @@ example:
       segment: [A, B]
       ratio: "2:3"
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     labels:
       - kind: label_segment
         endpoints: [A, P]

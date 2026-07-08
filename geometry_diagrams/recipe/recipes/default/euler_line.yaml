@@ -36,9 +36,6 @@ example:
     - op: line_through
       id: euler
       points: [O, G]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "The orthocenter is the intersection of any two altitudes"
   - "O, G, Orth are collinear (Euler's theorem) — use collinear check to verify"

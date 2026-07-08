@@ -23,8 +23,6 @@ example:
         side_AB: 4.5
       center: [5.5, 2]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       - kind: mark_proportional
         segments: [[A, B], [D, E]]

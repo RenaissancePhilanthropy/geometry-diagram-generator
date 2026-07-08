@@ -120,7 +120,6 @@ example:
       vertices: [Sq, Qr, Re2, E2]
 
   annotations:
-    auto_draw_all: true
     auto_label_points: false
     marks:
       # Trapezoid: mark TR || PA (parallel arrows, group 1)

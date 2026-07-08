@@ -78,8 +78,6 @@ example:
       id: seg_O2B
       endpoints: [O2, B]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       - kind: mark_right_angle
         a: A

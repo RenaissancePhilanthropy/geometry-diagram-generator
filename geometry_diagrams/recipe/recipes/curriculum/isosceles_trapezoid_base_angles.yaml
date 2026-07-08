@@ -54,8 +54,6 @@ example:
       id: seg_TX
       endpoints: [T, X]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # Base angles at bottom corners A and P are equal
       - kind: mark_angle

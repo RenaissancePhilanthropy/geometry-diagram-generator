@@ -19,8 +19,5 @@ example:
       ref_point: A
       n: 3
       vertices: [eq_v2]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "n=3 for equilateral triangle; only one extra vertex (v2) needed"

@@ -43,8 +43,6 @@ example:
       id: H
       of: [L2, Trans]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       - kind: mark_angle
         a: B

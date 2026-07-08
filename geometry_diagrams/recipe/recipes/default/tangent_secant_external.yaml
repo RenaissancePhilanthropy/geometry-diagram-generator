@@ -61,9 +61,6 @@ example:
     - op: segment
       id: seg_AB
       endpoints: [A, B]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "secant_dir MUST be placed inside the circle (distance from O < radius) — this guarantees the line through P and secant_dir intersects the circle at two points. Example: O=(0,0) r=2, so secant_dir=(-1,1) works since sqrt(1+1)=1.41 < 2"
   - "Use closest_to(P) for A (nearer intersection) and closest_to(secant_dir) for B (farther intersection). Do NOT use opposite_side for the second intersection point — it fails when both points are on the same side of the line"

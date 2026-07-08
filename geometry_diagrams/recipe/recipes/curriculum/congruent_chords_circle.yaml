@@ -57,8 +57,6 @@ example:
       id: rad_OD
       endpoints: [O, D]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # Mark the two chords as equal length
       - kind: mark_equal_lengths

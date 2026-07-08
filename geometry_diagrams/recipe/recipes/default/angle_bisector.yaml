@@ -25,9 +25,6 @@ example:
         kind: between
         a: A
         b: C
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "The intersection with the opposite side uses a 'between' selector to get the interior point"
   - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."

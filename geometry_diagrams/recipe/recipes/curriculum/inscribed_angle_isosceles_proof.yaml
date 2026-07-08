@@ -52,8 +52,6 @@ example:
       id: seg_AC
       endpoints: [A, C]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # Triangle OAB is isosceles: OA = OB (both radii) — tick group 1
       - kind: mark_equal_lengths

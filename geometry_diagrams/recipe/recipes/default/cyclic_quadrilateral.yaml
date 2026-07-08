@@ -14,8 +14,6 @@ example:
       through: [A, B, C]
       center: O
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     labels:
       - kind: label_segment
         endpoints: [A, B]

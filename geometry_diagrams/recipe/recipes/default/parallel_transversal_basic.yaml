@@ -42,9 +42,6 @@ example:
     - op: intersection
       id: H
       of: [L2, Trans]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "Use this recipe for diagrams that only require drawing parallel lines and a transversal — no angle annotations"
   - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"

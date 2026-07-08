@@ -19,9 +19,6 @@ example:
       ref_point: C
       n: 4
       vertices: [sq_v2, sq_v3]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "ref_point C tells the lowering which side is 'interior'; the square is placed on the opposite side"
   - "vertices list names v2 and v3 (v0=A, v1=B are the base edge)"

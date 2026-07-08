@@ -54,9 +54,6 @@ example:
     - op: segment
       id: seg_t2
       endpoints: [P, T2]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "Use upper_of_line and lower_of_line selectors to disambiguate the two tangent lines"
   - "Marking the tangent lines as visible: false avoids drawing infinite lines; segments P→T1 and P→T2 are drawn instead"

@@ -10,8 +10,6 @@ example:
       vertices: [A, B, C, D, E]
       side_lengths: [5, 7, 8, 6, 4]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     labels:
       - kind: label_segment
         endpoints: [A, B]

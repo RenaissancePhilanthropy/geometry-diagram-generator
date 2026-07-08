@@ -58,8 +58,6 @@ example:
       id: side_DA
       endpoints: [D, A]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # All five tip angles are equal (36° each) — use the same group to show equality
       - kind: mark_angle

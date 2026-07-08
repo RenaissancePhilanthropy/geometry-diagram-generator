@@ -22,8 +22,6 @@ example:
       # Do NOT add visible: false — the line renders as a TikZ line by default.
       # This is correct for prompts like "draw the perpendicular bisector".
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       - kind: mark_equal_lengths
         segments: [[A, M], [M, B]]

@@ -64,8 +64,6 @@ example:
       id: seg_DE
       endpoints: [D, E]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # CA = DA (tick group 1) — constructed equal by measurement
       - kind: mark_equal_lengths

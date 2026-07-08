@@ -17,9 +17,6 @@ example:
       id: cc
       of: T
       center: O
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "The circumcenter O is outside the triangle for obtuse triangles"
   - "When combining with perpendicular bisectors: construct the bisectors first (perpendicular_bisector op), define their intersection as a named point, then pass that point as the circumcircle center. Do not construct the circumcircle independently and add bisectors after — construction order matters."

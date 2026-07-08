@@ -37,9 +37,6 @@ example:
     - op: segment
       id: seg_AF
       endpoints: [A, F]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "CRITICAL: build the square first (rectangle op), then place side points (point_on_segment), then draw cevians. Never define the square in terms of derived points — that creates circular dependencies that prevent lowering."
   - "rectangle op default layout (rotation=0): A top-left, B top-right, C bottom-right, D bottom-left. Side AB is the top edge, BC the right edge, CD the bottom edge, DA the left edge."

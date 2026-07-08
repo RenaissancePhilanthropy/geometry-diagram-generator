@@ -59,7 +59,6 @@ example:
       id: arm_E
       endpoints: [E, extE]
   annotations:
-    auto_draw_all: true
     auto_label_points: false
     marks:
       - kind: mark_angle

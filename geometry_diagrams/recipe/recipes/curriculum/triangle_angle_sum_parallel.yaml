@@ -37,8 +37,6 @@ example:
       id: seg_DE
       endpoints: [D, E]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # Group 1: angle_DBA = angle_BAC (alternate interior angles, transversal AB)
       - kind: mark_angle

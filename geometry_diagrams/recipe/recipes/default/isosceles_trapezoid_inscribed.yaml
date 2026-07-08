@@ -42,9 +42,6 @@ example:
     - op: polygon
       id: trap
       vertices: [A, B, C, D]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "Define the vertical axis of symmetry through O using two hidden helper points (visible: false) and a line_through — the axis line itself should also be visible: false"
   - "Place A on the circle (lower-left): coords must satisfy x²+y²=radius². Example for radius 3: (-2.4,-1.8) since 2.4²+1.8²=9"

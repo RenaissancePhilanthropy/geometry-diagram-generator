@@ -76,8 +76,6 @@ example:
       id: seg_DC
       endpoints: [D, C]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       # angle PAB = angle PDC (both inscribed in same arc BC)
       - kind: mark_angle

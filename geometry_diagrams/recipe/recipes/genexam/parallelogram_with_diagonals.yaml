@@ -28,8 +28,6 @@ example:
       id: seg_BD
       endpoints: [B, D]
   annotations:
-    auto_draw_all: true
-    auto_label_points: true
     marks:
       - kind: mark_parallel
         segments: [[A, B], [D, C]]

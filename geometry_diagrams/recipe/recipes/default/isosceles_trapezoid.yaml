@@ -26,9 +26,6 @@ example:
     - op: polygon
       id: trap
       vertices: [A, B, C, D]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "Reflecting D over the perpendicular bisector of AB guarantees AD = BC (equal legs) and CD ∥ AB (parallel bases)"
   - "Place D above AB (positive y relative to AB) so the trapezoid is convex and CD is the shorter base"

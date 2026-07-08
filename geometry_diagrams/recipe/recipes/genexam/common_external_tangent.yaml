@@ -76,9 +76,6 @@ example:
     - op: segment
       id: seg_lower
       endpoints: [T3, T4]
-  annotations:
-    auto_draw_all: true
-    auto_label_points: true
 notes:
   - "E is the external center of similitude: E = O1 + r1/(r1-r2) * (O2-O1). For r1=3, r2=1, |O1O2|=6: E = (9,0). Place E explicitly as a point op."
   - "CRITICAL: use tangent_line from E to c1 only. Then intersect that SAME line with c2 to get T2 — do NOT create a separate tangent_line from E to c2. The tangent from E touches both circles simultaneously."

@@ -81,7 +81,6 @@ example:
       id: arm_EB2
       endpoints: [E, B2]
   annotations:
-    auto_draw_all: true
     auto_label_points: false
     labels:
       - kind: label_point
