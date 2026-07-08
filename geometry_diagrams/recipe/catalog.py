@@ -248,6 +248,16 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
     label center with its coordinates: annotations.labels [{kind:"label_point", point:"O", text:"(1, 3)"}]
 - polygon: {op, id, vertices:[...]}
 - point: {op, id, coords:[x, y]}  (grid mode)
+- rectangle: {op, id, vertices:[A,B,C,D], spec:{side_AB:<w>, side_BC:<h>}}
+  Axis-aligned; A=top-left, B=top-right, C=bottom-right, D=bottom-left, going clockwise.
+  spec keys MUST use the actual vertex-name pairs (e.g. if vertices are [P,Q,R,S], use
+  side_PQ/side_QR, not side_AB/side_BC). Optional rotation (degrees).
+- regular_polygon: {op, id, center, radius, vertices:[...], start_angle?, star?}
+  N equally-spaced points on a circle of the given radius, connected into a polygon
+  (N = len(vertices)). Always provide explicit names in "vertices" — never guess
+  positional/generated names — and reference those names in later ops.
+  star:true connects every 2nd vertex instead (star polygon, e.g. pentagram) —
+  requires odd N ≥ 5.
 
 ## Composite ops (auto-expand to multiple IR definitions)
 - altitude: {op, id, from_vertex, triangle:<tri_id>, foot}  # preferred; or to_side:[P,Q]
@@ -278,6 +288,10 @@ of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) i
 - rotation: {op, id, point, center, angle}  (angle in degrees)
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
+- point_foot: {op, id, source, onto}
+  Foot of the perpendicular dropped from `source` onto the line/segment `onto`.
+  Does NOT auto-annotate the right angle — follow with an explicit mark_right_angle
+  (source, id, other-endpoint-of-onto) to make it visible.
 
 ## Common annotation mistakes
 
@@ -334,6 +348,9 @@ Examples:
   selector: {"kind": "upper_of_line", "a": "A", "b": "B"}
   selector: {"kind": "index", "k": 0}
   selector: {"kind": "chain", "rules": [{"kind": "upper_of_line", "a": "A", "b": "B"}, {"kind": "closest_to", "p": "P"}]}
+
+IMPORTANT: every point/ID referenced in a selector (ref_point, p, obj, line endpoints) must
+be a previously-defined construction ID. Never use placeholder names like "dummy".
 
 ### Secant from external point — getting near and far intersections in order
 
@@ -401,6 +418,8 @@ For problems that require displaying x/y coordinates on a grid:
   {"obj": "circle1"}                              — draw named object
   {"endpoints": ["A","B"], "style": "red"}        — draw segment with named color
   {"obj": "seg1", "style": {"dashed": true, "color": "blue"}}  — inline style dict
+  NOTE: When auto_draw_all is true, objects in "draws" are NOT also auto-drawn — "draws" takes precedence.
+  WARNING: When auto_draw_all is false, you MUST provide explicit draws for every element you want visible.
 
 ### annotations.styles — named style definitions
   styles: {"highlight": {"color": "red", "thick": true}}

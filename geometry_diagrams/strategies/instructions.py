@@ -16,5 +16,4 @@ from .instructions_structured import STRUCTURED_STRATEGY_IR_INSTRUCTIONS  # noqa
 from .instructions_recipe import (  # noqa: F401
     RECIPE_SELECTION_SYSTEM,
     RECIPE_GENERATION_SYSTEM,
-    RECIPE_DSL_QUICK_REF,
 )
