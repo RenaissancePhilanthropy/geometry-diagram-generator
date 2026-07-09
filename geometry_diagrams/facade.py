@@ -192,3 +192,38 @@ def edit_geometry_diagram_sync(prompt: str, previous_dsl: dict, **kwargs) -> Dia
     Note: Will raise RuntimeError if called from within a running event loop.
     """
     return asyncio.run(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
+
+
+def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:
+    """Query geometric properties of a diagram from its DSL (no LLM call, no I/O).
+
+    Recompiles sym from dsl via the same deterministic pipeline the render path uses
+    (RecipeDSL.model_validate -> lower_to_ir -> compile_defs with the default Random(42)
+    seed), then dispatches through dispatch_query. Safe to call from a fresh process
+    each time — recompilation is bit-identical given the same dsl.
+
+    Args:
+        dsl: A dsl dict from a prior DiagramResult.dsl.
+        query_type: One of "list_objects", "coordinate", "distance", "angle",
+            "length", "radius", "area", "perimeter" (same vocabulary as
+            RecipeStrategy.build_agent()'s query_diagram tool).
+        params: Query arguments; see dispatch_query() for the shape per query_type.
+
+    Returns:
+        JSON string with the query result, or {"error": "..."} on failure
+        (e.g. malformed dsl, unresolvable definition, unknown object id).
+    """
+    import pydantic
+    from .recipe.dsl import RecipeDSL
+    from .recipe.lower import lower_to_ir, LoweringError
+    from .ir.to_sympy import compile_defs
+    from .ir.errors import IRCompileError
+    from .strategies.structured import dispatch_query
+
+    try:
+        parsed = RecipeDSL.model_validate(dsl)
+        diagram_ir = lower_to_ir(parsed)
+        sym = compile_defs(diagram_ir)
+    except (pydantic.ValidationError, LoweringError, IRCompileError) as e:
+        return json.dumps({"error": str(e)})
+    return dispatch_query(sym, query_type, params or {})
