@@ -18,6 +18,7 @@ from .instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
 from ..ir.ir import DiagramIR
 from ..ir.to_sympy import compile_defs
 from ..ir.checks import run_checks, check_render_angles, CheckResult
+from ..ir.angle_pairs import resolve_angle_pairs
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
 from ..ir.queries import (
@@ -74,6 +75,8 @@ async def _run_ir_pipeline(
     # SymPy compilation and checks are CPU-bound — run off the event loop thread
     # so they don't block async timeouts or concurrent eval runs.
     sym = await asyncio.to_thread(compile_defs, diagram_ir)
+
+    diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
     results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym)
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
