@@ -273,6 +273,7 @@ def ir_to_svg(
 
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
+    angle_mark_wedges = _build_angle_mark_wedges(diagram, sym, coords, helpers)
 
     # Deduplicate angle marks globally to avoid duplicate paths
     _seen_ra_triples: set[tuple[str, str, str]] = set()
@@ -289,6 +290,7 @@ def ir_to_svg(
             group_mark_symbols, pt, gxy, scale, xmin, xmax, ymin, ymax,
             group_chevron_counts=group_chevron_counts,
             incident_angles=incident_angles,
+            angle_mark_wedges=angle_mark_wedges,
             warnings=warnings,
             pending_labels=pending_labels,
             seen_ra_triples=_seen_ra_triples,
@@ -340,6 +342,7 @@ def _emit_svg_op(
     ymax: float,
     group_chevron_counts: dict[str, int] = None,
     incident_angles: dict[str, list[float]] | None = None,
+    angle_mark_wedges: dict[str, list[tuple[float, float]]] | None = None,
     warnings: list[str] | None = None,
     pending_labels: list[_LabelPlacement] | None = None,
     seen_ra_triples: set[tuple[str, str, str]] | None = None,
@@ -729,7 +732,8 @@ def _emit_svg_op(
             px, py = pt(p)
             if not pos or pos == "auto":
                 angles = (incident_angles or {}).get(p, [])
-                direction = _auto_label_direction(angles)
+                wedges = (angle_mark_wedges or {}).get(p, [])
+                direction = _auto_label_direction(angles, wedges)
                 ox, oy = _angle_to_offset(direction, _LABEL_OFFSET)
                 anchor = _angle_to_anchor(direction)
             else:
@@ -2006,12 +2010,74 @@ def _build_incident_angles(
     return result
 
 
-def _auto_label_direction(angles: list[float]) -> float:
+def _build_angle_mark_wedges(
+    diagram: ir.DiagramIR,
+    sym: SymTable,
+    coords: dict,
+    helpers: dict,
+) -> dict[str, list[tuple[float, float]]]:
+    """Return point_id → list of (start, start+size) angular spans (radians,
+    geometry space, y-up) occupied by a mark_angles/mark_right_angles arc at
+    that point's vertex.  ``start`` is normalised to [0, 2π); size is in
+    (0, 2π).  Used so auto label placement avoids bisecting a gap that an
+    angle arc is drawn in.
+    """
+    TWO_PI = 2 * math.pi
+
+    def _geo(pid: str) -> tuple[float, float] | None:
+        if pid in coords:
+            return coords[pid]
+        if pid in helpers:
+            return helpers[pid]
+        return None
+
+    result: dict[str, list[tuple[float, float]]] = {}
+    for op in diagram.render:
+        if not isinstance(op, (ir.MarkAngles, ir.MarkRightAngles)):
+            continue
+        which = getattr(op, "which", "interior")
+        for angle in op.angles:
+            po = _geo(angle.o)
+            pa = _geo(angle.a)
+            pb = _geo(angle.b)
+            if po is None or pa is None or pb is None:
+                continue
+            ox, oy = po
+            d_a = math.atan2(pa[1] - oy, pa[0] - ox)
+            d_b = math.atan2(pb[1] - oy, pb[0] - ox)
+            d_a %= TWO_PI
+            d_b %= TWO_PI
+            s1 = (d_b - d_a) % TWO_PI  # CCW span a -> b
+            if s1 <= math.pi:
+                interior = (d_a, d_a + s1)
+                exterior = (d_b, d_b + (TWO_PI - s1))
+            else:
+                interior = (d_b, d_b + (TWO_PI - s1))
+                exterior = (d_a, d_a + s1)
+            span = interior if which == "interior" else exterior
+            result.setdefault(angle.o, []).append(span)
+    return result
+
+
+def _angle_in_wedges(angle: float, wedges: list[tuple[float, float]]) -> bool:
+    TWO_PI = 2 * math.pi
+    a = angle % TWO_PI
+    for start, end in wedges:
+        if (a - start) % TWO_PI < (end - start):
+            return True
+    return False
+
+
+def _auto_label_direction(
+    angles: list[float],
+    wedges: list[tuple[float, float]] | None = None,
+) -> float:
     """Return the angle (geometry space, y-up) of the largest gap between edges.
 
     - No edges → default to straight up (π/2).
     - One edge angle → place label on the opposite side.
-    - Multiple → find the largest angular gap and bisect it.
+    - Multiple → find the largest angular gap and bisect it, skipping gaps
+      whose bisector falls inside a drawn angle-mark wedge (``wedges``).
     """
     if not angles:
         return math.pi / 2  # above
@@ -2023,19 +2089,25 @@ def _auto_label_direction(angles: list[float]) -> float:
     if len(normed) == 1:
         return (normed[0] + math.pi) % TWO_PI
 
-    # Compute gaps between consecutive sorted angles (wrapping around)
-    best_gap = -1.0
-    best_bisector = math.pi / 2
+    # Compute gaps between consecutive sorted angles (wrapping around),
+    # largest first, and pick the first one whose bisector clears any
+    # angle-mark wedge at this point.
     n = len(normed)
+    gaps = []
     for i in range(n):
         a1 = normed[i]
         a2 = normed[(i + 1) % n]
         gap = (a2 - a1) % TWO_PI
-        if gap > best_gap:
-            best_gap = gap
-            best_bisector = (a1 + gap / 2) % TWO_PI
+        bisector = (a1 + gap / 2) % TWO_PI
+        gaps.append((gap, bisector))
+    gaps.sort(key=lambda g: g[0], reverse=True)
 
-    return best_bisector
+    if wedges:
+        for gap, bisector in gaps:
+            if not _angle_in_wedges(bisector, wedges):
+                return bisector
+
+    return gaps[0][1]
 
 
 def _angle_to_offset(angle: float, dist: float) -> tuple[float, float]:
