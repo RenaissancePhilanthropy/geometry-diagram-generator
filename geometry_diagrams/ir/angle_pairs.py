@@ -16,6 +16,7 @@ from __future__ import annotations
 import sympy as sp
 import sympy.geometry as spg
 
+from .errors import IRCompileError
 from .ir import DiagramIR, MarkAngles, AnglePoints
 from .to_sympy import SymTable, _cross_sign
 
@@ -47,11 +48,40 @@ def resolve_angle_pairs(diagram_ir: DiagramIR, sym: SymTable) -> DiagramIR:
     new_render = list(diagram_ir.render)
 
     for i, pending in enumerate(diagram_ir.pending_angle_pairs):
-        v1, v2 = sym[pending.v1], sym[pending.v2]
-        r1, r2 = sym[pending.ray_ref_v1], sym[pending.ray_ref_v2]
+        def_id = f"mark_angle_pair {pending.v1}-{pending.v2}"
 
-        s1 = _side(v1, v2, r1)
-        s2_natural = _side(v1, v2, r2)
+        def _lookup(point_id: str) -> spg.Point2D:
+            try:
+                return sym[point_id]
+            except KeyError as exc:
+                raise IRCompileError(
+                    def_id,
+                    f"unknown point id {point_id!r} in mark_angle_pair",
+                ) from exc
+
+        v1, v2 = _lookup(pending.v1), _lookup(pending.v2)
+        r1, r2 = _lookup(pending.ray_ref_v1), _lookup(pending.ray_ref_v2)
+
+        try:
+            s1 = _side(v1, v2, r1)
+        except ValueError as exc:
+            raise IRCompileError(
+                def_id,
+                f"rays_along point {pending.ray_ref_v1!r} lies on the line through "
+                f"{pending.v1!r} and {pending.v2!r} (the transversal) — it cannot pick "
+                f"a side. Choose a point on the OTHER line through that vertex instead "
+                f"(any point on that line works)."
+            ) from exc
+        try:
+            s2_natural = _side(v1, v2, r2)
+        except ValueError as exc:
+            raise IRCompileError(
+                def_id,
+                f"rays_along point {pending.ray_ref_v2!r} lies on the line through "
+                f"{pending.v1!r} and {pending.v2!r} (the transversal) — it cannot pick "
+                f"a side. Choose a point on the OTHER line through that vertex instead "
+                f"(any point on that line works)."
+            ) from exc
 
         want_s2 = s1 if pending.relation == "corresponding" else -s1
 

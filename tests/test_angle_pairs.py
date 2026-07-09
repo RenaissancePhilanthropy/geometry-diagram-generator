@@ -25,6 +25,7 @@ from geometry_diagrams.ir.ir import (
 )
 from geometry_diagrams.ir.angle_pairs import resolve_angle_pairs
 from geometry_diagrams.ir.checks import check_render_angles
+from geometry_diagrams.ir.errors import IRCompileError
 
 
 def _sym():
@@ -197,6 +198,47 @@ def test_corresponding_synthesized_point_passes_render_angle_check():
 
     errors = check_render_angles(result, sym)
     assert errors == [], f"unexpected validation errors: {errors}"
+
+
+def test_collinear_ray_ref_raises_retryable_ircompileerror():
+    """If the LLM names a point ON the transversal itself (G-H line) as the
+    ray_ref for the other line, _side cannot determine a side. This must
+    surface as an IRCompileError (retryable by the strategy's LangGraph loop),
+    not a bare ValueError."""
+    sym = _sym()
+    sym["T"] = spg.Point(sp.Float(2.5), sp.Float(1))  # on segment G-H, collinear
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0), PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2), PointFixed(id="D", x=4, y=2),
+            PointFixed(id="G", x=2.25, y=0), PointFixed(id="H", x=2.75, y=2),
+            PointFixed(id="T", x=2.5, y=1),
+        ],
+        pending_angle_pairs=[PendingAnglePair(
+            v1="G", v2="H", relation="corresponding",
+            ray_ref_v1="B", ray_ref_v2="T", group="1",
+        )],
+    )
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    assert not isinstance(excinfo.value, ValueError)
+    msg = str(excinfo.value)
+    assert "T" in msg
+    assert "other line" in msg.lower()
+
+
+def test_unknown_point_id_raises_retryable_ircompileerror():
+    """A nonexistent ray_ref id must surface as an actionable IRCompileError,
+    not a bare KeyError, so the retry loop can catch it."""
+    sym = _sym()
+    diagram_ir = _make_ir(PendingAnglePair(
+        v1="G", v2="H", relation="corresponding",
+        ray_ref_v1="NOPE", ray_ref_v2="D", group="1",
+    ))
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    assert not isinstance(excinfo.value, KeyError)
+    assert "NOPE" in str(excinfo.value)
 
 
 def test_no_pending_pairs_is_a_noop():
