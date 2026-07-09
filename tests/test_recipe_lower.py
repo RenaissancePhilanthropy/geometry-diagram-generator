@@ -1987,3 +1987,33 @@ def test_polygon_from_angles_and_sides_dsl_n_minus_1_sides_accepted():
         angles=[90, 90, 90, 270, 90, 90],
     )
     assert len(op.side_lengths) == 5
+
+
+def test_mark_angle_pair_lowers_to_pending():
+    from geometry_diagrams.recipe.dsl import RecipeDSL
+    dsl = RecipeDSL.model_validate({
+        "mode": "grid",
+        "construction": [
+            {"op": "point", "id": "G", "coords": [0, 2]},
+            {"op": "point", "id": "H", "coords": [0, 0]},
+            {"op": "point", "id": "A", "coords": [-1, 2]},
+            {"op": "point", "id": "D", "coords": [1, 0]},
+        ],
+        "annotations": {
+            "marks": [
+                {"kind": "mark_angle_pair", "relation": "alternate_interior",
+                 "vertices": ["G", "H"], "rays_along": ["A", "D"], "group": 2},
+            ],
+        },
+    })
+    diagram_ir = lower_to_ir(dsl)
+    assert len(diagram_ir.pending_angle_pairs) == 1
+    pending = diagram_ir.pending_angle_pairs[0]
+    assert pending.v1 == "G"
+    assert pending.v2 == "H"
+    assert pending.relation == "alternate_interior"
+    assert pending.ray_ref_v1 == "A"
+    assert pending.ray_ref_v2 == "D"
+    assert pending.group == "2"
+    # No MarkAngles should be emitted yet — resolution happens post-compile.
+    assert not any(r.kind == "mark_angles" for r in diagram_ir.render)

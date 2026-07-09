@@ -22,7 +22,7 @@ from ..ir.ir import (
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
-    AngleEqual, EqualLength, Parallel, RatioEqual,
+    AngleEqual, EqualLength, Parallel, RatioEqual, PendingAnglePair,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
@@ -38,7 +38,7 @@ from .dsl import (
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
-    MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional,
+    MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
@@ -93,6 +93,8 @@ class _Lowerer:
         # Named + inline styles to forward to DiagramIR.styles
         self._styles: dict[str, dict[str, Any]] = {}
         self._inline_style_counter: int = 0
+        # Unresolved mark_angle_pair annotations — resolved post-compile
+        self._pending_angle_pairs: list[PendingAnglePair] = []
 
     # ------------------------------------------------------------------
     # Entry point
@@ -138,6 +140,7 @@ class _Lowerer:
             define=self._defs,
             checks=self._checks,
             render=self._renders,
+            pending_angle_pairs=self._pending_angle_pairs,
             canvas=canvas,
             styles=self._styles,
         )
@@ -1082,6 +1085,15 @@ class _Lowerer:
                 # Collect the pair for cross-entry ratio checks below
                 if len(seg_ids) >= 2:
                     proportional_pairs.append(seg_ids)
+            elif isinstance(mark, MarkAnglePair):
+                self._pending_angle_pairs.append(PendingAnglePair(
+                    v1=mark.vertices[0],
+                    v2=mark.vertices[1],
+                    relation=mark.relation,
+                    ray_ref_v1=mark.rays_along[0],
+                    ray_ref_v2=mark.rays_along[1],
+                    group=str(mark.group) if mark.group is not None else None,
+                ))
 
         # Cross-entry proportionality: all mark_proportional entries claim the
         # same ratio.  e.g. [AB,DE], [BC,EF], [AC,DF] → AB/DE == BC/EF == AC/DF.
