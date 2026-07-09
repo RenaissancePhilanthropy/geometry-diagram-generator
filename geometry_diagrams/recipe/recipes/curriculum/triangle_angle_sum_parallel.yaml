@@ -38,29 +38,19 @@ example:
       endpoints: [D, E]
   annotations:
     marks:
-      # Group 1: angle_DBA = angle_BAC (alternate interior angles, transversal AB)
-      - kind: mark_angle
-        a: D
-        vertex: B
-        b: A
+      # angle_DBA = angle_BAC (alternate interior angles, transversal AB)
+      - kind: mark_angle_pair
+        relation: alternate_interior
+        vertices: [B, A]
+        rays_along: [D, C]
         group: 1
-      - kind: mark_angle
-        a: B
-        vertex: A
-        b: C
-        group: 1
-      # Group 2: angle_CBE = angle_BCA (alternate interior angles, transversal BC)
-      - kind: mark_angle
-        a: C
-        vertex: B
-        b: E
+      # angle_CBE = angle_BCA (alternate interior angles, transversal BC)
+      - kind: mark_angle_pair
+        relation: alternate_interior
+        vertices: [B, C]
+        rays_along: [E, A]
         group: 2
-      - kind: mark_angle
-        a: A
-        vertex: C
-        b: B
-        group: 2
-      # Group 3: angle_ABC (the middle angle at B)
+      # The middle angle at B (not part of a pair — plain mark_angle is correct here)
       - kind: mark_angle
         a: A
         vertex: B
@@ -71,7 +61,6 @@ notes:
   - "DO NOT use point_along with toward: A or toward: C — those put D/E along the triangle sides, not the parallel line."
   - "D is to the left of B on line DE; E is to the right. D and E are visible: false so they don't get labels."
   - "seg_DE is the parallel line. It is NOT drawn via a 'parallel' op (which creates a full infinite line)."
-  - "Alternate interior angles: group 1 = angle_A and angle_DBA (transversal AB); group 2 = angle_C and angle_CBE (transversal BC)."
-  - "angle_DBA: a=D (left arm on parallel), vertex=B, b=A (down to base). This is NOT collinear — D is left of B, A is below-left."
-  - "angle_CBE: a=C (right side of base), vertex=B, b=E (right arm on parallel). C is below-right, E is right — not collinear."
+  - "mark_angle_pair(vertices:[B,A]) treats side AB as the transversal between the parallel line through B (seg_DE) and side AC through A — rays_along just needs any point on each of those two lines (D at B, C at A); the resolver picks the correct ray direction."
+  - "The middle angle at B (angle_ABC, group 3) is a single angle, not a pair — use plain mark_angle for it."
   - "All three groups together at B form a straight line D-B-E = 180°, proving the triangle angle sum."
