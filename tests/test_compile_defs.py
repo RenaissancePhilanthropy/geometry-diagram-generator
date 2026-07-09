@@ -1328,6 +1328,6 @@ def test_diagram_ir_accepts_pending_angle_pairs():
     assert ir_obj.pending_angle_pairs[0].relation == "corresponding"
 
 def test_diagram_ir_pending_angle_pairs_defaults_empty():
-    sym = _compile(PointFixed(id="A", x=0, y=0))
-    assert sym  # sanity: existing compile path still works
+    ir_obj = DiagramIR(define=[PointFixed(id="A", x=0, y=0)])
+    assert ir_obj.pending_angle_pairs == []
 

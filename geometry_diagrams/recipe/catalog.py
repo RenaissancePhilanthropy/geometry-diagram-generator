@@ -433,7 +433,7 @@ distance from segment[0].
   to a line through the opposite vertex): give the two vertices where the
   transversal crosses the lines, and — at EACH vertex — any ONE point on the
   OTHER line through that vertex. You do NOT need to figure out which specific
-  ray is "the same side" or "opposite side" — the lowerer computes that from
+  ray is "the same side" or "opposite side" — a resolver computes that from
   real coordinates. Just name a real point on each of the two non-transversal
   lines; either point on that line works, the resolver picks the correct
   direction automatically.

@@ -146,7 +146,6 @@ def test_alternate_exterior_matches_recipe_answer():
     marks = [r for r in result.render if isinstance(r, MarkAngles)]
     assert len(marks) == 2
 
-    expected_deg = _angle_deg(sym, "B", "G", "E") if False else None
     # E isn't in this sym table (not needed — the resolver never requires it),
     # so instead cross-check the two produced angles measure equal to each other.
     a0, o0, b0 = marks[0].angles[0].a, marks[0].angles[0].o, marks[0].angles[0].b
@@ -245,3 +244,71 @@ def test_no_pending_pairs_is_a_noop():
     diagram_ir = DiagramIR(define=[PointFixed(id="A", x=0, y=0)])
     result = resolve_angle_pairs(diagram_ir, {"A": spg.Point(sp.Float(0), sp.Float(0))})
     assert result is diagram_ir
+
+
+def test_non_point_ray_ref_raises_retryable_ircompileerror():
+    """If the LLM names a line id (e.g. rays_along: ["L2", ...]) instead of a
+    point id, `_lookup` must not let a raw AttributeError (from calling .x on
+    a Line2D) escape the retry loop — it must raise IRCompileError naming the
+    offending id and explaining it's not a point."""
+    sym = _sym()
+    sym["L2"] = spg.Line(sym["C"], sym["D"])
+    diagram_ir = _make_ir(PendingAnglePair(
+        v1="G", v2="H", relation="corresponding",
+        ray_ref_v1="B", ray_ref_v2="L2", group="1",
+    ))
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    assert not isinstance(excinfo.value, AttributeError)
+    msg = str(excinfo.value)
+    assert "L2" in msg
+    assert "not a point" in msg.lower()
+
+
+def test_non_parallel_lines_raise_ircompileerror():
+    """The resolver assumes the two non-transversal lines through the vertices
+    are parallel and never verifies it. If an LLM places the second line at
+    the wrong slope (D moved off y=2), the two resolved angles are no longer
+    equal, and tick-marking them as equal would be a silent rendering bug.
+    The resolver must catch this and raise IRCompileError mentioning
+    PARALLEL, rather than silently emit equal-looking tick marks."""
+    sym = _sym()
+    sym["D"] = spg.Point(sp.Float(4), sp.Float(3))  # C-D no longer parallel to A-B
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0), PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2), PointFixed(id="D", x=4, y=3),
+            PointFixed(id="G", x=2.25, y=0), PointFixed(id="H", x=2.75, y=2),
+        ],
+        pending_angle_pairs=[PendingAnglePair(
+            v1="G", v2="H", relation="alternate_interior",
+            ray_ref_v1="A", ray_ref_v2="D", group="1",
+        )],
+    )
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    assert "PARALLEL" in str(excinfo.value)
+
+
+def test_v1_equals_v2_raises_ircompileerror():
+    sym = _sym()
+    diagram_ir = _make_ir(PendingAnglePair(
+        v1="G", v2="G", relation="corresponding",
+        ray_ref_v1="B", ray_ref_v2="D", group="1",
+    ))
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    assert "distinct" in str(excinfo.value).lower()
+
+
+def test_ray_ref_coincides_with_vertex_raises_ircompileerror():
+    sym = _sym()
+    diagram_ir = _make_ir(PendingAnglePair(
+        v1="G", v2="H", relation="corresponding",
+        ray_ref_v1="G", ray_ref_v2="D", group="1",
+    ))
+    with pytest.raises(IRCompileError) as excinfo:
+        resolve_angle_pairs(diagram_ir, sym)
+    msg = str(excinfo.value)
+    assert "G" in msg
+    assert "coincides with its vertex" in msg.lower()
