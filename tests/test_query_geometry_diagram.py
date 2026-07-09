@@ -93,3 +93,13 @@ class TestQueryDiagramTool:
         direct = query_geometry_diagram(dsl, "coordinate", {"point": "B"})
         via_tool = query_diagram.invoke({"dsl": dsl, "query_type": "coordinate", "params": {"point": "B"}})
         assert via_tool == direct
+
+
+class TestPublicExports:
+    def test_query_functions_exported_from_package_root(self):
+        import geometry_diagrams
+
+        assert geometry_diagrams.query_geometry_diagram is query_geometry_diagram
+        assert geometry_diagrams.query_diagram is query_diagram
+        assert "query_geometry_diagram" in geometry_diagrams.__all__
+        assert "query_diagram" in geometry_diagrams.__all__

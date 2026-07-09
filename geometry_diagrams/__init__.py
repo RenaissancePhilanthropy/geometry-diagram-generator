@@ -6,6 +6,8 @@ Public API:
   render_geometry_diagram_sync — sync wrapper (not usable inside a running event loop)
   edit_geometry_diagram        — async convenience wrapper for editing an existing diagram
   edit_geometry_diagram_sync   — sync wrapper for edit_geometry_diagram
+  query_diagram                — LangChain @tool to query a diagram from its dsl (no LLM call)
+  query_geometry_diagram       — plain function backing query_diagram
   select_recipes               — async: run only the cheap recipe-selection step
   select_recipes_sync          — sync wrapper for select_recipes
   DiagramResult                — result dataclass (svg, tikz, input_tokens, output_tokens,
@@ -19,6 +21,8 @@ from .facade import (
     render_geometry_diagram_sync,
     edit_geometry_diagram,
     edit_geometry_diagram_sync,
+    query_diagram,
+    query_geometry_diagram,
     DiagramResult,
 )
 from .config import GeometryConfig
@@ -30,6 +34,8 @@ __all__ = [
     "render_geometry_diagram_sync",
     "edit_geometry_diagram",
     "edit_geometry_diagram_sync",
+    "query_diagram",
+    "query_geometry_diagram",
     "select_recipes",
     "select_recipes_sync",
     "DiagramResult",
