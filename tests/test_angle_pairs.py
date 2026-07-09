@@ -20,8 +20,11 @@ import pytest
 import sympy as sp
 import sympy.geometry as spg
 
-from geometry_diagrams.ir.ir import DiagramIR, PointFixed, PendingAnglePair, MarkAngles
+from geometry_diagrams.ir.ir import (
+    DiagramIR, PointFixed, LineThrough, PendingAnglePair, MarkAngles,
+)
 from geometry_diagrams.ir.angle_pairs import resolve_angle_pairs
+from geometry_diagrams.ir.checks import check_render_angles
 
 
 def _sym():
@@ -162,6 +165,38 @@ def test_group_is_forwarded_to_both_marks():
     result = resolve_angle_pairs(diagram_ir, sym)
     marks = [r for r in result.render if isinstance(r, MarkAngles)]
     assert all(m.group == "1" for m in marks)
+
+
+def test_corresponding_synthesized_point_passes_render_angle_check():
+    """The 'corresponding' relation always synthesizes a __pair{i}_H_trans point
+    at v2 (H). check_render_angles' geometric fallback must accept this
+    implicit point because it is directly referenced by the resolved
+    MarkAngles triple, even though it's __-prefixed. Regression test for the
+    bug where all synthesized points were rejected by the `not
+    pid.startswith("__")` filter in _build_linear_pairs."""
+    sym = _sym()
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0), PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2), PointFixed(id="D", x=4, y=2),
+            PointFixed(id="G", x=2.25, y=0), PointFixed(id="H", x=2.75, y=2),
+            LineThrough(id="L1", p="A", q="B"),
+            LineThrough(id="L2", p="C", q="D"),
+            LineThrough(id="Trans", p="G", q="H"),
+        ],
+        pending_angle_pairs=[PendingAnglePair(
+            v1="G", v2="H", relation="corresponding",
+            ray_ref_v1="B", ray_ref_v2="D", group="1",
+        )],
+    )
+    sym["Trans"] = spg.Line(sym["G"], sym["H"])
+    sym["L2"] = spg.Line(sym["C"], sym["D"])
+    sym["L1"] = spg.Line(sym["A"], sym["B"])
+
+    result = resolve_angle_pairs(diagram_ir, sym)
+
+    errors = check_render_angles(result, sym)
+    assert errors == [], f"unexpected validation errors: {errors}"
 
 
 def test_no_pending_pairs_is_a_noop():

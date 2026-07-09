@@ -262,3 +262,41 @@ async def test_run_ir_pipeline_resolves_angle_pairs():
     resolved = [r for r in result.diagram_ir.render if isinstance(r, MarkAngles)]
     assert len(resolved) == 2
     assert result.diagram_ir.pending_angle_pairs == []
+
+
+@pytest.mark.asyncio
+async def test_run_ir_pipeline_resolves_angle_pairs_corresponding():
+    """Same as test_run_ir_pipeline_resolves_angle_pairs but with the
+    'corresponding' relation, which always synthesizes a __pair{i}_..._trans
+    helper point (unlike alternate_interior with correct ray refs, which
+    synthesizes nothing). Regression test: previously this raised a
+    RuntimeError from check_render_angles because the geometric fallback in
+    _build_linear_pairs unconditionally excluded __-prefixed points, so the
+    synthesized point could never validate against the Trans line it was
+    constructed on."""
+    from geometry_diagrams.ir.ir import (
+        DiagramIR, PointFixed, LineThrough, PointIntersection,
+        PendingAnglePair, MarkAngles,
+    )
+    from geometry_diagrams.strategies.structured import _run_ir_pipeline
+
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0), PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2), PointFixed(id="D", x=4, y=2),
+            PointFixed(id="E", x=2, y=-1), PointFixed(id="F", x=3, y=3),
+            LineThrough(id="L1", p="A", q="B"),
+            LineThrough(id="L2", p="C", q="D"),
+            LineThrough(id="Trans", p="E", q="F"),
+            PointIntersection(id="G", obj1="L1", obj2="Trans"),
+            PointIntersection(id="H", obj1="L2", obj2="Trans"),
+        ],
+        pending_angle_pairs=[
+            PendingAnglePair(v1="G", v2="H", relation="corresponding",
+                              ray_ref_v1="B", ray_ref_v2="D", group="1"),
+        ],
+    )
+    result = await _run_ir_pipeline(diagram_ir, renderer=SVGRenderer())
+    resolved = [r for r in result.diagram_ir.render if isinstance(r, MarkAngles)]
+    assert len(resolved) == 2
+    assert result.diagram_ir.pending_angle_pairs == []

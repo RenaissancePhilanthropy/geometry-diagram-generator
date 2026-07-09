@@ -368,9 +368,21 @@ def _build_linear_pairs(
             oid for oid, obj in sym.items()
             if isinstance(obj, (spg.Line, spg.Segment, spg.Ray))
         ]
+        # Points referenced by angle triples in render ops must be eligible for
+        # geometric validation even when implicit (__-prefixed) — the resolver
+        # in angle_pairs.py synthesizes such points on real lines by construction.
+        referenced_by_angle_ops: set[str] = set()
+        for op in diagram.render:
+            match op:
+                case ir.MarkAngles(angles=angles) | ir.MarkRightAngles(angles=angles):
+                    for ang in angles:
+                        referenced_by_angle_ops.update((ang.a, ang.o, ang.b))
+                case ir.LabelAngle(angle=ang):
+                    referenced_by_angle_ops.update((ang.a, ang.o, ang.b))
         point_ids = [
             pid for pid, obj in sym.items()
-            if isinstance(obj, spg.Point2D) and not pid.startswith("__")
+            if isinstance(obj, spg.Point2D)
+            and (not pid.startswith("__") or pid in referenced_by_angle_ops)
         ]
         for oid in linear_obj_ids:
             line_obj = sym[oid]
