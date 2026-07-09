@@ -44,42 +44,22 @@ example:
       of: [L2, Trans]
   annotations:
     marks:
-      - kind: mark_angle
-        a: B
-        vertex: G
-        b: H
+      - kind: mark_angle_pair
+        relation: corresponding
+        vertices: [G, H]
+        rays_along: [B, D]
         group: 1
-      - kind: mark_angle
-        a: D
-        vertex: H
-        b: F
-        group: 1
-      - kind: mark_angle
-        a: H
-        vertex: G
-        b: A
+      - kind: mark_angle_pair
+        relation: alternate_interior
+        vertices: [G, H]
+        rays_along: [A, D]
         group: 2
-      - kind: mark_angle
-        a: G
-        vertex: H
-        b: D
-        group: 2
-      - kind: mark_angle
-        a: B
-        vertex: G
-        b: E
-        group: 3
-      - kind: mark_angle
-        a: C
-        vertex: H
-        b: F
+      - kind: mark_angle_pair
+        relation: alternate_exterior
+        vertices: [G, H]
+        rays_along: [B, C]
         group: 3
 notes:
   - "L1 (through A, B) and L2 (through C, D) are parallel; Trans (through E, F) is the transversal"
-  - "D is placed at (4,2) to lie on L2, giving the standard 'parallel lines AB and CD' naming"
-  - "Transversal guide points (E, F) must be visible: false — only G and H appear as intersection points"
-  - "Angle pairs must mark BOTH intersections with the same group number (one mark_angle at G and one at H per group)"
-  - "Three angle pair types: group 1 = corresponding (B-G-H and D-H-F), group 2 = alternate interior (H-G-A and G-H-D), group 3 = alternate exterior (B-G-E and C-H-F)"
-  - "CRITICAL — alternate interior (group 2): at G use H-G-A, at H use G-H-D (NOT G-H-C). D and C are on opposite sides of the transversal at vertex H. Using C instead of D gives a supplementary angle, not an equal one."
-  - "Alternate exterior (group 3): use C (not D) at vertex H — C is on the opposite side of the transversal from B, matching the exterior angle at G"
-  - "Memory check: corresponding angles (group 1) are on the SAME side of the transversal at each intersection; alternate angles (groups 2, 3) are on OPPOSITE sides."
+  - "mark_angle_pair handles picking the correct ray at each vertex automatically — just name the two intersection vertices (G, H) and any one point on the non-transversal line at each (e.g. B at G, D at H). Do NOT try to pick 'the right side' yourself with plain mark_angle — that is exactly the mistake this op exists to avoid."
+  - "Three relations: corresponding, alternate_interior, alternate_exterior. co_interior (same-side interior) is not supported by mark_angle_pair — those angles are supplementary, not equal."
