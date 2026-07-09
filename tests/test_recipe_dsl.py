@@ -745,3 +745,67 @@ def test_pfas_base_too_few_side_lengths_raises():
             angles=[108.0, 108.0, 108.0, 108.0],
             base=["B","C"], ref_point="R",
         )
+
+
+# ---- Annotation marks ----
+
+def test_mark_angle_pair_parses():
+    from geometry_diagrams.recipe.dsl import MarkAnglePair
+    mark = MarkAnglePair.model_validate({
+        "kind": "mark_angle_pair",
+        "relation": "alternate_interior",
+        "vertices": ["G", "H"],
+        "rays_along": ["A", "D"],
+        "group": 2,
+    })
+    assert mark.vertices == ["G", "H"]
+    assert mark.rays_along == ["A", "D"]
+    assert mark.relation == "alternate_interior"
+
+def test_mark_angle_pair_requires_two_vertices():
+    from geometry_diagrams.recipe.dsl import MarkAnglePair
+    with pytest.raises(ValidationError):
+        MarkAnglePair.model_validate({
+            "kind": "mark_angle_pair",
+            "relation": "corresponding",
+            "vertices": ["G"],
+            "rays_along": ["A", "D"],
+        })
+
+def test_mark_angle_pair_requires_two_rays_along():
+    from geometry_diagrams.recipe.dsl import MarkAnglePair
+    with pytest.raises(ValidationError):
+        MarkAnglePair.model_validate({
+            "kind": "mark_angle_pair",
+            "relation": "corresponding",
+            "vertices": ["G", "H"],
+            "rays_along": ["A"],
+        })
+
+def test_mark_angle_pair_rejects_unknown_relation():
+    from geometry_diagrams.recipe.dsl import MarkAnglePair
+    with pytest.raises(ValidationError):
+        MarkAnglePair.model_validate({
+            "kind": "mark_angle_pair",
+            "relation": "co_interior",
+            "vertices": ["G", "H"],
+            "rays_along": ["A", "D"],
+        })
+
+def test_annotations_accept_mark_angle_pair():
+    """mark_angle_pair must be usable inside annotations.marks, same as mark_angle."""
+    from geometry_diagrams.recipe.dsl import RecipeDSL
+    dsl = RecipeDSL.model_validate({
+        "mode": "grid",
+        "construction": [
+            {"op": "point", "id": "A", "coords": [0, 0]},
+            {"op": "point", "id": "B", "coords": [1, 0]},
+        ],
+        "annotations": {
+            "marks": [
+                {"kind": "mark_angle_pair", "relation": "corresponding",
+                 "vertices": ["A", "B"], "rays_along": ["A", "B"], "group": 1},
+            ],
+        },
+    })
+    assert dsl.annotations.marks[0].kind == "mark_angle_pair"

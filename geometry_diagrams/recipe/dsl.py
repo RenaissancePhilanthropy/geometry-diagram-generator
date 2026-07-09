@@ -849,6 +849,39 @@ class MarkProportional(BaseModel):
     group: Optional[int] = None
 
 
+class MarkAnglePair(BaseModel):
+    """Mark two angles related by a named geometric relation between two vertices
+    (e.g. two lines cut by a transversal, or a triangle side acting as a
+    transversal to a line through the opposite vertex).
+
+    Unlike `mark_angle`, the LLM does NOT pick which specific rays realize the
+    relation — it names the two vertices and, at each vertex, any ONE point on
+    the "other" line through that vertex (`rays_along`). The lowerer defers
+    picking the correct ray direction to a resolver that runs once real
+    coordinates are known, because that choice requires a "which side of the
+    transversal" spatial judgment that LLMs get wrong very consistently even
+    when told the answer explicitly.
+
+    `co_interior` (consecutive/same-side interior angles) is deliberately not
+    supported here — those angles are supplementary, not equal, and need
+    different check semantics than the equal-angle group mechanism this uses.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_angle_pair"] = "mark_angle_pair"
+    relation: Literal["corresponding", "alternate_interior", "alternate_exterior"]
+    vertices: list[str]     # exactly 2 point ids: [v1, v2]
+    rays_along: list[str]   # exactly 2 point ids: any point on the "other" line at v1, then at v2
+    group: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "MarkAnglePair":
+        if len(self.vertices) != 2:
+            raise ValueError("mark_angle_pair: 'vertices' must have exactly 2 point ids")
+        if len(self.rays_along) != 2:
+            raise ValueError("mark_angle_pair: 'rays_along' must have exactly 2 point ids")
+        return self
+
+
 class LabelSegment(BaseModel):
     """Place a text label at the midpoint of a segment."""
     model_config = ConfigDict(extra="forbid")
@@ -916,7 +949,7 @@ class LabelAngle(BaseModel):
 
 
 AnnotationMark = Annotated[
-    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional],
+    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair],
     Field(discriminator="kind")
 ]
 
