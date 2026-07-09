@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import pytest
 
+from geometry_diagrams.facade import query_diagram, query_geometry_diagram
 from geometry_diagrams.ir.ir import DiagramIR, PointFree
 from geometry_diagrams.ir.to_sympy import compile_defs
 
@@ -24,9 +25,6 @@ class TestCompileDefsDeterminism:
         sym2 = compile_defs(diagram)
         assert sym1["P"].x == sym2["P"].x
         assert sym1["P"].y == sym2["P"].y
-
-
-from geometry_diagrams.facade import query_geometry_diagram
 
 
 def _triangle_dsl() -> dict:
@@ -82,9 +80,6 @@ class TestQueryGeometryDiagram:
         result1 = query_geometry_diagram(dsl, "coordinate", {"point": "C"})
         result2 = query_geometry_diagram(dsl, "coordinate", {"point": "C"})
         assert result1 == result2
-
-
-from geometry_diagrams.facade import query_diagram
 
 
 class TestQueryDiagramTool:
