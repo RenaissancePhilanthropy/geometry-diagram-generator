@@ -11,12 +11,19 @@ Output JSON only:
 {"is_geometry_request": true|false, "selected_recipes": ["recipe_id", ...], "unmatched_concepts": ["concept", ...]}
 
 Rules:
-- "is_geometry_request": whether the user is actually asking for a geometric diagram to be drawn. \
-Decide this from the substance of the request — what shape, figure, or construction they want depicted — \
-not from surface wording. In particular, "recipe" and similar words in the catalog above are this system's \
-own internal vocabulary for naming its construction templates; a user request that happens to contain \
-"recipe" (or another catalog word) in its ordinary, non-geometric sense (e.g. a cooking recipe) is NOT a \
-geometry request just because the word matches. Judge intent, not vocabulary overlap.
+- "is_geometry_request": whether the request centers on a geometric figure — a shape, angle, circle, \
+triangle, polygon, or set of coordinate points — that a diagram could depict, REGARDLESS of whether the \
+request is phrased as "draw this" or as a numeric word problem to solve. Numeric formula-application \
+problems ("the radius is 15 ft, find the arc length", "solve for the midpoint of BC", "use a tangent \
+ratio to find the unknown side", "use sin²θ+cos²θ=1 to find cos θ") are geometry requests: they reference \
+a concrete geometric object (circle, triangle, coordinate segment) with properties that can be depicted, \
+even though the question asks for a number rather than literally saying "draw" or "diagram." Only mark \
+false for requests with no depictable geometric object at all — abstract proofs with no figure, pure \
+probability/algebra word problems, or requests unrelated to geometry entirely. \
+Separately, "recipe" and similar words in the catalog above are this system's own internal vocabulary for \
+naming its construction templates; a user request that happens to contain "recipe" (or another catalog \
+word) in its ordinary, non-geometric sense (e.g. a cooking recipe) is NOT a geometry request just because \
+the word matches. Judge intent and subject matter, not phrasing or vocabulary overlap.
 - "selected_recipes": IDs of relevant recipes. 0–3 is ideal; include more only if clearly applicable. \
 Each ID must exactly match a catalog entry. Leave empty when is_geometry_request is false.
 - "unmatched_concepts": geometric concepts present in the request that no catalog recipe covers. \
