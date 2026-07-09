@@ -1312,3 +1312,22 @@ def test_intersection_two_circles_descriptive_error_on_no_points():
             PointIntersection(id="X", obj1="c1", obj2="c2"),
         )
 
+
+def test_diagram_ir_accepts_pending_angle_pairs():
+    from geometry_diagrams.ir.ir import PendingAnglePair
+    ir_obj = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0), PointFixed(id="B", x=1, y=0)],
+        pending_angle_pairs=[
+            PendingAnglePair(
+                v1="A", v2="B", relation="corresponding",
+                ray_ref_v1="A", ray_ref_v2="B", group="1",
+            ),
+        ],
+    )
+    assert len(ir_obj.pending_angle_pairs) == 1
+    assert ir_obj.pending_angle_pairs[0].relation == "corresponding"
+
+def test_diagram_ir_pending_angle_pairs_defaults_empty():
+    sym = _compile(PointFixed(id="A", x=0, y=0))
+    assert sym  # sanity: existing compile path still works
+

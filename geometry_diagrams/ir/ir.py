@@ -609,6 +609,23 @@ class AngleEqual(CheckBase):
     a2: AngleSpec
 
 
+class PendingAnglePair(BaseModel):
+    """Unresolved mark_angle_pair annotation. Lowering emits this because it
+    cannot compute real coordinates (that's SymPy's job, done later); a
+    post-compile resolver (geometry_diagrams/ir/angle_pairs.py) replaces each
+    entry with concrete MarkAngles render ops once coordinates are known.
+    Never reaches a renderer directly — it lives in its own DiagramIR field,
+    not in `render` or `checks`, so it can't accidentally leak into rendering."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["pending_angle_pair"] = "pending_angle_pair"
+    v1: PointId
+    v2: PointId
+    relation: Literal["corresponding", "alternate_interior", "alternate_exterior"]
+    ray_ref_v1: PointId
+    ray_ref_v2: PointId
+    group: Optional[str] = None
+
+
 class SimilarTriangles(CheckBase):
     kind: Literal["similar_triangles"] = "similar_triangles"
     t1: TriangleId
@@ -829,5 +846,6 @@ class DiagramIR(BaseModel):
     define: List[DefStmt]
     checks: List[Check] = Field(default_factory=list)
     render: List[RenderOp] = Field(default_factory=list)
+    pending_angle_pairs: List[PendingAnglePair] = Field(default_factory=list)
 
     styles: Dict[str, Dict[str, Union[str, int, float, bool]]] = Field(default_factory=dict)
