@@ -426,6 +426,24 @@ distance from segment[0].
 - auto_label_points: true (default) — label all named points
 - auto_mark_right_angles: false (default) — add right-angle marks
 
+### mark_angle_pair — corresponding/alternate angles at a transversal (PREFER over mark_angle for this)
+  {"kind":"mark_angle_pair", "relation":"alternate_interior", "vertices":["G","H"],
+   "rays_along":["A","D"], "group":2}
+  For "two lines cut by a transversal" (or a triangle side acting as a transversal
+  to a line through the opposite vertex): give the two vertices where the
+  transversal crosses the lines, and — at EACH vertex — any ONE point on the
+  OTHER line through that vertex. You do NOT need to figure out which specific
+  ray is "the same side" or "opposite side" — the lowerer computes that from
+  real coordinates. Just name a real point on each of the two non-transversal
+  lines; either point on that line works, the resolver picks the correct
+  direction automatically.
+  relation: "corresponding" | "alternate_interior" | "alternate_exterior"
+  (co_interior/same-side-interior is NOT supported here — those angles are
+  supplementary, not equal; use two separate label_angle entries instead.)
+  Use the SAME group number on a "corresponding"/"alternate_interior"/
+  "alternate_exterior" pair to tick-mark them as equal — do NOT also add
+  mark_angle entries for the same angles; mark_angle_pair already emits both.
+
 ### annotations.labels — explicit text callouts
   {"kind":"label_segment", "endpoints":["A","B"], "text":"c"}
       Text beside midpoint of segment AB (side lengths, etc.)
