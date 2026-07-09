@@ -82,3 +82,14 @@ class TestQueryGeometryDiagram:
         result1 = query_geometry_diagram(dsl, "coordinate", {"point": "C"})
         result2 = query_geometry_diagram(dsl, "coordinate", {"point": "C"})
         assert result1 == result2
+
+
+from geometry_diagrams.facade import query_diagram
+
+
+class TestQueryDiagramTool:
+    def test_tool_matches_plain_function_output(self):
+        dsl = _triangle_dsl()
+        direct = query_geometry_diagram(dsl, "coordinate", {"point": "B"})
+        via_tool = query_diagram.invoke({"dsl": dsl, "query_type": "coordinate", "params": {"point": "B"}})
+        assert via_tool == direct

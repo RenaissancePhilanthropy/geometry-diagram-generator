@@ -148,6 +148,30 @@ async def render_diagram(prompt: str) -> str:
         return json.dumps({"error": str(exc)})
 
 
+@tool
+def query_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:
+    """Query geometric properties of a diagram from its DSL (no LLM call).
+
+    Args:
+        dsl: A dsl dict from a prior render_diagram/DiagramResult.dsl.
+        query_type: One of "list_objects", "coordinate", "distance", "angle",
+            "length", "radius", "area", "perimeter".
+        params: Query arguments:
+            - "list_objects": {}
+            - "coordinate": {"point": "A"}
+            - "distance": {"a": "A", "b": "B"}
+            - "angle": {"a": "A", "vertex": "B", "b": "C"}
+            - "length": {"segment": "seg_AB"}
+            - "radius": {"circle": "circ"}
+            - "area": {"object": "tri_ABC"}
+            - "perimeter": {"object": "tri_ABC"}
+            Call list_objects first to see valid IDs.
+    Returns:
+        JSON string with the query result, or {"error": "..."} on failure.
+    """
+    return query_geometry_diagram(dsl, query_type, params)
+
+
 async def edit_geometry_diagram(
     prompt: str,
     previous_dsl: dict,
