@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import math
+import operator
 from graphlib import CycleError, TopologicalSorter
 from random import Random
 from typing import Any
@@ -591,9 +593,70 @@ def _eval_expr(
     if sym is not None:
         locals_map.update(sym)
     try:
-        return sp.sympify(raw, locals=locals_map)
+        tree = ast.parse(raw, mode="eval")
+    except SyntaxError as exc:
+        raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
+    try:
+        return sp.S(_safe_eval_node(tree.body, locals_map, def_id=def_id, raw=raw))
+    except ExprEvalError:
+        raise
     except Exception as exc:
         raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
+
+
+# Expression-string evaluation is deliberately NOT done via sp.sympify(raw,
+# locals=...): sympify compiles the string into a Python expression and
+# eval()s it against a namespace that still exposes builtins (e.g.
+# __import__), so an attacker-controlled string like
+# "__import__('os').popen('...').read()" executes arbitrary code. Instead we
+# walk a restricted AST ourselves, allowing only arithmetic, numeric
+# literals, name lookups against locals_map, and calls to functions already
+# present in locals_map (length/radius/angle/sqrt) — no attribute access,
+# subscripting, or import machinery is reachable.
+_SAFE_BINOPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.Mod: operator.mod,
+}
+_SAFE_UNARYOPS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+
+def _safe_eval_node(node: ast.AST, locals_map: dict[str, Any], *, def_id: str, raw: str) -> Any:
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: unsupported literal {node.value!r}")
+        return sp.S(node.value)
+    if isinstance(node, ast.Name):
+        if node.id in locals_map:
+            return locals_map[node.id]
+        raise ExprEvalError(def_id, f"could not evaluate {raw!r}: unknown identifier {node.id!r}")
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_BINOPS:
+        left = _safe_eval_node(node.left, locals_map, def_id=def_id, raw=raw)
+        right = _safe_eval_node(node.right, locals_map, def_id=def_id, raw=raw)
+        return _SAFE_BINOPS[type(node.op)](left, right)
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_UNARYOPS:
+        operand = _safe_eval_node(node.operand, locals_map, def_id=def_id, raw=raw)
+        return _SAFE_UNARYOPS[type(node.op)](operand)
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name):
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: unsupported call target")
+        if node.keywords:
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: keyword arguments not supported")
+        func_name = node.func.id
+        func = locals_map.get(func_name)
+        if func is None or not callable(func):
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: unknown function {func_name!r}")
+        args = [_safe_eval_node(a, locals_map, def_id=def_id, raw=raw) for a in node.args]
+        return func(*args)
+    raise ExprEvalError(
+        def_id, f"could not evaluate {raw!r}: unsupported syntax ({type(node).__name__})"
+    )
 
 
 def _parse_between_ratio(ratio: float | str | None) -> float:
