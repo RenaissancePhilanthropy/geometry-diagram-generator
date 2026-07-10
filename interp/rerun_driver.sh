@@ -23,9 +23,12 @@
 set -u
 cd /root/geo || exit 1
 export HF_HOME=/root/.hf
-PY=/venv/main/bin/python
+PY="${PY:-/venv/main/bin/python}"
 N=150; SAMPLES=5; MAXTOK=3072
 BENCHES="mmlu_pro math gpqa"
+# Multi-GPU: pass a model subset per invocation, pinned via CUDA_VISIBLE_DEVICES, e.g.
+#   CUDA_VISIBLE_DEVICES=0 bash interp/rerun_driver.sh qwen36            # the long pole
+#   CUDA_VISIBLE_DEVICES=1 bash interp/rerun_driver.sh gemma4 glm mistral
 
 echo "=== preflight: GPQA gate ==="
 $PY - <<'PY'
@@ -61,25 +64,25 @@ qa () {  # $1=model $2=short $3=think-flag
 M_GEMMA="google/gemma-4-26B-A4B-it"; M_QWEN="Qwen/Qwen3.6-27B"
 M_GLM="zai-org/GLM-4.7-Flash";       M_MISTRAL="mistralai/Mistral-Small-24B-Instruct-2501"
 
-echo "===== gemma4 (QA)  $(date +%F_%H:%M) ====="
-dl "$M_GEMMA" && qa "$M_GEMMA" "gemma4" ""; free_if_tight "$M_GEMMA"
+run_gemma4 ()  { echo "===== gemma4 (QA)  $(date +%F_%H:%M) ====="
+                 dl "$M_GEMMA" && qa "$M_GEMMA" "gemma4" ""; free_if_tight "$M_GEMMA"; }
+run_qwen36 ()  { echo "===== qwen36 (QA + geometry)  $(date +%F_%H:%M) ====="
+  dl "$M_QWEN" && {
+    qa "$M_QWEN" "qwen36" "--per-turn-think"
+    echo "----- qwen36 geometry (91x4, full-n)  $(date +%H:%M) -----"
+    $PY interp/capture_temporal.py --device cuda --model "$M_QWEN" \
+        --n 91 --samples 4 --per-turn-think --max-new-tokens $MAXTOK --keep-positions entities \
+        --out-dir /root/geo/interp/activations/fix_qwen36_temporal 2>&1 \
+        | grep -vE "Loading weights|it/s\]" | tail -45
+  }; free_if_tight "$M_QWEN"; }
+run_glm ()     { echo "===== glm (QA)  $(date +%F_%H:%M) ====="
+                 dl "$M_GLM" && qa "$M_GLM" "glm" "--per-turn-think"; free_if_tight "$M_GLM"; }
+run_mistral () { echo "===== mistral (QA)  $(date +%F_%H:%M) ====="
+                 dl "$M_MISTRAL" && qa "$M_MISTRAL" "mistral" ""; free_if_tight "$M_MISTRAL"; }
 
-# Qwen3.6: QA + full-n geometry back-to-back so the download is shared.
-echo "===== qwen36 (QA + geometry)  $(date +%F_%H:%M) ====="
-dl "$M_QWEN" && {
-  qa "$M_QWEN" "qwen36" "--per-turn-think"
-  echo "----- qwen36 geometry (91x4, full-n)  $(date +%H:%M) -----"
-  $PY interp/capture_temporal.py --device cuda --model "$M_QWEN" \
-      --n 91 --samples 4 --per-turn-think --max-new-tokens $MAXTOK --keep-positions entities \
-      --out-dir /root/geo/interp/activations/fix_qwen36_temporal 2>&1 \
-      | grep -vE "Loading weights|it/s\]" | tail -45
-}; free_if_tight "$M_QWEN"
-
-echo "===== glm (QA)  $(date +%F_%H:%M) ====="
-dl "$M_GLM" && qa "$M_GLM" "glm" "--per-turn-think"; free_if_tight "$M_GLM"
-
-echo "===== mistral (QA)  $(date +%F_%H:%M) ====="
-dl "$M_MISTRAL" && qa "$M_MISTRAL" "mistral" ""; free_if_tight "$M_MISTRAL"
+MODELS=("$@")
+[ ${#MODELS[@]} -eq 0 ] && MODELS=(gemma4 qwen36 glm mistral)
+for m in "${MODELS[@]}"; do "run_$m"; done
 
 # Optional RLHF-attribution arm (review Tier-2d): a BASE model would tell us whether the
 # knowing-vs-saying gap is an RLHF artifact. NOT enabled: base checkpoints have no chat
