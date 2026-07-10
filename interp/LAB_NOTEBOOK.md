@@ -243,6 +243,18 @@ knowing–saying gap as a crisp headline. **Weaknesses, ranked by threat:**
    knowing–saying dissociation *by domain*; own-output correctness (not truth of a given statement)
    at a content-neutral read site, ×4 architectures.
 
+   **[Added 2026-07-10] Anthropic's Global Workspace / Jacobian-lens** (*"Verbalizable
+   Representations Form a Global Workspace in Language Models"*, 2026;
+   github.com/anthropics/jacobian-lens) is the closest neighboring result: their J-lens finds
+   "bug detection before identification" — knowing-without-saying, in their domain. Two uses for
+   us (task #16): (a) **mechanistic hypothesis for WHY verbalization fails** — information is
+   reportable iff it enters the workspace; prediction: on MATH failures the correctness signal
+   exists (probe) but does not enter J-space, hence unreportable; (b) **a fourth, zero-shot
+   readout leg** — fit the lens once per model (GPU), then score failure-words offline on our
+   *saved* decision-token activations (lens = unembed(J_l·h)); if an unsupervised readout matches
+   the supervised probe, probe-overfitting critiques die. Bonus: J_lᵀ·W_U["wrong"] is a
+   **label-free steering direction** for the gap-closing demo.
+
 **The groundbreaking path:** close the knowing–saying gap **causally** — steer the probe direction
 at the confidence decision token on MATH and show verbalized calibration jumps (target 0.66→~0.85)
 *without changing the answers* (specificity control), dose-responsive, random-direction-controlled,
@@ -297,6 +309,59 @@ probe transfer — zero GPU, data in hand); (b) **probe > logprob** (needs the r
    answers are more often wrong) may contribute — and within-question cannot fully exclude it
    (attempts differ exactly in answer text). **The Tier-3 steering test is the discriminator.**
    (QA surface features are also right-censored: stored answers truncate at 200 chars.)
+
+### 2026-07-10 — Talk narrative draft (motivation / setup / strategy) — seeds the results deck
+
+*Draft intro for the HTML results deck; edit freely. The three sections below are the first
+three slide groups.*
+
+**MOTIVATION — do models know when they're wrong?**
+Language models fail confidently. Ask one for its confidence and you'll usually hear "95" —
+right or wrong. The deployment question is whether that's the whole story: a model that *errs*
+is a fact of life, but a model that errs *and knows it* is deployable — it can abstain, retry,
+or escalate exactly when needed. So the question splits in two:
+1. **Do models know?** Is there an internal signal of "this answer is wrong" at all?
+2. **Do they say it?** If the knowledge exists but the stated confidence doesn't carry it,
+   that gap — *knowing vs saying* — is both recoverable signal (a free safety margin nobody
+   is using) and a scientific finding about machine introspection.
+Psychology makes a distinction we borrow: *prospective* metacognition ("will I get this
+right?" — feeling-of-knowing, before attempting) vs *retrospective* ("did I get it right?").
+Nobody had measured both, cleanly, inside open LLMs.
+Origin story (one slide): this grew out of a geometry-diagram pipeline whose compiler gives
+**exact, machine-checkable correctness** — the rare ground-truth label you can fully trust.
+That grader seeded the probe program; we then generalized to standard benchmarks.
+
+**SETUP — the 3-turn temporal protocol.**
+For each problem, three turns: ① *"how confident are you that you'll get this right?"* —
+answer with one line, `Confidence: N` ② solve the problem (reasoning allowed here, and only
+here) ③ *"how confident are you that your answer is correct?"*. Grading is **external and
+never shown to the model** — so any confidence drop after a failure is *blind*
+self-assessment, not feedback.
+What we record per attempt: the two stated numbers; the **residual stream at a
+content-neutral read site** (the token that *generates* the confidence number — same local
+context every time, so layer-0 decodes at chance and anything deeper is computed);
+the model's own **output-distribution confidence** (P(True), answer log-probs); and the
+external grade. Scale: **4 architectures** (hybrid-Mamba, MoE, dense, MoE-VLM) × **4 domains**
+(geometry construction, MMLU-Pro, MATH, GPQA) × 750 attempts/cell, 5 samples per question.
+
+**STRATEGY — a ladder of increasingly hard-to-fake claims.**
+Each rung kills a specific deflationary explanation:
+1. *Decodable* — a linear probe reads correctness from the residual stream. (Could be anything.)
+2. *Beyond difficulty* — holds **within-question**: same question, multiple attempts, the probe
+   separates the successful ones. Kills "it just knows which questions are hard."
+3. *Beyond surface* — survives answer-length/shape controls and a content-neutral read site.
+   Kills "it's reading output artifacts."
+4. *Beyond the output distribution* — the race vs **P(True)** and answer log-probs
+   (Kadavath-style). Kills "the logits already tell you this" — the novelty-deciding rung.
+5. *Causal* — steering the direction moves what the model *says* (dose-response, random-direction
+   and answer-invariance controls); amplifying its own signal should close the knowing–saying
+   gap with no labels. Kills "decodable but epiphenomenal."
+6. *Mechanistic* (opening) — does the correctness signal enter the **global workspace**
+   (J-lens)? A candidate answer to *why* verbalization fails.
+Two process principles worth a slide: **metacognition is failure-hungry** (benchmarks chosen
+by the model's error rate, not popularity — ceiling'd GSM8K/MedQA dropped), and **the controls
+found real bugs** (grader false-negatives, a prompt-wording leak → caught, fixed, re-run —
+the deviations log is a feature, not an embarrassment).
 
 ---
 
