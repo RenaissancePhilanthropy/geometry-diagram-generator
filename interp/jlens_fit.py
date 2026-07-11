@@ -33,6 +33,11 @@ if str(REPO) not in sys.path:
 FAIL_WORDS = ["wrong", "incorrect", "error", "mistake", "false", "flawed"]
 OK_WORDS = ["correct", "right", "true", "valid", "accurate"]
 DIGITS = [str(i) for i in range(10)]
+# Geometry-domain vocabulary: enables (a) mid-construction thought-trajectories on the
+# geometry cells' task_acts (entity-token snapshots) and (b) a zero-shot replication of
+# the supervised entity_relation probe ("is it thinking 'midpoint' at point M?").
+GEO_WORDS = ["perpendicular", "parallel", "midpoint", "circle", "tangent", "angle",
+             "triangle", "segment", "intersection", "bisector", "radius", "vertex"]
 
 
 def first_token_ids(tok, word):
@@ -126,8 +131,20 @@ def main() -> None:
 
     # ---- fit or load ------------------------------------------------------
     if args.skip_fit and lens_path.exists():
-        lens = jlens.JacobianLens.from_pretrained(str(lens_path.parent), filename=lens_path.name)
-        print(f"loaded {lens_path}")
+        lens = None
+        for loader in (lambda: jlens.JacobianLens.from_pretrained(str(lens_path.parent),
+                                                                  filename=lens_path.name),
+                       lambda: jlens.JacobianLens.load(str(lens_path)),
+                       lambda: torch.load(str(lens_path), map_location="cpu",
+                                          weights_only=False)):
+            try:
+                lens = loader()
+                break
+            except Exception as e:  # noqa: BLE001
+                print(f"  (loader failed: {type(e).__name__}: {e})")
+        if lens is None:
+            raise SystemExit(f"could not load {lens_path} with any known loader")
+        print(f"loaded {lens_path} ({type(lens).__name__})")
     else:
         lens = jlens.fit(jmodel, prompts=prompts, checkpoint_path=str(out / f"ckpt_{args.short}.pt"))
         lens.save(str(lens_path))
@@ -150,7 +167,7 @@ def main() -> None:
         print(f"  using single candidate '{k}' for all layers")
         J = v.detach().float().cpu().unsqueeze(0).expand(int(nl) + 1, d_model, d_model)
 
-    words = FAIL_WORDS + OK_WORDS + DIGITS
+    words = FAIL_WORDS + OK_WORDS + DIGITS + GEO_WORDS
     u_rows = []
     for w in words:
         ids = first_token_ids(tok, w)
@@ -192,6 +209,7 @@ def main() -> None:
     np.savez_compressed(out / f"jlens_readouts_{args.short}.npz",
                         R=R.numpy().astype(np.float32), words=np.array(words),
                         n_fail=len(FAIL_WORDS), n_ok=len(OK_WORDS),
+                        n_digits=len(DIGITS), n_geo=len(GEO_WORDS),
                         model=args.model, corpus=args.corpus)
     print(f"saved {out / f'jlens_readouts_{args.short}.npz'} "
           f"({(R.numel() * 4) / 1e6:.0f}MB) — rsync this home; lens.pt stays for steering")

@@ -42,15 +42,21 @@ def main() -> None:
     ap.add_argument("--act-root", default="interp/activations")
     ap.add_argument("--site", choices=("post", "prompt"), default="post",
                     help="post = post-confidence decision token; prompt = clean pre-task read")
+    ap.add_argument("--trajectory", action="store_true",
+                    help="geometry cells: score the mid-construction task_acts snapshots — "
+                         "failure-drift over construction progress + geo-word readouts")
     args = ap.parse_args()
 
     z = np.load(args.readouts, allow_pickle=True)
     R, words = z["R"], [str(w) for w in z["words"]]          # [W, L, D]
     n_fail, n_ok = int(z["n_fail"]), int(z["n_ok"])
+    n_dig = int(z["n_digits"]) if "n_digits" in z else 10
     W, L, D = R.shape
     fail_R = R[:n_fail].mean(0)                              # [L, D]
     ok_R = R[n_fail:n_fail + n_ok].mean(0)
-    dig_R = R[n_fail + n_ok:]                                # [10, L, D]
+    dig_R = R[n_fail + n_ok:n_fail + n_ok + n_dig]           # [10, L, D]
+    geo_R = R[n_fail + n_ok + n_dig:]                        # [G, L, D] (may be empty)
+    geo_words = words[n_fail + n_ok + n_dig:]
     idx = {"0": 0, "e": int(round(0.15 * (L - 1))), "f": int(round(0.7 * (L - 1)))}
     print(f"readouts: {args.readouts} | {W} words x {L} layers x d={D} | "
           f"corpus={z['corpus']} | site={args.site}")
@@ -89,15 +95,19 @@ def main() -> None:
         dconf = p @ np.arange(10)
         row["digit_conf_auroc"] = _auroc(dconf[hasf], y[hasf])
 
-        # the race on identical records
+        # the race on identical records (P(True) only exists on fix_* QA cells —
+        # geometry/legacy cells race without it)
         Xf = np.asarray(arr[f"{key}f"], np.float32)
-        m = hasf & ~np.isnan(pt) & ~np.isnan(vc)
+        m = hasf & ~np.isnan(vc)
+        if not np.isnan(pt).all():
+            m &= ~np.isnan(pt)
         s, _ = oof_scores(np.nan_to_num(Xf[m]), y[m], g[m])
         ok_s = ~np.isnan(s)
+        pt_m = pt[m][ok_s]
         row.update(n=int(m.sum()), pass_rate=float(y[m].mean()),
                    verbalized=_auroc(vc[m][ok_s], y[m][ok_s]),
                    probe=_auroc(s[ok_s], y[m][ok_s]),
-                   p_true=_auroc(pt[m][ok_s], y[m][ok_s]),
+                   p_true=_auroc(pt_m, y[m][ok_s]) if not np.isnan(pt_m).all() else float("nan"),
                    jlens=_auroc(-jlf[m][ok_s], y[m][ok_s]))
         wq_j, nq = within_q(-jlf[m][ok_s], y[m][ok_s], g[m][ok_s])
         wq_p, _ = within_q(s[ok_s], y[m][ok_s], g[m][ok_s])
@@ -110,6 +120,56 @@ def main() -> None:
         print(f"  jlens/layer: L0={f3(row['jlens_auroc_L0'])}  early={f3(row['jlens_auroc_Le'])}  "
               f"fix={f3(row['jlens_auroc_Lf'])}   digit-conf={f3(row['digit_conf_auroc'])}")
         print(f"  within-q  : jlens={f3(wq_j)}  probe={f3(wq_p)}  (n_mixed={nq})")
+
+    # --- trajectory mode: mid-construction thought-tracking (geometry cells) --------
+    if args.trajectory:
+        drift_vec = fail_R - ok_R                             # [L, D]
+        BINS = 5
+        for cell in args.cells:
+            d = pathlib.Path(args.act_root) / cell
+            if not (d / "meta.jsonl").exists():
+                continue
+            meta = [json.loads(l) for l in (d / "meta.jsonl").read_text().splitlines()]
+            curves = {0: [], 1: []}                          # ok -> list of binned drifts
+            last_drift, ys = [], []
+            shown = 0
+            for r in meta:
+                f = d / f"{r['pid']}.npz"
+                if not f.exists():
+                    continue
+                zz = np.load(f)
+                if "task_acts" not in zz:
+                    continue
+                A = zz["task_acts"].astype(np.float32)        # [L, P, D]
+                if A.shape[0] != L or A.shape[2] != D or A.shape[1] < 3:
+                    continue
+                lf = int(round(0.7 * (L - 1)))
+                drift = A[lf] @ drift_vec[lf]                 # [P] failure-disposition
+                y = 1 if r["grade"]["ok"] else 0
+                pos = np.linspace(0, 1, len(drift))
+                binned = [float(drift[(pos >= b / BINS) & (pos < (b + 1) / BINS + 1e-9)].mean())
+                          if ((pos >= b / BINS) & (pos < (b + 1) / BINS + 1e-9)).any() else np.nan
+                          for b in range(BINS)]
+                curves[y].append(binned)
+                last_drift.append(float(drift[-1])); ys.append(y)
+                if shown < 2 and len(geo_words) and not y:    # qualitative geo-word peek
+                    tops = [geo_words[int(np.argmax(geo_R[:, lf, :] @ A[lf, p]))]
+                            for p in range(min(5, A.shape[1]))]
+                    print(f"  [peek] {r['pid']} (FAIL) first-entity geo-thoughts: {tops}")
+                    shown += 1
+            if not (curves[0] and curves[1]):
+                print(f"\n--- TRAJECTORY {cell}: insufficient task_acts / single-class — skip")
+                continue
+            c_ok = np.nanmean(np.array(curves[1], float), 0)
+            c_fail = np.nanmean(np.array(curves[0], float), 0)
+            gap = c_fail - c_ok
+            print(f"\n--- TRAJECTORY {cell} (fail n={len(curves[0])}, ok n={len(curves[1])}) ---")
+            print("  construction progress:   " + "  ".join(f"{(b+0.5)/BINS:.0%}" for b in range(BINS)))
+            print("  fail-minus-ok drift  : " + "  ".join(f"{g:+.2f}" for g in gap))
+            print(f"  last-entity drift -> fail AUROC: "
+                  f"{_auroc(np.array(last_drift)[np.array(ys) >= 0], 1 - np.array(ys)):.3f}")
+            results[f"trajectory_{cell}"] = {"gap_by_bin": [float(g) for g in gap],
+                                             "n_fail": len(curves[0]), "n_ok": len(curves[1])}
 
     outp = pathlib.Path(args.act_root) / "jlens_score.json"
     outp.write_text(json.dumps(results, indent=2, default=float))
