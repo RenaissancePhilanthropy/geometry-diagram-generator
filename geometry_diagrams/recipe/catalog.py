@@ -303,6 +303,22 @@ is invalid; the segment between A and C is always side_CA.
   none of them create their point arguments; all of them require the points to
   already exist.
 - angle_bisector: {op, id, vertex, ray1_toward, ray2_toward}
+  Produces only a direction — an infinite line through vertex — with no natural endpoint of its own.
+  ray1_toward and ray2_toward must be two points on TWO DIFFERENT rays; passing two points from the
+  same ray collapses the "bisector" onto that ray (one half of the bisected angle measures 0°).
+  To get a finite, drawable bisector ray/segment (e.g. when there is no triangle providing an opposite
+  side to intersect with), connect ray1_toward and ray2_toward with a segment and intersect the
+  bisector line with THAT segment using a "between" selector — this point always exists as long as
+  ray1_toward/ray2_toward are genuine points on their rays (not the vertex itself):
+    {op:"angle_bisector", id:"bis", vertex:"P", ray1_toward:"A", ray2_toward:"B"}
+    {op:"segment", id:"chord_AB", endpoints:["A","B"], visible:false}
+    {op:"intersection", id:"D", of:["bis","chord_AB"], selector:{"kind":"between","a":"A","b":"B"}}
+  Never intersect the bisector with one of the original rays (or their defining lines/segments) to
+  find an endpoint — two distinct lines through the same vertex only ever meet AT the vertex, so
+  that intersection either fails outright or silently returns the vertex itself.
+  Never use point_along to place a point directly on the bisector line — point_along requires an
+  already-existing point in the target direction, and the bisector has none until the intersection
+  step above creates one.
 - centroid: {op, id, of:<triangle_id>}
 - median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
 - polygon_exterior: {op, id, base:[P,Q], ref_point, n, vertices:[v2,...]}

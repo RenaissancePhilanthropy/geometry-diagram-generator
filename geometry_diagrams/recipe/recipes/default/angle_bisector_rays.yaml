@@ -1,0 +1,48 @@
+name: angle_bisector_rays
+description: "Bisector of a standalone angle formed by two rays from a vertex (no triangle involved)"
+tags: [angle, bisector, ray, basic]
+context: "Given an angle with vertex P and two rays through points A and B (no triangle)."
+setup: []
+example:
+  mode: abstract
+  construction:
+    - op: point
+      id: P
+      coords: [0, 0]
+    - op: point
+      id: A
+      coords: [4, 0]
+    - op: point
+      id: B
+      coords: [3, 3]
+    - op: segment
+      id: ray_PA
+      endpoints: [P, A]
+    - op: segment
+      id: ray_PB
+      endpoints: [P, B]
+    - op: angle_bisector
+      id: bis
+      vertex: P
+      ray1_toward: A
+      ray2_toward: B
+      visible: false
+    - op: segment
+      id: chord_AB
+      endpoints: [A, B]
+      visible: false
+    - op: intersection
+      id: D
+      of: [bis, chord_AB]
+      selector:
+        kind: between
+        a: A
+        b: B
+    - op: segment
+      id: bis_ray
+      endpoints: [P, D]
+notes:
+  - "The angle_bisector op only produces a direction (an infinite line through the vertex); it has no natural endpoint of its own. To get a finite, drawable bisector ray, connect the two ray-defining points (A and B here) with a segment and intersect the bisector line with THAT segment using a 'between' selector — this point always exists as long as A and B are genuine points on their respective rays (not the vertex itself)."
+  - "Never try to find the bisector's endpoint by intersecting it with one of the two original rays (or their defining lines/segments) — two distinct lines through the same vertex only ever meet AT the vertex, so that intersection either fails outright or silently returns the vertex, which then makes one 'half' of the bisected angle measure 0°."
+  - "Never use point_along to place a point directly on the bisector line — point_along requires an already-existing point in the target direction to compute a unit vector, and the bisector line has no such point until after this intersection step creates one (D)."
+  - "ray1_toward and ray2_toward must be two distinct points that each lie on a DIFFERENT one of the two rays — accidentally passing two points from the same ray collapses the 'bisector' onto that ray."
