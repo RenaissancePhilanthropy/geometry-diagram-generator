@@ -98,6 +98,46 @@ def test_triangle_spec_right_angle_at_invalid_slot_raises():
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"right_angle_at": "D", "side_AB": 3, "side_BC": 4})
 
+def test_triangle_spec_accepts_real_vertex_letter_side_aliases():
+    """A second triangle whose vertices aren't literally A/B/C (e.g. D/E/F)
+    is often keyed by the model using its own real vertex letters
+    (side_DE/side_EF/side_FD) instead of the positional side_AB/side_BC/side_CA
+    slots — these should be accepted as aliases for the positional slots."""
+    op = TriangleOp(id="T2", vertices=["D", "E", "F"],
+                     spec={"side_DE": 3, "side_EF": 4, "side_FD": 5})
+    assert op.spec.side_AB == 3.0
+    assert op.spec.side_BC == 4.0
+    assert op.spec.side_CA == 5.0
+
+def test_triangle_spec_accepts_reversed_real_vertex_letter_side_aliases():
+    """Reversed real-vertex-letter pairs (side_ED instead of side_DE) are
+    also accepted, mirroring the literal A/B/C reversed-pair handling."""
+    op = TriangleOp(id="T2", vertices=["D", "E", "F"],
+                     spec={"side_ED": 3, "side_FE": 4, "side_DF": 5})
+    assert op.spec.side_AB == 3.0
+    assert op.spec.side_BC == 4.0
+    assert op.spec.side_CA == 5.0
+
+def test_triangle_spec_real_vertex_letter_alias_does_not_override_canonical_key():
+    op = TriangleOp(id="T2", vertices=["D", "E", "F"],
+                     spec={"side_AB": 3, "side_DE": 99, "side_BC": 4, "side_CA": 5})
+    assert op.spec.side_AB == 3.0
+
+def test_triangle_spec_accepts_real_vertex_letter_angle_aliases():
+    """angle_D/angle_E/angle_F are accepted as aliases for angle_A/angle_B/angle_C
+    for a triangle with vertices D/E/F, mirroring the side-key normalization."""
+    op = TriangleOp(id="T2", vertices=["D", "E", "F"],
+                     spec={"angle_D": 60, "angle_E": 70, "side_DE": 3})
+    assert op.spec.angle_A == 60.0
+    assert op.spec.angle_B == 70.0
+
+def test_triangle_spec_accepts_real_vertex_letter_right_angle_at():
+    """right_angle_at given as one of the triangle's own vertex letters
+    (e.g. 'D' for vertices D/E/F) is normalized to the positional slot."""
+    op = TriangleOp(id="T2", vertices=["D", "E", "F"],
+                     spec={"right_angle_at": "D", "side_DE": 3, "side_EF": 4})
+    assert op.spec.right_angle_at == "A"
+
 def test_circle_op_radius():
     op = CircleOp(id="c", center="O", radius=5)
     assert op.op == "circle"

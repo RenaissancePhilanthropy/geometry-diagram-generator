@@ -120,6 +120,49 @@ class TriangleOp(DSLOpBase):
     spec: TriangleSpec
     center: Optional[list[float]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_spec_keys_to_positional_slots(cls, data: Any) -> Any:
+        """Accept side_/angle_ keys (and right_angle_at) written using this op's
+        OWN vertex letters as aliases for the positional A/B/C slots — a model
+        very often infers it should key constraints by the triangle's real
+        vertex names rather than the schema's positional slots, especially for
+        a second or third triangle in the same construction whose vertices
+        aren't literally A, B, C (e.g. vertices ["D","E","F"] with side_DE
+        instead of side_AB)."""
+        if not isinstance(data, dict) or "vertices" not in data or "spec" not in data:
+            return data
+        vertices = data["vertices"]
+        spec = data["spec"]
+        if not (isinstance(vertices, list) and len(vertices) == 3 and isinstance(spec, dict)):
+            return data
+        v0, v1, v2 = vertices
+        spec = dict(spec)
+
+        side_pairs = [("side_AB", v0, v1), ("side_BC", v1, v2), ("side_CA", v2, v0)]
+        for canonical, a, b in side_pairs:
+            for alias in (f"side_{a}{b}", f"side_{b}{a}"):
+                if alias in spec:
+                    value = spec.pop(alias)
+                    spec.setdefault(canonical, value)
+
+        angle_slots = [("angle_A", v0), ("angle_B", v1), ("angle_C", v2)]
+        for canonical, v in angle_slots:
+            alias = f"angle_{v}"
+            if alias in spec:
+                value = spec.pop(alias)
+                spec.setdefault(canonical, value)
+
+        if "right_angle_at" in spec:
+            slot_by_vertex = {v0: "A", v1: "B", v2: "C"}
+            raw = spec["right_angle_at"]
+            if raw in slot_by_vertex:
+                spec["right_angle_at"] = slot_by_vertex[raw]
+
+        data = dict(data)
+        data["spec"] = spec
+        return data
+
 
 class CircleOp(DSLOpBase):
     """Circle from center + radius or center + through-point."""
