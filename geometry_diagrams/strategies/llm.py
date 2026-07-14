@@ -59,6 +59,11 @@ def is_gemini_model(model_id: str) -> bool:
     return model_id.startswith("google:") or model_id.startswith("gemini:")
 
 
+def is_openai_model(model_id: str) -> bool:
+    """Return True if the model is an OpenAI model."""
+    return model_id.startswith("openai:") or model_id.startswith("openai-responses:")
+
+
 def extract_usage(response: AIMessage) -> tuple[int, int]:
     """Extract (input_tokens, output_tokens) from a LangChain AIMessage response."""
     meta = response.response_metadata.get("usage", {})
