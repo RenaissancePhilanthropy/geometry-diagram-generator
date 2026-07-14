@@ -66,8 +66,5 @@ def is_openai_model(model_id: str) -> bool:
 
 def extract_usage(response: AIMessage) -> tuple[int, int]:
     """Extract (input_tokens, output_tokens) from a LangChain AIMessage response."""
-    meta = response.response_metadata.get("usage", {})
-    # Anthropic uses input_tokens/output_tokens; OpenAI uses prompt_tokens/completion_tokens
-    input_tokens = meta.get("input_tokens", meta.get("prompt_tokens", 0))
-    output_tokens = meta.get("output_tokens", meta.get("completion_tokens", 0))
-    return input_tokens, output_tokens
+    usage = response.usage_metadata or {}
+    return usage.get("input_tokens", 0), usage.get("output_tokens", 0)

@@ -71,9 +71,9 @@ def _extract_usage_from_messages(messages: list[BaseMessage]) -> tuple[int, int]
     output_tokens = 0
     for msg in messages:
         if isinstance(msg, AIMessage):
-            meta = msg.response_metadata.get("usage", {})
-            input_tokens += meta.get("input_tokens", meta.get("prompt_tokens", 0))
-            output_tokens += meta.get("output_tokens", meta.get("completion_tokens", 0))
+            usage = msg.usage_metadata or {}
+            input_tokens += usage.get("input_tokens", 0)
+            output_tokens += usage.get("output_tokens", 0)
     return input_tokens, output_tokens
 
 
