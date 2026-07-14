@@ -231,6 +231,11 @@ def ir_to_svg(
         "fill": "white",
     })
 
+    # Collect drawn line segments (SVG pixel coords) for label-vs-geometry checks.
+    # Populated by the grid/axes below (if enabled) and by geometry ops during
+    # the main render loop.
+    drawn_segments: list[tuple[float, float, float, float]] = []
+
     # Optional grid
     if canvas is not None and canvas.grid:
         _append_grid(svg, canvas, xmin, xmax, ymin, ymax, gxy)
@@ -238,7 +243,8 @@ def ir_to_svg(
     # Optional axes
     if canvas is not None and canvas.axes:
         _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale,
-                     font_family=font_config.family)
+                     font_family=font_config.family,
+                     drawn_segments=drawn_segments)
 
     # --- Render ops (z-sorted) ---
     _Z_ORDER = {
@@ -281,8 +287,6 @@ def ir_to_svg(
 
     # Deferred label list: labels are collected here, collision-resolved, then emitted
     pending_labels: list[_LabelPlacement] = []
-    # Collect drawn line segments (SVG pixel coords) for label-vs-geometry checks
-    drawn_segments: list[tuple[float, float, float, float]] = []
 
     for op in sorted_ops:
         _emit_svg_op(
@@ -1461,6 +1465,7 @@ def _append_axes(
     gxy,
     scale: float,
     font_family: str = "serif",
+    drawn_segments: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     has_x = ymin <= 0 <= ymax
     has_y = xmin <= 0 <= xmax
@@ -1472,6 +1477,8 @@ def _append_axes(
             "stroke": "black", "stroke-width": "1.5",
             "marker-end": "url(#arrow)",
         })
+        if drawn_segments is not None:
+            drawn_segments.append((x1, y1, x2, y2))
 
     # Ensure arrow marker is defined
     _ensure_arrow_marker(svg)
