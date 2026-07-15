@@ -154,7 +154,10 @@ def main() -> None:
     # ---- direction from the FIT half ------------------------------------------
     X, y = [], []
     for r in fit:
-        z = np.load(d / f"{r['pid']}.npz")
+        try:                                       # skip 0-byte resume stubs / corrupt files
+            z = np.load(d / f"{r['pid']}.npz")
+        except (EOFError, OSError, ValueError):
+            continue
         if "post_dtoken" in z:
             X.append(z["post_dtoken"][Lacts].astype(np.float32))
             y.append(1 if r["grade"]["ok"] else 0)

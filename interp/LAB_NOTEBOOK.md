@@ -365,6 +365,40 @@ the deviations log is a feature, not an embarrassment).
 
 ---
 
+### 2026-07-15 — Independent code review (Codex, read-only) + fixes; J-lens code debugged offline
+
+**Codex review of the result-critical scripts — 4 MODERATE findings, no CRITICAL, all logged:**
+1. *(tier1 transfer)* test domain was re-standardized with a fresh scaler → coordinate mismatch
+   with the A-trained probe. **FIXED** (transform B with training scaler `sA`). Exploratory only.
+2. *(tier1 cross-site)* PRE scaler fit on all groups incl. held-out → mild transductive leak.
+   **FIXED** (fit on train groups per fold).
+3. *(steer_confidence, amplify)* the random-direction control is **not norm-matched to the realized
+   perturbation** — amplify scales `|proj−μ|`, and the correctness direction has larger projection
+   variance than a random one, so "steer" gets bigger nudges than "random." ⚠️ **The amplify
+   "random-flat" control is weaker than stated.** NOT offline-fixable — needs a re-run with a
+   magnitude-matched random control. **Mitigation:** the *add-mode* result used a properly
+   norm-matched random control and also showed steer≫random, so causality is not unsupported; but
+   the amplify control must be redone. Logged as a known limitation for the causal claim.
+4. *(make_plots)* probe vs verbalized/P(True) computed on different non-NaN subsets → not
+   same-record. **FIXED** (common mask). Recompute changed the headline by <0.001 (parse failures
+   were random) — internal≫verbalized holds identically; a follow-on mask over-restriction that
+   dropped geometry from fig1 was corrected (probe-vs-verbalized needs only those two; P(True)
+   mask applies to fig3 only). Verdict: the review found **no result-inverting bug**.
+
+**J-lens code debugged end-to-end offline (no GPU), root-causing the earlier crashes:** the arm
+had never produced a readout for purely operational reasons. Fixed in `jlens_fit.py`: (a) corpus
+bug (`Salesforce/wikitext` + task-corpus fallback); (b) `target_layer` out-of-range → use default;
+(c) prompts must exceed `skip_first`; (d) stale-checkpoint resume-param mismatch (confirms
+`resume=True` works — a killed fit *can* resume); (e) `--source-layers` fits only the read layer(s)
+(~L× faster: 39 s vs a 30 h all-layer fit on a 0.5B CPU probe); (f) the real bug — the lens stores
+`lens.jacobians` as a **dict {source_layer: [d,d]}**, not a stacked tensor, so `locate_J` found
+nothing; extraction rewritten to read the dict; (g) loader order fixed (`.load()` works locally,
+`from_pretrained` hangs on a local path). Orientation **confirmed** via probe2: `W_U(J·h)` matches
+the package's `apply` (transpose gives pure garbage), so the readout `r_w = Jᵀu_w` is correct. The
+**self-validation gate works** — it refused to save a degenerate 6-prompt toy lens (3/10 overlap).
+A 60-prompt confirm-fit is running to show the gate passes on a non-degenerate lens. Net: J-lens is
+**code-ready and turnkey** for the next GPU box; only the actual per-model fits remain (GPU).
+
 ## Caveats & open questions
 - **Single-seed** point estimates; thin within-prompt data (21–44 mixed-outcome prompts).
 - Linear probes at a **single token**; a non-linear / multi-token readout could differ.

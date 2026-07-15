@@ -329,13 +329,13 @@ def main() -> None:
             wA = ZA[yA == 1].mean(0) - ZA[yA == 0].mean(0)
             fitted[A] = (sA, pcaA, lrA, wA)
         for A in names:
-            _, pcaA, lrA, wA = fitted[A]
+            sA, pcaA, lrA, wA = fitted[A]
             for B in names:
                 if A == B:
                     T[(A, B)] = doms[A][3]           # in-domain OOF reference
                 else:
                     XB, yB = doms[B][0], doms[B][1]
-                    ZB = StandardScaler().fit_transform(XB)
+                    ZB = sA.transform(XB)
                     T[(A, B)] = _auroc(lrA.decision_function(pcaA.transform(ZB)), yB)
                     wB = fitted[B][3]
                     cos[(A, B)] = float(np.dot(wA, wB) /
@@ -350,7 +350,6 @@ def main() -> None:
                 continue
             sc = []
             yy = []
-            sp = StandardScaler().fit(Xp_all)
             for tr, te in GroupKFold(ns).split(Xq, yq, gq):
                 if len(set(yq[tr].tolist())) < 2:
                     continue
@@ -360,6 +359,10 @@ def main() -> None:
                 lr = LogisticRegression(max_iter=2000).fit(pc.transform(sq.transform(Xq[tr])), yq[tr])
                 te_groups = set(gq[te].tolist())
                 pm = np.isin(gp_all, list(te_groups))
+                train_pm = ~pm
+                if not train_pm.any() or not pm.any():
+                    continue
+                sp = StandardScaler().fit(Xp_all[train_pm])
                 sc.extend(lr.decision_function(pc.transform(sp.transform(Xp_all[pm]))))
                 yy.extend(yp_all[pm])
             xsite[A] = _auroc(sc, yy) if yy else float("nan")

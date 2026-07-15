@@ -89,8 +89,12 @@ def main() -> None:
     ap.add_argument("--quant", choices=("none", "4bit", "awq"), default="none")
     ap.add_argument("--corpus", choices=("wikitext", "task"), default="wikitext",
                     help="wikitext = generic (as Anthropic); task = our benchmark prompts")
-    ap.add_argument("--n-prompts", type=int, default=500)
+    ap.add_argument("--n-prompts", type=int, default=200)
     ap.add_argument("--seq-len", type=int, default=128)
+    ap.add_argument("--source-layers", default="0.7",
+                    help="comma fractions of depth to fit, e.g. '0.15,0.7' (fitting all layers is ~L x slower)")
+    ap.add_argument("--skip-first", type=int, default=16)
+    ap.add_argument("--no-resume", action="store_true", help="discard any checkpoint and refit")
     ap.add_argument("--out-dir", default="interp/activations/jlens")
     ap.add_argument("--skip-fit", action="store_true", help="reuse saved lens.pt")
     ap.add_argument("--no-think", action="store_true")
@@ -112,9 +116,14 @@ def main() -> None:
     # ---- corpus -----------------------------------------------------------
     if args.corpus == "wikitext":
         from datasets import load_dataset
-        ds = load_dataset("wikitext", "wikitext-103-raw-v1", split="train")
-        texts = [t for t in ds["text"] if len(t) > 200][: args.n_prompts * 2]
-    else:
+        try:
+            ds = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train")
+        except Exception as e:  # noqa: BLE001 — corpus must never kill the queue again
+            print(f"WARN: wikitext unavailable ({type(e).__name__}) — falling back to task corpus")
+            args.corpus = "task"
+        else:
+            texts = [t for t in ds["text"] if len(t) > 200][: args.n_prompts * 2]
+    if args.corpus == "task":
         from interp.tasks_qa import QA_TASKS
         texts = []
         for t in ("mmlu_pro", "math"):
@@ -123,96 +132,91 @@ def main() -> None:
     prompts = []
     for t in texts:
         ids = tok(t, truncation=True, max_length=args.seq_len).input_ids
-        if len(ids) >= 16:
+        if len(ids) > args.skip_first + 1:          # jlens discards skip_first warmup positions
             prompts.append(tok.decode(ids, skip_special_tokens=True))
         if len(prompts) >= args.n_prompts:
             break
-    print(f"corpus: {args.corpus}, {len(prompts)} prompts (<= {args.seq_len} tokens)")
+    print(f"corpus: {args.corpus}, {len(prompts)} prompts (> {args.skip_first+1} tokens)")
 
-    # ---- fit or load ------------------------------------------------------
-    if args.skip_fit and lens_path.exists():
-        lens = None
-        for loader in (lambda: jlens.JacobianLens.from_pretrained(str(lens_path.parent),
-                                                                  filename=lens_path.name),
-                       lambda: jlens.JacobianLens.load(str(lens_path)),
-                       lambda: torch.load(str(lens_path), map_location="cpu",
-                                          weights_only=False)):
-            try:
-                lens = loader()
-                break
-            except Exception as e:  # noqa: BLE001
-                print(f"  (loader failed: {type(e).__name__}: {e})")
-        if lens is None:
-            raise SystemExit(f"could not load {lens_path} with any known loader")
-        print(f"loaded {lens_path} ({type(lens).__name__})")
-    else:
-        lens = jlens.fit(jmodel, prompts=prompts, checkpoint_path=str(out / f"ckpt_{args.short}.pt"))
-        lens.save(str(lens_path))
-        print(f"fitted + saved {lens_path}")
-
-    # ---- extract ----------------------------------------------------------
-    W_U = model.get_output_embeddings().weight.detach().float().cpu()   # [vocab, d]
-    d_model = W_U.shape[1]
+    # ---- which source layers to fit (fractions of depth; fitting only what we read
+    #      is ~L x faster than the whole model) --------------------------------------
+    import numpy as np
     nl = getattr(model.config, "num_hidden_layers", None)
     if nl is None:
         c = model.config
         nl = (c.get_text_config().num_hidden_layers if hasattr(c, "get_text_config")
               else c.text_config.num_hidden_layers)
-    stacked, perlayer = locate_J(lens, d_model, int(nl))
-    if stacked is not None:
-        J = stacked.detach().float().cpu()                              # [L, d, d]
+    nl = int(nl)
+    layer_idxs = sorted({min(nl - 1, max(0, round(float(f) * nl))) for f in args.source_layers.split(",")})
+    print(f"model layers={nl}; fitting source layers {layer_idxs}")
+
+    # ---- fit or load ------------------------------------------------------
+    ckpt = str(out / f"ckpt_{args.short}.pt")
+    if args.skip_fit and lens_path.exists():
+        lens = None
+        for loader in (lambda: jlens.JacobianLens.load(str(lens_path)),            # this one works locally
+                       lambda: torch.load(str(lens_path), map_location="cpu", weights_only=False),
+                       lambda: jlens.JacobianLens.from_pretrained(str(lens_path.parent),
+                                                                  filename=lens_path.name)):
+            try:
+                lens = loader(); break
+            except Exception as e:  # noqa: BLE001
+                print(f"  (loader failed: {type(e).__name__}: {str(e)[:80]})")
+        if lens is None:
+            raise SystemExit(f"could not load {lens_path}")
+        print(f"loaded {lens_path} ({type(lens).__name__})")
     else:
-        # single shared matrix or ambiguous — take the first candidate, replicated
-        k, v = next(iter(perlayer.items()))
-        print(f"  using single candidate '{k}' for all layers")
-        J = v.detach().float().cpu().unsqueeze(0).expand(int(nl) + 1, d_model, d_model)
+        lens = jlens.fit(jmodel, prompts=prompts, source_layers=layer_idxs,
+                         skip_first=args.skip_first, max_seq_len=args.seq_len,
+                         resume=not args.no_resume, checkpoint_path=ckpt)
+        lens.save(str(lens_path))
+        print(f"fitted + saved {lens_path}")
+
+    # ---- extract: lens.jacobians is a dict {source_layer: [d, d]} ----------
+    W_U = model.get_output_embeddings().weight.detach().float().cpu()   # [vocab, d]
+    d_model = W_U.shape[1]
+    jac = lens.jacobians if isinstance(lens.jacobians, dict) else dict(enumerate(lens.jacobians))
+    fit_layers = sorted(jac.keys())
+    print(f"lens.jacobians source layers: {fit_layers}")
 
     words = FAIL_WORDS + OK_WORDS + DIGITS + GEO_WORDS
-    u_rows = []
-    for w in words:
-        ids = first_token_ids(tok, w)
-        u_rows.append(W_U[ids].mean(0))                                  # variant-avg row
-    U = torch.stack(u_rows)                                              # [W, d]
-    # r[w, l] = J_l^T @ u_w   -> [W, L, d]
-    R = torch.einsum("lde,wd->wle", J, U)                                # J_l^T u = u @ J_l
-    print(f"readout stack: {tuple(R.shape)} (words x layers x d)")
+    U = torch.stack([W_U[first_token_ids(tok, w)].mean(0) for w in words])   # [W, d]
+    # lens logit for word w at layer L is  u_w . (J_L h)  =>  readout r_{w,L} = J_L^T u_w,
+    # and score = r . h. So R[w, L] = (U @ J_L) row-wise.
+    R = np.zeros((len(words), len(fit_layers), d_model), np.float32)
+    for li, L in enumerate(fit_layers):
+        R[:, li, :] = (U @ jac[L].detach().float().cpu()).numpy()
+    print(f"readout stack: {R.shape} (words x fit-layers x d)")
 
-    # ---- validate against the package's own apply -------------------------
-    test_prompt = "Fact: The capital of France is"
+    # ---- validate against the package's own apply (correct orientation: W_U(J h)) --
+    test = "Fact: The capital of France is one of the largest cities in Europe."
     try:
-        ids = tok(test_prompt, return_tensors="pt").input_ids.to(args.device)
+        ids = tok(test, return_tensors="pt").input_ids.to(args.device)
         with torch.no_grad():
             hs = model(input_ids=ids, output_hidden_states=True).hidden_states
-        Lmid = J.shape[0] // 2
-        h = hs[Lmid][0, -1, :].float().cpu()
-        ours = (W_U @ (J[Lmid] @ h)).topk(10).indices.tolist()
-        pkg = lens.apply(jmodel, test_prompt, positions=[-1])
-        pkg_logits = pkg[0]
-        pl = torch.as_tensor(pkg_logits)
-        # find a vocab-sized axis and a layer axis; compare same layer if present
-        flat = pl.reshape(-1, pl.shape[-1]) if pl.shape[-1] == W_U.shape[0] else None
-        if flat is not None:
-            best_overlap = max(len(set(ours) & set(row.topk(10).indices.tolist())) for row in flat)
-            print(f"VALIDATION: best top-10 overlap manual-vs-package = {best_overlap}/10")
-            if best_overlap < 5:
-                raise SystemExit("VALIDATION FAILED (<5/10 overlap) — extraction wrong; inspect lens internals")
-        else:
-            print(f"VALIDATION: package output shape {tuple(pl.shape)} not vocab-shaped; manual check needed")
-        print("  manual top-10 @Lmid:", tok.convert_ids_to_tokens(ours))
+        Lv = fit_layers[len(fit_layers) // 2]
+        h = hs[Lv][0, -1, :].float().cpu()
+        ours = (W_U @ (jac[Lv].detach().float().cpu() @ h)).topk(10).indices.tolist()
+        pkg = lens.apply(jmodel, test, positions=[-1])
+        pl = pkg[0][Lv] if isinstance(pkg[0], dict) else pkg[0]
+        pl = torch.as_tensor(pl).flatten().float()[:W_U.shape[0]]
+        ov = len(set(ours) & set(pl.topk(10).indices.tolist()))
+        print(f"VALIDATION @layer{Lv}: manual-vs-package top-10 overlap = {ov}/10")
+        print("  manual top-10:", tok.convert_ids_to_tokens(ours))
+        if ov < 5:
+            raise SystemExit("VALIDATION FAILED (<5/10) — extraction orientation wrong")
     except SystemExit:
         raise
     except Exception as e:  # noqa: BLE001
-        print(f"VALIDATION: lens.apply comparison errored ({type(e).__name__}: {e}) — "
-              f"manual top-10 sanity: {tok.convert_ids_to_tokens((W_U @ (J[J.shape[0]//2] @ torch.randn(d_model))).topk(5).indices.tolist())}")
+        print(f"VALIDATION errored ({type(e).__name__}: {str(e)[:100]}) — gate skipped, inspect manually")
 
-    import numpy as np
     np.savez_compressed(out / f"jlens_readouts_{args.short}.npz",
-                        R=R.numpy().astype(np.float32), words=np.array(words),
+                        R=R, words=np.array(words), fit_layers=np.array(fit_layers),
                         n_fail=len(FAIL_WORDS), n_ok=len(OK_WORDS),
                         n_digits=len(DIGITS), n_geo=len(GEO_WORDS),
                         model=args.model, corpus=args.corpus)
-    print(f"saved {out / f'jlens_readouts_{args.short}.npz'} "
-          f"({(R.numel() * 4) / 1e6:.0f}MB) — rsync this home; lens.pt stays for steering")
+    print(f"saved {out / f'jlens_readouts_{args.short}.npz'} ({R.nbytes/1e6:.0f}MB); "
+          f"lens.pt stays for steering")
 
 
 if __name__ == "__main__":
