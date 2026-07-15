@@ -100,35 +100,43 @@ class _Lowerer:
     # Entry point
     # ------------------------------------------------------------------
 
+    # Op types whose named fields reference *pre-existing* points (as opposed to
+    # fields that name points the op itself defines, e.g. RectangleOp.vertices,
+    # PolygonFromSidesOp.vertices, RegularPolygonOp.vertices/center). Each field
+    # may hold a single point id (str) or a list of point ids.
+    _POINT_REF_FIELDS: dict[type, list[str]] = {
+        CircleOp: ["center", "through"],
+        CircleThrough3Op: ["through"],
+        PolygonOp: ["vertices"],
+        PolygonExteriorOp: ["base", "ref_point"],
+    }
+
     def _inject_implicit_points(self, construction: list[Any]) -> None:
         """Auto-inject PointFixed(0,0) for any point IDs referenced but never defined.
 
-        LLMs sometimes reference a center point (e.g. circle center='O') without
-        emitting an explicit 'point' op for it. Rather than failing at IR compilation,
-        we silently create the point at the origin. This is an intentional robustness
-        measure — the LLM usually intends the center to be at (0,0) anyway.
+        LLMs sometimes reference a point (e.g. circle center='O', or a polygon
+        vertex) without emitting an explicit 'point' op for it. Rather than
+        failing at IR compilation, we silently create the point at the origin.
+        This is an intentional robustness measure — the LLM usually intends
+        the point to be at (0,0) anyway.
         """
         defined_ids = {op.id for op in construction if hasattr(op, "id") and op.id}
+
+        def _inject(pid: Any) -> None:
+            if pid and isinstance(pid, str) and pid not in defined_ids:
+                self._defs.insert(0, PointFixed(id=pid, x=0.0, y=0.0))
+                self._point_ids.insert(0, pid)
+                defined_ids.add(pid)
+
         for op in construction:
-            # Fields that hold point-ID references (not line/object IDs)
-            point_ref_fields: list[str] = []
-            if isinstance(op, CircleOp):
-                point_ref_fields = ["center"]
-                if op.through:
-                    point_ref_fields.append("through")
-            elif isinstance(op, CircleThrough3Op):
-                for pid in op.through:
-                    if pid not in defined_ids:
-                        self._defs.insert(0, PointFixed(id=pid, x=0.0, y=0.0))
-                        self._point_ids.insert(0, pid)
-                        defined_ids.add(pid)
-                continue
-            for field in point_ref_fields:
-                ref_id = getattr(op, field, None)
-                if ref_id and isinstance(ref_id, str) and ref_id not in defined_ids:
-                    self._defs.insert(0, PointFixed(id=ref_id, x=0.0, y=0.0))
-                    self._point_ids.insert(0, ref_id)
-                    defined_ids.add(ref_id)
+            fields = self._POINT_REF_FIELDS.get(type(op), [])
+            for field in fields:
+                value = getattr(op, field, None)
+                if isinstance(value, list):
+                    for pid in value:
+                        _inject(pid)
+                else:
+                    _inject(value)
 
     def lower(self, dsl: RecipeDSL) -> DiagramIR:
         self._inject_implicit_points(dsl.construction)

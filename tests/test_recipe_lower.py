@@ -1683,6 +1683,24 @@ def test_incircle_of_polygon_op():
     assert abs(center_def.y - 3.0) < 1e-6
 
 
+def test_polygon_op_injects_implicit_point_for_undefined_vertex():
+    """PolygonOp referencing an undefined vertex (e.g. 'O') should get an
+    implicit PointFixed(0, 0), matching CircleOp's center-injection behavior."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    dsl = _dsl([
+        PointOp(id="P", coords=[4.0, 0.0]),
+        PointOp(id="Q", coords=[4.0, 4.0]),
+        PointOp(id="R", coords=[0.0, 4.0]),
+        PolygonOp(id="sq", vertices=["O", "P", "Q", "R"]),
+    ])
+    ir = lower_to_ir(dsl)
+    origin_def = next(d for d in ir.define if d.id == "O")
+    assert origin_def.x == 0.0
+    assert origin_def.y == 0.0
+    compiled = compile_defs(ir)
+    assert tuple(compiled["O"].coordinates) == (0, 0)
+
+
 def test_incircle_unknown_id_error_lists_available():
     """IncircleOp referencing an unknown id should name available triangles and polygons."""
     dsl = _dsl([
