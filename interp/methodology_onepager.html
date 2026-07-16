@@ -1,0 +1,162 @@
+<title>Methodology — internal correctness signals</title>
+<style>
+  :root{
+    --ink:#181b22; --muted:#5b6472; --paper:#fcfcfd; --panel:#eef2fb;
+    --rule:#d4d9e2; --blue:#2f5fe0; --amber:#b06d1e; --ok:#2f8f63;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --serif:"Cambria Math",Cambria,Georgia,"Times New Roman",ui-serif,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#e7e9ee;color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  .sheet{max-width:840px;margin:26px auto;background:var(--paper);padding:44px 52px 40px;
+    box-shadow:0 2px 20px rgba(20,24,34,.14);border-radius:3px}
+  h1{font-size:24px;line-height:1.15;margin:0 0 3px;letter-spacing:-.01em;text-wrap:balance}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.09em;color:var(--blue);
+    margin:22px 0 7px;padding-bottom:4px;border-bottom:1px solid var(--rule)}
+  p{margin:.45em 0;font-size:14.5px}
+  .muted{color:var(--muted)} b{font-weight:650}
+  .m{font-family:var(--serif)} .v{font-family:var(--serif);font-style:italic}
+  sub,sup{font-size:.72em;line-height:0}
+  /* equations */
+  .eq{font-family:var(--serif);font-size:19px;text-align:center;margin:12px 0 3px;
+    padding:12px 18px;background:var(--panel);border-left:3px solid var(--blue);
+    border-radius:6px 6px 0 0;overflow-x:auto;white-space:nowrap}
+  .reads{font-family:var(--sans);font-size:13px;color:var(--muted);margin:0 0 13px;
+    padding:7px 14px;background:#f6f8fc;border-left:3px solid #c3cee8;border-radius:0 0 6px 6px}
+  .reads b{color:var(--ink);font-weight:600}
+  .eq .lbl{font-family:var(--sans);font-style:normal;font-size:12px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.08em;margin-right:14px;vertical-align:middle}
+  .eq2{display:flex;gap:20px;flex-wrap:wrap} .eq2 .eq{flex:1;min-width:230px;margin-bottom:0;border-radius:6px}
+  .frac{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle;margin:0 .18em}
+  .frac>span:first-child{border-bottom:1.4px solid currentColor;padding:0 .35em}
+  .frac>span:last-child{padding:1px .35em 0}
+  .sum{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:.9;margin:0 .1em}
+  .sum .s{font-size:1.5em} .sum .lim{font-size:.52em;font-style:normal}
+  .big{font-size:1.35em;vertical-align:middle}
+  /* legend */
+  .legend{display:grid;grid-template-columns:1fr 1fr;gap:3px 26px;background:#f4f6f8;
+    border:1px solid var(--rule);border-radius:8px;padding:13px 18px;margin:8px 0 4px;font-size:12.7px}
+  .legend .sym{font-family:var(--serif);font-style:italic;color:var(--blue);margin-right:9px;
+    display:inline-block;min-width:34px}
+  .legend .cap{grid-column:1/-1;font-family:var(--sans);font-size:11.5px;text-transform:uppercase;
+    letter-spacing:.09em;color:var(--muted);margin-bottom:3px}
+  /* boxes */
+  .hero{background:#fbf3e6;border:1px solid #e7d3b0;border-radius:8px;padding:14px 20px;margin:6px 0}
+  .hero .eqline{font-family:var(--serif);font-size:20px;text-align:center;margin:6px 0 2px}
+  .hero .cap{font-family:var(--sans);font-size:12.5px;color:var(--amber);text-align:center;
+    text-transform:uppercase;letter-spacing:.09em}
+  .ctrls{font-size:13.5px;margin:.3em 0}
+  .foot{margin-top:20px;padding-top:12px;border-top:2px solid var(--ink);font-size:14px}
+  @page{size:letter;margin:14mm}
+  @media print{body{background:#fff} .sheet{box-shadow:none;margin:0;max-width:none;padding:0}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+
+<div class="sheet">
+  <h1>Reading &amp; steering a language model's internal correctness signal</h1>
+  <p class="sub">Methodology, one page — math with plain-English translations under every equation.</p>
+
+  <div class="hero">
+    <div class="cap">the one idea</div>
+    <div class="eqline">a concept is a direction <span class="v">u</span> &nbsp;·&nbsp;
+      <b>read</b> = <span class="v">u</span><sup>⊤</sup><span class="v">h</span> &nbsp;·&nbsp;
+      <b>write</b> = <span class="v">h</span> + <span class="v">α</span><span class="v">u</span></div>
+    <div class="cap" style="color:var(--muted)">reading = measure how much a thought points along a direction · writing = nudge the thought along it</div>
+  </div>
+
+  <div class="legend">
+    <div class="cap">how to read the symbols</div>
+    <div><span class="sym">h</span>the model's thought = a long list of numbers</div>
+    <div><span class="sym">u<sup>⊤</sup>h</span>"overlap": how much thought h points along direction u (one number)</div>
+    <div><span class="sym">𝔼[·]</span>"the average of …"</div>
+    <div><span class="sym">∑</span>"add up over …"</div>
+    <div><span class="sym">σ(z)</span>squashes any number into a probability (0–1)</div>
+    <div><span class="sym">W<sub>U</sub></span>the unembedding: turns a thought into a score per word</div>
+    <div><span class="sym">v&#770;</span>the direction v, shrunk to length 1</div>
+    <div><span class="sym">y</span>the true answer: 1 = correct, 0 = wrong</div>
+  </div>
+
+  <h2>Setup</h2>
+  <div class="eq"><span class="v">h</span><sub class="v">ℓ+1</sub> = <span class="v">h</span><sub class="v">ℓ</sub>
+    + <span class="v">f</span><sub class="v">ℓ</sub>(<span class="v">h</span><sub class="v">ℓ</sub>)
+    &nbsp;&nbsp;&nbsp; logits = <span class="v">W</span><sub class="v">U</sub><span class="v">h</span><sub class="v">L</sub></div>
+  <div class="reads">▸ <b>In plain words:</b> each layer adds its edits to a running "thought" vector; at the end,
+    the unembedding turns the final thought into a score for every possible next word.</div>
+  <p class="muted">We read the thought at the <b>confidence token</b> — the spot where the model is about to
+    say its confidence number. Same context every time, so nothing about the problem leaks in from the
+    raw tokens; any signal there was genuinely <i>computed</i>. The right/wrong label comes from an
+    outside grader the model never sees.</p>
+
+  <h2>1 · Probe — reading the signal (using the answer key)</h2>
+  <div class="eq"><span class="v">Pr</span>(<span class="v">y</span>=1 | <span class="v">h</span>)
+    = <span class="v">σ</span>(<span class="v">w</span><sup>⊤</sup><span class="v">h&#771;</span>
+    + <span class="v">b</span>), &nbsp;&nbsp;
+    <span class="v">σ</span>(<span class="v">z</span>) =
+    <span class="frac"><span>1</span><span>1 + <span class="v">e</span><sup>&#8722;<span class="v">z</span></sup></span></span></div>
+  <div class="reads">▸ <b>In plain words:</b> measure how much the thought points along a learned "correctness"
+    direction <span class="v">w</span>, then squash that into a probability the answer is right.</div>
+  <div class="eq"><span class="v">v</span> = <span class="v">h&#772;</span><sub>ok</sub>
+    &#8722; <span class="v">h&#772;</span><sub>fail</sub></div>
+  <div class="reads">▸ <b>In plain words:</b> the simplest way to get that direction — the <b>average "correct"
+    thought minus the average "wrong" thought</b>: an arrow pointing from wrong toward right. (Training a
+    logistic-regression classifier gives a sharper version of the same arrow.)</div>
+  <p class="muted">We train on some questions and test on <b>different</b> ones (so it can't memorize a
+    question), and report the reading at a fixed mid-to-late layer — not the single best-looking layer.</p>
+
+  <h2>2 · Scoring — how we grade any reader</h2>
+  <div class="eq"><span class="v">AUROC</span> =
+    <span class="frac"><span>1</span><span><span class="v">n</span><sub>+</sub><span class="v">n</span><sub>&#8722;</sub></span></span>
+    <span class="sum"><span class="s">&#8721;</span><span class="lim v">i∈+</span></span>
+    <span class="sum"><span class="s">&#8721;</span><span class="lim v">j∈&#8722;</span></span>
+    <span class="big">&#120793;</span>[<span class="v">s<sub>i</sub></span> &gt; <span class="v">s<sub>j</sub></span>]</div>
+  <div class="reads">▸ <b>In plain words:</b> grab one correct and one incorrect answer at random — how often does the
+    reader score the correct one higher? <b>0.5 = coin flip, 1.0 = perfect.</b> (Rank-based, so it's fair
+    even when the model pins its stated confidence at 95.) A separate number, <b>ECE</b>, measures how far
+    the stated confidence is from the true accuracy.</div>
+
+  <h2>3 · Jacobian lens — reading it <i>without</i> the answer key</h2>
+  <div class="eq"><span class="v">J</span><sub class="v">ℓ</sub> = <span class="m">&#120124;</span>
+    [ <span class="frac"><span>∂<span class="v">h</span><sub class="v">L</sub></span><span>∂<span class="v">h</span><sub class="v">ℓ</sub></span></span> ]
+    &nbsp;&nbsp;&nbsp; lens<sub class="v">ℓ</sub>(<span class="v">h</span>) =
+    <span class="v">W</span><sub class="v">U</sub>(<span class="v">J</span><sub class="v">ℓ</sub><span class="v">h</span>)</div>
+  <div class="reads">▸ <b>In plain words:</b> a mid-layer thought isn't in "word language" yet. So we learn a
+    <b>translator</b> <span class="v">J</span><sub class="v">ℓ</sub> by asking "if I nudge the thought here,
+    how does the final output move?", averaged over lots of ordinary text. Run a thought through the
+    translator, look it up in the word-dictionary → <b>which words it's leaning toward saying.</b></div>
+  <div class="eq"><span class="v">s</span><sub>jlens</sub> =
+    (<span class="v">r&#772;</span><sub>fail</sub> &#8722; <span class="v">r&#772;</span><sub>ok</sub>)<sup>⊤</sup><span class="v">h</span>
+    <span style="font-size:13px;color:var(--muted)">&nbsp;&nbsp; with &nbsp;</span>
+    <span class="v">r</span><sub class="v">w</sub> = <span class="v">J</span><sub class="v">ℓ</sub><sup>⊤</sup><span class="v">u<sub>w</sub></span></div>
+  <div class="reads">▸ <b>In plain words:</b> our signal = how much the thought leans toward failure words
+    ("wrong", "error") minus success words. It never saw the answer key, so if it agrees with the probe,
+    the signal is real — and it tells us whether the "I'm wrong" thought reaches the part that can speak.</div>
+
+  <h2>4 · Steering — proving the model <i>uses</i> the signal</h2>
+  <div class="eq2">
+    <div class="eq"><span class="lbl">add</span><span class="v">h</span> ↦
+      <span class="v">h</span> + <span class="v">α</span><span class="v">v</span></div>
+    <div class="eq"><span class="lbl">amplify</span><span class="v">h</span> ↦
+      <span class="v">h</span> + (<span class="v">g</span>&#8722;1)(<span class="v">v&#770;</span><sup>⊤</sup><span class="v">h</span>
+      &#8722; <span class="v">μ</span>)<span class="v">v&#770;</span></div>
+  </div>
+  <div class="reads">▸ <b>In plain words:</b> reading only shows the signal is <i>there</i>. To show it's <i>used</i>,
+    we write it back in while the model answers. <b>Add</b>: push the thought along the correctness
+    direction by a dial <span class="v">α</span>. <b>Amplify</b>: turn up the model's <i>own</i> existing
+    amount of that direction, like a volume knob — <b>using no answer key.</b> It's causal if the stated
+    confidence moves and a random direction of the same size does nothing.</div>
+
+  <h2>Controls — each result must survive all of these</h2>
+  <p class="ctrls"><b>Read-site:</b> at the raw-input layer the signal is ~chance (so it's computed, not
+    copied from the words). <b>Difficulty:</b> it works even on the <i>same</i> question tried many times
+    (not just "hard vs easy"). <b>Surface:</b> beats answer length/shape. <b>No leakage:</b> train and
+    test never share a question. <b>Causal:</b> random-direction &amp; answer-unchanged controls.
+    <b>Grader:</b> checked the answer key itself is clean.</p>
+
+  <p class="foot"><b>The whole toolkit, in one line:</b> &nbsp;<span class="m">read = <span class="v">u</span><sup>⊤</sup><span class="v">h</span>
+    &nbsp;(measure overlap with a direction), &nbsp; write = <span class="v">h</span> + <span class="v">α</span><span class="v">u</span>
+    &nbsp;(nudge along it)</span>. The probe finds the direction with the answer key; diff-of-means is the
+    crude version; the Jacobian lens finds it <i>without</i> the key; steering adds it back to prove the
+    model uses it. <span class="muted">Same arrow, four operations.</span></p>
+</div>
