@@ -1,0 +1,213 @@
+<title>Do models know when they're wrong? — progress</title>
+<style>
+  :root{
+    --paper:#F4F7F7; --card:#FFFFFF; --ink:#182830; --muted:#5D7078;
+    --accent:#0E7C86; --accent-soft:#E1EFF0; --ok:#2E7D4F; --fail:#B0432E;
+    --line:#D5DFE1; --code:#10222A; --codetext:#DDEAEA;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:Charter,'Iowan Old Style',Georgia,serif;font-size:17px}
+  .slide{min-height:100vh;display:none;flex-direction:column;justify-content:center;
+    padding:4.5rem 6vw 5.5rem;max-width:1120px;margin:0 auto}
+  .slide.active{display:flex}
+  .eyebrow{font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:600;
+    font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:1.1rem}
+  h1{font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;
+    font-size:3rem;line-height:1.08;margin:0 0 1.2rem;text-wrap:balance}
+  h2{font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:600;
+    font-size:2rem;line-height:1.15;margin:0 0 1.4rem;text-wrap:balance}
+  p,li{font-size:1.22rem;line-height:1.55;max-width:62ch}
+  li{margin-bottom:.55rem}
+  .big{font-size:1.45rem}
+  .dim{color:var(--muted)}
+  .acc{color:var(--accent);font-weight:600}
+  .okc{color:var(--ok);font-weight:600}.failc{color:var(--fail);font-weight:600}
+  code,pre{font-family:'SF Mono',Menlo,Consolas,monospace}
+  pre{background:var(--code);color:var(--codetext);padding:1.1rem 1.3rem;border-radius:8px;
+    font-size:1.02rem;line-height:1.5;overflow-x:auto;max-width:100%;white-space:pre-wrap}
+  pre .lab{color:#7FB6BC;font-weight:bold}
+  table{border-collapse:collapse;margin:1rem 0;font-variant-numeric:tabular-nums;font-size:1.1rem}
+  th,td{padding:.5rem .95rem;text-align:left;border-bottom:1px solid var(--line)}
+  th{font-family:'Avenir Next',Futura,sans-serif;font-weight:600;font-size:.92rem;
+    letter-spacing:.04em;color:var(--muted)}
+  .tblwrap{overflow-x:auto;max-width:100%}
+  .bar{display:flex;align-items:center;gap:.8rem;margin:.45rem 0;font-variant-numeric:tabular-nums}
+  .bar .who{width:11.5rem;font-size:1.05rem;color:var(--muted);flex-shrink:0}
+  .bar .track{flex:1;height:1.35rem;background:var(--accent-soft);border-radius:4px;position:relative}
+  .bar .fill{height:100%;border-radius:4px;background:var(--accent)}
+  .bar .val{width:4rem;font-weight:600;font-size:1.05rem}
+  .cardrow{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:1.1rem 1.3rem;flex:1;min-width:15rem}
+  .card h3{font-family:'Avenir Next',Futura,sans-serif;font-size:1.02rem;margin:0 0 .5rem;
+    font-weight:600;color:var(--accent)}
+  .card p{font-size:1.05rem;margin:.2rem 0}
+  .ladder li{margin-bottom:.7rem;font-size:1.18rem}
+  .hint{position:fixed;bottom:.9rem;right:1.2rem;font-family:'Avenir Next',sans-serif;
+    font-size:.78rem;color:var(--muted)}
+  .count{position:fixed;bottom:.9rem;left:1.2rem;font-family:'Avenir Next',sans-serif;
+    font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  .prog{position:fixed;bottom:0;left:0;height:3px;background:var(--accent);transition:width .25s}
+  @media (prefers-reduced-motion: reduce){.prog{transition:none}}
+  .qa{border-left:4px solid var(--accent);padding-left:1.1rem;margin:.9rem 0}
+  .qa p{margin:.25rem 0}
+  strong{font-weight:700}
+  .center{align-items:center;text-align:center}
+  .center p,.center h1{margin-left:auto;margin-right:auto}
+</style>
+
+<div class="prog" id="prog"></div>
+<div class="count" id="count"></div>
+<div class="hint">←/→ to navigate</div>
+
+<!-- 1 -->
+<section class="slide center">
+  <div class="eyebrow">Interpretability progress report · July 2026</div>
+  <h1>Do models know<br>when they're wrong?</h1>
+  <p class="big dim">Metacognition in open LLMs — from geometry diagrams to causal steering</p>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="eyebrow">The problem</div>
+  <h2>Models fail confidently</h2>
+  <pre><span class="lab">Q:</span> (competition math problem)
+<span class="lab">Model:</span> ... The answer is \boxed{28}.        <span class="lab">← wrong (gold: 14)</span>
+<span class="lab">Q:</span> How confident are you that your answer is correct?
+<span class="lab">Model:</span> Confidence: 95</pre>
+  <p>If you only listen to what the model <em>says</em>, its confidence is a poor guide to its
+  correctness — on some benchmarks, barely better than a coin flip.</p>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="eyebrow">The question</div>
+  <h2>"Doesn't know" and "won't say" are different failures</h2>
+  <div class="cardrow">
+    <div class="card"><h3>1 · Do they KNOW?</h3>
+      <p>Is there any internal signal of "this answer is wrong" — anywhere in the network?</p></div>
+    <div class="card"><h3>2 · Do they SAY it?</h3>
+      <p>If the knowledge exists but the stated confidence doesn't carry it, that's the
+      <strong>knowing–saying gap</strong>.</p></div>
+  </div>
+  <p style="margin-top:1.2rem">Why it matters: a model that knows it's wrong can <strong>abstain,
+  retry, or escalate</strong> — a free safety margin nobody is using. And psychology gives us the
+  lens: <em>prospective</em> ("will I get this?") vs <em>retrospective</em> ("did I get it?") metacognition.</p>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="eyebrow">Mech-interp 101 · 1/2</div>
+  <h2>The thought stream</h2>
+  <p>As a model processes text, every token position carries a vector — a ~5,000-number
+  <strong>working document</strong>. Each of the 30–64 layers reads it and rewrites parts of it.</p>
+  <p>Concepts live in this stream as <strong>directions</strong>: there is literally a direction
+  that encodes "this is a midpoint" — and, it turns out, one that tracks
+  <span class="acc">"I am about to be wrong."</span></p>
+  <p class="dim">Reading the stream at layer 20 = reading a thought mid-composition — after
+  understanding, before speaking.</p>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="eyebrow">Mech-interp 101 · 2/2</div>
+  <h2>Read, then poke</h2>
+  <div class="cardrow">
+    <div class="card"><h3>Probe (read, supervised)</h3>
+      <p>Linear classifier trained on stored thought-vectors + labels. Powerful; can overfit
+      quirks.</p></div>
+    <div class="card"><h3>Lens (read, zero-shot)</h3>
+      <p>Translates a mid-network thought into <em>words</em> — no labels ever.</p></div>
+    <div class="card"><h3>Steering (poke)</h3>
+      <p>Add a direction while the model generates. If behavior changes as predicted →
+      the model <em>uses</em> it.</p></div>
+  </div>
+  <p style="margin-top:1.2rem" class="dim">Decodable ≠ used. The whole project is these three
+  tools wrapped in controls.</p>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="eyebrow">Testbed 1 · geometry</div>
+  <h2>A compiler as the judge</h2>
+  <pre>"an isosceles triangle with an inscribed circle..."
+        ↓  model writes a RecipeDSL JSON program
+parse → validate → lower → compile (SymPy) → geometric checks</pre>
+  <p>Either it compiles and passes every invariant (tangency, perpendicularity, …) or it fails at
+  a specific stage. <strong>Exact, machine-checkable correctness</strong> — no human judge, no LLM judge.</p>
+  <p>And it's hard: our models pass only <span class="acc">13–39%</span> — plenty of failures to study.
+  <span class="dim">Metacognition is failure-hungry: you can't measure "knows when it's wrong" if
+  it's never wrong.</span></p>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="eyebrow">Testbed 2 · standard benchmarks</div>
+  <h2>QA, chosen by failure rate</h2>
+  <div class="tblwrap"><table>
+    <tr><th>benchmark</th><th>grading</th><th>kept?</th></tr>
+    <tr><td>MMLU-Pro (10-option MC)</td><td>letter match, validated extraction</td><td class="okc">kept</td></tr>
+    <tr><td>MATH (boxed answers)</td><td>symbolic equivalence (½ = 0.5 = \frac12)</td><td class="okc">kept</td></tr>
+    <tr><td>GPQA-Diamond</td><td>4-option MC, seeded shuffle</td><td class="okc">kept</td></tr>
+    <tr><td>GSM8K / MedQA</td><td>—</td><td class="failc">dropped — models pass 90–95%</td></tr>
+  </table></div>
+  <p class="dim">Every cell: 0% extraction failures + manual spot-checks. (Our first MATH grader
+  failed correct answers over formatting — caught by a planned audit, fixed, re-graded.)</p>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="eyebrow">The experiment</div>
+  <h2>Three turns, and the grader never tells</h2>
+  <div class="cardrow">
+    <div class="card"><h3>① Pre-task</h3><p>"How confident are you that you <em>will</em> get
+      this right?" — one line, no reasoning.</p></div>
+    <div class="card"><h3>② Attempt</h3><p>The model solves the problem. Reasoning allowed
+      here — and only here.</p></div>
+    <div class="card"><h3>③ Post-task</h3><p>"How confident are you that your answer <em>is</em>
+      correct?" — one line.</p></div>
+  </div>
+  <p style="margin-top:1.2rem"><strong>Grading is external and never shown to the model.</strong>
+  Any confidence drop after a failure is <em>blind</em> self-assessment — not feedback.</p>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="eyebrow">Exact prompts · turn 1</div>
+  <h2>Prospective confidence — verbatim</h2>
+  <pre><span class="lab">system:</span> You answer multiple-choice questions. Reason briefly if
+needed, then end with your final answer on its own line as:
+Answer: X   (a single letter).
+
+<span class="lab">user:</span> [the question + options]
+
+Before answering, estimate how likely you are to answer this
+question correctly. Reply with EXACTLY one line and nothing else:
+Confidence: N
+where N is an integer from 0 (certain to be wrong) to 100
+(certain to be correct). Do NOT answer yet.</pre>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="eyebrow">Exact prompts · turns 2–3</div>
+  <h2>Attempt, then retrospective confidence</h2>
+  <pre><span class="lab">user (turn 2):</span> Now give your final answer as a single letter
+in the form 'Answer: X'.
+   <span class="lab">· MATH:</span> "Solve step by step. Put your final answer in \boxed{}."
+   <span class="lab">· geometry:</span> "Output only the RecipeDSL JSON object."
+
+<span class="lab">user (turn 3):</span> Now assess the answer you just gave. On a scale
+of 0 to 100, how confident are you that it is correct? Reply
+with exactly one line and nothing else:
+Confidence: N</pre>
+  <p class="dim">Hybrid reasoners (Qwen3.6, GLM): extended thinking ON for the attempt,
+  OFF for both confidence turns — best-effort answers, snap-judgment confidence.</p>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="eyebrow">The read site</div>
+  <h2>Where we read the thought stream</h2>
+  <pre>Confidence:<span style="background:#0

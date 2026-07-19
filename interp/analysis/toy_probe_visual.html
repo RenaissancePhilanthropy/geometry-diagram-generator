@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Probe — interactive toy</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz@6..72&family=Hanken+Grotesk:wght@400;600;800&family=DM+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#F0EBDE;--ink:#1F2BE0;--ink2:#5560E5;--char:#15173A;--rose:#b5360f;
+        --serif:'Newsreader',Georgia,serif;--sans:'Hanken Grotesk',sans-serif;--mono:'DM Mono',monospace;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--char);font-family:var(--sans);
+    background-image:linear-gradient(rgba(31,43,224,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(31,43,224,.07) 1px,transparent 1px);
+    background-size:32px 32px;min-height:100vh;padding:28px 32px 50px;}
+  h1{font-family:var(--serif);font-weight:400;font-size:40px;line-height:1.02;letter-spacing:-.01em;}
+  .kick{font-family:var(--sans);font-weight:800;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);margin-bottom:8px;}
+  .sub{font-size:17px;color:#3a3d55;max-width:880px;margin-top:10px;line-height:1.45;}
+  .wrap{display:flex;gap:34px;margin-top:26px;flex-wrap:wrap;align-items:flex-start;}
+  canvas{background:#faf7ee;border:2.5px solid var(--ink);}
+  .panel{flex:1;min-width:340px;max-width:520px;}
+  .ctl{margin:0 0 22px;}
+  .ctl label{font-family:var(--mono);font-size:14px;color:var(--ink);display:block;margin-bottom:8px;letter-spacing:.03em;}
+  input[type=range]{width:100%;accent-color:var(--ink);height:26px;}
+  .layerval{font-family:var(--serif);font-size:30px;color:var(--ink);}
+  .accbox{border:2.5px solid var(--ink);padding:18px 20px;margin-bottom:18px;background:rgba(255,255,255,.4);}
+  .accbox .big{font-family:var(--serif);font-size:58px;line-height:1;color:var(--ink);}
+  .accbox .lab{font-family:var(--mono);font-size:13px;letter-spacing:.08em;color:#3a3d55;text-transform:uppercase;}
+  .verdict{font-family:var(--sans);font-weight:800;font-size:20px;margin-top:12px;}
+  .verdict.no{color:var(--rose);} .verdict.yes{color:var(--ink);}
+  .legend{font-family:var(--sans);font-size:15px;line-height:1.9;margin-top:6px;}
+  .sw{display:inline-block;width:14px;height:14px;margin-right:8px;transform:translateY(2px);}
+  .dot-mid{border-radius:50%;background:var(--ink);}
+  .dot-not{border-radius:50%;background:transparent;border:2px solid var(--char);}
+  .ring{border:2px dashed var(--ink2);border-radius:50%;background:transparent;}
+  button{font-family:var(--mono);font-size:14px;color:var(--paper);background:var(--ink);border:none;padding:10px 18px;cursor:pointer;letter-spacing:.04em;margin-right:10px;}
+  button.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink);}
+  .note{font-family:var(--mono);font-size:13.5px;color:var(--ink2);line-height:1.6;margin-top:18px;border-left:3px solid var(--ink);padding-left:14px;}
+</style>
+</head>
+<body>
+  <div class="kick">Interpretability · interactive toy</div>
+  <h1>Can a straight line read “is this a midpoint?”<br>from the model’s vector?</h1>
+  <p class="sub">Each dot is one point-token, shown as a 2-number vector (in reality 3584 numbers). Filled = a true midpoint, open = not. Drag <b>LAYER</b>: low layers are early in the model (no signal yet); high layers are deep (the model has computed midpoint-ness). The dashed line is the <b>probe</b> — the direction it learned. Watch the held-out accuracy.</p>
+
+  <div class="wrap">
+    <canvas id="cv" width="720" height="560"></canvas>
+    <div class="panel">
+      <div class="ctl">
+        <label>LAYER (depth in the model): <span class="layerval" id="lv">0</span> / 10</label>
+        <input type="range" id="layer" min="0" max="10" value="0" step="1">
+        <div style="margin-top:12px"><button id="play">▶ play through layers</button><button class="ghost" id="reset">reset</button></div>
+      </div>
+      <div class="accbox">
+        <div class="lab">Held-out accuracy &nbsp;(6 points the probe never trained on)</div>
+        <div class="big" id="acc">50%</div>
+        <div class="verdict" id="verdict">…</div>
+      </div>
+      <div class="legend">
+        <span class="sw dot-mid"></span>midpoint (true)<br>
+        <span class="sw dot-not"></span>not a midpoint<br>
+        <span class="sw ring"></span>held-out test point (not used to train the probe)<br>
+        <span class="sw" style="background:var(--ink);height:3px;width:24px;transform:translateY(-3px)"></span>the probe’s decision line
+      </div>
+      <div class="note" id="note">At layer 0 the dots are pure noise — no line can separate them, so the probe is ~a coin flip. That means the “midpoint” fact is NOT yet in the vector.</div>
+    </div>
+  </div>
+
+<script>
+// ---- fixed toy data: 20 points, 10 midpoints (label 1) then 10 not (0) ----
+// nx,ny = baseline "noise" (the early-layer vector). Hand-fixed so it's stable.
+const NOISE=[[0.2,-0.3],[-0.6,0.5],[0.9,0.2],[-0.3,-0.8],[0.5,0.7],[-0.9,-0.2],[0.3,0.4],[-0.4,0.1],[0.7,-0.5],[0.0,0.9],
+             [0.4,0.3],[-0.7,-0.4],[0.8,-0.2],[-0.2,0.6],[0.6,-0.7],[-0.8,0.3],[0.1,-0.6],[-0.5,-0.1],[0.9,0.5],[-0.3,0.8]];
+const LABEL=[1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0,0,0,0,0,0];
+const TEST = new Set([7,8,9,17,18,19]);      // 3 midpoints + 3 not = held out
+const DIR=[0.7071,0.7071];                   // class direction (up-right)
+
+// vector of point i at a given layer: noise + signal that grows with depth
+function vec(i,layer){
+  const strength=(layer/10)*3.0;             // 0 at layer0 -> 3 at layer10
+  const s=LABEL[i]?1:-1;
+  return [NOISE[i][0]+DIR[0]*s*strength, NOISE[i][1]+DIR[1]*s*strength];
+}
+
+// ---- tiny logistic regression (gradient descent) on the TRAIN points ----
+function sig(z){return 1/(1+Math.exp(-z));}
+function train(layer){
+  let w=[0,0],b=0,lr=0.3;
+  const tr=[...Array(20).keys()].filter(i=>!TEST.has(i));
+  for(let it=0;it<600;it++){
+    let gw=[0,0],gb=0;
+    for(const i of tr){const v=vec(i,layer);const p=sig(w[0]*v[0]+w[1]*v[1]+b);const e=p-LABEL[i];
+      gw[0]+=e*v[0];gw[1]+=e*v[1];gb+=e;}
+    w[0]-=lr*gw[0]/tr.length;w[1]-=lr*gw[1]/tr.length;b-=lr*gb/tr.length;
+  }
+  return {w,b};
+}
+function heldoutAcc(m,layer){
+  let c=0;for(const i of TEST){const v=vec(i,layer);const pred=(m.w[0]*v[0]+m.w[1]*v[1]+m.b)>0?1:0;if(pred===LABEL[i])c++;}
+  return c/TEST.size;
+}
+
+// ---- drawing ----
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const X0=-5,X1=5,Y0=-5,Y1=5,PAD=30,W=cv.width,H=cv.height;
+const sx=x=>PAD+(x-X0)/(X1-X0)*(W-2*PAD);
+const sy=y=>PAD+(1-(y-Y0)/(Y1-Y0))*(H-2*PAD);
+function draw(layer){
+  const m=train(layer);
+  ctx.clearRect(0,0,W,H);
+  // faint grid
+  ctx.strokeStyle='rgba(31,43,224,.10)';ctx.lineWidth=1;
+  for(let g=X0;g<=X1;g++){ctx.beginPath();ctx.moveTo(sx(g),sy(Y0));ctx.lineTo(sx(g),sy(Y1));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(sx(X0),sy(g));ctx.lineTo(sx(X1),sy(g));ctx.stroke();}
+  // shade midpoint side of the probe line
+  // boundary: w0*x+w1*y+b=0
+  const {w,b}=m;
+  ctx.save();ctx.beginPath();ctx.rect(PAD,PAD,W-2*PAD,H-2*PAD);ctx.clip();
+  ctx.fillStyle='rgba(31,43,224,.06)';
+  // fill where w·v+b>0 : sample a polygon along x
+  ctx.beginPath();let started=false;
+  for(let px=X0;px<=X1;px+=0.2){const yb= Math.abs(w[1])>1e-6? -(w[0]*px+b)/w[1] : 0;
+    const X=sx(px),Yb=sy(yb);if(!started){ctx.moveTo(X,Yb);started=true;}else ctx.lineTo(X,Yb);}
+  ctx.lineTo(sx(X1),sy(Y1));ctx.lineTo(sx(X0),sy(Y1));ctx.closePath();
+  if(w[1]>0) ctx.fill(); else {ctx.fillStyle='rgba(31,43,224,.06)';/*approx*/ctx.fill();}
+  ctx.restore();
+  // probe line (dashed)
+  if(Math.abs(w[0])+Math.abs(w[1])>1e-4){
+    ctx.strokeStyle='#1F2BE0';ctx.lineWidth=3;ctx.setLineDash([9,7]);
+    const yb0=Math.abs(w[1])>1e-6? -(w[0]*X0+b)/w[1] : Y0;
+    const yb1=Math.abs(w[1])>1e-6? -(w[0]*X1+b)/w[1] : Y1;
+    ctx.beginPath();ctx.moveTo(sx(X0),sy(yb0));ctx.lineTo(sx(X1),sy(yb1));ctx.stroke();ctx.setLineDash([]);
+  }
+  // points
+  for(let i=0;i<20;i++){const v=vec(i,layer),x=sx(v[0]),y=sy(v[1]);
+    const test=TEST.has(i);
+    if(test){ctx.strokeStyle='#5560E5';ctx.setLineDash([4,3]);ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(x,y,13,0,7);ctx.stroke();ctx.setLineDash([]);}
+    ctx.beginPath();ctx.arc(x,y,7,0,7);
+    if(LABEL[i]){ctx.fillStyle='#1F2BE0';ctx.fill();}
+    else{ctx.fillStyle='#faf7ee';ctx.fill();ctx.strokeStyle='#15173A';ctx.lineWidth=2;ctx.stroke();}
+  }
+  // readouts
+  const acc=heldoutAcc(m,layer);
+  document.getElementById('acc').textContent=Math.round(acc*100)+'%';
+  document.getElementById('lv').textContent=layer;
+  const v=document.getElementById('verdict'),n=document.getElementById('note');
+  if(acc>=0.8){v.textContent='DECODABLE → the fact is in the vector';v.className='verdict yes';
+    n.textContent='A single straight line cleanly separates midpoints from non-midpoints. So the “midpoint” fact is present in the vector in a form the model itself could read. This is what a real representation looks like.';}
+  else{v.textContent='~coin flip → the fact is NOT here yet';v.className='verdict no';
+    n.textContent='No straight line separates the dots — they overlap. The probe is guessing. The “midpoint” fact has not been computed into the vector at this depth.';}
+}
+
+// ---- controls ----
+const slider=document.getElementById('layer');
+slider.addEventListener('input',()=>draw(+slider.value));
+document.getElementById('reset').onclick=()=>{slider.value=0;draw(0);};
+let timer=null;
+document.getElementById('play').onclick=()=>{
+  if(timer){clearInterval(timer);timer=null;return;}
+  let L=0;slider.value=0;draw(0);
+  timer=setInterval(()=>{L++;if(L>10){clearInterval(timer);timer=null;return;}slider.value=L;draw(L);},420);
+};
+draw(0);
+</script>
+</body>
+</html>

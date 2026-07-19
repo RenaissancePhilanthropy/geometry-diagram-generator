@@ -1,0 +1,378 @@
+<title>Metacognition Brief — does a model know when it's wrong?</title>
+<style>
+  :root{
+    /* RenPhil-aligned neutrals + charcoal */
+    --ground:#F6F6F6; --panel:#FFFFFF;
+    --ink:#131318; --ink-soft:#4A5464; --ink-faint:#737382;
+    --line:#E4E4E4; --line-soft:#ECECEC;
+    /* teal = the model's INTERNAL signal (the vibe, kept) */
+    --signal:#0C8CA3; --signal-deep:#134E5A; --signal-wash:#E3F1F4;
+    /* RenPhil coral = what the model SAYS OUT LOUD (brand, load-bearing) */
+    --brand:#F87248; --brand-deep:#C24C29; --brand-wash:#FDEAE1;
+    --good:#2F7D5B; --running:#C08A2E;
+    --serif:"Charter","Iowan Old Style",Georgia,"Times New Roman",serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--serif);font-size:17px;line-height:1.64;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  .wrap{max-width:900px;margin:0 auto;padding:0 32px 80px;}
+  .topbar{height:4px;background:var(--brand);max-width:900px;margin:0 auto;}
+
+  /* ---- masthead ---- */
+  header{padding-top:52px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--brand-deep);margin:0 0 18px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--brand);
+    box-shadow:0 0 0 3px var(--brand-wash);}
+  h1{font-size:34px;line-height:1.16;font-weight:600;margin:0 0 18px;
+    letter-spacing:-.011em;text-wrap:balance;max-width:19ch;}
+  h1 em{font-style:italic;color:var(--signal-deep);}
+  .dek{font-size:18px;color:var(--ink-soft);margin:0 0 26px;max-width:62ch;
+    line-height:1.55;}
+  .dek em{font-style:italic;color:var(--ink);}
+  .meta{display:flex;flex-wrap:wrap;gap:0;font-family:var(--mono);font-size:12px;
+    color:var(--ink-soft);border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);}
+  .meta div{padding:11px 22px 11px 0;margin-right:22px;border-right:1px solid var(--line-soft);}
+  .meta div:last-child{border-right:0;margin-right:0}
+  .meta b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;}
+
+  /* ---- section grid: marker rail + content ---- */
+  section{display:grid;grid-template-columns:118px 1fr;gap:28px;
+    padding:34px 0;border-top:1px solid var(--line);}
+  .marker{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-faint);padding-top:5px;}
+  .marker .n{display:block;color:var(--brand-deep);font-size:12px;margin-bottom:5px;}
+  .body>*:first-child{margin-top:0}
+  .body>*:last-child{margin-bottom:0}
+  h2{font-size:21px;font-weight:600;margin:0 0 12px;letter-spacing:-.006em;
+    text-wrap:balance;}
+  p{margin:0 0 14px;max-width:65ch;}
+  strong{font-weight:600;}
+  .term{color:var(--signal-deep);font-weight:600;}
+  .said{color:var(--brand-deep);font-weight:600;}
+  .gloss{font-size:13.5px;color:var(--ink-faint);font-style:italic;}
+
+  /* ---- plain method list ---- */
+  .chan{display:grid;grid-template-columns:158px 1fr;gap:14px;padding:12px 0;
+    border-bottom:1px solid var(--line-soft);align-items:baseline;}
+  .chan:last-child{border-bottom:0}
+  .chan dt{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);}
+  .chan dt .tag{display:block;font-size:10px;letter-spacing:.08em;font-weight:400;
+    text-transform:uppercase;margin-top:4px;}
+  .chan .tag.int{color:var(--signal);} .chan .tag.ext{color:var(--brand-deep);}
+  .chan dd{margin:0;font-size:15px;color:var(--ink-soft);line-height:1.5;}
+
+  /* ---- quiet "under the hood" math aside ---- */
+  .aside{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    margin:20px 0 4px;overflow:hidden;}
+  .aside .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-faint);padding:11px 20px 0;}
+  .aside .eq{display:flex;flex-wrap:wrap;gap:0;font-family:var(--mono);font-size:14px;
+    padding:8px 0 0;}
+  .aside .eq div{padding:12px 20px 16px;flex:1 1 220px;}
+  .aside .eq div:first-child{border-right:1px solid var(--line-soft);}
+  .aside .eq .lbl{display:block;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px;font-family:var(--mono);}
+  .aside .eq .read{color:var(--signal-deep);font-size:16px;}
+  .aside .eq .write{color:var(--brand-deep);font-size:16px;}
+  .aside .eq small{display:block;color:var(--ink-soft);font-family:var(--serif);
+    font-size:13px;font-style:italic;margin-top:6px;line-height:1.42;}
+  .aside .note{margin:0;padding:8px 20px 2px;font-size:14px;line-height:1.5;
+    color:var(--ink-soft);max-width:none;}
+  .aside .note b{color:var(--ink);font-weight:600;}
+  .aside .eq small b{color:var(--ink);font-weight:600;font-style:normal;}
+  .aside .key{margin:2px 0 0;padding:6px 20px 4px;display:flex;flex-direction:column;}
+  .aside .key > div{display:grid;grid-template-columns:30px 1fr;gap:15px;align-items:baseline;
+    padding:8px 0;border-bottom:1px solid var(--line-soft);}
+  .aside .key > div:last-child{border-bottom:0;}
+  .aside .key dt{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--signal-deep);
+    text-align:center;line-height:1.2;}
+  .aside .key dd{margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.46;}
+  .aside .key dd b{color:var(--ink);font-weight:600;}
+  .aside .key .m{font-family:var(--mono);color:var(--ink);font-weight:600;font-style:normal;}
+  .divider{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--brand-deep);margin:20px 0 8px;padding-top:14px;border-top:1px solid var(--line-soft);}
+
+  /* ---- chart ---- */
+  .chart{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:22px 24px 18px;margin:6px 0 12px;}
+  .chart h3{font-family:var(--mono);font-size:12px;letter-spacing:.05em;font-weight:600;
+    margin:0 0 3px;color:var(--ink);}
+  .chart .sub{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin:0 0 16px;
+    line-height:1.5;}
+  .legend{display:flex;gap:18px;font-family:var(--mono);font-size:10.5px;
+    color:var(--ink-soft);margin-bottom:18px;flex-wrap:wrap;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:11px;height:11px;border-radius:2px;display:inline-block;}
+  .row{display:grid;grid-template-columns:148px 1fr 38px;gap:14px;align-items:center;
+    margin-bottom:16px;}
+  .row .rl{font-family:var(--mono);font-size:11.5px;color:var(--ink);line-height:1.35;}
+  .row .rl small{display:block;color:var(--ink-faint);font-size:10px;margin-top:2px;
+    text-transform:uppercase;letter-spacing:.05em;}
+  .plot{position:relative;display:flex;flex-direction:column;gap:6px;}
+  .chance{position:absolute;left:50%;top:-6px;bottom:-6px;width:0;z-index:2;
+    border-left:1.5px dashed var(--ink-faint);opacity:.55;pointer-events:none;}
+  .bar{position:relative;height:11px;background:var(--line-soft);border-radius:2px;overflow:hidden;}
+  .fill{position:absolute;left:0;top:0;height:100%;border-radius:2px;
+    transform-origin:left center;animation:grow 1.05s cubic-bezier(.22,.61,.36,1) both;}
+  .fill.int{background:var(--signal);} .fill.ext{background:var(--brand);} .fill.fail{background:var(--ink-faint);}
+  .plot .xmark{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-family:var(--mono);
+    font-size:10px;letter-spacing:.03em;color:var(--ink-faint);white-space:nowrap;}
+  .vals{display:flex;flex-direction:column;gap:6px;}
+  .vals .val{height:11px;line-height:11px;font-family:var(--mono);font-size:12px;
+    font-variant-numeric:tabular-nums;text-align:right;color:var(--ink);}
+  .axis{display:grid;grid-template-columns:148px 1fr 38px;gap:14px;margin-top:11px;}
+  .axis .scale{grid-column:2;position:relative;display:flex;justify-content:space-between;
+    font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+    border-top:1px solid var(--line-soft);padding-top:7px;}
+  .axis .scale .mid{position:absolute;left:50%;transform:translateX(-50%);color:var(--ink-soft);}
+  @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+  /* ---- key findings ---- */
+  .finds{display:flex;flex-direction:column;gap:0;margin:2px 0 0;}
+  .find{padding:14px 0;border-bottom:1px solid var(--line-soft);}
+  .find:last-child{border-bottom:0}
+  .find h4{margin:0 0 4px;font-size:16.5px;font-weight:600;}
+  .find p{margin:0;font-size:14.5px;color:var(--ink-soft);max-width:68ch;}
+  .find .num{font-family:var(--mono);font-variant-numeric:tabular-nums;
+    color:var(--signal-deep);font-weight:600;}
+  .fn{font-size:12.5px;color:var(--ink-faint);line-height:1.55;margin:20px 0 0;
+    padding-top:14px;border-top:1px solid var(--line-soft);max-width:72ch;}
+  .fn sup{color:var(--brand-deep);font-weight:600;}
+  .fn b{color:var(--ink-soft);font-weight:600;}
+  .sub sup{color:var(--brand-deep);font-weight:600;}
+
+  /* ---- status chips ---- */
+  .chips{display:flex;flex-direction:column;gap:9px;}
+  .chip{display:grid;grid-template-columns:22px 1fr auto;gap:11px;align-items:center;
+    font-size:14.5px;padding:10px 13px;background:var(--panel);
+    border:1px solid var(--line);border-radius:3px;}
+  .chip .ico{width:14px;height:14px;border-radius:50%;justify-self:center;}
+  .chip.done .ico{background:var(--good);}
+  .chip.run .ico{background:var(--running);position:relative;}
+  .chip.run .ico::after{content:"";position:absolute;inset:-4px;border-radius:50%;
+    border:1.5px solid var(--running);opacity:.5;animation:pulse 1.8s ease-out infinite;}
+  .chip.queued .ico{background:transparent;border:1.5px dashed var(--ink-faint);}
+  .chip .st{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-faint);}
+  .chip.done .st{color:var(--good);} .chip.run .st{color:var(--running);}
+  @keyframes pulse{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.7);opacity:0}}
+
+  .foot{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;color:var(--ink-faint);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  .foot .id b{color:var(--signal-deep)} .foot .id i{color:var(--brand-deep);font-style:normal}
+
+  @media (max-width:720px){
+    .wrap{padding:0 20px 60px} header{padding-top:36px}
+    h1{font-size:27px}
+    section{grid-template-columns:1fr;gap:12px;}
+    .marker{padding-top:0}
+    .chan,.row{grid-template-columns:1fr;gap:6px}
+    .axis{margin-left:0}
+    .meta div{border-right:0;padding:7px 0;margin-right:0;
+      border-bottom:1px solid var(--line-soft);width:100%;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .fill{animation:none} .chip.run .ico::after{animation:none;display:none}
+  }
+</style>
+
+<div class="topbar"></div>
+<div class="wrap">
+  <header>
+    <p class="eyebrow"><span class="dot"></span> Interpretability Brief &nbsp;·&nbsp; Do AI models know their own limits?</p>
+    <h1>Does a model <em>know</em> when it's wrong — before it says so?</h1>
+    <p class="dek">AI models often sound just as sure of themselves when they're wrong as when they're right. This study asks a sharper question: underneath what a model <em>says</em>, does it privately register whether its answer is correct? And if it does — where in the model does that sense live, is it more trustworthy than the confidence the model reports, and can we use it to make the model behave better?</p>
+    <div class="meta">
+      <div><b>5</b> architectures</div>
+      <div><b>GeoGenBench</b> + 4 exams</div>
+      <div><b>3-step</b> test per question</div>
+      <div><b>16</b> model×subject combos</div>
+      <div>Rev. <b>2026-07-19</b></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="marker"><span class="n">01</span>Why it matters</div>
+    <div class="body">
+      <h2>"Confident" is really two different things</h2>
+      <p>When people say an AI is "confident," they blur two separate questions. First: does the model build an internal sense of whether it's right? Second: does it actually <em>tell</em> you? Those can come apart — and when they do, it's the whole story.</p>
+      <p>If a model privately senses it's probably wrong but still reports high confidence, that's a <span class="said">knowing–saying gap</span>. Which one is happening changes the fix entirely. If the knowledge is <em>there but unspoken</em>, better honesty is mostly a plumbing problem — route the signal to the output. If the knowledge was <em>never there</em>, that's a far deeper limitation. And if a real internal signal exists, one more question follows: is it just something we can quietly listen to, or something we can <span class="term">reach in and adjust</span> to change what the model does?</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="marker"><span class="n">02</span>How we test it</div>
+    <div class="body">
+      <h2>Questions with a right answer, and a model kept in the dark</h2>
+      <p>To study "is it right," we need questions where right and wrong aren't a matter of taste. The home domain is <strong>our own benchmark, GeoGenBench</strong>: the model writes a step-by-step geometry construction, and our symbolic compiler checks it against a machine-verifiable list of properties — are those two lines really parallel, does that point really lie on the circle. Because the check is exact, "correct" is never a judgment call. Around it we add four standard exams for breadth — <span class="said">MMLU-Pro, MATH, GSM8K, GPQA-Diamond</span> — covering general knowledge, math, and graduate-level science. Four current open models span the main designs: <strong>Qwen3.6-27B, GLM-4.7-Flash, Mistral-Small-24B, Gemma-4-26B</strong> — plus a dense-attention <strong>Qwen2.5-14B</strong> as an architecture control.</p>
+      <p>Each question runs in <strong>three steps</strong>: the model rates its confidence <em>before</em> answering, gives the answer, then rates its confidence <em>again</em>. We grade the answer ourselves and <strong>never tell the model whether it was right</strong> — so any change in its second rating is a genuine, unprompted second thought, not a reaction to feedback.</p>
+      <p>Crucially, we don't just read the words the model writes — we look <em>inside</em> it. Every word a model produces is computed through many internal layers of activity, and we take a snapshot of that hidden activity at one consistent moment: the instant just before the model writes its confidence rating. Always reading at the same place — and a place whose wording is identical on every question ("Confidence:") — means nothing about the phrasing itself can leak whether the answer was right.</p>
+      <p>We then confirmed that spot is genuinely neutral: at the model's very first layer, you can't guess right-from-wrong there any better than a coin flip. So anything we can decode from the <em>deeper</em> layers has to be something the model actively worked out — not a hint sitting on the surface.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="marker"><span class="n">03</span>How we measure</div>
+    <div class="body">
+      <h2>Four ways to read it — and one to test cause</h2>
+      <p>We compare four ways of getting at the model's private sense of its own correctness, ordered from the obvious to the deeply buried:</p>
+      <dl class="chan" style="display:block;margin:6px 0 0">
+        <div class="chan"><dt>What it says<span class="tag ext">spoken · out loud</span></dt><dd>The confidence number the model writes. This is all a user normally sees.</dd></div>
+        <div class="chan"><dt>Its own odds<span class="tag ext">spoken · P(True)</span></dt><dd>How likely the model rates its own answer to be true — the standard baseline others use.</dd></div>
+        <div class="chan"><dt>Trained reader<span class="tag int">internal · a "probe"</span></dt><dd>A simple detector we train to read "right vs wrong" straight from the model's internal state. Trained and tested on <em>different</em> questions, so it can't cheat by memorizing.</dd></div>
+        <div class="chan"><dt>Label-free reader<span class="tag int">internal · "Jacobian lens"</span></dt><dd>Reads the same thing using only the model's own wiring — <em>never shown a single right/wrong label</em>. If it agrees with the trained reader, the signal is genuinely in the model, not something we taught it.</dd></div>
+      </dl>
+      <p class="divider">Then — to show cause, not just correlation:</p>
+      <dl class="chan" style="display:block;margin:0">
+        <div class="chan"><dt>Nudging<span class="tag int">internal · steering</span></dt><dd>Rather than only reading the signal, we push on it while the model works and watch what changes. A matching push in a <em>random</em> direction is the control. This is the one move that can separate a cause from a coincidence.</dd></div>
+      </dl>
+
+      <div class="aside">
+        <p class="cap">Under the hood — the same object, seen five ways</p>
+        <p class="note">It all comes down to one idea: a <b>concept</b> lives along a single <b>direction</b> in the model's internal state, and you can either <em>measure</em> how much of it is present or <em>add</em> more of it. The whole vocabulary is three symbols:</p>
+        <dl class="key">
+          <div><dt>h</dt><dd><b>the model's internal state</b> — a long list of numbers (a vector), captured at our read spot</dd></div>
+          <div><dt>u</dt><dd><b>a direction</b> that stands for one concept — here, "this answer is correct"</dd></div>
+          <div><dt>α</dt><dd><b>the nudge strength</b> — how far we scale the direction before adding it in</dd></div>
+        </dl>
+        <div class="eq">
+          <div><span class="lbl">Read it — a projection</span><span class="read">score = u · h</span><small>how much of the direction is present. The trained reader learns <b>u</b> from labelled examples; the label-free reader derives the same <b>u</b> from the model's own output wiring; "its own odds" and "what it says" read what the model already put in its output.</small></div>
+          <div><span class="lbl">Write it — an addition</span><span class="write">h &larr; h + &alpha;u</span><small>scale the direction by <b>&alpha;</b>, add it back, and watch the model's behaviour. That is the nudging test — the only move that can prove the model actually <em>uses</em> the signal, rather than merely carrying it.</small></div>
+        </div>
+      </div>
+      <p class="gloss" style="margin-top:16px">Every result has to survive a battery of controls — no cheating from surface cues like answer length, no leakage between the training and testing questions, and that "does a random nudge do the same thing?" check on every causal claim.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="marker"><span class="n">04</span>What we found</div>
+    <div class="body">
+      <h2>The model's internal sense beats its own words — every time</h2>
+
+      <div class="chart">
+        <h3>How well each channel tells the model's right answers from its wrong ones</h3>
+        <p class="sub">four example benchmarks · longer is better · the dashed line is a coin flip (0.50)<sup>†</sup></p>
+        <div class="legend">
+          <span><i style="background:var(--signal)"></i> internal — what it knows</span>
+          <span><i style="background:var(--brand)"></i> spoken — what it says</span>
+        </div>
+
+        <div class="row">
+          <div class="rl">MATH<small>Qwen3.6-27B</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:96%"></div></div>
+            <div class="bar"><div class="fill ext" style="width:55%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.96</div><div class="val">.55</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">GSM8K<small>GLM-4.7-Flash</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:90%"></div></div>
+            <div class="bar"><div class="fill ext" style="width:57%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.90</div><div class="val">.57</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">GeoGenBench<small>Mistral-Small</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:80%"></div></div>
+            <div class="bar"><div class="fill ext" style="width:65%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.80</div><div class="val">.65</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">MMLU-Pro<small>Mistral-Small</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:74%"></div></div>
+            <div class="bar"><div class="fill ext" style="width:66%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.74</div><div class="val">.66</div></div>
+        </div>
+        <div class="axis"><div class="scale"><span>0</span><span class="mid">0.50 · coin flip</span><span>1.00</span></div></div>
+      </div>
+
+      <div class="finds">
+        <div class="find"><h4>The internal sense beats the spoken one — in all 16 combinations</h4><p>Every model, every subject: reading the internal state scores <span class="num">0.69–0.96</span>, versus <span class="num">0.51–0.73</span> for the confidence the model states out loud. The self-knowledge is consistently there.</p></div>
+        <div class="find"><h4>Math is the clearest "knows but won't say" case</h4><p>On math, the spoken confidence is barely better than a coin flip (<span class="num">0.52–0.73</span>) — yet the internal read is the <em>strongest of any subject</em> (<span class="num">up to 0.96</span>). The model quietly registers whether its math checks out, but doesn't put that in its answer.</p></div>
+        <div class="find"><h4>It's judging <em>this attempt</em> — not just "hard question"</h4><p>On questions the model sometimes gets right and sometimes wrong, the internal read still separates the good attempts from the bad (<span class="num">0.92</span> vs. <span class="num">0.57</span> spoken). So it isn't merely sensing that a topic looks difficult.</p></div>
+        <div class="find"><h4>A label-free reader finds it too — but only in dense models</h4><p>A reader that never sees a correctness label matches the trained one on dense-attention models (Mistral <span class="num">0.76–0.82</span>, Qwen2.5 <span class="num">0.88</span>) — proof the signal is genuinely in the model, not something we taught it. On Mixture-of-Experts (GLM, Gemma) and Mamba (Qwen3.6) it fails, because it assumes a fixed internal "wiring" that those architectures reroute per input. The signal is still there — the <em>trained</em> reader finds it in all five — but the label-free method is a dense-transformer tool.</p></div>
+        <div class="find"><h4>Causal for what it <em>says</em> — not for what it gets <em>right</em></h4><p>Nudging the signal is causal for the <em>report</em>: it makes stated confidence honest on wrong answers (overconfidence <span class="num">80→43</span>, calibration error more than halved, while random nudges do nothing). But nudging it "toward correct" <em>while the model answers</em> never raises accuracy — across every model and dose, it only holds flat or degrades. So the signal is a <strong>monitor the model reads, not a lever that drives the answer</strong>: you can disrupt correctness, you can't manufacture it.</p></div>
+      </div>
+
+      <div class="chart" style="margin-top:20px">
+        <h3>The label-free reader works only on dense transformers</h3>
+        <p class="sub">label-free score per architecture, same test (MATH)<sup>†</sup> · the <em>trained</em> reader finds the signal in all five (0.75–0.95)</p>
+        <div class="legend">
+          <span><i style="background:var(--signal)"></i> dense attention — lens works</span>
+          <span><i style="background:var(--ink-faint)"></i> MoE / Mamba — lens fails</span>
+        </div>
+        <div class="row">
+          <div class="rl">Qwen2.5-14B<small>dense attention</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:88.3%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.88</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">Mistral-24B<small>dense attention</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill int" style="width:82.3%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.82</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">Qwen3.6-27B<small>hybrid · Mamba</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill fail" style="width:42.8%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.43</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">GLM-4.7<small>Mixture-of-Experts</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill fail" style="width:31%"></div></div>
+          </div>
+          <div class="vals"><div class="val">.31</div></div>
+        </div>
+        <div class="row">
+          <div class="rl">Gemma-4<small>MoE + softcapping</small></div>
+          <div class="plot"><span class="chance"></span>
+            <div class="bar"><div class="fill fail" style="width:0%"></div></div>
+            <span class="xmark">✗ the lens won't even build</span>
+          </div>
+          <div class="vals"><div class="val">—</div></div>
+        </div>
+        <div class="axis"><div class="scale"><span>0</span><span class="mid">0.50 · coin flip</span><span>1.00</span></div></div>
+      </div>
+      <p style="margin-top:12px;font-size:14px;color:var(--ink-soft);max-width:66ch">Same family, same test — swapping Qwen from <strong>Mamba</strong> (3.6) to plain <strong>dense attention</strong> (2.5) flips the label-free reader from <span class="num" style="color:var(--ink-faint)">0.43</span> to <span class="num">0.88</span>. That isolates the cause: the lens needs an internal "wiring" that's the <em>same for every input</em>, and Mamba's and MoE's per-input routing breaks it. Handy rule of thumb: <strong>trust a label-free readout on a dense transformer; use a trained probe on MoE or Mamba.</strong></p>
+
+      <p class="fn"><sup>†</sup> The score on both charts is <b>AUROC</b> (area under the ROC curve): the chance that a correct answer scores higher than a wrong one, from 0.50 (a coin flip) to 1.00 (perfect). It measures how well a channel <em>separates</em> right from wrong — not whether its stated numbers are calibrated.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="marker"><span class="n">05</span>Where it stands</div>
+    <div class="body">
+      <h2>The complete picture</h2>
+      <div class="chips">
+        <div class="chip done"><span class="ico"></span><span>Internal signal present in all 16 model×subject cells, past every robustness check (no leakage, no surface cheating, holds within difficulty)</span><span class="st">Done</span></div>
+        <div class="chip done"><span class="ico"></span><span>Knowing–saying gap: internal read far outruns spoken confidence, widest on math</span><span class="st">Done</span></div>
+        <div class="chip done"><span class="ico"></span><span>Label-free reading works on dense transformers, fails on MoE + Mamba — pinned to architecture by a within-family control</span><span class="st">Done</span></div>
+        <div class="chip done"><span class="ico"></span><span>Steering is causal for the report (confidence) but not the answer (accuracy) — a monitor, not a lever</span><span class="st">Done</span></div>
+      </div>
+      <p style="margin-top:16px;font-size:14.5px;color:var(--ink-soft)">The through-line: models build a <strong>real, computed self-model of their own correctness</strong> — attempt-specific, present in every architecture, and far sharper than the confidence they state. You can <em>read</em> that signal (label-free, if the model is a dense transformer) and you can <em>disrupt</em> it, but you cannot <em>drive</em> it — it's a gauge the model consults, not a knob that sets the answer. The practically important piece is the <strong>knowing–saying gap</strong>: the "I'm probably wrong" signal is already there, computed and legible — it simply isn't reaching the output. Closing that gap is an access problem, not a missing-capability one.</p>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span class="id">interp/ · metacognition study · branch feat/spatial-interp</span>
+    <span><b>teal = what it knows</b> &nbsp;·&nbsp; <i>coral = what it says</i></span>
+  </div>
+</div>
