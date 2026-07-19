@@ -38,6 +38,32 @@ from ..ir.renderer import TikZRenderer, Renderer
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_recipe_dsl_leniently(raw_content: str) -> Optional[RecipeDSL]:
+    """Best-effort recovery of a RecipeDSL from raw model content.
+
+    Some OpenAI-compatible endpoints (e.g. Baseten-hosted models) either skip the
+    tool-call machinery and answer with plain JSON text, or leak trailing tokens
+    (stray stop-token markers, code-fence closers) after an otherwise-valid JSON
+    object. json.JSONDecoder().raw_decode parses only the leading JSON value and
+    ignores anything after it, which recovers both cases.
+    """
+    text = raw_content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        text = text.rsplit("```", 1)[0]
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return RecipeDSL.model_validate(obj)
+    except pydantic.ValidationError:
+        return None
+
 MAX_RETRIES = 3
 _SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
@@ -296,6 +322,9 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         # Capture raw content for failure diagnostics
         if raw_msg is not None:
             raw_content = raw_msg.content if isinstance(raw_msg.content, str) else str(raw_msg.content)
+
+        if dsl is None and raw_content:
+            dsl = _parse_recipe_dsl_leniently(raw_content)
 
         if dsl is None:
             parsing_error = response.get("parsing_error") or "Failed to parse RecipeDSL"
