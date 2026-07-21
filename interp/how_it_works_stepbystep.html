@@ -1,0 +1,417 @@
+<title>How it works — step by step (for me)</title>
+<style>
+  :root{
+    --paper:#F7F5F1; --card:#FFFFFF; --ink:#22262C; --soft:#586470; --faint:#93867B;
+    --line:#E7E2DA; --teal:#0F7D74; --teal-deep:#0A544E; --teal-wash:#E3F0EE;
+    --hl:#FBE8A6; --warn:#B5502F; --good:#2E7D51; --notebg:#FBFAF7;
+    --serif:Georgia,"Iowan Old Style",Charter,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);
+    font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 26px 90px;}
+
+  header{padding:58px 0 8px;max-width:820px;}
+  .kicker{font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--teal);margin:0 0 14px;}
+  h1{font-family:var(--sans);font-weight:800;font-size:34px;line-height:1.12;margin:0 0 14px;letter-spacing:-.01em;}
+  .lede{font-size:18.5px;color:var(--soft);margin:0;max-width:60ch;}
+
+  .spine{background:var(--teal-deep);color:#EAF4F2;border-radius:14px;padding:24px 26px;margin:30px 0 10px;
+    font-family:var(--sans);max-width:820px;}
+  .spine .t{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#9FD3CC;margin:0 0 12px;}
+  .spine .move{display:flex;gap:14px;align-items:baseline;margin:10px 0;font-size:17px;}
+  .spine .move b{color:#FBE8A6;font-weight:800;min-width:4.6em;}
+  .spine .move code{font-family:var(--mono);color:#CFEAE6;font-size:14px;}
+  .spine .kicker2{font-size:14.5px;color:#BFDAD6;margin:14px 0 0;font-style:italic;}
+
+  .legend{font-family:var(--sans);font-size:13.5px;color:var(--soft);background:var(--card);
+    border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:0 0 8px;max-width:820px;line-height:1.9;}
+  .legend .lt{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal);margin-right:10px;}
+  .legend b{font-family:var(--serif);font-style:italic;color:var(--ink);}
+
+  .part{font-family:var(--sans);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin:46px 0 6px;padding-bottom:8px;border-bottom:2px solid var(--line);}
+
+  .step{display:grid;grid-template-columns:44px minmax(0,1fr) 336px;gap:24px;padding:26px 0;border-bottom:1px solid var(--line);}
+  .num{font-family:var(--sans);font-weight:800;font-size:26px;color:var(--teal);line-height:1;padding-top:3px;font-variant-numeric:tabular-nums;}
+  .body>h2{font-family:var(--sans);font-weight:700;font-size:21px;line-height:1.22;margin:0 0 10px;letter-spacing:-.005em;}
+  .body>p{margin:0 0 12px;max-width:62ch;} .body>p:last-child{margin-bottom:0;}
+  .hl{background:linear-gradient(transparent 55%, var(--hl) 55%);padding:0 .05em;font-weight:600;}
+  .warn{color:var(--warn);font-weight:600;} .good{color:var(--good);font-weight:600;}
+  .v{font-style:italic;}
+
+  .plain{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:8px;
+    padding:13px 16px;margin:12px 0;font-size:16px;color:var(--soft);}
+  .plain .tag{display:block;font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--teal);margin-bottom:4px;}
+
+  /* the details/math note beside every step */
+  .note{background:var(--notebg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    font-family:var(--sans);font-size:13.5px;line-height:1.52;color:var(--soft);align-self:start;}
+  .note .nt{font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--teal);margin:0 0 9px;
+    display:flex;justify-content:space-between;}
+  .note .nt span{color:var(--faint);}
+  .note p{margin:0 0 9px;} .note p:last-child{margin-bottom:0;}
+  .note b{color:var(--ink);font-weight:700;}
+  .note code{font-family:var(--mono);font-size:12px;background:var(--teal-wash);color:var(--teal-deep);padding:.05em .3em;border-radius:4px;}
+  .eq{font-family:var(--serif);background:var(--card);border:1px solid var(--line);border-radius:6px;
+    padding:9px 11px;margin:9px 0;font-size:14.5px;text-align:center;overflow-x:auto;line-height:1.7;}
+  .eq .v,.note .v{font-style:italic;}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;}
+  .chips span{font-family:var(--mono);font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 9px;color:var(--soft);}
+  .chips .dots{border:none;background:none;color:var(--faint);padding:6px 2px;}
+  figure{margin:14px 0;text-align:center;} figure svg{max-width:100%;height:auto;}
+  figcaption{font-family:var(--sans);font-size:13px;color:var(--faint);margin-top:6px;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:12px 0;}
+  .rank{font-family:var(--mono);font-size:13.5px;margin:10px 0;}
+  .rank .r{display:flex;align-items:center;gap:10px;padding:3px 0;}
+  .rank .sc{width:3em;color:var(--soft);text-align:right;}
+  .rank .b{height:12px;border-radius:3px;background:var(--teal);}
+  .rank .mk{width:1.4em;font-weight:700;} .rank .ok{color:var(--good)} .rank .no{color:var(--warn)}
+  .arch{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:14px;}
+  .arch h4{font-family:var(--sans);font-size:13px;margin:0 0 8px;font-weight:700;}
+  .arch .lines{height:60px;border-radius:6px;}
+  .arch .clean{background:repeating-linear-gradient(90deg,var(--teal) 0 2px,transparent 2px 10px);}
+  .arch .mush{background:repeating-linear-gradient(72deg,rgba(15,125,116,.5) 0 2px,transparent 2px 9px),
+     repeating-linear-gradient(108deg,rgba(181,80,47,.45) 0 2px,transparent 2px 8px),
+     repeating-linear-gradient(20deg,rgba(90,100,112,.4) 0 2px,transparent 2px 11px);filter:blur(1.2px);}
+  .arch p{font-size:13.5px;color:var(--soft);margin:8px 0 0;}
+
+  .recap{background:var(--teal-wash);border-radius:14px;padding:24px 26px;margin:34px 0 0;max-width:820px;}
+  .recap h2{font-family:var(--sans);font-weight:800;font-size:20px;margin:0 0 12px;color:var(--teal-deep);}
+  .recap ol{margin:0;padding-left:20px;} .recap li{margin:9px 0;font-size:16.5px;}
+  .foot{font-family:var(--sans);font-size:14.5px;color:var(--soft);margin-top:24px;max-width:820px;
+    background:var(--card);border:1px dashed var(--line);border-radius:10px;padding:16px 18px;}
+
+  @media(max-width:980px){
+    .step{grid-template-columns:38px 1fr;gap:14px;}
+    .note{grid-column:2;margin-top:6px;}
+    .body>p{max-width:none;}
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="kicker">Just for me · read at your own pace · now with the math</p>
+    <h1>How this actually works — one small step at a time</h1>
+    <p class="lede">Left column = the intuition. <strong>Right column = the details and the math</strong> for that exact step. There's really only <em>one</em> idea underneath everything, so let's pin it first.</p>
+  </header>
+
+  <div class="spine">
+    <p class="t">The one idea — everything is one of these two moves</p>
+    <div class="move"><b>READ</b><span>measure how much of a <em>direction</em> is present in the thoughts &nbsp; <code>s = u · h</code></span></div>
+    <div class="move"><b>WRITE</b><span>add a bit of that direction into the thoughts &nbsp; <code>h ← h + α·u</code></span></div>
+    <p class="kicker2">Every technical thing below is one of these two. That's the whole toolkit.</p>
+  </div>
+
+  <div class="legend"><span class="lt">Notation</span>
+    <b>h</b> hidden state (a vector in ℝ<sup>d</sup>, d ≈ 2,000–5,000) &nbsp;·&nbsp;
+    <b>u</b> a direction &nbsp;·&nbsp; <b>α</b> nudge size &nbsp;·&nbsp;
+    <b>y</b> label: correct = 1, wrong = 0 &nbsp;·&nbsp; <b>ℓ</b> layer &nbsp;·&nbsp;
+    <b>s</b> a readout's score &nbsp;·&nbsp; <b>·</b> dot product &nbsp;·&nbsp; <b>‖·‖</b> length
+  </div>
+
+  <div class="part">Part A · What's inside the model</div>
+
+  <div class="step">
+    <div class="num">1</div>
+    <div class="body">
+      <h2>A model "thinks" in a long list of numbers</h2>
+      <p>When the model reads your question, then — <em>before</em> it answers — it holds an internal scratchpad: literally a list of about <strong>5,000</strong> numbers, updated as it works.</p>
+      <div class="chips"><span>0.31</span><span>−1.20</span><span>0.04</span><span>2.11</span><span>−0.88</span><span>0.57</span><span>−0.02</span><span>1.36</span><span class="dots">… ×5000</span></div>
+      <div class="plain"><span class="tag">In plain terms</span> The "thought" isn't words yet — it's raw mental activity, a wall of numbers. Our whole job is to make sense of that wall.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 1</span></p>
+      <p>At each token position and layer <span class="v">ℓ</span> the model holds a vector <span class="v">h</span><sup>(ℓ)</sup> ∈ ℝ<sup>d</sup>. Width <span class="v">d</span>: Mistral 5120, GLM 2048, Qwen 5120.</p>
+      <p>It's called the <b>residual stream</b> because each layer <em>adds</em> to it:</p>
+      <div class="eq"><span class="v">h</span><sup>(ℓ+1)</sup> = <span class="v">h</span><sup>(ℓ)</sup> + <span class="v">f</span><sub>ℓ</sub>(<span class="v">h</span><sup>(ℓ)</sup>)</div>
+      <p>with <span class="v">L</span> = 40–64 layers. The stream is a running sum; we snapshot <span class="v">h</span><sup>(ℓ)</sup> at one position for every <span class="v">ℓ</span>.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div class="body">
+      <h2>Ideas live in there as <span class="hl">directions</span></h2>
+      <p>A particular <em>pattern</em> across those numbers can mean something — there's a pattern for "this is a midpoint," and one for <span class="warn">"I'm about to be wrong."</span> We call such a pattern a <strong>direction</strong>.</p>
+      <div class="plain"><span class="tag">In plain terms</span> Like "north" is a direction on a map, "wrongness" is a direction in the model's thought-space. A thought can point more or less toward it.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 2</span></p>
+      <p>A concept <span class="v">c</span> is a unit direction <span class="v">u</span><sub>c</sub> ∈ ℝ<sup>d</sup>, ‖<span class="v">u</span><sub>c</sub>‖ = 1. Its "amount" in a state is the scalar <span class="v">u</span><sub>c</sub> · <span class="v">h</span>.</p>
+      <p><b>Linear representation hypothesis:</b> many concepts are (roughly) linear directions, and a state carries several at once:</p>
+      <div class="eq"><span class="v">h</span> ≈ Σ<sub>c</sub> <span class="v">a</span><sub>c</sub> <span class="v">u</span><sub>c</sub> + noise</div>
+      <p>where <span class="v">a</span><sub>c</sub> is how strongly feature <span class="v">c</span> is present.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div class="body">
+      <h2>The only two things you can do with a direction</h2>
+      <div class="two">
+        <figure>
+          <svg viewBox="0 0 260 160" role="img" aria-label="reading a direction">
+            <defs><marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#0F7D74"/></marker></defs>
+            <line x1="34" y1="132" x2="220" y2="34" stroke="#0F7D74" stroke-width="2.5" marker-end="url(#a1)"/>
+            <text x="196" y="30" font-family="system-ui" font-size="12" fill="#0A544E">u</text>
+            <line x1="34" y1="132" x2="150" y2="71" stroke="#FBE8A6" stroke-width="7" opacity=".9"/>
+            <circle cx="176" cy="120" r="6" fill="#22262C"/><text x="182" y="124" font-family="system-ui" font-size="11" fill="#586470">h</text>
+            <line x1="176" y1="120" x2="150" y2="71" stroke="#93867B" stroke-width="1.3" stroke-dasharray="3 3"/>
+            <text x="40" y="150" font-family="system-ui" font-size="10.5" fill="#93867B">reading = length of the yellow bit</text>
+          </svg>
+          <figcaption>READ = how far <span class="v">h</span> lines up with <span class="v">u</span></figcaption>
+        </figure>
+        <figure>
+          <svg viewBox="0 0 260 160" role="img" aria-label="writing a direction">
+            <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#0F7D74"/></marker><marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#B5502F"/></marker></defs>
+            <line x1="34" y1="132" x2="220" y2="34" stroke="#0F7D74" stroke-width="2.5" marker-end="url(#a2)"/>
+            <text x="196" y="30" font-family="system-ui" font-size="12" fill="#0A544E">u</text>
+            <circle cx="120" cy="104" r="6" fill="#22262C"/><text x="96" y="108" font-family="system-ui" font-size="11" fill="#586470">h</text>
+            <line x1="120" y1="104" x2="162" y2="82" stroke="#B5502F" stroke-width="2.5" marker-end="url(#a3)"/>
+            <circle cx="168" cy="79" r="6" fill="#B5502F" opacity=".5"/>
+            <text x="40" y="150" font-family="system-ui" font-size="10.5" fill="#93867B">writing = nudge h along u</text>
+          </svg>
+          <figcaption>WRITE = push <span class="v">h</span> along <span class="v">u</span></figcaption>
+        </figure>
+      </div>
+      <p><strong>Read</strong> gives one number (how wrong-leaning is this thought?). <strong>Write</strong> changes the thought and we watch what happens.</p>
+    </div>
+    <aside class="note">
+      <p class="nt">The math <span>· step 3</span></p>
+      <p><b>Read</b> = the dot product, a single scalar:</p>
+      <div class="eq"><span class="v">s</span> = <span class="v">u</span> · <span class="v">h</span> = Σ<sub>k=1</sub><sup>d</sup> <span class="v">u</span><sub>k</sub> <span class="v">h</span><sub>k</sub></div>
+      <p>The projection <em>vector</em> is (<span class="v">u</span>·<span class="v">h</span>)<span class="v">u</span>. Direction similarity: cos(<span class="v">a,b</span>) = (<span class="v">a</span>·<span class="v">b</span>) / (‖<span class="v">a</span>‖‖<span class="v">b</span>‖).</p>
+      <p><b>Write</b> = addition (α ∈ ℝ; α&lt;0 pushes the other way):</p>
+      <div class="eq"><span class="v">h</span> ← <span class="v">h</span> + α<span class="v">u</span></div>
+      <p>If ‖<span class="v">u</span>‖=1 this shifts the reading by exactly α: <span class="v">u</span>·(<span class="v">h</span>+α<span class="v">u</span>) = <span class="v">u</span>·<span class="v">h</span> + α.</p>
+    </aside>
+  </div>
+
+  <div class="part">Part B · Getting data we can trust</div>
+
+  <div class="step">
+    <div class="num">4</div>
+    <div class="body">
+      <h2>We need questions with a real, checkable right/wrong</h2>
+      <p>To study "does it know it's wrong," we first have to <em>know</em> if it's wrong — objectively. Geometry problems a <strong>compiler</strong> checks exactly, plus math and multiple-choice exams with definite answers. And we pick <span class="hl">hard</span> ones.</p>
+      <div class="plain"><span class="tag">In plain terms</span> If it's never wrong, you can't study "knows when it's wrong." We chose tasks it fails often (geometry: passes only 13–39%).</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 4</span></p>
+      <p>Each attempt gets a label <span class="v">y</span> ∈ {0,1} from an <b>external grader</b>: geometry via the GeoGen compiler (parse → compile in SymPy → check invariants); QA via exact / symbolic answer match.</p>
+      <p>Pass rate <span class="v">p</span> = mean(<span class="v">y</span>). We want <span class="v">p</span> far from 0 and 1 — you can only estimate a separation between right and wrong if you have <b>both</b>. Geometry <span class="v">p</span> ≈ 0.13–0.39.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">5</div>
+    <div class="body">
+      <h2>Ask → answer → ask, and grade it <span class="hl">in secret</span></h2>
+      <p>Three turns: (1) "how sure are you that you'll get this?" (2) it answers, (3) "how sure that your answer is right?" We grade it ourselves and <strong>never tell the model</strong>.</p>
+      <div class="plain"><span class="tag">Why this matters</span> Now for every attempt we hold two things: <strong>the internal thought</strong> and <strong>whether it was truly right</strong>. That pairing powers everything below.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 5</span></p>
+      <p>Per attempt we store (<span class="v">h</span><sub>i</sub>, <span class="v">y</span><sub>i</sub>, <span class="v">c</span><sub>i</sub><sup>pre</sup>, <span class="v">c</span><sub>i</sub><sup>post</sup>) — the state, the truth, and the stated confidences.</p>
+      <p>Because grading is external and hidden, <span class="v">c</span><sup>post</sup> is a <b>blind</b> self-estimate (not a reaction to feedback). The {(<span class="v">h</span><sub>i</sub>, <span class="v">y</span><sub>i</sub>)} pairs are the data for every readout that follows.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">6</div>
+    <div class="body">
+      <h2>We peek at one exact, neutral spot</h2>
+      <p>We read the scratchpad at one fixed moment — right as the model is about to write its confidence number — the same spot every time, so the <em>phrasing</em> can't leak the answer.</p>
+      <div class="plain"><span class="tag">A crucial check</span> At the very first layer, that spot tells us <strong>nothing</strong> (a coin flip). So anything readable <em>deeper</em> is something the model <span class="good">worked out</span>, not a surface cue.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 6</span></p>
+      <p>We read <span class="v">h</span><sup>(ℓ)</sup> at the fixed "<code>Confidence:</code>" decision token, for each layer <span class="v">ℓ</span>. Identical context ⇒ its layer-0 embedding is constant across items ⇒</p>
+      <div class="eq">AUROC(<span class="v">h</span><sup>(0)</sup>, <span class="v">y</span>) ≈ 0.50 &nbsp;(verified)</div>
+      <p>So any AUROC(<span class="v">h</span><sup>(ℓ)</sup>) &gt; 0.5 for <span class="v">ℓ</span> &gt; 0 is <b>computed</b>, not lexical. We report at a fixed depth <span class="v">ℓ*</span> ≈ 0.7<span class="v">L</span> — not the best layer (which would be optimistic).</p>
+    </aside>
+  </div>
+
+  <div class="part">Part C · Reading the signal (four ways)</div>
+
+  <div class="step">
+    <div class="num">7</div>
+    <div class="body">
+      <h2>Way 1 — just listen to what it <span class="hl">says</span></h2>
+      <p>The obvious readout: the confidence number the model writes out loud. This is our baseline — and it's often nearly useless (the "95% sure" on a wrong answer).</p>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 7</span></p>
+      <p><b>Readout 0 (baseline).</b> <span class="v">s</span><sub>i</sub> = <span class="v">N</span><sub>i</sub>, the stated integer 0–100. Uses zero model internals.</p>
+      <p>This is the "what it says" channel — <code>verbalized confidence</code>. Everything internal has to <em>beat</em> AUROC(<span class="v">N</span>, <span class="v">y</span>).</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">8</div>
+    <div class="body">
+      <h2>Way 2 — train a little detector (the <span class="hl">probe</span>)</h2>
+      <p>We have thousands of (thought, right/wrong) pairs from step 5. Train a simple classifier to learn the "wrongness direction" <span class="v">u</span> from the labels — then <strong>read</strong> it (<span class="v">u</span>·<span class="v">h</span>) on new thoughts.</p>
+      <div class="plain"><span class="tag">In plain terms</span> Show it enough "thought when right" vs "thought when wrong," and it finds the direction that separates them. A <em>read</em> — using labels to find <span class="v">u</span>.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The math <span>· step 8</span></p>
+      <p><b>Readout 1 — logistic regression.</b> Standardize <span class="v">z</span> = (<span class="v">h</span>−μ)/σ, reduce to 50 dims by PCA → <span class="v">z̃</span>, then</p>
+      <div class="eq">Pr(<span class="v">y</span>=1 | <span class="v">h</span>) = σ(<span class="v">w</span>·<span class="v">z̃</span> + <span class="v">b</span>), &nbsp; σ(<span class="v">t</span>) = 1/(1+<span class="v">e</span><sup>−t</sup>)</div>
+      <p>fit by minimizing cross-entropy</p>
+      <div class="eq">L = −Σ<sub>i</sub> [ <span class="v">y</span><sub>i</sub> log <span class="v">p</span><sub>i</sub> + (1−<span class="v">y</span><sub>i</sub>) log(1−<span class="v">p</span><sub>i</sub>) ]</div>
+      <p>score <span class="v">s</span> = <span class="v">w</span>·<span class="v">z̃</span>. A label-light cousin is <b>difference of means</b> <span class="v">u</span> = mean(<span class="v">h</span>|<span class="v">y</span>=1) − mean(<span class="v">h</span>|<span class="v">y</span>=0).</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">9</div>
+    <div class="body">
+      <h2>How do we grade a reader? — <span class="hl">AUROC</span></h2>
+      <p>Line every attempt up by the reader's score, and ask: how often does a <span class="good">truly-right</span> answer sit above a <span class="warn">truly-wrong</span> one?</p>
+      <div class="rank">
+        <div class="r"><span class="sc">.91</span><span class="b" style="width:76%"></span><span class="mk ok">✓</span></div>
+        <div class="r"><span class="sc">.80</span><span class="b" style="width:64%"></span><span class="mk ok">✓</span></div>
+        <div class="r"><span class="sc">.62</span><span class="b" style="width:46%"></span><span class="mk no">✗</span></div>
+        <div class="r"><span class="sc">.55</span><span class="b" style="width:38%"></span><span class="mk ok">✓</span></div>
+        <div class="r"><span class="sc">.30</span><span class="b" style="width:20%"></span><span class="mk no">✗</span></div>
+      </div>
+      <div class="plain"><span class="tag">In plain terms</span> A good reader floats the ✓'s to the top. Score 0–1: <strong>0.5 = coin flip</strong>, <strong>1.0 = perfect</strong>. That one number is <strong>AUROC</strong>. Here: 5 of 6 correct-vs-wrong pairs are ordered right → 5/6 ≈ <strong>0.83</strong>.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The math — in full <span>· step 9</span></p>
+      <p>Correct set <b>P</b> (size <span class="v">n</span><sub>+</sub>), wrong set <b>N</b> (size <span class="v">n</span><sub>−</sub>); each attempt has score <span class="v">s</span><sub>i</sub>, label <span class="v">y</span><sub>i</sub>.</p>
+      <p><b>Definition 1 — area under the ROC curve.</b> For threshold <span class="v">t</span>: TPR(<span class="v">t</span>) = |{<span class="v">i</span>∈P : <span class="v">s</span><sub>i</sub>&gt;<span class="v">t</span>}|/<span class="v">n</span><sub>+</sub>, FPR(<span class="v">t</span>) = |{<span class="v">j</span>∈N : <span class="v">s</span><sub>j</sub>&gt;<span class="v">t</span>}|/<span class="v">n</span><sub>−</sub>. As <span class="v">t</span> <b>decreases</b>, (FPR, TPR) traces a curve from (0,0)→(1,1); AUROC is its <b>trapezoidal area</b> (tied blocks joined by straight lines = half-credit for ties).</p>
+      <p><b>Definition 2 — what we compute</b> (the rank form, ties split evenly):</p>
+      <div class="eq">AUROC = Pr(<span class="v">s</span><sub>+</sub>&gt;<span class="v">s</span><sub>−</sub>) + ½·Pr(<span class="v">s</span><sub>+</sub>=<span class="v">s</span><sub>−</sub>)</div>
+      <div class="eq" style="font-size:13px">= (1/<span class="v">n</span><sub>+</sub><span class="v">n</span><sub>−</sub>) Σ<sub>i∈P</sub> Σ<sub>j∈N</sub> [ 1(<span class="v">s</span><sub>i</sub>&gt;<span class="v">s</span><sub>j</sub>) + ½·1(<span class="v">s</span><sub>i</sub>=<span class="v">s</span><sub>j</sub>) ]</div>
+      <p>The ½-tie term matters — verbalized confidence bunches at values like 95. This equals the normalized <b>Mann–Whitney U</b> (average ranks for ties): AUROC = <span class="v">U</span>/(<span class="v">n</span><sub>+</sub><span class="v">n</span><sub>−</sub>). Definitions 1 &amp; 2 are provably equal.</p>
+      <p><b>Reading it:</b> 0.5 = chance-level <em>ranking</em>; 1.0 = perfect; &lt;0.5 = anti-correlated (negate → 1−AUROC).</p>
+      <p><b>Why this metric:</b> threshold-free; invariant to any <em>strictly</em> increasing transform of scores (so a saturated 0–100 scale is fine); <b>prevalence-invariant</b> (a high pass rate can't inflate it — unlike accuracy). It measures <em>discrimination</em>, not calibration (that's ECE).</p>
+      <p><b>In code:</b> <code>roc_auc_score(y, s)</code>, scores taken <b>out-of-fold</b> (<code>GroupKFold</code> by question → no leakage). Undefined for a single-class cell → NaN / skipped.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">10</div>
+    <div class="body">
+      <h2>First finding: it <span class="hl">knows more than it says</span></h2>
+      <p>Reading the <strong>inside</strong> (the probe) scores <span class="good">0.7–0.96</span>. What the model <strong>says</strong> scores only <span class="warn">~0.5–0.7</span>. Its private sense of "am I right" is far sharper than the number it reports.</p>
+      <div class="plain"><span class="tag">This is the whole point</span> The "I'm probably wrong" information <em>is</em> in there — it just isn't reaching the output. That's the <strong>knowing–saying gap</strong>.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 10</span></p>
+      <p>Across all 16 model×subject cells: internal AUROC ∈ [0.69, 0.96], verbalized ∈ [0.51, 0.73]. The gap</p>
+      <div class="eq">Δ = AUROC<sub>internal</sub> − AUROC<sub>verbalized</sub> &gt; 0</div>
+      <p>in <b>16/16</b> cells (bootstrap-significant in most). Largest on MATH: internal up to 0.96, verbalized ≈ 0.55.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">11</div>
+    <div class="body">
+      <h2>Way 3 — read it with <span class="hl">no labels at all</span> (the lens)</h2>
+      <p>Fair worry: maybe the probe just memorized our data. So we find the wrongness direction a <em>second</em>, independent way — using only the model's own dictionary of words, <strong>never shown a label.</strong></p>
+      <div class="plain"><span class="tag">Why bother</span> If a no-labels reader <em>agrees</em> with the trained one, the signal is genuinely in the model. On dense models, they agree. Objection defeated.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The math <span>· step 11</span></p>
+      <p><b>Readout 2 — label-free (Jacobian lens).</b> Derive <span class="v">u</span> from the model's own output map, not from labels. For a word <span class="v">w</span> with unembedding row <span class="v">u</span><sub>w</sub>, its readout direction is <span class="v">r</span><sub>w</sub> = <span class="v">J</span><sup>⊤</sup><span class="v">u</span><sub>w</sub> (step 12). The correctness direction:</p>
+      <div class="eq" style="font-size:13px"><span class="v">r</span> = mean<sub>w∈ok</sub> <span class="v">r</span><sub>w</sub> − mean<sub>w∈fail</sub> <span class="v">r</span><sub>w</sub></div>
+      <p>over word sets {correct, right, true, …} vs {wrong, false, error, …}. Score = <span class="v">r</span>·<span class="v">h</span>. No label ever enters.</p>
+    </aside>
+  </div>
+
+  <div class="part">Part D · Why the label-free reader sometimes breaks</div>
+
+  <div class="step">
+    <div class="num">12</div>
+    <div class="body">
+      <h2>How the lens reads without labels: a translation map</h2>
+      <p>To turn a mid-thought into "which word," you need a map from <em>thoughts → words</em> — the model's internal wiring. The lens builds <strong>one</strong> such map, averaged over lots of text, and reuses it.</p>
+      <div class="plain"><span class="tag">In plain terms</span> One fixed "phrasebook" saying which mental patterns push toward which words. Cheap, because you build it once.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The math <span>· step 12</span></p>
+      <p>The <b>Jacobian</b> = the input→output wiring, averaged over generic text:</p>
+      <div class="eq"><span class="v">J</span><sub>ℓ</sub> = 𝔼<sub>x</sub>[ ∂<span class="v">h</span><sub>L</sub> / ∂<span class="v">h</span><sub>ℓ</sub> ] ∈ ℝ<sup>d×d</sup></div>
+      <p>Lens: lens<sub>ℓ</sub>(<span class="v">h</span>) = <span class="v">W</span><sub>U</sub>(<span class="v">J</span><sub>ℓ</sub><span class="v">h</span>), where <span class="v">W</span><sub>U</sub> is the unembedding. Per word this collapses to one dot product:</p>
+      <div class="eq" style="font-size:13px"><span class="v">u</span><sub>w</sub><sup>⊤</sup>(<span class="v">J</span><sub>ℓ</sub><span class="v">h</span>) = (<span class="v">J</span><sub>ℓ</sub><sup>⊤</sup><span class="v">u</span><sub>w</sub>)<sup>⊤</sup><span class="v">h</span> = <span class="v">r</span><sub>w,ℓ</sub>·<span class="v">h</span></div>
+      <p>Validity check: <span class="v">W</span><sub>U</sub>(<span class="v">J h</span>) must match the model's real logits.</p>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">13</div>
+    <div class="body">
+      <h2>The catch: <span class="hl">some models rewire per input</span></h2>
+      <p>One average map only works if the wiring is the <em>same</em> every time.</p>
+      <div class="two">
+        <div class="arch"><h4 class="good">Dense — one wiring</h4><div class="lines clean"></div><p>Same wiring every input → sharp average → "correct" and "wrong" stay distinct. <strong>Lens works.</strong></p></div>
+        <div class="arch"><h4 class="warn">MoE / Mamba — rewire per input</h4><div class="lines mush"></div><p>Route each input differently → the average is a <em>smear</em> → the two blur into one. <strong>Lens fails.</strong></p></div>
+      </div>
+      <div class="plain"><span class="tag">How we proved it's the architecture</span> Same Qwen family — swap <strong>Mamba</strong> for <strong>dense attention</strong> and the reader jumps from <span class="warn">0.43</span> to <span class="good">0.88</span>. Only the wiring changed.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 13</span></p>
+      <p>One <span class="v">J</span> = 𝔼<sub>x</sub>[<span class="v">J</span>(x)] is faithful only if <span class="v">J</span>(x) ≈ const in <span class="v">x</span>. But:</p>
+      <p>• <b>MoE:</b> token routed to expert <span class="v">k</span>(<span class="v">x</span>) → <span class="v">J</span> depends on <span class="v">x</span>. <br>• <b>Mamba:</b> scan params <span class="v">A,B,C,Δ</span> = fns(<span class="v">x</span>) → <span class="v">J</span> depends on <span class="v">x</span>.</p>
+      <p>Averaging input-varying <span class="v">J</span> collapses it toward low rank. Measured similarity of the "ok" vs "fail" readout directions:</p>
+      <div class="eq" style="font-size:13px">cos(<span class="v">r̄</span><sub>ok</sub>, <span class="v">r̄</span><sub>fail</sub>): &nbsp;0.4 <span style="color:var(--good)">dense</span> → 0.54 <span style="color:var(--warn)">Mamba</span> → 0.96 <span style="color:var(--warn)">MoE</span></div>
+      <p>At 0.96 the two are the same vector — indistinguishable. Control (MATH): Qwen2.5 dense <b>0.88</b> vs Qwen3.6 Mamba <b>0.43</b>. <em>Probe finds it in all five (0.75–0.98) — only the shortcut breaks.</em></p>
+    </aside>
+  </div>
+
+  <div class="part">Part E · Writing the signal (the other move)</div>
+
+  <div class="step">
+    <div class="num">14</div>
+    <div class="body">
+      <h2>Now the WRITE move — steering</h2>
+      <p>Everything so far was <em>reading</em>. <strong>Steering</strong> is the write move: while the model generates, <strong>add</strong> the direction into its thought — <span class="v">h</span>+α<span class="v">u</span> — and watch what changes.</p>
+      <div class="plain"><span class="tag">Why it's special</span> Reading shows correlation; writing tests <em>cause</em>. If adding the direction changes behaviour, the model is actually <em>using</em> it.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The math <span>· step 14</span></p>
+      <p>A forward hook edits the residual at layer <span class="v">ℓ</span> at each generated token:</p>
+      <div class="eq"><span class="v">h</span><sup>(ℓ)</sup> ← <span class="v">h</span><sup>(ℓ)</sup> + α<span class="v">u</span></div>
+      <p>sweeping the coefficient α. <b>Controls:</b> a norm-matched random direction <span class="v">r</span> (‖<span class="v">r</span>‖=‖<span class="v">u</span>‖). <b>Amplify variant</b> scales the model's <em>own</em> component (identity at <span class="v">g</span>=1):</p>
+      <div class="eq" style="font-size:13px"><span class="v">h</span> ← <span class="v">h</span> + (<span class="v">g</span>−1)(<span class="v">û</span>·<span class="v">h</span> − μ)<span class="v">û</span></div>
+    </aside>
+  </div>
+
+  <div class="step">
+    <div class="num">15</div>
+    <div class="body">
+      <h2>What steering showed: a <span class="hl">gauge, not a wheel</span></h2>
+      <p>• Push the direction and the model's <strong>stated confidence gets honest</strong> on wrong answers. <span class="good">The report moves.</span></p>
+      <p>• Push "toward correct" while it answers and its <strong>actual accuracy doesn't rise</strong> — only flat or worse. <span class="warn">The answer doesn't move up.</span></p>
+      <div class="plain"><span class="tag">In plain terms</span> The signal is a <strong>gauge the model reads</strong>, not a <strong>wheel that drives the answer.</strong> You can <em>disrupt</em> correctness; you can't <em>manufacture</em> it.</div>
+    </div>
+    <aside class="note">
+      <p class="nt">The details <span>· step 15</span></p>
+      <p><b>(a) Confidence steering</b> (read site): stated conf on wrong answers <b>80→43</b>; calibration error <b>ECE 0.31→0.13</b>; random flat. <br><span style="font-size:12.5px">ECE = Σ<sub>b</sub> (<span class="v">n</span><sub>b</sub>/<span class="v">N</span>) |acc(<span class="v">b</span>) − conf(<span class="v">b</span>)|</span></p>
+      <p><b>(b) Correctness steering</b> (during answering): accuracy vs α is flat-or-down for α&gt;0 (GLM×GPQA base <b>0.41</b> → +nudge <b>0.38</b>); degrades direction-specifically for α&lt;0 (beats random noise on the way down).</p>
+      <p>⇒ causal for the <em>report</em>, not the <em>answer</em>. "Monitor, not driver."</p>
+    </aside>
+  </div>
+
+  <div class="recap">
+    <h2>The whole thing, in five lines</h2>
+    <ol>
+      <li>The model thinks in a wall of <strong>numbers</strong> (<span class="v">h</span>); ideas live there as <strong>directions</strong> (<span class="v">u</span>).</li>
+      <li><strong>READ</strong> a direction (<span class="v">s = u·h</span>) — with a trained <em>probe</em>, or a label-free <em>lens</em>.</li>
+      <li>It <strong>knows</strong> it's wrong far better than it <strong>says</strong> — the knowing–saying gap (AUROC ~0.8 vs ~0.6).</li>
+      <li>The <em>label-free</em> read only works on <strong>dense</strong> models; MoE &amp; Mamba rewire per input and smear it.</li>
+      <li><strong>WRITE</strong> a direction (<span class="v">h ← h + αu</span>) — you can move what it <em>says</em>, not what it gets <em>right</em>.</li>
+    </ol>
+  </div>
+
+  <p class="foot"><strong>If any single step still feels fuzzy</strong> — tell me the number, and we'll camp on just that one. The right column is the "prove it to me" version of the left; it's genuinely just "read a direction" and "add a direction," dressed in notation.</p>
+</div>

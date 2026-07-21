@@ -210,4 +210,166 @@ Confidence: N</pre>
 <section class="slide">
   <div class="eyebrow">The read site</div>
   <h2>Where we read the thought stream</h2>
-  <pre>Confidence:<span style="background:#0
+  <pre>Confidence: <span style="background:var(--accent);color:#fff;padding:0 .25em;border-radius:3px">N</span>
+            <span class="lab">↑ read the vector right here</span> — the token that
+              decides the number. Identical wording every question.</pre>
+  <p>Because the context is the same on every question, nothing in the <em>phrasing</em> can leak
+  the answer. And we checked: at <strong>layer 0</strong> this spot decodes correctness at
+  <span class="acc">chance (0.50)</span> — so anything readable deeper is something the model
+  <strong>computed</strong>, not a surface cue sitting on the words.</p>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="eyebrow">Result 1 · the core finding</div>
+  <h2>The internal signal beats what the model says — every time</h2>
+  <p class="dim" style="margin-bottom:.5rem">How well each channel separates right from wrong (AUROC — 0.50 = coin flip, 1.00 = perfect)</p>
+  <div class="bar"><span class="who">MATH · Qwen3.6 <span class="acc">knows</span></span><div class="track"><div class="fill" style="width:96%"></div></div><span class="val">.96</span></div>
+  <div class="bar"><span class="who" style="color:var(--muted)">&nbsp;&nbsp;&nbsp;&nbsp;— says</span><div class="track"><div class="fill" style="width:55%;background:var(--muted)"></div></div><span class="val">.55</span></div>
+  <div class="bar" style="margin-top:1rem"><span class="who">Geometry · Mistral <span class="acc">knows</span></span><div class="track"><div class="fill" style="width:80%"></div></div><span class="val">.80</span></div>
+  <div class="bar"><span class="who" style="color:var(--muted)">&nbsp;&nbsp;&nbsp;&nbsp;— says</span><div class="track"><div class="fill" style="width:65%;background:var(--muted)"></div></div><span class="val">.65</span></div>
+  <p style="margin-top:1.2rem"><strong>All 16 model×subject cells:</strong> internal read
+  <span class="acc">0.69–0.96</span> vs. spoken confidence <span class="dim">0.51–0.73</span>.
+  Survives every control — no leakage, no surface cues, holds within a fixed difficulty.</p>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <div class="eyebrow">Result 2 · the gap</div>
+  <h2>Math is the clearest "knows but won't say"</h2>
+  <p>On math, the model's <strong>spoken</strong> confidence is barely better than a coin flip
+  (<span class="dim">0.52–0.73</span>) — yet its <strong>internal</strong> read is the
+  <em>strongest of any subject</em> (<span class="acc">up to 0.96</span>).</p>
+  <p class="big">The model quietly registers whether its math checks out. It just doesn't put that
+  in the answer.</p>
+  <p class="dim">This is the knowing–saying gap in its purest form: the information is there, computed,
+  and legible — it simply isn't reaching the output.</p>
+</section>
+
+<!-- 14 -->
+<section class="slide">
+  <div class="eyebrow">Result 3 · not just difficulty</div>
+  <h2>It's judging <em>this attempt</em> — not "hard question"</h2>
+  <p>Take only questions the model <strong>sometimes gets right and sometimes wrong</strong> — so
+  difficulty is held fixed. The internal read <em>still</em> separates the good attempts from the bad:</p>
+  <div class="bar" style="margin-top:1rem"><span class="who">GLM · within-question <span class="acc">internal</span></span><div class="track"><div class="fill" style="width:92%"></div></div><span class="val">.92</span></div>
+  <div class="bar"><span class="who" style="color:var(--muted)">&nbsp;&nbsp;&nbsp;&nbsp;spoken</span><div class="track"><div class="fill" style="width:57%;background:var(--muted)"></div></div><span class="val">.57</span></div>
+  <p style="margin-top:1.2rem">So it isn't sensing "this topic looks hard" — it's tracking
+  <strong>this particular attempt</strong>. Genuine per-attempt self-monitoring.</p>
+</section>
+
+<!-- 15 -->
+<section class="slide">
+  <div class="eyebrow">Result 4 · is the signal real?</div>
+  <h2>A reader with no answer key finds it too</h2>
+  <p>The <strong>Jacobian lens</strong> reconstructs the "am I right" direction from the model's
+  <em>own output wiring</em> — <strong>never shown a single correctness label</strong>.</p>
+  <p>On Mistral it <span class="okc">matches the supervised probe</span> (0.76–0.82) and beats
+  spoken confidence. Two independent methods — one with labels, one without — land on the same signal.</p>
+  <p class="big">That kills the "your probe just memorized the data" objection — and shows the signal
+  sits in the model's <span class="acc">speakable</span> wiring.</p>
+</section>
+
+<!-- 16 -->
+<section class="slide">
+  <div class="eyebrow">Result 4 · the twist</div>
+  <h2>…but label-free reading only works on dense transformers</h2>
+  <div class="tblwrap"><table>
+    <tr><th>model</th><th>architecture</th><th>label-free lens</th></tr>
+    <tr><td>Qwen2.5-14B</td><td>dense attention</td><td class="okc">✓ works · 0.88</td></tr>
+    <tr><td>Mistral-24B</td><td>dense attention</td><td class="okc">✓ works · 0.82</td></tr>
+    <tr><td>Qwen3.6-27B</td><td>hybrid · Mamba</td><td class="failc">✗ fails · 0.43</td></tr>
+    <tr><td>GLM-4.7</td><td>Mixture-of-Experts</td><td class="failc">✗ fails · 0.31</td></tr>
+    <tr><td>Gemma-4</td><td>MoE + softcapping</td><td class="failc">✗ won't even build</td></tr>
+  </table></div>
+  <p><strong>The clincher — a within-family control:</strong> same family, same test — swap Qwen from
+  <strong>Mamba</strong> (3.6) to plain <strong>dense attention</strong> (2.5) and the lens flips
+  <span class="failc">0.43</span> → <span class="okc">0.88</span>. It's the architecture.
+  <span class="dim">The signal is still there — the trained probe finds it in all five (0.75–0.98).</span></p>
+</section>
+
+<!-- 17 -->
+<section class="slide">
+  <div class="eyebrow">Result 4 · why it breaks</div>
+  <h2>Why: the "average wiring" smears</h2>
+  <p>The lens builds <strong>one wiring map, averaged over inputs, reused for all.</strong> That's
+  faithful only if the wiring is the <em>same</em> every input.</p>
+  <div class="cardrow">
+    <div class="card"><h3>Dense attention</h3><p>Same wiring every input → the average stays sharp
+    → "correct" and "wrong" stay distinct.</p></div>
+    <div class="card"><h3>MoE &amp; Mamba</h3><p>Re-route per input (experts / selective scan) → the
+    average is a <em>smear</em> of many wirings → structure washes out.</p></div>
+  </div>
+  <p style="margin-top:1.1rem">We can <em>see</em> it: through the smeared map, "correct" and "wrong"
+  collapse onto <strong>the same direction</strong> — similarity <span class="failc">0.96</span> for
+  the MoE vs <span class="okc">0.4</span> for dense. It literally can't tell them apart.</p>
+</section>
+
+<!-- 18 -->
+<section class="slide">
+  <div class="eyebrow">Result 5 · can we use it?</div>
+  <h2>Causal for what it <em>says</em> — not what it gets <em>right</em></h2>
+  <div class="cardrow">
+    <div class="card" style="border-color:var(--ok)"><h3 style="color:var(--ok)">Confidence steering — works</h3>
+      <p>Nudge the signal → stated confidence gets honest on wrong answers: overconfidence
+      <strong>80→43</strong>, calibration error more than halved. Random nudge does nothing.</p></div>
+    <div class="card" style="border-color:var(--fail)"><h3 style="color:var(--fail)">Correctness steering — doesn't</h3>
+      <p>Nudge "toward correct" <em>while answering</em> → accuracy never rises. GLM×GPQA: +nudge
+      gives <strong>0.38</strong> vs 0.41 baseline; it only holds flat or degrades.</p></div>
+  </div>
+  <p style="margin-top:1.1rem" class="big">So the direction is a <span class="acc">monitor the model
+  reads</span>, not a lever that drives the answer. You can <strong>disrupt</strong> correctness —
+  you can't <strong>manufacture</strong> it.</p>
+</section>
+
+<!-- 19 -->
+<section class="slide center">
+  <div class="eyebrow">The picture</div>
+  <h2>What we can say now</h2>
+  <p class="big">Models build a <span class="acc">real, computed, attempt-specific</span> sense of
+  their own correctness — consistently sharper than the confidence they state.</p>
+  <p class="big">You can <strong>read</strong> it (label-free on dense models; with a probe on any),
+  and you can <strong>disrupt</strong> it — but you can't <strong>drive</strong> it.</p>
+  <p class="big">The knowing–saying gap is an <span class="acc">access problem, not a
+  missing-capability one</span> — the "I'm probably wrong" signal is already there, just not routed
+  to the output.</p>
+</section>
+
+<!-- 20 -->
+<section class="slide">
+  <div class="eyebrow">Discussion · where we'd love your take</div>
+  <h2>Open questions for the team</h2>
+  <ul class="ladder">
+    <li><strong>Close the gap?</strong> Can we route the internal signal to the output — turning "knows
+    it's wrong" into <em>abstain / retry / escalate</em>? That's the safety payoff.</li>
+    <li><strong>Broaden the architecture control.</strong> Dense-Qwen is decisive on MATH; MMLU +
+    geometry would seal "it's Mamba, not the model."</li>
+    <li><strong>Nail the mechanism.</strong> A short GPU session to measure the wiring's per-input
+    variance directly (rank/faithfulness) turns "we see the fingerprint" into "we measured the cause."</li>
+    <li><strong>Framing for the paper</strong> — which of the three threads leads: the gap, the
+    dense-only lens, or monitor-vs-driver?</li>
+  </ul>
+  <p style="margin-top:.8rem" class="dim">Feedback very welcome — this is the moment to steer it.</p>
+</section>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var prog = document.getElementById('prog'), count = document.getElementById('count');
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s,k){ s.classList.toggle('active', k === i); });
+    if(prog) prog.style.width = ((i+1)/slides.length*100) + '%';
+    if(count) count.textContent = (i+1) + ' / ' + slides.length;
+    window.scrollTo(0,0);
+  }
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ show(i+1); e.preventDefault(); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ show(i-1); e.preventDefault(); }
+    else if(e.key==='Home'){ show(0); } else if(e.key==='End'){ show(slides.length-1); }
+  });
+  document.addEventListener('click', function(e){ if(!e.target.closest('a')) show(i+1); });
+  show(0);
+})();
+</script>
