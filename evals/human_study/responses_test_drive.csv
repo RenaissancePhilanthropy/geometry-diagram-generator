@@ -1,0 +1,3 @@
+item_id,scenario_id,model,strategy,tier,auto_verdict,q1_overall,q2_predicate,q2_agreement,notes,rater_id,answered_at
+tpl-t1-eq-RST-s5__raw_code__anthropic:claude-opus-4-7__r1,tpl-t1-eq-RST-s5,anthropic:claude-opus-4-7,raw_code,T1,pass,yes,all_sides_equal,agree-pass,,test_drive,2026-05-06T16:52:17.133Z
+tpl-t1-eq-RST-s5__raw_code__anthropic:claude-opus-4-7__r1,tpl-t1-eq-RST-s5,anthropic:claude-opus-4-7,raw_code,T1,pass,yes,required_labels,agree-pass,,test_drive,2026-05-06T16:52:17.133Z

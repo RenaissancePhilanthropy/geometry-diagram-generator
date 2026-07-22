@@ -34,20 +34,34 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC = REPO_ROOT / "benchmark" / "definitions" / "croissant.json"
 
 
-def update(repo_id: str, src_path: Path, out_path: Path) -> dict:
-    base = f"https://anonymous.4open.science/r/{repo_id}"
-    api_base = f"https://anonymous.4open.science/api/repo/{repo_id}/file"
+def url_pattern(platform: str, repo_id: str) -> tuple[str, str]:
+    """Return (base_url, file_url_template) for the given platform."""
+    if platform == "anon4open":
+        return (
+            f"https://anonymous.4open.science/r/{repo_id}",
+            f"https://anonymous.4open.science/api/repo/{repo_id}/file/{{fname}}",
+        )
+    if platform == "huggingface":
+        # repo_id format: <user-or-org>/<dataset-name>, e.g. anon-author/geogenbench
+        return (
+            f"https://huggingface.co/datasets/{repo_id}",
+            f"https://huggingface.co/datasets/{repo_id}/resolve/main/{{fname}}",
+        )
+    raise ValueError(f"Unknown platform: {platform}")
 
+
+def update(platform: str, repo_id: str, src_path: Path, out_path: Path) -> dict:
+    base, file_template = url_pattern(platform, repo_id)
     c = json.loads(src_path.read_text())
 
-    # 1) Top-level url -> the anon mirror landing page
+    # 1) Top-level url -> the dataset landing page
     c["url"] = base
 
-    # 2) Distribution contentUrls -> per-file API URLs
+    # 2) Distribution contentUrls -> per-file URLs
     for fo in c.get("distribution", []):
         fid = fo.get("@id") or fo.get("name") or ""
         if fid.endswith(".jsonl"):
-            fo["contentUrl"] = f"{api_base}/{fid}"
+            fo["contentUrl"] = file_template.format(fname=fid)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(c, indent=2, ensure_ascii=False))
@@ -67,8 +81,17 @@ def validate(out_path: Path) -> str:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
+        "--platform", choices=["anon4open", "huggingface"], default="anon4open",
+        help="Hosting platform; determines the URL pattern in the rewritten Croissant",
+    )
+    p.add_argument(
         "--repo-id", required=True,
-        help="anonymous.4open.science repo-id (the part after /r/, e.g. geogenbench-anon-2026-ABCD)",
+        help=(
+            "Repo identifier. For anon4open: the part after /r/ "
+            "(e.g. geogenbench-anon-2026-ABCD). "
+            "For huggingface: <user-or-org>/<dataset-name> "
+            "(e.g. anon-author/geogenbench)."
+        ),
     )
     p.add_argument(
         "--output", type=Path,
@@ -85,7 +108,7 @@ def main() -> int:
         print(f"ERROR: source not found: {args.source}", file=sys.stderr)
         return 2
 
-    c = update(args.repo_id, args.source, args.output)
+    c = update(args.platform, args.repo_id, args.source, args.output)
 
     print(f"Updated Croissant file written to: {args.output}")
     print(f"  url:                  {c['url']}")
