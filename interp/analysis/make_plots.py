@@ -34,6 +34,19 @@ MLABEL = {"gemma4": "Gemma-4", "qwen36": "Qwen3.6", "glm": "GLM-4.7", "mistral":
 # palette — matches the deck
 INK, PAPER, SIGNAL, OKC, WRONGC, MUTED = "#14181f", "#e9ebee", "#e0932f", "#2f9e6b", "#cf4a52", "#8b97a5"
 PROBE_C, VERB_C, PT_C = "#2f6fe0", "#b9772a", "#cf4a52"
+# Renaissance Philanthropy brand palette (from renaissancephilanthropy.org)
+DECK = {
+    "PAPER": "#FFFFFF",
+    "CARD": "#FFFFFF",
+    "INK": "#131318",
+    "MUTED": "#737382",
+    "ACCENT": "#F87248",      # coral — the brand accent
+    "ACCENT_SOFT": "#FBE4DA",
+    "OK": "#2E7D4F",
+    "FAIL": "#A32E2E",        # semantic red, kept distinct from the coral accent
+    "SLATE": "#2F4F4F",
+    "LINE": "#E4E3E7",
+}
 
 
 def cell_dir(m, d):
@@ -90,36 +103,93 @@ def compute():
     return out
 
 
-def style(ax):
-    ax.set_facecolor(PAPER)
+def style(ax, theme=None):
+    if theme is None:
+        theme = {"paper": PAPER, "ink": INK, "muted": MUTED, "line": "#cfd4da", "transparent": False}
+    ax.set_facecolor("none" if theme["transparent"] else theme["paper"])
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):
-        ax.spines[s].set_color(MUTED)
-    ax.tick_params(colors=INK, labelsize=9)
-    ax.grid(axis="y", color="#cfd4da", lw=.7, zorder=0)
+        ax.spines[s].set_color(theme["muted"])
+    ax.tick_params(colors=theme["ink"], labelsize=theme["tick_size"])
+    ax.grid(axis="y", color=theme["line"], lw=.7, zorder=0)
 
 
-def fig1(C):
+def plot_theme(deck=False):
+    if deck:
+        return {
+            "paper": DECK["PAPER"],
+            "ink": DECK["INK"],
+            "muted": DECK["MUTED"],
+            "line": DECK["LINE"],
+            "probe": DECK["ACCENT"],
+            "verb": DECK["MUTED"],
+            "signal": DECK["ACCENT"],
+            "ok": DECK["OK"],
+            "wrong": DECK["FAIL"],
+            "p_true": DECK["MUTED"],
+            "transparent": True,
+            "tick_size": 10,
+            "label_size": 11,
+            "legend_size": 10,
+            "title": False,
+            "fig5_colors": [DECK["ACCENT"], DECK["SLATE"], DECK["MUTED"], DECK["INK"]],
+        }
+    return {
+        "paper": PAPER,
+        "ink": INK,
+        "muted": MUTED,
+        "line": "#cfd4da",
+        "probe": PROBE_C,
+        "verb": VERB_C,
+        "signal": SIGNAL,
+        "ok": OKC,
+        "wrong": WRONGC,
+        "p_true": PT_C,
+        "transparent": False,
+        "tick_size": 9,
+        "label_size": 10,
+        "legend_size": 10,
+        "title": True,
+        "fig5_colors": None,
+    }
+
+
+def finish(fig, path, theme):
+    fig.tight_layout()
+    if theme["transparent"]:
+        fig.patch.set_alpha(0)
+        fig.savefig(path, transparent=True)
+    else:
+        fig.savefig(path, facecolor=theme["paper"])
+    plt.close(fig)
+
+
+def fig1(C, deck=False, out=None):
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig1_internal_vs_verbalized.png")
     keys = [f"{m}_{d}" for d in DOMAINS for m in MODELS if f"{m}_{d}" in C and C[f"{m}_{d}"]["verbalized"]]
     labels = [f"{MLABEL[k.split('_')[0]]}\n{DLABEL[k.split('_',1)[1]]}" for k in keys]
     v = [C[k]["verbalized"] for k in keys]; p = [C[k]["probe"] for k in keys]
     x = np.arange(len(keys)); w = 0.38
     fig, ax = plt.subplots(figsize=(min(15, 1.0 * len(keys) + 2), 5.2), dpi=150)
-    fig.patch.set_facecolor(PAPER)
-    ax.bar(x - w/2, v, w, label="stated confidence", color=VERB_C, zorder=3)
-    ax.bar(x + w/2, p, w, label="internal probe", color=PROBE_C, zorder=3)
-    ax.axhline(0.5, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=2)
-    ax.text(len(keys)-.4, 0.505, "chance", color=MUTED, fontsize=8, va="bottom", ha="right")
-    style(ax); ax.set_ylim(0.4, 1.0); ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylabel("AUROC  (predicting own correctness)", fontsize=10, color=INK)
-    ax.set_title("The residual stream predicts correctness better than the model says it can",
-                 fontsize=13, color=INK, weight="bold", loc="left", pad=12)
-    ax.legend(frameon=False, fontsize=10, loc="upper right")
-    fig.tight_layout(); fig.savefig(FIGS / "fig1_internal_vs_verbalized.png", facecolor=PAPER); plt.close()
+    fig.patch.set_facecolor(theme["paper"])
+    ax.bar(x - w/2, v, w, label="stated confidence", color=theme["verb"], zorder=3)
+    ax.bar(x + w/2, p, w, label="internal probe", color=theme["probe"], zorder=3)
+    ax.axhline(0.5, color=theme["muted"], lw=1, ls=(0, (4, 3)), zorder=2)
+    ax.text(len(keys)-.4, 0.505, "chance", color=theme["muted"], fontsize=theme["tick_size"] - 1, va="bottom", ha="right")
+    style(ax, theme); ax.set_ylim(0.4, 1.0); ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=theme["tick_size"] - 1)
+    ax.set_ylabel("AUROC  (predicting own correctness)", fontsize=theme["label_size"], color=theme["ink"])
+    if theme["title"]:
+        ax.set_title("The residual stream predicts correctness better than the model says it can",
+                     fontsize=13, color=theme["ink"], weight="bold", loc="left", pad=12)
+    ax.legend(frameon=False, fontsize=theme["legend_size"], loc="upper right")
+    finish(fig, out, theme)
 
 
-def fig2(C):
+def fig2(C, deck=False, out=None):
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig2_gap_by_domain.png")
     by = {d: [] for d in DOMAINS}
     for k, r in C.items():
         if r["verbalized"] is None:
@@ -127,42 +197,48 @@ def fig2(C):
         d = k.split("_", 1)[1]
         by[d].append(r["probe"] - r["verbalized"])
     dd = [d for d in DOMAINS if by[d]]
-    fig, ax = plt.subplots(figsize=(7, 4.6), dpi=150); fig.patch.set_facecolor(PAPER)
+    fig, ax = plt.subplots(figsize=(7, 4.6), dpi=150); fig.patch.set_facecolor(theme["paper"])
     x = np.arange(len(dd))
     means = [np.mean(by[d]) for d in dd]
-    ax.bar(x, means, 0.6, color=SIGNAL, zorder=3)
+    ax.bar(x, means, 0.6, color=theme["signal"], zorder=3)
     for i, d in enumerate(dd):
         for val in by[d]:
-            ax.scatter(i + np.random.uniform(-.12, .12), val, color=INK, s=22, zorder=4, alpha=.7)
-    ax.axhline(0, color=MUTED, lw=1)
-    style(ax); ax.set_xticks(x); ax.set_xticklabels([DLABEL[d] for d in dd])
-    ax.set_ylabel("probe − stated  (AUROC gap)", fontsize=10)
-    ax.set_title("Knowing − saying gap, by domain  (dots = models)",
-                 fontsize=12.5, color=INK, weight="bold", loc="left", pad=12)
-    fig.tight_layout(); fig.savefig(FIGS / "fig2_gap_by_domain.png", facecolor=PAPER); plt.close()
+            ax.scatter(i + np.random.uniform(-.12, .12), val, color=theme["ink"], s=22, zorder=4, alpha=.7)
+    ax.axhline(0, color=theme["muted"], lw=1)
+    style(ax, theme); ax.set_xticks(x); ax.set_xticklabels([DLABEL[d] for d in dd])
+    ax.set_ylabel("probe − stated  (AUROC gap)", fontsize=theme["label_size"], color=theme["ink"])
+    if theme["title"]:
+        ax.set_title("Knowing − saying gap, by domain  (dots = models)",
+                     fontsize=12.5, color=theme["ink"], weight="bold", loc="left", pad=12)
+    finish(fig, out, theme)
 
 
-def fig3(C):
+def fig3(C, deck=False, out=None):
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig3_within_question.png")
     keys = [k for k in C if not np.isnan(C[k]["wq_probe"]) and not np.isnan(C[k]["wq_ptrue"])
             and C[k]["n_mixed"] >= 20]
     keys.sort(key=lambda k: -C[k]["wq_probe"])
     labels = [f"{MLABEL[k.split('_')[0]]} · {DLABEL[k.split('_',1)[1]]}\n(n={C[k]['n_mixed']})" for k in keys]
     wp = [C[k]["wq_probe"] for k in keys]; wt = [C[k]["wq_ptrue"] for k in keys]
     x = np.arange(len(keys)); w = 0.38
-    fig, ax = plt.subplots(figsize=(min(13, 1.1*len(keys)+3), 4.8), dpi=150); fig.patch.set_facecolor(PAPER)
-    ax.bar(x - w/2, wp, w, label="internal probe", color=PROBE_C, zorder=3)
-    ax.bar(x + w/2, wt, w, label="P(True)  (the model's own bet)", color=PT_C, zorder=3)
-    ax.axhline(0.5, color=MUTED, lw=1, ls=(0, (4, 3)))
-    style(ax); ax.set_ylim(0.35, 0.85); ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=8, rotation=18, ha="right")
-    ax.set_ylabel("within-question AUROC", fontsize=10)
-    ax.set_title("Difficulty held fixed: the probe tracks the attempt, P(True) falls to chance",
-                 fontsize=12, color=INK, weight="bold", loc="left", pad=12)
-    ax.legend(frameon=False, fontsize=10)
-    fig.tight_layout(); fig.savefig(FIGS / "fig3_within_question.png", facecolor=PAPER); plt.close()
+    fig, ax = plt.subplots(figsize=(min(13, 1.1*len(keys)+3), 4.8), dpi=150); fig.patch.set_facecolor(theme["paper"])
+    ax.bar(x - w/2, wp, w, label="internal probe", color=theme["probe"], zorder=3)
+    ax.bar(x + w/2, wt, w, label="P(True)  (the model's own bet)", color=theme["p_true"], zorder=3)
+    ax.axhline(0.5, color=theme["muted"], lw=1, ls=(0, (4, 3)))
+    style(ax, theme); ax.set_ylim(0.35, 0.85); ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=theme["tick_size"] - 1, rotation=18, ha="right")
+    ax.set_ylabel("within-question AUROC", fontsize=theme["label_size"], color=theme["ink"])
+    if theme["title"]:
+        ax.set_title("Difficulty held fixed: the probe tracks the attempt, P(True) falls to chance",
+                     fontsize=12, color=theme["ink"], weight="bold", loc="left", pad=12)
+    ax.legend(frameon=False, fontsize=theme["legend_size"])
+    finish(fig, out, theme)
 
 
-def fig4():
+def fig4(deck=False, out=None):
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig4_steering.png")
     p = ROOT / "fix_mistral_math" / "steer_amplify.json"
     if not p.exists():
         print("  (no mistral steer_amplify.json — skip fig4)"); return
@@ -170,22 +246,25 @@ def fig4():
     gains = sorted({float(k.split("@")[1]) for k in R})
     def series(kind, field):
         return [R.get(f"{kind}@{g}", {}).get(field) for g in gains]
-    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=150); fig.patch.set_facecolor(PAPER)
-    ax.plot(gains, series("steer", "mean_conf_fail"), "-o", color=WRONGC, lw=2.4, ms=7,
+    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=150); fig.patch.set_facecolor(theme["paper"])
+    ax.plot(gains, series("steer", "mean_conf_fail"), "-o", color=theme["wrong"], lw=2.4, ms=7,
             label="stated conf · WRONG answers (steer)", zorder=4)
-    ax.plot(gains, series("steer", "mean_conf_ok"), "-o", color=OKC, lw=2.4, ms=7,
+    ax.plot(gains, series("steer", "mean_conf_ok"), "-o", color=theme["ok"], lw=2.4, ms=7,
             label="stated conf · correct answers (steer)", zorder=4)
     rf = series("random", "mean_conf_fail")
-    ax.plot(gains, rf, "--s", color=MUTED, lw=1.6, ms=5, label="WRONG answers (random dir.)", zorder=3)
-    style(ax); ax.set_xlabel("amplification gain  (1 = no-op)", fontsize=10)
-    ax.set_ylabel("mean stated confidence", fontsize=10)
-    ax.set_title("Amplifying the model's own signal makes it honest — Mistral × MATH",
-                 fontsize=12, color=INK, weight="bold", loc="left", pad=12)
-    ax.legend(frameon=False, fontsize=9, loc="lower left")
-    fig.tight_layout(); fig.savefig(FIGS / "fig4_steering.png", facecolor=PAPER); plt.close()
+    ax.plot(gains, rf, "--s", color=theme["muted"], lw=1.6, ms=5, label="WRONG answers (random dir.)", zorder=3)
+    style(ax, theme); ax.set_xlabel("amplification gain  (1 = no-op)", fontsize=theme["label_size"], color=theme["ink"])
+    ax.set_ylabel("mean stated confidence", fontsize=theme["label_size"], color=theme["ink"])
+    if theme["title"]:
+        ax.set_title("Amplifying the model's own signal makes it honest — Mistral × MATH",
+                     fontsize=12, color=theme["ink"], weight="bold", loc="left", pad=12)
+    ax.legend(frameon=False, fontsize=theme["legend_size"] - 1, loc="lower left")
+    finish(fig, out, theme)
 
 
-def fig5():
+def fig5(deck=False, out=None):
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig5_layer_curve.png")
     # decodability vs depth from saved layer curves (post_dtoken), averaged over models
     curves = []
     for m in MODELS:
@@ -199,17 +278,39 @@ def fig5():
             curves.append((xs, arr, MLABEL[m]))
     if not curves:
         print("  (no layer curves — skip fig5)"); return
-    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=150); fig.patch.set_facecolor(PAPER)
-    for xs, arr, lab in curves:
-        ax.plot(xs, arr, lw=2, alpha=.85, label=lab)
-    ax.axhline(0.5, color=MUTED, lw=1, ls=(0, (4, 3)))
-    ax.text(0.01, 0.505, "chance", color=MUTED, fontsize=8, va="bottom")
-    style(ax); ax.set_xlabel("relative depth  (layer 0 → final)", fontsize=10)
-    ax.set_ylabel("correctness AUROC (probe)", fontsize=10)
-    ax.set_title("Computed, not lexical: chance at the embedding, rising to a mid/late peak",
-                 fontsize=12, color=INK, weight="bold", loc="left", pad=12)
-    ax.legend(frameon=False, fontsize=9, title="MMLU-Pro", title_fontsize=9)
-    fig.tight_layout(); fig.savefig(FIGS / "fig5_layer_curve.png", facecolor=PAPER); plt.close()
+    fig, ax = plt.subplots(figsize=(7.2, 4.8), dpi=150); fig.patch.set_facecolor(theme["paper"])
+    for i, (xs, arr, lab) in enumerate(curves):
+        color = theme["fig5_colors"][i % len(theme["fig5_colors"])] if theme["fig5_colors"] else None
+        ax.plot(xs, arr, lw=2, alpha=.85, label=lab, color=color)
+    ax.axhline(0.5, color=theme["muted"], lw=1, ls=(0, (4, 3)))
+    ax.text(0.01, 0.505, "chance", color=theme["muted"], fontsize=theme["tick_size"] - 1, va="bottom")
+    style(ax, theme); ax.set_xlabel("relative depth  (layer 0 → final)", fontsize=theme["label_size"], color=theme["ink"])
+    ax.set_ylabel("correctness AUROC (probe)", fontsize=theme["label_size"], color=theme["ink"])
+    if theme["title"]:
+        ax.set_title("Computed, not lexical: chance at the embedding, rising to a mid/late peak",
+                     fontsize=12, color=theme["ink"], weight="bold", loc="left", pad=12)
+    ax.legend(frameon=False, fontsize=theme["legend_size"] - 1, title="MMLU-Pro", title_fontsize=theme["legend_size"] - 1)
+    finish(fig, out, theme)
+
+
+def render_deck_svgs(C):
+    with plt.rc_context({
+        "font.family": ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
+        "svg.fonttype": "none",
+    }):
+        paths = [
+            FIGS / "fig1_deck.svg",
+            FIGS / "fig2_deck.svg",
+            FIGS / "fig3_deck.svg",
+            FIGS / "fig4_deck.svg",
+            FIGS / "fig5_deck.svg",
+        ]
+        fig1(C, deck=True, out=paths[0])
+        fig2(C, deck=True, out=paths[1])
+        fig3(C, deck=True, out=paths[2])
+        fig4(deck=True, out=paths[3])
+        fig5(deck=True, out=paths[4])
+    return paths
 
 
 def main():
@@ -223,9 +324,13 @@ def main():
         C = compute(); cachep.write_text(json.dumps(C, indent=2))
         print(f"cached -> {cachep}")
     fig1(C); fig2(C); fig3(C); fig4(); fig5()
+    svg_paths = render_deck_svgs(C)
     print("saved figures ->", FIGS)
     for f in sorted(FIGS.glob("*.png")):
         print("  ", f.name)
+    for f in svg_paths:
+        if f.exists():
+            print("  ", f)
 
 
 if __name__ == "__main__":
