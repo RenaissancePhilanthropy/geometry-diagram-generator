@@ -435,3 +435,44 @@ python interp/analysis/incremental_ops.py          --act-dir <run>
   `rerun_driver.sh` (corrected re-run), tests `test_confidence.py`.
 - **Related docs:** `CONFIDENCE.md` (design + read-site backstory), `METHODOLOGY.md`
   (general probing protocol), `RESULTS.md` (spatial decodability, 7B/32B).
+
+---
+
+## 2026-07-22 — Team deck rebuilt: visual-first, RP-branded, 25 slides (presentation-ready)
+
+**What exists now.** `slides/metacognition_progress.html` is the team presentation
+("Do models know when they're wrong?"), fully reworked across several sessions with Claude Code:
+
+- **Structure (25 slides):** dark title (says-vs-thinks speech/thought bubbles) → audience quiz
+  ("Spot the wrong answer": 3×4 perimeter ✓14 vs octagon diagonals ✗28, real answer 20) →
+  bluffing-vs-clueless → "we can just look" → **BLUF slide** (It knows / You can read it /
+  Gauge, not wheel) → mech-interp 101 ×2 (residual stream, read-then-poke) → **method up-close ×3**
+  (probe + guardrails, J-lens "phrasebook", steering + 3 controls) → testbeds → 3-turn protocol →
+  verbatim prompts ×2 → read-site + layer curve → results ×7 (fig1 AUROC eq, gap-by-domain,
+  within-question, lens-agrees, dense-only table, smear, steering) → verdict cards → open questions.
+- **Numbers were re-audited against `interp/activations/plot_cache.json`** — deck + script now say
+  probe wins **12/16** cells (1 tie; probe 0.57–0.95 vs stated 0.54–0.87; MATH +0.20, geometry
+  +0.02; within-question GLM·MATH 0.89 vs P(True) 0.48). The old "0.69–0.96 vs 0.51–0.73 /
+  beats every time" was stale (best-layer era) — don't reintroduce it.
+- **Brand:** Renaissance Philanthropy palette (coral #F87248, ink #131318, muted #737382) +
+  embedded subset webfonts (`slides/fonts/*.woff`: Manrope + Newsreader, variable, ~118 KB).
+- **Figures:** `interp/analysis/make_plots.py` gained a deck-SVG path (`fig*_deck.svg`,
+  transparent, no titles, RP palette) — regenerates offline from `plot_cache.json`. The five SVGs
+  are force-added in `interp/figures/` (dir is gitignored).
+- **Controls:** → reveals fragments / advances · ← back · `#N` deep-links (fragments auto-reveal) ·
+  **N toggles hidden speaker notes** — full presenter-voice narration embedded per slide
+  (`<aside class="notes">`). `slides/metacognition_SPEAKER_SCRIPT.md` = the deeper layer
+  (staging, anticipated Q&A, numbers cheat-sheet).
+
+**Published artifact (private, updated in-place all along):**
+https://claude.ai/code/artifact/f2c31891-529f-4fd8-9d23-69c16592ff1b
+
+**To rebuild/republish the self-contained copy** (fonts + figures inlined as data URIs — the repo
+HTML references them as files): ask Claude Code to "re-inline and republish the deck to the same
+artifact URL", or replicate: base64-inline `slides/fonts/*.woff` into the `@font-face` urls and
+`interp/figures/fig[1-5]_deck.svg` into the `img src` refs, then publish the single file.
+
+**Open items:** (a) two-screen presenter view (notes on laptop only) if wanted — current N-toggle
+shows notes on the projected window; (b) architecture-control broadening + per-input variance
+measurement remain the science asks (slide 25); (c) title-slide speech bubble still says
+"…so the answer is 28" (deliberate — matches quiz slide's wrong answer).

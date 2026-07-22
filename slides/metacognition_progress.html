@@ -92,6 +92,14 @@
   .voices .dots span:nth-child(3){width:13px;height:13px;opacity:.85}
   .bubble.think{background:rgba(255,255,255,.035);border:1.6px dashed #6F6F7D;color:#CBCAD4;
     font-family:var(--serif);font-style:italic;font-size:1.16rem;line-height:1.45;margin-left:1.8rem}
+  /* title composition: question left, voices vignette right */
+  .titlegrid{display:flex;align-items:center;justify-content:center;gap:3.8rem;
+    width:100%;max-width:1080px;margin:0 auto;flex-wrap:wrap}
+  .titlegrid .tleft{flex:1.35;min-width:23rem;text-align:left}
+  .titlegrid .tleft .rule{margin:0 0 1.5rem}
+  .titlegrid h1{font-size:3rem}
+  .titlegrid .tleft .big{margin-bottom:0}
+  .titlegrid .voices{flex:1;min-width:19rem;width:auto;margin:0}
 
   /* ---- motion: slide entrance + progressive reveal ---- */
   .slide.active{animation:enter .5s cubic-bezier(.22,.61,.36,1) both}
@@ -144,70 +152,85 @@
   .demo .box .num{font-family:var(--serif);font-weight:600;font-size:2.9rem;line-height:1;margin:.35rem 0 .1rem}
   .demo .box .sub{font-family:var(--sans);font-size:.86rem;color:var(--muted)}
   .demo .box.good{border-color:rgba(46,125,79,.5)} .demo .box.bad{border-color:rgba(163,46,46,.5)}
+  .demo .box .q{font-family:var(--sans);font-size:1rem;color:var(--ink);margin:0 0 .65rem;line-height:1.45}
+  .demo .box .say{font-family:'SF Mono',Menlo,monospace;font-size:1.08rem;color:var(--ink)}
+  .demo .box .conf{font-family:'SF Mono',Menlo,monospace;font-size:1rem;color:var(--muted);margin-top:.4rem}
+  .demo .box .verdict{margin-top:.75rem;font-family:var(--sans);font-weight:700;font-size:1.1rem}
+  .demo .box .verdict.vok{color:var(--ok)} .demo .box .verdict.vbad{color:var(--fail)}
   .output-chip{display:inline-block;background:var(--code);color:var(--codetext);
     font-family:'SF Mono',Menlo,monospace;font-size:1.02rem;border-radius:10px;
     padding:.7rem 1.1rem;margin:.3rem auto 0}
   .output-chip .lab{color:var(--accent);font-weight:bold}
   .split-lead{text-align:center;color:var(--muted);font-family:var(--sans);font-size:.98rem;margin:.9rem 0 .2rem}
-  .card .who{font-family:var(--sans);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  .card .who,.demo .box .who{font-family:var(--sans);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
     color:var(--muted);font-weight:700;display:block;margin-bottom:.15rem}
+  .demo .box .who{margin-bottom:.55rem}
   .card .quote{font-family:var(--serif);font-style:italic;font-size:1.16rem;margin:.15rem 0 .5rem;color:var(--ink)}
+  .eq{font-family:var(--serif);font-size:1.18rem;text-align:center;background:var(--card);
+    border:1px solid var(--line);border-radius:8px;padding:.55rem 1rem;margin:.3rem auto .5rem;max-width:46rem}
+  .eq .v{font-style:italic}
+  .eq .note{font-family:var(--sans);font-style:normal;font-size:.88rem;color:var(--muted);display:block;margin-top:.25rem}
+  /* hidden speaker notes — press N to toggle */
+  .notes{display:none}
+  #notes{position:fixed;left:1rem;right:1rem;bottom:2.4rem;z-index:50;display:none;
+    background:rgba(19,19,24,.94);color:#E9E7EE;border-radius:12px;padding:.9rem 1.2rem;
+    font-family:var(--sans);font-size:.97rem;line-height:1.55;max-height:44vh;overflow-y:auto;
+    box-shadow:0 12px 40px rgba(0,0,0,.35)}
+  body.shownotes #notes{display:block}
+  #notes .nhead{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:#F87248;font-weight:700;margin-bottom:.35rem}
+  #notes p{margin:.3rem 0;max-width:none;font-size:.97rem;line-height:1.5}
+  #notes b,#notes strong{color:#fff}
 </style>
 
 <div class="prog" id="prog"></div>
 <div class="count" id="count"></div>
-<div class="hint">→ reveal / advance · ← back</div>
+<div class="hint">→ reveal / advance · ← back · N notes</div>
+<div id="notes" aria-live="polite"></div>
 
 <!-- 1 -->
-<section class="slide center dark">
-  <hr class="rule">
-  <div class="eyebrow">Mechanistic interpretability · progress · July 2026</div>
-  <h1>Do models know<br>when they're wrong?</h1>
-  <p class="big dim" style="margin-bottom:.2rem">Metacognition in open LLMs — from geometry diagrams to causal steering</p>
-  <div class="voices">
-    <div class="who say">The model, out loud</div>
-    <div class="bubble speech">"…so the answer is <b>28</b>.&nbsp;&nbsp; Confidence: <b>95</b>."</div>
-    <div class="dots"><span></span><span></span><span></span></div>
-    <div class="bubble think">…honestly? I'm probably wrong.</div>
-    <div class="who think">what it's actually thinking</div>
+<section class="slide dark">
+  <div class="titlegrid">
+    <div class="tleft">
+      <hr class="rule">
+      <div class="eyebrow">Mechanistic interpretability · progress · July 2026</div>
+      <h1>Do models know when they're wrong?</h1>
+      <p class="big dim">Metacognition in open LLMs — five models, four domains.</p>
+    </div>
+    <div class="voices">
+      <div class="who say">The model, out loud</div>
+      <div class="bubble speech">"…so the answer is <b>28</b>.&nbsp;&nbsp; Confidence: <b>95</b>."</div>
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div class="bubble think">…honestly? I'm probably wrong.</div>
+      <div class="who think">what it's actually thinking</div>
+    </div>
   </div>
+  <aside class="notes"><p>Here's the image I want you to hold for the next half hour. The coral bubble is the model out loud: <i>the answer is 28, confidence 95</i>. The grey one is what may — or may not — be happening inside: <i>honestly? I'm probably wrong.</i></p><p>Today's question is easy to say and surprisingly deep to answer: is that grey bubble <b>real</b>? And if it is — why does the model keep it to itself? We looked inside five open models to find out.</p><p>Thirty seconds here. Then move.</p></aside>
 </section>
 
 <!-- 2 · the pattern -->
 <section class="slide">
   <div class="eyebrow">The problem</div>
-  <h2>And it's not a one-off</h2>
-  <p>That confident bluff isn't a quirk of one question. Ask a model something hard, and its stated
-  confidence stays high whether it <em>nails</em> the answer or completely <em>whiffs</em> — the number
-  barely moves with whether it's actually right.</p>
+  <h2>Spot the wrong answer</h2>
+  <p class="dim">Two problems, answered by the same model. Same fluent tone, same confidence:</p>
   <div class="demo">
-    <div class="box good"><span class="lbl okc">✓ when it's right</span><div class="num">95</div><span class="sub">"Confidence: 95"</span></div>
-    <div class="box bad"><span class="lbl failc">✗ when it's wrong</span><div class="num">95</div><span class="sub">"Confidence: 95"</span></div>
+    <div class="box"><span class="who">problem A</span>
+      <div class="q">What is the perimeter of a 3 by 4 rectangle?</div>
+      <div class="say">"…the answer is <b>14</b>."</div>
+      <div class="conf">Confidence: 95</div>
+      <div class="verdict vok frag">✓ correct</div></div>
+    <div class="box"><span class="who">problem B</span>
+      <div class="q">How many diagonals does a regular octagon have?</div>
+      <div class="say">"…the answer is <b>28</b>."</div>
+      <div class="conf">Confidence: 95</div>
+      <div class="verdict vbad frag">✗ wrong — it's 20</div></div>
   </div>
-  <p class="big frag">Same number either way. So the confidence a model reports isn't a reliable
-  signal of correctness — today it's closer to <strong>decoration</strong>.</p>
+  <p class="big frag" style="margin-top:1rem">You couldn't tell — nothing it <em>says</em> separates
+  them. And the confident wrong one <strong>ships</strong>. A calibrated <em>"I'm not sure"</em> =
+  a <strong>free safety margin</strong> — and today it's missing.</p>
+  <aside class="notes"><p>So let's play. Two problems, one model, same tone, same ninety-five. One of these is wrong. Which? <b>(Pause. Count five seconds. Let it get a little uncomfortable.)</b></p><p>[→] The perimeter is easy: three plus four, doubled. Fourteen. Correct. [→] The octagon? Twenty-eight is what you get when you count <i>every</i> line between two corners — including the eight sides. The real answer is twenty. A classic trap — and the model fell in with perfect poise.</p><p>[→] And that's the phenomenon: nothing on the outside separated the right answer from the wrong one. The wrong one ships, because nobody double-checks a ninety-five. The thing we're missing is a calibrated <i>“I'm not sure”</i> — a free safety margin that nobody is collecting.</p></aside>
 </section>
 
-<!-- 3 · the stakes -->
-<section class="slide">
-  <div class="eyebrow">Why it matters</div>
-  <h2>That's the dangerous combination</h2>
-  <p>We're starting to hand these models real decisions — reading medical results, reviewing
-  contracts, shipping code. When a wrong answer <em>announces its own doubt</em>, you catch it. When
-  it arrives with total confidence, it sails straight through.</p>
-  <div class="cardrow">
-    <div class="card"><span class="who">wrong, but hedged</span>
-      <p class="quote">"…I'm not sure — maybe 28?"</p>
-      <p class="okc">→ you double-check it. <strong>Caught.</strong></p></div>
-    <div class="card"><span class="who">wrong, and confident</span>
-      <p class="quote">"The answer is 28. (95%)"</p>
-      <p class="failc">→ you trust it. <strong>It slips through.</strong></p></div>
-  </div>
-  <p class="big frag">A calibrated <em>"I'm not sure"</em> would be worth a lot — a free safety margin.
-  That's the missing signal we go looking for.</p>
-</section>
-
-<!-- 4 · the real question -->
+<!-- 3 · the real question -->
 <section class="slide">
   <div class="eyebrow">The real question</div>
   <h2>Is it bluffing — or clueless?</h2>
@@ -221,18 +244,17 @@
     <div class="card"><span class="who">Possibility 2</span><h3>The clueless one</h3>
       <p>Nothing inside flagged a problem. It's wrong and genuinely has no idea.</p></div>
   </div>
-  <p class="frag" style="margin-top:1rem">From the outside they're identical. But they're worlds apart: the
-  bluffer is <strong>sitting on usable knowledge</strong>; the clueless one has none. Does it
-  <span class="acc">know</span> vs. does it <span class="acc">say</span> — that gap is the whole talk.</p>
+  <p class="big frag" style="margin-top:1rem">Does it <span class="acc">know</span> ≠ does it
+  <span class="acc">say</span>. That gap is the whole talk.</p>
+  <aside class="notes"><p>So which is it? When a model does that — is it <b>bluffing</b>? Did something inside whisper “thin ice” and never make it to the words? Or is it <b>clueless</b> — silence all the way down?</p><p>Same output. Same ninety-five. But everything depends on the difference — because a bluffer is sitting on knowledge we could use, and a clueless model has nothing to give.</p><p>[→] So we split the question in two: does it <b>know</b>, and does it <b>say</b>? The space between those answers has a name — the knowing–saying gap — and it is the whole talk.</p></aside>
 </section>
 
-<!-- 5 · why we can answer it -->
+<!-- 4 · why we can answer it -->
 <section class="slide">
   <div class="eyebrow">Why we can answer this</div>
   <h2>With a model, we can just look</h2>
-  <p>With a person, you'd be stuck guessing whether they're bluffing. A model is different — it is
-  completely <strong>open</strong>. Every step of its "thinking" is laid out as raw numbers we can
-  read <em>while it works</em>, before it has said a word.</p>
+  <p class="dim">With a person you'd have to guess. A model is <strong>open</strong> — its thinking
+  is numbers, readable <em>while it works</em>.</p>
   <figure class="dia">
     <svg viewBox="0 0 860 202" role="img" aria-label="a question enters a model whose internal numbers we can inspect, then an answer comes out">
       <defs><marker id="fx" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker></defs>
@@ -257,52 +279,93 @@
       <text x="700" y="102" class="dlabel" font-size="13" text-anchor="middle">answer + confidence</text>
     </svg>
   </figure>
-  <p class="big frag">So we don't have to trust its self-report. We can open it up and check whether an
-  "I'm probably wrong" signal is in there — and whether we can <em>use</em> it. That's
-  <span class="acc">mechanistic interpretability</span>.</p>
+  <p class="big frag">Don't trust the self-report — check for the "I'm probably wrong" signal directly.
+  That's <span class="acc">mechanistic interpretability</span>.</p>
+  <aside class="notes"><p>Now if this were a person, we'd be stuck — you can't subpoena someone's inner monologue. But a model is not a person. It's <b>open</b>. Its entire thinking process exists as numbers we can read mid-thought — after it understands, before it speaks.</p><p>Trace the picture: question in, the wall of numbers, answer out. Our whole method is reading the right row at the right moment.</p><p>[→] So instead of trusting the self-report, we go look. That's mechanistic interpretability. One piece of background, three tools — and then you can judge everything we found for yourselves.</p></aside>
 </section>
 
-<!-- 6 -->
+<!-- 5 · the short version (BLUF) -->
+<section class="slide">
+  <div class="eyebrow">The short version</div>
+  <h2>We looked. Here's what we found.</h2>
+  <div class="cardrow">
+    <div class="card frag" style="border-color:var(--accent)"><span class="who">finding 1</span>
+      <h3 style="font-family:var(--serif);font-size:1.5rem;color:var(--ink)">It knows.</h3>
+      <p>Inside, models track their own correctness — better than what they say. Sharpest on math.</p></div>
+    <div class="card frag" style="border-color:var(--accent)"><span class="who">finding 2</span>
+      <h3 style="font-family:var(--serif);font-size:1.5rem;color:var(--ink)">You can read it.</h3>
+      <p>Even with no answer key — on some architectures the wiring itself gives it up.</p></div>
+    <div class="card frag" style="border-color:var(--accent)"><span class="who">finding 3</span>
+      <h3 style="font-family:var(--serif);font-size:1.5rem;color:var(--ink)">Gauge, not wheel.</h3>
+      <p>Poking it makes the model honest about being wrong. It can't make it right.</p></div>
+  </div>
+  <p class="big frag" style="margin-top:1.1rem">The bluffer is real. <span class="dim">The rest of the
+  talk earns these three claims.</span></p>
+  <aside class="notes"><p>Normally you'd make me earn this over twenty slides. Let me just tell you what we found.</p><p>[→] First — <b>it knows</b>. Inside, these models track their own correctness better than anything they say. Sharpest on math. [→] Second — <b>you can read it</b>, even with no answer key at all. And <i>which</i> architectures let you do that turns out to be a discovery in its own right. [→] Third — it's a <b>gauge, not a wheel</b>. We can make a model honest about being wrong. We cannot make it right.</p><p>[→] In other words: the bluffer is real. Everything from here is me earning those three sentences. Hold me to them.</p></aside>
+</section>
+
+<!-- 6 · background: the residual stream -->
 <section class="slide">
   <div class="eyebrow">Mech-interp 101 · 1/2</div>
-  <h2>The thought stream</h2>
-  <p>As a model processes text, every token position carries a vector — a ~5,000-number
-  <strong>working document</strong>. Each of the 30–64 layers reads it and rewrites parts of it.</p>
+  <h2>How a model thinks — all you need</h2>
+  <p class="dim">Text → tokens → a <strong>vector</strong> each (~5,000 numbers). Then every layer
+  does one thing: <strong>read</strong> the running vector, <strong>add</strong> its result back.</p>
   <figure class="dia">
-    <svg viewBox="0 0 860 230" role="img" aria-label="the residual stream: a working-document vector rewritten layer by layer, read partway up">
+    <svg viewBox="0 0 880 214" role="img" aria-label="tokens become vectors; each layer reads the running vector and adds its result back; that running total is the residual stream, read out as the next word">
       <defs>
-        <marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker>
+        <marker id="sar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#131318"/></marker>
+        <marker id="arG" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker>
+        <marker id="arC" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#F87248"/></marker>
       </defs>
-      <!-- depth lane -->
-      <rect x="60" y="150" width="740" height="26" rx="13" fill="#FBE4DA"/>
-      <line x1="60" y1="200" x2="800" y2="200" stroke="#737382" stroke-width="1.2" marker-end="url(#ar)"/>
-      <text x="60" y="220" class="dlabel">layer 0 · embedding</text>
-      <text x="800" y="220" class="dlabel" text-anchor="end">final layer · words out</text>
-      <!-- faint layer ticks -->
-      <g stroke="#D7D6DB" stroke-width="1">
-        <line x1="140" y1="152" x2="140" y2="174"/><line x1="220" y1="152" x2="220" y2="174"/>
-        <line x1="300" y1="152" x2="300" y2="174"/><line x1="380" y1="152" x2="380" y2="174"/>
-        <line x1="460" y1="152" x2="460" y2="174"/><line x1="620" y1="152" x2="620" y2="174"/>
-        <line x1="700" y1="152" x2="700" y2="174"/></g>
-      <!-- read slice: the working-document vector, partway up -->
-      <rect x="516" y="26" width="88" height="150" rx="9" fill="#FFFFFF" stroke="#F87248" stroke-width="2"/>
-      <text x="560" y="20" class="dlabel" fill="#F87248" text-anchor="middle" font-weight="700">the vector</text>
-      <g class="dnum" font-size="13" fill="#131318" text-anchor="middle">
-        <text x="560" y="48">0.31</text><text x="560" y="70">−1.20</text><text x="560" y="92">0.57</text>
-        <text x="560" y="114">2.11</text><text x="560" y="136">−0.88</text>
-        <text x="560" y="158" fill="#737382">… ×5k</text></g>
-      <!-- callout -->
-      <rect x="470" y="188" width="180" height="30" rx="7" fill="#F87248"/>
-      <text x="560" y="208" fill="#fff" text-anchor="middle"
-        font-family="'Manrope',system-ui,sans-serif" font-size="13" font-weight="600">read here · layer ~20</text>
-      <line x1="560" y1="188" x2="560" y2="178" stroke="#F87248" stroke-width="2"/>
+      <!-- text → token → vector -->
+      <text x="40" y="40" class="dlabel">your text</text>
+      <rect x="36" y="46" width="126" height="26" rx="6" fill="#F3F2F0" stroke="#E4E3E7"/>
+      <text x="48" y="63" class="dnum" font-size="12" fill="#131318">"the answer is"</text>
+      <line x1="99" y1="74" x2="118" y2="146" stroke="#737382" stroke-width="1.3" marker-end="url(#arG)"/>
+      <!-- the residual stream -->
+      <line x1="118" y1="155" x2="812" y2="155" stroke="#131318" stroke-width="3" marker-end="url(#sar)"/>
+      <text x="118" y="184" class="dlabel">embedding</text>
+      <text x="812" y="184" class="dlabel" text-anchor="end">→ next word</text>
+      <text x="452" y="30" class="dlabel" text-anchor="middle">one block, stacked 40–64 times</text>
+      <!-- layer blocks: read ↑ then add back ↓⊕ -->
+      <g>
+        <rect x="232" y="58" width="96" height="46" rx="9" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
+        <text x="280" y="79" class="dlabel" fill="#131318" text-anchor="middle" font-weight="700">layer 1</text>
+        <text x="280" y="95" class="dlabel" text-anchor="middle">attn + MLP</text>
+        <line x1="252" y1="153" x2="252" y2="106" stroke="#737382" stroke-width="1.4" marker-end="url(#arG)"/>
+        <line x1="308" y1="106" x2="308" y2="149" stroke="#F87248" stroke-width="1.8" marker-end="url(#arC)"/>
+        <circle cx="308" cy="155" r="7.5" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/>
+        <text x="308" y="159" text-anchor="middle" font-size="12" fill="#F87248" font-weight="700">+</text>
+        <text x="236" y="130" class="dlabel">reads</text>
+        <text x="318" y="130" class="dlabel" fill="#F87248">adds back</text>
+      </g>
+      <g>
+        <rect x="404" y="58" width="96" height="46" rx="9" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
+        <text x="452" y="79" class="dlabel" fill="#131318" text-anchor="middle" font-weight="700">layer 2</text>
+        <text x="452" y="95" class="dlabel" text-anchor="middle">attn + MLP</text>
+        <line x1="424" y1="153" x2="424" y2="106" stroke="#737382" stroke-width="1.4" marker-end="url(#arG)"/>
+        <line x1="480" y1="106" x2="480" y2="149" stroke="#F87248" stroke-width="1.8" marker-end="url(#arC)"/>
+        <circle cx="480" cy="155" r="7.5" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/>
+        <text x="480" y="159" text-anchor="middle" font-size="12" fill="#F87248" font-weight="700">+</text>
+      </g>
+      <text x="548" y="90" class="dlabel" font-size="17">···</text>
+      <g>
+        <rect x="576" y="58" width="96" height="46" rx="9" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
+        <text x="624" y="79" class="dlabel" fill="#131318" text-anchor="middle" font-weight="700">layer N</text>
+        <text x="624" y="95" class="dlabel" text-anchor="middle">attn + MLP</text>
+        <line x1="596" y1="153" x2="596" y2="106" stroke="#737382" stroke-width="1.4" marker-end="url(#arG)"/>
+        <line x1="652" y1="106" x2="652" y2="149" stroke="#F87248" stroke-width="1.8" marker-end="url(#arC)"/>
+        <circle cx="652" cy="155" r="7.5" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/>
+        <text x="652" y="159" text-anchor="middle" font-size="12" fill="#F87248" font-weight="700">+</text>
+      </g>
     </svg>
-    <figcaption>Reading at layer ~20 = catching a thought mid-composition — after understanding, before speaking.</figcaption>
+    <figcaption>Each layer <em>reads</em> the stream and <em>adds</em> its result back — a "residual" connection. That's where the name comes from.</figcaption>
   </figure>
-  <p class="frag">Concepts live in this stream as <strong>directions</strong>: there is literally a
-  direction that encodes "this is a midpoint" — and, it turns out, one that tracks
+  <p class="big frag">That running total is the <span class="acc">residual stream</span> —
+  the model's working memory. That's what we read.</p>
+  <p class="big frag">And ideas live in it as <strong>directions</strong> — including one that tracks
   <span class="acc">"I am about to be wrong."</span></p>
+  <aside class="notes"><p>A quick tour of the machine — genuinely all you need. Text becomes tokens. Each token becomes a vector, about five thousand numbers. And then one move, repeated forty to sixty times: <b>read</b> the running vector, compute something, <b>add</b> your contribution back. Nothing is ever overwritten. Every layer just adds.</p><p>[→] That accumulating sum has a name: the <b>residual stream</b> — each layer literally adds its residual on top. Think of it as the model's working memory, because it's the thing we'll be reading for the next twenty minutes.</p><p>[→] And the fact that makes this whole field possible: ideas live in that stream as <b>directions</b>. There's a direction for “this is a midpoint.” And there is one that tracks <i>“I am about to be wrong.”</i> (Dot products on request — Q&A.)</p></aside>
 </section>
 
 <!-- 7 -->
@@ -321,7 +384,7 @@
         <line x1="150" y1="82" x2="120" y2="48.6" stroke="#737382" stroke-width="1.1" stroke-dasharray="3 3"/>
         <text x="40" y="104" class="dlabel">read = length along u</text>
       </svg>
-      <p>Linear classifier trained on stored thought-vectors + labels. Powerful; can overfit quirks.</p></div>
+      <p>Train a classifier on stored thoughts + right/wrong labels.</p></div>
     <div class="card"><h3>Lens (read, zero-shot)</h3>
       <svg viewBox="0 0 220 108" role="img" aria-label="lens: translate a thought into words">
         <defs><marker id="lu" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
@@ -335,7 +398,7 @@
         <text x="155" y="73" class="dlabel" fill="#A32E2E" text-anchor="middle">"wrong"</text>
         <text x="20" y="98" class="dlabel">thought → words · no labels</text>
       </svg>
-      <p>Translates a mid-network thought into <em>words</em> — no labels ever.</p></div>
+      <p>Translate a mid-thought into <em>words</em> — no labels ever.</p></div>
     <div class="card"><h3>Steering (poke)</h3>
       <svg viewBox="0 0 220 108" role="img" aria-label="writing: nudge the thought along a direction">
         <defs><marker id="su" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
@@ -349,27 +412,169 @@
         <circle cx="140" cy="50" r="5" fill="#A32E2E" opacity=".5"/>
         <text x="40" y="104" class="dlabel">write = nudge h by α·u</text>
       </svg>
-      <p>Add a direction while the model generates. If behavior changes as predicted → the model <em>uses</em> it.</p></div>
+      <p>Add a direction while it generates; watch what changes.</p></div>
   </div>
-  <p style="margin-top:1.1rem" class="dim frag">Decodable ≠ used. The whole project is these three
-  tools wrapped in controls.</p>
+  <p style="margin-top:1.1rem" class="big frag">Decodable ≠ used — so we use all three.
+  <span class="dim">A closer look at each, then the results.</span></p>
+  <aside class="notes"><p>Three tools. That's the entire kit. The <b>probe</b> reads with the answer key: train on graded snapshots, find the direction. Powerful — suspiciously powerful, a skeptic would say. The <b>lens</b> reads with no key at all: it turns a mid-stream thought into words using the model's own machinery. And <b>steering</b> doesn't read — it writes: inject a direction mid-thought and watch what changes.</p><p>[→] One rule keeps us honest all day: <b>decodable is not the same as used</b>. Reading proves a signal exists. Only writing proves it matters. Next three slides — how each one actually works.</p></aside>
 </section>
 
-<!-- 8 -->
+<!-- 8 · method: how the probe works -->
+<section class="slide">
+  <div class="eyebrow">Method · the probe, up close</div>
+  <h2>Learning the "am I right?" direction</h2>
+  <figure class="dia">
+    <svg viewBox="0 0 880 190" role="img" aria-label="thousands of residual-stream snapshots with external grades train a classifier that finds the separating direction, which then scores new attempts">
+      <defs><marker id="pz" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker></defs>
+      <!-- 1: graded snapshots -->
+      <text x="130" y="30" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">① thousands of graded snapshots</text>
+      <g>
+        <rect x="52" y="46" width="52" height="64" rx="7" fill="#FFFFFF" stroke="#131318" stroke-width="1.3"/>
+        <text x="78" y="72" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">0.7 −1.2</text>
+        <text x="78" y="88" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">1.4 …</text>
+        <circle cx="104" cy="48" r="10" fill="#2E7D4F"/><text x="104" y="52" text-anchor="middle" font-size="11" style="fill:#fff" font-weight="700">✓</text>
+      </g>
+      <g>
+        <rect x="118" y="56" width="52" height="64" rx="7" fill="#FFFFFF" stroke="#131318" stroke-width="1.3"/>
+        <text x="144" y="82" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">−0.3 2.1</text>
+        <text x="144" y="98" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">0.2 …</text>
+        <circle cx="170" cy="58" r="10" fill="#A32E2E"/><text x="170" y="62" text-anchor="middle" font-size="11" style="fill:#fff" font-weight="700">✗</text>
+      </g>
+      <g>
+        <rect x="184" y="66" width="52" height="64" rx="7" fill="#FFFFFF" stroke="#131318" stroke-width="1.3"/>
+        <text x="210" y="92" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">1.1 0.4</text>
+        <text x="210" y="108" class="dnum" font-size="10.5" fill="#737382" text-anchor="middle">−0.9 …</text>
+        <circle cx="236" cy="68" r="10" fill="#2E7D4F"/><text x="236" y="72" text-anchor="middle" font-size="11" style="fill:#fff" font-weight="700">✓</text>
+      </g>
+      <text x="150" y="156" class="dlabel" text-anchor="middle">grades from the external grader — not the model</text>
+      <line x1="258" y1="92" x2="330" y2="92" stroke="#737382" stroke-width="1.6" marker-end="url(#pz)"/>
+      <!-- 2: train -->
+      <text x="452" y="30" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">② train a small classifier</text>
+      <rect x="340" y="46" width="224" height="92" rx="12" fill="#FBE4DA" stroke="#F87248" stroke-width="1.6"/>
+      <line x1="366" y1="118" x2="520" y2="62" stroke="#F87248" stroke-width="2.6" marker-end="url(#pz)"/>
+      <text x="530" y="60" class="dlabel" fill="#131318" font-weight="700" font-style="italic">u</text>
+      <text x="452" y="126" class="dlabel" text-anchor="middle" font-size="11.5">find the direction separating ✓ from ✗</text>
+      <text x="452" y="156" class="dlabel" text-anchor="middle">simple &amp; linear — no room to hide circuitry</text>
+      <line x1="572" y1="92" x2="644" y2="92" stroke="#737382" stroke-width="1.6" marker-end="url(#pz)"/>
+      <!-- 3: score new -->
+      <text x="748" y="30" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">③ score unseen attempts</text>
+      <rect x="654" y="58" width="190" height="66" rx="12" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
+      <text x="748" y="86" class="dnum" font-size="13" fill="#131318" text-anchor="middle">score = u · h</text>
+      <text x="748" y="106" class="dlabel" text-anchor="middle">read the new thought's lean</text>
+      <text x="748" y="156" class="dlabel" text-anchor="middle">tested only on questions it never trained on</text>
+    </svg>
+  </figure>
+  <div class="cardrow">
+    <div class="card"><span class="who">no leakage</span>
+      <p>Train/test split by <strong>question</strong> — scored strictly out-of-fold.</p></div>
+    <div class="card"><span class="who">no cherry-picking</span>
+      <p>Reported at one <strong>fixed depth</strong> (~0.7 through) — never the best layer.</p></div>
+    <div class="card"><span class="who">no surface cues</span>
+      <p>Identical wording every item; layer 0 decodes at <strong>chance</strong>.</p></div>
+  </div>
+  <p class="big frag" style="margin-top:1rem">Powerful — but it has seen the answer key.
+  So every probe claim gets an <span class="acc">honest second witness</span> — next slide.</p>
+  <aside class="notes"><p>Here's the workhorse. Step one: thousands of snapshots of the residual stream — one per attempt, taken at the confidence token — each stamped with the external verdict, right or wrong. Step two: hand them to the simplest learner imaginable, a <b>linear</b> classifier, and ask for the one direction that separates the ✓ pile from the ✗ pile. Linear is the point — there's no room to hide clever circuitry. If it works, the information was just <i>sitting there</i> in the stream. Step three: score attempts it has never seen. One dot product.</p><p>And because trained readers deserve suspicion, three guardrails: train and test split by <b>question</b>, scored strictly out-of-fold. One <b>fixed depth</b>, about seventy percent through — never the flattering best layer. And identical wording everywhere, with layer zero decoding at chance.</p><p>[→] Even so — it saw the answer key. A skeptic can still say “memorized.” Which is why every probe claim in this talk gets a second witness who never did. Next slide.</p></aside>
+</section>
+
+<!-- 9 · method: how the lens works -->
+<section class="slide">
+  <div class="eyebrow">Method · the lens, up close</div>
+  <h2>Reading a thought with no answer key</h2>
+  <figure class="dia">
+    <svg viewBox="0 0 880 240" role="img" aria-label="a mid-thought vector goes through one averaged wiring map, built once from generic text, and comes out as word leanings; the score is the lean toward right versus wrong">
+      <defs><marker id="lz" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker></defs>
+      <!-- 1: the mid-thought -->
+      <text x="96" y="52" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">① a mid-thought</text>
+      <rect x="56" y="62" width="80" height="96" rx="9" fill="#FFFFFF" stroke="#F87248" stroke-width="2"/>
+      <g class="dnum" font-size="12" fill="#131318" text-anchor="middle">
+        <text x="96" y="86">0.72</text><text x="96" y="106">−0.19</text><text x="96" y="126">1.42</text>
+        <text x="96" y="146" fill="#737382">…×5k</text></g>
+      <text x="96" y="176" class="dlabel" text-anchor="middle">layer ~20 · not words yet</text>
+      <line x1="146" y1="110" x2="228" y2="110" stroke="#737382" stroke-width="1.6" marker-end="url(#lz)"/>
+      <!-- 2: the phrasebook -->
+      <text x="356" y="52" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">② the model's own "phrasebook"</text>
+      <rect x="238" y="62" width="236" height="96" rx="12" fill="#FBE4DA" stroke="#F87248" stroke-width="1.6"/>
+      <text x="356" y="98" class="dlabel" text-anchor="middle" fill="#131318" font-size="12.5">one map: thoughts → words</text>
+      <text x="356" y="118" class="dlabel" text-anchor="middle" font-size="12">built <tspan font-weight="700">once</tspan>, from generic text</text>
+      <text x="356" y="138" class="dlabel" text-anchor="middle" font-size="12"><tspan font-weight="700">averaged</tspan> over inputs · reused for all</text>
+      <text x="356" y="176" class="dlabel" text-anchor="middle">⚠ remember this — it comes back</text>
+      <line x1="484" y1="110" x2="566" y2="110" stroke="#737382" stroke-width="1.6" marker-end="url(#lz)"/>
+      <!-- 3: word leanings -->
+      <text x="702" y="52" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">③ which words does it lean toward?</text>
+      <rect x="588" y="70" width="120" height="26" rx="13" fill="#E6F1EC" stroke="#2E7D4F"/>
+      <text x="614" y="88" class="dlabel" fill="#2E7D4F">"right, true…"</text>
+      <rect x="712" y="70" width="42" height="26" rx="6" fill="#2E7D4F"/>
+      <text x="733" y="88" class="dlabel" style="fill:#fff" text-anchor="middle" font-weight="700">0.71</text>
+      <rect x="588" y="112" width="120" height="26" rx="13" fill="#F3E3DF" stroke="#A32E2E"/>
+      <text x="608" y="130" class="dlabel" fill="#A32E2E">"wrong, false…"</text>
+      <rect x="712" y="112" width="42" height="26" rx="6" fill="#A32E2E" opacity=".55"/>
+      <text x="733" y="130" class="dlabel" style="fill:#fff" text-anchor="middle" font-weight="700">0.29</text>
+      <text x="648" y="176" class="dlabel">score = the lean, "right" − "wrong"</text>
+    </svg>
+    <figcaption>The lens asks the model's own wiring: <em>if this thought had to become a word right now, which word?</em></figcaption>
+  </figure>
+  <p class="big frag">No correctness label ever enters — the direction comes from the model's
+  <span class="acc">own wiring</span>. An honest second witness for the trained probe.</p>
+  <aside class="notes"><p>Meet the witness with no answer key. Step one: a raw mid-stream thought — not words yet. Step two: push it through what I call the model's <b>phrasebook</b> — one map from thought-space to word-space, built once, by asking the model: averaged over ordinary text, how does a change here move the words you choose? And notice the fine print: <b>one map. Averaged. Reused for everything.</b> Tuck that away — it becomes the twist of this whole talk.</p><p>Step three: out come leanings over words. We check exactly two families — <i>right, true, correct</i> versus <i>wrong, false, error</i> — and the score is the lean.</p><p>[→] No label ever touches this pipeline. So when the lens agrees with the probe, memorization is off the table. (Its internal name is the Jacobian lens — keep that word for Q&A.)</p></aside>
+</section>
+
+<!-- 10 · method: how steering works -->
+<section class="slide">
+  <div class="eyebrow">Method · steering, up close</div>
+  <h2>From reading to <em>cause</em>: nudge the thought</h2>
+  <figure class="dia">
+    <svg viewBox="0 0 880 208" role="img" aria-label="while the model generates, add alpha times the direction u into the residual stream and watch stated confidence and accuracy downstream">
+      <defs>
+        <marker id="tz" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#131318"/></marker>
+        <marker id="tc" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#F87248"/></marker>
+      </defs>
+      <!-- stream during generation -->
+      <line x1="60" y1="120" x2="820" y2="120" stroke="#131318" stroke-width="3" marker-end="url(#tz)"/>
+      <text x="60" y="148" class="dlabel">generating: "…the answer is"</text>
+      <text x="820" y="148" class="dlabel" text-anchor="end">next words</text>
+      <!-- the injection -->
+      <rect x="304" y="30" width="192" height="40" rx="10" fill="#F87248"/>
+      <text x="400" y="55" text-anchor="middle" fill="#fff" font-family="'Manrope',system-ui,sans-serif" font-size="14" font-weight="700">inject  + α · u</text>
+      <line x1="400" y1="70" x2="400" y2="108" stroke="#F87248" stroke-width="2.2" marker-end="url(#tc)"/>
+      <circle cx="400" cy="120" r="9" fill="#FFFFFF" stroke="#F87248" stroke-width="2"/>
+      <text x="400" y="125" text-anchor="middle" font-size="13" fill="#F87248" font-weight="700">+</text>
+      <text x="400" y="180" class="dlabel" text-anchor="middle">u = the "you're wrong" direction · α = the dose</text>
+      <!-- watch panel -->
+      <rect x="596" y="46" width="204" height="52" rx="10" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
+      <text x="698" y="68" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">then watch, downstream:</text>
+      <text x="698" y="86" class="dlabel" text-anchor="middle">stated confidence · accuracy</text>
+      <line x1="640" y1="120" x2="640" y2="102" stroke="#737382" stroke-width="1.3" marker-end="url(#tc)" opacity="0"/>
+    </svg>
+  </figure>
+  <div class="cardrow">
+    <div class="card"><span class="who">control 1 · dose</span>
+      <p>Sweep α gently → hard. Effects should <strong>grow with the dose</strong>.</p></div>
+    <div class="card"><span class="who">control 2 · random</span>
+      <p>Random direction, same strength → must do <strong>nothing</strong>.</p></div>
+    <div class="card"><span class="who">control 3 · reverse</span>
+      <p>Flip the sign → effect should <strong>flip too</strong>.</p></div>
+  </div>
+  <p class="big frag" style="margin-top:1rem">Reading shows correlation. If the targeted nudge moves behavior
+  — and the random one doesn't — the model <span class="acc">uses</span> that direction. That's cause.</p>
+  <aside class="notes"><p>Reading is done; now we poke. While the model is generating — mid-thought, token by token — we reach into the stream and add alpha times our direction. Alpha is a dose dial. Then we watch downstream: does the stated confidence move? Does the <i>accuracy</i> move?</p><p>The discipline is the three controls. Real effects should <b>grow with the dose</b>. A random direction at the same strength must do <b>nothing</b>. Flip the sign, and the effect should <b>flip</b>.</p><p>[→] That's the difference between correlation and cause. When we get to the final result, hold it to exactly this bar.</p></aside>
+</section>
+
+<!-- 11 -->
 <section class="slide">
   <div class="eyebrow">Testbed 1 · geometry</div>
   <h2>A compiler as the judge</h2>
   <pre>"an isosceles triangle with an inscribed circle..."
         ↓  model writes a RecipeDSL JSON program
 parse → validate → lower → compile (SymPy) → geometric checks</pre>
-  <p>Either it compiles and passes every invariant (tangency, perpendicularity, …) or it fails at
-  a specific stage. <strong>Exact, machine-checkable correctness</strong> — no human judge, no LLM judge.</p>
-  <p>And it's hard: our models pass only <span class="acc">13–39%</span> — plenty of failures to study.
-  <span class="dim">Metacognition is failure-hungry: you can't measure "knows when it's wrong" if
-  it's never wrong.</span></p>
+  <p class="big">Compiles + passes every invariant, or fails at a specific stage.
+  <strong>Exact</strong> — no human judge, no LLM judge.</p>
+  <p class="big frag">And hard on purpose: models pass only <span class="acc">13–39%</span>.
+  <span class="dim">Metacognition is failure-hungry.</span></p>
+  <aside class="notes"><p>You cannot study “knows it's wrong” without an ironclad “wrong.” So testbed one grades itself: the model writes a small geometry program, and a symbolic compiler checks every promised property — tangency, perpendicularity, all of it. It compiles and passes everything, or it fails at a named stage. No human judge. No LLM judge. No vibes.</p><p>[→] And it's hard <i>on purpose</i> — pass rates between thirteen and thirty-nine percent. That's the design, not a flaw: metacognition research is failure-hungry. A model that's never wrong can't show you whether it knows when it is.</p></aside>
 </section>
 
-<!-- 9 -->
+<!-- 12 -->
 <section class="slide">
   <div class="eyebrow">Testbed 2 · standard benchmarks</div>
   <h2>QA, chosen by failure rate</h2>
@@ -380,11 +585,11 @@ parse → validate → lower → compile (SymPy) → geometric checks</pre>
     <tr><td>GPQA-Diamond</td><td>4-option MC, seeded shuffle</td><td class="okc">kept</td></tr>
     <tr><td>GSM8K / MedQA</td><td>—</td><td class="failc">dropped — models pass 90–95%</td></tr>
   </table></div>
-  <p class="dim">Every cell: 0% extraction failures + manual spot-checks. (Our first MATH grader
-  failed correct answers over formatting — caught by a planned audit, fixed, re-graded.)</p>
+  <p class="dim frag">Every cell: 0% extraction failures + manual spot-checks.</p>
+  <aside class="notes"><p>For breadth: standard exams, chosen by the same logic — failure rate. MMLU-Pro, competition MATH, and GPQA-Diamond stay. GSM8K and MedQA go — at ninety-plus percent pass, there's nothing to study. And the grading is fussy on purpose: symbolic equivalence on MATH, so one-half, zero-point-five, and the fraction all count as the same answer.</p><p>[→] One confession, because it buys credibility: our <i>first</i> MATH grader flunked correct answers over formatting. A planned audit caught it; we fixed it and re-graded everything — zero extraction failures, hand spot-checked. When your thesis is “the model doesn't know when it's wrong,” you had better know when <i>you</i> are.</p></aside>
 </section>
 
-<!-- 10 -->
+<!-- 13 -->
 <section class="slide">
   <div class="eyebrow">The experiment</div>
   <h2>Three turns, and the grader never tells</h2>
@@ -403,9 +608,10 @@ parse → validate → lower → compile (SymPy) → geometric checks</pre>
     <span><b>External grader</b> scores the attempt — and <b>never tells the model.</b> So any
     confidence drop after a failure is <em>blind</em> self-assessment, not feedback.</span>
   </div>
+  <aside class="notes"><p>The ritual, for every single question — three turns. <b>Before:</b> “how confident are you that you <i>will</i> get this right?” One line, no reasoning allowed. <b>Then the attempt</b> — think as long as you like here, and only here. <b>After:</b> “how confident are you that your answer <i>is</i> correct?” One line again.</p><p>[→] And the load-bearing detail — look at the lock. The grader never speaks. No “correct,” no “wrong,” ever enters the conversation. So when the model's confidence sags after a failed attempt, that isn't feedback. That came from <b>inside</b>.</p></aside>
 </section>
 
-<!-- 11 -->
+<!-- 14 -->
 <section class="slide">
   <div class="eyebrow">Exact prompts · turn 1</div>
   <h2>Prospective confidence — verbatim</h2>
@@ -420,9 +626,10 @@ question correctly. Reply with EXACTLY one line and nothing else:
 Confidence: N
 where N is an integer from 0 (certain to be wrong) to 100
 (certain to be correct). Do NOT answer yet.</pre>
+  <aside class="notes"><p>Receipts, part one — the exact words, so you can see there's no trick hiding in the phrasing. Exactly one line: “Confidence: N,” zero to one hundred — and “do NOT answer yet.” Twenty seconds, and move on.</p></aside>
 </section>
 
-<!-- 12 -->
+<!-- 15 -->
 <section class="slide">
   <div class="eyebrow">Exact prompts · turns 2–3</div>
   <h2>Attempt, then retrospective confidence</h2>
@@ -437,43 +644,43 @@ with exactly one line and nothing else:
 Confidence: N</pre>
   <p class="dim">Hybrid reasoners (Qwen3.6, GLM): extended thinking ON for the attempt,
   OFF for both confidence turns — best-effort answers, snap-judgment confidence.</p>
+  <aside class="notes"><p>Receipts, part two. Fixed answer formats per domain, then the assessment turn — one line again. And for the hybrid reasoners, Qwen3.6 and GLM: extended thinking is <b>on</b> for the attempt, <b>off</b> for both confidence turns. Best-effort answers; snap-judgment confidence. Move.</p></aside>
 </section>
 
-<!-- 13 -->
+<!-- 16 -->
 <section class="slide">
   <div class="eyebrow">The read site</div>
-  <h2>Where we read the thought stream</h2>
+  <h2>Where we read the residual stream</h2>
   <pre>Confidence: <span style="background:var(--accent);color:#fff;padding:0 .25em;border-radius:3px">N</span>
             <span class="lab">↑ read the vector right here</span> — the token that
               decides the number. Identical wording every question.</pre>
-  <p>Because the context is identical every question, nothing in the <em>phrasing</em> can leak
-  the answer. And we checked: at <strong>layer 0</strong> this spot decodes correctness at
-  <span class="acc">chance (0.50)</span> — so anything readable deeper is something the model
-  <strong>computed</strong>, not a surface cue sitting on the words.</p>
+  <p class="dim">Identical wording every question → phrasing can't leak. Layer 0 decodes at
+  <span class="acc">chance</span> → anything deeper was <strong>computed</strong>.</p>
   <div class="figwrap frag">
     <img src="../interp/figures/fig5_deck.svg" style="max-height:34vh"
       alt="correctness decodability vs relative depth: ~0.5 at layer 0, rising to a mid/late peak of ~0.8, for all four models">
     <p class="caption">Correctness decodability vs depth — chance at the embedding, rising to a mid/late peak. Four models, MMLU-Pro.</p>
   </div>
+  <aside class="notes"><p>One last piece of setup — and honestly, my favorite chart in the deck. Where do we read? One fixed token: the one that's about to say the confidence number. Identical words every time, so the phrasing physically cannot leak the answer.</p><p>Now watch the check: at layer zero — before the model has computed a single thing — that spot decodes correctness at exactly chance. A coin flip. And then, layer by layer, it <b>climbs</b> — up to about point-eight.</p><p>[→] Sit with that for a second. The model is <i>building</i> its sense of “did that work” as the thought rises through the network. This signal is computed, not copied. If one setup slide sticks with you, make it this one. <b>(Pause here.)</b></p></aside>
 </section>
 
-<!-- 14 -->
+<!-- 17 -->
 <section class="slide">
   <div class="eyebrow">Result 1 · the core finding</div>
   <h2>The internal signal reads correctness better than the model reports it</h2>
-  <p class="dim" style="margin:0 0 .3rem">How well each channel separates right from wrong — <span class="acc">internal probe</span> vs. stated confidence (AUROC: 0.50 = coin flip, 1.00 = perfect)</p>
+  <p class="dim" style="margin:0 0 .3rem">How well each channel separates right from wrong — <span class="acc">internal probe</span> vs. stated confidence.</p>
+  <div class="eq">AUROC&nbsp;=&nbsp;Pr(&thinsp;<span class="v">score</span><span class="okc">✓</span> &gt; <span class="v">score</span><span class="failc">✗</span>&thinsp;)&nbsp;+&nbsp;½&nbsp;·&nbsp;Pr(&thinsp;tie&thinsp;)
+    <span class="note">pick one right + one wrong answer at random — how often does the reader rank the right one higher? · 0.50 = coin flip · 1.00 = perfect</span></div>
   <div class="figwrap">
     <img src="../interp/figures/fig1_deck.svg"
       alt="grouped bars over all 16 model-by-subject cells; the internal probe (teal) exceeds stated confidence (grey) in most cells, both above the 0.5 chance line, with a few exceptions">
   </div>
-  <p class="takeaway frag"><strong>All 16 model×subject cells:</strong> probe
-  <span class="acc">0.57–0.95</span> vs. stated confidence <span class="dim">0.54–0.87</span> —
-  the probe wins in <strong>12 of 16</strong> (one tie). The gap is largest on <strong>math (+0.20)</strong>,
-  slim on geometry (+0.02); the exceptions are small-n, two of them Gemma-4. Survives every control —
-  no leakage, no surface cues, holds within a fixed difficulty.</p>
+  <p class="takeaway big frag">The probe wins <strong>12 of 16</strong> cells (one tie) —
+  biggest on <strong>math (+0.20)</strong>, slim on geometry (+0.02).</p>
+  <aside class="notes"><p>Sixteen cells. Five models, four subjects. The grey bar is what the model <b>says</b>; the coral bar is what a probe finds it <b>knows</b>. First, the ruler — point at the equation: grab one right answer and one wrong one at random, and ask how often the reader ranks the right one higher. Half credit for ties — and ties matter, because stated confidence bunches at ninety-five. Point-five is a coin flip. One is perfect.</p><p>Now look. Coral wins nearly everywhere — and the math cells in the middle are the showstopper: up to point-nine-five on the inside, while the mouth says barely better than chance.</p><p>[→] Precisely: the probe wins <b>twelve of sixteen</b>, one tie. Biggest gap on math — plus point-two-oh. Slimmest on geometry. And the three exceptions, before anyone finds them for me: small samples, two of them Gemma-4. The claim is twelve-of-sixteen and a decisive math gap — not a clean sweep.</p></aside>
 </section>
 
-<!-- 15 -->
+<!-- 18 -->
 <section class="slide">
   <div class="eyebrow">Result 2 · the gap</div>
   <h2>Math is the clearest "knows but won't say"</h2>
@@ -482,40 +689,62 @@ Confidence: N</pre>
       alt="bars of the probe-minus-stated AUROC gap by domain, dots per model; MATH has the largest positive gap, geometry the smallest">
     <p class="caption">Knowing − saying gap (internal probe − stated confidence), by domain. Dots = models. <strong>Math is the widest.</strong></p>
   </div>
-  <p class="big frag">On math the gap is the <em>widest of any subject</em> — the internal read runs
-  up to <span class="acc">0.95</span> and outruns stated confidence by <strong>+0.20</strong> on
-  average. The model quietly registers whether its math checks out; it just doesn't put that in the answer.</p>
+  <p class="big frag">It quietly registers whether its math checks out — internal read up to
+  <span class="acc">0.95</span>. It just doesn't put that in the answer.</p>
+  <aside class="notes"><p>Same data, one cut: the gap itself — inside minus outside — by domain. Each dot is a model. Math towers over everything.</p><p>[→] Say it plainly: on math, the model checks its own derivation. It <i>notices</i> whether the steps held — up to point-nine-five internally, the strongest signal of any subject — and then it keeps a straight face and says ninety-five regardless. That's the knowing–saying gap in its purest form.</p></aside>
 </section>
 
-<!-- 16 -->
+<!-- 19 -->
 <section class="slide">
   <div class="eyebrow">Result 3 · not just difficulty</div>
   <h2>It's judging <em>this attempt</em> — not "hard question"</h2>
-  <p style="margin:0 0 .2rem">Keep only questions the model <strong>sometimes gets right, sometimes
-  wrong</strong> — difficulty held fixed. The internal probe <em>still</em> separates good attempts
-  from bad; the model's <em>own</em> bet, <span class="dim">P(True)</span>, collapses to chance.</p>
+  <p class="dim" style="margin:0 0 .2rem">Only questions it <strong>sometimes</strong> gets right,
+  <strong>sometimes</strong> wrong — difficulty held fixed.</p>
   <div class="figwrap">
     <img src="../interp/figures/fig3_deck.svg"
       alt="within-question AUROC across cells; the internal probe (teal) stays well above 0.5 while the model's own P(True) (terracotta) hugs the chance line">
   </div>
-  <p class="takeaway frag">Top cell (GLM·MATH): probe <span class="acc">0.89</span> within a question ·
-  P(True) <span class="dim">0.48</span>. So it isn't sensing "this topic looks hard" — it's tracking
-  <strong>this particular attempt</strong>. Genuine per-attempt self-monitoring.</p>
+  <p class="takeaway big frag">Not "this topic looks hard" — it tracks <strong>this particular
+  attempt</strong>. <span class="dim">(GLM·MATH: probe 0.89 · its own bet 0.48.)</span></p>
+  <aside class="notes"><p>Here's the best objection in the room right now: “maybe it just knows hard topics are hard.” Fair. Let's kill it. Keep only the questions the model <i>sometimes</i> gets right and <i>sometimes</i> gets wrong across repeats. Difficulty is now frozen. The only thing that varies is <b>this attempt</b>.</p><p>Coral: the probe still separates the good attempts from the bad, cell after cell. Red: the model's own explicit bet — the probability it puts on the word “True” — collapses to chance.</p><p>[→] GLM on MATH: point-eight-nine versus point-four-eight. It isn't rating topics. It's watching its own attempt succeed or fail, in real time.</p></aside>
 </section>
 
-<!-- 17 -->
+<!-- 20 -->
 <section class="slide">
   <div class="eyebrow">Result 4 · is the signal real?</div>
   <h2>A reader with no answer key finds it too</h2>
-  <p>The <strong>Jacobian lens</strong> reconstructs the "am I right" direction from the model's
-  <em>own output wiring</em> — <strong>never shown a single correctness label</strong>.</p>
-  <p>On Mistral it <span class="okc">matches the supervised probe</span> (0.76–0.82) and beats
-  spoken confidence. Two independent methods — one with labels, one without — land on the same signal.</p>
-  <p class="big">That kills the "your probe just memorized the data" objection — and shows the signal
-  sits in the model's <span class="acc">speakable</span> wiring.</p>
+  <figure class="dia">
+    <svg viewBox="0 0 860 240" role="img" aria-label="two independent readers — a trained probe that sees labels and a lens that never does — converge on the same am-I-right direction">
+      <defs>
+        <marker id="cvA" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#131318"/></marker>
+        <marker id="cvB" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#F87248"/></marker>
+      </defs>
+      <!-- two witnesses -->
+      <rect x="46" y="36" width="230" height="64" rx="10" fill="#FFFFFF" stroke="#131318" stroke-width="1.5"/>
+      <text x="161" y="62" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">witness 1 · the trained probe</text>
+      <text x="161" y="82" class="dlabel" text-anchor="middle">learns from thousands of graded attempts</text>
+      <rect x="46" y="140" width="230" height="64" rx="10" fill="#FBE4DA" stroke="#F87248" stroke-width="1.5"/>
+      <text x="161" y="166" class="dlabel" text-anchor="middle" font-weight="700" fill="#131318">witness 2 · the lens</text>
+      <text x="161" y="186" class="dlabel" text-anchor="middle" fill="#131318">never sees a single label</text>
+      <!-- convergence -->
+      <line x1="276" y1="68" x2="560" y2="112" stroke="#131318" stroke-width="2.2" marker-end="url(#cvA)"/>
+      <line x1="276" y1="172" x2="560" y2="128" stroke="#F87248" stroke-width="2.2" marker-end="url(#cvB)"/>
+      <circle cx="596" cy="120" r="26" fill="none" stroke="#737382" stroke-width="1.4" stroke-dasharray="4 4"/>
+      <text x="596" y="126" text-anchor="middle" font-size="15" fill="#131318" font-weight="700"
+        font-family="'Newsreader',Georgia,serif" font-style="italic">u</text>
+      <text x="652" y="106" class="dlabel" font-weight="700" fill="#131318">the same "am I right?"</text>
+      <text x="652" y="124" class="dlabel" font-weight="700" fill="#131318">direction</text>
+      <text x="652" y="148" class="dlabel">Mistral: lens 0.76–0.82,</text>
+      <text x="652" y="164" class="dlabel">on par with the probe</text>
+    </svg>
+    <figcaption>Two independent witnesses — one with the answer key, one without — point at the same direction.</figcaption>
+  </figure>
+  <p class="big frag">That kills <em>"your probe just memorized the data"</em> — and the signal sits in the
+  model's <span class="acc">speakable</span> wiring.</p>
+  <aside class="notes"><p>Now the skeptic gets their day in court: “your probe saw the labels — it memorized your dataset.” Enter the second witness. The lens has never seen a grade in its life. It derives the “am I right” direction purely from the model's own wiring. Two witnesses, no shared evidence.</p><p>On Mistral, they <b>converge</b>: the lens lands at point-seven-six to point-eight-two — probe territory — and beats what the model says out loud.</p><p>[→] Memorization is dead. And there's a deeper point hiding here: this signal lives in the <b>speakable</b> wiring — the very pathway that turns thoughts into words already carries it. The model <i>could</i> say this out loud. It just doesn't.</p></aside>
 </section>
 
-<!-- 18 -->
+<!-- 21 -->
 <section class="slide">
   <div class="eyebrow">Result 4 · the twist</div>
   <h2>…but label-free reading only works on dense transformers</h2>
@@ -527,18 +756,18 @@ Confidence: N</pre>
     <tr><td>GLM-4.7</td><td>Mixture-of-Experts</td><td class="failc">✗ fails · 0.31</td></tr>
     <tr><td>Gemma-4</td><td>MoE + softcapping</td><td class="failc">✗ won't even build</td></tr>
   </table></div>
-  <p><strong>The clincher — a within-family control:</strong> same family, same test — swap Qwen from
-  <strong>Mamba</strong> (3.6) to plain <strong>dense attention</strong> (2.5) and the lens flips
-  <span class="failc">0.43</span> → <span class="okc">0.88</span>. It's the architecture.
-  <span class="dim">The signal is still there — the trained probe finds it in all five (0.75–0.98).</span></p>
+  <p class="big frag"><strong>The clincher:</strong> same Qwen family, swap Mamba → dense attention:
+  <span class="failc">0.43</span> → <span class="okc">0.88</span>. It's the <em>architecture</em>.
+  <span class="dim">(The probe still works on all five.)</span></p>
+  <aside class="notes"><p>And then the result we didn't order. We ran the same lens on all five models — and it splits clean down an architectural line. Dense attention: works. Point-eight-eight, point-eight-two. The Mamba hybrid: point-four-three. Mixture-of-Experts: point-three-one. Gemma's variant won't even build.</p><p>[→] The clincher is a within-family control: same Qwen lineage, same task, one change — swap Mamba for plain dense attention — and the lens leaps from point-four-three to <b>point-eight-eight</b>. That isolates it. Architecture. Full stop. But hold onto the nuance: the signal itself is alive in all five models — the probe reads it everywhere. Only the label-free shortcut breaks.</p><p>Give this slide air. The questions live here.</p></aside>
 </section>
 
-<!-- 19 -->
+<!-- 22 -->
 <section class="slide">
   <div class="eyebrow">Result 4 · why it breaks</div>
   <h2>Why: the "average wiring" smears</h2>
-  <p>The lens builds <strong>one wiring map, averaged over inputs, reused for all.</strong> That's
-  faithful only if the wiring is the <em>same</em> every input.</p>
+  <p class="dim">Remember the lens's <strong>one averaged map</strong>? That's only faithful if the
+  wiring is the same every input.</p>
   <div class="cardrow">
     <div class="arch"><h4 class="okc">Dense attention — one wiring</h4>
       <div class="band clean"></div>
@@ -565,12 +794,12 @@ Confidence: N</pre>
       </svg>
       <p>Re-route per input (experts / selective scan) → the average is a <em>smear</em> → structure washes out.</p></div>
   </div>
-  <p style="margin-top:1rem" class="frag">Through the smeared map, "correct" and "wrong" collapse onto
-  <strong>the same direction</strong> — similarity <span class="failc">0.96</span> for the MoE vs
-  <span class="okc">0.4</span> for dense. It literally can't tell them apart.</p>
+  <p style="margin-top:1rem" class="big frag">Through the smear, "correct" and "wrong" become
+  <strong>the same vector</strong> — it literally can't tell them apart.</p>
+  <aside class="notes"><p>So why would architecture break a <i>reader</i>? Remember the phrasebook's fine print — one map, <b>averaged</b> over inputs. Averaging is only safe when the thing you're averaging doesn't change. Dense attention has one fixed wiring — and the average of one thing is itself. The map stays sharp, and “correct” and “wrong” sit far apart: cosine around point-four. MoE and Mamba re-route on <i>every input</i> — different experts, an input-dependent scan. Average a hundred different wirings and what you get is a smear.</p><p>[→] And through a smear, the two words we need collapse into the same vector — cosine point-nine-six. The lens isn't missing the signal. The smear erased the difference between “correct” and “wrong” themselves. (Plain language out loud; “Jacobian” stays in Q&A.)</p></aside>
 </section>
 
-<!-- 20 -->
+<!-- 23 -->
 <section class="slide">
   <div class="eyebrow">Result 5 · can we use it?</div>
   <h2>Causal for what it <em>says</em> — not what it gets <em>right</em></h2>
@@ -580,44 +809,47 @@ Confidence: N</pre>
     <p class="caption">Amplify the model's own signal (Mistral × MATH): stated confidence on <span class="failc">WRONG</span> answers falls, <span class="okc">correct</span> holds, random nudge is flat.</p>
   </div>
   <div class="cardrow frag">
-    <div class="card" style="border-color:var(--ok)"><h3 style="color:var(--ok)">✓ Confidence steering — works</h3>
-      <p>Overconfidence on wrong answers <strong>80→43</strong>, calibration error more than halved. Direction-specific.</p></div>
-    <div class="card" style="border-color:var(--fail)"><h3 style="color:var(--fail)">✗ Correctness steering — doesn't</h3>
-      <p>Nudge "toward correct" <em>while answering</em> → accuracy never rises (GLM×GPQA <strong>0.38</strong> vs 0.41). Flat or worse.</p></div>
+    <div class="card" style="border-color:var(--ok)"><h3 style="color:var(--ok)">✓ what it says — moves</h3>
+      <p>Overconfidence on wrong answers <strong>80→43</strong>. Random nudge: nothing.</p></div>
+    <div class="card" style="border-color:var(--fail)"><h3 style="color:var(--fail)">✗ what it gets right — doesn't</h3>
+      <p>Nudge "toward correct" while answering → accuracy <strong>never rises</strong>.</p></div>
   </div>
-  <p style="margin-top:1rem" class="big frag">So the direction is a <span class="acc">monitor the model
-  reads</span>, not a lever that drives the answer. You can <strong>disrupt</strong> correctness —
-  you can't <strong>manufacture</strong> it.</p>
+  <p style="margin-top:1rem" class="big frag">A <span class="acc">monitor the model reads</span> — not a
+  lever that drives the answer.</p>
+  <aside class="notes"><p>The finale — cause. Experiment one: amplify the model's own signal at the read site, and watch its mouth. On wrong answers, stated confidence slides from about eighty-seven down to forty-three as we raise the dose — the model <i>confesses</i>. On right answers, it barely moves. And the random direction? Flat line. Grows with dose, direction-specific, calibration error cut in half. Causal — for what it <b>says</b>.</p><p>[→] Then we flip the game: shove it “toward correct” while it's working, and try to make it right. Nothing. Point-three-eight versus point-four-one baseline, at every dose we tried.</p><p>[→] Gauge, not wheel. You can tap the gauge and get honesty. You cannot steer the car from the fuel needle.</p></aside>
 </section>
 
-<!-- 21 -->
+<!-- 24 -->
 <section class="slide center">
   <div class="eyebrow">The picture</div>
   <h2>What we can say now</h2>
   <p class="big">Models build a <span class="acc">real, computed, attempt-specific</span> sense of
-  their own correctness — usually sharper than the confidence they state, and <em>far</em> sharper on math.</p>
-  <p class="big frag">You can <strong>read</strong> it (label-free on dense models; with a probe on any),
-  and you can <strong>disrupt</strong> it — but you can't <strong>drive</strong> it.</p>
-  <p class="big frag">The knowing–saying gap is an <span class="acc">access problem, not a
-  missing-capability one</span> — the "I'm probably wrong" signal is already there, just not routed
-  to the output.</p>
+  their own correctness — sharper than what they say, sharpest on math.</p>
+  <div class="cardrow" style="justify-content:center">
+    <div class="card frag" style="border-color:var(--ok);text-align:center"><h3 style="color:var(--ok)">READ ✓</h3>
+      <p>probe on any model ·<br>label-free on dense</p></div>
+    <div class="card frag" style="border-color:var(--ok);text-align:center"><h3 style="color:var(--ok)">DISRUPT ✓</h3>
+      <p>steer what it says —<br>honesty on demand</p></div>
+    <div class="card frag" style="border-color:var(--fail);text-align:center"><h3 style="color:var(--fail)">DRIVE ✗</h3>
+      <p>can't nudge it<br>into being right</p></div>
+  </div>
+  <p class="big frag" style="margin-top:1rem">The knowing–saying gap is an <span class="acc">access
+  problem</span> — the signal exists; it just isn't routed to the mouth.</p>
+  <aside class="notes"><p>So — the three promises from the top, now earned. [→] <b>Read:</b> yes. A probe works on any architecture; on dense models you don't even need labels. [→] <b>Disrupt:</b> yes. Honesty on demand, with controls. [→] <b>Drive:</b> no.</p><p>[→] And the one sentence to leave the room with: the knowing–saying gap is an <b>access problem, not a missing capability</b>. The “I'm probably wrong” signal already exists inside these models. It just isn't wired to the mouth. We don't have to teach models self-knowledge — we have to connect what's already there.</p></aside>
 </section>
 
-<!-- 22 -->
+<!-- 25 -->
 <section class="slide">
   <div class="eyebrow">Discussion · where we'd love your take</div>
   <h2>Open questions for the team</h2>
   <ul class="ladder">
-    <li class="frag"><strong>Close the gap?</strong> Can we route the internal signal to the output — turning "knows
-    it's wrong" into <em>abstain / retry / escalate</em>? That's the safety payoff.</li>
-    <li class="frag"><strong>Broaden the architecture control.</strong> Dense-Qwen is decisive on MATH; MMLU +
-    geometry would seal "it's Mamba, not the model."</li>
-    <li class="frag"><strong>Nail the mechanism.</strong> A short GPU session to measure the wiring's per-input
-    variance directly (rank/faithfulness) turns "we see the fingerprint" into "we measured the cause."</li>
-    <li class="frag"><strong>Framing for the paper</strong> — which of the three threads leads: the gap, the
-    dense-only lens, or monitor-vs-driver?</li>
+    <li class="frag"><strong>Close the gap?</strong> Route "knows it's wrong" → <em>abstain / retry / escalate</em>.</li>
+    <li class="frag"><strong>Broaden the architecture control</strong> beyond MATH.</li>
+    <li class="frag"><strong>Nail the mechanism</strong> — measure the wiring's per-input variance directly.</li>
+    <li class="frag"><strong>Paper framing</strong> — which thread leads: the gap, the dense-only lens, or monitor-vs-driver?</li>
   </ul>
-  <p style="margin-top:.8rem" class="dim">Feedback very welcome — this is the moment to steer it.</p>
+  <p style="margin-top:.8rem" class="dim">This is the moment to steer it.</p>
+  <aside class="notes"><p>Four places I genuinely need your steer. [→] One — close the gap: route the internal signal to the output, so “knows it's wrong” becomes abstain, retry, escalate. That's the payoff experiment. [→] Two — broaden the dense-versus-Mamba control beyond MATH; MMLU and geometry would seal it. [→] Three — the mechanism: we've seen the smear's fingerprint; one short GPU run measuring per-input wiring variance turns it into a measurement. [→] Four — the paper: which thread leads? The gap, the dense-only lens, or gauge-not-wheel?</p><p>Floor's yours.</p></aside>
 </section>
 
 <script>
@@ -636,6 +868,9 @@ Confidence: N</pre>
     frags(i).forEach(function(f){ f.classList.toggle('on', !!revealAll); });
     if(prog) prog.style.width = ((i+1)/slides.length*100) + '%';
     if(count) count.textContent = (i+1) + ' / ' + slides.length;
+    var panel = document.getElementById('notes'), na = slides[i].querySelector('.notes');
+    if(panel) panel.innerHTML = '<div class="nhead">notes · ' + (i+1) + ' / ' + slides.length +
+      '</div>' + (na ? na.innerHTML : '<p>(no notes)</p>');
     settingHash = true; try{ history.replaceState(null,'','#'+(i+1)); }catch(e){} settingHash = false;
     window.scrollTo(0,0);
   }
@@ -658,8 +893,10 @@ Confidence: N</pre>
     if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ next(); e.preventDefault(); }
     else if(e.key==='ArrowLeft'||e.key==='PageUp'){ prev(); e.preventDefault(); }
     else if(e.key==='Home'){ show(0,false); } else if(e.key==='End'){ show(slides.length-1,true); }
+    else if(e.key==='n'||e.key==='N'){ document.body.classList.toggle('shownotes'); }
   });
-  document.addEventListener('click', function(e){ if(!e.target.closest('a')) next(); });
+  document.addEventListener('click', function(e){
+    if(!e.target.closest('a') && !e.target.closest('#notes')) next(); });
   window.addEventListener('hashchange', function(){ if(!settingHash) fromHash(); });
   fromHash();
 })();
