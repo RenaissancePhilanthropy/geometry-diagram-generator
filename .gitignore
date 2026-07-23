@@ -53,3 +53,5 @@ curriculum/*.zip
 
 # Benchmark run data
 benchmark/data/
+.gstack/
+.context/

@@ -472,7 +472,61 @@ HTML references them as files): ask Claude Code to "re-inline and republish the 
 artifact URL", or replicate: base64-inline `slides/fonts/*.woff` into the `@font-face` urls and
 `interp/figures/fig[1-5]_deck.svg` into the `img src` refs, then publish the single file.
 
-**Open items:** (a) two-screen presenter view (notes on laptop only) if wanted — current N-toggle
-shows notes on the projected window; (b) architecture-control broadening + per-input variance
+**2026-07-22 substance pass:** tone de-cheeked ("all you need", "Receipts", "kill it" etc. removed);
+speaker notes substantially expanded per slide from `METHODS_MATH.md` (logistic-regression/PCA detail,
+GroupKFold out-of-fold, fixed-0.7L rationale, Jacobian definition + averaged-map conservatism, amplify-gain
+no-op baseline + assessment-turn-only injection, AUROC rank/imbalance properties, within-question bootstrap,
+read-site 0.74-layer-0 precedent, ECE 0.31→0.13); slides gained one technical line each (update equation,
+read/write equations, probe internals, J-lens formal line, 5× sampling, dampening/ECE numbers). Slide
+heights re-checked ≤ pre-existing tolerance. Artifact republished (label `substance-pass`).
+
+**Same day, two more revisions (deck now 26 slides):** slide 5 reworked from "We looked. Here's
+what we found." to direct findings-with-evidence ("Models track their own correctness — better than
+they report it"; cards carry 0.95 AUROC / 12-of-16, lens 0.76–0.88, 80→43 + ECE halved). New
+**slide 11 — methodology roster**: 5-model table (Mistral-Small-24B dense · Qwen3.6-27B hybrid Mamba ·
+GLM-4.7-Flash MoE · Gemma-4-26B MoE/VLM · Qwen2.5-14B dense lens-control) × 4 domains, 150 q × 5
+attempts = 750 records/cell, 16 cells; later slides renumbered (+1 from old 11), speaker script
+renumbered to 26 with new Slide-11 section. Artifact republished (label `bluf-evidence+roster`).
+Slide 5 then restacked as vertical finding rows (finding · evidence sentence · key stat: 12/16,
+0.76–0.88, 80→43); closing line replaced with the epistemic standard (out-of-fold, fixed layer,
+layer-0 check, dose/random/sign controls); slide-26 filler line dropped. Label `stacked-findings`.
+Title slide iterated to final form: octagon question + speech/thought bubbles on the right;
+left side = title + three-beat outline ("exist inside? read it? use it?") + plain scope line.
+**Deck now 27 slides, fundamentals-first structure:** findings BLUF moved from slide 5 → slide 11
+(after the toolkit); mech-interp 101 expanded to 3 slides — 1/3 stream end-to-end (new SVG:
+embedding lookup → additive blocks → vector snapshots at layers 0/20/40 → decode scores whole
+vocab, "28 wins and ships"), NEW 2/3 "inside one block" (four token streams; attention = only
+cross-token step; MLP per token; coral ring = the probe's read: one token · one depth · ~5k dims),
+3/3 read-then-poke. Speaker script restructured/renumbered to 27. Label `fundamentals-first`.
+**Codex review pass** (20 findings; session in `.context/codex-session-id`): fixed stale script
+numbers (probe "0.75–0.98" → audited 0.57–0.95; steering "~87→43" → 80→65→43 with correct
+answers 97→96→89), "all five"→"all four matrix models" for probe claims, read-site duplicate
+line, Result 4→4a/4b/4c, "one wiring" rephrased (dense = stable transport, not input-invariant
+attention), speakable-wiring scoped to dense, "access problem"→"largely an access problem",
+single-seed caveat now visible on roster slide, accuracy-steering (GLM×GPQA 0.38 vs 0.41)
+tagged **preliminary — provenance not in audited docs, needs H-DRIVER run-record check before
+presenting "Drive ✗" as settled**. Deferred (user to decide): title "five models" phrasing,
+BLUF placement (kept at 11 deliberately), further claim-softening (#13–17). Label `codex-fixes`.
+**Story-threading pass** (results imported from `study_onepager.html`, audited numbers kept —
+the one-pager's own headline range 0.69–0.96/"all 16" is the retired best-layer era, NOT
+reintroduced): title Q1/Q2/Q3 (exist? read? use?) now tag the findings rows, every result
+eyebrow carries "evidence for finding N", closing slide reworked to "Asked at the start —
+answered now" with Q1 YES / Q2 YES / Q3 AS A GAUGE cards. Imported results: blind
+self-correction (confidence revised downward post-failure with zero feedback, geometry +
+MMLU-Pro) added to Result 2; dense-vs-MoE/Mamba field rule added to Result 4b. fig2 34vh to
+fit. Label `threaded-story`.
+**Pre/post beat added to Result 3** (label `pre-post-beat`): retrospective > prospective
+(geometry POST 0.66–0.70 vs PRE 0.52–0.62); PRE internal reads peak early/mid and largely encode
+prompt difficulty (Mistral 0.88@L20, Gemma 0.70@L2 — caveated in the 2026-07-05 entry), POST is
+layer-0-chance → mid/late peak; post→pre transfer 0.39–0.67, post residualized on pre keeps
+0.59–0.87 → distinct directions. NB: no checked-in pre-vs-post *layer-curve figure* exists —
+regenerating one needs the activations on the GPU box; fig5 remains POST-only.
+
+**Open items:** (a) ~~two-screen presenter view~~ **done 2026-07-22** — press **P** in the deck:
+opens a presenter-console popup (slide count + build progress, elapsed timer click-to-reset,
+wall clock, current notes large, next-slide preview; arrow keys sync from either window,
+falls back to the N-notes overlay if the popup is blocked). Also added `<meta charset="utf-8">`
+to the deck (was mojibake when served over plain HTTP without a charset header);
+(b) architecture-control broadening + per-input variance
 measurement remain the science asks (slide 25); (c) title-slide speech bubble still says
 "…so the answer is 28" (deliberate — matches quiz slide's wrong answer).
