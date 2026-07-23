@@ -1,6 +1,6 @@
 # Speaker script — progress report: "Do models know when they're wrong?"
 
-Companion to `slides/metacognition_progress_report.html` (**19 slides**). Open the deck in a browser.
+Companion to `slides/metacognition_progress_report.html` (**18 slides**). Open the deck in a browser.
 **→ reveals / advances · ← steps back · `#N` in the URL jumps to slide N · N toggles on-screen notes ·
 P opens the two-screen presenter console** (timer, current notes, next-slide preview; arrow keys work
 in either window).
@@ -9,7 +9,7 @@ in either window).
 next step*. **Every graph sits on its own slide with the calculation panel beside it** — the
 figure on the left, "how this is computed" on the right (the metric, the per-mark recipe, the data
 provenance), the takeaway below. Present each graph slide the same way: recipe first, then the
-picture, then the numbers. It is deliberately **not** the tutorial; the 24-slide talk deck
+picture, then the numbers. It is deliberately **not** the tutorial; the 25-slide talk deck
 (`metacognition_progress.html`) carries the full mech-interp walkthrough.
 
 **The embedded N-notes in the deck are the canonical word-for-word narration** (expanded
@@ -17,12 +17,12 @@ picture, then the numbers. It is deliberately **not** the tutorial; the 24-slide
 numbers cheat-sheet, and a cut plan.
 
 **Audience:** the team. Several will pattern-match to "is this rigorous?" — which is why the
-standards line (slide 3), the calculation panels, and the deviations slide (17) exist.
-**Target: ~19–20 min of content + discussion anchored on slide 19** (the cut plan gets it to ~15–16).
+standards line (slide 3), the calculation panels, and the deviations slide (16) exist.
+**Target: ~19 min of content + discussion anchored on slide 18** (the cut plan gets it to ~15–16).
 
 ---
 
-## Timing plan (~19:45 content)
+## Timing plan (~18:45 content)
 
 | # | slide | time | cumulative |
 |---|---|---|---|
@@ -30,23 +30,22 @@ standards line (slide 3), the calculation panels, and the deviations slide (17) 
 | 2 | why this program exists | 1:00 | 1:30 |
 | 3 | experiment progress | 1:00 | 2:30 |
 | 4 | experiment setup | 1:15 | 3:45 |
-| 5 | toolkit in one breath | 0:45 | 4:30 |
-| 6 | E1 · internal vs stated (setup) | 0:45 | 5:15 |
-| 7 | GRAPH · probe vs stated, 16 cells (fig1) | 1:15 | 6:30 |
-| 8 | GRAPH · the gap by domain (fig2) | 1:15 | 7:45 |
-| 9 | GRAPH · read-site check (fig5) | 1:00 | 8:45 |
-| 10 | GRAPH · pre vs post (fig6) | 1:00 | 9:45 |
-| 11 | E2 · difficulty control (setup) | 1:00 | 10:45 |
-| 12 | GRAPH · within-question (fig3) | 1:15 | 12:00 |
-| 13 | E3 · label-free lens | 1:45 | 13:45 |
-| 14 | E4 · architecture twist | 1:45 | 15:30 |
-| 15 | E5 · steering (setup) | 1:00 | 16:30 |
-| 16 | GRAPH · dose–response (fig4) | 1:15 | 17:45 |
-| 17 | what bit us | 0:45 | 18:30 |
-| 18 | where this lands | 1:15 | 19:45 |
-| 19 | next steps & asks | rest of meeting |  |
+| 5 | E1 · internal vs stated (setup) | 0:45 | 4:30 |
+| 6 | GRAPH · probe vs stated, 16 cells (fig1) | 1:15 | 5:45 |
+| 7 | GRAPH · the gap by domain (fig2) | 1:15 | 7:00 |
+| 8 | GRAPH · read-site check (fig5) | 1:00 | 8:00 |
+| 9 | GRAPH · pre vs post (fig6) | 1:00 | 9:00 |
+| 10 | E2 · difficulty control (setup) | 1:00 | 10:00 |
+| 11 | GRAPH · within-question (fig3) | 1:15 | 11:15 |
+| 12 | E3 · label-free lens | 1:30 | 12:45 |
+| 13 | E4 · architecture twist | 1:45 | 14:30 |
+| 14 | E5 · steering (setup) | 1:00 | 15:30 |
+| 15 | GRAPH · dose–response (fig4) | 1:15 | 16:45 |
+| 16 | what bit us | 0:45 | 17:30 |
+| 17 | where this lands | 1:15 | 18:45 |
+| 18 | next steps & asks | rest of meeting |  |
 
-Protect 11–14 and 16; compress 7 and 10 under pressure (cut plan at the end).
+Protect 10–13 and 15; compress 6 and 9 under pressure (cut plan at the end).
 
 ---
 
@@ -73,10 +72,10 @@ abstain, retry, escalate — sitting unused *if* the signal exists.
 
 `[→]` Inspiration: psychology's **metacognition** split — prospective ("will I get this right?")
 vs retrospective ("did I?"). We measure both — and unlike behavioral calibration work, we also
-**read the stream while it happens**. (The pre-vs-post graph on slide 10 is that split, measured.)
+**read the stream while it happens**. (The pre-vs-post graph on slide 9 is that split, measured.)
 
 **Q&A ammo:** "Isn't this calibration research?" — Calibration scores the *output* channel; we
-also measure the *internal* channel and the gap. The within-question result (slide 12) can't
+also measure the *internal* channel and the gap. The within-question result (slide 11) can't
 even be expressed output-only.
 
 ## Slide 3 — Experiment progress (1:00)
@@ -103,7 +102,7 @@ after failure came from inside.
 architectures* — **Mistral-24B** (dense) · **Qwen3.6-27B** (Mamba hybrid) · **GLM-4.7** and
 **Gemma-4** (mixture-of-experts). All open-weight and run locally, which is what lets us read
 *and* steer the stream. A fifth, **Qwen2.5-14B** (dense), is held aside as the within-family
-architecture control — it becomes the whole point at E4 (slide 14). Don't dwell; the architecture
+architecture control — it becomes the whole point at E4 (slide 13). Don't dwell; the architecture
 spread pays off later.
 
 **Walk the benchmark bullets** (left column): **GeoGen geometry** (our construction benchmark:
@@ -120,7 +119,7 @@ is the whole methodology on one item; after it, "750 records per cell" means som
 
 `[→]` Read-site fragment with the scar story: we read the token that decides "Confidence: N" —
 identical context everywhere; an earlier site (the answer tokens) decoded **0.74 at layer 0** —
-surface cues — and was scrapped. **We show the layer-by-layer chart behind this claim once the probe's introduced — slide 9; the toolkit's next.**
+surface cues — and was scrapped. **We show the layer-by-layer chart behind this claim once the probe's introduced — slide 8.**
 
 **Q&A ammo:**
 - "Does the model see its own turn-1 confidence while answering?" — Yes, as **text**: the three
@@ -132,24 +131,13 @@ surface cues — and was scrapped. **We show the layer-by-layer chart behind thi
   **attention** carries information from the transcript (including the model's own answer) into
   the confidence token's stream — that's why the turn-3 token can hold "how did my attempt go."
   We inject nothing; the sole exception is E5 steering, deliberately, turn 3 only. Cross-ref:
-  the pre/post graph (slide 10) is this fact made visible — PRE reads with only the question in
+  the pre/post graph (slide 9) is this fact made visible — PRE reads with only the question in
   context, POST with its own attempt; the lift is what its own work adds.
 - "Why one seed per cell?" — honest limit; CIs cover item sampling, not seed variance.
 - "Why these models?" — largest open weights that fit the capture pipeline; open weights let us
   read *and write* the stream.
 
-## Slide 5 — Toolkit in one breath (0:45)
-
-Three cards, one sentence each; do not teach. Probe = supervised read (saw the answer key —
-suspicion warranted). Lens = label-free read from the model's own wiring; reads through the
-*output pathway*, so findings are **speakable**. Steering = the write-tool; bar = dose + flat
-random + sign flip. `[→]` The rule: **decodable ≠ used** — reading proves presence, only
-intervention proves use.
-
-Math if pressed: one object, the residual vector h at the confidence token; read = u·h,
-write = h + α·u. Depth lives in the talk deck.
-
-## Slide 6 — E1 · internal vs stated — setup (0:45)
+## Slide 5 — E1 · internal vs stated — setup (0:45)
 
 Why-box (the per-experiment template): **question zero** — is there any internal signal at all?
 If the probe can't beat the stated number, there is no gap to study.
@@ -160,7 +148,7 @@ AUROC compared against stated confidence's AUROC on the **same 750 records**.
 **Transition: "the sixteen-cell graph is next, with the calculation beside it."** Status: track
 closed and audited.
 
-## Slide 7 — GRAPH · probe vs stated, 16 cells (fig1) (1:15)
+## Slide 6 — GRAPH · probe vs stated, 16 cells (fig1) (1:15)
 
 Recipe first: grey bar = rank the cell's 750 records by the number the model *said*; coral bar =
 rank the **same records** by the probe's read-out (out-of-fold, fixed layer); AUROC each — only
@@ -177,16 +165,16 @@ Gemma-4. "The sweep plus the math gap — not a clean sweep."
 **Q&A ammo:**
 - "Pre- or post-task confidence?" — **Post** (turn 3, after answering), for both bars: grey is
   the post-task stated number, coral is the probe at the turn-3 decision token — apples to
-  apples. The pre-task read appears only on the pre/post graph (slide 10).
+  apples. The pre-task read appears only on the pre/post graph (slide 9).
 - "Why AUROC?" — threshold-free, rank-based, imbalance-robust (some cells ~90% one class); the
   tie term matters because stated confidence bunches at 95. `interp/AUROC_NOTE.md`.
 - "Why no ECE here?" — ECE needs a calibrated 0–100 probability; the stated number has one, the
   probe's read-out is an arbitrary-scale score — you'd have to fit a calibration map on top,
   which muddies "simple linear reader." And ECE isn't comparable across cells whose pass rates
-  span 13–92%, while AUROC is. ECE appears where it's the right tool: steering (slide 16), same
+  span 13–92%, while AUROC is. ECE appears where it's the right tool: steering (slide 15), same
   scale and same cell before/after.
 
-## Slide 8 — GRAPH · the gap by domain (fig2) (1:15)
+## Slide 7 — GRAPH · the gap by domain (fig2) (1:15)
 
 The why line: the gap should be widest **where surface cues die** — a wrong `\boxed{42}` has no
 tell. The calculation is one subtraction: probe − stated per cell (the previous slide's bars),
@@ -201,7 +189,7 @@ derivation held, and reports 95 anyway."
 `[→]` The leak: after failures — grader silent — stated confidence revised **downward**
 (geometry, MMLU-Pro). Blind self-correction: the verbal channel is weak, not deaf.
 
-## Slide 9 — GRAPH · the read-site check (fig5) (1:00)
+## Slide 8 — GRAPH · the read-site check (fig5) (1:00)
 
 Recipe first (right panel): save the decision-token vector **at every layer**; per layer train
 the same question-grouped, out-of-fold probe; plot held-out AUROC vs relative depth ℓ/L — one
@@ -212,12 +200,13 @@ for every record, nothing to read. Then it climbs to ~0.8 mid-late. Whatever a d
 at that spot, it **computed**." Discipline note: all reported numbers use the fixed **0.7·L**
 depth, never the peak.
 
-`[→]` "The 'did that work?' signal is **built during the forward pass**."
+`[→]` The fragment, read slowly: "at the input, exact chance — the wording gives nothing away;
+by mid-depth, ~0.8. **That climb is the model doing the checking.**"
 
 **Transition:** "same recipe, one more cut — next slide compares this after-the-attempt read
 with the before-the-attempt read."
 
-## Slide 10 — GRAPH · prospective vs retrospective (fig6) (1:00)
+## Slide 9 — GRAPH · prospective vs retrospective (fig6) (1:00)
 
 This slide answers the question someone is already forming: *"is that curve just difficulty?"*
 
@@ -236,7 +225,7 @@ deserves the name **self-assessment**."
 they're largely **distinct directions**: a probe trained on the POST site reads the PRE site at
 only **0.39–0.67**. Difficulty and 'did this attempt work' are different representations, in
 different places." Pocket line: this is the layer-curve twin of the within-question dissociation
-(slide 12) — two independent methods, same conclusion.
+(slide 11) — two independent methods, same conclusion.
 
 **Q&A ammo:** "Is PRE just a worse elicitation?" — There is *no* elicitation: it's a raw read at
 the last prompt token, before any output exists. "Why is PRE so high on MMLU-Pro?" — because
@@ -244,7 +233,7 @@ difficulty *is* genuinely decodable from the prompt — that's exactly the confo
 isolates; the claim was never that difficulty isn't readable, it's that POST adds attempt-specific
 signal on top. (The audited geometry summary: POST 0.66–0.70 vs PRE 0.52–0.62.)
 
-## Slide 11 — E2 · difficulty control — setup (1:00)
+## Slide 10 — E2 · difficulty control — setup (1:00)
 
 The objection, at full force: "the probe just learned which *questions* are hard — that's not
 self-monitoring." The design that kills it: **mixed-outcome questions** only (same model, same
@@ -252,13 +241,13 @@ question, some of the 5 attempts pass, some fail); AUROC **within** each questio
 probe against **P(True)** — the model's own explicit bet ("is your answer correct — True or
 False?", read the probability on True), the strongest output-side baseline.
 
-`[→]` Corroboration: the pre/post split (slide 10's graph) — retrospective beats prospective
+`[→]` Corroboration: the pre/post split (slide 9's graph) — retrospective beats prospective
 (geometry POST **0.66–0.70** vs PRE **0.52–0.62**), largely **distinct directions** (transfer
-0.39–0.67). Next-step line: nothing open — the pre/post layer curve landed (slide 10).
+0.39–0.67). Next-step line: nothing open — the pre/post layer curve landed (slide 9).
 
 **Transition: "the graph and its recipe are next."**
 
-## Slide 12 — GRAPH · within-question (fig3) (1:15)
+## Slide 11 — GRAPH · within-question (fig3) (1:15)
 
 Recipe, slowly — it kills the objection **by construction**: keep mixed-outcome questions;
 AUROC inside each question (its own 5 attempts — same question, same difficulty); average across
@@ -274,27 +263,29 @@ central dissociation."
 **Q&A ammo:** "Is P(True) broken?" — No: cross-question it tracks difficulty fine; it collapses
 only within-question — which is exactly the point.
 
-## Slide 13 — E3 · the label-free lens (1:45)
+## Slide 12 — E3 · the label-free lens (1:30)
 
-Why-box, two halves: adversarial — the probe saw the answer key; "you fit your dataset" survives
-all hygiene; the only killer rebuttal is a **second witness with no shared evidence**. And the
-inspiration — Anthropic's verbalizable-workspace result (2026) supplied the instrument (adapted
-open-source tool; fit ≈ one GPU-day; readouts = 15 MB; scoring = laptop dot products).
+Why-box in one breath: the probe saw the answer key — "you fit your dataset" survives all
+hygiene; the only killer rebuttal is a **second witness with no shared evidence**.
 
-Three cards: ① one **averaged** input→output map per layer, fit on ~500 generic prompts ·
-② every word gets a **precursor direction** · ③ score stored snapshots: "wrong/error/…" vs
-"correct/right/…" lean. **What label-free deeply means:** the map is the model's own wiring, the
-word lists are English, **nothing is fitted to our records**.
+Then walk the diagram left to right — it is the whole method: ① a stored snapshot (the working
+state at the confidence token) → ② the lens, which asks "are you drifting toward *wrong/error*
+— or *correct/right*?", read with a map of the model's **own wiring**, fit on generic text
+(adapted from Anthropic's 2026 workspace tool; our questions, grades, and records never touch
+it — that's what label-free means) → ③ the read-out: one number per snapshot, its lean along
+the line — failed attempts land near the wrong-words end, correct ones near the correct-words
+end. Depth only if asked: fit ≈ one GPU-day; readouts = 15 MB; scoring = laptop dot products.
 
-`[→]` Dense models land in probe territory: Mistral **0.76–0.82**, Qwen2.5 **0.88**, zero labels.
-`[→]` Two upgrades: memorization objection **dead**; and the signal is **speakable** — "the
+`[→]` It finds the same signal: Mistral **0.76–0.82**, Qwen2.5 **0.88** — close to the probe,
+beating stated confidence, zero labels; memorization objection **dead**.
+`[→]` And it reads through the word-producing pathway, so the signal is **speakable** — "the
 model could say this. It doesn't."
 
 **Q&A ammo:** the averaged map can *miss* (under-sees input-specific routing) but cannot
 hallucinate — conservative in the protective direction. The map = input→output Jacobian averaged
 over text, validated by reproducing real logits on held-out text.
 
-## Slide 14 — E4 · the architecture twist (1:45) — give it air
+## Slide 13 — E4 · the architecture twist (1:45) — give it air
 
 "The result we didn't order." Why-box: lens failed on two of five — bug or finding? The roster
 was built for this; a same-family dense control was held aside.
@@ -313,7 +304,7 @@ measurement** — both queued.
 **Q&A ammo:** "Why does the probe survive?" — it reads *in place*; the lens must *transport*
 through one averaged map, and MoE/Mamba make true transport input-dependent.
 
-## Slide 15 — E5 · steering — setup (1:00)
+## Slide 14 — E5 · steering — setup (1:00)
 
 Why-box: decodable ≠ used; pre-registered bar = dose + random + sign. Two clean-design choices:
 **amplify the model's own signal** (g = 1 is an exact no-op; no labels at intervention time) and
@@ -326,7 +317,7 @@ underpowered → GPQA rerun queued.
 
 **Transition: "the dose–response curves and the exact intervention formula are next."**
 
-## Slide 16 — GRAPH · dose–response (fig4) (1:15)
+## Slide 15 — GRAPH · dose–response (fig4) (1:15)
 
 Explain steering as a **physical action**, not a formula — this is the slide people get lost on.
 "At the moment the model is about to state its confidence, its working memory is a big list of
@@ -353,14 +344,14 @@ the model reads, not a wheel that drives the answer**."
 and can break generation when pushed; moves the report, can degrade the answer, never improves
 it — an asymmetry, not weakness.
 
-## Slide 17 — What bit us (0:45)
+## Slide 16 — What bit us (0:45)
 
 Four rows, one sentence each: leakage → question-grouped folds, re-scored · read site (0.74 at
 layer 0) → decision token · MATH grader → symbolic equivalence, re-graded · prompt wording →
 re-ran, identical. `[→]` "Every headline number is post-fix; each bug was caught by a **planned**
 control. Controls that have drawn blood are why the survivors are believable."
 
-## Slide 18 — Where this lands (1:15)
+## Slide 17 — Where this lands (1:15)
 
 `[→]` **It knows** — 12/16, up to 0.95; 0.89 vs 0.48 with difficulty frozen.
 `[→]` **Readable without labels** — 0.76–0.88 dense; gated, isolated by the family swap.
@@ -369,10 +360,10 @@ control. Controls that have drawn blood are why the survivors are believable."
 missing capability** — the signal exists, is computed per attempt, sits in speakable wiring, and
 isn't routed to the mouth. The engineering problem is **connecting what's already there**."
 
-## Slide 19 — Next steps & asks (the rest of the meeting)
+## Slide 18 — Next steps & asks (the rest of the meeting)
 
 One `[→]` per item: ① GPU queue (booked): Gemma×GPQA steering rerun · per-input wiring variance
-(the pre/post layer-curve figure from this queue already landed — slide 10) — FYI. ② **Close the
+(the pre/post layer-curve figure from this queue already landed — slide 9) — FYI. ② **Close the
 gap** — route the signal to abstain/retry/escalate; **ask: which target task?** (~a week of
 runs). ③ Broaden the architecture control beyond MATH. ④ RLHF attribution — base-vs-instruct,
 one box-day; **ask: now or post-skeleton?** ⑤ **Paper framing** — which thread leads? The
@@ -385,18 +376,18 @@ decision with a deadline.
 ## Anticipated questions (cross-slide)
 
 - **"Isn't the probe just overfitting?"** — Grouped out-of-fold splits + fixed layer + layer-0
-  check *and* an independent label-free witness agreeing on dense models (slide 13).
+  check *and* an independent label-free witness agreeing on dense models (slide 12).
 - **"Why AUROC?"** — threshold-free, rank-based, imbalance-robust; tie-aware form;
   `interp/AUROC_NOTE.md`.
 - **"Why the confidence token and not the answer?"** — We tried the answer tokens: 0.74 at
   layer 0 = surface cues. The fixed token is content-neutral by construction.
 - **"Isn't the internal signal just difficulty?"** — Two independent answers: the pre/post
-  layer curves (slide 10 — POST adds a lift over the PRE/difficulty read, distinct directions)
-  and the within-question control (slide 12 — difficulty frozen, probe still separates).
+  layer curves (slide 9 — POST adds a lift over the PRE/difficulty read, distinct directions)
+  and the within-question control (slide 11 — difficulty frozen, probe still separates).
 - **"Could the lens failure on MoE/Mamba be a bad fit?"** — The within-family swap says no
   (0.43→0.88, one variable), and the failure has a signature (readout cos 0.96) a bad fit
   wouldn't produce.
-- **"What would falsify the access-problem framing?"** — If routing experiments (slide 19, ②)
+- **"What would falsify the access-problem framing?"** — If routing experiments (slide 18, ②)
   can't surface the signal behaviorally even with direct access, "access problem" weakens toward
   "epiphenomenal signal." Exactly why the gap-closing demo is the payoff experiment.
 - **Caveats to volunteer:** one seed per cell; within-family control MATH-only; smear =
@@ -427,12 +418,11 @@ decision with a deadline.
 
 ## Cut plan (if the meeting compresses)
 
-- **−2 min:** compress slide 5 (toolkit) to one sentence ("probe = supervised read, lens =
-  label-free read, steering = write; decodable ≠ used") and present slide 8 (the gap) as one
-  beat (the subtraction + "MATH towers", skip the leak fragment).
-- **−4 min:** additionally give slide 4 one breath (protocol + silent grader + benchmark names)
-  and present slides 9–10 (the two layer curves) as one beat ("layer 0 chance → ~0.8, and the
-  pre-read shows the difficulty floor — POST adds the self-assessment lift"), and drop slide 17
-  to one sentence over slide 18.
-- **Never cut:** slides 11–14 and 16 (the dissociation, the label-free logic, the architecture
-  control, the causal graph) and slide 19 — they are the report.
+- **−1 min:** present slide 7 (the gap) as one beat (the subtraction + "MATH towers", skip the
+  leak fragment).
+- **−3 min:** additionally give slide 4 one breath (protocol + silent grader + benchmark names)
+  and present slides 8–9 (the two layer curves) as one beat ("layer 0 chance → ~0.8, and the
+  pre-read shows the difficulty floor — POST adds the self-assessment lift"), and drop slide 16
+  to one sentence over slide 17.
+- **Never cut:** slides 10–13 and 15 (the dissociation, the label-free logic, the architecture
+  control, the causal graph) and slide 18 — they are the report.
