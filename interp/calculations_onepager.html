@@ -1,0 +1,293 @@
+<title>Calculations — how every number is computed</title>
+<style>
+  :root{
+    --ground:#F2F2F0; --paper:#FFFFFF; --ink:#131318; --muted:#6E6E7C; --faint:#9A99A6;
+    --rule:#E3E3E0; --panel:#F7F7F4;
+    /* project semantics: teal = internal (what it knows) · coral = spoken (what it says) */
+    --internal:#0C8CA3; --internal-deep:#134E5A; --internal-wash:#E2F0F3;
+    --spoken:#C24C29; --spoken-bright:#F87248; --spoken-wash:#FBE9E1;
+    --serif:"Charter","Iowan Old Style",Cambria,Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 2px 22px rgba(19,19,24,.10);
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --ground:#141419; --paper:#1D1D24; --ink:#ECEBEF; --muted:#A3A2AF; --faint:#777682;
+    --rule:#33333C; --panel:#24242C;
+    --internal:#3FB2C6; --internal-deep:#8FD2DE; --internal-wash:#15333A;
+    --spoken:#F08561; --spoken-bright:#F87248; --spoken-wash:#3A241B;
+    --shadow:0 2px 22px rgba(0,0,0,.45);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#141419; --paper:#1D1D24; --ink:#ECEBEF; --muted:#A3A2AF; --faint:#777682;
+    --rule:#33333C; --panel:#24242C;
+    --internal:#3FB2C6; --internal-deep:#8FD2DE; --internal-wash:#15333A;
+    --spoken:#F08561; --spoken-bright:#F87248; --spoken-wash:#3A241B;
+    --shadow:0 2px 22px rgba(0,0,0,.45);
+  }
+  :root[data-theme="light"]{
+    --ground:#F2F2F0; --paper:#FFFFFF; --ink:#131318; --muted:#6E6E7C; --faint:#9A99A6;
+    --rule:#E3E3E0; --panel:#F7F7F4;
+    --internal:#0C8CA3; --internal-deep:#134E5A; --internal-wash:#E2F0F3;
+    --spoken:#C24C29; --spoken-bright:#F87248; --spoken-wash:#FBE9E1;
+    --shadow:0 2px 22px rgba(19,19,24,.10);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    font-size:15.5px;line-height:1.58;-webkit-font-smoothing:antialiased}
+  .sheet{max-width:880px;margin:30px auto;background:var(--paper);border-radius:4px;
+    box-shadow:var(--shadow);padding:52px 58px 46px}
+  @media (max-width:720px){.sheet{margin:0;padding:34px 22px 40px;border-radius:0}}
+
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--spoken);margin:0 0 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--spoken-bright);flex:0 0 auto}
+  h1{font-family:var(--serif);font-size:31px;line-height:1.16;font-weight:600;margin:0 0 12px;
+    letter-spacing:-.01em;text-wrap:balance;max-width:24ch}
+  .dek{font-size:16.5px;color:var(--muted);max-width:60ch;margin:0 0 22px}
+  .dek b{color:var(--ink);font-weight:600}
+  .meta{display:flex;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted);
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-bottom:34px}
+  .meta div{padding:10px 20px 10px 0;margin-right:20px;border-right:1px solid var(--rule)}
+  .meta div:last-child{border-right:0;margin-right:0}
+  .meta b{color:var(--ink);font-weight:650}
+
+  section{margin:0 0 34px}
+  h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--internal);margin:0 0 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  h2 .tag{font-family:var(--mono);font-weight:500;font-size:11px;letter-spacing:.08em;
+    color:var(--faint);text-transform:none}
+  h3.claim{font-family:var(--serif);font-size:20.5px;font-weight:600;margin:0 0 10px;
+    letter-spacing:-.008em;text-wrap:balance}
+  p{margin:.45em 0;max-width:68ch}
+  .muted{color:var(--muted)}
+
+  /* headline number chips */
+  .nums{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 12px}
+  .num{border:1px solid var(--rule);border-radius:8px;padding:.5rem .85rem;background:var(--panel);
+    font-variant-numeric:tabular-nums;min-width:8.5rem}
+  .num .v{font-family:var(--serif);font-size:22px;font-weight:600;line-height:1.1;display:block}
+  .num .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted)}
+  .num.int .v{color:var(--internal)} .num.spk .v{color:var(--spoken)}
+
+  /* equations — hand-set HTML math (no external renderer) */
+  .eq{font-family:var(--serif);font-size:18.5px;text-align:center;margin:12px 0 0;
+    padding:13px 18px;background:var(--panel);border-left:3px solid var(--internal);
+    border-radius:6px 6px 0 0;overflow-x:auto;white-space:nowrap}
+  .eq.w{border-left-color:var(--spoken)}
+  .eq .lbl{font-family:var(--sans);font-size:11px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.08em;margin-right:14px}
+  .v{font-family:var(--serif);font-style:italic}
+  sub,sup{font-size:.7em;line-height:0}
+  .frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;
+    font-size:.86em;line-height:1.15;margin:0 .18em}
+  .frac>span:first-child{border-bottom:1px solid currentColor;padding:0 .25em}
+  .sum{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;
+    line-height:1;margin:0 .12em}
+  .sum .s{font-size:1.25em}
+  .sum .lim{font-size:.58em;font-style:italic;margin-top:.12em}
+  .recipe{margin:0 0 4px;background:var(--panel);border-left:3px solid var(--rule);
+    border-radius:0 0 6px 6px;padding:10px 18px 11px}
+  .recipe ol{margin:.2em 0 .2em 1.1em;padding:0}
+  .recipe li{font-size:14px;margin:.3em 0;line-height:1.5;max-width:none}
+  .recipe .clab{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--muted);display:block;margin:.15em 0 .25em}
+  .prov{font-size:13px;color:var(--faint);margin:.5em 0 0;font-family:var(--mono)}
+  .int{color:var(--internal);font-weight:600}
+  .spk{color:var(--spoken);font-weight:600}
+
+  .conv{border:1px solid var(--rule);border-radius:8px;background:var(--panel);
+    padding:14px 20px;margin-top:6px}
+  .conv b{font-weight:650}
+  .conv p{font-size:14px;max-width:none}
+  .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--rule);
+    font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;
+    justify-content:space-between;gap:12px;flex-wrap:wrap}
+  a{color:var(--internal)}
+</style>
+
+<div class="sheet">
+  <div class="eyebrow"><span class="dot"></span>interp · metacognition study · the arithmetic</div>
+  <h1>How every number is computed</h1>
+  <p class="dek">Companion to the <b>Metacognition Brief</b> (the findings, plain language) and the
+    <b>Methodology</b> page (the four instruments). This page is the third leaf: for each figure we
+    report, the formula that defines it and the recipe that produces it — so any number can be
+    re-derived from the stored records.</p>
+  <div class="meta">
+    <div><b>16</b> cells = 4 models × 4 benchmarks</div>
+    <div><b>750</b> records/cell = 150 q × 5 attempts</div>
+    <div>read depth fixed at <b>0.7·L</b></div>
+    <div>all scores <b>out-of-fold</b></div>
+  </div>
+
+  <section>
+    <h2>The atom <span class="tag">one graded record</span></h2>
+    <h3 class="claim">Everything below is arithmetic over one stored object</h3>
+    <p>Each of the 12,000 records holds: the residual-stream vector
+      <span class="v">h</span> ∈ ℝ<sup class="v">d</sup> at the <b>confidence decision token</b>
+      (turn 3, the position about to emit "Confidence: N") at every layer; the same read at the
+      <b>last prompt token</b> (before any output — the PRE site); the model's
+      <span class="spk">stated confidence</span> N ∈ [0,100]; its
+      <span class="spk">P(True)</span> bet; and the external grader's verdict
+      <span class="v">y</span> ∈ {0,1} — never shown to the model.</p>
+  </section>
+
+  <section>
+    <h2>The ruler <span class="tag">used by every result</span></h2>
+    <h3 class="claim">AUROC — can this reader rank right above wrong?</h3>
+    <div class="eq">AUROC = Pr(<span class="v">s</span><sub>+</sub> &gt; <span class="v">s</span><sub>−</sub>)
+      + ½·Pr(<span class="v">s</span><sub>+</sub> = <span class="v">s</span><sub>−</sub>)
+      = <span class="frac"><span>1</span><span><span class="v">n</span><sub>+</sub><span class="v">n</span><sub>−</sub></span></span>
+      <span class="sum"><span class="s">∑</span><span class="lim">i∈+</span></span>
+      <span class="sum"><span class="s">∑</span><span class="lim">j∈−</span></span>
+      [ 𝟙(<span class="v">s<sub>i</sub></span>&gt;<span class="v">s<sub>j</sub></span>) + ½·𝟙(<span class="v">s<sub>i</sub></span>=<span class="v">s<sub>j</sub></span>) ]</div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li>Any reader emits one scalar <span class="v">s</span> per record (a stated number, a probability, a projection).</li>
+        <li>Form every (correct, incorrect) pair in the cell; count how often the correct one scores higher; ties get half credit.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">0.5 = coin flip · 1.0 = perfect. Rank-based, so a model that says
+      "95" for everything is scored fairly (the tie term matters — stated confidence bunches hard at 95), and
+      class imbalance (some cells are ~90% one class) doesn't distort it.</p>
+    </div>
+    <p class="prov">confidence intervals: bootstrap; resampled by question wherever records share a question</p>
+  </section>
+
+  <section>
+    <h2>E1 <span class="tag">internal vs stated · fig 1</span></h2>
+    <h3 class="claim">Probe <span class="int">0.57–0.95</span> vs stated <span class="spk">0.54–0.87</span> · probe wins 12/16</h3>
+    <div class="eq"><span class="lbl">probe read</span>
+      <span class="v">s</span><sub>probe</sub> = <span class="v">w</span><sup>⊤</sup><span class="v">h̃</span>,
+      &nbsp; <span class="v">h̃</span> = PCA(standardize(<span class="v">h</span><sub>0.7L</sub>)),
+      &nbsp; <span class="v">w</span> = argmin ∑<sub class="v">i</sub> ℓ<sub>CE</sub>(σ(<span class="v">w</span><sup>⊤</sup><span class="v">h̃<sub>i</sub></span>+<span class="v">b</span>), <span class="v">y<sub>i</sub></span>)</div>
+    <div class="recipe"><span class="clab">recipe · per cell</span>
+      <ol>
+        <li>Split the 750 records into <b>k folds grouped by question</b> — a question's five attempts never straddle train/test.</li>
+        <li>Fit standardize → PCA → logistic regression on the train folds; score the held-out fold; concatenate all out-of-fold scores.</li>
+        <li>AUROC of those scores = the <span class="int">internal bar</span>. AUROC of the <span class="spk">stated numbers on the same 750 records</span> = the spoken bar. Same ruler, only the scorer changes.</li>
+      </ol>
+    </div>
+    <p class="prov">read at fixed 0.7·L — never the best-scoring layer · exceptions: 3 losses (small-n, 2 on Gemma-4) + 1 tie</p>
+  </section>
+
+  <section>
+    <h2>E1 · the gap <span class="tag">by domain · fig 2</span></h2>
+    <h3 class="claim">One subtraction: MATH <span class="int">+0.20</span>, geometry +0.02</h3>
+    <div class="eq">gap<sub>cell</sub> = AUROC<sub>probe</sub> − AUROC<sub>stated</sub>
+      &nbsp;&nbsp;→&nbsp;&nbsp; bar<sub>bench</sub> = <span class="frac"><span>1</span><span>4</span></span>
+      <span class="sum"><span class="s">∑</span><span class="lim">models</span></span> gap<sub>cell</sub></div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li>Subtract the two E1 bars per cell; group the 16 gaps by benchmark; bar = mean over the 4 models, one dot per model.</li>
+        <li>Positive = the stream ranks this model's successes better than its own stated number does.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">Geometry's small gap is compression, not absence: at 13–39% pass,
+      failure is near-default, which shrinks every reader's contrast.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Read-site check <span class="tag">layer sweep · fig 5</span></h2>
+    <h3 class="claim">Chance at layer 0 → <span class="int">~0.8</span> mid-late: the signal is computed</h3>
+    <div class="recipe" style="border-radius:6px;border-left-color:var(--internal)"><span class="clab">recipe</span>
+      <ol>
+        <li>Save <span class="v">h</span> at the decision token at <b>every</b> layer ℓ.</li>
+        <li>Run the full E1 probe pipeline per layer (same folds, same labels); plot out-of-fold AUROC against relative depth ℓ/L.</li>
+        <li>Layer 0 is the falsifier: the wording at that token is identical for every record, so a layer-0 read above chance would mean surface leakage. Measured: ≈ 0.5.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">This check has drawn blood: our first read site (the answer tokens)
+      decoded at 0.74 <i>at layer 0</i> — pure surface cues — and was scrapped.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pre vs post <span class="tag">two read sites · fig 6</span></h2>
+    <h3 class="claim">Difficulty and self-assessment are different directions</h3>
+    <div class="eq">transfer = AUROC(<span class="v">w</span><sub>POST</sub><sup>⊤</sup><span class="v">h</span><sub>PRE</sub>) = <b>0.39–0.67</b></div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li><b>PRE</b> = read at the last prompt token (question seen, nothing written — no elicitation). <b>POST</b> = the turn-3 decision token. Identical pipeline, labels, and folds; only the read site changes.</li>
+        <li>Layer curves per site: POST rises above PRE by mid-depth in all four models (geometry summary: POST 0.66–0.70 vs PRE 0.52–0.62).</li>
+        <li>Transfer: apply the POST-trained direction to the PRE site. Low transfer (0.39–0.67) = largely distinct directions — "this looks hard" ≠ "that attempt worked". Residualizing POST on PRE keeps 0.59–0.87.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <h2>E2 <span class="tag">difficulty control · fig 3</span></h2>
+    <h3 class="claim">Difficulty frozen: probe <span class="int">0.89</span> vs P(True) <span class="spk">0.48</span></h3>
+    <div class="eq">AUROC<sub>within</sub> = <span class="frac"><span>1</span><span>|Q<sub>mix</sub>|</span></span>
+      <span class="sum"><span class="s">∑</span><span class="lim">q∈Q<sub>mix</sub></span></span> AUROC(records of <span class="v">q</span>)</div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li>Keep only <b>mixed-outcome</b> questions: same model, same question, some of the 5 attempts pass and some fail.</li>
+        <li>Compute AUROC <b>inside</b> each such question — difficulty is constant there by construction — then average across questions.</li>
+        <li>Baseline <span class="spk">P(True)</span>: branch off after the attempt, ask "is your answer correct — True or False?", read the probability mass on the True token.</li>
+        <li>Bootstrap resamples <b>questions</b>, not records, to respect the grouping.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">Anything above 0.5 here is per-attempt information — topic difficulty
+      cannot explain it. Headline cell: GLM×MATH, n=36 mixed questions.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>E3 <span class="tag">label-free lens</span></h2>
+    <h3 class="claim">Zero labels, same signal: <span class="int">0.76–0.88</span> on dense models</h3>
+    <div class="eq"><span class="v">J</span><sub class="v">ℓ</sub> =
+      𝔼<sub>text</sub>[ <span class="frac"><span>∂<span class="v">h</span><sub class="v">L</sub></span><span>∂<span class="v">h</span><sub class="v">ℓ</sub></span></span> ]
+      &nbsp;&nbsp; <span class="v">r</span><sub class="v">w</sub> = <span class="v">J</span><sub class="v">ℓ</sub><sup>⊤</sup><span class="v">u<sub>w</sub></span>
+      &nbsp;&nbsp; <span class="v">s</span><sub>lens</sub> = (<span class="v">r̄</span><sub>fail</sub> − <span class="v">r̄</span><sub>ok</sub>)<sup>⊤</sup><span class="v">h</span></div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li>Fit the transport map <span class="v">J</span><sub class="v">ℓ</sub> (Anthropic's Jacobian lens) on ~500 <b>generic</b> prompts — backward passes accumulating the expectation. No task data, no labels, ever.</li>
+        <li>Collapse each word to one readout vector <span class="v">r</span><sub class="v">w</sub>; average over the failure family {wrong, incorrect, error, mistake, false, flawed} minus the success family {correct, right, true, valid, accurate}.</li>
+        <li>Score every stored snapshot with one dot product; AUROC against the grader, same ruler as E1.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px"><b>The failure fingerprint</b> (E4): the collapse metric is
+      cos(<span class="v">r̄</span><sub>ok</sub>, <span class="v">r̄</span><sub>fail</sub>) — dense ≈ 0.4 (directions distinct),
+      MoE ≈ 0.96 (the lens can no longer tell its own two word-families apart). Averaged transport can <i>miss</i>
+      signal, never hallucinate it — a null is "not in the typical verbalizable subspace", not "absent".</p>
+    </div>
+    <p class="prov">validated by reproducing held-out logits + hard top-k check against the package's own lens.apply</p>
+  </section>
+
+  <section>
+    <h2>E5 <span class="tag">steering · fig 4</span></h2>
+    <h3 class="claim">Wrong-answer confidence <span class="spk">80 → 43</span> · ECE 0.31 → 0.13</h3>
+    <div class="eq w"><span class="lbl">amplify</span><span class="v">h</span> ↦ <span class="v">h</span> +
+      (<span class="v">g</span>−1)(<span class="v">v̂</span><sup>⊤</sup><span class="v">h</span> − <span class="v">μ</span>)<span class="v">v̂</span>,
+      &nbsp; <span class="v">μ</span> = 𝔼[<span class="v">v̂</span><sup>⊤</sup><span class="v">h</span>]
+      &nbsp;&nbsp;<span style="font-size:14px;color:var(--muted)">(exact no-op at g = 1 · no labels at intervention time)</span></div>
+    <div class="eq w" style="margin-top:6px">ECE = <span class="sum"><span class="s">∑</span><span class="lim">bins b</span></span>
+      <span class="frac"><span><span class="v">n<sub>b</sub></span></span><span><span class="v">N</span></span></span>
+      | acc(<span class="v">b</span>) − conf(<span class="v">b</span>) |</div>
+    <div class="recipe" style="border-left-color:var(--spoken)"><span class="clab">recipe</span>
+      <ol>
+        <li>During turn 3 only (the answer is already on the page), scale the record's own projection on <span class="v">v̂</span> by gain <span class="v">g</span> ∈ {1, 2, 4}.</li>
+        <li>Track mean stated confidence separately for wrong answers (80 → 65 → 43), correct answers (97 → 96 → 89), and a norm-matched random direction (flat).</li>
+        <li>ECE before/after: bin stated confidence, compare each bin's claimed confidence to its actual accuracy — 0.31 → 0.13.</li>
+        <li>Causal bar, all three required: effect grows with dose · random control flat · sign flip reverses it (dampening → more overconfident).</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">Same direction, injected during the <i>attempt</i> "toward correct":
+      no accuracy lift (0.38 vs 0.41 baseline, GLM×GPQA — preliminary). A gauge the model reads, not a wheel that
+      drives the answer.</p>
+    </div>
+    <p class="prov">causal on Mistral×MATH · GLM null at tested settings (stated confidence saturates ~100) · Gemma×GPQA rerun queued</p>
+  </section>
+
+  <section>
+    <h2>Conventions <span class="tag">every number above inherits these</span></h2>
+    <div class="conv">
+      <p><b>Fixed depth:</b> all reported reads at 0.7·L (or a [0.5L, 0.9L] band mean) — never max-over-layers.
+      <b>Out-of-fold:</b> no score is ever computed on records its reader was fitted on; folds are grouped by question.
+      <b>Bootstrap:</b> CIs resample questions where records share a question.
+      <b>One seed per cell:</b> CIs cover item sampling, not seed variance — an honest limit, on the record.</p>
+    </div>
+  </section>
+
+  <div class="foot">
+    <span>interp/ · metacognition study · feat/spatial-interp</span>
+    <span><span style="color:var(--internal)">teal = what it knows</span> · <span style="color:var(--spoken)">coral = what it says</span></span>
+  </div>
+</div>
