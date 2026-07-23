@@ -530,3 +530,54 @@ to the deck (was mojibake when served over plain HTTP without a charset header);
 (b) architecture-control broadening + per-input variance
 measurement remain the science asks (slide 25); (c) title-slide speech bubble still says
 "…so the answer is 28" (deliberate — matches quiz slide's wrong answer).
+
+**Deck v4 — streamlined 27 → 24 slides** (label `streamline-24`, same day): focused trim, no
+story beats or audited numbers dropped. Merges: (1) "inside one block" folded into the
+residual-stream slide — its payoff ("attention is the only cross-token step → one vector holds
+'how is this going?'") is now a second fragment there, cross-token detail kept in the notes;
+mech-interp 101 is now 2 slides (stream 1/2, toolkit 2/2); (2) geometry + QA testbeds on one
+slide ("Chosen by failure rate, graded exactly" — compiler pipeline + benchmark table + the
+MATH-grader audit anecdote intact in notes); (3) both verbatim-prompt slides on one two-column
+slide (still verbatim — receipts function preserved). Cross-refs renumbered throughout
+(deck comments 1–24, speaker script headers/acts/Q&A pointers); talk time now ~22–27 min.
+HTML surgery by Codex per spec, diff reviewed; script block byte-identical.
+
+## 2026-07-23 — Second deck: progress-report cut (19 slides) + experiments explainer
+
+**`interp/EXPERIMENTS_SCRIPT.md`** — plain-language walkthrough of every experiment (why →
+ran → found → next), with a four-level treatment of what "label-free" means (operational /
+epistemic / mechanistic / practical) and a beat→experiment mapping table for slide planning.
+
+**`slides/metacognition_progress_report.html`** (label `progress-report-deck`) — NEW deck,
+built from scratch per user direction: progress-report framing, per-experiment structure
+(why-we-ran-it box · what ran · result · next-step line with done/replicating/queued status
+chips), minimal pedagogy (toolkit = 1 slide; the 24-slide talk deck remains the tutorial).
+18 slides: title+status · motivation · 6-track status table · apparatus (benchmarks named:
+GeoGen geometry · MMLU-Pro · MATH · GPQA-Diamond) · toolkit · E1/E2/E5 as setup slides ·
+E3 label-free lens (inspiration: Anthropic verbalizable-workspace) · E4 architecture control ·
+deviations log · three findings · next-steps/asks — plus, per user direction, **every graph on
+its own slide with a "how this is computed" calculation panel beside it** (metric equation,
+per-mark recipe, provenance, "read it" line): fig5 read-site check · **fig6 pre-vs-post layer
+curves (NEW — the queued GPU item landed; PRE = last-prompt-token no-elicitation read, POST =
+decision token; MMLU-Pro, 4 models; POST above PRE by mid-depth everywhere; generated via
+`interp/analysis/make_plots.py` fig6 from `temporal_analysis.json`)** · fig1 probe-vs-stated ·
+fig2 gap-by-domain · fig3 within-question · fig4 steering dose–response. GPU-queue status lines
+updated accordingly (remaining: Gemma×GPQA steering rerun, per-input wiring variance). Same RP
+theme + presenter harness (copied verbatim; script block byte-identical). Audited numbers only.
+All slides screenshot-verified at 1440×900 (fixed along the way: dark-slide card text, four
+overflow slides, orphaned line-wraps).
+
+**Reorder (2026-07-23, `graph-order-fix`):** the two layer-curve graphs (read-site check fig5,
+pre/post fig6) were slides 5–6 but depend on the probe + AUROC, which aren't introduced until
+the toolkit and the probe-vs-stated graph. Moved both to after the gap-by-domain slide, so
+order is now: 1 title · 2 why · 3 progress · 4 setup · 5 toolkit · 6 E1 setup · 7 probe-vs-stated
+· 8 gap-by-domain · **9 read-site check · 10 pre/post** · 11 E2 setup · 12 within-question · 13
+E3 · 14 E4 · 15 E5 setup · 16 steering graph · 17 deviations · 18 findings · 19 next-steps.
+Pre/post now sits right before E2, which it corroborates. All cross-refs (deck notes + speaker
+script sections, timing table, cut plan, anticipated-Q) renumbered; script section order + timing
+table rebuilt to match; script block still byte-identical to talk deck.
+**`slides/metacognition_progress_report_SPEAKER_SCRIPT.md`** — detailed companion: timing plan
+(~15:30 content), word-for-word narration (embedded N-notes are canonical, expanded), staging,
+transitions, per-slide + cross-slide Q&A ammo, numbers cheat-sheet, cut plan. Statuses shown:
+Gemma×GPQA steering rerun queued · pre/post figure queued · per-input variance proposed ·
+paper framing open.

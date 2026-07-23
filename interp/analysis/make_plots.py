@@ -9,6 +9,7 @@ within-question) once, caches to interp/activations/plot_cache.json, then render
   fig3_within_question.png         probe vs P(True) with difficulty fixed (the dissociation)
   fig4_steering.png                Mistral amplify: fail-confidence closes, correct holds, random flat
   fig5_layer_curve.png             decodability vs depth (chance at layer 0 -> mid/late peak)
+  fig6_pre_vs_post.png             PRE (no-elicitation, bug-free) vs POST layer curves, per model
 
     interp/.venv/bin/python interp/analysis/make_plots.py            # uses cache if present
     interp/.venv/bin/python interp/analysis/make_plots.py --recompute
@@ -293,6 +294,53 @@ def fig5(deck=False, out=None):
     finish(fig, out, theme)
 
 
+def fig6(deck=False, out=None, domain="mmlu_pro"):
+    """PRE vs POST decodability by depth, one panel per model.
+
+    PRE = prompt_dtoken (last prompt token, no elicitation — the bug-free
+    prospective read); POST = post_dtoken (turn-3 confidence decision token).
+    Reads the same saved temporal_analysis.json layer curves as fig5.
+    """
+    theme = plot_theme(deck)
+    out = out or (FIGS / "fig6_pre_vs_post.png")
+    panels = []
+    for m in MODELS:
+        p = ROOT / f"mtx_{m}_{domain}" / "temporal_analysis.json"
+        if not p.exists():
+            continue
+        lc = json.load(open(p)).get("layer_curves", {})
+        pre, post = lc.get("prompt_dtoken"), lc.get("post_dtoken")
+        if not (pre and post):
+            continue
+        to_arr = lambda v: np.array([np.nan if x is None else x for x in v], float)
+        panels.append((MLABEL[m], to_arr(pre), to_arr(post)))
+    if not panels:
+        print("  (no pre/post layer curves — skip fig6)"); return
+    fig, axes = plt.subplots(1, len(panels), figsize=(3.4 * len(panels), 3.9),
+                             dpi=150, sharey=True)
+    fig.patch.set_facecolor(theme["paper"])
+    axes = np.atleast_1d(axes)
+    pre_c = theme["muted"] if deck else PT_C
+    post_c = theme["probe"]
+    for ax, (lab, pre, post) in zip(axes, panels):
+        ax.plot(np.linspace(0, 1, len(pre)), pre, lw=2, color=pre_c, ls="--",
+                label="PRE  (before attempting)")
+        ax.plot(np.linspace(0, 1, len(post)), post, lw=2.2, color=post_c,
+                label="POST  (after answering)")
+        ax.axhline(0.5, color=theme["muted"], lw=1, ls=(0, (4, 3)))
+        style(ax, theme)
+        ax.set_title(lab, fontsize=theme["label_size"], color=theme["ink"])
+        ax.set_xlabel("relative depth", fontsize=theme["tick_size"], color=theme["ink"])
+    axes[0].set_ylabel("correctness AUROC (probe)", fontsize=theme["label_size"], color=theme["ink"])
+    axes[0].set_ylim(0.35, 1.0)
+    axes[0].legend(frameon=False, fontsize=theme["legend_size"] - 1, loc="upper left")
+    if theme["title"]:
+        fig.suptitle("Prospective vs retrospective: what the stream knows before and after the attempt"
+                     f"  ({DLABEL[domain]})",
+                     fontsize=12, color=theme["ink"], weight="bold", x=0.01, ha="left")
+    finish(fig, out, theme)
+
+
 def render_deck_svgs(C):
     with plt.rc_context({
         "font.family": ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"],
@@ -304,12 +352,14 @@ def render_deck_svgs(C):
             FIGS / "fig3_deck.svg",
             FIGS / "fig4_deck.svg",
             FIGS / "fig5_deck.svg",
+            FIGS / "fig6_deck.svg",
         ]
         fig1(C, deck=True, out=paths[0])
         fig2(C, deck=True, out=paths[1])
         fig3(C, deck=True, out=paths[2])
         fig4(deck=True, out=paths[3])
         fig5(deck=True, out=paths[4])
+        fig6(deck=True, out=paths[5])
     return paths
 
 
@@ -323,7 +373,7 @@ def main():
         print("computing per-cell AUROCs (this is the slow part)...")
         C = compute(); cachep.write_text(json.dumps(C, indent=2))
         print(f"cached -> {cachep}")
-    fig1(C); fig2(C); fig3(C); fig4(); fig5()
+    fig1(C); fig2(C); fig3(C); fig4(); fig5(); fig6()
     svg_paths = render_deck_svgs(C)
     print("saved figures ->", FIGS)
     for f in sorted(FIGS.glob("*.png")):
