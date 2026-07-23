@@ -123,7 +123,7 @@
   figcaption{font-family:var(--sans);font-size:.95rem;color:var(--muted);margin-top:.5rem}
   .dlabel{font-family:var(--sans);font-size:11px;fill:var(--muted)}
   .dnum{font-family:'SF Mono',Menlo,monospace}
-  /* architecture "clean vs smear" bands (slide 17) */
+  /* architecture "clean vs smear" bands */
   .arch{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:.9rem 1rem;flex:1;min-width:15rem}
   .arch h4{font-family:var(--sans);font-size:1rem;margin:0 0 .6rem;font-weight:600}
   .arch .band{height:52px;border-radius:6px}
@@ -133,7 +133,7 @@
      repeating-linear-gradient(106deg,rgba(163,46,46,.5) 0 2px,transparent 2px 8px),
      repeating-linear-gradient(22deg,rgba(115,115,130,.45) 0 2px,transparent 2px 12px);filter:blur(1.3px)}
   .arch p{font-size:1rem;margin:.6rem 0 0}
-  /* three-turn protocol timeline (slide 8) */
+  /* three-turn protocol timeline */
   .flow{display:flex;align-items:stretch;gap:0;margin:.4rem 0 .2rem;flex-wrap:wrap}
   .flow .node{flex:1;min-width:9rem;background:var(--card);border:1px solid var(--line);border-radius:10px;
     padding:.8rem .95rem;position:relative}
@@ -176,7 +176,7 @@
     border:1px solid var(--line);border-radius:8px;padding:.55rem 1rem;margin:.3rem auto .5rem;max-width:46rem}
   .eq .v{font-style:italic}
   .eq .note{font-family:var(--sans);font-style:normal;font-size:.88rem;color:var(--muted);display:block;margin-top:.25rem}
-  /* stacked finding rows (slide 5) */
+  /* stacked finding rows */
   .finding{display:flex;align-items:center;gap:1.5rem;border:1px solid var(--line);
     border-left:3px solid var(--accent);border-radius:10px;background:var(--card);
     padding:.65rem 1.2rem;margin:.5rem 0}
@@ -302,19 +302,19 @@
   </figure>
   <p class="big frag">Don't trust the self-report — check for the "I'm probably wrong" signal directly.
   That's <span class="acc">mechanistic interpretability</span>.</p>
-  <aside class="notes"><p>With a person we'd be stuck — you can't subpoena an inner monologue. A model is different in kind: every intermediate step of its computation is a concrete vector we can store and inspect, <i>while it works</i> — after it has understood the problem, before it speaks.</p><p>Trace the picture: question in, the wall of numbers, answer out. The highlighted row is one snapshot of one token's internal state — that vector is the object every method in this talk operates on. Our whole approach is choosing the right row at the right moment.</p><p>[→] So instead of trusting the self-report, we check the internal state directly. That's mechanistic interpretability. Two short slides of machinery, then three tools — then the findings, and you can judge them for yourselves.</p></aside>
+  <aside class="notes"><p>With a person we'd be stuck — you can't subpoena an inner monologue. A model is different in kind: every intermediate step of its computation is a concrete vector we can store and inspect, <i>while it works</i> — after it has understood the problem, before it speaks.</p><p>Trace the picture: question in, the wall of numbers, answer out. The highlighted row is one snapshot of one token's internal state — that vector is the object every method in this talk operates on. Our whole approach is choosing the right row at the right moment.</p><p>[→] So instead of trusting the self-report, we check the internal state directly. That's mechanistic interpretability. One slide of machinery, then three tools — then the findings, and you can judge them for yourselves.</p></aside>
 </section>
 
 <!-- 5 · background: the residual stream -->
 <section class="slide">
-  <div class="eyebrow">Mech-interp 101 · 1/3 · the stream, end to end</div>
+  <div class="eyebrow">Mech-interp 101 · 1/2 · the stream, end to end</div>
   <h2>How a model thinks: the residual stream</h2>
   <p class="dim">Text → tokens → a <strong>vector</strong> each (~5,000 numbers). Then every layer
   does one thing: <strong>read</strong> the running vector, <strong>add</strong> its result back.</p>
   <div class="eq"><span class="v">h</span><sub>ℓ+1</sub> = <span class="v">h</span><sub>ℓ</sub> + <span class="v">f</span><sub>ℓ</sub>(<span class="v">h</span><sub>ℓ</sub>)
     <span class="note">nothing is overwritten · our models: 4,096–5,120 dimensions, 30–64 layers</span></div>
   <figure class="dia" style="margin:.7rem 0 .2rem">
-    <svg viewBox="0 0 880 258" style="max-height:27vh" role="img" aria-label="the residual stream end to end: a token embedding enters, each block reads the stream and adds its result back, snapshots of the same vector at layers 0, 20 and 40 show it evolving, and the final vector is scored against every word - 28 wins">
+    <svg viewBox="0 0 880 258" style="max-height:24vh" role="img" aria-label="the residual stream end to end: a token embedding enters, each block reads the stream and adds its result back, snapshots of the same vector at layers 0, 20 and 40 show it evolving, and the final vector is scored against every word - 28 wins">
       <defs>
         <marker id="ee1" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#131318"/></marker>
         <marker id="ee2" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker>
@@ -404,84 +404,15 @@
   <p class="big frag">That running total is the <span class="acc">residual stream</span> — the model's
   working memory. Ideas live in it as <strong>directions</strong>, including one that tracks
   <span class="acc">"I am about to be wrong."</span></p>
-  <aside class="notes"><p>The whole machine, left to right. The token becomes a vector by <b>lookup</b> — at layer zero that vector encodes only the word's identity, nothing about the problem. Remember that; it's why our layer-zero check later has teeth. Then one move repeats, thirty to sixty-four times: each block reads the running vector, computes (attention plus an MLP — next slide opens that box), and <b>adds</b> its result back. The equation on the slide: h plus f of h. Nothing is overwritten.</p><p>Watch the snapshots underneath: it is the <b>same ~5,000 slots</b> the whole way — at layer zero just the word, by layer twenty a mid-thought, by layer forty a decision-ready state. And the ending matters: the final vector is multiplied against every word's readout vector, giving a score for the entire vocabulary. Here "28" wins — and ships. Everything the model concludes has to pass through these vectors; that is what makes reading them possible at all.</p><p>[→] And the working assumption of the field — the linear representation hypothesis: ideas live in this stream as <b>directions</b>. "This is a midpoint" is a direction. And — the claim this talk tests — so is <i>"I am about to be wrong."</i> Reading a concept is a dot product; writing it in is vector addition. Every method that follows is one of those two operations.</p></aside>
+  <p class="frag" style="margin-top:.5rem"><strong>Attention</strong> — the only step where tokens exchange
+  information — keeps routing summaries of the whole attempt into the current token's column:
+  <span class="acc">one vector</span> holds "how is this going?" That's the vector we read.</p>
+  <aside class="notes"><p>The whole machine, left to right. The token becomes a vector by <b>lookup</b> — at layer zero that vector encodes only the word's identity, nothing about the problem. Remember that; it's why our layer-zero check later has teeth. Then one move repeats, thirty to sixty-four times: each block reads the running vector, computes (attention plus a small per-token network), and <b>adds</b> its result back. The equation on the slide: h plus f of h. Nothing is overwritten.</p><p>Watch the snapshots underneath: it is the <b>same ~5,000 slots</b> the whole way — at layer zero just the word, by layer twenty a mid-thought, by layer forty a decision-ready state. And the ending matters: the final vector is multiplied against every word's readout vector, giving a score for the entire vocabulary. Here "28" wins — and ships. Everything the model concludes has to pass through these vectors; that is what makes reading them possible at all.</p><p>[→] And the working assumption of the field — the linear representation hypothesis: ideas live in this stream as <b>directions</b>. "This is a midpoint" is a direction. And — the claim this talk tests — so is <i>"I am about to be wrong."</i> Reading a concept is a dot product; writing it in is vector addition. Every method that follows is one of those two operations.</p><p>[→] One more structural fact, because it powers two checks later: every token carries its <b>own</b> stream, and <b>attention</b> is the <i>only</i> place where information crosses between them — in each block, the current token takes a weighted summary of the earlier tokens' streams and adds it into its own column; the MLP part then computes on each token separately. Two consequences. Any problem information sitting at our fixed read token <i>had to be routed there by computation</i> — at layer zero that column is just its own word, which is why the layer-zero-at-chance check later has teeth. And because attention keeps depositing summaries of the whole attempt into the current column, one token's vector genuinely can hold "how is this attempt going?" One token, one depth, all ~5,000 numbers — that's the entire read operation of this study.</p></aside>
 </section>
 
-<!-- 6 · inside one block -->
+<!-- 6 -->
 <section class="slide">
-  <div class="eyebrow">Mech-interp 101 · 2/3 · inside one block</div>
-  <h2>Attention talks across tokens; the MLP thinks per token</h2>
-  <p class="dim" style="margin:0 0 .2rem">Every token carries its <strong>own</strong> stream. A block touches them in two steps — and both steps only ever <strong>add</strong>.</p>
-  <figure class="dia" style="margin:.5rem 0 .2rem">
-    <svg viewBox="0 0 880 292" style="max-height:34vh" role="img" aria-label="four parallel token streams; in the attention step the current token reads from the other tokens' streams (the only cross-token interaction); in the MLP step each token computes alone; both write back additively; a probe reads one token's full vector at one depth">
-      <defs>
-        <marker id="bk1" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#737382"/></marker>
-        <marker id="bk2" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#F87248"/></marker>
-        <marker id="bk3" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#B9B8C2"/></marker>
-      </defs>
-      <!-- token rows -->
-      <g class="dnum" font-size="12" text-anchor="end">
-        <text x="100" y="62" fill="#737382">How</text>
-        <text x="100" y="112" fill="#737382">many</text>
-        <text x="100" y="162" fill="#737382">diagonals</text>
-        <text x="100" y="212" fill="#131318" font-weight="700">… is</text>
-      </g>
-      <line x1="112" y1="58" x2="830" y2="58" stroke="#C9C8D2" stroke-width="1.6" marker-end="url(#bk3)"/>
-      <line x1="112" y1="108" x2="830" y2="108" stroke="#C9C8D2" stroke-width="1.6" marker-end="url(#bk3)"/>
-      <line x1="112" y1="158" x2="830" y2="158" stroke="#C9C8D2" stroke-width="1.6" marker-end="url(#bk3)"/>
-      <line x1="112" y1="208" x2="830" y2="208" stroke="#131318" stroke-width="2.4" marker-end="url(#bk1)"/>
-      <!-- attention band -->
-      <text x="325" y="26" class="dlabel" font-size="11.5" text-anchor="middle" font-weight="700" fill="#131318">① attention — tokens exchange information</text>
-      <rect x="240" y="34" width="170" height="198" rx="12" fill="#FBE4DA" opacity="0.5"/>
-      <circle cx="290" cy="58" r="4" fill="#737382"/>
-      <circle cx="290" cy="108" r="4" fill="#737382"/>
-      <circle cx="290" cy="158" r="4" fill="#737382"/>
-      <line x1="292" y1="62" x2="352" y2="200" stroke="#737382" stroke-width="1.3" marker-end="url(#bk1)"/>
-      <line x1="292" y1="112" x2="354" y2="201" stroke="#737382" stroke-width="1.3" marker-end="url(#bk1)"/>
-      <line x1="292" y1="162" x2="356" y2="202" stroke="#737382" stroke-width="1.3" marker-end="url(#bk1)"/>
-      <circle cx="376" cy="208" r="8" fill="#FFFFFF" stroke="#F87248" stroke-width="1.8"/>
-      <text x="376" y="212" text-anchor="middle" font-size="12" fill="#F87248" font-weight="700">+</text>
-      <text x="325" y="248" class="dlabel" font-size="10.5" text-anchor="middle">the current token <tspan font-weight="700">reads the others</tspan></text>
-      <!-- MLP band -->
-      <text x="545" y="26" class="dlabel" font-size="11.5" text-anchor="middle" font-weight="700" fill="#131318">② MLP — each token computes alone</text>
-      <rect x="470" y="34" width="150" height="198" rx="12" fill="#F3F2F0"/>
-      <g>
-        <rect x="513" y="51" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#737382" stroke-width="1.3"/>
-        <line x1="531" y1="58" x2="556" y2="58" stroke="#F87248" stroke-width="1.5" marker-end="url(#bk2)"/>
-        <circle cx="570" cy="58" r="7" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/><text x="570" y="62" text-anchor="middle" font-size="11" fill="#F87248" font-weight="700">+</text>
-      </g>
-      <g>
-        <rect x="513" y="101" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#737382" stroke-width="1.3"/>
-        <line x1="531" y1="108" x2="556" y2="108" stroke="#F87248" stroke-width="1.5" marker-end="url(#bk2)"/>
-        <circle cx="570" cy="108" r="7" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/><text x="570" y="112" text-anchor="middle" font-size="11" fill="#F87248" font-weight="700">+</text>
-      </g>
-      <g>
-        <rect x="513" y="151" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#737382" stroke-width="1.3"/>
-        <line x1="531" y1="158" x2="556" y2="158" stroke="#F87248" stroke-width="1.5" marker-end="url(#bk2)"/>
-        <circle cx="570" cy="158" r="7" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/><text x="570" y="162" text-anchor="middle" font-size="11" fill="#F87248" font-weight="700">+</text>
-      </g>
-      <g>
-        <rect x="513" y="201" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#131318" stroke-width="1.4"/>
-        <line x1="531" y1="208" x2="556" y2="208" stroke="#F87248" stroke-width="1.5" marker-end="url(#bk2)"/>
-        <circle cx="570" cy="208" r="7" fill="#FFFFFF" stroke="#F87248" stroke-width="1.6"/><text x="570" y="212" text-anchor="middle" font-size="11" fill="#F87248" font-weight="700">+</text>
-      </g>
-      <text x="545" y="248" class="dlabel" font-size="10.5" text-anchor="middle">stored patterns &amp; facts get applied, <tspan font-weight="700">per token</tspan></text>
-      <!-- probe read point -->
-      <circle cx="720" cy="208" r="11" fill="none" stroke="#F87248" stroke-width="2.4"/>
-      <line x1="720" y1="221" x2="720" y2="256" stroke="#F87248" stroke-width="1.1" stroke-dasharray="3 3"/>
-      <text x="720" y="272" class="dlabel" font-size="11" text-anchor="middle" fill="#F87248" font-weight="700">a probe reads here:</text>
-      <text x="720" y="287" class="dlabel" font-size="10.5" text-anchor="middle">one token · one depth · all ~5,000 numbers</text>
-    </svg>
-    <figcaption>One block = attention, then the MLP — each reads the stream and adds back. Attention is the <em>only</em> step where token streams interact.</figcaption>
-  </figure>
-  <p class="big frag">Attention keeps routing summaries of the whole attempt into the current token's column —
-  so <span class="acc">one vector</span> can hold "how is this going?" That's the vector we read.</p>
-  <aside class="notes"><p>Open the box. Every token has its own stream — picture one row per token — and a block touches them in exactly two steps. Step one, <b>attention</b>: the current token computes queries against every earlier token, takes a weighted summary of their streams, and <b>adds</b> that summary into its own column. This is the <i>only</i> place in the entire architecture where information crosses between tokens. Step two, the <b>MLP</b>: a two-layer network applied to each token separately — no cross-talk — this is where stored patterns and facts fire. Both steps write by addition, like everything else.</p><p>Two consequences we use constantly. First: because attention is the only cross-token channel, any problem information sitting at our fixed confidence token <i>had to be routed there by computation</i> — at layer zero that column is just the words "Confidence:", which is exactly why the layer-zero-at-chance check certifies the signal as computed. Second: attention keeps depositing summaries of the whole attempt into the current column — so by mid-depth, one token's vector genuinely can hold "how is this attempt going?" That single column — one token, one depth, all five thousand numbers — is what the probe reads. The coral circle is the entire read operation.</p></aside>
-</section>
-
-<!-- 7 -->
-<section class="slide">
-  <div class="eyebrow">Mech-interp 101 · 3/3 · the toolkit</div>
+  <div class="eyebrow">Mech-interp 101 · 2/2 · the toolkit</div>
   <h2>Read, then poke</h2>
   <div class="cardrow">
     <div class="card"><h3>Probe (read, supervised)</h3>
@@ -532,7 +463,7 @@
   <aside class="notes"><p>Three tools, all built on the same primitive. The <b>probe</b> reads with the answer key: store thousands of graded snapshots, train a linear classifier, get the direction that separates right from wrong. Powerful — and rightly treated with suspicion, because it saw the labels. The <b>lens</b> reads with no key at all: it converts a mid-stream state into word dispositions using the model's own output machinery. And <b>steering</b> writes instead of reads: add a direction during generation and watch what changes downstream.</p><p>The equation under the cards is the entire theory. A concept is a direction u. Reading is the dot product u·h — how much of that direction is present in this state. Writing is h plus alpha times u. Everything in this deck is one of those two operations, with different choices of how u is obtained.</p><p>[→] One rule keeps us honest throughout: <b>decodable is not the same as used</b>. A probe finding the signal proves it's present; only an intervention proves the model relies on it. So the claims come with a read <i>and</i> a poke. Next three slides: each tool up close.</p></aside>
 </section>
 
-<!-- 8 · method: how the probe works -->
+<!-- 7 · method: how the probe works -->
 <section class="slide">
   <div class="eyebrow">Method · the probe, up close</div>
   <h2>Learning the "am I right?" direction</h2>
@@ -593,7 +524,7 @@
   <aside class="notes"><p>The workhorse. Step one: snapshots — one vector per attempt, captured at the confidence token, each stamped with the external grader's verdict. Step two: standardize, reduce with PCA, and fit an L2-regularized <b>logistic regression</b>. Deliberately the simplest learner available — a linear boundary has no room to hide clever circuitry, so if it separates the piles, the information was sitting in the stream as a direction. And the direction it finds is nothing exotic: it's essentially the difference between the average ✓ state and the average ✗ state, sharpened by the data's covariance. Step three: score attempts it has never seen — one dot product each.</p><p>Three guardrails, because trained readers earn suspicion. No leakage: train and test are split by <b>question</b> — all five attempts at a question stay on one side — and every number in this deck is out-of-fold, scored by a model that never saw that item. No cherry-picking: we report one <b>fixed depth</b>, seventy percent up the stack; picking the best of forty layers would be optimism by multiple comparison. No surface cues: identical wording everywhere, and layer zero decodes at chance.</p><p>[→] Even with all that, the probe saw the answer key, and a skeptic can still say “you fit your dataset.” Fair. Which is why every probe claim in this talk gets a second witness that never saw a label — next slide.</p></aside>
 </section>
 
-<!-- 9 · method: how the lens works -->
+<!-- 8 · method: how the lens works -->
 <section class="slide">
   <div class="eyebrow">Method · the lens, up close</div>
   <h2>Reading a thought with no answer key</h2>
@@ -639,7 +570,7 @@
   <aside class="notes"><p>The unsupervised witness — and let me build it from a question you could ask of any network: <i>if this mid-thought shifted a little, how would the final word-scores shift?</i> That question is a derivative — the network's input–output <b>Jacobian</b>. Between layer twenty and the output sits a big nonlinear function; the Jacobian is its local linear approximation: nudge the layer-twenty vector by delta, the output moves by roughly J times delta. Because that answer depends on the input, we estimate it over about five hundred prompts of plain Wikipedia text and average — many backward passes, one GPU-day. The result is the phrasebook: one map per layer, from mid-network coordinates to output coordinates, built from the model's own wiring. Fine print, because it becomes the twist: <b>one map, averaged over inputs.</b></p><p>Now the bridge from "changes" to "content." Push a single word's output direction backward through the map and you get that word's <b>precursor</b>: the direction at layer twenty that, if increased, most raises the odds of eventually saying that word. Every word collapses to one precursor vector. At read time nothing is nudged — we take a stored thought and ask how much of "wrong's" precursor is in it versus "correct's": one dot product per word, families <i>wrong, incorrect, error, mistake, false, flawed</i> against <i>correct, right, true, valid, accurate</i>. The score is a disposition to speak — which family this thought would push toward if it flowed to the mouth — computed without generating a single token.</p><p>[→] No correctness label ever touches this pipeline — not the map, not the word lists, and the thoughts it scores are the same stored snapshots the probe used. So where the lens agrees with the probe, "your probe memorized the dataset" is off the table — and because the lens reads specifically through the output pathway, agreement also means the signal is <i>speakable</i>. One caveat in the honest direction: an averaged map under-sees content that only reaches output through input-specific routing, so the lens can <b>miss</b> real signal but can't hallucinate one. Hold that thought for the twist.</p></aside>
 </section>
 
-<!-- 10 · method: how steering works -->
+<!-- 9 · method: how steering works -->
 <section class="slide">
   <div class="eyebrow">Method · steering, up close</div>
   <h2>From reading to <em>cause</em>: nudge the thought</h2>
@@ -684,7 +615,7 @@
   <aside class="notes"><p>From reading to cause. While the model generates — token by token — we reach into the stream at the read site and add alpha times our direction; alpha is a dose dial. Then we watch downstream behaviour: the stated confidence, and separately the accuracy.</p><p>Two design details do a lot of work here. First, the main experiment doesn't add a fixed vector — it <b>amplifies the model's own signal</b>: measure this record's projection on the direction, then scale it by a gain. Gain one is exactly a no-op — the cleanest possible baseline — and no label is used at intervention time; the model only gets more of what it already computed. Second, for the confidence experiment we inject during the <i>assessment</i> turn only. The answer is already on the page, so by construction the nudge can change the self-report but not the answer.</p><p>The claim standard is the three controls: effects must <b>grow with the dose</b>; a <b>random direction</b> at matched strength must do nothing; and <b>flipping the sign</b> must flip the effect. [→] Reading shows correlation. A targeted nudge that moves behaviour — when the random one doesn't — shows the model actually <i>uses</i> the direction. Hold the final result to exactly this bar.</p></aside>
 </section>
 
-<!-- 11 · the short version (BLUF) -->
+<!-- 10 · the short version (BLUF) -->
 <section class="slide">
   <div class="eyebrow">The findings</div>
   <h2 style="margin-bottom:.9rem">Models track their own correctness —<br>better than they report it</h2>
@@ -711,10 +642,10 @@
   </div>
   <p class="dim frag" style="margin-top:.7rem">Behind every number: out-of-fold scoring at a fixed layer,
   a layer-0 surface-cue check — and dose, random-direction, sign-flip controls on the causal claim.</p>
-  <aside class="notes"><p>You now know exactly what a probe, a lens, and a steering vector are — so here is what they found, with the key numbers — each with its key number, so you can hold the rest of the talk against them.</p><p>[→] Finding one — <b>it knows</b>. A linear probe on the residual stream reads correctness at up to point-nine-five AUROC and beats the model's stated confidence in twelve of sixteen model-by-domain cells, most sharply on math. [→] Finding two — <b>it's readable without labels</b>. An unsupervised reader, built only from the model's own wiring, recovers the same signal on dense transformers at point-seven-six to point-eight-eight — and which architectures allow that turns out to be a finding in its own right. [→] Finding three — <b>gauge, not wheel</b>. Amplifying the signal causally moves what the model says — confidence on wrong answers drops from eighty to forty-three, calibration error halves — but the same direction cannot be pushed to produce correct answers.</p><p>[→] And the standard behind every number on this slide, stated now so you can hold us to it: every readout is scored out-of-fold at one fixed layer, the read site is checked for surface cues at layer zero, and the causal claim carries dose, random-direction, and sign-flip controls. In short — the bluffer from the opening is real, and its signal is usable. The next twenty slides are the walk-through.</p></aside>
+  <aside class="notes"><p>You now know exactly what a probe, a lens, and a steering vector are — so here is what they found, with the key numbers — each with its key number, so you can hold the rest of the talk against them.</p><p>[→] Finding one — <b>it knows</b>. A linear probe on the residual stream reads correctness at up to point-nine-five AUROC and beats the model's stated confidence in twelve of sixteen model-by-domain cells, most sharply on math. [→] Finding two — <b>it's readable without labels</b>. An unsupervised reader, built only from the model's own wiring, recovers the same signal on dense transformers at point-seven-six to point-eight-eight — and which architectures allow that turns out to be a finding in its own right. [→] Finding three — <b>gauge, not wheel</b>. Amplifying the signal causally moves what the model says — confidence on wrong answers drops from eighty to forty-three, calibration error halves — but the same direction cannot be pushed to produce correct answers.</p><p>[→] And the standard behind every number on this slide, stated now so you can hold us to it: every readout is scored out-of-fold at one fixed layer, the read site is checked for surface cues at layer zero, and the causal claim carries dose, random-direction, and sign-flip controls. In short — the bluffer from the opening is real, and its signal is usable. The rest of the deck is the walk-through.</p></aside>
 </section>
 
-<!-- 12 · methodology: models × benchmarks -->
+<!-- 11 · methodology: models × benchmarks -->
 <section class="slide">
   <div class="eyebrow">The setup · models × benchmarks</div>
   <h2>Five models, four domains</h2>
@@ -728,31 +659,23 @@
   </table></div>
   <p class="dim" style="margin-top:.6rem">Domains: <strong>geometry</strong> (compiler-graded constructions) ·
   <strong>MMLU-Pro</strong> · <strong>MATH</strong> · <strong>GPQA-Diamond</strong> — grading detail on the
-  next two slides. All models open-weights, run locally, so the stream can be read <em>and</em> written.</p>
+  next slide. All models open-weights, run locally, so the stream can be read <em>and</em> written.</p>
   <p class="big frag">Per model × domain pair ("cell"): 150 questions × 5 attempts =
   <span class="acc">750 graded records</span> · 4 matrix models × 4 domains = <strong>16 cells</strong> · one seed per cell.
   The architecture spread is deliberate — it becomes Finding&nbsp;2.</p>
   <aside class="notes"><p>The roster, in one place. Four models carry the full matrix, chosen deliberately to span architectures: Mistral is plain dense attention; Qwen3.6 is a Mamba–attention hybrid; GLM and Gemma are mixture-of-experts, Gemma's variant VLM-derived. All open-weights and run locally — that's what lets us read the residual stream, and later write to it. A fifth model, Qwen2.5-14B — dense, same family as Qwen3.6 — joins for exactly one purpose: the within-family architecture control that anchors Finding two.</p><p>Four domains, likewise deliberate: geometry for compiler-exact grading, MMLU-Pro for breadth, competition MATH for multi-step derivations, GPQA-Diamond for graduate-level difficulty. Scale: one hundred fifty questions per domain, five sampled attempts each — seven hundred fifty records per cell, sixteen model-by-domain cells. One seed per cell; the confidence intervals cover item sampling, not seed variance — that's an honest limit, on the record.</p><p>[→] The sentence to carry forward: the architecture spread isn't incidental. When the label-free lens later works on the dense models and fails on MoE and Mamba, this roster is what turns that from an anecdote into a controlled comparison.</p></aside>
 </section>
 
-<!-- 13 · testbed: geometry -->
+<!-- 12 · the testbeds -->
 <section class="slide">
-  <div class="eyebrow">Testbed 1 · geometry</div>
-  <h2>A compiler as the judge</h2>
+  <div class="eyebrow">The testbeds · geometry + QA</div>
+  <h2>Chosen by failure rate, graded exactly</h2>
   <pre>"an isosceles triangle with an inscribed circle..."
         ↓  model writes a RecipeDSL JSON program
 parse → validate → lower → compile (SymPy) → geometric checks</pre>
-  <p class="big">Compiles + passes every invariant, or fails at a specific stage.
-  <strong>Exact</strong> — no human judge, no LLM judge.</p>
-  <p class="big frag">And hard on purpose: models pass only <span class="acc">13–39%</span>.
-  <span class="dim">Metacognition is failure-hungry.</span></p>
-  <aside class="notes"><p>You cannot study “knows it's wrong” without an ironclad “wrong” — label noise would eat exactly the effect we're hunting. So testbed one grades itself. The model writes a small geometry program in our DSL; a symbolic pipeline parses it, compiles it into exact geometric objects, and checks every property the prompt demanded — tangency, perpendicularity, equal lengths. It passes everything, or it fails at a named stage. No human judge, no LLM judge — the label is a theorem check.</p><p>[→] And it's hard <i>on purpose</i>: pass rates run thirteen to thirty-nine percent across our models. That's the design, not a flaw — metacognition research is failure-hungry. You need a rich supply of genuine errors from the same model on the same task to ask whether it can tell its own successes from its own failures.</p></aside>
-</section>
-
-<!-- 14 -->
-<section class="slide">
-  <div class="eyebrow">Testbed 2 · standard benchmarks</div>
-  <h2>QA, chosen by failure rate</h2>
+  <p class="dim" style="margin:.3rem 0 .1rem"><strong>Geometry</strong>: compiles + passes every invariant,
+  or fails at a specific stage — <strong>exact</strong>, no human judge, no LLM judge. And hard on purpose:
+  models pass only <span class="acc">13–39%</span>.</p>
   <div class="tblwrap"><table>
     <tr><th>benchmark</th><th>grading</th><th>kept?</th></tr>
     <tr><td>MMLU-Pro (10-option MC)</td><td>letter match, validated extraction</td><td class="okc">kept</td></tr>
@@ -760,11 +683,13 @@ parse → validate → lower → compile (SymPy) → geometric checks</pre>
     <tr><td>GPQA-Diamond</td><td>4-option MC, seeded shuffle</td><td class="okc">kept</td></tr>
     <tr><td>GSM8K / MedQA</td><td>—</td><td class="failc">dropped — models pass 90–95%</td></tr>
   </table></div>
-  <p class="dim frag">Every cell: 0% extraction failures + manual spot-checks.</p>
-  <aside class="notes"><p>For breadth: standard exams, chosen by the same criterion — failure rate. MMLU-Pro for ten-option breadth, competition MATH for multi-step derivations, GPQA-Diamond for graduate-level difficulty. GSM8K and MedQA were dropped: at ninety-plus percent pass there aren't enough failures to study. And the grading is fussy on purpose: MATH answers are checked by <b>symbolic equivalence</b> — one-half, zero-point-five, and the fraction all count as the same answer — and multiple-choice extraction is validated rather than left to a regex.</p><p>[→] One deviation worth naming, because it buys credibility: our <i>first</i> MATH grader flunked correct answers over formatting. A planned audit caught it; we fixed the grader and re-graded every affected cell — now zero extraction failures, with manual spot-checks. When your thesis is “the model doesn't know when it's wrong,” you had better know when <i>you</i> are.</p></aside>
+  <p class="big frag">Metacognition is <span class="acc">failure-hungry</span> — a model that's never wrong
+  can't show whether it knows it's wrong. <span class="dim">Every cell: 0% extraction failures + manual
+  spot-checks.</span></p>
+  <aside class="notes"><p>You cannot study "knows it's wrong" without an ironclad "wrong" — label noise would eat exactly the effect we're hunting. Testbed one grades itself: the model writes a small geometry program in our DSL; a symbolic pipeline parses it, compiles it into exact geometric objects, and checks every property the prompt demanded — tangency, perpendicularity, equal lengths. It passes everything, or it fails at a named stage. No human judge, no LLM judge — the label is a theorem check. And it's hard on purpose: pass rates run thirteen to thirty-nine percent.</p><p>For breadth: standard exams, chosen by the same criterion — failure rate. MMLU-Pro for ten-option breadth, competition MATH for multi-step derivations, GPQA-Diamond for graduate-level difficulty. GSM8K and MedQA were dropped: at ninety-plus percent pass there aren't enough failures to study. Grading is fussy on purpose: MATH answers are checked by <b>symbolic equivalence</b> — one-half, zero-point-five, and the fraction all count as the same answer — and multiple-choice extraction is validated rather than left to a regex.</p><p>[→] The design principle, said plainly: metacognition research is <b>failure-hungry</b> — you need a rich supply of genuine errors from the same model on the same task to ask whether it can tell its own successes from its own failures. One deviation worth naming, because it buys credibility: our <i>first</i> MATH grader flunked correct answers over formatting. A planned audit caught it; we fixed the grader and re-graded every affected cell — now zero extraction failures, with manual spot-checks. When your thesis is "the model doesn't know when it's wrong," you had better know when <i>you</i> are.</p></aside>
 </section>
 
-<!-- 15 -->
+<!-- 13 -->
 <section class="slide">
   <div class="eyebrow">The experiment</div>
   <h2>Three turns, and the grader never tells</h2>
@@ -788,29 +713,23 @@ parse → validate → lower → compile (SymPy) → geometric checks</pre>
   <aside class="notes"><p>The protocol, run identically for every question — three turns. <b>Before:</b> “how confident are you that you <i>will</i> get this right?” One line, no reasoning — a prior, before any work happens. <b>Then the attempt</b> — full reasoning allowed here, and only here. <b>After:</b> “how confident are you that your answer <i>is</i> correct?” One line again. Prospective versus retrospective matters: the second reading happens after the model has seen its own work.</p><p>Each question is sampled <b>five times</b>. That becomes important later — the repeats are what let us hold difficulty fixed and compare good and bad attempts at the very same question.</p><p>[→] And the load-bearing detail — the lock. The external grader scores every attempt and <b>never speaks</b>: no “correct,” no “wrong,” ever enters the conversation. So when confidence sags after a failed attempt, that isn't feedback. It came from inside.</p></aside>
 </section>
 
-<!-- 16 -->
+<!-- 14 · exact prompts -->
 <section class="slide">
-  <div class="eyebrow">Exact prompts · turn 1</div>
-  <h2>Prospective confidence — verbatim</h2>
-  <pre><span class="lab">system:</span> You answer multiple-choice questions. Reason briefly if
+  <div class="eyebrow">Exact prompts · all three turns</div>
+  <h2>The prompts, verbatim</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(24rem,1fr));gap:1.1rem;align-items:start">
+    <pre style="font-size:.9rem;margin:0"><span class="lab">system:</span> You answer multiple-choice questions. Reason briefly if
 needed, then end with your final answer on its own line as:
 Answer: X   (a single letter).
 
-<span class="lab">user:</span> [the question + options]
+<span class="lab">user (turn 1):</span> [the question + options]
 
 Before answering, estimate how likely you are to answer this
 question correctly. Reply with EXACTLY one line and nothing else:
 Confidence: N
 where N is an integer from 0 (certain to be wrong) to 100
 (certain to be correct). Do NOT answer yet.</pre>
-  <aside class="notes"><p>The exact prompt, verbatim — because the wording is doing methodological work. The reply is locked to a single line, “Confidence: N,” an integer from zero to one hundred, and the turn ends with “do NOT answer yet,” so no reasoning contaminates the prior.</p><p>That locked one-line format is also what makes the read site clean later: the tokens around the confidence number are identical for every question, which is exactly why the phrasing cannot leak problem information into the vector we read there. Twenty seconds on this slide, then on.</p></aside>
-</section>
-
-<!-- 17 -->
-<section class="slide">
-  <div class="eyebrow">Exact prompts · turns 2–3</div>
-  <h2>Attempt, then retrospective confidence</h2>
-  <pre><span class="lab">user (turn 2):</span> Now give your final answer as a single letter
+    <pre style="font-size:.9rem;margin:0"><span class="lab">user (turn 2):</span> Now give your final answer as a single letter
 in the form 'Answer: X'.
    <span class="lab">· MATH:</span> "Solve step by step. Put your final answer in \boxed{}."
    <span class="lab">· geometry:</span> "Output only the RecipeDSL JSON object."
@@ -819,12 +738,13 @@ in the form 'Answer: X'.
 of 0 to 100, how confident are you that it is correct? Reply
 with exactly one line and nothing else:
 Confidence: N</pre>
-  <p class="dim">Hybrid reasoners (Qwen3.6, GLM): extended thinking ON for the attempt,
+  </div>
+  <p class="dim" style="margin-top:.6rem">Hybrid reasoners (Qwen3.6, GLM): extended thinking ON for the attempt,
   OFF for both confidence turns — best-effort answers, snap-judgment confidence.</p>
-  <aside class="notes"><p>Turns two and three, verbatim. The attempt uses a fixed answer format per domain — “Answer: X” for multiple choice, boxed final answers for MATH, a bare JSON object for geometry — so grading stays mechanical. Then the assessment turn: one locked line again.</p><p>One subtlety for the hybrid reasoners, Qwen3.6 and GLM: extended thinking is <b>on</b> for the attempt — we want their best answers — but <b>off</b> for both confidence turns. That keeps the confidence tokens, and therefore the read site, structurally identical across all five models. Best-effort answers; snap-judgment confidence.</p></aside>
+  <aside class="notes"><p>The exact prompts, verbatim — because the wording is doing methodological work. Turn one locks the reply to a single line, "Confidence: N," an integer from zero to one hundred, and ends with "do NOT answer yet," so no reasoning contaminates the prior. That locked one-line format is also what makes the read site clean later: the tokens around the confidence number are identical for every question, which is exactly why phrasing cannot leak problem information into the vector we read there.</p><p>The attempt uses a fixed answer format per domain — "Answer: X" for multiple choice, boxed final answers for MATH, a bare JSON object for geometry — so grading stays mechanical. Then the assessment turn: one locked line again. One subtlety for the hybrid reasoners, Qwen3.6 and GLM: extended thinking is <b>on</b> for the attempt — we want their best answers — but <b>off</b> for both confidence turns. That keeps the confidence tokens, and therefore the read site, structurally identical across all five models. Twenty seconds here — this slide exists to be checkable — then on.</p></aside>
 </section>
 
-<!-- 18 -->
+<!-- 15 -->
 <section class="slide">
   <div class="eyebrow">The read site</div>
   <h2>Where we read the residual stream</h2>
@@ -843,7 +763,7 @@ Confidence: N</pre>
   <aside class="notes"><p>The last piece of setup, and the chart I'd most like you to remember. Where do we read? One fixed token: the one about to emit the confidence number. Identical surrounding words for every question, so the phrasing physically cannot carry problem information.</p><p>The check, and why it's convincing: at layer zero — the raw token embeddings, before any computation — a probe at this spot decodes correctness at exactly chance. A coin flip. Then, layer by layer, decodability <b>climbs</b>, to about point-eight by the mid-late stack. Whatever a deep layer knows here, it <b>computed</b>.</p><p>[→] And this check has teeth — it has already rejected a read site for us. An earlier design read the answer tokens themselves, and decoded at point-seven-four <i>at layer zero</i>: a pure surface-cue confound (answer length and shape correlate with failure). That's what forced the move to this content-neutral site. Layer-zero-at-chance is a necessary check rather than a sufficient one, but it kills the whole class of “your probe reads the words, not the thought” objections. The model is <i>building</i> its sense of “did that work” as the computation rises through the stack. <b>(Pause here.)</b></p></aside>
 </section>
 
-<!-- 19 -->
+<!-- 16 -->
 <section class="slide">
   <div class="eyebrow">Result 1 · evidence for finding 1 — it knows</div>
   <h2>The internal signal reads correctness better than the model reports it</h2>
@@ -859,7 +779,7 @@ Confidence: N</pre>
   <aside class="notes"><p>Sixteen cells: model by subject. The grey bar is what the model <b>says</b> — its stated confidence. The coral bar is what a probe finds it <b>knows</b>. First, the ruler — point at the equation: pick one correct attempt and one incorrect attempt at random, and ask how often the reader ranks the correct one higher; half credit for ties. Point-five is a coin flip, one is perfect.</p><p>Two properties make this the right ruler here. It uses only <i>ranks</i>, so a model that says ninety-five for everything is scored fairly rather than punished for its scale — and ties get half credit precisely because stated confidence bunches hard at ninety-five. And it's robust to class imbalance, which matters because some cells run near ninety percent one class, where raw accuracy would be meaningless. Error bars throughout are bootstrap resamples.</p><p>Now the picture: coral above grey nearly everywhere, and the math cells in the middle are the strongest — up to point-nine-five internally while the stated number barely beats chance.</p><p>[→] Precisely: the probe wins <b>twelve of sixteen</b> cells, one tie. Biggest gap on math — plus point-two-oh. Slimmest on geometry — plus point-oh-two. The exceptions, before anyone finds them for me: small-sample cells, two of them Gemma-4. The claim is twelve-of-sixteen and a decisive math gap — not a clean sweep.</p></aside>
 </section>
 
-<!-- 20 -->
+<!-- 17 -->
 <section class="slide">
   <div class="eyebrow">Result 2 · evidence for finding 1 — the gap</div>
   <h2>Math is the clearest "knows but won't say"</h2>
@@ -875,7 +795,7 @@ Confidence: N</pre>
   <aside class="notes"><p>Same data, one cut: the gap itself — internal minus stated — by domain, each dot a model. Math towers over everything, and the ordering is informative. On math, a wrong derivation <i>looks</i> exactly like a right one on the page — clean notation, no surface tell — so the stated number goes slack while the internal signal stays sharp, up to point-nine-five. Geometry sits lowest, plausibly because the task is so hard — recall, thirteen to thirty-nine percent pass — that failure is close to the default state for every attempt, which compresses the contrast the probe can find.</p><p>[→] Said plainly: on math the model demonstrably tracks whether its own steps held — and then keeps a straight face and reports ninety-five regardless. That's the knowing–saying gap at its purest.</p><p>[→] And one more clue that the knowledge is real: a trace of it leaks even into the <i>words</i>. After failed attempts — with the grader silent, zero feedback — models revise their stated confidence downward, on geometry and MMLU-Pro. Blind self-correction. The verbal channel isn't completely deaf to the internal signal; it's just far weaker and less reliable than reading the stream directly.</p></aside>
 </section>
 
-<!-- 21 -->
+<!-- 18 -->
 <section class="slide">
   <div class="eyebrow">Result 3 · evidence for finding 1 — not just difficulty</div>
   <h2>It's judging <em>this attempt</em> — not "hard question"</h2>
@@ -894,7 +814,7 @@ Confidence: N</pre>
   <aside class="notes"><p>The best objection in the room right now: “maybe the probe just learned which <i>questions</i> are hard — that's decodable too, and it isn't self-monitoring.” Fair — so we test it directly. Keep only the questions where the same model, across its five sampled attempts, sometimes succeeded and sometimes failed. Compute AUROC <b>within</b> each such question — difficulty is constant inside a question by construction — then average across questions. Anything above chance here is per-attempt information, full stop. (One statistical care: the bootstrap for these numbers resamples questions, not records, to respect the grouping.)</p><p>Coral: the probe still separates good attempts from bad, cell after cell. Red: P(True) — the model's own explicit bet on the token “True,” the strongest output-based baseline from the calibration literature — collapses toward the coin flip.</p><p>[→] GLM on MATH: probe point-eight-nine, its own bet point-four-eight. Same question, same difficulty, different attempts — the stream knows which attempt worked. That's the study's central dissociation: output-based confidence tracks the <i>question</i>; the internal signal tracks the <i>attempt</i>.</p><p>[→] The prospective/retrospective split from the protocol pays off here too. Retrospective beats prospective everywhere — on geometry, POST 0.66–0.70 versus PRE 0.52–0.62 — seeing its own work genuinely helps. And the two live at different places in the network: PRE-confidence reads peak <i>early-to-mid</i> and largely reflect difficulty decodable from the prompt (Mistral's at layer 20, Gemma's as early as layer 2), while the POST signal is chance at layer 0 and peaks mid-late — the computed self-assessment. A probe trained on POST barely transfers to PRE (0.39–0.67), and residualizing POST on PRE still leaves 0.59–0.87: two different directions, difficulty versus "did this attempt work."</p></aside>
 </section>
 
-<!-- 22 -->
+<!-- 19 -->
 <section class="slide">
   <div class="eyebrow">Result 4a · evidence for finding 2 — is the signal real?</div>
   <h2>A reader with no answer key finds it too</h2>
@@ -929,7 +849,7 @@ Confidence: N</pre>
   <aside class="notes"><p>Now the memorization objection gets its answer. The lens has never seen a grade: its direction comes from the model's own output geometry, estimated on generic text. So we have two readers with no shared evidence — different information sources, different failure modes.</p><p>On Mistral, they <b>converge</b>: the lens lands at point-seven-six to point-eight-two — probe territory — and beats what the model says out loud. When two independent instruments point at the same direction, the artifact explanations get very thin.</p><p>[→] And convergence buys a second, deeper claim. The lens reads specifically through the model's <i>output</i> machinery — the pathway that turns thoughts into words. If it can see the correctness signal, that signal is sitting in the <b>speakable</b> subspace. The model could say this out loud. It doesn't — which sets up the twist.</p></aside>
 </section>
 
-<!-- 23 -->
+<!-- 20 -->
 <section class="slide">
   <div class="eyebrow">Result 4b · evidence for finding 2 — the twist</div>
   <h2>…but label-free reading only works on dense transformers</h2>
@@ -949,7 +869,7 @@ Confidence: N</pre>
   <aside class="notes"><p>The result we didn't order. We ran the same lens on all five models — and it splits cleanly along an architectural line. Dense attention: works, point-eight-eight and point-eight-two. The Mamba hybrid: point-four-three, roughly chance. Mixture-of-Experts: point-three-one. Gemma's variant won't even fit stably.</p><p>[→] The clincher is a within-family control: same Qwen lineage, same task, one architectural change — Mamba out, dense attention in — and the lens leaps from point-four-three to <b>point-eight-eight</b>. That isolates architecture as the variable. And hold the nuance that makes this a finding rather than a failure: the supervised probe reads the signal in every matrix model, so it is present regardless of architecture. What breaks is only the label-free shortcut — which raises the real question: <i>why</i>. Next slide.</p><p>Give this slide air. The questions tend to live here.</p></aside>
 </section>
 
-<!-- 24 -->
+<!-- 21 -->
 <section class="slide">
   <div class="eyebrow">Result 4c · evidence for finding 2 — why it breaks</div>
   <h2>Why: the "average wiring" smears</h2>
@@ -986,7 +906,7 @@ Confidence: N</pre>
   <aside class="notes"><p>Why would architecture break a <i>reader</i>? Recall the fine print from the methods: the lens is one map, <b>averaged over inputs</b>. An average is only faithful when the thing being averaged doesn't vary. Dense attention has fixed weights and no routing decisions — attention patterns still vary by input, but how a change propagates to the output is stable enough that the average stays faithful: the map stays sharp, and the readout vectors for “correct” and “wrong” stay well separated, cosine similarity around point-four. MoE and Mamba re-route on <i>every input</i> — a different subset of experts, an input-dependent scan. Average a hundred different wirings and what you get is a smear.</p><p>[→] And through that smear, the two readout vectors we need collapse onto each other — cosine point-nine-six, effectively the same vector. The lens isn't failing to find the signal; the smear has erased the <i>difference between the words it reads with</i>. One caution for the write-up: this is our leading explanation, with a clear fingerprint — not yet a direct measurement. The experiment that turns it into one is on the last slide. (Plain language out loud; “Jacobian” stays in Q&A.)</p></aside>
 </section>
 
-<!-- 25 -->
+<!-- 22 -->
 <section class="slide">
   <div class="eyebrow">Result 5 · evidence for finding 3 — can we use it?</div>
   <h2>Causal for what it <em>says</em> — not what it gets <em>right</em></h2>
@@ -1007,7 +927,7 @@ Confidence: N</pre>
   <aside class="notes"><p>The finale — cause, held to the bar from the methods. Experiment one: amplify the model's own correctness signal at the read site while it states its confidence. On wrong answers, the stated number slides from about eighty down to forty-three as the gain goes one, two, four — a clean dose–response. On right answers it barely moves — ninety-seven down to eighty-nine at the top gain — so the intervention is <i>specific</i> to failures, not generic degradation. The random direction at matched strength: flat. Dampening instead of amplifying makes the model <i>more</i> overconfident — the effect flips with the sign, the third control. And the headline calibration number: expected calibration error — the average gap between claimed confidence and realized accuracy — drops from point-three-one to point-one-three. Overconfidence roughly halved, by turning up a signal the model already had.</p><p>[→] Experiment two flips the question: inject “toward correct” while it's <i>answering</i>, and try to make it right. Nothing — point-three-eight versus a point-four-one baseline, at every dose we tried.</p><p>[→] So: a gauge, not a wheel. The direction carries the model's assessment of its own work; it is not a control line that produces better work. Which is exactly what you'd want from a monitor — and it's readable.</p></aside>
 </section>
 
-<!-- 26 -->
+<!-- 23 -->
 <section class="slide center">
   <div class="eyebrow">The picture · the three questions from the title</div>
   <h2>Asked at the start — answered now</h2>
@@ -1026,7 +946,7 @@ Confidence: N</pre>
   <aside class="notes"><p>Back to the title slide — three questions, now with answers attached. [→] <b>Does the doubt exist inside?</b> Yes: a real, computed, attempt-specific correctness signal, present in every architecture we probed, sharper than anything the model says. [→] <b>Can we read it?</b> Yes: a supervised probe works on every matrix model, and on dense transformers an unsupervised reader recovers the same signal with no labels at all. [→] <b>Can we use it?</b> As a gauge: amplifying it produces honesty on demand — dose-responsive, direction-specific, calibration error halved — but the same direction cannot be pushed to produce correct answers.</p><p>[→] And the one sentence to leave the room with: the knowing–saying gap is <b>largely an access problem, not a missing capability</b>. The “I'm probably wrong” signal exists, is computed per attempt, and lives in speakable wiring — it just isn't routed to the mouth by default. That reframes the engineering problem: not teaching models self-knowledge, but connecting what's already there.</p></aside>
 </section>
 
-<!-- 27 -->
+<!-- 24 -->
 <section class="slide">
   <div class="eyebrow">Discussion · where we'd love your take</div>
   <h2>Open questions for the team</h2>

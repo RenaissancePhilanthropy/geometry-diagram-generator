@@ -1,6 +1,6 @@
 # Speaker script — "Do models know when they're wrong?"
 
-Companion to `slides/metacognition_progress.html` (**27 slides**). Open the deck in a browser.
+Companion to `slides/metacognition_progress.html` (**24 slides**). Open the deck in a browser.
 **→ reveals / advances · ← steps back · `#N` in the URL jumps to slide N · press **N** to toggle the hidden on-screen notes (full spoken narration per slide; this file adds staging, Q&A and the numbers).**
 
 **Two-screen presenting:** press **P** in the deck to open the presenter console in a
@@ -9,7 +9,7 @@ shows slide count + build progress, an elapsed timer (click to reset) and wall c
 current slide's full notes, and a one-line preview of the next slide. Arrow keys work in
 *either* window and both stay in sync; ‹ › buttons in the console also navigate. If the
 browser blocks the popup, the deck falls back to the on-screen N-notes overlay.
-Present time ~25–30 min + discussion.
+Present time ~22–27 min + discussion.
 
 The slides carry the diagrams plus a line of method detail each (the update equation, the
 read/write equations, the probe's logistic-regression line, the Jacobian line, the amplify-gain
@@ -21,7 +21,7 @@ then reveal.
 **Audience:** the team, including people new to mech-interp. Goal: they follow every step,
 believe the results, and steer the next phase.
 
-**The three things they should leave with** (these are literally slide 11):
+**The three things they should leave with** (these are literally slide 10):
 1. **It knows.** Models internally track their own correctness better than they say — sharpest on
    math (probe wins 12 of 16 model×subject cells).
 2. **You can read it** — even without labels, on dense transformers; MoE and Mamba break the
@@ -97,7 +97,11 @@ highlighted row: "our method is: read the right row at the right moment."
 directly. That's mechanistic interpretability — and you'll need exactly one piece of background
 and three tools, coming up."
 
-### Slide 5 — The residual stream, end to end (mech-interp 101, 1/3)
+---
+
+## Act II — The machine, the toolkit, the findings (slides 5–10)
+
+### Slide 5 — The residual stream, end to end (mech-interp 101, 1/2)
 "The whole machine, left to right. The model chops text into **tokens**. Each token becomes a
 **vector** — for our models, between 4,096 and 5,120 numbers. Then every layer does the same
 simple thing: **read** the running vector, compute something (attention plus a small feed-forward
@@ -111,34 +115,23 @@ them is possible."
 
 `[→]` "That running total is the **residual stream** — the name is literal, each layer adds a
 residual on top. Think: the model's working memory. That's the thing we read, everywhere in this
-talk."
-
-`[→]` "And the key empirical fact: ideas live in that stream as **directions**. There's a
+talk. And the key empirical fact: ideas live in that stream as **directions**. There's a
 direction for 'this is a midpoint' — and, it turns out, one that tracks 'I am about to be wrong.'
 Finding and testing that direction is the project."
+
+`[→]` "One structural fact to carry forward: every token has its **own** stream, and **attention**
+is the *only* place information crosses between them — in each block the current token pulls a
+weighted summary of the earlier tokens' streams into its own column; the MLP then computes on each
+token separately, no cross-talk. Two consequences: whatever sits at our fixed read token had to be
+**routed there by computation** — at layer 0 that column is just the word, which is why the
+layer-0 check later has teeth — and attention keeps depositing summaries of the whole attempt into
+the current column, so one token's vector really can hold 'how is this attempt going?' One token,
+one depth, all ~5,000 numbers — that's the entire read operation of the study."
 
 If someone wants math: a direction is a unit vector u; its amount in the state h is the dot
 product u·h. Q&A only.
 
-### Slide 6 — Inside one block (mech-interp 101, 2/3)
-Open the box before anyone asks. Every token has its own stream — one row per token in the
-diagram — and a block touches them in two steps:
-
-"① **Attention**: the current token takes a weighted summary of the *other* tokens' streams and
-adds it into its own column. This is the **only** place in the whole architecture where
-information crosses between tokens. ② The **MLP**: a small network applied to each token
-separately — no cross-talk — where stored patterns and facts fire. Both write back by addition."
-
-Point at the coral circle: `[→]` "And this is the entire read operation of the study: one token,
-one depth, all ~5,000 numbers. When I say 'the probe reads the stream,' I mean literally this
-column. Attention keeps depositing summaries of the attempt into it — that's why a single vector
-can hold 'how is this going?'"
-
-Q&A ammo: layer-0-at-chance works *because* attention is the only cross-token channel — at
-layer 0 the confidence token is just the words "Confidence:"; problem info can only arrive by
-computed routing.
-
-### Slide 7 — Read, then poke (mech-interp 101, 3/3)
+### Slide 6 — Read, then poke (mech-interp 101, 2/2)
 "Three tools; everything you'll see is one of them. **Probe**: save thousands of residual-stream
 snapshots, label each attempt right/wrong with our external grader, train a small classifier to
 find the separating direction. Powerful — but it sees the answer key, so it could be accused of
@@ -150,7 +143,7 @@ generates, watch what changes."
 only steering proves the model uses it. The next three slides show exactly how each tool works —
 then you can judge the results yourself."
 
-### Slide 8 — Method: the probe, up close
+### Slide 7 — Method: the probe, up close
 "The probe is the workhorse behind the headline results, so here's exactly what it is — and the
 guardrails around it. Step one: thousands of graded snapshots. One residual-stream vector per
 attempt, taken at the confidence token, paired with the external grade — right or wrong. Step
@@ -170,7 +163,7 @@ see. **No surface cues**: identical wording on every item, and layer 0 decodes a
 'memorized.' So every probe claim in this talk gets an honest second witness. That's the next
 slide."
 
-### Slide 9 — Method: how the lens reads without labels
+### Slide 8 — Method: how the lens reads without labels
 Walk left to right, slowly — this slide buys you the architecture twist later.
 
 "Step one: a mid-stream vector, layer ~20. Not words yet. Step two, the **phrasebook** — and
@@ -193,7 +186,7 @@ Q&A ammo: fit ≈ one GPU-day of backward passes; readouts are a 15 MB file; sco
 dataset afterwards is dot products on a laptop. Averaged-map caveat: it can miss gated signal,
 never hallucinate it.)"
 
-### Slide 10 — Method: how steering works
+### Slide 9 — Method: how steering works
 "Steering: while the model generates, token by token, add α times the direction u into the
 residual stream at one layer, and let it keep going. α is the dose. Then watch downstream: what
 it says, and whether it's right."
@@ -208,7 +201,7 @@ last result to."
 
 ---
 
-### Slide 11 — The findings (stated directly, with evidence)
+### Slide 10 — The findings (stated directly, with evidence)
 The audience now knows exactly what a probe, lens and steering vector are — the findings land on prepared ground. The headline claim is the slide title: models track their own correctness better than they report
 it. Reveal the three findings one at a time — each carries its key number:
 
@@ -229,13 +222,9 @@ audience a map; every later result slide pays one of these off.
 
 ---
 
-## Act II — The machine, the toolkit, the findings (slides 5–11)
+## Act III — The experiment (slides 11–15)
 
----
-
-## Act III — The experiment (slides 12–18)
-
-### Slide 12 — The setup: five models, four domains
+### Slide 11 — The setup: five models, four domains
 The methodology roster, in one place — give it a beat, it's what makes Finding 2 a controlled
 comparison rather than an anecdote.
 
@@ -254,29 +243,26 @@ model × domain cells. One seed per cell; CIs cover item sampling, not seed vari
 If asked why these sizes: largest open models that fit our capture pipeline on rented
 single-node GPUs; the 4×4 matrix is the unit of every claim that follows.
 
-### Slide 13 — Testbed 1: a compiler as the judge
+### Slide 12 — The testbeds: compiler-graded geometry + exams chosen by failure rate
 "To study 'knows it's wrong,' you need an unimpeachable 'wrong.' Testbed one: our geometry
 benchmark. The model writes a small geometry program; a symbolic compiler checks it — parse,
 compile, verify every required property, tangency, perpendicularity, all of it. Pass everything
-or fail at a specific stage."
+or fail at a specific stage. Exact — no human judge, no LLM judge. And hard on purpose: 13 to 39
+percent pass."
 
-`[→]` "Exact — no human judge, no LLM judge. And hard on purpose: 13 to 39 percent pass.
-Metacognition research is failure-hungry — a model that's never wrong can't show you whether it
-knows it's wrong."
-
-### Slide 14 — Testbed 2: QA, chosen by failure rate
 "For breadth: standard exams, picked the same way — by failure rate. MMLU-Pro, competition MATH,
 GPQA-Diamond stay. GSM8K and MedQA dropped — 90-95% pass, nothing to study. Grading is strict:
 validated letter-extraction; MATH by symbolic equivalence, so ½, 0.5, and \\frac{1}{2} all count."
 
-`[→]` "On the record: our first MATH grader marked correct answers wrong over formatting. A
-planned audit caught it; we fixed it and re-graded everything. Every cell: zero extraction
-failures, plus manual spot-checks. If your project is 'does the model know it's wrong,' your own
-ground truth better be right."
+`[→]` "Metacognition research is failure-hungry — a model that's never wrong can't show you
+whether it knows it's wrong. And on the record: our first MATH grader marked correct answers
+wrong over formatting. A planned audit caught it; we fixed it and re-graded everything. Every
+cell: zero extraction failures, plus manual spot-checks. If your project is 'does the model know
+it's wrong,' your own ground truth better be right."
 
 Don't skip the audit anecdote — it buys trust for everything after.
 
-### Slide 15 — Three turns, and the grader never tells
+### Slide 13 — Three turns, and the grader never tells
 "The protocol, per question. **Turn 1, pre-task**: 'how confident are you that you *will* get
 this right?' One line, no reasoning. **Turn 2**: solve it — reasoning allowed here only.
 **Turn 3, post-task**: 'how confident are you that your answer *is* correct?' One line."
@@ -285,14 +271,15 @@ this right?' One line, no reasoning. **Turn 2**: solve it — reasoning allowed 
 No 'correct!' ever enters the chat. So if confidence drops after a failed attempt, that came from
 inside."
 
-### Slides 16 & 17 — The exact prompts, verbatim
-"The receipts — verbatim prompts, no trickery. Confidence turns demand exactly one line,
-'Confidence: N', 0 to 100. For hybrid reasoners — Qwen3.6, GLM — extended thinking is ON for the
-attempt, OFF for both confidence turns: best-effort answers, snap-judgment confidence."
+### Slide 14 — The exact prompts, verbatim
+"The receipts — verbatim prompts, no trickery, all three turns on one slide. Confidence turns
+demand exactly one line, 'Confidence: N', 0 to 100 — and the pre-task turn ends 'do NOT answer
+yet.' For hybrid reasoners — Qwen3.6, GLM — extended thinking is ON for the attempt, OFF for both
+confidence turns: best-effort answers, snap-judgment confidence."
 
-20 seconds each; they exist to be checkable.
+20 seconds; it exists to be checkable.
 
-### Slide 18 — Where we read the residual stream
+### Slide 15 — Where we read the residual stream
 "Last setup slide — the bridge to results. We read the residual stream at one fixed spot: the
 token about to emit the confidence number, turn 3. Identical wording every question, so phrasing
 can't leak the answer."
@@ -306,9 +293,9 @@ here."
 
 ---
 
-## Act IV — The results (slides 19–25)
+## Act IV — The results (slides 16–22)
 
-### Slide 19 — Result 1: internal beats stated (pays off "It knows")
+### Slide 16 — Result 1: internal beats stated (pays off "It knows")
 "The core result, one picture. Each pair of bars: one model, one subject — 16 cells, five models,
 four domains. Grey: how well the model's *stated* confidence separates its right answers from its
 wrong ones. Coral: how well a probe on its *residual stream* does."
@@ -326,7 +313,7 @@ largest on math, +0.20 average; slimmest on geometry, +0.02. The exceptions, bef
 them: three cells, two of them Gemma-4, all small-n. The finding is the 12-of-16 sweep and the
 math gap — not a clean sweep. Survives every control."
 
-### Slide 20 — Result 2: math is the purest knowing-but-not-saying
+### Slide 17 — Result 2: math is the purest knowing-but-not-saying
 "Same data, cut by domain: this is the gap itself, internal minus stated; each dot a model. Math
 towers."
 
@@ -339,7 +326,7 @@ attempts — grader silent, zero feedback — models revise their stated confide
 geometry and MMLU-Pro. Blind self-correction. The verbal channel isn't deaf; it's just far
 weaker than reading the stream."
 
-### Slide 21 — Result 3: it's judging this attempt, not "hard question"
+### Slide 18 — Result 3: it's judging this attempt, not "hard question"
 "The obvious objection: maybe it just senses 'hard topic' and states lower confidence there —
 that's not self-monitoring. Kill it: keep only questions the model sometimes gets right and
 sometimes wrong across repeats. Difficulty fixed; the only variable left is *this attempt*."
@@ -356,10 +343,10 @@ PRE 0.52–0.62) — and they're different *directions*: PRE peaks early/mid and
 prompt difficulty; POST is chance at layer 0, peaks mid-late, and barely transfers to PRE
 (0.39–0.67). Difficulty and 'did this attempt work' are separate representations."
 
-### Slide 22 — Result 4a: a reader with no answer key finds it too (pays off "You can read it")
+### Slide 19 — Result 4a: a reader with no answer key finds it too (pays off "You can read it")
 "Skeptic's turn: 'your probe saw labels — it memorized your dataset.' Hence the lens. Two
 independent witnesses: the probe, trained on thousands of graded attempts — and the lens from
-slide 9, which never sees a single label and derives the 'am I right' direction from the model's
+slide 8, which never sees a single label and derives the 'am I right' direction from the model's
 own wiring. If the probe were memorizing, they'd have no reason to agree."
 
 "On Mistral they converge: lens 0.76–0.82, on par with the probe, beating stated confidence."
@@ -368,7 +355,7 @@ own wiring. If the probe were memorizing, they'd have no reason to agree."
 **speakable** wiring. The pathway that turns thoughts into words knows about it. The model
 *could* say this. It doesn't."
 
-### Slide 23 — Result 4b, the twist: dense-only
+### Slide 20 — Result 4b, the twist: dense-only
 "Then it got interesting. Same lens, five models — and it splits exactly on architecture." Walk
 the table: "Dense attention: works — 0.88, 0.82. Mamba hybrid: fails, 0.43. Mixture-of-Experts:
 fails, 0.31. Gemma's variant won't even build."
@@ -383,7 +370,7 @@ Freshest slide; give it air. Questions cluster here.
 Practical takeaway to say out loud: "field rule — on a dense transformer you can trust a
 label-free readout; on MoE or Mamba, bring a trained probe."
 
-### Slide 24 — Result 4c: why it breaks
+### Slide 21 — Result 4c: why it breaks
 "Why would architecture break a reader? Remember the lens's phrasebook — one map, **averaged over
 inputs**. That's faithful only if the wiring is the same for every input. Dense attention: one
 fixed wiring — the average of one thing is that thing; sharp. 'Correct' and 'wrong' point apart —
@@ -394,8 +381,8 @@ many different wirings and you get a **smear**."
 0.96. The lens isn't missing the signal; the smear destroyed its ability to tell the two words
 apart. Keep it plain-language here; 'Jacobian' lives in Q&A."
 
-### Slide 25 — Result 5: gauge, not wheel (pays off finding 3)
-"The causal one. Steering, exactly as slide 10, all three controls. Experiment one: amplify the
+### Slide 22 — Result 5: gauge, not wheel (pays off finding 3)
+"The causal one. Steering, exactly as slide 9, all three controls. Experiment one: amplify the
 model's own signal at the reading site, watch what it *says*. The chart: on wrong answers, stated
 confidence falls 80 → 65 → 43 as the gain goes 1 → 2 → 4 — it gets honest about failing. On correct answers (97 → 96 → 89),
 barely moves. Random direction: flat. Dose-dependent, direction-specific; calibration error
@@ -409,9 +396,9 @@ honest; you can't nudge it into being right. Being right takes the actual reason
 
 ---
 
-## Act V — Landing (slides 26–27)
+## Act V — Landing (slides 23–24)
 
-### Slide 26 — Asked at the start, answered now
+### Slide 23 — Asked at the start, answered now
 The closing loop: the three questions from the title slide come back as three verdict cards.
 
 `[→]` "**Does the doubt exist inside?** Yes — a real, computed, per-attempt correctness signal,
@@ -424,7 +411,7 @@ transformers."
 `[→]` "And the sentence to leave with: the knowing–saying gap is largely an **access problem,
 not a missing capability** — the signal exists; it just isn't routed to the mouth."
 
-### Slide 27 — Open questions (discussion)
+### Slide 24 — Open questions (discussion)
 One at a time; each is a real ask:
 
 `[→]` "**Close the gap.** Route the internal signal to the output — 'knows it's wrong' becomes
@@ -440,14 +427,14 @@ Genuinely torn. Open floor."
 ## Anticipated questions
 
 - **"Isn't 'internal beats stated' just probe overfitting?"** — That's why the lens matters
-  (slide 20): a reader that never sees labels finds the same signal on dense models. And probe
+  (slide 19): a reader that never sees labels finds the same signal on dense models. And probe
   scores are out-of-fold with question-grouped splits — no question in both train and test.
 - **"Best-layer cherry-picking?"** — Fixed relative depth (~0.7 through the network), not best
   layer per cell. (Our first matrix used best-layer and was mildly optimistic; fixed-depth is
   what's shown.)
 - **"Why does the lens fail on MoE/Mamba when the probe doesn't?"** — The probe reads in place;
   the lens must *transport* the activation to the output through one averaged map, and MoE/Mamba
-  make the true map input-dependent — the average smears (slide 22).
+  make the true map input-dependent — the average smears (slide 21).
 - **"What exactly is the lens's map?"** — The average Jacobian of final logits w.r.t. the
   mid-layer residual, estimated over generic text; the correctness direction = mapped-back
   ok-words minus fail-words. We validate the map by checking it reproduces the model's real
@@ -463,7 +450,7 @@ Genuinely torn. Open floor."
   improve it.
 - **"P(True)?"** — The model's own explicit bet: the probability it assigns the token "True" when
   asked if its answer is correct. Within-question it sits at ~chance while the probe holds
-  0.7–0.89 (slide 19).
+  0.7–0.89 (slide 18).
 - **Caveats to volunteer:** geometry steering cells underpowered (n≈50, pass rates near floor);
   dense-Qwen control is one task so far (MATH); smear mechanism evidenced by the readout collapse
   (fingerprint), not yet a direct per-input variance measurement.
