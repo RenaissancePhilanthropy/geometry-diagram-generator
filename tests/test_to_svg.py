@@ -22,6 +22,7 @@ from geometry_diagrams.ir.ir import (
     MarkRightAngles,
     MarkSegments,
     PointFixed,
+    Ray,
     Segment,
     Triangle,
     CircleCenterPoint,
@@ -1626,6 +1627,54 @@ def test_arrow_style_both_adds_both_markers():
     assert len(seg_lines) == 1
     assert seg_lines[0].get("marker-end") == "url(#arrowhead)"
     assert seg_lines[0].get("marker-start") == "url(#arrowhead-start)"
+
+
+def test_arrow_style_colored_segment_gets_matching_marker_fill():
+    """A colored arrow style must produce an arrowhead in that same color, not black."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="seg", a="A", b="B"),
+        ],
+        styles={"arr": {"->": True, "color": "blue"}},
+        render=[Draw(obj="seg", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    seg_line = [l for l in lines if l.get("data-type") == "segment"][0]
+    assert seg_line.get("stroke") == "blue"
+    marker_url = seg_line.get("marker-end")
+    marker_id = marker_url[len("url(#"):-1]
+    markers = {m.get("id"): m for m in _findall(root, "marker")}
+    assert marker_id in markers
+    path = _findall(markers[marker_id], "path")[0]
+    assert path.get("fill") == "blue"
+
+
+def test_arrow_style_colored_ray_gets_matching_marker_fill():
+    """Rays support the same color-matched arrowhead as segments."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=1),
+            Ray(id="r", a="A", b="B"),
+        ],
+        styles={"arr": {"->": True, "color": "red"}},
+        render=[Draw(obj="r", style="arr")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    lines = _findall(root, "line")
+    ray_line = [l for l in lines if l.get("data-type") == "ray"][0]
+    assert ray_line.get("stroke") == "red"
+    marker_url = ray_line.get("marker-end")
+    marker_id = marker_url[len("url(#"):-1]
+    markers = {m.get("id"): m for m in _findall(root, "marker")}
+    assert marker_id in markers
+    path = _findall(markers[marker_id], "path")[0]
+    assert path.get("fill") == "red"
 
 
 # ---------------------------------------------------------------------------

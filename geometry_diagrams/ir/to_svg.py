@@ -360,7 +360,7 @@ def _emit_svg_op(
                 _warn(warnings, f"Skipping Draw for undefined object '{obj_id}'")
                 return
             sym_obj = sym[obj_id]
-            attrs = _stroke_attrs(style, styles)
+            attrs = _stroke_attrs(style, styles, svg)
 
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = poly_verts(obj_id, stmt_by_id)
@@ -1670,7 +1670,60 @@ def _color_from_style(style_key: str | None, styles: dict) -> str | None:
     return None
 
 
-def _stroke_attrs(style_key: str | None, styles: dict) -> dict[str, str]:
+def _slugify_color(color: str) -> str:
+    """Turn a CSS color string into a safe SVG id fragment."""
+    return re.sub(r"[^a-zA-Z0-9]+", "-", color.strip()).strip("-").lower() or "black"
+
+
+def _ensure_colored_arrow_marker(svg: ET.Element | None, color: str, *, start: bool) -> str:
+    """Ensure a marker whose arrowhead fill matches ``color`` exists in <defs>; return its id.
+
+    Arrowheads must match the line's stroke color — a black arrowhead on a
+    colored line reads as a rendering glitch and defeats color-based
+    differentiation for colorblind viewers who rely on line color as the
+    distinguishing cue rather than position alone.
+    """
+    base = "arrowhead-start" if start else "arrowhead"
+    if color == "black":
+        return base
+    marker_id = f"{base}-{_slugify_color(color)}"
+    if svg is None:
+        return marker_id
+
+    defs = svg.find("{http://www.w3.org/2000/svg}defs")
+    if defs is None:
+        defs = svg.find("defs")
+    if defs is None:
+        defs = ET.SubElement(svg, "defs")
+        svg.remove(defs)
+        svg.insert(0, defs)
+
+    for child in defs:
+        if child.get("id") == marker_id:
+            return marker_id
+
+    if start:
+        marker = ET.SubElement(defs, "marker", {
+            "id": marker_id,
+            "markerWidth": "8", "markerHeight": "6",
+            "refX": "0", "refY": "3",
+            "orient": "auto-start-reverse",
+        })
+    else:
+        marker = ET.SubElement(defs, "marker", {
+            "id": marker_id,
+            "markerWidth": "8", "markerHeight": "6",
+            "refX": "8", "refY": "3",
+            "orient": "auto",
+        })
+    ET.SubElement(marker, "path", {
+        "d": "M 0 0 L 8 3 L 0 6 Z",
+        "fill": color,
+    })
+    return marker_id
+
+
+def _stroke_attrs(style_key: str | None, styles: dict, svg: ET.Element | None = None) -> dict[str, str]:
     """Return SVG attribute dict for stroke styling."""
     attrs: dict[str, str] = {"stroke": "black", "stroke-width": "1.5"}
     if not style_key:
@@ -1688,9 +1741,11 @@ def _stroke_attrs(style_key: str | None, styles: dict) -> dict[str, str]:
         if "dotted" in d and d["dotted"] is True:
             attrs["stroke-dasharray"] = "2,3"
         if d.get("->") is True or d.get("<->") is True:
-            attrs["marker-end"] = "url(#arrowhead)"
+            end_id = _ensure_colored_arrow_marker(svg, attrs["stroke"], start=False)
+            attrs["marker-end"] = f"url(#{end_id})"
         if d.get("<-") is True or d.get("<->") is True:
-            attrs["marker-start"] = "url(#arrowhead-start)"
+            start_id = _ensure_colored_arrow_marker(svg, attrs["stroke"], start=True)
+            attrs["marker-start"] = f"url(#{start_id})"
         return attrs
     if style_key in _CSS_COLOR_NAMES:
         attrs["stroke"] = style_key

@@ -588,6 +588,40 @@ Apply visual styling to an object.
 | `fill`   | string | "none" (default), "light", "accent_light"|
 | `weight` | string | "normal" (default), "thin", "thick"      |
 
+### Draws and arrowheads
+
+`annotations.draws` is a list of explicit draw directives, each targeting an
+existing object (`obj`) or a vertex-pair shorthand (`endpoints`):
+
+```json
+{"obj": "ray1", "style": {"color": "blue", "->": true}}
+```
+
+`style` accepts either a named key into `annotations.styles`, a bare color
+name, or an inline dict. Recognized style keys:
+
+| Key       | Type   | Effect                                          |
+|-----------|--------|--------------------------------------------------|
+| `color`   | string | Stroke/fill color                                |
+| `thick` / `thin` | bool | Stroke weight                             |
+| `dashed` / `dotted` | bool | Dash pattern                           |
+| `->`      | bool   | Arrowhead at the object's end point               |
+| `<-`      | bool   | Arrowhead at the object's start point             |
+| `<->`     | bool   | Arrowheads at both ends                           |
+
+Arrowheads work on `segment` and `ray` objects (and any other line-like
+draw). The arrowhead is always filled with the same color as the stroke —
+a `ray` drawn with `{"color": "red", "->": true}` gets a red line and a red
+arrowhead, not a black one, so line color remains a reliable cue on its own
+(important for viewers who can't distinguish lines by position alone).
+
+```json
+{"op": "ray", "id": "r1", "from": "A", "through": "B"}
+```
+```json
+{"obj": "r1", "style": {"color": "red", "->": true}}
+```
+
 ---
 
 ## Recipe Format
