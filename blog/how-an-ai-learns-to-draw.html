@@ -167,20 +167,21 @@
   <div class="wrap prose">
     <p class="eyebrow">From the workshop · how the diagrams get made</p>
     <h1>The AI doesn't draw.<br>It writes <span class="pen">recipes</span>.</h1>
-    <p class="dek">How we get trustworthy geometry diagrams out of a language model — by never letting it guess where anything goes.</p>
-    <p class="byline">geometry diagram generator · a plain-language tour of the generation pipeline</p>
+    <p class="dek">Students need an endless supply of <i>correct</i> geometry diagrams. AI can produce endless diagrams — just not correct ones. Here's how we closed that gap.</p>
+    <p class="byline">geometry diagram generator · a plain-language tour of the problem, our solution, and what it unlocks</p>
   </div>
 </header>
 
 <main class="wrap">
   <div class="prose">
-    <p style="margin-top:2.2em">Ask an image-generating AI for <i>“a right triangle with a circle passing through all three corners”</i> and you'll get something that looks confident and is wrong: a triangle with a suspiciously bent side, a circle that grazes two corners and politely ignores the third, a stray label floating in space.</p>
-    <p>For most uses of AI images, that's fine — nobody checks the shadows in a fantasy landscape. But we make <b>practice materials for learning math</b>, and a geometry diagram is the one kind of picture where <i>almost right</i> is worse than nothing. A student who practices on a diagram whose “right angle” is 78° isn't just unhelped. They're mis-taught.</p>
-    <p>So we built a system where the AI never touches a pixel, never places a point, and never estimates an angle. Here's the trick.</p>
+    <h2 style="margin-top:1.6em"><span class="no">1.</span>The problem: learning math takes diagrams, and good ones don't scale</h2>
+    <p>Mastering geometry takes practice, and geometry practice runs on diagrams. Every problem a student works needs an accurate figure; every skill needs many problems; every student, ideally, needs fresh ones. Today those figures are made the way they were made fifty years ago — an expert hand-places every point and double-checks every angle. It's careful, skilled, slow work. The result is that high-quality practice material is <b>scarce and expensive</b>, and the students with the least access to it are the ones who need it most.</p>
+    <p>The obvious modern answer is generative AI — and it fails in a specific, instructive way. Ask an image model for <i>“a right triangle with a circle passing through all three corners”</i> and you get something confident and wrong: a bent side, a circle that grazes two corners and ignores the third. For most AI images that's harmless. For learning materials it's disqualifying, because a geometry diagram is the one kind of picture where <i>almost right</i> is worse than nothing. A student who practices on a figure whose “right angle” is actually 78° isn't just unhelped — they're <b>mis-taught</b>.</p>
+    <p>So the real problem isn't “can AI draw?” It's: <b>can AI produce diagrams a teacher never has to proofread?</b> That's the bar this program was built to clear. Here's how.</p>
 
-    <h2><span class="no">1.</span>Don't ask for the picture. Ask for the recipe.</h2>
-    <p>Think about how you'd give someone directions to your house. You wouldn't paint them a picture of the route from memory — you'd write instructions: <i>left at the bakery, second right, gray door.</i> The instructions are short, checkable, and someone (or something) reliable can follow them exactly.</p>
-    <p>That's what our language model produces: not a drawing, but a <b>construction recipe</b> — the same kind of step-by-step build you'd do with a compass and straightedge in geometry class. “Make a triangle with a right angle here. Mark the midpoint of that side. Draw the circle centered there, through this corner.”</p>
+    <h2><span class="no">2.</span>Our solution: don't ask the AI for the picture — ask it for the recipe</h2>
+    <p>Think about how you'd give someone directions to your house. You wouldn't paint the route from memory — you'd write instructions: <i>left at the bakery, second right, gray door.</i> Instructions are short, checkable, and someone reliable can follow them exactly.</p>
+    <p>That's the core of our approach. The AI never touches a pixel, never places a point, never estimates an angle. It produces a <b>construction recipe</b> — the same step-by-step build a student would do with compass and straightedge. “Make a triangle with a right angle here. Mark the midpoint of that side. Draw the circle centered there.”</p>
     <p>Step through a real one:</p>
   </div>
 
@@ -229,11 +230,11 @@
   </section>
 
   <div class="prose">
-    <h2><span class="no">2.</span>The math does the measuring</h2>
-    <p>A recipe still has to be carried out. We hand it to a <b>computer algebra system</b> — software that does geometry the way your most pedantic classmate does: with exact arithmetic and zero imagination. Given “the midpoint of A and C,” it doesn't eyeball the middle. It computes it, to as many digits as you like.</p>
-    <p>This is the load-bearing division of labor in the whole system:</p>
-    <div class="aside"><b>The language model supplies intent.</b> The algebra system supplies precision. Neither is asked to do the other's job.</div>
-    <p>Every coordinate in the final diagram comes out of the math engine, never out of the AI. Which matters, because language models asked to place points directly do what a person sketching from memory does — they get it <i>plausibly, confidently, slightly wrong:</i></p>
+    <h2><span class="no">3.</span>The math does the measuring, not the AI</h2>
+    <p>A recipe still has to be carried out. We hand it to a <b>computer algebra system</b> — software that does geometry with exact arithmetic and zero imagination. Given “the midpoint of A and C,” it doesn't eyeball the middle. It computes it, to as many digits as you like.</p>
+    <p>This division of labor is the load-bearing wall of the whole program:</p>
+    <div class="aside"><b>The AI supplies intent.</b> The mathematics supplies precision. Neither is asked to do the other's job.</div>
+    <p>Every coordinate in a finished diagram comes from the math engine, never from the AI. That matters because an AI asked to place points directly behaves like a person sketching from memory — <i>plausibly, confidently, slightly wrong:</i></p>
   </div>
 
   <!-- ── TRY IT 2: guess vs recipe ───────────────────────────── -->
@@ -282,9 +283,9 @@
   </section>
 
   <div class="prose">
-    <h2><span class="no">3.</span>Every diagram gets graded before you see it</h2>
-    <p>Here's our favorite part. A geometry question doesn't just describe a picture — it makes <b>promises</b>. “M is the midpoint.” “The lines are parallel.” “The angle is 90°.” Each promise is something you can measure.</p>
-    <p>So the system extracts every promise from the recipe and verifies it against the computed geometry, numerically, before the diagram ships. We call it what your teacher called it: <b style="color:var(--redpen)">the red pen</b>. If any check fails, the diagram is rejected and the AI gets its homework back — <i>redo it, here's what was wrong</i> — until every promise holds or we give up honestly.</p>
+    <h2><span class="no">4.</span>Every diagram is graded before a student ever sees it</h2>
+    <p>This is the part that turns “AI-generated” into “trustworthy.” A geometry question doesn't just describe a picture — it makes <b>promises</b>. “M is the midpoint.” “The lines are parallel.” “The angle is 90°.” Each promise is something software can measure.</p>
+    <p>So the system extracts every promise from the recipe and verifies it against the computed geometry, numerically, before the diagram ships. We call it what your teacher called it: <b style="color:var(--redpen)">the red pen</b>. If any check fails, the diagram is rejected and the AI gets its homework back — <i>redo it, here's what was wrong</i> — until every promise holds or the system declines to ship, honestly. No diagram reaches a student on “looks fine to us.”</p>
     <p>You can be the red pen yourself:</p>
   </div>
 
@@ -316,8 +317,8 @@
   </section>
 
   <div class="prose">
-    <h2><span class="no">4.</span>The whole assembly line</h2>
-    <p>Put together, a diagram request moves through five stations. Click each one:</p>
+    <h2><span class="no">5.</span>The whole assembly line</h2>
+    <p>Put together, a request moves through five stations — with a quality gate that sends failing work back. Click each one:</p>
   </div>
 
   <!-- ── pipeline map ────────────────────────────────────────── -->
@@ -330,12 +331,13 @@
   </section>
 
   <div class="prose">
-    <h2><span class="no">5.</span>Why go to all this trouble?</h2>
-    <p>Because it changes what you're allowed to trust. A diagram from this pipeline isn't “AI-generated, looks good to us” — it arrives with a <b>receipt</b>: the list of promises it made and the measurements proving it kept them. That's a different category of artifact. It can go in front of a student unsupervised.</p>
-    <p>It also changes what you can build. If every diagram grades itself, you can generate <i>thousands</i> — a practice set for every skill, a fresh variant for every student, an entire test bank — and machine-check the lot, reserving human eyes for the judgment calls software can't make. (We also released a public benchmark built on this idea: 801 geometry prompts where the properties of a correct diagram are machine-checkable, so anyone can measure how well <i>any</i> AI system draws.)</p>
-    <p>The deeper principle travels beyond geometry, and it's the one we'd tattoo on the project if projects had arms:</p>
+    <h2><span class="no">6.</span>The impact: what verified generation makes possible</h2>
+    <p><b>It changes what you're allowed to trust.</b> A diagram from this pipeline isn't “AI-generated, looks good to us” — it arrives with a <b>receipt</b>: the list of promises it made and the measurements proving it kept them. That's a different category of artifact. It can go in front of a student without a proofreading pass, which is exactly the property hand-made materials can't scale and unverified AI can't offer.</p>
+    <p><b>It changes the economics of practice.</b> When every diagram grades itself, the cost of a verified figure drops from expert-minutes to machine-seconds. A practice set for every skill, a fresh variant for every student, a full item bank for a course — generated in an afternoon and machine-checked end to end, with human judgment reserved for what software can't assess: whether a problem is pedagogically <i>worth asking</i>.</p>
+    <p><b>It gives the field a yardstick.</b> We released the idea as a public benchmark — 801 geometry problems where the properties of a correct diagram are machine-checkable — so anyone can measure, rather than eyeball, how well any AI system draws. Progress on this problem is now visible to everyone, not just to us.</p>
+    <p>And the principle underneath travels well beyond geometry:</p>
     <div class="aside redline"><b>Let the AI propose; let the math verify.</b> Generative models are marvelous at intent and unreliable at precision — so route the precision through machinery that cannot fudge, and check every promise before anyone learns from it.</div>
-    <p>That's the generation component. The AI writes the recipe, the algebra follows it exactly, and the red pen grades everything — every single time.</p>
+    <p>That's the generation component: the AI writes the recipe, the mathematics follows it exactly, and the red pen grades everything — every single time, for every single student.</p>
   </div>
 
   <footer class="prose">
