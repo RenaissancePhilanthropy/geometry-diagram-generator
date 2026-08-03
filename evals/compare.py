@@ -114,6 +114,46 @@ def _avg_duration(records: list[dict]) -> float:
     return sum(durations) / len(durations) if durations else 0.0
 
 
+# ---------------------------------------------------------------------------
+# Error taxonomy (for failing gate_status records)
+# ---------------------------------------------------------------------------
+
+_ERROR_PATTERNS: list[tuple[str, str]] = [
+    ("requires exactly one form", "malformed_op_missing_params"),
+    ("references undefined id", "undefined_id_reference"),
+    ("Circular dependency", "circular_dependency"),
+    ("timed out", "timeout"),
+    ("needs at least", "insufficient_constraints"),
+    ("discriminator", "schema_tag_mismatch"),
+]
+
+
+def classify_error(record: dict) -> str | None:
+    """Bucket a failing record's error text into a coarse taxonomy label.
+
+    Returns None for records that aren't failures (no error to classify).
+    Patterns are matched in order; add new ones here as new recurring
+    failure modes are identified rather than re-deriving them ad hoc.
+    """
+    if record.get("gate_status") == "pass":
+        return None
+    error = record.get("error") or ""
+    for needle, label in _ERROR_PATTERNS:
+        if needle in error:
+            return label
+    return "other" if error else "unknown"
+
+
+def error_taxonomy(records: list[dict]) -> dict[str, int]:
+    """Count failing records by error taxonomy label."""
+    counts: dict[str, int] = defaultdict(int)
+    for r in records:
+        label = classify_error(r)
+        if label is not None:
+            counts[label] += 1
+    return dict(counts)
+
+
 def _tikz_check_pass_rate(records: list[dict]) -> float | None:
     all_checks = []
     for r in records:
@@ -235,6 +275,10 @@ def compare_runs(
         "scenarios": scenario_deltas,
         "tiers": _compare_grouped(baseline_by_tier, candidate_by_tier),
         "benchmarks": _compare_grouped(baseline_by_benchmark, candidate_by_benchmark),
+        "error_taxonomy": {
+            "baseline": error_taxonomy(baseline),
+            "candidate": error_taxonomy(candidate),
+        },
     }
 
 
@@ -338,6 +382,18 @@ def print_comparison(comparison: dict, threshold: float = 0.5) -> None:
                 f"  {name:<18}  {_fmt_rate(bsum['gate']):>7}  {_fmt_rate(csum['gate']):>7}  "
                 f"{_fmt_score(bsum['judge_pass']):>8}  {_fmt_score(csum['judge_pass']):>8}"
             )
+
+    taxonomy = comparison.get("error_taxonomy") or {}
+    b_errs, c_errs = taxonomy.get("baseline", {}), taxonomy.get("candidate", {})
+    if b_errs or c_errs:
+        print(f"\n  Failure taxonomy (count among failing records):")
+        print(f"  {'Label':<32}  {'Baseline':>8}  {'Candidate':>9}  {'Δ':>6}")
+        print(f"  {'-'*32}  {'-'*8}  {'-'*9}  {'-'*6}")
+        for label in sorted(set(b_errs) | set(c_errs)):
+            b_count, c_count = b_errs.get(label, 0), c_errs.get(label, 0)
+            delta = c_count - b_count
+            sign = "+" if delta >= 0 else ""
+            print(f"  {label:<32}  {b_count:>8}  {c_count:>9}  {sign}{delta:>5}")
 
     if regressions:
         print(f"\n  ⚠ Regressions (gate drop or score drop > {threshold:.1f}): {', '.join(regressions)}")

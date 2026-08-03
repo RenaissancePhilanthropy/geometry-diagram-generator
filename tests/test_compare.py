@@ -19,8 +19,10 @@ from evals.compare import (
     _success_rate,
     _svg_check_rate,
     _tikz_check_pass_rate,
+    classify_error,
     compare_runs,
     detect_regressions,
+    error_taxonomy,
     load_results,
 )
 
@@ -44,6 +46,7 @@ def _record(
     tier=2,
     retries=0,
     duration_s=5.0,
+    error=None,
 ) -> dict:
     """Build a minimal synthetic result record."""
     return {
@@ -61,6 +64,7 @@ def _record(
         "tier": tier,
         "retries": retries,
         "duration_s": duration_s,
+        "error": error,
     }
 
 
@@ -167,6 +171,52 @@ def test_tikz_check_pass_rate():
 def test_tikz_check_pass_rate_no_checks():
     records = [_record(tikz_checks=None), _record(tikz_checks={})]
     assert _tikz_check_pass_rate(records) is None
+
+
+# ---------------------------------------------------------------------------
+# classify_error / error_taxonomy
+# ---------------------------------------------------------------------------
+
+def test_classify_error_pass_is_none():
+    r = _record(gate_status="pass", error=None)
+    assert classify_error(r) is None
+
+
+def test_classify_error_known_patterns():
+    cases = [
+        ("EllipseOp 'E' requires exactly one form: ...", "malformed_op_missing_params"),
+        ("[tri_ABC] references undefined id 'O'", "undefined_id_reference"),
+        ("Circular dependency in definitions: (...)", "circular_dependency"),
+        ("scenario timed out after 180s", "timeout"),
+        ("Triangle needs at least 3 constraints, got 1", "insufficient_constraints"),
+        ("Unable to extract tag using discriminator 'kind'", "schema_tag_mismatch"),
+    ]
+    for error_text, expected_label in cases:
+        r = _record(gate_status="fail", error=error_text)
+        assert classify_error(r) == expected_label
+
+
+def test_classify_error_unrecognized_text_is_other():
+    r = _record(gate_status="fail", error="something entirely new broke")
+    assert classify_error(r) == "other"
+
+
+def test_classify_error_fail_with_no_error_text_is_unknown():
+    r = _record(gate_status="fail", error=None)
+    assert classify_error(r) == "unknown"
+
+
+def test_error_taxonomy_counts_by_label():
+    records = [
+        _record(gate_status="pass", error=None),
+        _record(gate_status="fail", error="references undefined id 'A'"),
+        _record(gate_status="fail", error="references undefined id 'B'"),
+        _record(gate_status="fail", error="scenario timed out after 180s"),
+    ]
+    assert error_taxonomy(records) == {
+        "undefined_id_reference": 2,
+        "timeout": 1,
+    }
 
 
 # ---------------------------------------------------------------------------
