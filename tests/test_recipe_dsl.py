@@ -59,17 +59,30 @@ def test_triangle_spec_underdetermined_raises():
         TriangleOp(id="T", vertices=["A","B","C"],
                    spec={"side_AB": 3, "side_BC": 4})
 
-def test_triangle_spec_aaa_raises():
-    """Three angles, no side — AAA is underdetermined."""
-    with pytest.raises(ValidationError):
-        TriangleOp(id="T", vertices=["A","B","C"],
-                   spec={"angle_A": 60, "angle_B": 60, "angle_C": 60})
+def test_triangle_spec_aaa_defaults_a_side():
+    """Three angles, no side — AAA has no scale to honor, so side_AB defaults to 4."""
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                     spec={"angle_A": 60, "angle_B": 60, "angle_C": 60})
+    assert op.spec.side_AB == 4.0
 
-def test_triangle_spec_right_at_needs_two_constraints():
-    """right_angle_at alone is underdetermined (needs 2 more)."""
+def test_triangle_spec_two_angles_no_side_defaults_a_side():
+    """Two angles, no side — same shortcut as three angles."""
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                     spec={"angle_A": 70, "angle_B": 60})
+    assert op.spec.side_AB == 4.0
+
+def test_triangle_spec_right_at_alone_defaults_a_3_4_5_triangle():
+    """right_angle_at alone (nothing else) defaults to a classic 3-4-5 right triangle."""
+    op = TriangleOp(id="T", vertices=["A","B","C"],
+                     spec={"right_angle_at": "B"})
+    assert op.spec.side_AB == 3.0
+    assert op.spec.side_BC == 4.0
+
+def test_triangle_spec_right_at_with_one_constraint_still_needs_another():
+    """right_angle_at + exactly one other constraint is still underdetermined."""
     with pytest.raises(ValidationError):
         TriangleOp(id="T", vertices=["A","B","C"],
-                   spec={"right_angle_at": "B"})
+                   spec={"right_angle_at": "B", "side_AB": 5})
 
 def test_triangle_spec_extra_key_raises():
     """extra='forbid' means unknown keys raise at parse time."""

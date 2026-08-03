@@ -91,6 +91,19 @@ class TriangleSpec(BaseModel):
                   if getattr(self, k) is not None]
 
         if self.right_angle_at is not None:
+            if len(sides) + len(angles) == 0:
+                # "a right triangle at B" with nothing else specified — no
+                # shape or scale was ever requested, so default to a classic
+                # 3-4-5 right triangle (legs adjacent to the right angle).
+                legs_by_vertex = {
+                    "A": ("side_AB", "side_CA"),
+                    "B": ("side_AB", "side_BC"),
+                    "C": ("side_BC", "side_CA"),
+                }
+                leg1, leg2 = legs_by_vertex[self.right_angle_at]
+                setattr(self, leg1, 3.0)
+                setattr(self, leg2, 4.0)
+                return self
             if len(sides) + len(angles) + 1 < 3:
                 raise ValueError(
                     "right_angle_at triangle needs at least 2 additional constraints "
@@ -99,6 +112,23 @@ class TriangleSpec(BaseModel):
             return self
 
         total = len(sides) + len(angles)
+
+        # equilateral shortcut: one side + at most one angle, and any given
+        # angle is 60° — the other two angles default to 60° rather than
+        # requiring them to be spelled out.
+        if len(sides) == 1 and total < 3 and all(getattr(self, k) == 60 for k in angles):
+            for angle_key in ("angle_A", "angle_B", "angle_C"):
+                if getattr(self, angle_key) is None:
+                    setattr(self, angle_key, 60.0)
+            return self
+
+        # AAA shortcut: two or three angles given and no side at all — a bare
+        # "draw a triangle" request has no scale to honor, so default one
+        # side to a standard length rather than rejecting the shape outright.
+        if len(sides) == 0 and len(angles) >= 2:
+            setattr(self, "side_AB", 4.0)
+            return self
+
         if total < 3:
             raise ValueError(
                 f"Triangle needs at least 3 constraints, got {total}. "

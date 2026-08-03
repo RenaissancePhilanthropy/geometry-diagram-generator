@@ -249,16 +249,20 @@ spec fields (A/B/C are positional slots: A=vertices[0], B=vertices[1], C=vertice
 | ASA  | two angles + included side | {"angle_A": 45, "side_AB": 5, "angle_B": 60} |
 | AAS  | two angles + non-included side | {"angle_A": 45, "angle_B": 60, "side_BC": 4} |
 | right_at | right_angle_at + 2 constraints | {"right_angle_at": "B", "side_AB": 3, "side_BC": 4} |
+| right_at (no scale) | right_angle_at alone, nothing else | {"right_angle_at": "B"} — legs adjacent to the right angle default to 3 and 4 |
 | equilateral | one side + at most one angle | {"side_AB": 4}  — angles default to 60° |
+| AAA (no scale) | two or three angles, no side | {"angle_A": 70, "angle_B": 60} — side_AB defaults to 4 |
 
 IMPORTANT: A/B/C always refer to the first, second, and third entry in `vertices`, regardless
 of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) in the spec.
 Side keys MUST use exactly this cyclic order: side_AB, side_BC, side_CA — "side_AC" (reversed)
 is invalid; the segment between A and C is always side_CA.
   NOT supported: SSA (ambiguous)
-  NOT supported: three angles alone, e.g. {"angle_A":60,"angle_B":60,"angle_C":60} — AAA fixes
-  shape but not scale (infinitely many sizes). This includes equilateral triangles: even though
-  all three angles are 60°, you must still supply at least one side length.
+  The "no scale" rows above (bare right_angle_at, or angles with no side) only apply when
+  NOTHING else was asked to constrain the shape or size — e.g. a prompt that just says "draw
+  a triangle" or "a right triangle at B". A standard scale/shape is picked automatically in
+  that case. If the prompt gives ANY explicit size (a side length, or another element's size
+  the triangle must match), use that instead of the default.
 - circle: {op, id, center, radius} or {op, id, center, through}
 - ellipse: axis-aligned ellipse. Exactly one form:
     center_axes: {op, id, center:<pt_id>, hradius:<number>, vradius:<number>}
