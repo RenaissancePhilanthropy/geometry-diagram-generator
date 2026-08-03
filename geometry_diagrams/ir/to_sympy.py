@@ -226,7 +226,12 @@ def _compile_one(
             return pts[0]
 
         case ir.PointRotate(center=center_id, source=source_id, angle=angle):
-            return ref(source_id).rotate(ev(angle), ref(center_id))
+            center = ref(center_id)
+            if not isinstance(center, spg.Point):
+                raise IRCompileError(
+                    did, f"point_rotate: 'center' must be a point, got {type(center).__name__}"
+                )
+            return ref(source_id).rotate(ev(angle), center)
 
         case ir.PointReflect(source=source_id, across=across_id):
             source_pt = ref(source_id)
@@ -295,16 +300,30 @@ def _compile_one(
                 ) from exc
 
         case ir.LineParallelThrough(through=through_id, to_line=line_id):
-            return ref(line_id).parallel_line(ref(through_id))
+            line = ref(line_id)
+            if not isinstance(line, (spg.Line, spg.Segment, spg.Ray)):
+                raise IRCompileError(
+                    did, f"line_parallel_through: 'to_line' must be a line/segment/ray, got {type(line).__name__}"
+                )
+            return line.parallel_line(ref(through_id))
 
         case ir.LinePerpendicularThrough(through=through_id, to_line=line_id):
-            return ref(line_id).perpendicular_line(ref(through_id))
+            line = ref(line_id)
+            if not isinstance(line, (spg.Line, spg.Segment, spg.Ray)):
+                raise IRCompileError(
+                    did, f"line_perpendicular_through: 'to_line' must be a line/segment/ray, got {type(line).__name__}"
+                )
+            return line.perpendicular_line(ref(through_id))
 
         case ir.LineAngleBisector(a=a_id, vertex=vertex_id, b=b_id):
             return _angle_bisector_line(ref(a_id), ref(vertex_id), ref(b_id), did)
 
         case ir.LineTangent(point=point_id, circle=circle_id, pick=pick):
             circle = ref(circle_id)
+            if not isinstance(circle, spg.Ellipse):
+                raise IRCompileError(
+                    did, f"line_tangent: 'circle' must be a circle/ellipse, got {type(circle).__name__}"
+                )
             point = ref(point_id)
             tangents = circle.tangent_lines(point)
             if not tangents:
@@ -367,13 +386,29 @@ def _compile_one(
         # --- Circles ---
         case ir.CircleCenterPoint(center=center_id, through=through_id):
             c, p = ref(center_id), ref(through_id)
+            if c == p:
+                raise IRCompileError(
+                    did,
+                    f"circle_center_point: center '{center_id}' and through-point '{through_id}' "
+                    f"resolved to the same point (zero radius)"
+                )
             return spg.Circle(c, c.distance(p))
 
         case ir.CircleCenterRadius(center=center_id, radius=radius):
-            return spg.Circle(ref(center_id), ev(radius))
+            r = ev(radius)
+            if float(r.evalf()) <= 0:
+                raise IRCompileError(did, f"circle_center_radius: radius must be positive, got {r}")
+            return spg.Circle(ref(center_id), r)
 
         case ir.CircleThrough3(a=a_id, b=b_id, c=c_id):
-            return spg.Circle(ref(a_id), ref(b_id), ref(c_id))
+            a_pt, b_pt, c_pt = ref(a_id), ref(b_id), ref(c_id)
+            if spg.Point.is_collinear(a_pt, b_pt, c_pt):
+                raise IRCompileError(
+                    did,
+                    f"circle_through3: '{a_id}', '{b_id}', '{c_id}' are collinear (or coincident) — "
+                    f"no circle passes through them"
+                )
+            return spg.Circle(a_pt, b_pt, c_pt)
 
         # --- Arcs ---
         case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
@@ -388,7 +423,12 @@ def _compile_one(
 
         # --- Ellipses ---
         case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
-            return spg.Ellipse(ref(center_id), ev(hradius), ev(vradius))
+            hr, vr = ev(hradius), ev(vradius)
+            if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+                raise IRCompileError(
+                    did, f"ellipse_center_axes: hradius and vradius must be positive, got {hr}, {vr}"
+                )
+            return spg.Ellipse(ref(center_id), hr, vr)
 
         case ir.EllipseBBox(corner1=c1_id, corner2=c2_id):
             p1, p2 = ref(c1_id), ref(c2_id)
@@ -431,6 +471,8 @@ def _compile_one(
         ):
             a = float(ev(semi_major).evalf())
             e = float(ev(eccentricity).evalf())
+            if a <= 0:
+                raise IRCompileError(did, f"EllipseCenterEccentricity: semi_major must be positive, got {a}")
             if not (0 <= e < 1):
                 raise IRCompileError(did, f"EllipseCenterEccentricity: eccentricity must be in [0,1), got {e}")
             b = a * (1 - e ** 2) ** 0.5
@@ -441,10 +483,24 @@ def _compile_one(
 
         # --- Higher-order shapes ---
         case ir.Triangle(a=a_id, b=b_id, c=c_id):
-            return spg.Triangle(ref(a_id), ref(b_id), ref(c_id))
+            a_pt, b_pt, c_pt = ref(a_id), ref(b_id), ref(c_id)
+            result = spg.Triangle(a_pt, b_pt, c_pt)
+            if not isinstance(result, spg.Polygon):
+                raise IRCompileError(
+                    did,
+                    f"triangle: '{a_id}', '{b_id}', '{c_id}' are collinear or coincident — degenerate triangle"
+                )
+            return result
 
         case ir.Polygon(points=point_ids):
-            return spg.Polygon(*[ref(pid) for pid in point_ids])
+            pts = [ref(pid) for pid in point_ids]
+            result = spg.Polygon(*pts)
+            if not isinstance(result, spg.Polygon) or len(result.vertices) != len(pts):
+                raise IRCompileError(
+                    did,
+                    f"polygon: vertices {point_ids!r} are collinear or coincident — degenerate polygon"
+                )
+            return result
 
         case ir.PolygonExterior(a=a_id, b=b_id, ref=ref_id, sides=sides):
             a_pt = ref(a_id)
@@ -480,6 +536,12 @@ def _compile_one(
             b_pt = ref(b_id)
             ref_pt = ref(ref_id)
             n = len(stmt.vertex_names)
+            if len(stmt.side_lengths) != n - 1 or len(stmt.angles) != n:
+                raise IRCompileError(
+                    did,
+                    f"polygon_on_edge: expected {n - 1} side_lengths and {n} angles for {n} vertices, "
+                    f"got {len(stmt.side_lengths)}/{len(stmt.angles)}"
+                )
 
             # Validate claimed base length if provided
             if stmt.claimed_base_length is not None:
@@ -527,7 +589,14 @@ def _compile_one(
                 if i < n - 2:
                     vertices_pts.append(spg.Point(sp.Float(x), sp.Float(y)))
 
-            return spg.Polygon(*vertices_pts)
+            result = spg.Polygon(*vertices_pts)
+            if not isinstance(result, spg.Polygon) or len(result.vertices) != n:
+                raise IRCompileError(
+                    did,
+                    f"polygon_on_edge: vertices collapsed — a 180° angle or repeated point made "
+                    f"the {n}-vertex polygon degenerate"
+                )
+            return result
 
         case _:
             raise IRCompileError(did, f"unhandled definition kind: {stmt.kind!r}")
@@ -804,6 +873,8 @@ def _apply_pick(
         case ir.PickBetween(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
+            if a_pt == b_pt:
+                raise PickError(def_id, f"pick_between: '{a_id}' and '{b_id}' resolved to the same point")
             seg = spg.Segment(a_pt, b_pt)
             between = [p for p in points if seg.contains(p)]
             if not between:

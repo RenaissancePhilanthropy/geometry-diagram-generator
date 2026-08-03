@@ -1251,6 +1251,160 @@ def test_polygon_on_edge_parallelogram_correct_shape():
         assert abs(d - expected) < 1e-3, f"|{p1_id}{p2_id}|={d:.4f}, expected {expected}"
 
 
+def test_polygon_on_edge_mismatched_lengths_raises():
+    """side_lengths/angles shorter than required by vertex_names raise IRCompileError
+    instead of a raw IndexError."""
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="tri", a="A", b="B", ref="R",
+            vertex_names=["A", "B", "C"], side_lengths=[5.0],  # missing one angle
+            angles=[60.0, 60.0]),
+    ]
+    with pytest.raises(IRCompileError, match="expected"):
+        compile_defs(DiagramIR(define=defs))
+
+
+def test_polygon_on_edge_collapsed_vertex_raises():
+    """A 180° interior angle collapses a vertex (SymPy drops collinear vertices);
+    this must raise IRCompileError, not a raw IndexError during registration."""
+    from geometry_diagrams.ir.ir import PointFixed, PolygonOnEdge
+    defs = [
+        PointFixed(id="A", x=0.0, y=0.0),
+        PointFixed(id="B", x=5.0, y=0.0),
+        PointFixed(id="R", x=2.5, y=-1.0),
+        PolygonOnEdge(id="quad", a="A", b="B", ref="R",
+            vertex_names=["A", "B", "C", "D"], side_lengths=[5.0, 5.0, 5.0],
+            angles=[60.0, 60.0, 180.0, 60.0]),
+    ]
+    with pytest.raises(IRCompileError, match="collapsed|degenerate"):
+        compile_defs(DiagramIR(define=defs))
+
+
+def test_line_parallel_through_wrong_type_raises():
+    from geometry_diagrams.ir.ir import PointFixed, CircleCenterRadius, LineParallelThrough
+    with pytest.raises(IRCompileError, match="to_line"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x=1, y=1),
+            CircleCenterRadius(id="c", center="O", radius=3),
+            LineParallelThrough(id="L", through="P", to_line="c"),
+        )
+
+
+def test_line_perpendicular_through_wrong_type_raises():
+    from geometry_diagrams.ir.ir import PointFixed, CircleCenterRadius, LinePerpendicularThrough
+    with pytest.raises(IRCompileError, match="to_line"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x=1, y=1),
+            CircleCenterRadius(id="c", center="O", radius=3),
+            LinePerpendicularThrough(id="L", through="P", to_line="c"),
+        )
+
+
+def test_line_tangent_wrong_type_raises():
+    from geometry_diagrams.ir.ir import PointFixed, LineThrough, LineTangent
+    with pytest.raises(IRCompileError, match="circle"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=1),
+            PointFixed(id="P", x=5, y=5),
+            LineThrough(id="L", p="A", q="B"),
+            LineTangent(id="T", point="P", circle="L"),
+        )
+
+
+def test_point_rotate_non_point_center_raises():
+    from geometry_diagrams.ir.ir import PointFixed, CircleCenterRadius, PointRotate
+    with pytest.raises(IRCompileError, match="center"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x=1, y=1),
+            CircleCenterRadius(id="c", center="O", radius=3),
+            PointRotate(id="P2", center="c", source="P", angle=90),
+        )
+
+
+def test_circle_center_point_zero_radius_raises():
+    with pytest.raises(IRCompileError, match="same point"):
+        _compile(
+            PointFixed(id="O", x=1, y=1),
+            PointFixed(id="P", x=1, y=1),
+            CircleCenterPoint(id="c", center="O", through="P"),
+        )
+
+
+def test_circle_center_radius_nonpositive_raises():
+    with pytest.raises(IRCompileError, match="positive"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=0),
+        )
+
+
+def test_circle_through3_collinear_raises():
+    with pytest.raises(IRCompileError, match="collinear"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=1),
+            PointFixed(id="C", x=2, y=2),
+            CircleThrough3(id="c", a="A", b="B", c="C"),
+        )
+
+
+def test_triangle_collinear_raises():
+    with pytest.raises(IRCompileError, match="degenerate triangle"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=1),
+            PointFixed(id="C", x=2, y=2),
+            Triangle(id="tri", a="A", b="B", c="C"),
+        )
+
+
+def test_polygon_collinear_raises():
+    with pytest.raises(IRCompileError, match="degenerate polygon"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=2, y=0),
+            PointFixed(id="D", x=1, y=1),
+            Polygon(id="poly", points=["A", "B", "C", "D"]),
+        )
+
+
+def test_ellipse_center_axes_nonpositive_raises():
+    with pytest.raises(IRCompileError, match="positive"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            EllipseCenterAxes(id="e", center="O", hradius=0, vradius=3),
+        )
+
+
+def test_ellipse_center_eccentricity_nonpositive_semimajor_raises():
+    with pytest.raises(IRCompileError, match="semi_major"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            EllipseCenterEccentricity(id="e", center="O", semi_major=0, eccentricity=0.5),
+        )
+
+
+def test_pick_between_coincident_endpoints_raises():
+    from geometry_diagrams.ir.ir import PickBetween
+    with pytest.raises(PickError, match="same point"):
+        _compile(
+            PointFixed(id="O1", x=0, y=0),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="A", x=1, y=0),
+            CircleCenterRadius(id="c1", center="O1", radius=2),
+            CircleCenterRadius(id="c2", center="O2", radius=2),
+            PointIntersection(id="X", obj1="c1", obj2="c2", pick=PickBetween(a="A", b="A")),
+        )
+
+
 def test_sector_ir_kind():
     from geometry_diagrams.ir.ir import SectorCenterStartEnd
     s = SectorCenterStartEnd(id="sec", center="O", start="A", end="B")
