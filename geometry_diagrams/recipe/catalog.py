@@ -297,8 +297,15 @@ is invalid; the segment between A and C is always side_CA.
 - altitude: {op, id, from_vertex, triangle:<tri_id>, foot}  # preferred; or to_side:[P,Q]
   id = the altitude line; foot = the foot point on the base
 - circumcircle: {op, id, of:<triangle_id>, center}
+  center is an OUTPUT — this op creates that point (the circumcenter) for you.
+  Do NOT define it beforehand and do NOT reference it in any earlier op; just
+  name it here and it becomes available to every op that comes after.
 - incircle: {op, id, of:<triangle_id>, center}
+  Same as circumcircle: center is an OUTPUT (the incenter), created by this op.
+  Do NOT pre-define it or reference it before this op runs.
 - perpendicular_bisector: {op, id, of:[P,Q], mid}
+  mid is an OUTPUT — this op creates that point (the midpoint of P,Q) for you;
+  do not pre-define it or reference it before this op runs.
   P and Q are NOT auto-created — unlike triangle/rectangle/polygon vertices, which
   the op itself defines, of:[P,Q] here requires P and Q to already exist. In
   "abstract" mode that means placing them first with two point_free-style ops (or
@@ -330,6 +337,8 @@ is invalid; the segment between A and C is always side_CA.
   step above creates one.
 - centroid: {op, id, of:<triangle_id>}
 - median: {op, id, from_vertex, triangle:<tri_id>, mid}  # preferred; or to_side:[P,Q]
+  mid is an OUTPUT — this op creates that point (the midpoint of the opposite
+  side) for you; do not pre-define it or reference it before this op runs.
 - polygon_exterior: {op, id, base:[P,Q], ref_point, n, vertices:[v2,...]}
   n=4 for square, n=3 for equilateral triangle
 - polygon_from_angles_and_sides: {op, id, vertices:[A,B,...], side_lengths:[...], angles:[...], center?:[x,y], rotation?:degrees}
