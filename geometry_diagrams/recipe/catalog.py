@@ -264,16 +264,21 @@ is invalid; the segment between A and C is always side_CA.
   that case. If the prompt gives ANY explicit size (a side length, or another element's size
   the triangle must match), use that instead of the default.
 - circle: {op, id, center, radius} or {op, id, center, through}
-- ellipse: axis-aligned ellipse. Exactly one form:
+  Use this for ANY plain round shape — a circle circumscribed/inscribed in a
+  triangle, a circle through given points, a dot, etc. Do NOT reach for "oval"
+  below just to draw a circle.
+- oval: axis-aligned non-circular oval ("ellipse" is accepted as a deprecated
+  alias of the same op — prefer "oval"). Only use this when the shape is
+  actually elongated, not for circles. Exactly one form:
     center_axes: {op, id, center:<pt_id>, hradius:<number>, vradius:<number>}
     bbox:        {op, id, bbox:[<corner1_id>, <corner2_id>]}
     foci:        {op, id, foci:[<f1_id>, <f2_id>], major_axis:<2a>}
              or  {op, id, foci:[<f1_id>, <f2_id>], through:<pt_id>}
     eccentricity:{op, id, center:<pt_id>, semi_major:<a>, eccentricity:<e>, orientation:"horizontal"|"vertical"}
-  Example (Mathematics_15 — ellipse with center (1,3), horiz axis 3, vert axis 4):
+  Example (Mathematics_15 — oval with center (1,3), horiz axis 3, vert axis 4):
     canvas: {op, id:"canvas", x_range:[-1,4], y_range:[0,8], axes:true, grid:true}
     center: {op:"point", id:"O", coords:[1,3]}
-    ellipse: {op:"ellipse", id:"E", center:"O", hradius:1.5, vradius:2}
+    oval: {op:"oval", id:"E", center:"O", hradius:1.5, vradius:2}
     label center with its coordinates: annotations.labels [{kind:"label_point", point:"O", text:"(1, 3)"}]
 - polygon: {op, id, vertices:[...]}
 - point: {op, id, coords:[x, y]}  (grid mode)
