@@ -254,6 +254,41 @@ def test_finalize_gate_status_fail_on_generation_failure():
     assert "generation" in record["gate_failures"]
 
 
+def test_load_retry_timeout_counts_counts_per_scenario(tmp_path: Path):
+    from evals.run import _load_retry_timeout_counts
+
+    records = [
+        {"scenario_id": "a", "error": "scenario timed out after 180s"},
+        {"scenario_id": "a", "error": "scenario timed out after 180s"},
+        {"scenario_id": "b", "error": "scenario timed out after 180s"},
+        {"scenario_id": "a", "error": None},
+        {"scenario_id": "c", "error": "RecipeStrategy failed after 3 attempts. Last error: ..."},
+    ]
+    path = tmp_path / "results.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+    assert _load_retry_timeout_counts(path) == {"a": 2, "b": 1}
+
+
+def test_load_retry_timeout_counts_empty_when_no_timeouts(tmp_path: Path):
+    from evals.run import _load_retry_timeout_counts
+
+    records = [{"scenario_id": "a", "error": None}, {"scenario_id": "b", "error": "some other failure"}]
+    path = tmp_path / "results.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+    assert _load_retry_timeout_counts(path) == {}
+
+
+def test_load_retry_timeout_counts_skips_blank_lines(tmp_path: Path):
+    from evals.run import _load_retry_timeout_counts
+
+    path = tmp_path / "results.jsonl"
+    path.write_text('{"scenario_id": "a", "error": "scenario timed out after 180s"}\n\n')
+
+    assert _load_retry_timeout_counts(path) == {"a": 1}
+
+
 def test_core_scenarios_include_grid_cases():
     from evals.scenarios import _validate_scenarios
 

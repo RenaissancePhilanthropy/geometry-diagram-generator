@@ -4,7 +4,8 @@ Eval runner for geometry-tikz-demo strategies.
 Usage:
     python -m evals.run [--scenarios PATH] [--strategies S [S ...]]
                         [--model MODEL] [--output DIR] [--repeats N]
-                        [--max-concurrency N]
+                        [--max-concurrency N] [--scenario-ids ID,ID,...]
+                        [--retry-timeouts PRIOR.jsonl]
                         [--llm-judge] [--no-llm-judge]
                         [--visual-judge] [--judge-model MODEL]
 
@@ -667,6 +668,24 @@ def _finalize_gate_status(record: dict) -> None:
         record["gate_status"] = "fail"
 
 
+def _load_retry_timeout_counts(results_path: Path) -> dict[str, int]:
+    """Count timed-out records per scenario_id in a prior JSONL results file.
+
+    Used by --retry-timeouts to decide which scenarios to re-run and how many
+    times each (once per timeout it had).
+    """
+    counts: dict[str, int] = {}
+    with results_path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            if "timed out" in (record.get("error") or ""):
+                counts[record["scenario_id"]] = counts.get(record["scenario_id"], 0) + 1
+    return counts
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -749,6 +768,25 @@ async def main() -> None:
         help="Process only N scenarios after the offset (default: 0 = no limit). Used by chunked-run wrapper.",
     )
     parser.add_argument(
+        "--scenario-ids",
+        default=None,
+        help="Comma-separated scenario ids to run, filtering out everything else in "
+        "--scenarios (e.g. for isolating a handful of failures for a targeted retry "
+        "without hand-writing a subset YAML file). Unknown ids raise an error.",
+    )
+    parser.add_argument(
+        "--retry-timeouts",
+        default=None,
+        metavar="JSONL",
+        help="Read a prior JSONL results file, find every record whose run timed "
+        "out, and re-run just those scenarios — each repeated once per timeout it "
+        "had in that file — instead of the normal --repeats/--scenario-ids/"
+        "--scenario-offset/--scenario-limit selection. Combine with a lower "
+        "--max-concurrency than the original run to check whether the timeouts "
+        "were contention rather than genuine per-scenario difficulty. Cannot be "
+        "combined with --scenario-ids/--scenario-offset/--scenario-limit.",
+    )
+    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -768,6 +806,39 @@ async def main() -> None:
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
     benchmark = args.benchmark_name or scenarios_path.stem
 
+    repeats_by_scenario: dict[str, int] = {}
+
+    if args.retry_timeouts:
+        if args.scenario_ids or args.scenario_offset or args.scenario_limit:
+            raise ValueError(
+                "--retry-timeouts cannot be combined with --scenario-ids/"
+                "--scenario-offset/--scenario-limit"
+            )
+        retry_path = Path(args.retry_timeouts)
+        timeout_counts = _load_retry_timeout_counts(retry_path)
+        if not timeout_counts:
+            print(f"No timed-out records found in {retry_path} — nothing to retry.")
+            return
+        by_id = {s["id"]: s for s in scenarios}
+        unknown = [sid for sid in timeout_counts if sid not in by_id]
+        if unknown:
+            raise ValueError(
+                f"--retry-timeouts found scenario id(s) not present in --scenarios: {unknown}"
+            )
+        scenarios = [by_id[sid] for sid in timeout_counts]
+        repeats_by_scenario = timeout_counts
+        print(f"Retrying {len(scenarios)} scenario(s) with timeouts from {retry_path}: {timeout_counts}")
+
+    # Apply --scenario-ids filtering for targeted retries
+    elif args.scenario_ids:
+        wanted = [s.strip() for s in args.scenario_ids.split(",") if s.strip()]
+        by_id = {s["id"]: s for s in scenarios}
+        unknown = [s for s in wanted if s not in by_id]
+        if unknown:
+            raise ValueError(f"Unknown scenario id(s) in --scenario-ids: {unknown}")
+        scenarios = [by_id[s] for s in wanted]
+        print(f"Filtering to {len(scenarios)} scenario(s) via --scenario-ids: {wanted}")
+
     # Apply --scenario-offset / --scenario-limit slicing for chunked runs
     if args.scenario_offset or args.scenario_limit:
         n_total = len(scenarios)
@@ -783,7 +854,12 @@ async def main() -> None:
     svg_output_dir = output_dir / run_id / "svgs"
     traces_output_dir = output_dir / run_id / "traces"
 
-    total = len(args.strategies) * len(scenarios) * args.repeats
+    scenario_repeat_pairs = [
+        (scenario, repeat_index)
+        for scenario in scenarios
+        for repeat_index in range(1, repeats_by_scenario.get(scenario["id"], args.repeats) + 1)
+    ]
+    total = len(args.strategies) * len(scenario_repeat_pairs)
     print(f"Running {total} evals  (run_id={run_id})")
     print(f"Output: {output_path}")
     print(f"Max concurrency: {args.max_concurrency}")
@@ -857,8 +933,7 @@ async def main() -> None:
         print(f"Strategy: {strategy_name}  model: {args.model}")
         tasks = [
             asyncio.create_task(_run_bounded(scenario, strategy_name, repeat_index))
-            for scenario in scenarios
-            for repeat_index in range(1, args.repeats + 1)
+            for scenario, repeat_index in scenario_repeat_pairs
         ]
 
         for finished in asyncio.as_completed(tasks):
