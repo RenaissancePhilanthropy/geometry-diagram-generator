@@ -193,7 +193,14 @@ def _compile_one(
             return _point_on_object(obj, how, sym, rng, did)
 
         case ir.PointMidpoint(p=p_id, q=q_id):
-            return spg.Segment(ref(p_id), ref(q_id)).midpoint
+            p, q = ref(p_id), ref(q_id)
+            if p == q:
+                raise IRCompileError(
+                    did,
+                    f"point_midpoint: '{p_id}' and '{q_id}' resolved to the same point — "
+                    f"check that they aren't both derived from the same construction"
+                )
+            return spg.Segment(p, q).midpoint
 
         case ir.PointBetween(a=a_id, b=b_id, ratio=ratio):
             a = ref(a_id)
@@ -275,7 +282,17 @@ def _compile_one(
 
         # --- Lines ---
         case ir.LineThrough(p=p_id, q=q_id):
-            return spg.Line(ref(p_id), ref(q_id))
+            p, q = ref(p_id), ref(q_id)
+            try:
+                return spg.Line(p, q)
+            except ValueError as exc:
+                raise IRCompileError(
+                    did,
+                    f"line_through: '{p_id}' and '{q_id}' resolved to the same point — "
+                    f"check that they aren't both derived from the same construction "
+                    f"(e.g. two different objects' centers that happen to coincide) "
+                    f"(underlying error: {exc})"
+                ) from exc
 
         case ir.LineParallelThrough(through=through_id, to_line=line_id):
             return ref(line_id).parallel_line(ref(through_id))
@@ -326,10 +343,26 @@ def _compile_one(
 
         # --- Segments / Rays ---
         case ir.Segment(a=a_id, b=b_id):
-            return spg.Segment(ref(a_id), ref(b_id))
+            a, b = ref(a_id), ref(b_id)
+            if a == b:
+                raise IRCompileError(
+                    did,
+                    f"segment: '{a_id}' and '{b_id}' resolved to the same point — "
+                    f"check that they aren't both derived from the same construction"
+                )
+            return spg.Segment(a, b)
 
         case ir.Ray(a=a_id, b=b_id):
-            return spg.Ray(ref(a_id), ref(b_id))
+            a, b = ref(a_id), ref(b_id)
+            try:
+                return spg.Ray(a, b)
+            except ValueError as exc:
+                raise IRCompileError(
+                    did,
+                    f"ray: '{a_id}' and '{b_id}' resolved to the same point — "
+                    f"check that they aren't both derived from the same construction "
+                    f"(underlying error: {exc})"
+                ) from exc
 
         # --- Circles ---
         case ir.CircleCenterPoint(center=center_id, through=through_id):

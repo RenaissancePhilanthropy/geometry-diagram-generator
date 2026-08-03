@@ -1313,6 +1313,48 @@ def test_intersection_two_circles_descriptive_error_on_no_points():
         )
 
 
+# ---------------------------------------------------------------------------
+# Coincident-point guards for LineThrough / Segment / Ray / PointMidpoint
+# ---------------------------------------------------------------------------
+
+def test_line_through_coincident_points_raises_ir_compile_error():
+    """Two points resolving to the same location raise a catchable IRCompileError,
+    not a raw SymPy ValueError."""
+    with pytest.raises(IRCompileError, match="same point"):
+        _compile(
+            PointFixed(id="A", x=1, y=1),
+            PointFixed(id="B", x=1, y=1),
+            LineThrough(id="L", p="A", q="B"),
+        )
+
+
+def test_segment_coincident_points_raises_ir_compile_error():
+    with pytest.raises(IRCompileError, match="same point"):
+        _compile(
+            PointFixed(id="A", x=2, y=3),
+            PointFixed(id="B", x=2, y=3),
+            Segment(id="S", a="A", b="B"),
+        )
+
+
+def test_ray_coincident_points_raises_ir_compile_error():
+    with pytest.raises(IRCompileError, match="same point"):
+        _compile(
+            PointFixed(id="A", x=-1, y=0),
+            PointFixed(id="B", x=-1, y=0),
+            Ray(id="R", a="A", b="B"),
+        )
+
+
+def test_point_midpoint_coincident_points_raises_ir_compile_error():
+    with pytest.raises(IRCompileError, match="same point"):
+        _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=0, y=0),
+            PointMidpoint(id="M", p="A", q="B"),
+        )
+
+
 def test_diagram_ir_accepts_pending_angle_pairs():
     from geometry_diagrams.ir.ir import PendingAnglePair
     ir_obj = DiagramIR(
