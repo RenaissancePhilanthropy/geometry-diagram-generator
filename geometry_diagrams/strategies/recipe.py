@@ -19,7 +19,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .structured import StructuredRunResult, _run_ir_pipeline, dispatch_query
+from .structured import dispatch_query
+from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipeline
 from .llm import get_chat_model, extract_usage, make_system_message, is_openai_model
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
