@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import CircleCenterRadius, LineThrough, PointFixed, PointTriangleCenter
+from geometry_diagrams.ir.ir import CircleCenterRadius, LineThrough, PointFixed, PointMidpoint, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
+from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import Circle, Line, Point, Polygon, Triangle
+from geometry_diagrams.pydsl.handles import Circle, Line, Median, Point, Polygon, Segment, Triangle
 
 
 def point(x: float, y: float) -> Point:
@@ -128,3 +129,17 @@ def incircle(t: Triangle) -> Circle:
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
     return Circle(id=cid, center=Point(id=center_id), _radius_thunk=lambda: radius)
+
+
+def median(t: Triangle, from_vertex: Point) -> Median:
+    """The median from a vertex to the midpoint of the opposite side."""
+    vertex_ids = [v.id for v in t.vertices]
+    if from_vertex.id not in vertex_ids:
+        raise ValueError(f"{from_vertex.id!r} is not a vertex of triangle {t.id!r}")
+    others = [pid for pid in vertex_ids if pid != from_vertex.id]
+    builder = get_builder()
+    mid_id = builder._fresh_hidden_id("midpoint")
+    builder._add(PointMidpoint(id=mid_id, p=others[0], q=others[1]))
+    seg_id = builder._fresh_hidden_id("median_seg")
+    builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=mid_id))
+    return Median(id=seg_id, midpoint=Point(id=mid_id), segment=Segment(id=seg_id))

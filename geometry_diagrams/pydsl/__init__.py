@@ -4,8 +4,8 @@
 Re-exports handles and op functions so callers (and the stub generator) have
 one place to introspect the public surface.
 """
-from geometry_diagrams.pydsl.api import circumcircle, incircle, line_through, point, polygon, triangle
-from geometry_diagrams.pydsl.handles import Circle, Line, Point, Polygon, Segment, Triangle
+from geometry_diagrams.pydsl.api import circumcircle, incircle, line_through, median, point, polygon, triangle
+from geometry_diagrams.pydsl.handles import Circle, Line, Median, Point, Polygon, Segment, Triangle
 
 __all__ = [
     "point",
@@ -14,10 +14,12 @@ __all__ = [
     "polygon",
     "circumcircle",
     "incircle",
+    "median",
     "Point",
     "Line",
     "Segment",
     "Triangle",
     "Polygon",
     "Circle",
+    "Median",
 ]

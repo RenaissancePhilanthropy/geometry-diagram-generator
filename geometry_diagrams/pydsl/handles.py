@@ -90,3 +90,10 @@ class Polygon:
         i = ids.index(v.id)
         prev_id, next_id = ids[(i - 1) % n], ids[(i + 1) % n]
         return AngleRef(a=Point(id=prev_id), o=v, b=Point(id=next_id))
+
+
+@dataclass(frozen=True)
+class Median:
+    id: str
+    midpoint: Point
+    segment: "Segment"
