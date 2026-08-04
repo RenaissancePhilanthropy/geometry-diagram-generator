@@ -90,6 +90,20 @@ forgets the parameter.
 This fix also retroactively repairs the pre-existing `Point.__add__`/
 `__sub__`/`__mul__` sandbox bug, since it goes through the same field.
 
+**Follow-up, explicitly not in scope here:** this is a mechanical fix, not
+a structural one. It repairs every currently-known instance of "a handle
+method calls `get_builder()` without a captured builder reference," but the
+trap itself — that pattern being available at all — still exists for any
+future handle. Closing it for good would mean making the sandbox's
+`_current_builder` contextvar work for the entire script execution inside
+its `LocalPythonExecutor` worker thread, so `get_builder()` just succeeds
+everywhere, with no per-handle bookkeeping required. That's a change to the
+sandbox's actual thread/isolation model (see `sandbox.py`'s docstring on why
+per-call wrap-and-reset was chosen in the first place — contextvars don't
+propagate across the thread boundary `LocalPythonExecutor` introduces), so
+it deserves its own design pass rather than riding along with a labeling
+feature. Tracked as future work, not part of this plan.
+
 ## Non-goals
 
 - No IR or renderer changes — everything needed already exists and is
