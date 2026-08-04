@@ -247,6 +247,19 @@ def _compile_one(
             else:
                 raise IRCompileError(did, f"point_reflect: 'across' must be a point or linear object, got {type(across_obj).__name__}")
 
+        case ir.PointDilate(center=center_id, source=source_id, ratio=ratio):
+            center = ref(center_id)
+            source_pt = ref(source_id)
+            if not isinstance(center, spg.Point):
+                raise IRCompileError(
+                    did, f"point_dilate: 'center' must be a point, got {type(center).__name__}"
+                )
+            k = ev(ratio)
+            return spg.Point(
+                center.x + k * (source_pt.x - center.x),
+                center.y + k * (source_pt.y - center.y),
+            )
+
         case ir.PointTriangleCenter(tri=tri_id, which=which):
             tri = ref(tri_id)
             if not hasattr(tri, which):

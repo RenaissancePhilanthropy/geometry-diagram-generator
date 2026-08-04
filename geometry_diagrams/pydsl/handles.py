@@ -11,9 +11,59 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def _record_literal_point(x: float, y: float) -> "Point":
+    """Record a new point_fixed def for a coordinate computed via Point
+    arithmetic (e.g. `center + k * (source - center)`), the same way api.py's
+    point() does — kept here rather than imported from api.py to avoid a
+    handles<->api circular import."""
+    from geometry_diagrams.ir.ir import PointFixed
+    from geometry_diagrams.pydsl.builder import get_builder
+
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("pt")
+    builder._add(PointFixed(id=pid, x=x, y=y))
+    builder._coord_floats[pid] = (float(x), float(y))
+    return Point(id=pid, x=float(x), y=float(y))
+
+
 @dataclass(frozen=True)
 class Point:
     id: str
+    # Known only for point(x, y) literals (and points derived from them via
+    # arithmetic) — never for constructed points (point_on, rotate_point,
+    # dilate_point, reflect_point, ...), whose coordinates aren't resolved
+    # until later via SymPy. None here, not a wrong guess, is the honest
+    # answer for those; arithmetic on them raises rather than silently
+    # producing a bogus result.
+    x: float | None = None
+    y: float | None = None
+
+    def _known(self, other: "Point | None" = None) -> None:
+        for pt in (self, other):
+            if pt is not None and (pt.x is None or pt.y is None):
+                raise ValueError(
+                    f"Point {pt.id!r} has no known coordinates (only point(x, y) "
+                    "literals — and points derived from them via +, -, * — carry "
+                    "coordinates back to the script; a point from point_on()/"
+                    "rotate_point()/dilate_point()/reflect_point()/etc. does not, "
+                    "since its position isn't resolved until later). Use "
+                    "dilate_point()/rotate_point()/reflect_point() instead of "
+                    "arithmetic when either point's coordinates aren't known."
+                )
+
+    def __add__(self, other: "Point") -> "Point":
+        self._known(other)
+        return _record_literal_point(self.x + other.x, self.y + other.y)
+
+    def __sub__(self, other: "Point") -> "Point":
+        self._known(other)
+        return _record_literal_point(self.x - other.x, self.y - other.y)
+
+    def __mul__(self, scalar: float) -> "Point":
+        self._known()
+        return _record_literal_point(self.x * scalar, self.y * scalar)
+
+    __rmul__ = __mul__
 
 
 @dataclass(frozen=True)

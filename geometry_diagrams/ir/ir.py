@@ -504,6 +504,15 @@ class PointReflect(DefBase):
     across: ObjId  # a PointId (point reflection) or LineId/SegmentId/RayId (mirror)
 
 
+class PointDilate(DefBase):
+    """Point obtained by scaling source about center by ratio k: result = center + k*(source - center).
+    k=1 leaves source unchanged; k=0 maps to center; k=-1 is point reflection across center."""
+    kind: Literal["point_dilate"] = "point_dilate"
+    center: PointId
+    source: PointId
+    ratio: Union[int, float, str]
+
+
 class PointIntersection(DefBase):
     """
     Intersection of two objects intended to yield a single point.
@@ -527,7 +536,7 @@ class PointAlias(DefBase):
 
 DefStmt = Annotated[
     Union[
-        PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointBetween, PointRotate, PointReflect,
+        PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointBetween, PointRotate, PointReflect, PointDilate,
         PointTriangleCenter, PointIntersection, PointAlias,
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,

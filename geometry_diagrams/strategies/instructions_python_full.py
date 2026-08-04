@@ -32,5 +32,14 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   `draw_points(...)` on every point you want marked, as your LAST steps. A script that
   builds geometry but never calls draw()/draw_points() will fail with no visible output.
 - Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle.
+- Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
+  coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
+  `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
+  Prefer this over re-deriving the same coordinates by hand in separate variables — it's
+  exact and self-checking. Points from `point_on()`/`rotate_point()`/`dilate_point()`/
+  `reflect_point()`/triangle centers/etc. do NOT have known coordinates (their position
+  isn't resolved until later) — arithmetic on those raises a clear error; use
+  `rotate_point()`/`dilate_point()`/`reflect_point()` instead when either point involved
+  isn't a literal.
 - The script is plain top-level statements — no function defs required, no return value.
 """

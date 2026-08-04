@@ -14,7 +14,7 @@ import sympy.geometry as spg
 from geometry_diagrams.ir.ir import (
     Canvas, Params,
     DiagramIR,
-    PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointRotate, PointReflect,
+    PointFixed, PointFree, PointOn, PointMidpoint, PointFoot, PointRotate, PointReflect, PointDilate,
     PointTriangleCenter, PointIntersection, PointBetween,
     Segment, Ray,
     LineThrough, LineParallelThrough, LinePerpendicularThrough,
@@ -217,6 +217,48 @@ def test_point_rotate_str_angle():
     # symbolic rotation: x component is cos(pi/2) = 0
     assert sym["R"].x.simplify() == sp.Integer(0)
     assert sym["R"].y.simplify() == sp.Integer(1)
+
+
+def test_point_dilate_numeric():
+    sym = _compile(
+        PointFixed(id="O", x=1, y=1),
+        PointFixed(id="P", x=3, y=1),
+        PointDilate(id="D", center="O", source="P", ratio=2),
+    )
+    # O + 2*(P-O) = (1,1) + 2*(2,0) = (5, 1)
+    assert approx(sym["D"].x, 5.0)
+    assert approx(sym["D"].y, 1.0)
+
+
+def test_point_dilate_ratio_one_is_identity():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="P", x=3, y=4),
+        PointDilate(id="D", center="O", source="P", ratio=1),
+    )
+    assert approx(sym["D"].x, 3.0)
+    assert approx(sym["D"].y, 4.0)
+
+
+def test_point_dilate_negative_ratio_reflects_through_center():
+    sym = _compile(
+        PointFixed(id="O", x=1, y=1),
+        PointFixed(id="P", x=3, y=1),
+        PointDilate(id="D", center="O", source="P", ratio=-1),
+    )
+    # O + (-1)*(P-O) = (1,1) - (2,0) = (-1, 1)
+    assert approx(sym["D"].x, -1.0)
+    assert approx(sym["D"].y, 1.0)
+
+
+def test_point_dilate_str_ratio():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="P", x=2, y=0),
+        PointDilate(id="D", center="O", source="P", ratio="1/2"),
+    )
+    assert sym["D"].x.simplify() == sp.Integer(1)
+    assert sym["D"].y.simplify() == sp.Integer(0)
 
 
 def test_point_triangle_center_circumcenter():

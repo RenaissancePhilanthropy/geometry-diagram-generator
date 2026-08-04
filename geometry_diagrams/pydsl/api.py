@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointRotate, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -19,7 +19,7 @@ def point(x: float, y: float) -> Point:
     pid = builder._fresh_hidden_id("pt")
     builder._add(PointFixed(id=pid, x=x, y=y))
     builder._coord_floats[pid] = (float(x), float(y))
-    return Point(id=pid)
+    return Point(id=pid, x=float(x), y=float(y))
 
 
 def line_through(p: Point, q: Point) -> Line:
@@ -200,6 +200,27 @@ def rotate_point(source: Point, center: Point, angle: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("rot")
     builder._add(PointRotate(id=pid, center=center.id, source=source.id, angle=angle))
+    return Point(id=pid)
+
+
+def reflect_point(source: Point, across) -> Point:
+    """Reflect source across a point (point symmetry) or a line/segment (mirror)."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("refl")
+    builder._add(PointReflect(id=pid, source=source.id, across=across.id))
+    return Point(id=pid)
+
+
+def dilate_point(source: Point, center: Point, ratio: float) -> Point:
+    """Scale source about center by ratio: result = center + ratio*(source - center).
+
+    For points with known literal coordinates, plain arithmetic on the Point
+    handles themselves (`center + ratio * (source - center)`) does the same
+    thing and needs no import — use this when either point's coordinates
+    aren't known yet (e.g. dilating about a computed triangle center)."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("dil")
+    builder._add(PointDilate(id=pid, center=center.id, source=source.id, ratio=ratio))
     return Point(id=pid)
 
 
