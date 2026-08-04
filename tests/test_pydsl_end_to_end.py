@@ -159,7 +159,7 @@ def test_pydsl_labels_render_as_svg_text():
         t = triangle(a, b, c)
         a.label("A")
         s = segment(a, b)
-        s.label("r")
+        s.label("RAD")
         label_text("T", centroid_of=t)
         draw(t)
         draw(s)
@@ -169,5 +169,5 @@ def test_pydsl_labels_render_as_svg_text():
     sym = compile_defs(ir)
     result = SVGRenderer().render(ir, sym)
     svg = result.output
-    for expected_text in ("A", "r", "T"):
+    for expected_text in ("A", "RAD", "T"):
         assert expected_text in svg, f"expected label {expected_text!r} not found in rendered SVG"
