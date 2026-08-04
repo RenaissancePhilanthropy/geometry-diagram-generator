@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -182,6 +182,25 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
             group=str(group) if group is not None else None,
         )
     )
+
+
+def point_on(obj, t: float) -> Point:
+    """A point at parameter t along a line or segment (t=0/1 are the object's
+    defining points; for a line, t outside [0, 1] extends past them in either
+    direction — use this instead of hand-computing coordinates to place a
+    point on an existing line/segment, or to extend a line's visible extent."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("pt_on")
+    builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))
+    return Point(id=pid)
+
+
+def rotate_point(source: Point, center: Point, angle: float) -> Point:
+    """Rotate source around center by angle radians (positive = counter-clockwise)."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("rot")
+    builder._add(PointRotate(id=pid, center=center.id, source=source.id, angle=angle))
+    return Point(id=pid)
 
 
 def draw(obj) -> None:

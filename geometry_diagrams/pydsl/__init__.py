@@ -3,7 +3,7 @@
 Re-exports handles and op functions so callers (and the stub generator) have
 one place to introspect the public surface.
 """
-from geometry_diagrams.pydsl.api import altitude, circumcircle, draw, draw_points, incircle, line_through, mark_angle, median, point, polygon, triangle
+from geometry_diagrams.pydsl.api import altitude, circumcircle, draw, draw_points, incircle, line_through, mark_angle, median, point, point_on, polygon, rotate_point, triangle
 from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
 
 __all__ = [
@@ -18,6 +18,8 @@ __all__ = [
     "mark_angle",
     "draw",
     "draw_points",
+    "point_on",
+    "rotate_point",
     "Point",
     "Line",
     "Segment",
