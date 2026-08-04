@@ -43,12 +43,14 @@ t = triangle(a, b, c)
 def _make_script_response(script: str) -> dict:
     raw = MagicMock()
     raw.response_metadata = {"usage": {"input_tokens": 10, "output_tokens": 20}}
+    raw.usage_metadata = {"input_tokens": 10, "output_tokens": 20}
     return {"raw": raw, "parsed": PydslScriptOutput(script=script), "parsing_error": None}
 
 
 def _make_script_fail_response() -> dict:
     raw = MagicMock()
     raw.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 2}}
+    raw.usage_metadata = {"input_tokens": 5, "output_tokens": 2}
     return {"raw": raw, "parsed": None, "parsing_error": "bad JSON from LLM"}
 
 
@@ -155,3 +157,105 @@ def test_build_agent_raises_not_implemented():
     strategy = PythonFullStrategy()
     with pytest.raises(NotImplementedError):
         strategy.build_agent(model="anthropic:claude-sonnet-4-6")
+
+
+from geometry_diagrams.strategies.python_full import PythonFullMetadata
+
+
+@pytest.mark.asyncio
+async def test_metadata_records_one_trace_per_attempt_and_final_stage_success():
+    """Retry-then-succeed: python_full_metadata (the dedicated field, never
+    recipe_metadata) must have one trace per attempt, with the sandbox
+    failure's message on the first and stage='success' on the second."""
+    mock_llm = _make_mock_llm([
+        _make_script_response(TYPO_SCRIPT),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert result.recipe_metadata is None  # never touched
+    meta = result.python_full_metadata
+    assert isinstance(meta, PythonFullMetadata)
+    assert len(meta.attempt_traces) == 2
+    assert meta.attempt_traces[0].script == TYPO_SCRIPT
+    assert meta.attempt_traces[0].stage == "sandbox"
+    assert meta.attempt_traces[0].error is not None
+    assert meta.attempt_traces[1].script == VALID_SCRIPT
+    assert meta.attempt_traces[1].stage == "success"
+    assert meta.attempt_traces[1].error is None
+
+
+@pytest.mark.asyncio
+async def test_metadata_records_nothing_drawn_stage():
+    mock_llm = _make_mock_llm([
+        _make_script_response(NO_DRAW_SCRIPT),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert result.python_full_metadata.attempt_traces[0].stage == "nothing_drawn"
+
+
+@pytest.mark.asyncio
+async def test_metadata_records_generation_failure_stage_without_double_counting():
+    """Covers the script-is-None early-return path: _run_script_node must NOT
+    touch the trace _generate_script_node already recorded for this attempt."""
+    mock_llm = _make_mock_llm([
+        _make_script_fail_response(),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    meta = result.python_full_metadata
+    assert len(meta.attempt_traces) == 2
+    assert meta.attempt_traces[0].stage == "generation"
+    assert meta.attempt_traces[0].script is None
+    assert meta.attempt_traces[0].error == "bad JSON from LLM"
+
+
+@pytest.mark.asyncio
+async def test_run_reports_total_tokens_across_all_attempts():
+    """Pre-existing bug caught while wiring metadata through run(): the current
+    PythonFullStrategy.run() returns final_state["result"] directly without ever
+    copying final_state's accumulated input_tokens/output_tokens onto it — so
+    result.input_tokens/output_tokens are always 0 regardless of actual LLM
+    usage (nothing previously asserted on these fields, so it went uncaught).
+    A 2-attempt run must report tokens summed across BOTH generation calls."""
+    mock_llm = _make_mock_llm([
+        _make_script_fail_response(),  # 5 in / 2 out
+        _make_script_response(VALID_SCRIPT),  # 10 in / 20 out
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert result.input_tokens == 15
+    assert result.output_tokens == 22
+
+
+@pytest.mark.asyncio
+async def test_partial_metadata_captured_on_total_failure():
+    """The exhausts-all-retries case — the single most important scenario for
+    diagnostics, and the one the original design draft missed entirely."""
+    mock_llm = _make_mock_llm([_make_script_response(TYPO_SCRIPT)] * MAX_RETRIES)
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        with pytest.raises(RuntimeError, match="PythonFullStrategy failed"):
+            await strategy.run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+            )
+    assert isinstance(strategy._partial_python_full_metadata, PythonFullMetadata)
+    assert len(strategy._partial_python_full_metadata.attempt_traces) == MAX_RETRIES
+    assert all(t.stage == "sandbox" for t in strategy._partial_python_full_metadata.attempt_traces)
+    assert strategy._partial_input_tokens > 0
+    assert strategy._partial_output_tokens > 0
