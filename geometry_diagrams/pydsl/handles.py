@@ -11,24 +11,29 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-def _record_literal_point(x: float, y: float) -> "Point":
+def _record_literal_point(builder: "object", x: float, y: float) -> "Point":
     """Record a new point_fixed def for a coordinate computed via Point
     arithmetic (e.g. `center + k * (source - center)`), the same way api.py's
     point() does — kept here rather than imported from api.py to avoid a
-    handles<->api circular import."""
+    handles<->api circular import. Takes `builder` explicitly (the caller's
+    own captured `self._builder`) rather than calling get_builder(): this
+    runs from inside Point.__add__/__sub__/__mul__, which execute as a
+    script's own top-level statements, not nested inside a
+    _bind_to_builder-wrapped tool call — get_builder()'s ambient contextvar
+    is not set at that point when running inside the real sandbox."""
     from geometry_diagrams.ir.ir import PointFixed
-    from geometry_diagrams.pydsl.builder import get_builder
 
-    builder = get_builder()
     pid = builder._fresh_hidden_id("pt")
     builder._add(PointFixed(id=pid, x=x, y=y))
     builder._coord_floats[pid] = (float(x), float(y))
-    return Point(id=pid, x=float(x), y=float(y))
+    return Point(id=pid, _builder=builder, x=float(x), y=float(y))
 
 
 @dataclass(frozen=True)
 class Point:
     id: str
+    _builder: "object" = field(repr=False, compare=False)  # type is Builder; avoid a
+                                                             # circular import at module load
     # Known only for point(x, y) literals (and points derived from them via
     # arithmetic) — never for constructed points (point_on, rotate_point,
     # dilate_point, reflect_point, ...), whose coordinates aren't resolved
@@ -53,17 +58,25 @@ class Point:
 
     def __add__(self, other: "Point") -> "Point":
         self._known(other)
-        return _record_literal_point(self.x + other.x, self.y + other.y)
+        return _record_literal_point(self._builder, self.x + other.x, self.y + other.y)
 
     def __sub__(self, other: "Point") -> "Point":
         self._known(other)
-        return _record_literal_point(self.x - other.x, self.y - other.y)
+        return _record_literal_point(self._builder, self.x - other.x, self.y - other.y)
 
     def __mul__(self, scalar: float) -> "Point":
         self._known()
-        return _record_literal_point(self.x * scalar, self.y * scalar)
+        return _record_literal_point(self._builder, self.x * scalar, self.y * scalar)
 
     __rmul__ = __mul__
+
+    def label(self, text: str, pos: str = "auto", show_coords: bool = False) -> None:
+        """Label this point with text, e.g. p.label("A")."""
+        from geometry_diagrams.ir.ir import LabelPoint
+
+        self._builder._add_render(
+            LabelPoint(p=self.id, text=text, pos=pos, show_coords=show_coords)
+        )
 
 
 @dataclass(frozen=True)
@@ -74,6 +87,7 @@ class Line:
 @dataclass(frozen=True)
 class Segment:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -97,7 +111,12 @@ class Triangle:
         if v.id not in vertex_ids:
             raise ValueError(f"{v.id!r} is not a vertex of triangle {self.id!r}")
         others = [pid for pid in vertex_ids if pid != v.id]
-        return AngleRef(a=Point(id=others[0]), o=v, b=Point(id=others[1]))
+        return AngleRef(
+            a=Point(id=others[0], _builder=self._builder),
+            o=v,
+            b=Point(id=others[1], _builder=self._builder),
+            _builder=self._builder,
+        )
 
 
 @dataclass(frozen=True)
@@ -139,7 +158,12 @@ class Polygon:
         n = len(ids)
         i = ids.index(v.id)
         prev_id, next_id = ids[(i - 1) % n], ids[(i + 1) % n]
-        return AngleRef(a=Point(id=prev_id), o=v, b=Point(id=next_id))
+        return AngleRef(
+            a=Point(id=prev_id, _builder=self._builder),
+            o=v,
+            b=Point(id=next_id, _builder=self._builder),
+            _builder=self._builder,
+        )
 
 
 @dataclass(frozen=True)
@@ -147,6 +171,7 @@ class AngleRef:
     a: Point
     o: Point
     b: Point
+    _builder: "object" = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True)

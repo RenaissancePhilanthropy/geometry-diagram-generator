@@ -19,7 +19,7 @@ def point(x: float, y: float) -> Point:
     pid = builder._fresh_hidden_id("pt")
     builder._add(PointFixed(id=pid, x=x, y=y))
     builder._coord_floats[pid] = (float(x), float(y))
-    return Point(id=pid, x=float(x), y=float(y))
+    return Point(id=pid, _builder=builder, x=float(x), y=float(y))
 
 
 def line_through(p: Point, q: Point) -> Line:
@@ -90,7 +90,7 @@ def circumcircle(t: Triangle) -> Circle:
             )
         return round((side_a * side_b * side_c) / (4 * area), 10)
 
-    return Circle(id=cid, center=Point(id=center_id), _radius_thunk=_compute_radius)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius)
 
 
 def incircle(t: Triangle) -> Circle:
@@ -128,7 +128,7 @@ def incircle(t: Triangle) -> Circle:
             f"/ sqrt((length({b_id},{c_id})+length({a_id},{c_id})+length({a_id},{b_id}))/2)"
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
-    return Circle(id=cid, center=Point(id=center_id), _radius_thunk=lambda: radius)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius)
 
 
 def median(t: Triangle, from_vertex: Point) -> Median:
@@ -142,7 +142,7 @@ def median(t: Triangle, from_vertex: Point) -> Median:
     builder._add(PointMidpoint(id=mid_id, p=others[0], q=others[1]))
     seg_id = builder._fresh_hidden_id("median_seg")
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=mid_id))
-    return Median(id=seg_id, midpoint=Point(id=mid_id), segment=Segment(id=seg_id))
+    return Median(id=seg_id, midpoint=Point(id=mid_id, _builder=builder), segment=Segment(id=seg_id, _builder=builder))
 
 
 def altitude(t: Triangle, from_vertex: Point) -> Altitude:
@@ -168,8 +168,8 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=foot_id))
 
     return Altitude(
-        id=line_id, foot=Point(id=foot_id), line=Line(id=line_id),
-        segment=Segment(id=seg_id),
+        id=line_id, foot=Point(id=foot_id, _builder=builder), line=Line(id=line_id),
+        segment=Segment(id=seg_id, _builder=builder),
     )
 
 
@@ -192,7 +192,7 @@ def point_on(obj, t: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("pt_on")
     builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))
-    return Point(id=pid)
+    return Point(id=pid, _builder=builder)
 
 
 def rotate_point(source: Point, center: Point, angle: float) -> Point:
@@ -200,7 +200,7 @@ def rotate_point(source: Point, center: Point, angle: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("rot")
     builder._add(PointRotate(id=pid, center=center.id, source=source.id, angle=angle))
-    return Point(id=pid)
+    return Point(id=pid, _builder=builder)
 
 
 def reflect_point(source: Point, across) -> Point:
@@ -208,7 +208,7 @@ def reflect_point(source: Point, across) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("refl")
     builder._add(PointReflect(id=pid, source=source.id, across=across.id))
-    return Point(id=pid)
+    return Point(id=pid, _builder=builder)
 
 
 def dilate_point(source: Point, center: Point, ratio: float) -> Point:
@@ -221,7 +221,7 @@ def dilate_point(source: Point, center: Point, ratio: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("dil")
     builder._add(PointDilate(id=pid, center=center.id, source=source.id, ratio=ratio))
-    return Point(id=pid)
+    return Point(id=pid, _builder=builder)
 
 
 def draw(obj) -> None:

@@ -94,3 +94,17 @@ def test_multiplying_a_point_with_unknown_coordinates_raises_a_clear_error():
         rotated = rotate_point(far, origin, math.pi / 4)
         with pytest.raises(ValueError, match="no known coordinates"):
             _ = rotated * 2
+
+
+def test_point_arithmetic_works_through_the_real_sandbox():
+    """Regression test: Point.__add__ previously called get_builder(), which
+    only succeeds inside a _bind_to_builder-wrapped top-level call — a
+    script's own top-level `a + b` statement is not one, so this raised
+    RuntimeError: no active Builder in the real sandbox despite passing
+    every direct-new_builder_context() test above."""
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = "a = point(0, 0)\nb = point(4, 0)\nc = a + b\ndraw_points(a, b, c)\n"
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None

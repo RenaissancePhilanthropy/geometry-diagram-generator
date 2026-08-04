@@ -62,11 +62,11 @@ class Builder:
 
         key = frozenset((p_id, q_id))
         if key in self._segment_cache:
-            return Segment(id=self._segment_cache[key])
+            return Segment(id=self._segment_cache[key], _builder=self)
         sid = self._fresh_hidden_id("seg")
         self._add(SegmentDef(id=sid, a=p_id, b=q_id))
         self._segment_cache[key] = sid
-        return Segment(id=sid)
+        return Segment(id=sid, _builder=self)
 
 
 _current_builder: contextvars.ContextVar["Builder | None"] = contextvars.ContextVar(
