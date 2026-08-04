@@ -93,6 +93,13 @@ class Polygon:
 
 
 @dataclass(frozen=True)
+class AngleRef:
+    a: Point
+    o: Point
+    b: Point
+
+
+@dataclass(frozen=True)
 class Median:
     id: str
     midpoint: Point

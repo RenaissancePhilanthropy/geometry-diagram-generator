@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import CircleCenterRadius, LinePerpendicularThrough, LineThrough, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
 
 
 def point(x: float, y: float) -> Point:
@@ -168,3 +168,14 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=foot_id))
 
     return Altitude(id=line_id, foot=Point(id=foot_id), line=Line(id=line_id))
+
+
+def mark_angle(ref: AngleRef, group: int | None = None) -> None:
+    """Mark an angle arc for rendering, optionally tagged with an equal-angle group."""
+    builder = get_builder()
+    builder._add_render(
+        MarkAngles(
+            angles=[AnglePoints(a=ref.a.id, o=ref.o.id, b=ref.b.id)],
+            group=str(group) if group is not None else None,
+        )
+    )

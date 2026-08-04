@@ -41,6 +41,14 @@ class Builder:
             )
         self._defs.append(defstmt)  # type: ignore[arg-type]
 
+    def _add_render(self, render_op) -> None:
+        if len(self._defs) + len(self._render) >= self._op_cap:
+            raise OpCapExceededError(
+                f"script recorded more than {self._op_cap} ops "
+                "(this is a size cap, not a security boundary)"
+            )
+        self._render.append(render_op)
+
     def _fresh_hidden_id(self, prefix: str) -> str:
         self._hidden_id_counter += 1
         return f"__pydsl_{prefix}_{self._hidden_id_counter}"
