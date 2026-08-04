@@ -71,7 +71,7 @@ tests/
 - Consumes: `geometry_diagrams.ir.ir.{DiagramIR, PointFixed, LineThrough, Segment}` (existing).
 - Produces: `Builder` class with `.build() -> DiagramIR`, `.op_count -> int`, `_current_builder: contextvars.ContextVar[Builder | None]`, `get_builder() -> Builder` (raises `RuntimeError` if none active), `new_builder_context() -> contextmanager` yielding a fresh `Builder` and resetting the contextvar on exit. `Point` and `Line` handle classes each expose `.id: str` (the internal, auto-generated IR id). `point(x: float, y: float) -> Point`, `line_through(p: Point, q: Point) -> Line`.
 
-- [ ] **Step 1: Write the failing test for builder isolation**
+- [x] **Step 1: Write the failing test for builder isolation**
 
 ```python
 # tests/test_pydsl_builder.py
@@ -116,12 +116,12 @@ def test_sequential_builder_contexts_do_not_leak_ops():
     assert [d.id for d in ir2.define] == ["p2"]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_builder.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl'`
 
-- [ ] **Step 3: Implement `Builder` core**
+- [x] **Step 3: Implement `Builder` core**
 
 ```python
 # geometry_diagrams/pydsl/builder.py
@@ -197,12 +197,12 @@ def new_builder_context(op_cap: int = DEFAULT_OP_CAP) -> Iterator[Builder]:
         _current_builder.reset(token)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_builder.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Write the failing test for op-count cap**
+- [x] **Step 5: Write the failing test for op-count cap**
 
 ```python
 # append to tests/test_pydsl_builder.py
@@ -220,12 +220,12 @@ def test_op_cap_raises_once_exceeded():
             builder._add(PointFixed(id="p_overflow", x=99, y=99))
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_builder.py -v`
 Expected: PASS (4 tests) — the cap check was already implemented in Step 3, so this should pass immediately; if not, fix `Builder._add`.
 
-- [ ] **Step 7: Write the failing test for handles + basic ops**
+- [x] **Step 7: Write the failing test for handles + basic ops**
 
 ```python
 # tests/test_pydsl_basic_ops.py
@@ -265,12 +265,12 @@ def test_api_functions_raise_outside_builder_context():
         point(0, 0)
 ```
 
-- [ ] **Step 8: Run test to verify it fails**
+- [x] **Step 8: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_basic_ops.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl.api'` (and `handles`)
 
-- [ ] **Step 9: Implement handles and basic ops**
+- [x] **Step 9: Implement handles and basic ops**
 
 ```python
 # geometry_diagrams/pydsl/handles.py
@@ -342,12 +342,12 @@ from geometry_diagrams.pydsl.handles import Line, Point, Segment
 __all__ = ["point", "line_through", "Point", "Line", "Segment"]
 ```
 
-- [ ] **Step 10: Run test to verify it passes**
+- [x] **Step 10: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_basic_ops.py tests/test_pydsl_builder.py -v`
 Expected: PASS (7 tests)
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_builder.py tests/test_pydsl_basic_ops.py
@@ -370,7 +370,7 @@ git commit -m "Add pydsl builder core, contextvar isolation, point/line_through 
 
 **Why `Triangle` carries its own `_builder` reference instead of calling `get_builder()` from inside `.side()`/`.angle_at()` — this matters for Task 10, read before implementing:** Task 10's sandbox wraps each *module-level* function (`point`, `triangle`, `polygon`, ...) so it sets the ambient contextvar for the duration of that one call, because `LocalPythonExecutor` runs the whole script — and therefore every tool call — inside its own worker thread, where the contextvar is otherwise invisible (verified empirically; see Task 10). But a handle method like `t.side(a, b)` is called *later*, directly by the executor on a value the script already holds — not through any wrapped tool function — so by the time `.side()` runs, the wrapper that set the contextvar has already exited and reset it. Confirmed empirically: a handle method reading the ambient contextvar sees `None`, not the bound builder, even though the tool call that *created* the handle saw it correctly. The fix is to capture the builder directly on the handle at construction time (also confirmed empirically to work regardless of which thread the method runs on) rather than re-deriving it from ambient state. `Triangle`/`Polygon` are the only handles with methods that touch the builder (`Circle`/`Altitude`/`Median`/`AngleRef` are plain data, no methods), so this pattern applies to both.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_triangle.py
@@ -428,12 +428,12 @@ def test_side_raises_for_non_vertex_point():
             t.side(a, outside)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_triangle.py -v`
 Expected: FAIL with `ImportError: cannot import name 'triangle'`
 
-- [ ] **Step 3: Implement `Triangle` handle and `triangle()` op**
+- [x] **Step 3: Implement `Triangle` handle and `triangle()` op**
 
 ```python
 # add to geometry_diagrams/pydsl/handles.py
@@ -495,12 +495,12 @@ def triangle(a: Point, b: Point, c: Point) -> Triangle:
 
 Add `triangle` and `Triangle` to `geometry_diagrams/pydsl/__init__.py`'s imports and `__all__`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_triangle.py -v`
 Expected: PASS (5 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_triangle.py
@@ -521,7 +521,7 @@ git commit -m "Add Triangle handle: vertices, order-independent side(), angle_at
 - Consumes: `Point`, `Builder._get_or_create_segment` from Task 2.
 - Produces: `Polygon` handle with `.vertices -> tuple[Point, ...]`, `.side(v1: Point, v2: Point) -> Segment` (raises `ValueError` if `v1`/`v2` are not adjacent in vertex order — this is the structural, non-geometric adjacency check), `.angle_at(v: Point) -> AngleRef` (stub, filled in Task 7). `polygon(*vertices: Point) -> Polygon`, requires 3+ vertices.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_polygon.py
@@ -568,12 +568,12 @@ def test_side_raises_for_non_adjacent_vertices():
             p.side(a, c)  # diagonal, not an edge
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_polygon.py -v`
 Expected: FAIL with `ImportError: cannot import name 'polygon'`
 
-- [ ] **Step 3: Implement `Polygon` handle and `polygon()` op**
+- [x] **Step 3: Implement `Polygon` handle and `polygon()` op**
 
 Same rationale as Task 2's `Triangle`: `.side()`/`.angle_at()` use a `_builder` reference captured at construction time, not `get_builder()`, since the executor calls these methods outside the wrapper that made the ambient contextvar visible.
 
@@ -628,12 +628,12 @@ def polygon(*vertices: Point) -> Polygon:
 
 Add `polygon` and `Polygon` to `geometry_diagrams/pydsl/__init__.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_polygon.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_polygon.py
@@ -654,7 +654,7 @@ git commit -m "Add Polygon handle: vertices, adjacency-validated side(), angle_a
 - Consumes: `Triangle` from Task 2 (via `t.vertices`, not any builder-side lookup table), `Builder._coord_floats` (populated by `point()` in Task 1).
 - Produces: `Circle` handle with `.center -> Point` (computed, hidden id), `.radius -> float | str` (numeric when vertex coordinates are concrete, else a symbolic length-expression string — mirroring the existing `_lower_incircle` fallback behavior in `geometry_diagrams/recipe/lower.py`, not new scope). `circumcircle(t: Triangle) -> Circle`, `incircle(t: Triangle) -> Circle`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_circle.py
@@ -710,12 +710,12 @@ def test_incircle_center_is_a_computed_incenter_point():
     assert center.id == center_defs[0].id
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_circle.py -v`
 Expected: FAIL with `ImportError: cannot import name 'circumcircle'`
 
-- [ ] **Step 3: Implement `Circle` handle and ops**
+- [x] **Step 3: Implement `Circle` handle and ops**
 
 **`radius` is a lazy property, not an eagerly-computed field** — this matters specifically for `circumcircle()`: whether a vertex is a concrete `point()` literal is only knowable at the moment `.radius` is actually read, not at circle-construction time (a script might build `circumcircle(t)` and never read `.radius` at all, or `t`'s vertices might resolve to concrete coordinates only after other ops run). Rejecting eagerly, at construction, would reject scripts that never needed the value — the same category of premature-rejection mistake this plan explicitly rules out elsewhere (see the "no eager geometric validation" constraint). A thunk defers both the "are vertices concrete" check and the degenerate-triangle (collinear vertices → zero area) check to actual access time.
 
@@ -825,12 +825,12 @@ def incircle(t: Triangle) -> Circle:
 
 Add `circumcircle`, `incircle`, `Circle` to `geometry_diagrams/pydsl/__init__.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_circle.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_circle.py
@@ -851,7 +851,7 @@ git commit -m "Add Circle handle: circumcircle()/incircle() mirroring lower.py's
 - Consumes: `Triangle`, `Point` (via `t.vertices`).
 - Produces: `Median` handle with `.midpoint -> Point`, `.segment -> Segment`. `median(t: Triangle, from_vertex: Point) -> Median`, raises `ValueError` if `from_vertex` is not a vertex of `t`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_median.py
@@ -897,12 +897,12 @@ def test_median_raises_for_vertex_not_in_triangle():
             median(t, from_vertex=outside)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_median.py -v`
 Expected: FAIL with `ImportError: cannot import name 'median'`
 
-- [ ] **Step 3: Implement `Median` handle and op**
+- [x] **Step 3: Implement `Median` handle and op**
 
 ```python
 # add to geometry_diagrams/pydsl/handles.py
@@ -936,12 +936,12 @@ def median(t: Triangle, from_vertex: Point) -> Median:
 
 Add `median`, `Median` to `geometry_diagrams/pydsl/__init__.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_median.py -v`
 Expected: PASS (3 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_median.py
@@ -962,7 +962,7 @@ git commit -m "Add Median handle: midpoint and vertex-to-midpoint segment"
 - Consumes: `Triangle`, `Point`.
 - Produces: `Altitude` handle with `.foot -> Point`, `.line -> Line`. `altitude(t: Triangle, from_vertex: Point) -> Altitude`, raises `ValueError` if `from_vertex` is not a vertex of `t`. Internally constructs the same four IR objects the DSL's altitude lowering does (hidden base `LineThrough`, `LinePerpendicularThrough` as the altitude line, `PointFoot` as the foot, hidden `Segment` vertex→foot) — this task writes new equivalent logic directly against the IR classes, it does not call into `recipe/lower.py`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_altitude.py
@@ -1018,12 +1018,12 @@ def test_altitude_raises_for_vertex_not_in_triangle():
             altitude(t, from_vertex=outside)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_altitude.py -v`
 Expected: FAIL with `ImportError: cannot import name 'altitude'`
 
-- [ ] **Step 3: Implement `Altitude` handle and op**
+- [x] **Step 3: Implement `Altitude` handle and op**
 
 ```python
 # add to geometry_diagrams/pydsl/handles.py
@@ -1068,12 +1068,12 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
 
 (`LineThrough` is already imported in `api.py` from Task 1.) Add `altitude`, `Altitude` to `geometry_diagrams/pydsl/__init__.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_altitude.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_altitude.py
@@ -1094,7 +1094,7 @@ git commit -m "Add Altitude handle: foot and perpendicular line"
 - Consumes: `Point`, `Triangle.angle_at`, `Polygon.angle_at` (already implemented in Tasks 2–3, importing `AngleRef` lazily).
 - Produces: `AngleRef` dataclass with `.a: Point`, `.o: Point`, `.b: Point` (no other accessors, per the design doc). `mark_angle(ref: AngleRef, group: int | None = None) -> None` — appends a render op, no handle returned (nothing downstream references a mark).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_angle.py
@@ -1134,12 +1134,12 @@ def test_mark_angle_appends_a_render_op():
     assert ir.render[0].angles[0].o == b.id
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_angle.py -v`
 Expected: FAIL — `Triangle.angle_at` raises `ImportError` (the lazy `from geometry_diagrams.pydsl.handles import AngleRef` fails because `AngleRef` doesn't exist yet)
 
-- [ ] **Step 3: Implement `AngleRef` and `mark_angle()`**
+- [x] **Step 3: Implement `AngleRef` and `mark_angle()`**
 
 First, confirm the exact `MarkAngles` render-op shape by reading it:
 
@@ -1190,12 +1190,12 @@ Add `_add_render` to `Builder` (`geometry_diagrams/pydsl/builder.py`), routed th
 
 Add `mark_angle`, `AngleRef` to `geometry_diagrams/pydsl/__init__.py`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_angle.py -v`
 Expected: PASS (3 tests). If `MarkAngles` requires an `id` field, add `id=builder._fresh_hidden_id("mark")` to the constructor call and re-run.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/ tests/test_pydsl_angle.py
@@ -1214,7 +1214,7 @@ git commit -m "Add AngleRef, wire Triangle/Polygon.angle_at(), add mark_angle() 
 - Consumes: the `geometry_diagrams.pydsl` module (Tasks 1–7's `__all__`).
 - Produces: `generate_stub() -> str` — signatures-and-docstrings text for every function and every handle class's public methods in `geometry_diagrams.pydsl.__all__`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_stub.py
@@ -1258,12 +1258,12 @@ def test_stub_does_not_include_private_helpers():
     assert "_builder" not in stub
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_stub.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl.stub'`
 
-- [ ] **Step 3: Implement the stub generator**
+- [x] **Step 3: Implement the stub generator**
 
 ```python
 # geometry_diagrams/pydsl/stub.py
@@ -1322,12 +1322,12 @@ def generate_stub() -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_stub.py -v`
 Expected: PASS (4 tests). If a handle class isn't yet exported in `__all__`, add it to `geometry_diagrams/pydsl/__init__.py` first (all handle classes should already be exported by Task 7). If `field.type` prints as a raw string like `'float | str'` instead of a clean type name (dataclass field types can be stored as strings depending on `from __future__ import annotations` behavior at class-definition time), that's fine for stub purposes — the test only checks substring presence, not exact formatting.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/stub.py tests/test_pydsl_stub.py
@@ -1348,7 +1348,7 @@ git commit -m "Add stub generator: introspects public API into prompt-ready text
 
 **Why this handles two different message shapes, verified against the real library:** called directly with a hand-constructed `ValueError`/`NameError` (unit tests, and any non-sandboxed caller), `isinstance` checks classify it directly. But on the real sandboxed path (Task 10), `LocalPythonExecutor` wraps *every* exception raised inside a tool call — including our own `ValueError`/`OpCapExceededError` — into a single `InterpreterError` whose message embeds the original type name as text: `"Code execution failed at line '...' due to: ValueError: ..."` (confirmed by raising a `ValueError` from an injected tool and reading the resulting `InterpreterError.args`). Since only `str(exc)` survives crossing the subprocess queue in Task 10/11, `classify_failure` needs a message-text fallback that recovers the original type name, not just `isinstance`. This task is built and tested standalone with hand-constructed exceptions falling through the `isinstance` path; Task 10 reuses the exact same function against the message-text path, so both are covered by one implementation instead of two divergent ones.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_retry.py
@@ -1462,12 +1462,12 @@ def test_build_retry_message_has_no_suggestion_for_structural_errors():
     assert "not a vertex" in msg
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_retry.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl.retry'`
 
-- [ ] **Step 3: Implement the retry layer**
+- [x] **Step 3: Implement the retry layer**
 
 ```python
 # geometry_diagrams/pydsl/retry.py
@@ -1563,12 +1563,12 @@ def build_retry_message(exc_or_message: "Exception | str", script: str) -> str:
     return message
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_retry.py -v`
 Expected: PASS (11 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/retry.py tests/test_pydsl_retry.py
@@ -1588,7 +1588,7 @@ git commit -m "Add retry-layer failure classification and did-you-mean suggestio
 - Consumes: `geometry_diagrams.pydsl` (the full public API, injected as `LocalPythonExecutor` tools), `Builder` from Task 1, `classify_failure`/`build_retry_message` from Task 9's `retry.py`.
 - Produces: `run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult` where `ScriptResult` is a small dataclass: `diagram_ir: DiagramIR | None`, `error: str | None`, `error_type: str | None` (one of `"import_error"`, `"dangerous_call"`, `"hallucinated_api"`, `"structural_precondition"`, `"syntax_or_timeout"`, `"timeout"` — matching the design doc's own three-category retry-cause scheme, `"import_error"`/`"dangerous_call"` being finer-grained splits of what the doc calls "syntax-or-timeout"; there is no separate `"execution_error"` category — any exception `classify_failure` doesn't otherwise recognize falls into the `"syntax_or_timeout"` catch-all, matching the design doc's own bucket for exactly this case), `retry_message: str | None` (the did-you-mean-enhanced message, populated directly from Task 9's `build_retry_message` — no separate wiring step needed, since classification happens once, in the child, where the real message text is available). Runs in a subprocess (`multiprocessing.Process`) with `RLIMIT_CPU` set inside the child; the parent enforces a hard wall-clock kill (`process.join(timeout)` then `process.kill()`) as the actual cross-platform backstop, independent of whether the in-process `LocalPythonExecutor(timeout_seconds=...)` fires first.
 
-- [ ] **Step 1: Add the dependency**
+- [x] **Step 1: Add the dependency**
 
 Edit `pyproject.toml`:
 ```toml
@@ -1608,7 +1608,7 @@ dependencies = [
 Run: `uv sync`
 Expected: `smolagents` and its transitive deps install without error.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_pydsl_sandbox.py
@@ -1709,12 +1709,12 @@ t.side(a, outside)
 
 Note: `pytest.mark.timeout` requires `pytest-timeout`; check if it's already a dev dependency (`grep pytest-timeout pyproject.toml`). If absent, add `"pytest-timeout>=2.3.1"` to `[dependency-groups.dev]` in `pyproject.toml` and run `uv sync` before continuing — these tests must not be able to hang the test suite itself if the sandbox implementation has a bug.
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_sandbox.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl.sandbox'`
 
-- [ ] **Step 4: Implement the sandbox**
+- [x] **Step 4: Implement the sandbox**
 
 **Verified against the real installed library** (`pip install smolagents==1.26.0` into a scratch venv and inspected/ran directly — not guessed):
 - `LocalPythonExecutor.__call__` wraps the *entire* script evaluation — every tool call included — in a `ThreadPoolExecutor(max_workers=1)` worker thread (`smolagents/local_python_executor.py`'s `timeout()` decorator). **This breaks a naive `contextvars` binding**: a value set via `_current_builder.set(...)` on the calling thread is invisible inside a tool function invoked from that worker thread (confirmed empirically: a test tool reading a contextvar set on the main thread saw `None` inside the executor). The fix below binds each tool function to its `Builder` via a wrapper that calls `.set()` immediately before invoking the real function, in the *same* call frame the tool actually runs in — this works regardless of which thread that turns out to be, and was confirmed to work in the same experiment.
@@ -1850,13 +1850,13 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
 
 Note: `Builder` no longer needs to be entered via `new_builder_context()` inside the subprocess for this path — the sandbox constructs it directly and binds it into each tool closure, since the ambient-contextvar pattern only works when the caller and the tool run on the same thread (true for direct/synchronous unit-test usage from Tasks 1–9, false inside `LocalPythonExecutor`). `new_builder_context()` remains the right API for Tasks 1–9's tests and for any future non-sandboxed caller.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_sandbox.py -v`
 Expected: PASS. If `test_infinite_while_loop_is_caught_by_iteration_cap` times out instead of erroring cleanly (`MAX_WHILE_ITERATIONS` at 1M interpreted-AST iterations can take longer than expected), reduce the test's `timeout_seconds` argument so the wall-clock kill or `ExecutionTimeoutError` fires first, rather than trying to change the iteration cap itself (a library default, not configurable).
 
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml geometry_diagrams/pydsl/sandbox.py tests/test_pydsl_sandbox.py
@@ -1877,7 +1877,7 @@ Task 10 already produces a classified, did-you-mean-enhanced `retry_message` per
 - Consumes: `run_script`, `ScriptResult` from Task 10.
 - Produces: `run_with_retries(make_script: Callable[[list[ScriptResult]], str], cap: int, timeout_seconds: float = 5.0) -> list[ScriptResult]`. `make_script` is called with the list of prior attempts' `ScriptResult`s (empty on the first call) and returns the next script text to try — this task does not call an LLM; tests hand-author `make_script` as a plain Python function simulating a model that eventually succeeds, or that never does, so the cap and stop-on-success behavior are both exercised without any live model. Returns the full attempt history; the caller inspects `result[-1]` to see whether the final attempt succeeded.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_retry_loop.py
@@ -1938,12 +1938,12 @@ def test_make_script_receives_the_prior_result_for_retry_prompting():
     assert seen_retry_messages[0] is not None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_retry_loop.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'geometry_diagrams.pydsl.retry_loop'`
 
-- [ ] **Step 3: Implement the retry-loop driver**
+- [x] **Step 3: Implement the retry-loop driver**
 
 ```python
 # geometry_diagrams/pydsl/retry_loop.py
@@ -1977,12 +1977,12 @@ def run_with_retries(
     return history
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_retry_loop.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geometry_diagrams/pydsl/retry_loop.py tests/test_pydsl_retry_loop.py
@@ -2004,7 +2004,7 @@ git commit -m "Add retry-loop driver: stop-on-success and cap enforcement"
 
 **Why this task must include a `run_script()` path, not only the direct in-process `new_builder_context()` path:** every test in Tasks 1–9 calls `.side()`/`.angle_at()` synchronously, in the same thread that opened `new_builder_context()` — the one execution shape where the ambient-contextvar pattern (before Task 2/3's `_builder`-capture fix) would have looked correct. The bug Task 10 found and fixed — handle methods invisible to the contextvar inside `LocalPythonExecutor`'s worker thread — is only reachable by actually running a script *through the sandbox*, calling a handle method on a value the script itself holds. A version of this task that only exercises `new_builder_context()` directly would have shipped Tasks 2/3's `_builder`-capture fix without ever proving it necessary. This task's script-through-`run_script()` test is the one place in the whole plan that exercises `.side()` via the real executor path.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_pydsl_end_to_end.py
@@ -2159,24 +2159,24 @@ def test_pydsl_script_runs_through_the_real_sandbox_end_to_end():
     assert "segment" in kinds  # only reachable via t.side()/square.side()
 ```
 
-- [ ] **Step 2: Run test to verify it fails or passes as expected**
+- [x] **Step 2: Run test to verify it fails or passes as expected**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_end_to_end.py -v`
 Expected: `test_pydsl_script_covers_every_scope_table_kind` should PASS immediately (only inspects `ir.define`). `test_pydsl_script_compiles_without_error` and `test_pydsl_triangle_side_lengths_match_equivalent_dsl_recipe` depend on `compile_defs` successfully resolving the pydsl-built `DiagramIR` — if either raises, read the actual error (likely an ordering issue: `compile_defs` walks `diagram.define` and expects referenced ids to already be defined earlier in the list) and fix whichever pydsl task's op ordering is wrong. `test_pydsl_script_runs_through_the_real_sandbox_end_to_end` is the important one to watch: if Task 2/3's `_builder`-capture fix on `Triangle`/`Polygon` was implemented incorrectly, this is the test that catches it — expect `result.error` to mention "no active Builder" if that regression is present.
 
-- [ ] **Step 3: Fix any integration issues and re-run until passing**
+- [x] **Step 3: Fix any integration issues and re-run until passing**
 
 If `compile_defs`/`run_checks` raise for a reason unrelated to op ordering, compare against the patterns in `tests/test_compile_defs.py`/`tests/test_checks.py` and adjust the test (not the pydsl implementation, which Tasks 1–11 already verified independently) accordingly.
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_end_to_end.py -v`
 Expected: PASS (4 tests)
 
-- [ ] **Step 4: Run the full pydsl test suite to confirm no regressions**
+- [x] **Step 4: Run the full pydsl test suite to confirm no regressions**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_*.py -v`
 Expected: PASS (all tests across all 12 tasks)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_pydsl_end_to_end.py
