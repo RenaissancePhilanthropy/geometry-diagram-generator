@@ -39,6 +39,13 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   `segment(center, edge).label("r")`, `t.angle_at(b).label("θ")`. Use
   `label_text(text, at=(x, y))` or `label_text(text, centroid_of=shape)` for
   free-standing text not tied to one specific object.
+- Call `canvas(x_range=(xmin, xmax), y_range=(ymin, ymax), grid=True)` if the
+  request needs a coordinate grid or axes — do NOT hand-draw a grid out of
+  individual `segment()`/`line_through()` calls, since those would render in
+  the same stroke as your actual geometry and be indistinguishable from it.
+  `grid_step`/`tick_step` are optional and auto-sized to the canvas if
+  omitted. Note: with `axes=True`, the displayed bounds expand to include
+  the origin even if `x_range`/`y_range` don't.
 - Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.

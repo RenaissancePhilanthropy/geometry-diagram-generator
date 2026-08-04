@@ -171,3 +171,19 @@ def test_pydsl_labels_render_as_svg_text():
     svg = result.output
     for expected_text in ("Q", "RAD", "T"):
         assert expected_text in svg, f"expected label {expected_text!r} not found in rendered SVG"
+
+
+def test_pydsl_canvas_grid_renders_with_distinct_styling():
+    from geometry_diagrams.pydsl.api import canvas, draw, triangle
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        canvas(x_range=(0, 8), y_range=(0, 6), grid=True)
+        a, b, c = point(0, 0), point(4, 0), point(2, 3)
+        draw(triangle(a, b, c))
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    result = SVGRenderer().render(ir, sym)
+    svg = result.output
+    assert 'stroke="#ccc"' in svg, "expected grid lines with distinct light-gray styling"

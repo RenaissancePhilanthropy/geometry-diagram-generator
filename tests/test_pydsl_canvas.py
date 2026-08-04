@@ -150,3 +150,34 @@ def test_canvas_large_span_with_auto_computed_step_does_not_raise():
         canvas(x_range=(0, 10000), y_range=(0, 10000), grid=True)
         ir = builder.build()
     assert ir.canvas.grid_step == 1000.0
+
+
+def test_canvas_works_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = (
+        "canvas(x_range=(0, 8), y_range=(0, 6), grid=True)\n"
+        "a = point(1, 2)\n"
+        "b = point(7, 6)\n"
+        "draw_points(a, b)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    assert result.diagram_ir.canvas is not None
+    assert result.diagram_ir.canvas.grid is True
+    assert result.diagram_ir.canvas.xmin == 0
+    assert result.diagram_ir.canvas.xmax == 8
+
+
+def test_canvas_double_call_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = (
+        "canvas(x_range=(0, 8), y_range=(0, 6))\n"
+        "canvas(x_range=(0, 4), y_range=(0, 4))\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is not None
+    assert "already called once" in result.error
+    assert result.diagram_ir is None
