@@ -22,6 +22,7 @@ prompt (+ prior retry_message, if any)
 - **Retry loop is a `StateGraph`**, not a reuse of `retry_loop.run_with_retries` (the Phase 1a driver). That function's tests assume a synchronous, non-LLM `make_script`; bending it to drive an async LLM call would diverge from how every other strategy in this codebase structures retries. `retry_loop.py` stays as-is, exercised only by its own Phase 1a tests.
 - **Not registered in `evals/run.py` yet.** Exercised via direct script/tests for this PoC; bench integration (retry-cap tuning for live vs. batch, judge scoring, A/B plumbing against `structured`/`recipe`) is an explicit later step once the basic mechanism is proven.
 - **Shared pipeline code, not duplicated.** `structured.py`'s `_run_ir_pipeline` (compile → resolve angle pairs → checks → render) is identical to what this strategy needs downstream of getting a `DiagramIR`. Extract it into `geometry_diagrams/strategies/ir_pipeline.py` as `run_ir_pipeline()`, imported by both.
+  **Correction from design review:** `recipe.py` already does `from .structured import StructuredRunResult, _run_ir_pipeline, dispatch_query` — a third consumer, not two. `StructuredRunResult` must move to `ir_pipeline.py` too (it's the pipeline's return type), re-exported from `structured.py` (evals/run.py and several tests import it from there). Both `structured.py` and `recipe.py` must keep re-exporting the pipeline function under its **old, private name** — `from .ir_pipeline import run_ir_pipeline as _run_ir_pipeline` — because `tests/test_structured_strategy.py` and `tests/test_recipe_strategy.py`/`test_recipe_retry.py` patch `structured._run_ir_pipeline` / `recipe._run_ir_pipeline` directly by that module-qualified name. Updating call sites to the new public name instead (dropping the aliased re-export) would silently break those patches — not a viable option despite being "cleaner."
 
 ## Components
 
@@ -46,15 +47,17 @@ def draw_points(*points: Point) -> None:
     builder._add_render(DrawPoints(points=[p.id for p in points]))
 ```
 
-`Altitude`/`Median` handles aren't directly drawable as a single object (they bundle a foot/midpoint point plus a line/segment) — `draw(alt.line)`, `draw(alt.foot's containing segment)`, etc. are drawn via their component handles, all of which expose `.id`-bearing sub-parts already. No new handle-side code needed beyond the two functions above; `stub.py`'s introspection picks them up automatically (single source of truth, unchanged from Phase 1a).
+`Median` is fully drawable via its existing `.segment` field (`draw(med.segment)`). **`Altitude` is not — this is a real gap, not just documentation:** `api.py`'s `altitude()` already constructs the vertex→foot `Segment` def (`altitude_seg`), but the `Altitude` handle (`handles.py`) only exposes `foot` and `line` — `line` is the *infinite* perpendicular line, not the drawable segment, so the natural "draw this altitude" object is currently unreachable from the handle. Fix as part of this work: add a `segment: Segment` field to `Altitude` (`handles.py`) and set it in `altitude()`'s return (the segment def already exists — this only exposes it). `stub.py`'s introspection picks up the new field automatically once added.
 
-Uses the existing `Builder._add_render()` (already added in Task 7 for `mark_angle`) — no builder changes needed.
+Uses the existing `Builder._add_render()` (already added in Task 7 for `mark_angle`) — no builder changes needed for `draw()`/`draw_points()` themselves.
+
+**Separate, necessary fix in `builder.py`: `Builder.build()` must stop hardcoding `canvas=Canvas()`.** `Canvas()` defaults to fixed `-5..5` bounds; both `to_svg.py` and `to_tikz.py` only ever *expand* those bounds outward for out-of-range points, never shrink them — so every pydsl diagram currently renders inside an unnecessarily large, zoomed-out `10×10` canvas regardless of how small the actual construction is (a unit triangle would render tiny in the middle of a mostly-empty canvas). Both renderers already have a working fallback for this: `diagram.canvas is None` triggers `compute_bounds()`/auto-sizing from the resolved geometry directly (confirmed in both `to_svg.py:126-140` and `to_tikz.py:76-97` — "canvas may be None" is an existing, exercised code path, not new). Fix: change `Builder.build()`'s `canvas=Canvas()` to `canvas=None`. One-line change, benefits every pydsl consumer (not just this strategy), and requires no new logic since both renderers already handle it.
 
 ### 2. Shared `run_ir_pipeline()`
 
 **File:** `geometry_diagrams/strategies/ir_pipeline.py` (new)
 
-Move `structured.py`'s module-level `_run_ir_pipeline` here verbatim, rename to `run_ir_pipeline` (no longer private — now a cross-module shared helper). `structured.py` imports and calls it under its old name via `from .ir_pipeline import run_ir_pipeline as _run_ir_pipeline` (minimal diff) or updates its call sites directly (cleaner — prefer this). Behavior is unchanged; this is a pure extraction, not a rewrite.
+Move `structured.py`'s module-level `_run_ir_pipeline` (and the `StructuredRunResult` dataclass it returns) here verbatim, renamed to `run_ir_pipeline`/`StructuredRunResult` (no longer structured.py-private — now a cross-module shared helper). Both `structured.py` and `recipe.py` import and re-export it under the old private name: `from .ir_pipeline import run_ir_pipeline as _run_ir_pipeline`, `from .ir_pipeline import StructuredRunResult` — required so existing test patches (`patch("geometry_diagrams.strategies.structured._run_ir_pipeline", ...)`, same for `recipe`) keep working unchanged. Behavior is unchanged; this is a pure extraction, not a rewrite. Run the full test suite afterward as a regression check on both `structured.py` and `recipe.py`, not just `structured.py`.
 
 ### 3. `instructions_python_full.py` — prompt template
 
@@ -119,9 +122,19 @@ async def _generate_script_node(state) -> dict:
 
 
 async def _run_script_node(state) -> dict:
-    # asyncio.to_thread(run_script, state["script"], timeout_seconds=SANDBOX_TIMEOUT_SECONDS)
-    #   -> ScriptResult
-    # if result.error: last_error = result.retry_message; attempt += 1; return
+    # Mirrors structured.py's _run_pipeline_node, including its None-guard: if
+    # _generate_script_node already failed (state["script"] is None), _generate_script_node
+    # already incremented attempt — this node must NOT increment it again (this is exactly
+    # the double-count bug tests/test_structured_strategy.py's
+    # test_ir_gen_failure_costs_one_attempt exists to catch; the equivalent test here is
+    # test_script_gen_failure_costs_one_attempt).
+    # if state["script"] is None: return {"last_error": "No script available to run"}
+    #
+    # result = await asyncio.to_thread(run_script, state["script"], timeout_seconds=SANDBOX_TIMEOUT_SECONDS)
+    # if result.error:
+    #     # retry_message is None for ExecutionTimeoutError (sandbox.py's timeout branch never
+    #     # sets it) — fall back to result.error so last_error is never None on this path.
+    #     last_error = result.retry_message or result.error; attempt += 1; return
     # if not result.diagram_ir.render:  # the "forgot to draw" guard
     #     last_error = (f"Diagram has {len(result.diagram_ir.define)} definitions but "
     #                    "nothing was drawn — call draw()/draw_points() on what should "
@@ -158,9 +171,9 @@ class PythonFullStrategy(SubstanceStrategy):
 
 Three independent, each-cost-one-attempt failure points (extending `structured.py`'s already-tested "one failure, one attempt" invariant with a third case specific to this strategy):
 
-1. **Script generation failure** — malformed/unparseable LLM output.
-2. **Sandbox failure** (`ScriptResult.error is not None`) — import/dangerous-call/hallucinated-API/structural-precondition/timeout, already classified and did-you-mean-enhanced by the Phase 1a retry layer (Tasks 9–10). `last_error = result.retry_message`.
-3. **Nothing-drawn guard** — script succeeds, defs exist, `render` list is empty. `last_error` is a purpose-written message (not from the sandbox — this is strategy-level business logic; the sandbox has no opinion on what "should" be visible).
+1. **Script generation failure** — malformed/unparseable LLM output. `_run_script_node` must not double-count this (see its None-guard above).
+2. **Sandbox failure** (`ScriptResult.error is not None`) — import/dangerous-call/hallucinated-API/structural-precondition/timeout, already classified and did-you-mean-enhanced by the Phase 1a retry layer (Tasks 9–10). `last_error = result.retry_message or result.error` (the `or` fallback matters: `ExecutionTimeoutError`'s branch in `sandbox.py` always sets `retry_message=None`, so relying on `retry_message` alone would silently carry no error text into the next prompt on a timeout).
+3. **Nothing-drawn guard** — script succeeds, defs exist, `render` list is empty. `last_error` is a purpose-written message (not from the sandbox — this is strategy-level business logic; the sandbox has no opinion on what "should" be visible). Known limitation, acceptable for this PoC: a script that only calls `mark_angle(...)` (which does append to `render`) satisfies this guard without drawing any actual geometry — a narrower, more precise check is future work, not blocking here.
 4. **Pipeline failure** — `run_ir_pipeline` raises (geometric check failure, invalid angle triple, etc.), same as `structured.py`.
 
 After `MAX_RETRIES` (3) exhausted attempts: raise `RuntimeError` with the last error, identical convention to `structured.py`/`recipe.py`.
@@ -170,10 +183,12 @@ After `MAX_RETRIES` (3) exhausted attempts: raise `RuntimeError` with the last e
 - `tests/test_pydsl_draw.py`: `draw(t)` appends `Draw(obj=t.id)`; `draw_points(a, b)` appends `DrawPoints(points=[a.id, b.id])`; `draw(point_handle)` and `draw(angle_ref)` raise `ValueError` naming the correct alternative function.
 - `tests/test_python_full_strategy.py`: mirrors `tests/test_structured_strategy.py`'s approach exactly — mock only `get_chat_model().with_structured_output().ainvoke`, feed real hand-authored script strings as the canned "model output." Everything downstream (real sandbox subprocess, real `compile_defs`/checks/render) runs for real, no Docker required if the test passes an `SVGRenderer()`. Cases:
   - First-attempt success.
+  - **Script generation failure costs exactly one attempt** (`test_script_gen_failure_costs_one_attempt`, the direct analog of `test_structured_strategy.py`'s `test_ir_gen_failure_costs_one_attempt` — this is the double-count regression the `_run_script_node` None-guard exists to prevent).
   - Sandbox failure (typo'd call) → retry with did-you-mean in the prompt → success.
+  - Timeout-classified sandbox failure → `last_error` is non-empty despite `retry_message` being `None` (covers the `or result.error` fallback).
   - Nothing-drawn failure → retry with the guard's message → success.
   - Exhausts `MAX_RETRIES` → `RuntimeError` raised, message includes the last failure.
-- `tests/test_structured_strategy.py` must still pass unchanged after the `run_ir_pipeline` extraction (pure refactor, no behavior change) — run the full suite as a regression check.
+- `tests/test_structured_strategy.py` **and** `tests/test_recipe_strategy.py`/`test_recipe_retry.py` must still pass unchanged after the `run_ir_pipeline`/`StructuredRunResult` extraction (pure refactor, no behavior change) — run the full suite as a regression check, since `recipe.py` is a consumer too.
 
 ## Out of scope for this PoC
 
@@ -181,3 +196,6 @@ After `MAX_RETRIES` (3) exhausted attempts: raise `RuntimeError` with the last e
 - An `auto_draw` flag/mode. The design intentionally leaves room for one (a post-process that adds `Draw` for every def, analogous to `recipe/lower.py`'s `auto_draw_all` but adapted for pydsl's all-hidden-id convention) but does not build it now — only add it when a concrete need appears.
 - A conversational `build_agent()` (chat-driven render_diagram/query_diagram tools, as `structured.py` provides). The abstract method is satisfied minimally; real chat wiring is deferred.
 - Recipe/catalog translation (unchanged from the Phase 1a design doc — still `recipe.py`'s territory, not touched by this strategy).
+- **Labels.** pydsl has no label ops and every id is hidden (`__pydsl_pt_1`-style) — diagrams from this strategy will be unlabeled. Visible in any future side-by-side comparison against `structured`/`recipe` output; not addressed here.
+- **Geometric check ops.** No pydsl op appends to `DiagramIR.checks`, so `checks` is always `[]` and the "geometric validation fails → retry" channel that makes `structured.py` robust essentially never fires for this strategy yet. Acceptable for a PoC proving the generation mechanism; a real bench comparison later would need to weigh this.
+- Retry-prompt wording: the appended "previous attempt failed" text should say "corrected script," not "corrected DiagramIR" (copy difference from `structured.py`'s equivalent text — call this out explicitly when writing `_generate_script_node`, easy to get wrong by copy-pasting).
