@@ -1948,3 +1948,93 @@ def test_label_point_show_coords_false_no_coordinate_text():
     # Should contain the label "P" but not coordinate notation
     assert "P" in svg_str
     assert "(3" not in svg_str or "4)" not in svg_str
+
+
+# ---------------------------------------------------------------------------
+# Canvas: wide tick labels must not clip off the left edge
+# ---------------------------------------------------------------------------
+
+def test_wide_y_tick_labels_do_not_clip_left_edge():
+    """A canvas spanning thousands of units produces 4-digit y-axis tick
+    labels; the left margin must widen to fit them instead of letting them
+    run off the left edge of the SVG (x < 0)."""
+    diagram = DiagramIR(
+        canvas=Canvas(
+            xmin=0, xmax=7000, ymin=0, ymax=9000,
+            axes=True, show_ticks=True, show_tick_labels=True,
+            grid=True, grid_step=1000, tick_step=1000,
+        ),
+        define=[PointFixed(id="O", x=0, y=0)],
+        render=[DrawPoints(points=["O"])],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    texts = _findall(root, "text")
+    tick_labels = [t for t in texts if t.get("text-anchor") == "end" and t.get("font-size") == "11"]
+    assert len(tick_labels) >= 1
+    for t in tick_labels:
+        label_text = t.text or ""
+        est_width = max(len(label_text), 1) * 11 * 0.65
+        left_edge = float(t.get("x")) - est_width
+        assert left_edge >= 0, f"tick label {label_text!r} left edge at {left_edge:.1f} clips off-canvas"
+
+
+# ---------------------------------------------------------------------------
+# Canvas: segment/point labels must avoid overlapping axis tick labels
+# ---------------------------------------------------------------------------
+
+def test_segment_label_does_not_overlap_axis_tick_label():
+    """Reproduces the 'medium' canvas-demo collision: a segment labeled "400"
+    sitting near the y-axis, where the tick label "400" also renders at
+    grid_step=50 over a 0..400 range. Axis tick labels are drawn immediately
+    (not through the deferred pending_labels pipeline), so without explicit
+    handling, segment labels have no way to detect or avoid them."""
+    diagram = DiagramIR(
+        canvas=Canvas(
+            xmin=-30, xmax=350, ymin=-30, ymax=450,
+            axes=True, grid=True, grid_step=50,
+            show_ticks=True, show_tick_labels=True, tick_step=50,
+        ),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=300, y=0),
+            PointFixed(id="C", x=0, y=400),
+            Triangle(id="T", a="A", b="B", c="C"),
+            Segment(id="AC", a="A", b="C"),
+        ],
+        render=[
+            Draw(kind="draw", obj="T"),
+            LabelSegment(kind="label_segment", seg="AC", text="400"),
+        ],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    texts = _findall(root, "text")
+
+    def bbox(t):
+        text = t.text or ""
+        w = max(len(text), 1) * float(t.get("font-size", "14")) * 0.65
+        h = float(t.get("font-size", "14"))
+        anchor = t.get("text-anchor", "middle")
+        x = float(t.get("x"))
+        y = float(t.get("y"))
+        x0 = x if anchor == "start" else (x - w if anchor == "end" else x - w / 2)
+        return x0, y - h / 2, x0 + w, y + h / 2
+
+    def overlap(a, b):
+        return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+    # The collision isn't "same text value" — it's AC's midpoint (0, 200)
+    # landing exactly on the y-axis "200" tick (grid_step=50 divides 200
+    # evenly), a completely different label than the segment's own "400".
+    seg_labels = [t for t in texts if t.get("data-role") in ("label-segment", "label-point")]
+    tick_labels = [t for t in texts if t.get("font-size") == "11"]
+    assert len(seg_labels) >= 1
+    assert len(tick_labels) >= 1
+    for seg in seg_labels:
+        bb_seg = bbox(seg)
+        for tick in tick_labels:
+            bb_tick = bbox(tick)
+            assert not overlap(bb_seg, bb_tick), (
+                f"label {seg.text!r} at {bb_seg} overlaps tick label {tick.text!r} at {bb_tick}"
+            )

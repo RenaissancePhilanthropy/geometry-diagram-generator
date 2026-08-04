@@ -64,6 +64,8 @@ _ANGLE_ARC_R = 20          # px — radius of angle arc marks
 _FONT_SIZE = 14            # px
 _LABEL_OFFSET = 12         # px — label distance from geometry
 _ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc
+_TICK_PX = 5               # px — tick mark half-length
+_TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +153,28 @@ def ir_to_svg(
     _MARGIN = 20  # px
     usable = _SVG_SIZE - 2 * _MARGIN
     scale = usable / max(geo_w, geo_h)
-    svg_w = geo_w * scale + 2 * _MARGIN
+
+    # Wide y-axis tick labels (e.g. multi-digit numbers on a large canvas) can
+    # be wider than the default margin reserves, clipping off the left edge —
+    # widen the left margin to fit the widest one actually being drawn,
+    # rather than assuming a fixed margin covers every tick label.
+    extra_left = 0.0
+    if canvas is not None and canvas.axes and canvas.show_tick_labels and xmin <= 0 <= xmax:
+        tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+        widths = [
+            max(len(fmt_label_num(y)), 1) * _TICK_LABEL_FONT_SIZE * 0.65
+            for y in tick_values(ymin, ymax, tick_step)
+        ]
+        if widths:
+            extra_left = max(widths) - _MARGIN + _TICK_PX + 3
+            extra_left = max(extra_left, 0.0)
+
+    svg_w = geo_w * scale + 2 * _MARGIN + extra_left
     svg_h = geo_h * scale + 2 * _MARGIN
 
     def gx(x: float) -> float:
         """Geometry x → SVG x."""
-        return (x - xmin) * scale + _MARGIN
+        return (x - xmin) * scale + _MARGIN + extra_left
 
     def gy(y: float) -> float:
         """Geometry y → SVG y (flipped: high y = low pixel row)."""
@@ -235,6 +253,9 @@ def ir_to_svg(
     # Populated by the grid/axes below (if enabled) and by geometry ops during
     # the main render loop.
     drawn_segments: list[tuple[float, float, float, float]] = []
+    # Axis tick label bounding boxes — fixed obstacles other labels must avoid
+    # (tick labels are drawn immediately below, not through pending_labels).
+    tick_label_boxes: list[tuple[float, float, float, float]] = []
 
     # Optional grid
     if canvas is not None and canvas.grid:
@@ -244,7 +265,8 @@ def ir_to_svg(
     if canvas is not None and canvas.axes:
         _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale,
                      font_family=font_config.family,
-                     drawn_segments=drawn_segments)
+                     drawn_segments=drawn_segments,
+                     tick_label_boxes=tick_label_boxes)
 
     # --- Render ops (z-sorted) ---
     _Z_ORDER = {
@@ -306,12 +328,15 @@ def ir_to_svg(
     # Deduplicate coincident point labels (keep first occurrence at each position)
     _dedup_coincident_labels(pending_labels)
 
-    # Nudge labels away from drawn lines/segments, then resolve label-label
-    # collisions, then nudge again — collision resolution can push labels back
-    # into segments, so the second pass re-establishes segment clearance.
+    # Nudge labels away from drawn lines/segments and fixed tick-label boxes,
+    # then resolve label-label collisions, then nudge again — collision
+    # resolution can push labels back into segments/tick labels, so the
+    # second pass re-establishes clearance.
     _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
     _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     for lp in pending_labels:
         _append_label(
             svg, lp.x, lp.y, lp.text, lp.color,
@@ -1466,6 +1491,7 @@ def _append_axes(
     scale: float,
     font_family: str = "serif",
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
+    tick_label_boxes: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     has_x = ymin <= 0 <= ymax
     has_y = xmin <= 0 <= xmax
@@ -1506,7 +1532,7 @@ def _append_axes(
             }).text = "y"
 
     tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
-    TICK_PX = 5
+    TICK_PX = _TICK_PX
 
     if (canvas.show_ticks or canvas.show_tick_labels) and has_x:
         for x in tick_values(xmin, xmax, tick_step):
@@ -1518,11 +1544,16 @@ def _append_axes(
                     "stroke": "black", "stroke-width": "1",
                 })
             if canvas.show_tick_labels:
+                label_text = fmt_label_num(x)
+                tx, ty = px, py + TICK_PX + 4
                 ET.SubElement(svg, "text", {
-                    "x": f"{px:.2f}", "y": f"{py + TICK_PX + 4:.2f}",
-                    "font-family": font_family, "font-size": "11",
+                    "x": f"{tx:.2f}", "y": f"{ty:.2f}",
+                    "font-family": font_family, "font-size": str(_TICK_LABEL_FONT_SIZE),
                     "text-anchor": "middle", "dominant-baseline": "hanging",
-                }).text = fmt_label_num(x)
+                }).text = label_text
+                if tick_label_boxes is not None:
+                    w = max(len(label_text), 1) * _TICK_LABEL_FONT_SIZE * 0.65
+                    tick_label_boxes.append((tx - w / 2, ty, tx + w / 2, ty + _TICK_LABEL_FONT_SIZE))
 
     if (canvas.show_ticks or canvas.show_tick_labels) and has_y:
         for y in tick_values(ymin, ymax, tick_step):
@@ -1534,11 +1565,16 @@ def _append_axes(
                     "stroke": "black", "stroke-width": "1",
                 })
             if canvas.show_tick_labels:
+                label_text = fmt_label_num(y)
+                tx, ty = px - TICK_PX - 3, py
                 ET.SubElement(svg, "text", {
-                    "x": f"{px - TICK_PX - 3:.2f}", "y": f"{py:.2f}",
-                    "font-family": font_family, "font-size": "11",
+                    "x": f"{tx:.2f}", "y": f"{ty:.2f}",
+                    "font-family": font_family, "font-size": str(_TICK_LABEL_FONT_SIZE),
                     "text-anchor": "end", "dominant-baseline": "central",
-                }).text = fmt_label_num(y)
+                }).text = label_text
+                if tick_label_boxes is not None:
+                    w = max(len(label_text), 1) * _TICK_LABEL_FONT_SIZE * 0.65
+                    tick_label_boxes.append((tx - w, ty - _TICK_LABEL_FONT_SIZE / 2, tx, ty + _TICK_LABEL_FONT_SIZE / 2))
 
 
 def _ensure_arrow_marker(svg: ET.Element) -> None:
@@ -2225,11 +2261,22 @@ def _nudge_labels_from_lines(
     a height-only threshold would leave the bbox corners crossing the segment.
     """
     _MARGIN = _FONT_SIZE * 0.35
+    _EPS = 0.5  # small overshoot so the re-check passes without float jitter
     for _ in range(4):
         moved = False
         for lp in labels:
+            # The anchor point (lp.x, lp.y) is NOT the bbox centre for
+            # start/end-anchored labels — _label_bbox is anchor-aware.  Measure
+            # clearance from the true bbox centre so a start-anchored label
+            # sitting just right of a vertical line isn't spuriously pushed
+            # w/2 further away (the origin-label bug).  The centre offset is
+            # constant per label, so nudging lp moves the bbox identically.
+            bx0, by0, bx1, by1 = _label_bbox(lp)
+            off_x = (bx0 + bx1) / 2 - lp.x
+            off_y = (by0 + by1) / 2 - lp.y
             for x1, y1, x2, y2 in drawn_segments:
-                dist, near_x, near_y = _point_to_segment_distance(lp.x, lp.y, x1, y1, x2, y2)
+                cx, cy = lp.x + off_x, lp.y + off_y
+                dist, near_x, near_y = _point_to_segment_distance(cx, cy, x1, y1, x2, y2)
 
                 # Compute the nudge direction first — needed for the support function.
                 if dist < 1e-6:
@@ -2239,8 +2286,8 @@ def _nudge_labels_from_lines(
                     dx, dy = -sdy / smag, sdx / smag
                 else:
                     # Push away from the nearest point on the segment.
-                    dx = (lp.x - near_x) / dist
-                    dy = (lp.y - near_y) / dist
+                    dx = (cx - near_x) / dist
+                    dy = (cy - near_y) / dist
 
                 # Support function: extent of the label bbox in the nudge direction.
                 # This is the minimum center-to-segment distance for the bbox to clear.
@@ -2250,9 +2297,53 @@ def _nudge_labels_from_lines(
                 if dist >= min_dist:
                     continue
 
-                nudge = min_dist - dist + _MARGIN
+                nudge = min_dist - dist + _EPS
                 lp.x += dx * nudge
                 lp.y += dy * nudge
+                moved = True
+        if not moved:
+            break
+
+
+def _nudge_labels_from_fixed_boxes(
+    labels: list[_LabelPlacement],
+    boxes: list[tuple[float, float, float, float]],
+) -> None:
+    """Push movable labels (point/segment/angle/free-text) clear of fixed
+    obstacle boxes — axis tick labels — that never move themselves.
+
+    Tick labels are drawn immediately in _append_axes rather than through
+    this module's deferred pending_labels pipeline, so without this pass
+    other labels have no way to even detect them, let alone avoid them: a
+    segment's length label sits at its midpoint, and that midpoint commonly
+    lands exactly on a tick position (e.g. a segment from 0 to 400 with
+    grid_step=50 has its midpoint, 200, fall exactly on the "200" tick).
+    """
+    padding = 2.0
+    for _ in range(4):
+        moved = False
+        for lp in labels:
+            bb = _label_bbox(lp)
+            for bx0, by0, bx1, by1 in boxes:
+                box_pad = (bx0 - padding, by0 - padding, bx1 + padding, by1 + padding)
+                if not _bboxes_overlap(bb, box_pad):
+                    continue
+                bcx, bcy = (bx0 + bx1) / 2, (by0 + by1) / 2
+                dx, dy = lp.x - bcx, lp.y - bcy
+                dist = math.hypot(dx, dy)
+                if dist < 1e-6:
+                    dx, dy, dist = 0.0, -1.0, 1.0
+                else:
+                    dx, dy = dx / dist, dy / dist
+                label_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+                box_extent = abs((bx1 - bx0) / 2 * dx) + abs((by1 - by0) / 2 * dy)
+                min_dist = label_extent + box_extent + padding
+                if dist >= min_dist:
+                    continue
+                nudge = min_dist - dist + 0.5
+                lp.x += dx * nudge
+                lp.y += dy * nudge
+                bb = _label_bbox(lp)
                 moved = True
         if not moved:
             break

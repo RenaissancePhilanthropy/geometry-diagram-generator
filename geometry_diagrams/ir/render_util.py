@@ -347,15 +347,20 @@ def fmt_label_num(value: float) -> str:
 # ---------------------------------------------------------------------------
 
 def tick_values(lo: float, hi: float, step: float) -> list[float]:
-    """Return tick positions between lo and hi at the given step, excluding 0."""
+    """Return tick positions between lo and hi at the given step, excluding 0
+    and the endpoints themselves — axis arrowheads are drawn exactly at
+    (lo, hi), so a tick there would overlap the arrowhead."""
     if step <= 0:
         return []
     start = math.ceil(lo / step)
     end = math.floor(hi / step)
+    eps = max(abs(step) * 1e-9, 1e-9)
     values: list[float] = []
     for multiple in range(start, end + 1):
         value = multiple * step
         if abs(value) <= 1e-9:
+            continue
+        if abs(value - lo) <= eps or abs(value - hi) <= eps:
             continue
         values.append(value)
     return values

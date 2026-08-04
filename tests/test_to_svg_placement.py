@@ -144,6 +144,75 @@ class TestNudgeDeadZone:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Nudge is anchor-aware: distance is measured from the true bbox, not the
+#     anchor point (regression for the origin-label displacement bug)
+# ---------------------------------------------------------------------------
+
+class TestNudgeAnchorAware:
+    AXES = [(20.0, 250.0, 480.0, 250.0),   # x-axis (horizontal)
+            (250.0, 20.0, 250.0, 480.0)]   # y-axis (vertical)
+
+    def test_start_anchored_label_right_of_vertical_line_not_pushed(self):
+        """An 'above right' point label at the axes origin already clears both
+        axis lines — its bbox extends up-right from the anchor — so it must
+        stay at the intended 12px offset instead of being pushed as if its
+        anchor were the bbox centre."""
+        lp = _LabelPlacement(
+            x=262.0, y=238.0, text="(0, 0)", color="black", anchor="start",
+            width_est=54.6, height_est=14.0,
+        )
+        _nudge_labels_from_lines([lp], self.AXES)
+        assert (lp.x, lp.y) == pytest.approx((262.0, 238.0), abs=0.01), (
+            f"Clear start-anchored label was spuriously nudged to ({lp.x:.1f}, {lp.y:.1f})"
+        )
+
+    def test_end_anchored_label_left_of_vertical_line_not_pushed(self):
+        """Mirror case: 'above left' label, bbox extends up-left, already clear."""
+        lp = _LabelPlacement(
+            x=238.0, y=238.0, text="(0, 0)", color="black", anchor="end",
+            width_est=54.6, height_est=14.0,
+        )
+        _nudge_labels_from_lines([lp], self.AXES)
+        assert (lp.x, lp.y) == pytest.approx((238.0, 238.0), abs=0.01)
+
+    def test_start_anchored_label_straddling_line_still_nudged(self):
+        """Anchor-awareness must not disable genuine avoidance: a start-anchored
+        label whose bbox crosses the vertical line still gets pushed clear."""
+        lp = _LabelPlacement(
+            x=245.0, y=238.0, text="(0, 0)", color="black", anchor="start",
+            width_est=54.6, height_est=14.0,
+        )
+        _nudge_labels_from_lines([lp], [(250.0, 20.0, 250.0, 480.0)])
+        x0, _, _, _ = _label_bbox(lp)
+        assert x0 >= 250.0 + 14.0 * 0.35 - 0.01, (
+            f"Straddling label bbox left edge {x0:.1f} still too close to line x=250"
+        )
+
+    def test_origin_label_pipeline_axes_do_not_displace(self):
+        """End-to-end: a labeled point at the origin with canvas axes enabled
+        renders its label at the same position as without axes."""
+        def build(axes: bool) -> DiagramIR:
+            return DiagramIR(
+                canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5, axes=axes),
+                define=[PointFixed(id="O", x=0, y=0)],
+                render=[LabelPoint(kind="label_point", p="O",
+                                   text="(0, 0)", pos="above right")],
+            )
+
+        def label_xy(svg: str) -> tuple[float, float]:
+            root = _parse(svg)
+            (el,) = _labels(root)
+            return float(el.get("x")), float(el.get("y"))
+
+        x_plain, y_plain = label_xy(_compile_svg(build(axes=False)))
+        x_axes, y_axes = label_xy(_compile_svg(build(axes=True)))
+        assert (x_axes, y_axes) == pytest.approx((x_plain, y_plain), abs=0.5), (
+            f"Axes displaced origin label from ({x_plain}, {y_plain}) "
+            f"to ({x_axes}, {y_axes})"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 3. Collision resolver: both labels must move, not just the later one
 # ---------------------------------------------------------------------------
 
