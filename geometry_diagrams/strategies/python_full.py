@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
@@ -145,6 +145,26 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             "output_tokens": state["output_tokens"] + out_tok,
         }
     except Exception as exc:
+        # For some models, with_structured_output doesn't gracefully return
+        # parsed=None on a JSON-parse failure (the `if parsed is None` branch
+        # above) — it raises a pydantic ValidationError directly instead. That
+        # error's errors()[0]["input"] carries the full, untruncated raw text
+        # that failed to parse as JSON (unlike str(exc), which pydantic
+        # truncates for display) — salvage from it the same way.
+        salvaged = None
+        if isinstance(exc, ValidationError):
+            for err in exc.errors():
+                candidate = err.get("input")
+                if isinstance(candidate, str):
+                    salvaged = _extract_script_from_raw_text(candidate)
+                    if salvaged is not None:
+                        break
+        if salvaged is not None:
+            metadata.attempt_traces.append(PythonFullAttemptTrace(
+                attempt=attempt + 1, script=salvaged, error=None, stage="generation",
+            ))
+            return {"script": salvaged, "last_error": ""}
+
         logger.warning(f"_generate_script_node attempt {attempt} failed: {exc}")
         metadata.attempt_traces.append(PythonFullAttemptTrace(
             attempt=attempt + 1, script=None, error=str(exc), stage="generation",

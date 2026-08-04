@@ -334,3 +334,39 @@ async def test_generate_script_node_still_fails_when_raw_text_is_empty():
     assert result.retries == 1
     assert result.python_full_metadata.attempt_traces[0].stage == "generation"
     assert result.python_full_metadata.attempt_traces[0].script is None
+
+
+def _make_real_validation_error(raw_text: str):
+    """A genuine pydantic ValidationError, triggered the same way
+    with_structured_output's internals trigger it — not a hand-constructed
+    stand-in — so the test exercises the actual .errors()[0]['input'] shape."""
+    from pydantic import ValidationError
+    try:
+        PydslScriptOutput.model_validate_json(raw_text)
+    except ValidationError as e:
+        return e
+    raise AssertionError(f"expected {raw_text!r} to fail JSON validation")
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_salvages_a_script_when_with_structured_output_raises():
+    """The exact failure mode seen from poolside/laguna-s-2.1 via openrouter:
+    with_structured_output doesn't gracefully return parsed=None — it raises a
+    ValidationError directly out of structured.ainvoke(), bypassing the
+    parsed-is-None branch entirely. The full raw text must still be salvageable
+    from the exception itself (str(exc) truncates it; .errors()[0]['input'] does not)."""
+    raw_text = f"Here's the script:\n```python\n{VALID_SCRIPT.strip()}\n```"
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = AsyncMock(side_effect=[_make_real_validation_error(raw_text)])
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
+
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+    assert result.python_full_metadata.attempt_traces[0].stage == "success"
+    assert result.python_full_metadata.attempt_traces[0].script == VALID_SCRIPT.strip()
