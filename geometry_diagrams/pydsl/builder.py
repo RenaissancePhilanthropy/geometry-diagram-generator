@@ -11,7 +11,7 @@ import contextvars
 from contextlib import contextmanager
 from typing import Iterator
 
-from geometry_diagrams.ir.ir import Canvas, DefBase, DefStmt, DiagramIR
+from geometry_diagrams.ir.ir import DefBase, DefStmt, DiagramIR
 
 DEFAULT_OP_CAP = 2000
 
@@ -54,7 +54,7 @@ class Builder:
         return f"__pydsl_{prefix}_{self._hidden_id_counter}"
 
     def build(self) -> DiagramIR:
-        return DiagramIR(define=list(self._defs), render=list(self._render), canvas=Canvas())
+        return DiagramIR(define=list(self._defs), render=list(self._render), canvas=None)
 
     def _get_or_create_segment(self, p_id: str, q_id: str) -> "Segment":
         from geometry_diagrams.ir.ir import Segment as SegmentDef

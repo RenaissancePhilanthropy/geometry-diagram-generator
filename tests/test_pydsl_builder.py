@@ -52,3 +52,17 @@ def test_op_cap_raises_once_exceeded():
             builder._add(PointFixed(id=f"p{i}", x=i, y=i))
         with pytest.raises(OpCapExceededError, match="more than 3 ops"):
             builder._add(PointFixed(id="p_overflow", x=99, y=99))
+
+
+def test_build_emits_none_canvas_so_renderers_auto_size():
+    """Builder.build() must not hardcode a fixed canvas — a small construction
+    would render tiny and zoomed-out inside an unnecessarily large fixed
+    -5..5 canvas, since both renderers only ever expand those bounds outward,
+    never shrink them. canvas=None lets each renderer auto-size from the
+    actual resolved geometry instead (both already support this)."""
+    from geometry_diagrams.ir.ir import PointFixed
+
+    with new_builder_context() as builder:
+        builder._add(PointFixed(id="p1", x=0, y=0))
+        ir = builder.build()
+    assert ir.canvas is None
