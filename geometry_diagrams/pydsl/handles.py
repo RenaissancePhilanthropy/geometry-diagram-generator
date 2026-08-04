@@ -51,6 +51,17 @@ class Triangle:
 
 
 @dataclass(frozen=True)
+class Circle:
+    id: str
+    center: Point
+    _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+
+    @property
+    def radius(self) -> "float | str":
+        return self._radius_thunk()
+
+
+@dataclass(frozen=True)
 class Polygon:
     id: str
     vertices: tuple[Point, ...]
