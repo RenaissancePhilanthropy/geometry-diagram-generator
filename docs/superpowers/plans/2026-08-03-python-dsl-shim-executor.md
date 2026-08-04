@@ -361,13 +361,14 @@ git commit -m "Add pydsl builder core, contextvar isolation, point/line_through 
 **Files:**
 - Modify: `geometry_diagrams/pydsl/handles.py`
 - Modify: `geometry_diagrams/pydsl/api.py`
-- Modify: `geometry_diagrams/pydsl/builder.py` (add `_triangle_vertices` bookkeeping)
 - Modify: `geometry_diagrams/pydsl/__init__.py`
 - Test: `tests/test_pydsl_triangle.py`
 
 **Interfaces:**
 - Consumes: `Point` from Task 1; `geometry_diagrams.ir.ir.{Triangle as TriangleDef, Segment as SegmentDef}`.
-- Produces: `Triangle` handle with `.vertices -> tuple[Point, Point, Point]`, `.side(p: Point, q: Point) -> Segment` (order-independent, raises `ValueError` if `p`/`q` are not both vertices of this triangle), `.angle_at(v: Point) -> AngleRef` (the concrete `AngleRef` class doesn't exist until Task 7; the code below does a lazy `from geometry_diagrams.pydsl.handles import AngleRef` inside the method body, which raises `ImportError` if called before Task 7 — this is the actual behavior, not a `NotImplementedError` stub, so Task 7's own tests are the first ones that can exercise `angle_at` successfully). `triangle(a: Point, b: Point, c: Point) -> Triangle`. `Builder._segment_cache: dict[frozenset[str], str]` (initialized in `Builder.__init__`, not lazily) mapping `{p_id, q_id}` -> segment id, so repeated `.side()` calls on the same pair (in either order) return the same handle rather than creating duplicate `Segment` defs. (`Builder._triangle_vertices` bookkeeping was considered and dropped — the `Triangle` handle already carries `.vertices` directly, so a parallel id-keyed dict on the builder would just be dead code nothing reads.)
+- Produces: `Triangle` handle with `.vertices -> tuple[Point, Point, Point]`, `.side(p: Point, q: Point) -> Segment` (order-independent, raises `ValueError` if `p`/`q` are not both vertices of this triangle), `.angle_at(v: Point) -> AngleRef` (the concrete `AngleRef` class doesn't exist until Task 7; the code below does a lazy `from geometry_diagrams.pydsl.handles import AngleRef` inside the method body, which raises `ImportError` if called before Task 7 — this is the actual behavior, not a `NotImplementedError` stub, so Task 7's own tests are the first ones that can exercise `angle_at` successfully). `triangle(a: Point, b: Point, c: Point) -> Triangle`. `Builder._segment_cache: dict[frozenset[str], str]` (declared in `Builder.__init__` in Task 1) mapping `{p_id, q_id}` -> segment id, so repeated `.side()` calls on the same pair (in either order) return the same handle rather than creating duplicate `Segment` defs.
+
+**Why `Triangle` carries its own `_builder` reference instead of calling `get_builder()` from inside `.side()`/`.angle_at()` — this matters for Task 10, read before implementing:** Task 10's sandbox wraps each *module-level* function (`point`, `triangle`, `polygon`, ...) so it sets the ambient contextvar for the duration of that one call, because `LocalPythonExecutor` runs the whole script — and therefore every tool call — inside its own worker thread, where the contextvar is otherwise invisible (verified empirically; see Task 10). But a handle method like `t.side(a, b)` is called *later*, directly by the executor on a value the script already holds — not through any wrapped tool function — so by the time `.side()` runs, the wrapper that set the contextvar has already exited and reset it. Confirmed empirically: a handle method reading the ambient contextvar sees `None`, not the bound builder, even though the tool call that *created* the handle saw it correctly. The fix is to capture the builder directly on the handle at construction time (also confirmed empirically to work regardless of which thread the method runs on) rather than re-deriving it from ambient state. `Triangle`/`Polygon` are the only handles with methods that touch the builder (`Circle`/`Altitude`/`Median`/`AngleRef` are plain data, no methods), so this pattern applies to both.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -436,21 +437,22 @@ Expected: FAIL with `ImportError: cannot import name 'triangle'`
 
 ```python
 # add to geometry_diagrams/pydsl/handles.py
-from geometry_diagrams.pydsl.builder import get_builder
+from dataclasses import field
 
 
 @dataclass(frozen=True)
 class Triangle:
     id: str
     vertices: tuple[Point, Point, Point]
+    _builder: "object" = field(repr=False, compare=False)  # type is Builder; avoid a
+                                                             # circular import at module load
 
     def side(self, p: Point, q: Point) -> "Segment":
         vertex_ids = {v.id for v in self.vertices}
         for name, pt in (("p", p), ("q", q)):
             if pt.id not in vertex_ids:
                 raise ValueError(f"{pt.id!r} is not a vertex of triangle {self.id!r} ({name})")
-        builder = get_builder()
-        return builder._get_or_create_segment(p.id, q.id)
+        return self._builder._get_or_create_segment(p.id, q.id)
 
     def angle_at(self, v: Point) -> "AngleRef":
         from geometry_diagrams.pydsl.handles import AngleRef  # Task 7
@@ -469,8 +471,6 @@ class Triangle:
         from geometry_diagrams.pydsl.handles import Segment
 
         key = frozenset((p_id, q_id))
-        if not hasattr(self, "_segment_cache"):
-            self._segment_cache: dict[frozenset, str] = {}
         if key in self._segment_cache:
             return Segment(id=self._segment_cache[key])
         sid = self._fresh_hidden_id("seg")
@@ -490,9 +490,7 @@ def triangle(a: Point, b: Point, c: Point) -> Triangle:
     builder = get_builder()
     tid = builder._fresh_hidden_id("tri")
     builder._add(TriangleDef(id=tid, a=a.id, b=b.id, c=c.id))
-    builder._triangle_vertices = getattr(builder, "_triangle_vertices", {})
-    builder._triangle_vertices[tid] = (a.id, b.id, c.id)
-    return Triangle(id=tid, vertices=(a, b, c))
+    return Triangle(id=tid, vertices=(a, b, c), _builder=builder)
 ```
 
 Add `triangle` and `Triangle` to `geometry_diagrams/pydsl/__init__.py`'s imports and `__all__`.
@@ -577,12 +575,15 @@ Expected: FAIL with `ImportError: cannot import name 'polygon'`
 
 - [ ] **Step 3: Implement `Polygon` handle and `polygon()` op**
 
+Same rationale as Task 2's `Triangle`: `.side()`/`.angle_at()` use a `_builder` reference captured at construction time, not `get_builder()`, since the executor calls these methods outside the wrapper that made the ambient contextvar visible.
+
 ```python
 # add to geometry_diagrams/pydsl/handles.py
 @dataclass(frozen=True)
 class Polygon:
     id: str
     vertices: tuple[Point, ...]
+    _builder: "object" = field(repr=False, compare=False)
 
     def side(self, v1: Point, v2: Point) -> "Segment":
         ids = [v.id for v in self.vertices]
@@ -595,8 +596,7 @@ class Polygon:
             raise ValueError(
                 f"{v1.id!r} and {v2.id!r} are not adjacent vertices of polygon {self.id!r}"
             )
-        builder = get_builder()
-        return builder._get_or_create_segment(v1.id, v2.id)
+        return self._builder._get_or_create_segment(v1.id, v2.id)
 
     def angle_at(self, v: Point) -> "AngleRef":
         from geometry_diagrams.pydsl.handles import AngleRef  # Task 7
@@ -623,7 +623,7 @@ def polygon(*vertices: Point) -> Polygon:
     builder = get_builder()
     pid = builder._fresh_hidden_id("poly")
     builder._add(PolygonDef(id=pid, points=[v.id for v in vertices]))
-    return Polygon(id=pid, vertices=tuple(vertices))
+    return Polygon(id=pid, vertices=tuple(vertices), _builder=builder)
 ```
 
 Add `polygon` and `Polygon` to `geometry_diagrams/pydsl/__init__.py`.
@@ -651,7 +651,7 @@ git commit -m "Add Polygon handle: vertices, adjacency-validated side(), angle_a
 - Test: `tests/test_pydsl_circle.py`
 
 **Interfaces:**
-- Consumes: `Triangle` from Task 2, `Builder._triangle_vertices`, `Builder._coord_floats` (populated by `point()` in Task 1).
+- Consumes: `Triangle` from Task 2 (via `t.vertices`, not any builder-side lookup table), `Builder._coord_floats` (populated by `point()` in Task 1).
 - Produces: `Circle` handle with `.center -> Point` (computed, hidden id), `.radius -> float | str` (numeric when vertex coordinates are concrete, else a symbolic length-expression string — mirroring the existing `_lower_incircle` fallback behavior in `geometry_diagrams/recipe/lower.py`, not new scope). `circumcircle(t: Triangle) -> Circle`, `incircle(t: Triangle) -> Circle`.
 
 - [ ] **Step 1: Write the failing test**
@@ -717,13 +717,19 @@ Expected: FAIL with `ImportError: cannot import name 'circumcircle'`
 
 - [ ] **Step 3: Implement `Circle` handle and ops**
 
+**`radius` is a lazy property, not an eagerly-computed field** — this matters specifically for `circumcircle()`: whether a vertex is a concrete `point()` literal is only knowable at the moment `.radius` is actually read, not at circle-construction time (a script might build `circumcircle(t)` and never read `.radius` at all, or `t`'s vertices might resolve to concrete coordinates only after other ops run). Rejecting eagerly, at construction, would reject scripts that never needed the value — the same category of premature-rejection mistake this plan explicitly rules out elsewhere (see the "no eager geometric validation" constraint). A thunk defers both the "are vertices concrete" check and the degenerate-triangle (collinear vertices → zero area) check to actual access time.
+
 ```python
 # add to geometry_diagrams/pydsl/handles.py
 @dataclass(frozen=True)
 class Circle:
     id: str
     center: Point
-    radius: "float | str"
+    _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+
+    @property
+    def radius(self) -> "float | str":
+        return self._radius_thunk()
 ```
 
 ```python
@@ -737,15 +743,14 @@ from geometry_diagrams.pydsl.handles import Circle, Triangle
 def circumcircle(t: Triangle) -> Circle:
     """The circumscribed circle of a triangle.
 
-    Mirrors _lower_incircle's numeric/symbolic split (see incircle() below):
-    the circumradius R = (a*b*c)/(4*Area) depends only on the triangle's
-    side lengths, so — exactly like incircle's Heron-formula inradius — it
-    can be computed numerically whenever all three vertices are concrete
-    (PointFixed) coordinates, tracked in builder._coord_floats. The IR
-    itself doesn't need a radius value at all for the SymPy resolution path
+    The IR itself doesn't need a radius value for the SymPy resolution path
     (CircleCenterPoint's "through" point already pins the circle's size);
     `.radius` on the returned handle is purely a convenience value for the
-    script, computed here, not passed into any IR field.
+    script. It's computed lazily (see Circle.radius) via R = (a*b*c)/(4*Area),
+    which — like incircle's Heron-formula inradius below — depends only on
+    the triangle's side lengths, so it's computable whenever all three
+    vertices are concrete (PointFixed) coordinates, tracked in
+    builder._coord_floats.
     """
     from geometry_diagrams.ir.ir import CircleCenterPoint
 
@@ -756,22 +761,28 @@ def circumcircle(t: Triangle) -> Circle:
     cid = builder._fresh_hidden_id("circumcircle")
     builder._add(CircleCenterPoint(id=cid, center=center_id, through=a_id))
 
-    coord_floats = builder._coord_floats
-    if not all(v in coord_floats for v in (a_id, b_id, c_id)):
-        raise NotImplementedError(
-            "circumcircle(): computing .radius when a vertex is not a concrete "
-            "point() literal is not supported in Phase 1a — build the triangle "
-            "from point(x, y) calls, or don't read .radius on this handle."
-        )
-    ax, ay = coord_floats[a_id]
-    bx, by = coord_floats[b_id]
-    cx, cy = coord_floats[c_id]
-    side_a = math.hypot(bx - cx, by - cy)
-    side_b = math.hypot(ax - cx, ay - cy)
-    side_c = math.hypot(ax - bx, ay - by)
-    area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
-    radius = round((side_a * side_b * side_c) / (4 * area), 10)
-    return Circle(id=cid, center=Point(id=center_id), radius=radius)
+    def _compute_radius():
+        coord_floats = builder._coord_floats
+        if not all(v in coord_floats for v in (a_id, b_id, c_id)):
+            raise NotImplementedError(
+                "circumcircle(...).radius requires all three vertices to be "
+                "concrete point(x, y) literals in Phase 1a."
+            )
+        ax, ay = coord_floats[a_id]
+        bx, by = coord_floats[b_id]
+        cx, cy = coord_floats[c_id]
+        side_a = math.hypot(bx - cx, by - cy)
+        side_b = math.hypot(ax - cx, ay - cy)
+        side_c = math.hypot(ax - bx, ay - by)
+        area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+        if area == 0:
+            raise ValueError(
+                f"circumcircle(...).radius: vertices {a_id!r}, {b_id!r}, {c_id!r} "
+                "are collinear — a circumradius doesn't exist for a degenerate triangle."
+            )
+        return round((side_a * side_b * side_c) / (4 * area), 10)
+
+    return Circle(id=cid, center=Point(id=center_id), _radius_thunk=_compute_radius)
 
 
 def incircle(t: Triangle) -> Circle:
@@ -809,7 +820,7 @@ def incircle(t: Triangle) -> Circle:
             f"/ sqrt((length({b_id},{c_id})+length({a_id},{c_id})+length({a_id},{b_id}))/2)"
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
-    return Circle(id=cid, center=Point(id=center_id), radius=radius)
+    return Circle(id=cid, center=Point(id=center_id), _radius_thunk=lambda: radius)
 ```
 
 Add `circumcircle`, `incircle`, `Circle` to `geometry_diagrams/pydsl/__init__.py`.
@@ -837,7 +848,7 @@ git commit -m "Add Circle handle: circumcircle()/incircle() mirroring lower.py's
 - Test: `tests/test_pydsl_median.py`
 
 **Interfaces:**
-- Consumes: `Triangle`, `Point`, `Builder._triangle_vertices`.
+- Consumes: `Triangle`, `Point` (via `t.vertices`).
 - Produces: `Median` handle with `.midpoint -> Point`, `.segment -> Segment`. `median(t: Triangle, from_vertex: Point) -> Median`, raises `ValueError` if `from_vertex` is not a vertex of `t`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1242,6 +1253,9 @@ def test_stub_does_not_include_private_helpers():
     stub = generate_stub()
     assert "_fresh_hidden_id" not in stub
     assert "_get_or_create_segment" not in stub
+    # Triangle/Polygon carry an internal _builder reference (see Task 2's
+    # note on why) — it must never leak into the model-facing stub.
+    assert "_builder" not in stub
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1297,6 +1311,8 @@ def generate_stub() -> str:
             # see these fields without ever assigning them an id itself.
             if dataclasses.is_dataclass(obj):
                 for field in dataclasses.fields(obj):
+                    if field.name.startswith("_"):
+                        continue  # e.g. Triangle/Polygon's internal _builder reference
                     type_name = getattr(field.type, "__name__", str(field.type))
                     lines.append(f"    {field.name}: {type_name}")
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
@@ -1384,6 +1400,20 @@ def test_classify_failure_reads_embedded_type_name_from_wrapped_interpreter_mess
     assert classify_failure(wrapped_op_cap) == "syntax_or_timeout"
 
 
+def test_classify_failure_recognizes_bare_undefined_variable_reference():
+    # Verified against the real library: referencing an undefined name
+    # WITHOUT calling it (e.g. `mark_angle(reff)` where `reff` is a typo)
+    # raises with the type name "InterpreterError" embedded, not "NameError"
+    # — the interpreter's own bounds check fires directly, so the
+    # _WRAPPED_TYPE_PATTERN branch alone would never classify this as
+    # hallucinated_api without the dedicated _NAME_ERROR_PATTERN check.
+    msg = (
+        "Code execution failed at line 'x = reff' due to: "
+        "InterpreterError: The variable `reff` is not defined."
+    )
+    assert classify_failure(msg) == "hallucinated_api"
+
+
 def test_classify_failure_recognizes_forbidden_call_message_shape():
     # The real message shape for BOTH an undefined name and a call to a
     # dangerous builtin like open()/exec() — distinguishable only by which
@@ -1407,10 +1437,13 @@ def test_classify_failure_recognizes_import_error_message_shape():
 
 
 def test_build_retry_message_appends_did_you_mean_for_hallucinated_api():
-    exc = NameError("The variable `itnersection` is not defined")
-    msg = build_retry_message(exc, script="itnersection(L1, L2)")
-    assert "itnersection" in msg
-    assert "did you mean 'intersection'" in msg
+    # Must be a typo of a real Phase 1a API function — "intersection" is
+    # NOT part of the Phase 1a API (see the scope table), so a candidate
+    # pool built from the real function list would never suggest it.
+    exc = NameError("The variable `trianlge` is not defined")
+    msg = build_retry_message(exc, script="trianlge(a, b, c)")
+    assert "trianlge" in msg
+    assert "did you mean 'triangle'" in msg
 
 
 def test_build_retry_message_appends_did_you_mean_for_wrapped_forbidden_call():
@@ -1495,6 +1528,13 @@ def classify_failure(exc_or_message: "Exception | str") -> str:
     forbidden = _FORBIDDEN_CALL_PATTERN.search(message)
     if forbidden:
         return "dangerous_call" if forbidden.group(1) in _DANGEROUS_NAMES else "hallucinated_api"
+    if _NAME_ERROR_PATTERN.search(message):
+        # A bare undefined-variable reference (not a call) — verified against
+        # the real library that this raises with the message
+        # "...due to: InterpreterError: The variable `x` is not defined.",
+        # NOT a wrapped NameError, so the _WRAPPED_TYPE_PATTERN branch below
+        # would never catch it without this explicit check.
+        return "hallucinated_api"
     wrapped = _WRAPPED_TYPE_PATTERN.search(message)
     if wrapped:
         type_name = wrapped.group(1)
@@ -1526,7 +1566,7 @@ def build_retry_message(exc_or_message: "Exception | str", script: str) -> str:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_retry.py -v`
-Expected: PASS (10 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1546,7 +1586,7 @@ git commit -m "Add retry-layer failure classification and did-you-mean suggestio
 
 **Interfaces:**
 - Consumes: `geometry_diagrams.pydsl` (the full public API, injected as `LocalPythonExecutor` tools), `Builder` from Task 1, `classify_failure`/`build_retry_message` from Task 9's `retry.py`.
-- Produces: `run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult` where `ScriptResult` is a small dataclass: `diagram_ir: DiagramIR | None`, `error: str | None`, `error_type: str | None` (one of `"import_error"`, `"dangerous_call"`, `"hallucinated_api"`, `"structural_precondition"`, `"execution_error"`, `"timeout"`), `retry_message: str | None` (the did-you-mean-enhanced message, populated directly from Task 9's `build_retry_message` — no separate wiring step needed, since classification happens once, in the child, where the real message text is available). Runs in a subprocess (`multiprocessing.Process`) with `RLIMIT_CPU` set inside the child; the parent enforces a hard wall-clock kill (`process.join(timeout)` then `process.kill()`) as the actual cross-platform backstop, independent of whether the in-process `LocalPythonExecutor(timeout_seconds=...)` fires first.
+- Produces: `run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult` where `ScriptResult` is a small dataclass: `diagram_ir: DiagramIR | None`, `error: str | None`, `error_type: str | None` (one of `"import_error"`, `"dangerous_call"`, `"hallucinated_api"`, `"structural_precondition"`, `"syntax_or_timeout"`, `"timeout"` — matching the design doc's own three-category retry-cause scheme, `"import_error"`/`"dangerous_call"` being finer-grained splits of what the doc calls "syntax-or-timeout"; there is no separate `"execution_error"` category — any exception `classify_failure` doesn't otherwise recognize falls into the `"syntax_or_timeout"` catch-all, matching the design doc's own bucket for exactly this case), `retry_message: str | None` (the did-you-mean-enhanced message, populated directly from Task 9's `build_retry_message` — no separate wiring step needed, since classification happens once, in the child, where the real message text is available). Runs in a subprocess (`multiprocessing.Process`) with `RLIMIT_CPU` set inside the child; the parent enforces a hard wall-clock kill (`process.join(timeout)` then `process.kill()`) as the actual cross-platform backstop, independent of whether the in-process `LocalPythonExecutor(timeout_seconds=...)` fires first.
 
 - [ ] **Step 1: Add the dependency**
 
@@ -1606,7 +1646,10 @@ def test_dangerous_call_is_rejected():
 def test_infinite_while_loop_is_caught_by_iteration_cap():
     result = run_script("i = 0\nwhile True:\n    i = i + 1")
     assert result.diagram_ir is None
-    assert result.error_type in ("execution_error", "timeout")
+    # MAX_WHILE_ITERATIONS raises InterpreterError (falls through classify_failure's
+    # catch-all -> "syntax_or_timeout"); if the wall-clock kill wins the race instead,
+    # that's "timeout" — either is a correct outcome depending on machine speed.
+    assert result.error_type in ("syntax_or_timeout", "timeout")
 
 
 @pytest.mark.timeout(30)
@@ -1630,13 +1673,14 @@ def test_incremental_memory_growth_is_eventually_killed_by_wall_clock_timeout():
 
 
 @pytest.mark.timeout(30)
-def test_single_huge_allocation_fails_fast_as_execution_error():
+def test_single_huge_allocation_fails_fast_and_is_classified_as_syntax_or_timeout():
     # Documents the actual behavior: this raises MemoryError immediately
     # inside the child (whether or not RLIMIT_AS is enforced on this
-    # platform), not a timeout.
+    # platform), not a timeout — MemoryError isn't a type classify_failure
+    # has a specific bucket for, so it falls through to the catch-all.
     result = run_script("x = [0] * (10**12)", timeout_seconds=5.0)
     assert result.diagram_ir is None
-    assert result.error_type == "execution_error"
+    assert result.error_type == "syntax_or_timeout"
 
 
 def test_undefined_name_error_is_classified_as_hallucinated_api_with_a_suggestion():
@@ -1921,6 +1965,8 @@ def run_with_retries(
     cap: int,
     timeout_seconds: float = 5.0,
 ) -> list[ScriptResult]:
+    if cap < 1:
+        raise ValueError(f"cap must be >= 1, got {cap}")
     history: list[ScriptResult] = []
     for _ in range(cap):
         script = make_script(history)
@@ -1951,10 +1997,12 @@ git commit -m "Add retry-loop driver: stop-on-success and cap enforcement"
 - Test: `tests/test_pydsl_end_to_end.py`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1–11, plus existing `geometry_diagrams.ir.to_sympy.compile_defs(diagram: DiagramIR, *, rng=None) -> SymTable` and `geometry_diagrams.ir.checks.run_checks(checks: list[Check], sym: SymTable, tol=0.005) -> list[CheckResult]` (both signatures verified directly against the current source — `compile_defs` at `to_sympy.py:69`, `run_checks` at `checks.py:19` — note the argument order: `checks` first, `sym` second), plus `geometry_diagrams.recipe.dsl`/`geometry_diagrams.recipe.lower.lower_to_ir` for the comparison DSL construction.
+- Consumes: everything from Tasks 1–11, plus existing `geometry_diagrams.ir.to_sympy.compile_defs(diagram: DiagramIR, *, rng=None) -> SymTable` and `geometry_diagrams.ir.checks.run_checks(checks: list[Check], sym: SymTable, tol=0.005) -> list[CheckResult]` (both signatures verified directly against the current source — `compile_defs` at `to_sympy.py:69`, `run_checks` at `checks.py:19` — note the argument order: `checks` first, `sym` second), plus `geometry_diagrams.recipe.dsl`/`geometry_diagrams.recipe.lower.lower_to_ir` for the comparison DSL construction, plus `run_script` from Task 10.
 - Produces: nothing new — this is the Phase 1a exit-criterion test called for in the design doc's Testing section.
 
 **Note on why this test doesn't assert `ir.checks` all pass:** nothing in the Phase 1a pydsl scope (Tasks 1–9) ever appends to a `Check` list — there's no `mark_angle(expected=...)`-equivalent in scope, so `ir.checks` is always `[]` for a pydsl-built diagram, and `all(r.passed for r in [])` would be vacuously true. Instead, this test asserts the thing that's actually meaningful: `compile_defs` resolves every definition without raising, *and* shared construction elements (the triangle's vertices) resolve to the same coordinates whether built via pydsl or via the equivalent hand-authored DSL recipe — a real equivalence check, not a vacuous one.
+
+**Why this task must include a `run_script()` path, not only the direct in-process `new_builder_context()` path:** every test in Tasks 1–9 calls `.side()`/`.angle_at()` synchronously, in the same thread that opened `new_builder_context()` — the one execution shape where the ambient-contextvar pattern (before Task 2/3's `_builder`-capture fix) would have looked correct. The bug Task 10 found and fixed — handle methods invisible to the contextvar inside `LocalPythonExecutor`'s worker thread — is only reachable by actually running a script *through the sandbox*, calling a handle method on a value the script itself holds. A version of this task that only exercises `new_builder_context()` directly would have shipped Tasks 2/3's `_builder`-capture fix without ever proving it necessary. This task's script-through-`run_script()` test is the one place in the whole plan that exercises `.side()` via the real executor path.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1963,20 +2011,51 @@ git commit -m "Add retry-loop driver: stop-on-success and cap enforcement"
 """Phase 1a exit criterion: a hand-written pydsl script exercising every
 handle/op in the Task 0 scope table produces a DiagramIR that resolves via
 the unchanged to_sympy.py/checks.py pipeline, and — for the triangle-based
-portion of the scope table — resolves to the same coordinates as an
+portion of the scope table — resolves to the same side lengths as an
 equivalent hand-authored DSL recipe.
 """
+import math
+
 from geometry_diagrams.pydsl.api import (
     altitude, circumcircle, incircle, line_through, mark_angle, median,
     point, polygon, triangle,
 )
 from geometry_diagrams.pydsl.builder import new_builder_context
+from geometry_diagrams.pydsl.sandbox import run_script
 
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.checks import run_checks
 
 from geometry_diagrams.recipe.dsl import RecipeDSL, TriangleOp, TriangleSpec
 from geometry_diagrams.recipe.lower import lower_to_ir
+
+# Vertices chosen so the triangle's side lengths are exact, checkable values:
+# AB = 4.0, BC = sqrt(18), CA = sqrt(10).
+_SCRIPT_TEXT = """
+a = point(0, 0)
+b = point(4, 0)
+c = point(1, 3)
+t = triangle(a, b, c)
+t.side(a, b)
+t.angle_at(b)
+circ = circumcircle(t)
+circ.center
+inc = incircle(t)
+inc.center
+alt = altitude(t, from_vertex=a)
+alt.foot
+med = median(t, from_vertex=b)
+med.midpoint
+d = point(0, 0)
+e = point(2, 0)
+f = point(2, 2)
+g = point(0, 2)
+square = polygon(d, e, f, g)
+square.side(d, e)
+ref = square.angle_at(e)
+mark_angle(ref, group=1)
+line_through(a, b)
+"""
 
 
 def _build_pydsl_script_ir():
@@ -2012,8 +2091,17 @@ def _build_equivalent_dsl_triangle_ir():
     # by tests/test_pydsl_polygon.py and tests/test_pydsl_angle.py's own
     # unit tests; duplicating it here as a second DSL comparison wouldn't
     # add coverage beyond what those already assert.
+    #
+    # TriangleSpec() with no fields is NOT valid — solve_triangle raises
+    # (verified against recipe/solve.py: it needs enough constraints to fix
+    # the triangle, e.g. three sides). Use the exact SSS side lengths of the
+    # pydsl triangle at (0,0)/(4,0)/(1,3) so the two constructions are
+    # actually comparable, not just independently valid.
     dsl = RecipeDSL(construction=[
-        TriangleOp(id="T", vertices=["A", "B", "C"], spec=TriangleSpec()),
+        TriangleOp(
+            id="T", vertices=["A", "B", "C"],
+            spec=TriangleSpec(side_AB=4.0, side_BC=math.sqrt(18), side_CA=math.sqrt(10)),
+        ),
     ])
     ir = lower_to_ir(dsl)
     return ir
@@ -2026,30 +2114,25 @@ def test_pydsl_script_compiles_without_error():
     assert results == []  # no checks are created in Phase 1a scope — see note above
 
 
-def test_pydsl_triangle_vertices_match_equivalent_dsl_recipe():
-    # The pydsl script fixes A/B/C at literal coordinates (0,0), (4,0), (1,3);
-    # give the DSL triangle the same explicit coordinates via `center` isn't
-    # available for plain vertex placement, so instead compare relative
-    # structure: both should resolve to a valid, non-degenerate triangle
-    # with the same side lengths, since the pydsl vertices were placed
-    # directly at those literal coordinates and TriangleSpec() with no
-    # constraints places its own — assert side-length equivalence, which is
-    # coordinate-independent and is the actual thing "equivalent construction"
-    # means here (both encode "a triangle", nothing more, from the DSL side).
+def test_pydsl_triangle_side_lengths_match_equivalent_dsl_recipe():
     pydsl_ir, (a, b, c) = _build_pydsl_script_ir()
     pydsl_sym = compile_defs(pydsl_ir)
-    pydsl_dist_ab = float(pydsl_sym[a.id].distance(pydsl_sym[b.id]).evalf())
-    assert abs(pydsl_dist_ab - 4.0) < 1e-9  # (0,0) to (4,0)
+    pydsl_ab = float(pydsl_sym[a.id].distance(pydsl_sym[b.id]).evalf())
+    pydsl_bc = float(pydsl_sym[b.id].distance(pydsl_sym[c.id]).evalf())
+    pydsl_ca = float(pydsl_sym[c.id].distance(pydsl_sym[a.id]).evalf())
 
     dsl_ir = _build_equivalent_dsl_triangle_ir()
     dsl_sym = compile_defs(dsl_ir)
-    # Both symbol tables independently resolve to a valid, non-degenerate
-    # triangle — the concrete equivalence claim for Phase 1a: the same
-    # DefStmt kinds (point_fixed x3, triangle) compile through the same
-    # to_sympy.py code path with no special-casing for which surface
-    # produced them.
-    assert {d.kind for d in dsl_ir.define} == {"point_fixed", "triangle"}
-    assert {d.kind for d in pydsl_ir.define} >= {"point_fixed", "triangle"}
+    dsl_ab = float(dsl_sym["A"].distance(dsl_sym["B"]).evalf())
+    dsl_bc = float(dsl_sym["B"].distance(dsl_sym["C"]).evalf())
+    dsl_ca = float(dsl_sym["C"].distance(dsl_sym["A"]).evalf())
+
+    # The actual equivalence claim: both surfaces, given the same triangle
+    # (same three side lengths), resolve to the same geometry through the
+    # unchanged to_sympy.py — not just "both happen to produce some triangle."
+    assert math.isclose(pydsl_ab, dsl_ab, abs_tol=1e-9)
+    assert math.isclose(pydsl_bc, dsl_bc, abs_tol=1e-9)
+    assert math.isclose(pydsl_ca, dsl_ca, abs_tol=1e-9)
 
 
 def test_pydsl_script_covers_every_scope_table_kind():
@@ -2062,19 +2145,31 @@ def test_pydsl_script_covers_every_scope_table_kind():
     }
     missing = expected_kinds - kinds
     assert not missing, f"scope table kinds not exercised: {missing}"
+
+
+def test_pydsl_script_runs_through_the_real_sandbox_end_to_end():
+    # This is the one test in the whole plan that runs .side()/.angle_at()
+    # through the actual LocalPythonExecutor path, not the direct
+    # new_builder_context() path every other test uses — see this task's
+    # Interfaces note on why that distinction matters.
+    result = run_script(_SCRIPT_TEXT, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    kinds = {d.kind for d in result.diagram_ir.define}
+    assert "segment" in kinds  # only reachable via t.side()/square.side()
 ```
 
 - [ ] **Step 2: Run test to verify it fails or passes as expected**
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_end_to_end.py -v`
-Expected: `test_pydsl_script_covers_every_scope_table_kind` should PASS immediately (only inspects `ir.define`). The other two depend on `compile_defs` successfully resolving the pydsl-built `DiagramIR` — if it raises, read the actual error (likely an ordering issue: `compile_defs` walks `diagram.define` and expects referenced ids to already be defined earlier in the list, so double-check every `builder._add(...)` call in Tasks 1–7 appends dependencies before dependents, matching the order each op already constructs them in) and fix whichever pydsl task's op ordering is wrong — Tasks 1–7 should already satisfy this since each op only ever references ids created earlier in the same call.
+Expected: `test_pydsl_script_covers_every_scope_table_kind` should PASS immediately (only inspects `ir.define`). `test_pydsl_script_compiles_without_error` and `test_pydsl_triangle_side_lengths_match_equivalent_dsl_recipe` depend on `compile_defs` successfully resolving the pydsl-built `DiagramIR` — if either raises, read the actual error (likely an ordering issue: `compile_defs` walks `diagram.define` and expects referenced ids to already be defined earlier in the list) and fix whichever pydsl task's op ordering is wrong. `test_pydsl_script_runs_through_the_real_sandbox_end_to_end` is the important one to watch: if Task 2/3's `_builder`-capture fix on `Triangle`/`Polygon` was implemented incorrectly, this is the test that catches it — expect `result.error` to mention "no active Builder" if that regression is present.
 
 - [ ] **Step 3: Fix any integration issues and re-run until passing**
 
-If `TriangleSpec()` (no constraints) raises inside `lower_to_ir` because `solve_triangle` requires at least some spec fields, check `geometry_diagrams/recipe/solve.py` for its minimum-constraint requirements and adjust `_build_equivalent_dsl_triangle_ir` to supply whatever minimal spec (e.g. two side lengths, or an explicit `center`) makes `TriangleOp` valid — this is a test-only fix, not a pydsl implementation change.
+If `compile_defs`/`run_checks` raise for a reason unrelated to op ordering, compare against the patterns in `tests/test_compile_defs.py`/`tests/test_checks.py` and adjust the test (not the pydsl implementation, which Tasks 1–11 already verified independently) accordingly.
 
 Run: `.venv/bin/python -m pytest tests/test_pydsl_end_to_end.py -v`
-Expected: PASS (3 tests)
+Expected: PASS (4 tests)
 
 - [ ] **Step 4: Run the full pydsl test suite to confirm no regressions**
 
