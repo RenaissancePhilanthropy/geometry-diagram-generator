@@ -12,6 +12,29 @@ from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
 from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
 
+_TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
+_MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
+
+
+def _nice_step(span: float, target_lines: float = _TARGET_LINES) -> float:
+    """Round span/target_lines up to a 'nice' number: 1, 2, or 5 times a power
+    of 10 — the same heuristic chart libraries use for axis tick spacing.
+    E.g. span=8 -> 1.0; span=500 -> 50.0; span=1000 -> 100.0."""
+    if span <= 0:
+        return 1.0
+    raw = span / target_lines
+    magnitude = 10 ** math.floor(math.log10(raw))
+    residual = raw / magnitude
+    if residual < 1.5:
+        nice = 1
+    elif residual < 3:
+        nice = 2
+    elif residual < 7:
+        nice = 5
+    else:
+        nice = 10
+    return nice * magnitude
+
 
 def point(x: float, y: float) -> Point:
     """A point fixed at literal coordinates (x, y)."""
@@ -269,3 +292,64 @@ def label_text(
         at=[float(at[0]), float(at[1])] if has_at else None,
         centroid_of=centroid_of.id if has_centroid else None,
     ))
+
+
+def canvas(
+    x_range: "tuple[float, float] | list[float]",
+    y_range: "tuple[float, float] | list[float]",
+    grid: bool = False,
+    grid_step: "float | None" = None,
+    axes: bool = False,
+    tick_step: "float | None" = None,
+    show_ticks: bool = False,
+    show_tick_labels: bool = False,
+    show_axis_labels: bool = False,
+) -> None:
+    """Set canvas bounds and optional grid/axes styling for the diagram.
+    Call at most once per script. grid_step/tick_step default to an
+    automatically chosen 'nice' number (1, 2, 5, 10, ...) based on the
+    canvas size if not given. Note: if axes=True, the displayed bounds
+    expand to include the origin even if x_range/y_range don't."""
+    from geometry_diagrams.ir.ir import Canvas as CanvasDef
+
+    builder = get_builder()
+    if builder._canvas is not None:
+        raise ValueError(
+            "canvas() was already called once in this script — only one call is allowed"
+        )
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    if xmin >= xmax:
+        raise ValueError(f"canvas(): x_range must satisfy x_range[0] < x_range[1], got {list(x_range)!r}")
+    if ymin >= ymax:
+        raise ValueError(f"canvas(): y_range must satisfy y_range[0] < y_range[1], got {list(y_range)!r}")
+    if grid_step is not None and grid_step <= 0:
+        raise ValueError(f"canvas(): grid_step must be > 0, got {grid_step!r}")
+    if tick_step is not None and tick_step <= 0:
+        raise ValueError(f"canvas(): tick_step must be > 0, got {tick_step!r}")
+
+    span = max(xmax - xmin, ymax - ymin)
+    effective_grid_step = grid_step if grid_step is not None else _nice_step(span)
+    effective_tick_step = tick_step if tick_step is not None else _nice_step(span)
+
+    if grid:
+        n_grid_lines = (xmax - xmin) / effective_grid_step + (ymax - ymin) / effective_grid_step
+        if n_grid_lines > _MAX_GRID_LINES:
+            raise ValueError(
+                f"canvas(): grid_step={effective_grid_step!r} over this range would draw "
+                f"~{int(n_grid_lines)} grid lines (limit {_MAX_GRID_LINES}) — use a larger grid_step"
+            )
+    if show_ticks or show_tick_labels:
+        n_tick_lines = (xmax - xmin) / effective_tick_step + (ymax - ymin) / effective_tick_step
+        if n_tick_lines > _MAX_GRID_LINES:
+            raise ValueError(
+                f"canvas(): tick_step={effective_tick_step!r} over this range would draw "
+                f"~{int(n_tick_lines)} ticks (limit {_MAX_GRID_LINES}) — use a larger tick_step"
+            )
+    builder._canvas = CanvasDef(
+        xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,
+        grid=grid, grid_step=effective_grid_step,
+        axes=axes, tick_step=effective_tick_step,
+        show_ticks=show_ticks, show_tick_labels=show_tick_labels,
+        show_axis_labels=show_axis_labels,
+    )

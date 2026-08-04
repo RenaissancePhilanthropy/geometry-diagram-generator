@@ -28,6 +28,7 @@ class Builder:
         self._segment_cache: dict[frozenset, str] = {}
         self._op_cap = op_cap
         self._hidden_id_counter = 0
+        self._canvas = None  # set at most once, by canvas(); type is ir.Canvas | None
 
     @property
     def op_count(self) -> int:
@@ -54,7 +55,7 @@ class Builder:
         return f"__pydsl_{prefix}_{self._hidden_id_counter}"
 
     def build(self) -> DiagramIR:
-        return DiagramIR(define=list(self._defs), render=list(self._render), canvas=None)
+        return DiagramIR(define=list(self._defs), render=list(self._render), canvas=self._canvas)
 
     def _get_or_create_segment(self, p_id: str, q_id: str) -> "Segment":
         from geometry_diagrams.ir.ir import Segment as SegmentDef
