@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from geometry_diagrams.strategies.python_full import (
     PythonFullStrategy, PydslScriptOutput, MAX_RETRIES, _run_script_node,
+    _extract_script_from_raw_text,
 )
 from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
 from geometry_diagrams.ir.renderer import SVGRenderer
@@ -259,3 +260,77 @@ async def test_partial_metadata_captured_on_total_failure():
     assert all(t.stage == "sandbox" for t in strategy._partial_python_full_metadata.attempt_traces)
     assert strategy._partial_input_tokens > 0
     assert strategy._partial_output_tokens > 0
+
+
+# ---------------------------------------------------------------------------
+# Fallback: some models don't honor the structured-output contract and just
+# write plain/fenced code instead of JSON. _extract_script_from_raw_text lets
+# _generate_script_node salvage a usable script from that raw text rather than
+# treating it as an unrecoverable parse failure.
+# ---------------------------------------------------------------------------
+
+def test_extract_script_from_python_fenced_code_block():
+    text = "Here's the script:\n```python\na = point(0, 0)\ndraw(a)\n```"
+    assert _extract_script_from_raw_text(text) == "a = point(0, 0)\ndraw(a)"
+
+
+def test_extract_script_from_bare_fenced_code_block():
+    text = "```\na = point(0, 0)\ndraw(a)\n```"
+    assert _extract_script_from_raw_text(text) == "a = point(0, 0)\ndraw(a)"
+
+
+def test_extract_script_falls_back_to_raw_text_when_no_fence_present():
+    text = "a = point(0, 0)\ndraw(a)"
+    assert _extract_script_from_raw_text(text) == "a = point(0, 0)\ndraw(a)"
+
+
+def test_extract_script_returns_none_for_empty_text():
+    assert _extract_script_from_raw_text("") is None
+    assert _extract_script_from_raw_text("   \n  ") is None
+
+
+def _make_unparsed_response(raw_content: str) -> dict:
+    """A with_structured_output(include_raw=True) response where JSON parsing
+    failed but the underlying model message still carries usable text."""
+    raw = MagicMock()
+    raw.response_metadata = {"usage": {"input_tokens": 8, "output_tokens": 12}}
+    raw.usage_metadata = {"input_tokens": 8, "output_tokens": 12}
+    raw.content = raw_content
+    return {"raw": raw, "parsed": None, "parsing_error": "Invalid JSON: expected value at line 1 column 1"}
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_salvages_a_script_from_fenced_raw_text_on_parse_failure():
+    """The exact failure mode seen from a real weaker model: with_structured_output
+    can't parse the model's markdown-fenced code as JSON, but the code itself is
+    fine — this must succeed via the fallback, not be treated as a bare failure."""
+    mock_llm = _make_mock_llm([
+        _make_unparsed_response(f"```python\n{VALID_SCRIPT.strip()}\n```"),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+    assert result.python_full_metadata.attempt_traces[0].stage == "success"
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_still_fails_when_raw_text_is_empty():
+    """If there's truly nothing to salvage (empty raw content), this must still
+    be a real generation failure, not silently succeed with an empty script."""
+    mock_llm = _make_mock_llm([
+        _make_unparsed_response(""),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 1
+    assert result.python_full_metadata.attempt_traces[0].stage == "generation"
+    assert result.python_full_metadata.attempt_traces[0].script is None

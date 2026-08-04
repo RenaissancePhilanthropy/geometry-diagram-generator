@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, TypedDict
 
@@ -25,6 +26,25 @@ SANDBOX_TIMEOUT_SECONDS = 10.0  # vs. run_script's own 5.0 default — real LLM-
 
 class PydslScriptOutput(BaseModel):
     script: str = Field(description="A Python script using only the provided pydsl API.")
+
+
+_CODE_FENCE_RE = re.compile(r"```(?:python)?\s*\n(.*?)```", re.DOTALL)
+
+
+def _extract_script_from_raw_text(text: "str | None") -> "str | None":
+    """Salvage a usable script from a model's raw message text when
+    with_structured_output failed to parse it as JSON — some models don't
+    honor the structured-output/tool-calling contract and just write plain or
+    markdown-fenced code instead. Prefers the contents of a ```python fenced
+    block if present (stripping any surrounding prose); otherwise falls back
+    to the raw text itself. Returns None if there's nothing usable at all."""
+    if not text or not text.strip():
+        return None
+    match = _CODE_FENCE_RE.search(text)
+    if match:
+        fenced = match.group(1).strip()
+        return fenced or None
+    return text.strip()
 
 
 @dataclass
@@ -85,6 +105,24 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
 
         if parsed is None:
+            # Some models don't honor the structured-output/tool-calling contract and
+            # just write plain or markdown-fenced code instead of JSON — salvage that
+            # rather than treating it as an unrecoverable parse failure.
+            raw_content = getattr(raw_msg, "content", None) if raw_msg else None
+            if not isinstance(raw_content, str):
+                raw_content = None
+            salvaged = _extract_script_from_raw_text(raw_content)
+            if salvaged is not None:
+                metadata.attempt_traces.append(PythonFullAttemptTrace(
+                    attempt=attempt + 1, script=salvaged, error=None, stage="generation",
+                ))
+                return {
+                    "script": salvaged,
+                    "last_error": "",
+                    "input_tokens": state["input_tokens"] + in_tok,
+                    "output_tokens": state["output_tokens"] + out_tok,
+                }
+
             parsing_error = response.get("parsing_error") or "Failed to parse script output"
             metadata.attempt_traces.append(PythonFullAttemptTrace(
                 attempt=attempt + 1, script=None, error=str(parsing_error), stage="generation",
