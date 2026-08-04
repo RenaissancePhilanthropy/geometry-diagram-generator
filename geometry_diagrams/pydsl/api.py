@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -182,3 +182,19 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
             group=str(group) if group is not None else None,
         )
     )
+
+
+def draw(obj) -> None:
+    """Draw a constructed object (triangle, polygon, circle, line, or segment)."""
+    if isinstance(obj, Point):
+        raise ValueError("draw() doesn't take a Point — use draw_points(...) instead")
+    if isinstance(obj, AngleRef):
+        raise ValueError("draw() doesn't take an AngleRef — use mark_angle(...) instead")
+    builder = get_builder()
+    builder._add_render(Draw(obj=obj.id))
+
+
+def draw_points(*points: Point) -> None:
+    """Draw one or more points as visible markers."""
+    builder = get_builder()
+    builder._add_render(DrawPoints(points=[p.id for p in points]))
