@@ -48,6 +48,18 @@ class Builder:
     def build(self) -> DiagramIR:
         return DiagramIR(define=list(self._defs), render=list(self._render), canvas=Canvas())
 
+    def _get_or_create_segment(self, p_id: str, q_id: str) -> "Segment":
+        from geometry_diagrams.ir.ir import Segment as SegmentDef
+        from geometry_diagrams.pydsl.handles import Segment
+
+        key = frozenset((p_id, q_id))
+        if key in self._segment_cache:
+            return Segment(id=self._segment_cache[key])
+        sid = self._fresh_hidden_id("seg")
+        self._add(SegmentDef(id=sid, a=p_id, b=q_id))
+        self._segment_cache[key] = sid
+        return Segment(id=sid)
+
 
 _current_builder: contextvars.ContextVar["Builder | None"] = contextvars.ContextVar(
     "pydsl_current_builder", default=None
