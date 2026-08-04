@@ -298,3 +298,86 @@ def test_core_scenarios_include_grid_cases():
     assert "grid-right-triangle" in ids
     assert "grid-midpoint-bisector" in ids
     assert "similar-triangles" in ids
+
+
+from evals.run import (
+    _STRATEGY_MAP, _DEFAULT_STRATEGIES, _OPT_IN_ONLY_STRATEGIES,
+    _populate_strategy_metadata, _populate_partial_metadata_on_failure,
+)
+from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+from geometry_diagrams.strategies.python_full import PythonFullMetadata, PythonFullAttemptTrace
+from geometry_diagrams.strategies.recipe import RecipeMetadata, RecipeAttemptTrace
+from geometry_diagrams.ir.ir import DiagramIR
+
+
+def _make_result(**overrides) -> StructuredRunResult:
+    defaults = dict(
+        diagram_ir=DiagramIR(define=[], checks=[], render=[]),
+        tikz="", svg="", sym_table={}, sym_full={},
+    )
+    defaults.update(overrides)
+    return StructuredRunResult(**defaults)
+
+
+def test_python_full_is_registered_and_opt_in_only():
+    assert "python_full" in _STRATEGY_MAP
+    assert "python_full" in _OPT_IN_ONLY_STRATEGIES
+    assert "python_full" not in _DEFAULT_STRATEGIES
+    assert set(_DEFAULT_STRATEGIES) == set(_STRATEGY_MAP) - _OPT_IN_ONLY_STRATEGIES
+
+
+def test_populate_strategy_metadata_handles_python_full_result():
+    result = _make_result(python_full_metadata=PythonFullMetadata(attempt_traces=[
+        PythonFullAttemptTrace(attempt=1, script="point(0, 0)", error=None, stage="success"),
+    ]))
+    record: dict = {"retries": 0}
+    _populate_strategy_metadata(record, result)
+    assert record["python_full_metadata"]["attempt_traces"] == [
+        {"attempt": 1, "script": "point(0, 0)", "error": None, "stage": "success"},
+    ]
+    assert "recipe_metadata" not in record  # no cross-talk
+
+
+def test_populate_strategy_metadata_handles_recipe_result_unchanged():
+    """Regression: this refactor must not alter RecipeStrategy's existing eval behavior."""
+    result = _make_result(recipe_metadata=RecipeMetadata(
+        selected_recipes=["triangle_basic"], unmatched_concepts=[],
+        confidence="high", is_geometry_request=True,
+        selection_input_tokens=5, selection_output_tokens=3,
+        attempt_traces=[RecipeAttemptTrace(attempt=1, dsl_json={"x": 1}, error=None, stage="success")],
+    ))
+    record: dict = {"retries": 0}
+    _populate_strategy_metadata(record, result)
+    assert record["recipe_metadata"]["selected_recipes"] == ["triangle_basic"]
+    assert record["recipe_metadata"]["attempt_traces"] == [
+        {"attempt": 1, "dsl_json": {"x": 1}, "error": None, "stage": "success"},
+    ]
+    assert "python_full_metadata" not in record  # no cross-talk
+
+
+def test_populate_strategy_metadata_no_metadata_leaves_recipe_metadata_none():
+    result = _make_result()
+    record: dict = {"retries": 0}
+    _populate_strategy_metadata(record, result)
+    assert record["recipe_metadata"] is None
+    assert "python_full_metadata" not in record
+
+
+def test_populate_partial_metadata_on_failure_for_python_full():
+    class _FakePythonFullStrategy:
+        pass
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    strategy = PythonFullStrategy.__new__(PythonFullStrategy)
+    strategy._partial_python_full_metadata = PythonFullMetadata(attempt_traces=[
+        PythonFullAttemptTrace(attempt=1, script="bad(", error="syntax error", stage="sandbox"),
+    ])
+    strategy._partial_input_tokens = 42
+    strategy._partial_output_tokens = 7
+
+    record: dict = {"retries": 0}
+    _populate_partial_metadata_on_failure(record, strategy)
+
+    assert record["input_tokens"] == 42
+    assert record["output_tokens"] == 7
+    assert record["python_full_metadata"]["attempt_traces"][0]["error"] == "syntax error"
+    assert record["retries"] == 0  # max(0, 1 - 1)

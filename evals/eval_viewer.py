@@ -88,7 +88,10 @@ def _run_summary(run_id: str, records: list[dict]) -> dict:
 
 def _record_metadata(record: dict) -> dict:
     """Strip large fields for list views."""
-    return {k: v for k, v in record.items() if k not in ("tikz_code", "diagram_ir", "recipe_dsl", "recipe_metadata")}
+    return {
+        k: v for k, v in record.items()
+        if k not in ("tikz_code", "diagram_ir", "recipe_dsl", "recipe_metadata", "python_full_metadata")
+    }
 
 
 def _get_renderer(name: str) -> Renderer:

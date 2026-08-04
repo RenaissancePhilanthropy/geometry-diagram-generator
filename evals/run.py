@@ -66,6 +66,7 @@ from geometry_diagrams.strategies.raw_code import RawCodeStrategy
 from geometry_diagrams.strategies.raw_code_with_revise import RawCodeWithReviseStrategy
 from geometry_diagrams.strategies.structured import StructureStrategy, StructuredRunResult
 from geometry_diagrams.strategies.recipe import RecipeStrategy
+from geometry_diagrams.strategies.python_full import PythonFullStrategy
 from geometry_diagrams.strategies.stages import RawRunResult
 from geometry_diagrams.util.tikz_renderer import check_renderer_health
 from geometry_diagrams.ir.renderer import Renderer, TikZRenderer, SVGRenderer
@@ -85,7 +86,15 @@ _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
     "raw_code_with_revise": RawCodeWithReviseStrategy,
     "structured": StructureStrategy,
     "recipe": RecipeStrategy,
+    "python_full": PythonFullStrategy,
 }
+
+# Strategies excluded from the default --strategies set: new/unproven
+# strategies that shouldn't silently join every default eval invocation's
+# cost/runtime until deliberately benchmarked at least once. Still fully
+# selectable via --strategies <name> (see the "choices" argparse entry).
+_OPT_IN_ONLY_STRATEGIES = {"python_full"}
+_DEFAULT_STRATEGIES = [name for name in _STRATEGY_MAP if name not in _OPT_IN_ONLY_STRATEGIES]
 
 # Tolerance for geometric checks. Relaxed from 1e-4 to handle LLM-chosen
 # coordinates that are approximate (3 decimal places → ~0.001 rounding error).
@@ -214,6 +223,74 @@ async def _run_query_phase(
     return results
 
 
+def _populate_strategy_metadata(record: dict, result: StructuredRunResult) -> None:
+    """Populate record['recipe_metadata'] / record['python_full_metadata'] from
+    whichever strategy-specific diagnostic field the result actually carries.
+    The two fields are independent — a result only ever populates one of them,
+    since RecipeStrategy and PythonFullStrategy never share code or types."""
+    if result.recipe_metadata is not None:
+        record["recipe_metadata"] = {
+            "selected_recipes": result.recipe_metadata.selected_recipes,
+            "unmatched_concepts": result.recipe_metadata.unmatched_concepts,
+            "selection_input_tokens": result.recipe_metadata.selection_input_tokens,
+            "selection_output_tokens": result.recipe_metadata.selection_output_tokens,
+            "attempt_traces": [
+                {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                for t in result.recipe_metadata.attempt_traces
+            ],
+        }
+        record["retries"] = max(0, len(result.recipe_metadata.attempt_traces) - 1)
+    elif result.python_full_metadata is not None:
+        record["python_full_metadata"] = {
+            "attempt_traces": [
+                {"attempt": t.attempt, "script": t.script, "error": t.error, "stage": t.stage}
+                for t in result.python_full_metadata.attempt_traces
+            ],
+        }
+        # NOT re-assigning record["retries"] here: result.retries (set two lines
+        # up in run_scenario, from pipeline_result.retries = state["attempt"] in
+        # python_full.py's _run_script_node) is already correct for python_full.
+        # recipe.py's branch above recomputes retries from attempt_traces because
+        # RecipeStrategy's own result.retries isn't reliably set the same way —
+        # not the case here, so no duplicate computation is needed.
+    else:
+        record["recipe_metadata"] = None
+
+
+def _populate_partial_metadata_on_failure(record: dict, strategy: SubstanceStrategy) -> None:
+    """Populate whatever diagnostics survive a total failure (retry exhaustion) —
+    the strategy raised before returning a StructuredRunResult, so this reads the
+    strategy's own _partial_* attributes instead."""
+    if isinstance(strategy, RecipeStrategy):
+        record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
+        record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
+        partial_meta = getattr(strategy, "_partial_recipe_metadata", None)
+        if partial_meta is not None:
+            record["recipe_metadata"] = {
+                "selected_recipes": partial_meta.selected_recipes,
+                "unmatched_concepts": partial_meta.unmatched_concepts,
+                "selection_input_tokens": partial_meta.selection_input_tokens,
+                "selection_output_tokens": partial_meta.selection_output_tokens,
+                "attempt_traces": [
+                    {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
+                    for t in partial_meta.attempt_traces
+                ],
+            }
+            record["retries"] = max(0, len(partial_meta.attempt_traces) - 1)
+    elif isinstance(strategy, PythonFullStrategy):
+        record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
+        record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
+        partial_meta = getattr(strategy, "_partial_python_full_metadata", None)
+        if partial_meta is not None:
+            record["python_full_metadata"] = {
+                "attempt_traces": [
+                    {"attempt": t.attempt, "script": t.script, "error": t.error, "stage": t.stage}
+                    for t in partial_meta.attempt_traces
+                ],
+            }
+            record["retries"] = max(0, len(partial_meta.attempt_traces) - 1)
+
+
 async def run_scenario(
     scenario: dict,
     strategy_name: str,
@@ -274,22 +351,7 @@ async def run_scenario(
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
-        if isinstance(strategy, RecipeStrategy):
-            record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
-            record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
-            partial_meta = getattr(strategy, "_partial_recipe_metadata", None)
-            if partial_meta is not None:
-                record["recipe_metadata"] = {
-                    "selected_recipes": partial_meta.selected_recipes,
-                    "unmatched_concepts": partial_meta.unmatched_concepts,
-                    "selection_input_tokens": partial_meta.selection_input_tokens,
-                    "selection_output_tokens": partial_meta.selection_output_tokens,
-                    "attempt_traces": [
-                        {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
-                        for t in partial_meta.attempt_traces
-                    ],
-                }
-                record["retries"] = max(0, len(partial_meta.attempt_traces) - 1)
+        _populate_partial_metadata_on_failure(record, strategy)
         return record
 
     record["duration_s"] = round(time.monotonic() - start, 2)
@@ -317,20 +379,7 @@ async def run_scenario(
             )
         record["sympy_property_checks"] = sympy_property_checks
 
-        if result.recipe_metadata is not None:
-            record["recipe_metadata"] = {
-                "selected_recipes": result.recipe_metadata.selected_recipes,
-                "unmatched_concepts": result.recipe_metadata.unmatched_concepts,
-                "selection_input_tokens": result.recipe_metadata.selection_input_tokens,
-                "selection_output_tokens": result.recipe_metadata.selection_output_tokens,
-                "attempt_traces": [
-                    {"attempt": t.attempt, "dsl_json": t.dsl_json, "error": t.error, "stage": t.stage}
-                    for t in result.recipe_metadata.attempt_traces
-                ],
-            }
-            record["retries"] = max(0, len(result.recipe_metadata.attempt_traces) - 1)
-        else:
-            record["recipe_metadata"] = None
+        _populate_strategy_metadata(record, result)
 
         # Query eval phase — test follow-up questions via query_diagram tool
         queries = scenario.get("queries", [])
@@ -471,7 +520,7 @@ async def run_scenario(
 
     # LLM judge (code review)
     if llm_judge and tikz_code:
-        if strategy_name not in ("structured",):
+        if strategy_name not in ("structured", "python_full"):
             try:
                 from geometry_diagrams.util.llm_judge import judge_tikz_code
                 judge_result = await judge_tikz_code(
@@ -488,7 +537,7 @@ async def run_scenario(
                 record["llm_judge_reasoning"] = f"Judge error: {e}"
         else:
             record["llm_judge_score"] = None
-            record["llm_judge_reasoning"] = "(skipped for structured strategy)"
+            record["llm_judge_reasoning"] = f"(skipped for {strategy_name} strategy)"
 
     # Visual judge (SVG → image → LLM)
     if visual_judge:
@@ -700,7 +749,7 @@ async def main() -> None:
     parser.add_argument(
         "--strategies",
         nargs="+",
-        default=list(_STRATEGY_MAP.keys()),
+        default=_DEFAULT_STRATEGIES,
         choices=list(_STRATEGY_MAP.keys()),
         help="Strategies to evaluate",
     )
