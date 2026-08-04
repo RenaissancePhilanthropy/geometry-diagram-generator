@@ -89,6 +89,12 @@ class Segment:
     id: str
     _builder: "object" = field(repr=False, compare=False)
 
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this segment with text, e.g. seg.label("r")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
+
 
 @dataclass(frozen=True)
 class Triangle:

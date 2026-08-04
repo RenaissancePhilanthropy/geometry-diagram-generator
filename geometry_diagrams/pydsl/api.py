@@ -48,6 +48,15 @@ def polygon(*vertices: Point) -> Polygon:
     return Polygon(id=pid, vertices=tuple(vertices), _builder=builder)
 
 
+def segment(p: Point, q: Point) -> Segment:
+    """A segment between any two points (deduplicated with segments already
+    obtained via Triangle.side()/Polygon.side() for the same pair)."""
+    if p.id == q.id:
+        raise ValueError(f"segment() needs two distinct points, got {p.id!r} twice")
+    builder = get_builder()
+    return builder._get_or_create_segment(p.id, q.id)
+
+
 def circumcircle(t: Triangle) -> Circle:
     """The circumscribed circle of a triangle.
 

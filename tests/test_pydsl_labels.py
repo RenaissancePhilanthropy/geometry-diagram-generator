@@ -30,3 +30,61 @@ def test_point_label_with_pos_and_show_coords():
     matches = [r for r in ir.render if isinstance(r, LabelPoint) and r.p == p.id]
     assert matches[0].pos == "above left"
     assert matches[0].show_coords is True
+
+
+from geometry_diagrams.pydsl.api import segment, triangle
+from geometry_diagrams.ir.ir import LabelSegment
+
+
+def test_segment_between_two_points_is_a_segment_def():
+    from geometry_diagrams.ir.ir import Segment as SegmentDef
+
+    with new_builder_context() as builder:
+        a = point(0, 0)
+        b = point(4, 0)
+        s = segment(a, b)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, SegmentDef) and d.id == s.id]
+    assert len(defs) == 1
+    assert {defs[0].a, defs[0].b} == {a.id, b.id}
+
+
+def test_segment_dedups_with_itself_regardless_of_argument_order():
+    with new_builder_context():
+        a = point(0, 0)
+        b = point(4, 0)
+        s1 = segment(a, b)
+        s2 = segment(b, a)
+    assert s1.id == s2.id
+
+
+def test_segment_rejects_the_same_point_twice():
+    with new_builder_context():
+        a = point(0, 0)
+        with pytest.raises(ValueError, match="two distinct points"):
+            segment(a, a)
+
+
+def test_segment_label_from_standalone_segment():
+    with new_builder_context() as builder:
+        a = point(0, 0)
+        b = point(4, 0)
+        s = segment(a, b)
+        s.label("r")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == s.id]
+    assert len(matches) == 1
+    assert matches[0].text == "r"
+    assert matches[0].pos is None
+
+
+def test_segment_label_from_triangle_side():
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        s = t.side(a, b)
+        s.label("AB")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == s.id]
+    assert len(matches) == 1
+    assert matches[0].text == "AB"
