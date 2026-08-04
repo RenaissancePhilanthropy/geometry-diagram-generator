@@ -247,3 +247,25 @@ def draw_points(*points: Point) -> None:
     """Draw one or more points as visible markers."""
     builder = get_builder()
     builder._add_render(DrawPoints(points=[p.id for p in points]))
+
+
+def label_text(
+    text: str,
+    at: "tuple[float, float] | None" = None,
+    centroid_of: "Triangle | Polygon | None" = None,
+) -> None:
+    """Place free-standing text at explicit (x, y) coordinates, or at the
+    centroid of a triangle/polygon. Exactly one of `at`/`centroid_of` must
+    be given."""
+    from geometry_diagrams.ir.ir import LabelFreeText
+
+    has_at = at is not None
+    has_centroid = centroid_of is not None
+    if has_at == has_centroid:
+        raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
+    builder = get_builder()
+    builder._add_render(LabelFreeText(
+        text=text,
+        at=[float(at[0]), float(at[1])] if has_at else None,
+        centroid_of=centroid_of.id if has_centroid else None,
+    ))

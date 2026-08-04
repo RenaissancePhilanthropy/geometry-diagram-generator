@@ -108,3 +108,46 @@ def test_angle_ref_label_records_label_angle():
     assert matches[0].text == "θ"
     assert {matches[0].angle.a, matches[0].angle.b} == {a.id, c.id}
     assert matches[0].pos is None
+
+
+from geometry_diagrams.pydsl.api import label_text
+from geometry_diagrams.ir.ir import LabelFreeText
+
+
+def test_label_text_at_explicit_coordinates():
+    with new_builder_context() as builder:
+        label_text("h", at=(1.0, 2.0))
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(matches) == 1
+    assert matches[0].text == "h"
+    assert matches[0].at == [1.0, 2.0]
+    assert matches[0].centroid_of is None
+
+
+def test_label_text_at_triangle_centroid():
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        label_text("T", centroid_of=t)
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(matches) == 1
+    assert matches[0].text == "T"
+    assert matches[0].at is None
+    assert matches[0].centroid_of == t.id
+
+
+def test_label_text_requires_exactly_one_of_at_or_centroid_of():
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        with pytest.raises(ValueError, match="exactly one"):
+            label_text("h", at=(0, 0), centroid_of=t)
+
+
+def test_label_text_neither_at_nor_centroid_of_raises_without_a_builder():
+    # No new_builder_context() at all — proves the exactly-one-of check
+    # runs before get_builder(), so this is ValueError, not RuntimeError.
+    with pytest.raises(ValueError, match="exactly one"):
+        label_text("h")
