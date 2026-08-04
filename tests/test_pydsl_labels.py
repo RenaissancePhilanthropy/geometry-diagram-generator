@@ -5,9 +5,16 @@ AngleRef.label(), and label_text() — all wrapping IR RenderOp kinds
 are already rendered by to_tikz.py/to_svg.py."""
 import pytest
 
-from geometry_diagrams.pydsl.api import point
+from geometry_diagrams.pydsl.api import label_text, point, segment, triangle
 from geometry_diagrams.pydsl.builder import new_builder_context
-from geometry_diagrams.ir.ir import LabelPoint
+from geometry_diagrams.pydsl.sandbox import run_script
+from geometry_diagrams.ir.ir import (
+    LabelAngle,
+    LabelFreeText,
+    LabelPoint,
+    LabelSegment,
+    Segment as SegmentDef,
+)
 
 
 def test_point_label_records_label_point():
@@ -32,13 +39,7 @@ def test_point_label_with_pos_and_show_coords():
     assert matches[0].show_coords is True
 
 
-from geometry_diagrams.pydsl.api import segment, triangle
-from geometry_diagrams.ir.ir import LabelSegment
-
-
 def test_segment_between_two_points_is_a_segment_def():
-    from geometry_diagrams.ir.ir import Segment as SegmentDef
-
     with new_builder_context() as builder:
         a = point(0, 0)
         b = point(4, 0)
@@ -90,9 +91,6 @@ def test_segment_label_from_triangle_side():
     assert matches[0].text == "AB"
 
 
-from geometry_diagrams.ir.ir import LabelAngle
-
-
 def test_angle_ref_label_records_label_angle():
     with new_builder_context() as builder:
         a, b, c = point(0, 0), point(4, 0), point(1, 3)
@@ -108,10 +106,6 @@ def test_angle_ref_label_records_label_angle():
     assert matches[0].text == "θ"
     assert {matches[0].angle.a, matches[0].angle.b} == {a.id, c.id}
     assert matches[0].pos is None
-
-
-from geometry_diagrams.pydsl.api import label_text
-from geometry_diagrams.ir.ir import LabelFreeText
 
 
 def test_label_text_at_explicit_coordinates():
@@ -154,9 +148,6 @@ def test_label_text_neither_at_nor_centroid_of_raises_without_a_builder():
 
 
 def test_labels_and_segment_work_through_the_real_sandbox():
-    from geometry_diagrams.pydsl.sandbox import run_script
-    from geometry_diagrams.ir.ir import LabelPoint, LabelSegment
-
     script = (
         "a = point(0, 0)\n"
         "b = point(4, 0)\n"
