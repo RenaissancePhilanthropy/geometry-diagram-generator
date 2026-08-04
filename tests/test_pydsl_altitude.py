@@ -48,3 +48,16 @@ def test_altitude_raises_for_vertex_not_in_triangle():
         t = triangle(a, b, c)
         with pytest.raises(ValueError, match="not a vertex"):
             altitude(t, from_vertex=outside)
+
+
+def test_altitude_segment_connects_vertex_to_foot():
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        alt = altitude(t, from_vertex=a)
+        seg = alt.segment
+        ir = get_builder().build()
+    seg_defs = [d for d in ir.define if d.kind == "segment" and d.id == seg.id]
+    assert len(seg_defs) == 1
+    assert seg_defs[0].a == a.id
+    assert seg_defs[0].b == alt.foot.id

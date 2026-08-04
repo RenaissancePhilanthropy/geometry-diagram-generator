@@ -111,3 +111,4 @@ class Altitude:
     id: str
     foot: Point
     line: Line
+    segment: "Segment"

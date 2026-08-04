@@ -167,7 +167,10 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
     seg_id = builder._fresh_hidden_id("altitude_seg")
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=foot_id))
 
-    return Altitude(id=line_id, foot=Point(id=foot_id), line=Line(id=line_id))
+    return Altitude(
+        id=line_id, foot=Point(id=foot_id), line=Line(id=line_id),
+        segment=Segment(id=seg_id),
+    )
 
 
 def mark_angle(ref: AngleRef, group: int | None = None) -> None:
