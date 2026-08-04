@@ -32,6 +32,13 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   `draw_points(...)` on every point you want marked, as your LAST steps. A script that
   builds geometry but never calls draw()/draw_points() will fail with no visible output.
 - Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle.
+- Use `segment(p, q)` to get a segment between any two points that aren't
+  already a Triangle/Polygon side (e.g. a circle's radius from its center to
+  a point on its edge). Call `.label(text)` on a Point, Segment, or AngleRef
+  to name it or mark a length/angle — e.g. `p.label("A")`,
+  `segment(center, edge).label("r")`, `t.angle_at(b).label("θ")`. Use
+  `label_text(text, at=(x, y))` or `label_text(text, centroid_of=shape)` for
+  free-standing text not tied to one specific object.
 - Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.

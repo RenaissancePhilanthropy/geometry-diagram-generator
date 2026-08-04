@@ -151,3 +151,25 @@ def test_label_text_neither_at_nor_centroid_of_raises_without_a_builder():
     # runs before get_builder(), so this is ValueError, not RuntimeError.
     with pytest.raises(ValueError, match="exactly one"):
         label_text("h")
+
+
+def test_labels_and_segment_work_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+    from geometry_diagrams.ir.ir import LabelPoint, LabelSegment
+
+    script = (
+        "a = point(0, 0)\n"
+        "b = point(4, 0)\n"
+        "a.label('A')\n"
+        "s = segment(a, b)\n"
+        "s.label('r')\n"
+        "draw(s)\n"
+        "draw_points(a, b)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    point_labels = [r for r in result.diagram_ir.render if isinstance(r, LabelPoint)]
+    seg_labels = [r for r in result.diagram_ir.render if isinstance(r, LabelSegment)]
+    assert any(r.text == "A" for r in point_labels)
+    assert any(r.text == "r" for r in seg_labels)

@@ -148,3 +148,26 @@ def test_pydsl_script_runs_through_the_real_sandbox_end_to_end():
     assert result.diagram_ir is not None
     kinds = {d.kind for d in result.diagram_ir.define}
     assert "segment" in kinds  # only reachable via t.side()/square.side()
+
+
+def test_pydsl_labels_render_as_svg_text():
+    from geometry_diagrams.pydsl.api import draw, draw_points, label_text, segment
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        a.label("A")
+        s = segment(a, b)
+        s.label("r")
+        label_text("T", centroid_of=t)
+        draw(t)
+        draw(s)
+        draw_points(a, b, c)
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    result = SVGRenderer().render(ir, sym)
+    svg = result.output
+    for expected_text in ("A", "r", "T"):
+        assert expected_text in svg, f"expected label {expected_text!r} not found in rendered SVG"
