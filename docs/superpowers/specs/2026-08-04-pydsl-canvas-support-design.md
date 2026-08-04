@@ -57,22 +57,45 @@ One new top-level function in `api.py`, following the same pattern as
 handle:
 
 ```python
-_MAX_GRID_LINES = 500  # total vertical + horizontal grid/tick lines a single canvas() may request
+_TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
+_MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
+
+
+def _nice_step(span: float, target_lines: float = _TARGET_LINES) -> float:
+    """Round span/target_lines up to a 'nice' number: 1, 2, or 5 times a power
+    of 10 — the same heuristic chart libraries use for axis tick spacing.
+    E.g. span=8 -> 1.0; span=500 -> 50.0; span=1000 -> 100.0."""
+    if span <= 0:
+        return 1.0
+    raw = span / target_lines
+    magnitude = 10 ** math.floor(math.log10(raw))
+    residual = raw / magnitude
+    if residual < 1.5:
+        nice = 1
+    elif residual < 3:
+        nice = 2
+    elif residual < 7:
+        nice = 5
+    else:
+        nice = 10
+    return nice * magnitude
 
 
 def canvas(
     x_range: "tuple[float, float] | list[float]",
     y_range: "tuple[float, float] | list[float]",
     grid: bool = False,
-    grid_step: float = 1.0,
+    grid_step: "float | None" = None,
     axes: bool = False,
-    tick_step: float = 1.0,
+    tick_step: "float | None" = None,
     show_ticks: bool = False,
     show_tick_labels: bool = False,
     show_axis_labels: bool = False,
 ) -> None:
     """Set canvas bounds and optional grid/axes styling for the diagram.
-    Call at most once per script. Note: if axes=True, the displayed bounds
+    Call at most once per script. grid_step/tick_step default to an
+    automatically chosen 'nice' number (1, 2, 5, 10, ...) based on the
+    canvas size if not given. Note: if axes=True, the displayed bounds
     expand to include the origin even if x_range/y_range don't."""
     from geometry_diagrams.ir.ir import Canvas as CanvasDef
 
@@ -87,62 +110,92 @@ def canvas(
         raise ValueError(f"canvas(): x_range must satisfy x_range[0] < x_range[1], got {list(x_range)!r}")
     if ymin >= ymax:
         raise ValueError(f"canvas(): y_range must satisfy y_range[0] < y_range[1], got {list(y_range)!r}")
-    if grid_step <= 0:
+    if grid_step is not None and grid_step <= 0:
         raise ValueError(f"canvas(): grid_step must be > 0, got {grid_step!r}")
-    if tick_step <= 0:
+    if tick_step is not None and tick_step <= 0:
         raise ValueError(f"canvas(): tick_step must be > 0, got {tick_step!r}")
+
+    span = max(xmax - xmin, ymax - ymin)
+    effective_grid_step = grid_step if grid_step is not None else _nice_step(span)
+    effective_tick_step = tick_step if tick_step is not None else _nice_step(span)
+
     if grid:
-        n_grid_lines = (xmax - xmin) / grid_step + (ymax - ymin) / grid_step
+        n_grid_lines = (xmax - xmin) / effective_grid_step + (ymax - ymin) / effective_grid_step
         if n_grid_lines > _MAX_GRID_LINES:
             raise ValueError(
-                f"canvas(): grid_step={grid_step!r} over this range would draw "
+                f"canvas(): grid_step={effective_grid_step!r} over this range would draw "
                 f"~{int(n_grid_lines)} grid lines (limit {_MAX_GRID_LINES}) — use a larger grid_step"
             )
     if show_ticks or show_tick_labels:
-        n_tick_lines = (xmax - xmin) / tick_step + (ymax - ymin) / tick_step
+        n_tick_lines = (xmax - xmin) / effective_tick_step + (ymax - ymin) / effective_tick_step
         if n_tick_lines > _MAX_GRID_LINES:
             raise ValueError(
-                f"canvas(): tick_step={tick_step!r} over this range would draw "
+                f"canvas(): tick_step={effective_tick_step!r} over this range would draw "
                 f"~{int(n_tick_lines)} ticks (limit {_MAX_GRID_LINES}) — use a larger tick_step"
             )
     builder._canvas = CanvasDef(
         xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,
-        grid=grid, grid_step=grid_step,
-        axes=axes, tick_step=tick_step,
+        grid=grid, grid_step=effective_grid_step,
+        axes=axes, tick_step=effective_tick_step,
         show_ticks=show_ticks, show_tick_labels=show_tick_labels,
         show_axis_labels=show_axis_labels,
     )
 ```
 
-Every field name and default is a direct 1:1 mirror of `ir.Canvas` (skipping
-only `clip`/`kind`, per Non-goals). `x_range`/`y_range` have no defaults —
-bounds must be explicit; both tuples and lists work (LLM scripts write both
-interchangeably, and nothing here relies on tuple-specific behavior — the
-function only unpacks and indexes).
+`x_range`/`y_range` have no defaults — bounds must be explicit; both tuples
+and lists work (LLM scripts write both interchangeably, and nothing here
+relies on tuple-specific behavior — the function only unpacks and indexes).
+`grid`, `axes`, `show_ticks`, `show_tick_labels`, `show_axis_labels` mirror
+`ir.Canvas`'s own defaults exactly (all `False`). `grid_step`/`tick_step`
+diverge from `ir.Canvas`'s literal default (`1.0`) by design — see below.
 
-Four validation checks exist because a Fable review of this spec's first
-draft found each is a real gap, not a hypothetical one — verified by
-actually running the unvalidated version through the sandbox:
+**`grid_step`/`tick_step` default to `None`, auto-computed via `_nice_step`,
+each independently** — this is the actual fix for the density problem, not
+just a guard against it. A first draft of this spec defaulted both to
+`ir.Canvas`'s literal `1.0` and relied entirely on a hard reject
+(`_MAX_GRID_LINES`) to catch bad requests; the concern raised in review was
+that a fixed cap is the wrong shape of fix — it stops a diagram from
+breaking but does nothing to prevent an LLM from picking an unreasonable
+step in the first place (a script drawing a diagram spanning hundreds of
+units, with `grid_step` left at the literal default of `1.0`, would still
+hit the cap and fail for no good reason). `_nice_step` removes that failure
+mode by construction: it picks a step proportional to the canvas size
+(`span=8` → `1.0`, matching what both models already chose by hand for the
+motivating scenario; `span=500` → `50.0`; `span=1000` → `100.0`), so the
+common case — a script that cares about "on/off," not the exact spacing —
+never has a reason to specify a bad value. `grid_step` and `tick_step` are
+computed independently (not from a single shared value) per your call,
+since nothing requires them to coincide, even though in practice they
+usually will for the same canvas span.
+
+Three validation checks remain, but two of them (non-positive step,
+excessive density) are now backstops for an *explicit* override gone wrong
+rather than the default path — real gaps a Fable review of this spec's
+first draft found, verified by actually running the unvalidated version
+through the sandbox:
 
 - **Inverted bounds** (`x_range=(8, 0)`): without a check, this renders
   *silently* with wrong-looking-but-plausible output — the grow-only bounds
   expansion partially "rescues" it using whatever geometry exists, which is
   worse than an error because nothing indicates the request was malformed.
-- **Non-positive `grid_step`/`tick_step`**: both renderers already guard
-  with `step if step > 0 else 1.0` at render time (`to_svg.py`'s
+- **Non-positive explicit `grid_step`/`tick_step`**: both renderers already
+  guard with `step if step > 0 else 1.0` at render time (`to_svg.py`'s
   `_append_grid`/`_append_axes`, `to_tikz.py`'s `_emit_grid`/`_emit_axes`),
-  so `grid_step=0` doesn't crash — it silently renders as if `grid_step=1.0`
-  had been requested. Catching this in `canvas()` turns silent surprise
-  into an immediate, clear error.
-- **Pathologically small `grid_step`/`tick_step`**: neither renderer caps
-  grid/tick density — it's driven by a `while` loop with no line-count
-  limit, and this happens at render time, well after `Builder`'s own
-  `_op_cap` (which only bounds `_defs`/`_render`, not canvas rendering
-  density). `canvas(x_range=(0, 8), grid=True, grid_step=0.001)` would
-  render roughly 16,000 SVG line elements from a single call. `canvas()`
-  rejects any request whose grid or tick lines would exceed
-  `_MAX_GRID_LINES` (500 — generous for any real diagram; a typical grid
-  request in this plan's motivating cases is well under 20 lines).
+  so an explicit `grid_step=0` doesn't crash — it silently renders as if
+  `grid_step=1.0` had been requested instead. Catching this in `canvas()`
+  turns silent surprise into an immediate, clear error. (The auto-computed
+  default is always positive by construction, so this only fires on an
+  explicit bad override.)
+- **Pathologically small explicit `grid_step`/`tick_step`**: neither
+  renderer caps grid/tick density — it's driven by a `while` loop with no
+  line-count limit, and this happens at render time, well after `Builder`'s
+  own `_op_cap` (which only bounds `_defs`/`_render`, not canvas rendering
+  density). An explicit `canvas(x_range=(0, 8), grid=True,
+  grid_step=0.001)` would render roughly 16,000 SVG line elements from a
+  single call. `canvas()` rejects any request whose *effective* grid or
+  tick lines would exceed `_MAX_GRID_LINES` (500) — generous enough that
+  the auto-computed default (~10-20 lines total) never comes close to it;
+  this check now only matters for a deliberately-small explicit override.
 
 Calling `canvas()` a second time in the same script raises `ValueError`
 immediately, naming the conflict, rather than silently overwriting (a
@@ -198,7 +251,11 @@ uncallable from any real script.
 `stub.py` needs no changes — `canvas` is a plain top-level function with a
 docstring and type-hinted signature, exactly like every other function in
 `api.py`; `generate_stub()`'s existing function-introspection loop picks it
-up automatically.
+up automatically. `_nice_step`/`_TARGET_LINES`/`_MAX_GRID_LINES` are
+private (underscore-prefixed) and must NOT be added to `__all__` — only
+`canvas` itself is part of the public surface. `api.py` already has
+`import math` at the top (used by `circumcircle`'s radius computation), so
+`_nice_step` needs no new import.
 
 One new bullet in `instructions_python_full.py`'s Rules section, explicitly
 steering models toward `canvas(x_range=..., y_range=..., grid=True)`
@@ -209,25 +266,39 @@ failure mode this plan was written to close.
 
 New file `tests/test_pydsl_canvas.py`, TDD, covering:
 
-- `canvas(x_range=(0, 8), y_range=(0, 6), grid=True)` → `DiagramIR.canvas`
-  is an `ir.Canvas` with `xmin=0, xmax=8, ymin=0, ymax=6, grid=True`, and
-  every other field at its stated default (`grid_step=1.0`, `axes=False`,
-  `tick_step=1.0`, `show_ticks=False`, `show_tick_labels=False`,
-  `show_axis_labels=False`).
-- Passing every non-default field (all of `grid_step`, `axes`, `tick_step`,
-  `show_ticks`, `show_tick_labels`, `show_axis_labels`) → all land correctly
-  on the resulting `ir.Canvas`.
+- `_nice_step` directly, as a unit: `_nice_step(8) == 1.0`,
+  `_nice_step(500) == 50.0`, `_nice_step(1000) == 100.0`, plus a couple of
+  boundary cases across the 1.5/3/7 residual thresholds (e.g. spans that
+  land just below and just above each breakpoint) to pin the rounding
+  behavior precisely rather than only spot-checking round numbers.
+- `canvas(x_range=(0, 8), y_range=(0, 6), grid=True)` (no `grid_step`
+  given) → `DiagramIR.canvas.grid_step == 1.0` (the auto-computed value for
+  this span), `axes=False`, `tick_step == 1.0` (also auto-computed,
+  independently), and the rest at `ir.Canvas`'s own defaults
+  (`show_ticks=False`, `show_tick_labels=False`, `show_axis_labels=False`).
+- `canvas(x_range=(0, 500), y_range=(0, 10), grid=True)` → `grid_step`
+  auto-computes from the larger span (500), landing at `50.0` — confirms
+  the "larger of x/y span drives the step" behavior, not just the
+  single-span case above.
+- Passing an explicit `grid_step`/`tick_step` overrides the auto-computed
+  value — all other non-default fields (`axes`, `show_ticks`,
+  `show_tick_labels`, `show_axis_labels`) also land correctly on the
+  resulting `ir.Canvas`.
 - Calling `canvas()` twice in the same builder context raises `ValueError`.
 - `canvas(x_range=[0, 8], y_range=[0, 6])` (lists, not tuples) works
   identically to the tuple form.
 - `x_range=(8, 0)` (inverted) and `x_range=(4, 4)` (degenerate/equal) both
   raise `ValueError` before any `Canvas` is constructed. Same for `y_range`.
-- `grid_step=0`, `grid_step=-1`, `tick_step=0`, `tick_step=-1` each raise
-  `ValueError`.
-- `canvas(x_range=(0, 8), y_range=(0, 6), grid=True, grid_step=0.001)`
-  raises `ValueError` naming the line-count limit, rather than succeeding
-  and later rendering thousands of grid lines. Same for a pathologically
-  small `tick_step` with `show_ticks=True`.
+- Explicit `grid_step=0`, `grid_step=-1`, `tick_step=0`, `tick_step=-1`
+  each raise `ValueError` (the auto-computed default is never checked
+  against this, since `_nice_step` cannot produce a non-positive value).
+- An explicit `canvas(x_range=(0, 8), y_range=(0, 6), grid=True,
+  grid_step=0.001)` raises `ValueError` naming the line-count limit, rather
+  than succeeding and later rendering thousands of grid lines. Same for an
+  explicit, pathologically small `tick_step` with `show_ticks=True`. A
+  large span relying on the *auto-computed* default (e.g. `span=10000`)
+  should NOT raise — confirming the backstop only fires on bad explicit
+  input, never on the default path.
 - A script with no `canvas()` call → `DiagramIR.canvas is None` (regression
   guard for today's auto-fit-bounds behavior); and separately, a script
   that does call `canvas()` never sets `clip` away from its `ir.Canvas`
