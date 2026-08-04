@@ -179,6 +179,15 @@ class AngleRef:
     b: Point
     _builder: "object" = field(repr=False, compare=False)
 
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this angle with text, e.g. ref.label("theta")."""
+        from geometry_diagrams.ir.ir import AnglePoints, LabelAngle
+
+        self._builder._add_render(LabelAngle(
+            angle=AnglePoints(a=self.a.id, o=self.o.id, b=self.b.id),
+            text=text, pos=pos,
+        ))
+
 
 @dataclass(frozen=True)
 class Median:

@@ -88,3 +88,23 @@ def test_segment_label_from_triangle_side():
     matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == s.id]
     assert len(matches) == 1
     assert matches[0].text == "AB"
+
+
+from geometry_diagrams.ir.ir import LabelAngle
+
+
+def test_angle_ref_label_records_label_angle():
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        ref = t.angle_at(b)
+        ref.label("θ")
+        ir = builder.build()
+    matches = [
+        r for r in ir.render
+        if isinstance(r, LabelAngle) and r.angle.o == b.id
+    ]
+    assert len(matches) == 1
+    assert matches[0].text == "θ"
+    assert {matches[0].angle.a, matches[0].angle.b} == {a.id, c.id}
+    assert matches[0].pos is None
