@@ -97,3 +97,10 @@ class Median:
     id: str
     midpoint: Point
     segment: "Segment"
+
+
+@dataclass(frozen=True)
+class Altitude:
+    id: str
+    foot: Point
+    line: Line

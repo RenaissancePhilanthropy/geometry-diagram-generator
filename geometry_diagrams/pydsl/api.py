@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import CircleCenterRadius, LineThrough, PointFixed, PointMidpoint, PointTriangleCenter
+from geometry_diagrams.ir.ir import CircleCenterRadius, LinePerpendicularThrough, LineThrough, PointFixed, PointFoot, PointMidpoint, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import Circle, Line, Median, Point, Polygon, Segment, Triangle
+from geometry_diagrams.pydsl.handles import Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
 
 
 def point(x: float, y: float) -> Point:
@@ -143,3 +143,28 @@ def median(t: Triangle, from_vertex: Point) -> Median:
     seg_id = builder._fresh_hidden_id("median_seg")
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=mid_id))
     return Median(id=seg_id, midpoint=Point(id=mid_id), segment=Segment(id=seg_id))
+
+
+def altitude(t: Triangle, from_vertex: Point) -> Altitude:
+    """The altitude from a vertex, perpendicular to the opposite side."""
+    vertex_ids = [v.id for v in t.vertices]
+    if from_vertex.id not in vertex_ids:
+        raise ValueError(f"{from_vertex.id!r} is not a vertex of triangle {t.id!r}")
+    others = [pid for pid in vertex_ids if pid != from_vertex.id]
+    builder = get_builder()
+
+    base_id = builder._fresh_hidden_id("altitude_base")
+    builder._add(LineThrough(id=base_id, p=others[0], q=others[1]))
+
+    line_id = builder._fresh_hidden_id("altitude_line")
+    builder._add(
+        LinePerpendicularThrough(id=line_id, through=from_vertex.id, to_line=base_id)
+    )
+
+    foot_id = builder._fresh_hidden_id("altitude_foot")
+    builder._add(PointFoot(id=foot_id, source=from_vertex.id, onto=base_id))
+
+    seg_id = builder._fresh_hidden_id("altitude_seg")
+    builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=foot_id))
+
+    return Altitude(id=line_id, foot=Point(id=foot_id), line=Line(id=line_id))
