@@ -490,12 +490,17 @@ def _style_str(style_key: str | None, styles: dict) -> str:
     if not style_key:
         return ""
     if style_key in styles:
-        opts = ",".join(
-            (k if v is True else f"{k}={v}")
-            for k, v in styles[style_key].items()
-            if v is not False
-        )
-        return f"[{opts}]" if opts else ""
+        parts = []
+        for k, v in styles[style_key].items():
+            if v is False:
+                continue
+            if k == "line_width":
+                parts.append(f"line width={v}pt")
+            elif v is True:
+                parts.append(k)
+            else:
+                parts.append(f"{k}={v}")
+        return f"[{','.join(parts)}]" if parts else ""
     if style_key in _TIKZ_COLOR_NAMES:
         return f"[color={style_key}]"
     return ""

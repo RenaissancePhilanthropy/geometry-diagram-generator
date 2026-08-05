@@ -136,6 +136,45 @@ def test_style_str_returns_empty_for_none():
     assert _style_str(None, {}) == ""
 
 
+def test_style_str_line_width_emits_valid_tikz_syntax():
+    styles = {"mystyle": {"line_width": 2.0}}
+    assert _style_str("mystyle", styles) == "[line width=2.0pt]"
+
+
+def test_style_str_line_width_combined_with_color():
+    styles = {"mystyle": {"color": "red", "line_width": 1.5}}
+    result = _style_str("mystyle", styles)
+    assert "color=red" in result
+    assert "line width=1.5pt" in result
+    assert "line_width" not in result  # the raw key must never leak through
+
+
+def test_style_str_preserves_all_existing_keys_after_rewrite():
+    """Regression test for the _style_str rewrite itself: every
+    pre-existing style key must produce byte-identical output to before
+    this task's change."""
+    assert _style_str("custom_style", {}) == ""
+    assert _style_str(None, {}) == ""
+    assert _style_str("red", {}) == "[color=red]"
+    assert _style_str("blue", {}) == "[color=blue]"
+    styles = {
+        "s1": {"color": "red", "thick": True},
+        "s2": {"thin": True, "dashed": True},
+        "s3": {"dotted": True},
+        "s4": {"->": True},
+        "s5": {"<-": True},
+        "s6": {"<->": True},
+        "s7": {"color": "blue", "thick": False},  # False values must be dropped
+    }
+    assert _style_str("s1", styles) == "[color=red,thick]"
+    assert _style_str("s2", styles) == "[thin,dashed]"
+    assert _style_str("s3", styles) == "[dotted]"
+    assert _style_str("s4", styles) == "[->]"
+    assert _style_str("s5", styles) == "[<-]"
+    assert _style_str("s6", styles) == "[<->]"
+    assert _style_str("s7", styles) == "[color=blue]"
+
+
 # ---------------------------------------------------------------------------
 # MarkAngles TikZ output tests
 # ---------------------------------------------------------------------------
