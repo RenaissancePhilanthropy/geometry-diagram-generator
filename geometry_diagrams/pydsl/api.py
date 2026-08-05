@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle, _record_literal_point
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Sector, Segment, Triangle, _record_literal_point
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -266,6 +266,39 @@ def circle(center: Point, radius: float) -> Circle:
     cid = builder._fresh_hidden_id("circle")
     builder._add(CircleCenterRadius(id=cid, center=center.id, radius=radius))
     return Circle(id=cid, center=center, _radius_thunk=lambda: radius)
+
+
+def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: str) -> None:
+    """Raise if point is knowably NOT on circle. Skipped (no raise) whenever
+    circle.center's coordinates, point's coordinates, or circle.radius can't
+    currently be resolved to concrete numbers — same "validate only what's
+    knowable" policy as circumcircle(...).radius's NotImplementedError
+    fallback. Checking both start and end (not just start) matters: an
+    off-circle end can be swapped into the rendered anchor position by
+    render_util.py's arc_params, corrupting the diagram just as much as an
+    off-circle start would."""
+    cx, cy = circle.center.x, circle.center.y
+    px, py = point.x, point.y
+    if cx is None or cy is None or px is None or py is None:
+        return
+    try:
+        radius = circle.radius
+    except NotImplementedError:
+        return
+    if isinstance(radius, str):
+        return  # defense-in-depth only: a str radius only ever comes from
+                 # incircle()'s symbolic fallback, whose center is always
+                 # unknown too — the cx is None check above already returns
+                 # first in every real case, so this branch is intentionally
+                 # unreachable today.
+    actual = math.hypot(px - cx, py - cy)
+    if abs(actual - radius) > max(radius * 1e-6, 1e-9):
+        raise ValueError(
+            f"{fn_name}(): {point_role} point {point.id!r} is not on the given "
+            f"circle (distance {actual:.6g} from center, circle radius is "
+            f"{radius:.6g}). Use point_on(circle, angle) to get a point "
+            "guaranteed to lie on the circle."
+        )
 
 
 def ellipse(

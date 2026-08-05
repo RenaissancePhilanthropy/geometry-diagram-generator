@@ -38,3 +38,40 @@ def test_circle_rejects_non_positive_radius():
             circle(c, 0.0)
         with pytest.raises(ValueError, match="positive"):
             circle(c, -3.0)
+
+
+from geometry_diagrams.pydsl.api import _validate_on_circle
+
+
+def test_validate_on_circle_accepts_a_point_exactly_on_the_circle():
+    with new_builder_context():
+        c = circle(point(0.0, 0.0), 5.0)
+        on_circle = point(5.0, 0.0)
+        _validate_on_circle("arc", c, on_circle, "start")  # must not raise
+
+
+def test_validate_on_circle_rejects_an_off_circle_point():
+    with new_builder_context():
+        c = circle(point(0.0, 0.0), 5.0)
+        off_circle = point(3.0, 0.0)
+        with pytest.raises(ValueError, match="not on the given circle"):
+            _validate_on_circle("arc", c, off_circle, "start")
+        # role name appears in the message so a script can tell start from end
+        with pytest.raises(ValueError, match="start"):
+            _validate_on_circle("arc", c, off_circle, "start")
+        with pytest.raises(ValueError, match="end"):
+            _validate_on_circle("arc", c, off_circle, "end")
+
+
+def test_validate_on_circle_skips_when_point_coordinates_unknown():
+    from geometry_diagrams.ir.ir import LineThrough
+    from geometry_diagrams.pydsl.api import point_on
+    from geometry_diagrams.pydsl.handles import Line
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 5.0)
+        a, b = point(0.0, 0.0), point(4.0, 0.0)
+        line_id = builder._fresh_hidden_id("line")
+        builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
+        unknown = point_on(Line(id=line_id), 0.5)
+        _validate_on_circle("arc", c, unknown, "start")  # must not raise — skipped

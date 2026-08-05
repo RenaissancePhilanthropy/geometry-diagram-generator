@@ -90,6 +90,16 @@ class Ray:
 
 
 @dataclass(frozen=True)
+class Arc:
+    id: str
+
+
+@dataclass(frozen=True)
+class Sector:
+    id: str
+
+
+@dataclass(frozen=True)
 class Segment:
     id: str
     _builder: "object" = field(repr=False, compare=False)

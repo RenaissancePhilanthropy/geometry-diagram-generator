@@ -10,8 +10,8 @@ import inspect
 
 import geometry_diagrams.pydsl as pydsl_module
 
-_HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Segment", "Triangle", "Polygon", "Circle",
-                        "Ellipse", "Altitude", "Median", "AngleRef", "PerpendicularBisectorLine"}
+_HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Arc", "Sector", "Segment", "Triangle", "Polygon",
+                        "Circle", "Ellipse", "Altitude", "Median", "AngleRef", "PerpendicularBisectorLine"}
 
 
 def _format_callable(name: str, obj) -> str:
