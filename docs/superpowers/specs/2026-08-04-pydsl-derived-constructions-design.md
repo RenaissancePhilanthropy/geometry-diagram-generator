@@ -13,24 +13,33 @@ defines `PointIntersection`, `LinePerpendicularThrough`,
 `LineParallelThrough`, `LineAngleBisector`, `PointTriangleCenter`
 (`which="centroid"` is already a valid literal, alongside
 `circumcenter`/`incenter`/`orthocenter`), `PointFoot`, and `LineTangent`.
-Two of pydsl's existing functions already use some of these internally —
-`altitude()` already builds a `LinePerpendicularThrough` and a
-`PointFoot` — just never expose them as their own standalone pydsl
-calls. The recipe DSL (`geometry_diagrams/recipe/dsl.py`,
+Three of pydsl's existing functions already use some of these
+internally — `altitude()` already builds a `LinePerpendicularThrough`
+and a `PointFoot`; `circumcircle()`/`incircle()` both already build a
+`PointTriangleCenter` — just never expose them as their own standalone
+pydsl calls. The recipe DSL (`geometry_diagrams/recipe/dsl.py`,
 `geometry_diagrams/recipe/lower.py`) already exposes all eight as ops,
 confirming both the IR support and the exact composition needed for the
 two that aren't 1:1 IR wraps.
 
 ## Non-goals
 
-- No IR or renderer changes — every field/kind used here already exists
-  and is already compiled by `to_sympy.py`.
-- No exposure of the full `PickRule` union (~12 discriminated variants:
-  `PickIndex`, `PickOnObject`, `PickSameSide`, `PickInsideTriangle`,
-  `PickBetween`, `PickBeyond`, `PickInterior`, `PickExterior`,
-  `PickOppositeSide`, `PickChain`, plus the two used here). Only
-  `PickClosestTo` and `PickUpperOfLine`/`PickLowerOfLine` are exposed,
-  via plain `near`/`side_of`+`side` parameters — see API surface.
+- No IR schema or renderer changes — every `DefStmt`/`PickRule` kind used
+  here already exists in `ir.py` and is already rendered by
+  `to_tikz.py`/`to_svg.py`. **One narrow, explicit exception**: fixing
+  `to_sympy.py`'s `LineTangent` pick handling (see `tangent_line()`
+  below) — this is completing an existing-but-incomplete compiler match
+  arm, not adding a new IR concept, and is the same kind of small
+  in-scope exception the labeling plan made for its pre-existing sandbox
+  bugfix.
+- No exposure of the full `PickRule` union (13 discriminated variants:
+  `PickIndex`, `PickOnObject`, `PickClosestTo`, `PickSameSide`,
+  `PickInsideTriangle`, `PickBetween`, `PickBeyond`, `PickInterior`,
+  `PickExterior`, `PickOppositeSide`, `PickUpperOfLine`,
+  `PickLowerOfLine`, `PickChain`). Only `PickClosestTo` and
+  `PickUpperOfLine`/`PickLowerOfLine` (three of the thirteen) are
+  exposed, via plain `near`/`side_of`+`side` parameters — see API
+  surface.
 - No auto-drawing. `perpendicular_bisector()`'s DSL equivalent
   (`PerpendicularBisectorOp`) auto-draws a base segment between its two
   input points if one doesn't already exist; pydsl's version does not —
@@ -49,26 +58,49 @@ return a handle.
 ```python
 def perpendicular_through(point: Point, line) -> Line:
     """The line through `point`, perpendicular to `line` (a Line/Segment/Ray)."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("perp")
+    builder._add(LinePerpendicularThrough(id=line_id, through=point.id, to_line=line.id))
+    return Line(id=line_id)
 
 def parallel_through(point: Point, line) -> Line:
     """The line through `point`, parallel to `line` (a Line/Segment/Ray)."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("parallel")
+    builder._add(LineParallelThrough(id=line_id, through=point.id, to_line=line.id))
+    return Line(id=line_id)
 
 def angle_bisector(vertex: Point, toward1: Point, toward2: Point) -> Line:
     """The line bisecting the angle at `vertex`, between rays toward toward1/toward2."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("bisector")
+    # toward1 -> a, toward2 -> b: matches lower.py's ray1_toward->a, ray2_toward->b (lower.py:255)
+    builder._add(LineAngleBisector(id=line_id, a=toward1.id, vertex=vertex.id, b=toward2.id))
+    return Line(id=line_id)
 
 def centroid(t: Triangle) -> Point:
     """The centroid of triangle `t`."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("centroid")
+    builder._add(PointTriangleCenter(id=pid, tri=t.id, which="centroid"))
+    return Point(id=pid, _builder=builder)
 
 def foot_of_perpendicular(point: Point, line) -> Point:
     """The foot of the perpendicular dropped from `point` onto `line`
     (a Line/Segment/Ray) — always projects onto the infinite line."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("foot")
+    builder._add(PointFoot(id=pid, source=point.id, onto=line.id))
+    return Point(id=pid, _builder=builder)
 ```
 
 Each records exactly one `DefStmt` (`LinePerpendicularThrough`,
 `LineParallelThrough`, `LineAngleBisector`, `PointTriangleCenter(which=
 "centroid")`, `PointFoot` respectively) and returns the corresponding
 handle (`Line`/`Line`/`Line`/`Point`/`Point`) with no new handle types
-needed for these five.
+needed for these five. `centroid()`/`foot_of_perpendicular()` pass
+`_builder=builder` to their returned `Point`, matching every other
+Point-returning pydsl function since the labeling plan's fix.
 
 ### `perpendicular_bisector(p, q) -> PerpendicularBisectorLine`
 
@@ -142,19 +174,22 @@ def intersection(
 ```
 
 `"left"`/`"right"` map to `PickUpperOfLine`/`PickLowerOfLine` respectively
-— confirmed against `to_sympy.py`'s pick application: `PickUpperOfLine`
-selects the candidate with a positive cross product relative to the
-directed line A→B, which is the standard-orientation left side of that
-direction.
+— confirmed empirically (built A=(0,0), B=(4,0), and both candidate
+points, and checked which pick selected which): `PickUpperOfLine` selects
+the candidate with a positive cross product `(B-A) × (P-A)`, which is the
+standard-orientation left side when walking from A toward B. Reversing
+the direction (B→A) flips which physical point counts as "left" — the
+convention is relative to the direction given, not absolute.
 
 **Documented behavioral asymmetry with `tangent_line` below** (verified
-by reading `to_sympy.py`'s `_apply_pick`/`PointIntersection` handling
-directly): with no pick given and multiple intersection candidates,
-`PointIntersection` does **not** raise — it falls back to an in-canvas /
-closest-to-centroid heuristic that the IR's own comment already documents
-as "arbitrary and may not match the LLM's intent." `intersection()`
-does not change or hide this; scripts that care about which candidate
-they get should always pass `near` or `side_of`+`side`.
+by reading `to_sympy.py`'s `_apply_pick` directly, lines 823-850, and
+confirmed by actually compiling an ambiguous case): with no pick given
+and multiple intersection candidates, `PointIntersection` does **not**
+raise — it falls back to an in-canvas / closest-to-centroid heuristic
+that `_apply_pick`'s own comment documents as "arbitrary and may not
+match the LLM's intent." `intersection()` does not change or hide this;
+scripts that care about which candidate they get should always pass
+`near` or `side_of`+`side`.
 
 ### `tangent_line(circle, at=None, from_point=None, near=None, side_of=None, side=None) -> Line`
 
@@ -169,13 +204,18 @@ def tangent_line(
 ) -> Line:
     """The tangent line to `circle`. Exactly one of:
     - at=P — P is a point already ON the circle; the tangent there (always
-      unambiguous, near/side_of/side are not used).
+      unambiguous — near/side_of/side are ignored if also given, silently,
+      matching the DSL lowerer's own at= branch, which has no equivalent
+      validation either).
     - from_point=P — P is external to the circle; there are 0, 1, or 2
       tangent lines from an external point. Disambiguate a 2-tangent case
       with near=Q (closest touch point to Q) or side_of=(A,B), side=
       "left"|"right" (same convention as intersection()). With neither,
-      and 2 tangent lines exist, this raises ValueError — unlike
-      intersection(), there is no arbitrary-heuristic fallback here."""
+      and 2 tangent lines exist, unlike intersection() there is no
+      arbitrary-heuristic fallback — compilation fails later, inside
+      compile_defs(), with geometry_diagrams.ir.errors.PickError (not a
+      ValueError, and not raised by this function itself — the tangent
+      count isn't known until coordinates resolve)."""
     from geometry_diagrams.ir.ir import LinePerpendicularThrough, LineThrough, LineTangent, PickClosestTo, PickLowerOfLine, PickUpperOfLine
 
     if (at is None) == (from_point is None):
@@ -220,6 +260,24 @@ The `(at is None) == (from_point is None)` exactly-one-of check follows
 the same immediate-validation pattern already established by
 `label_text()`.
 
+**Required `to_sympy.py` fix (the one exception to the no-IR-changes
+non-goal):** confirmed by reading `to_sympy.py`'s `LineTangent` handling
+directly (its `match pick:` block) and by actually compiling a
+`from_point=` script with `PickClosestTo` — the match arm only handles
+`PickIndex` and `PickUpperOfLine`/`PickLowerOfLine`; every other pick
+kind, including `PickClosestTo`, falls through to `case _: return
+tangents[0]` and is **silently discarded**, always returning SymPy's
+arbitrary first tangent regardless of what `near=` asked for. Add a
+`PickClosestTo` arm, following the same shape as the existing
+`PickUpperOfLine`/`PickLowerOfLine` arm (compute each tangent's touch
+point via `t_line.intersection(circle)`, then pick the tangent whose
+touch point is closest to `_resolve(sym, pick.p, def_id=did)`; raise
+`PickError` if no tangents exist, which can't happen here since the
+earlier `if not tangents` check already guards it, but keep the same
+`PickError` type for consistency with the rest of this match). This is
+completing an existing match arm's coverage, not introducing a new
+`PickRule` variant or a new IR concept.
+
 ## Data flow
 
 All eight functions, plus the new `PerpendicularBisectorLine` handle,
@@ -261,10 +319,31 @@ New file `tests/test_pydsl_derived_constructions.py`, TDD, covering:
   `Line`; `from_point=` with no pick records `pick=None`; the same
   `near`/`side_of`+`side` validation tests as `intersection()`; giving
   both `at` and `from_point` (or neither) raises `ValueError`.
+- `PerpendicularBisectorLine` (and its `.midpoint: Point` field) actually
+  appear in `generate_stub()`'s output — cheap, matches the existing
+  pattern in `test_pydsl_stub.py` for `Median`/`Altitude`.
 - A sandbox-path test (`geometry_diagrams.pydsl.sandbox.run_script`)
   exercising `intersection()`, `perpendicular_through()`, and
   `perpendicular_bisector()` together through the real sandbox —
-  matching the precedent set by the labeling and canvas plans.
+  matching the precedent set by the labeling and canvas plans. Pass at
+  least one disambiguation kwarg (e.g. `near=`) by keyword in this script,
+  not just positionally, so the test also exercises kwargs actually
+  flowing through smolagents' tool-call wrapping in the sandbox.
+- Compile-level tests for `tangent_line()` (record-level tests alone
+  aren't enough here — this is exactly the gap that let the missing
+  `PickClosestTo` case go unnoticed): build a circle and an external
+  point with two real tangent lines, then (a) with no pick, assert
+  `compile_defs()` raises `PickError` (pins the documented asymmetry with
+  `intersection()`); (b) with `near=Q`, assert the resolved tangent line's
+  touch point is actually the geometrically closer one to `Q`, not just
+  that a `PickClosestTo` was recorded — this test would fail before the
+  `to_sympy.py` fix above and pass after, which is what proves the fix
+  landed correctly, not just that some case was added.
+- Extend the `side_of`/`side` tests similarly to compile-level, not just
+  record-level: a line crossing a circle at two points, `side="left"` vs
+  `side="right"`, each resolved via `compile_defs()` and asserted against
+  the hand-computed left/right point — the record-level tests alone never
+  prove "left" really means left once coordinates resolve.
 - One SVG/numeric end-to-end test: build two non-parallel lines with
   known equations, take their `intersection()`, `compile_defs()`, and
   assert the resolved point's coordinates match the hand-computed
