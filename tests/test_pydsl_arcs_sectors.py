@@ -177,3 +177,100 @@ def test_arc_reflex_field_survives_compilation():
     compiled_arc = sym[result.id]
     assert isinstance(compiled_arc, SymArc)
     assert compiled_arc.reflex is True
+
+
+from geometry_diagrams.pydsl.api import regular_sectors
+
+
+def test_regular_sectors_n4_hand_computed_boundary_points():
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 1.0)
+        result = regular_sectors(c, 4)
+        ir = builder.build()
+    assert len(result) == 4
+    defs = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
+    assert len(defs) == 4
+    for d in defs:
+        assert d.reflex is False
+    sym = compile_defs(ir)
+    # boundary angles 0, pi/2, pi, 3pi/2 -> (1,0), (0,1), (-1,0), (0,-1)
+    expected_starts = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]
+    for i, d in enumerate(defs):
+        sx, sy = float(sym[d.start].x), float(sym[d.start].y)
+        ex, ey = expected_starts[i]
+        assert sx == pytest.approx(ex, abs=1e-9)
+        assert sy == pytest.approx(ey, abs=1e-9)
+    # wraparound: last sector's end must equal the first sector's start
+    assert defs[-1].end == defs[0].start
+
+
+def test_regular_sectors_requires_n_at_least_2():
+    with new_builder_context():
+        c = circle(point(0.0, 0.0), 1.0)
+        with pytest.raises(ValueError, match="n >= 2"):
+            regular_sectors(c, 1)
+
+
+def test_regular_sectors_n2_grid_aligned_center_does_not_duplicate_semicircle():
+    """The n=2 case Fable's review flagged: math.sin(math.pi) is
+    1.2246e-16, not exactly 0. If regular_sectors() rounded the absolute
+    coordinate instead of the offset, this would produce boundary points
+    at (1,0) and (-1, 1.2e-16) instead of exactly (-1,0), corrupting the
+    rendered pie into two overlapping semicircles."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 1.0)
+        result = regular_sectors(c, 2)
+        ir = builder.build()
+    assert len(result) == 2
+    sym = compile_defs(ir)
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    defs = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
+    p0 = (float(sym[defs[0].start].x), float(sym[defs[0].start].y))
+    p1 = (float(sym[defs[1].start].x), float(sym[defs[1].start].y))
+    assert p0 == pytest.approx((1.0, 0.0), abs=1e-9)
+    assert p1[0] == pytest.approx(-1.0, abs=1e-9)
+    assert p1[1] == pytest.approx(0.0, abs=1e-9)  # exactly 0, not 1.2e-16
+
+
+def test_regular_sectors_n2_non_grid_aligned_center_does_not_duplicate_semicircle():
+    """Regression test for the SECOND bug a Fable review round caught: the
+    first fix rounded the absolute coordinate (round(center + offset, 10)),
+    which still fails ~100% of the time for any center not already sitting
+    on a 1e-10 grid, since pydsl (unlike recipe/lower.py) stores raw
+    unrounded centers. The correct fix rounds the offset BEFORE adding it
+    to the center: circle.center.x + round(radius * cos(angle), 10)."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+
+    with new_builder_context() as builder:
+        c = circle(point(1.0 / 3.0, 1.0 / 3.0), 1.0)
+        result = regular_sectors(c, 2)
+        ir = builder.build()
+    assert len(result) == 2
+    sym = compile_defs(ir)
+    defs = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
+    p0y = float(sym[defs[0].start].y)
+    p1y = float(sym[defs[1].start].y)
+    cy = 1.0 / 3.0
+    # Both boundary points must land at exactly cy (angle 0 and pi both have
+    # sin(angle) == 0 mathematically) — not off by ~1e-10 in opposite
+    # directions, which is what causes the tie-break misclassification.
+    assert p0y == pytest.approx(cy, abs=1e-9)
+    assert p1y == pytest.approx(cy, abs=1e-9)
+    assert p0y == pytest.approx(p1y, abs=1e-12)
+
+
+def test_regular_sectors_rejects_circumcircle_derived_circle():
+    from geometry_diagrams.pydsl.api import circumcircle, triangle
+
+    with new_builder_context():
+        a, b, c_pt = point(0.0, 0.0), point(4.0, 0.0), point(2.0, 3.0)
+        t = triangle(a, b, c_pt)
+        circ = circumcircle(t)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            regular_sectors(circ, 4)

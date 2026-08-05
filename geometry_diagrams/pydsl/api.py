@@ -331,6 +331,32 @@ def sector(circle: Circle, start: Point, end: Point, reflex: bool = False) -> Se
     return Sector(id=sid)
 
 
+def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
+    """Divide circle into n equal pie slices, returned in counter-clockwise
+    order starting from angle 0. n must be >= 2. circle must be a literal
+    circle() (not circumcircle()/incircle()) — same restriction
+    regular_polygon() already has on its own center parameter."""
+    if n < 2:
+        raise ValueError(f"regular_sectors() requires n >= 2, got {n}")
+    circle.center._known()  # raises for circumcircle()/incircle() circles,
+                             # whose center is never a literal coordinate
+    radius = circle.radius  # always a float here: only circle()'s
+                             # literal-radius path can reach this point
+    builder = get_builder()
+    boundary_pts = []
+    for i in range(n):
+        angle = i * 2 * math.pi / n
+        # Round the OFFSET, not the absolute coordinate — see this plan's
+        # Global Constraints section for why this exact distinction matters.
+        x = circle.center.x + round(radius * math.cos(angle), 10)
+        y = circle.center.y + round(radius * math.sin(angle), 10)
+        boundary_pts.append(_record_literal_point(builder, x, y))
+    return tuple(
+        sector(circle, boundary_pts[i], boundary_pts[(i + 1) % n])
+        for i in range(n)
+    )
+
+
 def ellipse(
     center: "Point | None" = None,
     hradius: "float | None" = None,
