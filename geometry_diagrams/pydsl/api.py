@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, Point, Polygon, Segment, Triangle
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Segment, Triangle
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -295,6 +295,19 @@ def foot_of_perpendicular(point: Point, line) -> Point:
     pid = builder._fresh_hidden_id("foot")
     builder._add(PointFoot(id=pid, source=point.id, onto=line.id))
     return Point(id=pid, _builder=builder)
+
+
+def perpendicular_bisector(p: Point, q: Point) -> PerpendicularBisectorLine:
+    """The perpendicular bisector of segment p-q. Does not draw the
+    segment p-q itself — draw() it separately if you want it visible."""
+    builder = get_builder()
+    base_id = builder._fresh_hidden_id("bisector_base")
+    builder._add(LineThrough(id=base_id, p=p.id, q=q.id))
+    mid_id = builder._fresh_hidden_id("bisector_mid")
+    builder._add(PointMidpoint(id=mid_id, p=p.id, q=q.id))
+    line_id = builder._fresh_hidden_id("bisector")
+    builder._add(LinePerpendicularThrough(id=line_id, through=mid_id, to_line=base_id))
+    return PerpendicularBisectorLine(id=line_id, midpoint=Point(id=mid_id, _builder=builder))
 
 
 def draw(obj) -> None:

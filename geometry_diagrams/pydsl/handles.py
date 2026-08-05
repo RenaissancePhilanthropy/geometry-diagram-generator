@@ -202,3 +202,9 @@ class Altitude:
     foot: Point
     line: Line
     segment: "Segment"
+
+
+@dataclass(frozen=True)
+class PerpendicularBisectorLine:
+    id: str
+    midpoint: Point
