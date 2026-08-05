@@ -258,6 +258,16 @@ def incircle(t: Triangle) -> Circle:
     return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius)
 
 
+def circle(center: Point, radius: float) -> Circle:
+    """A circle with the given center and radius."""
+    if radius <= 0:
+        raise ValueError(f"circle(): radius must be positive, got {radius!r}")
+    builder = get_builder()
+    cid = builder._fresh_hidden_id("circle")
+    builder._add(CircleCenterRadius(id=cid, center=center.id, radius=radius))
+    return Circle(id=cid, center=center, _radius_thunk=lambda: radius)
+
+
 def ellipse(
     center: "Point | None" = None,
     hradius: "float | None" = None,
