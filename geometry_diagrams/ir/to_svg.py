@@ -1772,6 +1772,8 @@ def _stroke_attrs(style_key: str | None, styles: dict, svg: ET.Element | None = 
             attrs["stroke-width"] = "2.5"
         if "thin" in d and d["thin"] is True:
             attrs["stroke-width"] = "0.75"
+        if "line_width" in d:
+            attrs["stroke-width"] = str(d["line_width"])
         if "dashed" in d and d["dashed"] is True:
             attrs["stroke-dasharray"] = "6,3"
         if "dotted" in d and d["dotted"] is True:

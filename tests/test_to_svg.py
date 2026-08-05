@@ -434,6 +434,22 @@ def test_style_dict_sets_stroke():
     assert float(lines[0].get("stroke-width")) > 1.5
 
 
+def test_line_width_style_sets_numeric_stroke_width():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=3, y=0),
+            Segment(id="AB", a="A", b="B"),
+        ],
+        styles={"mystyle": {"line_width": 3.5}},
+        render=[Draw(obj="AB", style="mystyle")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    lines = _findall(root, "line")
+    assert lines[0].get("stroke-width") == "3.5"
+
+
 # ---------------------------------------------------------------------------
 # Y-axis orientation
 # ---------------------------------------------------------------------------
