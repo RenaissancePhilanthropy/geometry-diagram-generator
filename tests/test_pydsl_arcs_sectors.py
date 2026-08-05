@@ -228,13 +228,28 @@ def test_regular_sectors_n2_grid_aligned_center_does_not_duplicate_semicircle():
         ir = builder.build()
     assert len(result) == 2
     sym = compile_defs(ir)
-    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import PointFixed, SectorCenterStartEnd
     defs = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
     p0 = (float(sym[defs[0].start].x), float(sym[defs[0].start].y))
     p1 = (float(sym[defs[1].start].x), float(sym[defs[1].start].y))
     assert p0 == pytest.approx((1.0, 0.0), abs=1e-9)
     assert p1[0] == pytest.approx(-1.0, abs=1e-9)
     assert p1[1] == pytest.approx(0.0, abs=1e-9)  # exactly 0, not 1.2e-16
+    # Magnitude-independent invariant: the two boundary points must be exact
+    # reflections of each other through the center. Read from the raw
+    # PointFixed IR defs, not compile_defs()'s sympy Point objects — sympy's
+    # Point constructor calls nsimplify(..., rational=True) on any Float
+    # coordinate, which for a "nice" center like this one snaps both the
+    # correct and the banned "round the absolute coordinate" form to the
+    # exact same rational, silently erasing the ~1e-11 discrepancy the
+    # banned form introduces (verified directly: compiling either form's
+    # output through compile_defs collapses both to identical rationals for
+    # this center, so this invariant must be checked pre-compilation).
+    pfs = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    p0_raw, p1_raw = pfs[defs[0].start], pfs[defs[1].start]
+    cx, cy = c.center.x, c.center.y
+    assert abs((p0_raw.x + p1_raw.x) - 2 * cx) < 1e-13
+    assert abs((p0_raw.y + p1_raw.y) - 2 * cy) < 1e-13
 
 
 def test_regular_sectors_n2_non_grid_aligned_center_does_not_duplicate_semicircle():
@@ -245,7 +260,7 @@ def test_regular_sectors_n2_non_grid_aligned_center_does_not_duplicate_semicircl
     unrounded centers. The correct fix rounds the offset BEFORE adding it
     to the center: circle.center.x + round(radius * cos(angle), 10)."""
     from geometry_diagrams.ir.to_sympy import compile_defs
-    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    from geometry_diagrams.ir.ir import PointFixed, SectorCenterStartEnd
 
     with new_builder_context() as builder:
         c = circle(point(1.0 / 3.0, 1.0 / 3.0), 1.0)
@@ -256,13 +271,28 @@ def test_regular_sectors_n2_non_grid_aligned_center_does_not_duplicate_semicircl
     defs = [d for d in ir.define if isinstance(d, SectorCenterStartEnd)]
     p0y = float(sym[defs[0].start].y)
     p1y = float(sym[defs[1].start].y)
-    cy = 1.0 / 3.0
+    cx, cy = c.center.x, c.center.y
     # Both boundary points must land at exactly cy (angle 0 and pi both have
     # sin(angle) == 0 mathematically) — not off by ~1e-10 in opposite
     # directions, which is what causes the tie-break misclassification.
     assert p0y == pytest.approx(cy, abs=1e-9)
     assert p1y == pytest.approx(cy, abs=1e-9)
     assert p0y == pytest.approx(p1y, abs=1e-12)
+    # Magnitude-independent invariant: the two boundary points must be exact
+    # reflections of each other through the center. Read from the raw
+    # PointFixed IR defs, not compile_defs()'s sympy Point objects — sympy's
+    # Point constructor calls nsimplify(..., rational=True) on any Float
+    # coordinate, and for this center (1/3) both the correct and the banned
+    # "round the absolute coordinate" form land within its snap tolerance of
+    # the same exact rationals (4/3, -2/3, 1/3), which erases the ~1e-11
+    # discrepancy the banned form introduces if checked post-compilation.
+    # Verified directly: this is the actual regression test for that bug —
+    # it fails when api.py is mutated to the banned form and passes on the
+    # correct form.
+    pfs = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    p0_raw, p1_raw = pfs[defs[0].start], pfs[defs[1].start]
+    assert abs((p0_raw.x + p1_raw.x) - 2 * cx) < 1e-13
+    assert abs((p0_raw.y + p1_raw.y) - 2 * cy) < 1e-13
 
 
 def test_regular_sectors_rejects_circumcircle_derived_circle():
