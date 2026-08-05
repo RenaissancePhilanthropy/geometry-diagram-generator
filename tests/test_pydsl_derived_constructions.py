@@ -241,3 +241,131 @@ def test_intersection_numeric_result_matches_hand_computed_crossing():
     pt = sym[result.id]
     assert float(pt.x.evalf()) == pytest.approx(2.0)
     assert float(pt.y.evalf()) == pytest.approx(2.0)
+
+
+from geometry_diagrams.pydsl.api import circumcircle, tangent_line
+from geometry_diagrams.ir.ir import LinePerpendicularThrough, LineTangent, LineThrough
+
+
+def test_tangent_line_at_point_on_circle_composes_two_defs():
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(2, 3)
+        t = triangle(a, b, c)
+        circ = circumcircle(t)
+        result = tangent_line(circ, at=a)
+        ir = builder.build()
+    radius_defs = [d for d in ir.define if isinstance(d, LineThrough) and d.p == circ.center.id and d.q == a.id]
+    assert len(radius_defs) == 1
+    perp_defs = [d for d in ir.define if isinstance(d, LinePerpendicularThrough) and d.id == result.id]
+    assert len(perp_defs) == 1
+    assert perp_defs[0].through == a.id
+    assert perp_defs[0].to_line == radius_defs[0].id
+
+
+def test_tangent_line_from_point_no_pick_records_pick_none():
+    with new_builder_context() as builder:
+        circ_center = point(0, 0)
+        far = point(3, 4)
+        from geometry_diagrams.ir.ir import CircleCenterRadius
+        builder._add(CircleCenterRadius(id="c1", center=circ_center.id, radius=1.0))
+        from geometry_diagrams.pydsl.handles import Circle
+        circ = Circle(id="c1", center=circ_center, _radius_thunk=lambda: 1.0)
+        result = tangent_line(circ, from_point=far)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, LineTangent) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].point == far.id
+    assert defs[0].circle == "c1"
+    assert defs[0].pick is None
+
+
+def test_tangent_line_requires_exactly_one_of_at_or_from_point():
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(2, 3)
+        t = triangle(a, b, c)
+        circ = circumcircle(t)
+        with pytest.raises(ValueError, match="exactly one"):
+            tangent_line(circ)
+        with pytest.raises(ValueError, match="exactly one"):
+            tangent_line(circ, at=a, from_point=b)
+
+
+def test_tangent_line_from_point_near_and_side_of_validation_matches_intersection():
+    with new_builder_context() as builder:
+        origin = point(0, 0)
+        from geometry_diagrams.ir.ir import CircleCenterRadius
+        builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
+        from geometry_diagrams.pydsl.handles import Circle
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        far = point(3, 0)
+        ref = point(0, 5)
+        s1, s2 = point(0, 0), point(1, 0)
+        with pytest.raises(ValueError, match="at most one"):
+            tangent_line(circ, from_point=far, near=ref, side_of=(s1, s2), side="left")
+        with pytest.raises(ValueError, match="together"):
+            tangent_line(circ, from_point=far, side_of=(s1, s2))
+        with pytest.raises(ValueError, match="left.*right"):
+            tangent_line(circ, from_point=far, side_of=(s1, s2), side="up")
+
+
+def test_tangent_line_from_point_no_pick_two_tangents_raises_at_compile_time():
+    """Documented asymmetry with intersection(): unlike PointIntersection's
+    arbitrary auto-pick fallback, LineTangent with no pick and >1 candidate
+    raises PickError at compile time, not ValueError at record time."""
+    from geometry_diagrams.ir.errors import PickError
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        origin = point(0, 0)
+        from geometry_diagrams.ir.ir import CircleCenterRadius
+        builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
+        from geometry_diagrams.pydsl.handles import Circle
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        far = point(3, 0)
+        tangent_line(circ, from_point=far)  # no pick -> ambiguous (2 tangents)
+        ir = builder.build()
+    with pytest.raises(PickError):
+        compile_defs(ir)
+
+
+def test_tangent_line_near_selects_geometrically_correct_tangent():
+    """Compile-level proof that near= actually works end to end (this is the
+    exact case that was silently broken before Task 1's to_sympy.py fix)."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        origin = point(0, 0)
+        from geometry_diagrams.ir.ir import CircleCenterRadius
+        builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
+        from geometry_diagrams.pydsl.handles import Circle
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        far = point(3, 0)
+        ref = point(0, 5)  # far above -> nearer to the +y touch point
+        result = tangent_line(circ, from_point=far, near=ref)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    tang = sym[result.id]
+    touch_points = tang.intersection(sym["c1"])
+    assert len(touch_points) == 1
+    assert float(touch_points[0].y.evalf()) > 0
+
+
+def test_tangent_line_side_left_vs_right_select_opposite_tangents():
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        origin = point(0, 0)
+        from geometry_diagrams.ir.ir import CircleCenterRadius
+        builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
+        from geometry_diagrams.pydsl.handles import Circle
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        far = point(3, 0)
+        s1, s2 = point(0, 0), point(1, 0)  # directed +x axis: "left" = +y side
+        left_result = tangent_line(circ, from_point=far, side_of=(s1, s2), side="left")
+        right_result = tangent_line(circ, from_point=far, side_of=(s1, s2), side="right")
+        ir = builder.build()
+    sym = compile_defs(ir)
+    left_touch = sym[left_result.id].intersection(sym["c1"])[0]
+    right_touch = sym[right_result.id].intersection(sym["c1"])[0]
+    assert float(left_touch.y.evalf()) > 0
+    assert float(right_touch.y.evalf()) < 0

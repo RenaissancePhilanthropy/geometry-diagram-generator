@@ -351,6 +351,60 @@ def intersection(
     return Point(id=pid, _builder=builder)
 
 
+def tangent_line(
+    circle: Circle,
+    at: "Point | None" = None,
+    from_point: "Point | None" = None,
+    near: "Point | None" = None,
+    side_of: "tuple[Point, Point] | None" = None,
+    side: "str | None" = None,
+) -> Line:
+    """The tangent line to `circle`. Exactly one of:
+    - at=P — P is a point already ON the circle; the tangent there (always
+      unambiguous — near/side_of/side are silently ignored if also given,
+      matching the DSL lowerer's own at= branch, which has no equivalent
+      validation either).
+    - from_point=P — P is external to the circle; there are 0, 1, or 2
+      tangent lines from an external point. Disambiguate a 2-tangent case
+      with near=Q (closest touch point to Q) or side_of=(A,B), side=
+      "left"|"right" (same convention as intersection()). With neither,
+      and 2 tangent lines exist, unlike intersection() there is no
+      arbitrary-heuristic fallback — compilation fails later, inside
+      compile_defs(), with geometry_diagrams.ir.errors.PickError."""
+    from geometry_diagrams.ir.ir import LinePerpendicularThrough, LineThrough, LineTangent, PickClosestTo, PickLowerOfLine, PickUpperOfLine
+
+    if (at is None) == (from_point is None):
+        raise ValueError("tangent_line() requires exactly one of 'at' or 'from_point'")
+
+    builder = get_builder()
+    if at is not None:
+        radius_id = builder._fresh_hidden_id("tangent_radius")
+        builder._add(LineThrough(id=radius_id, p=circle.center.id, q=at.id))
+        line_id = builder._fresh_hidden_id("tangent")
+        builder._add(LinePerpendicularThrough(id=line_id, through=at.id, to_line=radius_id))
+        return Line(id=line_id)
+
+    has_near = near is not None
+    has_side = side_of is not None or side is not None
+    if has_near and has_side:
+        raise ValueError("tangent_line(): give at most one of 'near' or 'side_of'+'side', not both")
+    if (side_of is not None) != (side is not None):
+        raise ValueError("tangent_line(): 'side_of' and 'side' must be given together")
+    if side is not None and side not in ("left", "right"):
+        raise ValueError(f"tangent_line(): side must be 'left' or 'right', got {side!r}")
+
+    pick = None
+    if has_near:
+        pick = PickClosestTo(p=near.id)
+    elif has_side:
+        a, b = side_of
+        pick = PickUpperOfLine(a=a.id, b=b.id) if side == "left" else PickLowerOfLine(a=a.id, b=b.id)
+
+    line_id = builder._fresh_hidden_id("tangent")
+    builder._add(LineTangent(id=line_id, point=from_point.id, circle=circle.id, pick=pick))
+    return Line(id=line_id)
+
+
 def draw(obj) -> None:
     """Draw a constructed object (triangle, polygon, circle, line, or segment)."""
     if isinstance(obj, Point):
