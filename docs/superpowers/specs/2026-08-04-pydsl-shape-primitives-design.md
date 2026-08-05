@@ -95,9 +95,42 @@ construction path, not a `walk()`-specific one.
 
 **The one turtle-specific mistake worth guarding**: walking one step too
 many and passing the near-duplicate starting point back into `polygon()`.
+This is unambiguous, not a style choice — but the current docstring
+doesn't actually say so. `polygon()`'s existing docstring, "A closed
+polygon over 3 or more existing points, in perimeter order," is ambiguous
+between two readings: (a) the *result* is closed, and the vertex list you
+pass might already include a closing repeat of the first point, versus
+(b) `polygon()` *performs the closing itself* from an open vertex list,
+and a closing repeat would be redundant. It means (b) — `PolygonDef` just
+stores the given point ids, and closure is applied downstream (rendering
+connects the last back to the first) — but a script author, and this new
+guard's own justification, can't tell that from the text alone. Unlike
+GeoJSON-style APIs, there is no supported convention here for repeating
+the first point at the end to signal "close the loop"; doing so is always
+redundant. This plan updates the docstring alongside adding the guard, so
+the rule is stated rather than left for the error message to explain:
+
+```python
+def polygon(*vertices: Point) -> Polygon:
+    """A polygon over 3 or more points, in perimeter order. The shape is
+    closed automatically — the last point connects back to the first.
+    Do not repeat the first point at the end; that produces a
+    coincident-vertex error rather than a no-op."""
+```
+
+Because closure is unambiguous once stated this way, treating last≈first
+as an error rather than a silent no-op is safe — no legitimate call is
+being rejected.
+
 `polygon()` gains a check for near-coincident *consecutive* vertices
-(including last→first) when both have known coordinates, catching this
-with an actionable message.
+(including last→first) when both have known coordinates. The error message
+states the rule, not just this one symptom, so it reads the same way
+whether the duplicate came from `walk()`, `point_on()`, or a typo:
+
+```
+polygon() vertices {id} and {id} are coincident. polygon() already closes
+the shape automatically — do not repeat the first point as the last.
+```
 
 ## Non-goals
 
@@ -263,14 +296,23 @@ Requires `from_point` to have known coordinates. `x = from_point.x +
 distance*cos(heading)`, `y = from_point.y + distance*sin(heading)`, records
 one `PointFixed`, returns a `Point`.
 
-**`polygon()`'s new guard** (in the existing function, `api.py`): after the
-existing `len(vertices) < 3` check, for each consecutive pair (including
+**`polygon()`'s docstring and new guard** (in the existing function,
+`api.py`): docstring updated to the text quoted above. After the existing
+`len(vertices) < 3` check, for each consecutive pair (including
 last→first, wrapping around) where both vertices have known coordinates,
-raise `ValueError` if they're closer than a small epsilon (e.g. `1e-9`) —
-"consecutive vertices `{id}` and `{id}` are coincident — check you didn't
-walk one extra step." Vertices with unknown coordinates (e.g. from
-`point_on()`) are skipped by this check, same as every other
-coordinate-dependent validation in this file.
+raise `ValueError` if they're closer than a small epsilon (e.g. `1e-9`):
+
+```python
+raise ValueError(
+    f"polygon() vertices {prev.id!r} and {cur.id!r} are coincident. "
+    "polygon() already closes the shape automatically — do not repeat "
+    "the first point as the last."
+)
+```
+
+Vertices with unknown coordinates (e.g. from `point_on()`) are skipped by
+this check, same as every other coordinate-dependent validation in this
+file.
 
 ## Data flow
 
