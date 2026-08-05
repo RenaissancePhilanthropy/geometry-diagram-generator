@@ -31,6 +31,11 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   Call `draw(obj)` on every triangle/polygon/circle/line/segment you want shown, and
   `draw_points(...)` on every point you want marked, as your LAST steps. A script that
   builds geometry but never calls draw()/draw_points() will fail with no visible output.
+- `draw(obj, color=..., thick=True|thin=True|width=..., dashed=True|dotted=True, arrow_start=True, arrow_end=True)`
+  adds optional stroke styling — give at most one of thick/thin/width (width is a positive number,
+  overriding the thick/thin presets), and at most one of dashed/dotted. `fill(obj, color=..., opacity=0.0-1.0)`
+  fills a closed shape's interior (triangle, polygon, circle, sector) — opacity defaults to fully opaque.
+  Color values are passed straight through unvalidated; use recognizable color names (e.g. "red", "blue").
 - Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle.
 - Use `segment(p, q)` to get a segment between any two points that aren't
   already a Triangle/Polygon side (e.g. a circle's radius from its center to

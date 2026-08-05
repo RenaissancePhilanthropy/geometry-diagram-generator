@@ -282,3 +282,28 @@ def test_fill_still_rejects_angle_ref():
         ref = AngleRef(a=a, o=o, b=b, _builder=builder)
         with pytest.raises(ValueError, match="AngleRef"):
             fill(ref)
+
+
+def test_styling_works_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+    from geometry_diagrams.ir.ir import Draw, Fill
+
+    script = (
+        "a = point(0, 0)\n"
+        "b = point(4, 0)\n"
+        "c = point(2, 3)\n"
+        "tri = polygon(a, b, c)\n"
+        "draw(tri, color='red', width=2.0, dashed=True)\n"
+        "fill(tri, color='blue', opacity=0.3)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    draw_defs = [r for r in result.diagram_ir.render if isinstance(r, Draw)]
+    fill_defs = [r for r in result.diagram_ir.render if isinstance(r, Fill)]
+    assert len(draw_defs) == 1
+    assert len(fill_defs) == 1
+    draw_style = result.diagram_ir.styles[draw_defs[0].style]
+    fill_style = result.diagram_ir.styles[fill_defs[0].style]
+    assert draw_style == {"color": "red", "line_width": 2.0, "dashed": True}
+    assert fill_style == {"color": "blue", "opacity": 0.3}
