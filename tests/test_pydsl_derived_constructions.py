@@ -369,3 +369,30 @@ def test_tangent_line_side_left_vs_right_select_opposite_tangents():
     right_touch = sym[right_result.id].intersection(sym["c1"])[0]
     assert float(left_touch.y.evalf()) > 0
     assert float(right_touch.y.evalf()) < 0
+
+
+def test_derived_constructions_work_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+    from geometry_diagrams.ir.ir import PickClosestTo, PointIntersection
+
+    script = (
+        "a = point(0, 0)\n"
+        "b = point(4, 4)\n"
+        "c = point(0, 4)\n"
+        "d = point(4, 0)\n"
+        "l1 = line_through(a, b)\n"
+        "l2 = line_through(c, d)\n"
+        "ref = point(10, 10)\n"
+        "p = intersection(l1, l2, near=ref)\n"
+        "perp = perpendicular_through(p, l1)\n"
+        "draw(l1)\n"
+        "draw(l2)\n"
+        "draw(perp)\n"
+        "draw_points(a, b, c, d, p)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    isect_defs = [d for d in result.diagram_ir.define if isinstance(d, PointIntersection)]
+    assert len(isect_defs) == 1
+    assert isinstance(isect_defs[0].pick, PickClosestTo)

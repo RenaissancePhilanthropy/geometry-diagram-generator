@@ -46,6 +46,22 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   `grid_step`/`tick_step` are optional and auto-sized to the canvas if
   omitted. Note: with `axes=True`, the displayed bounds expand to include
   the origin even if `x_range`/`y_range` don't.
+- Use `intersection(obj1, obj2)` for where two lines/segments/rays/circles
+  cross, `perpendicular_through(point, line)` / `parallel_through(point,
+  line)` for a standalone perpendicular/parallel line, `perpendicular_bisector(p, q)`
+  (its `.midpoint` accessor gives the midpoint), `angle_bisector(vertex,
+  toward1, toward2)`, `centroid(triangle)`, `foot_of_perpendicular(point, line)`,
+  and `tangent_line(circle, at=P)` (P on the circle) or
+  `tangent_line(circle, from_point=P)` (P external). When a construction
+  has more than one valid answer (a line crossing a circle twice, two
+  tangent lines from an external point), disambiguate with `near=Q` (the
+  candidate closest to Q) or `side_of=(A, B), side="left"` /`"right"` (the
+  candidate on that side of the directed line from A to B) — e.g.
+  `intersection(line1, circle, near=approx_point)` or
+  `tangent_line(circle, from_point=p, side_of=(p, circle.center), side="left")`.
+  Without one of these, an ambiguous construction may pick an unexpected
+  candidate (or fail outright for `tangent_line`) — always disambiguate
+  when there's more than one geometrically valid answer.
 - Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
