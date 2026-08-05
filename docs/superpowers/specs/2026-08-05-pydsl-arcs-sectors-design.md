@@ -50,9 +50,15 @@ spoke coordinates to 10 decimal places before recording them
 prevents the render-time corruption in issue 1, at the cost of being
 slightly stricter than the compile-level math strictly requires (a
 deliberate, documented trade: correctness over permissiveness). And
-`regular_sectors()` rounds each computed boundary coordinate to 10
-decimal places, matching `recipe/lower.py`'s established, already-proven
-fix for the identical float-tie problem, rather than inventing a new one.
+`regular_sectors()` rounds each computed boundary point's *offset* from
+the center to 10 decimal places — adapting (not copying verbatim)
+`recipe/lower.py`'s established fix for the identical float-tie problem:
+`lower.py` rounds the *absolute* coordinate, which only works there
+because it also rounds the circle's own center to the same grid so the
+two round-offs cancel; pydsl stores raw, unrounded centers, so rounding
+the offset before adding it to the center is what actually closes the gap
+here (see the code block below for the exact reasoning and a verified
+counterexample).
 
 pydsl already has the right tool for building validated `start`/`end`
 points: `point_on(circle, angle)` (existing function — `PointOnParam`'s
