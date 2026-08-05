@@ -147,6 +147,25 @@ def rectangle(
     return polygon(*pts)
 
 
+def walk(from_point: Point, heading: float, distance: float) -> Point:
+    """A point `distance` away from from_point in direction `heading`
+    (radians, counter-clockwise from the +x axis — same convention as
+    rotate_point()). Use in a loop with your own running heading to build a
+    polygon's vertices one side at a time, then pass the collected points to
+    polygon(*pts):
+        pts, h = [start], 0.0
+        for side, turn in steps:
+            pts.append(walk(pts[-1], h, side))
+            h += turn
+        poly = polygon(*pts)
+    """
+    from_point._known()
+    builder = get_builder()
+    x = from_point.x + distance * math.cos(heading)
+    y = from_point.y + distance * math.sin(heading)
+    return _record_literal_point(builder, x, y)
+
+
 def segment(p: Point, q: Point) -> Segment:
     """A segment between any two points (deduplicated with segments already
     obtained via Triangle.side()/Polygon.side() for the same pair)."""

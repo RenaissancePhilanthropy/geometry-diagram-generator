@@ -133,3 +133,57 @@ def test_rectangle_rejects_invalid_pivot():
         corner = point(0, 0)
         with pytest.raises(ValueError, match="pivot"):
             rectangle(corner, width=1.0, height=1.0, pivot="edge")
+
+
+from geometry_diagrams.pydsl.api import draw, draw_points, walk
+
+
+def test_walk_builds_closed_square_matching_hand_computed_vertices():
+    """The documented usage pattern: track heading in a loop, collect points,
+    hand them to polygon() without ever re-adding the start point."""
+    with new_builder_context():
+        start = point(0.0, 0.0)
+        pts = [start]
+        heading = 0.0
+        for _ in range(3):  # 3 more sides close a 4-sided square
+            pts.append(walk(pts[-1], heading, 1.0))
+            heading += math.pi / 2
+        square = polygon(*pts)
+    expected = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    for v, (ex, ey) in zip(square.vertices, expected):
+        assert v.x == pytest.approx(ex, abs=1e-9)
+        assert v.y == pytest.approx(ey, abs=1e-9)
+
+
+def test_walk_requires_known_from_point_coordinates():
+    from geometry_diagrams.ir.ir import LineThrough
+    from geometry_diagrams.pydsl.api import point_on
+    from geometry_diagrams.pydsl.handles import Line
+
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        line_id = builder._fresh_hidden_id("line")
+        builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
+        unknown = point_on(Line(id=line_id), 0.5)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            walk(unknown, 0.0, 1.0)
+
+
+def test_walk_works_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = (
+        "import math\n"
+        "start = point(0.0, 0.0)\n"
+        "p1 = walk(start, 0.0, 1.0)\n"
+        "p2 = walk(p1, math.pi / 2, 1.0)\n"
+        "p3 = walk(p2, math.pi, 1.0)\n"
+        "square = polygon(start, p1, p2, p3)\n"
+        "draw(square)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    poly_defs = [d for d in result.diagram_ir.define if d.kind == "polygon"]
+    assert len(poly_defs) == 1
+    assert len(poly_defs[0].points) == 4
