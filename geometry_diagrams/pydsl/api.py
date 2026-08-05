@@ -310,6 +310,47 @@ def perpendicular_bisector(p: Point, q: Point) -> PerpendicularBisectorLine:
     return PerpendicularBisectorLine(id=line_id, midpoint=Point(id=mid_id, _builder=builder))
 
 
+def intersection(
+    obj1,
+    obj2,
+    near: "Point | None" = None,
+    side_of: "tuple[Point, Point] | None" = None,
+    side: "str | None" = None,
+) -> Point:
+    """The intersection point of obj1 and obj2 (lines/segments/rays/circles).
+
+    Disambiguate when there's more than one candidate (e.g. a line crossing
+    a circle twice) with EITHER:
+    - near=P — the candidate closest to P, or
+    - side_of=(A, B), side="left"|"right" — the candidate on that side of
+      the directed line from A to B (walking from A toward B).
+    Give at most one of these. With neither, and more than one candidate
+    exists, an automatic (documented-as-arbitrary) heuristic picks one —
+    prefer giving near/side_of+side whenever the choice matters."""
+    from geometry_diagrams.ir.ir import PickClosestTo, PickLowerOfLine, PickUpperOfLine, PointIntersection
+
+    has_near = near is not None
+    has_side = side_of is not None or side is not None
+    if has_near and has_side:
+        raise ValueError("intersection(): give at most one of 'near' or 'side_of'+'side', not both")
+    if (side_of is not None) != (side is not None):
+        raise ValueError("intersection(): 'side_of' and 'side' must be given together")
+    if side is not None and side not in ("left", "right"):
+        raise ValueError(f"intersection(): side must be 'left' or 'right', got {side!r}")
+
+    pick = None
+    if has_near:
+        pick = PickClosestTo(p=near.id)
+    elif has_side:
+        a, b = side_of
+        pick = PickUpperOfLine(a=a.id, b=b.id) if side == "left" else PickLowerOfLine(a=a.id, b=b.id)
+
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("isect")
+    builder._add(PointIntersection(id=pid, obj1=obj1.id, obj2=obj2.id, pick=pick))
+    return Point(id=pid, _builder=builder)
+
+
 def draw(obj) -> None:
     """Draw a constructed object (triangle, polygon, circle, line, or segment)."""
     if isinstance(obj, Point):

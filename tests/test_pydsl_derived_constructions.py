@@ -126,3 +126,118 @@ def test_perpendicular_bisector_line_appears_in_stub():
     stub_text = generate_stub()
     assert "class PerpendicularBisectorLine:" in stub_text
     assert "midpoint: Point" in stub_text
+
+
+from geometry_diagrams.pydsl.api import intersection
+from geometry_diagrams.ir.ir import PickClosestTo, PickLowerOfLine, PickUpperOfLine, PointIntersection
+
+
+def test_intersection_no_pick_records_pick_none():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        result = intersection(l1, l2)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, PointIntersection) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].obj1 == l1.id
+    assert defs[0].obj2 == l2.id
+    assert defs[0].pick is None
+
+
+def test_intersection_near_records_pick_closest_to():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        ref = point(10, 10)
+        result = intersection(l1, l2, near=ref)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, PointIntersection) and d.id == result.id]
+    assert isinstance(defs[0].pick, PickClosestTo)
+    assert defs[0].pick.p == ref.id
+
+
+def test_intersection_side_left_records_pick_upper_of_line():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        s1, s2 = point(0, 0), point(1, 0)
+        result = intersection(l1, l2, side_of=(s1, s2), side="left")
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, PointIntersection) and d.id == result.id]
+    assert isinstance(defs[0].pick, PickUpperOfLine)
+    assert defs[0].pick.a == s1.id
+    assert defs[0].pick.b == s2.id
+
+
+def test_intersection_side_right_records_pick_lower_of_line():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        s1, s2 = point(0, 0), point(1, 0)
+        result = intersection(l1, l2, side_of=(s1, s2), side="right")
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, PointIntersection) and d.id == result.id]
+    assert isinstance(defs[0].pick, PickLowerOfLine)
+
+
+def test_intersection_near_and_side_of_together_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        ref = point(10, 10)
+        s1, s2 = point(0, 0), point(1, 0)
+        with pytest.raises(ValueError, match="at most one"):
+            intersection(l1, l2, near=ref, side_of=(s1, s2), side="left")
+
+
+def test_intersection_side_of_without_side_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        s1, s2 = point(0, 0), point(1, 0)
+        with pytest.raises(ValueError, match="together"):
+            intersection(l1, l2, side_of=(s1, s2))
+
+
+def test_intersection_side_without_side_of_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        with pytest.raises(ValueError, match="together"):
+            intersection(l1, l2, side="left")
+
+
+def test_intersection_invalid_side_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 4)
+        c, d = point(0, 4), point(4, 0)
+        l1, l2 = line_through(a, b), line_through(c, d)
+        s1, s2 = point(0, 0), point(1, 0)
+        with pytest.raises(ValueError, match="left.*right"):
+            intersection(l1, l2, side_of=(s1, s2), side="up")
+
+
+def test_intersection_numeric_result_matches_hand_computed_crossing():
+    """Compile-level check: two lines through literal points crossing at a
+    hand-computable point — proves the pydsl call reaches correct geometry,
+    not just records a plausible-looking def."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 4)   # y = x
+        c, d = point(0, 4), point(4, 0)   # y = 4 - x
+        l1, l2 = line_through(a, b), line_through(c, d)
+        result = intersection(l1, l2)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    pt = sym[result.id]
+    assert float(pt.x.evalf()) == pytest.approx(2.0)
+    assert float(pt.y.evalf()) == pytest.approx(2.0)
