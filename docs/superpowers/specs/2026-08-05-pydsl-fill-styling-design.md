@@ -123,12 +123,21 @@ def draw(
       permissiveness).
     - thick/thin: preset stroke widths. Give at most one, and not
       together with width.
-    - width: an explicit numeric stroke width, overriding thick/thin.
+    - width: an explicit numeric stroke width, given instead of
+      thick/thin (must be positive).
     - dashed/dotted: give at most one.
-    - arrow_start/arrow_end: draw an arrowhead at the start/end of an
-      open shape (a line/segment/ray/arc) — for a closed shape (polygon,
-      circle, sector) these have no visual effect, since there is no
-      start/end to mark, but are not rejected.
+    - arrow_start/arrow_end: draw an arrowhead at the start/end of the
+      shape's path. For an open shape (line/segment/ray/arc) this marks
+      the obvious start/end point. For a closed shape (polygon, circle,
+      sector) the underlying renderers do not treat this consistently —
+      SVG's polygon/path elements DO honor start/end markers at the
+      shape's first/last recorded vertex (confirmed directly in
+      to_svg.py — attrs including marker-start/marker-end spread onto
+      the <polygon>/<path> element the same as any other shape), so an
+      arrow can visibly appear on a polygon under SVGRenderer even
+      though nothing here explicitly asked for that. Not rejected, but
+      the correct expectation is "an arrow may appear at an arbitrary
+      vertex," not "no effect."
     """
 ```
 
@@ -143,6 +152,8 @@ exactly-one-of-a-group style):
     width_group = [thick, thin, width is not None]
     if sum(width_group) > 1:
         raise ValueError("draw(): give at most one of thick, thin, or width")
+    if width is not None and width <= 0:
+        raise ValueError(f"draw(): width must be positive, got {width!r}")
     if dashed and dotted:
         raise ValueError("draw(): give at most one of dashed or dotted")
 
@@ -196,6 +207,21 @@ def fill(obj, color: "str | None" = None, opacity: float = 1.0) -> None:
     style: dict = {}
     if color is not None:
         style["color"] = color
+    # opacity is ALSO written into the style dict, not left to Fill's own
+    # `opacity` field alone. to_tikz.py's Fill handler (verified directly —
+    # lines 281-286) only merges in Fill.opacity when NO style dict is
+    # registered; the moment a style dict exists (e.g. because color was
+    # given), the TikZ path builds its options string purely from that
+    # dict and Fill.opacity is silently ignored, rendering fully opaque
+    # regardless of what was asked for. Writing "opacity" into the style
+    # dict closes this: to_svg.py's _fill_attrs already prefers the style
+    # dict's opacity over the Fill op's own field (`d.get("opacity",
+    # opacity)`), and to_tikz.py's generic pass-through emits a valid
+    # `opacity=0.3` TikZ option from the same dict entry. Fill.opacity is
+    # still also set below, so a script with no color still gets correct
+    # opacity via to_tikz.py's else-branch fallback (`opacity={opacity}`).
+    if opacity != 1.0:
+        style["opacity"] = opacity
 
     builder = get_builder()
     style_key = builder._register_style(style) if style else None
@@ -223,6 +249,12 @@ generic fallback:
 
 ```python
 def _style_str(style_key: str | None, styles: dict) -> str:
+    """Return a TikZ option string like '[color=red,thick]' or '' if no style.
+
+    If style_key is found in the styles dict, format its entries as TikZ options.
+    If not found but the key is a recognized TikZ color name, return '[color=<name>]'
+    so that LLM-generated style values like "red" work without a populated styles dict.
+    """
     if not style_key:
         return ""
     if style_key in styles:
@@ -244,7 +276,18 @@ def _style_str(style_key: str | None, styles: dict) -> str:
 
 This means a pydsl script using `draw(obj, width=2.0)` renders correctly
 under **both** `SVGRenderer` and `TikZRenderer` — the one place in this
-cluster where a renderer change benefits both paths, not just SVG's.
+cluster where a renderer change benefits both paths, not just SVG's. One
+caveat worth stating plainly rather than leaving implicit: "correctly"
+means *valid syntax that the renderer accepts*, not *visually identical
+thickness* — SVG's stroke-width is in user units (default 1.5, `thick`
+preset 2.5) while TikZ's line width is in points (default 0.4pt, `thick`
+preset 0.8pt). `width=2.5` looks like the `thick` preset under SVG but
+is roughly 3x the `thick` preset's actual thickness under TikZ. This is
+a pre-existing unit mismatch between the two renderers' style
+vocabularies (not something this cluster introduces or needs to
+reconcile) — worth documenting so nobody later tries to "fix" a
+perceived rendering discrepancy that's actually just SVG-vs-TikZ unit
+semantics.
 
 ## Non-goals
 
@@ -280,12 +323,26 @@ New file `tests/test_pydsl_styling.py`, TDD, covering:
   with no style kwargs records `style=None` and adds nothing to
   `ir.styles` (existing zero-overhead behavior preserved); `thick`+`width`
   together raises `ValueError` mentioning "at most one"; `thick`+`thin`
-  together raises the same; `dashed`+`dotted` together raises; the
-  existing `Point`/`AngleRef` rejection tests still pass unchanged.
+  together raises the same; `dashed`+`dotted` together raises;
+  `width=0` and `width=-1` both raise `ValueError` mentioning "positive";
+  the existing `Point`/`AngleRef` rejection tests still pass unchanged.
 - `fill()`: records a `Fill` op with correct `obj`/`opacity`/`style`
-  fields; `opacity` outside `[0, 1]` raises; `color=None` records
-  `style=None` (no dict registered) — same zero-overhead-when-unused
-  behavior as `draw()`.
+  fields; `opacity` outside `[0, 1]` raises; `color=None, opacity=1.0`
+  (both defaults) records `style=None` (no dict registered) — same
+  zero-overhead-when-unused behavior as `draw()`; `color=None,
+  opacity=0.5` (non-default opacity, no color) still registers a style
+  dict containing `{"opacity": 0.5}` even though no color was given —
+  this is required for the TikZ-path fix below to work regardless of
+  whether a color is also specified.
+- **The TikZ fill-opacity regression** (found during spec review — a real
+  bug in the *existing* renderer, not something introduced by this
+  cluster, but one this cluster's `fill()` must not reproduce): a
+  render-level test asserting `fill(obj, color="red", opacity=0.3)`
+  produces a TikZ options string containing `opacity=0.3` — this is the
+  case that was previously silently dropped, since `to_tikz.py`'s `Fill`
+  handler only merges in `Fill.opacity` when no style dict is registered
+  at all, and giving a color always registers one. Test both with and
+  without a color to confirm opacity survives either way.
 - `to_svg.py`'s new `line_width` branch: a compile-level/render-level test
   (using the existing SVG-checking utilities in `geometry_diagrams/util/`
   or a direct call into `to_svg.py`'s rendering function) asserting a
@@ -294,7 +351,11 @@ New file `tests/test_pydsl_styling.py`, TDD, covering:
 - `to_tikz.py`'s `line_width` special case: a direct test of `_style_str`
   (or the equivalent public rendering entry point) asserting
   `draw(obj, width=2.0)` produces `line width=2.0pt` in the TikZ options
-  string, not the invalid `line_width=2.0`.
+  string, not the invalid `line_width=2.0`. Also test that every
+  existing, previously-supported style key (`color`, `thick`, `thin`,
+  `dashed`, `dotted`, `->`, `<-`, `<->`) still produces identical output
+  to before this cluster's `_style_str` rewrite — a regression test for
+  the rewrite itself, not just the new key.
 - A sandbox-path test (`run_script`) exercising `draw(obj, color=...,
   width=...)` and `fill(obj, color=..., opacity=...)` through the real
   sandbox, confirming the resulting `DiagramIR` has correctly-populated
