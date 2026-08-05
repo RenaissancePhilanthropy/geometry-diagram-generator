@@ -142,6 +142,22 @@ class Circle:
 
 
 @dataclass(frozen=True)
+class Ellipse:
+    id: str
+    center: Point
+    _hradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
+    _vradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
+
+    @property
+    def hradius(self) -> float:
+        return self._hradius_thunk()
+
+    @property
+    def vradius(self) -> float:
+        return self._vradius_thunk()
+
+
+@dataclass(frozen=True)
 class Polygon:
     id: str
     vertices: tuple[Point, ...]

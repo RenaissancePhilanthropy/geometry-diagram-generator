@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle, _record_literal_point
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle, _record_literal_point
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -256,6 +256,77 @@ def incircle(t: Triangle) -> Circle:
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
     return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius)
+
+
+def ellipse(
+    center: "Point | None" = None,
+    hradius: "float | None" = None,
+    vradius: "float | None" = None,
+    corner1: "Point | None" = None,
+    corner2: "Point | None" = None,
+) -> Ellipse:
+    """An axis-aligned ellipse. Exactly one of:
+    - center, hradius, vradius — center point and semi-axis lengths (both > 0).
+    - corner1, corner2 — opposite corners of the bounding box.
+    All three of the first group, or both of the second, must be given together."""
+    from geometry_diagrams.ir.ir import EllipseBBox, EllipseCenterAxes
+
+    center_axes_parts = [center is not None, hradius is not None, vradius is not None]
+    bbox_parts = [corner1 is not None, corner2 is not None]
+    has_center_axes = all(center_axes_parts)
+    has_bbox = all(bbox_parts)
+    if has_center_axes and has_bbox:
+        raise ValueError(
+            "ellipse(): give exactly one of (center, hradius, vradius) or "
+            "(corner1, corner2), not both"
+        )
+    if any(center_axes_parts) and not has_center_axes:
+        raise ValueError("ellipse(): center, hradius, and vradius must all be given together")
+    if any(bbox_parts) and not has_bbox:
+        raise ValueError("ellipse(): corner1 and corner2 must both be given together")
+    if not has_center_axes and not has_bbox:
+        raise ValueError("ellipse() requires either (center, hradius, vradius) or (corner1, corner2)")
+
+    builder = get_builder()
+    eid = builder._fresh_hidden_id("ellipse")
+
+    if has_center_axes:
+        if hradius <= 0 or vradius <= 0:
+            raise ValueError(
+                f"ellipse(): hradius and vradius must be positive, got "
+                f"{hradius!r}, {vradius!r}"
+            )
+        builder._add(EllipseCenterAxes(id=eid, center=center.id, hradius=hradius, vradius=vradius))
+        return Ellipse(id=eid, center=center, _hradius_thunk=lambda: hradius, _vradius_thunk=lambda: vradius)
+
+    builder._add(EllipseBBox(id=eid, corner1=corner1.id, corner2=corner2.id))
+    mid_id = builder._fresh_hidden_id("ellipse_center")
+    builder._add(PointMidpoint(id=mid_id, p=corner1.id, q=corner2.id))
+    center_pt = Point(id=mid_id, _builder=builder)
+
+    def _compute_hradius():
+        coord_floats = builder._coord_floats
+        if corner1.id not in coord_floats or corner2.id not in coord_floats:
+            raise NotImplementedError(
+                "ellipse(...).hradius requires both corners to be concrete "
+                "point(x, y) literals."
+            )
+        x1, _ = coord_floats[corner1.id]
+        x2, _ = coord_floats[corner2.id]
+        return abs(x2 - x1) / 2
+
+    def _compute_vradius():
+        coord_floats = builder._coord_floats
+        if corner1.id not in coord_floats or corner2.id not in coord_floats:
+            raise NotImplementedError(
+                "ellipse(...).vradius requires both corners to be concrete "
+                "point(x, y) literals."
+            )
+        _, y1 = coord_floats[corner1.id]
+        _, y2 = coord_floats[corner2.id]
+        return abs(y2 - y1) / 2
+
+    return Ellipse(id=eid, center=center_pt, _hradius_thunk=_compute_hradius, _vradius_thunk=_compute_vradius)
 
 
 def median(t: Triangle, from_vertex: Point) -> Median:

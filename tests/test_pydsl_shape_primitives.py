@@ -187,3 +187,66 @@ def test_walk_works_through_the_real_sandbox():
     poly_defs = [d for d in result.diagram_ir.define if d.kind == "polygon"]
     assert len(poly_defs) == 1
     assert len(poly_defs[0].points) == 4
+
+
+from geometry_diagrams.pydsl.api import ellipse
+
+
+def test_ellipse_center_axes_form_records_ellipse_center_axes():
+    from geometry_diagrams.ir.ir import EllipseCenterAxes
+
+    with new_builder_context() as builder:
+        c = point(1.0, 1.0)
+        result = ellipse(center=c, hradius=3.0, vradius=2.0)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, EllipseCenterAxes) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].center == c.id
+    assert defs[0].hradius == 3.0
+    assert defs[0].vradius == 2.0
+    assert result.center.id == c.id
+    assert result.hradius == 3.0
+    assert result.vradius == 2.0
+
+
+def test_ellipse_center_axes_form_rejects_non_positive_radii():
+    with new_builder_context():
+        c = point(0.0, 0.0)
+        with pytest.raises(ValueError, match="positive"):
+            ellipse(center=c, hradius=0.0, vradius=2.0)
+        with pytest.raises(ValueError, match="positive"):
+            ellipse(center=c, hradius=3.0, vradius=-1.0)
+
+
+def test_ellipse_bbox_form_records_ellipse_bbox_and_derives_center_and_radii():
+    from geometry_diagrams.ir.ir import EllipseBBox
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        p1, p2 = point(0.0, 0.0), point(4.0, 2.0)
+        result = ellipse(corner1=p1, corner2=p2)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, EllipseBBox) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].corner1 == p1.id
+    assert defs[0].corner2 == p2.id
+    assert result.hradius == pytest.approx(2.0)
+    assert result.vradius == pytest.approx(1.0)
+    sym = compile_defs(ir)
+    center_pt = sym[result.center.id]
+    assert float(center_pt.x.evalf()) == pytest.approx(2.0)
+    assert float(center_pt.y.evalf()) == pytest.approx(1.0)
+
+
+def test_ellipse_requires_exactly_one_complete_group():
+    with new_builder_context():
+        c = point(0.0, 0.0)
+        p1, p2 = point(0.0, 0.0), point(4.0, 2.0)
+        with pytest.raises(ValueError, match="not both"):
+            ellipse(center=c, hradius=1.0, vradius=1.0, corner1=p1, corner2=p2)
+        with pytest.raises(ValueError, match="together"):
+            ellipse(center=c, hradius=1.0)
+        with pytest.raises(ValueError, match="together"):
+            ellipse(corner1=p1)
+        with pytest.raises(ValueError, match="requires either"):
+            ellipse()
