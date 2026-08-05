@@ -72,9 +72,23 @@ def triangle(a: Point, b: Point, c: Point) -> Triangle:
 
 
 def polygon(*vertices: Point) -> Polygon:
-    """A closed polygon over 3 or more existing points, in perimeter order."""
+    """A polygon over 3 or more points, in perimeter order. The shape is
+    closed automatically — the last point connects back to the first.
+    Do not repeat the first point at the end; that produces a
+    coincident-vertex error rather than a no-op."""
     if len(vertices) < 3:
         raise ValueError(f"polygon requires at least 3 vertices, got {len(vertices)}")
+    n = len(vertices)
+    for i in range(n):
+        prev, cur = vertices[i - 1], vertices[i]  # i=0 wraps to last->first
+        if prev.x is None or prev.y is None or cur.x is None or cur.y is None:
+            continue
+        if math.hypot(cur.x - prev.x, cur.y - prev.y) < 1e-9:
+            raise ValueError(
+                f"polygon() vertices {prev.id!r} and {cur.id!r} are coincident. "
+                "polygon() already closes the shape automatically — do not repeat "
+                "the first point as the last."
+            )
     builder = get_builder()
     pid = builder._fresh_hidden_id("poly")
     builder._add(PolygonDef(id=pid, points=[v.id for v in vertices]))
