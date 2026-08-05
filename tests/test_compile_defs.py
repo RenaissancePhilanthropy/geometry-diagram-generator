@@ -662,6 +662,33 @@ def test_line_tangent():
     assert tang.contains(spg.Point(3, 0))
 
 
+def test_line_tangent_with_pick_closest_to_selects_correct_tangent():
+    """Regression test for a real bug found during pydsl derived-constructions
+    spec review: LineTangent's pick handling only understood PickIndex and
+    PickUpperOfLine/PickLowerOfLine — PickClosestTo silently fell through to
+    `case _: return tangents[0]`, always returning SymPy's arbitrary first
+    tangent regardless of what the pick asked for."""
+    from geometry_diagrams.ir.ir import PickClosestTo
+
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        CircleCenterRadius(id="c", center="O", radius=1),
+        PointFixed(id="P", x=3, y=0),
+        # Two tangent lines from P=(3,0) to the unit circle at O touch at
+        # approximately (1/3, +-2*sqrt(2)/3) ~= (0.333, +-0.943).
+        PointFixed(id="Q", x=0, y=5),  # far above -> closest touch point is the +y one
+        LineTangent(id="t", point="P", circle="c", pick=PickClosestTo(p="Q")),
+    )
+    tang = sym["t"]
+    touch_points = tang.intersection(sym["c"])
+    assert len(touch_points) == 1
+    touch = touch_points[0]
+    assert float(touch.y.evalf()) > 0, (
+        f"expected the tangent touching above the x-axis (closest to Q=(0,5)), "
+        f"got touch point {touch}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 8. Error cases
 # ---------------------------------------------------------------------------

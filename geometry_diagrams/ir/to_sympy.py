@@ -370,6 +370,22 @@ def _compile_one(
                     if not candidates:
                         raise PickError(did, f"no {direction} tangent relative to {a_id}→{b_id}")
                     return candidates[0]
+                case ir.PickClosestTo(p=p_id):
+                    ref_pt = _resolve(sym, p_id, def_id=did)
+
+                    def _touch_point_2(t_line):
+                        pts = t_line.intersection(circle)
+                        return pts[0] if pts else None
+
+                    scored = [
+                        (tp.distance(ref_pt), t)
+                        for t in tangents
+                        if (tp := _touch_point_2(t)) is not None
+                    ]
+                    if not scored:
+                        raise PickError(did, f"no tangent line has a resolvable touch point")
+                    scored.sort(key=lambda pair: float(pair[0].evalf()))
+                    return scored[0][1]
                 case _:
                     return tangents[0]
 
