@@ -20,3 +20,12 @@ def test_build_python_full_instructions_states_the_mandatory_draw_rule():
 def test_build_python_full_instructions_states_the_sandbox_constraint():
     instructions = build_python_full_instructions()
     assert "no imports" in instructions
+
+
+def test_python_full_instructions_document_new_shape_primitives():
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+
+    text = build_python_full_instructions()
+    for name in ("ray(", "ellipse(", "regular_polygon(", "rectangle(", "walk("):
+        assert name in text, f"instructions missing mention of {name}"
+    assert "polygon() closes the shape automatically" in text

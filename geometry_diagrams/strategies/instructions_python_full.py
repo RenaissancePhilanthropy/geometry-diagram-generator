@@ -62,6 +62,19 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   Without one of these, an ambiguous construction may pick an unexpected
   candidate (or fail outright for `tangent_line`) — always disambiguate
   when there's more than one geometrically valid answer.
+- New shapes: `ray(a, b)` (a ray from a through and beyond b), `ellipse(center=c, hradius=..., vradius=...)`
+  or `ellipse(corner1=c1, corner2=c2)` (opposite bounding-box corners), `regular_polygon(center, radius, n)`,
+  and `rectangle(corner, width, height, rotation=0.0, pivot="center")` (pivot="corner" rotates around
+  `corner` instead of the rectangle's own center). All angles (rotation, and walk()'s heading below)
+  are radians, counter-clockwise from the +x axis — same convention as rotate_point().
+- For a polygon built side-by-side rather than from named vertices, use `walk(from_point, heading, distance)`
+  to get the next point in a direction, tracking your own running heading in a loop, then pass the
+  collected points to `polygon(*pts)` — do NOT add a final point back at the start; polygon() closes the shape automatically and a repeated point raises an error. Example — a right triangle with legs 3 and 4:
+      p0 = point(0, 0)
+      p1 = walk(p0, 0.0, 3.0)
+      p2 = walk(p1, math.pi / 2, 4.0)
+      tri = polygon(p0, p1, p2)
+      draw(tri)
 - Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
