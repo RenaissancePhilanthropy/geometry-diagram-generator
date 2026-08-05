@@ -195,3 +195,90 @@ def test_draw_still_rejects_angle_ref():
         ref = AngleRef(a=a, o=o, b=b, _builder=builder)
         with pytest.raises(ValueError, match="AngleRef"):
             draw(ref)
+
+
+from geometry_diagrams.pydsl.api import fill
+
+
+def _filled_style_and_opacity(ir, obj_id):
+    from geometry_diagrams.ir.ir import Fill
+
+    defs = [r for r in ir.render if isinstance(r, Fill) and r.obj == obj_id]
+    assert len(defs) == 1
+    style_key = defs[0].style
+    style = ir.styles[style_key] if style_key else None
+    return style, defs[0].opacity
+
+
+def test_fill_default_records_none_style_and_opacity_one():
+    with new_builder_context() as builder:
+        pts = [point(0, 0), point(4, 0), point(2, 3)]
+        tri = polygon(*pts)
+        fill(tri)
+        ir = builder.build()
+    style, opacity = _filled_style_and_opacity(ir, tri.id)
+    assert style is None
+    assert opacity == 1.0
+    assert ir.styles == {}
+
+
+def test_fill_color_only():
+    with new_builder_context() as builder:
+        pts = [point(0, 0), point(4, 0), point(2, 3)]
+        tri = polygon(*pts)
+        fill(tri, color="red")
+        ir = builder.build()
+    style, opacity = _filled_style_and_opacity(ir, tri.id)
+    assert style == {"color": "red"}
+    assert opacity == 1.0
+
+
+def test_fill_opacity_only_still_registers_style_dict():
+    """opacity != 1.0 must land in the style dict even with no color,
+    since fill() writes opacity into the style dict unconditionally
+    whenever it's non-default — required so the TikZ-path fix works
+    regardless of whether a color is also given."""
+    with new_builder_context() as builder:
+        pts = [point(0, 0), point(4, 0), point(2, 3)]
+        tri = polygon(*pts)
+        fill(tri, opacity=0.5)
+        ir = builder.build()
+    style, opacity = _filled_style_and_opacity(ir, tri.id)
+    assert style == {"opacity": 0.5}
+    assert opacity == 0.5
+
+
+def test_fill_color_and_opacity():
+    with new_builder_context() as builder:
+        pts = [point(0, 0), point(4, 0), point(2, 3)]
+        tri = polygon(*pts)
+        fill(tri, color="red", opacity=0.3)
+        ir = builder.build()
+    style, opacity = _filled_style_and_opacity(ir, tri.id)
+    assert style == {"color": "red", "opacity": 0.3}
+    assert opacity == 0.3
+
+
+def test_fill_opacity_out_of_range_raises():
+    with new_builder_context():
+        pts = [point(0, 0), point(4, 0), point(2, 3)]
+        tri = polygon(*pts)
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            fill(tri, opacity=1.5)
+        with pytest.raises(ValueError, match="between 0 and 1"):
+            fill(tri, opacity=-0.1)
+
+
+def test_fill_still_rejects_point():
+    with new_builder_context():
+        p = point(0, 0)
+        with pytest.raises(ValueError, match="Point"):
+            fill(p)
+
+
+def test_fill_still_rejects_angle_ref():
+    with new_builder_context() as builder:
+        a, o, b = point(0, 0), point(1, 0), point(0, 1)
+        ref = AngleRef(a=a, o=o, b=b, _builder=builder)
+        with pytest.raises(ValueError, match="AngleRef"):
+            fill(ref)

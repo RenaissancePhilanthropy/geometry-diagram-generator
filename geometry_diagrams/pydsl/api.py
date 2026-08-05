@@ -747,6 +747,43 @@ def draw_points(*points: Point) -> None:
     builder._add_render(DrawPoints(points=[p.id for p in points]))
 
 
+def fill(obj, color: "str | None" = None, opacity: float = 1.0) -> None:
+    """Fill a constructed object's interior (triangle, polygon, circle,
+    sector) with the given color. opacity is 0 (fully transparent) to 1
+    (fully opaque). Filling a shape with no enclosed interior (a line,
+    segment, ray, or arc) has no defined visual effect and is not
+    rejected — same permissiveness as draw()'s arrow_start/arrow_end on a
+    closed shape."""
+    if isinstance(obj, Point):
+        raise ValueError("fill() doesn't take a Point — use draw_points(...) instead")
+    if isinstance(obj, AngleRef):
+        raise ValueError("fill() doesn't take an AngleRef — use mark_angle(...) instead")
+    if not 0 <= opacity <= 1:
+        raise ValueError(f"fill(): opacity must be between 0 and 1, got {opacity!r}")
+
+    from geometry_diagrams.ir.ir import Fill
+
+    style: dict = {}
+    if color is not None:
+        style["color"] = color
+    # opacity is ALSO written into the style dict, not left to Fill's own
+    # `opacity` field alone. to_tikz.py's Fill handler only merges in
+    # Fill.opacity when NO style dict is registered; the moment a style
+    # dict exists (e.g. because color was given), the TikZ path builds its
+    # options string purely from that dict and Fill.opacity is silently
+    # ignored, rendering fully opaque regardless of what was asked for.
+    # Writing "opacity" into the style dict closes this: to_svg.py's
+    # _fill_attrs already prefers the style dict's opacity over the Fill
+    # op's own field, and to_tikz.py's generic pass-through emits a valid
+    # `opacity=0.3` TikZ option from the same dict entry.
+    if opacity != 1.0:
+        style["opacity"] = opacity
+
+    builder = get_builder()
+    style_key = builder._register_style(style) if style else None
+    builder._add_render(Fill(obj=obj.id, opacity=opacity, style=style_key))
+
+
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,

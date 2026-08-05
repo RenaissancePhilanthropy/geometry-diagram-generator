@@ -763,3 +763,49 @@ def test_draw_sector_tikz():
     tikz = ir_to_tikz(diagram, sym)
     assert "\\draw" in tikz
     assert "arc" in tikz
+
+
+def test_fill_with_color_and_opacity_in_style_dict_emits_both():
+    """Regression test for a real bug found during pydsl fill() design
+    review: to_tikz.py's Fill handler only merges in Fill.opacity when NO
+    style dict is registered — the moment a style dict exists (e.g.
+    because a color was given), the TikZ path built its options string
+    purely from that dict and Fill.opacity was silently ignored, always
+    rendering fully opaque. The fix lives entirely in pydsl's fill()
+    (Task 5 of this plan), which writes opacity into the style dict
+    itself rather than relying on Fill.opacity alone — this test proves
+    that once opacity is in the dict, _style_str's existing generic
+    pass-through already emits it correctly, with no to_tikz.py code
+    change needed beyond Task 3's line_width special case."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        styles={"mystyle": {"color": "red", "opacity": 0.3}},
+        render=[Fill(obj="T", opacity=0.3, style="mystyle")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "color=red" in tikz
+    assert "opacity=0.3" in tikz
+
+
+def test_fill_with_opacity_only_in_style_dict_no_color():
+    """Same regression, but confirming the no-color path (fill()'s
+    opacity-only case from Task 5) also emits opacity correctly."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        styles={"mystyle": {"opacity": 0.5}},
+        render=[Fill(obj="T", opacity=0.5, style="mystyle")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "opacity=0.5" in tikz
