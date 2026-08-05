@@ -148,7 +148,12 @@ def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: 
     except NotImplementedError:
         return
     if isinstance(radius, str):
-        return  # incircle()'s symbolic fallback — not a comparable number
+        return  # defense-in-depth only: a str radius only ever comes from
+                 # incircle()'s symbolic fallback, whose center is always
+                 # unknown too (Point(id=..., _builder=builder), no x/y) —
+                 # the `cx is None` check above already returns first in
+                 # every real case, so this branch is intentionally
+                 # unreachable today. No test targets it specifically.
     actual = math.hypot(px - cx, py - cy)
     if abs(actual - radius) > max(radius * 1e-6, 1e-9):
         raise ValueError(
@@ -210,12 +215,23 @@ def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
     boundary_pts = []
     for i in range(n):
         angle = i * 2 * math.pi / n
-        # Rounded to 10dp, matching recipe/lower.py's established fix for
-        # the exact same problem: math.sin(math.pi) == 1.2246e-16, not 0,
-        # which at n=2 flips arc_params's minor/major tie-break (ccw<=180.0)
-        # and renders both "halves" of the pie as the same semicircle.
-        x = round(circle.center.x + radius * math.cos(angle), 10)
-        y = round(circle.center.y + radius * math.sin(angle), 10)
+        # The OFFSET is rounded to 10dp, not the absolute coordinate — this
+        # matters. recipe/lower.py rounds every PointFixed it records,
+        # including the circle's own center, so its center and boundary
+        # points land on the same decimal grid and float residues cancel
+        # exactly. pydsl's point()/_record_literal_point store raw
+        # full-precision coordinates, so a non-grid-aligned center (e.g.
+        # from walk(), point arithmetic, or an irrational coordinate) would
+        # NOT cancel if only the final absolute coordinate were rounded —
+        # verified by simulation: rounding the absolute coordinate reproduces
+        # the n=2 duplicate-semicircle bug for ~100% of random non-grid
+        # centers, while rounding the offset before adding it to the
+        # (unrounded) center fixes it in all cases tested. See
+        # math.sin(math.pi) == 1.2246e-16, not 0, which at n=2 flips
+        # arc_params's minor/major tie-break (ccw<=180.0) and renders both
+        # "halves" of the pie as the same semicircle.
+        x = circle.center.x + round(radius * math.cos(angle), 10)
+        y = circle.center.y + round(radius * math.sin(angle), 10)
         boundary_pts.append(_record_literal_point(builder, x, y))
     return tuple(
         sector(circle, boundary_pts[i], boundary_pts[(i + 1) % n])
@@ -297,10 +313,18 @@ New file `tests/test_pydsl_arcs_sectors.py`, TDD, covering:
   recorded sectors' boundary points are NOT coincident/degenerate and that
   each rounds to the expected exact half-circle boundary (e.g.
   `circle(point(0,0), 1)`, `n=2` → boundary points at `(1,0)` and exactly
-  `(-1,0)`, not `(-1, 1.2e-16)`); a circle from `circumcircle()`/
-  `incircle()` (unknown center) raises `_known()`'s "no known coordinates"
-  error, NOT a symbolic-radius-specific error — this is the same
-  restriction `regular_polygon()` already has and reuses that function's
+  `(-1,0)`, not `(-1, 1.2e-16)`); a SECOND `n=2` test using a
+  deliberately non-grid-aligned center (e.g. `circle(point(1/3, 1/3), 1)`)
+  asserting the same non-degenerate/correctly-paired behavior — this
+  pins the exact regression a second Fable review caught: rounding the
+  final *absolute* coordinate (rather than the offset before adding it to
+  an unrounded center) reproduces the duplicate-semicircle bug for
+  essentially any center not already sitting on a 1e-10 grid, so this
+  test must fail if that mistake is ever reintroduced; a circle from
+  `circumcircle()`/`incircle()` (unknown center) raises `_known()`'s "no
+  known coordinates" error, NOT a symbolic-radius-specific error — this
+  is the same restriction `regular_polygon()` already has and reuses that
+  function's
   existing error message, so no separate "known numeric value" error path
   exists to test.
 - A sandbox-path test (`run_script`) building a circle, an arc, and a
