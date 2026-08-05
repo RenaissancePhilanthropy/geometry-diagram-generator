@@ -301,6 +301,36 @@ def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: 
         )
 
 
+def arc(circle: Circle, start: Point, end: Point, reflex: bool = False) -> Arc:
+    """The circular arc between start and end (both must lie on circle —
+    use point_on(circle, angle) to construct them; an off-circle point can
+    silently shift the rendered arc away from circle). reflex=False (the
+    default) draws whichever of the two arcs spans <=180°; reflex=True
+    draws the other one."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+
+    _validate_on_circle("arc", circle, start, "start")
+    _validate_on_circle("arc", circle, end, "end")
+    builder = get_builder()
+    aid = builder._fresh_hidden_id("arc")
+    builder._add(ArcCenterStartEnd(id=aid, center=circle.center.id, start=start.id, end=end.id, reflex=reflex))
+    return Arc(id=aid)
+
+
+def sector(circle: Circle, start: Point, end: Point, reflex: bool = False) -> Sector:
+    """The closed pie-slice region bounded by the two radii to start and
+    end and the arc between them. Same start/end contract as arc() — both
+    must lie on circle; see arc()'s docstring."""
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+
+    _validate_on_circle("sector", circle, start, "start")
+    _validate_on_circle("sector", circle, end, "end")
+    builder = get_builder()
+    sid = builder._fresh_hidden_id("sector")
+    builder._add(SectorCenterStartEnd(id=sid, center=circle.center.id, start=start.id, end=end.id, reflex=reflex))
+    return Sector(id=sid)
+
+
 def ellipse(
     center: "Point | None" = None,
     hradius: "float | None" = None,
