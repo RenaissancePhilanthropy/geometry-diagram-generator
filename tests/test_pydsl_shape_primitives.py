@@ -93,3 +93,43 @@ def test_regular_polygon_requires_known_center_coordinates():
         unknown_center = point_on(Line(id=line_id), 0.5)
         with pytest.raises(ValueError, match="no known coordinates"):
             regular_polygon(unknown_center, radius=1.0, n=4)
+
+
+from geometry_diagrams.pydsl.api import rectangle
+
+
+def test_rectangle_pivot_corner_hand_computed_90_degree_rotation():
+    with new_builder_context():
+        corner = point(0, 0)
+        result = rectangle(corner, width=2.0, height=1.0, rotation=math.pi / 2, pivot="corner")
+    expected = [(0.0, 0.0), (0.0, 2.0), (-1.0, 2.0), (-1.0, 0.0)]
+    for v, (ex, ey) in zip(result.vertices, expected):
+        assert v.x == pytest.approx(ex, abs=1e-9)
+        assert v.y == pytest.approx(ey, abs=1e-9)
+
+
+def test_rectangle_pivot_center_hand_computed_90_degree_rotation():
+    with new_builder_context():
+        corner = point(0, 0)
+        result = rectangle(corner, width=2.0, height=1.0, rotation=math.pi / 2, pivot="center")
+    expected = [(1.5, -0.5), (1.5, 1.5), (0.5, 1.5), (0.5, -0.5)]
+    for v, (ex, ey) in zip(result.vertices, expected):
+        assert v.x == pytest.approx(ex, abs=1e-9)
+        assert v.y == pytest.approx(ey, abs=1e-9)
+
+
+def test_rectangle_no_rotation_is_axis_aligned():
+    with new_builder_context():
+        corner = point(1.0, 1.0)
+        result = rectangle(corner, width=3.0, height=2.0)
+    expected = [(1.0, 1.0), (4.0, 1.0), (4.0, 3.0), (1.0, 3.0)]
+    for v, (ex, ey) in zip(result.vertices, expected):
+        assert v.x == pytest.approx(ex, abs=1e-9)
+        assert v.y == pytest.approx(ey, abs=1e-9)
+
+
+def test_rectangle_rejects_invalid_pivot():
+    with new_builder_context():
+        corner = point(0, 0)
+        with pytest.raises(ValueError, match="pivot"):
+            rectangle(corner, width=1.0, height=1.0, pivot="edge")

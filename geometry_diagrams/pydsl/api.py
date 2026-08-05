@@ -111,6 +111,42 @@ def regular_polygon(center: Point, radius: float, n: int, start_angle: float = 0
     return polygon(*pts)
 
 
+def rectangle(
+    corner: Point,
+    width: float,
+    height: float,
+    rotation: float = 0.0,
+    pivot: str = "center",
+) -> Polygon:
+    """An axis-aligned-before-rotation rectangle: `corner` is one corner in
+    the unrotated frame, extending by width/height. `rotation` (radians, CCW)
+    then rotates all four corners around either the rectangle's own center
+    (pivot="center", default — the shape spins in place) or around `corner`
+    itself (pivot="corner"). pivot must be "center" or "corner"."""
+    if pivot not in ("center", "corner"):
+        raise ValueError(f"rectangle(): pivot must be 'center' or 'corner', got {pivot!r}")
+    corner._known()
+    builder = get_builder()
+    corners = [
+        (corner.x, corner.y),
+        (corner.x + width, corner.y),
+        (corner.x + width, corner.y + height),
+        (corner.x, corner.y + height),
+    ]
+    if pivot == "center":
+        cx = sum(c[0] for c in corners) / 4
+        cy = sum(c[1] for c in corners) / 4
+    else:
+        cx, cy = corner.x, corner.y
+    cos_r, sin_r = math.cos(rotation), math.sin(rotation)
+    pts = []
+    for x, y in corners:
+        rx = cx + (x - cx) * cos_r - (y - cy) * sin_r
+        ry = cy + (x - cx) * sin_r + (y - cy) * cos_r
+        pts.append(_record_literal_point(builder, rx, ry))
+    return polygon(*pts)
+
+
 def segment(p: Point, q: Point) -> Segment:
     """A segment between any two points (deduplicated with segments already
     obtained via Triangle.side()/Polygon.side() for the same pair)."""
