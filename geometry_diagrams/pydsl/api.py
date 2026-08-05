@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LinePerpendicularThrough, LineThrough, MarkAngles, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -253,6 +253,47 @@ def dilate_point(source: Point, center: Point, ratio: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("dil")
     builder._add(PointDilate(id=pid, center=center.id, source=source.id, ratio=ratio))
+    return Point(id=pid, _builder=builder)
+
+
+def perpendicular_through(point: Point, line) -> Line:
+    """The line through `point`, perpendicular to `line` (a Line/Segment/Ray)."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("perp")
+    builder._add(LinePerpendicularThrough(id=line_id, through=point.id, to_line=line.id))
+    return Line(id=line_id)
+
+
+def parallel_through(point: Point, line) -> Line:
+    """The line through `point`, parallel to `line` (a Line/Segment/Ray)."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("parallel")
+    builder._add(LineParallelThrough(id=line_id, through=point.id, to_line=line.id))
+    return Line(id=line_id)
+
+
+def angle_bisector(vertex: Point, toward1: Point, toward2: Point) -> Line:
+    """The line bisecting the angle at `vertex`, between rays toward toward1/toward2."""
+    builder = get_builder()
+    line_id = builder._fresh_hidden_id("bisector")
+    builder._add(LineAngleBisector(id=line_id, a=toward1.id, vertex=vertex.id, b=toward2.id))
+    return Line(id=line_id)
+
+
+def centroid(t: Triangle) -> Point:
+    """The centroid of triangle `t`."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("centroid")
+    builder._add(PointTriangleCenter(id=pid, tri=t.id, which="centroid"))
+    return Point(id=pid, _builder=builder)
+
+
+def foot_of_perpendicular(point: Point, line) -> Point:
+    """The foot of the perpendicular dropped from `point` onto `line`
+    (a Line/Segment/Ray) — always projects onto the infinite line."""
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("foot")
+    builder._add(PointFoot(id=pid, source=point.id, onto=line.id))
     return Point(id=pid, _builder=builder)
 
 
