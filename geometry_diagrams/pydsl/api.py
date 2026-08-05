@@ -673,15 +673,72 @@ def tangent_line(
     return Line(id=line_id)
 
 
-def draw(obj) -> None:
+def draw(
+    obj,
+    color: "str | None" = None,
+    thick: bool = False,
+    thin: bool = False,
+    width: "float | None" = None,
+    dashed: bool = False,
+    dotted: bool = False,
+    arrow_start: bool = False,
+    arrow_end: bool = False,
+) -> None:
     """Draw a constructed object (triangle, polygon, circle, arc, sector,
-    line, or segment)."""
+    line, or segment), with optional stroke styling:
+    - color: any string the renderer understands (not validated by pydsl
+      itself — passed straight through, matching the recipe DSL's own
+      permissiveness).
+    - thick/thin: preset stroke widths. Give at most one, and not
+      together with width.
+    - width: an explicit numeric stroke width, given instead of
+      thick/thin (must be positive).
+    - dashed/dotted: give at most one.
+    - arrow_start/arrow_end: draw an arrowhead at the start/end of the
+      shape's path. For an open shape (line/segment/ray/arc) this marks
+      the obvious start/end point. For a closed shape (polygon, circle,
+      sector) the underlying renderers do not treat this consistently —
+      SVG's polygon/path elements DO honor start/end markers at the
+      shape's first/last recorded vertex, so an arrow can visibly appear
+      on a polygon under SVGRenderer even though nothing here explicitly
+      asked for that. Not rejected, but the correct expectation is "an
+      arrow may appear at an arbitrary vertex," not "no effect."
+    """
     if isinstance(obj, Point):
         raise ValueError("draw() doesn't take a Point — use draw_points(...) instead")
     if isinstance(obj, AngleRef):
         raise ValueError("draw() doesn't take an AngleRef — use mark_angle(...) instead")
+    width_group = [thick, thin, width is not None]
+    if sum(width_group) > 1:
+        raise ValueError("draw(): give at most one of thick, thin, or width")
+    if width is not None and width <= 0:
+        raise ValueError(f"draw(): width must be positive, got {width!r}")
+    if dashed and dotted:
+        raise ValueError("draw(): give at most one of dashed or dotted")
+
+    style: dict = {}
+    if color is not None:
+        style["color"] = color
+    if thick:
+        style["thick"] = True
+    if thin:
+        style["thin"] = True
+    if width is not None:
+        style["line_width"] = width
+    if dashed:
+        style["dashed"] = True
+    if dotted:
+        style["dotted"] = True
+    if arrow_start and arrow_end:
+        style["<->"] = True
+    elif arrow_start:
+        style["<-"] = True
+    elif arrow_end:
+        style["->"] = True
+
     builder = get_builder()
-    builder._add_render(Draw(obj=obj.id))
+    style_key = builder._register_style(style) if style else None
+    builder._add_render(Draw(obj=obj.id, style=style_key))
 
 
 def draw_points(*points: Point) -> None:

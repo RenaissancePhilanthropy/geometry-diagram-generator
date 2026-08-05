@@ -32,3 +32,166 @@ def test_build_with_no_registered_styles_has_empty_styles_dict():
     with new_builder_context() as builder:
         ir = builder.build()
     assert ir.styles == {}
+
+
+import pytest
+
+from geometry_diagrams.pydsl.api import draw, point, polygon, segment
+from geometry_diagrams.pydsl.handles import AngleRef, Point
+
+
+def _drawn_style(ir, obj_id):
+    from geometry_diagrams.ir.ir import Draw
+
+    defs = [r for r in ir.render if isinstance(r, Draw) and r.obj == obj_id]
+    assert len(defs) == 1
+    style_key = defs[0].style
+    return ir.styles[style_key] if style_key else None
+
+
+def test_draw_with_no_style_kwargs_records_none_style():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) is None
+    assert ir.styles == {}
+
+
+def test_draw_color_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, color="red")
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"color": "red"}
+
+
+def test_draw_thick_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, thick=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"thick": True}
+
+
+def test_draw_thin_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, thin=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"thin": True}
+
+
+def test_draw_width_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, width=2.5)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"line_width": 2.5}
+
+
+def test_draw_dashed_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, dashed=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"dashed": True}
+
+
+def test_draw_dotted_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, dotted=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"dotted": True}
+
+
+def test_draw_arrow_start_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, arrow_start=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"<-": True}
+
+
+def test_draw_arrow_end_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, arrow_end=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"->": True}
+
+
+def test_draw_both_arrows_kwarg():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        draw(seg, arrow_start=True, arrow_end=True)
+        ir = builder.build()
+    assert _drawn_style(ir, seg.id) == {"<->": True}
+
+
+def test_draw_thick_and_width_together_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        with pytest.raises(ValueError, match="at most one"):
+            draw(seg, thick=True, width=2.0)
+
+
+def test_draw_thick_and_thin_together_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        with pytest.raises(ValueError, match="at most one"):
+            draw(seg, thick=True, thin=True)
+
+
+def test_draw_dashed_and_dotted_together_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        with pytest.raises(ValueError, match="at most one"):
+            draw(seg, dashed=True, dotted=True)
+
+
+def test_draw_zero_width_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        with pytest.raises(ValueError, match="positive"):
+            draw(seg, width=0)
+
+
+def test_draw_negative_width_raises():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        seg = segment(a, b)
+        with pytest.raises(ValueError, match="positive"):
+            draw(seg, width=-1)
+
+
+def test_draw_still_rejects_point():
+    with new_builder_context():
+        p = point(0, 0)
+        with pytest.raises(ValueError, match="Point"):
+            draw(p)
+
+
+def test_draw_still_rejects_angle_ref():
+    with new_builder_context() as builder:
+        from geometry_diagrams.pydsl.handles import Point as PointHandle
+
+        a, o, b = point(0, 0), point(1, 0), point(0, 1)
+        ref = AngleRef(a=a, o=o, b=b, _builder=builder)
+        with pytest.raises(ValueError, match="AngleRef"):
+            draw(ref)
