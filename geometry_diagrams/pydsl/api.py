@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle, _record_literal_point
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -93,6 +93,22 @@ def polygon(*vertices: Point) -> Polygon:
     pid = builder._fresh_hidden_id("poly")
     builder._add(PolygonDef(id=pid, points=[v.id for v in vertices]))
     return Polygon(id=pid, vertices=tuple(vertices), _builder=builder)
+
+
+def regular_polygon(center: Point, radius: float, n: int, start_angle: float = 0.0) -> Polygon:
+    """A regular n-gon centered at `center` with circumradius `radius`.
+    start_angle (radians) rotates the first vertex; n must be >= 3."""
+    if n < 3:
+        raise ValueError(f"regular_polygon() requires n >= 3, got {n}")
+    center._known()
+    builder = get_builder()
+    pts = []
+    for i in range(n):
+        angle = start_angle + i * 2 * math.pi / n
+        x = center.x + radius * math.cos(angle)
+        y = center.y + radius * math.sin(angle)
+        pts.append(_record_literal_point(builder, x, y))
+    return polygon(*pts)
 
 
 def segment(p: Point, q: Point) -> Segment:

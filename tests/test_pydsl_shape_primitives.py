@@ -58,3 +58,38 @@ def test_polygon_still_builds_valid_non_coincident_shape():
         pts = [point(0, 0), point(1, 0), point(1, 1), point(0, 1)]
         p = polygon(*pts)
     assert p.vertices == tuple(pts)
+
+
+from geometry_diagrams.pydsl.api import regular_polygon
+
+
+def test_regular_polygon_produces_hand_computed_square_vertices():
+    with new_builder_context():
+        center = point(0, 0)
+        result = regular_polygon(center, radius=1.0, n=4, start_angle=0.0)
+    assert len(result.vertices) == 4
+    expected = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)]
+    for v, (ex, ey) in zip(result.vertices, expected):
+        assert v.x == pytest.approx(ex, abs=1e-9)
+        assert v.y == pytest.approx(ey, abs=1e-9)
+
+
+def test_regular_polygon_requires_n_at_least_3():
+    with new_builder_context():
+        center = point(0, 0)
+        with pytest.raises(ValueError, match="n >= 3"):
+            regular_polygon(center, radius=1.0, n=2)
+
+
+def test_regular_polygon_requires_known_center_coordinates():
+    from geometry_diagrams.ir.ir import LineThrough
+    from geometry_diagrams.pydsl.api import point_on
+    from geometry_diagrams.pydsl.handles import Line
+
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        line_id = builder._fresh_hidden_id("line")
+        builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
+        unknown_center = point_on(Line(id=line_id), 0.5)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            regular_polygon(unknown_center, radius=1.0, n=4)
