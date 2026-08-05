@@ -304,3 +304,25 @@ def test_regular_sectors_rejects_circumcircle_derived_circle():
         circ = circumcircle(t)
         with pytest.raises(ValueError, match="no known coordinates"):
             regular_sectors(circ, 4)
+
+
+def test_arcs_sectors_work_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, CircleCenterRadius, SectorCenterStartEnd
+
+    script = (
+        "c = circle(point(0.0, 0.0), 5.0)\n"
+        "a = point_on(c, 0.0)\n"
+        "b = point_on(c, 1.5707963267948966)\n"
+        "the_arc = arc(c, a, b)\n"
+        "the_sector = sector(c, a, b)\n"
+        "draw(the_arc)\n"
+        "draw(the_sector)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    kinds = {type(d) for d in result.diagram_ir.define}
+    assert CircleCenterRadius in kinds
+    assert ArcCenterStartEnd in kinds
+    assert SectorCenterStartEnd in kinds

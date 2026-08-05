@@ -484,8 +484,11 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
 def point_on(obj, t: float) -> Point:
     """A point at parameter t along a line or segment (t=0/1 are the object's
     defining points; for a line, t outside [0, 1] extends past them in either
-    direction — use this instead of hand-computing coordinates to place a
-    point on an existing line/segment, or to extend a line's visible extent."""
+    direction), or at angle t (radians) on a circle — use this instead of
+    hand-computing coordinates to place a point on an existing
+    line/segment/circle, or to extend a line's visible extent. This is the
+    correct way to build arc()/sector()'s start/end points, guaranteed to
+    land exactly on the circle."""
     builder = get_builder()
     pid = builder._fresh_hidden_id("pt_on")
     builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))
@@ -671,7 +674,8 @@ def tangent_line(
 
 
 def draw(obj) -> None:
-    """Draw a constructed object (triangle, polygon, circle, line, or segment)."""
+    """Draw a constructed object (triangle, polygon, circle, arc, sector,
+    line, or segment)."""
     if isinstance(obj, Point):
         raise ValueError("draw() doesn't take a Point — use draw_points(...) instead")
     if isinstance(obj, AngleRef):
