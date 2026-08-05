@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Segment, Triangle
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Circle, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Segment, Triangle
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -51,6 +51,16 @@ def line_through(p: Point, q: Point) -> Line:
     lid = builder._fresh_hidden_id("line")
     builder._add(LineThrough(id=lid, p=p.id, q=q.id))
     return Line(id=lid)
+
+
+def ray(a: Point, b: Point) -> Ray:
+    """A ray starting at a, extending through and beyond b."""
+    from geometry_diagrams.ir.ir import Ray as RayDef
+
+    builder = get_builder()
+    rid = builder._fresh_hidden_id("ray")
+    builder._add(RayDef(id=rid, a=a.id, b=b.id))
+    return Ray(id=rid)
 
 
 def triangle(a: Point, b: Point, c: Point) -> Triangle:

@@ -10,7 +10,7 @@ import inspect
 
 import geometry_diagrams.pydsl as pydsl_module
 
-_HANDLE_CLASS_NAMES = {"Point", "Line", "Segment", "Triangle", "Polygon", "Circle",
+_HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Segment", "Triangle", "Polygon", "Circle",
                         "Altitude", "Median", "AngleRef", "PerpendicularBisectorLine"}
 
 

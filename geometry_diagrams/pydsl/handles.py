@@ -85,6 +85,11 @@ class Line:
 
 
 @dataclass(frozen=True)
+class Ray:
+    id: str
+
+
+@dataclass(frozen=True)
 class Segment:
     id: str
     _builder: "object" = field(repr=False, compare=False)
