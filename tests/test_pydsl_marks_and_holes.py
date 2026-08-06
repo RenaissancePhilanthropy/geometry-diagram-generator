@@ -42,7 +42,8 @@ def test_fresh_mark_group_non_parallel_kinds_do_not_start_with_parallel():
 
 
 from geometry_diagrams.pydsl.api import (
-    mark_equal, mark_parallel, mark_proportional, point, segment,
+    circle, draw, fill, mark_equal, mark_parallel, mark_proportional,
+    point, polygon, sector, segment,
 )
 
 
@@ -194,3 +195,102 @@ def test_mark_right_angle_records_single_element_angles_list():
     assert angle_spec.a == ref.a.id
     assert angle_spec.o == ref.o.id
     assert angle_spec.b == ref.b.id
+
+
+def _fill_holes(ir, obj_id):
+    from geometry_diagrams.ir.ir import Fill
+
+    defs = [r for r in ir.render if isinstance(r, Fill) and r.obj == obj_id]
+    assert len(defs) == 1
+    return defs[0].holes
+
+
+def test_fill_with_no_holes_still_records_empty_list():
+    """Non-regression check: fill()'s pre-existing zero-holes behavior
+    must be unchanged after this task."""
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(2, 3)
+        tri = triangle(a, b, c)
+        fill(tri, color="red")
+        ir = builder.build()
+    assert _fill_holes(ir, tri.id) == []
+
+
+def test_fill_with_one_hole_records_correct_id_list():
+    with new_builder_context() as builder:
+        p1, p2, p3, p4 = point(0, 0), point(6, 0), point(6, 6), point(0, 6)
+        outer = polygon(p1, p2, p3, p4)
+        hole_circle = circle(point(3, 3), 1.0)
+        fill(outer, holes=[hole_circle])
+        ir = builder.build()
+    assert _fill_holes(ir, outer.id) == [hole_circle.id]
+
+
+def test_fill_with_multiple_holes_preserves_order():
+    with new_builder_context() as builder:
+        p1, p2, p3, p4 = point(0, 0), point(10, 0), point(10, 10), point(0, 10)
+        outer = polygon(p1, p2, p3, p4)
+        c1 = circle(point(2, 2), 1.0)
+        c2 = circle(point(8, 8), 1.0)
+        fill(outer, holes=[c1, c2])
+        ir = builder.build()
+    assert _fill_holes(ir, outer.id) == [c1.id, c2.id]
+
+
+def test_fill_hole_rejects_point():
+    with new_builder_context():
+        p1, p2, p3 = point(0, 0), point(4, 0), point(2, 3)
+        tri = triangle(p1, p2, p3)
+        with pytest.raises(ValueError, match="Point"):
+            fill(tri, holes=[point(1, 1)])
+
+
+def test_fill_hole_rejects_angle_ref():
+    with new_builder_context() as builder:
+        p1, p2, p3 = point(0, 0), point(4, 0), point(2, 3)
+        tri = triangle(p1, p2, p3)
+        ref = tri.angle_at(p1)
+        with pytest.raises(ValueError, match="AngleRef"):
+            fill(tri, holes=[ref])
+
+
+def test_fill_holes_accepts_a_one_shot_generator():
+    """Regression test for the generator-double-iteration bug found
+    during spec review: if `holes` were iterated twice without first
+    being materialized (once for validation, once for the id-list
+    construction), a genuine generator expression would be silently
+    exhausted after the first pass, producing an incorrect empty
+    holes=[] instead of the real list."""
+    with new_builder_context() as builder:
+        p1, p2, p3, p4 = point(0, 0), point(6, 0), point(6, 6), point(0, 6)
+        outer = polygon(p1, p2, p3, p4)
+        hole_circle = circle(point(3, 3), 1.0)
+        fill(outer, holes=(h for h in [hole_circle]))
+        ir = builder.build()
+    assert _fill_holes(ir, outer.id) == [hole_circle.id]
+
+
+def test_fill_sector_as_outer_shape_and_hole_renders_correctly_under_svg():
+    """Coverage test (not a regression test for a fix — no fix was
+    needed; see the design spec's 'Correction' section). Locks in
+    already-correct behavior: fill() with a sector as either the outer
+    shape or a hole must render with the even-odd rule under SVG, with
+    no 'unsupported shape type' warning, so this doesn't silently break
+    if to_svg.py's _obj_to_svg_subpath is ever touched for something
+    else later."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 3.0)
+        start = point(3.0, 0.0)
+        end = point(0.0, 3.0)
+        sec = sector(c, start, end)
+        p1, p2, p3, p4 = point(0.0, 0.0), point(6.0, 0.0), point(6.0, 6.0), point(0.0, 6.0)
+        outer = polygon(p1, p2, p3, p4)
+        fill(outer, holes=[sec])
+        draw(outer)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    svg = ir_to_svg(ir, sym)
+    assert 'fill-rule="evenodd"' in svg

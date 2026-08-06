@@ -802,19 +802,40 @@ def draw_points(*points: Point) -> None:
     builder._add_render(DrawPoints(points=[p.id for p in points]))
 
 
-def fill(obj, color: "str | None" = None, opacity: float = 1.0) -> None:
+def fill(
+    obj,
+    color: "str | None" = None,
+    opacity: float = 1.0,
+    holes: "object" = (),
+) -> None:
     """Fill a constructed object's interior (triangle, polygon, circle,
     sector) with the given color. opacity is 0 (fully transparent) to 1
     (fully opaque). Filling a shape with no enclosed interior (a line,
     segment, ray, or arc) has no defined visual effect and is not
     rejected — same permissiveness as draw()'s arrow_start/arrow_end on a
-    closed shape."""
+    closed shape.
+    holes: shapes whose interiors are punched out as transparent cutouts
+    (rings, annuli, "the region between the circle and the square") —
+    each must be a previously constructed shape with an interior
+    (triangle, polygon, circle, ellipse, sector), not a Point or
+    AngleRef. No containment check is performed — same permissiveness as
+    the underlying renderer, which silently applies the even-odd rule
+    regardless of whether a hole is fully inside obj, partially
+    overlapping, or outside it entirely."""
     if isinstance(obj, Point):
         raise ValueError("fill() doesn't take a Point — use draw_points(...) instead")
     if isinstance(obj, AngleRef):
         raise ValueError("fill() doesn't take an AngleRef — use mark_angle(...) instead")
     if not 0 <= opacity <= 1:
         raise ValueError(f"fill(): opacity must be between 0 and 1, got {opacity!r}")
+    holes = tuple(holes)  # materialize once: the loop below and the [h.id for h in
+                           # holes] construction later must see the same items, which
+                           # silently breaks for a one-shot generator argument
+    for hole in holes:
+        if isinstance(hole, Point):
+            raise ValueError("fill(): a hole can't be a Point — use draw_points(...) instead")
+        if isinstance(hole, AngleRef):
+            raise ValueError("fill(): a hole can't be an AngleRef — use mark_angle(...) instead")
 
     from geometry_diagrams.ir.ir import Fill
 
@@ -836,7 +857,9 @@ def fill(obj, color: "str | None" = None, opacity: float = 1.0) -> None:
 
     builder = get_builder()
     style_key = builder._register_style(style) if style else None
-    builder._add_render(Fill(obj=obj.id, opacity=opacity, style=style_key))
+    builder._add_render(Fill(
+        obj=obj.id, holes=[h.id for h in holes], opacity=opacity, style=style_key,
+    ))
 
 
 def label_text(
