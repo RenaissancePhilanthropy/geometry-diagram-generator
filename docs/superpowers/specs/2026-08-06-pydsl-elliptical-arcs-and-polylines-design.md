@@ -123,19 +123,37 @@ def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> 
         EllipticalSectorCenterStartEnd, SectorCenterStartEnd,
     )
 
-    builder = get_builder()
-    new_id = builder._fresh_hidden_id(kind)
     if isinstance(shape, Ellipse):
         _validate_on_ellipse(kind, shape, start, "start")
         _validate_on_ellipse(kind, shape, end, "end")
+        # shape.hradius/.vradius are lazy thunks (Circle/Ellipse's established
+        # pattern) — for an ellipse() built from corner1/corner2 whose corners
+        # aren't concrete yet, this thunk raises NotImplementedError (the
+        # exact same failure mode circumcircle(...).radius already has).
+        # Re-raise as a ValueError naming arc()/sector() specifically, since
+        # a bare NotImplementedError about ".hradius" would be a confusing
+        # error to see from a call that never mentioned hradius/vradius at all.
+        try:
+            hradius, vradius = shape.hradius, shape.vradius
+        except NotImplementedError:
+            raise ValueError(
+                f"{kind}(): shape's hradius/vradius aren't resolvable yet — "
+                "this happens for an ellipse(corner1=..., corner2=...) built "
+                "from non-literal corners. Use a literal ellipse(center=...) "
+                "or a circle() instead."
+            )
+        builder = get_builder()
+        new_id = builder._fresh_hidden_id(kind)
         def_cls = EllipticalArcCenterStartEnd if kind == "arc" else EllipticalSectorCenterStartEnd
         builder._add(def_cls(
-            id=new_id, center=shape.center.id, hradius=shape.hradius,
-            vradius=shape.vradius, start=start.id, end=end.id, reflex=reflex,
+            id=new_id, center=shape.center.id, hradius=hradius,
+            vradius=vradius, start=start.id, end=end.id, reflex=reflex,
         ))
     else:
         _validate_on_circle(kind, shape, start, "start")
         _validate_on_circle(kind, shape, end, "end")
+        builder = get_builder()
+        new_id = builder._fresh_hidden_id(kind)
         def_cls = ArcCenterStartEnd if kind == "arc" else SectorCenterStartEnd
         builder._add(def_cls(id=new_id, center=shape.center.id, start=start.id, end=end.id, reflex=reflex))
     return new_id
@@ -176,6 +194,20 @@ def _validate_on_ellipse(fn_name: str, ellipse: "Ellipse", point: Point, point_r
             "guaranteed to lie on it."
         )
 ```
+
+### `point_on()`'s docstring must be updated
+
+Found during Fable review: `point_on()`'s error messages above, and this
+whole spec's guidance, depend on `point_on(ellipse, angle)` being the
+correct way to build `arc()`/`sector()`'s points for an ellipse — it
+already works today (`to_sympy.py`'s `_eval_param` has an
+`isinstance(obj, spg.Ellipse)` branch, confirmed), but `point_on()`'s own
+docstring currently only mentions "a line or segment... or at angle t
+(radians) on a circle" — it doesn't mention ellipses at all. Since
+docstrings are the actual LLM-facing API contract in this project (via
+`generate_stub()`), this gap would silently steer generated scripts away
+from the one correct construction path this whole spec relies on. Update
+`point_on()`'s docstring to mention ellipses alongside circles.
 
 ### New IR classes (`ir.py`)
 
@@ -247,15 +279,38 @@ class EllipticalSector:
         self.reflex = reflex
 ```
 
-Compilation cases, parallel to the existing circular ones:
+Compilation cases, parallel to the existing circular ones — **and to
+`EllipseCenterAxes`'s own case, not just `ArcCenterStartEnd`'s**: found
+during Fable review, `EllipseCenterAxes` (`to_sympy.py:454-460`) resolves
+`hradius`/`vradius` through `ev()` (SymPy's expression evaluator — needed
+because the IR schema legally allows a `str` radius, e.g. a symbolic
+length expression) and validates both are positive before constructing
+anything. The circular `ArcCenterStartEnd` case never needed this because
+its radius is *derived* from `center.distance(start)`, never taken as a
+raw schema field — but the elliptical case takes `hradius`/`vradius`
+directly from the schema, so it needs exactly the same `ev()` +
+positivity check `EllipseCenterAxes` already does, or a `str` radius
+would survive uncaught into `elliptical_arc_params()`'s `sympy_to_float()`
+and crash there instead, with a confusing error far from the actual
+problem:
 
 ```python
-case ir.EllipticalArcCenterStartEnd(center=center_id, hradius=hr, vradius=vr, start=start_id, end=end_id, reflex=reflex):
+case ir.EllipticalArcCenterStartEnd(center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex):
     c, s, e = ref(center_id), ref(start_id), ref(end_id)
+    hr, vr = ev(hradius), ev(vradius)
+    if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+        raise IRCompileError(
+            did, f"elliptical_arc_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+        )
     return EllipticalArc(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 
-case ir.EllipticalSectorCenterStartEnd(center=center_id, hradius=hr, vradius=vr, start=start_id, end=end_id, reflex=reflex):
+case ir.EllipticalSectorCenterStartEnd(center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex):
     c, s, e = ref(center_id), ref(start_id), ref(end_id)
+    hr, vr = ev(hradius), ev(vradius)
+    if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+        raise IRCompileError(
+            did, f"elliptical_sector_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+        )
     return EllipticalSector(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 ```
 
@@ -322,6 +377,40 @@ branch, following the exact same additive pattern already established for
 No changes to `checks.py`/`queries.py` — confirmed neither module has any
 circular-arc-specific logic to parallel.
 
+### `render_util.py`'s bounds-expansion also needs a new branch
+
+Found during Fable review: `expand_bounds_for_geometry` (or equivalently
+named bounds-computation function, `render_util.py:218-243`) has a
+branch for `spg.Ellipse` (whole ellipses) and one for the circular `Arc`
+marker (using its full enclosing circle, `cx±r`/`cy±r`, as a conservative
+bound) — but no branch for the new `EllipticalArc` marker at all. Without
+one, an elliptical arc whose curve bulges outside the bounding box of its
+own defined points would get clipped by the canvas, which is exactly the
+failure mode the existing circular `Arc` branch exists to prevent. Add a
+parallel branch using the ellipse's own two independent radii as the
+conservative bound:
+
+```python
+elif isinstance(obj, EllipticalArc):
+    cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+    hr = sympy_to_float(obj.hradius)
+    vr = sympy_to_float(obj.vradius)
+    # Conservatively use the full enclosing ellipse.
+    if cx - hr < xmin:
+        xmin = cx - hr - BOUNDS_PADDING
+    if cx + hr > xmax:
+        xmax = cx + hr + BOUNDS_PADDING
+    if cy - vr < ymin:
+        ymin = cy - vr - BOUNDS_PADDING
+    if cy + vr > ymax:
+        ymax = cy + vr + BOUNDS_PADDING
+```
+
+Note the existing `Arc` branch's bounds check has no `Sector` counterpart
+either (a pre-existing gap, not something this cluster introduces) — this
+cluster adds `EllipticalArc` only, matching that same existing asymmetry
+rather than fixing an unrelated pre-existing gap outside its scope.
+
 ## Open polylines
 
 ### Why this is moderate, not architecturally risky
@@ -369,12 +458,21 @@ def polyline(*points: Point) -> Polyline:
 ```
 
 `draw()` needs no changes — it already dispatches generically on
-`obj.id`. `fill()` needs no changes either — a `Polyline`'s compiled
-representation won't match any of `fill()`'s renderer-side
+`obj.id`. `fill()` needs no changes either, in either of its two forms:
+`fill(polyline)` (no holes) hits none of the renderer's
 `isinstance(sym_obj, (spg.Triangle, spg.Polygon, spg.Circle, ...))`
-checks, so it silently no-ops, identical to today's existing behavior for
-`Segment`/`Ray`/`Arc` (already documented in `fill()`'s own docstring as
-intentional permissiveness — confirmed no new special-casing needed).
+branches and produces no output at all, no exception, no warning —
+identical to today's existing behavior for `Segment`/`Ray`/`Arc` (already
+documented in `fill()`'s own docstring as intentional permissiveness).
+`fill(shape, holes=[polyline])` (polyline as a hole) is a different code
+path — verified during Fable review — and produces a **warning**, not
+silence: it routes through `_obj_to_svg_subpath`/`_obj_to_tikz_path`,
+which return `None` for an unrecognized type, and the `Fill` handler logs
+an explicit "unsupported shape type" warning for that hole rather than
+failing silently. Both outcomes are already-existing, correct behavior
+for any other unfillable type passed as a hole — no new code needed for
+either case, just worth stating precisely rather than a blanket "silently
+no-ops" that's only accurate for the first form.
 
 ### New IR class
 
@@ -482,11 +580,19 @@ New file `tests/test_pydsl_ellipse_arcs_and_polylines.py`, TDD, covering:
   the ellipse's boundary (hand-computed literal coordinates satisfying
   the boundary equation exactly); a compile-level test proving
   `elliptical_arc_params()`'s parametric-angle correction actually
-  matters — construct a real non-circular ellipse (`hradius != vradius`)
-  with hand-computed start/end angles, and confirm the resulting
-  start/end degrees differ from what plain (non-parametric) `atan2` would
-  have produced, proving the fix is load-bearing, not cosmetic; a
-  render-level test for each renderer confirming `x radius=`/`y radius=`
+  matters, using the exact numeric example verified during Fable review
+  (independently re-derived, not just asserted): a real non-circular
+  ellipse centered at the origin with `hradius=4`, `vradius=1`; the point
+  at parametric angle `t=60deg` is `(4*cos60, 1*sin60) = (2.0, 0.8660)`.
+  The correct parametric angle recovers exactly `60.0deg`
+  (`atan2(0.8660/1, 2.0/4)`); plain, non-parametric `atan2(0.8660, 2.0)`
+  gives `23.413deg` instead — a ~36.6-degree error. Assert the
+  implementation produces `60.0` (within float tolerance), not `23.413`
+  — this specific pair of numbers is what proves the fix is
+  load-bearing, not cosmetic, since feeding the wrong angle back into
+  the ellipse's parametric form lands nowhere near the original point
+  (`(3.671, 0.397)` instead of `(2.0, 0.866)`); a render-level test for
+  each renderer confirming `x radius=`/`y radius=`
   (TikZ) and separate `rx`/`ry` (SVG) actually appear with the correct,
   distinct values (not the same value repeated, which would silently mean
   the ellipse-specific code path was never reached).
@@ -496,7 +602,17 @@ New file `tests/test_pydsl_ellipse_arcs_and_polylines.py`, TDD, covering:
   accidental wraparound check — construct a polyline where the first and
   last points ARE coincident and confirm it's accepted, since that's a
   meaningful "closed-looking but still open" path, unlike `polygon()`
-  where it would be redundant); a render-level test for each renderer
+  where it would be redundant — a coincident-endpoint `<polyline>`/TikZ
+  chain genuinely renders closed-looking, verified during Fable review:
+  the only visual difference from a `polygon()` is the line join at the
+  seam, invisible at normal stroke widths); a THREE-point degenerate case
+  — `polyline(A, B, A)` — is explicitly accepted-and-degenerate, not an
+  error: it passes the coincident-consecutive-pair guard (no two
+  *consecutive* points are equal) and renders as an invisible retrace of
+  segment A–B on the way back to A. This is harmless but should be
+  pinned by a test asserting it does NOT raise, so nobody "fixes" it
+  later into an error that would also reject the meaningful n≥4
+  closed-looking-locus case just above; a render-level test for each renderer
   confirming the output is a `<polyline>` (SVG, not `<polygon>`) / lacks
   a trailing `-- cycle` (TikZ) for a 3+ point open path; `fill()` called
   on a `Polyline` doesn't raise and doesn't fill anything (matches
