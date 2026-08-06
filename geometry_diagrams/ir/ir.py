@@ -422,6 +422,15 @@ class Polygon(DefBase):
     points: List[PointId]  # 3 or more, closed automatically
 
 
+class PolylineOpen(DefBase):
+    """Open (non-closed) chain of 3+ points, in order. Unlike Polygon, the
+    last point does NOT connect back to the first — no closing edge is
+    drawn. Used for tracing paths (e.g. locus construction) rather than
+    filled regions."""
+    kind: Literal["polyline_open"] = "polyline_open"
+    points: List[PointId]  # 2 or more, NOT closed
+
+
 class PolygonExterior(DefBase):
     """Regular polygon built on edge (a, b), placed on the opposite side from ref.
 
@@ -573,7 +582,7 @@ DefStmt = Annotated[
         EllipticalArcCenterStartEnd,
         EllipticalSectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-        Triangle, Polygon, PolygonExterior, PolygonOnEdge,
+        Triangle, Polygon, PolygonExterior, PolygonOnEdge, PolylineOpen,
     ],
     Field(discriminator="kind")
 ]

@@ -617,6 +617,9 @@ def _compile_one(
                 )
             return result
 
+        case ir.PolylineOpen(points=point_ids):
+            return [ref(pid) for pid in point_ids]
+
         case ir.PolygonExterior(a=a_id, b=b_id, ref=ref_id, sides=sides):
             a_pt = ref(a_id)
             b_pt = ref(b_id)

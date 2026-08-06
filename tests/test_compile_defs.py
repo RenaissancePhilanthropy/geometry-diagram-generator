@@ -21,7 +21,7 @@ from geometry_diagrams.ir.ir import (
     LineAngleBisector, LineTangent,
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
-    Triangle, Polygon, PolygonExterior,
+    Triangle, Polygon, PolygonExterior, PolylineOpen,
     PointOnParam, PointOnRandom, PointOnIntent,
     SameSideConstraint, NotNearConstraint,
     PickIndex, PickClosestTo, PickOnObject,
@@ -128,6 +128,20 @@ def test_polygon():
         Polygon(id="sq", points=["A", "B", "C", "D"]),
     )
     assert isinstance(sym["sq"], spg.Polygon)
+
+
+def test_polyline_open_compiles_to_plain_point_list():
+    sym = _compile(
+        PointFixed(id="a", x=0, y=0),
+        PointFixed(id="b", x=1, y=0),
+        PointFixed(id="c", x=1, y=1),
+        PolylineOpen(id="pl1", points=["a", "b", "c"]),
+    )
+    result = sym["pl1"]
+    assert isinstance(result, list)
+    assert len(result) == 3
+    assert all(isinstance(p, spg.Point) for p in result)
+    assert not isinstance(result, spg.Polygon)
 
 
 # ---------------------------------------------------------------------------

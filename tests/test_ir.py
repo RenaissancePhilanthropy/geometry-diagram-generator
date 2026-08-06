@@ -19,3 +19,11 @@ def test_elliptical_sector_center_start_end_round_trips():
     )
     assert stmt.kind == "elliptical_sector_center_start_end"
     assert stmt.reflex is True
+
+
+def test_polyline_open_round_trips():
+    from geometry_diagrams.ir.ir import PolylineOpen
+
+    stmt = PolylineOpen(id="pl1", points=["a", "b", "c"])
+    assert stmt.kind == "polyline_open"
+    assert stmt.points == ["a", "b", "c"]
