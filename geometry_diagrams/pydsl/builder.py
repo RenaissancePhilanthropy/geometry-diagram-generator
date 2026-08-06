@@ -30,6 +30,7 @@ class Builder:
         self._hidden_id_counter = 0
         self._canvas = None  # set at most once, by canvas(); type is ir.Canvas | None
         self._styles: dict[str, dict] = {}
+        self._mark_group_counter = 0
 
     @property
     def op_count(self) -> int:
@@ -63,6 +64,18 @@ class Builder:
         key = self._fresh_hidden_id("style")
         self._styles[key] = style
         return key
+
+    def _fresh_mark_group(self, kind: str) -> str:
+        """Return a fresh, globally-unique group string prefixed by kind
+        (e.g. "parallel_3", "equal_1"). Uniqueness matters (so unrelated
+        mark_equal()/mark_parallel() calls never collide into the same
+        visual symbol); the "parallel" prefix specifically matters because
+        both renderers route purely on group.startswith("parallel") to
+        pick the chevron cycle instead of the tick-mark cycle — kind must
+        be passed as literally "parallel" for mark_parallel() to render
+        correctly."""
+        self._mark_group_counter += 1
+        return f"{kind}_{self._mark_group_counter}"
 
     def build(self) -> DiagramIR:
         return DiagramIR(define=list(self._defs), render=list(self._render), canvas=self._canvas, styles=dict(self._styles))
