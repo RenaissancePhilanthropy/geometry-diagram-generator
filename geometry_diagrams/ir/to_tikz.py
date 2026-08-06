@@ -9,13 +9,14 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
-from .to_sympy import Arc, Sector, SymTable
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
     arc_params,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
+    elliptical_arc_params,
     expand_bounds_for_geometry,
     ellipse_params,
     extract_coords,
@@ -188,6 +189,14 @@ def _obj_to_tikz_path(
             f"arc[start angle={fmt_num(start_deg)},"
             f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle"
         )
+    if isinstance(sym_obj, EllipticalSector):
+        cx, cy, hr, vr, start_deg, end_deg, sx, sy = elliptical_arc_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+            f"({fmt_num(sx)},{fmt_num(sy)}) "
+            f"arc[start angle={fmt_num(start_deg)},"
+            f"end angle={fmt_num(end_deg)},x radius={fmt_num(hr)},y radius={fmt_num(vr)}] -- cycle"
+        )
     return None
 
 
@@ -263,6 +272,26 @@ def _emit_op(
                     f"arc[start angle={fmt_num(start_deg)},"
                     f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
                 )
+            elif isinstance(sym_obj, EllipticalArc):
+                cx, cy, hr, vr, start_deg, end_deg, sx, sy = elliptical_arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} ({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},x radius={fmt_num(hr)},y radius={fmt_num(vr)}];"
+                )
+            elif isinstance(sym_obj, EllipticalSector):
+                cx, cy, hr, vr, start_deg, end_deg, sx, sy = elliptical_arc_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                out.append(
+                    f"\\draw{style_str} "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},x radius={fmt_num(hr)},y radius={fmt_num(vr)}] -- cycle;"
+                )
             else:
                 out.append(f"% Draw: unhandled type {type(sym_obj).__name__} for {obj_id!r}")
 
@@ -331,6 +360,15 @@ def _emit_op(
                     f"({fmt_num(sx)},{fmt_num(sy)}) "
                     f"arc[start angle={fmt_num(start_deg)},"
                     f"end angle={fmt_num(end_deg)},radius={fmt_num(r)}] -- cycle;"
+                )
+            elif isinstance(sym_obj, EllipticalSector):
+                cx, cy, hr, vr, start_deg, end_deg, sx, sy = elliptical_arc_params(obj_id, sym)
+                out.append(
+                    f"\\fill[{style_inner}] "
+                    f"({fmt_num(cx)},{fmt_num(cy)}) -- "
+                    f"({fmt_num(sx)},{fmt_num(sy)}) "
+                    f"arc[start angle={fmt_num(start_deg)},"
+                    f"end angle={fmt_num(end_deg)},x radius={fmt_num(hr)},y radius={fmt_num(vr)}] -- cycle;"
                 )
 
         case ir.MarkRightAngles(angles=angles, style=style):

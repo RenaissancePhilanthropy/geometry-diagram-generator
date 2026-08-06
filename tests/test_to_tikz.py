@@ -25,6 +25,8 @@ from geometry_diagrams.ir.ir import (
     Segment,
     Triangle,
     EllipseCenterAxes,
+    EllipticalArcCenterStartEnd,
+    EllipticalSectorCenterStartEnd,
 )
 import sympy.geometry as spg
 from geometry_diagrams.ir.checks import check_render_angles
@@ -809,3 +811,57 @@ def test_fill_with_opacity_only_in_style_dict_no_color():
     )
     tikz = _compile_tikz(diagram)
     assert "opacity=0.5" in tikz
+
+
+def test_to_tikz_renders_elliptical_arc_with_distinct_radii():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="c", hradius=4, vradius=1, start="s", end="e"),
+        ],
+        render=[Draw(obj="ea1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "x radius=4" in tikz
+    assert "y radius=1" in tikz
+
+
+def test_to_tikz_renders_elliptical_sector_fill_with_holes_subpath():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="c", hradius=4, vradius=1, start="s", end="e"),
+            PointFixed(id="c2", x=0, y=0),
+            PointFixed(id="s2", x=2, y=0),
+            PointFixed(id="e2", x=0, y=0.5),
+            EllipticalSectorCenterStartEnd(id="es2", center="c2", hradius=2, vradius=0.5, start="s2", end="e2"),
+        ],
+        render=[Fill(obj="es1", holes=["es2"])],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "arc[start angle=" in tikz
+    assert "even odd rule" in tikz
+
+
+def test_to_tikz_renders_elliptical_sector_draw_and_fill():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="c", hradius=4, vradius=1, start="s", end="e"),
+        ],
+        render=[Draw(obj="es1"), Fill(obj="es1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "x radius=4" in tikz
+    assert "y radius=1" in tikz
+    assert "\\fill[" in tikz
+    assert "\\draw" in tikz
