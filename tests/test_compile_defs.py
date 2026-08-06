@@ -1596,3 +1596,48 @@ def test_diagram_ir_pending_angle_pairs_defaults_empty():
     ir_obj = DiagramIR(define=[PointFixed(id="A", x=0, y=0)])
     assert ir_obj.pending_angle_pairs == []
 
+
+def test_elliptical_arc_compiles_to_marker_with_positive_radii():
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import EllipticalArc
+
+    sym = _compile(
+        PointFixed(id="c", x=0, y=0),
+        PointFixed(id="s", x=4, y=0),
+        PointFixed(id="e", x=0, y=1),
+        EllipticalArcCenterStartEnd(id="ea1", center="c", hradius=4, vradius=1, start="s", end="e"),
+    )
+    obj = sym["ea1"]
+    assert isinstance(obj, EllipticalArc)
+    assert float(obj.hradius) == 4.0
+    assert float(obj.vradius) == 1.0
+
+
+def test_elliptical_arc_rejects_non_positive_hradius():
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd
+
+    with pytest.raises(IRCompileError, match="hradius and vradius must be positive"):
+        _compile(
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="c", hradius=0, vradius=1, start="s", end="e"),
+        )
+
+
+def test_elliptical_sector_compiles_to_marker():
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import EllipticalSector
+
+    sym = _compile(
+        PointFixed(id="c", x=0, y=0),
+        PointFixed(id="s", x=4, y=0),
+        PointFixed(id="e", x=0, y=1),
+        EllipticalSectorCenterStartEnd(
+            id="es1", center="c", hradius=4, vradius=1, start="s", end="e", reflex=True
+        ),
+    )
+    obj = sym["es1"]
+    assert isinstance(obj, EllipticalSector)
+    assert obj.reflex is True
+

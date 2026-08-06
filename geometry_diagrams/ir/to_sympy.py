@@ -62,6 +62,70 @@ class Sector:
         return f"Sector(center={self.center}, start={self.start}, end={self.end}, r={self.radius})"
 
 
+class EllipticalArc:
+    """Marker type for an elliptical arc in the symbol table.
+
+    Mirrors Arc, but with independent horizontal/vertical radii
+    (``hradius``, ``vradius``) instead of a single circular ``radius``.
+    """
+
+    __slots__ = ("center", "start", "end", "hradius", "vradius", "reflex")
+
+    def __init__(
+        self,
+        center: spg.Point,
+        start: spg.Point,
+        end: spg.Point,
+        hradius: Any,
+        vradius: Any,
+        reflex: bool = False,
+    ):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.hradius = hradius
+        self.vradius = vradius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"EllipticalArc(center={self.center}, start={self.start}, end={self.end}, "
+            f"hradius={self.hradius}, vradius={self.vradius}, reflex={self.reflex})"
+        )
+
+
+class EllipticalSector:
+    """Marker type for a closed elliptical sector in the symbol table.
+
+    Mirrors Sector, but with independent horizontal/vertical radii
+    (``hradius``, ``vradius``) instead of a single circular ``radius``.
+    """
+
+    __slots__ = ("center", "start", "end", "hradius", "vradius", "reflex")
+
+    def __init__(
+        self,
+        center: spg.Point,
+        start: spg.Point,
+        end: spg.Point,
+        hradius: Any,
+        vradius: Any,
+        reflex: bool = False,
+    ):
+        self.center = center
+        self.start = start
+        self.end = end
+        self.hradius = hradius
+        self.vradius = vradius
+        self.reflex = reflex
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"EllipticalSector(center={self.center}, start={self.start}, end={self.end}, "
+            f"hradius={self.hradius}, vradius={self.vradius}, reflex={self.reflex})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -449,6 +513,28 @@ def _compile_one(
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             r = c.distance(s)
             return Sector(center=c, start=s, end=e, radius=r, reflex=reflex)
+
+        case ir.EllipticalArcCenterStartEnd(
+            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex
+        ):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            hr, vr = ev(hradius), ev(vradius)
+            if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+                raise IRCompileError(
+                    did, f"elliptical_arc_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+                )
+            return EllipticalArc(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
+
+        case ir.EllipticalSectorCenterStartEnd(
+            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex
+        ):
+            c, s, e = ref(center_id), ref(start_id), ref(end_id)
+            hr, vr = ev(hradius), ev(vradius)
+            if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+                raise IRCompileError(
+                    did, f"elliptical_sector_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+                )
+            return EllipticalSector(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 
         # --- Ellipses ---
         case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
