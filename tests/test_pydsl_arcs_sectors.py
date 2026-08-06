@@ -306,6 +306,89 @@ def test_regular_sectors_rejects_circumcircle_derived_circle():
             regular_sectors(circ, 4)
 
 
+from geometry_diagrams.pydsl.api import ellipse, _validate_on_ellipse
+
+
+def test_arc_accepts_ellipse_and_builds_elliptical_arc_def():
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd
+
+    with new_builder_context() as builder:
+        center = point(0.0, 0.0)
+        e = ellipse(center=center, hradius=4, vradius=1)
+        s = point_on(e, 0.0)
+        end = point_on(e, math.pi / 3)
+        result = arc(e, s, end)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, EllipticalArcCenterStartEnd) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].center == e.center.id
+    assert defs[0].hradius == 4 and defs[0].vradius == 1
+    assert defs[0].start == s.id
+    assert defs[0].end == end.id
+
+
+def test_sector_accepts_ellipse_and_builds_elliptical_sector_def():
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd
+
+    with new_builder_context() as builder:
+        center = point(0.0, 0.0)
+        e = ellipse(center=center, hradius=4, vradius=1)
+        s = point_on(e, 0.0)
+        end = point_on(e, math.pi / 3)
+        result = sector(e, s, end)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, EllipticalSectorCenterStartEnd) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].center == e.center.id
+    assert defs[0].hradius == 4 and defs[0].vradius == 1
+    assert defs[0].start == s.id
+    assert defs[0].end == end.id
+
+
+def test_arc_still_works_unchanged_for_circle():
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 5.0)
+        start = point_on(c, 0.0)
+        end = point_on(c, math.pi / 2)
+        result = arc(c, start, end, reflex=True)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].center == c.center.id
+    assert defs[0].start == start.id
+    assert defs[0].end == end.id
+    assert defs[0].reflex is True
+
+
+def test_validate_on_ellipse_rejects_off_ellipse_point():
+    with new_builder_context():
+        center = point(0.0, 0.0)
+        e = ellipse(center=center, hradius=4, vradius=1)
+        on_ellipse = point(4.0, 0.0)
+        _validate_on_ellipse("arc", e, on_ellipse, "start")  # must not raise
+        off_ellipse = point(2.0, 0.0)
+        with pytest.raises(ValueError, match="not on the given ellipse"):
+            _validate_on_ellipse("arc", e, off_ellipse, "start")
+        with pytest.raises(ValueError, match="start"):
+            _validate_on_ellipse("arc", e, off_ellipse, "start")
+        with pytest.raises(ValueError, match="end"):
+            _validate_on_ellipse("arc", e, off_ellipse, "end")
+
+
+def test_arc_raises_clear_error_for_unresolvable_bbox_ellipse_radii():
+    from geometry_diagrams.pydsl.api import rotate_point
+
+    with new_builder_context():
+        corner1 = point(0.0, 0.0)
+        anchor = point(4.0, 2.0)
+        corner2 = rotate_point(anchor, corner1, 0.0)  # derived, non-literal point
+        e = ellipse(corner1=corner1, corner2=corner2)
+        with pytest.raises(ValueError, match="hradius/vradius"):
+            arc(e, e.center, e.center)
+
+
 def test_arcs_sectors_work_through_the_real_sandbox():
     from geometry_diagrams.pydsl.sandbox import run_script
     from geometry_diagrams.ir.ir import ArcCenterStartEnd, CircleCenterRadius, SectorCenterStartEnd

@@ -301,33 +301,82 @@ def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: 
         )
 
 
-def arc(circle: Circle, start: Point, end: Point, reflex: bool = False) -> Arc:
-    """The circular arc between start and end (both must lie on circle —
-    use point_on(circle, angle) to construct them; an off-circle point can
-    silently shift the rendered arc away from circle). reflex=False (the
-    default) draws whichever of the two arcs spans <=180°; reflex=True
-    draws the other one."""
-    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+def _validate_on_ellipse(fn_name: str, ellipse: Ellipse, point: Point, point_role: str) -> None:
+    """Raise if point is knowably NOT on ellipse. Mirrors _validate_on_circle's
+    skip policy exactly, but checks the ellipse equation
+    ((px-cx)/hr)**2 + ((py-cy)/vr)**2 == 1 within tolerance instead of a
+    simple distance check."""
+    cx, cy = ellipse.center.x, ellipse.center.y
+    px, py = point.x, point.y
+    if cx is None or cy is None or px is None or py is None:
+        return
+    try:
+        hr, vr = ellipse.hradius, ellipse.vradius
+    except NotImplementedError:
+        return
+    value = ((px - cx) / hr) ** 2 + ((py - cy) / vr) ** 2
+    if abs(value - 1.0) > 1e-6:
+        raise ValueError(
+            f"{fn_name}(): {point_role} point {point.id!r} is not on the given "
+            f"ellipse (({point_role} - center normalized) evaluates to {value:.6g}, "
+            "expected 1.0). Use point_on(ellipse, angle) to get a point "
+            "guaranteed to lie on the ellipse."
+        )
 
-    _validate_on_circle("arc", circle, start, "start")
-    _validate_on_circle("arc", circle, end, "end")
-    builder = get_builder()
-    aid = builder._fresh_hidden_id("arc")
-    builder._add(ArcCenterStartEnd(id=aid, center=circle.center.id, start=start.id, end=end.id, reflex=reflex))
+
+def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> str:
+    """Build and record the correct IR def (circular or elliptical
+    arc/sector) based on whether shape is a Circle or Ellipse. Returns the
+    fresh id. kind is "arc" or "sector"."""
+    from geometry_diagrams.ir.ir import (
+        ArcCenterStartEnd, EllipticalArcCenterStartEnd,
+        EllipticalSectorCenterStartEnd, SectorCenterStartEnd,
+    )
+
+    if isinstance(shape, Ellipse):
+        _validate_on_ellipse(kind, shape, start, "start")
+        _validate_on_ellipse(kind, shape, end, "end")
+        try:
+            hradius, vradius = shape.hradius, shape.vradius
+        except NotImplementedError:
+            raise ValueError(
+                f"{kind}(): shape's hradius/vradius aren't resolvable yet — "
+                "this happens for an ellipse(corner1=..., corner2=...) built "
+                "from non-literal corners. Use a literal ellipse(center=...) "
+                "or a circle() instead."
+            )
+        builder = get_builder()
+        new_id = builder._fresh_hidden_id(kind)
+        def_cls = EllipticalArcCenterStartEnd if kind == "arc" else EllipticalSectorCenterStartEnd
+        builder._add(def_cls(
+            id=new_id, center=shape.center.id, hradius=hradius,
+            vradius=vradius, start=start.id, end=end.id, reflex=reflex,
+        ))
+    else:
+        _validate_on_circle(kind, shape, start, "start")
+        _validate_on_circle(kind, shape, end, "end")
+        builder = get_builder()
+        new_id = builder._fresh_hidden_id(kind)
+        def_cls = ArcCenterStartEnd if kind == "arc" else SectorCenterStartEnd
+        builder._add(def_cls(id=new_id, center=shape.center.id, start=start.id, end=end.id, reflex=reflex))
+    return new_id
+
+
+def arc(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False) -> Arc:
+    """The arc between start and end along the boundary of shape (a circle()
+    or ellipse()) — both must lie on shape; use point_on(shape, t) to
+    construct them (an off-boundary point can silently shift the rendered
+    arc away from shape). reflex=False (the default) draws whichever of the
+    two arcs spans <=180°; reflex=True draws the other one."""
+    aid = _arc_or_sector("arc", shape, start, end, reflex)
     return Arc(id=aid)
 
 
-def sector(circle: Circle, start: Point, end: Point, reflex: bool = False) -> Sector:
-    """The closed pie-slice region bounded by the two radii to start and
-    end and the arc between them. Same start/end contract as arc() — both
-    must lie on circle; see arc()'s docstring."""
-    from geometry_diagrams.ir.ir import SectorCenterStartEnd
-
-    _validate_on_circle("sector", circle, start, "start")
-    _validate_on_circle("sector", circle, end, "end")
-    builder = get_builder()
-    sid = builder._fresh_hidden_id("sector")
-    builder._add(SectorCenterStartEnd(id=sid, center=circle.center.id, start=start.id, end=end.id, reflex=reflex))
+def sector(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False) -> Sector:
+    """The closed pie-slice region bounded by the two radii to start and end
+    and the arc between them, on shape (a circle() or ellipse()). Same
+    start/end contract as arc() — see its docstring."""
+    sid = _arc_or_sector("sector", shape, start, end, reflex)
     return Sector(id=sid)
 
 
@@ -539,11 +588,11 @@ def mark_right_angle(ref: AngleRef) -> None:
 def point_on(obj, t: float) -> Point:
     """A point at parameter t along a line or segment (t=0/1 are the object's
     defining points; for a line, t outside [0, 1] extends past them in either
-    direction), or at angle t (radians) on a circle — use this instead of
-    hand-computing coordinates to place a point on an existing
-    line/segment/circle, or to extend a line's visible extent. This is the
-    correct way to build arc()/sector()'s start/end points, guaranteed to
-    land exactly on the circle."""
+    direction), or at angle t (radians) on a circle or ellipse — use this
+    instead of hand-computing coordinates to place a point on an existing
+    line/segment/circle/ellipse, or to extend a line's visible extent. This
+    is the correct way to build arc()/sector()'s start/end points, guaranteed
+    to land exactly on the shape's boundary."""
     builder = get_builder()
     pid = builder._fresh_hidden_id("pt_on")
     builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))
