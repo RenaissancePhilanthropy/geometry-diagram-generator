@@ -407,6 +407,24 @@ def _emit_svg_op(
                         bx, by = sv[(i + 1) % len(sv)]
                         drawn_segments.append((ax, ay, bx, by))
 
+            elif isinstance(sym_obj, list):
+                verts = poly_verts(obj_id, stmt_by_id)
+                pts_str = " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in verts)
+                ET.SubElement(svg, "polyline", {
+                    "data-ir-id": obj_id,
+                    "data-type": "polyline",
+                    "data-vertices": ",".join(verts),
+                    "points": pts_str,
+                    "fill": "none",
+                    **attrs,
+                })
+                if drawn_segments is not None:
+                    sv = [pt(v) for v in verts]
+                    for i in range(len(sv) - 1):  # NO wraparound: open path
+                        ax, ay = sv[i]
+                        bx, by = sv[i + 1]
+                        drawn_segments.append((ax, ay, bx, by))
+
             elif isinstance(sym_obj, spg.Segment):
                 a, b = seg_endpoints(obj_id, stmt_by_id)
                 x1, y1 = pt(a)
@@ -663,6 +681,9 @@ def _emit_svg_op(
                     "fill-opacity": str(fill_opacity),
                     "stroke": "none",
                 })
+
+            elif isinstance(sym_obj, list):
+                _warn(warnings, f"Skipping Fill for '{obj_id}': an open polyline has no interior to fill")
 
             elif isinstance(sym_obj, spg.Circle):
                 cx_g = sympy_to_float(sym_obj.center.x)

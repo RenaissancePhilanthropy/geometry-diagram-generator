@@ -28,6 +28,7 @@ from geometry_diagrams.ir.ir import (
     CircleCenterPoint,
     CircleCenterRadius,
     Polygon,
+    PolylineOpen,
     EllipseCenterAxes,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
@@ -135,6 +136,23 @@ def test_polygon_renders_correctly():
     assert len(pairs) == 4
 
 
+def test_open_polyline_renders_as_native_polyline_not_polygon():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=1, y=1),
+            PolylineOpen(id="pl1", points=["A", "B", "C"]),
+        ],
+        render=[Draw(obj="pl1")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    assert len(_findall(root, "polyline")) == 1
+    assert len(_findall(root, "polygon")) == 0
+    assert "cycle" not in svg.lower()
+
+
 def test_segment_renders_as_line():
     diagram = DiagramIR(
         define=[
@@ -218,6 +236,22 @@ def test_fill_polygon_has_fill_attribute():
     assert len(polygons) == 1
     assert polygons[0].get("fill") not in (None, "none")
     assert float(polygons[0].get("fill-opacity", 1)) == pytest.approx(0.3)
+
+
+def test_fill_open_polyline_emits_warning_not_silent_noop():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=1, y=1),
+            PolylineOpen(id="pl1", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="pl1", opacity=0.3)],
+    )
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    ir_to_svg(diagram, sym, warnings=warnings)
+    assert any("pl1" in w for w in warnings)
 
 
 def test_fill_circle_has_fill_attribute():

@@ -230,6 +230,12 @@ def _emit_op(
             if isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = _poly_verts(obj_id, stmt_by_id)
                 out.append(f"\\tkzDrawPolygon{sopts}({','.join(verts)})")
+            elif isinstance(sym_obj, list):
+                verts = _poly_verts(obj_id, stmt_by_id)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                style_str = f"[{style_inner}]" if style_inner else ""
+                path = " -- ".join(f"({v})" for v in verts)  # tkz-euclide resolves point names directly
+                out.append(f"\\draw{style_str} {path};")
             elif isinstance(sym_obj, spg.Segment):
                 a, b = _seg_pts(obj_id, stmt_by_id)
                 out.append(f"\\tkzDrawSegment{sopts}({a},{b})")
@@ -343,6 +349,11 @@ def _emit_op(
             elif isinstance(sym_obj, (spg.Triangle, spg.Polygon)):
                 verts = _poly_verts(obj_id, stmt_by_id)
                 out.append(f"\\tkzFillPolygon{fill_opts}({','.join(verts)})")
+            elif isinstance(sym_obj, list):
+                msg = f"Skipping Fill for '{obj_id}': an open polyline has no interior to fill"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzFillCircle{fill_opts}({center},{through})")

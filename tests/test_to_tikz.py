@@ -611,6 +611,42 @@ def test_ellipse_fill_renders_raw_tikz():
 # Fill with holes (even-odd) — TikZ
 # ---------------------------------------------------------------------------
 
+def test_open_polyline_draws_without_closing_cycle():
+    from geometry_diagrams.ir.ir import PolylineOpen
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=1, y=1),
+            PolylineOpen(id="pl1", points=["A", "B", "C"]),
+        ],
+        render=[Draw(obj="pl1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "cycle" not in tikz
+    assert r"\draw" in tikz
+    assert "(A) -- (B) -- (C)" in tikz
+
+
+def test_fill_open_polyline_emits_warning_not_silent_noop():
+    from geometry_diagrams.ir.ir import PolylineOpen
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            PointFixed(id="C", x=1, y=1),
+            PolylineOpen(id="pl1", points=["A", "B", "C"]),
+        ],
+        render=[Fill(obj="pl1", opacity=0.3)],
+    )
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    ir_to_tikz(diagram, sym, warnings=warnings)
+    assert any("pl1" in w for w in warnings)
+
+
 def test_fill_with_holes_emits_evenodd_rule():
     """Circle filled with a polygon hole should emit \\fill[...,even odd rule]."""
     from geometry_diagrams.ir.ir import CircleCenterRadius, Polygon
