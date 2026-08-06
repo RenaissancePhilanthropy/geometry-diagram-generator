@@ -294,3 +294,35 @@ def test_fill_sector_as_outer_shape_and_hole_renders_correctly_under_svg():
     sym = compile_defs(ir)
     svg = ir_to_svg(ir, sym)
     assert 'fill-rule="evenodd"' in svg
+
+
+def test_marks_and_holes_work_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+    from geometry_diagrams.ir.ir import Fill, MarkRightAngles, MarkSegments
+
+    script = (
+        "a = point(0, 0)\n"
+        "b = point(4, 0)\n"
+        "c = point(0, 3)\n"
+        "d = point(4, 3)\n"
+        "t = triangle(a, b, c)\n"
+        "ab = segment(a, b)\n"
+        "cd = segment(c, d)\n"
+        "mark_equal(ab, cd)\n"
+        "mark_right_angle(t.angle_at(a))\n"
+        "outer = polygon(point(0,0), point(6,0), point(6,6), point(0,6))\n"
+        "hole = circle(point(3, 3), 1.0)\n"
+        "fill(outer, color='blue', holes=[hole])\n"
+        "draw(t)\n"
+        "draw(outer)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    mark_seg_defs = [r for r in result.diagram_ir.render if isinstance(r, MarkSegments)]
+    right_angle_defs = [r for r in result.diagram_ir.render if isinstance(r, MarkRightAngles)]
+    fill_defs = [r for r in result.diagram_ir.render if isinstance(r, Fill)]
+    assert len(mark_seg_defs) == 1
+    assert len(right_angle_defs) == 1
+    assert len(fill_defs) == 1
+    assert fill_defs[0].holes != []

@@ -37,3 +37,11 @@ def test_python_full_instructions_document_styling():
     text = build_python_full_instructions()
     for name in ("color", "thick", "dashed", "arrow_start", "fill("):
         assert name in text, f"instructions missing mention of {name}"
+
+
+def test_python_full_instructions_document_marks_and_fill_holes():
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+
+    text = build_python_full_instructions()
+    for name in ("mark_equal(", "mark_parallel(", "mark_right_angle(", "holes="):
+        assert name in text, f"instructions missing mention of {name}"

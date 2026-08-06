@@ -36,6 +36,17 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   overriding the thick/thin presets), and at most one of dashed/dotted. `fill(obj, color=..., opacity=0.0-1.0)`
   fills a closed shape's interior (triangle, polygon, circle, sector) — opacity defaults to fully opaque.
   Color values are passed straight through unvalidated; use recognizable color names (e.g. "red", "blue").
+- `mark_equal(seg1, seg2, ...)` marks segments as equal in length with matching tick marks;
+  `mark_parallel(seg1, seg2, ...)` marks them as parallel with matching chevrons;
+  `mark_proportional(seg1, seg2, ...)` marks them as proportional (renders identically to
+  mark_equal(), for the script's own semantic clarity only). Each call needs at least 2
+  segments and always gets a fresh symbol — pass all mutually-related segments to ONE call
+  rather than calling the function multiple times for the same group.
+  `mark_right_angle(ref)` (from `t.angle_at(v)`) marks a right angle with the small square
+  symbol, distinct from `mark_angle()`'s arc.
+  `fill(obj, color=..., opacity=..., holes=[shape1, shape2])` can now punch transparent
+  holes in a filled shape (rings, annuli) — each hole must be a shape with an interior
+  (triangle, polygon, circle, ellipse, sector).
 - Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle.
 - Use `segment(p, q)` to get a segment between any two points that aren't
   already a Triangle/Polygon side (e.g. a circle's radius from its center to
