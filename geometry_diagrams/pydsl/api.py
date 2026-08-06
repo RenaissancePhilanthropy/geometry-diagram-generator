@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -479,6 +479,47 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
             group=str(group) if group is not None else None,
         )
     )
+
+
+def _mark_segments(kind: str, segments: tuple[Segment, ...]) -> None:
+    if len(segments) < 2:
+        raise ValueError(f"mark_{kind}() requires at least 2 segments, got {len(segments)}")
+    builder = get_builder()
+    group = builder._fresh_mark_group(kind)
+    builder._add_render(MarkSegments(segs=[s.id for s in segments], group=group))
+
+
+def mark_equal(*segments: Segment) -> None:
+    """Mark segments as equal in length with matching tick marks. Each
+    call gets a fresh tick symbol automatically — pass all mutually-equal
+    segments in ONE call (e.g. mark_equal(ab, cd, ef)) rather than
+    multiple calls, since separate calls always get visually distinct
+    symbols, never the same one. Requires at least 2 segments. Note: only
+    6 distinct tick symbols exist (shared with mark_proportional()'s
+    calls too) and marks draw at each segment's midpoint — more than 6
+    mark_equal()/mark_proportional() calls in one diagram silently reuse
+    a symbol, and a segment passed to two different mark_*() calls gets
+    overlapping marks at the same midpoint."""
+    _mark_segments("equal", segments)
+
+
+def mark_parallel(*segments: Segment) -> None:
+    """Mark segments as parallel with matching chevron marks (>, >>, >>>,
+    ...). Same one-call-per-group contract as mark_equal(). Requires at
+    least 2 segments. Note: only 3 distinct chevron counts exist — a 4th
+    mark_parallel() call in one diagram silently reuses one."""
+    _mark_segments("parallel", segments)
+
+
+def mark_proportional(*segments: Segment) -> None:
+    """Mark segments as proportional (not necessarily equal) — NOTE:
+    renders with the same tick-mark symbols as mark_equal(), since the
+    underlying renderer has no separate visual convention for
+    "proportional." Use this over mark_equal() only for the script's own
+    semantic clarity; the diagram itself won't look different. Requires
+    at least 2 segments. Shares mark_equal()'s 6-symbol limit (see its
+    docstring) — the two functions draw from the same symbol cycle."""
+    _mark_segments("proportional", segments)
 
 
 def point_on(obj, t: float) -> Point:
