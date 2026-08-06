@@ -26,7 +26,7 @@ import sympy.geometry as spg
 from . import ir
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
-from .to_sympy import Arc, Sector, SymTable
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
     arc_params,
@@ -35,6 +35,7 @@ from .render_util import (
     effective_canvas_bounds,
     expand_bounds_for_geometry,
     ellipse_params,
+    elliptical_arc_params,
     extract_coords,
     fmt_label_num,
     fmt_num,
@@ -548,6 +549,57 @@ def _emit_svg_op(
                     **attrs,
                 })
 
+            elif isinstance(sym_obj, EllipticalArc):
+                cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
+                hr_s = hr_g * scale
+                vr_s = vr_g * scale
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + hr_g * math.cos(end_rad)
+                ey_g = cy_g + vr_g * math.sin(end_rad)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                sweep_flag = 0
+                d = (
+                    f"M {sx_s:.2f} {sy_s:.2f} "
+                    f"A {hr_s:.2f} {vr_s:.2f} 0 {large_arc} {sweep_flag} "
+                    f"{ex_s:.2f} {ey_s:.2f}"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-type": "arc",
+                    "d": d,
+                    "fill": "none",
+                    **attrs,
+                })
+
+            elif isinstance(sym_obj, EllipticalSector):
+                cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
+                hr_s = hr_g * scale
+                vr_s = vr_g * scale
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + hr_g * math.cos(end_rad)
+                ey_g = cy_g + vr_g * math.sin(end_rad)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                d = (
+                    f"M {cx_s:.2f} {cy_s:.2f} "
+                    f"L {sx_s:.2f} {sy_s:.2f} "
+                    f"A {hr_s:.2f} {vr_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
+                    f"L {cx_s:.2f} {cy_s:.2f}"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-type": "sector",
+                    "d": d,
+                    "fill": "none",
+                    **attrs,
+                })
+
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"
             for pid in points:
@@ -657,6 +709,32 @@ def _emit_svg_op(
                     f"M {cx_s:.2f} {cy_s:.2f} "
                     f"L {sx_s:.2f} {sy_s:.2f} "
                     f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+                )
+                ET.SubElement(svg, "path", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
+                    "d": d,
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
+
+            elif isinstance(sym_obj, EllipticalSector):
+                cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
+                hr_s = hr_g * scale
+                vr_s = vr_g * scale
+                end_rad = math.radians(end_deg)
+                ex_g = cx_g + hr_g * math.cos(end_rad)
+                ey_g = cy_g + vr_g * math.sin(end_rad)
+                cx_s, cy_s = gxy(cx_g, cy_g)
+                sx_s, sy_s = gxy(sx_g, sy_g)
+                ex_s, ey_s = gxy(ex_g, ey_g)
+                sweep_deg = end_deg - start_deg
+                large_arc = 1 if sweep_deg > 180.0 else 0
+                d = (
+                    f"M {cx_s:.2f} {cy_s:.2f} "
+                    f"L {sx_s:.2f} {sy_s:.2f} "
+                    f"A {hr_s:.2f} {vr_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
                 )
                 ET.SubElement(svg, "path", {
                     "data-ir-id": obj_id,
@@ -1871,6 +1949,24 @@ def _obj_to_svg_subpath(
             f"M {cx_s:.2f} {cy_s:.2f} "
             f"L {sx_s:.2f} {sy_s:.2f} "
             f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+        )
+
+    if isinstance(sym_obj, EllipticalSector):
+        cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
+        hr_s = hr_g * scale
+        vr_s = vr_g * scale
+        end_rad = math.radians(end_deg)
+        ex_g = cx_g + hr_g * math.cos(end_rad)
+        ey_g = cy_g + vr_g * math.sin(end_rad)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        sx_s, sy_s = gxy(sx_g, sy_g)
+        ex_s, ey_s = gxy(ex_g, ey_g)
+        sweep_deg = end_deg - start_deg
+        large_arc = 1 if sweep_deg > 180.0 else 0
+        return (
+            f"M {cx_s:.2f} {cy_s:.2f} "
+            f"L {sx_s:.2f} {sy_s:.2f} "
+            f"A {hr_s:.2f} {vr_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
         )
 
     return None

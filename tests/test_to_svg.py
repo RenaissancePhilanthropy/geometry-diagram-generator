@@ -1911,6 +1911,75 @@ def test_draw_sector_emits_path():
     assert "M" in d and "L" in d and "A" in d
 
 
+def test_draw_elliptical_arc_emits_path_with_distinct_radii():
+    import re
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=4, y=0),
+            PointFixed(id="B", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea", center="O", hradius=4, vradius=1, start="A", end="B"),
+        ],
+        render=[Draw(obj="ea")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-type") == "arc"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    m = re.search(r"A ([\d.]+) ([\d.]+) 0", d)
+    assert m is not None
+    rx, ry = float(m.group(1)), float(m.group(2))
+    assert rx != ry
+
+
+def test_fill_elliptical_sector_emits_path_with_distinct_radii():
+    import re
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=4, y=0),
+            PointFixed(id="B", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es", center="O", hradius=4, vradius=1, start="A", end="B"),
+        ],
+        render=[Fill(obj="es", opacity=0.4)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    d = paths[0].get("d", "")
+    assert "M" in d and "L" in d and "A" in d and "Z" in d
+    m = re.search(r"A ([\d.]+) ([\d.]+) 0", d)
+    assert m is not None
+    rx, ry = float(m.group(1)), float(m.group(2))
+    assert rx != ry
+
+
+def test_fill_elliptical_sector_with_hole_uses_evenodd():
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd, Triangle
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=5, y=0),
+            PointFixed(id="B", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es", center="O", hradius=5, vradius=1, start="A", end="B"),
+            PointFixed(id="P1", x=1, y=0),
+            PointFixed(id="P2", x=2, y=0),
+            PointFixed(id="P3", x=1, y=0.2),
+            Triangle(id="hole", a="P1", b="P2", c="P3"),
+        ],
+        render=[Fill(obj="es", holes=["hole"], opacity=0.5)],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    paths = [p for p in _findall(root, "path") if p.get("data-role") == "fill"]
+    assert len(paths) == 1
+    assert paths[0].get("fill-rule") == "evenodd"
+
+
 def test_parse_latex_rightarrow():
     from geometry_diagrams.ir.to_svg import _parse_latex
     segs = _parse_latex("\\rightarrow")
