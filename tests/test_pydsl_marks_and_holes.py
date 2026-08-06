@@ -173,3 +173,24 @@ def test_mark_equal_and_mark_parallel_render_correct_symbols_in_sequence():
     assert _lines_for_group(group1) == 2   # 1 tick x 2 segments
     assert _lines_for_group(group2) == 4   # 2 ticks x 2 segments
     assert _lines_for_group(group3) == 4   # 1 chevron (2 arm-lines) x 2 segments
+
+
+from geometry_diagrams.pydsl.api import mark_right_angle, triangle
+
+
+def test_mark_right_angle_records_single_element_angles_list():
+    from geometry_diagrams.ir.ir import MarkRightAngles
+
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(0, 3)
+        t = triangle(a, b, c)
+        ref = t.angle_at(a)
+        mark_right_angle(ref)
+        ir = builder.build()
+    marks = [r for r in ir.render if isinstance(r, MarkRightAngles)]
+    assert len(marks) == 1
+    assert len(marks[0].angles) == 1
+    angle_spec = marks[0].angles[0]
+    assert angle_spec.a == ref.a.id
+    assert angle_spec.o == ref.o.id
+    assert angle_spec.b == ref.b.id

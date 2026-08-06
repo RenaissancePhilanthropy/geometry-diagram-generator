@@ -522,6 +522,20 @@ def mark_proportional(*segments: Segment) -> None:
     _mark_segments("proportional", segments)
 
 
+def mark_right_angle(ref: AngleRef) -> None:
+    """Mark an angle with the right-angle square symbol, e.g.
+    mark_right_angle(t.angle_at(b)) — distinct from mark_angle()'s arc.
+    Takes exactly one angle per call (no group parameter, unlike
+    mark_angle()'s optional equal-angle group) — a right angle is
+    unambiguously 90°, so there's no equivalence class to group."""
+    from geometry_diagrams.ir.ir import MarkRightAngles
+
+    builder = get_builder()
+    builder._add_render(
+        MarkRightAngles(angles=[AnglePoints(a=ref.a.id, o=ref.o.id, b=ref.b.id)])
+    )
+
+
 def point_on(obj, t: float) -> Point:
     """A point at parameter t along a line or segment (t=0/1 are the object's
     defining points; for a line, t outside [0, 1] extends past them in either
