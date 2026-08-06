@@ -13,7 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from . import ir
-from .to_sympy import Arc, SymTable
+from .to_sympy import Arc, EllipticalArc, SymTable
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +201,50 @@ def arc_params(
     return (cx, cy, r, s_deg, e_deg, sx, sy)
 
 
+def elliptical_arc_params(
+    arc_id: str,
+    sym: "SymTable",
+) -> tuple[float, float, float, float, float, float, float, float]:
+    """Return (cx, cy, hr, vr, start_deg, end_deg, sx, sy) for the given
+    elliptical arc id.
+
+    Mirrors arc_params() exactly, except recovering the parametric angle t
+    via atan2((y-cy)/vr, (x-cx)/hr) instead of plain atan2(y-cy, x-cx) --
+    the plain formula is only correct when hr == vr (a circle); for a true
+    ellipse it recovers the wrong angle, silently corrupting the rendered
+    endpoint.
+
+    - ``start_deg`` / ``end_deg`` delimit a math-CCW sweep (end_deg > start_deg).
+    - The magnitude ``end_deg - start_deg`` is ≤180° when ``reflex=False``
+      (minor arc, the default) and >180° when ``reflex=True``.
+    - ``sx``, ``sy`` are the Cartesian coordinates of the returned start point
+      (may be swapped relative to the IR's ``start`` to satisfy the above).
+    """
+    arc = sym[arc_id]
+    cx = sympy_to_float(arc.center.x)
+    cy = sympy_to_float(arc.center.y)
+    sx = sympy_to_float(arc.start.x)
+    sy = sympy_to_float(arc.start.y)
+    ex = sympy_to_float(arc.end.x)
+    ey = sympy_to_float(arc.end.y)
+    hr = sympy_to_float(arc.hradius)
+    vr = sympy_to_float(arc.vradius)
+    s_deg = math.degrees(math.atan2((sy - cy) / vr, (sx - cx) / hr)) % 360.0
+    e_deg = math.degrees(math.atan2((ey - cy) / vr, (ex - cx) / hr)) % 360.0
+    ccw = (e_deg - s_deg) % 360.0
+    if ccw == 0:
+        ccw = 360.0
+    is_ccw_minor = ccw <= 180.0
+    want_reflex = bool(getattr(arc, "reflex", False))
+    # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
+    if is_ccw_minor == want_reflex:
+        sx, sy, ex, ey = ex, ey, sx, sy
+        s_deg, e_deg = e_deg, s_deg
+    if e_deg <= s_deg:
+        e_deg += 360.0
+    return (cx, cy, hr, vr, s_deg, e_deg, sx, sy)
+
+
 # ---------------------------------------------------------------------------
 # Bounds computation
 # ---------------------------------------------------------------------------
@@ -240,6 +284,19 @@ def expand_bounds_for_geometry(
                 ymin = cy - r - BOUNDS_PADDING
             if cy + r > ymax:
                 ymax = cy + r + BOUNDS_PADDING
+        elif isinstance(obj, EllipticalArc):
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            hr = sympy_to_float(obj.hradius)
+            vr = sympy_to_float(obj.vradius)
+            # Conservatively use the full enclosing ellipse.
+            if cx - hr < xmin:
+                xmin = cx - hr - BOUNDS_PADDING
+            if cx + hr > xmax:
+                xmax = cx + hr + BOUNDS_PADDING
+            if cy - vr < ymin:
+                ymin = cy - vr - BOUNDS_PADDING
+            if cy + vr > ymax:
+                ymax = cy + vr + BOUNDS_PADDING
     return xmin, xmax, ymin, ymax
 
 
