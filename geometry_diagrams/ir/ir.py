@@ -340,6 +340,32 @@ class SectorCenterStartEnd(DefBase):
     reflex: bool = False
 
 
+class EllipticalArcCenterStartEnd(DefBase):
+    """Elliptical arc: the boundary curve of an axis-aligned ellipse between
+    start and end. Mirrors ArcCenterStartEnd but for a non-uniform-radius
+    ellipse — hradius/vradius replace the single implicit radius."""
+    kind: Literal["elliptical_arc_center_start_end"] = "elliptical_arc_center_start_end"
+    center: PointId
+    hradius: Union[int, float, str]
+    vradius: Union[int, float, str]
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
+class EllipticalSectorCenterStartEnd(DefBase):
+    """Elliptical sector: the closed pie-slice region of an axis-aligned
+    ellipse bounded by the two radii to start/end and the arc between them.
+    Mirrors SectorCenterStartEnd."""
+    kind: Literal["elliptical_sector_center_start_end"] = "elliptical_sector_center_start_end"
+    center: PointId
+    hradius: Union[int, float, str]
+    vradius: Union[int, float, str]
+    start: PointId
+    end: PointId
+    reflex: bool = False
+
+
 class EllipseCenterAxes(DefBase):
     """Axis-aligned ellipse defined by center and semi-axis lengths."""
     kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
@@ -544,6 +570,8 @@ DefStmt = Annotated[
         CircleCenterPoint, CircleCenterRadius, CircleThrough3,
         ArcCenterStartEnd,
         SectorCenterStartEnd,
+        EllipticalArcCenterStartEnd,
+        EllipticalSectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     ],
