@@ -423,7 +423,7 @@ class Polygon(DefBase):
 
 
 class PolylineOpen(DefBase):
-    """Open (non-closed) chain of 3+ points, in order. Unlike Polygon, the
+    """Open (non-closed) chain of 2 or more points, in order. Unlike Polygon, the
     last point does NOT connect back to the first — no closing edge is
     drawn. Used for tracing paths (e.g. locus construction) rather than
     filled regions."""

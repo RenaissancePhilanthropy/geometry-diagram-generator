@@ -204,6 +204,13 @@ class Polygon:
 
 
 @dataclass(frozen=True)
+class Polyline:
+    id: str
+    vertices: tuple[Point, ...]
+    _builder: "object" = field(repr=False, compare=False)
+
+
+@dataclass(frozen=True)
 class AngleRef:
     a: Point
     o: Point

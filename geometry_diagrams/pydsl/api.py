@@ -10,7 +10,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Sector, Segment, Triangle, _record_literal_point
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Ray, Sector, Segment, Triangle, _record_literal_point
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -93,6 +93,31 @@ def polygon(*vertices: Point) -> Polygon:
     pid = builder._fresh_hidden_id("poly")
     builder._add(PolygonDef(id=pid, points=[v.id for v in vertices]))
     return Polygon(id=pid, vertices=tuple(vertices), _builder=builder)
+
+
+def polyline(*points: Point) -> Polyline:
+    """An open chain of 2 or more points, drawn in order with NO closing
+    edge back to the first point (unlike polygon()). Only CONSECUTIVE
+    coincident points are rejected — the first and last points ARE allowed
+    to coincide (e.g. a closed-looking traced path), since polyline()
+    never adds a wraparound edge the way polygon() does."""
+    if len(points) < 2:
+        raise ValueError(f"polyline requires at least 2 points, got {len(points)}")
+    for i in range(1, len(points)):
+        prev, cur = points[i - 1], points[i]
+        if prev.x is None or prev.y is None or cur.x is None or cur.y is None:
+            continue
+        if math.hypot(cur.x - prev.x, cur.y - prev.y) < 1e-9:
+            raise ValueError(
+                f"polyline() vertices {prev.id!r} and {cur.id!r} are coincident "
+                "consecutive points."
+            )
+    from geometry_diagrams.ir.ir import PolylineOpen
+
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("polyline")
+    builder._add(PolylineOpen(id=pid, points=[p.id for p in points]))
+    return Polyline(id=pid, vertices=tuple(points), _builder=builder)
 
 
 def regular_polygon(center: Point, radius: float, n: int, start_angle: float = 0.0) -> Polygon:

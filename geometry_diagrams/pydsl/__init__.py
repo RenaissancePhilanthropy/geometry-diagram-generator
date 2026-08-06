@@ -3,8 +3,8 @@
 Re-exports handles and op functions so callers (and the stub generator) have
 one place to introspect the public surface.
 """
-from geometry_diagrams.pydsl.api import altitude, angle_bisector, arc, canvas, centroid, circle, circumcircle, dilate_point, draw, draw_points, ellipse, fill, foot_of_perpendicular, incircle, intersection, label_text, line_through, mark_angle, mark_equal, mark_parallel, mark_proportional, mark_right_angle, median, parallel_through, perpendicular_bisector, perpendicular_through, point, point_on, polygon, ray, rectangle, reflect_point, regular_polygon, regular_sectors, rotate_point, sector, segment, tangent_line, triangle, walk
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Ray, Sector, Segment, Triangle
+from geometry_diagrams.pydsl.api import altitude, angle_bisector, arc, canvas, centroid, circle, circumcircle, dilate_point, draw, draw_points, ellipse, fill, foot_of_perpendicular, incircle, intersection, label_text, line_through, mark_angle, mark_equal, mark_parallel, mark_proportional, mark_right_angle, median, parallel_through, perpendicular_bisector, perpendicular_through, point, point_on, polygon, polyline, ray, rectangle, reflect_point, regular_polygon, regular_sectors, rotate_point, sector, segment, tangent_line, triangle, walk
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Ray, Sector, Segment, Triangle
 
 __all__ = [
     "point",
@@ -12,6 +12,7 @@ __all__ = [
     "ray",
     "triangle",
     "polygon",
+    "polyline",
     "regular_polygon",
     "regular_sectors",
     "rectangle",
@@ -53,6 +54,7 @@ __all__ = [
     "Segment",
     "Triangle",
     "Polygon",
+    "Polyline",
     "Circle",
     "Ellipse",
     "Arc",
