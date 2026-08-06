@@ -75,13 +75,19 @@ def mark_equal(*segments: Segment) -> None:
     call gets a fresh tick symbol automatically — pass all mutually-equal
     segments in ONE call (e.g. mark_equal(ab, cd, ef)) rather than
     multiple calls, since separate calls always get visually distinct
-    symbols, never the same one. Requires at least 2 segments."""
+    symbols, never the same one. Requires at least 2 segments. Note: only
+    6 distinct tick symbols exist (shared with mark_proportional()'s
+    calls too) and marks draw at each segment's midpoint — more than 6
+    mark_equal()/mark_proportional() calls in one diagram silently reuse
+    a symbol, and a segment passed to two different mark_*() calls gets
+    overlapping marks at the same midpoint."""
 
 
 def mark_parallel(*segments: Segment) -> None:
     """Mark segments as parallel with matching chevron marks (>, >>, >>>,
     ...). Same one-call-per-group contract as mark_equal(). Requires at
-    least 2 segments."""
+    least 2 segments. Note: only 3 distinct chevron counts exist — a 4th
+    mark_parallel() call in one diagram silently reuses one."""
 
 
 def mark_proportional(*segments: Segment) -> None:
@@ -90,10 +96,13 @@ def mark_proportional(*segments: Segment) -> None:
     underlying renderer has no separate visual convention for
     "proportional." Use this over mark_equal() only for the script's own
     semantic clarity; the diagram itself won't look different. Requires
-    at least 2 segments."""
+    at least 2 segments. Shares mark_equal()'s 6-symbol limit (see its
+    docstring) — the two functions draw from the same symbol cycle."""
 ```
 
-All three share one implementation shape:
+All three share one implementation shape. `MarkSegments` needs a new
+import in `api.py`'s existing `from geometry_diagrams.ir.ir import ...`
+line (it isn't there today):
 
 ```python
 def _mark_segments(kind: str, segments: tuple[Segment, ...]) -> None:
@@ -166,6 +175,9 @@ def fill(
         raise ValueError("fill() doesn't take an AngleRef — use mark_angle(...) instead")
     if not 0 <= opacity <= 1:
         raise ValueError(f"fill(): opacity must be between 0 and 1, got {opacity!r}")
+    holes = tuple(holes)  # materialize once: the loop below and the [h.id for h in
+                           # holes] construction later must see the same items, which
+                           # silently breaks for a one-shot generator argument
     for hole in holes:
         if isinstance(hole, Point):
             raise ValueError("fill(): a hole can't be a Point — use draw_points(...) instead")
@@ -193,6 +205,62 @@ unchanged — this is additive. No self-hole guard (`holes` containing
 it's a niche mistake, not a common one, and the renderer's own even-odd
 math handles it without crashing (it just inverts/cancels the overlapping
 region, a real but rare-enough outcome not worth new validation for).
+
+### Renderer fix: `Sector` support in `to_svg.py`'s compound-fill path
+
+Found during Fable review: `fill(shape)` (no holes) already supports a
+`Sector` as `obj` under SVG today — Cluster D's `Fill` handler has its own
+dedicated `elif isinstance(sym_obj, Sector):` branch. But the *holes*
+compound-fill path (`if holes:` in the same handler) routes through a
+different helper, `_obj_to_svg_subpath`, to build both the outer shape's
+path and each hole's path — and that helper only handles
+`Triangle`/`Polygon`, `Circle`, and `Ellipse`; it has no `Sector` case, so
+it returns `None` for a sector. Concretely: `fill(sector_obj,
+holes=[circle_obj])` would hit `_obj_to_svg_subpath`'s `outer_path is
+None` branch and skip the whole fill with a warning; `fill(polygon_obj,
+holes=[sector_obj])` would skip just the sector hole with a warning
+(confirmed both warning paths exist, `to_svg.py` lines ~578 and ~589).
+
+Since sectors were the original motivating case for `fill()` existing at
+all (Cluster C's `sector()` was pitched as "fillable," which Cluster D
+was supposed to deliver on), this cluster adds a `Sector` branch to
+`_obj_to_svg_subpath`, mirroring the exact geometry the existing
+plain-fill `Sector` branch already uses (confirmed working, just not
+factored as a reusable path-string function):
+
+```python
+def _obj_to_svg_subpath(obj_id, sym, stmt_by_id, gxy, scale, poly_verts_fn, ellipse_params_fn):
+    """... (existing docstring, updated to add Sector to the supported list)"""
+    # ... existing Triangle/Polygon, Circle, Ellipse branches, unchanged ...
+    if isinstance(sym_obj, Sector):
+        cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+        r_s = r_g * scale
+        end_rad = math.radians(end_deg)
+        ex_g = cx_g + r_g * math.cos(end_rad)
+        ey_g = cy_g + r_g * math.sin(end_rad)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        sx_s, sy_s = gxy(sx_g, sy_g)
+        ex_s, ey_s = gxy(ex_g, ey_g)
+        sweep_deg = end_deg - start_deg
+        large_arc = 1 if sweep_deg > 180.0 else 0
+        return (
+            f"M {cx_s:.2f} {cy_s:.2f} "
+            f"L {sx_s:.2f} {sy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+        )
+    return None
+```
+
+This is a deliberate, minor duplication of the geometry math already used
+in the plain-fill `Sector` branch, rather than refactoring that
+already-working, already-tested code path to share this helper — matching
+this project's established bias toward additive-only renderer changes
+(Cluster D took the same approach for `to_svg.py`'s `line_width` branch).
+`Sector` needs to be imported into scope where `_obj_to_svg_subpath` is
+defined (it's already imported at module level in `to_svg.py`, used by
+the plain-fill branch — confirm no new import is actually needed before
+implementing). No `to_tikz.py` change is needed — TikZ's equivalent path
+helper (`_obj_to_tikz_path`) already supports `Sector`.
 
 ## Non-goals
 
@@ -242,6 +310,21 @@ New file `tests/test_pydsl_marks_and_holes.py`, TDD, covering:
   even-odd/cutout construct (e.g. for SVG, a `fill-rule="evenodd"` path
   with a concatenated sub-path for the hole; for TikZ, `even odd rule` in
   the emitted `\fill` command).
+- **`holes` accepts a one-shot generator, not just a list/tuple** —
+  regression test for the double-iteration bug found in review: call
+  `fill(shape, holes=(h for h in [hole_shape]))` (a genuine generator
+  expression, not a list) and confirm the resulting `Fill.holes` is
+  non-empty — this would silently record `holes=[]` if `holes = tuple(holes)`
+  were ever removed from the implementation, since the validation loop
+  would exhaust the generator before the `[h.id for h in holes]` line ran.
+- **Sector as a hole and as the outer shape, under SVG specifically** —
+  the renderer fix's own regression test: `fill(polygon_obj,
+  holes=[sector_obj])` and `fill(sector_obj, holes=[circle_obj])`, both
+  compiled via `ir_to_svg` (not just `ir_to_tikz`, since TikZ already
+  worked before this fix — the SVG path is what's actually being
+  changed), asserting the resulting SVG contains a `fill-rule="evenodd"`
+  path with both subpaths present (no "unsupported shape type" warning
+  in the returned warnings list).
 - A sandbox-path test (`run_script`) exercising `mark_equal()`,
   `mark_right_angle()`, and `fill(..., holes=[...])` through the real
   sandbox, confirming all three names resolve and the resulting
