@@ -206,61 +206,28 @@ it's a niche mistake, not a common one, and the renderer's own even-odd
 math handles it without crashing (it just inverts/cancels the overlapping
 region, a real but rare-enough outcome not worth new validation for).
 
-### Renderer fix: `Sector` support in `to_svg.py`'s compound-fill path
+### Correction: no renderer fix needed — `Sector` support already exists
 
-Found during Fable review: `fill(shape)` (no holes) already supports a
-`Sector` as `obj` under SVG today — Cluster D's `Fill` handler has its own
-dedicated `elif isinstance(sym_obj, Sector):` branch. But the *holes*
-compound-fill path (`if holes:` in the same handler) routes through a
-different helper, `_obj_to_svg_subpath`, to build both the outer shape's
-path and each hole's path — and that helper only handles
-`Triangle`/`Polygon`, `Circle`, and `Ellipse`; it has no `Sector` case, so
-it returns `None` for a sector. Concretely: `fill(sector_obj,
-holes=[circle_obj])` would hit `_obj_to_svg_subpath`'s `outer_path is
-None` branch and skip the whole fill with a warning; `fill(polygon_obj,
-holes=[sector_obj])` would skip just the sector hole with a warning
-(confirmed both warning paths exist, `to_svg.py` lines ~578 and ~589).
+An earlier draft of this spec (based on a Fable review finding) claimed
+`to_svg.py`'s `_obj_to_svg_subpath` — the helper `fill()`'s `holes`
+compound-fill path uses to build both the outer shape's path and each
+hole's path — lacked a `Sector` case, and planned to add one. **This was
+wrong.** Reading the complete function (not a truncated excerpt) shows a
+working `if isinstance(sym_obj, Sector): ...` branch already present,
+immediately after the `Ellipse` case. Verified empirically too: compiling
+a hand-built `DiagramIR` with `Fill(obj="poly", holes=["sec"], ...)` where
+`sec` is a `SectorCenterStartEnd`, through `ir_to_svg`, produces
+`fill-rule="evenodd"` in the output with zero warnings — `fill(shape,
+holes=[sector])` and `fill(sector, holes=[...])` both already work
+correctly under SVG today. (`_obj_to_svg_subpath`'s docstring — "Supports
+Polygon/Triangle, Circle, and Ellipse" — is itself stale, predating the
+`Sector` branch; not touched by this plan since fixing a comment isn't
+this cluster's job, but noted here so nobody re-derives the same false
+gap from it later.)
 
-Since sectors were the original motivating case for `fill()` existing at
-all (Cluster C's `sector()` was pitched as "fillable," which Cluster D
-was supposed to deliver on), this cluster adds a `Sector` branch to
-`_obj_to_svg_subpath`, mirroring the exact geometry the existing
-plain-fill `Sector` branch already uses (confirmed working, just not
-factored as a reusable path-string function):
-
-```python
-def _obj_to_svg_subpath(obj_id, sym, stmt_by_id, gxy, scale, poly_verts_fn, ellipse_params_fn):
-    """... (existing docstring, updated to add Sector to the supported list)"""
-    # ... existing Triangle/Polygon, Circle, Ellipse branches, unchanged ...
-    if isinstance(sym_obj, Sector):
-        cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-        r_s = r_g * scale
-        end_rad = math.radians(end_deg)
-        ex_g = cx_g + r_g * math.cos(end_rad)
-        ey_g = cy_g + r_g * math.sin(end_rad)
-        cx_s, cy_s = gxy(cx_g, cy_g)
-        sx_s, sy_s = gxy(sx_g, sy_g)
-        ex_s, ey_s = gxy(ex_g, ey_g)
-        sweep_deg = end_deg - start_deg
-        large_arc = 1 if sweep_deg > 180.0 else 0
-        return (
-            f"M {cx_s:.2f} {cy_s:.2f} "
-            f"L {sx_s:.2f} {sy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
-        )
-    return None
-```
-
-This is a deliberate, minor duplication of the geometry math already used
-in the plain-fill `Sector` branch, rather than refactoring that
-already-working, already-tested code path to share this helper — matching
-this project's established bias toward additive-only renderer changes
-(Cluster D took the same approach for `to_svg.py`'s `line_width` branch).
-`Sector` needs to be imported into scope where `_obj_to_svg_subpath` is
-defined (it's already imported at module level in `to_svg.py`, used by
-the plain-fill branch — confirm no new import is actually needed before
-implementing). No `to_tikz.py` change is needed — TikZ's equivalent path
-helper (`_obj_to_tikz_path`) already supports `Sector`.
+No `to_svg.py` or `to_tikz.py` change is needed anywhere in this cluster.
+This plan adds a regression test locking in the already-correct behavior
+(see Testing) instead of a code fix.
 
 ## Non-goals
 
@@ -317,14 +284,15 @@ New file `tests/test_pydsl_marks_and_holes.py`, TDD, covering:
   non-empty — this would silently record `holes=[]` if `holes = tuple(holes)`
   were ever removed from the implementation, since the validation loop
   would exhaust the generator before the `[h.id for h in holes]` line ran.
-- **Sector as a hole and as the outer shape, under SVG specifically** —
-  the renderer fix's own regression test: `fill(polygon_obj,
-  holes=[sector_obj])` and `fill(sector_obj, holes=[circle_obj])`, both
-  compiled via `ir_to_svg` (not just `ir_to_tikz`, since TikZ already
-  worked before this fix — the SVG path is what's actually being
-  changed), asserting the resulting SVG contains a `fill-rule="evenodd"`
-  path with both subpaths present (no "unsupported shape type" warning
-  in the returned warnings list).
+- **Sector as a hole and as the outer shape, under SVG** — a coverage
+  test (not a regression test for a fix, since no fix is needed — see the
+  "Correction" section above): call pydsl's `fill(polygon_obj,
+  holes=[sector_obj])` and `fill(sector_obj, holes=[circle_obj])`, build
+  the resulting `DiagramIR`, and compile it through `ir_to_svg`, asserting
+  the output contains a `fill-rule="evenodd"` path and no "unsupported
+  shape type" warning. This locks in already-correct behavior so nobody
+  accidentally regresses it while touching `_obj_to_svg_subpath` for
+  something else later.
 - A sandbox-path test (`run_script`) exercising `mark_equal()`,
   `mark_right_angle()`, and `fill(..., holes=[...])` through the real
   sandbox, confirming all three names resolve and the resulting
