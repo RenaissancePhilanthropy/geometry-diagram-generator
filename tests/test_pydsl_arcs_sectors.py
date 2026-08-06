@@ -409,3 +409,24 @@ def test_arcs_sectors_work_through_the_real_sandbox():
     assert CircleCenterRadius in kinds
     assert ArcCenterStartEnd in kinds
     assert SectorCenterStartEnd in kinds
+
+
+def test_elliptical_arc_and_polyline_work_through_the_real_sandbox():
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = (
+        "c = point(0, 0)\n"
+        "e = ellipse(center=c, hradius=4, vradius=1)\n"
+        "s = point_on(e, 0.0)\n"
+        "end = point_on(e, 1.0471975511965976)\n"  # math.pi / 3
+        "a = arc(e, s, end)\n"
+        "draw(a)\n"
+        "p0 = point(-3, -3)\n"
+        "p1 = point(-2, -3)\n"
+        "p2 = point(-2, -2)\n"
+        "pl = polyline(p0, p1, p2)\n"
+        "draw(pl)\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None

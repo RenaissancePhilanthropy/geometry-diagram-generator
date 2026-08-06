@@ -91,6 +91,14 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
       p2 = walk(p1, math.pi / 2, 4.0)
       tri = polygon(p0, p1, p2)
       draw(tri)
+- `arc(shape, start, end, reflex=False)` and `sector(shape, start, end, reflex=False)` work on EITHER a
+  `circle()` or an `ellipse()` — use `point_on(shape, t)` to build start/end so they land exactly on the
+  boundary (an off-boundary point silently shifts the rendered arc). For a circle, t is an angle in
+  radians; the same point_on() call works for an ellipse's parametric angle too.
+- `polyline(*points)` draws an OPEN chain of 2+ points with no closing edge — unlike `polygon()`, it does
+  not connect the last point back to the first. Useful for tracing a path (e.g. sampling several
+  positions of a point as it moves) rather than filling a region; `fill()` on a polyline is a no-op since
+  it has no interior.
 - Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
