@@ -32,6 +32,7 @@ class StructuredRunResult:
     sym_full: dict   # id -> sympy object
     input_tokens: int = 0
     output_tokens: int = 0
+    cost_usd: "float | None" = None
     recipe_metadata: Any = None
     python_full_metadata: Any = None
     retries: int = 0

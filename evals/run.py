@@ -280,6 +280,7 @@ def _populate_partial_metadata_on_failure(record: dict, strategy: SubstanceStrat
     elif isinstance(strategy, PythonFullStrategy):
         record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
         record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
+        record["cost_usd"] = getattr(strategy, "_partial_cost_usd", None)
         partial_meta = getattr(strategy, "_partial_python_full_metadata", None)
         if partial_meta is not None:
             record["python_full_metadata"] = {
@@ -330,6 +331,7 @@ async def run_scenario(
         "retries": 0,
         "input_tokens": None,
         "output_tokens": None,
+        "cost_usd": None,
         "duration_s": None,
         "error": None,
         "ir_diagnostics": None,
@@ -370,6 +372,7 @@ async def run_scenario(
         record["ir_diagnostics"] = ir_diagnostics_data
         record["input_tokens"] = result.input_tokens
         record["output_tokens"] = result.output_tokens
+        record["cost_usd"] = result.cost_usd
 
         sympy_property_checks: list[dict] = []
         if result.sym_table is not None and scenario.get("expected_properties"):
@@ -449,7 +452,8 @@ async def run_scenario(
     # Save SVG
     scenario_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(scenario["id"]))
     strategy_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", strategy_name)
-    svg_filename = f"{scenario_slug}__{strategy_slug}__r{repeat_index:03d}.svg"
+    model_slug = re.sub(r"[^A-Za-z0-9._-]+", "_", model)
+    svg_filename = f"{scenario_slug}__{strategy_slug}__{model_slug}__r{repeat_index:03d}.svg"
     svg_path = svg_output_dir / svg_filename
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     svg_path.write_text(svg)
