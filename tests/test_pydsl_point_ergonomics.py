@@ -96,6 +96,56 @@ def test_multiplying_a_point_with_unknown_coordinates_raises_a_clear_error():
             _ = rotated * 2
 
 
+def test_direct_x_access_on_constructed_point_raises_not_none():
+    """The real eval failure this was found from: a model reading `.x`/`.y`
+    directly (not through +/-/*) on a constructed point used to silently get
+    None back, and whatever it did next (e.g. f-string interpolation, then
+    arithmetic on the result) raised a bare, contextless TypeError instead
+    of this clear error — or, worse, rendered the literal text "None" into
+    the diagram with no error at all."""
+    from geometry_diagrams.pydsl.api import centroid, triangle
+
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(0, 3)
+        t = triangle(a, b, c)
+        g = centroid(t)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            _ = g.x
+        with pytest.raises(ValueError, match="no known coordinates"):
+            _ = g.y
+
+
+def test_direct_y_access_on_point_on_raises_not_none():
+    with new_builder_context():
+        a = point(0, 0)
+        b = point(4, 0)
+        line = line_through(a, b)
+        unknown = point_on(line, 0.5)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            _ = unknown.y
+
+
+def test_distance_between_two_literal_points():
+    from geometry_diagrams.pydsl.api import distance
+
+    with new_builder_context():
+        a = point(0, 0)
+        b = point(3, 4)
+    assert distance(a, b) == pytest.approx(5.0)
+
+
+def test_distance_raises_for_a_point_with_unknown_coordinates():
+    from geometry_diagrams.pydsl.api import distance
+
+    with new_builder_context():
+        a = point(0, 0)
+        b = point(4, 0)
+        line = line_through(a, b)
+        unknown = point_on(line, 0.5)
+        with pytest.raises(ValueError, match="no known coordinates"):
+            distance(a, unknown)
+
+
 def test_point_arithmetic_works_through_the_real_sandbox():
     """Regression test: Point.__add__ previously called get_builder(), which
     only succeeds inside a _bind_to_builder-wrapped top-level call — a

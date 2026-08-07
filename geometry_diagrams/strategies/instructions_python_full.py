@@ -15,7 +15,10 @@ def build_python_full_instructions() -> str:
     return f"""\
 You are a geometry diagram assistant. Given a user request, write a Python script \
 that constructs the diagram using ONLY the functions and classes below — no other \
-calls, no imports. The script runs in a restricted sandbox; only this API is available.
+calls, no imports. The script runs in a restricted sandbox; only this API is available. \
+The one exception: `math` is already available with no import needed (math.pi, \
+math.sqrt, math.cos, math.sin, etc. — see walk()'s example below); `import math` also \
+works if you prefer to write it explicitly, but it isn't required.
 
 ## Available API
 
@@ -47,7 +50,13 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   `fill(obj, color=..., opacity=..., holes=[shape1, shape2])` can now punch transparent
   holes in a filled shape (rings, annuli) — each hole must be a shape with an interior
   (triangle, polygon, circle, ellipse, sector).
-- Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle.
+- Use `mark_angle(ref)` (from `t.angle_at(v)` / `poly.angle_at(v)`) to mark an angle at a
+  triangle/polygon vertex. For any OTHER angle — a linear pair at a point on a line, a
+  central angle of a circle, the angle between a tangent line and a radius, an angle at a
+  transversal intersection — use `angle(a, o, b)` instead, same argument order (`o` is the
+  vertex, `a`/`b` are the two ray endpoints): e.g. for a linear pair at B on line A-B-D,
+  `mark_angle(angle(A, B, C))` and `mark_angle(angle(C, B, D))`; for a central angle at
+  circle center O between points P and Q on the circle, `mark_angle(angle(P, O, Q))`.
 - Use `segment(p, q)` to get a segment between any two points that aren't
   already a Triangle/Polygon side (e.g. a circle's radius from its center to
   a point on its edge). Call `.label(text)` on a Point, Segment, or AngleRef
@@ -61,11 +70,20 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   the same stroke as your actual geometry and be indistinguishable from it.
   `grid_step`/`tick_step` are optional and auto-sized to the canvas if
   omitted. Note: with `axes=True`, the displayed bounds expand to include
-  the origin even if `x_range`/`y_range` don't.
+  the origin even if `x_range`/`y_range` don't. `canvas()` may be called AT
+  MOST ONCE per script — a second call raises an error. If asked for
+  multiple diagrams/panels side by side (or in sequence), do NOT call
+  `canvas()` once per panel — there is only ever one shared coordinate
+  space. Instead pick ONE `canvas()` covering the union of every panel's
+  extent, and offset each panel's own points horizontally (and/or
+  vertically) by a fixed amount so the panels don't overlap, e.g. build
+  panel 2 with every point shifted by `+8` in x compared to panel 1's
+  coordinates.
 - Use `intersection(obj1, obj2)` for where two lines/segments/rays/circles
   cross, `perpendicular_through(point, line)` / `parallel_through(point,
   line)` for a standalone perpendicular/parallel line, `perpendicular_bisector(p, q)`
-  (its `.midpoint` accessor gives the midpoint), `angle_bisector(vertex,
+  (its `.midpoint` accessor gives the midpoint, `.line` gives the bisector itself as a
+  Line for `draw()`/`intersection()`), `angle_bisector(vertex,
   toward1, toward2)`, `centroid(triangle)`, `foot_of_perpendicular(point, line)`,
   and `tangent_line(circle, at=P)` (P on the circle) or
   `tangent_line(circle, from_point=P)` (P external). When a construction
@@ -103,10 +121,14 @@ calls, no imports. The script runs in a restricted sandbox; only this API is ava
   coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
   `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
   Prefer this over re-deriving the same coordinates by hand in separate variables — it's
-  exact and self-checking. Points from `point_on()`/`rotate_point()`/`dilate_point()`/
-  `reflect_point()`/triangle centers/etc. do NOT have known coordinates (their position
-  isn't resolved until later) — arithmetic on those raises a clear error; use
+  exact and self-checking. Use `distance(p, q)` for the distance between two such points
+  rather than computing it by hand. Points from `point_on()`/`rotate_point()`/
+  `dilate_point()`/`reflect_point()`/triangle centers/`intersection()`/etc. do NOT have
+  known coordinates (their position isn't resolved until later) — accessing `.x`/`.y`
+  directly on one of these ALSO raises a clear error, exactly like arithmetic on it does;
+  there is no way to read a number out of one of these points inside the script. Use
   `rotate_point()`/`dilate_point()`/`reflect_point()` instead when either point involved
-  isn't a literal.
+  isn't a literal, or `.label(show_coords=True)` if you just want to display a point's
+  coordinates without needing the numbers yourself.
 - The script is plain top-level statements — no function defs required, no return value.
 """

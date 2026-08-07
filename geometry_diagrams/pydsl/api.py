@@ -42,7 +42,7 @@ def point(x: float, y: float) -> Point:
     pid = builder._fresh_hidden_id("pt")
     builder._add(PointFixed(id=pid, x=x, y=y))
     builder._coord_floats[pid] = (float(x), float(y))
-    return Point(id=pid, _builder=builder, x=float(x), y=float(y))
+    return Point(id=pid, _builder=builder, _x=float(x), _y=float(y))
 
 
 def line_through(p: Point, q: Point) -> Line:
@@ -81,9 +81,9 @@ def polygon(*vertices: Point) -> Polygon:
     n = len(vertices)
     for i in range(n):
         prev, cur = vertices[i - 1], vertices[i]  # i=0 wraps to last->first
-        if prev.x is None or prev.y is None or cur.x is None or cur.y is None:
+        if prev._x is None or prev._y is None or cur._x is None or cur._y is None:
             continue
-        if math.hypot(cur.x - prev.x, cur.y - prev.y) < 1e-9:
+        if math.hypot(cur._x - prev._x, cur._y - prev._y) < 1e-9:
             raise ValueError(
                 f"polygon() vertices {prev.id!r} and {cur.id!r} are coincident. "
                 "polygon() already closes the shape automatically — do not repeat "
@@ -105,9 +105,9 @@ def polyline(*points: Point) -> Polyline:
         raise ValueError(f"polyline requires at least 2 points, got {len(points)}")
     for i in range(1, len(points)):
         prev, cur = points[i - 1], points[i]
-        if prev.x is None or prev.y is None or cur.x is None or cur.y is None:
+        if prev._x is None or prev._y is None or cur._x is None or cur._y is None:
             continue
-        if math.hypot(cur.x - prev.x, cur.y - prev.y) < 1e-9:
+        if math.hypot(cur._x - prev._x, cur._y - prev._y) < 1e-9:
             raise ValueError(
                 f"polyline() vertices {prev.id!r} and {cur.id!r} are coincident "
                 "consecutive points."
@@ -189,6 +189,15 @@ def walk(from_point: Point, heading: float, distance: float) -> Point:
     x = from_point.x + distance * math.cos(heading)
     y = from_point.y + distance * math.sin(heading)
     return _record_literal_point(builder, x, y)
+
+
+def distance(p: Point, q: Point) -> float:
+    """The straight-line distance between two points — both must have known
+    coordinates (point(x, y) literals, or points derived from them via
+    +, -, *; see Point.x's docstring). Raises the same way p.x/p.y would for
+    a constructed point (point_on()/rotate_point()/etc.)."""
+    p._known(q)
+    return math.hypot(p._x - q._x, p._y - q._y)
 
 
 def segment(p: Point, q: Point) -> Segment:
@@ -302,8 +311,8 @@ def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: 
     off-circle end can be swapped into the rendered anchor position by
     render_util.py's arc_params, corrupting the diagram just as much as an
     off-circle start would."""
-    cx, cy = circle.center.x, circle.center.y
-    px, py = point.x, point.y
+    cx, cy = circle.center._x, circle.center._y
+    px, py = point._x, point._y
     if cx is None or cy is None or px is None or py is None:
         return
     try:
@@ -331,8 +340,8 @@ def _validate_on_ellipse(fn_name: str, ellipse: Ellipse, point: Point, point_rol
     skip policy exactly, but checks the ellipse equation
     ((px-cx)/hr)**2 + ((py-cy)/vr)**2 == 1 within tolerance instead of a
     simple distance check."""
-    cx, cy = ellipse.center.x, ellipse.center.y
-    px, py = point.x, point.y
+    cx, cy = ellipse.center._x, ellipse.center._y
+    px, py = point._x, point._y
     if cx is None or cy is None or px is None or py is None:
         return
     try:
@@ -544,6 +553,20 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
     )
 
 
+def angle(a: Point, o: Point, b: Point) -> AngleRef:
+    """The angle at vertex o, between rays o->a and o->b — use this for any
+    angle that ISN'T a triangle/polygon vertex angle (Triangle.angle_at()/
+    Polygon.angle_at() cover that case): a linear pair at a point on a line,
+    a central angle of a circle (o = the circle's center), the angle between
+    a tangent line and a radius, or the angle at a transversal intersection.
+    Same argument order as Triangle.angle_at()/Polygon.angle_at() — o is the
+    vertex, a and b are the two ray endpoints, not the other way around."""
+    if o.id == a.id or o.id == b.id:
+        raise ValueError(f"angle(): vertex {o.id!r} must be distinct from both a and b")
+    builder = get_builder()
+    return AngleRef(a=a, o=o, b=b, _builder=builder)
+
+
 def mark_angle(ref: AngleRef, group: int | None = None) -> None:
     """Mark an angle arc for rendering, optionally tagged with an equal-angle group."""
     builder = get_builder()
@@ -704,7 +727,9 @@ def perpendicular_bisector(p: Point, q: Point) -> PerpendicularBisectorLine:
     builder._add(PointMidpoint(id=mid_id, p=p.id, q=q.id))
     line_id = builder._fresh_hidden_id("bisector")
     builder._add(LinePerpendicularThrough(id=line_id, through=mid_id, to_line=base_id))
-    return PerpendicularBisectorLine(id=line_id, midpoint=Point(id=mid_id, _builder=builder))
+    return PerpendicularBisectorLine(
+        id=line_id, midpoint=Point(id=mid_id, _builder=builder), line=Line(id=line_id)
+    )
 
 
 def intersection(

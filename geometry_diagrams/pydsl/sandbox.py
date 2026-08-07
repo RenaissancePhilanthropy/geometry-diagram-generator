@@ -27,6 +27,7 @@ tool actually executes in, which works regardless of which thread that is.
 """
 from __future__ import annotations
 
+import math
 import multiprocessing
 import resource
 import subprocess
@@ -111,6 +112,15 @@ def _run_in_subprocess(script: str, timeout_seconds: float, queue: "multiprocess
             additional_authorized_imports=[], timeout_seconds=timeout_seconds
         )
         executor.send_tools(tools)
+        # `math` is already in smolagents' BASE_BUILTIN_MODULES (import math
+        # works today regardless of additional_authorized_imports), but a
+        # weaker model reading the system prompt's "no imports" line has no
+        # way to know that and never tries. Pre-inject it directly so
+        # math.pi/math.sqrt/etc. work with zero import statement at all —
+        # `import math` remains equally valid (rebinds the same module
+        # object, a harmless no-op) for a model that ignores the prompt and
+        # imports it anyway.
+        executor.send_variables({"math": math})
         executor(script)
         diagram_ir = builder.build()
         queue.put(("ok", diagram_ir.model_dump()))

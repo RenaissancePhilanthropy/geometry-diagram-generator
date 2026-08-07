@@ -26,7 +26,7 @@ def _record_literal_point(builder: "object", x: float, y: float) -> "Point":
     pid = builder._fresh_hidden_id("pt")
     builder._add(PointFixed(id=pid, x=x, y=y))
     builder._coord_floats[pid] = (float(x), float(y))
-    return Point(id=pid, _builder=builder, x=float(x), y=float(y))
+    return Point(id=pid, _builder=builder, _x=float(x), _y=float(y))
 
 
 @dataclass(frozen=True)
@@ -37,15 +37,18 @@ class Point:
     # Known only for point(x, y) literals (and points derived from them via
     # arithmetic) — never for constructed points (point_on, rotate_point,
     # dilate_point, reflect_point, ...), whose coordinates aren't resolved
-    # until later via SymPy. None here, not a wrong guess, is the honest
-    # answer for those; arithmetic on them raises rather than silently
-    # producing a bogus result.
-    x: float | None = None
-    y: float | None = None
+    # until later via SymPy. Private: the public x/y properties below raise a
+    # clear error on access instead of silently handing back None — a model
+    # reading `G.x` directly (not through +/-/*) used to get a bare None,
+    # then a contextless TypeError from whatever it did next. Internal code
+    # that needs to check "is this known yet, skip if not" (validation
+    # guards, coincidence checks) reads these private fields directly.
+    _x: float | None = None
+    _y: float | None = None
 
     def _known(self, other: "Point | None" = None) -> None:
         for pt in (self, other):
-            if pt is not None and (pt.x is None or pt.y is None):
+            if pt is not None and (pt._x is None or pt._y is None):
                 raise ValueError(
                     f"Point {pt.id!r} has no known coordinates (only point(x, y) "
                     "literals — and points derived from them via +, -, * — carry "
@@ -56,17 +59,33 @@ class Point:
                     "arithmetic when either point's coordinates aren't known."
                 )
 
+    @property
+    def x(self) -> float:
+        """The x-coordinate. Raises for a constructed point (point_on()/
+        rotate_point()/dilate_point()/reflect_point()/etc.) whose position
+        isn't resolved until later — only point(x, y) literals (and points
+        derived from them via +, -, *) have a known x/y at script time."""
+        self._known()
+        return self._x
+
+    @property
+    def y(self) -> float:
+        """The y-coordinate. Same contract as x — raises for a constructed
+        point whose position isn't resolved until later."""
+        self._known()
+        return self._y
+
     def __add__(self, other: "Point") -> "Point":
         self._known(other)
-        return _record_literal_point(self._builder, self.x + other.x, self.y + other.y)
+        return _record_literal_point(self._builder, self._x + other._x, self._y + other._y)
 
     def __sub__(self, other: "Point") -> "Point":
         self._known(other)
-        return _record_literal_point(self._builder, self.x - other.x, self.y - other.y)
+        return _record_literal_point(self._builder, self._x - other._x, self._y - other._y)
 
     def __mul__(self, scalar: float) -> "Point":
         self._known()
-        return _record_literal_point(self._builder, self.x * scalar, self.y * scalar)
+        return _record_literal_point(self._builder, self._x * scalar, self._y * scalar)
 
     __rmul__ = __mul__
 
@@ -246,3 +265,4 @@ class Altitude:
 class PerpendicularBisectorLine:
     id: str
     midpoint: Point
+    line: Line

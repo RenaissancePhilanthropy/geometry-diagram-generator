@@ -18,6 +18,36 @@ t = triangle(a, b, c)
     assert any(d.kind == "triangle" for d in result.diagram_ir.define)
 
 
+def test_math_is_usable_with_no_import():
+    """math is pre-injected into the sandbox namespace — a script can use
+    math.pi/math.sqrt/etc. with no import statement, which matters since the
+    system prompt tells the model "no imports" and a weaker model won't try
+    importing math even though it's actually always allowed."""
+    script = """
+a = point(0, 0)
+b = walk(a, math.pi / 2, 4.0)
+t = triangle(a, b, point(1, 0))
+"""
+    result = run_script(script)
+    assert result.error is None
+    assert result.diagram_ir is not None
+
+
+def test_explicit_import_math_still_works():
+    """import math must remain equally valid for a model that ignores the
+    "no imports" framing and writes it explicitly — re-binding an
+    already-injected module is a harmless no-op."""
+    script = """
+import math
+a = point(0, 0)
+b = walk(a, math.pi / 2, 4.0)
+t = triangle(a, b, point(1, 0))
+"""
+    result = run_script(script)
+    assert result.error is None
+    assert result.diagram_ir is not None
+
+
 def test_disallowed_import_is_rejected():
     result = run_script("import os\nos.system('echo hi')")
     assert result.diagram_ir is None

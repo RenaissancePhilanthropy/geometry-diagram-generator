@@ -46,13 +46,27 @@ def generate_stub() -> str:
                         continue  # e.g. Triangle/Polygon's internal _builder reference
                     type_name = getattr(field.type, "__name__", str(field.type))
                     lines.append(f"    {field.name}: {type_name}")
-            # Computed accessors exposed as properties (e.g. Circle.radius)
-            # are just as much a part of the handle surface as dataclass
-            # fields — the model must see these too.
+            # Computed accessors exposed as properties (e.g. Circle.radius,
+            # Point.x/.y) are just as much a part of the handle surface as
+            # dataclass fields — the model must see these too, with their
+            # return type and docstring, not a bare "name: property" (which
+            # would silently drop e.g. Point.x's "raises for a constructed
+            # point" contract — exactly the behavior a model needs to know
+            # about to use it correctly).
             for prop_name, prop in inspect.getmembers(obj, predicate=lambda m: isinstance(m, property)):
                 if prop_name.startswith("_"):
                     continue
-                lines.append(f"    {prop_name}: property")
+                getter = prop.fget
+                try:
+                    return_type = inspect.signature(getter).return_annotation
+                    type_name = "" if return_type is inspect.Signature.empty else \
+                        getattr(return_type, "__name__", str(return_type))
+                except (TypeError, ValueError):
+                    type_name = ""
+                doc = inspect.getdoc(getter) or ""
+                first_line = doc.splitlines()[0] if doc else ""
+                line = f"    {prop_name}: {type_name}" if type_name else f"    {prop_name}: property"
+                lines.append(f"{line}  # {first_line}" if first_line else line)
             for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
                 if method_name.startswith("_"):
                     continue

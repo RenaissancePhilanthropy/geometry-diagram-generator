@@ -110,6 +110,18 @@ def test_perpendicular_bisector_midpoint_accessor():
     assert mid_defs[0].q == q.id
 
 
+def test_perpendicular_bisector_line_accessor():
+    """PerpendicularBisectorLine.line — mirrors Altitude.line, which already
+    exposes its own underlying line the same way. A model reasonably
+    generalizing from Altitude.line to draw()/reference the bisector as a
+    Line (e.g. `draw(pb.line)`) previously hit an AttributeError; `.id` and
+    `.line.id` must refer to the same underlying line_perp_through def."""
+    with new_builder_context():
+        p, q = point(0, 0), point(4, 0)
+        result = perpendicular_bisector(p, q)
+    assert result.line.id == result.id
+
+
 def test_perpendicular_bisector_does_not_auto_draw():
     """Non-goal regression guard: unlike the DSL's PerpendicularBisectorOp,
     pydsl's perpendicular_bisector() must not auto-draw a base segment."""
