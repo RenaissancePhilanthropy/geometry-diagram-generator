@@ -8,7 +8,61 @@ accessor pattern that replaces the DSL's string-id threading.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+# Escape letters Python's own string-literal parser recognizes for control
+# characters that are never legitimate inside label text (unlike \n/\r/\t,
+# which could plausibly be real whitespace) — mapping from the resulting
+# control byte back to the letter that produced it.
+_CONTROL_CHAR_TO_ESCAPE_LETTER = {
+    "\a": "a",  # BEL, 0x07
+    "\b": "b",  # BS,  0x08
+    "\f": "f",  # FF,  0x0C
+    "\v": "v",  # VT,  0x0B
+}
+_CONTROL_CHAR_RE = re.compile("[" + "".join(_CONTROL_CHAR_TO_ESCAPE_LETTER) + "]" + r"[A-Za-z]*")
+
+
+def _sanitize_label_text(text: str, fn_name: str) -> str:
+    """Recover from a classic Python-string-escaping trap: a script that
+    writes a LaTeX-style command like "\\angle ABD" in a normal (non-raw)
+    Python string literal has its backslash silently consumed by Python's
+    own parser as an escape sequence before this code ever sees the text —
+    "\\angle" (backslash + "a" + "ngle") becomes a literal BEL control
+    character followed by "ngle". Left alone, that control character makes
+    it all the way into the rendered SVG, which then fails "not valid XML"
+    with no indication of the actual cause (confirmed 2026-08-07, >50% of
+    google.gemma-4-31b's curriculum-eval failures traced to exactly this).
+
+    If putting the control character's escape letter back reconstructs a
+    known LaTeX macro name (checked against geometry_diagrams.ir.to_svg's
+    own _LATEX_UNICODE table — the same substitution to_svg.py would have
+    made had the model wrapped it in $...$), silently repair it to the
+    correct Unicode symbol. Otherwise raise a clear error rather than let a
+    mystery control character reach the renderer."""
+    from geometry_diagrams.ir.to_svg import _LATEX_UNICODE
+
+    def _replace(match: "re.Match") -> str:
+        raw = match.group(0)
+        letter = _CONTROL_CHAR_TO_ESCAPE_LETTER[raw[0]]
+        macro = letter + raw[1:]
+        symbol = _LATEX_UNICODE.get(macro)
+        if symbol is not None:
+            return symbol
+        raise ValueError(
+            f"{fn_name}(): text contains a non-printable control character "
+            f"(byte {ord(raw[0]):#04x}) where '\\{macro}' appears to have "
+            "been intended — Python's string-literal parser silently "
+            "consumes an unescaped backslash before a recognized escape "
+            "letter (\\a, \\b, \\f, \\v, ...), corrupting a LaTeX-style "
+            "command before this code ever sees it. Use the Unicode symbol "
+            "directly instead (e.g. ∠, ⊥, ∥, °, √, ≤, ≥, →, α, θ, π) rather "
+            f"than a LaTeX command, or escape the backslash as '\\\\{macro}' "
+            "if you need the literal command text to appear as-is."
+        )
+
+    return _CONTROL_CHAR_RE.sub(_replace, text)
 
 
 def _record_literal_point(builder: "object", x: float, y: float) -> "Point":
@@ -90,9 +144,14 @@ class Point:
     __rmul__ = __mul__
 
     def label(self, text: str, pos: str = "auto", show_coords: bool = False) -> None:
-        """Label this point with text, e.g. p.label("A")."""
+        """pos must be exactly "auto", "above", "below", "left", "right", "above left", "above right", "below left", or "below right" — e.g. p.label("A").
+
+        No other spelling is accepted: not "top"/"bottom"/"upper"/"center",
+        not a hyphenated form ("above-left"), not a compass abbreviation
+        ("nw"/"sw")."""
         from geometry_diagrams.ir.ir import LabelPoint
 
+        text = _sanitize_label_text(text, "label")
         self._builder._add_render(
             LabelPoint(p=self.id, text=text, pos=pos, show_coords=show_coords)
         )
@@ -127,6 +186,7 @@ class Segment:
         """Label this segment with text, e.g. seg.label("r")."""
         from geometry_diagrams.ir.ir import LabelSegment
 
+        text = _sanitize_label_text(text, "label")
         self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
@@ -240,6 +300,7 @@ class AngleRef:
         """Label this angle with text, e.g. ref.label("theta")."""
         from geometry_diagrams.ir.ir import AnglePoints, LabelAngle
 
+        text = _sanitize_label_text(text, "label")
         self._builder._add_render(LabelAngle(
             angle=AnglePoints(a=self.a.id, o=self.o.id, b=self.b.id),
             text=text, pos=pos,

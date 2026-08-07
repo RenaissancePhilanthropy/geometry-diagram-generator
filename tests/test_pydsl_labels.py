@@ -147,6 +147,68 @@ def test_label_text_neither_at_nor_centroid_of_raises_without_a_builder():
         label_text("h")
 
 
+def test_point_label_autofixes_python_escaped_latex_command():
+    # A script author writing "\angle ABD" in a normal (non-raw) string
+    # literal has Python's own parser consume the backslash as an escape
+    # before this code ever runs — "\a" becomes BEL (0x07) — so the text
+    # this function actually receives is "\x07ngle ABD".
+    with new_builder_context() as builder:
+        p = point(1, 2)
+        p.label("\angle ABD")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelPoint) and r.p == p.id]
+    assert matches[0].text == "∠ ABD"
+
+
+def test_point_label_rejects_unrecognizable_control_character():
+    with new_builder_context():
+        p = point(1, 2)
+        with pytest.raises(ValueError, match="non-printable control character"):
+            p.label("\bogus")
+
+
+def test_point_label_leaves_clean_text_unchanged():
+    with new_builder_context() as builder:
+        p = point(1, 2)
+        p.label("∠ ABD")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelPoint) and r.p == p.id]
+    assert matches[0].text == "∠ ABD"
+
+
+def test_segment_label_autofixes_python_escaped_latex_command():
+    # \b is a real Python escape (backspace, 0x08) — same corruption
+    # mechanism as \a, applied to a macro starting with "b".
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        s = segment(a, b)
+        s.label("\beta")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == s.id]
+    assert matches[0].text == "β"
+
+
+def test_angle_ref_label_autofixes_python_escaped_latex_command():
+    # \v is a real Python escape (vertical tab, 0x0B) — same corruption
+    # mechanism as \a, applied to a macro starting with "v".
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        ref = t.angle_at(b)
+        ref.label("\varepsilon")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelAngle) and r.angle.o == b.id]
+    assert matches[0].text == "ε"
+
+
+def test_label_text_autofixes_python_escaped_latex_command():
+    with new_builder_context() as builder:
+        label_text("\angle", at=(1.0, 2.0))
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert matches[0].text == "∠"
+
+
 def test_labels_and_segment_work_through_the_real_sandbox():
     script = (
         "a = point(0, 0)\n"

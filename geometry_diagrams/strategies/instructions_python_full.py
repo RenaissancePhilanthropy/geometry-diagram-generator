@@ -63,7 +63,11 @@ works if you prefer to write it explicitly, but it isn't required.
   to name it or mark a length/angle — e.g. `p.label("A")`,
   `segment(center, edge).label("r")`, `t.angle_at(b).label("θ")`. Use
   `label_text(text, at=(x, y))` or `label_text(text, centroid_of=shape)` for
-  free-standing text not tied to one specific object.
+  free-standing text not tied to one specific object. In label text, write
+  math symbols as literal Unicode characters (∠, ⊥, ∥, °, √, ≤, ≥, →, α, θ,
+  π, ...), not LaTeX-style backslash commands (`\angle`, `\perp`) — a
+  backslash followed by a letter is a Python string escape, so
+  `"\angle ABD"` does not mean what it looks like.
 - Call `canvas(x_range=(xmin, xmax), y_range=(ymin, ymax), grid=True)` if the
   request needs a coordinate grid or axes — do NOT hand-draw a grid out of
   individual `segment()`/`line_through()` calls, since those would render in
