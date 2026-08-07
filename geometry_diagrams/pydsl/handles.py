@@ -14,52 +14,79 @@ from dataclasses import dataclass, field
 # Escape letters Python's own string-literal parser recognizes for control
 # characters that are never legitimate inside label text (unlike \n/\r/\t,
 # which could plausibly be real whitespace) — mapping from the resulting
-# control byte back to the letter that produced it.
+# control byte back to the letter that produced it. Used only to attempt
+# reconstruction of a corrupted LaTeX macro name; see _UNSAFE_CONTROL_CHARS
+# below for the full set of bytes this function rejects.
 _CONTROL_CHAR_TO_ESCAPE_LETTER = {
     "\a": "a",  # BEL, 0x07
     "\b": "b",  # BS,  0x08
     "\f": "f",  # FF,  0x0C
     "\v": "v",  # VT,  0x0B
 }
-_CONTROL_CHAR_RE = re.compile("[" + "".join(_CONTROL_CHAR_TO_ESCAPE_LETTER) + "]" + r"[A-Za-z]*")
+
+# The full set of bytes this function treats as illegitimate in label text.
+# Broader than _CONTROL_CHAR_TO_ESCAPE_LETTER: empirically (2026-08-07,
+# replaying google.gemma-4-31b's curriculum-eval failure scripts), most
+# control bytes reaching this code are NOT the four Python-escape letters —
+# they're raw control bytes (0x01, 0x02, 0x03, 0x0f, 0x1a, 0x1b, 0x1d, ...)
+# the model emitted directly, apparently mangled attempts at a degree sign
+# or ANSI styling, with no backslash-letter to reconstruct. \t/\n/\r are
+# excluded since they could plausibly be real whitespace.
+_UNSAFE_CONTROL_CHARS = "".join(
+    chr(c) for c in range(0x20) if chr(c) not in "\t\n\r"
+) + "\x7f"
+_CONTROL_CHAR_RE = re.compile("[" + re.escape(_UNSAFE_CONTROL_CHARS) + "]" + r"[A-Za-z]*")
 
 
 def _sanitize_label_text(text: str, fn_name: str) -> str:
-    """Recover from a classic Python-string-escaping trap: a script that
-    writes a LaTeX-style command like "\\angle ABD" in a normal (non-raw)
-    Python string literal has its backslash silently consumed by Python's
-    own parser as an escape sequence before this code ever sees the text —
-    "\\angle" (backslash + "a" + "ngle") becomes a literal BEL control
-    character followed by "ngle". Left alone, that control character makes
-    it all the way into the rendered SVG, which then fails "not valid XML"
-    with no indication of the actual cause (confirmed 2026-08-07, >50% of
-    google.gemma-4-31b's curriculum-eval failures traced to exactly this).
+    """Reject (or, where possible, repair) non-printable control bytes in
+    label text before they reach the renderer, where they produce a bare
+    "SVG is not valid XML" failure with no indication of the actual cause.
 
-    If putting the control character's escape letter back reconstructs a
-    known LaTeX macro name (checked against geometry_diagrams.ir.to_svg's
-    own _LATEX_UNICODE table — the same substitution to_svg.py would have
-    made had the model wrapped it in $...$), silently repair it to the
-    correct Unicode symbol. Otherwise raise a clear error rather than let a
+    Two distinct corruption sources produce these bytes, both confirmed via
+    real eval failures: (1) a script that writes a LaTeX-style command like
+    "\\angle ABD" in a normal (non-raw) Python string literal has the
+    backslash silently consumed by Python's own parser as an escape
+    sequence before this code ever sees the text — "\\angle" (backslash +
+    "a" + "ngle") becomes a literal BEL control character followed by
+    "ngle". (2) some models emit an arbitrary raw control byte directly
+    (not from a recognized Python escape letter), with no reconstructible
+    macro name at all.
+
+    For (1), putting the control character's escape letter back and
+    matching the result against geometry_diagrams.ir.to_svg's own
+    _LATEX_UNICODE table (the same substitution to_svg.py would have made
+    had the model wrapped it in $...$) silently repairs it to the correct
+    Unicode symbol. Everything else raises a clear error rather than let a
     mystery control character reach the renderer."""
     from geometry_diagrams.ir.to_svg import _LATEX_UNICODE
 
     def _replace(match: "re.Match") -> str:
         raw = match.group(0)
-        letter = _CONTROL_CHAR_TO_ESCAPE_LETTER[raw[0]]
-        macro = letter + raw[1:]
-        symbol = _LATEX_UNICODE.get(macro)
-        if symbol is not None:
-            return symbol
+        letter = _CONTROL_CHAR_TO_ESCAPE_LETTER.get(raw[0])
+        if letter is not None:
+            macro = letter + raw[1:]
+            symbol = _LATEX_UNICODE.get(macro)
+            if symbol is not None:
+                return symbol
+            hint = (
+                "Python's string-literal parser silently consumes an "
+                "unescaped backslash before a recognized escape letter "
+                "(\\a, \\b, \\f, \\v, ...), corrupting a LaTeX-style "
+                f"command before this code ever sees it — did you mean "
+                f"'\\{macro}'? Escape the backslash as '\\\\{macro}' if so."
+            )
+        else:
+            hint = (
+                "this isn't a Python string-escape letter, so no LaTeX "
+                "command can be reconstructed from it — remove it or "
+                "replace it with the symbol you intended."
+            )
         raise ValueError(
             f"{fn_name}(): text contains a non-printable control character "
-            f"(byte {ord(raw[0]):#04x}) where '\\{macro}' appears to have "
-            "been intended — Python's string-literal parser silently "
-            "consumes an unescaped backslash before a recognized escape "
-            "letter (\\a, \\b, \\f, \\v, ...), corrupting a LaTeX-style "
-            "command before this code ever sees it. Use the Unicode symbol "
-            "directly instead (e.g. ∠, ⊥, ∥, °, √, ≤, ≥, →, α, θ, π) rather "
-            f"than a LaTeX command, or escape the backslash as '\\\\{macro}' "
-            "if you need the literal command text to appear as-is."
+            f"(byte {ord(raw[0]):#04x}). {hint} Use the Unicode symbol "
+            "directly instead of a LaTeX command (e.g. ∠, ⊥, ∥, °, √, ≤, "
+            "≥, →, α, θ, π)."
         )
 
     return _CONTROL_CHAR_RE.sub(_replace, text)
