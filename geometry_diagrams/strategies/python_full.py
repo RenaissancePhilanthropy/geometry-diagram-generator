@@ -10,7 +10,10 @@ from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .llm import get_chat_model, is_gemini_model, extract_usage, make_system_message
+from .llm import (
+    get_chat_model, is_gemini_model, requires_raw_text_generation,
+    requires_forced_function_calling, extract_usage, extract_cost, make_system_message,
+)
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
 from ..ir.errors import IRCompileError
@@ -47,6 +50,24 @@ def _extract_script_from_raw_text(text: "str | None") -> "str | None":
     return text.strip()
 
 
+def _unescape_literal_newlines(script: "str | None") -> "str | None":
+    """Some models (observed: nvidia.nemotron-super-3-120b via Bedrock Mantle)
+    intermittently emit every line break in their script field as a literal
+    two-character "\\n" sequence instead of an actual newline, collapsing the
+    whole script onto one line that fails to parse with "unexpected character
+    after line continuation character". Verified against a corpus of 485 such
+    failures from a 2026-08-06 curriculum run: 434/485 (89.5%) become valid,
+    compilable Python after this exact substitution; the rest were separately
+    truncated outputs (cut off mid-statement) that this doesn't and shouldn't
+    touch. Gated on "zero real newlines AND at least one literal \\n" so this
+    is a no-op on any already-well-formed script."""
+    if script is None:
+        return None
+    if "\n" not in script and "\\n" in script:
+        return script.replace("\\n", "\n")
+    return script
+
+
 @dataclass
 class PythonFullAttemptTrace:
     attempt: int
@@ -70,6 +91,7 @@ class PythonFullPipelineState(TypedDict):
     result: Optional[StructuredRunResult]
     input_tokens: int
     output_tokens: int
+    cost_usd: float
     renderer: Optional[Any]
     metadata: PythonFullMetadata
 
@@ -88,30 +110,24 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
 
     from langchain_core.messages import HumanMessage
     messages = [
-        make_system_message(build_python_full_instructions(), enable_cache=enable_cache),
+        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=prompt),
     ]
 
     try:
         llm = get_chat_model(model_id, enable_cache=enable_cache)
-        if is_gemini_model(model_id):
-            structured = llm.with_structured_output(PydslScriptOutput, method="json_mode", include_raw=True)
-        else:
-            structured = llm.with_structured_output(PydslScriptOutput, include_raw=True)
 
-        response = await structured.ainvoke(messages)
-        raw_msg = response.get("raw")
-        parsed = response.get("parsed")
-        in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
-
-        if parsed is None:
-            # Some models don't honor the structured-output/tool-calling contract and
-            # just write plain or markdown-fenced code instead of JSON — salvage that
-            # rather than treating it as an unrecoverable parse failure.
-            raw_content = getattr(raw_msg, "content", None) if raw_msg else None
-            if not isinstance(raw_content, str):
-                raw_content = None
-            salvaged = _extract_script_from_raw_text(raw_content)
+        if requires_raw_text_generation(model_id):
+            # This provider rejects both with_structured_output methods this
+            # pipeline supports (see llm.py's _RAW_TEXT_ONLY_MODELS) — skip
+            # structured output entirely and salvage from plain text, the
+            # ONLY viable path here, not a fallback used only on parse failure.
+            raw_msg = await llm.ainvoke(messages)
+            in_tok, out_tok = extract_usage(raw_msg)
+            cost = extract_cost(raw_msg)
+            cost_usd = state["cost_usd"] + (cost or 0.0)
+            raw_content = raw_msg.content if isinstance(raw_msg.content, str) else None
+            salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(raw_content))
             if salvaged is not None:
                 metadata.attempt_traces.append(PythonFullAttemptTrace(
                     attempt=attempt + 1, script=salvaged, error=None, stage="generation",
@@ -121,6 +137,61 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
                     "last_error": "",
                     "input_tokens": state["input_tokens"] + in_tok,
                     "output_tokens": state["output_tokens"] + out_tok,
+                    "cost_usd": cost_usd,
+                }
+            error_text = "No usable script in raw-text response"
+            metadata.attempt_traces.append(PythonFullAttemptTrace(
+                attempt=attempt + 1, script=None, error=error_text, stage="generation",
+            ))
+            return {
+                "script": None,
+                "last_error": error_text,
+                "attempt": attempt + 1,
+                "input_tokens": state["input_tokens"] + in_tok,
+                "output_tokens": state["output_tokens"] + out_tok,
+                "cost_usd": cost_usd,
+            }
+
+        if is_gemini_model(model_id):
+            structured = llm.with_structured_output(PydslScriptOutput, method="json_mode", include_raw=True)
+        elif requires_forced_function_calling(model_id):
+            # Only for models confirmed to need it (see llm.py's
+            # _FORCED_FUNCTION_CALLING_MODELS) — do NOT force this by default
+            # for every model. Forcing it universally regressed
+            # mantle-oa:google.gemma-4-31b from 84% to 57% pass rate
+            # (2026-08-07): auto-detection is what most models, including
+            # gemma, actually need; qwen3.7-flash is the confirmed exception.
+            structured = llm.with_structured_output(
+                PydslScriptOutput, method="function_calling", include_raw=True
+            )
+        else:
+            structured = llm.with_structured_output(PydslScriptOutput, include_raw=True)
+
+        response = await structured.ainvoke(messages)
+        raw_msg = response.get("raw")
+        parsed = response.get("parsed")
+        in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+        cost = extract_cost(raw_msg) if raw_msg else None
+        cost_usd = state["cost_usd"] + (cost or 0.0)
+
+        if parsed is None:
+            # Some models don't honor the structured-output/tool-calling contract and
+            # just write plain or markdown-fenced code instead of JSON — salvage that
+            # rather than treating it as an unrecoverable parse failure.
+            raw_content = getattr(raw_msg, "content", None) if raw_msg else None
+            if not isinstance(raw_content, str):
+                raw_content = None
+            salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(raw_content))
+            if salvaged is not None:
+                metadata.attempt_traces.append(PythonFullAttemptTrace(
+                    attempt=attempt + 1, script=salvaged, error=None, stage="generation",
+                ))
+                return {
+                    "script": salvaged,
+                    "last_error": "",
+                    "input_tokens": state["input_tokens"] + in_tok,
+                    "output_tokens": state["output_tokens"] + out_tok,
+                    "cost_usd": cost_usd,
                 }
 
             parsing_error = response.get("parsing_error") or "Failed to parse script output"
@@ -133,16 +204,19 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
                 "attempt": attempt + 1,
                 "input_tokens": state["input_tokens"] + in_tok,
                 "output_tokens": state["output_tokens"] + out_tok,
+                "cost_usd": cost_usd,
             }
 
+        fixed_script = _unescape_literal_newlines(parsed.script)
         metadata.attempt_traces.append(PythonFullAttemptTrace(
-            attempt=attempt + 1, script=parsed.script, error=None, stage="generation",
+            attempt=attempt + 1, script=fixed_script, error=None, stage="generation",
         ))
         return {
-            "script": parsed.script,
+            "script": fixed_script,
             "last_error": "",
             "input_tokens": state["input_tokens"] + in_tok,
             "output_tokens": state["output_tokens"] + out_tok,
+            "cost_usd": cost_usd,
         }
     except Exception as exc:
         # For some models, with_structured_output doesn't gracefully return
@@ -156,7 +230,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             for err in exc.errors():
                 candidate = err.get("input")
                 if isinstance(candidate, str):
-                    salvaged = _extract_script_from_raw_text(candidate)
+                    salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(candidate))
                     if salvaged is not None:
                         break
         if salvaged is not None:
@@ -258,6 +332,7 @@ class PythonFullStrategy(SubstanceStrategy):
     _partial_python_full_metadata: "PythonFullMetadata | None" = None
     _partial_input_tokens: int = 0
     _partial_output_tokens: int = 0
+    _partial_cost_usd: "float | None" = None
 
     async def run(
         self,
@@ -276,6 +351,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "result": None,
             "input_tokens": 0,
             "output_tokens": 0,
+            "cost_usd": 0.0,
             "renderer": renderer,
             "metadata": PythonFullMetadata(),
         }
@@ -285,6 +361,10 @@ class PythonFullStrategy(SubstanceStrategy):
         self._partial_python_full_metadata = final_state.get("metadata")
         self._partial_input_tokens = final_state.get("input_tokens", 0)
         self._partial_output_tokens = final_state.get("output_tokens", 0)
+        # cost_usd stays None (not 0.0) when the provider never reported cost
+        # (e.g. Bedrock) — 0.0 accumulated tokens-side would misleadingly read
+        # as "confirmed free" rather than "unknown."
+        self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
             raise RuntimeError(
@@ -295,6 +375,7 @@ class PythonFullStrategy(SubstanceStrategy):
         result.python_full_metadata = final_state.get("metadata")
         result.input_tokens = final_state.get("input_tokens", 0)
         result.output_tokens = final_state.get("output_tokens", 0)
+        result.cost_usd = self._partial_cost_usd
         return result
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):

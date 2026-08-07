@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from geometry_diagrams.strategies.python_full import (
     PythonFullStrategy, PydslScriptOutput, MAX_RETRIES, _run_script_node,
-    _extract_script_from_raw_text,
+    _extract_script_from_raw_text, _unescape_literal_newlines,
 )
 from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
 from geometry_diagrams.ir.renderer import SVGRenderer
@@ -62,6 +62,44 @@ def _make_mock_llm(side_effects: list):
     mock_llm = MagicMock()
     mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
     return mock_llm
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_forces_function_calling_for_qwen37flash_only():
+    """Regression test for openrouter:qwen/qwen3.7-flash: letting
+    with_structured_output guess its method silently picked json_mode for a
+    model LangChain didn't recognize as tool-calling-capable, and the
+    provider rejected every single attempt outright. method="function_calling"
+    must be passed explicitly for this specific model (see llm.py's
+    _FORCED_FUNCTION_CALLING_MODELS) — NOT for every model (see the sibling
+    test below)."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        await strategy.run(
+            "a right triangle", model="openrouter:qwen/qwen3.7-flash", renderer=SVGRenderer()
+        )
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
+
+
+async def test_generate_script_node_does_not_force_method_for_other_models():
+    """Regression test for mantle-oa:google.gemma-4-31b: forcing
+    method="function_calling" universally (the original, too-broad fix for
+    qwen3.7-flash above) destabilized gemma-4-31b's tool-calling, regressing
+    its pass rate from 84% to 57% (2026-08-07) — 10 real trials showed
+    unforced auto-detection was reliable (9/10 clean) while forcing produced
+    a degenerate output 4/10 times. Any model other than the confirmed
+    qwen3.7-flash exception must get an unforced with_structured_output call
+    (no "method" kwarg at all), matching pre-regression behavior."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        await strategy.run(
+            "a right triangle", model="mantle-oa:google.gemma-4-31b", renderer=SVGRenderer()
+        )
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert "method" not in kwargs
 
 
 @pytest.mark.asyncio
@@ -289,6 +327,33 @@ def test_extract_script_returns_none_for_empty_text():
     assert _extract_script_from_raw_text("   \n  ") is None
 
 
+# ---------------------------------------------------------------------------
+# Some models (observed: nvidia.nemotron-super-3-120b via Bedrock Mantle)
+# intermittently emit every line break in the script field as a literal
+# two-character "\n" sequence instead of an actual newline, collapsing the
+# whole script onto one unparseable line. _unescape_literal_newlines recovers
+# from this without touching any already-well-formed script.
+# ---------------------------------------------------------------------------
+
+def test_unescape_literal_newlines_fixes_a_fully_double_escaped_script():
+    corrupted = "a = point(0, 0)\\nb = point(4, 0)\\ndraw(a)"
+    assert _unescape_literal_newlines(corrupted) == "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+
+
+def test_unescape_literal_newlines_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _unescape_literal_newlines(fine) == fine
+
+
+def test_unescape_literal_newlines_is_a_noop_when_there_is_no_literal_backslash_n():
+    fine = "a = point(0, 0)"
+    assert _unescape_literal_newlines(fine) == fine
+
+
+def test_unescape_literal_newlines_passes_through_none():
+    assert _unescape_literal_newlines(None) is None
+
+
 def _make_unparsed_response(raw_content: str) -> dict:
     """A with_structured_output(include_raw=True) response where JSON parsing
     failed but the underlying model message still carries usable text."""
@@ -315,6 +380,74 @@ async def test_generate_script_node_salvages_a_script_from_fenced_raw_text_on_pa
     assert isinstance(result, StructuredRunResult)
     assert result.retries == 0
     assert result.python_full_metadata.attempt_traces[0].stage == "success"
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_recovers_a_double_escaped_script_via_structured_output():
+    """The nvidia.nemotron-super-3-120b failure mode: with_structured_output
+    parses cleanly (parsed is not None, unlike the fenced-text fallback above),
+    but the script field itself has every line break as a literal "\n" instead
+    of a real newline. This must succeed via _unescape_literal_newlines rather
+    than fail in the sandbox with a syntax error."""
+    double_escaped = VALID_SCRIPT.strip().replace("\n", "\\n")
+    mock_llm = _make_mock_llm([_make_script_response(double_escaped)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+    assert result.python_full_metadata.attempt_traces[0].stage == "success"
+    assert "\\n" not in result.python_full_metadata.attempt_traces[0].script
+
+
+# ---------------------------------------------------------------------------
+# vercel:meta/muse-spark-1.2-contributor rejects BOTH with_structured_output
+# methods this pipeline supports (forced tool_choice AND json_mode) with a
+# deterministic API-level error — requires_raw_text_generation() routes these
+# models around with_structured_output entirely, calling llm.ainvoke()
+# directly and salvaging from plain content as the ONLY generation path.
+# ---------------------------------------------------------------------------
+
+def _make_raw_ainvoke_mock_llm(content: "str | None") -> MagicMock:
+    raw = MagicMock()
+    raw.response_metadata = {"usage": {"input_tokens": 10, "output_tokens": 20}}
+    raw.usage_metadata = {"input_tokens": 10, "output_tokens": 20}
+    raw.content = content
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=raw)
+    return mock_llm
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_uses_raw_text_path_for_models_requiring_it():
+    """Must call llm.ainvoke() directly and never with_structured_output for
+    a model in llm.py's _RAW_TEXT_ONLY_MODELS."""
+    mock_llm = _make_raw_ainvoke_mock_llm(f"```python\n{VALID_SCRIPT.strip()}\n```")
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="vercel:meta/muse-spark-1.2-contributor", renderer=SVGRenderer()
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+    assert result.python_full_metadata.attempt_traces[0].stage == "success"
+    mock_llm.with_structured_output.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generate_script_node_raw_text_path_fails_cleanly_on_empty_content():
+    """No usable text at all must be a real generation failure, not a silent
+    success with an empty/None script."""
+    mock_llm = _make_raw_ainvoke_mock_llm(None)
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        with pytest.raises(RuntimeError, match="failed after"):
+            await strategy.run(
+                "a right triangle", model="vercel:meta/muse-spark-1.2-contributor", renderer=SVGRenderer()
+            )
+    assert mock_llm.ainvoke.call_count == MAX_RETRIES
 
 
 @pytest.mark.asyncio

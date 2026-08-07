@@ -300,7 +300,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         human_content = user_message
 
     messages = [
-        make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache),
+        make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=human_content),
     ]
 

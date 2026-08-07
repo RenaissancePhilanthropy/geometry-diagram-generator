@@ -128,7 +128,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
 
     from langchain_core.messages import HumanMessage
     messages = [
-        make_system_message(STRUCTURED_STRATEGY_IR_INSTRUCTIONS, enable_cache=enable_cache),
+        make_system_message(STRUCTURED_STRATEGY_IR_INSTRUCTIONS, enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=prompt),
     ]
 
