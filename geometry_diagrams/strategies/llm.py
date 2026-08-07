@@ -67,6 +67,23 @@ _KNOWN_PROVIDERS: dict[str, dict] = {
     },
 }
 
+# NOTE (2026-08-07): mantle-oa:google.gemma-4-31b's serving route corrupts
+# stray label-text characters (degree/pi/superscript symbols) into raw
+# non-printable control bytes (0x01-0x03, 0x0f, 0x1a, 0x1b, 0x1d, ...) with
+# no backslash or escape sequence involved on the model's own output side —
+# confirmed via a 28-scenario replay of curriculum-eval failures, where 26/28
+# produced these bytes on mantle-oa. The identical 28 scenarios run against
+# openrouter:google/gemma-4-31b-it (2 repeats each) came back 56/56 clean —
+# zero corruption. Root cause on Bedrock's side is unconfirmed (plausibly a
+# quantization/decoding artifact specific to that serving stack; OpenRouter's
+# upstream endpoints for this model span fp4/fp8/bf16 so it isn't simply
+# "any quantization causes this" either). Until Bedrock's route is
+# understood or fixed, prefer "openrouter:google/gemma-4-31b-it" over
+# "mantle-oa:google.gemma-4-31b" for this model. The pydsl label-text
+# sanitizer (geometry_diagrams/pydsl/handles.py's _sanitize_label_text)
+# stays in place regardless, as defense-in-depth against whichever host is
+# in use.
+
 
 # Extra default kwargs for a provider reachable only via the generic env-var
 # fallback below, when it needs one small tweak but doesn't warrant a full
