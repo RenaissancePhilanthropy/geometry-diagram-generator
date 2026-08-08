@@ -167,6 +167,14 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     "openrouter:qwen/qwen3.6-27b": {
         "provider": {"sort": "throughput"},
     },
+    # openrouter:qwen/qwen3.6-35b-a3b hit a 25/78 (32%) scenario-timeout
+    # rate on a clean, uncontended curriculum re-run (2026-08-08).
+    # Per-endpoint stats show a 7x throughput spread (19-138 tok/s) and
+    # 5.5x latency spread (p50 299ms CoreWeave to 1631ms SiliconFlow)
+    # across 9 upstream providers. Same fix as gemma-4-31b-it/qwen3.6-27b.
+    "openrouter:qwen/qwen3.6-35b-a3b": {
+        "provider": {"sort": "throughput"},
+    },
     # NOTE: openrouter:kwaipilot/kat-coder-air-v2.5 was checked for the same
     # issue (21/67 = 31% timeout rate, 2026-08-08) but has only ONE upstream
     # provider on OpenRouter (StreamLake, p50 2276ms / p90 9576ms) — no

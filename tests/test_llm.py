@@ -75,7 +75,7 @@ def test_model_specific_extra_body_does_not_leak_gemma_sort_to_other_models(monk
     """The throughput-sort override is scoped to the exact model id."""
     _set_openrouter_env(monkeypatch)
     with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
-        get_chat_model("openrouter:qwen/qwen3.6-35b-a3b")
+        get_chat_model("openrouter:kwaipilot/kat-coder-air-v2.5")
         _, kwargs = mock_chat_openai.call_args
     assert kwargs["extra_body"] == {"usage": {"include": True}}
 
@@ -86,6 +86,19 @@ def test_model_specific_extra_body_sorts_qwen3627b_by_throughput(monkeypatch):
     _set_openrouter_env(monkeypatch)
     with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
         get_chat_model("openrouter:qwen/qwen3.6-27b")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["extra_body"] == {
+        "usage": {"include": True},
+        "provider": {"sort": "throughput"},
+    }
+
+
+def test_model_specific_extra_body_sorts_qwen3635b_by_throughput(monkeypatch):
+    """qwen3.6-35b-a3b hit a 32% scenario-timeout rate even running alone
+    with no concurrent contention — same fix as gemma-4-31b-it."""
+    _set_openrouter_env(monkeypatch)
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openrouter:qwen/qwen3.6-35b-a3b")
         _, kwargs = mock_chat_openai.call_args
     assert kwargs["extra_body"] == {
         "usage": {"include": True},
