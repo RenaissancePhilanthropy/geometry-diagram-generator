@@ -121,18 +121,16 @@ works if you prefer to write it explicitly, but it isn't required.
   not connect the last point back to the first. Useful for tracing a path (e.g. sampling several
   positions of a point as it moves) rather than filling a region; `fill()` on a polyline is a no-op since
   it has no interior.
-- Points from `point(x, y)` — and points derived from them via `+`, `-`, `*` — carry their
-  coordinates back to you as `.x`/`.y` and support direct arithmetic, e.g.
-  `midpoint = a + (b - a) * 0.5` or a dilation `center + (source - center) * ratio`.
-  Prefer this over re-deriving the same coordinates by hand in separate variables — it's
-  exact and self-checking. Use `distance(p, q)` for the distance between two such points
-  rather than computing it by hand. Points from `point_on()`/`rotate_point()`/
-  `dilate_point()`/`reflect_point()`/triangle centers/`intersection()`/etc. do NOT have
-  known coordinates (their position isn't resolved until later) — accessing `.x`/`.y`
-  directly on one of these ALSO raises a clear error, exactly like arithmetic on it does;
-  there is no way to read a number out of one of these points inside the script. Use
-  `rotate_point()`/`dilate_point()`/`reflect_point()` instead when either point involved
-  isn't a literal, or `.label(show_coords=True)` if you just want to display a point's
-  coordinates without needing the numbers yourself.
+- Any point — `point(x, y)` literals, points derived from them via `+`/`-`/`*`, and
+  constructed points from `point_on()`/`rotate_point()`/`dilate_point()`/`reflect_point()`/
+  triangle centers/`intersection()`/etc. alike — exposes `.x`/`.y` and supports direct
+  arithmetic once its position is fully determined by earlier statements, e.g.
+  `midpoint = a + (b - a) * 0.5` or `radius = distance(center, through_point)` where
+  `center` came from `intersection(...)`. Prefer this over re-deriving the same
+  coordinates by hand in separate variables — it's exact and self-checking. Use
+  `distance(p, q)` for the distance between any two such points. `.x`/`.y` only raise if a
+  point's position genuinely can't be determined (a real geometric error upstream), not
+  because the point was constructed rather than a literal. Use `.label(show_coords=True)`
+  if you just want to display a point's coordinates without needing the numbers yourself.
 - The script is plain top-level statements — no function defs required, no return value.
 """
