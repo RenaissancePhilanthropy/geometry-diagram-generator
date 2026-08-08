@@ -125,7 +125,6 @@ def regular_polygon(center: Point, radius: float, n: int, start_angle: float = 0
     start_angle (radians) rotates the first vertex; n must be >= 3."""
     if n < 3:
         raise ValueError(f"regular_polygon() requires n >= 3, got {n}")
-    center._known()
     builder = get_builder()
     pts = []
     for i in range(n):
@@ -150,7 +149,6 @@ def rectangle(
     itself (pivot="corner"). pivot must be "center" or "corner"."""
     if pivot not in ("center", "corner"):
         raise ValueError(f"rectangle(): pivot must be 'center' or 'corner', got {pivot!r}")
-    corner._known()
     builder = get_builder()
     corners = [
         (corner.x, corner.y),
@@ -184,7 +182,6 @@ def walk(from_point: Point, heading: float, distance: float) -> Point:
             h += turn
         poly = polygon(*pts)
     """
-    from_point._known()
     builder = get_builder()
     x = from_point.x + distance * math.cos(heading)
     y = from_point.y + distance * math.sin(heading)
@@ -192,12 +189,9 @@ def walk(from_point: Point, heading: float, distance: float) -> Point:
 
 
 def distance(p: Point, q: Point) -> float:
-    """The straight-line distance between two points — both must have known
-    coordinates (point(x, y) literals, or points derived from them via
-    +, -, *; see Point.x's docstring). Raises the same way p.x/p.y would for
-    a constructed point (point_on()/rotate_point()/etc.)."""
-    p._known(q)
-    return math.hypot(p._x - q._x, p._y - q._y)
+    """The distance between p and q — works for any two points once both
+    positions are determined, not just point(x, y) literals."""
+    return math.hypot(p.x - q.x, p.y - q.y)
 
 
 def segment(p: Point, q: Point) -> Segment:
@@ -251,7 +245,7 @@ def circumcircle(t: Triangle) -> Circle:
             )
         return round((side_a * side_b * side_c) / (4 * area), 10)
 
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius, _from_derived_center=True)
 
 
 def incircle(t: Triangle) -> Circle:
@@ -289,7 +283,7 @@ def incircle(t: Triangle) -> Circle:
             f"/ sqrt((length({b_id},{c_id})+length({a_id},{c_id})+length({a_id},{b_id}))/2)"
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius, _from_derived_center=True)
 
 
 def circle(center: Point, radius: float) -> Circle:
@@ -421,10 +415,12 @@ def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
     regular_polygon() already has on its own center parameter."""
     if n < 2:
         raise ValueError(f"regular_sectors() requires n >= 2, got {n}")
-    circle.center._known()  # raises for circumcircle()/incircle() circles,
-                             # whose center is never a literal coordinate
-    radius = circle.radius  # always a float here: only circle()'s
-                             # literal-radius path can reach this point
+    if circle._from_derived_center:
+        raise ValueError(
+            "regular_sectors(): circle must be a literal circle(), not "
+            "circumcircle()/incircle()"
+        )
+    radius = circle.radius
     builder = get_builder()
     boundary_pts = []
     for i in range(n):

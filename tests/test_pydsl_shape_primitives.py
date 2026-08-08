@@ -81,7 +81,7 @@ def test_regular_polygon_requires_n_at_least_3():
             regular_polygon(center, radius=1.0, n=2)
 
 
-def test_regular_polygon_requires_known_center_coordinates():
+def test_regular_polygon_accepts_a_constructed_center():
     from geometry_diagrams.ir.ir import LineThrough
     from geometry_diagrams.pydsl.api import point_on
     from geometry_diagrams.pydsl.handles import Line
@@ -90,9 +90,11 @@ def test_regular_polygon_requires_known_center_coordinates():
         a, b = point(0, 0), point(4, 0)
         line_id = builder._fresh_hidden_id("line")
         builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
-        unknown_center = point_on(Line(id=line_id), 0.5)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            regular_polygon(unknown_center, radius=1.0, n=4)
+        center = point_on(Line(id=line_id), 0.5)
+        result = regular_polygon(center, radius=1.0, n=4)
+    assert len(result.vertices) == 4
+    for v in result.vertices:
+        assert v.x == pytest.approx(v.x)  # resolves without raising
 
 
 from geometry_diagrams.pydsl.api import rectangle
@@ -155,7 +157,7 @@ def test_walk_builds_closed_square_matching_hand_computed_vertices():
         assert v.y == pytest.approx(ey, abs=1e-9)
 
 
-def test_walk_requires_known_from_point_coordinates():
+def test_walk_accepts_a_constructed_from_point():
     from geometry_diagrams.ir.ir import LineThrough
     from geometry_diagrams.pydsl.api import point_on
     from geometry_diagrams.pydsl.handles import Line
@@ -164,9 +166,9 @@ def test_walk_requires_known_from_point_coordinates():
         a, b = point(0, 0), point(4, 0)
         line_id = builder._fresh_hidden_id("line")
         builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
-        unknown = point_on(Line(id=line_id), 0.5)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            walk(unknown, 0.0, 1.0)
+        start = point_on(Line(id=line_id), 0.5)  # (2, 0)
+        result = walk(start, 0.0, 1.0)
+    assert (result.x, result.y) == pytest.approx((3.0, 0.0))
 
 
 def test_walk_works_through_the_real_sandbox():

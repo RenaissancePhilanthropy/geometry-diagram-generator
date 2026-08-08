@@ -115,58 +115,42 @@ class Point:
     id: str
     _builder: "object" = field(repr=False, compare=False)  # type is Builder; avoid a
                                                              # circular import at module load
-    # Known only for point(x, y) literals (and points derived from them via
-    # arithmetic) — never for constructed points (point_on, rotate_point,
-    # dilate_point, reflect_point, ...), whose coordinates aren't resolved
-    # until later via SymPy. Private: the public x/y properties below raise a
-    # clear error on access instead of silently handing back None — a model
-    # reading `G.x` directly (not through +/-/*) used to get a bare None,
-    # then a contextless TypeError from whatever it did next. Internal code
-    # that needs to check "is this known yet, skip if not" (validation
-    # guards, coincidence checks) reads these private fields directly.
+    # Known directly for point(x, y) literals (and points derived from
+    # them via +, -, *) — set at construction time. For every other
+    # constructed point (point_on(), rotate_point(), intersection(),
+    # etc.), _x/_y stay None and the public x/y properties below resolve
+    # them on demand via the builder (see Builder._resolve_point), so
+    # every point works the same way from the script's point of view.
     _x: float | None = None
     _y: float | None = None
 
-    def _known(self, other: "Point | None" = None) -> None:
-        for pt in (self, other):
-            if pt is not None and (pt._x is None or pt._y is None):
-                raise ValueError(
-                    f"Point {pt.id!r} has no known coordinates (only point(x, y) "
-                    "literals — and points derived from them via +, -, * — carry "
-                    "coordinates back to the script; a point from point_on()/"
-                    "rotate_point()/dilate_point()/reflect_point()/etc. does not, "
-                    "since its position isn't resolved until later). Use "
-                    "dilate_point()/rotate_point()/reflect_point() instead of "
-                    "arithmetic when either point's coordinates aren't known."
-                )
-
     @property
     def x(self) -> float:
-        """The x-coordinate. Raises for a constructed point (point_on()/
-        rotate_point()/dilate_point()/reflect_point()/etc.) whose position
-        isn't resolved until later — only point(x, y) literals (and points
-        derived from them via +, -, *) have a known x/y at script time."""
-        self._known()
-        return self._x
+        """The x-coordinate. Available for any point once its position is
+        fully determined by earlier script statements — point(x, y)
+        literals, arithmetic derived from them, and constructed points
+        (point_on(), rotate_point(), intersection(), etc.) alike. Raises
+        only if the position genuinely can't be determined (e.g. a real
+        geometric error in an earlier construction)."""
+        if self._x is not None:
+            return self._x
+        return self._builder._resolve_point(self.id)[0]
 
     @property
     def y(self) -> float:
-        """The y-coordinate. Same contract as x — raises for a constructed
-        point whose position isn't resolved until later."""
-        self._known()
-        return self._y
+        """The y-coordinate. Same contract as x."""
+        if self._y is not None:
+            return self._y
+        return self._builder._resolve_point(self.id)[1]
 
     def __add__(self, other: "Point") -> "Point":
-        self._known(other)
-        return _record_literal_point(self._builder, self._x + other._x, self._y + other._y)
+        return _record_literal_point(self._builder, self.x + other.x, self.y + other.y)
 
     def __sub__(self, other: "Point") -> "Point":
-        self._known(other)
-        return _record_literal_point(self._builder, self._x - other._x, self._y - other._y)
+        return _record_literal_point(self._builder, self.x - other.x, self.y - other.y)
 
     def __mul__(self, scalar: float) -> "Point":
-        self._known()
-        return _record_literal_point(self._builder, self._x * scalar, self._y * scalar)
+        return _record_literal_point(self._builder, self.x * scalar, self.y * scalar)
 
     __rmul__ = __mul__
 
@@ -251,6 +235,7 @@ class Circle:
     id: str
     center: Point
     _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+    _from_derived_center: bool = field(default=False, repr=False, compare=False)
 
     @property
     def radius(self) -> "float | str":

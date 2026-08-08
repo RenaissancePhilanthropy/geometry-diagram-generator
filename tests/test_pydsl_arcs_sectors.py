@@ -302,7 +302,7 @@ def test_regular_sectors_rejects_circumcircle_derived_circle():
         a, b, c_pt = point(0.0, 0.0), point(4.0, 0.0), point(2.0, 3.0)
         t = triangle(a, b, c_pt)
         circ = circumcircle(t)
-        with pytest.raises(ValueError, match="no known coordinates"):
+        with pytest.raises(ValueError, match="not circumcircle\\(\\)/incircle\\(\\)"):
             regular_sectors(circ, 4)
 
 

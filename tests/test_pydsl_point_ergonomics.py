@@ -75,54 +75,40 @@ def test_dilation_via_plain_operators_matches_dilate_point():
     assert float(sym[via_operators.id].y) == pytest.approx(float(sym[via_primitive.id].y))
 
 
-def test_arithmetic_on_a_point_with_unknown_coordinates_raises_a_clear_error():
+def test_addition_works_when_one_operand_is_a_constructed_point():
     with new_builder_context():
         a = point(0, 0)
         b = point(4, 0)
         line = line_through(a, b)
-        unknown = point_on(line, 0.5)  # not known at script time
-        with pytest.raises(ValueError, match="no known coordinates"):
-            _ = a + unknown
+        mid = point_on(line, 0.5)
+        result = a + mid
+    assert (result.x, result.y) == pytest.approx((2.0, 0.0))
 
 
-def test_multiplying_a_point_with_unknown_coordinates_raises_a_clear_error():
+def test_multiplying_a_constructed_point_by_a_scalar_works():
     from geometry_diagrams.pydsl.api import rotate_point
 
     with new_builder_context():
         origin = point(0, 0)
         far = point(1, 0)
         rotated = rotate_point(far, origin, math.pi / 4)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            _ = rotated * 2
+        doubled = rotated * 2
+    assert (doubled.x, doubled.y) == pytest.approx((2 * math.cos(math.pi / 4), 2 * math.sin(math.pi / 4)))
 
 
-def test_direct_x_access_on_constructed_point_raises_not_none():
-    """The real eval failure this was found from: a model reading `.x`/`.y`
-    directly (not through +/-/*) on a constructed point used to silently get
-    None back, and whatever it did next (e.g. f-string interpolation, then
-    arithmetic on the result) raised a bare, contextless TypeError instead
-    of this clear error — or, worse, rendered the literal text "None" into
-    the diagram with no error at all."""
+def test_direct_x_and_y_access_on_a_constructed_point_now_resolves():
+    """Historical note: a model reading .x/.y directly (not through
+    +/-/*) on a constructed point used to silently get None back, and
+    whatever it did next raised a bare, contextless TypeError instead of
+    a clear error. This design closed the gap the other way: these now
+    resolve to real numbers instead of needing to raise at all."""
     from geometry_diagrams.pydsl.api import centroid, triangle
 
     with new_builder_context():
         a, b, c = point(0, 0), point(4, 0), point(0, 3)
         t = triangle(a, b, c)
         g = centroid(t)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            _ = g.x
-        with pytest.raises(ValueError, match="no known coordinates"):
-            _ = g.y
-
-
-def test_direct_y_access_on_point_on_raises_not_none():
-    with new_builder_context():
-        a = point(0, 0)
-        b = point(4, 0)
-        line = line_through(a, b)
-        unknown = point_on(line, 0.5)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            _ = unknown.y
+    assert (g.x, g.y) == pytest.approx((4.0 / 3, 1.0))
 
 
 def test_distance_between_two_literal_points():
@@ -134,16 +120,81 @@ def test_distance_between_two_literal_points():
     assert distance(a, b) == pytest.approx(5.0)
 
 
-def test_distance_raises_for_a_point_with_unknown_coordinates():
+def test_distance_works_for_a_constructed_point():
     from geometry_diagrams.pydsl.api import distance
 
     with new_builder_context():
-        a = point(0, 0)
-        b = point(4, 0)
+        a = point(0.0, 0.0)
+        b = point(4.0, 0.0)
         line = line_through(a, b)
-        unknown = point_on(line, 0.5)
-        with pytest.raises(ValueError, match="no known coordinates"):
-            distance(a, unknown)
+        mid = point_on(line, 0.5)
+    assert distance(a, mid) == pytest.approx(2.0)
+
+
+def test_x_and_y_resolve_for_every_constructed_point_kind():
+    """Each of these previously left _x=_y=None permanently."""
+    from geometry_diagrams.pydsl.api import (
+        centroid, dilate_point, foot_of_perpendicular, perpendicular_bisector,
+        reflect_point, rotate_point, triangle,
+    )
+
+    with new_builder_context():
+        a = point(0.0, 0.0)
+        b = point(4.0, 0.0)
+        line = line_through(a, b)
+
+        on_line = point_on(line, 0.5)
+        assert (on_line.x, on_line.y) == pytest.approx((2.0, 0.0))
+
+        rotated = rotate_point(point(1.0, 0.0), a, math.pi / 2)
+        assert (rotated.x, rotated.y) == pytest.approx((0.0, 1.0))
+
+        reflected = reflect_point(point(1.0, 1.0), line)
+        assert (reflected.x, reflected.y) == pytest.approx((1.0, -1.0))
+
+        dilated = dilate_point(b, a, 0.5)
+        assert (dilated.x, dilated.y) == pytest.approx((2.0, 0.0))
+
+        c = point(0.0, 3.0)
+        t = triangle(a, b, c)
+        g = centroid(t)
+        assert (g.x, g.y) == pytest.approx((4.0 / 3, 1.0))
+
+        foot = foot_of_perpendicular(point(2.0, 5.0), line)
+        assert (foot.x, foot.y) == pytest.approx((2.0, 0.0))
+
+        pb = perpendicular_bisector(a, b)
+        assert (pb.midpoint.x, pb.midpoint.y) == pytest.approx((2.0, 0.0))
+
+
+def test_x_and_y_resolve_for_intersection_with_and_without_explicit_pick():
+    from geometry_diagrams.pydsl.api import intersection
+
+    with new_builder_context():
+        a, b = point(0.0, 0.0), point(4.0, 0.0)
+        c, d = point(2.0, -2.0), point(2.0, 2.0)
+        l1 = line_through(a, b)
+        l2 = line_through(c, d)
+        auto = intersection(l1, l2)
+        assert (auto.x, auto.y) == pytest.approx((2.0, 0.0))
+
+        near = intersection(l1, l2, near=point(2.0, 0.0))
+        assert (near.x, near.y) == pytest.approx((2.0, 0.0))
+
+
+def test_triangle_angle_at_vertex_handle_reads_literal_coordinates_from_cache():
+    """Bug fix found during design review: angle_at() re-mints a fresh
+    Point handle for each vertex with no coordinates carried over, even
+    when the underlying point is a plain literal already sitting in
+    builder._coord_floats."""
+    from geometry_diagrams.pydsl.api import triangle
+
+    with new_builder_context():
+        a, b, c = point(0.0, 0.0), point(4.0, 0.0), point(0.0, 3.0)
+        t = triangle(a, b, c)
+        ref = t.angle_at(b)
+    assert (ref.a.x, ref.a.y) in {(0.0, 0.0), (0.0, 3.0)}
+    assert (ref.o.x, ref.o.y) == pytest.approx((4.0, 0.0))
 
 
 def test_point_arithmetic_works_through_the_real_sandbox():
