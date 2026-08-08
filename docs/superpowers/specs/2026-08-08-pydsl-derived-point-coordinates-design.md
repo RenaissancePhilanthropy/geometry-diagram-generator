@@ -137,6 +137,29 @@ used inside `compile_defs()`'s loop — directly, threading through the same
 running `sym` dict a script's own execution builds up. No new geometry
 math; the real compiler is the only thing that ever computes a coordinate.
 
+Two things `compile_defs()`'s own loop does *outside* `_compile_one` that
+`_advance_sym` deliberately does not replicate: registering
+`PolygonExterior`/`PolygonOnEdge` sub-vertices into `sym`, and consuming
+the op-cap counter for synthesized pin defs. The first is safe today
+because pydsl never emits either `DefStmt` kind (`grep` confirms every
+`builder._add` call site) — this is a landmine if pydsl ever grows a
+`polygon_exterior()`-style function; whoever adds one must also teach
+`_advance_sym` the same sub-vertex registration `compile_defs()` does. The
+second is intentional: pinned hidden `PointFixed` defs are internal
+bookkeeping, not model-authored ops, and shouldn't count against a
+script's op cap.
+
+One more accepted edge case: `_advance_sym` resolves against
+`self._canvas or ir_mod.Canvas()` — whatever canvas exists *at the moment
+of first resolution*. If a script queries `.x` on an ambiguous
+intersection before calling `canvas()`, the auto-pick heuristic filters
+against the default ±5 bounds, and that choice gets pinned permanently —
+even if the script's eventual real canvas would have made the *other*
+candidate the in-bounds one. This doesn't break the preview/final
+consistency guarantee (both still agree with each other), but the pinned
+candidate could end up outside the visible canvas. Not fixed by this
+design; flagged here so it isn't mistaken for a bug later.
+
 **2. Pin-on-observe for ambiguous intersections.** Immediately after
 compiling a `PointIntersection` whose `pick` is still `None`, synthesize a
 hidden `PointFixed` at the just-observed coordinates and rewrite the
@@ -193,10 +216,53 @@ def y(self) -> float:
     return self._builder._resolve_point(self.id)[1]
 ```
 
-`_known()` is deleted — nothing needs it once the properties resolve
-correctly on their own. `__add__`/`__sub__`/`__mul__` and `api.py`'s
-`distance()` are simplified to use the public, now-always-correct
-properties instead of the private fields:
+`_known()` has five callers, not just the three inside `Point` itself —
+`grep` finds it also used in `api.py` at `regular_polygon()` (line 128),
+`rectangle()` (153), `walk()` (187), and `regular_sectors()` (424).
+Deleting the method outright breaks all four with `AttributeError`; the
+fix differs per call site:
+
+- `regular_polygon()`, `rectangle()`, `walk()`: each calls `pt._known()`
+  purely as a pre-check immediately before reading `.x`/`.y` on that same
+  point. Once `.x`/`.y` resolve-or-raise correctly on their own, the
+  pre-check is redundant — delete these three call lines outright. This is
+  a genuine improvement: these three now work with constructed points too
+  (e.g. `walk()` from a `point_on()` result), matching this design's Goal.
+- `regular_sectors()` is different: its `_known()` call on `circle.center`
+  is not a coordinate pre-check, it's the enforcement of a *documented*
+  restriction — the docstring states "circle must be a literal `circle()`
+  (not `circumcircle()`/`incircle()`)" — because the line right after it,
+  `radius = circle.radius`, relies on radius being a plain float; only
+  `circle()`'s literal-radius path guarantees that. `circumcircle()`/
+  `incircle()`'s `.radius` is a thunk that can raise `NotImplementedError`
+  or return a symbolic string. Once derived points resolve on demand, a
+  `circumcircle()`'s center stops being what makes this check fire, so
+  checking `circle.center._known()` no longer enforces the intended
+  restriction — replace it with a direct check on `radius` itself:
+
+  ```python
+  def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
+      if n < 2:
+          raise ValueError(f"regular_sectors() requires n >= 2, got {n}")
+      try:
+          radius = circle.radius
+      except NotImplementedError as exc:
+          raise ValueError(
+              "regular_sectors(): circle must be a literal circle() with a "
+              "numeric radius, not circumcircle()/incircle()"
+          ) from exc
+      if not isinstance(radius, (int, float)):
+          raise ValueError(
+              "regular_sectors(): circle must be a literal circle() with a "
+              f"numeric radius, not circumcircle()/incircle() — got {radius!r}"
+          )
+      # ... unchanged from here (boundary_pts loop, sector() calls)
+  ```
+
+With those four sites updated, `_known()` itself is deleted — nothing else
+calls it. `__add__`/`__sub__`/`__mul__` and `api.py`'s `distance()` are
+simplified to use the public, now-always-correct properties instead of the
+private fields:
 
 ```python
 def __add__(self, other: "Point") -> "Point":
@@ -252,7 +318,10 @@ derived points.
 ## Docstring / prompt updates
 
 - `Point.x`/`Point.y` docstrings (above) — rewritten to describe the new
-  contract; the old "raises for a constructed point" framing is gone.
+  contract; the old "raises for a constructed point" framing is gone. The
+  `Point` class body comment above the `_x`/`_y` field declarations
+  (`handles.py` lines ~118-126, "Known only for point(x, y) literals...")
+  describes the same old contract and needs the same rewrite.
 - `geometry_diagrams/strategies/instructions_python_full.py` currently
   documents `.x`/`.y` as raising on constructed points (added earlier this
   session as part of the labeling-fix work) — this passage needs rewriting
