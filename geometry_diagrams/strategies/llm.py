@@ -156,6 +156,22 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     "openrouter:google/gemma-4-31b-it": {
         "provider": {"sort": "throughput"},
     },
+    # openrouter:qwen/qwen3.6-27b hit an 18/39 (46%) scenario-timeout rate
+    # on a curriculum re-run (2026-08-08), even running alone with no
+    # concurrent contention. Per-endpoint stats show a real latency spread
+    # across this model's 9 OpenRouter upstream providers: CoreWeave at
+    # p50 383ms / p90 856ms vs. SiliconFlow at p50 2070ms / p90 5501ms
+    # (~5.4x/~6.4x worse) — plus a smaller but real throughput spread
+    # (26-63 tok/s). Same fix as gemma-4-31b-it above: sort by throughput
+    # rather than pin specific providers.
+    "openrouter:qwen/qwen3.6-27b": {
+        "provider": {"sort": "throughput"},
+    },
+    # NOTE: openrouter:kwaipilot/kat-coder-air-v2.5 was checked for the same
+    # issue (21/67 = 31% timeout rate, 2026-08-08) but has only ONE upstream
+    # provider on OpenRouter (StreamLake, p50 2276ms / p90 9576ms) — no
+    # alternative route exists to sort/pin toward. Its slowness is inherent
+    # to its only host; provider routing cannot fix it.
 }
 
 

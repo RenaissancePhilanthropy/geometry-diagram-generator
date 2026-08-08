@@ -80,6 +80,19 @@ def test_model_specific_extra_body_does_not_leak_gemma_sort_to_other_models(monk
     assert kwargs["extra_body"] == {"usage": {"include": True}}
 
 
+def test_model_specific_extra_body_sorts_qwen3627b_by_throughput(monkeypatch):
+    """qwen3.6-27b hit a 46% scenario-timeout rate even running alone with
+    no concurrent contention — same fix as gemma-4-31b-it."""
+    _set_openrouter_env(monkeypatch)
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openrouter:qwen/qwen3.6-27b")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["extra_body"] == {
+        "usage": {"include": True},
+        "provider": {"sort": "throughput"},
+    }
+
+
 # ---------------------------------------------------------------------------
 # max_tokens must be scoped per-model, not a blanket mantle/mantle-oa
 # default — confirmed (2026-08-07) that a provider-wide max_tokens=16000
