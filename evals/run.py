@@ -900,8 +900,13 @@ async def main() -> None:
         scenarios = scenarios[start:end]
         print(f"Slicing to scenarios [{start}:{end}] = {len(scenarios)} of {n_total}")
 
-    # Build run ID and output path
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    # Build run ID and output path. Second-resolution timestamps alone collide
+    # when two `evals.run` invocations start within the same wall-clock second
+    # (confirmed 2026-08-07: two concurrent full-curriculum runs landed on the
+    # identical run_id and silently interleaved their records into one JSONL
+    # file) — the os.getpid() suffix guarantees uniqueness across concurrent
+    # processes even when the timestamp matches.
+    run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
     output_dir = Path(args.output)
     output_path = output_dir / f"{run_id}.jsonl"
     svg_output_dir = output_dir / run_id / "svgs"

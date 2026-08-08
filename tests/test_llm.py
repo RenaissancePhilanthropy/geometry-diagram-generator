@@ -56,6 +56,30 @@ def test_model_specific_extra_body_pins_deepseek_to_fast_providers(monkeypatch):
     }
 
 
+def test_model_specific_extra_body_sorts_gemma_by_throughput(monkeypatch):
+    """gemma-4-31b-it hit a 26% scenario-timeout rate on OpenRouter's default
+    routing — sorting by throughput (rather than pinning specific provider
+    names, which drift stale) must land in the same extra_body as the
+    usage-include opt-in, without clobbering it."""
+    _set_openrouter_env(monkeypatch)
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openrouter:google/gemma-4-31b-it")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["extra_body"] == {
+        "usage": {"include": True},
+        "provider": {"sort": "throughput"},
+    }
+
+
+def test_model_specific_extra_body_does_not_leak_gemma_sort_to_other_models(monkeypatch):
+    """The throughput-sort override is scoped to the exact model id."""
+    _set_openrouter_env(monkeypatch)
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openrouter:qwen/qwen3.6-35b-a3b")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["extra_body"] == {"usage": {"include": True}}
+
+
 # ---------------------------------------------------------------------------
 # max_tokens must be scoped per-model, not a blanket mantle/mantle-oa
 # default — confirmed (2026-08-07) that a provider-wide max_tokens=16000

@@ -142,6 +142,20 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     "openrouter:deepseek/deepseek-v4-flash-0731": {
         "provider": {"order": ["BaseTen", "CoreWeave"], "allow_fallbacks": True},
     },
+    # openrouter:google/gemma-4-31b-it hit 103/402 (26%) scenario timeouts
+    # (180s hard cap) in a 2026-08-07 curriculum run, despite otherwise
+    # being the cleanest route for this model (0 byte-corruption failures,
+    # vs. 50 on mantle-oa — see the mantle-oa note above). Per-endpoint
+    # stats show an enormous throughput spread across this model's ~18
+    # OpenRouter upstream providers: Cerebras at 176 tok/s p50 / 564 p90
+    # vs. most others in the 10-50 tok/s range (some 10-15x slower), plus
+    # multi-second p90 latency on several. Rather than pin specific
+    # provider names (which drift out of date as performance changes),
+    # use OpenRouter's "sort": "throughput" to always route to whichever
+    # upstream provider currently has the best throughput for this model.
+    "openrouter:google/gemma-4-31b-it": {
+        "provider": {"sort": "throughput"},
+    },
 }
 
 
@@ -158,6 +172,13 @@ _MODEL_SPECIFIC_KWARGS: dict[str, dict] = {
     # default of 4096 isn't enough headroom for that.
     "mantle:openai.gpt-oss-20b": {"max_tokens": 16000},
     "mantle:zai.glm-4.7-flash": {"max_tokens": 16000},
+    # reasoning_effort="low" confirmed (2026-08-07) to match "high" on pass
+    # rate (43/45 both) on a 45-scenario stratified curriculum subset, at
+    # roughly half the per-scenario latency (18.2s vs 35.5s avg) and
+    # presumably lower reasoning-token cost — no accuracy tradeoff observed.
+    # Pending: comparison against the model's own (unset) default effort
+    # from its concurrent full-curriculum run.
+    "openai:gpt-5.6-luna": {"reasoning_effort": "low"},
 }
 
 
