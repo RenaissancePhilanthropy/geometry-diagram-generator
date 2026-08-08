@@ -31,6 +31,8 @@ class Builder:
         self._canvas = None  # set at most once, by canvas(); type is ir.Canvas | None
         self._styles: dict[str, dict] = {}
         self._mark_group_counter = 0
+        self._sym: dict = {}
+        self._sym_watermark: int = 0
 
     @property
     def op_count(self) -> int:
@@ -91,6 +93,59 @@ class Builder:
         self._add(SegmentDef(id=sid, a=p_id, b=q_id))
         self._segment_cache[key] = sid
         return Segment(id=sid, _builder=self)
+
+    def _resolve_point(self, pid: str) -> "tuple[float, float]":
+        """Return (x, y) for any point id already recorded in self._defs,
+        compiling as many new defs as needed via to_sympy.py's real
+        per-statement compiler. Raises whatever to_sympy.py raises
+        (IntersectionError, PickError, IRCompileError, a plain SymPy
+        ValueError, ...) if a def between the last resolve and pid's
+        definition genuinely can't be compiled."""
+        if pid in self._coord_floats:
+            return self._coord_floats[pid]
+        self._advance_sym()
+        if pid not in self._coord_floats:
+            raise ValueError(f"Point {pid!r} has no known coordinates")
+        return self._coord_floats[pid]
+
+    def _advance_sym(self) -> None:
+        from random import Random
+
+        import sympy.geometry as spg
+
+        from geometry_diagrams.ir import ir as ir_mod
+        from geometry_diagrams.ir.to_sympy import _compile_one
+
+        canvas = self._canvas or ir_mod.Canvas()
+        rng = Random(42)  # PointFree/random defs are dead code for pydsl; any seed is fine
+        # Iterate a SLICE (a copy) taken once up front -- _pin_intersection
+        # appends new hidden PointFixed defs to self._defs mid-loop, which
+        # must not be picked up by this iteration (they're compiled and
+        # cached inline below instead, and self._sym_watermark accounts
+        # for them afterward via len(self._defs)).
+        for stmt in self._defs[self._sym_watermark:]:
+            obj = _compile_one(stmt, self._sym, {}, canvas, rng, all_def_ids=None)
+            self._sym[stmt.id] = obj
+            if isinstance(obj, spg.Point):
+                self._coord_floats[stmt.id] = (float(obj.x), float(obj.y))
+            if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
+                self._pin_intersection(stmt, obj)
+        self._sym_watermark = len(self._defs)
+
+    def _pin_intersection(self, stmt, obj) -> None:
+        """Rewrite an unpicked PointIntersection's pick to a
+        dependency-pure PickClosestTo targeting the just-observed
+        coordinates, so a later full recompile-from-scratch reproduces the
+        same candidate regardless of what else is in its sym table by
+        then. Bypasses self._add() deliberately -- this hidden bookkeeping
+        def must not count against the script's op cap."""
+        from geometry_diagrams.ir import ir as ir_mod
+
+        hidden_pid = self._fresh_hidden_id("pin")
+        self._defs.append(ir_mod.PointFixed(id=hidden_pid, x=float(obj.x), y=float(obj.y)))
+        self._sym[hidden_pid] = obj
+        self._coord_floats[hidden_pid] = (float(obj.x), float(obj.y))
+        stmt.pick = ir_mod.PickClosestTo(p=hidden_pid)
 
 
 _current_builder: contextvars.ContextVar["Builder | None"] = contextvars.ContextVar(
