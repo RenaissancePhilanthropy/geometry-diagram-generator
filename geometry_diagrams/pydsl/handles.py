@@ -235,6 +235,9 @@ class Circle:
     id: str
     center: Point
     _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+    # True for circumcircle()/incircle() (their center is a PointTriangleCenter,
+    # not a direct literal) — False for circle(). Gates regular_sectors(),
+    # which requires a literal circle() so its radius is always plain numeric.
     _from_derived_center: bool = field(default=False, repr=False, compare=False)
 
     @property

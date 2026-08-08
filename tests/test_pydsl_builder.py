@@ -201,8 +201,8 @@ def test_pin_on_observe_makes_ambiguous_intersection_deterministic():
 def test_pinned_hidden_defs_do_not_count_against_op_cap():
     from geometry_diagrams.ir.ir import CircleCenterRadius, LineThrough, PointFixed, PointIntersection
 
-    with new_builder_context(op_cap=8) as builder:
-        # 8 explicit _add calls below exactly fill the cap; the pin's hidden
+    with new_builder_context(op_cap=6) as builder:
+        # 6 explicit _add calls below exactly fill the cap; the pin's hidden
         # PointFixed must not push this over and raise OpCapExceededError.
         builder._add(PointFixed(id="o", x=0.0, y=0.0))
         builder._coord_floats["o"] = (0.0, 0.0)

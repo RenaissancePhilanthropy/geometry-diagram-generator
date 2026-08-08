@@ -415,6 +415,11 @@ def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
     regular_polygon() already has on its own center parameter."""
     if n < 2:
         raise ValueError(f"regular_sectors() requires n >= 2, got {n}")
+    # Checked via the Circle._from_derived_center provenance flag (set at
+    # construction time by circumcircle()/incircle()), not by inspecting
+    # circle.radius's type: a circumcircle()/incircle() built on literal
+    # triangle vertices still resolves radius to a plain float, so a
+    # type-based check would incorrectly accept it.
     if circle._from_derived_center:
         raise ValueError(
             "regular_sectors(): circle must be a literal circle(), not "
