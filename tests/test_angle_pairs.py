@@ -21,11 +21,13 @@ import sympy as sp
 import sympy.geometry as spg
 
 from geometry_diagrams.ir.ir import (
-    DiagramIR, PointFixed, LineThrough, PendingAnglePair, MarkAngles,
+    AnglePoints, DiagramIR, MarkAngles, PendingAnglePair, PointFixed, Polygon,
+    LineThrough,
 )
 from geometry_diagrams.ir.angle_pairs import resolve_angle_pairs
 from geometry_diagrams.ir.checks import check_render_angles
 from geometry_diagrams.ir.errors import IRCompileError
+from geometry_diagrams.ir.to_sympy import compile_defs
 
 
 def _sym():
@@ -196,6 +198,38 @@ def test_corresponding_synthesized_point_passes_render_angle_check():
     result = resolve_angle_pairs(diagram_ir, sym)
 
     errors = check_render_angles(result, sym)
+    assert errors == [], f"unexpected validation errors: {errors}"
+
+
+def test_point_on_a_polygon_side_passes_render_angle_check():
+    """Regression test: the geometric-containment fallback in
+    _build_linear_pairs only checked spg.Line/Segment/Ray, never a
+    Polygon/Triangle's own sides — so a point geometrically on a polygon's
+    edge, but not structurally one of its own two endpoints, was wrongly
+    rejected as 'not on any line/segment/ray through vertex'.
+
+    Square A(0,0) B(4,0) C(4,4) D(0,4); M=(4,2) is the exact midpoint of
+    side BC but is defined as an independent PointFixed, not derived from
+    B/C — so the only way M can be recognized as lying on side BC is via
+    the geometric containment fallback, not the structural pass. Mark the
+    angle at vertex B (a real polygon vertex) with M (on side BC) and A
+    (on side AB) as its two legs.
+    """
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=4, y=4),
+            PointFixed(id="D", x=0, y=4),
+            PointFixed(id="M", x=4, y=2),
+            Polygon(id="square", points=["A", "B", "C", "D"]),
+        ],
+        render=[
+            MarkAngles(kind="mark_angles", angles=[AnglePoints(a="A", o="B", b="M")]),
+        ],
+    )
+    sym = compile_defs(diagram_ir)
+    errors = check_render_angles(diagram_ir, sym)
     assert errors == [], f"unexpected validation errors: {errors}"
 
 

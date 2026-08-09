@@ -364,10 +364,24 @@ def _build_linear_pairs(
     # When sym is available, check if any point geometrically lies on a
     # line/segment/ray it isn't structurally connected to.
     if sym is not None:
-        linear_obj_ids = [
-            oid for oid, obj in sym.items()
+        linear_objs: dict[str, Any] = {
+            oid: obj for oid, obj in sym.items()
             if isinstance(obj, (spg.Line, spg.Segment, spg.Ray))
-        ]
+        }
+        # Polygon/Triangle sides are also valid places for a point to lie for
+        # angle-mark purposes (e.g. a point_on() point placed on a polygon's
+        # side without being one of its named vertices) — sympy exposes
+        # these as .sides (a list of Segment objects) on both Polygon and
+        # its Triangle subclass. The structural pass above already handles a
+        # polygon's own named vertices via its own pts_on entries; this
+        # geometric fallback is specifically for points NOT already known to
+        # be on that side structurally, so it needs its own synthetic ids —
+        # reusing the polygon's oid would silently merge into (and be
+        # shadowed by) the structural entry already keyed on that oid.
+        for oid, obj in sym.items():
+            if isinstance(obj, spg.Polygon):
+                for i, side in enumerate(obj.sides):
+                    linear_objs[f"{oid}__contains_side{i}"] = side
         # Points referenced by angle triples in render ops must be eligible for
         # geometric validation even when implicit (__-prefixed) — the resolver
         # in angle_pairs.py synthesizes such points on real lines by construction.
@@ -384,8 +398,7 @@ def _build_linear_pairs(
             if isinstance(obj, spg.Point2D)
             and (not pid.startswith("__") or pid in referenced_by_angle_ops)
         ]
-        for oid in linear_obj_ids:
-            line_obj = sym[oid]
+        for oid, line_obj in linear_objs.items():
             existing = pts_on.get(oid, set())
             for pid in point_ids:
                 if pid in existing:
