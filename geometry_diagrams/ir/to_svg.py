@@ -30,6 +30,7 @@ from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
     arc_params,
+    centroid_of_obj,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
@@ -949,9 +950,7 @@ def _emit_svg_op(
                 if obj is None:
                     _warn(warnings, f"Skipping LabelFreeText: centroid_of '{cof}' not in sym")
                     return
-                verts = list(obj.vertices)
-                cx = sum(float(v.x) for v in verts) / len(verts)
-                cy = sum(float(v.y) for v in verts) / len(verts)
+                cx, cy = centroid_of_obj(obj)
                 lx, ly = gxy(cx, cy)
             label_text = text or ""
             color = _color_from_style(style, styles) or "black"

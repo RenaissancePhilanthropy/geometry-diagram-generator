@@ -30,6 +30,8 @@ from geometry_diagrams.ir.ir import (
     Polygon,
     PolylineOpen,
     EllipseCenterAxes,
+    ArcCenterStartEnd,
+    SectorCenterStartEnd,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import (
@@ -1625,6 +1627,42 @@ def test_label_free_text_centroid_of_renders_at_centroid():
     # Centroid of (0,0),(4,0),(2,3) is (2,1); must land inside the SVG bounds
     assert float(labels[0].get("x")) > 0
     assert float(labels[0].get("y")) > 0
+
+
+def test_label_free_text_centroid_of_a_circle_does_not_crash():
+    """Regression test: Circle has no .vertices — centroid_of=<a circle>
+    (e.g. label_text(centroid_of=circle(...))) used to crash with
+    AttributeError, escaping the retry loop entirely instead of giving the
+    model a chance to fix it."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="C", center="O", radius=2),
+        ],
+        render=[LabelFreeText(text="c", centroid_of="C")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+
+
+def test_label_free_text_centroid_of_a_sector_does_not_crash():
+    """Same regression as the circle case above, for Sector (a lightweight
+    marker type in to_sympy.py with no .vertices either)."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+        ],
+        render=[LabelFreeText(text="s", centroid_of="sec")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
 
 
 # ---------------------------------------------------------------------------

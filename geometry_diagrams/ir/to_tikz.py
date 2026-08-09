@@ -13,6 +13,7 @@ from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
     arc_params,
+    centroid_of_obj,
     circle_center_through,
     compute_bounds,
     effective_canvas_bounds,
@@ -497,9 +498,7 @@ def _emit_op(
                     if warnings is not None:
                         warnings.append(msg)
                     return out
-                verts = list(obj.vertices)
-                x = sum(_f(v.x) for v in verts) / len(verts)
-                y = sum(_f(v.y) for v in verts) / len(verts)
+                x, y = centroid_of_obj(obj)
             out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
 
     return out

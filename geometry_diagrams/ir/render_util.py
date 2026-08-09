@@ -13,7 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from . import ir
-from .to_sympy import Arc, EllipticalArc, SymTable
+from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +27,32 @@ _TICK_HALF_LENGTH = 0.05
 # ---------------------------------------------------------------------------
 # Coordinate extraction and helper-point synthesis
 # ---------------------------------------------------------------------------
+
+def centroid_of_obj(obj: Any) -> tuple[float, float]:
+    """A representative "center" point for label_text(centroid_of=...),
+    for any object kind that can be drawn — not just Polygon/Triangle
+    (which have .vertices). Circle/Ellipse have no .vertices at all;
+    Arc/Sector/EllipticalArc/EllipticalSector are lightweight marker
+    types (see to_sympy.py) with no .vertices either — both previously
+    crashed uncaught with AttributeError, escaping the retry loop
+    entirely instead of giving the model a chance to fix it (confirmed
+    2026-08-09 across two unrelated models' eval failures).
+
+    For a pie-slice sector/arc, the average of center/start/end is not
+    the exact area centroid of the region, but it's a reasonable point
+    near the middle of the shape for text placement — the same
+    standard this function already applies to Polygon (average of
+    vertices, not the exact area centroid either)."""
+    if isinstance(obj, (Arc, Sector, EllipticalArc, EllipticalSector)):
+        pts = [obj.center, obj.start, obj.end]
+    elif isinstance(obj, (spg.Circle, spg.Ellipse)):
+        pts = [obj.center]
+    else:
+        pts = list(obj.vertices)
+    cx = sum(sympy_to_float(p.x) for p in pts) / len(pts)
+    cy = sum(sympy_to_float(p.y) for p in pts) / len(pts)
+    return cx, cy
+
 
 def extract_coords(sym: SymTable) -> dict[str, tuple[float, float]]:
     """Return {id: (x, y)} for every Point in the symbol table."""

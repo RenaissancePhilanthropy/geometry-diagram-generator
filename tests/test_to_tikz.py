@@ -766,6 +766,41 @@ def test_label_free_text_centroid_of_renders_node():
     assert r"\node at (3,1) {I};" in tikz
 
 
+def test_label_free_text_centroid_of_a_circle_does_not_crash():
+    """Regression test: Circle has no .vertices — centroid_of=<a circle>
+    used to crash with AttributeError, escaping the retry loop entirely
+    instead of giving the model a chance to fix it."""
+    from geometry_diagrams.ir.ir import CircleCenterRadius
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="C", center="O", radius=2),
+        ],
+        render=[LabelFreeText(text="c", centroid_of="C")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at (0,0) {c};" in tikz
+
+
+def test_label_free_text_centroid_of_a_sector_does_not_crash():
+    """Same regression as the circle case above, for Sector (a lightweight
+    marker type in to_sympy.py with no .vertices either)."""
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+        ],
+        render=[LabelFreeText(text="s", centroid_of="sec")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{s}" in tikz
+
+
 def test_fill_sector_tikz():
     """Fill of a sector uses \\fill with arc syntax."""
     from geometry_diagrams.ir.ir import SectorCenterStartEnd, Fill
