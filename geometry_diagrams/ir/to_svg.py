@@ -29,6 +29,7 @@ from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
+    arc_label_anchor,
     arc_params,
     centroid_of_obj,
     circle_center_through,
@@ -41,6 +42,7 @@ from .render_util import (
     fmt_label_num,
     fmt_num,
     line_endpoints,
+    line_label_endpoints,
     orient_angle,
     poly_verts,
     round_down_to_step,
@@ -912,7 +914,30 @@ def _emit_svg_op(
             if seg_id not in stmt_by_id:
                 _warn(warnings, f"Skipping LabelSegment for undefined '{seg_id}'")
                 return
-            a, b = seg_endpoints(seg_id, stmt_by_id)
+            if isinstance(stmt_by_id[seg_id], ir.ArcCenterStartEnd):
+                cx_g, cy_g, px_g, py_g, _r_g = arc_label_anchor(seg_id, sym)
+                dx, dy = px_g - cx_g, py_g - cy_g
+                mag = math.hypot(dx, dy) or 1
+                lx, ly = gxy(px_g, py_g)
+                lx += (dx / mag) * _LABEL_OFFSET
+                ly -= (dy / mag) * _LABEL_OFFSET  # SVG y is flipped vs. geometry y
+                label_text = text or ""
+                color = _color_from_style(style, styles) or "black"
+                lp = _make_label_placement(
+                    x=lx, y=ly, text=label_text, color=color, anchor="middle",
+                    attrs={"data-role": "label-segment", "data-for": seg_id},
+                )
+                if pending_labels is not None:
+                    pending_labels.append(lp)
+                else:
+                    _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                          font_family=font_family, math_glyph=lp.math_glyph)
+                return
+            endpoints = line_label_endpoints(seg_id, stmt_by_id, helpers)
+            if endpoints is None:
+                _warn(warnings, f"Skipping LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc")
+                return
+            a, b = endpoints
             ax, ay = pt(a)
             bx, by = pt(b)
             # Midpoint, offset perpendicular

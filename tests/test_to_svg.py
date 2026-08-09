@@ -402,6 +402,45 @@ def test_label_segment_produces_text():
     assert len(texts) >= 1
 
 
+def test_label_segment_on_a_line_produces_text():
+    """Regression test: LabelSegment used to raise ValueError for any def
+    kind other than Segment. Prompts routinely ask to label a constructed
+    line (e.g. "line ell"), which LineThrough previously had no way to
+    satisfy — line_label_endpoints() now resolves a Line-family def to a
+    real point pair the same way the drawing code already does."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            LineThrough(id="L", p="A", q="B"),
+        ],
+        render=[LabelSegment(seg="L", text="ell")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_arc_produces_text():
+    """Regression test: an ArcCenterStartEnd def has no (a, b) endpoints
+    for the Segment-only midpoint+perpendicular-offset scheme, so labeling
+    an arc needs its own radial-offset placement (arc_label_anchor())."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="arc1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
 # ---------------------------------------------------------------------------
 # Canvas: grid and axes
 # ---------------------------------------------------------------------------

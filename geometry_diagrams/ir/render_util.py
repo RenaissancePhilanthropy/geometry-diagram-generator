@@ -161,6 +161,46 @@ def line_endpoints(
             raise ValueError(f"Unknown line def kind {stmt.kind!r}")
 
 
+def line_label_endpoints(
+    obj_id: str,
+    stmt_by_id: dict,
+    helpers: dict[str, tuple[float, float]],
+) -> "tuple[str, str] | None":
+    """Return (a, b) point ids to anchor a midpoint+perpendicular-offset
+    label for a Segment/Ray/Line-family def, or None for a def kind this
+    scheme doesn't apply to (e.g. an arc, which needs radial-offset
+    placement instead — see arc_label_point()).
+
+    Reuses whatever the drawing code already resolved for that def kind
+    (a Ray's own a/b, or line_endpoints()'s real-or-synthetic pair for a
+    Line) so the label sits on the same line the renderer actually draws."""
+    stmt = stmt_by_id[obj_id]
+    if isinstance(stmt, (ir.Segment, ir.Ray)):
+        return stmt.a, stmt.b
+    if isinstance(stmt, (
+        ir.LineThrough, ir.LineParallelThrough, ir.LinePerpendicularThrough,
+        ir.LineAngleBisector, ir.LineTangent,
+    )):
+        return line_endpoints(obj_id, stmt_by_id, helpers)
+    return None
+
+
+def arc_label_anchor(arc_id: str, sym: "SymTable") -> tuple[float, float, float, float, float]:
+    """Return (cx, cy, px, py, r) in geometry space: the arc's center, its
+    own midpoint-angle point on the arc itself (radius r, no offset yet),
+    and that radius (so callers can size their offset proportionally to
+    the arc — a fixed absolute offset would look right on one diagram's
+    coordinate scale and wrong on another's).
+
+    Callers apply their own backend-space offset along the center->point
+    direction — geometry-space and screen-space units differ (and screen
+    space may flip the y axis), so the offset can't be baked in here.
+    Mirrors how LabelAngle places its text beyond the angle-mark arc."""
+    cx, cy, r, start_deg, end_deg, _sx, _sy = arc_params(arc_id, sym)
+    mid_rad = math.radians((start_deg + end_deg) / 2.0)
+    return cx, cy, cx + r * math.cos(mid_rad), cy + r * math.sin(mid_rad), r
+
+
 def circle_center_through(
     circle_id: str,
     stmt_by_id: dict,

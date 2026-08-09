@@ -73,7 +73,7 @@ def test_validate_on_circle_skips_when_point_coordinates_unknown():
         a, b = point(0.0, 0.0), point(4.0, 0.0)
         line_id = builder._fresh_hidden_id("line")
         builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
-        unknown = point_on(Line(id=line_id), 0.5)
+        unknown = point_on(Line(id=line_id, _builder=builder), 0.5)
         _validate_on_circle("arc", c, unknown, "start")  # must not raise — skipped
 
 

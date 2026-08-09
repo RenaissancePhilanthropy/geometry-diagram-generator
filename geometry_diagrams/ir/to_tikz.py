@@ -12,6 +12,7 @@ from . import ir
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
+    arc_label_anchor,
     arc_params,
     centroid_of_obj,
     circle_center_through,
@@ -24,6 +25,7 @@ from .render_util import (
     fmt_label_num,
     fmt_num,
     line_endpoints,
+    line_label_endpoints,
     orient_angle,
     poly_verts,
     round_down_to_step,
@@ -483,7 +485,30 @@ def _emit_op(
                 if warnings is not None:
                     warnings.append(msg)
                 return out
-            a, b = _seg_pts(seg_id, stmt_by_id)
+            if isinstance(stmt_by_id[seg_id], ir.ArcCenterStartEnd):
+                # Arcs are drawn as plain \draw ... arc[...] (raw coordinates),
+                # not tkz-euclide named points, so \tkzLabelSegment doesn't
+                # apply — place a \node directly, offset radially outward
+                # from the arc's own midpoint angle. The offset scales with
+                # the arc's radius since raw TikZ coordinates are in the
+                # diagram's own geometry units, which vary in scale across
+                # diagrams (unlike the SVG backend's fixed pixel canvas).
+                cx, cy, px, py, r = arc_label_anchor(seg_id, sym)
+                dx, dy = px - cx, py - cy
+                mag = math.hypot(dx, dy) or 1
+                offset = max(0.3, r * 0.15)
+                lx = px + (dx / mag) * offset
+                ly = py + (dy / mag) * offset
+                out.append(f"\\node at ({fmt_num(lx)},{fmt_num(ly)}) {{${_to_latex(text)}$}};")
+                return out
+            endpoints = line_label_endpoints(seg_id, stmt_by_id, {})
+            if endpoints is None:
+                msg = f"Skipping render op LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
+                return out
+            a, b = endpoints
             sopts = f"[pos={pos}]" if pos is not None else ""
             out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${_to_latex(text)}$}}")
 

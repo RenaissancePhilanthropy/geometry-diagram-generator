@@ -50,7 +50,7 @@ def line_through(p: Point, q: Point) -> Line:
     builder = get_builder()
     lid = builder._fresh_hidden_id("line")
     builder._add(LineThrough(id=lid, p=p.id, q=q.id))
-    return Line(id=lid)
+    return Line(id=lid, _builder=builder)
 
 
 def ray(a: Point, b: Point) -> Ray:
@@ -397,7 +397,7 @@ def arc(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = Fals
     arc away from shape). reflex=False (the default) draws whichever of the
     two arcs spans <=180°; reflex=True draws the other one."""
     aid = _arc_or_sector("arc", shape, start, end, reflex)
-    return Arc(id=aid)
+    return Arc(id=aid, _builder=get_builder())
 
 
 def sector(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False) -> Sector:
@@ -549,7 +549,7 @@ def altitude(t: Triangle, from_vertex: Point) -> Altitude:
     builder._add(SegmentDef(id=seg_id, a=from_vertex.id, b=foot_id))
 
     return Altitude(
-        id=line_id, foot=Point(id=foot_id, _builder=builder), line=Line(id=line_id),
+        id=line_id, foot=Point(id=foot_id, _builder=builder), line=Line(id=line_id, _builder=builder),
         segment=Segment(id=seg_id, _builder=builder),
     )
 
@@ -682,7 +682,7 @@ def perpendicular_through(point: Point, line) -> Line:
     builder = get_builder()
     line_id = builder._fresh_hidden_id("perp")
     builder._add(LinePerpendicularThrough(id=line_id, through=point.id, to_line=line.id))
-    return Line(id=line_id)
+    return Line(id=line_id, _builder=builder)
 
 
 def parallel_through(point: Point, line) -> Line:
@@ -690,7 +690,7 @@ def parallel_through(point: Point, line) -> Line:
     builder = get_builder()
     line_id = builder._fresh_hidden_id("parallel")
     builder._add(LineParallelThrough(id=line_id, through=point.id, to_line=line.id))
-    return Line(id=line_id)
+    return Line(id=line_id, _builder=builder)
 
 
 def angle_bisector(vertex: Point, toward1: Point, toward2: Point) -> Line:
@@ -698,7 +698,7 @@ def angle_bisector(vertex: Point, toward1: Point, toward2: Point) -> Line:
     builder = get_builder()
     line_id = builder._fresh_hidden_id("bisector")
     builder._add(LineAngleBisector(id=line_id, a=toward1.id, vertex=vertex.id, b=toward2.id))
-    return Line(id=line_id)
+    return Line(id=line_id, _builder=builder)
 
 
 def centroid(t: Triangle) -> Point:
@@ -729,7 +729,7 @@ def perpendicular_bisector(p: Point, q: Point) -> PerpendicularBisectorLine:
     line_id = builder._fresh_hidden_id("bisector")
     builder._add(LinePerpendicularThrough(id=line_id, through=mid_id, to_line=base_id))
     return PerpendicularBisectorLine(
-        id=line_id, midpoint=Point(id=mid_id, _builder=builder), line=Line(id=line_id)
+        id=line_id, midpoint=Point(id=mid_id, _builder=builder), line=Line(id=line_id, _builder=builder)
     )
 
 
@@ -805,7 +805,7 @@ def tangent_line(
         builder._add(LineThrough(id=radius_id, p=circle.center.id, q=at.id))
         line_id = builder._fresh_hidden_id("tangent")
         builder._add(LinePerpendicularThrough(id=line_id, through=at.id, to_line=radius_id))
-        return Line(id=line_id)
+        return Line(id=line_id, _builder=builder)
 
     has_near = near is not None
     has_side = side_of is not None or side is not None
@@ -825,7 +825,7 @@ def tangent_line(
 
     line_id = builder._fresh_hidden_id("tangent")
     builder._add(LineTangent(id=line_id, point=from_point.id, circle=circle.id, pick=pick))
-    return Line(id=line_id)
+    return Line(id=line_id, _builder=builder)
 
 
 def draw(

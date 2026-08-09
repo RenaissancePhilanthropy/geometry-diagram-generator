@@ -801,6 +801,46 @@ def test_label_free_text_centroid_of_a_sector_does_not_crash():
     assert r"\node at" in tikz and "{s}" in tikz
 
 
+def test_label_segment_on_a_line_produces_tkz_label():
+    """Regression test: LabelSegment used to raise ValueError for any def
+    kind other than Segment. line_label_endpoints() now resolves a
+    Line-family def to the same real-or-synthetic point pair the drawing
+    code already uses, so \\tkzLabelSegment can reference named points
+    that are actually \\tkzDefPoint'd elsewhere in the output."""
+    from geometry_diagrams.ir.ir import LineThrough, LabelSegment
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            LineThrough(id="L", p="A", q="B"),
+        ],
+        render=[LabelSegment(seg="L", text="ell")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzLabelSegment(A,B){$ell$}" in tikz
+
+
+def test_label_segment_on_an_arc_produces_a_node():
+    """Regression test: an ArcCenterStartEnd def has no (a, b) endpoints
+    for \\tkzLabelSegment's point-pair scheme — arcs are drawn as plain
+    \\draw ... arc[...] with raw coordinates, not tkz-euclide named
+    points, so labeling one needs a directly-placed \\node instead."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, LabelSegment
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="arc1", text="alpha")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{$alpha$}" in tikz
+
+
 def test_fill_sector_tikz():
     """Fill of a sector uses \\fill with arc syntax."""
     from geometry_diagrams.ir.ir import SectorCenterStartEnd, Fill

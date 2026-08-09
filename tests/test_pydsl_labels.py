@@ -5,7 +5,7 @@ AngleRef.label(), and label_text() — all wrapping IR RenderOp kinds
 are already rendered by to_tikz.py/to_svg.py."""
 import pytest
 
-from geometry_diagrams.pydsl.api import label_text, point, segment, triangle
+from geometry_diagrams.pydsl.api import arc, circle, label_text, line_through, point, point_on, segment, triangle
 from geometry_diagrams.pydsl.builder import new_builder_context
 from geometry_diagrams.pydsl.sandbox import run_script
 from geometry_diagrams.ir.ir import (
@@ -89,6 +89,35 @@ def test_segment_label_from_triangle_side():
     matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == s.id]
     assert len(matches) == 1
     assert matches[0].text == "AB"
+
+
+def test_line_label_records_label_segment():
+    """Line.label() wraps the same LabelSegment op as Segment.label() —
+    line_label_endpoints() in render_util.py resolves a Line-family def to
+    a real point pair at render time, so no new IR op is needed."""
+    with new_builder_context() as builder:
+        a = point(0, 0)
+        b = point(4, 0)
+        ell = line_through(a, b)
+        ell.label("ell")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == ell.id]
+    assert len(matches) == 1
+    assert matches[0].text == "ell"
+    assert matches[0].pos is None
+
+
+def test_arc_label_records_label_segment():
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 5)
+        start = point_on(c, 0.0)
+        end = point_on(c, 0.25)
+        a = arc(c, start, end)
+        a.label("alpha")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelSegment) and r.seg == a.id]
+    assert len(matches) == 1
+    assert matches[0].text == "alpha"
 
 
 def test_angle_ref_label_records_label_angle():

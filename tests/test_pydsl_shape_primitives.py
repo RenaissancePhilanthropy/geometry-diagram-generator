@@ -48,7 +48,7 @@ def test_polygon_allows_unknown_coordinate_vertices_without_false_positive():
         from geometry_diagrams.pydsl.handles import Line
         from geometry_diagrams.pydsl.api import point_on
 
-        on_line = point_on(Line(id=line_id), 0.5)  # coordinates unknown until compile
+        on_line = point_on(Line(id=line_id, _builder=builder), 0.5)  # coordinates unknown until compile
         p = polygon(a, b, c, on_line)
     assert p.id is not None
 
@@ -90,7 +90,7 @@ def test_regular_polygon_accepts_a_constructed_center():
         a, b = point(0, 0), point(4, 0)
         line_id = builder._fresh_hidden_id("line")
         builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
-        center = point_on(Line(id=line_id), 0.5)
+        center = point_on(Line(id=line_id, _builder=builder), 0.5)
         result = regular_polygon(center, radius=1.0, n=4)
     assert len(result.vertices) == 4
     for v in result.vertices:
@@ -166,7 +166,7 @@ def test_walk_accepts_a_constructed_from_point():
         a, b = point(0, 0), point(4, 0)
         line_id = builder._fresh_hidden_id("line")
         builder._add(LineThrough(id=line_id, p=a.id, q=b.id))
-        start = point_on(Line(id=line_id), 0.5)  # (2, 0)
+        start = point_on(Line(id=line_id, _builder=builder), 0.5)  # (2, 0)
         result = walk(start, 0.0, 1.0)
     assert (result.x, result.y) == pytest.approx((3.0, 0.0))
 

@@ -171,6 +171,14 @@ class Point:
 @dataclass(frozen=True)
 class Line:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this line with text, e.g. ell.label("ell")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
@@ -181,6 +189,14 @@ class Ray:
 @dataclass(frozen=True)
 class Arc:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this arc with text, e.g. arc1.label("alpha")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
