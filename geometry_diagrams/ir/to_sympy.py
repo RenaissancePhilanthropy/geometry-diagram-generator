@@ -504,35 +504,53 @@ def _compile_one(
             return spg.Circle(a_pt, b_pt, c_pt)
 
         # --- Arcs ---
-        case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+        case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             r = c.distance(s)
+            if bulge_id is not None:
+                r_f = float(r.evalf())
+                reflex = _reflex_for_bulge_toward(c, s, e, r_f, r_f, ref(bulge_id), did, "arc_center_start_end")
             return Arc(center=c, start=s, end=e, radius=r, reflex=reflex)
 
-        case ir.SectorCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex):
+        case ir.SectorCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             r = c.distance(s)
+            if bulge_id is not None:
+                r_f = float(r.evalf())
+                reflex = _reflex_for_bulge_toward(c, s, e, r_f, r_f, ref(bulge_id), did, "sector_center_start_end")
             return Sector(center=c, start=s, end=e, radius=r, reflex=reflex)
 
         case ir.EllipticalArcCenterStartEnd(
-            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex
+            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id,
+            reflex=reflex, bulge_toward=bulge_id,
         ):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             hr, vr = ev(hradius), ev(vradius)
-            if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+            hr_f, vr_f = float(hr.evalf()), float(vr.evalf())
+            if hr_f <= 0 or vr_f <= 0:
                 raise IRCompileError(
                     did, f"elliptical_arc_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+                )
+            if bulge_id is not None:
+                reflex = _reflex_for_bulge_toward(
+                    c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_arc_center_start_end"
                 )
             return EllipticalArc(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 
         case ir.EllipticalSectorCenterStartEnd(
-            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id, reflex=reflex
+            center=center_id, hradius=hradius, vradius=vradius, start=start_id, end=end_id,
+            reflex=reflex, bulge_toward=bulge_id,
         ):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             hr, vr = ev(hradius), ev(vradius)
-            if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
+            hr_f, vr_f = float(hr.evalf()), float(vr.evalf())
+            if hr_f <= 0 or vr_f <= 0:
                 raise IRCompileError(
                     did, f"elliptical_sector_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
+                )
+            if bulge_id is not None:
+                reflex = _reflex_for_bulge_toward(
+                    c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_sector_center_start_end"
                 )
             return EllipticalSector(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 
@@ -1264,3 +1282,56 @@ def _cross_sign(a: spg.Point2D, b: spg.Point2D, p: spg.Point2D) -> sp.Basic:
     ab_x, ab_y = b.x - a.x, b.y - a.y
     ap_x, ap_y = p.x - a.x, p.y - a.y
     return ab_x * ap_y - ab_y * ap_x
+
+
+def _reflex_for_bulge_toward(
+    center: spg.Point2D,
+    start: spg.Point2D,
+    end: spg.Point2D,
+    hr: float,
+    vr: float,
+    bulge_toward: spg.Point2D,
+    did: str,
+    kind: str,
+) -> bool:
+    """Resolve a `bulge_toward` point to the `reflex` value that makes the
+    arc/sector bulge toward it, phrased purely as "which side of the
+    start-end chord does the arc's own midpoint land on" — the same test
+    for the ordinary case (chord not a diameter, where reflex alone
+    already disambiguates unambiguously) and the degenerate antipodal case
+    (chord IS a diameter, both candidate arcs are 180° and reflex alone
+    can't tell them apart). hr/vr are the radii used to place the two
+    candidate midpoints on the real curve (equal for a circular Arc/Sector,
+    independent for an EllipticalArc/EllipticalSector) — using the actual
+    curve's radii, not an arbitrary placeholder, matters because a point at
+    the right angle but the wrong distance from center can land on the
+    wrong side of the chord for angles where the ray from center isn't
+    parallel to it.
+    """
+    cx, cy = float(center.x.evalf()), float(center.y.evalf())
+    sx, sy = float(start.x.evalf()), float(start.y.evalf())
+    ex, ey = float(end.x.evalf()), float(end.y.evalf())
+
+    # Same parametric-angle recovery as elliptical_arc_params() in
+    # render_util.py (reduces to plain atan2 when hr == vr).
+    theta_s = math.atan2((sy - cy) / vr, (sx - cx) / hr)
+    theta_e = math.atan2((ey - cy) / vr, (ex - cx) / hr)
+    ccw = (theta_e - theta_s) % (2 * math.pi)
+    if ccw == 0:
+        ccw = 2 * math.pi
+    if ccw <= math.pi:
+        minor_mid = theta_s + ccw / 2
+    else:
+        minor_mid = theta_e + (2 * math.pi - ccw) / 2
+
+    target_side = float(_cross_sign(start, end, bulge_toward).evalf())
+    if abs(target_side) < 1e-9:
+        raise IRCompileError(
+            did,
+            f"{kind}: bulge_toward is (nearly) collinear with the start-end "
+            "chord — can't tell which side of the arc it should bulge toward",
+        )
+
+    minor_midpoint = spg.Point2D(cx + hr * math.cos(minor_mid), cy + vr * math.sin(minor_mid))
+    minor_side = float(_cross_sign(start, end, minor_midpoint).evalf())
+    return not (minor_side * target_side > 0)

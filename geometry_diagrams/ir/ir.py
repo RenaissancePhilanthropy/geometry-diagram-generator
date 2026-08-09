@@ -317,12 +317,23 @@ class CircleThrough3(DefBase):
 
 class ArcCenterStartEnd(DefBase):
     """Circular arc between `start` and `end` around `center`.
-    Draws the minor (≤180°) arc by default; set `reflex=True` for the >180° arc."""
+    Draws the minor (≤180°) arc by default; set `reflex=True` for the >180°
+    arc. When `start`/`end` are exactly antipodal (a diameter), both arcs
+    are 180° and `reflex` can't disambiguate which one you get — pass
+    `bulge_toward` (a point on whichever side you want the arc to bulge
+    toward) instead; give at most one of `reflex`/`bulge_toward`."""
     kind: Literal["arc_center_start_end"] = "arc_center_start_end"
     center: PointId
     start: PointId
     end: PointId
     reflex: bool = False
+    bulge_toward: Optional[PointId] = None
+
+    @model_validator(mode="after")
+    def _check_reflex_xor_bulge(self) -> "ArcCenterStartEnd":
+        if self.reflex and self.bulge_toward is not None:
+            raise ValueError("arc_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
 
 
 class SectorCenterStartEnd(DefBase):
@@ -331,19 +342,32 @@ class SectorCenterStartEnd(DefBase):
     Represents the pie-slice region bounded by two radii and an arc.
     Minor sector (≤180°) by default; set `reflex=True` for the >180° sector.
     Unlike ArcCenterStartEnd (which is just the curved edge), this is a
-    closed region and can be used as the `obj` of a Fill render op.
+    closed region and can be used as the `obj` of a Fill render op. When
+    `start`/`end` are exactly antipodal (a diameter), both sectors are
+    half-discs and `reflex` can't disambiguate which one you get — pass
+    `bulge_toward` (a point on whichever side you want the sector to
+    bulge toward) instead; give at most one of `reflex`/`bulge_toward`.
     """
     kind: Literal["sector_center_start_end"] = "sector_center_start_end"
     center: PointId
     start: PointId
     end: PointId
     reflex: bool = False
+    bulge_toward: Optional[PointId] = None
+
+    @model_validator(mode="after")
+    def _check_reflex_xor_bulge(self) -> "SectorCenterStartEnd":
+        if self.reflex and self.bulge_toward is not None:
+            raise ValueError("sector_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
 
 
 class EllipticalArcCenterStartEnd(DefBase):
     """Elliptical arc: the boundary curve of an axis-aligned ellipse between
     start and end. Mirrors ArcCenterStartEnd but for a non-uniform-radius
-    ellipse — hradius/vradius replace the single implicit radius."""
+    ellipse — hradius/vradius replace the single implicit radius. See
+    ArcCenterStartEnd's docstring re: `bulge_toward` for the antipodal
+    (diameter) case."""
     kind: Literal["elliptical_arc_center_start_end"] = "elliptical_arc_center_start_end"
     center: PointId
     hradius: Union[int, float, str]
@@ -351,12 +375,20 @@ class EllipticalArcCenterStartEnd(DefBase):
     start: PointId
     end: PointId
     reflex: bool = False
+    bulge_toward: Optional[PointId] = None
+
+    @model_validator(mode="after")
+    def _check_reflex_xor_bulge(self) -> "EllipticalArcCenterStartEnd":
+        if self.reflex and self.bulge_toward is not None:
+            raise ValueError("elliptical_arc_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
 
 
 class EllipticalSectorCenterStartEnd(DefBase):
     """Elliptical sector: the closed pie-slice region of an axis-aligned
     ellipse bounded by the two radii to start/end and the arc between them.
-    Mirrors SectorCenterStartEnd."""
+    Mirrors SectorCenterStartEnd, including `bulge_toward` for the
+    antipodal (diameter) case."""
     kind: Literal["elliptical_sector_center_start_end"] = "elliptical_sector_center_start_end"
     center: PointId
     hradius: Union[int, float, str]
@@ -364,6 +396,13 @@ class EllipticalSectorCenterStartEnd(DefBase):
     start: PointId
     end: PointId
     reflex: bool = False
+    bulge_toward: Optional[PointId] = None
+
+    @model_validator(mode="after")
+    def _check_reflex_xor_bulge(self) -> "EllipticalSectorCenterStartEnd":
+        if self.reflex and self.bulge_toward is not None:
+            raise ValueError("elliptical_sector_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
 
 
 class EllipseCenterAxes(DefBase):

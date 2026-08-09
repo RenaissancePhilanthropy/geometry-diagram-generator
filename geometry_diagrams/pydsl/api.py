@@ -352,7 +352,9 @@ def _validate_on_ellipse(fn_name: str, ellipse: Ellipse, point: Point, point_rol
         )
 
 
-def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> str:
+def _arc_or_sector(
+    kind: str, shape, start: Point, end: Point, reflex: bool, bulge_toward: "Point | None" = None,
+) -> str:
     """Build and record the correct IR def (circular or elliptical
     arc/sector) based on whether shape is a Circle or Ellipse. Returns the
     fresh id. kind is "arc" or "sector"."""
@@ -360,6 +362,10 @@ def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> 
         ArcCenterStartEnd, EllipticalArcCenterStartEnd,
         EllipticalSectorCenterStartEnd, SectorCenterStartEnd,
     )
+
+    if reflex and bulge_toward is not None:
+        raise ValueError(f"{kind}(): give at most one of 'reflex' or 'bulge_toward'")
+    bulge_id = bulge_toward.id if bulge_toward is not None else None
 
     if isinstance(shape, Ellipse):
         _validate_on_ellipse(kind, shape, start, "start")
@@ -378,7 +384,7 @@ def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> 
         def_cls = EllipticalArcCenterStartEnd if kind == "arc" else EllipticalSectorCenterStartEnd
         builder._add(def_cls(
             id=new_id, center=shape.center.id, hradius=hradius,
-            vradius=vradius, start=start.id, end=end.id, reflex=reflex,
+            vradius=vradius, start=start.id, end=end.id, reflex=reflex, bulge_toward=bulge_id,
         ))
     else:
         _validate_on_circle(kind, shape, start, "start")
@@ -386,25 +392,41 @@ def _arc_or_sector(kind: str, shape, start: Point, end: Point, reflex: bool) -> 
         builder = get_builder()
         new_id = builder._fresh_hidden_id(kind)
         def_cls = ArcCenterStartEnd if kind == "arc" else SectorCenterStartEnd
-        builder._add(def_cls(id=new_id, center=shape.center.id, start=start.id, end=end.id, reflex=reflex))
+        builder._add(def_cls(
+            id=new_id, center=shape.center.id, start=start.id, end=end.id,
+            reflex=reflex, bulge_toward=bulge_id,
+        ))
     return new_id
 
 
-def arc(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False) -> Arc:
+def arc(
+    shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False,
+    bulge_toward: "Point | None" = None,
+) -> Arc:
     """The arc between start and end along the boundary of shape (a circle()
     or ellipse()) — both must lie on shape; use point_on(shape, t) to
     construct them (an off-boundary point can silently shift the rendered
     arc away from shape). reflex=False (the default) draws whichever of the
-    two arcs spans <=180°; reflex=True draws the other one."""
-    aid = _arc_or_sector("arc", shape, start, end, reflex)
+    two arcs spans <=180°; reflex=True draws the other one.
+
+    If start and end are exactly opposite each other on shape (e.g. the two
+    ends of a diameter, as when drawing a hemisphere/half-disc silhouette),
+    both arcs are 180° and reflex can't tell them apart — pass
+    bulge_toward=<a point on the side you want the arc to bulge toward>
+    instead (e.g. the point the hemisphere should curve away from the rest
+    of the solid toward). Give at most one of reflex/bulge_toward."""
+    aid = _arc_or_sector("arc", shape, start, end, reflex, bulge_toward)
     return Arc(id=aid, _builder=get_builder())
 
 
-def sector(shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False) -> Sector:
+def sector(
+    shape: "Circle | Ellipse", start: Point, end: Point, reflex: bool = False,
+    bulge_toward: "Point | None" = None,
+) -> Sector:
     """The closed pie-slice region bounded by the two radii to start and end
     and the arc between them, on shape (a circle() or ellipse()). Same
-    start/end contract as arc() — see its docstring."""
-    sid = _arc_or_sector("sector", shape, start, end, reflex)
+    start/end/reflex/bulge_toward contract as arc() — see its docstring."""
+    sid = _arc_or_sector("sector", shape, start, end, reflex, bulge_toward)
     return Sector(id=sid)
 
 

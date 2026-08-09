@@ -179,6 +179,112 @@ def test_arc_reflex_field_survives_compilation():
     assert compiled_arc.reflex is True
 
 
+# ---------------------------------------------------------------------------
+# bulge_toward: disambiguates an exact-diameter arc/sector, where reflex
+# alone can't tell the two 180° halves apart. Regression coverage for the
+# real bug found via two unrelated models both drawing a hemisphere
+# silhouette as arc(circle, left_diameter_end, right_diameter_end,
+# reflex=True) and getting the arc bulging the wrong way — see
+# geometry_diagrams/ir/to_sympy.py's _reflex_for_bulge_toward for the fix.
+# ---------------------------------------------------------------------------
+
+def test_arc_bulge_toward_records_bulge_toward_field():
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 5.0)
+        left = point_on(c, math.pi)
+        right = point_on(c, 0.0)
+        below = point(0.0, -10.0)
+        result = arc(c, left, right, bulge_toward=below)
+        ir = builder.build()
+    defs = [d for d in ir.define if isinstance(d, ArcCenterStartEnd) and d.id == result.id]
+    assert len(defs) == 1
+    assert defs[0].bulge_toward == below.id
+    assert defs[0].reflex is False
+
+
+def test_arc_rejects_both_reflex_and_bulge_toward():
+    with new_builder_context():
+        c = circle(point(0.0, 0.0), 5.0)
+        left = point_on(c, math.pi)
+        right = point_on(c, 0.0)
+        below = point(0.0, -10.0)
+        with pytest.raises(ValueError, match="at most one of 'reflex' or 'bulge_toward'"):
+            arc(c, left, right, reflex=True, bulge_toward=below)
+
+
+def test_arc_bulge_toward_resolves_correct_half_of_a_diameter():
+    """The real hemisphere-silhouette shape: start/end are exactly
+    antipodal on the circle, so reflex=True/False alone can't disambiguate
+    (both candidate arcs are 180°) — bulge_toward must still pick the half
+    that actually bulges toward the given point."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.render_util import arc_params
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 4.0)
+        left = point(-4.0, 0.0)
+        right = point(4.0, 0.0)
+        below = point(0.0, -10.0)
+        result = arc(c, left, right, bulge_toward=below)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    cx, cy, r, s_deg, e_deg, sx, sy = arc_params(result.id, sym)
+    mid = math.radians((s_deg + e_deg) / 2)
+    midpoint = (cx + r * math.cos(mid), cy + r * math.sin(mid))
+    assert midpoint[1] < 0, f"expected the arc to bulge downward (toward y<0), got midpoint {midpoint}"
+
+
+def test_sector_bulge_toward_resolves_correct_half_of_a_diameter():
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 4.0)
+        left = point(-4.0, 0.0)
+        right = point(4.0, 0.0)
+        above = point(0.0, 10.0)
+        result = sector(c, left, right, bulge_toward=above)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    assert sym[result.id].reflex is True
+
+
+def test_arc_bulge_toward_raises_for_a_point_collinear_with_the_chord():
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 4.0)
+        left = point(-4.0, 0.0)
+        right = point(4.0, 0.0)
+        on_chord = point(1.0, 0.0)  # sits exactly on the start-end line
+        arc(c, left, right, bulge_toward=on_chord)
+        ir = builder.build()
+    from geometry_diagrams.ir.errors import IRCompileError
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with pytest.raises(IRCompileError, match="collinear"):
+        compile_defs(ir)
+
+
+def test_arc_bulge_toward_works_for_a_non_degenerate_chord_too():
+    """Sanity check that bulge_toward isn't just a special-case hack for
+    the antipodal case — it resolves correctly for an ordinary chord too,
+    where reflex would already have worked."""
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 4.0)
+        start = point(4.0, 0.0)
+        end = point(0.0, 4.0)
+        far_side = point(3.0, 3.0)   # same side as the minor arc's own midpoint
+        near_center = point(1.0, 1.0)  # same side as the major arc's own midpoint
+        minor_pick = arc(c, start, end, bulge_toward=far_side)
+        major_pick = arc(c, start, end, bulge_toward=near_center)
+        ir = builder.build()
+    sym = compile_defs(ir)
+    assert sym[minor_pick.id].reflex is False
+    assert sym[major_pick.id].reflex is True
+
+
 from geometry_diagrams.pydsl.api import regular_sectors
 
 

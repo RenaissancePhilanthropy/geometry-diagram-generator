@@ -117,6 +117,12 @@ works if you prefer to write it explicitly, but it isn't required.
   `circle()` or an `ellipse()` — use `point_on(shape, t)` to build start/end so they land exactly on the
   boundary (an off-boundary point silently shifts the rendered arc). For a circle, t is an angle in
   radians; the same point_on() call works for an ellipse's parametric angle too.
+- If start and end are exactly opposite each other on shape (e.g. the two ends of a diameter — this is
+  exactly what you get when drawing a HEMISPHERE or half-disc silhouette, such as the rounded end of a
+  composite solid), both possible arcs are 180° and `reflex` genuinely can't tell them apart — do NOT use
+  `reflex` there. Use `bulge_toward=<some point>` instead (give at most one of `reflex`/`bulge_toward`):
+  it draws whichever arc bulges toward that point, e.g. `arc(circle, left_end, right_end,
+  bulge_toward=point_below)` to make the curve bulge downward, away from whatever sits above it.
 - `polyline(*points)` draws an OPEN chain of 2+ points with no closing edge — unlike `polygon()`, it does
   not connect the last point back to the first. Useful for tracing a path (e.g. sampling several
   positions of a point as it moves) rather than filling a region; `fill()` on a polyline is a no-op since
