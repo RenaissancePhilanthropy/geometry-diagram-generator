@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -68,6 +69,44 @@ def _unescape_literal_newlines(script: "str | None") -> "str | None":
     return script
 
 
+_JSON_SCRIPT_ENVELOPE_RE = re.compile(r'\{\s*"script"\s*:\s*"')
+
+
+def _unwrap_json_script_envelope(text: "str | None") -> "str | None":
+    """Some models (observed: mantle:openai.gpt-oss-20b, ~80% of its curriculum-
+    eval failures) emit their tool-call argument as a literal {"script": "..."}
+    JSON envelope — often prefixed with junk like "# Set{" and/or wrapped in a
+    ```python fence — instead of raw Python. Verified against a corpus of such
+    failures (2026-08-07): the extracted "script" is a complete, runnable
+    script once unwrapped. Finds the {"script": "..." pattern anywhere in the
+    text, parses from there to the last '}' as JSON, and returns the inner
+    script string. Returns the input unchanged if no such envelope is found or
+    it doesn't parse as valid JSON — this must never make a good script worse."""
+    if text is None:
+        return None
+    match = _JSON_SCRIPT_ENVELOPE_RE.search(text)
+    if not match:
+        return text
+    candidate = text[match.start():]
+    end = candidate.rfind("}")
+    if end == -1:
+        return text
+    candidate = candidate[: end + 1]
+    try:
+        obj = json.loads(candidate)
+    except json.JSONDecodeError:
+        return text
+    script = obj.get("script")
+    return script if isinstance(script, str) and script.strip() else text
+
+
+def _clean_script(script: "str | None") -> "str | None":
+    """Apply all known script-salvage fixups, in order: unwrap a JSON
+    envelope first (its own JSON string-escaping already normalizes any
+    embedded \\n sequences), then catch any literal \\n that survives."""
+    return _unescape_literal_newlines(_unwrap_json_script_envelope(script))
+
+
 @dataclass
 class PythonFullAttemptTrace:
     attempt: int
@@ -127,7 +166,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             cost = extract_cost(raw_msg)
             cost_usd = state["cost_usd"] + (cost or 0.0)
             raw_content = raw_msg.content if isinstance(raw_msg.content, str) else None
-            salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(raw_content))
+            salvaged = _clean_script(_extract_script_from_raw_text(raw_content))
             if salvaged is not None:
                 metadata.attempt_traces.append(PythonFullAttemptTrace(
                     attempt=attempt + 1, script=salvaged, error=None, stage="generation",
@@ -181,7 +220,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             raw_content = getattr(raw_msg, "content", None) if raw_msg else None
             if not isinstance(raw_content, str):
                 raw_content = None
-            salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(raw_content))
+            salvaged = _clean_script(_extract_script_from_raw_text(raw_content))
             if salvaged is not None:
                 metadata.attempt_traces.append(PythonFullAttemptTrace(
                     attempt=attempt + 1, script=salvaged, error=None, stage="generation",
@@ -207,7 +246,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
                 "cost_usd": cost_usd,
             }
 
-        fixed_script = _unescape_literal_newlines(parsed.script)
+        fixed_script = _clean_script(parsed.script)
         metadata.attempt_traces.append(PythonFullAttemptTrace(
             attempt=attempt + 1, script=fixed_script, error=None, stage="generation",
         ))
@@ -230,7 +269,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             for err in exc.errors():
                 candidate = err.get("input")
                 if isinstance(candidate, str):
-                    salvaged = _unescape_literal_newlines(_extract_script_from_raw_text(candidate))
+                    salvaged = _clean_script(_extract_script_from_raw_text(candidate))
                     if salvaged is not None:
                         break
         if salvaged is not None:

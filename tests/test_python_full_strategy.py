@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from geometry_diagrams.strategies.python_full import (
     PythonFullStrategy, PydslScriptOutput, MAX_RETRIES, _run_script_node,
     _extract_script_from_raw_text, _unescape_literal_newlines,
+    _unwrap_json_script_envelope, _clean_script,
 )
 from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
 from geometry_diagrams.ir.renderer import SVGRenderer
@@ -352,6 +353,50 @@ def test_unescape_literal_newlines_is_a_noop_when_there_is_no_literal_backslash_
 
 def test_unescape_literal_newlines_passes_through_none():
     assert _unescape_literal_newlines(None) is None
+
+
+# ---------------------------------------------------------------------------
+# Some models (observed: mantle:openai.gpt-oss-20b, ~80% of its curriculum-
+# eval failures) emit their tool-call argument as a literal {"script": "..."}
+# JSON envelope instead of raw Python, sometimes prefixed with junk text
+# and/or wrapped in a ```python fence. _unwrap_json_script_envelope recovers
+# the inner script; _clean_script chains it with _unescape_literal_newlines.
+# ---------------------------------------------------------------------------
+
+def test_unwrap_json_script_envelope_extracts_inner_script():
+    text = '{"script": "a = point(0, 0)\\ndraw(a)"}'
+    assert _unwrap_json_script_envelope(text) == "a = point(0, 0)\ndraw(a)"
+
+
+def test_unwrap_json_script_envelope_handles_fence_and_junk_prefix():
+    """Real example from a curriculum-eval failure corpus (2026-08-07)."""
+    text = '```python\n#{ "script": "canvas(x_range=(-1,6))\\nA = point(0,0)\\ndraw(A)"}\n```'
+    assert _unwrap_json_script_envelope(text) == "canvas(x_range=(-1,6))\nA = point(0,0)\ndraw(A)"
+
+
+def test_unwrap_json_script_envelope_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _unwrap_json_script_envelope(fine) == fine
+
+
+def test_unwrap_json_script_envelope_is_a_noop_for_malformed_json():
+    text = '{"script": "unterminated'
+    assert _unwrap_json_script_envelope(text) == text
+
+
+def test_unwrap_json_script_envelope_passes_through_none():
+    assert _unwrap_json_script_envelope(None) is None
+
+
+def test_clean_script_unwraps_envelope_then_unescapes_newlines():
+    """The envelope's own JSON decoding already turns \\n into real newlines,
+    but _clean_script must still handle the case where a script that was
+    NOT enveloped separately needs the literal-newline fix."""
+    enveloped = '{"script": "a = point(0, 0)\\ndraw(a)"}'
+    assert _clean_script(enveloped) == "a = point(0, 0)\ndraw(a)"
+
+    double_escaped = "a = point(0, 0)\\nb = point(4, 0)\\ndraw(a)"
+    assert _clean_script(double_escaped) == "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
 
 
 def _make_unparsed_response(raw_content: str) -> dict:
