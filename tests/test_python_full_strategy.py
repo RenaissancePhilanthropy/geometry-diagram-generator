@@ -12,6 +12,8 @@ from geometry_diagrams.strategies.python_full import (
     PythonFullStrategy, PydslScriptOutput, MAX_RETRIES, _run_script_node,
     _extract_script_from_raw_text, _unescape_literal_newlines,
     _unwrap_json_script_envelope, _clean_script, _fix_trailing_stray_indentation,
+    _strip_whole_script_triple_quote_wrapper, _strip_leading_junk_line,
+    _strip_trailing_envelope_residue,
 )
 from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
 from geometry_diagrams.ir.renderer import SVGRenderer
@@ -379,13 +381,139 @@ def test_unwrap_json_script_envelope_is_a_noop_for_a_well_formed_script():
     assert _unwrap_json_script_envelope(fine) == fine
 
 
-def test_unwrap_json_script_envelope_is_a_noop_for_malformed_json():
+def test_unwrap_json_script_envelope_falls_back_to_manual_unescape_for_malformed_json():
+    """Strict json.loads bails on this (the string never closes), but the
+    manual-unescape fallback still recovers whatever's after the marker —
+    this is no longer a pure no-op now that fallback exists (see
+    test_unwrap_json_script_envelope_manually_recovers_an_unterminated_wrapper
+    for the realistic multi-line version of this case)."""
     text = '{"script": "unterminated'
-    assert _unwrap_json_script_envelope(text) == text
+    assert _unwrap_json_script_envelope(text) == "unterminated"
 
 
 def test_unwrap_json_script_envelope_passes_through_none():
     assert _unwrap_json_script_envelope(None) is None
+
+
+def test_unwrap_json_script_envelope_manually_recovers_an_unterminated_wrapper():
+    """Real example from a curriculum-eval failure corpus (2026-08-09,
+    gpt-oss-20b): generation stopped mid-envelope, so the wrapper's own
+    closing quote/brace never arrives and json.loads can't parse it — but
+    the "script" value itself is complete, well-escaped JSON-string
+    content. The manual-unescape fallback recovers it without requiring
+    the wrapper to be valid JSON."""
+    text = '#{ \n    "script": "a = point(0, 0)\\ndraw(a)\\n'
+    assert _unwrap_json_script_envelope(text) == "a = point(0, 0)\ndraw(a)\n"
+
+
+def test_unwrap_json_script_envelope_manual_fallback_strips_trailing_residue():
+    """Same shape, but with trailing junk (a stray '}') left after the
+    unterminated string — the manual fallback trims it rather than folding
+    it into the recovered script."""
+    text = 'import{"script":"a = point(0, 0)\\ndraw(a)"}'
+    assert _unwrap_json_script_envelope(text) == "a = point(0, 0)\ndraw(a)"
+
+
+# ---------------------------------------------------------------------------
+# Whole-script triple-quote wrapper (observed: gpt-oss-20b) — the model
+# wraps its entire script in a docstring-style triple-quoted string instead
+# of emitting executable statements.
+# ---------------------------------------------------------------------------
+
+def test_strip_whole_script_triple_quote_wrapper_recovers_a_real_example():
+    """Real example from a curriculum-eval failure corpus (2026-08-09):
+    the whole script is wrapped in \"\"\"...\"\"\" with a stray trailing '}'
+    left after the closing quotes."""
+    script = '"""\na = point(0, 0)\nb = point(4, 0)\ndraw(a)\n"""\n}'
+    assert _strip_whole_script_triple_quote_wrapper(script) == (
+        "\na = point(0, 0)\nb = point(4, 0)\ndraw(a)\n"
+    )
+
+
+def test_strip_whole_script_triple_quote_wrapper_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _strip_whole_script_triple_quote_wrapper(fine) == fine
+
+
+def test_strip_whole_script_triple_quote_wrapper_passes_through_none():
+    assert _strip_whole_script_triple_quote_wrapper(None) is None
+
+
+# ---------------------------------------------------------------------------
+# A single junk line before the real script starts (observed: gpt-oss-20b) —
+# a bare fence-language tag with no backticks, a filename, or a stray title.
+# ---------------------------------------------------------------------------
+
+def test_strip_leading_junk_line_recovers_a_bare_fence_tag():
+    script = 'python\na = point(0, 0)\nb = point(4, 0)\ndraw(a)'
+    assert _strip_leading_junk_line(script) == "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+
+
+def test_strip_leading_junk_line_recovers_a_stray_title_line():
+    script = '*** Begin Script ***\na = point(0, 0)\ndraw(a)'
+    assert _strip_leading_junk_line(script) == "a = point(0, 0)\ndraw(a)"
+
+
+def test_strip_leading_junk_line_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _strip_leading_junk_line(fine) == fine
+
+
+def test_strip_leading_junk_line_leaves_a_single_broken_line_alone():
+    """Nothing to recover if the whole script is just one broken line —
+    stripping it would silently reduce the script to empty."""
+    script = "python"
+    assert _strip_leading_junk_line(script) == script
+
+
+def test_strip_leading_junk_line_passes_through_none():
+    assert _strip_leading_junk_line(None) is None
+
+
+# ---------------------------------------------------------------------------
+# A stray junk-only line left at the very end of an otherwise-correct script
+# (observed: gpt-oss-20b) — either JSON-envelope residue or a bare closing
+# markdown fence with no opening fence left in the script.
+# ---------------------------------------------------------------------------
+
+def test_strip_trailing_envelope_residue_recovers_a_stray_closing_brace():
+    """Real example from a curriculum-eval failure corpus (2026-08-09)."""
+    script = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)\n}"
+    assert _strip_trailing_envelope_residue(script) == "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+
+
+def test_strip_trailing_envelope_residue_recovers_a_bare_closing_fence():
+    """Real example from a curriculum-eval failure corpus (2026-08-09): the
+    opening ```python fence was already stripped elsewhere, leaving a bare
+    closing ``` with no matching open."""
+    script = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)\n```"
+    assert _strip_trailing_envelope_residue(script) == "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+
+
+def test_strip_trailing_envelope_residue_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _strip_trailing_envelope_residue(fine) == fine
+
+
+def test_strip_trailing_envelope_residue_leaves_a_genuine_multiline_call_alone():
+    """A trailing line that's syntactically pure closing-bracket punctuation
+    from a REAL multi-line call must not be mistaken for envelope residue —
+    stripping it would break, not fix, a script that was already correct."""
+    script = "draw_points(\n    a, b\n)"
+    assert _strip_trailing_envelope_residue(script) == script
+
+
+def test_strip_trailing_envelope_residue_gives_up_when_stripping_cant_fix_it():
+    """A script broken for an unrelated reason, whose last line happens to
+    look like junk-only residue: stripping it doesn't fix the real error,
+    so the function must give up and return the input unchanged rather
+    than silently truncating real (if broken) code."""
+    script = "a = point(0, 0\nb = point(4, 0)\ndraw(a)\n}"
+    assert _strip_trailing_envelope_residue(script) == script
+
+
+def test_strip_trailing_envelope_residue_passes_through_none():
+    assert _strip_trailing_envelope_residue(None) is None
 
 
 # ---------------------------------------------------------------------------

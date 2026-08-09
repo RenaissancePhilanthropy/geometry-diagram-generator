@@ -73,6 +73,55 @@ def _unescape_literal_newlines(script: "str | None") -> "str | None":
 _JSON_SCRIPT_ENVELOPE_RE = re.compile(r'\{\s*"script"\s*:\s*"')
 
 
+_JSON_ESCAPE_MAP = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/"}
+
+
+def _manually_unescape_json_string_body(body: str) -> str:
+    """Undo JSON string escapes (\\n, \\", \\uXXXX, ...) by hand, without
+    requiring the surrounding text to be valid JSON — used when a mangled
+    envelope's json.loads has already failed (see
+    _manually_extract_json_script_value below). A codecs "unicode_escape"
+    round-trip would also mangle any real non-ASCII byte in the text (e.g.
+    the em-dashes/smart quotes these models routinely emit), so this walks
+    the string and only recognizes actual two-character JSON escapes."""
+    out: list[str] = []
+    i, n = 0, len(body)
+    while i < n:
+        c = body[i]
+        if c == "\\" and i + 1 < n:
+            nxt = body[i + 1]
+            if nxt in _JSON_ESCAPE_MAP:
+                out.append(_JSON_ESCAPE_MAP[nxt])
+                i += 2
+                continue
+            if nxt == "u" and i + 6 <= n:
+                try:
+                    out.append(chr(int(body[i + 2 : i + 6], 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _manually_extract_json_script_value(text: str, match: "re.Match") -> "str | None":
+    """Fallback for a JSON tool-envelope whose json.loads fails — observed
+    (2026-08-09, gpt-oss-20b curriculum-eval failures) when generation
+    stops mid-envelope (the "script" string's closing quote/brace never
+    arrives) or trailing junk survives after it. The string VALUE itself is
+    routinely still complete, well-escaped JSON-string content even though
+    the wrapper around it is broken. Manually unescapes everything from
+    right after the "script": " marker to the last quote/brace/comma/
+    whitespace residue at the end of the text — never used unless the
+    caller has already confirmed the result parses as Python."""
+    body = text[match.end() :]
+    body = re.sub(r'[\s"\'}\],]*$', "", body)
+    unescaped = _manually_unescape_json_string_body(body)
+    return unescaped if unescaped.strip() else None
+
+
 def _unwrap_json_script_envelope(text: "str | None") -> "str | None":
     """Some models (observed: mantle:openai.gpt-oss-20b, ~80% of its curriculum-
     eval failures) emit their tool-call argument as a literal {"script": "..."}
@@ -90,15 +139,136 @@ def _unwrap_json_script_envelope(text: "str | None") -> "str | None":
         return text
     candidate = text[match.start():]
     end = candidate.rfind("}")
-    if end == -1:
-        return text
-    candidate = candidate[: end + 1]
+    if end != -1:
+        try:
+            obj = json.loads(candidate[: end + 1])
+        except json.JSONDecodeError:
+            obj = None
+        if obj is not None:
+            script = obj.get("script")
+            if isinstance(script, str) and script.strip():
+                return script
+    manual = _manually_extract_json_script_value(text, match)
+    return manual if manual is not None else text
+
+
+def _strip_whole_script_triple_quote_wrapper(script: "str | None") -> "str | None":
+    """Some models (observed: gpt-oss-20b) wrap their entire script in a
+    triple-quoted string, as if it were a module docstring rather than
+    executable code — the sandbox then just evaluates one big string
+    literal (a no-op — "Diagram has 0 definitions") instead of running any
+    real statement, sometimes with leftover junk (a stray '}') after the
+    closing quotes. If the script starts with a triple quote and the SAME
+    triple-quote token reappears later, unwrap to whatever is between the
+    first occurrence and the LAST (dropping any trailing residue after
+    it) — but only if that inner body itself parses as Python."""
+    if script is None:
+        return None
     try:
-        obj = json.loads(candidate)
-    except json.JSONDecodeError:
-        return text
-    script = obj.get("script")
-    return script if isinstance(script, str) and script.strip() else text
+        ast.parse(script)
+        return script
+    except SyntaxError:
+        pass
+    stripped = script.lstrip()
+    for q in ('"""', "'''"):
+        if not stripped.startswith(q):
+            continue
+        rest = stripped[len(q):]
+        end = rest.rfind(q)
+        if end == -1:
+            continue
+        body = rest[:end]
+        try:
+            ast.parse(body)
+        except SyntaxError:
+            continue
+        return body
+    return script
+
+
+_BARE_FENCE_LANGUAGE_TAG_RE = re.compile(r"^(python|py)$", re.IGNORECASE)
+
+
+def _strip_leading_junk_line(script: "str | None") -> "str | None":
+    """Some models (observed: gpt-oss-20b) prefix their script with a single
+    junk line before the real code starts — a bare markdown-fence language
+    tag with no backticks ("python"), a filename, or a stray title line
+    ("Full Geometry Script", "*** Begin Script ***"). Confirmed via real
+    eval failures: removing exactly that one line recovers a script that
+    otherwise parses cleanly. Keeps the fix only if it makes the WHOLE
+    script parse; a genuine syntax error deeper in real code is untouched,
+    and a script that's ALREADY just one broken line (nothing to recover)
+    is left alone rather than reduced to an empty string.
+
+    A bare "python"/"py" first line is stripped unconditionally (not gated
+    on a SyntaxError): it parses as a harmless expression-statement
+    (a name reference), so the general syntax-error-gated path below never
+    even sees it as broken — the sandbox instead fails at runtime with
+    "the variable `python` is not defined" (confirmed via real eval
+    failures). It's never legitimate pydsl code either way, so dropping it
+    is always safe."""
+    if script is None:
+        return None
+    lines = script.splitlines(keepends=True)
+    if lines and _BARE_FENCE_LANGUAGE_TAG_RE.match(lines[0].strip()):
+        candidate = "".join(lines[1:])
+        if candidate.strip():
+            script = candidate
+            lines = script.splitlines(keepends=True)
+    try:
+        ast.parse(script)
+        return script
+    except SyntaxError:
+        pass
+    if len(lines) < 2:
+        return script
+    candidate = "".join(lines[1:])
+    try:
+        ast.parse(candidate)
+    except SyntaxError:
+        return script
+    return candidate
+
+
+_TRAILING_JUNK_LINE_RE = re.compile(r'^([\s"\'}\],]+|```\w*)$')
+_MAX_TRAILING_RESIDUE_LINES = 3
+
+
+def _strip_trailing_envelope_residue(script: "str | None") -> "str | None":
+    """Some models (observed: gpt-oss-20b) leave a stray junk-only line at
+    the very end of an otherwise-complete, correct script: either a lone
+    '}', '"', or '"}' left over from a JSON tool-envelope that survived
+    every earlier unwrap attempt (e.g. because the envelope's OWN closing
+    brace was duplicated inside the script's real content, so
+    _unwrap_json_script_envelope's rfind('}') picked the wrong one and
+    left one behind), or a bare closing ``` markdown fence with no matching
+    opening fence left in the script (the opening fence line having
+    already been stripped by an earlier fixup, or never having survived
+    generation at all). Tries stripping up to a few trailing lines that
+    match one of those two shapes, keeping the result only the moment the
+    WHOLE script parses — real code never ends in a line built entirely
+    from quote/brace/comma/whitespace characters (or a bare code-fence
+    marker) with nothing else, so this can't mistake a genuine multi-line
+    statement's closing line for residue and truncate real logic."""
+    if script is None:
+        return None
+    try:
+        ast.parse(script)
+        return script
+    except SyntaxError:
+        pass
+    lines = script.splitlines()
+    for _ in range(_MAX_TRAILING_RESIDUE_LINES):
+        if not lines or not _TRAILING_JUNK_LINE_RE.match(lines[-1]):
+            break
+        lines.pop()
+        candidate = "\n".join(lines)
+        try:
+            ast.parse(candidate)
+        except SyntaxError:
+            continue
+        return candidate
+    return script
 
 
 def _fix_trailing_stray_indentation(script: "str | None") -> "str | None":
@@ -173,10 +343,20 @@ def _clean_script(script: "str | None") -> "str | None":
     """Apply all known script-salvage fixups, in order: unwrap a JSON
     envelope first (its own JSON string-escaping already normalizes any
     embedded \\n sequences), then catch any literal \\n that survives, then
-    fix a trailing stray-indentation block."""
-    return _fix_trailing_stray_indentation(
-        _unescape_literal_newlines(_unwrap_json_script_envelope(script))
-    )
+    unwrap a whole-script triple-quote wrapper, strip a single leading junk
+    line, fix a trailing stray-indentation block, then strip any trailing
+    envelope-residue line. Each step is a no-op unless its own specific
+    failure signature is present, so a script broken by only one of these
+    is unaffected by the others; a script broken by more than one is fixed
+    left-to-right without needing every fixup to independently rediscover
+    the whole script from scratch."""
+    script = _unwrap_json_script_envelope(script)
+    script = _unescape_literal_newlines(script)
+    script = _strip_whole_script_triple_quote_wrapper(script)
+    script = _strip_leading_junk_line(script)
+    script = _fix_trailing_stray_indentation(script)
+    script = _strip_trailing_envelope_residue(script)
+    return script
 
 
 @dataclass
