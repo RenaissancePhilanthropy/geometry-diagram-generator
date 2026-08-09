@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -100,11 +101,82 @@ def _unwrap_json_script_envelope(text: "str | None") -> "str | None":
     return script if isinstance(script, str) and script.strip() else text
 
 
+def _fix_trailing_stray_indentation(script: "str | None") -> "str | None":
+    """Some models (observed: openai:gpt-5.6-luna, openrouter:kwaipilot/
+    kat-coder-air-v2.5 — the identical signature in two unrelated models,
+    pointing at a shared upstream formatting quirk rather than two
+    independent mistakes) emit an otherwise-correct script where every line
+    from some point onward — always observed as exactly the trailing
+    draw()/draw_points() block — carries one stray leading space, while
+    everything before it sits at column 0. A blanket textwrap.dedent() does
+    nothing here (there's no common indent across the WHOLE script), and
+    unconditionally stripping all leading whitespace would corrupt any
+    script with a real indented block (e.g. inside a for loop).
+
+    Instead: parse once; if that raises IndentationError, use its own
+    reported line number to find exactly where the stray block starts,
+    confirm every remaining line from there to EOF shares one uniform
+    non-empty leading-whitespace prefix, strip only that exact prefix from
+    only those lines, and re-parse. Keep the fix only if it makes the WHOLE
+    script parse; otherwise return the script unchanged and let the real
+    error surface normally."""
+    if script is None:
+        return None
+    try:
+        ast.parse(script)
+        return script
+    except IndentationError as exc:
+        lineno = exc.lineno
+    except SyntaxError:
+        return script
+    if lineno is None:
+        return script
+
+    lines = script.splitlines(keepends=True)
+    start = lineno - 1
+    if not (0 <= start < len(lines)):
+        return script
+
+    def _leading_ws(line: str) -> "str | None":
+        stripped = line.lstrip(" ")
+        content = stripped.strip()
+        if not content or content.startswith("#"):
+            # Blank or comment-only lines: Python's parser doesn't care about
+            # their indentation at all, so they must not count as breaking
+            # the uniform-prefix match — a model can (and does) leave
+            # comments at column 0 while its real statements carry the
+            # stray indent.
+            return None
+        return line[: len(line) - len(stripped)]
+
+    prefix = _leading_ws(lines[start])
+    if not prefix:
+        return script
+    for line in lines[start:]:
+        ws = _leading_ws(line)
+        if ws is not None and ws != prefix:
+            return script
+
+    fixed_lines = [
+        line[len(prefix):] if (i >= start and _leading_ws(line) == prefix) else line
+        for i, line in enumerate(lines)
+    ]
+    fixed_script = "".join(fixed_lines)
+    try:
+        ast.parse(fixed_script)
+    except SyntaxError:
+        return script
+    return fixed_script
+
+
 def _clean_script(script: "str | None") -> "str | None":
     """Apply all known script-salvage fixups, in order: unwrap a JSON
     envelope first (its own JSON string-escaping already normalizes any
-    embedded \\n sequences), then catch any literal \\n that survives."""
-    return _unescape_literal_newlines(_unwrap_json_script_envelope(script))
+    embedded \\n sequences), then catch any literal \\n that survives, then
+    fix a trailing stray-indentation block."""
+    return _fix_trailing_stray_indentation(
+        _unescape_literal_newlines(_unwrap_json_script_envelope(script))
+    )
 
 
 @dataclass

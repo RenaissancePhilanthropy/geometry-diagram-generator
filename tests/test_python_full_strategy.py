@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from geometry_diagrams.strategies.python_full import (
     PythonFullStrategy, PydslScriptOutput, MAX_RETRIES, _run_script_node,
     _extract_script_from_raw_text, _unescape_literal_newlines,
-    _unwrap_json_script_envelope, _clean_script,
+    _unwrap_json_script_envelope, _clean_script, _fix_trailing_stray_indentation,
 )
 from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
 from geometry_diagrams.ir.renderer import SVGRenderer
@@ -386,6 +386,77 @@ def test_unwrap_json_script_envelope_is_a_noop_for_malformed_json():
 
 def test_unwrap_json_script_envelope_passes_through_none():
     assert _unwrap_json_script_envelope(None) is None
+
+
+# ---------------------------------------------------------------------------
+# The identical bug in two unrelated models (observed: openai:gpt-5.6-luna,
+# openrouter:kwaipilot/kat-coder-air-v2.5) — every line from some point
+# onward, always the trailing draw()/draw_points() block, carries one stray
+# leading space, with everything before it at column 0.
+# _fix_trailing_stray_indentation targets exactly this shape.
+# ---------------------------------------------------------------------------
+
+def test_fix_trailing_stray_indentation_recovers_a_real_example():
+    """Real example from a curriculum-eval failure corpus (2026-08-08),
+    trimmed to the essential shape: comment lines interspersed in the
+    stray-indented block stay at column 0 while the real statements don't —
+    the fix must not treat that as non-uniform."""
+    script = (
+        'a = point(0, 0)\n'
+        'b = point(4, 0)\n'
+        's = segment(a, b)\n'
+        '\n'
+        '# Draw everything\n'
+        ' draw(s, color="blue")\n'
+        '\n'
+        '# Mark points\n'
+        ' draw_points(a, b)'
+    )
+    fixed = _fix_trailing_stray_indentation(script)
+    assert fixed == (
+        'a = point(0, 0)\n'
+        'b = point(4, 0)\n'
+        's = segment(a, b)\n'
+        '\n'
+        '# Draw everything\n'
+        'draw(s, color="blue")\n'
+        '\n'
+        '# Mark points\n'
+        'draw_points(a, b)'
+    )
+    import ast
+    ast.parse(fixed)  # must actually parse now
+
+
+def test_fix_trailing_stray_indentation_is_a_noop_for_a_well_formed_script():
+    fine = "a = point(0, 0)\nb = point(4, 0)\ndraw(a)"
+    assert _fix_trailing_stray_indentation(fine) == fine
+
+
+def test_fix_trailing_stray_indentation_leaves_a_real_indented_block_alone():
+    """A genuine for-loop's indentation must never be touched."""
+    script = (
+        "pts = []\n"
+        "for i in range(3):\n"
+        "    pts.append(point(i, i))\n"
+        "draw_points(*pts)"
+    )
+    assert _fix_trailing_stray_indentation(script) == script
+
+
+def test_fix_trailing_stray_indentation_bails_out_when_indent_is_not_uniform_to_eof():
+    """Real example: indentation starts, stops, and resumes — not a single
+    uniform trailing block. Must not guess; returns the input unchanged."""
+    script = (
+        "a = point(0, 0)\n"
+        " draw(a)\n"
+        "draw_points(a)"
+    )
+    assert _fix_trailing_stray_indentation(script) == script
+
+
+def test_fix_trailing_stray_indentation_passes_through_none():
+    assert _fix_trailing_stray_indentation(None) is None
 
 
 def test_clean_script_unwraps_envelope_then_unescapes_newlines():
