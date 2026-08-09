@@ -22,7 +22,7 @@ import sympy.geometry as spg
 
 from geometry_diagrams.ir.ir import (
     AnglePoints, DiagramIR, MarkAngles, PendingAnglePair, PointFixed, Polygon,
-    LineThrough,
+    LineThrough, SectorCenterStartEnd,
 )
 from geometry_diagrams.ir.angle_pairs import resolve_angle_pairs
 from geometry_diagrams.ir.checks import check_render_angles
@@ -226,6 +226,33 @@ def test_point_on_a_polygon_side_passes_render_angle_check():
         ],
         render=[
             MarkAngles(kind="mark_angles", angles=[AnglePoints(a="A", o="B", b="M")]),
+        ],
+    )
+    sym = compile_defs(diagram_ir)
+    errors = check_render_angles(diagram_ir, sym)
+    assert errors == [], f"unexpected validation errors: {errors}"
+
+
+def test_point_on_a_sector_radius_passes_render_angle_check():
+    """Regression test: the geometric-containment fallback in
+    _build_linear_pairs didn't know about Sector/EllipticalSector's two
+    straight radii (center-start and center-end) — so marking a sector's
+    own subtended angle at its center, using its start/end points as the
+    two legs, was wrongly rejected.
+
+    Center O=(0,0), start S=(2,0), end E=(0,2): a quarter-circle sector.
+    Mark the angle at O with S and E as its two legs — the sector's own
+    subtended angle.
+    """
+    diagram_ir = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+        ],
+        render=[
+            MarkAngles(kind="mark_angles", angles=[AnglePoints(a="S", o="O", b="E")]),
         ],
     )
     sym = compile_defs(diagram_ir)

@@ -7,7 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .to_sympy import SymTable
+from .to_sympy import EllipticalSector, Sector, SymTable
 
 
 class CheckResult(BaseModel):
@@ -382,6 +382,16 @@ def _build_linear_pairs(
             if isinstance(obj, spg.Polygon):
                 for i, side in enumerate(obj.sides):
                     linear_objs[f"{oid}__contains_side{i}"] = side
+        # A Sector/EllipticalSector's two straight radii (center-start and
+        # center-end) are also valid angle-mark legs — e.g. marking the
+        # sector's own subtended angle at its center. Sector/EllipticalSector
+        # are lightweight marker types (to_sympy.py), not sympy geometry
+        # objects, so their radii must be synthesized as Segments here rather
+        # than read off an existing .sides-style attribute.
+        for oid, obj in sym.items():
+            if isinstance(obj, (Sector, EllipticalSector)):
+                linear_objs[f"{oid}__radius_start"] = spg.Segment(obj.center, obj.start)
+                linear_objs[f"{oid}__radius_end"] = spg.Segment(obj.center, obj.end)
         # Points referenced by angle triples in render ops must be eligible for
         # geometric validation even when implicit (__-prefixed) — the resolver
         # in angle_pairs.py synthesizes such points on real lines by construction.
