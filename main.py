@@ -50,19 +50,33 @@ def _make_strategy():
     elif strategy_name == "recipe":
         from geometry_diagrams.strategies.recipe import RecipeStrategy
         return RecipeStrategy(enable_cache=True)
+    elif strategy_name == "python_full":
+        from geometry_diagrams.strategies.python_full import PythonFullStrategy
+        return PythonFullStrategy(enable_cache=True)
     else:
         raise ValueError(
             f"Unknown STRATEGY: {strategy_name!r}. "
-            "Supported: raw_code, raw_svg, raw_code_with_revise, raw_svg_with_revise, structured, recipe"
+            "Supported: raw_code, raw_svg, raw_code_with_revise, raw_svg_with_revise, structured, recipe, python_full"
         )
 
 
 _strategy = _make_strategy()
-_renderer = _make_renderer() if strategy_name in ("structured", "recipe") else None
+_renderer = _make_renderer() if strategy_name in ("structured", "recipe", "python_full") else None
 _model = os.environ.get("MODEL", "anthropic:claude-sonnet-4-6")
+_edit_generation_mode = os.environ.get("GEOMETRY_EDIT_MODE", "full_rewrite")
 
-# Build agent once at startup so _last_sym persists across conversational turns.
-_agent = _strategy.build_agent(model=_model, renderer=_renderer) if hasattr(_strategy, "build_agent") else None
+
+def _build_agent_for_strategy():
+    if hasattr(_strategy, "build_agent"):
+        if strategy_name == "python_full":
+            return _strategy.build_agent(model=_model, renderer=_renderer, edit_generation_mode=_edit_generation_mode)
+        return _strategy.build_agent(model=_model, renderer=_renderer)
+    return None
+
+
+# Build agent once at startup so state (e.g. python_full's edit stack,
+# structured/recipe's _last_ir) persists across conversational turns.
+_agent = _build_agent_for_strategy()
 
 
 async def invoke(request: Request) -> JSONResponse:
@@ -93,7 +107,7 @@ async def agent(request: Request) -> StreamingResponse:
         elif role == "assistant":
             lc_messages.append(AIMessage(content=content))
 
-    graph = _agent or _strategy.build_agent(model=_model, renderer=_renderer)
+    graph = _agent or _build_agent_for_strategy()
 
     async def generate():
         def sse(event: dict) -> str:
