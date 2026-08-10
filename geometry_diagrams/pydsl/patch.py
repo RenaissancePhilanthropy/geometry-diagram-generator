@@ -33,6 +33,16 @@ def apply_script_patch(previous_script: str, patch_text: str) -> str:
             continue
         applied_any_hunk = True
         old_start = int(header.group(1)) - 1
+        if old_start < 0:
+            raise ValueError(
+                f"invalid hunk header line number: {header.group(0)!r}"
+            )
+        if old_start < old_index:
+            raise ValueError(
+                f"hunk header at old-file line {old_start + 1} points backward "
+                f"before the previous hunk's end (line {old_index + 1}); "
+                "hunks must be in non-decreasing order"
+            )
         result_lines.extend(old_lines[old_index:old_start])
         old_index = old_start
         i += 1

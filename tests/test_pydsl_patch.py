@@ -47,3 +47,39 @@ def test_apply_script_patch_raises_on_context_mismatch():
 def test_apply_script_patch_raises_when_no_hunks_present():
     with pytest.raises(ValueError, match="no recognizable"):
         apply_script_patch("a = point(0, 0)\n", "not a real patch")
+
+
+def test_apply_script_patch_raises_on_out_of_order_hunk_header():
+    # Hunk 1 replaces line 2. Hunk 2's header wrongly points backward to
+    # line 2 again, with a context/removal line that happens to still match
+    # the *original* (pre-hunk-1) content at that position. Without a
+    # monotonicity check, this would silently re-walk already-consumed
+    # lines and splice stale content into the output instead of raising.
+    previous = (
+        "a = point(0, 0)\n"
+        "b = point(1, 0)\n"
+        "c = point(2, 0)\n"
+        "d = point(3, 0)\n"
+        "e = point(4, 0)\n"
+    )
+    patch_text = (
+        "@@ -2,1 +2,1 @@\n"
+        "-b = point(1, 0)\n"
+        "+b = point(9, 9)\n"
+        "@@ -2,1 +2,1 @@\n"
+        "-b = point(1, 0)\n"
+        "+b = point(1, 1)\n"
+    )
+    with pytest.raises(ValueError, match="backward"):
+        apply_script_patch(previous, patch_text)
+
+
+def test_apply_script_patch_raises_on_negative_hunk_start():
+    previous = "a = point(0, 0)\nb = point(1, 0)\n"
+    patch_text = (
+        "@@ -0,1 +0,1 @@\n"
+        "-a = point(0, 0)\n"
+        "+a = point(9, 9)\n"
+    )
+    with pytest.raises(ValueError, match="invalid hunk header"):
+        apply_script_patch(previous, patch_text)
