@@ -36,6 +36,28 @@ def test_categorizes_unrecognized_errors_as_other():
     assert categorize_edit_error("") == "other"
 
 
+def test_categorizes_search_replace_errors():
+    assert categorize_edit_error(
+        "search_replace block 0: old_string not found: 'b = point(9, 9)'"
+    ) == "no_match"
+    assert categorize_edit_error(
+        "search_replace block 0: old_string is ambiguous (2 matches): 'point(0, 0)'"
+    ) == "ambiguous_match"
+
+
+def test_categorizes_hashline_errors():
+    assert categorize_edit_error(
+        "hashline op references a stale or unknown tag: '1:zz'"
+    ) == "stale_tag"
+    assert categorize_edit_error(
+        "hashline ops overlap or are out of order at line 1 (previous op ended at line 1); "
+        "ops must reference non-overlapping, non-decreasing line ranges"
+    ) == "invalid_op_order"
+    assert categorize_edit_error(
+        "block_replace end_tag '2:b2' (line 2) is before start_tag '3:c3' (line 3)"
+    ) == "invalid_op_order"
+
+
 def test_resolve_and_validate_properties_resolves_known_names():
     expected_properties = [
         {"name": "right angle at A", "type": "right_angle", "args": ["B", "A", "C"]},

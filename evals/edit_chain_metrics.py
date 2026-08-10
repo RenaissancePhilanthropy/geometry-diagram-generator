@@ -58,14 +58,21 @@ def categorize_edit_error(error_message: str) -> str:
     - "context_mismatch": geometry_diagrams/pydsl/patch.py's
       apply_script_patch ValueErrors ("context mismatch", "no recognizable
       @@ hunks", "hunk header ... points backward", "invalid hunk header").
+    - "no_match" / "ambiguous_match": geometry_diagrams/pydsl/
+      search_replace.py's SearchReplaceError ("old_string not found" /
+      "old_string is ambiguous").
+    - "stale_tag" / "invalid_op_order": geometry_diagrams/pydsl/
+      hashline.py's HashlineError ("references a stale or unknown tag" /
+      "overlap or are out of order" / "is before start_tag").
     - "sandbox_error": geometry_diagrams/strategies/python_full.py's
       _run_from_script wrapping ("patch-mode script failed: ...") — a
       script that patched/generated cleanly but errored when actually run
       (e.g. a hallucinated API call).
-    - "exhausted_retries": PythonFullStrategy.run()'s own RuntimeIf a
+    - "exhausted_retries": PythonFullStrategy.run()'s own RuntimeError. If a
       full_rewrite turn exhausts its MAX_RETRIES budget ("... failed after
-      N attempts. Last error: ...") — never occurs for patch turns, which
-      are deliberately unretried.
+      N attempts. Last error: ...") — never occurs for patch/search_replace/
+      hashline turns, which are deliberately unretried (absent the opt-in
+      in-turn retry, which is off by default in the eval harness).
     - "other": anything else (timeouts, tool-invocation-machinery errors,
       unrecognized shapes).
     """
@@ -75,6 +82,14 @@ def categorize_edit_error(error_message: str) -> str:
         or "hunk header" in error_message
     ):
         return "context_mismatch"
+    if "old_string not found" in error_message:
+        return "no_match"
+    if "old_string is ambiguous" in error_message:
+        return "ambiguous_match"
+    if "stale or unknown tag" in error_message:
+        return "stale_tag"
+    if "overlap or are out of order" in error_message or "is before start_tag" in error_message:
+        return "invalid_op_order"
     if "patch-mode script failed" in error_message:
         return "sandbox_error"
     if "failed after" in error_message and "attempts" in error_message:
