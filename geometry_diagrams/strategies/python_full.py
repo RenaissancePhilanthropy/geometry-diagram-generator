@@ -28,6 +28,7 @@ from ..ir.render_util import build_entity_manifest
 from ..ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from ..pydsl.patch import apply_script_patch
 from ..pydsl.search_replace import apply_search_replace
+from ..pydsl.hashline import apply_hashline_ops, render_hashline_view
 from ..pydsl.sandbox import run_script
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,56 @@ def build_search_replace_request_prompt(request: str, previous_script: str, mani
         "can affect what a later block's old_string matches against. Keep "
         "the exact same variable name for anything you are not "
         "intentionally changing."
+    )
+
+
+class HashlineOp(BaseModel):
+    kind: str = Field(description='One of "insert", "delete", "replace", "block_replace".')
+    tag: Optional[str] = Field(default=None, description="Line tag, for delete/replace ops.")
+    after: Optional[str] = Field(default=None, description='Tag to insert after, or "start", for insert ops.')
+    start_tag: Optional[str] = Field(default=None, description="First tag of the range, for block_replace.")
+    end_tag: Optional[str] = Field(default=None, description="Last tag of the range, for block_replace.")
+    content: Optional[str] = Field(default=None, description="New content, for insert/replace/block_replace.")
+
+
+class PydslHashlineOutput(BaseModel):
+    ops: list[HashlineOp] = Field(description="Hashline operations to apply in order.")
+
+
+async def _generate_hashline_ops(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+    """Single direct LLM call requesting hashline ops (hashline mode's
+    generation step) — mirrors _generate_patch/_generate_search_replace's
+    shape, including the pydsl API reference as a system message."""
+    llm = get_chat_model(model, enable_cache=enable_cache)
+    structured = llm.with_structured_output(PydslHashlineOutput, include_raw=False)
+    messages = [
+        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
+        HumanMessage(content=prompt),
+    ]
+    response = await structured.ainvoke(messages)
+    return [op.model_dump() for op in response.ops]
+
+
+def build_hashline_request_prompt(request: str, hashline_view: str, manifest: dict) -> str:
+    """Prompt for hashline mode's single LLM call: shows the tagged
+    (annotated) script view instead of the plain script, and asks for
+    structured line-anchored operations instead of a diff or search/replace
+    blocks."""
+    manifest_json = json.dumps(manifest, indent=2)
+    return (
+        f"{request}\n\n---\nPrevious script (each line tagged "
+        f"line_number:hash):\n```\n{hashline_view}\n```\n\n"
+        f"Entity manifest:\n{manifest_json}\n---\n"
+        "Respond with a list of operations, each one of:\n"
+        '- {"kind": "insert", "after": "<tag or \'start\'>", "content": "<new line>"}\n'
+        '- {"kind": "delete", "tag": "<tag>"}\n'
+        '- {"kind": "replace", "tag": "<tag>", "content": "<new line>"}\n'
+        '- {"kind": "block_replace", "start_tag": "<tag>", "end_tag": "<tag>", "content": "<new lines>"}\n'
+        "Reference lines ONLY by their exact tag as shown above — never by "
+        "line number alone. If a line you need to reference isn't tagged "
+        "exactly as shown, your operation will be rejected. Keep the exact "
+        "same variable name for anything you are not intentionally "
+        "changing."
     )
 
 
@@ -838,6 +889,8 @@ class PythonFullStrategy(SubstanceStrategy):
         model: str = DEFAULT_AGENT_MODEL,
         renderer=None,
         edit_generation_mode: str = "full_rewrite",
+        hash_algorithm: str = "blake2s",
+        retry_on_apply_failure: bool = False,
     ):
         """Conversational ReAct agent with render_diagram + query_diagram
         tools. State is a small stack of prior turns (not a single slot,
@@ -877,12 +930,35 @@ class PythonFullStrategy(SubstanceStrategy):
                         new_script = apply_search_replace(top["script"], blocks)
                         return await _run_from_script(new_script, _renderer)
 
+                    async def _edit_hashline(req: str) -> StructuredRunResult:
+                        hashline_view = render_hashline_view(top["script"], hash_algorithm)
+                        prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
+                        ops = await _generate_hashline_ops(prompt, model)
+                        new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
+                        return await _run_from_script(new_script, _renderer)
+
                     _edit_handlers = {
                         "patch": _edit_patch,
                         "search_replace": _edit_search_replace,
+                        "hashline": _edit_hashline,
                     }
                     handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
-                    result = await handler(request)
+                    try:
+                        result = await handler(request)
+                    except ValueError as e:
+                        # Opt-in, off by default (Global Constraints) — only
+                        # fires on the apply step's own error (a stale tag,
+                        # a not-found/ambiguous search_replace block, or
+                        # apply_script_patch's context mismatch), never a
+                        # generation/API/sandbox error, and only once.
+                        if not retry_on_apply_failure or edit_generation_mode == "full_rewrite":
+                            raise
+                        retry_request = (
+                            f"{request}\n\n---\nYour previous attempt at this edit "
+                            f"failed: {e}\nPlease produce a corrected edit that fixes "
+                            "exactly this problem.\n---"
+                        )
+                        result = await handler(retry_request)
 
                     try:
                         locality_diagnostic = check_edit_locality(
