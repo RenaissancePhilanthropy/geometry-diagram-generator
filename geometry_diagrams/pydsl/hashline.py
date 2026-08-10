@@ -107,8 +107,14 @@ def apply_hashline_ops(script: str, ops: list[dict], hash_algorithm: str = "blak
                 f"(previous op ended at line {previous_end}); "
                 "ops must reference non-overlapping, non-decreasing line ranges"
             )
-        if end_line is not None:
-            previous_end = end_line
+        # An insert's end_line is None (it doesn't consume an original
+        # line, just anchors after one) — but its start_line still
+        # occupies that anchor position and must block any other op
+        # (insert/delete/replace/block_replace) touching the same line,
+        # regardless of the ops' order in the input list. Without this,
+        # Python's stable sort would make the outcome depend on list
+        # order for ties at the same line.
+        previous_end = end_line if end_line is not None else start_line
 
     # Single batch pass over the original lines, splicing in each op's
     # effect at its resolved (pre-turn) position.

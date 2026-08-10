@@ -104,3 +104,78 @@ def test_apply_hashline_ops_raises_on_unknown_kind():
     script = "a = point(0, 0)\n"
     with pytest.raises(HashlineError, match="unknown hashline op kind"):
         apply_hashline_ops(script, [{"kind": "swap", "tag": "1:zz"}])
+
+
+def _five_line_script():
+    return (
+        "a = point(0, 0)\n"
+        "b = point(1, 0)\n"
+        "c = point(0, 1)\n"
+        "d = point(1, 1)\n"
+        "e = point(2, 2)\n"
+    )
+
+
+def test_apply_hashline_ops_raises_on_insert_then_delete_same_line():
+    # insert-after-L5, then delete-L5, in that list order: the insert's
+    # end_line is None, so without the fix its start_line would never
+    # block the delete from also touching line 5 — silently dropping the
+    # delete instead of raising.
+    script = _five_line_script()
+    view = render_hashline_view(script)
+    tags = [line.split("|", 1)[0] for line in view.splitlines()]
+    ops = [
+        {"kind": "insert", "after": tags[4], "content": "# note"},
+        {"kind": "delete", "tag": tags[4]},
+    ]
+    with pytest.raises(HashlineError, match="overlap"):
+        apply_hashline_ops(script, ops)
+
+
+def test_apply_hashline_ops_raises_on_delete_then_insert_same_line():
+    # Same pair, reverse list order — must also raise (this direction
+    # already worked before the fix; confirming no regression).
+    script = _five_line_script()
+    view = render_hashline_view(script)
+    tags = [line.split("|", 1)[0] for line in view.splitlines()]
+    ops = [
+        {"kind": "delete", "tag": tags[4]},
+        {"kind": "insert", "after": tags[4], "content": "# note"},
+    ]
+    with pytest.raises(HashlineError, match="overlap"):
+        apply_hashline_ops(script, ops)
+
+
+def test_apply_hashline_ops_raises_on_insert_then_block_replace_overlap():
+    # insert-after-L2, then block_replace(L2..L3): the insert's anchor
+    # sits inside the block_replace's range, so this must raise rather
+    # than silently leaking the original line 2 through untouched.
+    script = "a = point(0, 0)\nb = point(1, 0)\nc = point(0, 1)\ndraw_points(a, b, c)\n"
+    view = render_hashline_view(script)
+    tags = [line.split("|", 1)[0] for line in view.splitlines()]
+    ops = [
+        {"kind": "insert", "after": tags[1], "content": "# note"},
+        {"kind": "block_replace", "start_tag": tags[1], "end_tag": tags[2], "content": "b = point(5, 5)"},
+    ]
+    with pytest.raises(HashlineError, match="overlap"):
+        apply_hashline_ops(script, ops)
+
+
+def test_apply_hashline_ops_insert_and_delete_on_different_lines_do_not_overlap():
+    # A genuinely non-overlapping pair (insert after L2, delete L4) must
+    # still succeed — the fix must not make insert ops overly strict.
+    script = _five_line_script()
+    view = render_hashline_view(script)
+    tags = [line.split("|", 1)[0] for line in view.splitlines()]
+    ops = [
+        {"kind": "insert", "after": tags[1], "content": "# note"},
+        {"kind": "delete", "tag": tags[3]},
+    ]
+    result = apply_hashline_ops(script, ops)
+    assert result == (
+        "a = point(0, 0)\n"
+        "b = point(1, 0)\n"
+        "# note\n"
+        "c = point(0, 1)\n"
+        "e = point(2, 2)\n"
+    )
