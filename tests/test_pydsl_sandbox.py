@@ -127,3 +127,37 @@ t.side(a, outside)
     assert result.error_type == "structural_precondition"
     assert "not a vertex" in result.retry_message
     assert "did you mean" not in result.retry_message
+
+
+def test_variable_ids_maps_assigned_names_to_internal_ids():
+    script = """
+a = point(0, 0)
+b = point(1, 0)
+c = point(0, 1)
+t = triangle(a, b, c)
+draw(t)
+"""
+    result = run_script(script)
+    assert result.error is None
+    assert set(result.variable_ids) == {"a", "b", "c", "t"}
+    tri_def = next(d for d in result.diagram_ir.define if d.kind == "triangle")
+    assert result.variable_ids["t"] == tri_def.id
+
+
+def test_variable_ids_excludes_tuple_valued_names():
+    script = """
+c = circle(point(0, 0), 5)
+sectors = regular_sectors(c, 4)
+for s in sectors:
+    draw(s)
+"""
+    result = run_script(script)
+    assert result.error is None
+    assert "c" in result.variable_ids
+    assert "sectors" not in result.variable_ids
+
+
+def test_variable_ids_empty_on_error():
+    result = run_script("this is not valid python +++ ")
+    assert result.error is not None
+    assert result.variable_ids == {}

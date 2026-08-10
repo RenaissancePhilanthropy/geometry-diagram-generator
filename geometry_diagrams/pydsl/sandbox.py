@@ -32,7 +32,7 @@ import multiprocessing
 import resource
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from geometry_diagrams.ir.ir import DiagramIR
@@ -69,6 +69,7 @@ class ScriptResult:
     error: "str | None"
     error_type: "str | None"  # see classify_failure's return values, plus "timeout"
     retry_message: "str | None" = None
+    variable_ids: dict = field(default_factory=dict)
 
 
 def _bind_to_builder(fn: Callable, builder: Builder) -> Callable:
@@ -123,7 +124,16 @@ def _run_in_subprocess(script: str, timeout_seconds: float, queue: "multiprocess
         executor.send_variables({"math": math})
         executor(script)
         diagram_ir = builder.build()
-        queue.put(("ok", diagram_ir.model_dump()))
+        # Names bound to a container (a tuple from regular_sectors(), a list
+        # built in a loop) never have a `.id` themselves, so they're excluded
+        # here automatically — editing can't ground a request against a
+        # container's identity across turns (see design doc, Component 1).
+        variable_ids = {
+            name: value.id
+            for name, value in executor.state.items()
+            if hasattr(value, "id") and isinstance(getattr(value, "id", None), str)
+        }
+        queue.put(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": variable_ids}))
     except ExecutionTimeoutError as exc:
         queue.put(("error", (str(exc), "timeout", None)))
     except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
@@ -169,6 +179,11 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
     if kind == "ok":
-        return ScriptResult(diagram_ir=DiagramIR.model_validate(payload), error=None, error_type=None)
+        return ScriptResult(
+            diagram_ir=DiagramIR.model_validate(payload["diagram_ir"]),
+            variable_ids=payload["variable_ids"],
+            error=None,
+            error_type=None,
+        )
     message, error_type, retry_message = payload
     return ScriptResult(diagram_ir=None, error=message, error_type=error_type, retry_message=retry_message)
