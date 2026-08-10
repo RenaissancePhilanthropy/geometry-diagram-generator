@@ -58,6 +58,7 @@ async def run_chain(
     repeat_index: int,
     renderer,
     turn_timeout: float,
+    hash_algorithm: str = "blake2s",
 ) -> list[dict]:
     """Run one chain once against one (model, edit_generation_mode).
     Returns one record per turn. A failed turn does not stop the chain —
@@ -65,7 +66,10 @@ async def run_chain(
     and the failed turn itself is never retried by this harness (see
     design doc, Component C, step 4)."""
     strategy = PythonFullStrategy()
-    graph = strategy.build_agent(model=model, renderer=renderer, edit_generation_mode=edit_generation_mode)
+    graph = strategy.build_agent(
+        model=model, renderer=renderer, edit_generation_mode=edit_generation_mode,
+        hash_algorithm=hash_algorithm,
+    )
     tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
     render_tool = tools_by_name["render_diagram"]
 
@@ -162,10 +166,17 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Run pydsl multi-turn edit-chain reliability evals")
     parser.add_argument("--scenarios", default="evals/scenarios_editing_chains.yaml")
     parser.add_argument("--models", nargs="+", default=[DEFAULT_AGENT_MODEL])
-    parser.add_argument("--modes", nargs="+", default=["full_rewrite", "patch"], choices=["full_rewrite", "patch"])
+    parser.add_argument(
+        "--modes", nargs="+", default=["full_rewrite", "patch"],
+        choices=["full_rewrite", "patch", "search_replace", "hashline"],
+    )
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--renderer", choices=["tikz", "svg"], default="svg")
     parser.add_argument("--turn-timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--hash-algorithm", choices=["blake2s", "xxhash"], default="blake2s",
+        help="Hash function for hashline mode's line tags (ignored by other modes).",
+    )
     parser.add_argument("--output", default="evals/results")
     args = parser.parse_args()
 
@@ -187,7 +198,10 @@ async def main() -> None:
         for model in args.models:
             for mode in args.modes:
                 for repeat_index in range(1, args.repeats + 1):
-                    records = await run_chain(chain, model, mode, repeat_index, renderer, args.turn_timeout)
+                    records = await run_chain(
+                        chain, model, mode, repeat_index, renderer, args.turn_timeout,
+                        hash_algorithm=args.hash_algorithm,
+                    )
                     for record in records:
                         _append_jsonl(output_path, record)
                         all_records.append(record)

@@ -107,6 +107,41 @@ async def test_run_chain_runs_property_checks_on_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_chain_threads_hash_algorithm_into_build_agent(monkeypatch):
+    from geometry_diagrams.strategies import python_full as pf_module
+    from evals.run_edit_chains import run_chain
+
+    captured_kwargs = {}
+    real_build_agent = pf_module.PythonFullStrategy.build_agent
+
+    def spying_build_agent(self, **kwargs):
+        captured_kwargs.update(kwargs)
+        return real_build_agent(self, **kwargs)
+
+    monkeypatch.setattr(pf_module.PythonFullStrategy, "build_agent", spying_build_agent)
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+        from geometry_diagrams.ir.ir import DiagramIR
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []},
+            retries=0,
+        )
+    monkeypatch.setattr(pf_module.PythonFullStrategy, "run", fake_run)
+
+    chain = {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}
+    await run_chain(chain, "test-model", "hashline", repeat_index=1, renderer=None, turn_timeout=5.0, hash_algorithm="xxhash")
+
+    assert captured_kwargs.get("hash_algorithm") == "xxhash"
+    assert captured_kwargs.get("edit_generation_mode") == "hashline"
+
+
+@pytest.mark.asyncio
 async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
     """Exercises the actual build_agent()/render_diagram wiring (not a
     monkeypatched .run()) for both the create and patch-mode edit paths,
