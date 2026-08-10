@@ -104,3 +104,57 @@ async def test_run_chain_runs_property_checks_on_success(monkeypatch):
     records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0)
 
     assert records[0]["sympy_property_checks"][0]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
+    """Exercises the actual build_agent()/render_diagram wiring (not a
+    monkeypatched .run()) for both the create and patch-mode edit paths,
+    confirming the harness's use of graph/closure introspection and the
+    tool's real return shape stay correct as python_full.py evolves."""
+    from geometry_diagrams.strategies import python_full as pf_module
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{call_count}</svg>",
+            sym_table={"__pydsl_pt_1": (0.0, 0.0)}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "__pydsl_pt_1"},
+            entity_manifest={
+                "named": [{"name": "a", "id": "__pydsl_pt_1", "type": "point_fixed", "approx_position": [0.0, 0.0]}],
+                "anonymous": [],
+            },
+            retries=0,
+        )
+
+    async def fake_generate_patch(prompt, model, enable_cache=False):
+        return "@@ -1,2 +1,2 @@\n-a = point(0, 0)\n+a = point(1, 1)\n draw_points(a)\n"
+
+    monkeypatch.setattr(pf_module.PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(pf_module, "_generate_patch", fake_generate_patch)
+
+    chain = {
+        "id": "chain-e2e",
+        "turns": [
+            {"request": "draw a point", "expected_properties": []},
+            {"request": "move it", "expected_properties": []},
+        ],
+    }
+
+    from evals.run_edit_chains import run_chain
+
+    records = await run_chain(chain, "test-model", "patch", repeat_index=1, renderer=None, turn_timeout=5.0)
+
+    assert len(records) == 2
+    assert records[0]["success"] is True
+    assert records[1]["success"] is True
+    # patch mode's _generate_patch is a single, unretried call — retries must be 0.
+    assert records[1]["retries"] == 0
+    assert records[1]["script_chars_before"] == len("a = point(0, 0)\ndraw_points(a)\n")
