@@ -5,6 +5,8 @@ compile/check/render pipeline run for real (SVGRenderer, no Docker needed).
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -841,3 +843,103 @@ async def test_render_diagram_tool_edits_using_previous_script_context(monkeypat
     assert prompts_seen[0] == "draw a point"
     assert "a = point(0,0)" in prompts_seen[1]
     assert "same variable name" in prompts_seen[1].lower()
+
+
+def _closure_stack(render_tool):
+    """Pull the `_stack` list out of render_diagram's closure for assertions.
+    There is no public accessor for the edit stack, so tests reach into the
+    coroutine's closure cells by free-variable name."""
+    fn = render_tool.coroutine
+    idx = fn.__code__.co_freevars.index("_stack")
+    return fn.__closure__[idx].cell_contents
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_survives_a_locality_diagnostic_crash(monkeypatch):
+    """check_edit_locality is a diagnostic only — per the Global Constraints
+    it must never be able to fail an edit turn, even if it raises internally."""
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{call_count}</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0,0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={
+                "named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}],
+                "anonymous": [],
+            },
+        )
+
+    def raising_check_edit_locality(*args, **kwargs):
+        raise RuntimeError("boom: bug inside the diagnostic")
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full.check_edit_locality",
+        raising_check_edit_locality,
+    )
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    first = json.loads(await render_tool.ainvoke({"request": "draw a point"}))
+    second = json.loads(await render_tool.ainvoke({"request": "move it up"}))
+
+    assert "svg" in first and "error" not in first
+    assert "svg" in second and "error" not in second
+
+    stack = _closure_stack(render_tool)
+    assert len(stack) == 2
+    assert stack[-1]["locality_diagnostic"] is None
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_attaches_locality_diagnostic_to_stack_frame():
+    """A successful diagnostic's result must be retrievable (not thrown away)
+    from the stack frame it was computed for."""
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+    from geometry_diagrams.ir.edit_diagnostics import LocalityDiagnostic
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{call_count}</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0,0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={
+                "named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}],
+                "anonymous": [],
+            },
+        )
+
+    with patch.object(PythonFullStrategy, "run", fake_run):
+        strategy = PythonFullStrategy()
+        graph = strategy.build_agent(model="test")
+        tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+        render_tool = tools_by_name["render_diagram"]
+
+        await render_tool.ainvoke({"request": "draw a point"})
+        await render_tool.ainvoke({"request": "move it up"})
+
+    stack = _closure_stack(render_tool)
+    assert len(stack) == 2
+    diagnostic = stack[-1]["locality_diagnostic"]
+    assert isinstance(diagnostic, LocalityDiagnostic)
+    assert diagnostic.matched_names == {"a"}

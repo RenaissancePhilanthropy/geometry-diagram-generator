@@ -802,17 +802,22 @@ class PythonFullStrategy(SubstanceStrategy):
                         full_request = build_edit_prompt(request, top["script"], top["manifest"])
                         result = await self.run(full_request, model=model, renderer=_renderer)
 
-                    check_edit_locality(
-                        top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
-                        result.entity_manifest, result.diagram_ir, result.sym_full,
-                    )  # diagnostic only, per Global Constraints — not asserted on
+                    try:
+                        locality_diagnostic = check_edit_locality(
+                            top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
+                            result.entity_manifest, result.diagram_ir, result.sym_full,
+                        )  # diagnostic only, per Global Constraints — never gates the turn
+                    except Exception:
+                        locality_diagnostic = None
                 else:
                     result = await self.run(request, model=model, renderer=_renderer)
+                    locality_diagnostic = None
 
                 _stack.append({
                     "script": result.script,
                     "manifest": result.entity_manifest,
                     "result": result,
+                    "locality_diagnostic": locality_diagnostic,
                 })
                 return json.dumps({"svg": result.svg})
             except Exception as e:

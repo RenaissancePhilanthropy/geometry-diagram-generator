@@ -10,6 +10,8 @@ from starlette.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from logging import basicConfig, INFO
 
+from geometry_diagrams.config import GeometryConfig
+
 load_dotenv()
 
 basicConfig(level=INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -63,7 +65,7 @@ def _make_strategy():
 _strategy = _make_strategy()
 _renderer = _make_renderer() if strategy_name in ("structured", "recipe", "python_full") else None
 _model = os.environ.get("MODEL", "anthropic:claude-sonnet-4-6")
-_edit_generation_mode = os.environ.get("GEOMETRY_EDIT_MODE", "full_rewrite")
+_edit_generation_mode = GeometryConfig.from_env().edit_generation_mode
 
 
 def _build_agent_for_strategy():
