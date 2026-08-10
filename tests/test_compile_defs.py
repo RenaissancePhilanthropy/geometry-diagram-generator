@@ -1244,6 +1244,43 @@ def test_def_references_arc_includes_start_end():
     assert refs == {"O", "A", "B"}
 
 
+def test_compute_dependents_inverts_def_references():
+    from geometry_diagrams.ir.refs import compute_dependents
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="a", x=0.0, y=0.0),
+            PointFixed(id="b", x=1.0, y=0.0),
+            Segment(id="seg", a="a", b="b"),
+        ],
+        render=[],
+    )
+    dependents = compute_dependents(diagram)
+    assert dependents["a"] == {"seg"}
+    assert dependents["b"] == {"seg"}
+    assert dependents["seg"] == set()
+
+
+def test_downstream_of_is_transitive_closure_including_changed_ids():
+    from geometry_diagrams.ir.refs import compute_dependents, downstream_of
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="a", x=0.0, y=0.0),
+            PointFixed(id="b", x=1.0, y=0.0),
+            PointFixed(id="c", x=0.5, y=1.0),
+            Segment(id="seg", a="a", b="b"),
+            PointFoot(id="foot", source="c", onto="seg"),
+        ],
+        render=[],
+    )
+    dependents = compute_dependents(diagram)
+    downstream = downstream_of(dependents, {"a"})
+    assert downstream == {"a", "seg", "foot"}
+    # "c" feeds "foot" too, but isn't downstream of "a" — it's a separate input.
+    assert "c" not in downstream
+
+
 # ---------------------------------------------------------------------------
 # PolygonOnEdge compilation
 # ---------------------------------------------------------------------------

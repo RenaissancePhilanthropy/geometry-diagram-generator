@@ -50,3 +50,30 @@ def def_references(stmt: ir.DefStmt) -> set[str]:
                 elif isinstance(pv, list):
                     refs.update(v for v in pv if isinstance(v, str))
     return refs
+
+
+def compute_dependents(diagram: "ir.DiagramIR") -> dict[str, set[str]]:
+    """Invert def_references(): id -> the set of ids that directly reference
+    it. Same dependency edges compile_defs (to_sympy.py) uses for
+    topological sorting, just inverted — used by the edit-locality
+    diagnostic to compute which entities are downstream of an edit."""
+    dependents: dict[str, set[str]] = {stmt.id: set() for stmt in diagram.define}
+    for stmt in diagram.define:
+        for ref_id in def_references(stmt):
+            if ref_id in dependents:
+                dependents[ref_id].add(stmt.id)
+    return dependents
+
+
+def downstream_of(dependents: dict[str, set[str]], changed_ids: set[str]) -> set[str]:
+    """Transitive closure of `dependents` starting from `changed_ids`,
+    inclusive of `changed_ids` themselves."""
+    seen: set[str] = set()
+    frontier = set(changed_ids)
+    while frontier:
+        seen.update(frontier)
+        next_frontier: set[str] = set()
+        for cid in frontier:
+            next_frontier.update(dependents.get(cid, set()) - seen)
+        frontier = next_frontier
+    return seen
