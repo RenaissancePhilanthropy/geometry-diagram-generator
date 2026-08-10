@@ -24,6 +24,7 @@ class GeometryConfig:
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001
     font_family: str = "NunitoSans"
     embed_fonts: bool = False
+    edit_generation_mode: Literal["full_rewrite", "patch"] = "full_rewrite"
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -35,6 +36,7 @@ class GeometryConfig:
             renderer_url=os.environ.get("TIKZ_RENDERER_URL") or None,
             font_family=os.environ.get("DIAGRAM_FONT_FAMILY", "NunitoSans"),
             embed_fonts=os.environ.get("DIAGRAM_EMBED_FONTS", "0") in ("1", "true", "True"),
+            edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "full_rewrite"),  # type: ignore[arg-type]
         )
 
 
@@ -46,6 +48,7 @@ def resolve_config(
     selector_model: Optional[str] = None,
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
+    edit_generation_mode: Optional[str] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -56,4 +59,5 @@ def resolve_config(
         renderer_url=renderer_url if renderer_url is not None else cfg.renderer_url,
         font_family=font_family or cfg.font_family,
         embed_fonts=cfg.embed_fonts,
+        edit_generation_mode=edit_generation_mode or cfg.edit_generation_mode,  # type: ignore[arg-type]
     )
