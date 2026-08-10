@@ -5,6 +5,47 @@ harness script so each is independently testable without spinning up a
 build_agent()."""
 from __future__ import annotations
 
+from evals.sympy_checks import _validate_properties_sympy
+
+
+def resolve_and_validate_properties(
+    expected_properties: list[dict],
+    variable_ids: dict,
+    sym_table: dict,
+) -> list[dict]:
+    """Resolve each property's point-name args through variable_ids (script
+    variable name -> internal id) before validating against sym_table
+    (keyed by internal id — see StructuredRunResult.sym_table). A property
+    referencing a name absent from variable_ids is recorded as SKIPPED
+    (passed=None), never as a failure: the model may have named the entity
+    differently than the scenario assumed, or an earlier turn's failure
+    means it was never created — neither is evidence the edit itself was
+    unreliable (see design doc, Component A, "Required resolution shim")."""
+    results: list[dict] = []
+    for prop in expected_properties:
+        args = prop.get("args", [])
+        resolved_args = []
+        unresolved = None
+        for name in args:
+            resolved_id = variable_ids.get(name)
+            if resolved_id is None:
+                unresolved = name
+                break
+            resolved_args.append(resolved_id)
+
+        if unresolved is not None:
+            results.append({
+                "name": prop.get("name", ""),
+                "type": prop.get("type", ""),
+                "passed": None,
+                "message": f"skipped: {unresolved!r} not in variable_ids",
+            })
+            continue
+
+        resolved_prop = {**prop, "args": resolved_args}
+        results.extend(_validate_properties_sympy([resolved_prop], sym_table))
+    return results
+
 
 def categorize_edit_error(error_message: str) -> str:
     """Coarse category for an edit-turn's error message.

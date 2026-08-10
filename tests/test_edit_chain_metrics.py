@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from evals.edit_chain_metrics import categorize_edit_error
+from evals.edit_chain_metrics import resolve_and_validate_properties
 
 
 def test_categorizes_context_mismatch_errors():
@@ -32,3 +33,53 @@ def test_categorizes_exhausted_retries():
 def test_categorizes_unrecognized_errors_as_other():
     assert categorize_edit_error("connection reset by peer") == "other"
     assert categorize_edit_error("") == "other"
+
+
+def test_resolve_and_validate_properties_resolves_known_names():
+    expected_properties = [
+        {"name": "right angle at A", "type": "right_angle", "args": ["B", "A", "C"]},
+    ]
+    variable_ids = {"A": "__pydsl_pt_1", "B": "__pydsl_pt_2", "C": "__pydsl_pt_3"}
+    sym_table = {
+        "__pydsl_pt_1": (0.0, 0.0),
+        "__pydsl_pt_2": (4.0, 0.0),
+        "__pydsl_pt_3": (0.0, 3.0),
+    }
+    results = resolve_and_validate_properties(expected_properties, variable_ids, sym_table)
+    assert len(results) == 1
+    assert results[0]["passed"] is True
+
+
+def test_resolve_and_validate_properties_skips_unresolved_names_without_failing():
+    expected_properties = [
+        {"name": "right angle at A", "type": "right_angle", "args": ["B", "A", "C"]},
+    ]
+    # The model named its points differently than the scenario assumed.
+    variable_ids = {"p1": "__pydsl_pt_1", "p2": "__pydsl_pt_2", "p3": "__pydsl_pt_3"}
+    sym_table = {
+        "__pydsl_pt_1": (0.0, 0.0),
+        "__pydsl_pt_2": (4.0, 0.0),
+        "__pydsl_pt_3": (0.0, 3.0),
+    }
+    results = resolve_and_validate_properties(expected_properties, variable_ids, sym_table)
+    assert len(results) == 1
+    assert results[0]["passed"] is None
+    assert "skipped" in results[0]["message"]
+    assert "'B'" in results[0]["message"]
+
+
+def test_resolve_and_validate_properties_handles_a_mix():
+    expected_properties = [
+        {"name": "resolvable", "type": "right_angle", "args": ["B", "A", "C"]},
+        {"name": "unresolvable", "type": "right_angle", "args": ["X", "Y", "Z"]},
+    ]
+    variable_ids = {"A": "__pydsl_pt_1", "B": "__pydsl_pt_2", "C": "__pydsl_pt_3"}
+    sym_table = {
+        "__pydsl_pt_1": (0.0, 0.0),
+        "__pydsl_pt_2": (4.0, 0.0),
+        "__pydsl_pt_3": (0.0, 3.0),
+    }
+    results = resolve_and_validate_properties(expected_properties, variable_ids, sym_table)
+    assert len(results) == 2
+    assert results[0]["passed"] is True
+    assert results[1]["passed"] is None
