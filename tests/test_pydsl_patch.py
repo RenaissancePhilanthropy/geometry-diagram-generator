@@ -1,0 +1,49 @@
+"""Tests for geometry_diagrams/pydsl/patch.py's unified-diff applier."""
+from __future__ import annotations
+
+import pytest
+
+from geometry_diagrams.pydsl.patch import apply_script_patch
+
+
+def test_apply_script_patch_applies_a_single_hunk():
+    previous = "a = point(0, 0)\nb = point(1, 0)\nt = triangle(a, b, point(0, 1))\ndraw(t)\n"
+    patch_text = (
+        "@@ -1,4 +1,4 @@\n"
+        " a = point(0, 0)\n"
+        "-b = point(1, 0)\n"
+        "+b = point(2, 0)\n"
+        " t = triangle(a, b, point(0, 1))\n"
+        " draw(t)\n"
+    )
+    result = apply_script_patch(previous, patch_text)
+    assert result == "a = point(0, 0)\nb = point(2, 0)\nt = triangle(a, b, point(0, 1))\ndraw(t)\n"
+
+
+def test_apply_script_patch_supports_insertion_only_hunk():
+    previous = "a = point(0, 0)\ndraw_points(a)\n"
+    patch_text = (
+        "@@ -1,2 +1,3 @@\n"
+        " a = point(0, 0)\n"
+        "+a.label(\"A\")\n"
+        " draw_points(a)\n"
+    )
+    result = apply_script_patch(previous, patch_text)
+    assert result == "a = point(0, 0)\na.label(\"A\")\ndraw_points(a)\n"
+
+
+def test_apply_script_patch_raises_on_context_mismatch():
+    previous = "a = point(0, 0)\nb = point(1, 0)\n"
+    patch_text = (
+        "@@ -1,2 +1,2 @@\n"
+        " a = point(0, 0)\n"
+        "-b = point(9, 9)\n"  # doesn't match previous's actual line 2
+        "+b = point(2, 0)\n"
+    )
+    with pytest.raises(ValueError, match="context mismatch"):
+        apply_script_patch(previous, patch_text)
+
+
+def test_apply_script_patch_raises_when_no_hunks_present():
+    with pytest.raises(ValueError, match="no recognizable"):
+        apply_script_patch("a = point(0, 0)\n", "not a real patch")
