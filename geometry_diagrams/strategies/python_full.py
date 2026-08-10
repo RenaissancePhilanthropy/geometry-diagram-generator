@@ -645,7 +645,16 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
     try:
         pipeline_result = await run_ir_pipeline(diagram_ir, renderer)
         pipeline_result.retries = state["attempt"]
-        pipeline_result.script = script
+        # Strip leading/trailing blank lines from the STORED script (not the
+        # executed one — a leading blank line is harmless to run). Left in,
+        # a leading blank line is ambiguous once embedded in a later edit
+        # prompt's markdown fence: it visually blends into the fence's own
+        # line break, and the model consistently loses count of "line 1"
+        # being blank — confirmed via live testing, where every single
+        # patch-mode attempt against such a script failed identically at
+        # line 1. Normalizing here gives every future prompt/patch an
+        # unambiguous line 1.
+        pipeline_result.script = script.strip("\n") + "\n"
         pipeline_result.variable_ids = result.variable_ids
         pipeline_result.entity_manifest = build_entity_manifest(
             diagram_ir, pipeline_result.sym_full, result.variable_ids,

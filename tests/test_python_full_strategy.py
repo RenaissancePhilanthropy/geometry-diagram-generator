@@ -780,7 +780,10 @@ draw(t)
     result = update["result"]
     assert result is not None
     assert set(result.variable_ids) == {"a", "b", "c", "t"}
-    assert result.script == script
+    # The stored script has its leading/trailing blank lines stripped (this
+    # fixture's own leading "\n" is exactly the pattern that motivated that
+    # normalization) — see test_run_script_node_normalizes_leading_and_trailing_blank_lines_in_stored_script.
+    assert result.script == script.strip("\n") + "\n"
     named_names = {e["name"] for e in result.entity_manifest["named"]}
     assert "t" in named_names
 
@@ -983,3 +986,34 @@ async def test_generate_patch_includes_pydsl_api_instructions_as_system_message(
     )
     assert build_python_full_instructions()[:200] in system_text
     assert human_message.content == "edit this script"
+
+
+def test_run_script_node_normalizes_leading_and_trailing_blank_lines_in_stored_script():
+    """A script with a leading blank line (routine LLM output — confirmed via
+    live testing) is ambiguous once embedded in a markdown-fenced prompt for
+    a later edit turn: the model consistently loses count of "line 1" being
+    blank, producing hunk headers off by one against the real script and
+    failing apply_script_patch's context check on every single attempt.
+    The EXECUTED script is untouched (leading blank lines are harmless to
+    run) — only the STORED copy used for future prompts/patches is
+    normalized, so there's exactly one unambiguous "line 1" going forward."""
+    import asyncio
+    from geometry_diagrams.strategies.python_full import (
+        _run_script_node, PythonFullMetadata, PythonFullAttemptTrace,
+    )
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    script = "\n\ncanvas(x_range=(0, 10), y_range=(0, 10))\na = point(0, 0)\ndraw_points(a)\n\n\n"
+    metadata = PythonFullMetadata(attempt_traces=[
+        PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
+    ])
+    state = {
+        "prompt": "a point", "model_id": "test", "enable_cache": False,
+        "attempt": 0, "last_error": "", "script": script, "result": None,
+        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+        "renderer": SVGRenderer(), "metadata": metadata,
+    }
+    update = asyncio.run(_run_script_node(state))
+    result = update["result"]
+    assert result is not None
+    assert result.script == "canvas(x_range=(0, 10), y_range=(0, 10))\na = point(0, 0)\ndraw_points(a)\n"
