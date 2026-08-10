@@ -787,3 +787,18 @@ draw(t)
     assert result.script == script
     named_names = {e["name"] for e in result.entity_manifest["named"]}
     assert "t" in named_names
+
+
+def test_build_edit_prompt_includes_script_manifest_and_naming_contract():
+    from geometry_diagrams.strategies.python_full import build_edit_prompt
+
+    manifest = {
+        "named": [{"name": "tri", "id": "t1", "type": "triangle", "approx_position": [1.0, 2.0]}],
+        "anonymous": [],
+    }
+    prompt = build_edit_prompt("make it bigger", "tri = triangle(a, b, c)\ndraw(tri)", manifest)
+
+    assert "make it bigger" in prompt
+    assert "tri = triangle(a, b, c)" in prompt
+    assert '"name": "tri"' in prompt
+    assert "same variable name" in prompt.lower()

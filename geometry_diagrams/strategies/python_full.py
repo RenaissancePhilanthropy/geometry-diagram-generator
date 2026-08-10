@@ -623,6 +623,29 @@ def _build_python_full_graph() -> StateGraph:
     return builder.compile()
 
 
+def build_edit_prompt(request: str, previous_script: str, manifest: dict) -> str:
+    """Compose an edit-turn prompt: the user's request, the previous
+    script verbatim, and its entity manifest, plus the naming contract
+    that makes the locality diagnostic (edit_diagnostics.py) meaningful.
+    Mirrors structured.py's _prepare_modification_prompt, adapted for a
+    pydsl script rather than a raw DiagramIR."""
+    manifest_json = json.dumps(manifest, indent=2)
+    return (
+        f"{request}\n\n"
+        "---\n"
+        "The user previously had this pydsl script rendered successfully. "
+        "Treat it as the starting point and apply only the requested "
+        "changes. For any variable you are NOT intentionally changing, "
+        "keep the exact same variable name it already has — this is how "
+        "we tell which entities you meant to touch.\n\n"
+        f"Previous script:\n```python\n{previous_script}\n```\n\n"
+        "Entity manifest (script variable -> type and approximate canvas "
+        "position, plus unnamed labels/marks/fills by type/position/text):\n"
+        f"{manifest_json}\n"
+        "---"
+    )
+
+
 class PythonFullStrategy(SubstanceStrategy):
     """pydsl-based strategy: LLM writes a sandboxed Python script, compiled + rendered deterministically."""
 
