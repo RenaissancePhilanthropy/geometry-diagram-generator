@@ -10,6 +10,9 @@ from typing import Any, Optional, TypedDict
 
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import create_react_agent
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import (
@@ -18,9 +21,12 @@ from .llm import (
 )
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
+from .structured import dispatch_query
+from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
 from ..ir.render_util import build_entity_manifest
-from ..ir.renderer import Renderer, TikZRenderer
+from ..ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from ..pydsl.patch import apply_script_patch
 from ..pydsl.sandbox import run_script
 
 logger = logging.getLogger(__name__)
@@ -28,6 +34,46 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 SANDBOX_TIMEOUT_SECONDS = 10.0  # vs. run_script's own 5.0 default — real LLM-generated
                                  # constructions may be larger than hand-authored test scripts.
+
+_BUILD_AGENT_INSTRUCTIONS = """\
+You are a geometry diagram assistant. Call render_diagram with a natural \
+language description to create or edit a diagram — on the first call it \
+creates a new diagram; on later calls it edits whatever was last \
+rendered, using the previous script as context. Call query_diagram for \
+read-only geometric facts (coordinates, distances, angles, lengths, \
+areas, perimeters) about the most recently rendered diagram. Briefly \
+explain what you did after each render_diagram call."""
+
+
+class PydslScriptPatchOutput(BaseModel):
+    patch: str = Field(description="A unified diff patch to apply to the previous script.")
+
+
+async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -> str:
+    """Single direct LLM call requesting a unified-diff patch (patch mode's
+    generation step) — deliberately NOT the multi-attempt generate_script
+    retry loop full_rewrite mode uses; a patch that doesn't apply is
+    reported as a failed edit turn rather than retried with a fresh model
+    call, per the design doc's caution around patch-mode robustness."""
+    llm = get_chat_model(model, enable_cache=enable_cache)
+    structured = llm.with_structured_output(PydslScriptPatchOutput, include_raw=False)
+    response = await structured.ainvoke([HumanMessage(content=prompt)])
+    return response.patch
+
+
+def build_patch_request_prompt(request: str, previous_script: str, manifest: dict) -> str:
+    """Prompt for patch mode's single LLM call: same context as
+    build_edit_prompt, but asking for a unified diff instead of a full
+    script."""
+    manifest_json = json.dumps(manifest, indent=2)
+    return (
+        f"{request}\n\n---\nPrevious script:\n```python\n{previous_script}\n```\n\n"
+        f"Entity manifest:\n{manifest_json}\n---\n"
+        "Respond with ONLY a unified diff patch (@@ hunk headers, then "
+        "' '/'-'/'+' lines) to apply to the previous script — not a full "
+        "script. Keep the exact same variable name for anything you are "
+        "not intentionally changing."
+    )
 
 
 class PydslScriptOutput(BaseModel):
@@ -605,6 +651,28 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         }
 
 
+async def _run_from_script(script: str, renderer: "Renderer | None") -> StructuredRunResult:
+    """Run the sandbox/compile/check/render pipeline directly on an
+    already-final script (patch mode's output after apply_script_patch),
+    skipping generate_script entirely. A failure here is NOT retried with
+    a fresh LLM call, unlike full_rewrite mode — the caller sees the
+    error and the state stack is left untouched (Global Constraints)."""
+    state: PythonFullPipelineState = {
+        "prompt": "", "model_id": "", "enable_cache": False,
+        "attempt": 0, "last_error": "", "script": script, "result": None,
+        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+        "renderer": renderer,
+        "metadata": PythonFullMetadata(attempt_traces=[
+            PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
+        ]),
+    }
+    update = await _run_script_node(state)
+    result = update.get("result")
+    if result is None:
+        raise RuntimeError(f"patch-mode script failed: {update.get('last_error', 'unknown error')}")
+    return result
+
+
 def _pipeline_router(state: PythonFullPipelineState) -> str:
     if state.get("result") is not None:
         return END
@@ -698,10 +766,72 @@ class PythonFullStrategy(SubstanceStrategy):
         result.cost_usd = self._partial_cost_usd
         return result
 
-    def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
-        """Not implemented for this PoC — this strategy has no conversational-agent
-        requirement yet. Real chat wiring (render_diagram/query_diagram tools, as
-        structured.py provides) is deferred until this strategy actually needs it."""
-        raise NotImplementedError(
-            "PythonFullStrategy doesn't support build_agent() yet — use .run() directly."
-        )
+    def build_agent(
+        self,
+        model: str = DEFAULT_AGENT_MODEL,
+        renderer=None,
+        edit_generation_mode: str = "full_rewrite",
+    ):
+        """Conversational ReAct agent with render_diagram + query_diagram
+        tools. State is a small stack of prior turns (not a single slot,
+        and not per-conversation — see design doc, Component 5, and this
+        plan's Global Constraints) kept in this closure."""
+        _renderer = renderer if renderer is not None else SVGRenderer()
+        _stack: list[dict] = []
+
+        @tool
+        async def render_diagram(request: str) -> str:
+            """Create or edit the geometry diagram from a natural language
+            description. The first call creates a new diagram; later calls
+            edit the most recently rendered one.
+
+            Args:
+                request: Full description of the diagram or the requested edit.
+            Returns:
+                JSON with svg field on success, or error field on failure.
+            """
+            try:
+                if _stack:
+                    top = _stack[-1]
+                    if edit_generation_mode == "patch":
+                        patch_prompt = build_patch_request_prompt(request, top["script"], top["manifest"])
+                        patch_text = await _generate_patch(patch_prompt, model)
+                        patched_script = apply_script_patch(top["script"], patch_text)
+                        result = await _run_from_script(patched_script, _renderer)
+                    else:
+                        full_request = build_edit_prompt(request, top["script"], top["manifest"])
+                        result = await self.run(full_request, model=model, renderer=_renderer)
+
+                    check_edit_locality(
+                        top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
+                        result.entity_manifest, result.diagram_ir, result.sym_full,
+                    )  # diagnostic only, per Global Constraints — not asserted on
+                else:
+                    result = await self.run(request, model=model, renderer=_renderer)
+
+                _stack.append({
+                    "script": result.script,
+                    "manifest": result.entity_manifest,
+                    "result": result,
+                })
+                return json.dumps({"svg": result.svg})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @tool
+        def query_diagram(query_type: str, params: "dict[str, Any] | None" = None) -> str:
+            """Query geometric properties of the most recently rendered diagram.
+
+            Args:
+                query_type: One of "list_objects", "coordinate", "distance",
+                    "angle", "length", "radius", "area", "perimeter".
+                params: Query arguments — call list_objects first to see valid IDs.
+            Returns:
+                JSON with query result or error.
+            """
+            if not _stack:
+                return json.dumps({"error": "No diagram rendered yet"})
+            return dispatch_query(_stack[-1]["result"].sym_full, query_type, params or {})
+
+        llm = get_chat_model(model)
+        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)

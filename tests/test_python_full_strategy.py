@@ -195,12 +195,6 @@ async def test_run_script_node_falls_back_to_error_when_retry_message_is_none():
     assert update["attempt"] == 1
 
 
-def test_build_agent_raises_not_implemented():
-    strategy = PythonFullStrategy()
-    with pytest.raises(NotImplementedError):
-        strategy.build_agent(model="anthropic:claude-sonnet-4-6")
-
-
 from geometry_diagrams.strategies.python_full import PythonFullMetadata
 
 
@@ -802,3 +796,48 @@ def test_build_edit_prompt_includes_script_manifest_and_naming_contract():
     assert "tri = triangle(a, b, c)" in prompt
     assert '"name": "tri"' in prompt
     assert "same variable name" in prompt.lower()
+
+
+def test_build_agent_returns_a_graph_instead_of_raising():
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="anthropic:claude-haiku-4-5-20251001")
+    assert graph is not None
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_tool_edits_using_previous_script_context(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    prompts_seen: list[str] = []
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        prompts_seen.append(prompt)
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{len(prompts_seen)}</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0,0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={
+                "named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}],
+                "anonymous": [],
+            },
+        )
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    await render_tool.ainvoke({"request": "draw a point"})
+    await render_tool.ainvoke({"request": "move it up"})
+
+    assert len(prompts_seen) == 2
+    assert prompts_seen[0] == "draw a point"
+    assert "a = point(0,0)" in prompts_seen[1]
+    assert "same variable name" in prompts_seen[1].lower()
