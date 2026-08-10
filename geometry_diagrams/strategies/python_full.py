@@ -19,6 +19,7 @@ from .llm import (
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
 from ..ir.errors import IRCompileError
+from ..ir.render_util import build_entity_manifest
 from ..ir.renderer import Renderer, TikZRenderer
 from ..pydsl.sandbox import run_script
 
@@ -585,6 +586,11 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
     try:
         pipeline_result = await run_ir_pipeline(diagram_ir, renderer)
         pipeline_result.retries = state["attempt"]
+        pipeline_result.script = script
+        pipeline_result.variable_ids = result.variable_ids
+        pipeline_result.entity_manifest = build_entity_manifest(
+            diagram_ir, pipeline_result.sym_full, result.variable_ids,
+        )
         if metadata is not None:
             metadata.attempt_traces[-1].stage = "success"
         return {"result": pipeline_result}

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import sympy.geometry as spg
@@ -36,6 +36,9 @@ class StructuredRunResult:
     recipe_metadata: Any = None
     python_full_metadata: Any = None
     retries: int = 0
+    script: str = ""
+    variable_ids: dict = field(default_factory=dict)
+    entity_manifest: dict = field(default_factory=dict)
 
 
 async def run_ir_pipeline(

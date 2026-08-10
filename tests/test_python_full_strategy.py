@@ -747,3 +747,43 @@ async def test_generate_script_node_salvages_a_script_when_with_structured_outpu
     assert result.retries == 0
     assert result.python_full_metadata.attempt_traces[0].stage == "success"
     assert result.python_full_metadata.attempt_traces[0].script == VALID_SCRIPT.strip()
+
+
+def test_run_script_node_attaches_variable_ids_and_entity_manifest():
+    import asyncio
+    from geometry_diagrams.strategies.python_full import (
+        _run_script_node, PythonFullMetadata, PythonFullAttemptTrace,
+    )
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    script = """
+a = point(0, 0)
+b = point(3, 0)
+c = point(0, 4)
+t = triangle(a, b, c)
+draw(t)
+"""
+    metadata = PythonFullMetadata(attempt_traces=[
+        PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
+    ])
+    state = {
+        "prompt": "a right triangle",
+        "model_id": "test",
+        "enable_cache": False,
+        "attempt": 0,
+        "last_error": "",
+        "script": script,
+        "result": None,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "renderer": SVGRenderer(),
+        "metadata": metadata,
+    }
+    update = asyncio.run(_run_script_node(state))
+    result = update["result"]
+    assert result is not None
+    assert set(result.variable_ids) == {"a", "b", "c", "t"}
+    assert result.script == script
+    named_names = {e["name"] for e in result.entity_manifest["named"]}
+    assert "t" in named_names
