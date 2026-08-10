@@ -87,3 +87,37 @@ def test_expand_bounds_for_geometry_includes_elliptical_arc():
     assert xmax == pytest.approx(4.0 + BOUNDS_PADDING)
     assert ymin == pytest.approx(-1.0 - BOUNDS_PADDING)
     assert ymax == pytest.approx(1.0 + BOUNDS_PADDING)
+
+
+def test_build_entity_manifest_includes_named_and_anonymous_entries():
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, Segment, Triangle, LabelPoint, Fill
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.render_util import build_entity_manifest
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="p_a", x=0.0, y=0.0),
+            PointFixed(id="p_b", x=4.0, y=0.0),
+            PointFixed(id="p_c", x=0.0, y=3.0),
+            Triangle(id="tri1", a="p_a", b="p_b", c="p_c"),
+        ],
+        render=[
+            LabelPoint(p="p_a", text="A"),
+            Fill(obj="tri1"),
+        ],
+    )
+    sym = compile_defs(diagram)
+    variable_ids = {"a": "p_a", "b": "p_b", "c": "p_c", "t": "tri1"}
+
+    manifest = build_entity_manifest(diagram, sym, variable_ids)
+
+    named_by_name = {e["name"]: e for e in manifest["named"]}
+    assert named_by_name["t"]["type"] == "triangle"
+    assert named_by_name["t"]["id"] == "tri1"
+    assert named_by_name["a"]["approx_position"] == [0.0, 0.0]
+
+    anon_types = {e["type"] for e in manifest["anonymous"]}
+    assert anon_types == {"label_point", "fill"}
+    label_entry = next(e for e in manifest["anonymous"] if e["type"] == "label_point")
+    assert label_entry["text"] == "A"
+    assert label_entry["approx_position"] == [0.0, 0.0]

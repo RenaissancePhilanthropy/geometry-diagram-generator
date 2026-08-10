@@ -497,3 +497,89 @@ def round_down_to_step(value: float, step: float) -> float:
 
 def round_up_to_step(value: float, step: float) -> float:
     return math.ceil(value / step) * step
+
+
+# ---------------------------------------------------------------------------
+# Entity manifest building
+# ---------------------------------------------------------------------------
+
+def _anonymous_render_op_position(
+    op: Any, sym: "SymTable", stmt_by_id: dict[str, Any],
+) -> "tuple[float, float] | None":
+    """Best-effort canvas position for a manifest entry describing an
+    anonymous (never variable-bound) render op — labels, fills, marks.
+    Returns None for op kinds not yet handled here; such ops are simply
+    omitted from the manifest rather than grounded incorrectly."""
+    if isinstance(op, ir.LabelPoint):
+        obj = sym.get(op.p)
+        return (float(obj.x), float(obj.y)) if obj is not None else None
+    if isinstance(op, ir.LabelFreeText):
+        if op.at is not None:
+            return (float(op.at[0]), float(op.at[1]))
+        obj = sym.get(op.centroid_of)
+        return centroid_of_obj(obj) if obj is not None else None
+    if isinstance(op, ir.Fill):
+        obj = sym.get(op.obj)
+        return centroid_of_obj(obj) if obj is not None else None
+    if isinstance(op, ir.LabelSegment):
+        seg_stmt = stmt_by_id.get(op.seg)
+        if isinstance(seg_stmt, (ir.Segment, ir.Ray)):
+            a, b = sym.get(seg_stmt.a), sym.get(seg_stmt.b)
+            if a is not None and b is not None:
+                return (float((a.x + b.x) / 2), float((a.y + b.y) / 2))
+            return None
+        if seg_stmt is not None and seg_stmt.kind in (
+            "arc_center_start_end", "sector_center_start_end",
+        ):
+            _, _, px, py, _ = arc_label_anchor(op.seg, sym)
+            return (px, py)
+        return None
+    return None
+
+
+def build_entity_manifest(
+    diagram_ir: "ir.DiagramIR", sym: "SymTable", variable_ids: dict,
+) -> dict:
+    """Grounding manifest for edit requests: named entities (script variable
+    name -> type + approx position) plus anonymous render ops (labels,
+    marks, fills — which never bind to a variable) with a synthetic id.
+    Named entities are grounded by name; anonymous ones only by
+    type/position/text (see design doc, Component 2)."""
+    stmts_by_id = {stmt.id: stmt for stmt in diagram_ir.define}
+
+    named = []
+    for name, obj_id in variable_ids.items():
+        stmt = stmts_by_id.get(obj_id)
+        obj = sym.get(obj_id)
+        if stmt is None or obj is None:
+            continue
+        try:
+            if isinstance(obj, spg.Point):
+                position = (sympy_to_float(obj.x), sympy_to_float(obj.y))
+            else:
+                position = centroid_of_obj(obj)
+        except Exception:
+            continue
+        named.append({
+            "name": name,
+            "id": obj_id,
+            "type": stmt.kind,
+            "approx_position": [float(position[0]), float(position[1])],
+        })
+
+    anonymous = []
+    for index, op in enumerate(diagram_ir.render):
+        position = _anonymous_render_op_position(op, sym, stmts_by_id)
+        if position is None:
+            continue
+        entry = {
+            "synthetic_id": f"render_op_{index}",
+            "type": op.kind,
+            "approx_position": [float(position[0]), float(position[1])],
+        }
+        text = getattr(op, "text", None)
+        if text is not None:
+            entry["text"] = text
+        anonymous.append(entry)
+
+    return {"named": named, "anonymous": anonymous}
