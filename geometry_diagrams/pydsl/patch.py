@@ -21,6 +21,15 @@ def apply_script_patch(previous_script: str, patch_text: str) -> str:
     the patch's context/removal lines don't match `previous_script`."""
     old_lines = previous_script.splitlines(keepends=True)
     patch_lines = patch_text.splitlines(keepends=True)
+    # An LLM's patch is normally carried as a JSON string field, so its final
+    # line routinely lacks a trailing "\n" as a pure transport artifact (the
+    # value just ends there) — not a real diff signal. Left alone, that
+    # drops a "\n" splitlines(keepends=True) would otherwise have kept,
+    # causing a spurious mismatch against the real script's corresponding
+    # line (which does have one), or — for an inserted line — silently
+    # merging it into whatever line follows it in the output.
+    if patch_lines and not patch_lines[-1].endswith("\n"):
+        patch_lines[-1] += "\n"
 
     result_lines: list[str] = []
     old_index = 0

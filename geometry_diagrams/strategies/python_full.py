@@ -54,10 +54,23 @@ async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -
     generation step) — deliberately NOT the multi-attempt generate_script
     retry loop full_rewrite mode uses; a patch that doesn't apply is
     reported as a failed edit turn rather than retried with a fresh model
-    call, per the design doc's caution around patch-mode robustness."""
+    call, per the design doc's caution around patch-mode robustness.
+
+    Includes the same pydsl API reference (build_python_full_instructions)
+    that full-script generation gets as a system message — without it, the
+    model has no information about the actual API surface and hallucinates
+    plausible-but-nonexistent calls (confirmed via live testing: draw()
+    called with a fill_color/fill_opacity kwarg that doesn't exist — the
+    real API is a separate fill(obj, color=...) call — and an AngleRef
+    treated as having a .mark_right_angle() method, when the real API is
+    the standalone mark_right_angle(ref) function)."""
     llm = get_chat_model(model, enable_cache=enable_cache)
     structured = llm.with_structured_output(PydslScriptPatchOutput, include_raw=False)
-    response = await structured.ainvoke([HumanMessage(content=prompt)])
+    messages = [
+        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
+        HumanMessage(content=prompt),
+    ]
+    response = await structured.ainvoke(messages)
     return response.patch
 
 

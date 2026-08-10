@@ -943,3 +943,43 @@ async def test_render_diagram_attaches_locality_diagnostic_to_stack_frame():
     diagnostic = stack[-1]["locality_diagnostic"]
     assert isinstance(diagnostic, LocalityDiagnostic)
     assert diagnostic.matched_names == {"a"}
+
+
+@pytest.mark.asyncio
+async def test_generate_patch_includes_pydsl_api_instructions_as_system_message():
+    """_generate_patch must give the model the same pydsl API reference
+    _generate_script_node gives full-script generation — without it, the
+    model has no information about the actual API surface and hallucinates
+    plausible-but-nonexistent calls (e.g. draw(fill_color=...) instead of a
+    separate fill() call, or angle(...).mark_right_angle() instead of the
+    standalone mark_right_angle() function) — confirmed via live testing."""
+    from geometry_diagrams.strategies import python_full as pf_module
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+
+    captured_messages = []
+
+    class FakeStructured:
+        async def ainvoke(self, messages):
+            captured_messages.extend(messages)
+            return pf_module.PydslScriptPatchOutput(patch="@@ -1,1 +1,1 @@\n-a\n+b\n")
+
+    class FakeLLM:
+        def with_structured_output(self, schema, include_raw=False):
+            return FakeStructured()
+
+    with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
+        result = await pf_module._generate_patch("edit this script", model="test")
+
+    assert result == "@@ -1,1 +1,1 @@\n-a\n+b\n"
+    assert len(captured_messages) == 2
+    system_message, human_message = captured_messages
+    assert system_message.content or (
+        isinstance(system_message.content, list) and system_message.content
+    )
+    system_text = (
+        system_message.content
+        if isinstance(system_message.content, str)
+        else system_message.content[0].get("text", "")
+    )
+    assert build_python_full_instructions()[:200] in system_text
+    assert human_message.content == "edit this script"
