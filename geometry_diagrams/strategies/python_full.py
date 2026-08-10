@@ -27,6 +27,7 @@ from ..ir.errors import IRCompileError
 from ..ir.render_util import build_entity_manifest
 from ..ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from ..pydsl.patch import apply_script_patch
+from ..pydsl.search_replace import apply_search_replace
 from ..pydsl.sandbox import run_script
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,50 @@ def build_patch_request_prompt(request: str, previous_script: str, manifest: dic
         "' '/'-'/'+' lines) to apply to the previous script — not a full "
         "script. Keep the exact same variable name for anything you are "
         "not intentionally changing."
+    )
+
+
+class SearchReplaceBlock(BaseModel):
+    old_string: str = Field(description="Exact text to find in the script — must match exactly once.")
+    new_string: str = Field(description="Text to replace it with.")
+
+
+class PydslSearchReplaceOutput(BaseModel):
+    blocks: list[SearchReplaceBlock] = Field(description="Search/replace blocks to apply in order.")
+
+
+async def _generate_search_replace(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+    """Single direct LLM call requesting search/replace blocks
+    (search_replace mode's generation step) — mirrors _generate_patch's
+    shape exactly, including the pydsl API reference as a system message
+    (omitting it is a confirmed way to get hallucinated API calls)."""
+    llm = get_chat_model(model, enable_cache=enable_cache)
+    structured = llm.with_structured_output(PydslSearchReplaceOutput, include_raw=False)
+    messages = [
+        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
+        HumanMessage(content=prompt),
+    ]
+    response = await structured.ainvoke(messages)
+    return [block.model_dump() for block in response.blocks]
+
+
+def build_search_replace_request_prompt(request: str, previous_script: str, manifest: dict) -> str:
+    """Prompt for search_replace mode's single LLM call: same context as
+    build_edit_prompt/build_patch_request_prompt, but asking for
+    search/replace blocks instead of a full script or a diff."""
+    manifest_json = json.dumps(manifest, indent=2)
+    return (
+        f"{request}\n\n---\nPrevious script:\n```python\n{previous_script}\n```\n\n"
+        f"Entity manifest:\n{manifest_json}\n---\n"
+        "Respond with a list of search/replace blocks. Each block's "
+        "old_string must be copied EXACTLY (verbatim, including "
+        "whitespace) from the previous script above, and must be unique "
+        "in it — if the exact text you want to change appears more than "
+        "once, include enough surrounding context in old_string to make "
+        "it unique. Blocks apply in order; an earlier block's new_string "
+        "can affect what a later block's old_string matches against. Keep "
+        "the exact same variable name for anything you are not "
+        "intentionally changing."
     )
 
 
@@ -815,14 +860,29 @@ class PythonFullStrategy(SubstanceStrategy):
             try:
                 if _stack:
                     top = _stack[-1]
-                    if edit_generation_mode == "patch":
-                        patch_prompt = build_patch_request_prompt(request, top["script"], top["manifest"])
+
+                    async def _edit_full_rewrite(req: str) -> StructuredRunResult:
+                        full_request = build_edit_prompt(req, top["script"], top["manifest"])
+                        return await self.run(full_request, model=model, renderer=_renderer)
+
+                    async def _edit_patch(req: str) -> StructuredRunResult:
+                        patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
                         patch_text = await _generate_patch(patch_prompt, model)
                         patched_script = apply_script_patch(top["script"], patch_text)
-                        result = await _run_from_script(patched_script, _renderer)
-                    else:
-                        full_request = build_edit_prompt(request, top["script"], top["manifest"])
-                        result = await self.run(full_request, model=model, renderer=_renderer)
+                        return await _run_from_script(patched_script, _renderer)
+
+                    async def _edit_search_replace(req: str) -> StructuredRunResult:
+                        prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
+                        blocks = await _generate_search_replace(prompt, model)
+                        new_script = apply_search_replace(top["script"], blocks)
+                        return await _run_from_script(new_script, _renderer)
+
+                    _edit_handlers = {
+                        "patch": _edit_patch,
+                        "search_replace": _edit_search_replace,
+                    }
+                    handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
+                    result = await handler(request)
 
                     try:
                         locality_diagnostic = check_edit_locality(

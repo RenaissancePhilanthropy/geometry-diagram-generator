@@ -1017,3 +1017,90 @@ def test_run_script_node_normalizes_leading_and_trailing_blank_lines_in_stored_s
     result = update["result"]
     assert result is not None
     assert result.script == "canvas(x_range=(0, 10), y_range=(0, 10))\na = point(0, 0)\ndraw_points(a)\n"
+
+
+def test_build_search_replace_request_prompt_includes_script_manifest_and_naming_contract():
+    from geometry_diagrams.strategies.python_full import build_search_replace_request_prompt
+
+    manifest = {"named": [{"name": "tri", "id": "t1", "type": "triangle", "approx_position": [1.0, 2.0]}], "anonymous": []}
+    prompt = build_search_replace_request_prompt("make it bigger", "tri = triangle(a, b, c)\ndraw(tri)", manifest)
+
+    assert "make it bigger" in prompt
+    assert "tri = triangle(a, b, c)" in prompt
+    assert '"name": "tri"' in prompt
+    assert "same variable name" in prompt.lower()
+    assert "unique" in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_search_replace_includes_pydsl_api_instructions_as_system_message():
+    from geometry_diagrams.strategies import python_full as pf_module
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+
+    captured_messages = []
+
+    class FakeStructured:
+        async def ainvoke(self, messages):
+            captured_messages.extend(messages)
+            return pf_module.PydslSearchReplaceOutput(
+                blocks=[pf_module.SearchReplaceBlock(old_string="a", new_string="b")]
+            )
+
+    class FakeLLM:
+        def with_structured_output(self, schema, include_raw=False):
+            return FakeStructured()
+
+    with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
+        result = await pf_module._generate_search_replace("edit this script", model="test")
+
+    assert result == [{"old_string": "a", "new_string": "b"}]
+    assert len(captured_messages) == 2
+    system_message = captured_messages[0]
+    system_text = (
+        system_message.content
+        if isinstance(system_message.content, str)
+        else system_message.content[0].get("text", "")
+    )
+    assert build_python_full_instructions()[:200] in system_text
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_edits_via_search_replace_mode(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{call_count}</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}], "anonymous": []},
+            retries=0,
+        )
+
+    async def fake_generate_search_replace(prompt, model, enable_cache=False):
+        return [{"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}]
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full._generate_search_replace",
+        fake_generate_search_replace,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test", edit_generation_mode="search_replace")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    first = json.loads(await render_tool.ainvoke({"request": "draw a point"}))
+    second = json.loads(await render_tool.ainvoke({"request": "move it"}))
+
+    assert "svg" in first and "error" not in first
+    assert "svg" in second and "error" not in second
