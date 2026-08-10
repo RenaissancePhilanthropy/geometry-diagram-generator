@@ -1,0 +1,94 @@
+- id: chain-two-triangles-circles-1
+  turns:
+    - request: "Draw a triangle with vertices A at (0,0), B at (4,0), C at (0,3)."
+      expected_properties:
+        - name: "initial right angle at A"
+          type: right_angle
+          args: ["B", "A", "C"]
+    - request: "Add a second, separate triangle called D, E, F to the right of the first one."
+    - request: "Draw the circumcircle of triangle ABC and call its center O."
+    - request: "Fill triangle ABC blue and triangle DEF red."
+    - request: "Add labels to all six vertices."
+    - request: "Make triangle DEF bigger."
+    - request: "Draw the incircle of triangle DEF."
+    - request: "Add a labeled point at the circumcenter O and one at the incenter of DEF, call it I."
+      expected_properties:
+        - name: "A still on circumcircle after edits"
+          type: point_on_circle
+          args: ["A", "O", "B"]
+
+- id: chain-square-rotate-resize-1
+  turns:
+    - request: "Draw a square with corners A, B, C, D starting at (0,0) with side length 3."
+      expected_properties:
+        - name: "right angle at corner B"
+          type: right_angle
+          args: ["A", "B", "C"]
+    - request: "Label all four corners."
+    - request: "Fill the square with a light gray color."
+    - request: "Draw both diagonals of the square."
+    - request: "Mark the point where the diagonals cross as point M."
+    - request: "Make the square twice as big, keeping A in the same place."
+    - request: "Change the fill color to light blue."
+    - request: "Draw a circle centered at M that passes through all four corners."
+      expected_properties:
+        - name: "M equidistant from A and C after resize"
+          type: midpoint
+          args: ["M", "A", "C"]
+
+- id: chain-regular-polygon-growing-1
+  turns:
+    - request: "Draw a regular pentagon centered at (0,0) with radius 3, labeling its vertices P1 through P5."
+    - request: "Fill the pentagon with a light yellow color."
+    - request: "Draw the circumscribed circle around the pentagon, calling its center O."
+      expected_properties:
+        - name: "P1 on circumscribed circle"
+          type: point_on_circle
+          args: ["P1", "O", "P2"]
+    - request: "Add a label at the center point O."
+    - request: "Draw a line from O to each vertex of the pentagon."
+    - request: "Mark the angle at O between the lines to P1 and P2."
+    - request: "Change the pentagon's fill color to light green."
+    - request: "Make the circumscribed circle dashed instead of solid."
+      expected_properties:
+        - name: "P1 still on circumscribed circle after edits"
+          type: point_on_circle
+          args: ["P1", "O", "P3"]
+
+- id: chain-angle-bisector-marks-1
+  turns:
+    - request: "Draw a triangle with vertices A at (0,0), B at (6,0), C at (2,5)."
+    - request: "Draw the angle bisector from vertex A, calling the point where it meets BC point M."
+    - request: "Label all three vertices A, B, and C."
+    - request: "Mark the two angles created by the bisector at vertex A as equal."
+    - request: "Draw the incircle of the triangle, calling its center I."
+      expected_properties:
+        - name: "incenter I inside triangle, angle bisector meets BC at M"
+          type: point_on_segment
+          args: ["M", "B", "C"]
+    - request: "Fill the triangle with a very light orange color."
+    - request: "Add a label at the incenter I."
+    - request: "Make the triangle's outline thicker."
+      expected_properties:
+        - name: "M still on segment BC after edits"
+          type: point_on_segment
+          args: ["M", "B", "C"]
+
+- id: chain-circle-tangent-lines-1
+  turns:
+    - request: "Draw a circle centered at O at (0,0) with radius 3."
+    - request: "Add a point P outside the circle at (6, 0)."
+    - request: "Draw the two tangent lines from P to the circle, calling the tangent points T1 and T2."
+      expected_properties:
+        - name: "T1 on the circle"
+          type: point_on_circle
+          args: ["T1", "O", "P"]
+    - request: "Label points O, P, T1, and T2."
+    - request: "Mark the right angles between each tangent line and its radius."
+    - request: "Fill the circle with a light purple color."
+    - request: "Draw the segment from O to P."
+    - request: "Add a label showing the distance from P to T1."
+      expected_properties:
+        - name: "T1 still on the circle after edits"
+          type: point_on_circle
+          args: ["T1", "O", "P"]
