@@ -185,6 +185,66 @@ def build_hashline_request_prompt(request: str, hashline_view: str, manifest: di
     )
 
 
+class LineNumberOp(BaseModel):
+    kind: str = Field(description='One of "insert", "delete", "replace", "block_replace".')
+    line: Optional[str] = Field(default=None, description="Line number (as shown in the numbered view), for delete/replace ops.")
+    after: Optional[str] = Field(default=None, description='Line number to insert after, or "start", for insert ops.')
+    start_line: Optional[str] = Field(default=None, description="First line number of the range, for block_replace.")
+    end_line: Optional[str] = Field(default=None, description="Last line number of the range, for block_replace.")
+    content: Optional[str] = Field(default=None, description="New content, for insert/replace/block_replace.")
+    expected_content: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional, for delete/replace ops only: the exact current text of "
+            "the referenced line. If given and it doesn't match, the edit is "
+            "rejected instead of silently editing the wrong line."
+        ),
+    )
+
+
+class PydslLineNumberOutput(BaseModel):
+    ops: list[LineNumberOp] = Field(description="Line-number operations to apply in order.")
+
+
+async def _generate_line_number_ops(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+    """Single direct LLM call requesting line_number ops (line_number
+    mode's generation step) — mirrors _generate_hashline_ops's shape,
+    including the pydsl API reference as a system message."""
+    llm = get_chat_model(model, enable_cache=enable_cache)
+    structured = llm.with_structured_output(PydslLineNumberOutput, include_raw=False)
+    messages = [
+        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
+        HumanMessage(content=prompt),
+    ]
+    response = await structured.ainvoke(messages)
+    return [op.model_dump() for op in response.ops]
+
+
+def build_line_number_request_prompt(request: str, line_number_view: str, manifest: dict) -> str:
+    """Prompt for line_number mode's single LLM call: shows the numbered
+    (annotated) script view instead of the plain script, and asks for
+    structured line-anchored operations instead of a diff, search/replace
+    blocks, or hash-tagged operations."""
+    manifest_json = json.dumps(manifest, indent=2)
+    return (
+        f"{request}\n\n---\nPrevious script (each line numbered):\n"
+        f"```\n{line_number_view}\n```\n\n"
+        f"Entity manifest:\n{manifest_json}\n---\n"
+        "Respond with a list of operations, each one of:\n"
+        '- {"kind": "insert", "after": "<line number or \'start\'>", "content": "<new line>"}\n'
+        '- {"kind": "delete", "line": "<line number>", "expected_content": "<optional: exact current text of that line>"}\n'
+        '- {"kind": "replace", "line": "<line number>", "content": "<new line>", "expected_content": "<optional: exact current text of that line>"}\n'
+        '- {"kind": "block_replace", "start_line": "<line number>", "end_line": "<line number>", "content": "<new lines>"}\n'
+        "Reference lines ONLY by the exact number shown in the numbered "
+        "view above — never guess or recount. Including expected_content "
+        "on delete/replace ops is optional but recommended: if it doesn't "
+        "match the line's real current text, your operation will be "
+        "rejected instead of silently editing the wrong line. Keep the "
+        "exact same variable name for anything you are not intentionally "
+        "changing."
+    )
+
+
 class PydslScriptOutput(BaseModel):
     script: str = Field(description="A Python script using only the provided pydsl API.")
 

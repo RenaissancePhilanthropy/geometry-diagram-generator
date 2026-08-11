@@ -1150,6 +1150,54 @@ async def test_generate_hashline_ops_includes_pydsl_api_instructions_as_system_m
     assert build_python_full_instructions()[:200] in system_text
 
 
+def test_build_line_number_request_prompt_includes_view_manifest_and_op_formats():
+    from geometry_diagrams.strategies.python_full import build_line_number_request_prompt
+
+    manifest = {"named": [], "anonymous": []}
+    prompt = build_line_number_request_prompt("make it bigger", "1| a = point(0, 0)", manifest)
+
+    assert "make it bigger" in prompt
+    assert "1| a = point(0, 0)" in prompt
+    assert "block_replace" in prompt
+    assert "expected_content" in prompt
+    assert "same variable name" in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_line_number_ops_includes_pydsl_api_instructions_as_system_message():
+    from geometry_diagrams.strategies import python_full as pf_module
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+
+    captured_messages = []
+
+    class FakeStructured:
+        async def ainvoke(self, messages):
+            captured_messages.extend(messages)
+            return pf_module.PydslLineNumberOutput(
+                ops=[pf_module.LineNumberOp(kind="delete", line="1")]
+            )
+
+    class FakeLLM:
+        def with_structured_output(self, schema, include_raw=False):
+            return FakeStructured()
+
+    with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
+        result = await pf_module._generate_line_number_ops("edit this script", model="test")
+
+    assert result == [{
+        "kind": "delete", "line": "1", "after": None,
+        "start_line": None, "end_line": None, "content": None, "expected_content": None,
+    }]
+    assert len(captured_messages) == 2
+    system_message = captured_messages[0]
+    system_text = (
+        system_message.content
+        if isinstance(system_message.content, str)
+        else system_message.content[0].get("text", "")
+    )
+    assert build_python_full_instructions()[:200] in system_text
+
+
 @pytest.mark.asyncio
 async def test_render_diagram_edits_via_hashline_mode(monkeypatch):
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
