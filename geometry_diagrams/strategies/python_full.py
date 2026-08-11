@@ -92,47 +92,96 @@ def build_patch_request_prompt(request: str, previous_script: str, manifest: dic
     )
 
 
-class SearchReplaceBlock(BaseModel):
-    old_string: str = Field(description="Exact text to find in the script — must match exactly once.")
-    new_string: str = Field(description="Text to replace it with.")
+_SEARCH_MARKER = "<<<<<<< SEARCH"
+_DIVIDER_MARKER = "======="
+_REPLACE_MARKER = ">>>>>>> REPLACE"
 
 
-class PydslSearchReplaceOutput(BaseModel):
-    blocks: list[SearchReplaceBlock] = Field(description="Search/replace blocks to apply in order.")
+def _parse_search_replace_blocks(text: str) -> list[dict]:
+    """Parse Aider-style SEARCH/REPLACE marker blocks from raw model text
+    into [{"old_string": ..., "new_string": ...}, ...].
+
+    This plain-text, marker-delimited format replaced an earlier
+    structured-output (Pydantic list-of-objects) design after direct
+    reproduction confirmed Claude's native tool-calling sometimes
+    hand-serializes that array as malformed text instead of a valid
+    nested JSON array — both with raw embedded newlines AND unescaped
+    inner quotes (e.g. `D.label("D")`'s quotes left unescaped), the
+    second of which no JSON parser can safely recover (an unescaped `"`
+    is genuinely ambiguous with the string's real closing quote). A
+    marker-delimited format has no JSON escaping to get wrong at all:
+    old/new content is copied verbatim between markers, newlines and
+    quotes included, with no encoding step in between.
+    """
+    lines = text.splitlines()
+    blocks: list[dict] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() != _SEARCH_MARKER:
+            i += 1
+            continue
+        i += 1
+        old_lines: list[str] = []
+        while i < len(lines) and lines[i].strip() != _DIVIDER_MARKER:
+            old_lines.append(lines[i])
+            i += 1
+        if i >= len(lines):
+            raise ValueError("search_replace block missing '=======' divider")
+        i += 1  # skip divider
+        new_lines: list[str] = []
+        while i < len(lines) and lines[i].strip() != _REPLACE_MARKER:
+            new_lines.append(lines[i])
+            i += 1
+        if i >= len(lines):
+            raise ValueError("search_replace block missing '>>>>>>> REPLACE' marker")
+        i += 1  # skip replace marker
+        blocks.append({"old_string": "\n".join(old_lines), "new_string": "\n".join(new_lines)})
+    if not blocks:
+        raise ValueError("no search/replace blocks found in response")
+    return blocks
 
 
 async def _generate_search_replace(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
-    """Single direct LLM call requesting search/replace blocks
-    (search_replace mode's generation step) — mirrors _generate_patch's
-    shape exactly, including the pydsl API reference as a system message
+    """Single direct LLM call requesting SEARCH/REPLACE marker blocks as
+    plain text (search_replace mode's generation step) — no structured
+    output for this call; see _parse_search_replace_blocks's docstring
+    for why. Still includes the pydsl API reference as a system message
     (omitting it is a confirmed way to get hallucinated API calls)."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslSearchReplaceOutput, include_raw=False)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
-    response = await structured.ainvoke(messages)
-    return [block.model_dump() for block in response.blocks]
+    response = await llm.ainvoke(messages)
+    text = response.content if isinstance(response.content, str) else response.content[0].get("text", "")
+    return _parse_search_replace_blocks(text)
 
 
 def build_search_replace_request_prompt(request: str, previous_script: str, manifest: dict) -> str:
     """Prompt for search_replace mode's single LLM call: same context as
     build_edit_prompt/build_patch_request_prompt, but asking for
-    search/replace blocks instead of a full script or a diff."""
+    SEARCH/REPLACE marker blocks (plain text, not JSON) instead of a full
+    script or a diff."""
     manifest_json = json.dumps(manifest, indent=2)
     return (
         f"{request}\n\n---\nPrevious script:\n```python\n{previous_script}\n```\n\n"
         f"Entity manifest:\n{manifest_json}\n---\n"
-        "Respond with a list of search/replace blocks. Each block's "
-        "old_string must be copied EXACTLY (verbatim, including "
-        "whitespace) from the previous script above, and must be unique "
-        "in it — if the exact text you want to change appears more than "
-        "once, include enough surrounding context in old_string to make "
-        "it unique. Blocks apply in order; an earlier block's new_string "
-        "can affect what a later block's old_string matches against. Keep "
-        "the exact same variable name for anything you are not "
-        "intentionally changing."
+        "Respond with one or more SEARCH/REPLACE blocks, in exactly this "
+        "format and nothing else (no prose, no code fences around the "
+        "blocks themselves):\n"
+        f"{_SEARCH_MARKER}\n"
+        "<exact text to find>\n"
+        f"{_DIVIDER_MARKER}\n"
+        "<replacement text>\n"
+        f"{_REPLACE_MARKER}\n\n"
+        "The search text of each block must be copied EXACTLY (verbatim, "
+        "including whitespace) from the previous script above, and must "
+        "be unique in it — if the exact text you want to change appears "
+        "more than once, include enough surrounding context to make it "
+        "unique. Blocks apply in order; an earlier block's replacement "
+        "text can affect what a later block's search text matches "
+        "against. Keep the exact same variable name for anything you are "
+        "not intentionally changing."
     )
 
 
@@ -959,6 +1008,14 @@ class PythonFullStrategy(SubstanceStrategy):
         plan's Global Constraints) kept in this closure."""
         _renderer = renderer if renderer is not None else SVGRenderer()
         _stack: list[dict] = []
+        # Mutable box (not a plain variable) so it survives an apply-step
+        # exception without needing `nonlocal` rebinding at the point of
+        # failure: _edit_line_number writes into it before calling
+        # apply_line_number_ops, so a failed apply still leaves the
+        # attempted ops' metadata readable via closure introspection (see
+        # evals/run_edit_chains.py's _closure_last_edit_ops_meta) — unlike
+        # _stack, which a failed turn never appends to at all.
+        _last_edit_ops_meta: dict = {"value": None}
 
         @tool
         async def render_diagram(request: str) -> str:
@@ -972,7 +1029,7 @@ class PythonFullStrategy(SubstanceStrategy):
                 JSON with svg field on success, or error field on failure.
             """
             try:
-                edit_ops_meta = None
+                _last_edit_ops_meta["value"] = None
                 if _stack:
                     top = _stack[-1]
 
@@ -1000,12 +1057,14 @@ class PythonFullStrategy(SubstanceStrategy):
                         return await _run_from_script(new_script, _renderer)
 
                     async def _edit_line_number(req: str) -> StructuredRunResult:
-                        nonlocal edit_ops_meta
                         view = render_line_number_view(top["script"])
                         prompt = build_line_number_request_prompt(req, view, top["manifest"])
                         ops = await _generate_line_number_ops(prompt, model)
                         delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
-                        edit_ops_meta = {
+                        # Written before apply_line_number_ops runs, so a
+                        # failed apply still leaves this readable (see
+                        # _last_edit_ops_meta's declaration above).
+                        _last_edit_ops_meta["value"] = {
                             "delete_replace_ops": len(delete_replace_ops),
                             "with_expected_content": sum(
                                 1 for op in delete_replace_ops if op.get("expected_content")
@@ -1054,7 +1113,7 @@ class PythonFullStrategy(SubstanceStrategy):
                     "manifest": result.entity_manifest,
                     "result": result,
                     "locality_diagnostic": locality_diagnostic,
-                    "edit_ops_meta": edit_ops_meta,
+                    "edit_ops_meta": _last_edit_ops_meta["value"],
                 })
                 return json.dumps({"svg": result.svg})
             except Exception as e:

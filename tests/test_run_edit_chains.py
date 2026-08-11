@@ -69,6 +69,57 @@ async def test_run_chain_continues_past_a_failure_and_tracks_prior_failure_count
 
 
 @pytest.mark.asyncio
+async def test_run_chain_records_edit_ops_meta_on_a_failed_line_number_turn(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []},
+            retries=0,
+        )
+
+    async def fake_generate_line_number_ops(prompt, model, enable_cache=False):
+        # An out-of-range line reference — apply_line_number_ops raises
+        # before anything is applied, so this turn fails. The ops were
+        # still generated (one delete op, no expected_content), and that
+        # metadata must survive the failure.
+        return [{
+            "kind": "delete", "line": "99",
+            "after": None, "start_line": None, "end_line": None,
+            "content": None, "expected_content": None,
+        }]
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full._generate_line_number_ops",
+        fake_generate_line_number_ops,
+    )
+
+    chain = {
+        "id": "chain-1",
+        "turns": [
+            {"request": "draw a point", "expected_properties": []},
+            {"request": "delete a nonexistent line", "expected_properties": []},
+        ],
+    }
+    records = await run_chain(chain, "test-model", "line_number", repeat_index=1, renderer=None, turn_timeout=5.0)
+
+    assert len(records) == 2
+    assert records[0]["success"] is True
+    assert records[0]["edit_ops_meta"] is None  # first turn: no edit happened
+    assert records[1]["success"] is False
+    assert records[1]["error_category"] == "invalid_line"
+    assert records[1]["edit_ops_meta"] == {"delete_replace_ops": 1, "with_expected_content": 0}
+
+
+@pytest.mark.asyncio
 async def test_run_chain_runs_property_checks_on_success(monkeypatch):
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult

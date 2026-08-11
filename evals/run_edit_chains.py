@@ -51,6 +51,19 @@ def _closure_stack(render_tool):
     return fn.__closure__[idx].cell_contents
 
 
+def _closure_last_edit_ops_meta(render_tool):
+    """Pull the current value out of render_diagram's `_last_edit_ops_meta`
+    box. Unlike `_stack` (only appended to on a SUCCESSFUL turn),
+    render_diagram writes this before the apply step runs, so it reflects
+    the current turn's attempted ops even when that turn's apply raises —
+    letting failed turns be stratified by whether the model used the
+    optional expected_content safety echo, the same way successful turns
+    already are (see design doc's isolation-risk note)."""
+    fn = render_tool.coroutine
+    idx = fn.__code__.co_freevars.index("_last_edit_ops_meta")
+    return fn.__closure__[idx].cell_contents["value"]
+
+
 async def run_chain(
     chain: dict,
     model: str,
@@ -104,7 +117,7 @@ async def run_chain(
                 "error_category": "other", "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
-                "edit_ops_meta": None,
+                "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
             })
             prior_failure_count += 1
             records.append(record)
@@ -115,7 +128,7 @@ async def run_chain(
                 "error_category": categorize_edit_error(str(e)), "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
-                "edit_ops_meta": None,
+                "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
             })
             prior_failure_count += 1
             records.append(record)
@@ -127,7 +140,7 @@ async def run_chain(
                 "error_category": categorize_edit_error(parsed["error"]), "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
-                "edit_ops_meta": None,
+                "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
             })
             prior_failure_count += 1
             records.append(record)

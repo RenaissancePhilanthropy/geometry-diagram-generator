@@ -1019,6 +1019,103 @@ def test_run_script_node_normalizes_leading_and_trailing_blank_lines_in_stored_s
     assert result.script == "canvas(x_range=(0, 10), y_range=(0, 10))\na = point(0, 0)\ndraw_points(a)\n"
 
 
+def test_parse_search_replace_blocks_single_block():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    text = (
+        "<<<<<<< SEARCH\n"
+        "a = point(0, 0)\n"
+        "=======\n"
+        "a = point(9, 9)\n"
+        ">>>>>>> REPLACE\n"
+    )
+    assert _parse_search_replace_blocks(text) == [
+        {"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}
+    ]
+
+
+def test_parse_search_replace_blocks_multiple_blocks():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    text = (
+        "<<<<<<< SEARCH\n"
+        "a = point(0, 0)\n"
+        "=======\n"
+        "a = point(9, 9)\n"
+        ">>>>>>> REPLACE\n"
+        "<<<<<<< SEARCH\n"
+        "b = point(1, 0)\n"
+        "=======\n"
+        "b = point(2, 0)\n"
+        ">>>>>>> REPLACE\n"
+    )
+    assert _parse_search_replace_blocks(text) == [
+        {"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"},
+        {"old_string": "b = point(1, 0)", "new_string": "b = point(2, 0)"},
+    ]
+
+
+def test_parse_search_replace_blocks_preserves_multiline_content_with_embedded_quotes():
+    # This is exactly the shape that broke the earlier JSON-based design:
+    # multi-line content containing unescaped quotes (D.label("D")). A
+    # marker-delimited format has no escaping step to get wrong — the
+    # content is copied verbatim between markers, quotes and newlines
+    # included.
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    text = (
+        "<<<<<<< SEARCH\n"
+        "draw_points(A, B, C)\n"
+        "=======\n"
+        "draw_points(A, B, C)\n"
+        'D.label("D")\n'
+        'E.label("E")\n'
+        ">>>>>>> REPLACE\n"
+    )
+    assert _parse_search_replace_blocks(text) == [{
+        "old_string": "draw_points(A, B, C)",
+        "new_string": 'draw_points(A, B, C)\nD.label("D")\nE.label("E")',
+    }]
+
+
+def test_parse_search_replace_blocks_ignores_surrounding_prose():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    text = (
+        "Sure, here's the edit:\n\n"
+        "<<<<<<< SEARCH\n"
+        "a = point(0, 0)\n"
+        "=======\n"
+        "a = point(9, 9)\n"
+        ">>>>>>> REPLACE\n\n"
+        "Let me know if you need anything else!\n"
+    )
+    assert _parse_search_replace_blocks(text) == [
+        {"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}
+    ]
+
+
+def test_parse_search_replace_blocks_raises_on_no_blocks_found():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    with pytest.raises(ValueError, match="no search/replace blocks found"):
+        _parse_search_replace_blocks("I made no changes.")
+
+
+def test_parse_search_replace_blocks_raises_on_missing_divider():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    with pytest.raises(ValueError, match="missing '======='"):
+        _parse_search_replace_blocks("<<<<<<< SEARCH\na = point(0, 0)\n")
+
+
+def test_parse_search_replace_blocks_raises_on_missing_replace_marker():
+    from geometry_diagrams.strategies.python_full import _parse_search_replace_blocks
+
+    with pytest.raises(ValueError, match="missing '>>>>>>> REPLACE'"):
+        _parse_search_replace_blocks("<<<<<<< SEARCH\na = point(0, 0)\n=======\na = point(9, 9)\n")
+
+
 def test_build_search_replace_request_prompt_includes_script_manifest_and_naming_contract():
     from geometry_diagrams.strategies.python_full import build_search_replace_request_prompt
 
@@ -1030,25 +1127,24 @@ def test_build_search_replace_request_prompt_includes_script_manifest_and_naming
     assert '"name": "tri"' in prompt
     assert "same variable name" in prompt.lower()
     assert "unique" in prompt.lower()
+    assert "<<<<<<< SEARCH" in prompt
+    assert ">>>>>>> REPLACE" in prompt
 
 
 @pytest.mark.asyncio
 async def test_generate_search_replace_includes_pydsl_api_instructions_as_system_message():
     from geometry_diagrams.strategies import python_full as pf_module
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+    from langchain_core.messages import AIMessage
 
     captured_messages = []
 
-    class FakeStructured:
+    class FakeLLM:
         async def ainvoke(self, messages):
             captured_messages.extend(messages)
-            return pf_module.PydslSearchReplaceOutput(
-                blocks=[pf_module.SearchReplaceBlock(old_string="a", new_string="b")]
-            )
-
-    class FakeLLM:
-        def with_structured_output(self, schema, include_raw=False):
-            return FakeStructured()
+            return AIMessage(content=(
+                "<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE\n"
+            ))
 
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
         result = await pf_module._generate_search_replace("edit this script", model="test")
@@ -1341,6 +1437,65 @@ async def test_render_diagram_line_number_edit_ops_meta_counts_missing_expected_
     idx = fn.__code__.co_freevars.index("_stack")
     stack = fn.__closure__[idx].cell_contents
     assert stack[-1]["edit_ops_meta"] == {"delete_replace_ops": 1, "with_expected_content": 0}
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_line_number_edit_ops_meta_survives_apply_failure(monkeypatch):
+    # Prior to this fix, edit_ops_meta was only ever readable on a
+    # successful turn (a failed apply never reaches _stack.append at
+    # all) — losing exactly the data needed to check whether omitting
+    # expected_content correlates with more failures. It must now be
+    # readable via the closure's _last_edit_ops_meta box even when the
+    # turn as a whole fails.
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg>1</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}], "anonymous": []},
+            retries=0,
+        )
+
+    async def fake_generate_line_number_ops(prompt, model, enable_cache=False):
+        # Line 99 doesn't exist — apply_line_number_ops raises before
+        # applying anything, so this turn fails outright.
+        return [{
+            "kind": "delete", "line": "99",
+            "after": None, "start_line": None, "end_line": None,
+            "content": None, "expected_content": None,
+        }]
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full._generate_line_number_ops",
+        fake_generate_line_number_ops,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test", edit_generation_mode="line_number")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    await render_tool.ainvoke({"request": "draw a point"})
+    second = json.loads(await render_tool.ainvoke({"request": "delete a nonexistent line"}))
+    assert "error" in second
+
+    fn = render_tool.coroutine
+    idx = fn.__code__.co_freevars.index("_last_edit_ops_meta")
+    last_edit_ops_meta = fn.__closure__[idx].cell_contents["value"]
+    assert last_edit_ops_meta == {"delete_replace_ops": 1, "with_expected_content": 0}
+
+    # _stack itself was never appended to for the failed turn — it still
+    # only has the first (successful) turn's frame.
+    idx = fn.__code__.co_freevars.index("_stack")
+    stack = fn.__closure__[idx].cell_contents
+    assert len(stack) == 1
 
 
 @pytest.mark.asyncio
