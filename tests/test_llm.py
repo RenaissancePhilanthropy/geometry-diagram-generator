@@ -31,6 +31,21 @@ def test_model_specific_extra_body_merges_with_provider_default_for_qwen37flash(
     }
 
 
+def test_model_specific_extra_body_merges_with_provider_default_for_nemotron35lightning(monkeypatch):
+    """nvidia/nemotron-3.5-lightning also needs reasoning disabled (see
+    llm.py's _MODEL_SPECIFIC_EXTRA_BODY) — same failure shape as
+    qwen3.7-flash (a hidden reasoning channel that never terminates
+    before hitting the length limit), confirmed empirically 2026-08-11."""
+    _set_openrouter_env(monkeypatch)
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openrouter:nvidia/nemotron-3.5-lightning")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["extra_body"] == {
+        "usage": {"include": True},
+        "reasoning": {"enabled": False},
+    }
+
+
 def test_model_specific_extra_body_does_not_leak_to_other_openrouter_models(monkeypatch):
     """The reasoning:false override is scoped to the exact model id — a
     different openrouter model must only get the provider-wide default."""

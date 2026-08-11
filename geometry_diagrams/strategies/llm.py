@@ -130,6 +130,16 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     # being set to required or object in thinking mode". Confirmed empirically
     # (2026-08-06) that disabling reasoning resolves it cleanly.
     "openrouter:qwen/qwen3.7-flash": {"reasoning": {"enabled": False}},
+    # openrouter:nvidia/nemotron-3.5-lightning runs in "thinking mode" by
+    # default and never terminates the reasoning channel before hitting
+    # the length limit — confirmed empirically (2026-08-11): a trivial
+    # one-line-script request spent 21200+ completion tokens (2099 of
+    # them logged as reasoning_tokens on one attempt, 0 on a retry that
+    # still hit the same limit) and never produced a parseable structured
+    # response. Disabling reasoning resolves it cleanly (15 completion
+    # tokens, parses immediately) — same fix and same failure shape as
+    # qwen3.7-flash above.
+    "openrouter:nvidia/nemotron-3.5-lightning": {"reasoning": {"enabled": False}},
     # deepseek-v4-flash-0731 hit a 52% scenario-timeout rate (180s hard cap) in a
     # 2026-08-06 curriculum run despite a 99% pass rate on the scenarios that DID
     # complete — a pure latency problem, not a capability one. OpenRouter's
