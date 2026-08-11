@@ -314,3 +314,194 @@ async def test_run_matrix_works_without_an_output_path(monkeypatch):
         renderer=None, turn_timeout=5.0, output_path=None,
     )
     assert len(result["records"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_trips_model_level_breaker_and_stops_calling_run_chain(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from evals.run_edit_chains import run_matrix
+
+    call_count = 0
+
+    async def always_failing_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
+
+    monkeypatch.setattr(PythonFullStrategy, "run", always_failing_run)
+
+    # 5 chains x 1 model x 1 mode x 3 repeats x 1 turn = 15 possible calls,
+    # but the model tally crosses the 20-sample floor only with >= 20
+    # turns — use 1-turn chains and enough of them that failure alone
+    # (100% failure rate) trips as soon as the floor is crossed.
+    chains = [
+        {"id": f"chain-{i}", "turns": [{"request": "draw a point", "expected_properties": []}]}
+        for i in range(10)
+    ]
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite"], repeats=3,
+        renderer=None, turn_timeout=5.0,
+    )
+
+    assert result["tripped_models"] == ["model-a"]
+    # Trips once the tally crosses 20 turns (100% failure) — well before
+    # all 10 chains x 3 repeats = 30 possible calls complete.
+    assert call_count < 30
+    assert call_count >= 20
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_trips_only_the_failing_cell_not_other_modes(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from evals.run_edit_chains import run_matrix
+
+    call_counts = {"fake_run": 0, "fake_generate_patch": 0}
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        call_counts["fake_run"] += 1
+        from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+        from geometry_diagrams.ir.ir import DiagramIR
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>", sym_table={}, sym_full={},
+            script="a = point(0, 0)\n", variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []}, retries=0,
+        )
+
+    async def fake_generate_patch(prompt, model, enable_cache=False):
+        call_counts["fake_generate_patch"] += 1
+        raise ValueError("patch context mismatch at line 1: expected 'x', patch has 'y'")
+
+    from geometry_diagrams.strategies import python_full as pf_module
+    monkeypatch.setattr(pf_module.PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(pf_module, "_generate_patch", fake_generate_patch)
+
+    # 8-turn chains (matching the real scenario shape): turn 1 always
+    # creates via fake_run (mode-independent, always succeeds); turns
+    # 2-8 are edits via the mode under test. In "full_rewrite" mode
+    # every edit turn also calls fake_run (always succeeds) — 0%
+    # failure, never trips. In "patch" mode every edit turn calls
+    # fake_generate_patch (always raises) — 7/8 = 87.5% failure per
+    # repeat, comfortably above the 75% threshold. Two chains x 3
+    # repeats gives patch's cell tally >= 20 turns (24) within chain-0
+    # alone (repeat 3: total=24, failed=21, rate=87.5%), so it trips
+    # partway through chain-0 and chain-1's patch work is skipped
+    # entirely — while full_rewrite (0% failure) keeps running for both
+    # chains, all 3 repeats, completely unaffected.
+    chains = [
+        {
+            "id": f"chain-{i}",
+            "turns": (
+                [{"request": "draw a point", "expected_properties": []}]
+                + [{"request": f"edit it ({j})", "expected_properties": []} for j in range(7)]
+            ),
+        }
+        for i in range(2)
+    ]
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite", "patch"], repeats=3,
+        renderer=None, turn_timeout=5.0,
+    )
+
+    assert result["tripped_models"] == []
+    assert result["tripped_cells"] == [["model-a", "patch"]]
+    # patch's edits stop exactly at chain-0's 3rd repeat (3 repeats x 7
+    # edit turns = 21 calls) — chain-1's patch work never runs at all.
+    assert call_counts["fake_generate_patch"] == 21
+    # full_rewrite ran to completion for both chains, all 3 repeats, all
+    # 8 turns each — entirely unaffected by patch's trip.
+    assert call_counts["fake_run"] >= 2 * 3 * 8
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_model_trip_suppresses_redundant_cell_trip(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from evals.run_edit_chains import run_matrix
+
+    async def always_failing_run(self, prompt, model="test", renderer=None):
+        raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
+
+    monkeypatch.setattr(PythonFullStrategy, "run", always_failing_run)
+
+    chains = [
+        {"id": f"chain-{i}", "turns": [{"request": "draw a point", "expected_properties": []}]}
+        for i in range(10)
+    ]
+    # Only ONE mode is exercised, so the model tally and the (model, mode)
+    # cell tally accumulate identically, round for round — exactly the
+    # scenario where, without suppression, both would trip on the same
+    # update.
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite"], repeats=3,
+        renderer=None, turn_timeout=5.0,
+    )
+
+    assert result["tripped_models"] == ["model-a"]
+    # The cell is subsumed by the model trip — it must NOT also appear
+    # as a separate tripped cell.
+    assert result["tripped_cells"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_two_models_trip_independently(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from evals.run_edit_chains import run_matrix
+
+    call_counts = {"good-model": 0, "bad-model": 0}
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        call_counts[model] += 1
+        if model == "bad-model":
+            raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
+        from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+        from geometry_diagrams.ir.ir import DiagramIR
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>", sym_table={}, sym_full={},
+            script="a = point(0, 0)\n", variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []}, retries=0,
+        )
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+
+    chains = [
+        {"id": f"chain-{i}", "turns": [{"request": "draw a point", "expected_properties": []}]}
+        for i in range(10)
+    ]
+    result = await run_matrix(
+        chains, ["good-model", "bad-model"], ["full_rewrite"], repeats=3,
+        renderer=None, turn_timeout=5.0,
+    )
+
+    assert result["tripped_models"] == ["bad-model"]
+    # good-model's remaining work is entirely unaffected by bad-model's trip.
+    assert call_counts["good-model"] == 10 * 3
+    assert call_counts["bad-model"] < 10 * 3
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_disabled_breaker_runs_every_combination_regardless_of_failures(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from evals.run_edit_chains import run_matrix
+
+    call_count = 0
+
+    async def always_failing_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
+
+    monkeypatch.setattr(PythonFullStrategy, "run", always_failing_run)
+
+    chains = [
+        {"id": f"chain-{i}", "turns": [{"request": "draw a point", "expected_properties": []}]}
+        for i in range(10)
+    ]
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite"], repeats=3,
+        renderer=None, turn_timeout=5.0, circuit_breaker_enabled=False,
+    )
+
+    assert result["tripped_models"] == []
+    assert result["tripped_cells"] == []
+    assert call_count == 10 * 3  # every combination ran, 100% failure notwithstanding

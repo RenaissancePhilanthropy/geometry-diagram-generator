@@ -33,7 +33,9 @@ sys.path.insert(0, str(_REPO_ROOT))
 from evals.edit_chain_metrics import (
     aggregate_turn_records,
     categorize_edit_error,
+    circuit_breaker_tripped,
     resolve_and_validate_properties,
+    update_circuit_breaker_tally,
 )
 from evals.reporting import _append_jsonl
 from evals.scenarios_editing_chains import _validate_chain_scenarios
@@ -179,6 +181,29 @@ async def run_chain(
     return records
 
 
+def _print_circuit_breaker_trip(scope: str, identifier: str, tally: dict) -> None:
+    """Print a diagnostic block when a model- or cell-level circuit
+    breaker trips. Uses tally["categories"] directly (raw counts,
+    including cascade failures) rather than aggregate_turn_records's
+    clean-prefix shape — the two are not directly comparable (see design
+    doc's Failure definition section: this tally counts every turn,
+    that function excludes cascade failures entirely)."""
+    rate = tally["failed"] / tally["total"] if tally["total"] else 0.0
+    skip_desc = (
+        "remaining chains/repeats/modes for this model"
+        if scope == "model" else
+        "remaining chains/repeats for this mode"
+    )
+    print(
+        f"\n⚠️  CIRCUIT BREAKER TRIPPED ({scope}-level): {identifier}\n"
+        f"    {tally['failed']}/{tally['total']} turns failed ({rate:.1%}), "
+        f"threshold 75% exceeded after >= 20 turns.\n"
+        f"    Error categories seen so far (raw, includes cascade failures): "
+        f"{tally['categories']}\n"
+        f"    Skipping {skip_desc}.\n"
+    )
+
+
 async def run_matrix(
     chains: list[dict],
     models: list[str],
@@ -188,19 +213,42 @@ async def run_matrix(
     turn_timeout: float,
     hash_algorithm: str = "blake2s",
     output_path: "Path | None" = None,
+    circuit_breaker_enabled: bool = True,
 ) -> dict:
     """Run the full chain x model x mode x repeat matrix, writing each
     turn's record to output_path as it's produced (if given) and
     returning every record collected, plus which models/cells the
-    circuit breaker tripped (see the circuit-breaker design doc) — always
-    empty here; Task 3 adds the actual breaker logic. Extracted from
-    main() so the loop itself, not just run_chain's single-chain
-    behavior, is directly testable without argparse/sys.argv/file-I/O."""
+    circuit breaker tripped (see the circuit-breaker design doc,
+    docs/superpowers/specs/2026-08-11-edit-chain-eval-circuit-breaker-design.md).
+    Extracted from main() so the loop itself, not just run_chain's
+    single-chain behavior, is directly testable without
+    argparse/sys.argv/file-I/O.
+
+    The model tally is checked before the cell tally on every update; if
+    a model trips, that round's cell check is skipped entirely (the
+    model trip already covers it) so a model-level trip never also
+    produces a redundant cell-level trip for the same round."""
     all_records: list[dict] = []
+    model_tallies: dict[str, dict] = {}
+    cell_tallies: dict[tuple[str, str], dict] = {}
+    tripped_models: set[str] = set()
+    tripped_cells: set[tuple[str, str]] = set()
+
     for chain in chains:
         for model in models:
+            if circuit_breaker_enabled and model in tripped_models:
+                continue
             for mode in modes:
+                if circuit_breaker_enabled and (
+                    model in tripped_models or (model, mode) in tripped_cells
+                ):
+                    continue
                 for repeat_index in range(1, repeats + 1):
+                    if circuit_breaker_enabled and (
+                        model in tripped_models or (model, mode) in tripped_cells
+                    ):
+                        break
+
                     records = await run_chain(
                         chain, model, mode, repeat_index, renderer, turn_timeout,
                         hash_algorithm=hash_algorithm,
@@ -210,7 +258,38 @@ async def run_matrix(
                             _append_jsonl(output_path, record)
                         all_records.append(record)
 
-    return {"records": all_records, "tripped_models": [], "tripped_cells": []}
+                    if not circuit_breaker_enabled:
+                        continue
+
+                    model_tallies[model] = update_circuit_breaker_tally(
+                        model_tallies.get(model, {"total": 0, "failed": 0, "categories": {}}),
+                        records,
+                    )
+                    if model not in tripped_models and circuit_breaker_tripped(model_tallies[model]):
+                        tripped_models.add(model)
+                        _print_circuit_breaker_trip("model", model, model_tallies[model])
+                        continue  # this round's cell check is covered by the model trip
+
+                    if model in tripped_models:
+                        continue
+
+                    cell_key = (model, mode)
+                    cell_tallies[cell_key] = update_circuit_breaker_tally(
+                        cell_tallies.get(cell_key, {"total": 0, "failed": 0, "categories": {}}),
+                        records,
+                    )
+                    if cell_key not in tripped_cells and circuit_breaker_tripped(cell_tallies[cell_key]):
+                        tripped_cells.add(cell_key)
+                        _print_circuit_breaker_trip("cell", f"{model}::{mode}", cell_tallies[cell_key])
+
+    tripped_cells_not_subsumed = [
+        list(key) for key in sorted(tripped_cells) if key[0] not in tripped_models
+    ]
+    return {
+        "records": all_records,
+        "tripped_models": sorted(tripped_models),
+        "tripped_cells": tripped_cells_not_subsumed,
+    }
 
 
 async def main() -> None:
