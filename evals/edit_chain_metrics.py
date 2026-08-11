@@ -10,6 +10,9 @@ from evals.sympy_checks import _validate_properties_sympy
 
 _SIZE_BUCKET_WIDTH = 200  # characters
 
+_CIRCUIT_BREAKER_MIN_SAMPLES = 20
+_CIRCUIT_BREAKER_THRESHOLD = 0.75
+
 
 def resolve_and_validate_properties(
     expected_properties: list[dict],
@@ -48,6 +51,52 @@ def resolve_and_validate_properties(
         resolved_prop = {**prop, "args": resolved_args}
         results.extend(_validate_properties_sympy([resolved_prop], sym_table))
     return results
+
+
+def update_circuit_breaker_tally(tally: dict, records: list[dict]) -> dict:
+    """Update a circuit-breaker tally ({"total": int, "failed": int,
+    "categories": dict[str, int]}) with one chain's worth of turn
+    records. A turn counts as failed if success is False and
+    error_category != "content_mismatch" — that category is excluded
+    because direct data analysis (2026-08-11) found it's usually the
+    line_number mode's expected_content safety check working correctly
+    (rejecting a genuinely wrong line reference), not a bug. Every other
+    failure category counts, INCLUDING stale_tag/no_match/invalid_line —
+    despite superficially looking like other "safety net" categories,
+    direct analysis found those are mostly real generation failures in
+    disguise (e.g. 95% of hashline's stale_tag failures were the model
+    dropping a format prefix, not genuine staleness).
+
+    Unlike aggregate_turn_records, this counts EVERY turn, including
+    cascade failures (prior_failure_count > 0) — the circuit breaker's
+    question ("is almost everything failing right now") is different
+    from that function's size-degradation analysis, and a chain that
+    cascades badly is itself evidence of the former, not noise to
+    exclude."""
+    total = tally.get("total", 0)
+    failed = tally.get("failed", 0)
+    categories = dict(tally.get("categories", {}))
+    for r in records:
+        total += 1
+        if not r["success"] and r.get("error_category") != "content_mismatch":
+            failed += 1
+            category = r.get("error_category") or "other"
+            categories[category] = categories.get(category, 0) + 1
+    return {"total": total, "failed": failed, "categories": categories}
+
+
+def circuit_breaker_tripped(
+    tally: dict,
+    min_samples: int = _CIRCUIT_BREAKER_MIN_SAMPLES,
+    threshold: float = _CIRCUIT_BREAKER_THRESHOLD,
+) -> bool:
+    """True once a tally has both enough samples (>= min_samples) and a
+    high enough failure rate (>= threshold) to be a real pattern rather
+    than small-sample noise."""
+    total = tally.get("total", 0)
+    if total < min_samples:
+        return False
+    return tally.get("failed", 0) / total >= threshold
 
 
 def categorize_edit_error(error_message: str) -> str:

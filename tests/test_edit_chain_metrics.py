@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from evals.edit_chain_metrics import aggregate_turn_records
 from evals.edit_chain_metrics import categorize_edit_error
+from evals.edit_chain_metrics import circuit_breaker_tripped
 from evals.edit_chain_metrics import resolve_and_validate_properties
+from evals.edit_chain_metrics import update_circuit_breaker_tally
 
 
 def test_categorizes_context_mismatch_errors():
@@ -186,3 +188,57 @@ def test_aggregate_turn_records_separates_model_and_mode_cells():
     ]
     summary = aggregate_turn_records(records)
     assert set(summary.keys()) == {"model-a::full_rewrite", "model-b::patch"}
+
+
+def test_update_circuit_breaker_tally_counts_failures_excluding_content_mismatch():
+    tally = {"total": 0, "failed": 0, "categories": {}}
+    records = [
+        _record(success=True),
+        _record(success=False, error_category="context_mismatch"),
+        _record(success=False, error_category="content_mismatch"),
+    ]
+    tally = update_circuit_breaker_tally(tally, records)
+    assert tally == {"total": 3, "failed": 1, "categories": {"context_mismatch": 1}}
+
+
+def test_update_circuit_breaker_tally_counts_cascade_failures():
+    # Unlike aggregate_turn_records, cascade turns (prior_failure_count > 0)
+    # still count — the circuit breaker asks a different question.
+    tally = {"total": 0, "failed": 0, "categories": {}}
+    records = [
+        _record(success=False, error_category="sandbox_error", prior_failure_count=0),
+        _record(success=False, error_category="sandbox_error", prior_failure_count=1),
+    ]
+    tally = update_circuit_breaker_tally(tally, records)
+    assert tally == {"total": 2, "failed": 2, "categories": {"sandbox_error": 2}}
+
+
+def test_update_circuit_breaker_tally_accumulates_across_calls():
+    tally = {"total": 0, "failed": 0, "categories": {}}
+    tally = update_circuit_breaker_tally(tally, [_record(success=False, error_category="other")])
+    tally = update_circuit_breaker_tally(tally, [_record(success=True)])
+    assert tally == {"total": 2, "failed": 1, "categories": {"other": 1}}
+
+
+def test_update_circuit_breaker_tally_treats_missing_category_as_other():
+    tally = {"total": 0, "failed": 0, "categories": {}}
+    tally = update_circuit_breaker_tally(tally, [_record(success=False, error_category=None)])
+    assert tally == {"total": 1, "failed": 1, "categories": {"other": 1}}
+
+
+def test_circuit_breaker_tripped_requires_minimum_sample_size():
+    # 100% failure but under the floor — not eligible to trip yet.
+    assert circuit_breaker_tripped({"total": 19, "failed": 19, "categories": {}}) is False
+
+
+def test_circuit_breaker_tripped_at_threshold_and_above():
+    assert circuit_breaker_tripped({"total": 20, "failed": 15, "categories": {}}) is True  # exactly 75%
+    assert circuit_breaker_tripped({"total": 20, "failed": 16, "categories": {}}) is True  # 80%
+
+
+def test_circuit_breaker_tripped_below_threshold():
+    assert circuit_breaker_tripped({"total": 20, "failed": 14, "categories": {}}) is False  # 70%
+
+
+def test_circuit_breaker_tripped_handles_empty_tally():
+    assert circuit_breaker_tripped({"total": 0, "failed": 0, "categories": {}}) is False
