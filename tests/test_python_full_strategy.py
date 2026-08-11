@@ -1241,6 +1241,109 @@ async def test_render_diagram_edits_via_hashline_mode(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_render_diagram_edits_via_line_number_mode(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg=f"<svg>{call_count}</svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}], "anonymous": []},
+            retries=0,
+        )
+
+    async def fake_generate_line_number_ops(prompt, model, enable_cache=False):
+        return [{
+            "kind": "replace", "line": "1", "content": "a = point(9, 9)",
+            "expected_content": "a = point(0, 0)",
+            "after": None, "start_line": None, "end_line": None,
+        }]
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full._generate_line_number_ops",
+        fake_generate_line_number_ops,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test", edit_generation_mode="line_number")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    first = json.loads(await render_tool.ainvoke({"request": "draw a point"}))
+    second = json.loads(await render_tool.ainvoke({"request": "move it"}))
+
+    assert "svg" in first and "error" not in first
+    assert "svg" in second and "error" not in second
+
+    fn = render_tool.coroutine
+    idx = fn.__code__.co_freevars.index("_stack")
+    stack = fn.__closure__[idx].cell_contents
+    assert stack[-1]["edit_ops_meta"] == {"delete_replace_ops": 1, "with_expected_content": 1}
+    assert stack[0]["edit_ops_meta"] is None  # first turn: no edit, no stack has been touched by any handler
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_line_number_edit_ops_meta_counts_missing_expected_content(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg>1</svg>",
+            sym_table={}, sym_full={},
+            # Two lines so the delete op below (line 2, an unused extra
+            # point) still leaves a script with something drawn — the
+            # real sandbox/render pipeline runs for real in this test
+            # (only PythonFullStrategy.run and _generate_line_number_ops
+            # are mocked), so the post-edit script must stay renderable.
+            script="a = point(0, 0)\ndraw_points(a)\nb = point(1, 1)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [{"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]}], "anonymous": []},
+            retries=0,
+        )
+
+    async def fake_generate_line_number_ops(prompt, model, enable_cache=False):
+        return [{
+            "kind": "delete", "line": "3",
+            "after": None, "start_line": None, "end_line": None,
+            "content": None, "expected_content": None,
+        }]
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full._generate_line_number_ops",
+        fake_generate_line_number_ops,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test", edit_generation_mode="line_number")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    first = json.loads(await render_tool.ainvoke({"request": "draw a point"}))
+    second = json.loads(await render_tool.ainvoke({"request": "delete it"}))
+    assert "svg" in first and "error" not in first
+    assert "svg" in second and "error" not in second
+
+    fn = render_tool.coroutine
+    idx = fn.__code__.co_freevars.index("_stack")
+    stack = fn.__closure__[idx].cell_contents
+    assert stack[-1]["edit_ops_meta"] == {"delete_replace_ops": 1, "with_expected_content": 0}
+
+
+@pytest.mark.asyncio
 async def test_render_diagram_retries_once_on_apply_failure_when_enabled(monkeypatch):
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult

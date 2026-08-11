@@ -24,7 +24,7 @@ class GeometryConfig:
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001
     font_family: str = "NunitoSans"
     embed_fonts: bool = False
-    edit_generation_mode: Literal["full_rewrite", "patch"] = "full_rewrite"
+    edit_generation_mode: Literal["full_rewrite", "patch", "search_replace", "hashline", "line_number"] = "full_rewrite"
     hash_algorithm: Literal["blake2s", "xxhash"] = "blake2s"
 
     @classmethod

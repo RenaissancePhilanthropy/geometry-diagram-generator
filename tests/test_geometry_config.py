@@ -28,3 +28,10 @@ def test_resolve_config_keeps_base_when_not_overridden():
     base = GeometryConfig(edit_generation_mode="patch")
     cfg = resolve_config(base)
     assert cfg.edit_generation_mode == "patch"
+
+
+def test_geometry_config_accepts_line_number_edit_mode():
+    from geometry_diagrams.config import GeometryConfig
+
+    cfg = GeometryConfig(edit_generation_mode="line_number")
+    assert cfg.edit_generation_mode == "line_number"

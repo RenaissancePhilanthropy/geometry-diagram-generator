@@ -29,6 +29,7 @@ from ..ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from ..pydsl.patch import apply_script_patch
 from ..pydsl.search_replace import apply_search_replace
 from ..pydsl.hashline import apply_hashline_ops, render_hashline_view
+from ..pydsl.line_number import apply_line_number_ops, render_line_number_view
 from ..pydsl.sandbox import run_script
 
 logger = logging.getLogger(__name__)
@@ -971,6 +972,7 @@ class PythonFullStrategy(SubstanceStrategy):
                 JSON with svg field on success, or error field on failure.
             """
             try:
+                edit_ops_meta = None
                 if _stack:
                     top = _stack[-1]
 
@@ -997,10 +999,26 @@ class PythonFullStrategy(SubstanceStrategy):
                         new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
                         return await _run_from_script(new_script, _renderer)
 
+                    async def _edit_line_number(req: str) -> StructuredRunResult:
+                        nonlocal edit_ops_meta
+                        view = render_line_number_view(top["script"])
+                        prompt = build_line_number_request_prompt(req, view, top["manifest"])
+                        ops = await _generate_line_number_ops(prompt, model)
+                        delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
+                        edit_ops_meta = {
+                            "delete_replace_ops": len(delete_replace_ops),
+                            "with_expected_content": sum(
+                                1 for op in delete_replace_ops if op.get("expected_content")
+                            ),
+                        }
+                        new_script = apply_line_number_ops(top["script"], ops)
+                        return await _run_from_script(new_script, _renderer)
+
                     _edit_handlers = {
                         "patch": _edit_patch,
                         "search_replace": _edit_search_replace,
                         "hashline": _edit_hashline,
+                        "line_number": _edit_line_number,
                     }
                     handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
                     try:
@@ -1036,6 +1054,7 @@ class PythonFullStrategy(SubstanceStrategy):
                     "manifest": result.entity_manifest,
                     "result": result,
                     "locality_diagnostic": locality_diagnostic,
+                    "edit_ops_meta": edit_ops_meta,
                 })
                 return json.dumps({"svg": result.svg})
             except Exception as e:
