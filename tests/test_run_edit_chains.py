@@ -244,3 +244,73 @@ async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
     # patch mode's _generate_patch is a single, unretried call — retries must be 0.
     assert records[1]["retries"] == 0
     assert records[1]["script_chars_before"] == len("a = point(0, 0)\ndraw_points(a)\n")
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_runs_every_combination_and_returns_all_records(monkeypatch, tmp_path):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+    from evals.run_edit_chains import run_matrix
+
+    call_count = 0
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        nonlocal call_count
+        call_count += 1
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []},
+            retries=0,
+        )
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+
+    chains = [
+        {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]},
+        {"id": "chain-2", "turns": [{"request": "draw a point", "expected_properties": []}]},
+    ]
+    output_path = tmp_path / "results.jsonl"
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite", "patch"], repeats=2,
+        renderer=None, turn_timeout=5.0, output_path=output_path,
+    )
+
+    # 2 chains x 1 model x 2 modes x 2 repeats x 1 turn each = 8 records.
+    assert len(result["records"]) == 8
+    assert call_count == 8
+    assert result["tripped_models"] == []
+    assert result["tripped_cells"] == []
+    with open(output_path) as f:
+        written_lines = f.readlines()
+    assert len(written_lines) == 8
+
+
+@pytest.mark.asyncio
+async def test_run_matrix_works_without_an_output_path(monkeypatch):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+    from evals.run_edit_chains import run_matrix
+
+    async def fake_run(self, prompt, model="test", renderer=None):
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg></svg>",
+            sym_table={}, sym_full={},
+            script="a = point(0, 0)\n",
+            variable_ids={"a": "p1"},
+            entity_manifest={"named": [], "anonymous": []},
+            retries=0,
+        )
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+
+    chains = [{"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}]
+    result = await run_matrix(
+        chains, ["model-a"], ["full_rewrite"], repeats=1,
+        renderer=None, turn_timeout=5.0, output_path=None,
+    )
+    assert len(result["records"]) == 1

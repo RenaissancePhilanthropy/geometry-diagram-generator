@@ -179,6 +179,40 @@ async def run_chain(
     return records
 
 
+async def run_matrix(
+    chains: list[dict],
+    models: list[str],
+    modes: list[str],
+    repeats: int,
+    renderer,
+    turn_timeout: float,
+    hash_algorithm: str = "blake2s",
+    output_path: "Path | None" = None,
+) -> dict:
+    """Run the full chain x model x mode x repeat matrix, writing each
+    turn's record to output_path as it's produced (if given) and
+    returning every record collected, plus which models/cells the
+    circuit breaker tripped (see the circuit-breaker design doc) — always
+    empty here; Task 3 adds the actual breaker logic. Extracted from
+    main() so the loop itself, not just run_chain's single-chain
+    behavior, is directly testable without argparse/sys.argv/file-I/O."""
+    all_records: list[dict] = []
+    for chain in chains:
+        for model in models:
+            for mode in modes:
+                for repeat_index in range(1, repeats + 1):
+                    records = await run_chain(
+                        chain, model, mode, repeat_index, renderer, turn_timeout,
+                        hash_algorithm=hash_algorithm,
+                    )
+                    for record in records:
+                        if output_path is not None:
+                            _append_jsonl(output_path, record)
+                        all_records.append(record)
+
+    return {"records": all_records, "tripped_models": [], "tripped_cells": []}
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Run pydsl multi-turn edit-chain reliability evals")
     parser.add_argument("--scenarios", default="evals/scenarios_editing_chains.yaml")
@@ -210,18 +244,11 @@ async def main() -> None:
     print(f"Running {len(chains)} chains x {len(args.models)} models x {len(args.modes)} modes x {args.repeats} repeats")
     print(f"Output: {output_path}")
 
-    all_records: list[dict] = []
-    for chain in chains:
-        for model in args.models:
-            for mode in args.modes:
-                for repeat_index in range(1, args.repeats + 1):
-                    records = await run_chain(
-                        chain, model, mode, repeat_index, renderer, args.turn_timeout,
-                        hash_algorithm=args.hash_algorithm,
-                    )
-                    for record in records:
-                        _append_jsonl(output_path, record)
-                        all_records.append(record)
+    matrix_result = await run_matrix(
+        chains, args.models, args.modes, args.repeats, renderer, args.turn_timeout,
+        hash_algorithm=args.hash_algorithm, output_path=output_path,
+    )
+    all_records = matrix_result["records"]
 
     print(f"\nResults written to {output_path}")
     summary = aggregate_turn_records(all_records)
