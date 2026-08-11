@@ -104,6 +104,7 @@ async def run_chain(
                 "error_category": "other", "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
+                "edit_ops_meta": None,
             })
             prior_failure_count += 1
             records.append(record)
@@ -114,6 +115,7 @@ async def run_chain(
                 "error_category": categorize_edit_error(str(e)), "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
+                "edit_ops_meta": None,
             })
             prior_failure_count += 1
             records.append(record)
@@ -125,6 +127,7 @@ async def run_chain(
                 "error_category": categorize_edit_error(parsed["error"]), "retries": None,
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
+                "edit_ops_meta": None,
             })
             prior_failure_count += 1
             records.append(record)
@@ -156,6 +159,7 @@ async def run_chain(
                 if diagnostic is not None else None
             ),
             "sympy_property_checks": sympy_checks,
+            "edit_ops_meta": top.get("edit_ops_meta"),
         })
         records.append(record)
 
@@ -168,7 +172,7 @@ async def main() -> None:
     parser.add_argument("--models", nargs="+", default=[DEFAULT_AGENT_MODEL])
     parser.add_argument(
         "--modes", nargs="+", default=["full_rewrite", "patch"],
-        choices=["full_rewrite", "patch", "search_replace", "hashline"],
+        choices=["full_rewrite", "patch", "search_replace", "hashline", "line_number"],
     )
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--renderer", choices=["tikz", "svg"], default="svg")

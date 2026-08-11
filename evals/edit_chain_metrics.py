@@ -64,6 +64,10 @@ def categorize_edit_error(error_message: str) -> str:
     - "stale_tag" / "invalid_op_order": geometry_diagrams/pydsl/
       hashline.py's HashlineError ("references a stale or unknown tag" /
       "overlap or are out of order" / "is before start_tag").
+    - "invalid_line" / "content_mismatch" / "invalid_op_order": geometry_diagrams/
+      pydsl/line_number.py's LineNumberError ("has an invalid line
+      reference" / "does not match expected content" / "overlap or are
+      out of order" / "is before start_line").
     - "sandbox_error": geometry_diagrams/strategies/python_full.py's
       _run_from_script wrapping ("patch-mode script failed: ...") — a
       script that patched/generated cleanly but errored when actually run
@@ -88,7 +92,15 @@ def categorize_edit_error(error_message: str) -> str:
         return "ambiguous_match"
     if "stale or unknown tag" in error_message:
         return "stale_tag"
-    if "overlap or are out of order" in error_message or "is before start_tag" in error_message:
+    if "has an invalid line reference" in error_message:
+        return "invalid_line"
+    if "does not match expected content" in error_message:
+        return "content_mismatch"
+    if (
+        "overlap or are out of order" in error_message
+        or "is before start_tag" in error_message
+        or "is before start_line" in error_message
+    ):
         return "invalid_op_order"
     if "patch-mode script failed" in error_message:
         return "sandbox_error"

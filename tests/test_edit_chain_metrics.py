@@ -58,6 +58,25 @@ def test_categorizes_hashline_errors():
     ) == "invalid_op_order"
 
 
+def test_categorizes_line_number_errors():
+    assert categorize_edit_error(
+        "line_number op has an invalid line reference in 'line': '5' (script has 2 lines)"
+    ) == "invalid_line"
+    assert categorize_edit_error(
+        "line_number op has an invalid line reference in 'after': 'not-a-number'"
+    ) == "invalid_line"
+    assert categorize_edit_error(
+        "line 2 does not match expected content: expected 'x', got 'y'"
+    ) == "content_mismatch"
+    assert categorize_edit_error(
+        "line_number ops overlap or are out of order at line 1 (previous op ended at line 1); "
+        "ops must reference non-overlapping, non-decreasing line ranges"
+    ) == "invalid_op_order"
+    assert categorize_edit_error(
+        "block_replace end_line 2 is before start_line 3"
+    ) == "invalid_op_order"
+
+
 def test_resolve_and_validate_properties_resolves_known_names():
     expected_properties = [
         {"name": "right angle at A", "type": "right_angle", "args": ["B", "A", "C"]},
