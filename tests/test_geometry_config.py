@@ -7,9 +7,20 @@ from unittest.mock import patch
 from geometry_diagrams.config import GeometryConfig, resolve_config
 
 
-def test_default_edit_generation_mode_is_full_rewrite():
+def test_default_edit_generation_mode_is_search_replace():
     cfg = GeometryConfig()
-    assert cfg.edit_generation_mode == "full_rewrite"
+    assert cfg.edit_generation_mode == "search_replace"
+
+
+def test_from_env_default_edit_generation_mode_is_search_replace(monkeypatch):
+    # GeometryConfig.from_env() has its own separate hardcoded fallback
+    # (distinct from the dataclass field default above) — this is the
+    # path main.py actually goes through, and it had zero test coverage
+    # before this plan, which is exactly why a mismatch between the two
+    # defaults could previously go unnoticed.
+    monkeypatch.delenv("GEOMETRY_EDIT_MODE", raising=False)
+    cfg = GeometryConfig.from_env()
+    assert cfg.edit_generation_mode == "search_replace"
 
 
 def test_from_env_reads_geometry_edit_mode():

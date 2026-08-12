@@ -24,7 +24,14 @@ class GeometryConfig:
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001
     font_family: str = "NunitoSans"
     embed_fonts: bool = False
-    edit_generation_mode: Literal["full_rewrite", "patch", "search_replace", "hashline", "line_number"] = "full_rewrite"
+    # search_replace is the recommended default as of 2026-08-12, per a
+    # cross-model eval comparison (Claude Sonnet, Gemma, DeepSeek V4
+    # Flash, nvidia/nemotron-3.5-lightning) that found it won or tied for
+    # best on every model tested. patch/hashline/line_number remain
+    # fully functional for comparison but are no longer recommended for
+    # new usage (see each module's docstring). full_rewrite is a
+    # separate, always-works baseline — not part of this comparison.
+    edit_generation_mode: Literal["full_rewrite", "patch", "search_replace", "hashline", "line_number"] = "search_replace"
     hash_algorithm: Literal["blake2s", "xxhash"] = "blake2s"
 
     @classmethod
@@ -37,7 +44,7 @@ class GeometryConfig:
             renderer_url=os.environ.get("TIKZ_RENDERER_URL") or None,
             font_family=os.environ.get("DIAGRAM_FONT_FAMILY", "NunitoSans"),
             embed_fonts=os.environ.get("DIAGRAM_EMBED_FONTS", "0") in ("1", "true", "True"),
-            edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "full_rewrite"),  # type: ignore[arg-type]
+            edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"),  # type: ignore[arg-type]
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
         )
 
