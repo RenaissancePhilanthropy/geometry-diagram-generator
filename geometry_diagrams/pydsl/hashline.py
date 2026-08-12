@@ -12,7 +12,16 @@ time against a mutating buffer. Applying sequentially would make later
 ops' tags stale the moment an earlier op shifts line numbers, even when
 the model copied them perfectly (see design doc, Component B) — the same
 failure class that sank patch mode's unified diffs, reproduced inside the
-mechanism meant to avoid it."""
+mechanism meant to avoid it.
+
+Deprecated as of 2026-08-12: a cross-model eval comparison found
+search_replace (geometry_diagrams/pydsl/search_replace.py) wins or ties
+for best on every model tested. hashline's compound {line_number}:{hash}
+tag turned out to be a real reliability liability — direct data analysis
+found most of its failures were models dropping the line-number prefix
+and returning only the hash, not genuine staleness detection. Still fully
+functional and available for comparison via evals/run_edit_chains.py, but
+no longer recommended for new usage."""
 from __future__ import annotations
 
 import hashlib

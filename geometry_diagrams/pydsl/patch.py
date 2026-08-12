@@ -7,7 +7,14 @@ silently applying a patch to the wrong lines would corrupt a script in a
 way that's hard to detect downstream (see design doc, Component 3, on why
 patch mode is opt-in rather than default: weak-model diff-format
 compliance is exactly the failure class this project already fought once
-in the script extractor)."""
+in the script extractor).
+
+Deprecated as of 2026-08-12: a cross-model eval comparison found
+search_replace (geometry_diagrams/pydsl/search_replace.py) wins or ties
+for best on every model tested, while patch mode's line-counting
+requirement makes it this project's worst-performing mode across the
+board. Still fully functional and available for comparison via
+evals/run_edit_chains.py, but no longer recommended for new usage."""
 from __future__ import annotations
 
 import re

@@ -14,7 +14,15 @@ rejected loudly on mismatch. It's the closest analog to hashline's
 stale-tag check available without a hash. It's optional: omitting it
 means no check is performed for that op (see design doc, Component A,
 "Isolation risk" — this is intentional, to let eval results be
-stratified by whether the model used it, not a gap to close)."""
+stratified by whether the model used it, not a gap to close).
+
+Deprecated as of 2026-08-12: this mode was built specifically to test
+whether removing hashline's hash-reproduction burden alone would help
+(it did, substantially, over both patch and hashline) — but a
+cross-model eval comparison found search_replace still wins or ties for
+best on every model tested, including this mode itself on most models.
+Still fully functional and available for comparison via
+evals/run_edit_chains.py, but no longer recommended for new usage."""
 from __future__ import annotations
 
 
