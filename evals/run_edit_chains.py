@@ -11,6 +11,7 @@ Usage:
                                      [--modes full_rewrite patch]
                                      [--repeats N] [--renderer tikz|svg]
                                      [--turn-timeout SECONDS] [--output DIR]
+                                     [--no-circuit-breaker]
 """
 from __future__ import annotations
 
@@ -307,6 +308,14 @@ async def main() -> None:
         "--hash-algorithm", choices=["blake2s", "xxhash"], default="blake2s",
         help="Hash function for hashline mode's line tags (ignored by other modes).",
     )
+    parser.add_argument(
+        "--no-circuit-breaker", dest="circuit_breaker_enabled", action="store_false", default=True,
+        help=(
+            "Disable the early-abort circuit breaker (on by default: stops a "
+            "model/mode once >= 20 turns and >= 75% failure make the pattern "
+            "unambiguous) and run every combination regardless of failure rate."
+        ),
+    )
     parser.add_argument("--output", default="evals/results")
     args = parser.parse_args()
 
@@ -326,12 +335,20 @@ async def main() -> None:
     matrix_result = await run_matrix(
         chains, args.models, args.modes, args.repeats, renderer, args.turn_timeout,
         hash_algorithm=args.hash_algorithm, output_path=output_path,
+        circuit_breaker_enabled=args.circuit_breaker_enabled,
     )
     all_records = matrix_result["records"]
 
     print(f"\nResults written to {output_path}")
     summary = aggregate_turn_records(all_records)
     print(json.dumps(summary, indent=2))
+
+    if matrix_result["tripped_models"] or matrix_result["tripped_cells"]:
+        print("\nCircuit breaker trips this run:")
+        for model in matrix_result["tripped_models"]:
+            print(f"  - model: {model}")
+        for model, mode in matrix_result["tripped_cells"]:
+            print(f"  - cell: {model}::{mode}")
 
 
 if __name__ == "__main__":

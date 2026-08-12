@@ -505,3 +505,118 @@ async def test_run_matrix_disabled_breaker_runs_every_combination_regardless_of_
     assert result["tripped_models"] == []
     assert result["tripped_cells"] == []
     assert call_count == 10 * 3  # every combination ran, 100% failure notwithstanding
+
+
+@pytest.mark.asyncio
+async def test_main_threads_circuit_breaker_flag_into_run_matrix(monkeypatch, tmp_path, capsys):
+    import sys
+    from evals import run_edit_chains as rec_module
+
+    captured_kwargs = {}
+
+    async def fake_run_matrix(chains, models, modes, repeats, renderer, turn_timeout, **kwargs):
+        captured_kwargs.update(kwargs)
+        return {"records": [], "tripped_models": [], "tripped_cells": []}
+
+    monkeypatch.setattr(rec_module, "run_matrix", fake_run_matrix)
+
+    scenarios_path = tmp_path / "scenarios.yaml"
+    scenarios_path.write_text(
+        "- id: chain-1\n"
+        "  turns:\n"
+        "    - request: draw a point\n"
+        "      expected_properties:\n"
+        "        - name: dummy\n"
+        "          type: right_angle\n"
+        "          args: [A, B, C]\n"
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "run_edit_chains.py",
+        "--scenarios", str(scenarios_path),
+        "--models", "test-model",
+        "--modes", "full_rewrite",
+        "--repeats", "1",
+        "--output", str(tmp_path),
+        "--no-circuit-breaker",
+    ])
+
+    await rec_module.main()
+
+    assert captured_kwargs.get("circuit_breaker_enabled") is False
+
+
+@pytest.mark.asyncio
+async def test_main_defaults_to_circuit_breaker_enabled(monkeypatch, tmp_path):
+    import sys
+    from evals import run_edit_chains as rec_module
+
+    captured_kwargs = {}
+
+    async def fake_run_matrix(chains, models, modes, repeats, renderer, turn_timeout, **kwargs):
+        captured_kwargs.update(kwargs)
+        return {"records": [], "tripped_models": [], "tripped_cells": []}
+
+    monkeypatch.setattr(rec_module, "run_matrix", fake_run_matrix)
+
+    scenarios_path = tmp_path / "scenarios.yaml"
+    scenarios_path.write_text(
+        "- id: chain-1\n"
+        "  turns:\n"
+        "    - request: draw a point\n"
+        "      expected_properties:\n"
+        "        - name: dummy\n"
+        "          type: right_angle\n"
+        "          args: [A, B, C]\n"
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "run_edit_chains.py",
+        "--scenarios", str(scenarios_path),
+        "--models", "test-model",
+        "--modes", "full_rewrite",
+        "--repeats", "1",
+        "--output", str(tmp_path),
+    ])
+
+    await rec_module.main()
+
+    assert captured_kwargs.get("circuit_breaker_enabled") is True
+
+
+@pytest.mark.asyncio
+async def test_main_prints_tripped_summary_when_breaker_fires(monkeypatch, tmp_path, capsys):
+    import sys
+    from evals import run_edit_chains as rec_module
+
+    async def fake_run_matrix(chains, models, modes, repeats, renderer, turn_timeout, **kwargs):
+        return {
+            "records": [],
+            "tripped_models": ["bad-model"],
+            "tripped_cells": [["good-model", "patch"]],
+        }
+
+    monkeypatch.setattr(rec_module, "run_matrix", fake_run_matrix)
+
+    scenarios_path = tmp_path / "scenarios.yaml"
+    scenarios_path.write_text(
+        "- id: chain-1\n"
+        "  turns:\n"
+        "    - request: draw a point\n"
+        "      expected_properties:\n"
+        "        - name: dummy\n"
+        "          type: right_angle\n"
+        "          args: [A, B, C]\n"
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "run_edit_chains.py",
+        "--scenarios", str(scenarios_path),
+        "--models", "bad-model", "good-model",
+        "--modes", "full_rewrite", "patch",
+        "--repeats", "1",
+        "--output", str(tmp_path),
+    ])
+
+    await rec_module.main()
+
+    output = capsys.readouterr().out
+    assert "bad-model" in output
+    assert "good-model::patch" in output
