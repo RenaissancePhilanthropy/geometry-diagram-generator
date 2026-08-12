@@ -8,7 +8,7 @@ supports this editing mechanism today (see design doc, Component C).
 
 Usage:
     python -m evals.run_edit_chains [--scenarios PATH] [--models M [M ...]]
-                                     [--modes full_rewrite patch]
+                                     [--modes full_rewrite search_replace]
                                      [--repeats N] [--renderer tikz|svg]
                                      [--turn-timeout SECONDS] [--output DIR]
                                      [--no-circuit-breaker]
@@ -298,7 +298,7 @@ async def main() -> None:
     parser.add_argument("--scenarios", default="evals/scenarios_editing_chains.yaml")
     parser.add_argument("--models", nargs="+", default=[DEFAULT_AGENT_MODEL])
     parser.add_argument(
-        "--modes", nargs="+", default=["full_rewrite", "patch"],
+        "--modes", nargs="+", default=["full_rewrite", "search_replace"],
         choices=["full_rewrite", "patch", "search_replace", "hashline", "line_number"],
     )
     parser.add_argument("--repeats", type=int, default=3)

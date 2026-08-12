@@ -71,7 +71,10 @@ _edit_generation_mode = GeometryConfig.from_env().edit_generation_mode
 def _build_agent_for_strategy():
     if hasattr(_strategy, "build_agent"):
         if strategy_name == "python_full":
-            return _strategy.build_agent(model=_model, renderer=_renderer, edit_generation_mode=_edit_generation_mode)
+            return _strategy.build_agent(
+                model=_model, renderer=_renderer, edit_generation_mode=_edit_generation_mode,
+                retry_on_apply_failure=True,
+            )
         return _strategy.build_agent(model=_model, renderer=_renderer)
     return None
 
