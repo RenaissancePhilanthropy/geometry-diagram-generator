@@ -835,7 +835,7 @@ async def test_render_diagram_tool_edits_using_previous_script_context(monkeypat
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     strategy = PythonFullStrategy()
-    graph = strategy.build_agent(model="test")
+    graph = strategy.build_agent(model="test", edit_generation_mode="full_rewrite")
     tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
     render_tool = tools_by_name["render_diagram"]
 
@@ -891,7 +891,7 @@ async def test_render_diagram_survives_a_locality_diagnostic_crash(monkeypatch):
         raising_check_edit_locality,
     )
     strategy = PythonFullStrategy()
-    graph = strategy.build_agent(model="test")
+    graph = strategy.build_agent(model="test", edit_generation_mode="full_rewrite")
     tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
     render_tool = tools_by_name["render_diagram"]
 
@@ -934,7 +934,7 @@ async def test_render_diagram_attaches_locality_diagnostic_to_stack_frame():
 
     with patch.object(PythonFullStrategy, "run", fake_run):
         strategy = PythonFullStrategy()
-        graph = strategy.build_agent(model="test")
+        graph = strategy.build_agent(model="test", edit_generation_mode="full_rewrite")
         tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
         render_tool = tools_by_name["render_diagram"]
 

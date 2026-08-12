@@ -998,14 +998,20 @@ class PythonFullStrategy(SubstanceStrategy):
         self,
         model: str = DEFAULT_AGENT_MODEL,
         renderer=None,
-        edit_generation_mode: str = "full_rewrite",
+        edit_generation_mode: str = "search_replace",
         hash_algorithm: str = "blake2s",
         retry_on_apply_failure: bool = False,
     ):
         """Conversational ReAct agent with render_diagram + query_diagram
         tools. State is a small stack of prior turns (not a single slot,
         and not per-conversation — see design doc, Component 5, and this
-        plan's Global Constraints) kept in this closure."""
+        plan's Global Constraints) kept in this closure.
+
+        edit_generation_mode defaults to "search_replace" — per a
+        cross-model eval comparison (2026-08-12) it won or tied for best
+        on every model tested. "patch"/"hashline"/"line_number" remain
+        fully functional for comparison but are no longer recommended for
+        new usage; "full_rewrite" is a separate, always-works baseline."""
         _renderer = renderer if renderer is not None else SVGRenderer()
         _stack: list[dict] = []
         # Mutable box (not a plain variable) so it survives an apply-step
