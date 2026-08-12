@@ -35,8 +35,15 @@ from ..pydsl.sandbox import run_script
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
-SANDBOX_TIMEOUT_SECONDS = 10.0  # vs. run_script's own 5.0 default — real LLM-generated
-                                 # constructions may be larger than hand-authored test scripts.
+SANDBOX_TIMEOUT_SECONDS = 2.5  # There's no I/O in the sandbox (no imports, no network) — the
+                                # only real cost is SymPy's symbolic solving. Timed a range of
+                                # advanced constructions (tangent lines, incircle+circumcircle,
+                                # chained Euler-line intersections) directly against run_script():
+                                # all land at 0.7-1.0s, indistinguishable from a trivial
+                                # one-point script's process-spawn overhead. 2.5s leaves ~1.5s of
+                                # margin over the heaviest real construction found while bounding
+                                # the CPU cost of an adversarial script (e.g. a literal
+                                # `while True: pass`) to a fraction of the previous 10s.
 
 _BUILD_AGENT_INSTRUCTIONS = """\
 You are a geometry diagram assistant. Call render_diagram with a natural \
