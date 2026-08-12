@@ -39,6 +39,16 @@ def test_python_full_instructions_document_styling():
         assert name in text, f"instructions missing mention of {name}"
 
 
+def test_python_full_instructions_warn_against_shadowing_api_names():
+    """A model writing `incircle = incircle(tri)` is a confirmed, reproducible
+    sandbox hard-error ("Cannot assign to name ... would erase the existing
+    tool!") — the instructions must warn against reusing any API function
+    name as a variable name, not just this one example."""
+    text = build_python_full_instructions()
+    assert "incircle" in text.lower()
+    assert "erase the existing tool" in text
+
+
 def test_python_full_instructions_document_marks_and_fill_holes():
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
 

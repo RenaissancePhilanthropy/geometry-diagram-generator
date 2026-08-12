@@ -26,6 +26,13 @@ works if you prefer to write it explicitly, but it isn't required.
 
 ## Rules
 
+- NEVER name a variable the same as an API function/class above (e.g. `incircle`,
+  `circle`, `triangle`, `polygon`, `point`, `segment`) — the sandbox hard-errors on
+  this ("Cannot assign to name '...': doing this would erase the existing tool!").
+  `incircle = incircle(tri)` is the single most common way this happens, since
+  "incircle" is both the function name and the most natural name for its result —
+  use `inc`, `incirc`, or similar instead. This applies to every name in the API,
+  not just this one example.
 - Call `point(x, y)` for every point with concrete, literal coordinates you choose.
 - Build the construction using the handle-returning ops above (triangle, polygon,
   circumcircle, incircle, altitude, median, ...). Handle accessors (e.g. `circ.center`,
