@@ -94,7 +94,7 @@ async def test_run_chain_records_edit_ops_meta_on_a_failed_line_number_turn(monk
             "kind": "delete", "line": "99",
             "after": None, "start_line": None, "end_line": None,
             "content": None, "expected_content": None,
-        }]
+        }], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -221,7 +221,7 @@ async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
         )
 
     async def fake_generate_patch(prompt, model, enable_cache=False):
-        return "@@ -1,2 +1,2 @@\n-a = point(0, 0)\n+a = point(1, 1)\n draw_points(a)\n"
+        return "@@ -1,2 +1,2 @@\n-a = point(0, 0)\n+a = point(1, 1)\n draw_points(a)\n", 1, 1, None
 
     monkeypatch.setattr(pf_module.PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(pf_module, "_generate_patch", fake_generate_patch)

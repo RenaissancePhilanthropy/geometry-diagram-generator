@@ -958,13 +958,18 @@ async def test_generate_patch_includes_pydsl_api_instructions_as_system_message(
     standalone mark_right_angle() function) — confirmed via live testing."""
     from geometry_diagrams.strategies import python_full as pf_module
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+    from langchain_core.messages import AIMessage
 
     captured_messages = []
 
     class FakeStructured:
         async def ainvoke(self, messages):
             captured_messages.extend(messages)
-            return pf_module.PydslScriptPatchOutput(patch="@@ -1,1 +1,1 @@\n-a\n+b\n")
+            return {
+                "raw": AIMessage(content="", usage_metadata={"input_tokens": 5, "output_tokens": 7, "total_tokens": 12}),
+                "parsed": pf_module.PydslScriptPatchOutput(patch="@@ -1,1 +1,1 @@\n-a\n+b\n"),
+                "parsing_error": None,
+            }
 
     class FakeLLM:
         def with_structured_output(self, schema, include_raw=False):
@@ -973,7 +978,7 @@ async def test_generate_patch_includes_pydsl_api_instructions_as_system_message(
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
         result = await pf_module._generate_patch("edit this script", model="test")
 
-    assert result == "@@ -1,1 +1,1 @@\n-a\n+b\n"
+    assert result == ("@@ -1,1 +1,1 @@\n-a\n+b\n", 5, 7, None)
     assert len(captured_messages) == 2
     system_message, human_message = captured_messages
     assert system_message.content or (
@@ -1144,12 +1149,12 @@ async def test_generate_search_replace_includes_pydsl_api_instructions_as_system
             captured_messages.extend(messages)
             return AIMessage(content=(
                 "<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE\n"
-            ))
+            ), usage_metadata={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7})
 
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
         result = await pf_module.generate_search_replace("edit this script", model="test")
 
-    assert result == [{"old_string": "a", "new_string": "b"}]
+    assert result == ([{"old_string": "a", "new_string": "b"}], 3, 4, None)
     assert len(captured_messages) == 2
     system_message = captured_messages[0]
     system_text = (
@@ -1182,7 +1187,7 @@ async def test_render_diagram_edits_via_search_replace_mode(monkeypatch):
         )
 
     async def fake_generate_search_replace(prompt, model, enable_cache=False):
-        return [{"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}]
+        return [{"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1219,14 +1224,20 @@ async def test_generate_hashline_ops_includes_pydsl_api_instructions_as_system_m
     from geometry_diagrams.strategies import python_full as pf_module
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
 
+    from langchain_core.messages import AIMessage
+
     captured_messages = []
 
     class FakeStructured:
         async def ainvoke(self, messages):
             captured_messages.extend(messages)
-            return pf_module.PydslHashlineOutput(
-                ops=[pf_module.HashlineOp(kind="delete", tag="1:a1")]
-            )
+            return {
+                "raw": AIMessage(content="", usage_metadata={"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}),
+                "parsed": pf_module.PydslHashlineOutput(
+                    ops=[pf_module.HashlineOp(kind="delete", tag="1:a1")]
+                ),
+                "parsing_error": None,
+            }
 
     class FakeLLM:
         def with_structured_output(self, schema, include_raw=False):
@@ -1235,7 +1246,9 @@ async def test_generate_hashline_ops_includes_pydsl_api_instructions_as_system_m
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
         result = await pf_module._generate_hashline_ops("edit this script", model="test")
 
-    assert result == [{"kind": "delete", "tag": "1:a1", "after": None, "start_tag": None, "end_tag": None, "content": None}]
+    ops, in_tok, out_tok, cost = result
+    assert ops == [{"kind": "delete", "tag": "1:a1", "after": None, "start_tag": None, "end_tag": None, "content": None}]
+    assert (in_tok, out_tok, cost) == (2, 3, None)
     assert len(captured_messages) == 2
     system_message = captured_messages[0]
     system_text = (
@@ -1263,15 +1276,20 @@ def test_build_line_number_request_prompt_includes_view_manifest_and_op_formats(
 async def test_generate_line_number_ops_includes_pydsl_api_instructions_as_system_message():
     from geometry_diagrams.strategies import python_full as pf_module
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+    from langchain_core.messages import AIMessage
 
     captured_messages = []
 
     class FakeStructured:
         async def ainvoke(self, messages):
             captured_messages.extend(messages)
-            return pf_module.PydslLineNumberOutput(
-                ops=[pf_module.LineNumberOp(kind="delete", line="1")]
-            )
+            return {
+                "raw": AIMessage(content="", usage_metadata={"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}),
+                "parsed": pf_module.PydslLineNumberOutput(
+                    ops=[pf_module.LineNumberOp(kind="delete", line="1")]
+                ),
+                "parsing_error": None,
+            }
 
     class FakeLLM:
         def with_structured_output(self, schema, include_raw=False):
@@ -1280,10 +1298,12 @@ async def test_generate_line_number_ops_includes_pydsl_api_instructions_as_syste
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
         result = await pf_module._generate_line_number_ops("edit this script", model="test")
 
-    assert result == [{
+    ops, in_tok, out_tok, cost = result
+    assert ops == [{
         "kind": "delete", "line": "1", "after": None,
         "start_line": None, "end_line": None, "content": None, "expected_content": None,
     }]
+    assert (in_tok, out_tok, cost) == (6, 8, None)
     assert len(captured_messages) == 2
     system_message = captured_messages[0]
     system_text = (
@@ -1316,7 +1336,7 @@ async def test_render_diagram_edits_via_hashline_mode(monkeypatch):
         )
 
     async def fake_generate_hashline_ops(prompt, model, enable_cache=False):
-        return [{"kind": "replace", "tag": "1:" + __import__("hashlib").blake2s(b"a = point(0, 0)", digest_size=1).hexdigest(), "content": "a = point(9, 9)", "after": None, "start_tag": None, "end_tag": None}]
+        return [{"kind": "replace", "tag": "1:" + __import__("hashlib").blake2s(b"a = point(0, 0)", digest_size=1).hexdigest(), "content": "a = point(9, 9)", "after": None, "start_tag": None, "end_tag": None}], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1362,7 +1382,7 @@ async def test_render_diagram_edits_via_line_number_mode(monkeypatch):
             "kind": "replace", "line": "1", "content": "a = point(9, 9)",
             "expected_content": "a = point(0, 0)",
             "after": None, "start_line": None, "end_line": None,
-        }]
+        }], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1415,7 +1435,7 @@ async def test_render_diagram_line_number_edit_ops_meta_counts_missing_expected_
             "kind": "delete", "line": "3",
             "after": None, "start_line": None, "end_line": None,
             "content": None, "expected_content": None,
-        }]
+        }], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1469,7 +1489,7 @@ async def test_render_diagram_line_number_edit_ops_meta_survives_apply_failure(m
             "kind": "delete", "line": "99",
             "after": None, "start_line": None, "end_line": None,
             "content": None, "expected_content": None,
-        }]
+        }], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1520,9 +1540,9 @@ async def test_render_diagram_retries_once_on_apply_failure_when_enabled(monkeyp
     async def fake_generate_search_replace(prompt, model, enable_cache=False):
         attempts.append(prompt)
         if len(attempts) == 1:
-            return [{"old_string": "NOT IN SCRIPT", "new_string": "x"}]
+            return [{"old_string": "NOT IN SCRIPT", "new_string": "x"}], 1, 1, None
         assert "old_string not found" in prompt
-        return [{"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}]
+        return [{"old_string": "a = point(0, 0)", "new_string": "a = point(9, 9)"}], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
@@ -1565,7 +1585,7 @@ async def test_render_diagram_does_not_retry_when_disabled(monkeypatch):
 
     async def fake_generate_search_replace(prompt, model, enable_cache=False):
         attempts.append(prompt)
-        return [{"old_string": "NOT IN SCRIPT", "new_string": "x"}]
+        return [{"old_string": "NOT IN SCRIPT", "new_string": "x"}], 1, 1, None
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(

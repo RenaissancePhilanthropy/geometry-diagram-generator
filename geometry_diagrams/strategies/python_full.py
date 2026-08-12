@@ -52,7 +52,7 @@ class PydslScriptPatchOutput(BaseModel):
     patch: str = Field(description="A unified diff patch to apply to the previous script.")
 
 
-async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -> str:
+async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -> "tuple[str, int, int, float | None]":
     """Single direct LLM call requesting a unified-diff patch (patch mode's
     generation step) — deliberately NOT the multi-attempt generate_script
     retry loop full_rewrite mode uses; a patch that doesn't apply is
@@ -66,15 +66,25 @@ async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -
     called with a fill_color/fill_opacity kwarg that doesn't exist — the
     real API is a separate fill(obj, color=...) call — and an AngleRef
     treated as having a .mark_right_angle() method, when the real API is
-    the standalone mark_right_angle(ref) function)."""
+    the standalone mark_right_angle(ref) function).
+
+    Returns (patch, input_tokens, output_tokens, cost_usd) — the usage/cost
+    of this generation call, so edit turns using patch mode don't silently
+    report zero cost for the LLM call that actually produced the edit."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslScriptPatchOutput, include_raw=False)
+    structured = llm.with_structured_output(PydslScriptPatchOutput, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
     response = await structured.ainvoke(messages)
-    return response.patch
+    raw_msg = response.get("raw")
+    in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+    cost = extract_cost(raw_msg) if raw_msg else None
+    parsed = response.get("parsed")
+    if parsed is None:
+        raise ValueError(f"Failed to parse patch output: {response.get('parsing_error')}")
+    return parsed.patch, in_tok, out_tok, cost
 
 
 def build_patch_request_prompt(request: str, previous_script: str, manifest: dict) -> str:
@@ -141,7 +151,9 @@ def _parse_search_replace_blocks(text: str) -> list[dict]:
     return blocks
 
 
-async def generate_search_replace(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+async def generate_search_replace(
+    prompt: str, model: str, enable_cache: bool = False
+) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting SEARCH/REPLACE marker blocks as
     plain text (search_replace mode's generation step) — no structured
     output for this call; see _parse_search_replace_blocks's docstring
@@ -153,7 +165,11 @@ async def generate_search_replace(prompt: str, model: str, enable_cache: bool = 
     + apply_search_replace + run_script/run_ir_pipeline alone — a consumer
     building its own conversational agent around a search_replace tool
     (rather than PythonFullStrategy.build_agent()'s own ReAct agent) needs
-    this exported to avoid depending on a private function."""
+    this exported to avoid depending on a private function.
+
+    Returns (blocks, input_tokens, output_tokens, cost_usd) — a consumer
+    tracking spend needs this call's usage, since it's otherwise the one
+    LLM call in a search_replace edit turn with no other way to observe it."""
     llm = get_chat_model(model, enable_cache=enable_cache)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
@@ -161,7 +177,9 @@ async def generate_search_replace(prompt: str, model: str, enable_cache: bool = 
     ]
     response = await llm.ainvoke(messages)
     text = response.content if isinstance(response.content, str) else response.content[0].get("text", "")
-    return _parse_search_replace_blocks(text)
+    in_tok, out_tok = extract_usage(response)
+    cost = extract_cost(response)
+    return _parse_search_replace_blocks(text), in_tok, out_tok, cost
 
 
 def build_search_replace_request_prompt(request: str, previous_script: str, manifest: dict) -> str:
@@ -205,18 +223,30 @@ class PydslHashlineOutput(BaseModel):
     ops: list[HashlineOp] = Field(description="Hashline operations to apply in order.")
 
 
-async def _generate_hashline_ops(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+async def _generate_hashline_ops(
+    prompt: str, model: str, enable_cache: bool = False
+) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting hashline ops (hashline mode's
     generation step) — mirrors _generate_patch/generate_search_replace's
-    shape, including the pydsl API reference as a system message."""
+    shape, including the pydsl API reference as a system message.
+
+    Returns (ops, input_tokens, output_tokens, cost_usd), mirroring
+    _generate_patch/generate_search_replace's usage-tracking shape."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslHashlineOutput, include_raw=False)
+    structured = llm.with_structured_output(PydslHashlineOutput, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
     response = await structured.ainvoke(messages)
-    return [op.model_dump() for op in response.ops]
+    raw_msg = response.get("raw")
+    in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+    cost = extract_cost(raw_msg) if raw_msg else None
+    parsed = response.get("parsed")
+    if parsed is None:
+        raise ValueError(f"Failed to parse hashline ops output: {response.get('parsing_error')}")
+    ops = [op.model_dump() for op in parsed.ops]
+    return ops, in_tok, out_tok, cost
 
 
 def build_hashline_request_prompt(request: str, hashline_view: str, manifest: dict) -> str:
@@ -263,18 +293,30 @@ class PydslLineNumberOutput(BaseModel):
     ops: list[LineNumberOp] = Field(description="Line-number operations to apply in order.")
 
 
-async def _generate_line_number_ops(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+async def _generate_line_number_ops(
+    prompt: str, model: str, enable_cache: bool = False
+) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting line_number ops (line_number
     mode's generation step) — mirrors _generate_hashline_ops's shape,
-    including the pydsl API reference as a system message."""
+    including the pydsl API reference as a system message.
+
+    Returns (ops, input_tokens, output_tokens, cost_usd), mirroring
+    _generate_hashline_ops's usage-tracking shape."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslLineNumberOutput, include_raw=False)
+    structured = llm.with_structured_output(PydslLineNumberOutput, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
     response = await structured.ainvoke(messages)
-    return [op.model_dump() for op in response.ops]
+    raw_msg = response.get("raw")
+    in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+    cost = extract_cost(raw_msg) if raw_msg else None
+    parsed = response.get("parsed")
+    if parsed is None:
+        raise ValueError(f"Failed to parse line_number ops output: {response.get('parsing_error')}")
+    ops = [op.model_dump() for op in parsed.ops]
+    return ops, in_tok, out_tok, cost
 
 
 def build_line_number_request_prompt(request: str, line_number_view: str, manifest: dict) -> str:
@@ -886,16 +928,28 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         }
 
 
-async def _run_from_script(script: str, renderer: "Renderer | None") -> StructuredRunResult:
+async def _run_from_script(
+    script: str,
+    renderer: "Renderer | None",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cost_usd: "float | None" = None,
+) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
     skipping generate_script entirely. A failure here is NOT retried with
     a fresh LLM call, unlike full_rewrite mode — the caller sees the
-    error and the state stack is left untouched (Global Constraints)."""
+    error and the state stack is left untouched (Global Constraints).
+
+    input_tokens/output_tokens/cost_usd seed the pipeline state with the
+    edit-generation LLM call's own usage (e.g. from generate_search_replace)
+    so it isn't dropped just because it happened before this script-only
+    pipeline run rather than inside it."""
     state: PythonFullPipelineState = {
         "prompt": "", "model_id": "", "enable_cache": False,
         "attempt": 0, "last_error": "", "script": script, "result": None,
-        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+        "input_tokens": input_tokens, "output_tokens": output_tokens,
+        "cost_usd": cost_usd or 0.0,
         "renderer": renderer,
         "metadata": PythonFullMetadata(attempt_traces=[
             PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
@@ -905,6 +959,13 @@ async def _run_from_script(script: str, renderer: "Renderer | None") -> Structur
     result = update.get("result")
     if result is None:
         raise RuntimeError(f"patch-mode script failed: {update.get('last_error', 'unknown error')}")
+    # run_ir_pipeline builds `result` fresh with input_tokens/output_tokens/cost_usd
+    # at their dataclass defaults (0/0/None) — it has no visibility into the
+    # edit-generation call that happened before this script-only pipeline run,
+    # so that usage has to be stamped on here instead of via the state dict.
+    result.input_tokens = input_tokens
+    result.output_tokens = output_tokens
+    result.cost_usd = cost_usd
     return result
 
 
@@ -1052,27 +1113,27 @@ class PythonFullStrategy(SubstanceStrategy):
 
                     async def _edit_patch(req: str) -> StructuredRunResult:
                         patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
-                        patch_text = await _generate_patch(patch_prompt, model)
+                        patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
                         patched_script = apply_script_patch(top["script"], patch_text)
-                        return await _run_from_script(patched_script, _renderer)
+                        return await _run_from_script(patched_script, _renderer, in_tok, out_tok, cost)
 
                     async def _edit_search_replace(req: str) -> StructuredRunResult:
                         prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-                        blocks = await generate_search_replace(prompt, model)
+                        blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
                         new_script = apply_search_replace(top["script"], blocks)
-                        return await _run_from_script(new_script, _renderer)
+                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
 
                     async def _edit_hashline(req: str) -> StructuredRunResult:
                         hashline_view = render_hashline_view(top["script"], hash_algorithm)
                         prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
-                        ops = await _generate_hashline_ops(prompt, model)
+                        ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
                         new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
-                        return await _run_from_script(new_script, _renderer)
+                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
 
                     async def _edit_line_number(req: str) -> StructuredRunResult:
                         view = render_line_number_view(top["script"])
                         prompt = build_line_number_request_prompt(req, view, top["manifest"])
-                        ops = await _generate_line_number_ops(prompt, model)
+                        ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model)
                         delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
                         # Written before apply_line_number_ops runs, so a
                         # failed apply still leaves this readable (see
@@ -1084,7 +1145,7 @@ class PythonFullStrategy(SubstanceStrategy):
                             ),
                         }
                         new_script = apply_line_number_ops(top["script"], ops)
-                        return await _run_from_script(new_script, _renderer)
+                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
 
                     _edit_handlers = {
                         "patch": _edit_patch,
