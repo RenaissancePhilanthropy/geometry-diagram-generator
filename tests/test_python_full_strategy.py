@@ -1147,7 +1147,7 @@ async def test_generate_search_replace_includes_pydsl_api_instructions_as_system
             ))
 
     with patch.object(pf_module, "get_chat_model", return_value=FakeLLM()):
-        result = await pf_module._generate_search_replace("edit this script", model="test")
+        result = await pf_module.generate_search_replace("edit this script", model="test")
 
     assert result == [{"old_string": "a", "new_string": "b"}]
     assert len(captured_messages) == 2
@@ -1186,7 +1186,7 @@ async def test_render_diagram_edits_via_search_replace_mode(monkeypatch):
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
-        "geometry_diagrams.strategies.python_full._generate_search_replace",
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
         fake_generate_search_replace,
     )
 
@@ -1526,7 +1526,7 @@ async def test_render_diagram_retries_once_on_apply_failure_when_enabled(monkeyp
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
-        "geometry_diagrams.strategies.python_full._generate_search_replace",
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
         fake_generate_search_replace,
     )
 
@@ -1569,7 +1569,7 @@ async def test_render_diagram_does_not_retry_when_disabled(monkeypatch):
 
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     monkeypatch.setattr(
-        "geometry_diagrams.strategies.python_full._generate_search_replace",
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
         fake_generate_search_replace,
     )
 

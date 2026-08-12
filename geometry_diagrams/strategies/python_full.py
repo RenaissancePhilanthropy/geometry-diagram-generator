@@ -141,12 +141,19 @@ def _parse_search_replace_blocks(text: str) -> list[dict]:
     return blocks
 
 
-async def _generate_search_replace(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
+async def generate_search_replace(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
     """Single direct LLM call requesting SEARCH/REPLACE marker blocks as
     plain text (search_replace mode's generation step) — no structured
     output for this call; see _parse_search_replace_blocks's docstring
     for why. Still includes the pydsl API reference as a system message
-    (omitting it is a confirmed way to get hallucinated API calls)."""
+    (omitting it is a confirmed way to get hallucinated API calls).
+
+    Public: this is the one piece of a search_replace edit turn that
+    isn't otherwise reconstructable from build_search_replace_request_prompt
+    + apply_search_replace + run_script/run_ir_pipeline alone — a consumer
+    building its own conversational agent around a search_replace tool
+    (rather than PythonFullStrategy.build_agent()'s own ReAct agent) needs
+    this exported to avoid depending on a private function."""
     llm = get_chat_model(model, enable_cache=enable_cache)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
@@ -200,7 +207,7 @@ class PydslHashlineOutput(BaseModel):
 
 async def _generate_hashline_ops(prompt: str, model: str, enable_cache: bool = False) -> list[dict]:
     """Single direct LLM call requesting hashline ops (hashline mode's
-    generation step) — mirrors _generate_patch/_generate_search_replace's
+    generation step) — mirrors _generate_patch/generate_search_replace's
     shape, including the pydsl API reference as a system message."""
     llm = get_chat_model(model, enable_cache=enable_cache)
     structured = llm.with_structured_output(PydslHashlineOutput, include_raw=False)
@@ -1051,7 +1058,7 @@ class PythonFullStrategy(SubstanceStrategy):
 
                     async def _edit_search_replace(req: str) -> StructuredRunResult:
                         prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-                        blocks = await _generate_search_replace(prompt, model)
+                        blocks = await generate_search_replace(prompt, model)
                         new_script = apply_search_replace(top["script"], blocks)
                         return await _run_from_script(new_script, _renderer)
 
