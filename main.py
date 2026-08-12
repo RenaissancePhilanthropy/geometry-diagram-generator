@@ -134,6 +134,17 @@ async def agent(request: Request) -> StreamingResponse:
                 metadata = event.get("metadata", {})
 
                 if evt_type == "on_chat_model_stream":
+                    # Only the top-level ReAct agent's own model calls (tagged
+                    # "agent" by LangGraph) are user-facing text. Edit modes
+                    # like search_replace/patch/hashline/line_number make their
+                    # OWN internal LLM calls from inside the render_diagram
+                    # tool's implementation — those stream through this same
+                    # astream_events feed tagged "tools", and forwarding them
+                    # unfiltered leaks raw generation output (e.g. a SEARCH/
+                    # REPLACE block) into the chat as if the assistant said it.
+                    if metadata.get("langgraph_node") != "agent":
+                        continue
+
                     chunk = data.get("chunk")
                     if not chunk:
                         continue
