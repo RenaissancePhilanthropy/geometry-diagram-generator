@@ -1,8 +1,25 @@
 # tests/test_pydsl_sandbox.py
 """Tests for the pydsl sandbox: import lockdown, dangerous calls, resource limits."""
+import io
+import multiprocessing
+import sys
+
 import pytest
 
+from geometry_diagrams.pydsl import sandbox
 from geometry_diagrams.pydsl.sandbox import run_script
+
+# RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
+# raises ValueError there — confirmed directly: soft/hard both report as
+# RLIM_INFINITY yet setting even a generous limit fails outright) and
+# doesn't exist as a real per-process concept on Windows either. Verified
+# empirically inside a memory-capped Linux Docker container that it DOES
+# enforce there: a real over-limit allocation raises MemoryError
+# immediately. Only meaningfully testable on Linux.
+_rlimit_data_unsupported = pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="RLIMIT_DATA is a no-op on this platform (confirmed on macOS; only enforces on Linux)",
+)
 
 
 def test_valid_script_produces_a_diagram_ir():
@@ -77,32 +94,107 @@ def test_cpu_bomb_is_killed_by_rlimit_cpu_on_any_platform():
 
 
 @pytest.mark.timeout(30)
-def test_incremental_memory_growth_is_eventually_killed_by_wall_clock_timeout():
-    # A loop that keeps growing a list forever thrashes long enough to
-    # actually exercise the wall-clock kill. A single huge allocation
-    # (e.g. `[0] * 10**12`) is the wrong shape for this test — it raises
-    # MemoryError immediately and never reaches the timeout path at all,
-    # on either platform.
+def test_incremental_memory_growth_is_killed_by_the_memory_watchdog():
+    # A loop that keeps growing a list forever, one chunk at a time —
+    # unlike test_single_huge_allocation_is_killed_by_the_memory_watchdog's
+    # single giant allocation, this ramps RSS gradually across many small
+    # ones. In practice this still crosses _MAX_CHILD_RSS_BYTES well before
+    # the 2s wall-clock timeout, so error_type is "memory_limit", not
+    # "timeout" — before error_type distinguished the two kill paths, this
+    # assertion couldn't tell the difference and the test's own name/comment
+    # (incorrectly) assumed the wall-clock kill was what fired.
     script = "acc = []\nwhile True:\n    acc.append([0] * 10**6)"
     result = run_script(script, timeout_seconds=2.0)
     assert result.diagram_ir is None
-    assert result.error_type == "timeout"
+    assert result.error_type == "memory_limit"
 
 
 @pytest.mark.timeout(30)
-def test_single_huge_allocation_is_killed_by_the_memory_watchdog():
-    # Documents the actual (measured) behavior, which contradicts the naive
-    # assumption that `[0] * 10**12` raises MemoryError instantly: CPython
-    # fills the array as it allocates, so this touches real pages and ramps
-    # RSS fast enough to cross the parent's _MAX_CHILD_RSS_BYTES watchdog
-    # threshold in well under a second — before the child ever gets to raise
-    # MemoryError itself. Without that watchdog this keeps consuming real
-    # memory for up to the full wall-clock timeout, which is a genuine
-    # host-OOM risk, not just a slow test.
+def test_single_huge_allocation_is_caught_as_memory_limit_one_way_or_another():
+    # Which of two mechanisms catches this is platform/memory-pressure
+    # dependent, confirmed empirically on both: on this dev machine (macOS,
+    # generous virtual memory), CPython's list-fill touches real pages
+    # incrementally, ramping RSS fast enough for the parent's
+    # _MAX_CHILD_RSS_BYTES watchdog to win the race and kill the child
+    # before it ever raises MemoryError itself. Inside a memory-capped Linux
+    # container (docker run --memory=1g), the allocation instead fails fast
+    # with a real MemoryError raised in-process, before the watchdog's next
+    # poll. Either way the script never keeps consuming host memory for the
+    # full wall-clock timeout, and either way error_type is "memory_limit"
+    # (see classify_failure's MemoryError branch, added for the container
+    # case) — that consistency, not which mechanism fires, is what this
+    # test actually guards.
     result = run_script("x = [0] * (10**12)", timeout_seconds=5.0)
     assert result.diagram_ir is None
-    assert result.error == "script exceeded memory limit"
-    assert result.error_type == "timeout"
+    assert result.error_type == "memory_limit"
+
+
+def _rlimit_data_probe_worker(conn):
+    # Module-level, not nested: multiprocessing's "spawn" context (same one
+    # run_script itself uses) pickles the target function by reference, and
+    # a closure defined inside the test function isn't picklable.
+    #
+    # Reports back over a Pipe, not a Queue: Queue.put() starts a background
+    # feeder thread on first use, and under a 10MB RLIMIT_DATA there isn't
+    # enough headroom left for a new thread's own bookkeeping to start at
+    # all ("RuntimeError: can't start new thread") — confirmed by hitting
+    # exactly that failure with a Queue in an earlier version of this test.
+    # Pipe.send() is synchronous, no extra thread required.
+    import resource
+    resource.setrlimit(resource.RLIMIT_DATA, (10 * 1024 * 1024, 10 * 1024 * 1024))
+    try:
+        buf = bytearray(50 * 1024 * 1024)
+        buf[0] = 1  # touch it so it isn't optimized away
+        conn.send(("allocation_succeeded", len(buf)))
+    except MemoryError:
+        conn.send(("memory_error", None))
+
+
+@_rlimit_data_unsupported
+@pytest.mark.timeout(30)
+def test_rlimit_data_actually_enforces_on_linux():
+    # Regression test for the RLIMIT_DATA setrlimit call added to
+    # _run_in_subprocess: confirms the OS-level guarantee it relies on
+    # actually holds, independent of run_script's own watchdog/timeout
+    # machinery. Runs in its own subprocess (not the test runner's process)
+    # so a real over-limit allocation can't affect anything else.
+    ctx = multiprocessing.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe()
+    process = ctx.Process(target=_rlimit_data_probe_worker, args=(child_conn,))
+    process.start()
+    process.join(timeout=10)
+    kind, _ = parent_conn.recv()
+    assert kind == "memory_error"
+
+
+def test_child_rss_bytes_reads_proc_statm_on_linux(monkeypatch):
+    """Dev machine is macOS (no /proc), so this can't exercise the real file
+    system path — it forces _IS_LINUX and mocks open() to verify the statm
+    field parsing (field index 1 = resident, in pages) is correct."""
+    monkeypatch.setattr(sandbox, "_IS_LINUX", True)
+    monkeypatch.setattr(sandbox, "_PAGE_SIZE", 4096)
+
+    statm_contents = "1000 250 10 5 0 900 0\n"  # size resident shared text lib data dt
+
+    def fake_open(path, mode="r"):
+        assert path == "/proc/1234/statm"
+        return io.StringIO(statm_contents)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert sandbox._child_rss_bytes(1234) == 250 * 4096
+
+
+def test_child_rss_bytes_returns_none_when_proc_statm_is_unreadable(monkeypatch):
+    """Covers the already-exited-child race: /proc/<pid>/statm is gone by
+    the time we try to read it — must report "no reading available", not
+    raise, and never be mistaken for a zero-usage reading."""
+    monkeypatch.setattr(sandbox, "_IS_LINUX", True)
+
+    def fake_open(path, mode="r"):
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert sandbox._child_rss_bytes(1234) is None
 
 
 def test_undefined_name_error_is_classified_as_hallucinated_api_with_a_suggestion():

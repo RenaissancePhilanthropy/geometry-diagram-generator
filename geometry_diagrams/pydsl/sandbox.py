@@ -31,6 +31,7 @@ import math
 import multiprocessing
 import resource
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -41,12 +42,31 @@ from geometry_diagrams.pydsl.retry import build_retry_message, classify_failure
 
 _POLL_INTERVAL_SECONDS = 0.05
 _MAX_CHILD_RSS_BYTES = 512 * 1024 * 1024  # 512MB; well below a typical dev machine's headroom
+_PAGE_SIZE = resource.getpagesize()
+_IS_LINUX = sys.platform.startswith("linux")
 
 
 def _child_rss_bytes(pid: int) -> "int | None":
     """Resident set size of `pid` in bytes, or None if it can't be read
-    (already exited, or `ps` unavailable) — treated as "no reading available",
-    never as "zero usage", by the caller."""
+    (already exited, `ps` unavailable, etc.) — treated as "no reading
+    available", never as "zero usage", by the caller.
+
+    On Linux (the real deployment target — this repo's dev machine is macOS,
+    where none of this applies), reads /proc/<pid>/statm directly: a plain
+    file read, versus spawning a whole `ps` subprocess on every single poll
+    (every _POLL_INTERVAL_SECONDS, for the lifetime of every sandboxed
+    script). That's real per-poll latency and its own process overhead this
+    watchdog was adding on top of the workload it's supposed to be guarding —
+    faster reads mean a memory bomb is caught sooner, not just cheaper to
+    watch for. macOS has no /proc, so it keeps the subprocess-based path."""
+    if _IS_LINUX:
+        try:
+            with open(f"/proc/{pid}/statm", "r") as f:
+                fields = f.read().split()
+            return int(fields[1]) * _PAGE_SIZE  # field 1 = resident, in pages
+        except (OSError, IndexError, ValueError):
+            return None
+
     try:
         out = subprocess.run(
             ["ps", "-o", "rss=", "-p", str(pid)],
@@ -95,6 +115,20 @@ def _run_in_subprocess(script: str, timeout_seconds: float, queue: "multiprocess
         resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
     except (ValueError, OSError):
         pass  # documented no-op on macOS; effective on Linux
+    try:
+        # RLIMIT_DATA: same no-op-on-macOS/effective-on-Linux story as
+        # RLIMIT_AS (confirmed empirically in a memory-capped Docker
+        # container — setrlimit fails outright on macOS, and a real
+        # over-limit allocation raises MemoryError immediately on Linux).
+        # Kept alongside RLIMIT_AS, not instead of it: on Linux both apply,
+        # and a single massive allocation (e.g. `[0] * 10**12`) can raise
+        # MemoryError in-process fast enough to beat the parent's RSS-poll
+        # watchdog to the punch — this is the in-process backstop for that
+        # race, not a replacement for the watchdog (which is still the only
+        # real defense against many-small-allocations growth on macOS).
+        resource.setrlimit(resource.RLIMIT_DATA, (2 * 1024**3, 2 * 1024**3))
+    except (ValueError, OSError):
+        pass
 
     from smolagents import LocalPythonExecutor
     from smolagents.local_python_executor import ExecutionTimeoutError
@@ -163,10 +197,10 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
     if killed_for_memory or process.is_alive():
         process.kill()
         process.join()
-        msg = (
-            "script exceeded memory limit" if killed_for_memory
-            else "script exceeded wall-clock timeout"
-        )
+        if killed_for_memory:
+            msg = "script exceeded memory limit"
+            return ScriptResult(diagram_ir=None, error=msg, error_type="memory_limit", retry_message=msg)
+        msg = "script exceeded wall-clock timeout"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
     try:

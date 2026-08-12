@@ -26,6 +26,18 @@ def test_classify_failure_categorizes_op_cap_directly_as_a_distinct_category():
     assert classify_failure(exc) == "syntax_or_timeout"
 
 
+def test_classify_failure_categorizes_memory_error_as_memory_limit():
+    # On Linux (unlike macOS, where CPython's list-fill touches pages
+    # incrementally and the sandbox's own RSS watchdog usually wins the
+    # race), a single huge allocation can raise MemoryError inside the
+    # child itself before the watchdog ever polls — confirmed empirically
+    # in a memory-capped Docker container. Same "memory_limit" label as the
+    # watchdog-kill path, so callers see one consistent category regardless
+    # of which mechanism actually caught it.
+    exc = MemoryError()
+    assert classify_failure(exc) == "memory_limit"
+
+
 def test_classify_failure_reads_embedded_type_name_from_wrapped_interpreter_message():
     # Simulates what actually crosses the subprocess boundary in Task 10/11:
     # LocalPythonExecutor wraps every tool-raised exception into a single
@@ -44,6 +56,11 @@ def test_classify_failure_reads_embedded_type_name_from_wrapped_interpreter_mess
         "OpCapExceededError: script recorded more than 2000 ops"
     )
     assert classify_failure(wrapped_op_cap) == "syntax_or_timeout"
+
+    wrapped_memory_error = (
+        "Code execution failed at line 'x = [0] * (10**12)' due to: MemoryError: "
+    )
+    assert classify_failure(wrapped_memory_error) == "memory_limit"
 
 
 def test_classify_failure_recognizes_bare_undefined_variable_reference():

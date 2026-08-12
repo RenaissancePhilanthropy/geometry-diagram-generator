@@ -48,6 +48,8 @@ def classify_failure(exc_or_message: "Exception | str") -> str:
         return "syntax_or_timeout"
     if isinstance(exc_or_message, ValueError):
         return "structural_precondition"
+    if isinstance(exc_or_message, MemoryError):
+        return "memory_limit"
 
     message = str(exc_or_message)
     if _IMPORT_PATTERN.search(message):
@@ -71,6 +73,8 @@ def classify_failure(exc_or_message: "Exception | str") -> str:
             return "syntax_or_timeout"
         if type_name == "ValueError":
             return "structural_precondition"
+        if type_name == "MemoryError":
+            return "memory_limit"
     return "syntax_or_timeout"
 
 
