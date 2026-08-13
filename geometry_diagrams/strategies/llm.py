@@ -351,6 +351,16 @@ _FORCED_FUNCTION_CALLING_MODELS: set[str] = {
     # itself. Forcing method="function_calling" on vercel: gave 12/12 clean in
     # two separate trials.
     "vercel:openai/gpt-oss-120b",
+    # vercel:openai/gpt-oss-20b (2026-08-13): reported failure shape matches
+    # vercel:openai/gpt-oss-120b above — unforced structured output leaked
+    # gpt-oss's internal harmony-format channel text (e.g. "commentary
+    # to=...") instead of the tool-call schema, failing pydantic validation
+    # on a single-field response model. Evidence here is two production
+    # failures (via a consumer project's scope-gate classifier), not a
+    # controlled multi-sample trial like the 120b entry above — but the
+    # same fix (method="function_calling") is the confirmed remedy for the
+    # sibling model on the same gateway.
+    "vercel:openai/gpt-oss-20b",
 }
 
 
