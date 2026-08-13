@@ -4,12 +4,31 @@ import inspect
 import io
 import multiprocessing
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from geometry_diagrams.ir.ir import DiagramIR
 from geometry_diagrams.pydsl import sandbox
 from geometry_diagrams.pydsl.sandbox import run_script, _run_in_subprocess
+
+
+def _fake_slow_import_then_quick_script(script, timeout_seconds, conn):
+    # Module-level, not nested: "spawn" pickles the target by reference —
+    # see _rlimit_data_probe_worker's comment below for why a closure can't
+    # be used here. Simulates a slow cold-start import (sympy/numpy/
+    # matplotlib on a cold container) by sleeping BEFORE sending "ready",
+    # then finishes almost instantly — used to prove the parent's wall-clock
+    # deadline starts only after "ready" arrives, not at process spawn.
+    time.sleep(3.0)
+    conn.send(("ready", None))
+    diagram_ir = DiagramIR(define=[], render=[])
+    conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": {}}))
+
+
+def _fake_child_that_never_sends_anything(script, timeout_seconds, conn):
+    time.sleep(5.0)
 
 # RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
 # raises ValueError there — confirmed directly: soft/hard both report as
@@ -66,6 +85,41 @@ def test_rlimit_cpu_accounts_for_cpu_already_used_by_harness_imports():
     limit = cpu_calls[0].args[1]
     # int(1.8) [already used] + int(2.0) + 1 [this call's own budget] = 1 + 3 = 4
     assert limit == (4, 4)
+
+
+@pytest.mark.timeout(30)
+def test_bootstrap_wait_excludes_cold_start_import_time_from_the_script_deadline():
+    """Regression test: the wall-clock deadline used to start counting at
+    process.start(), so slow cold-start import time (sympy/numpy/matplotlib
+    on a cold container) ate directly into timeout_seconds's budget with no
+    way to distinguish "still importing" from "script is actually running
+    long." A fake child that sleeps 3s (simulating a slow import) before
+    sending its "ready" sentinel, then finishes in well under a second,
+    must still succeed with timeout_seconds=1.0 — pre-fix, the deadline
+    (process.start() + timeout_seconds + 2.0 = 3.0s from spawn) would have
+    killed it mid-sleep, before it ever got a chance to run."""
+    result = run_script(
+        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
+        _target=_fake_slow_import_then_quick_script,
+    )
+    assert result.error is None
+    assert result.diagram_ir is not None
+
+
+def test_run_script_treats_a_bootstrap_hang_as_a_start_failure(monkeypatch):
+    """If the child never sends its "ready" sentinel (an ImportError or
+    crash during harness setup, or a genuine hang), run_script must not
+    wait forever — it should give up once _BOOTSTRAP_TIMEOUT_SECONDS
+    elapses and report a start failure rather than hanging or silently
+    treating it as script success."""
+    monkeypatch.setattr(sandbox, "_BOOTSTRAP_TIMEOUT_SECONDS", 0.3)
+    result = run_script(
+        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
+        _target=_fake_child_that_never_sends_anything,
+    )
+    assert result.diagram_ir is None
+    assert result.error_type == "timeout"
+    assert "failed to start" in result.error
 
 
 def test_valid_script_produces_a_diagram_ir():

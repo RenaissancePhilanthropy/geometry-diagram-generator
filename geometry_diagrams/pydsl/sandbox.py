@@ -42,6 +42,13 @@ from geometry_diagrams.pydsl.retry import build_retry_message, classify_failure
 
 _POLL_INTERVAL_SECONDS = 0.05
 _MAX_CHILD_RSS_BYTES = 512 * 1024 * 1024  # 512MB; well below a typical dev machine's headroom
+# Generous on purpose: covers cold-start smolagents/sympy/numpy/matplotlib
+# import time on a cold container (e.g. a cold AWS Lambda invocation), which
+# is trusted harness setup, not the untrusted script's own execution budget.
+# The child sends a "ready" sentinel once setup is done and only then does
+# run_script() start the real timeout_seconds-based deadline — so this value
+# only bounds "is the harness hung/dead," not "is this taking a while."
+_BOOTSTRAP_TIMEOUT_SECONDS = 20.0
 _PAGE_SIZE = resource.getpagesize()
 _IS_LINUX = sys.platform.startswith("linux")
 
@@ -104,14 +111,16 @@ def _bind_to_builder(fn: Callable, builder: Builder) -> Callable:
 
 
 def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessing.connection.Connection") -> None:
-    """Runs entirely inside the child process. Sends a (kind, payload) tuple over the pipe.
+    """Runs entirely inside the child process. Sends a ("ready", None)
+    sentinel once harness setup is done, then a final (kind, payload)
+    tuple over the pipe once the script has run (or failed).
 
     Uses Pipe rather than Queue: Queue is backed by a POSIX named semaphore
     (multiprocessing.Lock -> SemLock), which requires a writable /dev/shm.
     That's absent on AWS Lambda, so Queue() construction fails before the
     child even starts. Pipe needs only a plain OS pipe/socketpair, and this
-    is single-shot one-writer/one-reader IPC (child sends exactly once), so
-    it's a drop-in replacement with no behavioral change.
+    is one-writer/one-reader IPC (child sends exactly twice, always in this
+    order), so it's a drop-in replacement with no other behavioral change.
     """
     # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
     # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
@@ -169,6 +178,11 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
     except (ValueError, OSError):
         pass
 
+    # Harness is fully imported and resource-limited — tell the parent so it
+    # can stop counting cold-start/import time against timeout_seconds and
+    # start the real per-script deadline from here instead.
+    conn.send(("ready", None))
+
     builder = Builder()
     tools = {
         name: _bind_to_builder(getattr(pydsl_module, name), builder)
@@ -211,14 +225,46 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
         conn.send(("error", (message, error_type, retry_message)))
 
 
-def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
+def run_script(
+    script: str, timeout_seconds: float = 5.0, _target: Callable = _run_in_subprocess
+) -> ScriptResult:
+    # _target is a testing-only seam for substituting a fake child process
+    # (e.g. one that sleeps before sending "ready") to exercise the
+    # bootstrap-wait/deadline protocol below without a real multi-second
+    # sympy/numpy/matplotlib import — production code always uses the
+    # default and should never pass this.
     ctx = multiprocessing.get_context("spawn")
     parent_conn, child_conn = ctx.Pipe(duplex=False)
     process = ctx.Process(
-        target=_run_in_subprocess, args=(script, timeout_seconds, child_conn)
+        target=_target, args=(script, timeout_seconds, child_conn)
     )
     process.start()
     child_conn.close()  # parent doesn't write; close its copy of the write end
+
+    # Wait for the child's "ready" sentinel (sent once smolagents/sympy/numpy/
+    # matplotlib are imported and rlimits are set) before starting the real
+    # timeout_seconds-based deadline below — otherwise cold-start import time
+    # on a cold container eats directly into the script's own execution
+    # budget with no way to tell the difference from the outside. This
+    # bootstrap wait is deliberately generous (_BOOTSTRAP_TIMEOUT_SECONDS) and
+    # bounds only "is the harness hung or dead," e.g. an ImportError or crash
+    # during setup that exits the child before it ever sends anything.
+    bootstrap_deadline = time.monotonic() + _BOOTSTRAP_TIMEOUT_SECONDS
+    ready = False
+    while process.is_alive() and time.monotonic() < bootstrap_deadline:
+        if parent_conn.poll(_POLL_INTERVAL_SECONDS):
+            try:
+                kind, _ = parent_conn.recv()
+            except (EOFError, OSError):
+                break
+            ready = kind == "ready"
+            break
+
+    if not ready:
+        process.kill()
+        process.join()
+        msg = "sandbox failed to start (import/setup error or hang before running the script)"
+        return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
     deadline = time.monotonic() + timeout_seconds + 2.0  # wall-clock backstop, independent of the child
     killed_for_memory = False
