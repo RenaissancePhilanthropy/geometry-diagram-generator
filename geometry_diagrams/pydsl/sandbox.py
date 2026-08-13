@@ -103,8 +103,16 @@ def _bind_to_builder(fn: Callable, builder: Builder) -> Callable:
     return wrapped
 
 
-def _run_in_subprocess(script: str, timeout_seconds: float, queue: "multiprocessing.Queue") -> None:
-    """Runs entirely inside the child process. Puts a (kind, payload) tuple on the queue."""
+def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessing.connection.Connection") -> None:
+    """Runs entirely inside the child process. Sends a (kind, payload) tuple over the pipe.
+
+    Uses Pipe rather than Queue: Queue is backed by a POSIX named semaphore
+    (multiprocessing.Lock -> SemLock), which requires a writable /dev/shm.
+    That's absent on AWS Lambda, so Queue() construction fails before the
+    child even starts. Pipe needs only a plain OS pipe/socketpair, and this
+    is single-shot one-writer/one-reader IPC (child sends exactly once), so
+    it's a drop-in replacement with no behavioral change.
+    """
     try:
         resource.setrlimit(
             resource.RLIMIT_CPU, (int(timeout_seconds) + 1, int(timeout_seconds) + 1)
@@ -167,34 +175,43 @@ def _run_in_subprocess(script: str, timeout_seconds: float, queue: "multiprocess
             for name, value in executor.state.items()
             if hasattr(value, "id") and isinstance(getattr(value, "id", None), str)
         }
-        queue.put(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": variable_ids}))
+        conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": variable_ids}))
     except ExecutionTimeoutError as exc:
-        queue.put(("error", (str(exc), "timeout", None)))
+        conn.send(("error", (str(exc), "timeout", None)))
     except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
         message = str(exc)
         error_type = classify_failure(message)
         retry_message = build_retry_message(message, script)
-        queue.put(("error", (message, error_type, retry_message)))
+        conn.send(("error", (message, error_type, retry_message)))
 
 
 def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
     ctx = multiprocessing.get_context("spawn")
-    queue: multiprocessing.Queue = ctx.Queue()
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
     process = ctx.Process(
-        target=_run_in_subprocess, args=(script, timeout_seconds, queue)
+        target=_run_in_subprocess, args=(script, timeout_seconds, child_conn)
     )
     process.start()
+    child_conn.close()  # parent doesn't write; close its copy of the write end
 
     deadline = time.monotonic() + timeout_seconds + 2.0  # wall-clock backstop, independent of the child
     killed_for_memory = False
+    result_ready = False
     while process.is_alive() and time.monotonic() < deadline:
+        # A result payload larger than the OS pipe buffer (~16-64KB) blocks
+        # the child in conn.send() until the parent reads — draining as soon
+        # as data is ready (rather than waiting for the child to exit) avoids
+        # misreporting a large-but-successful result as a wall-clock timeout.
+        if parent_conn.poll(0):
+            result_ready = True
+            break
         rss = _child_rss_bytes(process.pid)
         if rss is not None and rss > _MAX_CHILD_RSS_BYTES:
             killed_for_memory = True
             break
         process.join(timeout=_POLL_INTERVAL_SECONDS)
 
-    if killed_for_memory or process.is_alive():
+    if killed_for_memory or (process.is_alive() and not result_ready):
         process.kill()
         process.join()
         if killed_for_memory:
@@ -203,12 +220,22 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
         msg = "script exceeded wall-clock timeout"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
+    # Result is already sent (or the child exited on its own); either way it
+    # should finish tearing down almost immediately — bound the wait so a
+    # trusted-code hang during cleanup can't block the caller indefinitely.
+    process.join(timeout=2.0)
+    if process.is_alive():
+        process.kill()
+        process.join()
+
     try:
-        kind, payload = queue.get(timeout=1.0)
-    except Exception:
-        # process exited but the queue feeder thread hadn't flushed yet, or the
-        # child died without putting anything (e.g. OOM-killed by the OS) —
-        # either way, treat as a timeout-class failure, not "no error".
+        if not parent_conn.poll(timeout=1.0):
+            raise EOFError
+        kind, payload = parent_conn.recv()
+    except (EOFError, OSError):
+        # process exited but never sent anything (e.g. OOM-killed by the OS
+        # before reaching conn.send) — treat as a timeout-class failure,
+        # not "no error".
         msg = "subprocess exited without a result"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
