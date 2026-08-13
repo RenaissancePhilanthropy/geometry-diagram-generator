@@ -27,6 +27,7 @@ tool actually executes in, which works regardless of which thread that is.
 """
 from __future__ import annotations
 
+import logging
 import math
 import multiprocessing
 import resource
@@ -39,6 +40,8 @@ from typing import Callable
 from geometry_diagrams.ir.ir import DiagramIR
 from geometry_diagrams.pydsl.builder import Builder, _current_builder
 from geometry_diagrams.pydsl.retry import build_retry_message, classify_failure
+
+logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_SECONDS = 0.05
 _MAX_CHILD_RSS_BYTES = 512 * 1024 * 1024  # 512MB; well below a typical dev machine's headroom
@@ -88,6 +91,23 @@ def _child_rss_bytes(pid: int) -> "int | None":
         return int(text) * 1024  # ps reports RSS in KB
     except ValueError:
         return None
+
+
+def _describe_exitcode(exitcode: "int | None") -> str:
+    """Human-readable summary of a dead multiprocessing.Process's exitcode:
+    negative means killed by signal -exitcode (e.g. -9 = SIGKILL, often OOM
+    or our own process.kill()); non-negative means it exited on its own
+    (0 = clean, nonzero = an uncaught exception's default exit(1) or similar).
+    None means still running (only meaningful before we've killed it ourselves)."""
+    if exitcode is None:
+        return "still running"
+    if exitcode < 0:
+        import signal
+        try:
+            return f"killed by signal {-exitcode} ({signal.Signals(-exitcode).name})"
+        except ValueError:
+            return f"killed by signal {-exitcode}"
+    return f"exited with code {exitcode}"
 
 
 @dataclass
@@ -256,6 +276,7 @@ def run_script(
     )
     process.start()
     child_conn.close()  # parent doesn't write; close its copy of the write end
+    logger.info("sandbox: spawned pid=%s for a %.1fs script timeout", process.pid, timeout_seconds)
 
     # Wait for the child's "ready" sentinel (sent once smolagents/sympy/numpy/
     # matplotlib are imported and rlimits are set) before starting the real
@@ -265,7 +286,8 @@ def run_script(
     # bootstrap wait is deliberately generous (_BOOTSTRAP_TIMEOUT_SECONDS) and
     # bounds only "is the harness hung or dead," e.g. an ImportError or crash
     # during setup that exits the child before it ever sends anything.
-    bootstrap_deadline = time.monotonic() + _BOOTSTRAP_TIMEOUT_SECONDS
+    bootstrap_start = time.monotonic()
+    bootstrap_deadline = bootstrap_start + _BOOTSTRAP_TIMEOUT_SECONDS
     ready = False
     setup_error = None  # (message, error_type, retry_message) if the child reported why it never got to "ready"
     while process.is_alive() and time.monotonic() < bootstrap_deadline:
@@ -279,17 +301,47 @@ def run_script(
             elif kind == "error":
                 setup_error = payload
             break
+    bootstrap_elapsed = time.monotonic() - bootstrap_start
 
-    if not ready:
+    if ready:
+        logger.info("sandbox: pid=%s ready after %.2fs", process.pid, bootstrap_elapsed)
+    else:
+        # Snapshot exitcode/aliveness BEFORE we kill it ourselves — once we
+        # call process.kill(), exitcode always just reflects OUR SIGKILL,
+        # destroying the one signal that distinguishes "died on its own for
+        # a diagnosable reason" from "was still alive when we gave up."
+        died_on_its_own = not process.is_alive()
+        exitcode_before_our_kill = process.exitcode if died_on_its_own else None
         process.kill()
         process.join()
         if setup_error is not None:
             message, error_type, retry_message = setup_error
+            logger.warning(
+                "sandbox: pid=%s reported a setup error after %.2fs: %s",
+                process.pid, bootstrap_elapsed, retry_message,
+            )
             return ScriptResult(diagram_ir=None, error=message, error_type=error_type, retry_message=retry_message)
-        # Child died or is still running with no report at all — a genuine
-        # hang, or a crash severe enough (e.g. SIGKILL from the OS) that it
-        # never reached the try/except around its own imports.
-        msg = "sandbox failed to start (import/setup error or hang before running the script)"
+        if died_on_its_own:
+            reason = _describe_exitcode(exitcode_before_our_kill)
+            logger.warning(
+                "sandbox: pid=%s died with no report after %.2fs (%s)",
+                process.pid, bootstrap_elapsed, reason,
+            )
+            msg = (
+                f"sandbox failed to start: child process died with no report after "
+                f"{bootstrap_elapsed:.1f}s ({reason}) — likely OOM-killed or crashed "
+                f"before its own error handling could run"
+            )
+        else:
+            logger.warning(
+                "sandbox: pid=%s never sent 'ready' within %.1fs bootstrap budget, killed",
+                process.pid, _BOOTSTRAP_TIMEOUT_SECONDS,
+            )
+            msg = (
+                f"sandbox failed to start: child never sent 'ready' within the "
+                f"{_BOOTSTRAP_TIMEOUT_SECONDS:.0f}s bootstrap budget (still importing/"
+                f"setting up when killed)"
+            )
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
     deadline = time.monotonic() + timeout_seconds + 2.0  # wall-clock backstop, independent of the child
@@ -322,11 +374,20 @@ def run_script(
         process.join(timeout=_POLL_INTERVAL_SECONDS)
 
     if killed_for_memory or (received is None and process.is_alive()):
+        # Note: the non-memory branch only fires when process.is_alive() is
+        # still True (that's required by the `or` above), so there's no
+        # "died on its own" exitcode to capture here — unlike the bootstrap
+        # wait above, this is always a genuine still-running timeout.
         process.kill()
         process.join()
         if killed_for_memory:
+            logger.warning("sandbox: pid=%s exceeded the RSS watchdog threshold, killed", process.pid)
             msg = "script exceeded memory limit"
             return ScriptResult(diagram_ir=None, error=msg, error_type="memory_limit", retry_message=msg)
+        logger.warning(
+            "sandbox: pid=%s exceeded the %.1fs wall-clock deadline, killed",
+            process.pid, timeout_seconds + 2.0,
+        )
         msg = "script exceeded wall-clock timeout"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 

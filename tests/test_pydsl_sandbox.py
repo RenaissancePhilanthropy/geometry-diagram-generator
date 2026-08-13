@@ -40,6 +40,15 @@ def _fake_child_that_crashes_during_setup(script, timeout_seconds, conn):
     conn.send(("error", ("full traceback here", "sandbox_setup_error", "ImportError: no module named 'fake'")))
 
 
+def _fake_child_that_gets_killed_by_a_signal(script, timeout_seconds, conn):
+    # Simulates an OOM-kill (or any other signal-based death) severe enough
+    # that no Python code — not even our own try/except around imports —
+    # ever gets a chance to run or report anything over the pipe.
+    import os
+    import signal
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
 # RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
 # raises ValueError there — confirmed directly: soft/hard both report as
 # RLIM_INFINITY yet setting even a generous limit fails outright) and
@@ -183,6 +192,24 @@ def test_run_script_surfaces_a_reported_setup_crash_instead_of_the_generic_messa
     assert result.error_type == "sandbox_setup_error"
     assert result.error == "full traceback here"
     assert result.retry_message == "ImportError: no module named 'fake'"
+
+
+def test_run_script_reports_signal_when_child_dies_on_its_own_without_a_report():
+    """Regression test: when the child dies on its own during bootstrap
+    (e.g. OOM-killed by the OS) severe enough that not even its own
+    try/except gets to run, run_script must capture its exitcode/signal
+    BEFORE issuing its own process.kill() — which would otherwise overwrite
+    the one diagnostic signal available (the child's actual death reason)
+    with -9 from OUR kill — and surface it in the error message so a real
+    OOM-kill is distinguishable from a genuine "still importing" hang."""
+    result = run_script(
+        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
+        _target=_fake_child_that_gets_killed_by_a_signal,
+    )
+    assert result.diagram_ir is None
+    assert result.error_type == "timeout"
+    assert "SIGKILL" in result.error
+    assert "died with no report" in result.error
 
 
 def test_run_in_subprocess_reports_a_real_import_crash_over_the_pipe(monkeypatch):
