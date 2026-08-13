@@ -14,7 +14,7 @@ async def test_run_chain_records_a_successful_turn(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -46,7 +46,7 @@ async def test_run_chain_records_a_successful_turn(monkeypatch):
 async def test_run_chain_continues_past_a_failure_and_tracks_prior_failure_count(monkeypatch):
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
 
-    async def failing_run(self, prompt, model="test", renderer=None):
+    async def failing_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
 
     monkeypatch.setattr(PythonFullStrategy, "run", failing_run)
@@ -74,7 +74,7 @@ async def test_run_chain_records_edit_ops_meta_on_a_failed_line_number_turn(monk
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -125,7 +125,7 @@ async def test_run_chain_runs_property_checks_on_success(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -171,7 +171,7 @@ async def test_run_chain_threads_hash_algorithm_into_build_agent(monkeypatch):
 
     monkeypatch.setattr(pf_module.PythonFullStrategy, "build_agent", spying_build_agent)
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
         from geometry_diagrams.ir.ir import DiagramIR
         return StructuredRunResult(
@@ -204,7 +204,7 @@ async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -255,7 +255,7 @@ async def test_run_matrix_runs_every_combination_and_returns_all_records(monkeyp
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -296,7 +296,7 @@ async def test_run_matrix_works_without_an_output_path(monkeypatch):
     from geometry_diagrams.ir.ir import DiagramIR
     from evals.run_edit_chains import run_matrix
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -323,7 +323,7 @@ async def test_run_matrix_trips_model_level_breaker_and_stops_calling_run_chain(
 
     call_count = 0
 
-    async def always_failing_run(self, prompt, model="test", renderer=None):
+    async def always_failing_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
@@ -357,7 +357,7 @@ async def test_run_matrix_trips_only_the_failing_cell_not_other_modes(monkeypatc
 
     call_counts = {"fake_run": 0, "fake_generate_patch": 0}
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         call_counts["fake_run"] += 1
         from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
         from geometry_diagrams.ir.ir import DiagramIR
@@ -418,7 +418,7 @@ async def test_run_matrix_model_trip_suppresses_redundant_cell_trip(monkeypatch)
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
     from evals.run_edit_chains import run_matrix
 
-    async def always_failing_run(self, prompt, model="test", renderer=None):
+    async def always_failing_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
 
     monkeypatch.setattr(PythonFullStrategy, "run", always_failing_run)
@@ -449,7 +449,7 @@ async def test_run_matrix_two_models_trip_independently(monkeypatch):
 
     call_counts = {"good-model": 0, "bad-model": 0}
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         call_counts[model] += 1
         if model == "bad-model":
             raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
@@ -486,7 +486,7 @@ async def test_run_matrix_disabled_breaker_runs_every_combination_regardless_of_
 
     call_count = 0
 
-    async def always_failing_run(self, prompt, model="test", renderer=None):
+    async def always_failing_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")

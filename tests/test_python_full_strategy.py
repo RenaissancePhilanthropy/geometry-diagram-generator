@@ -218,6 +218,57 @@ async def test_run_script_node_falls_back_to_error_when_retry_message_is_none():
     assert update["attempt"] == 1
 
 
+@pytest.mark.asyncio
+async def test_run_script_node_uses_default_timeout_when_state_omits_it():
+    """State dicts built before sandbox_timeout_seconds existed (or any caller
+    that just doesn't care) must still get the module-level SANDBOX_TIMEOUT_SECONDS,
+    not a crash or a None timeout."""
+    from geometry_diagrams.strategies.python_full import SANDBOX_TIMEOUT_SECONDS
+
+    fake_result = ScriptResult(diagram_ir=None, error="boom", error_type="timeout", retry_message="boom")
+    with patch(
+        "geometry_diagrams.strategies.python_full.run_script", return_value=fake_result
+    ) as mock_run_script:
+        state = {"script": "point(0, 0)", "attempt": 0, "renderer": SVGRenderer()}
+        await _run_script_node(state)
+    assert mock_run_script.call_args.kwargs["timeout_seconds"] == SANDBOX_TIMEOUT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_run_script_node_honors_custom_sandbox_timeout_seconds():
+    """An explicit sandbox_timeout_seconds in state must reach run_script's
+    timeout_seconds kwarg unchanged — the configurable-timeout path."""
+    fake_result = ScriptResult(diagram_ir=None, error="boom", error_type="timeout", retry_message="boom")
+    with patch(
+        "geometry_diagrams.strategies.python_full.run_script", return_value=fake_result
+    ) as mock_run_script:
+        state = {
+            "script": "point(0, 0)", "attempt": 0, "renderer": SVGRenderer(),
+            "sandbox_timeout_seconds": 12.0,
+        }
+        await _run_script_node(state)
+    assert mock_run_script.call_args.kwargs["timeout_seconds"] == 12.0
+
+
+@pytest.mark.asyncio
+async def test_run_threads_sandbox_timeout_seconds_into_run_script():
+    """PythonFullStrategy.run()'s sandbox_timeout_seconds kwarg must reach
+    run_script end-to-end through the LangGraph pipeline state."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    fake_result = ScriptResult(
+        diagram_ir=None, error="boom", error_type="timeout", retry_message="boom",
+    )
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm), \
+         patch("geometry_diagrams.strategies.python_full.run_script", return_value=fake_result) as mock_run_script:
+        strategy = PythonFullStrategy()
+        with pytest.raises(RuntimeError):
+            await strategy.run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6",
+                renderer=SVGRenderer(), sandbox_timeout_seconds=9.5,
+            )
+    assert mock_run_script.call_args.kwargs["timeout_seconds"] == 9.5
+
+
 from geometry_diagrams.strategies.python_full import PythonFullMetadata
 
 
@@ -840,7 +891,7 @@ async def test_render_diagram_tool_edits_using_previous_script_context(monkeypat
 
     prompts_seen: list[str] = []
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         prompts_seen.append(prompt)
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
@@ -888,7 +939,7 @@ async def test_render_diagram_survives_a_locality_diagnostic_crash(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -938,7 +989,7 @@ async def test_render_diagram_attaches_locality_diagnostic_to_stack_frame():
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1194,7 +1245,7 @@ async def test_render_diagram_edits_via_search_replace_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1343,7 +1394,7 @@ async def test_render_diagram_edits_via_hashline_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1385,7 +1436,7 @@ async def test_render_diagram_edits_via_line_number_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1435,7 +1486,7 @@ async def test_render_diagram_line_number_edit_ops_meta_counts_missing_expected_
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1492,7 +1543,7 @@ async def test_render_diagram_line_number_edit_ops_meta_survives_apply_failure(m
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1545,7 +1596,7 @@ async def test_render_diagram_retries_once_on_apply_failure_when_enabled(monkeyp
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1591,7 +1642,7 @@ async def test_render_diagram_does_not_retry_when_disabled(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",

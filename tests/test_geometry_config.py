@@ -46,3 +46,32 @@ def test_geometry_config_accepts_line_number_edit_mode():
 
     cfg = GeometryConfig(edit_generation_mode="line_number")
     assert cfg.edit_generation_mode == "line_number"
+
+
+def test_default_sandbox_timeout_seconds_is_2_5():
+    cfg = GeometryConfig()
+    assert cfg.sandbox_timeout_seconds == 2.5
+
+
+def test_from_env_default_sandbox_timeout_seconds_is_2_5(monkeypatch):
+    monkeypatch.delenv("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", raising=False)
+    cfg = GeometryConfig.from_env()
+    assert cfg.sandbox_timeout_seconds == 2.5
+
+
+def test_from_env_reads_geometry_sandbox_timeout_seconds():
+    with patch.dict(os.environ, {"GEOMETRY_SANDBOX_TIMEOUT_SECONDS": "10"}, clear=False):
+        cfg = GeometryConfig.from_env()
+    assert cfg.sandbox_timeout_seconds == 10.0
+
+
+def test_resolve_config_overrides_sandbox_timeout_seconds():
+    base = GeometryConfig(sandbox_timeout_seconds=2.5)
+    cfg = resolve_config(base, sandbox_timeout_seconds=8.0)
+    assert cfg.sandbox_timeout_seconds == 8.0
+
+
+def test_resolve_config_keeps_base_sandbox_timeout_seconds_when_not_overridden():
+    base = GeometryConfig(sandbox_timeout_seconds=8.0)
+    cfg = resolve_config(base)
+    assert cfg.sandbox_timeout_seconds == 8.0

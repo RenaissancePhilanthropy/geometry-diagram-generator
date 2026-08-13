@@ -33,6 +33,11 @@ class GeometryConfig:
     # separate, always-works baseline — not part of this comparison.
     edit_generation_mode: Literal["full_rewrite", "patch", "search_replace", "hashline", "line_number"] = "search_replace"
     hash_algorithm: Literal["blake2s", "xxhash"] = "blake2s"
+    # Matches python_full.py's SANDBOX_TIMEOUT_SECONDS (only used by PythonFullStrategy) —
+    # 2.5s leaves ~1.5s of margin over the heaviest real construction timed there while
+    # bounding the CPU cost of an adversarial script. Override per-deployment if the host
+    # is slower/faster than the machine that value was tuned on.
+    sandbox_timeout_seconds: float = 2.5
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -46,6 +51,7 @@ class GeometryConfig:
             embed_fonts=os.environ.get("DIAGRAM_EMBED_FONTS", "0") in ("1", "true", "True"),
             edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"),  # type: ignore[arg-type]
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
+            sandbox_timeout_seconds=float(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5")),
         )
 
 
@@ -59,6 +65,7 @@ def resolve_config(
     font_family: Optional[str] = None,
     edit_generation_mode: Optional[str] = None,
     hash_algorithm: Optional[str] = None,
+    sandbox_timeout_seconds: Optional[float] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -71,4 +78,7 @@ def resolve_config(
         embed_fonts=cfg.embed_fonts,
         edit_generation_mode=edit_generation_mode or cfg.edit_generation_mode,  # type: ignore[arg-type]
         hash_algorithm=hash_algorithm or cfg.hash_algorithm,  # type: ignore[arg-type]
+        sandbox_timeout_seconds=(
+            sandbox_timeout_seconds if sandbox_timeout_seconds is not None else cfg.sandbox_timeout_seconds
+        ),
     )

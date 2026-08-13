@@ -65,7 +65,9 @@ def _make_strategy():
 _strategy = _make_strategy()
 _renderer = _make_renderer() if strategy_name in ("structured", "recipe", "python_full") else None
 _model = os.environ.get("MODEL", "anthropic:claude-sonnet-4-6")
-_edit_generation_mode = GeometryConfig.from_env().edit_generation_mode
+_geometry_config = GeometryConfig.from_env()
+_edit_generation_mode = _geometry_config.edit_generation_mode
+_sandbox_timeout_seconds = _geometry_config.sandbox_timeout_seconds
 
 
 def _build_agent_for_strategy():
@@ -73,7 +75,7 @@ def _build_agent_for_strategy():
         if strategy_name == "python_full":
             return _strategy.build_agent(
                 model=_model, renderer=_renderer, edit_generation_mode=_edit_generation_mode,
-                retry_on_apply_failure=True,
+                retry_on_apply_failure=True, sandbox_timeout_seconds=_sandbox_timeout_seconds,
             )
         return _strategy.build_agent(model=_model, renderer=_renderer)
     return None
@@ -89,7 +91,10 @@ async def invoke(request: Request) -> JSONResponse:
     body = await request.json()
     prompt = body.get("prompt", "")
     try:
-        result = await _strategy.run(prompt, model=_model, renderer=_renderer)
+        run_kwargs = {"model": _model, "renderer": _renderer}
+        if strategy_name == "python_full":
+            run_kwargs["sandbox_timeout_seconds"] = _sandbox_timeout_seconds
+        result = await _strategy.run(prompt, **run_kwargs)
         svg = getattr(result, "svg", "")
         return JSONResponse({"svg": svg})
     except Exception as e:

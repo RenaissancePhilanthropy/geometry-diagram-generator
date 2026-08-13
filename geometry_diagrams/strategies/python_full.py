@@ -707,6 +707,7 @@ class PythonFullPipelineState(TypedDict):
     cost_usd: float
     renderer: Optional[Any]
     metadata: PythonFullMetadata
+    sandbox_timeout_seconds: float
 
 
 async def _generate_script_node(state: PythonFullPipelineState) -> dict:
@@ -874,7 +875,8 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         # and don't touch the trace it already appended for this attempt.
         return {"last_error": "No script available to run"}
 
-    result = await asyncio.to_thread(run_script, script, timeout_seconds=SANDBOX_TIMEOUT_SECONDS)
+    timeout_seconds = state.get("sandbox_timeout_seconds") or SANDBOX_TIMEOUT_SECONDS
+    result = await asyncio.to_thread(run_script, script, timeout_seconds=timeout_seconds)
 
     if result.error is not None:
         # retry_message is None for ExecutionTimeoutError (sandbox.py's timeout branch never
@@ -941,6 +943,7 @@ async def _run_from_script(
     input_tokens: int = 0,
     output_tokens: int = 0,
     cost_usd: "float | None" = None,
+    sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
 ) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
@@ -961,6 +964,7 @@ async def _run_from_script(
         "metadata": PythonFullMetadata(attempt_traces=[
             PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
         ]),
+        "sandbox_timeout_seconds": sandbox_timeout_seconds,
     }
     update = await _run_script_node(state)
     result = update.get("result")
@@ -1030,6 +1034,7 @@ class PythonFullStrategy(SubstanceStrategy):
         prompt: str,
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
+        sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     ) -> StructuredRunResult:
         graph = _build_python_full_graph()
         initial_state: PythonFullPipelineState = {
@@ -1045,6 +1050,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "cost_usd": 0.0,
             "renderer": renderer,
             "metadata": PythonFullMetadata(),
+            "sandbox_timeout_seconds": sandbox_timeout_seconds,
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
 
@@ -1076,6 +1082,7 @@ class PythonFullStrategy(SubstanceStrategy):
         edit_generation_mode: str = "search_replace",
         hash_algorithm: str = "blake2s",
         retry_on_apply_failure: bool = False,
+        sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     ):
         """Conversational ReAct agent with render_diagram + query_diagram
         tools. State is a small stack of prior turns (not a single slot,
@@ -1116,26 +1123,35 @@ class PythonFullStrategy(SubstanceStrategy):
 
                     async def _edit_full_rewrite(req: str) -> StructuredRunResult:
                         full_request = build_edit_prompt(req, top["script"], top["manifest"])
-                        return await self.run(full_request, model=model, renderer=_renderer)
+                        return await self.run(
+                            full_request, model=model, renderer=_renderer,
+                            sandbox_timeout_seconds=sandbox_timeout_seconds,
+                        )
 
                     async def _edit_patch(req: str) -> StructuredRunResult:
                         patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
                         patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
                         patched_script = apply_script_patch(top["script"], patch_text)
-                        return await _run_from_script(patched_script, _renderer, in_tok, out_tok, cost)
+                        return await _run_from_script(
+                            patched_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                        )
 
                     async def _edit_search_replace(req: str) -> StructuredRunResult:
                         prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
                         blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
                         new_script = apply_search_replace(top["script"], blocks)
-                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
+                        return await _run_from_script(
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                        )
 
                     async def _edit_hashline(req: str) -> StructuredRunResult:
                         hashline_view = render_hashline_view(top["script"], hash_algorithm)
                         prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
                         ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
                         new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
-                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
+                        return await _run_from_script(
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                        )
 
                     async def _edit_line_number(req: str) -> StructuredRunResult:
                         view = render_line_number_view(top["script"])
@@ -1152,7 +1168,9 @@ class PythonFullStrategy(SubstanceStrategy):
                             ),
                         }
                         new_script = apply_line_number_ops(top["script"], ops)
-                        return await _run_from_script(new_script, _renderer, in_tok, out_tok, cost)
+                        return await _run_from_script(
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                        )
 
                     _edit_handlers = {
                         "patch": _edit_patch,
@@ -1186,7 +1204,10 @@ class PythonFullStrategy(SubstanceStrategy):
                     except Exception:
                         locality_diagnostic = None
                 else:
-                    result = await self.run(request, model=model, renderer=_renderer)
+                    result = await self.run(
+                        request, model=model, renderer=_renderer,
+                        sandbox_timeout_seconds=sandbox_timeout_seconds,
+                    )
                     locality_diagnostic = None
 
                 _stack.append({
