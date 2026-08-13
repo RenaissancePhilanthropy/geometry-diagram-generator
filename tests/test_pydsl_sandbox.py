@@ -2,6 +2,7 @@
 """Tests for the pydsl sandbox: import lockdown, dangerous calls, resource limits."""
 import inspect
 import io
+import logging
 import multiprocessing
 import subprocess
 import sys
@@ -23,6 +24,17 @@ def _fake_slow_import_then_quick_script(script, timeout_seconds, conn):
     # then finishes almost instantly — used to prove the parent's wall-clock
     # deadline starts only after "ready" arrives, not at process spawn.
     time.sleep(3.0)
+    conn.send(("ready", None))
+    diagram_ir = DiagramIR(define=[], render=[])
+    conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": {}}))
+
+
+def _fake_child_with_progress_pings_then_ready(script, timeout_seconds, conn):
+    time.sleep(0.1)
+    conn.send(("progress", "step 1"))
+    time.sleep(0.1)
+    conn.send(("progress", "step 2"))
+    time.sleep(0.1)
     conn.send(("ready", None))
     diagram_ir = DiagramIR(define=[], render=[])
     conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": {}}))
@@ -212,6 +224,37 @@ def test_run_script_reports_signal_when_child_dies_on_its_own_without_a_report()
     assert "died with no report" in result.error
 
 
+def test_progress_pings_during_bootstrap_do_not_end_the_wait_and_get_logged(caplog):
+    """Regression test: "progress" pings are NOT terminal — the bootstrap
+    wait must keep waiting for "ready"/"error" after receiving one (a naive
+    implementation that breaks the loop on any message would misreport a
+    slow-but-succeeding import as a failure), and each one must get logged
+    so production has a trail of which import step is slow instead of the
+    old binary "still alive at the deadline, no other information." Direct
+    motivation: production logged "pid=80 never sent 'ready' within 20.0s
+    bootstrap budget, killed" with the child confirmed still alive (not
+    crashed) — progress pings are what would narrow down WHERE in that
+    window it's stuck, next time this happens."""
+    with caplog.at_level(logging.INFO, logger="geometry_diagrams.pydsl.sandbox"):
+        result = run_script(
+            "irrelevant — the fake target below ignores this", timeout_seconds=2.0,
+            _target=_fake_child_with_progress_pings_then_ready,
+        )
+    assert result.error is None
+    assert result.diagram_ir is not None
+    progress_messages = [r.message for r in caplog.records if "progress:" in r.message]
+    assert any("step 1" in m for m in progress_messages)
+    assert any("step 2" in m for m in progress_messages)
+
+
+def test_bootstrap_timeout_budget_was_raised_from_the_original_20s():
+    """Regression test: production hit the OLD 20.0s bootstrap budget with
+    the child still alive (not crashed) — 20s genuinely wasn't enough
+    headroom on that container. Pins the raised value so a future
+    refactor can't silently drop back to the too-tight original."""
+    assert sandbox._BOOTSTRAP_TIMEOUT_SECONDS == 60.0
+
+
 def test_run_in_subprocess_reports_a_real_import_crash_over_the_pipe(monkeypatch):
     """Same as the fake-child test above, but exercises _run_in_subprocess's
     own try/except directly: forcing `from smolagents import ...` to raise
@@ -223,7 +266,7 @@ def test_run_in_subprocess_reports_a_real_import_crash_over_the_pipe(monkeypatch
     monkeypatch.setitem(sys.modules, "smolagents", None)
     conn = MagicMock()
     _run_in_subprocess("a = point(0, 0)\ndraw_points(a)", 2.0, conn)
-    assert conn.send.call_count == 1
+    # The import crash is the LAST send — a "progress" ping precedes it.
     kind, payload = conn.send.call_args[0][0]
     assert kind == "error"
     message, error_type, retry_message = payload

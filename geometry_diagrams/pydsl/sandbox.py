@@ -51,7 +51,14 @@ _MAX_CHILD_RSS_BYTES = 512 * 1024 * 1024  # 512MB; well below a typical dev mach
 # The child sends a "ready" sentinel once setup is done and only then does
 # run_script() start the real timeout_seconds-based deadline — so this value
 # only bounds "is the harness hung/dead," not "is this taking a while."
-_BOOTSTRAP_TIMEOUT_SECONDS = 20.0
+#
+# Raised from 20.0 to 60.0 (2026-08-13): production logged "pid=80 never
+# sent 'ready' within 20.0s bootstrap budget, killed" — the child was still
+# ALIVE (not crashed/OOM-killed, which would have shown a signal instead),
+# meaning 20s genuinely wasn't enough headroom for whatever's slow on that
+# container. Import-time "progress" pings (see _run_in_subprocess) narrow
+# down which step, if this still isn't enough.
+_BOOTSTRAP_TIMEOUT_SECONDS = 60.0
 _PAGE_SIZE = resource.getpagesize()
 _IS_LINUX = sys.platform.startswith("linux")
 
@@ -131,16 +138,18 @@ def _bind_to_builder(fn: Callable, builder: Builder) -> Callable:
 
 
 def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessing.connection.Connection") -> None:
-    """Runs entirely inside the child process. Sends a ("ready", None)
-    sentinel once harness setup is done, then a final (kind, payload)
-    tuple over the pipe once the script has run (or failed).
+    """Runs entirely inside the child process. Sends zero or more
+    ("progress", str) pings during setup, then either ("ready", None) once
+    harness setup is done or an early ("error", ...) if setup itself
+    crashed, and finally a (kind, payload) tuple over the pipe once the
+    script has run (or failed).
 
     Uses Pipe rather than Queue: Queue is backed by a POSIX named semaphore
     (multiprocessing.Lock -> SemLock), which requires a writable /dev/shm.
     That's absent on AWS Lambda, so Queue() construction fails before the
     child even starts. Pipe needs only a plain OS pipe/socketpair, and this
-    is one-writer/one-reader IPC (child sends exactly twice, always in this
-    order), so it's a drop-in replacement with no other behavioral change.
+    is one-writer/one-reader IPC (always in the order above), so it's a
+    drop-in replacement with no other behavioral change.
     """
     # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
     # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
@@ -160,15 +169,24 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
     # the real exception instead so a genuine environment problem is
     # diagnosable from the caller's last_error rather than looking identical
     # to a slow cold start.
+    # Progress pings, not just the final "ready" sentinel: a bootstrap that
+    # merely exceeds _BOOTSTRAP_TIMEOUT_SECONDS (still alive, never crashed)
+    # gives the parent no way to tell WHICH import is slow/stuck without
+    # these — confirmed in production (2026-08-13) that the child is still
+    # alive at the full 20s bootstrap deadline, ruling out a crash/OOM-kill
+    # but leaving "which step" and "slow vs. truly hung" both unknown.
+    conn.send(("progress", "importing smolagents"))
     try:
         from smolagents import LocalPythonExecutor
         from smolagents.local_python_executor import ExecutionTimeoutError
 
+        conn.send(("progress", "importing geometry_diagrams.pydsl"))
         import geometry_diagrams.pydsl as pydsl_module
     except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
         import traceback
         conn.send(("error", (traceback.format_exc(), "sandbox_setup_error", str(exc))))
         return
+    conn.send(("progress", "imports done, setting resource limits"))
 
     try:
         # RLIMIT_CPU caps *cumulative* CPU time consumed by the process since
@@ -298,8 +316,20 @@ def run_script(
                 break
             if kind == "ready":
                 ready = True
-            elif kind == "error":
+                break
+            if kind == "error":
                 setup_error = payload
+                break
+            if kind == "progress":
+                # Not terminal — log and keep waiting for "ready"/"error".
+                # This is what actually distinguishes "which import step is
+                # slow" from just "still alive," which a single "ready" (or
+                # nothing at all, if it never arrives) can't tell apart.
+                logger.info(
+                    "sandbox: pid=%s progress: %s (+%.2fs)",
+                    process.pid, payload, time.monotonic() - bootstrap_start,
+                )
+                continue
             break
     bootstrap_elapsed = time.monotonic() - bootstrap_start
 
