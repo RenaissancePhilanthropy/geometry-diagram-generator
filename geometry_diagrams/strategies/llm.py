@@ -340,6 +340,17 @@ def requires_raw_text_generation(model_id: str) -> bool:
 # gemma-4-31b's tool-calling; only qwen3.7-flash is confirmed to need it.
 _FORCED_FUNCTION_CALLING_MODELS: set[str] = {
     "openrouter:qwen/qwen3.7-flash",
+    # vercel:openai/gpt-oss-120b (2026-08-12): unforced (default "json_schema",
+    # OpenAI's strict Structured Outputs API), the model's tool-call args
+    # failed pydantic validation on ~50% of calls (12-sample and 6-sample
+    # trials) — wrong field name ("code" instead of "script"), a list instead
+    # of a string, or an empty {"type": "object"} echoing the schema wrapper
+    # itself. The identical model/schema/prompt via openrouter:openai/gpt-oss-120b
+    # came back 12/12 clean on the same default method, so this is specific to
+    # how Vercel's gateway serves this model under strict mode, not the model
+    # itself. Forcing method="function_calling" on vercel: gave 12/12 clean in
+    # two separate trials.
+    "vercel:openai/gpt-oss-120b",
 }
 
 

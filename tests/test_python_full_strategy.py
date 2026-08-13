@@ -88,6 +88,27 @@ async def test_generate_script_node_forces_function_calling_for_qwen37flash_only
     assert kwargs["method"] == "function_calling"
 
 
+@pytest.mark.asyncio
+async def test_generate_script_node_forces_function_calling_for_vercel_gpt_oss_120b():
+    """Regression test for vercel:openai/gpt-oss-120b: unforced (default
+    "json_schema", OpenAI's strict Structured Outputs API), the model's
+    tool-call args failed pydantic validation on ~50% of real calls via
+    Vercel's gateway (wrong field name, a list instead of a string, or an
+    empty schema-echo) — confirmed the identical model/schema/prompt via
+    openrouter:openai/gpt-oss-120b came back clean on the same default
+    method, so this is specific to Vercel's serving route, not the model.
+    method="function_calling" must be forced for this specific model id
+    (see llm.py's _FORCED_FUNCTION_CALLING_MODELS)."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        await strategy.run(
+            "a right triangle", model="vercel:openai/gpt-oss-120b", renderer=SVGRenderer()
+        )
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
+
+
 async def test_generate_script_node_does_not_force_method_for_other_models():
     """Regression test for mantle-oa:google.gemma-4-31b: forcing
     method="function_calling" universally (the original, too-broad fix for
