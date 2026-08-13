@@ -17,29 +17,37 @@ _POLL_INTERVAL_SECONDS and killing as soon as it crosses _MAX_CHILD_RSS_BYTES
 bounds the damage to one poll interval's worth of growth instead of the full
 timeout window.
 
-Tool functions are wrapped with _bind_to_builder rather than relying on the
-ambient contextvar alone: LocalPythonExecutor runs the entire script inside
-its own ThreadPoolExecutor worker thread, so a contextvar set on the calling
-thread before invoking the executor is NOT visible inside tool calls (verified
-empirically against smolagents 1.26.0). Each wrapper re-sets the contextvar
-immediately before calling the real function, in the same call frame the
-tool actually executes in, which works regardless of which thread that is.
+The child process is a plain subprocess.Popen running
+`python -m geometry_diagrams.pydsl._sandbox_child` (see that module for the
+actual script-execution logic and its own extensive comments), NOT a
+multiprocessing.Process. Confirmed empirically (2026-08-13): multiprocessing's
+"spawn" start method re-executes whatever module happens to be the CALLING
+process's __main__ inside the child (per Python's own "Safe importing of
+main module" docs) — on this project's Vercel/AWS Lambda deployment, that's
+Vercel's own vc_init.py, whose top level unconditionally re-execs the entire
+downstream app's own handler module. That re-executed bootstrap can hang
+indefinitely, freezing the child forever before any of our own sandbox code
+ever runs — reproduced locally (a hang in a __main__ module's top-level code
+freezes a spawned child exactly the way production's sandbox did: alive,
+zero progress ever reported, 100% reproducible regardless of warm/cold).
+subprocess.Popen with this file as an explicit target sidesteps the entire
+category: exec() replaces the process image outright, so nothing about
+whatever module was the parent's __main__ is ever touched or re-run.
 """
 from __future__ import annotations
 
+import json
 import logging
-import math
-import multiprocessing
+import os
+import queue
 import resource
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Callable
 
 from geometry_diagrams.ir.ir import DiagramIR
-from geometry_diagrams.pydsl.builder import Builder, _current_builder
-from geometry_diagrams.pydsl.retry import build_retry_message, classify_failure
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +59,19 @@ _MAX_CHILD_RSS_BYTES = 512 * 1024 * 1024  # 512MB; well below a typical dev mach
 # The child sends a "ready" sentinel once setup is done and only then does
 # run_script() start the real timeout_seconds-based deadline — so this value
 # only bounds "is the harness hung/dead," not "is this taking a while."
-#
-# Raised from 20.0 to 60.0 (2026-08-13): production logged "pid=80 never
-# sent 'ready' within 20.0s bootstrap budget, killed" — the child was still
-# ALIVE (not crashed/OOM-killed, which would have shown a signal instead),
-# meaning 20s genuinely wasn't enough headroom for whatever's slow on that
-# container. Import-time "progress" pings (see _run_in_subprocess) narrow
-# down which step, if this still isn't enough.
 _BOOTSTRAP_TIMEOUT_SECONDS = 60.0
 _PAGE_SIZE = resource.getpagesize()
 _IS_LINUX = sys.platform.startswith("linux")
+_STDERR_TAIL_CHARS = 4000  # cap how much accumulated stderr we ever put in an error message
+
+# The default child command: run _sandbox_child.py as an explicit `-m`
+# target. Never passed explicitly except by tests (see run_script's
+# _child_argv param) — a fake argv there lets the bootstrap-wait/deadline
+# protocol be exercised without a real multi-second sympy/numpy/matplotlib
+# import.
+_DEFAULT_CHILD_ARGV = [sys.executable, "-m", "geometry_diagrams.pydsl._sandbox_child"]
+
+_EOF = object()  # sentinel placed on the message queue when the child's stdout closes
 
 
 def _child_rss_bytes(pid: int) -> "int | None":
@@ -101,9 +112,9 @@ def _child_rss_bytes(pid: int) -> "int | None":
 
 
 def _describe_exitcode(exitcode: "int | None") -> str:
-    """Human-readable summary of a dead multiprocessing.Process's exitcode:
-    negative means killed by signal -exitcode (e.g. -9 = SIGKILL, often OOM
-    or our own process.kill()); non-negative means it exited on its own
+    """Human-readable summary of a dead subprocess.Popen's returncode:
+    negative means killed by signal -returncode (e.g. -9 = SIGKILL, often OOM
+    or our own proc.kill()); non-negative means it exited on its own
     (0 = clean, nonzero = an uncaught exception's default exit(1) or similar).
     None means still running (only meaningful before we've killed it ourselves)."""
     if exitcode is None:
@@ -126,175 +137,115 @@ class ScriptResult:
     variable_ids: dict = field(default_factory=dict)
 
 
-def _bind_to_builder(fn: Callable, builder: Builder) -> Callable:
-    def wrapped(*args, **kwargs):
-        token = _current_builder.set(builder)
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            _current_builder.reset(token)
-
-    return wrapped
-
-
-def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessing.connection.Connection") -> None:
-    """Runs entirely inside the child process. Sends zero or more
-    ("progress", str) pings during setup, then either ("ready", None) once
-    harness setup is done or an early ("error", ...) if setup itself
-    crashed, and finally a (kind, payload) tuple over the pipe once the
-    script has run (or failed).
-
-    Uses Pipe rather than Queue: Queue is backed by a POSIX named semaphore
-    (multiprocessing.Lock -> SemLock), which requires a writable /dev/shm.
-    That's absent on AWS Lambda, so Queue() construction fails before the
-    child even starts. Pipe needs only a plain OS pipe/socketpair, and this
-    is one-writer/one-reader IPC (always in the order above), so it's a
-    drop-in replacement with no other behavioral change.
-    """
-    # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
-    # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
-    # real CPU-bound import cost that a cold interpreter (e.g. a cold AWS
-    # Lambda container) can't amortize away. Setting the limit first would
-    # charge that fixed harness-startup cost against the same budget meant
-    # to bound the untrusted script's own solving time, shrinking the
-    # margin `timeout_seconds` is supposed to leave for it.
-    #
-    # Wrapped in its own try/except: an import-time crash here (missing
-    # shared library, matplotlib's font-cache directory being unwritable on
-    # a read-only Lambda filesystem, etc.) used to kill the child before it
-    # ever reached a try/except that could report back over the pipe — the
-    # parent would just see the child die with no "ready" sentinel and no
-    # way to tell "harness crashed" from "harness is still importing," both
-    # surfacing as the same opaque "sandbox failed to start" message. Report
-    # the real exception instead so a genuine environment problem is
-    # diagnosable from the caller's last_error rather than looking identical
-    # to a slow cold start.
-    # Progress pings, not just the final "ready" sentinel: a bootstrap that
-    # merely exceeds _BOOTSTRAP_TIMEOUT_SECONDS (still alive, never crashed)
-    # gives the parent no way to tell WHICH import is slow/stuck without
-    # these — confirmed in production (2026-08-13) that the child is still
-    # alive at the full 20s bootstrap deadline, ruling out a crash/OOM-kill
-    # but leaving "which step" and "slow vs. truly hung" both unknown.
-    conn.send(("progress", "importing smolagents"))
+def _pump_stdout(stdout, q: "queue.Queue") -> None:
+    """Runs in a background thread for the lifetime of the child: blocks on
+    readline() until a full line (or EOF) is available and puts it on `q`.
+    Separating this from the polling loop below means "wait for the next
+    message, but give up after N seconds" never has to worry about a partial
+    line sitting in the pipe buffer — readline() itself only ever returns a
+    complete line (or the empty string at EOF), so a result payload larger
+    than one OS pipe buffer is handled automatically: the OS-level read()
+    calls inside this thread's readline() drain the pipe as fast as the
+    child can write, with no risk of the deadlock/truncation class of bug
+    the old multiprocessing.Pipe-based implementation had to work around
+    explicitly (see git history)."""
     try:
-        from smolagents import LocalPythonExecutor
-        from smolagents.local_python_executor import ExecutionTimeoutError
+        for line in stdout:
+            q.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        q.put(_EOF)
 
-        conn.send(("progress", "importing geometry_diagrams.pydsl"))
-        import geometry_diagrams.pydsl as pydsl_module
-    except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
-        import traceback
-        conn.send(("error", (traceback.format_exc(), "sandbox_setup_error", str(exc))))
-        return
-    conn.send(("progress", "imports done, setting resource limits"))
 
+def _pump_stderr(stderr, lines: list, lock: threading.Lock) -> None:
+    """Runs in a background thread for the lifetime of the child, accumulating
+    stderr for diagnostic purposes. subprocess.Popen gives each child its own
+    dedicated pipe for this — unlike the multiprocessing-based predecessor,
+    there's no shared-fd risk in capturing it (a dup2-based capture around a
+    fork was considered and rejected there specifically because process-wide
+    fd 1/2 are shared with other concurrent work in the same process)."""
     try:
-        # RLIMIT_CPU caps *cumulative* CPU time consumed by the process since
-        # it started, not time elapsed since this setrlimit call — moving the
-        # harness imports above this call (see this function's comment above)
-        # only excludes their CPU cost from the script's budget if the limit
-        # itself is adjusted for CPU already spent. Confirmed empirically
-        # (2026-08-13, real Linux container, not macOS — see RLIMIT_DATA's
-        # note below on why macOS isn't representative here): a process that
-        # burns 1s of CPU and only *then* calls setrlimit(RLIMIT_CPU, (3, 3))
-        # is killed at ~3s of *total* cumulative CPU, i.e. with only ~2s left
-        # for whatever ran after the call — identical to calling setrlimit
-        # with the same limit at process start. Without this adjustment, the
-        # import-reordering fix is a no-op: the harness's own import cost is
-        # still charged against the script's timeout_seconds budget either
-        # way, just measured from a different starting line.
-        cpu_already_used = 0
-        try:
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            cpu_already_used = int(usage.ru_utime + usage.ru_stime)
-        except (ValueError, OSError):
-            pass  # best-effort; worst case the limit is tighter than intended
-        cpu_limit = cpu_already_used + int(timeout_seconds) + 1
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, cpu_limit))
-    except (ValueError, OSError):
-        pass  # best-effort; the parent's wall-clock kill is the real backstop
-    try:
-        resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
-    except (ValueError, OSError):
-        pass  # documented no-op on macOS; effective on Linux
-    try:
-        # RLIMIT_DATA: same no-op-on-macOS/effective-on-Linux story as
-        # RLIMIT_AS (confirmed empirically in a memory-capped Docker
-        # container — setrlimit fails outright on macOS, and a real
-        # over-limit allocation raises MemoryError immediately on Linux).
-        # Kept alongside RLIMIT_AS, not instead of it: on Linux both apply,
-        # and a single massive allocation (e.g. `[0] * 10**12`) can raise
-        # MemoryError in-process fast enough to beat the parent's RSS-poll
-        # watchdog to the punch — this is the in-process backstop for that
-        # race, not a replacement for the watchdog (which is still the only
-        # real defense against many-small-allocations growth on macOS).
-        resource.setrlimit(resource.RLIMIT_DATA, (2 * 1024**3, 2 * 1024**3))
-    except (ValueError, OSError):
+        for line in stderr:
+            with lock:
+                lines.append(line)
+    except (OSError, ValueError):
         pass
 
-    # Harness is fully imported and resource-limited — tell the parent so it
-    # can stop counting cold-start/import time against timeout_seconds and
-    # start the real per-script deadline from here instead.
-    conn.send(("ready", None))
 
-    builder = Builder()
-    tools = {
-        name: _bind_to_builder(getattr(pydsl_module, name), builder)
-        for name in pydsl_module.__all__
-        if callable(getattr(pydsl_module, name)) and not isinstance(getattr(pydsl_module, name), type)
-    }
-
-    try:
-        executor = LocalPythonExecutor(
-            additional_authorized_imports=[], timeout_seconds=timeout_seconds
-        )
-        executor.send_tools(tools)
-        # `math` is already in smolagents' BASE_BUILTIN_MODULES (import math
-        # works today regardless of additional_authorized_imports), but a
-        # weaker model reading the system prompt's "no imports" line has no
-        # way to know that and never tries. Pre-inject it directly so
-        # math.pi/math.sqrt/etc. work with zero import statement at all —
-        # `import math` remains equally valid (rebinds the same module
-        # object, a harmless no-op) for a model that ignores the prompt and
-        # imports it anyway.
-        executor.send_variables({"math": math})
-        executor(script)
-        diagram_ir = builder.build()
-        # Names bound to a container (a tuple from regular_sectors(), a list
-        # built in a loop) never have a `.id` themselves, so they're excluded
-        # here automatically — editing can't ground a request against a
-        # container's identity across turns (see design doc, Component 1).
-        variable_ids = {
-            name: value.id
-            for name, value in executor.state.items()
-            if hasattr(value, "id") and isinstance(getattr(value, "id", None), str)
-        }
-        conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": variable_ids}))
-    except ExecutionTimeoutError as exc:
-        conn.send(("error", (str(exc), "timeout", None)))
-    except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
-        message = str(exc)
-        error_type = classify_failure(message)
-        retry_message = build_retry_message(message, script)
-        conn.send(("error", (message, error_type, retry_message)))
+def _stderr_tail(lines: list, lock: "threading.Lock") -> str:
+    with lock:
+        text = "".join(lines)
+    return text[-_STDERR_TAIL_CHARS:]
 
 
 def run_script(
-    script: str, timeout_seconds: float = 5.0, _target: Callable = _run_in_subprocess
+    script: str,
+    timeout_seconds: float = 5.0,
+    _child_argv: "list[str] | None" = None,
 ) -> ScriptResult:
-    # _target is a testing-only seam for substituting a fake child process
-    # (e.g. one that sleeps before sending "ready") to exercise the
-    # bootstrap-wait/deadline protocol below without a real multi-second
-    # sympy/numpy/matplotlib import — production code always uses the
-    # default and should never pass this.
-    ctx = multiprocessing.get_context("spawn")
-    parent_conn, child_conn = ctx.Pipe(duplex=False)
-    process = ctx.Process(
-        target=_target, args=(script, timeout_seconds, child_conn)
+    # _child_argv is a testing-only seam for substituting a fake child
+    # command (e.g. `[sys.executable, "-c", "<script that sleeps before
+    # printing ready>"]`) to exercise the bootstrap-wait/deadline protocol
+    # below without a real multi-second sympy/numpy/matplotlib import —
+    # production code always uses the default and should never pass this.
+    argv = _child_argv if _child_argv is not None else _DEFAULT_CHILD_ARGV
+
+    # Forward the current sys.path via PYTHONPATH: multiprocessing's old
+    # "spawn" bootstrap used to do this automatically (it explicitly
+    # serializes and restores sys.path in the child — see
+    # multiprocessing/spawn.py's get_preparation_data), which mattered for
+    # deployments (like this one) where a vendored dependency root is added
+    # to sys.path at runtime rather than via an actual PYTHONPATH env var. A
+    # plain subprocess.Popen has no such protocol, so this replicates it
+    # explicitly rather than silently losing it.
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, bufsize=1, env=env,
     )
-    process.start()
-    child_conn.close()  # parent doesn't write; close its copy of the write end
-    logger.info("sandbox: spawned pid=%s for a %.1fs script timeout", process.pid, timeout_seconds)
+    # Always set: we passed stdin/stdout/stderr=PIPE above, so Popen always
+    # populates these (they're typed Optional only because Popen supports
+    # not redirecting a given stream at all).
+    assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+    proc.stdin.write(json.dumps({"script": script, "timeout_seconds": timeout_seconds}) + "\n")
+    proc.stdin.flush()
+    proc.stdin.close()
+    logger.info("sandbox: spawned pid=%s for a %.1fs script timeout", proc.pid, timeout_seconds)
+
+    msg_queue: "queue.Queue" = queue.Queue()
+    stderr_lines: list = []
+    stderr_lock = threading.Lock()
+    threading.Thread(target=_pump_stdout, args=(proc.stdout, msg_queue), daemon=True).start()
+    threading.Thread(target=_pump_stderr, args=(proc.stderr, stderr_lines, stderr_lock), daemon=True).start()
+
+    def _next_message(deadline: float):
+        """Returns (kind, payload) for the next well-formed message, None if
+        the wait timed out with nothing new, or _EOF if the child's stdout
+        closed. A line that fails to parse as JSON (a stray print from some
+        dependency, not one of ours) is logged and skipped rather than
+        treated as fatal."""
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            try:
+                item = msg_queue.get(timeout=min(remaining, _POLL_INTERVAL_SECONDS))
+            except queue.Empty:
+                # Nothing new in this short slice — keep waiting up to
+                # `deadline`, not give up on the very first empty poll.
+                continue
+            if item is _EOF:
+                return _EOF
+            try:
+                parsed = json.loads(item)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("sandbox: pid=%s unparseable stdout line: %r", proc.pid, item)
+                continue
+            return parsed.get("kind"), parsed.get("payload")
 
     # Wait for the child's "ready" sentinel (sent once smolagents/sympy/numpy/
     # matplotlib are imported and rlimits are set) before starting the real
@@ -308,64 +259,65 @@ def run_script(
     bootstrap_deadline = bootstrap_start + _BOOTSTRAP_TIMEOUT_SECONDS
     ready = False
     setup_error = None  # (message, error_type, retry_message) if the child reported why it never got to "ready"
-    while process.is_alive() and time.monotonic() < bootstrap_deadline:
-        if parent_conn.poll(_POLL_INTERVAL_SECONDS):
-            try:
-                kind, payload = parent_conn.recv()
-            except (EOFError, OSError):
-                break
-            if kind == "ready":
-                ready = True
-                break
-            if kind == "error":
-                setup_error = payload
-                break
-            if kind == "progress":
-                # Not terminal — log and keep waiting for "ready"/"error".
-                # This is what actually distinguishes "which import step is
-                # slow" from just "still alive," which a single "ready" (or
-                # nothing at all, if it never arrives) can't tell apart.
-                logger.info(
-                    "sandbox: pid=%s progress: %s (+%.2fs)",
-                    process.pid, payload, time.monotonic() - bootstrap_start,
-                )
-                continue
+    while proc.poll() is None and time.monotonic() < bootstrap_deadline:
+        message = _next_message(bootstrap_deadline)
+        if message is None or message is _EOF:
             break
+        kind, payload = message
+        if kind == "ready":
+            ready = True
+            break
+        if kind == "error":
+            setup_error = tuple(payload)
+            break
+        if kind == "progress":
+            # Not terminal — log and keep waiting for "ready"/"error". This
+            # is what actually distinguishes "which import step is slow"
+            # from just "still alive," which a single "ready" (or nothing at
+            # all, if it never arrives) can't tell apart.
+            logger.info(
+                "sandbox: pid=%s progress: %s (+%.2fs)",
+                proc.pid, payload, time.monotonic() - bootstrap_start,
+            )
+            continue
+        break
     bootstrap_elapsed = time.monotonic() - bootstrap_start
 
     if ready:
-        logger.info("sandbox: pid=%s ready after %.2fs", process.pid, bootstrap_elapsed)
+        logger.info("sandbox: pid=%s ready after %.2fs", proc.pid, bootstrap_elapsed)
     else:
         # Snapshot exitcode/aliveness BEFORE we kill it ourselves — once we
-        # call process.kill(), exitcode always just reflects OUR SIGKILL,
+        # call proc.kill(), the returncode always just reflects OUR SIGKILL,
         # destroying the one signal that distinguishes "died on its own for
         # a diagnosable reason" from "was still alive when we gave up."
-        died_on_its_own = not process.is_alive()
-        exitcode_before_our_kill = process.exitcode if died_on_its_own else None
-        process.kill()
-        process.join()
+        exitcode_before_our_kill = proc.poll()
+        died_on_its_own = exitcode_before_our_kill is not None
+        proc.kill()
+        proc.wait()
         if setup_error is not None:
             message, error_type, retry_message = setup_error
             logger.warning(
                 "sandbox: pid=%s reported a setup error after %.2fs: %s",
-                process.pid, bootstrap_elapsed, retry_message,
+                proc.pid, bootstrap_elapsed, retry_message,
             )
             return ScriptResult(diagram_ir=None, error=message, error_type=error_type, retry_message=retry_message)
         if died_on_its_own:
             reason = _describe_exitcode(exitcode_before_our_kill)
+            stderr_tail = _stderr_tail(stderr_lines, stderr_lock)
             logger.warning(
-                "sandbox: pid=%s died with no report after %.2fs (%s)",
-                process.pid, bootstrap_elapsed, reason,
+                "sandbox: pid=%s died with no report after %.2fs (%s); stderr tail: %s",
+                proc.pid, bootstrap_elapsed, reason, stderr_tail,
             )
             msg = (
                 f"sandbox failed to start: child process died with no report after "
                 f"{bootstrap_elapsed:.1f}s ({reason}) — likely OOM-killed or crashed "
                 f"before its own error handling could run"
+                + (f"; stderr: {stderr_tail}" if stderr_tail else "")
             )
         else:
             logger.warning(
                 "sandbox: pid=%s never sent 'ready' within %.1fs bootstrap budget, killed",
-                process.pid, _BOOTSTRAP_TIMEOUT_SECONDS,
+                proc.pid, _BOOTSTRAP_TIMEOUT_SECONDS,
             )
             msg = (
                 f"sandbox failed to start: child never sent 'ready' within the "
@@ -376,76 +328,62 @@ def run_script(
 
     deadline = time.monotonic() + timeout_seconds + 2.0  # wall-clock backstop, independent of the child
     killed_for_memory = False
-    received = None  # (kind, payload) once a result has actually been read off the pipe
-    while process.is_alive() and time.monotonic() < deadline:
-        # poll() only means "at least one byte is readable" (it's a bare
-        # select() under the hood, see multiprocessing.connection.Connection._poll)
-        # — NOT "a full message has arrived." A result payload larger than
-        # one OS pipe buffer (~16-64KB) is written by the child across
-        # multiple os.write() calls, so recv() (which blocks until the whole
-        # framed message is in) must be called as soon as poll() fires,
-        # not deferred behind a process.join() — join() doesn't read
-        # anything, so a child still mid-send would sit blocked waiting for
-        # us to drain the pipe while we sit blocked waiting for it to exit:
-        # a deadlock that used to resolve itself only via the 2s join
-        # timeout below killing the child mid-write, truncating the message
-        # into an EOFError and misreporting a large-but-successful result as
-        # "subprocess exited without a result."
-        if parent_conn.poll(0):
-            try:
-                received = parent_conn.recv()
-            except (EOFError, OSError):
-                received = None
+    received = None  # (kind, payload) once a result has actually been read off stdout
+    while proc.poll() is None and time.monotonic() < deadline:
+        message = _next_message(min(deadline, time.monotonic() + _POLL_INTERVAL_SECONDS))
+        if message is not None and message is not _EOF:
+            received = message
             break
-        rss = _child_rss_bytes(process.pid)
+        if message is _EOF:
+            break
+        rss = _child_rss_bytes(proc.pid)
         if rss is not None and rss > _MAX_CHILD_RSS_BYTES:
             killed_for_memory = True
             break
-        process.join(timeout=_POLL_INTERVAL_SECONDS)
 
-    if killed_for_memory or (received is None and process.is_alive()):
-        # Note: the non-memory branch only fires when process.is_alive() is
-        # still True (that's required by the `or` above), so there's no
-        # "died on its own" exitcode to capture here — unlike the bootstrap
-        # wait above, this is always a genuine still-running timeout.
-        process.kill()
-        process.join()
+    if killed_for_memory or (received is None and proc.poll() is None):
+        # Note: the non-memory branch only fires when proc.poll() is still
+        # None (still running) — that's required by the `or` above, so
+        # there's no "died on its own" exitcode to capture here — unlike the
+        # bootstrap wait above, this is always a genuine still-running
+        # timeout.
+        proc.kill()
+        proc.wait()
         if killed_for_memory:
-            logger.warning("sandbox: pid=%s exceeded the RSS watchdog threshold, killed", process.pid)
+            logger.warning("sandbox: pid=%s exceeded the RSS watchdog threshold, killed", proc.pid)
             msg = "script exceeded memory limit"
             return ScriptResult(diagram_ir=None, error=msg, error_type="memory_limit", retry_message=msg)
         logger.warning(
             "sandbox: pid=%s exceeded the %.1fs wall-clock deadline, killed",
-            process.pid, timeout_seconds + 2.0,
+            proc.pid, timeout_seconds + 2.0,
         )
         msg = "script exceeded wall-clock timeout"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
     if received is None:
-        # The child exited on its own (e.g. between our last poll and the
-        # is_alive() check above) without us catching it via poll() in the
-        # loop — give the pipe one last chance before giving up.
-        try:
-            if not parent_conn.poll(timeout=1.0):
-                raise EOFError
-            received = parent_conn.recv()
-        except (EOFError, OSError):
-            received = None
+        # The child exited on its own (e.g. between our last check and the
+        # poll() check above) without us catching a final message in the
+        # loop — give the queue one last chance before giving up.
+        message = _next_message(time.monotonic() + 1.0)
+        if message is not None and message is not _EOF:
+            received = message
 
     # Reap the process regardless of which branch produced `received` — it
     # should finish tearing down almost immediately once done sending;
     # bound the wait so a trusted-code hang during cleanup can't block the
     # caller indefinitely.
-    process.join(timeout=2.0)
-    if process.is_alive():
-        process.kill()
-        process.join()
+    try:
+        proc.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
 
     if received is None:
         # process exited but never sent anything (e.g. OOM-killed by the OS
-        # before reaching conn.send) — treat as a timeout-class failure,
-        # not "no error".
-        msg = "subprocess exited without a result"
+        # before reaching _send) — treat as a timeout-class failure, not "no
+        # error".
+        stderr_tail = _stderr_tail(stderr_lines, stderr_lock)
+        msg = "subprocess exited without a result" + (f"; stderr: {stderr_tail}" if stderr_tail else "")
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
     kind, payload = received
 

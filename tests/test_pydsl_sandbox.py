@@ -2,63 +2,80 @@
 """Tests for the pydsl sandbox: import lockdown, dangerous calls, resource limits."""
 import inspect
 import io
+import json
 import logging
 import multiprocessing
 import subprocess
 import sys
-import time
+import textwrap
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from geometry_diagrams.ir.ir import DiagramIR
-from geometry_diagrams.pydsl import sandbox
-from geometry_diagrams.pydsl.sandbox import run_script, _run_in_subprocess
+from geometry_diagrams.pydsl import _sandbox_child, sandbox
+from geometry_diagrams.pydsl.sandbox import run_script
 
+# Fake child scripts, run via `_child_argv=[sys.executable, "-c", <script>]` —
+# see sandbox.py's run_script for why the real child is a plain
+# subprocess.Popen (not multiprocessing) and speaks newline-delimited JSON
+# over stdin/stdout rather than pickled Python objects.
+_FAKE_CHILD_READS_REQUEST = "import json, sys\nsys.stdin.readline()\n"
+# Python source (not JSON) for a minimal valid DiagramIR dict — None, not
+# null, since this text is spliced into a Python -c script, not embedded
+# as literal JSON. json.dumps() serializes it to real JSON at the fake
+# child's own runtime, same as the real _sandbox_child does.
+_MINIMAL_DIAGRAM_IR_JSON = (
+    '{"params": None, "canvas": None, "define": [], "checks": [], '
+    '"render": [], "pending_angle_pairs": [], "styles": {}}'
+)
 
-def _fake_slow_import_then_quick_script(script, timeout_seconds, conn):
-    # Module-level, not nested: "spawn" pickles the target by reference —
-    # see _rlimit_data_probe_worker's comment below for why a closure can't
-    # be used here. Simulates a slow cold-start import (sympy/numpy/
-    # matplotlib on a cold container) by sleeping BEFORE sending "ready",
-    # then finishes almost instantly — used to prove the parent's wall-clock
-    # deadline starts only after "ready" arrives, not at process spawn.
+_FAKE_SLOW_IMPORT_THEN_QUICK_SCRIPT = _FAKE_CHILD_READS_REQUEST + textwrap.dedent(f"""
+    import time
     time.sleep(3.0)
-    conn.send(("ready", None))
-    diagram_ir = DiagramIR(define=[], render=[])
-    conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": {}}))
+    print(json.dumps({{"kind": "ready", "payload": None}}), flush=True)
+    print(json.dumps({{"kind": "ok", "payload": {{
+        "diagram_ir": {_MINIMAL_DIAGRAM_IR_JSON}, "variable_ids": {{}},
+    }}}}), flush=True)
+""")
 
-
-def _fake_child_with_progress_pings_then_ready(script, timeout_seconds, conn):
+_FAKE_CHILD_WITH_PROGRESS_PINGS_THEN_READY = _FAKE_CHILD_READS_REQUEST + textwrap.dedent(f"""
+    import time
     time.sleep(0.1)
-    conn.send(("progress", "step 1"))
+    print(json.dumps({{"kind": "progress", "payload": "step 1"}}), flush=True)
     time.sleep(0.1)
-    conn.send(("progress", "step 2"))
+    print(json.dumps({{"kind": "progress", "payload": "step 2"}}), flush=True)
     time.sleep(0.1)
-    conn.send(("ready", None))
-    diagram_ir = DiagramIR(define=[], render=[])
-    conn.send(("ok", {"diagram_ir": diagram_ir.model_dump(), "variable_ids": {}}))
+    print(json.dumps({{"kind": "ready", "payload": None}}), flush=True)
+    print(json.dumps({{"kind": "ok", "payload": {{
+        "diagram_ir": {_MINIMAL_DIAGRAM_IR_JSON}, "variable_ids": {{}},
+    }}}}), flush=True)
+""")
 
-
-def _fake_child_that_never_sends_anything(script, timeout_seconds, conn):
+_FAKE_CHILD_THAT_NEVER_SENDS_ANYTHING = _FAKE_CHILD_READS_REQUEST + textwrap.dedent("""
+    import time
     time.sleep(5.0)
+""")
 
+_FAKE_CHILD_THAT_CRASHES_DURING_SETUP = _FAKE_CHILD_READS_REQUEST + textwrap.dedent("""
+    print(json.dumps({"kind": "error", "payload": [
+        "full traceback here", "sandbox_setup_error",
+        "ImportError: no module named 'fake'",
+    ]}), flush=True)
+""")
 
-def _fake_child_that_crashes_during_setup(script, timeout_seconds, conn):
-    # Simulates the real _run_in_subprocess's import try/except: a crash
-    # before "ready" (e.g. a missing shared library, or matplotlib's
-    # font-cache dir being unwritable on a read-only Lambda filesystem)
-    # reports back over the pipe rather than dying silently.
-    conn.send(("error", ("full traceback here", "sandbox_setup_error", "ImportError: no module named 'fake'")))
-
-
-def _fake_child_that_gets_killed_by_a_signal(script, timeout_seconds, conn):
-    # Simulates an OOM-kill (or any other signal-based death) severe enough
-    # that no Python code — not even our own try/except around imports —
-    # ever gets a chance to run or report anything over the pipe.
-    import os
-    import signal
+_FAKE_CHILD_THAT_GETS_KILLED_BY_A_SIGNAL = _FAKE_CHILD_READS_REQUEST + textwrap.dedent("""
+    import os, signal
     os.kill(os.getpid(), signal.SIGKILL)
+""")
+
+
+def _run_fake(script: str, *, timeout_seconds: float = 1.0, **kwargs):
+    return run_script(
+        "irrelevant — the fake child ignores this",
+        timeout_seconds=timeout_seconds,
+        _child_argv=[sys.executable, "-c", script],
+        **kwargs,
+    )
 
 
 # RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
@@ -74,23 +91,17 @@ _rlimit_data_unsupported = pytest.mark.skipif(
 )
 
 
-def test_importing_pydsl_sandbox_does_not_force_langgraph_or_langchain():
+def test_importing_sandbox_child_does_not_force_langgraph_or_langchain():
     """Regression test: geometry_diagrams/__init__.py used to eagerly import
     .facade and .strategies.recipe, which transitively pull in LangGraph/
     LangChain — needed only by the strategy layer, never by the sandboxed
     child itself. Python always imports a package's __init__.py before any
-    submodule, and multiprocessing's "spawn" context must resolve
-    _run_in_subprocess by module path to unpickle it in the freshly spawned
-    child — so this forced ~90+26 extra modules (langgraph/langsmith) into
-    the sandbox child's bootstrap path merely to resolve the target
-    function reference, entirely outside any of _run_in_subprocess's own
-    try/except protection. Confirmed empirically (2026-08-13): eagerly
-    importing geometry_diagrams cost ~1450 modules and ~0.7s warm on a
-    local dev machine; plausibly far worse (or a hang) on a cold,
-    resource-constrained container — and production was in fact seeing a
-    "sandbox failed to start" error with no diagnostic detail, consistent
-    with the failure happening in this forced pre-function-call import
-    cascade rather than inside any of our own error-handled code.
+    submodule, so `python -m geometry_diagrams.pydsl._sandbox_child` (the
+    real child command run_script spawns) forces that whole chain to import
+    just to locate the entrypoint — confirmed empirically (2026-08-13):
+    eagerly importing geometry_diagrams cost ~1450 modules and ~0.7s warm on
+    a local dev machine, plausibly far worse on a cold, resource-constrained
+    container. Fixed via PEP 562 lazy exports in geometry_diagrams/__init__.py.
 
     Run in a fresh subprocess, not in-process: other tests in this session
     have already imported langgraph/langchain, which would make an
@@ -98,7 +109,7 @@ def test_importing_pydsl_sandbox_does_not_force_langgraph_or_langchain():
     result = subprocess.run(
         [sys.executable, "-c", (
             "import sys\n"
-            "import geometry_diagrams.pydsl.sandbox\n"
+            "import geometry_diagrams.pydsl._sandbox_child\n"
             "print('langgraph' in sys.modules, 'langchain_core' in sys.modules)\n"
         )],
         capture_output=True, text=True, timeout=30,
@@ -107,25 +118,25 @@ def test_importing_pydsl_sandbox_does_not_force_langgraph_or_langchain():
     assert result.stdout.strip() == "False False"
 
 
-def test_harness_imports_precede_rlimit_cpu_in_run_in_subprocess():
+def test_harness_imports_precede_rlimit_cpu_in_sandbox_child_main():
     """Regression test: smolagents/geometry_diagrams.pydsl (which transitively
     pull in sympy/numpy/matplotlib — real CPU-bound import cost, not I/O)
     must be imported BEFORE RLIMIT_CPU is set, not after. Setting the limit
     first would charge that fixed harness-startup cost against the same
-    budget meant to bound the untrusted script's own solving time — on a
+    budget meant to bound the untrusted script's own solving time, on a
     cold interpreter (e.g. a cold AWS Lambda container) that import cost is
     plausibly the dominant cost, silently shrinking the margin
     timeout_seconds is supposed to leave for the script itself. This can't
     be verified by timing on a warm local dev machine (import cost there is
     negligible either way — that's exactly why the bug was invisible
     locally), so this checks source order directly instead."""
-    source = inspect.getsource(_run_in_subprocess)
+    source = inspect.getsource(_sandbox_child.main)
     import_pos = source.index("import geometry_diagrams.pydsl")
     rlimit_cpu_pos = source.index("resource.RLIMIT_CPU")
     assert import_pos < rlimit_cpu_pos
 
 
-def test_rlimit_cpu_accounts_for_cpu_already_used_by_harness_imports():
+def test_rlimit_cpu_accounts_for_cpu_already_used_by_harness_imports(monkeypatch):
     """Regression test: RLIMIT_CPU caps *cumulative* process CPU time since
     process start, not time elapsed since the setrlimit call — confirmed
     empirically (2026-08-13, real Linux container): a process that burns 1s
@@ -136,36 +147,59 @@ def test_rlimit_cpu_accounts_for_cpu_already_used_by_harness_imports():
     sympy/numpy/matplotlib import cost) before this setrlimit call only
     excludes their cost from the script's budget if the limit itself is
     widened by however much CPU those imports already burned — otherwise
-    the reordering is a no-op. Runs _run_in_subprocess in-process (not
+    the reordering is a no-op. Runs _sandbox_child.main() in-process (not
     spawned) with setrlimit mocked out, so it never touches this test
     process's real CPU limit; only the computed limit value is checked."""
     fake_usage = MagicMock(ru_utime=1.5, ru_stime=0.3)  # 1.8s of CPU "already used"
-    conn = MagicMock()
-    with patch.object(sandbox.resource, "getrusage", return_value=fake_usage), \
-         patch.object(sandbox.resource, "setrlimit") as mock_setrlimit:
-        _run_in_subprocess("a = point(0, 0)\ndraw_points(a)", 2.0, conn)
-    cpu_calls = [c for c in mock_setrlimit.call_args_list if c.args[0] == sandbox.resource.RLIMIT_CPU]
+    request = json.dumps({"script": "a = point(0, 0)\ndraw_points(a)", "timeout_seconds": 2.0})
+    monkeypatch.setattr(sys, "stdin", io.StringIO(request + "\n"))
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    with patch.object(_sandbox_child.resource, "getrusage", return_value=fake_usage), \
+         patch.object(_sandbox_child.resource, "setrlimit") as mock_setrlimit:
+        _sandbox_child.main()
+    cpu_calls = [c for c in mock_setrlimit.call_args_list if c.args[0] == _sandbox_child.resource.RLIMIT_CPU]
     assert len(cpu_calls) == 1
     limit = cpu_calls[0].args[1]
     # int(1.8) [already used] + int(2.0) + 1 [this call's own budget] = 1 + 3 = 4
     assert limit == (4, 4)
 
 
+def test_sandbox_child_reports_a_real_import_crash_over_stdout(monkeypatch):
+    """Same as the fake-child test below, but exercises _sandbox_child.main's
+    own try/except directly: forcing `from smolagents import ...` to raise
+    (via the standard "None in sys.modules" import-blocking mechanism, not
+    a fake) must print an {"kind": "error", "payload": [...]} JSON line
+    rather than letting an unhandled exception propagate out of main().
+    Runs in-process (not spawned), same pattern as the RLIMIT_CPU
+    accounting test above."""
+    monkeypatch.setitem(sys.modules, "smolagents", None)
+    request = json.dumps({"script": "a = point(0, 0)\ndraw_points(a)", "timeout_seconds": 2.0})
+    monkeypatch.setattr(sys, "stdin", io.StringIO(request + "\n"))
+    fake_stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", fake_stdout)
+    _sandbox_child.main()
+    # The import crash is the LAST line — a "progress" ping precedes it.
+    lines = [line for line in fake_stdout.getvalue().splitlines() if line]
+    kind_payload = json.loads(lines[-1])
+    assert kind_payload["kind"] == "error"
+    message, error_type, retry_message = kind_payload["payload"]
+    assert error_type == "sandbox_setup_error"
+    assert "smolagents" in message
+    assert "smolagents" in retry_message
+
+
 @pytest.mark.timeout(30)
 def test_bootstrap_wait_excludes_cold_start_import_time_from_the_script_deadline():
     """Regression test: the wall-clock deadline used to start counting at
-    process.start(), so slow cold-start import time (sympy/numpy/matplotlib
+    process spawn, so slow cold-start import time (sympy/numpy/matplotlib
     on a cold container) ate directly into timeout_seconds's budget with no
     way to distinguish "still importing" from "script is actually running
     long." A fake child that sleeps 3s (simulating a slow import) before
     sending its "ready" sentinel, then finishes in well under a second,
     must still succeed with timeout_seconds=1.0 — pre-fix, the deadline
-    (process.start() + timeout_seconds + 2.0 = 3.0s from spawn) would have
-    killed it mid-sleep, before it ever got a chance to run."""
-    result = run_script(
-        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
-        _target=_fake_slow_import_then_quick_script,
-    )
+    (spawn + timeout_seconds + 2.0 = 3.0s) would have killed it mid-sleep,
+    before it ever got a chance to run."""
+    result = _run_fake(_FAKE_SLOW_IMPORT_THEN_QUICK_SCRIPT, timeout_seconds=1.0)
     assert result.error is None
     assert result.diagram_ir is not None
 
@@ -177,10 +211,7 @@ def test_run_script_treats_a_bootstrap_hang_as_a_start_failure(monkeypatch):
     elapses and report a start failure rather than hanging or silently
     treating it as script success."""
     monkeypatch.setattr(sandbox, "_BOOTSTRAP_TIMEOUT_SECONDS", 0.3)
-    result = run_script(
-        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
-        _target=_fake_child_that_never_sends_anything,
-    )
+    result = _run_fake(_FAKE_CHILD_THAT_NEVER_SENDS_ANYTHING)
     assert result.diagram_ir is None
     assert result.error_type == "timeout"
     assert "failed to start" in result.error
@@ -196,10 +227,7 @@ def test_run_script_surfaces_a_reported_setup_crash_instead_of_the_generic_messa
     either way. When the child DOES manage to report why (via its own
     try/except around the imports), run_script must surface that specific
     message/error_type instead of masking it with the generic one."""
-    result = run_script(
-        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
-        _target=_fake_child_that_crashes_during_setup,
-    )
+    result = _run_fake(_FAKE_CHILD_THAT_CRASHES_DURING_SETUP)
     assert result.diagram_ir is None
     assert result.error_type == "sandbox_setup_error"
     assert result.error == "full traceback here"
@@ -210,14 +238,11 @@ def test_run_script_reports_signal_when_child_dies_on_its_own_without_a_report()
     """Regression test: when the child dies on its own during bootstrap
     (e.g. OOM-killed by the OS) severe enough that not even its own
     try/except gets to run, run_script must capture its exitcode/signal
-    BEFORE issuing its own process.kill() — which would otherwise overwrite
+    BEFORE issuing its own proc.kill() — which would otherwise overwrite
     the one diagnostic signal available (the child's actual death reason)
     with -9 from OUR kill — and surface it in the error message so a real
     OOM-kill is distinguishable from a genuine "still importing" hang."""
-    result = run_script(
-        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
-        _target=_fake_child_that_gets_killed_by_a_signal,
-    )
+    result = _run_fake(_FAKE_CHILD_THAT_GETS_KILLED_BY_A_SIGNAL)
     assert result.diagram_ir is None
     assert result.error_type == "timeout"
     assert "SIGKILL" in result.error
@@ -236,10 +261,7 @@ def test_progress_pings_during_bootstrap_do_not_end_the_wait_and_get_logged(capl
     crashed) — progress pings are what would narrow down WHERE in that
     window it's stuck, next time this happens."""
     with caplog.at_level(logging.INFO, logger="geometry_diagrams.pydsl.sandbox"):
-        result = run_script(
-            "irrelevant — the fake target below ignores this", timeout_seconds=2.0,
-            _target=_fake_child_with_progress_pings_then_ready,
-        )
+        result = _run_fake(_FAKE_CHILD_WITH_PROGRESS_PINGS_THEN_READY, timeout_seconds=2.0)
     assert result.error is None
     assert result.diagram_ir is not None
     progress_messages = [r.message for r in caplog.records if "progress:" in r.message]
@@ -253,26 +275,6 @@ def test_bootstrap_timeout_budget_was_raised_from_the_original_20s():
     headroom on that container. Pins the raised value so a future
     refactor can't silently drop back to the too-tight original."""
     assert sandbox._BOOTSTRAP_TIMEOUT_SECONDS == 60.0
-
-
-def test_run_in_subprocess_reports_a_real_import_crash_over_the_pipe(monkeypatch):
-    """Same as the fake-child test above, but exercises _run_in_subprocess's
-    own try/except directly: forcing `from smolagents import ...` to raise
-    (via the standard "None in sys.modules" import-blocking mechanism, not
-    a fake) must produce an ("error", (traceback, "sandbox_setup_error",
-    str(exc))) send rather than an unhandled exception propagating out of
-    the function. Runs in-process (not spawned) with a MagicMock connection,
-    same pattern as the RLIMIT_CPU accounting test above."""
-    monkeypatch.setitem(sys.modules, "smolagents", None)
-    conn = MagicMock()
-    _run_in_subprocess("a = point(0, 0)\ndraw_points(a)", 2.0, conn)
-    # The import crash is the LAST send — a "progress" ping precedes it.
-    kind, payload = conn.send.call_args[0][0]
-    assert kind == "error"
-    message, error_type, retry_message = payload
-    assert error_type == "sandbox_setup_error"
-    assert "smolagents" in message
-    assert "smolagents" in retry_message
 
 
 def test_valid_script_produces_a_diagram_ir():
@@ -350,14 +352,11 @@ def test_cpu_bomb_is_killed_by_rlimit_cpu_on_any_platform():
 def test_large_diagram_result_does_not_deadlock_or_misreport_as_timeout():
     """Regression test: a result payload bigger than one OS pipe buffer
     (~16-64KB) is written by the child across multiple os.write() calls.
-    The parent used to defer recv() behind process.join(timeout=2.0), which
-    doesn't read anything — a child still mid-send would block waiting for
-    the parent to drain the pipe while the parent blocked waiting for the
-    child to exit, and the 2s join would eventually kill the child mid-write,
-    truncating the message into an EOFError and reporting a fully successful
-    large diagram as "subprocess exited without a result" (timeout).
-    Confirmed empirically (2026-08-13): this exact script reliably failed
-    that way in ~2.7s pre-fix and now completes cleanly in under a second."""
+    The background stdout-reader thread's readline() only ever returns a
+    complete line (or empty at EOF), so this is handled automatically — no
+    special "drain immediately on poll()" dance is needed the way it was
+    for the old multiprocessing.Pipe-based implementation (see git history
+    for that class of bug and its fix)."""
     script = (
         "pts = []\n"
         "for i in range(1500):\n"
@@ -408,9 +407,13 @@ def test_single_huge_allocation_is_caught_as_memory_limit_one_way_or_another():
 
 
 def _rlimit_data_probe_worker(conn):
-    # Module-level, not nested: multiprocessing's "spawn" context (same one
-    # run_script itself uses) pickles the target function by reference, and
-    # a closure defined inside the test function isn't picklable.
+    # Module-level, not nested: multiprocessing's "spawn" context pickles
+    # the target function by reference, and a closure defined inside the
+    # test function isn't picklable. This test is independent of the
+    # sandbox's own IPC mechanism (which no longer uses multiprocessing at
+    # all — see sandbox.py's module docstring) — it just uses
+    # multiprocessing as a convenient way to spawn an isolated process to
+    # check a general OS/resource-module fact.
     #
     # Reports back over a Pipe, not a Queue: Queue.put() starts a background
     # feeder thread on first use, and under a 10MB RLIMIT_DATA there isn't
@@ -432,7 +435,7 @@ def _rlimit_data_probe_worker(conn):
 @pytest.mark.timeout(30)
 def test_rlimit_data_actually_enforces_on_linux():
     # Regression test for the RLIMIT_DATA setrlimit call added to
-    # _run_in_subprocess: confirms the OS-level guarantee it relies on
+    # _sandbox_child.main: confirms the OS-level guarantee it relies on
     # actually holds, independent of run_script's own watchdog/timeout
     # machinery. Runs in its own subprocess (not the test runner's process)
     # so a real over-limit allocation can't affect anything else.

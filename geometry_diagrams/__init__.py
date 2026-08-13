@@ -19,14 +19,13 @@ Resolved lazily (PEP 562 module __getattr__), not imported eagerly here:
 `.facade` and `.strategies.recipe` transitively pull in LangGraph/LangChain
 (and everything module-level `from geometry_diagrams import X` used to force
 on ANY import of anything under this package). That's irrelevant, unwanted
-weight for geometry_diagrams.pydsl.sandbox's spawned sandbox subprocess,
-which never uses LangGraph/LangChain at all but was still forced to import
-the entire chain just because Python always imports a submodule's parent
-package first — and multiprocessing's "spawn" context has to resolve
-`geometry_diagrams.pydsl.sandbox._run_in_subprocess` by module path to
-unpickle it in the freshly spawned child, before any of that module's own
-code (including its own try/except-wrapped imports) ever runs. Confirmed
-empirically (2026-08-13): eagerly importing this package pulls in ~1475
+weight for the sandbox's spawned child process (`python -m
+geometry_diagrams.pydsl._sandbox_child`, see sandbox.py), which never uses
+LangGraph/LangChain at all but was still forced to import the entire
+chain just because Python always imports a submodule's parent package
+first, before any of that child module's own code (including its own
+try/except-wrapped imports) ever runs. Confirmed empirically (2026-08-13):
+eagerly importing this package pulls in ~1475
 modules (langgraph: 90, langsmith: 26, sympy: 419, pydantic: 71) at ~0.7s
 warm on a local dev machine — on a cold, resource-constrained container,
 this plausibly dominates or even hangs. Existing callers are unaffected:
