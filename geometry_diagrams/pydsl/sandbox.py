@@ -113,6 +113,18 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
     is single-shot one-writer/one-reader IPC (child sends exactly once), so
     it's a drop-in replacement with no behavioral change.
     """
+    # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
+    # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
+    # real CPU-bound import cost that a cold interpreter (e.g. a cold AWS
+    # Lambda container) can't amortize away. Setting the limit first would
+    # charge that fixed harness-startup cost against the same budget meant
+    # to bound the untrusted script's own solving time, shrinking the
+    # margin `timeout_seconds` is supposed to leave for it.
+    from smolagents import LocalPythonExecutor
+    from smolagents.local_python_executor import ExecutionTimeoutError
+
+    import geometry_diagrams.pydsl as pydsl_module
+
     try:
         resource.setrlimit(
             resource.RLIMIT_CPU, (int(timeout_seconds) + 1, int(timeout_seconds) + 1)
@@ -137,11 +149,6 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
         resource.setrlimit(resource.RLIMIT_DATA, (2 * 1024**3, 2 * 1024**3))
     except (ValueError, OSError):
         pass
-
-    from smolagents import LocalPythonExecutor
-    from smolagents.local_python_executor import ExecutionTimeoutError
-
-    import geometry_diagrams.pydsl as pydsl_module
 
     builder = Builder()
     tools = {

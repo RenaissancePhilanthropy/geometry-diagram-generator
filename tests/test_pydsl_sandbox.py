@@ -1,5 +1,6 @@
 # tests/test_pydsl_sandbox.py
 """Tests for the pydsl sandbox: import lockdown, dangerous calls, resource limits."""
+import inspect
 import io
 import multiprocessing
 import sys
@@ -7,7 +8,7 @@ import sys
 import pytest
 
 from geometry_diagrams.pydsl import sandbox
-from geometry_diagrams.pydsl.sandbox import run_script
+from geometry_diagrams.pydsl.sandbox import run_script, _run_in_subprocess
 
 # RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
 # raises ValueError there — confirmed directly: soft/hard both report as
@@ -20,6 +21,24 @@ _rlimit_data_unsupported = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
     reason="RLIMIT_DATA is a no-op on this platform (confirmed on macOS; only enforces on Linux)",
 )
+
+
+def test_harness_imports_precede_rlimit_cpu_in_run_in_subprocess():
+    """Regression test: smolagents/geometry_diagrams.pydsl (which transitively
+    pull in sympy/numpy/matplotlib — real CPU-bound import cost, not I/O)
+    must be imported BEFORE RLIMIT_CPU is set, not after. Setting the limit
+    first would charge that fixed harness-startup cost against the same
+    budget meant to bound the untrusted script's own solving time — on a
+    cold interpreter (e.g. a cold AWS Lambda container) that import cost is
+    plausibly the dominant cost, silently shrinking the margin
+    timeout_seconds is supposed to leave for the script itself. This can't
+    be verified by timing on a warm local dev machine (import cost there is
+    negligible either way — that's exactly why the bug was invisible
+    locally), so this checks source order directly instead."""
+    source = inspect.getsource(_run_in_subprocess)
+    import_pos = source.index("import geometry_diagrams.pydsl")
+    rlimit_cpu_pos = source.index("resource.RLIMIT_CPU")
+    assert import_pos < rlimit_cpu_pos
 
 
 def test_valid_script_produces_a_diagram_ir():
