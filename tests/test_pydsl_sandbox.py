@@ -4,6 +4,7 @@ import inspect
 import io
 import multiprocessing
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -39,6 +40,32 @@ def test_harness_imports_precede_rlimit_cpu_in_run_in_subprocess():
     import_pos = source.index("import geometry_diagrams.pydsl")
     rlimit_cpu_pos = source.index("resource.RLIMIT_CPU")
     assert import_pos < rlimit_cpu_pos
+
+
+def test_rlimit_cpu_accounts_for_cpu_already_used_by_harness_imports():
+    """Regression test: RLIMIT_CPU caps *cumulative* process CPU time since
+    process start, not time elapsed since the setrlimit call — confirmed
+    empirically (2026-08-13, real Linux container): a process that burns 1s
+    of CPU and only then calls setrlimit(RLIMIT_CPU, (3, 3)) is killed at
+    ~3s of TOTAL cumulative CPU, leaving only ~2s for whatever ran after the
+    call, identical to setting the same limit at process start. So moving
+    the harness's smolagents/geometry_diagrams.pydsl imports (real
+    sympy/numpy/matplotlib import cost) before this setrlimit call only
+    excludes their cost from the script's budget if the limit itself is
+    widened by however much CPU those imports already burned — otherwise
+    the reordering is a no-op. Runs _run_in_subprocess in-process (not
+    spawned) with setrlimit mocked out, so it never touches this test
+    process's real CPU limit; only the computed limit value is checked."""
+    fake_usage = MagicMock(ru_utime=1.5, ru_stime=0.3)  # 1.8s of CPU "already used"
+    conn = MagicMock()
+    with patch.object(sandbox.resource, "getrusage", return_value=fake_usage), \
+         patch.object(sandbox.resource, "setrlimit") as mock_setrlimit:
+        _run_in_subprocess("a = point(0, 0)\ndraw_points(a)", 2.0, conn)
+    cpu_calls = [c for c in mock_setrlimit.call_args_list if c.args[0] == sandbox.resource.RLIMIT_CPU]
+    assert len(cpu_calls) == 1
+    limit = cpu_calls[0].args[1]
+    # int(1.8) [already used] + int(2.0) + 1 [this call's own budget] = 1 + 3 = 4
+    assert limit == (4, 4)
 
 
 def test_valid_script_produces_a_diagram_ir():
@@ -110,6 +137,31 @@ def test_cpu_bomb_is_killed_by_rlimit_cpu_on_any_platform():
     result = run_script("import math\nmath.factorial(10**8)", timeout_seconds=2.0)
     assert result.diagram_ir is None
     assert result.error_type == "timeout"
+
+
+@pytest.mark.timeout(30)
+def test_large_diagram_result_does_not_deadlock_or_misreport_as_timeout():
+    """Regression test: a result payload bigger than one OS pipe buffer
+    (~16-64KB) is written by the child across multiple os.write() calls.
+    The parent used to defer recv() behind process.join(timeout=2.0), which
+    doesn't read anything — a child still mid-send would block waiting for
+    the parent to drain the pipe while the parent blocked waiting for the
+    child to exit, and the 2s join would eventually kill the child mid-write,
+    truncating the message into an EOFError and reporting a fully successful
+    large diagram as "subprocess exited without a result" (timeout).
+    Confirmed empirically (2026-08-13): this exact script reliably failed
+    that way in ~2.7s pre-fix and now completes cleanly in under a second."""
+    script = (
+        "pts = []\n"
+        "for i in range(1500):\n"
+        "    p = point(i * 0.001, (i % 7) * 0.001)\n"
+        "    pts.append(p)\n"
+        "draw_points(*pts)\n"
+    )
+    result = run_script(script, timeout_seconds=8.0)
+    assert result.error is None
+    assert result.diagram_ir is not None
+    assert len(result.diagram_ir.define) == 1500
 
 
 @pytest.mark.timeout(30)

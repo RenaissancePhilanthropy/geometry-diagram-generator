@@ -126,9 +126,28 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
     import geometry_diagrams.pydsl as pydsl_module
 
     try:
-        resource.setrlimit(
-            resource.RLIMIT_CPU, (int(timeout_seconds) + 1, int(timeout_seconds) + 1)
-        )
+        # RLIMIT_CPU caps *cumulative* CPU time consumed by the process since
+        # it started, not time elapsed since this setrlimit call — moving the
+        # harness imports above this call (see this function's comment above)
+        # only excludes their CPU cost from the script's budget if the limit
+        # itself is adjusted for CPU already spent. Confirmed empirically
+        # (2026-08-13, real Linux container, not macOS — see RLIMIT_DATA's
+        # note below on why macOS isn't representative here): a process that
+        # burns 1s of CPU and only *then* calls setrlimit(RLIMIT_CPU, (3, 3))
+        # is killed at ~3s of *total* cumulative CPU, i.e. with only ~2s left
+        # for whatever ran after the call — identical to calling setrlimit
+        # with the same limit at process start. Without this adjustment, the
+        # import-reordering fix is a no-op: the harness's own import cost is
+        # still charged against the script's timeout_seconds budget either
+        # way, just measured from a different starting line.
+        cpu_already_used = 0
+        try:
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            cpu_already_used = int(usage.ru_utime + usage.ru_stime)
+        except (ValueError, OSError):
+            pass  # best-effort; worst case the limit is tighter than intended
+        cpu_limit = cpu_already_used + int(timeout_seconds) + 1
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_limit, cpu_limit))
     except (ValueError, OSError):
         pass  # best-effort; the parent's wall-clock kill is the real backstop
     try:
@@ -203,14 +222,26 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
 
     deadline = time.monotonic() + timeout_seconds + 2.0  # wall-clock backstop, independent of the child
     killed_for_memory = False
-    result_ready = False
+    received = None  # (kind, payload) once a result has actually been read off the pipe
     while process.is_alive() and time.monotonic() < deadline:
-        # A result payload larger than the OS pipe buffer (~16-64KB) blocks
-        # the child in conn.send() until the parent reads — draining as soon
-        # as data is ready (rather than waiting for the child to exit) avoids
-        # misreporting a large-but-successful result as a wall-clock timeout.
+        # poll() only means "at least one byte is readable" (it's a bare
+        # select() under the hood, see multiprocessing.connection.Connection._poll)
+        # — NOT "a full message has arrived." A result payload larger than
+        # one OS pipe buffer (~16-64KB) is written by the child across
+        # multiple os.write() calls, so recv() (which blocks until the whole
+        # framed message is in) must be called as soon as poll() fires,
+        # not deferred behind a process.join() — join() doesn't read
+        # anything, so a child still mid-send would sit blocked waiting for
+        # us to drain the pipe while we sit blocked waiting for it to exit:
+        # a deadlock that used to resolve itself only via the 2s join
+        # timeout below killing the child mid-write, truncating the message
+        # into an EOFError and misreporting a large-but-successful result as
+        # "subprocess exited without a result."
         if parent_conn.poll(0):
-            result_ready = True
+            try:
+                received = parent_conn.recv()
+            except (EOFError, OSError):
+                received = None
             break
         rss = _child_rss_bytes(process.pid)
         if rss is not None and rss > _MAX_CHILD_RSS_BYTES:
@@ -218,7 +249,7 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
             break
         process.join(timeout=_POLL_INTERVAL_SECONDS)
 
-    if killed_for_memory or (process.is_alive() and not result_ready):
+    if killed_for_memory or (received is None and process.is_alive()):
         process.kill()
         process.join()
         if killed_for_memory:
@@ -227,24 +258,33 @@ def run_script(script: str, timeout_seconds: float = 5.0) -> ScriptResult:
         msg = "script exceeded wall-clock timeout"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 
-    # Result is already sent (or the child exited on its own); either way it
-    # should finish tearing down almost immediately — bound the wait so a
-    # trusted-code hang during cleanup can't block the caller indefinitely.
+    if received is None:
+        # The child exited on its own (e.g. between our last poll and the
+        # is_alive() check above) without us catching it via poll() in the
+        # loop — give the pipe one last chance before giving up.
+        try:
+            if not parent_conn.poll(timeout=1.0):
+                raise EOFError
+            received = parent_conn.recv()
+        except (EOFError, OSError):
+            received = None
+
+    # Reap the process regardless of which branch produced `received` — it
+    # should finish tearing down almost immediately once done sending;
+    # bound the wait so a trusted-code hang during cleanup can't block the
+    # caller indefinitely.
     process.join(timeout=2.0)
     if process.is_alive():
         process.kill()
         process.join()
 
-    try:
-        if not parent_conn.poll(timeout=1.0):
-            raise EOFError
-        kind, payload = parent_conn.recv()
-    except (EOFError, OSError):
+    if received is None:
         # process exited but never sent anything (e.g. OOM-killed by the OS
         # before reaching conn.send) — treat as a timeout-class failure,
         # not "no error".
         msg = "subprocess exited without a result"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
+    kind, payload = received
 
     if kind == "ok":
         return ScriptResult(
