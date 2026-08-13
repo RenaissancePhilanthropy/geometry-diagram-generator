@@ -14,31 +14,51 @@ Public API:
                                  dsl, diagram_ir, recipes)
   RecipeSelectionResult        — result dataclass for select_recipes
   GeometryConfig               — configuration dataclass
-"""
-from .facade import (
-    render_diagram,
-    render_geometry_diagram,
-    render_geometry_diagram_sync,
-    edit_geometry_diagram,
-    edit_geometry_diagram_sync,
-    query_diagram,
-    query_geometry_diagram,
-    DiagramResult,
-)
-from .config import GeometryConfig
-from .strategies.recipe import RecipeSelectionResult, select_recipes, select_recipes_sync
 
-__all__ = [
-    "render_diagram",
-    "render_geometry_diagram",
-    "render_geometry_diagram_sync",
-    "edit_geometry_diagram",
-    "edit_geometry_diagram_sync",
-    "query_diagram",
-    "query_geometry_diagram",
-    "select_recipes",
-    "select_recipes_sync",
-    "DiagramResult",
-    "RecipeSelectionResult",
-    "GeometryConfig",
-]
+Resolved lazily (PEP 562 module __getattr__), not imported eagerly here:
+`.facade` and `.strategies.recipe` transitively pull in LangGraph/LangChain
+(and everything module-level `from geometry_diagrams import X` used to force
+on ANY import of anything under this package). That's irrelevant, unwanted
+weight for geometry_diagrams.pydsl.sandbox's spawned sandbox subprocess,
+which never uses LangGraph/LangChain at all but was still forced to import
+the entire chain just because Python always imports a submodule's parent
+package first — and multiprocessing's "spawn" context has to resolve
+`geometry_diagrams.pydsl.sandbox._run_in_subprocess` by module path to
+unpickle it in the freshly spawned child, before any of that module's own
+code (including its own try/except-wrapped imports) ever runs. Confirmed
+empirically (2026-08-13): eagerly importing this package pulls in ~1475
+modules (langgraph: 90, langsmith: 26, sympy: 419, pydantic: 71) at ~0.7s
+warm on a local dev machine — on a cold, resource-constrained container,
+this plausibly dominates or even hangs. Existing callers are unaffected:
+`from geometry_diagrams import render_diagram` still works identically,
+just resolved on first access instead of at package-import time.
+"""
+_LAZY_EXPORTS = {
+    "render_diagram": ".facade",
+    "render_geometry_diagram": ".facade",
+    "render_geometry_diagram_sync": ".facade",
+    "edit_geometry_diagram": ".facade",
+    "edit_geometry_diagram_sync": ".facade",
+    "query_diagram": ".facade",
+    "query_geometry_diagram": ".facade",
+    "DiagramResult": ".facade",
+    "GeometryConfig": ".config",
+    "RecipeSelectionResult": ".strategies.recipe",
+    "select_recipes": ".strategies.recipe",
+    "select_recipes_sync": ".strategies.recipe",
+}
+
+__all__ = list(_LAZY_EXPORTS)
+
+
+def __getattr__(name: str):
+    module_path = _LAZY_EXPORTS.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    module = importlib.import_module(module_path, __name__)
+    return getattr(module, name)
+
+
+def __dir__():
+    return sorted(list(globals()) + list(_LAZY_EXPORTS))

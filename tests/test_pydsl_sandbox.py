@@ -3,6 +3,7 @@
 import inspect
 import io
 import multiprocessing
+import subprocess
 import sys
 import time
 from unittest.mock import MagicMock, patch
@@ -50,6 +51,39 @@ _rlimit_data_unsupported = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
     reason="RLIMIT_DATA is a no-op on this platform (confirmed on macOS; only enforces on Linux)",
 )
+
+
+def test_importing_pydsl_sandbox_does_not_force_langgraph_or_langchain():
+    """Regression test: geometry_diagrams/__init__.py used to eagerly import
+    .facade and .strategies.recipe, which transitively pull in LangGraph/
+    LangChain — needed only by the strategy layer, never by the sandboxed
+    child itself. Python always imports a package's __init__.py before any
+    submodule, and multiprocessing's "spawn" context must resolve
+    _run_in_subprocess by module path to unpickle it in the freshly spawned
+    child — so this forced ~90+26 extra modules (langgraph/langsmith) into
+    the sandbox child's bootstrap path merely to resolve the target
+    function reference, entirely outside any of _run_in_subprocess's own
+    try/except protection. Confirmed empirically (2026-08-13): eagerly
+    importing geometry_diagrams cost ~1450 modules and ~0.7s warm on a
+    local dev machine; plausibly far worse (or a hang) on a cold,
+    resource-constrained container — and production was in fact seeing a
+    "sandbox failed to start" error with no diagnostic detail, consistent
+    with the failure happening in this forced pre-function-call import
+    cascade rather than inside any of our own error-handled code.
+
+    Run in a fresh subprocess, not in-process: other tests in this session
+    have already imported langgraph/langchain, which would make an
+    in-process sys.modules check pass regardless of whether this fix works."""
+    result = subprocess.run(
+        [sys.executable, "-c", (
+            "import sys\n"
+            "import geometry_diagrams.pydsl.sandbox\n"
+            "print('langgraph' in sys.modules, 'langchain_core' in sys.modules)\n"
+        )],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "False False"
 
 
 def test_harness_imports_precede_rlimit_cpu_in_run_in_subprocess():
