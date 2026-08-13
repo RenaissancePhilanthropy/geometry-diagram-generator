@@ -94,7 +94,7 @@ def _child_rss_bytes(pid: int) -> "int | None":
 class ScriptResult:
     diagram_ir: "DiagramIR | None"
     error: "str | None"
-    error_type: "str | None"  # see classify_failure's return values, plus "timeout"
+    error_type: "str | None"  # see classify_failure's return values, plus "timeout" and "sandbox_setup_error"
     retry_message: "str | None" = None
     variable_ids: dict = field(default_factory=dict)
 
@@ -129,10 +129,26 @@ def _run_in_subprocess(script: str, timeout_seconds: float, conn: "multiprocessi
     # charge that fixed harness-startup cost against the same budget meant
     # to bound the untrusted script's own solving time, shrinking the
     # margin `timeout_seconds` is supposed to leave for it.
-    from smolagents import LocalPythonExecutor
-    from smolagents.local_python_executor import ExecutionTimeoutError
+    #
+    # Wrapped in its own try/except: an import-time crash here (missing
+    # shared library, matplotlib's font-cache directory being unwritable on
+    # a read-only Lambda filesystem, etc.) used to kill the child before it
+    # ever reached a try/except that could report back over the pipe — the
+    # parent would just see the child die with no "ready" sentinel and no
+    # way to tell "harness crashed" from "harness is still importing," both
+    # surfacing as the same opaque "sandbox failed to start" message. Report
+    # the real exception instead so a genuine environment problem is
+    # diagnosable from the caller's last_error rather than looking identical
+    # to a slow cold start.
+    try:
+        from smolagents import LocalPythonExecutor
+        from smolagents.local_python_executor import ExecutionTimeoutError
 
-    import geometry_diagrams.pydsl as pydsl_module
+        import geometry_diagrams.pydsl as pydsl_module
+    except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
+        import traceback
+        conn.send(("error", (traceback.format_exc(), "sandbox_setup_error", str(exc))))
+        return
 
     try:
         # RLIMIT_CPU caps *cumulative* CPU time consumed by the process since
@@ -251,18 +267,28 @@ def run_script(
     # during setup that exits the child before it ever sends anything.
     bootstrap_deadline = time.monotonic() + _BOOTSTRAP_TIMEOUT_SECONDS
     ready = False
+    setup_error = None  # (message, error_type, retry_message) if the child reported why it never got to "ready"
     while process.is_alive() and time.monotonic() < bootstrap_deadline:
         if parent_conn.poll(_POLL_INTERVAL_SECONDS):
             try:
-                kind, _ = parent_conn.recv()
+                kind, payload = parent_conn.recv()
             except (EOFError, OSError):
                 break
-            ready = kind == "ready"
+            if kind == "ready":
+                ready = True
+            elif kind == "error":
+                setup_error = payload
             break
 
     if not ready:
         process.kill()
         process.join()
+        if setup_error is not None:
+            message, error_type, retry_message = setup_error
+            return ScriptResult(diagram_ir=None, error=message, error_type=error_type, retry_message=retry_message)
+        # Child died or is still running with no report at all — a genuine
+        # hang, or a crash severe enough (e.g. SIGKILL from the OS) that it
+        # never reached the try/except around its own imports.
         msg = "sandbox failed to start (import/setup error or hang before running the script)"
         return ScriptResult(diagram_ir=None, error=msg, error_type="timeout", retry_message=msg)
 

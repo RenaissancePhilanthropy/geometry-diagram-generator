@@ -30,6 +30,15 @@ def _fake_slow_import_then_quick_script(script, timeout_seconds, conn):
 def _fake_child_that_never_sends_anything(script, timeout_seconds, conn):
     time.sleep(5.0)
 
+
+def _fake_child_that_crashes_during_setup(script, timeout_seconds, conn):
+    # Simulates the real _run_in_subprocess's import try/except: a crash
+    # before "ready" (e.g. a missing shared library, or matplotlib's
+    # font-cache dir being unwritable on a read-only Lambda filesystem)
+    # reports back over the pipe rather than dying silently.
+    conn.send(("error", ("full traceback here", "sandbox_setup_error", "ImportError: no module named 'fake'")))
+
+
 # RLIMIT_DATA is a documented no-op on macOS (resource.setrlimit itself
 # raises ValueError there — confirmed directly: soft/hard both report as
 # RLIM_INFINITY yet setting even a generous limit fails outright) and
@@ -120,6 +129,46 @@ def test_run_script_treats_a_bootstrap_hang_as_a_start_failure(monkeypatch):
     assert result.diagram_ir is None
     assert result.error_type == "timeout"
     assert "failed to start" in result.error
+
+
+def test_run_script_surfaces_a_reported_setup_crash_instead_of_the_generic_message():
+    """Regression test: a child that crashes during import (missing shared
+    library, matplotlib's font-cache dir being unwritable on a read-only
+    Lambda filesystem, etc.) used to die silently before "ready" — the
+    parent had no way to distinguish "harness crashed with a specific,
+    diagnosable reason" from "harness is still importing" or "harness
+    hung," and reported the same opaque "sandbox failed to start" message
+    either way. When the child DOES manage to report why (via its own
+    try/except around the imports), run_script must surface that specific
+    message/error_type instead of masking it with the generic one."""
+    result = run_script(
+        "irrelevant — the fake target below ignores this", timeout_seconds=1.0,
+        _target=_fake_child_that_crashes_during_setup,
+    )
+    assert result.diagram_ir is None
+    assert result.error_type == "sandbox_setup_error"
+    assert result.error == "full traceback here"
+    assert result.retry_message == "ImportError: no module named 'fake'"
+
+
+def test_run_in_subprocess_reports_a_real_import_crash_over_the_pipe(monkeypatch):
+    """Same as the fake-child test above, but exercises _run_in_subprocess's
+    own try/except directly: forcing `from smolagents import ...` to raise
+    (via the standard "None in sys.modules" import-blocking mechanism, not
+    a fake) must produce an ("error", (traceback, "sandbox_setup_error",
+    str(exc))) send rather than an unhandled exception propagating out of
+    the function. Runs in-process (not spawned) with a MagicMock connection,
+    same pattern as the RLIMIT_CPU accounting test above."""
+    monkeypatch.setitem(sys.modules, "smolagents", None)
+    conn = MagicMock()
+    _run_in_subprocess("a = point(0, 0)\ndraw_points(a)", 2.0, conn)
+    assert conn.send.call_count == 1
+    kind, payload = conn.send.call_args[0][0]
+    assert kind == "error"
+    message, error_type, retry_message = payload
+    assert error_type == "sandbox_setup_error"
+    assert "smolagents" in message
+    assert "smolagents" in retry_message
 
 
 def test_valid_script_produces_a_diagram_ir():
