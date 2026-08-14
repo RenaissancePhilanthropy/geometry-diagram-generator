@@ -1082,6 +1082,7 @@ class PythonFullStrategy(SubstanceStrategy):
         edit_generation_mode: str = "search_replace",
         hash_algorithm: str = "blake2s",
         retry_on_apply_failure: bool = False,
+        retry_on_locality_violation: bool = False,
         sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     ):
         """Conversational ReAct agent with render_diagram + query_diagram
@@ -1093,7 +1094,27 @@ class PythonFullStrategy(SubstanceStrategy):
         cross-model eval comparison (2026-08-12) it won or tied for best
         on every model tested. "patch"/"hashline"/"line_number" remain
         fully functional for comparison but are no longer recommended for
-        new usage; "full_rewrite" is a separate, always-works baseline."""
+        new usage; "full_rewrite" is a separate, always-works baseline.
+
+        retry_on_locality_violation: opt-in, off by default, EXPERIMENTAL —
+        pending eval validation before it's ever turned on by default (see
+        docs/superpowers/specs/2026-08-13-locality-violation-retry-design.md
+        if present). check_edit_locality's diagnostic was originally
+        "never gates the turn" (see the comment where it's computed below)
+        because nobody had evidence it was accurate enough to act on. A
+        retroactive audit of 3,448 archived eval turns plus a live re-run
+        found real cases of it catching genuine silent corruption (a whole
+        entity disappearing, or moving, on a request that never asked for
+        that) with zero false positives found by hand — but zero false
+        positives in a small manual sample is not the same as validated
+        across the full eval matrix, hence gated behind this flag rather
+        than defaulted on. When enabled, a violation triggers exactly one
+        retry (same "only fires once" contract as retry_on_apply_failure),
+        phrased as a confirmation rather than an assumption of error —
+        legitimate deletions/moves exist, and the retry lets the model
+        judge intent rather than blindly reverting. Never applies to
+        full_rewrite (locality is only a soft, trend-level signal there
+        per edit_diagnostics.py's own docstring, not a per-turn one)."""
         _renderer = renderer if renderer is not None else SVGRenderer()
         _stack: list[dict] = []
         # Mutable box (not a plain variable) so it survives an apply-step
@@ -1104,6 +1125,15 @@ class PythonFullStrategy(SubstanceStrategy):
         # evals/run_edit_chains.py's _closure_last_edit_ops_meta) — unlike
         # _stack, which a failed turn never appends to at all.
         _last_edit_ops_meta: dict = {"value": None}
+        # Same mutable-box pattern, for a narrower reason: whether a
+        # locality violation triggered a retry_on_locality_violation retry
+        # is otherwise invisible even in the successful case — the caller
+        # only ever sees the final result, not whether it took one attempt
+        # or two. Unlike _last_edit_ops_meta this is only ever read via
+        # _stack (retry_on_locality_violation's own retry never turns a
+        # success into a failure — see where it's set below — so there's
+        # no failed-turn case that needs closure introspection instead).
+        _last_locality_retry_fired: dict = {"value": False}
 
         @tool
         async def render_diagram(request: str) -> str:
@@ -1118,6 +1148,7 @@ class PythonFullStrategy(SubstanceStrategy):
             """
             try:
                 _last_edit_ops_meta["value"] = None
+                _last_locality_retry_fired["value"] = False
                 if _stack:
                     top = _stack[-1]
 
@@ -1203,6 +1234,41 @@ class PythonFullStrategy(SubstanceStrategy):
                         )  # diagnostic only, per Global Constraints — never gates the turn
                     except Exception:
                         locality_diagnostic = None
+
+                    if (
+                        retry_on_locality_violation
+                        and edit_generation_mode != "full_rewrite"
+                        and locality_diagnostic is not None
+                        and (locality_diagnostic.unmatched_old_names or locality_diagnostic.violations)
+                    ):
+                        concerns = []
+                        if locality_diagnostic.unmatched_old_names:
+                            concerns.append(
+                                "these entities disappeared: "
+                                f"{sorted(locality_diagnostic.unmatched_old_names)}"
+                            )
+                        if locality_diagnostic.violations:
+                            moved = [v["name"] for v in locality_diagnostic.violations]
+                            concerns.append(f"these entities moved unexpectedly: {moved}")
+                        retry_request = (
+                            f"{request}\n\n---\nYour previous edit also changed things this "
+                            f"request never mentioned — {'; '.join(concerns)}. If that was "
+                            "intentional, resubmit the exact same result; otherwise redo the "
+                            "edit so it preserves everything except what was actually asked "
+                            "for.\n---"
+                        )
+                        _last_locality_retry_fired["value"] = True
+                        try:
+                            retried_result = await handler(retry_request)
+                            retried_diagnostic = check_edit_locality(
+                                top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
+                                retried_result.entity_manifest, retried_result.diagram_ir,
+                                retried_result.sym_full,
+                            )
+                            result, locality_diagnostic = retried_result, retried_diagnostic
+                        except Exception:
+                            pass  # keep the original result — a retry that itself fails
+                                  # shouldn't turn a silent-corruption success into a loud one
                 else:
                     result = await self.run(
                         request, model=model, renderer=_renderer,
@@ -1216,6 +1282,7 @@ class PythonFullStrategy(SubstanceStrategy):
                     "result": result,
                     "locality_diagnostic": locality_diagnostic,
                     "edit_ops_meta": _last_edit_ops_meta["value"],
+                    "locality_retry_fired": _last_locality_retry_fired["value"],
                 })
                 return json.dumps({"svg": result.svg})
             except Exception as e:

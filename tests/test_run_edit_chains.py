@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,51 @@ async def test_run_chain_records_a_successful_turn(monkeypatch):
     assert r["prior_failure_count"] == 0
     assert r["script_chars_before"] == 0
     assert r["script_chars_after"] == len("a = point(0, 0)\ndraw_points(a)\n")
+    assert r["artifact_script"] is None
+    assert r["artifact_svg"] is None
+    assert r["artifact_ir"] is None
+
+
+@pytest.mark.asyncio
+async def test_run_chain_persists_turn_artifacts_when_artifacts_dir_given(monkeypatch, tmp_path):
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR
+
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[], render=[]),
+            tikz="", svg="<svg>fake</svg>",
+            sym_table={"__pydsl_pt_1": (0.0, 0.0)}, sym_full={},
+            script="a = point(0, 0)\ndraw_points(a)\n",
+            variable_ids={"a": "__pydsl_pt_1"},
+            entity_manifest={"named": [], "anonymous": []},
+            retries=0,
+        )
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+
+    chain = {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}
+    records = await run_chain(
+        chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0,
+        artifacts_dir=tmp_path,
+    )
+
+    r = records[0]
+    assert r["artifact_script"] is not None
+    assert r["artifact_svg"] is not None
+    assert r["artifact_ir"] is not None
+    assert Path(r["artifact_script"]).read_text() == "a = point(0, 0)\ndraw_points(a)\n"
+    assert Path(r["artifact_svg"]).read_text() == "<svg>fake</svg>"
+    ir_json = json.loads(Path(r["artifact_ir"]).read_text())
+    assert ir_json["define"] == []
+    # slug encodes chain/mode/model/repeat/turn so files from different runs
+    # never collide in a shared artifacts directory
+    assert "chain-1" in r["artifact_script"]
+    assert "full_rewrite" in r["artifact_script"]
+    assert "test-model" in r["artifact_script"]
+    assert "r001" in r["artifact_script"]
+    assert "t01" in r["artifact_script"]
 
 
 @pytest.mark.asyncio
@@ -620,3 +666,82 @@ async def test_main_prints_tripped_summary_when_breaker_fires(monkeypatch, tmp_p
     output = capsys.readouterr().out
     assert "bad-model" in output
     assert "good-model::patch" in output
+
+
+@pytest.mark.asyncio
+async def test_run_chain_threads_retry_on_locality_violation_and_records_whether_it_fired(monkeypatch):
+    """End-to-end through run_chain (real apply_search_replace + real
+    sandbox execution, only PythonFullStrategy.run and the generation step
+    mocked) — the same corruption shape as
+    test_render_diagram_retries_once_on_locality_violation_when_enabled in
+    tests/test_python_full_strategy.py, checked from the eval harness's
+    side: does run_chain's --retry-on-locality-violation flag reach
+    build_agent(), and does the resulting record surface whether the
+    retry actually fired (added specifically so a future validation run
+    can tell "diagnostic caught nothing" apart from "diagnostic caught
+    something and the retry fixed it")."""
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed
+    import sympy.geometry as spg
+
+    initial_script = "a = point(0, 0)\nb = point(1, 0)\ndraw_points(a, b)\n"
+
+    def make_result():
+        return StructuredRunResult(
+            diagram_ir=DiagramIR(define=[
+                PointFixed(id="p1", x=0.0, y=0.0),
+                PointFixed(id="p2", x=1.0, y=0.0),
+            ], render=[]),
+            tikz="", svg="<svg>1</svg>",
+            sym_table={"p1": (0.0, 0.0), "p2": (1.0, 0.0)},
+            sym_full={"p1": spg.Point(0.0, 0.0), "p2": spg.Point(1.0, 0.0)},
+            script=initial_script,
+            variable_ids={"a": "p1", "b": "p2"},
+            entity_manifest={
+                "named": [
+                    {"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]},
+                    {"name": "b", "id": "p2", "type": "point_fixed", "approx_position": [1.0, 0.0]},
+                ],
+                "anonymous": [],
+            },
+            retries=0,
+        )
+
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+        return make_result()
+
+    attempts = []
+
+    async def fake_generate_search_replace(prompt, model, enable_cache=False):
+        attempts.append(prompt)
+        if len(attempts) == 1:
+            return [{
+                "old_string": initial_script,
+                "new_string": "a = point(0, 0)\ndraw_points(a)\n",
+            }], 1, 1, None
+        return [{"old_string": initial_script, "new_string": initial_script}], 1, 1, None
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
+        fake_generate_search_replace,
+    )
+
+    chain = {
+        "id": "chain-1",
+        "turns": [
+            {"request": "draw two points", "expected_properties": []},
+            {"request": "move a", "expected_properties": []},
+        ],
+    }
+    records = await run_chain(
+        chain, "test-model", "search_replace", repeat_index=1, renderer=None, turn_timeout=5.0,
+        retry_on_locality_violation=True,
+    )
+
+    assert records[0]["locality_retry_fired"] is False  # first turn: no prior state to violate
+    assert records[1]["success"] is True
+    assert records[1]["locality_retry_fired"] is True
+    assert records[1]["locality_diagnostic"]["unmatched_old_names"] == 0
+    assert len(attempts) == 2

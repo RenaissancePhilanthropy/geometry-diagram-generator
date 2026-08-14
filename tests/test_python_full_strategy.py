@@ -1675,3 +1675,119 @@ async def test_render_diagram_does_not_retry_when_disabled(monkeypatch):
 
     assert "error" in result
     assert len(attempts) == 1
+
+
+def _make_two_point_result(script):
+    from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed
+    import sympy.geometry as spg
+
+    return StructuredRunResult(
+        diagram_ir=DiagramIR(define=[
+            PointFixed(id="p1", x=0.0, y=0.0),
+            PointFixed(id="p2", x=1.0, y=0.0),
+        ], render=[]),
+        tikz="", svg="<svg>1</svg>",
+        sym_table={"p1": (0.0, 0.0), "p2": (1.0, 0.0)},
+        sym_full={"p1": spg.Point(0.0, 0.0), "p2": spg.Point(1.0, 0.0)},
+        script=script,
+        variable_ids={"a": "p1", "b": "p2"},
+        entity_manifest={
+            "named": [
+                {"name": "a", "id": "p1", "type": "point_fixed", "approx_position": [0.0, 0.0]},
+                {"name": "b", "id": "p2", "type": "point_fixed", "approx_position": [1.0, 0.0]},
+            ],
+            "anonymous": [],
+        },
+        retries=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_retries_once_on_locality_violation_when_enabled(monkeypatch):
+    """A search_replace edit that silently drops an unrelated entity (the
+    exact shape of the bug found live: an edit to `a` erases `b` entirely,
+    with apply_search_replace reporting no error) triggers exactly one
+    retry, phrased as a confirmation, when retry_on_locality_violation is
+    enabled — mirroring retry_on_apply_failure's "only fires once" contract."""
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+
+    initial_script = "a = point(0, 0)\nb = point(1, 0)\ndraw_points(a, b)\n"
+
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+        return _make_two_point_result(initial_script)
+
+    attempts = []
+
+    async def fake_generate_search_replace(prompt, model, enable_cache=False):
+        attempts.append(prompt)
+        if len(attempts) == 1:
+            # Corrupted: silently drops b, unrelated to the request.
+            return [{
+                "old_string": initial_script,
+                "new_string": "a = point(0, 0)\ndraw_points(a)\n",
+            }], 1, 1, None
+        assert "disappeared" in prompt
+        assert "['b']" in prompt
+        # Retry: a genuine no-op, keeping both entities.
+        return [{"old_string": initial_script, "new_string": initial_script}], 1, 1, None
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
+        fake_generate_search_replace,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(
+        model="test", edit_generation_mode="search_replace", retry_on_locality_violation=True,
+    )
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    await render_tool.ainvoke({"request": "draw two points"})
+    result = json.loads(await render_tool.ainvoke({"request": "move a"}))
+
+    assert "svg" in result and "error" not in result
+    assert len(attempts) == 2
+    assert _closure_stack(render_tool)[-1]["locality_retry_fired"] is True
+
+
+@pytest.mark.asyncio
+async def test_render_diagram_does_not_retry_on_locality_violation_when_disabled(monkeypatch):
+    """Same corruption shape as above, but retry_on_locality_violation
+    defaults to False — the silent drop is recorded in the diagnostic but
+    not corrected, matching this feature's opt-in-pending-validation status."""
+    from geometry_diagrams.strategies.python_full import PythonFullStrategy
+
+    initial_script = "a = point(0, 0)\nb = point(1, 0)\ndraw_points(a, b)\n"
+
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+        return _make_two_point_result(initial_script)
+
+    attempts = []
+
+    async def fake_generate_search_replace(prompt, model, enable_cache=False):
+        attempts.append(prompt)
+        return [{
+            "old_string": initial_script,
+            "new_string": "a = point(0, 0)\ndraw_points(a)\n",
+        }], 1, 1, None
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    monkeypatch.setattr(
+        "geometry_diagrams.strategies.python_full.generate_search_replace",
+        fake_generate_search_replace,
+    )
+
+    strategy = PythonFullStrategy()
+    graph = strategy.build_agent(model="test", edit_generation_mode="search_replace")
+    tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
+    render_tool = tools_by_name["render_diagram"]
+
+    await render_tool.ainvoke({"request": "draw two points"})
+    result = json.loads(await render_tool.ainvoke({"request": "move a"}))
+
+    assert "svg" in result and "error" not in result
+    assert len(attempts) == 1
+    assert _closure_stack(render_tool)[-1]["locality_retry_fired"] is False

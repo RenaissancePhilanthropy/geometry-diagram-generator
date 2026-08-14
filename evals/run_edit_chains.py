@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,42 @@ from evals.scenarios_editing_chains import _validate_chain_scenarios
 from geometry_diagrams.ir.renderer import SVGRenderer, TikZRenderer
 from geometry_diagrams.strategies.base import DEFAULT_AGENT_MODEL
 from geometry_diagrams.strategies.python_full import PythonFullStrategy
+
+
+def _slugify(value: str) -> str:
+    """Matches evals/run.py's own SVG-filename slugify convention, so
+    artifacts from both harnesses are named consistently."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value))
+
+
+def _write_turn_artifacts(
+    artifacts_dir: Path, chain_id: str, model: str, mode: str,
+    repeat_index: int, turn_index: int, result, diagram_ir,
+) -> dict:
+    """Persists this turn's script/SVG/compiled-IR to disk and returns their
+    paths. Without this, investigating a flagged turn (e.g. a nonzero
+    locality_diagnostic) requires re-running the exact chain/model/mode/
+    repeat live and hoping for the same nondeterministic LLM output — the
+    JSONL record alone only ever carried char/line counts, never the
+    content. Only the AFTER state is written per turn: turn N's "before"
+    script is simply turn N-1's "after" file in the same chain/repeat, so
+    storing it twice would be redundant."""
+    slug = (
+        f"{_slugify(chain_id)}__{_slugify(mode)}__{_slugify(model)}"
+        f"__r{repeat_index:03d}__t{turn_index:02d}"
+    )
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    script_path = artifacts_dir / f"{slug}.py"
+    svg_path = artifacts_dir / f"{slug}.svg"
+    ir_path = artifacts_dir / f"{slug}.json"
+    script_path.write_text(result.script)
+    svg_path.write_text(result.svg)
+    ir_path.write_text(json.dumps(diagram_ir.model_dump(), indent=2))
+    return {
+        "artifact_script": str(script_path),
+        "artifact_svg": str(svg_path),
+        "artifact_ir": str(ir_path),
+    }
 
 
 def _closure_stack(render_tool):
@@ -75,16 +112,28 @@ async def run_chain(
     renderer,
     turn_timeout: float,
     hash_algorithm: str = "blake2s",
+    artifacts_dir: "Path | None" = None,
+    retry_on_locality_violation: bool = False,
 ) -> list[dict]:
     """Run one chain once against one (model, edit_generation_mode).
     Returns one record per turn. A failed turn does not stop the chain —
     the next turn's request is issued against the same (unchanged) state,
     and the failed turn itself is never retried by this harness (see
-    design doc, Component C, step 4)."""
+    design doc, Component C, step 4).
+
+    artifacts_dir, when given, persists each successful turn's script/SVG/
+    compiled-IR (see _write_turn_artifacts) — off by default so tests and
+    lightweight runs don't touch disk unless asked.
+
+    retry_on_locality_violation: threaded straight to build_agent() — off
+    by default (experimental, pending exactly the eval comparison this
+    flag exists to run: does gating on check_edit_locality actually reduce
+    total defects, or just trade silent corruption for false-positive
+    "corrections" on legitimate deletions/moves)."""
     strategy = PythonFullStrategy()
     graph = strategy.build_agent(
         model=model, renderer=renderer, edit_generation_mode=edit_generation_mode,
-        hash_algorithm=hash_algorithm,
+        hash_algorithm=hash_algorithm, retry_on_locality_violation=retry_on_locality_violation,
     )
     tools_by_name = {t.name: t for t in graph.nodes["tools"].bound.tools_by_name.values()}
     render_tool = tools_by_name["render_diagram"]
@@ -121,6 +170,8 @@ async def run_chain(
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
                 "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
+                "artifact_script": None, "artifact_svg": None, "artifact_ir": None,
+                "locality_retry_fired": False,
             })
             prior_failure_count += 1
             records.append(record)
@@ -132,6 +183,8 @@ async def run_chain(
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
                 "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
+                "artifact_script": None, "artifact_svg": None, "artifact_ir": None,
+                "locality_retry_fired": False,
             })
             prior_failure_count += 1
             records.append(record)
@@ -144,6 +197,8 @@ async def run_chain(
                 "script_chars_after": None, "script_lines_after": None,
                 "locality_diagnostic": None, "sympy_property_checks": [],
                 "edit_ops_meta": _closure_last_edit_ops_meta(render_tool),
+                "artifact_script": None, "artifact_svg": None, "artifact_ir": None,
+                "locality_retry_fired": False,
             })
             prior_failure_count += 1
             records.append(record)
@@ -176,7 +231,15 @@ async def run_chain(
             ),
             "sympy_property_checks": sympy_checks,
             "edit_ops_meta": top.get("edit_ops_meta"),
+            "locality_retry_fired": top.get("locality_retry_fired", False),
         })
+        if artifacts_dir is not None:
+            record.update(_write_turn_artifacts(
+                artifacts_dir, chain["id"], model, edit_generation_mode,
+                repeat_index, turn_index, result, result.diagram_ir,
+            ))
+        else:
+            record.update({"artifact_script": None, "artifact_svg": None, "artifact_ir": None})
         records.append(record)
 
     return records
@@ -215,6 +278,8 @@ async def run_matrix(
     hash_algorithm: str = "blake2s",
     output_path: "Path | None" = None,
     circuit_breaker_enabled: bool = True,
+    artifacts_dir: "Path | None" = None,
+    retry_on_locality_violation: bool = False,
 ) -> dict:
     """Run the full chain x model x mode x repeat matrix, writing each
     turn's record to output_path as it's produced (if given) and
@@ -252,7 +317,8 @@ async def run_matrix(
 
                     records = await run_chain(
                         chain, model, mode, repeat_index, renderer, turn_timeout,
-                        hash_algorithm=hash_algorithm,
+                        hash_algorithm=hash_algorithm, artifacts_dir=artifacts_dir,
+                        retry_on_locality_violation=retry_on_locality_violation,
                     )
                     for record in records:
                         if output_path is not None:
@@ -317,6 +383,24 @@ async def main() -> None:
         ),
     )
     parser.add_argument("--output", default="evals/results")
+    parser.add_argument(
+        "--artifacts-dir", default=None,
+        help=(
+            "If given, persist each successful turn's script/SVG/compiled-IR "
+            "under this directory (one subdirectory per run) — off by default, "
+            "since large sweeps write one triplet of files per successful turn."
+        ),
+    )
+    parser.add_argument(
+        "--retry-on-locality-violation", action="store_true", default=False,
+        help=(
+            "EXPERIMENTAL, off by default — gate edit turns on check_edit_locality's "
+            "diagnostic (retry once, phrased as a confirmation, when an edit silently "
+            "drops/moves an entity the request never mentioned). This flag exists to "
+            "measure whether that actually reduces total defects before it's ever "
+            "considered as a default."
+        ),
+    )
     args = parser.parse_args()
 
     with open(args.scenarios) as f:
@@ -328,14 +412,19 @@ async def main() -> None:
     output_dir = Path(args.output)
     run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
     output_path = output_dir / f"edit_chains_{run_id}.jsonl"
+    artifacts_dir = Path(args.artifacts_dir) / run_id if args.artifacts_dir else None
 
     print(f"Running {len(chains)} chains x {len(args.models)} models x {len(args.modes)} modes x {args.repeats} repeats")
     print(f"Output: {output_path}")
+    if artifacts_dir is not None:
+        print(f"Artifacts: {artifacts_dir}")
 
     matrix_result = await run_matrix(
         chains, args.models, args.modes, args.repeats, renderer, args.turn_timeout,
         hash_algorithm=args.hash_algorithm, output_path=output_path,
         circuit_breaker_enabled=args.circuit_breaker_enabled,
+        artifacts_dir=artifacts_dir,
+        retry_on_locality_violation=args.retry_on_locality_violation,
     )
     all_records = matrix_result["records"]
 
