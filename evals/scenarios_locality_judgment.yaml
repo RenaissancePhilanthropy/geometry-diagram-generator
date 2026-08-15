@@ -1,0 +1,389 @@
+# Fixture bank for evals/eval_locality_retry_judgment.py — tests ONLY the
+# retry_on_locality_violation confirmation retry's judgment call, isolated
+# from the rest of the edit pipeline. Each fixture is a single (prior
+# script, request, already-edited script) triple that check_edit_locality
+# is known to flag as a violation; category says whether the flagged
+# change was real corruption (should be fixed) or a legitimate
+# deletion/move the request actually asked for (should be left alone).
+#
+# expect_still_unmatched lists exactly which named entities should be
+# absent from the FINAL script (after the retry) — empty for illegitimate
+# fixtures (everything should be restored), non-empty for legitimate ones
+# (the entity really was supposed to go and should stay gone).
+#
+# The three "illegitimate" fixtures are real corruption captured live this
+# session (not synthesized) — see
+# evals/results/edit_chain_artifacts/20260813-053117-99543/. The three
+# "legitimate" fixtures are hand-authored deletions built from the same
+# starting scripts, so each pair isolates request-phrasing as the only
+# variable while holding the entities/positions fixed.
+
+- id: illegitimate-dropped-second-triangle
+  category: illegitimate
+  request: "Draw the circumcircle of triangle ABC and call its center O."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(0, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Label the vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above left")
+
+    # Mark the points
+    draw_points(A, B, C)
+
+    # Define the second triangle DEF to the right of the first
+    D = point(6, 0)
+    E = point(10, 0)
+    F = point(6, 3)
+
+    # Build the second triangle
+    tri2 = triangle(D, E, F)
+
+    # Draw the second triangle
+    draw(tri2)
+
+    # Label the vertices
+    D.label("D", pos="below left")
+    E.label("E", pos="below right")
+    F.label("F", pos="above left")
+
+    # Mark the points
+    draw_points(D, E, F)
+  edited_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(1, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Compute circumcircle
+    cc = circumcircle(tri)
+    O = cc.center
+
+    # Draw the triangle and circumcircle
+    draw(tri)
+    draw(cc, color="blue")
+
+    # Label the vertices and center
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    O.label("O", pos="below right")
+
+    # Mark the points
+    draw_points(A, B, C, O)
+  expect_still_unmatched: []
+
+- id: illegitimate-dropped-circumcircle-during-fill
+  category: illegitimate
+  request: "Fill triangle ABC blue and triangle DEF red."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(1, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Compute circumcircle
+    cc = circumcircle(tri)
+    O = cc.center
+
+    # Draw the triangle and circumcircle
+    draw(tri)
+    draw(cc, color="blue")
+
+    # Label the vertices and center
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    O.label("O", pos="below right")
+
+    # Mark the points
+    draw_points(A, B, C, O)
+  edited_script: |
+    # Define the three vertices of triangle ABC
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(1, 3)
+
+    # Build triangle ABC
+    tri = triangle(A, B, C)
+
+    # Define the three vertices of triangle DEF
+    D = point(6, 0)
+    E = point(10, 0)
+    F = point(7, 3)
+
+    # Build triangle DEF
+    tri2 = triangle(D, E, F)
+
+    # Fill triangle ABC blue and triangle DEF red
+    fill(tri, color="blue")
+    fill(tri2, color="red")
+
+    # Draw the triangles
+    draw(tri)
+    draw(tri2)
+
+    # Label the vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    D.label("D", pos="below left")
+    E.label("E", pos="below right")
+    F.label("F", pos="above")
+
+    # Mark the points
+    draw_points(A, B, C, D, E, F)
+  expect_still_unmatched: []
+
+- id: illegitimate-dropped-angle-bisector
+  category: illegitimate
+  request: "Draw the incircle of the triangle, calling its center I."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(6, 0)
+    C = point(2, 5)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Construct the angle bisector from A (toward B and C)
+    bisector = angle_bisector(A, B, C)
+
+    # Find where the bisector meets BC
+    bc_seg = tri.side(B, C)
+    M = intersection(bisector, bc_seg)
+
+    # Draw the angle bisector segment from A to M
+    draw(segment(A, M), color="blue")
+
+    # Mark the two equal angles created by the bisector at A
+    mark_angle(angle(B, A, M), group=1)
+    mark_angle(angle(M, A, C), group=1)
+
+    # Label all three vertices A, B, C and the point M
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    M.label("M", pos="right")
+
+    # Mark the points
+    draw_points(A, B, C, M)
+  edited_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(6, 0)
+    C = point(2, 5)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Construct the incircle
+    ic = incircle(tri)
+    I = ic.center
+
+    # Draw the incircle
+    draw(ic, color="blue")
+
+    # Label the center I
+    I.label("I", pos="below")
+
+    # Label all three vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+
+    # Mark the points
+    draw_points(A, B, C, I)
+  expect_still_unmatched: []
+
+- id: legitimate-remove-second-triangle
+  category: legitimate
+  request: "Remove the second triangle DEF entirely, along with its labels."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(0, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Label the vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above left")
+
+    # Mark the points
+    draw_points(A, B, C)
+
+    # Define the second triangle DEF to the right of the first
+    D = point(6, 0)
+    E = point(10, 0)
+    F = point(6, 3)
+
+    # Build the second triangle
+    tri2 = triangle(D, E, F)
+
+    # Draw the second triangle
+    draw(tri2)
+
+    # Label the vertices
+    D.label("D", pos="below left")
+    E.label("E", pos="below right")
+    F.label("F", pos="above left")
+
+    # Mark the points
+    draw_points(D, E, F)
+  edited_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(0, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Label the vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above left")
+
+    # Mark the points
+    draw_points(A, B, C)
+  expect_still_unmatched: [D, E, F, tri2]
+
+- id: legitimate-remove-circumcircle
+  category: legitimate
+  request: "Remove the circumcircle and its center O — just keep the triangle."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(1, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Compute circumcircle
+    cc = circumcircle(tri)
+    O = cc.center
+
+    # Draw the triangle and circumcircle
+    draw(tri)
+    draw(cc, color="blue")
+
+    # Label the vertices and center
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    O.label("O", pos="below right")
+
+    # Mark the points
+    draw_points(A, B, C, O)
+  edited_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(4, 0)
+    C = point(1, 3)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Label the vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+
+    # Mark the points
+    draw_points(A, B, C)
+  expect_still_unmatched: [cc, O]
+
+- id: legitimate-remove-angle-bisector
+  category: legitimate
+  request: "Remove the angle bisector construction — the bisector line, the point M, and the angle marks. Just keep the plain triangle."
+  prior_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(6, 0)
+    C = point(2, 5)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Construct the angle bisector from A (toward B and C)
+    bisector = angle_bisector(A, B, C)
+
+    # Find where the bisector meets BC
+    bc_seg = tri.side(B, C)
+    M = intersection(bisector, bc_seg)
+
+    # Draw the angle bisector segment from A to M
+    draw(segment(A, M), color="blue")
+
+    # Mark the two equal angles created by the bisector at A
+    mark_angle(angle(B, A, M), group=1)
+    mark_angle(angle(M, A, C), group=1)
+
+    # Label all three vertices A, B, C and the point M
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+    M.label("M", pos="right")
+
+    # Mark the points
+    draw_points(A, B, C, M)
+  edited_script: |
+    # Define the three vertices
+    A = point(0, 0)
+    B = point(6, 0)
+    C = point(2, 5)
+
+    # Build the triangle
+    tri = triangle(A, B, C)
+
+    # Draw the triangle
+    draw(tri)
+
+    # Label all three vertices
+    A.label("A", pos="below left")
+    B.label("B", pos="below right")
+    C.label("C", pos="above")
+
+    # Mark the points
+    draw_points(A, B, C)
+  expect_still_unmatched: [bisector, M]
