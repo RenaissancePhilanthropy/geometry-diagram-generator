@@ -42,6 +42,35 @@ def test_build_entity_manifest_includes_a_named_line():
     assert "my_line" in names
 
 
+def test_build_entity_manifest_logs_a_warning_for_a_still_unhandled_sympy_type(caplog):
+    # This is the general-case regression test for the Line/Segment/Ray gap
+    # above: any FUTURE sympy type that isn't Point, doesn't match one of
+    # centroid_of_obj's isinstance branches, and has no .vertices will hit
+    # the same except-and-skip. The fix isn't to handle every type in
+    # advance (impossible) — it's to make the swallow loud enough that the
+    # next gap surfaces as a log line instead of another live-debugging
+    # session finding it by accident.
+    import logging
+
+    from geometry_diagrams.ir.ir import DiagramIR, LineThrough
+
+    class UnknownGeometryType:
+        pass
+
+    diagram_ir = DiagramIR(define=[LineThrough(id="x1", p="p1", q="p2")], render=[])
+    sym = {"x1": UnknownGeometryType()}
+    variable_ids = {"mystery": "x1"}
+
+    with caplog.at_level(logging.WARNING):
+        manifest = build_entity_manifest(diagram_ir, sym, variable_ids)
+
+    assert not any(e["name"] == "mystery" for e in manifest["named"])
+    assert any(
+        "mystery" in record.getMessage() and "UnknownGeometryType" in record.getMessage()
+        for record in caplog.records
+    )
+
+
 def test_tick_values_excludes_zero():
     assert 0 not in tick_values(-4, 4, 1)
 

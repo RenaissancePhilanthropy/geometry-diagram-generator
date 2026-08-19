@@ -7,6 +7,7 @@ to_svg.py import from here.
 """
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -15,6 +16,8 @@ from sympy.geometry.line import LinearEntity
 
 from . import ir
 from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -572,6 +575,21 @@ def build_entity_manifest(
             else:
                 position = centroid_of_obj(obj)
         except Exception:
+            # A silent `continue` here is exactly how Line/Segment/Ray went
+            # unnoticed for as long as they did (see centroid_of_obj's
+            # docstring, 2026-08-18): a swallowed type just vanishes from
+            # "named" with zero signal that anything was skipped. Logging
+            # doesn't fix the swallow — this entity is still excluded from
+            # the manifest and thus invisible to check_edit_locality for
+            # this call — but it means the NEXT unhandled type surfaces via
+            # a log line instead of another multi-hour live debugging
+            # session finding it by accident.
+            logger.warning(
+                "build_entity_manifest: could not compute a position for "
+                "%r (variable %r, sympy type %s) — excluded from the "
+                "entity manifest, invisible to check_edit_locality",
+                obj_id, name, type(obj).__name__,
+            )
             continue
         named.append({
             "name": name,
