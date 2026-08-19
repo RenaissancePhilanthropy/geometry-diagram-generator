@@ -11,6 +11,7 @@ import math
 from typing import Any
 
 import sympy.geometry as spg
+from sympy.geometry.line import LinearEntity
 
 from . import ir
 from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
@@ -36,17 +37,29 @@ def centroid_of_obj(obj: Any) -> tuple[float, float]:
     types (see to_sympy.py) with no .vertices either — both previously
     crashed uncaught with AttributeError, escaping the retry loop
     entirely instead of giving the model a chance to fix it (confirmed
-    2026-08-09 across two unrelated models' eval failures).
+    2026-08-09 across two unrelated models' eval failures). Line/Segment/Ray
+    (from line_through/segment/ray/tangent_line/angle_bisector/etc.) have
+    no .vertices either — this one wasn't caught by a crash, since
+    build_entity_manifest's except-and-skip swallowed it silently instead:
+    a named Line/Segment/Ray variable was simply absent from the "named"
+    entity manifest, invisible to check_edit_locality regardless of
+    whether it appeared, disappeared, or moved (confirmed 2026-08-18, found
+    via evals/eval_locality_retry_judgment.py's fixture bank).
 
     For a pie-slice sector/arc, the average of center/start/end is not
     the exact area centroid of the region, but it's a reasonable point
     near the middle of the shape for text placement — the same
     standard this function already applies to Polygon (average of
-    vertices, not the exact area centroid either)."""
+    vertices, not the exact area centroid either). Line/Segment/Ray's
+    midpoint of its two defining points (.p1/.p2, shared by the whole
+    LinearEntity family) is the equivalent stand-in for an object with no
+    natural "center" at all."""
     if isinstance(obj, (Arc, Sector, EllipticalArc, EllipticalSector)):
         pts = [obj.center, obj.start, obj.end]
     elif isinstance(obj, (spg.Circle, spg.Ellipse)):
         pts = [obj.center]
+    elif isinstance(obj, LinearEntity):
+        pts = [obj.p1, obj.p2]
     else:
         pts = list(obj.vertices)
     cx = sum(sympy_to_float(p.x) for p in pts) / len(pts)

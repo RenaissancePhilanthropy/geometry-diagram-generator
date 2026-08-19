@@ -386,12 +386,18 @@
 
     # Mark the points
     draw_points(A, B, C)
-  # NOT [bisector, M]: `bisector` is a bare sympy Line (no .vertices),
-  # so centroid_of_obj raises AttributeError and build_entity_manifest's
-  # blanket except-and-skip silently excludes it from "named" entirely —
-  # confirmed directly (2026-08-18): sympy Line2D/Segment/Ray all lack
-  # .vertices. check_edit_locality can never see a bare Line/Segment/Ray
-  # variable appear, disappear, or move, independent of this feature —
-  # a real gap in the diagnostic itself, found via this fixture initially
-  # (wrongly) failing all three models identically for the same reason.
-  expect_still_unmatched: [M]
+  # Was temporarily [M] only: `bisector` (and, it turned out, `bc_seg`) are
+  # bare sympy Line/Segment objects with no .vertices, which used to make
+  # centroid_of_obj raise AttributeError and build_entity_manifest's
+  # except-and-skip silently exclude them from "named" entirely —
+  # check_edit_locality couldn't see a Line/Segment/Ray variable appear,
+  # disappear, or move at all (confirmed 2026-08-18; this fixture is what
+  # surfaced it, failing identically across three unrelated models for
+  # that structural reason, not a real judgment difference). Fixed in
+  # render_util.py's centroid_of_obj (LinearEntity branch, midpoint of
+  # .p1/.p2). Once fixed, all three models ALSO correctly dropped `bc_seg`
+  # (tri.side(B, C), used only to compute M) — a second fixture-authoring
+  # gap on the same root cause, not a new model issue: bc_seg belongs in
+  # this list too, since removing it along with the rest of the
+  # construction is the correct behavior, not an over-deletion.
+  expect_still_unmatched: [bisector, bc_seg, M]

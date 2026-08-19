@@ -2,8 +2,44 @@
 import math
 
 import pytest
+import sympy.geometry as spg
 
-from geometry_diagrams.ir.render_util import tick_values
+from geometry_diagrams.ir.render_util import build_entity_manifest, centroid_of_obj, tick_values
+from geometry_diagrams.ir.ir import DiagramIR, LineThrough
+
+
+def test_centroid_of_obj_returns_midpoint_for_line():
+    line = spg.Line(spg.Point(0, 0), spg.Point(4, 0))
+    assert centroid_of_obj(line) == (2.0, 0.0)
+
+
+def test_centroid_of_obj_returns_midpoint_for_segment():
+    seg = spg.Segment(spg.Point(0, 0), spg.Point(2, 2))
+    assert centroid_of_obj(seg) == (1.0, 1.0)
+
+
+def test_centroid_of_obj_returns_midpoint_for_ray():
+    ray = spg.Ray(spg.Point(1, 1), spg.Point(3, 1))
+    assert centroid_of_obj(ray) == (2.0, 1.0)
+
+
+def test_build_entity_manifest_includes_a_named_line():
+    # Before this fix: a bare sympy Line has no .vertices, centroid_of_obj
+    # raised AttributeError, and build_entity_manifest's except-and-skip
+    # silently dropped it from "named" entirely — check_edit_locality could
+    # never see a named Line/Segment/Ray variable appear, disappear, or
+    # move (confirmed directly against sympy's Line2D/Segment/Ray, and via
+    # evals/scenarios_locality_judgment.yaml's legitimate-remove-angle-bisector
+    # fixture failing identically across three unrelated models for this
+    # exact reason).
+    diagram_ir = DiagramIR(define=[LineThrough(id="l1", p="p1", q="p2")], render=[])
+    sym = {"l1": spg.Line(spg.Point(0, 0), spg.Point(4, 0))}
+    variable_ids = {"my_line": "l1"}
+
+    manifest = build_entity_manifest(diagram_ir, sym, variable_ids)
+
+    names = {e["name"] for e in manifest["named"]}
+    assert "my_line" in names
 
 
 def test_tick_values_excludes_zero():
