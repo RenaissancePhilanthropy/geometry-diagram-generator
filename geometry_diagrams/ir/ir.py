@@ -793,6 +793,36 @@ class Centroid(CheckBase):
     c: PointId
 
 
+class Convex(CheckBase):
+    """Polygon (or triangle) vertices form a convex shape. Maps to Polygon.is_convex()."""
+    kind: Literal["convex"] = "convex"
+    polygon: ObjId
+
+
+class CCW(CheckBase):
+    """Polygon (or triangle) vertices are wound counter-clockwise (positive signed area)."""
+    kind: Literal["ccw"] = "ccw"
+    polygon: ObjId
+
+
+class MinDistance(CheckBase):
+    """Points a and b are at least min_dist apart; fails if strictly closer."""
+    kind: Literal["min_distance"] = "min_distance"
+    a: PointId
+    b: PointId
+    min_dist: float
+
+
+class CongruentTriangles(CheckBase):
+    """Triangles t1 and t2 are congruent (SSS): sorted side lengths match pairwise
+    within tolerance. No vertex correspondence is required — mirrors
+    SimilarTriangles's precedent of sorting and ignoring correspondence.
+    """
+    kind: Literal["congruent_triangles"] = "congruent_triangles"
+    t1: TriangleId
+    t2: TriangleId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -801,10 +831,11 @@ Check = Annotated[
         Parallel, NotParallel, Perpendicular,
         RightAngle, AngleEqual,
         EqualLength, DistanceEquals, RatioEqual,
-        SimilarTriangles,
+        SimilarTriangles, CongruentTriangles,
         Tangent,
         OppositeSide, SameSide,
         Centroid,
+        Convex, CCW, MinDistance,
     ],
     Field(discriminator="kind")
 ]

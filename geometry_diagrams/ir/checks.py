@@ -10,6 +10,9 @@ from . import ir
 from .to_sympy import EllipticalSector, Sector, SymTable
 
 
+DEFAULT_TOL = 5e-3
+
+
 class CheckResult(BaseModel):
     check: ir.CheckBase
     passed: bool
@@ -19,7 +22,7 @@ class CheckResult(BaseModel):
 def run_checks(
     checks: list[ir.Check],
     sym: SymTable,
-    tol: float = 5e-3,
+    tol: float = DEFAULT_TOL,
 ) -> list[CheckResult]:
     """Evaluate each Check against the compiled symbol table."""
     return [_check_one(c, sym, tol) for c in checks]
@@ -195,6 +198,37 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"{a!r}{b!r}{c!r}: expected ({cx:.4f}, {cy:.4f}), "
                     f"got ({float(ga.x.evalf()):.4f}, {float(ga.y.evalf()):.4f})"
                 )
+
+            case ir.Convex(polygon=polygon):
+                poly = sym[polygon]
+                ok = _to_bool(poly.is_convex())
+                msg = "" if ok else f"Polygon {polygon!r} is not convex"
+
+            case ir.CCW(polygon=polygon):
+                poly = sym[polygon]
+                area = float(poly.area.evalf())
+                ok = area > 0
+                msg = "" if ok else (
+                    f"Polygon {polygon!r} is not wound counter-clockwise "
+                    f"(signed area={area:.4f})"
+                )
+
+            case ir.MinDistance(a=a, b=b, min_dist=min_dist):
+                d = float(sym[a].distance(sym[b]).evalf())
+                ok = d >= min_dist
+                msg = "" if ok else (
+                    f"Points {a!r} and {b!r} are too close: distance={d:.4f}, "
+                    f"expected at least {min_dist:.4f}"
+                )
+
+            case ir.CongruentTriangles(t1=t1, t2=t2):
+                tri1, tri2 = sym[t1], sym[t2]
+                lengths1 = sorted(float(s.length.evalf()) for s in tri1.sides)
+                lengths2 = sorted(float(s.length.evalf()) for s in tri2.sides)
+                ok = all(abs(a - b) < t for a, b in zip(lengths1, lengths2))
+                len1 = [f"{l:.4f}" for l in lengths1]
+                len2 = [f"{l:.4f}" for l in lengths2]
+                msg = "" if ok else f"Triangles not congruent: {len1} vs {len2}"
 
             case _:
                 # Unknown check kind — pass through (forward-compatible)

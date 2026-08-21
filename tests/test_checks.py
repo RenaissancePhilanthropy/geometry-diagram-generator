@@ -3,7 +3,7 @@
 import sympy.geometry as spg
 
 from geometry_diagrams.ir.ir import AngleEqual, AnglePoints
-from geometry_diagrams.ir.checks import run_checks
+from geometry_diagrams.ir.checks import run_checks, _check_one, DEFAULT_TOL
 
 
 def test_angle_equal_failure_shows_candidates():
@@ -172,3 +172,157 @@ def test_centroid_irrational_equilateral():
     checks = [Centroid(g="G", a="A", b="B", c="C")]
     results = run_checks(checks, sym)
     assert results[0].passed
+
+
+# ---------------------------------------------------------------------------
+# Convex checks
+# ---------------------------------------------------------------------------
+
+def test_convex_passes_for_convex_polygon():
+    """Convex check passes for a square (convex quadrilateral)."""
+    from geometry_diagrams.ir.ir import Convex
+
+    sym = {
+        "sq": spg.Polygon(
+            spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(4, 4), spg.Point2D(0, 4)
+        ),
+    }
+    check = Convex(polygon="sq")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_convex_fails_for_non_convex_polygon():
+    """Convex check fails for a non-convex (dart-shaped) polygon."""
+    from geometry_diagrams.ir.ir import Convex
+
+    sym = {
+        # Dart shape: a reflex vertex at (2, 1) pulls the quadrilateral inward.
+        "dart": spg.Polygon(
+            spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(2, 1), spg.Point2D(4, 4)
+        ),
+    }
+    check = Convex(polygon="dart")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "dart" in result.message
+    assert "convex" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# CCW checks
+# ---------------------------------------------------------------------------
+
+def test_ccw_passes_for_counterclockwise_polygon():
+    """CCW check passes for vertices wound counter-clockwise."""
+    from geometry_diagrams.ir.ir import CCW
+
+    sym = {
+        "sq": spg.Polygon(
+            spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(4, 4), spg.Point2D(0, 4)
+        ),
+    }
+    check = CCW(polygon="sq")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_ccw_fails_for_clockwise_polygon():
+    """CCW check fails for vertices wound clockwise."""
+    from geometry_diagrams.ir.ir import CCW
+
+    sym = {
+        "sq": spg.Polygon(
+            spg.Point2D(0, 0), spg.Point2D(0, 4), spg.Point2D(4, 4), spg.Point2D(4, 0)
+        ),
+    }
+    check = CCW(polygon="sq")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "sq" in result.message
+
+
+# ---------------------------------------------------------------------------
+# MinDistance checks
+# ---------------------------------------------------------------------------
+
+def test_min_distance_passes_when_far_enough():
+    """MinDistance check passes when points are at least min_dist apart."""
+    from geometry_diagrams.ir.ir import MinDistance
+
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(3, 4),  # distance 5
+    }
+    check = MinDistance(a="A", b="B", min_dist=5.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_min_distance_fails_when_too_close():
+    """MinDistance check fails when points are strictly closer than min_dist."""
+    from geometry_diagrams.ir.ir import MinDistance
+
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(3, 4),  # distance 5
+    }
+    check = MinDistance(a="A", b="B", min_dist=6.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "A" in result.message and "B" in result.message
+
+
+# ---------------------------------------------------------------------------
+# CongruentTriangles checks
+# ---------------------------------------------------------------------------
+
+def test_congruent_triangles_passes_correspondence_independent():
+    """CongruentTriangles passes on matching sorted side lengths, different vertex order.
+
+    Triangle 1 has sides (3, 4, 5). Triangle 2 is a rigid translation with vertices
+    listed in a different order — proving SSS matching is correspondence-independent.
+    """
+    from geometry_diagrams.ir.ir import CongruentTriangles
+
+    sym = {
+        "T1": spg.Triangle(spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(0, 3)),
+        # Same triangle shape, translated, vertices listed in a different rotational order.
+        "T2": spg.Triangle(spg.Point2D(10, 3), spg.Point2D(10, 0), spg.Point2D(14, 0)),
+    }
+    check = CongruentTriangles(t1="T1", t2="T2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_congruent_triangles_fails_for_different_size():
+    """CongruentTriangles fails when side lengths don't match."""
+    from geometry_diagrams.ir.ir import CongruentTriangles
+
+    sym = {
+        "T1": spg.Triangle(spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(0, 3)),
+        "T2": spg.Triangle(spg.Point2D(0, 0), spg.Point2D(8, 0), spg.Point2D(0, 6)),
+    }
+    check = CongruentTriangles(t1="T1", t2="T2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "T1" in result.message or "congruent" in result.message.lower()
+
+
+def test_congruent_triangles_distinguishes_from_similar():
+    """Same angles, different scale: SimilarTriangles passes but CongruentTriangles fails."""
+    from geometry_diagrams.ir.ir import CongruentTriangles, SimilarTriangles
+
+    sym = {
+        "T1": spg.Triangle(spg.Point2D(0, 0), spg.Point2D(4, 0), spg.Point2D(0, 3)),
+        # Same angles (scaled 2x) — similar, but not congruent.
+        "T2": spg.Triangle(spg.Point2D(0, 0), spg.Point2D(8, 0), spg.Point2D(0, 6)),
+    }
+    similar_result = _check_one(SimilarTriangles(t1="T1", t2="T2"), sym, DEFAULT_TOL)
+    congruent_result = _check_one(CongruentTriangles(t1="T1", t2="T2"), sym, DEFAULT_TOL)
+    assert similar_result.passed
+    assert not congruent_result.passed
