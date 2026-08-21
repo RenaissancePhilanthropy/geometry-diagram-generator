@@ -20,7 +20,7 @@ from __future__ import annotations
 from geometry_diagrams.ir import checks
 from geometry_diagrams.ir import ir
 from geometry_diagrams.pydsl.builder import Builder, GeometricAssertionError, get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Point, Triangle
+from geometry_diagrams.pydsl.handles import AngleRef, Point, Polygon, Triangle
 
 __all__ = [
     "assert_distinct_points",
@@ -42,6 +42,11 @@ __all__ = [
     "assert_opposite_side",
     "assert_same_side",
     "assert_centroid",
+    "assert_convex",
+    "assert_ccw",
+    "assert_min_distance",
+    "assert_congruent_triangles",
+    "assert_in_canvas",
 ]
 
 
@@ -246,3 +251,62 @@ def assert_centroid(g: Point, a: Point, b: Point, c: Point, *, tol: float | None
     builder = get_builder()
     check = ir.Centroid(g=g.id, a=a.id, b=b.id, c=c.id, tol=tol)
     _run_assertion(builder, check, [g.id, a.id, b.id, c.id])
+
+
+# ---------------------------------------------------------------------------
+# New predicates (ticket 04): convex / ccw / min-distance / congruent triangles
+# ---------------------------------------------------------------------------
+
+def assert_convex(polygon: Polygon, *, tol: float | None = None) -> None:
+    """Assert that a polygon's (or triangle's) vertices form a convex shape."""
+    builder = get_builder()
+    check = ir.Convex(polygon=polygon.id, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_ccw(polygon: Polygon, *, tol: float | None = None) -> None:
+    """Assert that a polygon's (or triangle's) vertices are wound counter-clockwise."""
+    builder = get_builder()
+    check = ir.CCW(polygon=polygon.id, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_min_distance(p: Point, q: Point, min_dist: float, *, tol: float | None = None) -> None:
+    """Assert that points p and q are at least min_dist apart."""
+    builder = get_builder()
+    check = ir.MinDistance(a=p.id, b=q.id, min_dist=min_dist, tol=tol)
+    _run_assertion(builder, check, [p.id, q.id])
+
+
+def assert_congruent_triangles(t1: Triangle, t2: Triangle, *, tol: float | None = None) -> None:
+    """Assert that two triangles are congruent (SSS: matching sorted side
+    lengths, no required vertex correspondence)."""
+    builder = get_builder()
+    check = ir.CongruentTriangles(t1=t1.id, t2=t2.id, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_in_canvas(p: Point) -> None:
+    """Assert that point p lies within the diagram's canvas bounds.
+
+    Not backed by an ir.Check kind (see the pydsl-asserts spec's
+    Implementation Decisions) — this reads `builder._canvas` directly,
+    falling back to `ir.Canvas()`'s defaults ([-5, 5] x [-5, 5]) if
+    `canvas()` hasn't been called yet.
+
+    Ordering hazard, documented not hidden: `canvas()` can be called
+    anywhere in a script, and this function reflects the canvas as
+    configured at the point it is called — not whatever the script sets
+    later. Call this *after* your script's own `canvas(...)` call if you
+    rely on custom bounds; called before it, this validates against
+    `ir.Canvas()`'s default bounds instead.
+    """
+    builder = get_builder()
+    builder._advance_sym()
+    x, y = p.x, p.y
+    canvas = builder._canvas or ir.Canvas()
+    if not (canvas.xmin <= x <= canvas.xmax and canvas.ymin <= y <= canvas.ymax):
+        raise GeometricAssertionError(
+            f"Point ({x:.2f}, {y:.2f}) is outside canvas bounds "
+            f"[{canvas.xmin:.2f}, {canvas.xmax:.2f}] x [{canvas.ymin:.2f}, {canvas.ymax:.2f}]"
+        )

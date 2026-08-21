@@ -10,16 +10,18 @@ import math
 import pytest
 
 from geometry_diagrams.pydsl.api import (
-    angle, circle, intersection, line_through, point, point_on, ray,
-    rotate_point, segment, tangent_line, triangle,
+    angle, canvas, circle, intersection, line_through, point, point_on,
+    polygon, ray, rotate_point, segment, tangent_line, triangle,
 )
 from geometry_diagrams.pydsl.asserts import (
-    assert_angle_equal, assert_centroid, assert_collinear, assert_distance,
+    assert_angle_equal, assert_ccw, assert_centroid, assert_collinear,
+    assert_congruent_triangles, assert_convex, assert_distance,
     assert_distinct_objects, assert_distinct_points, assert_equal_length,
-    assert_not_collinear, assert_not_on, assert_not_parallel, assert_on,
-    assert_opposite_side, assert_parallel, assert_perpendicular,
-    assert_ratio_equal, assert_right_angle, assert_same_side,
-    assert_similar_triangles, assert_tangent,
+    assert_in_canvas, assert_min_distance, assert_not_collinear,
+    assert_not_on, assert_not_parallel, assert_on, assert_opposite_side,
+    assert_parallel, assert_perpendicular, assert_ratio_equal,
+    assert_right_angle, assert_same_side, assert_similar_triangles,
+    assert_tangent,
 )
 from geometry_diagrams.pydsl.builder import GeometricAssertionError, new_builder_context
 
@@ -447,3 +449,129 @@ def test_assert_distance_tol_override_still_fails_outside_tol():
         s = segment(point(0, 0), point(4, 0))
         with pytest.raises(GeometricAssertionError):
             assert_distance(s, 4.1, tol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# assert_convex
+# ---------------------------------------------------------------------------
+
+def test_assert_convex_pass():
+    with new_builder_context():
+        sq = polygon(point(0, 0), point(4, 0), point(4, 4), point(0, 4))
+        assert_convex(sq)
+
+
+def test_assert_convex_fail():
+    with new_builder_context():
+        # dart-shaped (non-convex) quadrilateral
+        dart = polygon(point(0, 0), point(4, 4), point(0, 2), point(-4, 4))
+        with pytest.raises(GeometricAssertionError):
+            assert_convex(dart)
+
+
+# ---------------------------------------------------------------------------
+# assert_ccw
+# ---------------------------------------------------------------------------
+
+def test_assert_ccw_pass():
+    with new_builder_context():
+        sq = polygon(point(0, 0), point(4, 0), point(4, 4), point(0, 4))
+        assert_ccw(sq)
+
+
+def test_assert_ccw_fail():
+    with new_builder_context():
+        # clockwise winding
+        sq = polygon(point(0, 0), point(0, 4), point(4, 4), point(4, 0))
+        with pytest.raises(GeometricAssertionError):
+            assert_ccw(sq)
+
+
+# ---------------------------------------------------------------------------
+# assert_min_distance
+# ---------------------------------------------------------------------------
+
+def test_assert_min_distance_pass():
+    with new_builder_context():
+        p, q = point(0, 0), point(10, 0)
+        assert_min_distance(p, q, 5.0)
+
+
+def test_assert_min_distance_fail():
+    with new_builder_context():
+        p, q = point(0, 0), point(1, 0)
+        with pytest.raises(GeometricAssertionError):
+            assert_min_distance(p, q, 5.0)
+
+
+# ---------------------------------------------------------------------------
+# assert_congruent_triangles
+# ---------------------------------------------------------------------------
+
+def test_assert_congruent_triangles_pass():
+    with new_builder_context():
+        t1 = triangle(point(0, 0), point(4, 0), point(0, 3))
+        # same side lengths (3-4-5), different vertex order/placement
+        t2 = triangle(point(10, 0), point(10, 4), point(13, 4))
+        assert_congruent_triangles(t1, t2)
+
+
+def test_assert_congruent_triangles_fail():
+    with new_builder_context():
+        t1 = triangle(point(0, 0), point(4, 0), point(0, 3))
+        t2 = triangle(point(10, 0), point(20, 0), point(10, 15))
+        with pytest.raises(GeometricAssertionError):
+            assert_congruent_triangles(t1, t2)
+
+
+def test_assert_congruent_triangles_distinguishes_from_similar():
+    """Same angles, different scale: similar passes, congruent fails."""
+    with new_builder_context():
+        t1 = triangle(point(0, 0), point(4, 0), point(0, 3))
+        t2 = triangle(point(10, 0), point(18, 0), point(10, 6))  # 2x scale
+        assert_similar_triangles(t1, t2)
+        with pytest.raises(GeometricAssertionError):
+            assert_congruent_triangles(t1, t2)
+
+
+# ---------------------------------------------------------------------------
+# assert_in_canvas (pydsl-only; not backed by an ir.Check kind)
+# ---------------------------------------------------------------------------
+
+def test_assert_in_canvas_pass_default_bounds():
+    with new_builder_context():
+        p = point(1, 1)  # within ir.Canvas()'s default [-5, 5] x [-5, 5]
+        assert_in_canvas(p)
+
+
+def test_assert_in_canvas_fail_default_bounds():
+    with new_builder_context():
+        p = point(100, 100)  # well outside default bounds
+        with pytest.raises(GeometricAssertionError):
+            assert_in_canvas(p)
+
+
+def test_assert_in_canvas_after_canvas_call_uses_custom_bounds():
+    """Calling assert_in_canvas() after canvas(...) validates against the
+    custom bounds the script just set."""
+    with new_builder_context():
+        canvas((0, 20), (0, 20))
+        p = point(10, 10)  # outside default [-5,5]x[-5,5], inside custom bounds
+        assert_in_canvas(p)
+
+
+def test_assert_in_canvas_before_canvas_call_uses_default_bounds():
+    """Calling assert_in_canvas() before the script's own canvas(...) call
+    sees ir.Canvas()'s default bounds, not the custom ones set afterward —
+    the documented ordering hazard, locked in as a test."""
+    with new_builder_context():
+        p = point(10, 10)  # outside default [-5,5]x[-5,5]
+        with pytest.raises(GeometricAssertionError):
+            assert_in_canvas(p)  # canvas() hasn't been called yet
+        canvas((0, 20), (0, 20))  # set custom bounds only after the assertion ran
+
+
+def test_assert_in_canvas_docstring_notes_ordering_hazard():
+    doc = assert_in_canvas.__doc__.lower()
+    assert "order" in doc
+    assert "canvas(" in doc
