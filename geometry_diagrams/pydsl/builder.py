@@ -20,6 +20,10 @@ class OpCapExceededError(RuntimeError):
     """Raised when a script records more ops than the configured cap."""
 
 
+class GeometricAssertionError(ValueError):
+    """Raised when an assert_* predicate detects a failed geometric invariant."""
+
+
 class Builder:
     def __init__(self, op_cap: int = DEFAULT_OP_CAP) -> None:
         self._defs: list[DefStmt] = []

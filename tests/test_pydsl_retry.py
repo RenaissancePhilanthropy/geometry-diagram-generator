@@ -1,5 +1,5 @@
 """Tests for retry-layer failure classification and did-you-mean suggestions."""
-from geometry_diagrams.pydsl.builder import OpCapExceededError
+from geometry_diagrams.pydsl.builder import GeometricAssertionError, OpCapExceededError
 from geometry_diagrams.pydsl.retry import build_retry_message, classify_failure, suggest_name
 
 
@@ -24,6 +24,26 @@ def test_classify_failure_categorizes_value_error_as_structural_precondition():
 def test_classify_failure_categorizes_op_cap_directly_as_a_distinct_category():
     exc = OpCapExceededError("script recorded more than 2000 ops")
     assert classify_failure(exc) == "syntax_or_timeout"
+
+
+def test_classify_failure_categorizes_geometric_assertion_error_directly():
+    exc = GeometricAssertionError("expected AB == CD but got 3.0 != 4.0")
+    assert classify_failure(exc) == "geometric_assertion"
+
+
+def test_classify_failure_still_categorizes_plain_value_error_as_structural_precondition():
+    # GeometricAssertionError IS a ValueError, so this proves the new
+    # isinstance check doesn't swallow the pre-existing bare-ValueError case.
+    exc = ValueError("'p9' is not a vertex of triangle 'tri_1'")
+    assert classify_failure(exc) == "structural_precondition"
+
+
+def test_classify_failure_recognizes_wrapped_geometric_assertion_error_message():
+    wrapped = (
+        "Code execution failed at line 'assert_equal_length(ab, cd)' due to: "
+        "GeometricAssertionError: expected AB == CD but got 3.0 != 4.0"
+    )
+    assert classify_failure(wrapped) == "geometric_assertion"
 
 
 def test_classify_failure_categorizes_memory_error_as_memory_limit():

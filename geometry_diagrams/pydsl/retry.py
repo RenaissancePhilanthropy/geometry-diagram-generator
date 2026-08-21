@@ -18,7 +18,7 @@ import inspect
 import re
 
 import geometry_diagrams.pydsl as pydsl_module
-from geometry_diagrams.pydsl.builder import OpCapExceededError
+from geometry_diagrams.pydsl.builder import GeometricAssertionError, OpCapExceededError
 
 # The did-you-mean candidate pool must match what Task 10 actually injects as
 # executor tools: functions only, not handle classes (Point, Triangle, ...
@@ -46,6 +46,8 @@ def classify_failure(exc_or_message: "Exception | str") -> str:
         return "hallucinated_api"
     if isinstance(exc_or_message, OpCapExceededError):
         return "syntax_or_timeout"
+    if isinstance(exc_or_message, GeometricAssertionError):
+        return "geometric_assertion"
     if isinstance(exc_or_message, ValueError):
         return "structural_precondition"
     if isinstance(exc_or_message, MemoryError):
@@ -71,6 +73,8 @@ def classify_failure(exc_or_message: "Exception | str") -> str:
             return "hallucinated_api"
         if type_name == "OpCapExceededError":
             return "syntax_or_timeout"
+        if type_name == "GeometricAssertionError":
+            return "geometric_assertion"
         if type_name == "ValueError":
             return "structural_precondition"
         if type_name == "MemoryError":
