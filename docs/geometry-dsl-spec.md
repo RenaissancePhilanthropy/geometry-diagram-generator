@@ -741,6 +741,10 @@ After execution, the system checks:
    - `angle_bisector(D, A, B, C)`: AD bisects angle BAC
    - `perpendicular([A,B], [C,D])`: lines are perpendicular
    - `centroid(G, A, B, C)`: G is centroid of triangle ABC
+   - `convex(P)`: polygon P's vertices form a convex shape
+   - `ccw(P)`: polygon P's vertices are wound counter-clockwise (positive signed area)
+   - `min_distance(A, B, min_dist)`: points A and B are at least min_dist apart
+   - `congruent_triangles(T1, T2)`: triangles T1 and T2 are congruent (SSS: matching sorted side lengths, no required vertex correspondence)
 
 3. **Annotation completeness**: All requested marks are present.
 

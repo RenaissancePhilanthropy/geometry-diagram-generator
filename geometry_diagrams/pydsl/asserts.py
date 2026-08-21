@@ -1,14 +1,19 @@
 # geometry_diagrams/pydsl/asserts.py
 """assert_* geometric-invariant predicates for the Python DSL surface.
 
-Each function here is a thin wrapper around an existing `ir.Check` kind:
-build the matching `ir.Check` object from the caller's handle ids, force
-resolution of any not-yet-materialized point via `Builder._advance_sym()`,
-run it through `checks._check_one` (the same dispatcher the JSON/recipe DSL
-uses), and raise `GeometricAssertionError` with a message that has every
-recognized point id substituted for its resolved `(x.xx, y.yy)` coordinate
-string (pydsl ids are opaque auto-generated hidden ids the LLM never wrote,
-so a raw id in a failure message is useless to it).
+All functions except `assert_in_canvas` are thin wrappers around an existing
+`ir.Check` kind: build the matching `ir.Check` object from the caller's
+handle ids, force resolution of any not-yet-materialized point via
+`Builder._advance_sym()`, run it through `checks._check_one` (the same
+dispatcher the JSON/recipe DSL uses), and raise `GeometricAssertionError`
+with a message that has every recognized point id substituted for its
+resolved `(x.xx, y.yy)` coordinate string (pydsl ids are opaque
+auto-generated hidden ids the LLM never wrote, so a raw id in a failure
+message is useless to it).
+
+`assert_in_canvas` is the one exception: it has no backing `ir.Check` kind
+(a deliberate design decision — see its own docstring) and instead reads
+`builder._canvas` directly and compares bounds itself.
 
 `GeometricAssertionError` is a `ValueError` subclass (defined in
 `builder.py`, imported here) so any code that already catches `ValueError`
@@ -254,7 +259,7 @@ def assert_centroid(g: Point, a: Point, b: Point, c: Point, *, tol: float | None
 
 
 # ---------------------------------------------------------------------------
-# New predicates (ticket 04): convex / ccw / min-distance / congruent triangles
+# Convex / ccw / min-distance / congruent-triangles predicates
 # ---------------------------------------------------------------------------
 
 def assert_convex(polygon: Polygon, *, tol: float | None = None) -> None:
