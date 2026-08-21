@@ -502,6 +502,36 @@ t.side(a, outside)
     assert "did you mean" not in result.retry_message
 
 
+def test_geometric_assertion_error_survives_the_sandbox_boundary_correctly_classified():
+    """A failing assert_* call must cross the real LocalPythonExecutor
+    sandbox boundary (script -> subprocess -> InterpreterError-wrapped
+    message string -> ScriptResult) and still classify as
+    "geometric_assertion" via retry.py's classify_failure() — not the
+    generic "structural_precondition" a bare ValueError would get. This is
+    the whole point of GeometricAssertionError being a ValueError subclass
+    with its own retry.py isinstance/substring branches (see retry.py's
+    module docstring on how the type name survives as embedded text)."""
+    from geometry_diagrams.pydsl.retry import classify_failure
+
+    script = """
+a = point(0, 0)
+b = point(0, 0)
+assert_distinct_points(a, b)
+"""
+    result = run_script(script)
+    assert result.diagram_ir is None
+    assert result.error is not None
+    assert "GeometricAssertionError" in result.error
+    assert result.error_type == "geometric_assertion"
+    # Re-derive the classification directly from the surviving message
+    # string, the same way the sandboxed child process itself does — proves
+    # the distinction is genuinely recoverable after the subprocess
+    # boundary, not just an artifact of how ScriptResult happened to be
+    # constructed.
+    assert classify_failure(result.error) == "geometric_assertion"
+    assert "did you mean" not in (result.retry_message or "")
+
+
 def test_variable_ids_maps_assigned_names_to_internal_ids():
     script = """
 a = point(0, 0)

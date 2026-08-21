@@ -145,5 +145,14 @@ works if you prefer to write it explicitly, but it isn't required.
   point's position genuinely can't be determined (a real geometric error upstream), not
   because the point was constructed rather than a literal. Use `.label(show_coords=True)`
   if you just want to display a point's coordinates without needing the numbers yourself.
+- After a construction step whose correctness isn't obvious from the construction steps
+  alone — an `intersection()` disambiguated with `near=`/`side_of=`, a chain of
+  `rotate_point()`/`reflect_point()`/`dilate_point()` calls, a ratio or expected length
+  computed rather than given as a literal — call the matching `assert_*` function
+  (e.g. `assert_distinct_points`, `assert_not_collinear`, `assert_right_angle`,
+  `assert_equal_length`, `assert_similar_triangles`, `assert_in_canvas`, ...) right after
+  building it. Each one raises immediately with the actual computed values if the
+  invariant doesn't hold, so a wrong `pick`/ratio/axis surfaces before rendering instead
+  of silently producing a wrong-looking diagram.
 - The script is plain top-level statements — no function defs required, no return value.
 """

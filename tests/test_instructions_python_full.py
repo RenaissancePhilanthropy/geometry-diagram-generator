@@ -55,3 +55,14 @@ def test_python_full_instructions_document_marks_and_fill_holes():
     text = build_python_full_instructions()
     for name in ("mark_equal(", "mark_parallel(", "mark_right_angle(", "holes="):
         assert name in text, f"instructions missing mention of {name}"
+
+
+def test_python_full_instructions_encourage_assert_usage_after_non_obvious_steps():
+    """The 'encouraged' condition the ticket-05 eval comparison measures
+    against baseline: a Rules paragraph nudging assert_* usage after a
+    construction step whose correctness isn't obvious from the construction
+    alone, naming at least one concrete assert_* example."""
+    text = build_python_full_instructions()
+    assert "isn't obvious from the construction steps" in text
+    assert "assert_distinct_points" in text
+    assert "raises immediately" in text

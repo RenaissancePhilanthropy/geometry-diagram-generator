@@ -1,4 +1,6 @@
 """Tests for the pydsl stub generator."""
+import inspect
+
 from geometry_diagrams.pydsl.stub import generate_stub
 
 
@@ -36,3 +38,23 @@ def test_stub_does_not_include_private_helpers():
     # Triangle/Polygon carry an internal _builder reference (see Task 2's
     # note on why) — it must never leak into the model-facing stub.
     assert "_builder" not in stub
+
+
+def test_stub_auto_discovers_all_24_assert_predicates_with_no_stub_code_change():
+    """stub.py's generate_stub() iterates pydsl.__all__ generically — it has
+    no special-casing for assert_* at all. This test proves the 24-function
+    assert_* surface added across tickets 01-04 is picked up automatically
+    (signature + docstring first line), with zero change to stub.py itself."""
+    from geometry_diagrams.pydsl import asserts as asserts_module
+    import geometry_diagrams.pydsl as pydsl_module
+
+    assert len(asserts_module.__all__) == 24
+    stub = generate_stub()
+    for name in asserts_module.__all__:
+        assert name in pydsl_module.__all__, f"{name} missing from pydsl.__all__"
+        assert f"def {name}(" in stub, f"missing {name} in stub"
+        fn = getattr(pydsl_module, name)
+        doc = inspect.getdoc(fn) or ""
+        first_line = doc.splitlines()[0] if doc else ""
+        assert first_line, f"{name} is missing a docstring"
+        assert first_line in stub, f"missing docstring first line for {name}"
