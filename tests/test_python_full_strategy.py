@@ -1791,3 +1791,191 @@ async def test_render_diagram_does_not_retry_on_locality_violation_when_disabled
     assert "svg" in result and "error" not in result
     assert len(attempts) == 1
     assert _closure_stack(render_tool)[-1]["locality_retry_fired"] is False
+
+
+# ---------------------------------------------------------------------------
+# Ticket 04: pre-assert graph integration
+# (use_pre_assert_step / precomputed_advisory_context on PythonFullStrategy.run)
+# ---------------------------------------------------------------------------
+
+from geometry_diagrams.strategies.pre_assert_step import FilteredCheck, PreAssertProposalResult
+from geometry_diagrams.strategies.python_full import EXTRA_CATEGORY_ALLOWLIST, _advisory_text_for_model
+
+
+def _filtered_check(raw_text: str, outcome: str, comment: "str | None" = None) -> FilteredCheck:
+    return FilteredCheck(
+        raw_text=raw_text, comment=comment, check=None,
+        outcome=outcome, stage="relevance", message=None if outcome == "entailed" else "reason",
+    )
+
+
+@pytest.mark.asyncio
+async def test_use_pre_assert_step_and_precomputed_advisory_context_are_mutually_exclusive():
+    """spec.md's Graph integration / Item-generation decisions: the two
+    knobs are mutually exclusive -- passing both is a ValueError, raised
+    before any LLM call (no mocks needed to prove this)."""
+    strategy = PythonFullStrategy()
+    with pytest.raises(ValueError):
+        await strategy.run(
+            "a right triangle",
+            use_pre_assert_step=True,
+            precomputed_advisory_context="some precomputed text",
+        )
+
+
+@pytest.mark.asyncio
+async def test_use_pre_assert_step_false_matches_default_and_never_calls_pre_step():
+    """Non-regression check (ticket 04's own required test): with
+    use_pre_assert_step left at its default (False, today's shipped
+    behavior) and with it passed explicitly as False, the graph must be
+    identical to what shipped before this ticket -- same script, same
+    attempt-trace stages, no pre_assert_trace, and propose_and_filter_checks
+    never called."""
+    with patch(
+        "geometry_diagrams.strategies.python_full.propose_and_filter_checks",
+        new=AsyncMock(side_effect=AssertionError(
+            "propose_and_filter_checks must not be called when use_pre_assert_step=False"
+        )),
+    ):
+        mock_llm_default = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+        with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm_default):
+            result_default = await PythonFullStrategy().run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            )
+
+        mock_llm_explicit = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+        with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm_explicit):
+            result_explicit = await PythonFullStrategy().run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+                use_pre_assert_step=False,
+            )
+
+    assert result_default.script == result_explicit.script == VALID_SCRIPT.strip("\n") + "\n"
+    default_stages = [t.stage for t in result_default.python_full_metadata.attempt_traces]
+    explicit_stages = [t.stage for t in result_explicit.python_full_metadata.attempt_traces]
+    assert default_stages == explicit_stages == ["success"]
+    assert result_default.python_full_metadata.pre_assert_trace is None
+    assert result_explicit.python_full_metadata.pre_assert_trace is None
+
+
+@pytest.mark.asyncio
+async def test_use_pre_assert_step_true_augments_prompt_and_logs_trace():
+    """use_pre_assert_step=True: propose_and_filter_checks is called once, its
+    "entailed" survivor is turned into advisory text that actually reaches
+    the script-generation prompt (proving the new node's output "visibly
+    influences" the script-writer's own input, per the ticket's own
+    end-to-end requirement), and the pre-step's own verdict is logged onto
+    python_full_metadata.pre_assert_trace."""
+    entailed = _filtered_check(
+        "assert_equal_length(segment(O, A), segment(O, B))",
+        outcome="entailed", comment="O is equidistant from A and B",
+    )
+    fake_result = PreAssertProposalResult(
+        raw_response="assert_equal_length(segment(O, A), segment(O, B))\n",
+        retried=False, filtered_checks=[entailed], unparsed_lines=[], advisory_text="unused",
+    )
+
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch(
+        "geometry_diagrams.strategies.python_full.propose_and_filter_checks",
+        new=AsyncMock(return_value=fake_result),
+    ) as mock_pre_step, patch(
+        "geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm
+    ):
+        result = await PythonFullStrategy().run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            use_pre_assert_step=True,
+        )
+
+    mock_pre_step.assert_awaited_once()
+    structured_mock = mock_llm.with_structured_output.return_value
+    sent_prompt = structured_mock.ainvoke.call_args.args[0][-1].content
+    assert "assert_equal_length(segment(O, A), segment(O, B))" in sent_prompt
+    assert "O is equidistant from A and B" in sent_prompt
+
+    trace = result.python_full_metadata.pre_assert_trace
+    assert trace is not None
+    assert trace.retried is False
+    assert trace.filtered_checks == [entailed]
+    assert "assert_equal_length" in trace.advisory_text
+
+
+@pytest.mark.asyncio
+async def test_use_pre_assert_step_true_excludes_extra_category_for_non_allowlisted_model():
+    """The "extra" category (failed request-relevance) is only advisory
+    context for a model on EXTRA_CATEGORY_ALLOWLIST -- for any other model
+    it must not reach the prompt at all, even though the "entailed" one
+    still does."""
+    entailed = _filtered_check("assert_distinct_points(A, B)", outcome="entailed")
+    extra = _filtered_check(
+        "assert_equal_length(segment(A, B), segment(A, C))", outcome="extra",
+    )
+    fake_result = PreAssertProposalResult(
+        raw_response="assert_distinct_points(A, B)\nassert_equal_length(segment(A, B), segment(A, C))\n",
+        retried=False, filtered_checks=[entailed, extra], unparsed_lines=[], advisory_text="unused",
+    )
+    non_allowlisted_model = "openrouter:google/gemma-4-31b-it"
+    assert non_allowlisted_model not in EXTRA_CATEGORY_ALLOWLIST
+
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch(
+        "geometry_diagrams.strategies.python_full.propose_and_filter_checks",
+        new=AsyncMock(return_value=fake_result),
+    ), patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        await PythonFullStrategy().run(
+            "a right triangle", model=non_allowlisted_model, renderer=SVGRenderer(),
+            use_pre_assert_step=True,
+        )
+
+    structured_mock = mock_llm.with_structured_output.return_value
+    sent_prompt = structured_mock.ainvoke.call_args.args[0][-1].content
+    assert "assert_distinct_points(A, B)" in sent_prompt
+    assert "assert_equal_length(segment(A, B), segment(A, C))" not in sent_prompt
+
+
+@pytest.mark.asyncio
+async def test_precomputed_advisory_context_skips_pre_step_call_entirely():
+    """precomputed_advisory_context is item-generation's actual use case
+    (spec.md): the string is used directly as advisory context, appended
+    to the prompt the same way, with NO call to propose_and_filter_checks
+    at all -- and no pre_assert_trace, since nothing was computed here."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch(
+        "geometry_diagrams.strategies.python_full.propose_and_filter_checks",
+        new=AsyncMock(side_effect=AssertionError("must not be called")),
+    ) as mock_pre_step, patch(
+        "geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm
+    ):
+        result = await PythonFullStrategy().run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            precomputed_advisory_context="## Extra context (optional)\n\n- a precomputed hint",
+        )
+
+    mock_pre_step.assert_not_awaited()
+    structured_mock = mock_llm.with_structured_output.return_value
+    sent_prompt = structured_mock.ainvoke.call_args.args[0][-1].content
+    assert "a precomputed hint" in sent_prompt
+    assert result.python_full_metadata.pre_assert_trace is None
+
+
+def test_advisory_text_for_model_gates_extra_category_by_allowlist():
+    """Unit test for the actual per-model gating logic
+    (_advisory_text_for_model), independent of the graph: "entailed" checks
+    go to any model; "extra" checks only to a model on
+    EXTRA_CATEGORY_ALLOWLIST; "rejected" checks never go to any model."""
+    entailed = _filtered_check("assert_distinct_points(A, B)", outcome="entailed")
+    extra = _filtered_check("assert_equal_length(segment(A,B), segment(A,C))", outcome="extra")
+    rejected = _filtered_check("assert_collinear(A, A, A)", outcome="rejected")
+
+    allowlisted_text = _advisory_text_for_model(
+        [entailed, extra, rejected], "anthropic:claude-sonnet-4-6",
+    )
+    assert "assert_distinct_points(A, B)" in allowlisted_text
+    assert "assert_equal_length(segment(A,B), segment(A,C))" in allowlisted_text
+    assert "assert_collinear(A, A, A)" not in allowlisted_text
+
+    not_allowlisted_text = _advisory_text_for_model(
+        [entailed, extra, rejected], "openrouter:google/gemma-4-31b-it",
+    )
+    assert "assert_distinct_points(A, B)" in not_allowlisted_text
+    assert "assert_equal_length(segment(A,B), segment(A,C))" not in not_allowlisted_text

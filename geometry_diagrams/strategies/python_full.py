@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclasses_replace
 from typing import Any, Optional, TypedDict
 
 from pydantic import BaseModel, Field, ValidationError
@@ -21,6 +21,7 @@ from .llm import (
 )
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
+from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
 from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
@@ -681,6 +682,73 @@ def _clean_script(script: "str | None") -> "str | None":
     return script
 
 
+# Per-model allowlist for the pre-assert pipeline's "extra" category (ticket 04,
+# spec.md's "Per-model allowlist" Implementation Decision). A check that passes
+# stages 1-3 but fails stage 4 (request-relevance) is only ever handed to a
+# script-writer model on this list, as advisory context -- every other model gets
+# only the "entailed" category. Seeded, per the spec, from the prototype's own
+# tested-advisory-safe models (Claude Sonnet, GPT-5.6-luna, GPT-OSS-20b); models
+# not yet tested for advisory-safety default to excluded, not included. This is
+# deliberately plain, easily-extended data -- NOT inferred from general model
+# reputation/benchmarks/size (explicitly out of scope per spec.md) -- extending
+# it to a new model means testing that model the same way (the steering
+# experiment in .scratch/pre-assert-proposal/issues/06-cross-model-generalization.md
+# and 07-emphatic-advisory.md), then adding its id here.
+EXTRA_CATEGORY_ALLOWLIST: frozenset[str] = frozenset({
+    "anthropic:claude-sonnet-4-6",
+    "openai:gpt-5.6-luna",
+    "vercel:openai/gpt-oss-20b",
+})
+
+
+def _advisory_text_for_model(filtered_checks: "list[FilteredCheck]", model_id: str) -> str:
+    """The advisory text handed to `model_id`'s script-writer call: always the
+    "entailed" category (checks that passed every pre-filter stage -- meaning
+    they passed the current mechanical coverage check, NOT a guarantee of full
+    safety; see pre_assert_step.py/pre_assert_filter.py's own docstrings for the
+    known, accepted gap where a check can impose a new constraint on
+    already-covered points with no new point involved and still read as
+    "entailed"), plus the rarer "extra" category ONLY when `model_id` is on
+    EXTRA_CATEGORY_ALLOWLIST.
+
+    `pre_assert_step.assemble_advisory_text` deliberately makes no per-model
+    decision itself (see its own docstring) -- this function is where that
+    decision actually happens, per spec.md's "Consumption is advisory-only"
+    and "Per-model allowlist" Implementation Decisions. It reuses
+    `assemble_advisory_text`'s bullet-formatting by recasting an
+    allowlist-cleared "extra" check's outcome to "entailed" in a copy (never
+    mutating the original `FilteredCheck`, which callers still need its real
+    outcome/stage/message on, e.g. for attempt-trace logging)."""
+    if model_id in EXTRA_CATEGORY_ALLOWLIST:
+        included = [
+            dataclasses_replace(fc, outcome="entailed") if fc.outcome == "extra" else fc
+            for fc in filtered_checks
+        ]
+    else:
+        included = filtered_checks  # assemble_advisory_text already keeps "entailed" only
+    return assemble_advisory_text(included)
+
+
+@dataclass
+class PreAssertStepTrace:
+    """The pre-assert pre-step's own attempt trace (ticket 04, user story 7),
+    mirroring `PythonFullMetadata.attempt_traces`'s existing shape but for the
+    one pre-step call that runs once per `run()`, before the script-generation
+    retry loop begins (not once per generation attempt).
+
+    `filtered_checks` keeps every check's real "entailed"/"extra"/"rejected"
+    outcome as `pre_assert_step.filter_parsed_check` produced it -- "entailed"
+    describes "passed the current mechanical coverage check", not "provably
+    safe for any model" (see ticket 02's known gap); `advisory_text` is what
+    was actually appended to the prompt, already filtered by
+    EXTRA_CATEGORY_ALLOWLIST for the model that ran this attempt."""
+
+    raw_response: str
+    retried: bool
+    filtered_checks: "list[FilteredCheck]"
+    advisory_text: str
+
+
 @dataclass
 class PythonFullAttemptTrace:
     attempt: int
@@ -692,6 +760,10 @@ class PythonFullAttemptTrace:
 @dataclass
 class PythonFullMetadata:
     attempt_traces: list[PythonFullAttemptTrace] = field(default_factory=list)
+    # Present only when use_pre_assert_step=True (ticket 04) -- None otherwise,
+    # including the precomputed_advisory_context path, which skips the pre-step
+    # call/filter entirely and so has no verdicts to log here.
+    pre_assert_trace: "PreAssertStepTrace | None" = None
 
 
 class PythonFullPipelineState(TypedDict):
@@ -708,6 +780,40 @@ class PythonFullPipelineState(TypedDict):
     renderer: Optional[Any]
     metadata: PythonFullMetadata
     sandbox_timeout_seconds: float
+
+
+async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
+    """Ticket 04's new node, present in the graph only when
+    `use_pre_assert_step=True` (see `_build_python_full_graph`). Runs the
+    pre-assert pre-step call and 4-stage pre-filter
+    (`pre_assert_step.propose_and_filter_checks`) against `state["prompt"]`
+    (the construction request, still unaugmented at this point in the graph --
+    this node runs before anything else touches "prompt"), applies the
+    per-model allowlist to the resulting "extra" category
+    (`_advisory_text_for_model`), and returns an updated "prompt" with the
+    advisory text appended so `_generate_script_node` -- which reads only
+    `state["prompt"]` -- picks it up unchanged on every generation attempt
+    that follows, including retries.
+
+    Runs exactly once per `run()`, not once per generation attempt -- logged
+    onto `state["metadata"].pre_assert_trace` (mutated in place, mirroring how
+    `_generate_script_node`/`_run_script_node` already mutate
+    `metadata.attempt_traces` rather than returning it as a state update)."""
+    request = state["prompt"]
+    model_id = state["model_id"]
+    result = await propose_and_filter_checks(request, model_id)
+    advisory_text = _advisory_text_for_model(result.filtered_checks, model_id)
+
+    metadata = state["metadata"]
+    metadata.pre_assert_trace = PreAssertStepTrace(
+        raw_response=result.raw_response,
+        retried=result.retried,
+        filtered_checks=result.filtered_checks,
+        advisory_text=advisory_text,
+    )
+
+    new_prompt = f"{request}\n\n{advisory_text}" if advisory_text else request
+    return {"prompt": new_prompt}
 
 
 async def _generate_script_node(state: PythonFullPipelineState) -> dict:
@@ -988,11 +1094,21 @@ def _pipeline_router(state: PythonFullPipelineState) -> str:
     return END
 
 
-def _build_python_full_graph() -> StateGraph:
+def _build_python_full_graph(use_pre_assert_step: bool = False) -> StateGraph:
+    """Build the initial-generation graph. `use_pre_assert_step=False` (the
+    default) builds EXACTLY today's shipped graph -- same nodes, same edges --
+    additive only when True, per spec.md's Graph integration decision:
+    `pre_assert_step` is inserted before `generate_script` and nothing else
+    about the existing generate_script/run_script/router wiring changes."""
     builder = StateGraph(PythonFullPipelineState)
     builder.add_node("generate_script", _generate_script_node)
     builder.add_node("run_script", _run_script_node)
-    builder.add_edge(START, "generate_script")
+    if use_pre_assert_step:
+        builder.add_node("pre_assert_step", _pre_assert_step_node)
+        builder.add_edge(START, "pre_assert_step")
+        builder.add_edge("pre_assert_step", "generate_script")
+    else:
+        builder.add_edge(START, "generate_script")
     builder.add_edge("generate_script", "run_script")
     builder.add_conditional_edges("run_script", _pipeline_router)
     return builder.compile()
@@ -1035,10 +1151,44 @@ class PythonFullStrategy(SubstanceStrategy):
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
         sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
+        use_pre_assert_step: bool = False,
+        precomputed_advisory_context: "str | None" = None,
     ) -> StructuredRunResult:
-        graph = _build_python_full_graph()
+        """use_pre_assert_step and precomputed_advisory_context are the
+        pre-assert pipeline's two ways in (ticket 04, spec.md's Graph
+        integration / Item-generation's actual need decisions), mutually
+        exclusive:
+
+        - use_pre_assert_step=True inserts a new graph node
+          (_pre_assert_step_node) before script generation that calls the
+          pre-step LLM + 4-stage pre-filter itself and augments the prompt
+          with the survivors' advisory text (gated by EXTRA_CATEGORY_ALLOWLIST
+          for the rarer "extra" category).
+        - precomputed_advisory_context skips that call/filter entirely --
+          intended for a caller (e.g. the item-generation project) that
+          computed this text once and wants to reuse it across
+          regenerations without re-running the pre-step every time -- and is
+          appended to the prompt directly, before the graph even starts, so
+          the graph itself is exactly today's shipped shape either way.
+
+        Neither parameter is available on the edit-mode paths
+        (_run_from_script/build_agent's patch/search_replace/hashline/
+        line_number/_edit_full_rewrite) -- out of scope for this ticket per
+        spec.md's Out of Scope section.
+        """
+        if use_pre_assert_step and precomputed_advisory_context is not None:
+            raise ValueError(
+                "use_pre_assert_step and precomputed_advisory_context are mutually "
+                "exclusive -- pass at most one."
+            )
+
+        effective_prompt = prompt
+        if precomputed_advisory_context:
+            effective_prompt = f"{prompt}\n\n{precomputed_advisory_context}"
+
+        graph = _build_python_full_graph(use_pre_assert_step=use_pre_assert_step)
         initial_state: PythonFullPipelineState = {
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "model_id": model,
             "enable_cache": self.enable_cache,
             "attempt": 0,
