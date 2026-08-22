@@ -760,9 +760,13 @@ class PythonFullAttemptTrace:
 @dataclass
 class PythonFullMetadata:
     attempt_traces: list[PythonFullAttemptTrace] = field(default_factory=list)
-    # Present only when use_pre_assert_step=True (ticket 04) -- None otherwise,
-    # including the precomputed_advisory_context path, which skips the pre-step
-    # call/filter entirely and so has no verdicts to log here.
+    # Present when use_pre_assert_step=True (ticket 04) -- a real pre-step
+    # call/filter ran, with raw_response/filtered_checks populated. Also
+    # present (with raw_response="", retried=False, filtered_checks=[]) when
+    # precomputed_advisory_context is used -- that path skips the pre-step
+    # call/filter entirely, but the advisory_text actually sent to the
+    # script-writer is still worth recording for diagnosability; only when
+    # neither is used does this stay None.
     pre_assert_trace: "PreAssertStepTrace | None" = None
 
 
@@ -1183,8 +1187,18 @@ class PythonFullStrategy(SubstanceStrategy):
             )
 
         effective_prompt = prompt
+        metadata = PythonFullMetadata()
         if precomputed_advisory_context:
             effective_prompt = f"{prompt}\n\n{precomputed_advisory_context}"
+            # No real pre-step call/filter ran on this path -- record only
+            # what's true (the advisory text actually used), not fabricated
+            # raw_response/filtered_checks data for a call that never happened.
+            metadata.pre_assert_trace = PreAssertStepTrace(
+                raw_response="",
+                retried=False,
+                filtered_checks=[],
+                advisory_text=precomputed_advisory_context,
+            )
 
         graph = _build_python_full_graph(use_pre_assert_step=use_pre_assert_step)
         initial_state: PythonFullPipelineState = {
@@ -1199,7 +1213,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "output_tokens": 0,
             "cost_usd": 0.0,
             "renderer": renderer,
-            "metadata": PythonFullMetadata(),
+            "metadata": metadata,
             "sandbox_timeout_seconds": sandbox_timeout_seconds,
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)

@@ -1937,8 +1937,12 @@ async def test_use_pre_assert_step_true_excludes_extra_category_for_non_allowlis
 async def test_precomputed_advisory_context_skips_pre_step_call_entirely():
     """precomputed_advisory_context is item-generation's actual use case
     (spec.md): the string is used directly as advisory context, appended
-    to the prompt the same way, with NO call to propose_and_filter_checks
-    at all -- and no pre_assert_trace, since nothing was computed here."""
+    to the prompt the same way, with NO call to propose_and_filter_checks at
+    all. This path still logs a pre_assert_trace, though, so the advisory
+    text actually sent to the script-writer stays recoverable from the trace
+    for diagnosability (the whole point of that field on this exact path) --
+    with raw_response/filtered_checks left empty/False rather than
+    fabricated, since no real pre-step call happened."""
     mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
     with patch(
         "geometry_diagrams.strategies.python_full.propose_and_filter_checks",
@@ -1955,7 +1959,12 @@ async def test_precomputed_advisory_context_skips_pre_step_call_entirely():
     structured_mock = mock_llm.with_structured_output.return_value
     sent_prompt = structured_mock.ainvoke.call_args.args[0][-1].content
     assert "a precomputed hint" in sent_prompt
-    assert result.python_full_metadata.pre_assert_trace is None
+    trace = result.python_full_metadata.pre_assert_trace
+    assert trace is not None
+    assert trace.raw_response == ""
+    assert trace.retried is False
+    assert trace.filtered_checks == []
+    assert trace.advisory_text == "## Extra context (optional)\n\n- a precomputed hint"
 
 
 def test_advisory_text_for_model_gates_extra_category_by_allowlist():

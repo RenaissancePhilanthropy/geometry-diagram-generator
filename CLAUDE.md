@@ -66,6 +66,7 @@ The Intermediate Representation is the central abstraction:
 - **`to_tikz.py`**: Converts compiled SymPy objects to TikZ code (`\tkzDefPoint`, `\tkzDrawSegment`, etc.). Computes canvas bounds and helper points automatically.
 - **`to_svg.py`**: Direct SVG rendering path — converts compiled SymPy objects to SVG without going through TikZ/LaTeX.
 - **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison.
+- **`pre_assert_filter.py`**: Pure 4-stage pre-filter (API-name validation, generic-instance grounding, structural lints, request-relevance) for the pre-assert pre-step's proposed checks, with no model/network dependency of its own.
 - **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
 - **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.
 - **`renderer.py`**: Dispatch layer — `TikZRenderer` (HTTP to Docker container) and `SVGRenderer` (in-process, no Docker needed).
@@ -80,6 +81,7 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 - **`raw_svg_with_revise.py`**: Raw SVG with a revision loop.
 - **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. Uses a `StateGraph` retry loop (up to `MAX_RETRIES=3`). This is more robust and easier to debug than raw code generation.
 - **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Uses a two-node `StateGraph`: selector (configurable cheap model picks relevant recipes) → DSL generator → lowering → IR pipeline. Currently the main strategy to use.
+- **`pre_assert_step.py`**: Optional pre-step LLM call (before construction) that proposes geometric invariants, parses them, and runs each through `pre_assert_filter.py`'s 4-stage pre-filter to build advisory context for the script-writer.
 
 **`llm.py`**: Model factory — maps `"anthropic:MODEL"` / `"openai:MODEL"` / `"google:MODEL"` IDs to LangChain chat models (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`). Provides `get_chat_model()`, `extract_usage()`, `make_system_message()`, and `is_gemini_model()`.
 

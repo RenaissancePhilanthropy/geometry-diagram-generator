@@ -109,6 +109,19 @@ proposal's own shorthand for describing a derivation):
 "incenter", "orthocenter"
   NAME = circle_through(A, B, C)                  # the circle through three points
 
+  # NOTE for a future maintainer grepping for these names: `angle_bisector` and
+  # `foot_of_perpendicular` above deliberately collide with real
+  # geometry_diagrams.pydsl.api function names of the same name but different
+  # signatures -- real `angle_bisector(vertex, toward1, toward2)` takes the
+  # vertex FIRST (this grammar's form takes it in the MIDDLE: `angle_bisector(A,
+  # VERTEX, B)`), and real `foot_of_perpendicular(point, line)` takes 2 args (a
+  # point and an already-built line handle), not this grammar's 3 (`P, A, B`,
+  # two bare points defining the line instead of a line handle). This is safe
+  # only because this grammar's text is never executed as pydsl code -- it is
+  # parsed straight into `ir.DefStmt` objects by `_build_point_definition`
+  # below (see module docstring) -- but do not assume the two call shapes are
+  # interchangeable if you ever see both names in the same place.
+
 Do NOT define a new point any other way (no arbitrary coordinates, no arbitrary ratios/lengths, \
 no other function names) -- a check that depends on such a point will always be rejected, since \
 it can't be verified as following from the request.
@@ -447,12 +460,24 @@ def _build_point_definition(
         return ir.PointMidpoint(id=name, p=p.id, q=q.id), aux
 
     if fn == "foot_of_perpendicular" and len(args) == 3 and all(isinstance(a, ast.Name) for a in args):
+        # `foot_of_perpendicular` here is this grammar's own 3-arg shorthand
+        # (point, then the two points defining the line), NOT the real
+        # geometry_diagrams.pydsl.api.foot_of_perpendicular(point, line), which
+        # takes 2 args and a Line handle -- deliberate name collision, safe
+        # because this text is only ever parsed into DefStmts, never executed
+        # as pydsl code (see _POINT_DEF_GRAMMAR's own note above).
         source, line_a, line_b = args
         line_id = f"_pre_step_w{next(counter)}"
         aux.append(ir.LineThrough(id=line_id, p=line_a.id, q=line_b.id))
         return ir.PointFoot(id=name, source=source.id, onto=line_id), aux
 
     if fn == "angle_bisector" and len(args) == 3 and all(isinstance(a, ast.Name) for a in args):
+        # `angle_bisector` here is this grammar's own shorthand with the
+        # vertex in the MIDDLE (A, VERTEX, B), NOT the real
+        # geometry_diagrams.pydsl.api.angle_bisector(vertex, toward1, toward2),
+        # which takes the vertex FIRST -- deliberate name collision, safe for
+        # the same reason as foot_of_perpendicular above (never executed as
+        # code).
         a, vertex, b = args
         return ir.LineAngleBisector(id=name, a=a.id, vertex=vertex.id, b=b.id), aux
 
@@ -661,8 +686,11 @@ def filter_parsed_check(parsed: ParsedCheck, request: str, rng: Random | None = 
             raw_text=parsed.raw_text, comment=parsed.comment, check=None,
             outcome="rejected", stage="api_name",
             message=(
-                f"{parsed.unresolved_name!r} is not a real assert_* function -- "
-                "unknown even after the one mechanical name-correction retry"
+                f"{parsed.unresolved_name!r} is not a real assert_* function -- rejected "
+                "outright; if the one mechanical name-correction retry ran on this "
+                "response at all, this name was still not resolved by it (this stage "
+                "itself never retries -- see propose_and_filter_checks for the only "
+                "retry that can happen, at most once, before parsing)"
             ),
         )
     if parsed.check is None:

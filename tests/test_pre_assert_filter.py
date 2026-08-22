@@ -841,7 +841,7 @@ def test_check_request_relevance_baseline_right_angle_at_c_still_passes():
 # --- Positive fixtures: proposed checks that impose a genuinely new,
 # unrequested constraint ("extra") ---
 
-def test_check_request_relevance_flags_given_ab_equals_ac_case():
+def test_check_request_relevance_does_not_flag_ab_equals_ac_case():
     """The one given "extra" example anywhere in the investigation
     (issues/03-splice-vs-advisory.md / experiment_03.py's actual REQUEST
     constant): a bare, generic triangle request plus an injected AB=AC

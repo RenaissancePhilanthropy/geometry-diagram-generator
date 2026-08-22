@@ -248,12 +248,19 @@ def _rng(seed: int = 1) -> random.Random:
 
 
 def test_filter_routes_unknown_name_to_api_name_stage():
+    """filter_parsed_check is called directly here, with no retry having run at
+    all -- unlike test_propose_and_filter_checks_still_rejects_if_retry_does_not_fix_it,
+    which reaches this same stage through the full orchestrator after a real
+    retry. The message must be accurate for both call shapes: it must not
+    unconditionally assert that a retry ran, since filter_parsed_check itself
+    has no way of knowing whether one did."""
     parsed = ParsedCheck(raw_text="assert_equal(O, A)", comment=None, check=None,
                           unresolved_name="assert_equal")
     result = filter_parsed_check(parsed, _CIRCUMSCRIBED_CIRCLE_REQUEST)
     assert result.outcome == "rejected"
     assert result.stage == "api_name"
     assert "assert_equal" in result.message
+    assert "if the one mechanical name-correction retry ran" in result.message
 
 
 def test_filter_routes_unparseable_call_to_parse_stage():
