@@ -1,14 +1,23 @@
-"""Pre-assert pre-filter, stages 1-3: API-name validation, independent
-generic-instance grounding, and the two structural lints.
+"""Pre-assert pre-filter, stages 1-4: API-name validation, independent
+generic-instance grounding, the two structural lints, and the
+request-relevance rule.
 
-These three stages were validated by a discardable prototype
+Stages 1-3 were validated by a discardable prototype
 (.scratch/pre-assert-proposal/, see issues/05-validation-pass.md) as
 deterministic pure functions with no LLM judgment call needed to detect a
 problem -- only, optionally, to fix one once flagged (stage 1's one mechanical
 retry). This module ports that validated behavior; it does not re-derive it.
 
+Stage 4 (request-relevance) is NOT validated by that prototype -- ticket 08's
+"0 of ~60 checks were extra" was a manual/human classification of real
+checks, not a tested algorithm. It is designed fresh here per
+.scratch/pydsl-pre-assert-pipeline/spec.md's Implementation Decisions, and its
+own tests (tests/test_pre_assert_filter.py) record an honest, partial result:
+see check_request_relevance's docstring and
+.scratch/pydsl-pre-assert-pipeline/reports/02-request-relevance-rule-report.md
+for where it does and does not cleanly separate the fixtures.
+
 Deliberately NOT covered here (see .scratch/pydsl-pre-assert-pipeline/spec.md):
-- the request-relevance rule (stage 4, ticket 02) -- unvalidated, designed fresh
 - the pre-step LLM call that produces proposals in the first place (ticket 03)
 - any graph/strategy integration (ticket 04)
 
@@ -210,4 +219,242 @@ def run_lints(check: ir.Check, defs: list[ir.DefStmt]) -> str | None:
         )
         if finding:
             return finding
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Stage 4: request-relevance rule (UNVALIDATED -- see module docstring)
+# ---------------------------------------------------------------------------
+#
+# spec.md's Implementation Decisions describe the rule as: a proposed check
+# passes if every point/object it references is either (a) a point whose
+# label appears literally in the request string, or (b) a point the
+# proposal's own snippet defines via one of a fixed allow-list of derivation
+# primitives (midpoint, foot-of-perpendicular, angle bisector, a named
+# triangle center, circle-through-3-points) applied only to already-covered
+# points.
+#
+# Two interpretive gaps in that text had to be resolved to make it a runnable
+# function, and both are design decisions this ticket makes explicitly rather
+# than silently:
+#
+# 1. "Every point/object it references" literally, taken at face value, would
+#    require even a plain `segment(A, B)` wrapper to itself be either
+#    literally labeled or produced by one of the five listed primitives --
+#    but "segment"/"triangle"/"line_through" aren't on that list, so almost
+#    no real check (nearly all of which reference points through segment/
+#    triangle wrapper objects) could ever pass. Read that literally, the rule
+#    would flag ~all of ticket 08's corpus, which contradicts the ticket's
+#    own expectation that the negative fixtures pass cleanly. The resolution
+#    adopted here: a pure multi-point *wrapper* object -- one that names no
+#    new point and adds no new free parameter, just groups already-covered
+#    points (segment, ray, line_through, triangle, polygon, polyline_open,
+#    circle-center-through-a-point, point-alias) -- is transparent and
+#    decomposes into its referenced points/objects without itself needing to
+#    be on the allow-list. The five-item allow-list is reserved for
+#    primitives that mint a genuinely *new* point/object from covered inputs.
+#    This is an extension beyond the spec's literal five-item enumeration,
+#    made here as the only reading that makes the rule non-vacuous; see the
+#    report for the full reasoning.
+# 2. The spec's allow-list is silent on which DefStmt kinds are pure wrapper
+#    vs. which introduce a new free parameter. CircleCenterRadius (an
+#    arbitrary radius), PointBetween (an arbitrary ratio), PointFixed with
+#    literal coordinates, PointFree, PointOn, PolygonExterior/PolygonOnEdge
+#    (a new polygon's non-request-labeled vertices) are all treated as
+#    opaque/non-transparent here -- deliberately, since each can carry a new
+#    unrequested numeric constraint, which is exactly the failure mode this
+#    stage exists to catch.
+#
+# A third, more serious finding survived honest testing rather than being
+# designed around: the rule as specified has a structural blind spot for the
+# *one* real "extra" example in the entire investigation (ticket 03's
+# AB=AC-on-a-bare-triangle case). See check_request_relevance's docstring.
+
+# Pure "wrapper" DefStmt kinds: they group/rename already-covered points or
+# objects and introduce no new point and no new free numeric parameter, so
+# they decompose transparently into their referenced ids regardless of the
+# five-item allow-list below. Field names list every id-valued field to
+# recurse into (list-valued fields, e.g. Polygon.points, are handled by
+# _resolve_field_ids).
+_TRANSPARENT_WRAPPER_FIELDS: dict[str, tuple[str, ...]] = {
+    "Segment": ("a", "b"),
+    "Ray": ("a", "b"),
+    "LineThrough": ("p", "q"),
+    "Triangle": ("a", "b", "c"),
+    "Polygon": ("points",),
+    "PolylineOpen": ("points",),
+    "CircleCenterPoint": ("center", "through"),
+    "PointAlias": ("ref",),
+}
+
+# The five derivation primitives spec.md's Implementation Decisions names
+# explicitly: each mints exactly one new point/object from already-covered
+# points via a fixed, parameter-free geometric rule.
+_ALLOWED_DERIVATION_FIELDS: dict[str, tuple[str, ...]] = {
+    "PointMidpoint": ("p", "q"),
+    "PointFoot": ("source", "onto"),
+    "PointTriangleCenter": ("tri",),
+    "LineAngleBisector": ("a", "vertex", "b"),
+    "CircleThrough3": ("a", "b", "c"),
+}
+
+# DefStmt kinds recognized for coverage propagation -- the union of the two
+# tables above, keyed by class name (matches the dispatch style already used
+# by _ENDPOINT_FIELDS above).
+_COVERAGE_PROPAGATING_FIELDS: dict[str, tuple[str, ...]] = {
+    **_TRANSPARENT_WRAPPER_FIELDS,
+    **_ALLOWED_DERIVATION_FIELDS,
+}
+
+
+def _label_appears_in_request(label: str, request: str) -> bool:
+    """Whether `label` appears as a standalone token in `request` -- a
+    word-boundary match, not a substring, so a single-letter id like "A"
+    doesn't spuriously match inside "ABC" or "Draw". Matches the real
+    scenario corpus's own phrasing ("Label the circumcenter O and all three
+    vertices A, B, and C")."""
+    pattern = r"(?<![A-Za-z0-9_])" + re.escape(label) + r"(?![A-Za-z0-9_])"
+    return re.search(pattern, request) is not None
+
+
+def _resolve_field_ids(defstmt: ir.DefStmt, field: str) -> list[str]:
+    """The id(s) held by one field of `defstmt` -- a single id, or every
+    element of a list field (e.g. Polygon.points)."""
+    value = getattr(defstmt, field)
+    return list(value) if isinstance(value, list) else [value]
+
+
+def _find_uncovered_leaf(
+    obj_id: str,
+    defs_by_id: dict[str, ir.DefStmt],
+    request: str,
+    _seen: frozenset[str] = frozenset(),
+) -> str | None:
+    """None if `obj_id` is "covered" for request-relevance purposes: either
+    its label appears literally in `request`, or it is reachable from
+    literally-covered points through a chain of transparent wrappers and/or
+    allow-listed derivation primitives (see the tables above). Otherwise,
+    the id of the specific uncovered point/object at the bottom of that
+    chain (which may be `obj_id` itself, or a point buried inside a wrapper
+    object `obj_id` resolves to) -- named so a caller can say *why* a check
+    failed, not just that it did.
+
+    `_seen` guards against a reference cycle in `defs_by_id` (not expected
+    from real proposals, but must not infinite-loop on one) -- an id
+    revisited within its own resolution chain is treated as its own failure
+    rather than raising.
+    """
+    if obj_id in _seen:
+        return obj_id
+    if _label_appears_in_request(obj_id, request):
+        return None
+
+    defstmt = defs_by_id.get(obj_id)
+    if defstmt is None:
+        return obj_id
+
+    fields = _COVERAGE_PROPAGATING_FIELDS.get(type(defstmt).__name__)
+    if fields is None:
+        return obj_id
+
+    seen = _seen | {obj_id}
+    for field in fields:
+        for ref_id in _resolve_field_ids(defstmt, field):
+            leaf = _find_uncovered_leaf(ref_id, defs_by_id, request, seen)
+            if leaf is not None:
+                return leaf
+    return None
+
+
+def direct_ids_referenced(check: ir.Check) -> list[str]:
+    """Every point/object id `check` references directly -- the starting set
+    for request-relevance coverage. `_find_uncovered_leaf` resolves each one
+    further through `defs`."""
+    match check:
+        case ir.DistinctPoints(a=a, b=b) | ir.MinDistance(a=a, b=b):
+            return [a, b]
+        case ir.DistinctObjects(a=a, b=b):
+            return [a, b]
+        case ir.NonCollinear(a=a, b=b, c=c):
+            return [a, b, c]
+        case ir.Collinear(points=points):
+            return list(points)
+        case ir.Contains(p=p, obj=obj) | ir.NotContains(p=p, obj=obj):
+            return [p, obj]
+        case ir.Parallel(l1=l1, l2=l2) | ir.NotParallel(l1=l1, l2=l2) | ir.Perpendicular(
+            l1=l1, l2=l2
+        ):
+            return [l1, l2]
+        case ir.AngleEqual(a1=a1, a2=a2):
+            return [a1.a, a1.o, a1.b, a2.a, a2.o, a2.b]
+        case ir.SimilarTriangles(t1=t1, t2=t2) | ir.CongruentTriangles(t1=t1, t2=t2):
+            return [t1, t2]
+        case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
+            return [s1, s2, s3, s4]
+        case ir.EqualLength(segs=segs):
+            return list(segs)
+        case ir.DistanceEquals(seg=seg):
+            return [seg]
+        case ir.RightAngle(angle=angle):
+            return [angle.a, angle.o, angle.b]
+        case ir.Tangent(line=line, circle=circle):
+            return [line, circle]
+        case ir.OppositeSide(p=p, q=q, line_a=line_a, line_b=line_b) | ir.SameSide(
+            p=p, q=q, line_a=line_a, line_b=line_b
+        ):
+            return [p, q, line_a, line_b]
+        case ir.Centroid(g=g, a=a, b=b, c=c):
+            return [g, a, b, c]
+        case ir.Convex(polygon=polygon) | ir.CCW(polygon=polygon):
+            return [polygon]
+        case _:
+            raise TypeError(
+                f"Unhandled Check type for request-relevance extraction: {type(check).__name__}"
+            )
+
+
+def check_request_relevance(
+    check: ir.Check,
+    defs: list[ir.DefStmt],
+    request: str,
+) -> str | None:
+    """Stage 4: the request-relevance rule (UNVALIDATED -- see module and
+    section docstrings above). Returns None if `check` passes (is
+    "entailed"); otherwise a message identifying the first uncovered
+    reference (the check is "extra").
+
+    `defs` must include a DefStmt for every point/object the proposal itself
+    introduced (mirroring `ground_and_evaluate`'s contract) so its stated
+    derivation is visible to this rule -- a point with no DefStmt and no
+    literal label in `request` is treated as uncovered, not given the
+    benefit of the doubt.
+
+    Honest finding from testing this against real and constructed fixtures
+    (see tests/test_pre_assert_filter.py and the ticket 02 report): this
+    rule, run exactly as specified, correctly separates every check in
+    ticket 08's ~60-check "entailed" corpus from two new synthetic "extra"
+    fixtures that each introduce a new, request-uncovered point. It does
+    NOT correctly flag the ticket's own given canonical "extra" example
+    (ticket 03: `assert_equal_length(segment(A,B), segment(A,C))` against
+    the bare request "draw a triangle ABC") -- that check references only
+    A, B, and C, which are literally named by the request, so it passes as
+    "entailed" under this rule even though it is the one case everyone
+    agrees should be "extra". The rule as specified detects "extra via an
+    uncovered new point"; it structurally cannot detect "extra via a new
+    constraint imposed directly on already-covered points, introducing no
+    new point at all" -- which is exactly the shape of the one confirmed
+    real-world case. This is reported rather than patched around: see the
+    ticket 02 report for the full account and options going forward.
+    """
+    defs_by_id = {d.id: d for d in defs}
+    for obj_id in direct_ids_referenced(check):
+        leaf = _find_uncovered_leaf(obj_id, defs_by_id, request)
+        if leaf is not None:
+            via = f" (referenced via {obj_id!r})" if leaf != obj_id else ""
+            return (
+                f"{leaf!r}{via} is neither literally named in the request nor derived from "
+                "request-covered points via an allow-listed primitive (midpoint, "
+                "foot-of-perpendicular, angle bisector, a named triangle center, "
+                "circle-through-3-points) -- treated as an unrequested 'extra' addition"
+            )
     return None
