@@ -25,6 +25,7 @@ from random import Random
 import geometry_diagrams.pydsl as pydsl_module
 from . import ir
 from .checks import DEFAULT_TOL, CheckResult, _check_one
+from .errors import IRCompileError
 from .to_sympy import compile_defs
 
 # ---------------------------------------------------------------------------
@@ -131,9 +132,15 @@ def ground_and_evaluate(
     """
     try:
         sym = compile_defs(ir.DiagramIR(define=defs))
-    except Exception as exc:  # noqa: BLE001 - deliberately broad: any
-        # compilation failure (unresolved ref, degenerate construction, bad
-        # pick, ...) is itself evidence the proposal doesn't ground cleanly.
+    except IRCompileError as exc:
+        # The closed to_sympy.py compile-error hierarchy (UndefinedRefError,
+        # IntersectionError, PickError, ExprEvalError, all subclassing
+        # IRCompileError -- see errors.py) covers exactly "this proposal
+        # doesn't ground cleanly": an unresolved ref, a degenerate
+        # construction, an ambiguous pick, a bad expression. Anything outside
+        # that hierarchy is a real implementation bug in compile_defs, not a
+        # proposal-grounding failure, and must propagate rather than being
+        # mislabeled and swallowed here.
         return CheckResult(check=check, passed=False, message=f"Grounding error: {exc!r}")
     return _check_one(check, sym, tol)
 

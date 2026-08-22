@@ -203,13 +203,39 @@ def test_grounding_confirms_napoleon_theorem():
     assert result.passed is True
 
 
-def test_grounding_surfaces_error_for_unresolvable_reference():
-    """A proposal referencing a point/object id that was never defined --
+def test_grounding_surfaces_error_for_unresolvable_reference_in_defs():
+    """A proposal's own defs reference a point id that was never defined --
+    compile_defs raises UndefinedRefError (an IRCompileError subclass);
     grounding should surface this as a failure, not raise out of the filter."""
+    defs = _rand_triangle(seed=3) + [
+        ir_mod.Segment(id="S", a="A", b="MISSING"),
+    ]
+    check = ir_mod.Collinear(points=["A", "B", "C"])
+    result = ground_and_evaluate(defs, check)
+    assert result.passed is False
+    assert "Grounding error" in result.message
+
+
+def test_grounding_surfaces_error_for_unresolvable_reference_in_check():
+    """A check referencing an id absent from the compiled sym table (but defs
+    themselves compile fine) is caught by checks._check_one's own exception
+    handling, not by ground_and_evaluate's narrower IRCompileError catch --
+    both paths must still surface as a failure, not raise."""
     defs = _rand_triangle(seed=3)
     check = ir_mod.Collinear(points=["A", "B", "NOPE"])
     result = ground_and_evaluate(defs, check)
     assert result.passed is False
+
+
+def test_grounding_does_not_swallow_a_real_implementation_bug():
+    """ground_and_evaluate's except clause is narrowed to IRCompileError --
+    a TypeError from passing a check where a DefStmt is expected (a genuine
+    caller bug, not a proposal-grounding failure) must propagate rather than
+    being mislabeled as a grounding error."""
+    defs = _rand_triangle(seed=3) + [ir_mod.Collinear(points=["A", "B", "C"])]  # not a DefStmt
+    check = ir_mod.Collinear(points=["A", "B", "C"])
+    with pytest.raises(Exception):
+        ground_and_evaluate(defs, check)
 
 
 # ---------------------------------------------------------------------------
