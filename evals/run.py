@@ -304,8 +304,16 @@ async def run_scenario(
     visual_judge: bool = False,
     judge_model: str = DEFAULT_AGENT_MODEL,
     enable_cache: bool = False,
+    use_pre_assert_step: bool = False,
 ) -> dict:
-    """Run one scenario against one strategy. Returns a result dict."""
+    """Run one scenario against one strategy. Returns a result dict.
+
+    use_pre_assert_step is only meaningful for the "python_full" strategy
+    (PythonFullStrategy.run()'s pre-assert pre-step, see spec.md's Graph
+    integration decision) — other strategies' run() signatures don't accept
+    it, so it's passed through conditionally below rather than unconditionally
+    kwarg-splatted into every strategy.run() call.
+    """
     record: dict[str, Any] = {
         "scenario_id": scenario["id"],
         "benchmark": benchmark,
@@ -349,7 +357,15 @@ async def run_scenario(
 
     start = time.monotonic()
     try:
-        result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
+        if strategy_name == "python_full":
+            result = await strategy.run(
+                scenario["prompt"],
+                model=model,
+                renderer=renderer,
+                use_pre_assert_step=use_pre_assert_step,
+            )
+        else:
+            result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
     except Exception as e:
         record["duration_s"] = round(time.monotonic() - start, 2)
         record["error"] = str(e)
@@ -840,6 +856,17 @@ async def main() -> None:
         "combined with --scenario-ids/--scenario-offset/--scenario-limit.",
     )
     parser.add_argument(
+        "--use-pre-assert-step",
+        action="store_true",
+        default=False,
+        help="Enable PythonFullStrategy's optional pre-assert pre-step (spec.md's "
+        "Graph integration decision): a separate LLM call proposes invariants "
+        "before script generation, filtered and handed to the script-writer as "
+        "advisory context. Only affects the 'python_full' strategy; ignored by "
+        "all others. Off by default (matches PythonFullStrategy.run()'s own "
+        "default).",
+    )
+    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -962,6 +989,7 @@ async def main() -> None:
                         visual_judge=args.visual_judge,
                         judge_model=args.judge_model,
                         enable_cache=total > 1,
+                        use_pre_assert_step=args.use_pre_assert_step,
                     ),
                     timeout=args.scenario_timeout,
                 )
