@@ -121,12 +121,12 @@ On Mistral $\times$ MATH, as gain increases ($1\to2\to4$), stated confidence on 
 Replication is architecture-dependent: Gemma-4 shows the right specificity but is underpowered; GLM is null at tested gains, its stated confidence saturating near 100 precisely where the probe most exceeds P(True).
 We read this spectrum as the finding: \emph{how much internal knowledge reaches speech varies by model}.
 
-\paragraph{Toward mechanism: does the knowledge enter the workspace?}
-Why does a signal this strong fail to reach speech in some architectures?
-The global-workspace account \citep{anthropic2026workspace} offers a testable answer: information becomes reportable only when it enters a verbalizable subspace, and its unsupervised Jacobian lens found ``bug detection before identification'' --- knowing-without-saying --- in code models.
-Our prediction: on MATH failures the correctness signal exists (the probe reads it) but does not enter the workspace, hence cannot be said; GLM's decoupled speech channel should show the largest exclusion.
-The lens also supplies an unsupervised readout of our saved activations (retiring probe-overfitting critiques) and a label-free steering direction.
-This arm is in progress and is, we argue, where the research frontier sits: not \emph{whether} models know, but \emph{what gates the knowing from the saying}.
+\paragraph{A label-free witness --- and an architecture-gated one.}
+Trained probes invite an overfitting critique, so we added an unsupervised instrument: the Jacobian lens of the global-workspace account \citep{anthropic2026workspace}, fit on generic text with no task labels anywhere in its construction, scoring the same stored activations as a wrong-vs-correct disposition.
+On dense models it lands in probe territory (Mistral 0.76--0.82; a dense within-family control, Qwen2.5-14B, 0.88), beating stated confidence label-free: two independent instruments, one direction --- the knowledge is not just present but \emph{speakable}.
+On the other architectures the lens itself fails (Mamba-hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model, and the failure has a fingerprint: transported through the averaged map, the lens's ``correct'' and ``wrong'' readout vectors collapse to cosine $0.96$ on MoE (vs.\ ${\approx}0.4$ dense) --- an averaged map is only faithful when wiring barely varies per input, and swapping Mamba for dense within the same model family flips the lens from 0.43 to 0.88.
+So the \emph{label-free shortcut} is architecture-gated; the signal is not.
+The open frontier is the gate itself: a direct per-input wiring-variance measurement, and whether unexpressed knowledge on the failing architectures is speakable-but-suppressed or an access failure --- not \emph{whether} models know, but \emph{what gates the knowing from the saying}.
 
 \section{Discussion}
 \label{sec:discussion}
