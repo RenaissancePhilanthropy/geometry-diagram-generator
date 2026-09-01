@@ -1,15 +1,14 @@
-% Combined 4-page workshop paper (MATH-AI 2026):
-% GeoGenBench (verified diagram generation) + knowing-vs-saying (confidence interp)
-% as one arc: reliable mathematical agents need verified outputs AND honest self-assessment.
+% Combined 4-page workshop paper (MATH-AI 2026), internals-focused revision.
+% Per Mei (2026-09-01): center the model-internals / understanding story; GeoGenBench
+% becomes the instrument. Adds the cross-domain transfer result (Tier-1, lab notebook
+% 2026-07-10) and the global-workspace mechanism framing (real cite: anthropic2026workspace).
 %
-% Sources: workshop.tex (GeoGenBench 4-pager) + workshop_confidence.tex, both compressed.
-% Corrections applied vs workshop.tex: "15 symbolic predicates" (not 17); rater
-% description is "two trained raters" (no credential split).
+% Corrections carried: 15 symbolic predicates (not 17); "two trained raters" (no credential split).
 %
 % Build:  lualatex workshop_combined && bibtex workshop_combined && lualatex workshop_combined && lualatex workshop_combined
 %
-% TODO(mei): title is a proposal; the Jacobian-lens "Anthropic (2026)" cite from the
-% full confidence draft is omitted here (mechanism arm is one sentence, uncited).
+% TODO(mei): title is a proposal; verify the anthropic2026workspace bib entry
+% (author list / venue) against the actual release before submission.
 
 \documentclass{article}
 
@@ -18,7 +17,7 @@
 
 \input{preamble}
 
-\title{Verified Generation, Honest Confidence: \\ Geometry Diagrams as a Testbed for Reliable Mathematical Agents}
+\title{Knowing Before Saying: Internal Correctness Signals \\ in Mathematical Reasoning}
 
 \author{%
   Anonymous Authors\\
@@ -31,96 +30,48 @@
 \maketitle
 
 \begin{abstract}
-Reliable mathematical agents need two things: outputs that can be verified without a human, and self-assessments that can be trusted when no verifier is available.
-We contribute both, on one testbed.
-First, \textbf{\GeoGenBench}: 801 diagram-generation prompts whose correctness is decided symbolically --- the model's TikZ is compiled to SymPy coordinates and graded by exact predicate checks, no vision--language judge.
-Benchmarking six frontier models, we find a structured intermediate representation lifts every model ($+2$ to $+25$\pp) and collapses the cost--quality frontier: three flagships tie within $1$\pp at a $7\times$ cost spread.
-Second, using compiler-verified correctness labels, we ask whether models \emph{know} when their answers are wrong: across four open models and four domains, a linear probe on the residual stream predicts an attempt's correctness better than the model's stated confidence in 15 of 16 cells, and amplifying the model's own correctness direction --- with no labels at intervention time --- makes stated confidence honest, dropping confidence on wrong answers from 80 to 43 while correct answers hold near 90.
-Models can be verified from outside and, it turns out, substantially know from inside; connecting the two is a path to agents that abstain instead of erring confidently.
+Language models often answer math problems incorrectly while reporting high confidence.
+We ask whether this reflects absent self-knowledge or a failure to express it, and separate the two by reading the residual stream directly --- anchored by a geometry-construction testbed whose outputs are graded exactly by a symbolic compiler, no human or model judge.
+Across four open models spanning distinct architectures and four domains (compiler-verified geometry, MMLU-Pro, MATH, GPQA-Diamond), a linear probe on the residual stream predicts an attempt's correctness better than the model's stated confidence in 15 of 16 cells (mean $+0.11$ AUROC), with the largest gap on MATH, where wrong answers carry no surface tell.
+The signal is attempt-specific (it survives a within-question control that collapses the model's own P(True) toward chance), largely \emph{domain-general} (probes transfer across domains at $\approx$$87$--$90\%$ AUROC retention), and \emph{causally used}: amplifying the model's own correctness direction, with no labels at intervention time, drops stated confidence on wrong answers from 80 to 43 while correct answers hold near 90, halving calibration error.
+Models substantially know when they are wrong; whether that knowledge reaches speech varies by architecture, and we outline a global-workspace test of why.
 \end{abstract}
 
 \section{Introduction}
 \label{sec:intro}
 
-A mathematical agent that errs is unavoidable; one that errs \emph{confidently} is dangerous, and one that errs, knows it, and abstains is deployable.
-This paper works both sides of that requirement on a single domain, plane-geometry construction, chosen because it admits something rare: exact, automatic verification of open-ended generative output.
+A mathematical agent that errs is unavoidable; one that errs \emph{and knows it} can abstain, retry, or escalate.
+Stated confidence is a weak guide to correctness, and weakest exactly where mathematics is hardest: a wrong multi-step derivation ends in a well-formed \texttt{\textbackslash boxed\{answer\}} with no surface tell.
+We decompose the problem into two questions: do models internally represent that an output is wrong (\textbf{knowing}), and does that representation reach what they report (\textbf{saying})?
+The gap between them, if it exists, is both an unused reliability signal and a concrete claim about machine introspection.
 
-\textbf{Side one: verify the output.}
-Frontier LLMs now author the most-deployed visual artifact in K--12 education, the geometry diagram, yet every existing geometry benchmark evaluates the inverse direction --- given a diagram, answer a question \citep{lu2021intergps, chen2021geoqa, lu2024mathvista, zhang2024geoeval}.
-Generation-side benchmarks grade generated \emph{images} with CLIP/MLLM judges \citep{huang2025t2icompbenchpp, wang2025genexam}, which cannot tell whether a ``right triangle'' actually contains a right angle.
-\GeoGenBench\ (\cref{sec:bench}) grades in symbolic space: the model's TikZ is compiled to SymPy coordinates and each prompt clause is decided as an exact predicate --- deterministic, reproducible, and $\sim$$1000\times$ cheaper than an MLLM judge.
+Prior work shows output probabilities are often better calibrated than words \citep{kadavath2022language}, and that the truth of \emph{given statements} is linearly readable from activations \citep{azaria2023internal, burns2023discovering, marks2024geometry}; verbalized-calibration studies measure what models say \citep{lin2022teaching, tian2023just}.
+We combine the threads on the model's \emph{own attempts}: temporal (pre/post) confidence elicitation, blind (no-feedback) updating, four readouts of the same latent quantity on identical records, and an intervention \citep{zou2023representation}.
+Measuring this well requires ground-truth correctness labels on open-ended generation at scale --- which is why the study is anchored by a machine-verified testbed (\cref{sec:testbed}).
+Our findings (\cref{sec:knowing}): the internal signal exceeds the spoken one almost everywhere, is specific to the individual attempt, transfers across domains, and causally sets stated confidence --- to an architecture-dependent degree that we argue is itself the finding.
 
-\textbf{Side two: verify the confidence.}
-A verifier covers the domains that have one.
-For the rest, agents fall back on self-assessment, and stated confidence is a weak guide to correctness.
-Exact verification gives us ground-truth correctness labels for the model's \emph{own attempts}, which lets us ask a sharper question (\cref{sec:knowing}): when a model's construction fails its checks, did the model \emph{internally} know?
-Reading the residual stream at a content-neutral token, we find the answer is largely yes --- the internal signal beats the spoken one in 15 of 16 model$\times$domain cells --- and causally so: steering along the model's own correctness direction makes its stated confidence honest.
+\section{The instrument: ground truth without a judge}
+\label{sec:testbed}
 
-Together the two halves argue one thesis: \emph{route precision through machinery that cannot fudge, and read self-knowledge from where it actually lives}.
+Metacognition experiments live or die by their correctness labels, and LLM-judged labels inherit the judge's blind spots.
+Our anchor domain avoids judges entirely.
+In \GeoGenBench, a model is asked in natural language for a geometric construction (``draw an acute triangle $EFG$ with $\angle E{=}60^\circ$, $\angle F{=}70^\circ$; construct the altitude from $G$ meeting $EF$ at $H$''); its output is compiled to SymPy coordinates, and each prompt clause is decided as an exact symbolic predicate (15 typed predicates, tolerance $5{\times}10^{-3}$) --- deterministic, reproducible, $\sim$$1000\times$ cheaper than a vision--language judge, and hard for current open models (13--39\% pass).
+Prompts and rubrics are co-generated from shared Python source, so the grader can never drift from the question.
+A pre-registered human study ($N{=}200$, two trained raters, blind) finds the verifier's disagreements with humans are strictly \emph{one-directional} (lenient, never harsh), so a \texttt{fail} label --- the label metacognition needs --- is trustworthy.
+Benchmarking six frontier models on the 801-prompt suite is reported elsewhere; the two findings that matter here are that a structured intermediate representation lifts every model ($+2$ to $+25$\pp, three flagships converging within $1$\pp), and that most wrong outputs are \emph{rendered diagrams with wrong geometry}, not broken code --- fluent, confident, and false, the exact failure mode that motivates reading the model's internals.
+MMLU-Pro, MATH, and GPQA-Diamond complete the domain grid with programmatic grading; ceiling-level benchmarks are dropped, since metacognition is failure-hungry.
 
-\section{GeoGenBench: machine-verified diagram generation}
-\label{sec:bench}
-
-\paragraph{Methodology.}
-\GeoGen\ rests on two pillars.
-\emph{Procedural co-generation}: one Python template emits both the natural-language prompt (``Draw an acute triangle $EFG$ with $\angle E{=}60^\circ$, $\angle F{=}70^\circ$; construct the altitude from $G$ meeting $EF$ at $H$'') and the machine-checkable property list any correct rendering must satisfy (\texttt{right\_angle($G,H,E$)}, \texttt{point\_on\_segment($H,E,F$)}, \dots), eliminating rubric/question drift and enabling contamination defence by re-rolling seeds.
-\emph{Render-then-symbolic-verify}: the model emits TikZ; a containerised renderer compiles it to SVG while an extractor compiles the same source to SymPy coordinates; a typed predicate language --- 15 symbolic predicates decided at tolerance $\tau{=}5{\times}10^{-3}$, plus 2 weaker source-string checks contributing only to a \emph{loose} pass --- is decided against those coordinates in microseconds.
-The instance, \GeoGenBench, has 801 prompts: 600 templated scenarios across three difficulty tiers plus 201 scenarios extracted from a state-adopted K--12 curriculum \citep{bluebonnet2024}, reported separately.
-
-\paragraph{Is the verifier right?}
-A pre-registered human study ($N{=}200$; two trained raters scoring blind to the auto-verdict, then meeting to consensus) yields $\kappa = 0.455$ against the verifier --- \textbf{moderate}, below the pre-registered $0.70$ bar --- while inter-rater agreement is substantial ($\kappa = 0.704$): the instrument is consistent; the gap is between raters and verifier.
-Crucially the disagreement is \emph{one-directional}: $18\%$ of strict passes overturn to human \texttt{fail}, zero the reverse, concentrated on mid-tier templates whose property lists check the named construction but not prompt-specified numeric parameters.
-Leaderboard rates are therefore conservative in a known direction, and the fix (numeric predicates on the affected templates) is committed follow-up.
-Verifier hardening matters: three verifier improvements promoted $4.6\%$ of pilot records to \texttt{pass} with zero demotions --- and shrank the apparent strategy effect by half, showing part of the ``strategy gap'' was verifier weakness, not model weakness.
-
-\paragraph{Benchmark: six models, two strategies.}
-We evaluate \opus, \sonnet, \haiku, \gpt, \geminipro, and \geminiflash\ ($\sim$$20\times$ price spread, April-2026 rates) under \textbf{\rawcode}\ (the model emits TikZ directly; zero scaffolding) and \textbf{\structured}\ (the model emits typed JSON for a Pydantic intermediate representation; code compiles IR $\to$ SymPy $\to$ TikZ, and declared checks run before render with up to 3 retries), at 600 templated scenarios $\times$ 3 repeats.
-\Cref{tab:leaderboard} shows strict pass rates and cost.
-
-\begin{table}[t]
-\caption{Headline leaderboard ($600$ scenarios $\times$ $3$ repeats, post-hardening; strict pass). $^*$ marginally partial coverage; $^\dagger$ rejected at the API layer by the vendor's schema-state cap.}
-\label{tab:leaderboard}
-\centering
-\small
-\begin{tabular}{lrr@{\hspace{2.2em}}lrr}
-\toprule
-\multicolumn{3}{c@{\hspace{2.2em}}}{\structured} & \multicolumn{3}{c}{\rawcode} \\
-\cmidrule(r{2.2em}){1-3}\cmidrule{4-6}
-\textbf{Model} & \textbf{Strict} & \textbf{\$/scen.} & \textbf{Model} & \textbf{Strict} & \textbf{\$/scen.} \\
-\midrule
-\gpt$^*$        & \textbf{94.1\%} & \dollars{0.075} & \gpt        & 91.9\% & \dollars{0.058} \\
-\sonnet         & 93.4\%          & \dollars{0.088} & \sonnet     & 81.2\% & \dollars{0.044} \\
-\opus$^*$       & 93.3\%          & \dollars{0.532} & \opus       & 71.6\% & \dollars{0.262} \\
-\geminipro$^*$  & 83.1\%          & \dollars{0.050} & \haiku      & 70.5\% & \dollars{0.019} \\
-\haiku          & 75.3\%          & \dollars{0.032} & \geminipro  & 58.4\% & \dollars{0.049} \\
-\geminiflash$^\dagger$ & ---      & ---             & \geminiflash & 35.9\% & \dollars{0.012} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paragraph{Findings.}
-\structured\ lifts every model ($+2.2$\pp\ for \gpt\ up to $+24.7$\pp\ for \geminipro), most for the models weakest at raw TikZ.
-Under it the frontier converges: three flagships span $0.8$\pp\ at a $7\times$ cost ratio, so the frontier-tier model carries no measurable quality premium under IR scaffolding.
-Most wrong outputs are \emph{rendered diagrams with wrong geometry}, not broken LaTeX --- exactly the failure mode a visual judge is worst at catching.
-One portability note: schema-constrained generation is compiled to a server-side FSM with vendor-specific caps, and our IR schema exceeds \geminiflash's, which rejects it before generating a token (HTTP 400) --- a portability gap, not a capability gap.
-
-\section{Do models know when their constructions fail?}
+\section{Knowing versus saying}
 \label{sec:knowing}
 
-Verification tells \emph{us} an attempt failed.
-Did the \emph{model} know?
-Prior work shows output probabilities are often better calibrated than words \citep{kadavath2022language}, and that truth of given statements is linearly readable from activations \citep{azaria2023internal, burns2023discovering, marks2024geometry}; verbalized-calibration studies measure what models say \citep{lin2022teaching, tian2023just}.
-We combine the threads on the model's \emph{own attempts}, with compiler-verified geometry as the anchor domain, and then intervene \citep{zou2023representation}.
-
 \paragraph{Protocol.}
-Four open models spanning architectures (Qwen3.6-27B, hybrid Mamba--attention; GLM-4.7-Flash, MoE; Mistral-Small-24B, dense; Gemma-4-26B-A4B, MoE/VLM-derived) $\times$ four domains (\GeoGen-verified geometry construction at 13--39\% pass, MMLU-Pro, MATH, GPQA-Diamond; ceiling-level benchmarks dropped --- metacognition is failure-hungry).
+Four open models spanning architectures (Qwen3.6-27B, hybrid Mamba--attention; GLM-4.7-Flash, MoE; Mistral-Small-24B, dense; Gemma-4-26B-A4B, MoE/VLM-derived) $\times$ the four domains, $\approx$750 records per cell.
 Three turns per problem: prospective confidence, attempt, retrospective confidence; grading is external and never shown, so post-attempt revisions are \emph{blind} self-assessment.
-$\approx$750 records per cell.
 Four readouts of the same latent quantity on identical records: stated confidence (0--100); P(True) and answer log-probability (output distribution); and a linear \emph{probe} (logistic regression on the residual stream at the confidence decision token, grouped out-of-fold, reported at a fixed mid--late layer band, not best-of-layer).
-Controls: layer-0 AUROC is exactly 0.500 in every cell (the read site carries no lexical signal); a within-question control fixes difficulty; a public deviations log records four bugs caught by planned controls, fixed, and re-run.
+Controls: per-fold layer-0 AUROC is exactly 0.500 in every cell (the read site carries no lexical signal); a surface-features baseline adds $+0.22$ mean incremental AUROC for the probe in 15/16 cells; a within-question control fixes difficulty; a public deviations log records four bugs caught by planned controls, fixed, and re-run.
 
 \begin{table}[t]
-\caption{Left: post-attempt correctness discrimination (AUROC), stated confidence vs.\ residual-stream probe, representative cells (probe wins in 15 of 16 overall, mean $+0.11$). Right: within-question control (difficulty fixed): the model's own P(True) collapses toward chance while the probe holds.}
+\caption{Left: post-attempt correctness discrimination (AUROC), stated confidence vs.\ residual-stream probe, representative cells (probe wins in 15 of 16 overall, mean $+0.11$; paired bootstrap significant-positive in 10/16, never significantly negative). Right: within-question control (difficulty fixed): the model's own P(True) collapses toward chance while the probe holds.}
 \label{tab:knowing}
 \centering
 \small
@@ -147,38 +98,56 @@ Mistral $\times$ MATH & \textbf{0.72} & 0.59 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Knowing exceeds saying.}
-The probe beats stated confidence in \textbf{15 of 16} cells (mean $+0.11$ AUROC; \cref{tab:knowing}, left).
-The gap is widest on MATH, where a wrong \texttt{\textbackslash boxed\{answer\}} is surface-identical to a right one: stated confidence there is near-useless (0.57) while the internal signal is the strongest of any domain (0.76--0.90) --- verbalized confidence appears to lean on surface fluency, which multi-step computation defeats, while the internal state encodes the computation itself.
+\paragraph{Knowing exceeds saying, most where errors look clean.}
+The probe beats stated confidence in \textbf{15 of 16} cells (\cref{tab:knowing}, left).
+The gap is widest on MATH: stated confidence there is near-useless (0.57) while the internal signal is the strongest of any domain (0.76--0.90).
+Verbalized confidence appears to lean on surface fluency, which multi-step computation defeats; the internal state encodes the computation itself.
+Post-attempt internal readouts also exceed pre-attempt ones --- doing the work sharpens the internal signal even where it degrades the stated one.
 
-\paragraph{The signal is attempt-specific.}
-Within a single question, across its five sampled attempts, only attempt-level information can discriminate --- and there the model's own P(True) collapses toward chance while the probe holds (\cref{tab:knowing}, right).
-P(True) largely re-derives \emph{which questions are hard}; the probe tracks \emph{whether this attempt succeeded}.
+\paragraph{The signal tracks the attempt, not the question.}
+Within a single question, across its five sampled attempts, only attempt-level information can discriminate --- and there the model's own P(True) collapses toward chance while the probe holds (\cref{tab:knowing}, right): P(True) largely re-derives \emph{which questions are hard}; the probe tracks \emph{whether this attempt succeeded}.
+Two decompositions sharpen this.
+Residualizing post-attempt probe scores on pre-attempt scores leaves substantial AUROC (0.59--0.87), so the post signal is attempt-specific rather than re-expressed difficulty; and the post-attempt direction transfers only weakly to the pre-attempt site, so \emph{did I succeed?} and \emph{is this hard?} are largely distinct directions.
 Blind post-attempt confidence drops are also larger on failures than successes: a genuine, under-expressed self-monitoring process.
+
+\paragraph{One correctness direction, largely domain-general.}
+Probes trained in one domain and evaluated in another retain $\approx$$87$--$90\%$ of in-domain AUROC (e.g.\ Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), occasionally losslessly within QA domains (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91 in-domain).
+Geometry is partially special: on Gemma-4, geometry-trained probes \emph{anti-transfer} to QA (0.31--0.39) while QA-trained probes work on geometry ($\approx$0.70) --- probes trained on the generative task can latch onto task-specific features, while QA-trained probes find the general direction.
+A shared correctness direction is what a deployable readout needs, and what a workspace account (below) predicts.
 
 \paragraph{The signal is causally used.}
 Steering at the confidence token (after the answer, which is unchanged by construction), we amplify the model's own projection onto its correctness direction, with no labels at intervention time.
-On Mistral $\times$ MATH, as gain increases ($1\to2\to4$), stated confidence on \emph{failed} answers falls $80 \to 65 \to 43$ while correct answers hold near 90; calibration error halves ($0.31 \to 0.13$); a matched random direction is flat; dampening \emph{increases} overconfidence (bidirectional dose--response).
-Replication is architecture-dependent --- Gemma-4 shows the right specificity but is underpowered; GLM is null, its stated confidence saturating near 100 precisely where the probe most exceeds P(True) --- which we read as the finding, not a failure: \emph{how much internal knowledge reaches speech varies by model}.
+On Mistral $\times$ MATH, as gain increases ($1\to2\to4$), stated confidence on \emph{failed} answers falls $80 \to 65 \to 43$ while correct answers hold near 90; calibration error halves ($0.31 \to 0.13$); a matched random direction is flat; dampening \emph{increases} overconfidence (a bidirectional dose--response).
+Replication is architecture-dependent: Gemma-4 shows the right specificity but is underpowered; GLM is null at tested gains, its stated confidence saturating near 100 precisely where the probe most exceeds P(True).
+We read this spectrum as the finding: \emph{how much internal knowledge reaches speech varies by model}.
+
+\paragraph{Toward mechanism: does the knowledge enter the workspace?}
+Why does a signal this strong fail to reach speech in some architectures?
+The global-workspace account \citep{anthropic2026workspace} offers a testable answer: information becomes reportable only when it enters a verbalizable subspace, and its unsupervised Jacobian lens found ``bug detection before identification'' --- knowing-without-saying --- in code models.
+Our prediction: on MATH failures the correctness signal exists (the probe reads it) but does not enter the workspace, hence cannot be said; GLM's decoupled speech channel should show the largest exclusion.
+The lens also supplies an unsupervised readout of our saved activations (retiring probe-overfitting critiques) and a label-free steering direction.
+This arm is in progress and is, we argue, where the research frontier sits: not \emph{whether} models know, but \emph{what gates the knowing from the saying}.
 
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{One loop.}
-The two halves compose into a reliability loop for mathematical agents.
-Where a domain admits a verifier, use it: \GeoGen-style symbolic checks are exact, cheap, and (per the human study) conservative in a known direction.
-Where it does not, the internal correctness signal is the best attempt-specific readout we found --- abstaining on the probe's lowest-scoring outputs raises accuracy far more than abstaining on low stated confidence --- and the steering result suggests stated confidence itself can be made honest by amplification rather than retraining.
-The verifier is also what made the second study possible: exact labels on open-ended generation, at scale, with no human grading.
+\paragraph{For reliable mathematical agents.}
+Where a domain admits a verifier, use it: symbolic checks are exact, cheap, and conservative in a known direction.
+Where it does not, the internal signal is the best attempt-specific readout we found: abstaining on the probe's lowest-scoring outputs raises accuracy far more than abstaining on low stated confidence (on the cells where verbalized abstention fails outright, internal abstention still works), and the steering result suggests stated confidence itself can be made honest by amplification rather than retraining.
+Domain-generality means one direction may serve many tasks.
 
 \paragraph{Limitations.}
-\GeoGenBench\ covers 2D construction, not proof, 3D, or teaching utility; $35\%$ of templates are intentionally loose, and the human study localises the resulting lenience (with the v2 fix identified).
-The confidence study uses linear probes at a single token (nonlinear or multi-token signal is undercounted); the causal arm is one clean model plus one underpowered and one null replication; and whether unexpressed knowledge is speakable-but-suppressed or an access failure is an open mechanism question under active study.
+Linear probes at a single token undercount nonlinear or multi-token signal.
+On MATH an early-layer channel adjacent to the answer text may contribute lexical signal that the within-question control cannot fully exclude; the steering test is the discriminator, and it is why we weight the causal arm heavily.
+The causal arm is one clean model plus one underpowered and one null replication; two MATH cells run at reduced $n$; the workspace arm has not yet produced results.
+Whether the knowing--saying gap is an artifact of preference tuning (testable with a base-model arm) is open.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-On one testbed, we showed that open-ended mathematical generation can be graded exactly without humans, that such grading changes what we can measure --- including that models internally know when their own attempts are wrong better than they say, attempt-specifically and steerably.
-Let the model propose; let the math verify; and when no verifier exists, read the confidence from where it lives.
+Anchored by a compiler-graded geometry testbed, we showed that open language models carry a linear, largely domain-general internal signal of their own correctness that exceeds their stated confidence, tracks the individual attempt, and is causally used to set what they say --- to a degree that varies by architecture.
+Models substantially \emph{know} when their mathematics is wrong.
+The open problem is the gate between knowing and saying, and we have a concrete, falsifiable test of it in flight.
 
 \bibliographystyle{plainnat}
 \bibliography{refs,refs_confidence}
