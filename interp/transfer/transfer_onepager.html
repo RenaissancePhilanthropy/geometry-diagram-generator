@@ -1,0 +1,266 @@
+<title>Cross-format transfer — does the probe read meaning or format?</title>
+<style>
+  :root{
+    --ground:#F2F2F0; --paper:#FFFFFF; --ink:#131318; --muted:#6E6E7C; --faint:#9A99A6;
+    --rule:#E3E3E0; --panel:#F7F7F4;
+    /* this page's semantics: teal = shared / transfers · coral = format-bound */
+    --shared:#0C8CA3; --shared-deep:#134E5A; --shared-wash:#E2F0F3;
+    --bound:#C24C29; --bound-bright:#F87248; --bound-wash:#FBE9E1;
+    --serif:"Charter","Iowan Old Style",Cambria,Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 2px 22px rgba(19,19,24,.10);
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --ground:#141419; --paper:#1D1D24; --ink:#ECEBEF; --muted:#A3A2AF; --faint:#777682;
+    --rule:#33333C; --panel:#24242C;
+    --shared:#3FB2C6; --shared-deep:#8FD2DE; --shared-wash:#15333A;
+    --bound:#F08561; --bound-bright:#F87248; --bound-wash:#3A241B;
+    --shadow:0 2px 22px rgba(0,0,0,.45);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#141419; --paper:#1D1D24; --ink:#ECEBEF; --muted:#A3A2AF; --faint:#777682;
+    --rule:#33333C; --panel:#24242C;
+    --shared:#3FB2C6; --shared-deep:#8FD2DE; --shared-wash:#15333A;
+    --bound:#F08561; --bound-bright:#F87248; --bound-wash:#3A241B;
+    --shadow:0 2px 22px rgba(0,0,0,.45);
+  }
+  :root[data-theme="light"]{
+    --ground:#F2F2F0; --paper:#FFFFFF; --ink:#131318; --muted:#6E6E7C; --faint:#9A99A6;
+    --rule:#E3E3E0; --panel:#F7F7F4;
+    --shared:#0C8CA3; --shared-deep:#134E5A; --shared-wash:#E2F0F3;
+    --bound:#C24C29; --bound-bright:#F87248; --bound-wash:#FBE9E1;
+    --shadow:0 2px 22px rgba(19,19,24,.10);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    font-size:15.5px;line-height:1.58;-webkit-font-smoothing:antialiased}
+  .sheet{max-width:880px;margin:30px auto;background:var(--paper);border-radius:4px;
+    box-shadow:var(--shadow);padding:52px 58px 46px}
+  @media (max-width:720px){.sheet{margin:0;padding:34px 22px 40px;border-radius:0}}
+
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--bound);margin:0 0 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--bound-bright);flex:0 0 auto}
+  h1{font-family:var(--serif);font-size:31px;line-height:1.16;font-weight:600;margin:0 0 12px;
+    letter-spacing:-.01em;text-wrap:balance;max-width:26ch}
+  .dek{font-size:16.5px;color:var(--muted);max-width:62ch;margin:0 0 22px}
+  .dek b{color:var(--ink);font-weight:600}
+  .meta{display:flex;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted);
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-bottom:34px}
+  .meta div{padding:10px 20px 10px 0;margin-right:20px;border-right:1px solid var(--rule)}
+  .meta div:last-child{border-right:0;margin-right:0}
+  .meta b{color:var(--ink);font-weight:650}
+
+  section{margin:0 0 34px}
+  h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--shared);margin:0 0 4px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  h2 .tag{font-family:var(--mono);font-weight:500;font-size:11px;letter-spacing:.08em;
+    color:var(--faint);text-transform:none}
+  h3.claim{font-family:var(--serif);font-size:20.5px;font-weight:600;margin:0 0 10px;
+    letter-spacing:-.008em;text-wrap:balance}
+  p{margin:.45em 0;max-width:68ch}
+  .muted{color:var(--muted)}
+
+  .nums{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 12px}
+  .num{border:1px solid var(--rule);border-radius:8px;padding:.5rem .85rem;background:var(--panel);
+    font-variant-numeric:tabular-nums;min-width:8.5rem}
+  .num .v{font-family:var(--serif);font-size:22px;font-weight:600;line-height:1.1;display:block}
+  .num .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted)}
+  .num.sh .v{color:var(--shared)} .num.bd .v{color:var(--bound)}
+
+  .eq{font-family:var(--serif);font-size:18.5px;text-align:center;margin:12px 0 0;
+    padding:13px 18px;background:var(--panel);border-left:3px solid var(--shared);
+    border-radius:6px 6px 0 0;overflow-x:auto;white-space:nowrap}
+  .eq.w{border-left-color:var(--bound)}
+  .eq .lbl{font-family:var(--sans);font-size:11px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.08em;margin-right:14px}
+  .v{font-family:var(--serif);font-style:italic}
+  sub,sup{font-size:.7em;line-height:0}
+  .frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;
+    font-size:.86em;line-height:1.15;margin:0 .18em}
+  .frac>span:first-child{border-bottom:1px solid currentColor;padding:0 .25em}
+  .recipe{margin:0 0 4px;background:var(--panel);border-left:3px solid var(--rule);
+    border-radius:0 0 6px 6px;padding:10px 18px 11px}
+  .recipe ol{margin:.2em 0 .2em 1.1em;padding:0}
+  .recipe li{font-size:14px;margin:.3em 0;line-height:1.5;max-width:none}
+  .recipe .clab{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--muted);display:block;margin:.15em 0 .25em}
+  .prov{font-size:13px;color:var(--faint);margin:.5em 0 0;font-family:var(--mono)}
+  .sh{color:var(--shared);font-weight:600}
+  .bd{color:var(--bound);font-weight:600}
+
+  .tbl{overflow-x:auto;margin:10px 0 4px}
+  table{border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums;min-width:100%}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);font-weight:500;text-align:right;padding:6px 12px;border-bottom:1px solid var(--rule)}
+  th:first-child,td:first-child{text-align:left;padding-left:0}
+  td{padding:6px 12px;text-align:right;border-bottom:1px solid var(--rule)}
+  tr:last-child td{border-bottom:0}
+  td.hit{color:var(--shared);font-weight:650}
+  td.miss{color:var(--bound);font-weight:650}
+  .curve{font-family:var(--mono);font-size:12.5px;overflow-x:auto;white-space:pre;
+    background:var(--panel);border-radius:6px;padding:12px 16px;margin:10px 0 4px;line-height:1.7}
+  .curve b{color:var(--shared)}
+
+  .conv{border:1px solid var(--rule);border-radius:8px;background:var(--panel);
+    padding:14px 20px;margin-top:6px}
+  .conv b{font-weight:650}
+  .conv p{font-size:14px;max-width:none}
+  .foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--rule);
+    font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;
+    justify-content:space-between;gap:12px;flex-wrap:wrap}
+  a{color:var(--shared)}
+</style>
+
+<div class="sheet">
+  <div class="eyebrow"><span class="dot"></span>interp · spatial study · cross-format transfer</div>
+  <h1>Does the probe read meaning, or does it read format?</h1>
+  <p class="dek">The spatial probes were trained on one model writing one format. This experiment
+    holds the <b>figure</b> fixed, varies only the <b>surface format</b> it is written in, and asks
+    whether a frozen probe still reads the geometry. Sibling page to the Metacognition Brief;
+    everything here is re-derivable from <span style="font-family:var(--mono);font-size:.9em">interp/transfer/</span>.</p>
+  <div class="meta">
+    <div><b>300</b> figures × <b>4</b> formats, same compiled geometry</div>
+    <div><b>Qwen2.5-1.5B</b> · reading mode · bf16</div>
+    <div><b>5</b> seeds · split grouped by figure</div>
+    <div>entity names <b>randomized</b></div>
+  </div>
+
+  <section>
+    <h2>The atom <span class="tag">one captured position</span></h2>
+    <h3 class="claim">Same figure, four texts, one label</h3>
+    <p>Each figure is generated parametrically (no LLM), compiled through the real pipeline
+      (validate → lower → compile → check), and rendered as <b>recipe JSON</b>, <b>TikZ</b>,
+      <b>SVG source</b>, and <b>English prose</b>. A record is the residual-stream vector
+      <span class="v">h</span> ∈ ℝ<sup>1536</sup> at an <b>entity-name token</b> (all 29 states),
+      captured in a plain forward pass — no generation. Its label comes from the compiled SymPy
+      geometry, never from the text: the entity's <b>relation</b> (midpoint, tangent, …, 8 classes),
+      its <b>bbox-normalized position</b>, or its <b>vertex angle</b>. Names are random letters, so
+      the name token itself carries ~nothing.</p>
+  </section>
+
+  <section>
+    <h2>The probe <span class="tag">why "frozen" is well-defined</span></h2>
+    <h3 class="claim">Scaler, PCA, and head collapse into one affine map</h3>
+    <div class="eq"><span class="lbl">one map</span>
+      <span class="v">s</span>(<span class="v">h</span>) =
+      <span class="v">w</span><sup>⊤</sup><span class="v">P</span><sup>⊤</sup>
+      diag(1/<span class="v">σ</span>)(<span class="v">h</span> − <span class="v">μ</span>) + <span class="v">b</span>
+      &nbsp;&nbsp;<span style="font-size:14px;color:var(--muted)">(μ, σ, P, w, b all fit on recipe-train, then never touched)</span></div>
+    <div class="recipe"><span class="clab">recipe</span>
+      <ol>
+        <li>Fit standardize → PCA(100) → linear (logistic / ridge) on <b>recipe-format</b> activations of the train figures only.</li>
+        <li>At test time nothing is refit — the target format's activations are pushed through the <b>stored</b> μ, σ, projection <span class="v">P</span>, and weights. The PCA "at test time" is literally the same matrix.</li>
+        <li>Because every step is affine, the probe is ultimately one set of directions in the raw 1536-dim stream; PCA acts only as a training-time regularizer confining <span class="v">w</span> to recipe's top-100 variance subspace.</li>
+      </ol>
+      <p class="muted" style="font-size:13.5px">That confinement is a real caveat: a transfer failure can mean
+      "different directions" <i>or</i> "directions outside recipe's top-100 subspace". The PCA-free and
+      rotation-aligned controls below separate these.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The ruler <span class="tag">used by every result</span></h2>
+    <h3 class="claim">Transfer fraction — where between floor and ceiling does the frozen probe land?</h3>
+    <div class="eq">transfer&nbsp;fraction =
+      <span class="frac"><span>score<sub>frozen</sub> − floor</span><span>ceiling − floor</span></span></div>
+    <div class="recipe"><span class="clab">recipe · per (labeler, layer, target format)</span>
+      <ol>
+        <li><b>score<sub>frozen</sub></b> — recipe-trained probe on the target format, <b>held-out figures</b> (figure split shared across formats; held-out means held out everywhere).</li>
+        <li><b>floor</b> — predict the label from the token string alone (majority label per token on target-train). Names are randomized, so this sits near majority class.</li>
+        <li><b>ceiling</b> — identical pipeline trained natively on the target format, same split. For regression the ruler is R² against the ceiling (floor = 0 by construction).</li>
+        <li>1.0 = the recipe directions read the target format as well as its own probe · 0 = nothing beyond naming.</li>
+      </ol>
+    </div>
+    <p class="prov">5 seeds, mean ± std · conditions also logged: transfer on train figures (format-only diagnostic)</p>
+  </section>
+
+  <section>
+    <h2>R1 <span class="tag">entity relation · 8-class · majority 0.36</span></h2>
+    <h3 class="claim">English <span class="sh">transfers (0.61)</span> · TikZ and SVG <span class="bd">sit at the floor</span></h3>
+    <div class="nums">
+      <div class="num sh"><span class="v">0.61</span><span class="l">→ english</span></div>
+      <div class="num bd"><span class="v">≈ 0</span><span class="l">→ tikz</span></div>
+      <div class="num bd"><span class="v">≈ 0</span><span class="l">→ svg</span></div>
+      <div class="num"><span class="v">0.997</span><span class="l">in-domain acc @L19</span></div>
+    </div>
+    <div class="tbl"><table>
+      <tr><th>@L19 (in-domain peak)</th><th>tikz</th><th>svg</th><th>english</th></tr>
+      <tr><td>frozen probe</td><td>0.516 ± .031</td><td>0.526 ± .019</td><td>0.787 ± .024</td></tr>
+      <tr><td>token-identity floor</td><td>0.574</td><td>0.538</td><td>0.449</td></tr>
+      <tr><td>native ceiling</td><td>0.918</td><td>0.989</td><td>1.000</td></tr>
+      <tr><td>transfer fraction</td><td class="miss">≈ 0</td><td class="miss">≈ 0</td><td class="hit">0.61</td></tr>
+    </table></div>
+    <p>The failure is not absence of information: native probes decode relations from TikZ/SVG
+      activations at 0.92–0.99. The facts are there — <b>stored along different directions</b>
+      (or outside recipe's PCA subspace). This <b>reversed the pre-registered prediction</b>
+      (code→code was expected to transfer best): the divide is
+      <span class="sh">constraint language</span> vs <span class="bd">rendered coordinates</span>,
+      not code vs prose.</p>
+  </section>
+
+  <section>
+    <h2>R2 <span class="tag">point position · regression · R²</span></h2>
+    <h3 class="claim">Coordinates transfer by meaning-distance: <span class="sh">0.77</span> / 0.61 / <span class="bd">0.37</span> of ceiling</h3>
+    <div class="tbl"><table>
+      <tr><th>@L19 · in-domain R² 0.914</th><th>tikz</th><th>svg</th><th>english</th></tr>
+      <tr><td>frozen probe R²</td><td>0.323 ± .024</td><td>0.561 ± .025</td><td>0.720 ± .010</td></tr>
+      <tr><td>native ceiling R²</td><td>0.876</td><td>0.912</td><td>0.935</td></tr>
+      <tr><td>fraction of ceiling</td><td class="miss">0.37</td><td>0.61</td><td class="hit">0.77</td></tr>
+    </table></div>
+    <p class="muted" style="font-size:14px">TikZ/SVG contain literal coordinates while recipe/English are
+      constraint-based, so native ceilings there can ride surface cues the frozen probe never saw.</p>
+  </section>
+
+  <section>
+    <h2>R3 <span class="tag">the band · frozen-probe score by layer</span></h2>
+    <h3 class="claim">Transfer exists only mid-network (~L14–20 of 28)</h3>
+    <div class="curve">layer            0     4     8    12    <b>16</b>    <b>20</b>    24    28
+relation→english  0.25  0.58  0.59  0.80  <b>0.87</b>  <b>0.80</b>  0.74  0.55
+coords →english  −0.08 −0.08 −0.27  0.18  <b>0.68</b>  <b>0.67</b>  0.05 −1.12
+coords →tikz     −0.04 −0.85 −1.05 −0.21  <b>0.48</b>  <b>0.25</b> −1.03 −2.26</div>
+    <p>Outside the band, frozen probes fall to floor (classification) or strongly negative R²
+      (regression). Early layers are token-bound; late layers re-encode format-specifically. The
+      shared subspace lives <b>exactly where the 7B study localized its computed representations</b>
+      (mid-late network) — a convergence worth testing at scale.</p>
+  </section>
+
+  <section>
+    <h2>R4 <span class="tag">vertex angle · null</span></h2>
+    <h3 class="claim">Angle is not linearly readable in reading mode — in any format</h3>
+    <p>In-domain peak R² = −0.03; native ceilings ≈ 0 across all four formats. Transfer is
+      undefined when there is nothing to transfer. Consistent with the leak-free correction in the
+      main RESULTS.md, where angle was already unsupported.</p>
+  </section>
+
+  <section>
+    <h2>Conventions &amp; caveats <span class="tag">every number above inherits these</span></h2>
+    <div class="conv">
+      <p><b>Pilot model:</b> 1.5B (7B does not fit this machine); probes are model-specific — the 7B/32B
+      rerun is a GPU-box job, scripts unchanged.
+      <b>Template coupling:</b> 8 templates make relation ≈ (construction type × slot); absolute
+      accuracies are inflated, cross-format <i>contrasts</i> are not (same figures everywhere).
+      <b>Coordinate clustering:</b> bbox-normalized positions cluster by template role — read
+      in-domain R² 0.91 accordingly.
+      <b>Reading ≠ generation:</b> original probes trained on self-generated text; the bridge condition
+      needs the old GPU-box captures.
+      <b>One English style:</b> fixed sentence templates; paraphrase robustness untested.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Next <span class="tag">queued</span></h2>
+    <p><b>PCA-free probe</b> (kills the subspace-confinement explanation of the TikZ null) ·
+      <b>rotation alignment</b> (CCA/Procrustes: "same information, rotated basis" vs "elsewhere") ·
+      <b>7B / 32B rerun</b> at the same fractional depths ·
+      <b>cross-domain correctness</b> — the transferable label is <i>correctness</i>, not midpoints:
+      train the metacognition probe on geometry, freeze, evaluate on math/science benchmarks.</p>
+  </section>
+
+  <div class="foot">
+    <span>interp/transfer/ · spatial study · feat/spatial-interp</span>
+    <span><span style="color:var(--shared)">teal = shared / transfers</span> · <span style="color:var(--bound)">coral = format-bound</span></span>
+  </div>
+</div>
