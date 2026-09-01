@@ -41,31 +41,33 @@
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);
-    font-size:17.5px;line-height:1.66;-webkit-font-smoothing:antialiased}
+    font-size:18px;line-height:1.7;-webkit-font-smoothing:antialiased}
   .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
-  .prose{max-width:660px;margin:0 auto}
+  .prose{max-width:620px;margin:0 auto}
   p{margin:1em 0}
   a{color:var(--pencil)}
   ::selection{background:var(--pencil-wash)}
 
   /* header */
-  header{padding:64px 0 30px;background:
+  header{padding:56px 0 0;background:
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
     background-size:28px 28px;border-bottom:1px solid var(--rule)}
+  .hero{display:flex;gap:28px;align-items:center;flex-wrap:wrap;max-width:900px;margin:0 auto;padding-bottom:34px}
+  .hero-words{flex:1 1 340px}
+  .hero-fig{flex:0 1 300px;min-width:240px}
+  .hero-fig svg{width:100%;height:auto}
   .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
     color:var(--redpen);margin:0 0 18px}
-  h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,5.4vw,56px);
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,5.4vw,54px);
     line-height:1.06;letter-spacing:-.015em;margin:0 0 16px;text-wrap:balance;max-width:17ch}
   h1 .pen{color:var(--pencil)}
-  .dek{font-size:21px;line-height:1.5;color:var(--muted);max-width:34ch;margin:0 0 26px;text-wrap:pretty}
+  .dek{font-size:21px;line-height:1.5;color:var(--muted);max-width:32ch;margin:0 0 22px;text-wrap:pretty}
   .byline{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
 
   h2{font-family:var(--display);font-weight:800;font-size:27px;letter-spacing:-.01em;
     margin:2em 0 .4em;line-height:1.2;text-wrap:balance}
   h2 .no{color:var(--redpen);margin-right:.35em}
-  .lead-in{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
-    color:var(--faint);display:block;margin-bottom:6px}
 
   /* worksheet cards (interactives) */
   .worksheet{background:var(--card);border:1px solid var(--rule);border-radius:14px;
@@ -129,6 +131,28 @@
   .switch button.on{background:var(--pencil);color:#fff}
   .scribble{font-family:var(--body);font-style:italic;font-size:15px;fill:var(--redpen)}
 
+  /* the team: three workers */
+  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:860px;margin:26px auto}
+  @media (max-width:720px){.cards3{grid-template-columns:1fr}}
+  .card3{background:var(--card);border:1.5px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px 18px 16px;text-align:center}
+  .card3 .glyph{height:44px;margin-bottom:8px}
+  .card3 .glyph svg{height:44px;width:auto;margin:0 auto}
+  .card3 b{font-family:var(--display);font-size:17px;display:block;margin-bottom:4px}
+  .card3 p{font-size:15px;color:var(--muted);margin:0;line-height:1.5}
+  .card3.c-red{border-top:4px solid var(--redpen)}
+  .card3.c-blue{border-top:4px solid var(--pencil)}
+  .card3.c-green{border-top:4px solid var(--pass)}
+
+  /* big numbers */
+  .bignums{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:860px;margin:26px auto}
+  @media (max-width:720px){.bignums{grid-template-columns:1fr}}
+  .bignum{background:var(--card);border:1.5px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px;text-align:center}
+  .bignum .n{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;color:var(--pencil);display:block}
+  .bignum.red .n{color:var(--redpen)} .bignum.green .n{color:var(--pass)}
+  .bignum p{font-size:14.5px;color:var(--muted);margin:8px 0 0;line-height:1.45}
+
   /* pipeline map */
   .line{display:flex;gap:0;align-items:stretch;flex-wrap:wrap;justify-content:center;margin:6px 0 4px}
   .station{flex:1 1 120px;min-width:118px;max-width:170px;background:var(--card);
@@ -151,6 +175,19 @@
     border-radius:0 10px 10px 0;padding:12px 18px;margin:1.4em 0;font-size:16px}
   .redline{border-left-color:var(--redpen);background:var(--redpen-wash)}
 
+  /* under-the-hood fold */
+  details.hood{background:var(--card);border:1px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);margin:34px auto;max-width:860px;padding:0 22px}
+  details.hood summary{cursor:pointer;list-style:none;padding:18px 0;
+    font-family:var(--display);font-weight:800;font-size:19px}
+  details.hood summary::-webkit-details-marker{display:none}
+  details.hood summary::before{content:"▸";color:var(--redpen);margin-right:10px;
+    display:inline-block;transition:transform .15s ease}
+  details.hood[open] summary::before{transform:rotate(90deg)}
+  details.hood summary .sub{font-family:var(--body);font-style:italic;font-weight:400;
+    font-size:14px;color:var(--muted);margin-left:8px}
+  details.hood .hood-body{padding:0 0 22px;font-size:16.5px}
+
   footer{margin:70px 0 40px;padding-top:22px;border-top:1px solid var(--rule);
     font-family:var(--mono);font-size:13px;color:var(--faint)}
 
@@ -161,34 +198,103 @@
   @keyframes draw{to{stroke-dashoffset:0}}
   .fade{opacity:0;animation:fadein .5s ease forwards}
   @keyframes fadein{to{opacity:1}}
+  .hero-draw{stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 1.6s ease .2s forwards}
+  .hero-late{opacity:0;animation:fadein .6s ease 1.6s forwards}
 </style>
 
 <header>
-  <div class="wrap prose">
-    <p class="eyebrow">From the workshop · how the diagrams get made</p>
-    <h1>The AI doesn't draw.<br>It writes <span class="pen">recipes</span>.</h1>
-    <p class="dek">AI can produce endless diagrams, just sometimes not correct ones.<br>Here's how we closed that gap.</p>
-    <p class="byline">step-wise geometry diagram generator solution</p>
+  <div class="wrap hero">
+    <div class="hero-words">
+      <p class="eyebrow">From the workshop · how the diagrams get made</p>
+      <h1>The AI doesn't draw.<br>It writes <span class="pen">recipes</span>.</h1>
+      <p class="dek">An AI can make a million math pictures. The hard part is making them <i>right</i>. Here is how we do it.</p>
+      <p class="byline">how our geometry diagram maker works</p>
+    </div>
+    <div class="hero-fig" aria-hidden="true">
+      <svg viewBox="0 0 300 250">
+        <path class="stroke-pencil hero-draw" d="M60 55 L60 195 L260 195 Z"></path>
+        <path class="stroke-pencil hero-draw" d="M60 180 h15 v15" stroke-width="1.6"></path>
+        <circle class="stroke-pencil hero-draw" cx="160" cy="125" r="122"></circle>
+        <g class="hero-late">
+          <circle class="pt" cx="60" cy="55" r="4"></circle><text x="42" y="52">A</text>
+          <circle class="pt" cx="60" cy="195" r="4"></circle><text x="42" y="214">B</text>
+          <circle class="pt" cx="260" cy="195" r="4"></circle><text x="270" y="214">C</text>
+          <circle cx="160" cy="125" r="4.5" fill="var(--pass)"></circle>
+          <text x="170" y="118" fill="var(--pass)">M</text>
+          <text x="178" y="34" fill="var(--pass)" font-size="13">✓ checked</text>
+        </g>
+      </svg>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
   <div class="prose">
-    <h2 style="margin-top:1.6em"><span class="no">1.</span>The problem: good diagrams don't scale</h2>
-    <p>Geometry practice runs on diagrams. Every problem needs an accurate figure, every skill needs many problems, and every student ideally gets fresh ones. Yet those figures are still made the way they were fifty years ago: an expert hand-places every point and double-checks every angle. It's careful, slow work, so good practice material is scarce and expensive, and the students who need it most have the least of it.</p>
-    <p>The obvious answer is generative AI, and it fails in an instructive way. Ask an image model for <i>“a right triangle with a circle through all three corners”</i> and you get something confident and wrong: a bent side, a circle that grazes two corners and ignores the third. Usually that's harmless. In a classroom it's disqualifying, because a geometry diagram is the one picture where <i>almost right</i> is worse than nothing. A student practicing on a “right angle” of 78° is being taught something false.</p>
-    <p>So the question isn't “can AI draw?” It's “can AI produce diagrams a teacher never has to proofread?” That's the bar we built this to clear.</p>
-
-    <h2><span class="no">2.</span>Our solution: ask the AI for the recipe, not the picture</h2>
-    <p>Think about giving someone directions to your house. You wouldn't paint the route from memory. You'd write instructions: <i>left at the bakery, second right, gray door.</i> Short, checkable, and anyone reliable can follow them exactly.</p>
-    <p>That's our whole approach. The AI never touches a pixel or eyeballs an angle. It may anchor a figure (corner B at the origin, say), but every relationship arrives as a step in a <b>construction recipe</b>, the same step-by-step build a student would do with compass and straightedge. “Make a triangle with a right angle here. Mark the midpoint of that side. Draw the circle centered there.”</p>
-    <p>Step through a real one:</p>
+    <h2 style="margin-top:1.6em"><span class="no">1.</span>The problem: close is not correct</h2>
+    <p>Math class runs on pictures. Every geometry problem needs one. And every student needs lots of problems to practice on.</p>
+    <p>But those pictures are still drawn by hand. A person places every point. A person checks every angle. That is slow, careful work. So good practice problems are rare.</p>
+    <p>Why not just ask an AI to draw one? Try it. Ask for <i>“a right triangle with a circle through all three corners.”</i> You get something that looks close. But look again. One side is bent. The circle misses a corner.</p>
+    <p>In art class, close is fine. In math class, close is wrong. A kid who practices on a “right angle” of 78° is learning something false.</p>
+    <p>See it for yourself:</p>
   </div>
 
-  <!-- ── TRY IT 1: recipe player ─────────────────────────────── -->
+  <!-- ── TRY IT 1: guess vs recipe ───────────────────────────── -->
+  <section class="worksheet" id="ws2">
+    <div class="ws-head"><span class="try">Try it №1</span><h3>Spot the mistakes</h3>
+      <span class="hint">flip between the two ways of asking</span></div>
+    <div class="ws-body">
+      <div class="controls" style="margin:0 0 14px">
+        <div class="switch" role="group" aria-label="Choose generation mode">
+          <button id="t-guess" class="on" aria-pressed="true">The AI draws by itself</button>
+          <button id="t-recipe" aria-pressed="false">The AI writes a recipe</button>
+        </div>
+      </div>
+      <div class="figpane"><svg viewBox="0 0 360 290" id="fig2" role="img" aria-label="Comparison of a guessed diagram with errors versus an exact constructed diagram">
+        <g id="f2-guess">
+          <path class="stroke-pencil" d="M78 78 L64 228 L306 218 Z"></path>
+          <circle class="stroke-pencil" cx="176" cy="132" r="128"></circle>
+          <circle class="pt" cx="78" cy="78" r="4"></circle><text x="60" y="74">A</text>
+          <circle class="pt" cx="64" cy="228" r="4"></circle><text x="46" y="247">B</text>
+          <circle class="pt" cx="306" cy="218" r="4"></circle><text x="318" y="237">C</text>
+          <circle class="pt" cx="172" cy="140" r="4.5" fill="var(--redpen)"></circle>
+          <text x="182" y="133" fill="var(--redpen)">M</text>
+          <g id="f2-marks">
+            <path class="redstroke" d="M52 210 q14 -18 34 -6" ></path>
+            <text class="scribble" x="18" y="196" transform="rotate(-8 18 196)">this is 84°, not 90°</text>
+            <path class="redstroke" d="M196 118 q10 14 -2 26"></path>
+            <text class="scribble" x="206" y="112" transform="rotate(6 206 112)">M is not the middle</text>
+            <path class="redstroke" d="M296 196 q6 10 -4 18"></path>
+            <text class="scribble" x="204" y="272" transform="rotate(-4 204 272)">the circle misses C</text>
+          </g>
+        </g>
+        <g id="f2-recipe" style="display:none">
+          <path class="stroke-pencil" d="M70 70 L70 230 L310 230 Z"></path>
+          <path class="stroke-pencil" d="M70 212 h18 v18" stroke-width="1.6"></path>
+          <circle class="stroke-pencil" cx="190" cy="150" r="144.2"></circle>
+          <circle class="pt" cx="70" cy="70" r="4"></circle><text x="52" y="66">A</text>
+          <circle class="pt" cx="70" cy="230" r="4"></circle><text x="52" y="249">B</text>
+          <circle class="pt" cx="310" cy="230" r="4"></circle><text x="322" y="249">C</text>
+          <circle class="pt" cx="190" cy="150" r="4.5" fill="var(--pass)"></circle>
+          <text x="200" y="143" fill="var(--pass)">M</text>
+          <text class="scribble" x="228" y="60" fill="var(--pass)">nothing to mark ✓</text>
+        </g>
+      </svg></div>
+      <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">The left picture is what guessing looks like. Everything is there. Nothing is exact. A person can spot the mistakes. Can a <i>computer</i> catch them? Keep reading.</p>
+    </div>
+  </section>
+
+  <div class="prose">
+    <h2><span class="no">2.</span>Our fix: ask for the recipe, not the picture</h2>
+    <p>Think about giving a friend directions to your house. You would not paint a picture of the whole trip. You would write steps. <i>Turn left at the bakery. Take the second right. Look for the gray door.</i></p>
+    <p>Steps are short. Steps are easy to check. And anyone careful can follow them exactly.</p>
+    <p>That is our whole trick. The AI never draws. It writes a <b>construction recipe</b>, the same kind of step-by-step build you would do with a compass and ruler. <i>Make a triangle with a square corner at B. Find M, the exact middle of side AC. Draw a circle around M that touches A.</i></p>
+    <p>Then a math program follows the recipe perfectly. Watch it happen:</p>
+  </div>
+
+  <!-- ── TRY IT 2: recipe player ─────────────────────────────── -->
   <section class="worksheet" id="ws1">
-    <div class="ws-head"><span class="try">Try it №1</span><h3>Play the recipe</h3>
-      <span class="hint">the AI wrote the steps on the left; press ▸ to let the math follow them</span></div>
+    <div class="ws-head"><span class="try">Try it №2</span><h3>Play the recipe</h3>
+      <span class="hint">the AI wrote the steps on the left. Press ▸ to watch the math follow them</span></div>
     <div class="ws-body"><div class="duo">
       <pre class="recipe" id="rj"><span class="ln" data-s="1">{ <span class="k">"op"</span>: <span class="s">"triangle"</span>, <span class="k">"corners"</span>: [<span class="s">"A"</span>,<span class="s">"B"</span>,<span class="s">"C"</span>],</span><span class="ln" data-s="1">  <span class="k">"right_angle_at"</span>: <span class="s">"B"</span> }</span><span class="ln" data-s="2">{ <span class="k">"op"</span>: <span class="s">"midpoint"</span>, <span class="k">"name"</span>: <span class="s">"M"</span>, <span class="k">"of"</span>: [<span class="s">"A"</span>,<span class="s">"C"</span>] }</span><span class="ln" data-s="3">{ <span class="k">"op"</span>: <span class="s">"circle"</span>, <span class="k">"center"</span>: <span class="s">"M"</span>, <span class="k">"through"</span>: <span class="s">"A"</span> }</span><span class="ln" data-s="4">checks:</span><span class="ln" data-s="4">  distance(M,A) = distance(M,B) = distance(M,C)</span><span class="ln" data-s="4">  angle(A,B,C) = 90°</span></pre>
       <div>
@@ -215,8 +321,8 @@
         </svg></div>
         <div class="chips" id="f1-chips" style="visibility:hidden">
           <span class="chip pass">✓ M is the exact middle of AC</span>
-          <span class="chip pass">✓ circle passes through A, B and C</span>
-          <span class="chip pass">✓ the angle at B is 90.000°</span>
+          <span class="chip pass">✓ circle touches A, B and C</span>
+          <span class="chip pass">✓ the corner at B is 90.000°</span>
         </div>
       </div>
     </div>
@@ -225,68 +331,41 @@
       <button id="s-next" class="primary">play a step ▸</button>
       <span class="stepdots" id="s-dots">step 0 of 4</span>
     </div>
-    <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">That circle hitting all three corners isn't luck; it's a 2,300-year-old theorem (Thales'). The recipe made it <i>inevitable</i>, and the checks confirmed it anyway.</p>
+    <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">The circle touches all three corners. That is not luck. A 2,300 year old math rule (Thales' theorem) says it <i>must</i> happen. The recipe made it certain. The checks proved it anyway.</p>
     </div>
   </section>
 
   <div class="prose">
-    <h2><span class="no">3.</span>The math does the measuring, not the AI</h2>
-    <p>A recipe still has to be carried out. We hand it to a <b>computer algebra system</b>: software that does geometry by calculation and has zero imagination. Given “the midpoint of A and C,” it doesn't eyeball the middle. It computes it: exactly, as a fraction, for a construction like this one; numerically, to strict tolerances, for harder ones.</p>
-    <p>This division of labor is the load-bearing wall:</p>
-    <div class="aside"><b>The AI supplies intent.</b> The mathematics supplies precision. Neither is asked to do the other's job.</div>
-    <p>The AI may pin an anchor point or two; every coordinate built on them comes from the math engine, not the AI. That division matters, because an AI asked to place points itself behaves like a person sketching from memory, and the result is plausible, confident, and slightly wrong:</p>
+    <p>So three workers share the job. Each one does what it is best at, and nothing else:</p>
   </div>
 
-  <!-- ── TRY IT 2: guess vs recipe ───────────────────────────── -->
-  <section class="worksheet" id="ws2">
-    <div class="ws-head"><span class="try">Try it №2</span><h3>Guessed pixels vs. followed recipe</h3>
-      <span class="hint">flip between the two ways of asking</span></div>
-    <div class="ws-body">
-      <div class="controls" style="margin:0 0 14px">
-        <div class="switch" role="group" aria-label="Choose generation mode">
-          <button id="t-guess" class="on" aria-pressed="true">AI guesses the drawing</button>
-          <button id="t-recipe" aria-pressed="false">AI writes the recipe</button>
-        </div>
-      </div>
-      <div class="figpane"><svg viewBox="0 0 360 290" id="fig2" role="img" aria-label="Comparison of a guessed diagram with errors versus an exact constructed diagram">
-        <g id="f2-guess">
-          <path class="stroke-pencil" d="M78 78 L64 228 L306 218 Z"></path>
-          <circle class="stroke-pencil" cx="176" cy="132" r="128"></circle>
-          <circle class="pt" cx="78" cy="78" r="4"></circle><text x="60" y="74">A</text>
-          <circle class="pt" cx="64" cy="228" r="4"></circle><text x="46" y="247">B</text>
-          <circle class="pt" cx="306" cy="218" r="4"></circle><text x="318" y="237">C</text>
-          <circle class="pt" cx="172" cy="140" r="4.5" fill="var(--redpen)"></circle>
-          <text x="182" y="133" fill="var(--redpen)">M</text>
-          <g id="f2-marks">
-            <path class="redstroke" d="M52 210 q14 -18 34 -6" ></path>
-            <text class="scribble" x="18" y="196" transform="rotate(-8 18 196)">this is 84°, not 90°</text>
-            <path class="redstroke" d="M196 118 q10 14 -2 26"></path>
-            <text class="scribble" x="206" y="112" transform="rotate(6 206 112)">“midpoint” is off-center</text>
-            <path class="redstroke" d="M296 196 q6 10 -4 18"></path>
-            <text class="scribble" x="204" y="272" transform="rotate(-4 204 272)">circle misses C entirely</text>
-          </g>
-        </g>
-        <g id="f2-recipe" style="display:none">
-          <path class="stroke-pencil" d="M70 70 L70 230 L310 230 Z"></path>
-          <path class="stroke-pencil" d="M70 212 h18 v18" stroke-width="1.6"></path>
-          <circle class="stroke-pencil" cx="190" cy="150" r="144.2"></circle>
-          <circle class="pt" cx="70" cy="70" r="4"></circle><text x="52" y="66">A</text>
-          <circle class="pt" cx="70" cy="230" r="4"></circle><text x="52" y="249">B</text>
-          <circle class="pt" cx="310" cy="230" r="4"></circle><text x="322" y="249">C</text>
-          <circle class="pt" cx="190" cy="150" r="4.5" fill="var(--pass)"></circle>
-          <text x="200" y="143" fill="var(--pass)">M</text>
-          <text class="scribble" x="228" y="60" fill="var(--pass)">nothing to mark ✓</text>
-        </g>
-      </svg></div>
-      <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">The guessed version is what coordinate-guessing models actually produce: every element present, every relationship slightly off. A human can spot the errors; the question is whether <i>software</i> can.</p>
+  <!-- ── the team ────────────────────────────────────────────── -->
+  <div class="cards3">
+    <div class="card3 c-blue">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pencil)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6 h20 v28 h-20 z M14 13 h12 M14 19 h12 M14 25 h7"/></g></svg></div>
+      <b>The AI plans</b>
+      <p>It writes the recipe. It says <i>what</i> to build. It never says where the dots go.</p>
     </div>
-  </section>
+    <div class="card3 c-green">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pass)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 L20 16 M20 16 L10 34 M20 16 L30 34 M13 27 a11 11 0 0 0 14 0"/></g></svg></div>
+      <b>The math builds</b>
+      <p>It follows the steps exactly. It computes every point. It never guesses.</p>
+    </div>
+    <div class="card3 c-red">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--redpen)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M30 8 L14 30 l-4 -3 z M10 33 l4 3"/><path d="M8 20 l6 6 L26 12"/></g></svg></div>
+      <b>The red pen checks</b>
+      <p>It measures every promise. One failed check, and nobody sees the picture.</p>
+    </div>
+  </div>
 
   <div class="prose">
-    <h2><span class="no">4.</span>Every diagram is graded before a student ever sees it</h2>
-    <p>This is the part that turns “AI-generated” into “trustworthy.” A geometry question does more than describe a picture. It makes promises: “M is the midpoint.” “The lines are parallel.” “The angle is 90°.” Each promise is something software can measure.</p>
-    <p>So every promise encoded in the recipe becomes a numeric check, run against the computed geometry before the diagram ships. We call it what your teacher called it: <b style="color:var(--redpen)">the red pen</b>. A failed check sends the homework back to the AI with notes (<i>redo it, here's what was wrong</i>). The AI gets three attempts; if the checks still fail, nothing ships. No diagram reaches a student on “looks fine to us.”</p>
-    <p>You can be the red pen yourself:</p>
+    <div class="aside"><b>The AI supplies the plan.</b> The math supplies the precision. Neither one is asked to do the other's job.</div>
+
+    <h2><span class="no">3.</span>Every picture is graded first</h2>
+    <p>A geometry problem makes promises. <i>M is the middle. The corner is 90°. The circle touches all three corners.</i></p>
+    <p>Here is the key: a computer can <b>measure</b> every one of those promises.</p>
+    <p>So before any picture ships, we measure them all. We call it what your teacher called it: <b style="color:var(--redpen)">the red pen</b>. If a check fails, the picture is rejected. The recipe goes back to the AI with a note: <i>here is what was wrong, try again.</i> The AI gets three tries. If the checks still fail, nothing ships at all.</p>
+    <p>Now you hold the red pen. Drag M and watch the checks:</p>
   </div>
 
   <!-- ── TRY IT 3: drag the midpoint ─────────────────────────── -->
@@ -309,36 +388,36 @@
         </g>
       </svg></div>
       <div class="chips">
-        <span class="chip" id="c-mid">AM = 5.0 · MC = 5.0 (M is the midpoint)</span>
-        <span class="chip" id="c-circ">circle through A also hits B and C</span>
+        <span class="chip" id="c-mid">AM = 5.0 · MC = 5.0 (M is the middle)</span>
+        <span class="chip" id="c-circ">circle through A also touches B and C</span>
       </div>
       <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0" id="d-note"></p>
     </div>
   </section>
 
   <div class="prose">
-    <h2><span class="no">5.</span>The whole assembly line</h2>
-    <p>A request moves through five stations, with a quality gate that sends failing work back. Click each one:</p>
+    <h2><span class="no">4.</span>The whole assembly line</h2>
+    <p>One request rides through five stations. A failed check gets sent back, like a returned draft. Tap each station:</p>
   </div>
 
   <!-- ── pipeline map ────────────────────────────────────────── -->
   <section class="worksheet" id="ws4">
     <div class="ws-body">
       <div class="line" id="pline"></div>
-      <p class="loopnote">↺ a failed check sends the work back to station 2 with notes, like a returned draft</p>
+      <p class="loopnote">↺ fail a check? the work goes back to station 2 with notes</p>
       <div class="stagecard" id="stagecard"></div>
     </div>
   </section>
 
-  <div class="prose">
-    <h2><span class="no">6.</span>Under the hood: one diagram, step by step</h2>
-    <p>For the technically curious, here is the exact journey of the diagram from Try it №1, with the real artifacts at each stage. (The recipe you played there was simplified for display; below is the real thing.)</p>
-
-    <p><b>Step 1 · The ask.</b> Plain language in:</p>
+  <!-- ── under the hood ──────────────────────────────────────── -->
+  <details class="hood">
+    <summary>A peek under the hood <span class="sub">for curious readers: the real files behind Try it №2</span></summary>
+    <div class="hood-body">
+    <p><b>Step 1 · The ask.</b> Plain words go in:</p>
     <pre class="recipe">Draw triangle ABC with a right angle at B. M is the midpoint
 of AC. Draw the circle centered at M through A.</pre>
 
-    <p><b>Step 2 · The recipe becomes structured data.</b> The AI's recipe is lowered into an intermediate representation: a list of typed construction steps, plus the promises to verify. This is the AI's entire contribution. Notice it never states where M is; it only says <i>how M is defined</i>.</p>
+    <p><b>Step 2 · The recipe becomes data a computer can read.</b> Every step gets a type. Every promise gets listed. This is the AI's whole job. Notice: it never says <i>where</i> M is. It only says what M <i>means</i>.</p>
     <pre class="recipe">{<span class="k">"id"</span>:<span class="s">"B"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:0, <span class="k">"y"</span>:0}
 {<span class="k">"id"</span>:<span class="s">"A"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:0, <span class="k">"y"</span>:3}
 {<span class="k">"id"</span>:<span class="s">"C"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:4, <span class="k">"y"</span>:0}
@@ -353,35 +432,45 @@ checks:
 {<span class="k">"kind"</span>:<span class="s">"right_angle"</span>, <span class="k">"angle"</span>:{<span class="k">"a"</span>:<span class="s">"A"</span>, <span class="k">"o"</span>:<span class="s">"B"</span>, <span class="k">"b"</span>:<span class="s">"C"</span>}}
 {<span class="k">"kind"</span>:<span class="s">"equal_length"</span>, <span class="k">"segs"</span>:[<span class="s">"MA"</span>,<span class="s">"MB"</span>,<span class="s">"MC"</span>]}</pre>
 
-    <p><b>Step 3 · SymPy computes the exact geometry.</b> Each definition compiles, in dependency order, into an object in <a href="https://www.sympy.org">SymPy</a>, an open-source computer algebra library. Look closely at the arithmetic: M lands at (2, 3/2) and the radius is exactly 5/2. Fractions, not rounded decimals. A construction this simple stays exact end to end; constructions that need numeric solving are computed to high precision and then verified. Either way, nothing here was guessed.</p>
+    <p><b>Step 3 · The math engine computes the exact points.</b> We use <a href="https://www.sympy.org">SymPy</a>, a free math library. Look at the numbers: M lands at (2, 3/2) and the radius is exactly 5/2. Fractions, not rounded guesses. Harder builds use high-precision numbers, then get verified. Either way, nothing is eyeballed.</p>
     <pre class="recipe">A = Point2D(0, 3)    B = Point2D(0, 0)    C = Point2D(4, 0)
 M = Point2D(2, 3/2)               <span class="k"># the midpoint, computed</span>
 k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span></pre>
 
-    <p><b>Step 4 · The red pen runs.</b> Every promise becomes a numeric test against those objects:</p>
+    <p><b>Step 4 · The red pen runs.</b> Every promise becomes a test:</p>
     <pre class="recipe">✓ right_angle   angle A-B-C measures 90°
 ✓ equal_length  |MA| = |MB| = |MC| = 5/2</pre>
-    <p>Each test must pass within a strict numeric tolerance. Any failure rejects the diagram and returns the failing checks to the AI as revision notes, for at most three attempts; after that the system gives up rather than ship.</p>
+    <p>Each test must pass within a very tight margin. Any failure rejects the picture and sends the notes back to the AI. Three failed tries, and the system gives up rather than ship.</p>
 
-    <p><b>Step 5 · Only now is anything drawn.</b> SymPy's coordinates are translated into TikZ, a LaTeX drawing language, and a LaTeX engine renders the final SVG. The drawing layer never invents a coordinate; it inherits verified ones.</p>
+    <p><b>Step 5 · Only now is anything drawn.</b> The verified points go to TikZ, a drawing language, which renders the final image. The drawing layer never invents a point. It inherits checked ones.</p>
     <pre class="recipe">\tkzDefPoint(0,3){A}   \tkzDefPoint(0,0){B}
 \tkzDefPoint(4,0){C}   \tkzDefPoint(2,1.5){M}
 \tkzDrawPolygon(A,B,C)
 \tkzDrawCircle(M,A)</pre>
+    </div>
+  </details>
+
+  <div class="prose">
+    <h2><span class="no">5.</span>Why it matters</h2>
+  </div>
+
+  <div class="bignums">
+    <div class="bignum red"><span class="n">0</span><p>pictures ship without passing every check. “Looks fine” is never enough.</p></div>
+    <div class="bignum"><span class="n">3</span><p>tries the AI gets. Then the system gives up instead of shipping a bad picture.</p></div>
+    <div class="bignum green"><span class="n">801</span><p>problems in <b>GeoGenBench</b>, our public test of how well AIs draw geometry.</p></div>
   </div>
 
   <div class="prose">
-    <h2><span class="no">7.</span>The impact: what verified generation makes possible</h2>
-    <p><b>It changes what you can trust.</b> Every diagram from this pipeline arrives with a <b>receipt</b>: the promises it made and the measurements proving it kept them. It can go in front of a student without a manual geometry check, because that check already ran, something hand-made materials can't scale and unverified AI can't offer.</p>
-    <p><b>It changes the economics of practice.</b> When every diagram grades itself, a verified figure costs machine-seconds instead of expert-minutes. A full item bank for a course, with a fresh variant for every student, can be built in an afternoon, leaving human judgment for the question software can't answer: is this problem <i>worth asking</i>?</p>
-    <p><b>And it gives the field a yardstick.</b> We released <b>GeoGenBench</b>, a public benchmark of 801 diagram-generation problems (600 procedurally generated, 201 extracted from K-12 textbooks) where a correct diagram's properties are machine-checkable, so anyone can measure, rather than eyeball, how well an AI draws.</p>
-    <p>The principle travels beyond geometry:</p>
-    <div class="aside redline"><b>Let the AI propose; let the math verify.</b> Generative models are marvelous at intent and unreliable at precision, so route precision through machinery that can't fudge, and check every promise before anyone learns from it.</div>
-    <p>That's the generation component: the AI writes the recipe, the mathematics follows it exactly, and the red pen grades everything, every time, for every student.</p>
+    <p><b>You can trust the pictures.</b> Every diagram comes with a receipt: the promises it made, and the measurements that prove it kept them. A teacher never has to proofread it. The proofreading already ran.</p>
+    <p><b>Practice gets cheap.</b> A checked picture used to take expert minutes. Now it takes machine seconds. A whole course of fresh problems, with a different version for every student, can be built in an afternoon.</p>
+    <p><b>And anyone can keep score.</b> Our public test, GeoGenBench, has 801 diagram problems (600 built from templates, 201 taken from real K-12 textbooks). Each one can be checked by a machine. So anyone can <i>measure</i> how well an AI draws, instead of eyeballing it.</p>
+    <p>The big idea travels beyond geometry:</p>
+    <div class="aside redline"><b>Let the AI plan. Let the math measure.</b> Check every promise before a student sees it.</div>
+    <p>That is the whole story. The AI writes the recipe. The math follows it exactly. And the red pen grades everything, every time, for every student.</p>
   </div>
 
   <footer class="prose">
-    <span>© the geometry diagram project · diagrams on this page are drawn by the same principle they describe: computed, then checked</span>
+    <span>© the geometry diagram project · every picture on this page was made the same way it describes: computed, then checked</span>
   </footer>
 </main>
 
@@ -390,7 +479,7 @@ k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span><
   "use strict";
   var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ── Try it 1: recipe player ── */
+  /* ── Try it 2: recipe player ── */
   var step = 0, MAX = 4;
   var groups = ["f1-tri","f1-mid","f1-circ","f1-checks"];
   var next = document.getElementById("s-next"), back = document.getElementById("s-back"),
@@ -427,7 +516,7 @@ k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span><
   back.addEventListener("click", function(){ if (step > 0){ step--; render1(); } });
   render1();
 
-  /* ── Try it 2: guess vs recipe toggle ── */
+  /* ── Try it 1: guess vs recipe toggle ── */
   var bG = document.getElementById("t-guess"), bR = document.getElementById("t-recipe");
   function mode(guess){
     document.getElementById("f2-guess").style.display = guess ? "" : "none";
@@ -465,17 +554,17 @@ k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span><
     var onB = Math.abs(dist(M, B) - r) < 0.02 * LAC,
         onC = Math.abs(dist(M, C) - r) < 0.02 * LAC;
     cMid.textContent = (midOK ? "✓" : "✗") + " AM = " + am + " · MC = " + mc +
-        (midOK ? " (M is the midpoint)" : " (not the midpoint)");
+        (midOK ? " (M is the middle)" : " (M is not the middle)");
     cMid.className = "chip " + (midOK ? "pass" : "fail");
-    cCirc.textContent = (onB && onC ? "✓ circle through A also hits B and C"
+    cCirc.textContent = (onB && onC ? "✓ circle through A also touches B and C"
         : "✗ circle through A misses " + (!onB && !onC ? "B and C" : (!onB ? "B" : "C")));
     cCirc.className = "chip " + (onB && onC ? "pass" : "fail");
     dB.setAttribute("fill", onB ? "var(--pass)" : "var(--ink)");
     dC.setAttribute("fill", onC ? "var(--pass)" : "var(--ink)");
     dCircle.style.stroke = (midOK && onB && onC) ? "var(--pass)" : "var(--redpen)";
     note.textContent = midOK
-      ? "Both checks pass only here. In the real pipeline the tolerance is far stricter than your mouse, but the idea is exactly this."
-      : "The system would reject this diagram and send the recipe back to the AI with these two failures attached.";
+      ? "Both checks pass only in the exact middle. Our real checker is far pickier than your mouse. But the idea is just this."
+      : "The red pen says no. This picture would go back to the AI with these two notes attached.";
   }
   function setFromEvent(ev){
     var pt = svg3.createSVGPoint();
@@ -501,16 +590,16 @@ k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span><
   /* ── pipeline map ── */
   var g = function(d){ return '<svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pencil)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + d + "</g></svg>"; };
   var stations = [
-    { t: "The ask", i: "prompt", g: g('<path d="M8 10 h24 M8 17 h24 M8 24 h15"/>'),
-      d: "<b>A person asks in plain language.</b> “Draw triangle ABC with a right angle at B; M is the midpoint of AC; draw the circle through all three vertices.” No coordinates or math notation, just the way a teacher would say it." },
-    { t: "The recipe", i: "language model", g: g('<path d="M10 6 h20 v28 h-20 z M14 13 h12 M14 19 h12 M14 25 h7"/>'),
-      d: "<b>The AI translates intent into construction steps.</b> This is the only place the language model appears, and the only thing it hands over is the recipe you played in Try it №1. If it wants a midpoint, it must <i>say</i> “midpoint,” not point at a spot." },
-    { t: "The build", i: "computer algebra", g: g('<path d="M20 6 L20 16 M20 16 L10 34 M20 16 L30 34 M13 27 a11 11 0 0 0 14 0"/>'),
-      d: "<b>Exact math follows the steps.</b> A computer algebra system executes the recipe symbolically: the midpoint is <i>the</i> midpoint, and the right angle is 90° to the last digit. Every derived coordinate in the final image is computed here, not guessed." },
-    { t: "The red pen", i: "automatic checks", g: g('<path d="M30 8 L14 30 l-4 -3 z M10 33 l4 3"/><path d="M8 20 l6 6 L26 12" stroke="var(--redpen)"/>'),
-      d: "<b>Every promise is measured.</b> Each midpoint, angle, or parallel claim becomes a numeric test against the computed geometry. One failure and the diagram is rejected, with the failures sent back to station 2 as revision notes; after three failed attempts the system gives up rather than ship." },
-    { t: "The diagram", i: "rendered + receipted", g: g('<rect x="7" y="7" width="26" height="26" rx="2"/><path d="M12 27 L20 13 L28 27 z"/>'),
-      d: "<b>Only verified geometry gets drawn.</b> The checked construction is rendered into a crisp classroom-ready figure, and it ships with its receipt: the list of checks it passed. That's what makes it safe to put in front of a student." }
+    { t: "The ask", i: "a person", g: g('<path d="M8 10 h24 M8 17 h24 M8 24 h15"/>'),
+      d: "<b>A person asks in plain words.</b> “Draw triangle ABC with a square corner at B. M is the middle of AC. Draw the circle through all three corners.” No math code. Just words." },
+    { t: "The recipe", i: "the AI", g: g('<path d="M10 6 h20 v28 h-20 z M14 13 h12 M14 19 h12 M14 25 h7"/>'),
+      d: "<b>The AI turns the words into steps.</b> This is the AI's only job. If it wants a midpoint, it must <i>say</i> “midpoint.” It never points at a spot." },
+    { t: "The build", i: "the math engine", g: g('<path d="M20 6 L20 16 M20 16 L10 34 M20 16 L30 34 M13 27 a11 11 0 0 0 14 0"/>'),
+      d: "<b>A math program follows the steps.</b> The middle is the exact middle. The square corner is exactly 90°. Every point in the final picture is computed here. None are guessed." },
+    { t: "The red pen", i: "the checks", g: g('<path d="M30 8 L14 30 l-4 -3 z M10 33 l4 3"/><path d="M8 20 l6 6 L26 12" stroke="var(--redpen)"/>'),
+      d: "<b>Every promise gets measured.</b> One failure and the picture is rejected. The notes go back to station 2. After three failed tries, the system gives up. It never ships a bad picture." },
+    { t: "The diagram", i: "drawn + proven", g: g('<rect x="7" y="7" width="26" height="26" rx="2"/><path d="M12 27 L20 13 L28 27 z"/>'),
+      d: "<b>Only checked math gets drawn.</b> The picture ships with its report card: the list of checks it passed. That is why a teacher can trust it." }
   ];
   var line = document.getElementById("pline"), card = document.getElementById("stagecard");
   stations.forEach(function(s, i){
