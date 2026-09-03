@@ -598,3 +598,37 @@ the figures, and the laptop-only `transfer_q15` pilot survive.
 30 d; org SCP forbids IAM users, so the box authenticates with `aws sso login --profile renphil
 --use-device-code`, ~1 h credentials) and exits non-zero if the upload cannot run. `rerun_driver.sh` now
 calls it at the end. Rule from here on: **a box is not destroyed until `save_off_box.sh` exits 0.**
+
+## 2026-09-03 — Mistral recapture + steering replication with a magnitude-matched control
+
+Overnight on a 2x RTX 5090 vast.ai box (`overnight_mistral.sh`, model sharded 23 GB/GPU):
+`fix_mistral_math` (750) and `fix_mistral_mmlu_pro` (750) recaptured; `fix_mistral_gpqa` and
+`fix_mistral_temporal` running this morning. Activations in `s3://renphil-geogen-interp/activations/`.
+
+**Steering (Mistral x MATH, n_eval=150, layer 28 = 0.7L), amplify mode, random control scaled by
+sigma_w/sigma_r = 55.8 so per-record perturbation magnitude matches:**
+
+| gain | steer fail / ok / ECE | matched random fail / ok / ECE |
+|---|---|---|
+| 1 (no-op) | 83.7 / 96.0 / 0.334 | same |
+| 2 | 69.5 / 93.9 / 0.261 | 84.1 / 96.4 / 0.338 |
+| 4 | 54.5 / 88.0 / 0.185 | unparseable (parse rate 0); logit_diff flat 3.19 |
+| 0.5 (dampen) | 88.3 / 96.6 / 0.357 | 83.0 / 96.0 / 0.331 |
+
+The July result (80→65→43, ECE 0.31→0.13) replicates in direction and roughly in size with a fair
+control. A same-magnitude random push is inert on the teacher-forced logit readout at every gain and
+on stated confidence at gain 2; at gain 4 it destroys generation (off-manifold), so the stated-confidence
+comparison there is undefined rather than "flat". Add mode: uniform shift of both classes (−4: fail
+27.5 / ok 40.8; +4: 100/100), i.e. causal *use*, not calibration — as designed.
+
+**Tier-1 (corrected scaler) on the two fresh cells:** MMLU-Pro act-only 0.754 vs surf 0.541
+(increment +0.21), within-q internal 0.721 vs verbalized 0.652 (66 mixed), paired boot +0.081
+[+0.042,+0.123]; MATH act-only 0.834 vs surf 0.741 (increment +0.07 — the answer-lexical channel
+again), within-q 0.627 vs 0.646, boot +0.056 [+0.024,+0.091]. **Transfer (fixed scaler):**
+mmlu→math 0.838 (diag 0.834), math→mmlu 0.717 (diag 0.754); mean off-diag 0.777 vs diag 0.794 =
+**98% retention**, cosine +0.82. Consistent with (better than) the pre-fix 87–90%. Full 4-domain
+Mistral matrix after gpqa + geometry finish.
+
+Caveat: transformers warns the Mistral-2501 tokenizer regex is wrong without `fix_mistral_regex=True`
+(affects pre-tokenization of some strings); July runs used the same loader. Not expected to matter at
+the confidence decision token; flagged for the next capture.
