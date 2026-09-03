@@ -314,7 +314,7 @@ def main() -> None:
     print("   diagonal = grouped-OOF in-domain; per-domain standardization; PCA(50) fit on train")
     print("=" * 100)
     for model, doms in permodel.items():
-        names = [dm for dm in ["geometry", "mmlu_pro", "gsm8k", "math"] if dm in doms]
+        names = [dm for dm in ["geometry", "mmlu_pro", "gsm8k", "math", "gpqa"] if dm in doms]
         if len(names) < 2:
             continue
         T, cos = {}, {}
