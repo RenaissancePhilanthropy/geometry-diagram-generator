@@ -29,3 +29,5 @@ nnsight
 # transformer-lens   # only if it lists Qwen2.5 as a supported arch; else use nnsight
 # sae-lens           # Phase 4: run Qwen-Scope pretrained SAEs
 # matplotlib         # decodability-vs-layer plots
+datasets           # QA benchmarks (MMLU-Pro, MATH-500, GPQA) via tasks_qa.py
+math-verify        # MATH grading (symbolic equivalence)

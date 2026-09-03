@@ -57,6 +57,8 @@ capture math
 steer amplify
 steer add
 capture mmlu_pro
+# GPQA is gated: pick up a token dropped in ~/.hf_token after launch (no restart needed)
+[ -z "${HF_TOKEN:-}" ] && [ -f ~/.hf_token ] && export HF_TOKEN="$(tr -d '[:space:]' < ~/.hf_token)" && echo "HF_TOKEN loaded from ~/.hf_token"
 capture gpqa
 
 stamp; echo "===== save (Tier A now; Tier B needs your SSO login in the morning) ====="
