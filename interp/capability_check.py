@@ -190,15 +190,27 @@ def load_model(model_name: str, device: str, quant: str = "none"):
         model = AutoModelForCausalLM.from_pretrained(
             model_name, quantization_config=bnb, device_map={"": 0}).eval()
     else:
-        print(f"loading {model_name} on {device} (bf16) ...")
+        # Multi-GPU: when `device` is plain "cuda" and >1 card is visible, shard the model
+        # across all of them (naive pipeline, no NVLink needed) so e.g. a 48 GB bf16 24B
+        # model fits 2x32 GB. Inputs go to cuda:0 (embeddings live there); hooks must use
+        # h.device, not args.device. Single card / mps / cpu: unchanged .to(device).
+        multi = (str(device) == "cuda" and torch.cuda.is_available() and torch.cuda.device_count() > 1)
+        kw = {"dtype": torch.bfloat16}
+        if multi:
+            kw["device_map"] = "auto"
+            print(f"loading {model_name} sharded across {torch.cuda.device_count()} GPUs (bf16) ...")
+        else:
+            print(f"loading {model_name} on {device} (bf16) ...")
         try:
-            model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16)
+            model = AutoModelForCausalLM.from_pretrained(model_name, **kw)
         except (ValueError, KeyError) as e:            # VLM configs (Gemma3/4, Mistral3, ...)
             from transformers import AutoModelForImageTextToText
             print(f"  (not a CausalLM config [{type(e).__name__}]; "
                   "loading as VLM / ImageTextToText, text-only)")
-            model = AutoModelForImageTextToText.from_pretrained(model_name, dtype=torch.bfloat16)
-        model = model.to(device).eval()
+            model = AutoModelForImageTextToText.from_pretrained(model_name, **kw)
+        model = (model if multi else model.to(device)).eval()
+        if multi:
+            print("  device map:", dict(list(getattr(model, "hf_device_map", {}).items())[:3]), "...")
     return tok, model
 
 

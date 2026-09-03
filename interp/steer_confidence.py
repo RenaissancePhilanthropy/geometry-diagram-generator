@@ -213,6 +213,8 @@ def main() -> None:
         if state["vec"] is None:
             return out
         v = state["vec"]
+        if v.device != h.device:                      # sharded model: block may live on another GPU
+            state["vec"] = v = v.to(h.device); state["hat"] = state["hat"].to(h.device)
         if state["mode"] == "add":
             h[:, -1, :] += state["coeff"] * v
         else:                                       # amplify along hat

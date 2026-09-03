@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# overnight_mistral.sh — one unattended night on a single 80 GB GPU (A100/H100), >=300 GB disk.
+# overnight_mistral.sh — one unattended night on one 80 GB GPU (A100/H100) or 2x RTX 5090 (2x32 GB,
+# model auto-sharded across both). Disk: >=150 GB (Mistral ~48 GB + activations ~10 GB + deps).
 #
 # Goal: regenerate the Mistral-Small-24B cells lost with the July box, and run the steering
 # experiment with the magnitude-matched random control (the MATH-AI paper's stated limitation).
@@ -45,7 +46,12 @@ steer () {  # $1 = mode
 }
 
 stamp; echo "download $M"; $PY -c "from huggingface_hub import snapshot_download; snapshot_download('$M', ignore_patterns=['*.gguf','*.pth','*consolidated*'])"
-$PY -c "import torch; print('GPU:', torch.cuda.get_device_name(0), round(torch.cuda.mem_get_info()[1]/2**30), 'GB')"
+$PY -c "
+import torch; n=torch.cuda.device_count(); tot=0
+for i in range(n):
+    g=torch.cuda.mem_get_info(i)[1]/2**30; tot+=g; print(f'GPU{i}:', torch.cuda.get_device_name(i), round(g), 'GB')
+print('total VRAM', round(tot), 'GB  (Mistral-24B bf16 needs ~50 GB + headroom; sharded automatically if >1 GPU)')
+assert tot >= 58, 'not enough VRAM for bf16 Mistral-24B'"
 
 capture math
 steer amplify
