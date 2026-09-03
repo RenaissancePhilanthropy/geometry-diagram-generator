@@ -593,6 +593,8 @@ also needs fresh captures. Only the small J-lens readouts (`activations/jlens/*.
 the figures, and the laptop-only `transfer_q15` pilot survive.
 
 **Fix:** `interp/save_off_box.sh` — Tier A copies every `meta.jsonl` / json / csv / log into
-`interp/results/` (tracked) and commits+pushes; Tier B uploads the `.npz` activations via
-`RCLONE_REMOTE` or `RSYNC_DEST` and refuses to exit 0 if neither is set. `rerun_driver.sh` now
+`interp/results/` (tracked) and commits+pushes; Tier B `aws s3 sync`s the `.npz` activations to
+`s3://renphil-geogen-interp/activations/` (bucket created 2026-09-02: private, SSE-S3, IA after
+30 d; org SCP forbids IAM users, so the box authenticates with `aws sso login --profile renphil
+--use-device-code`, ~1 h credentials) and exits non-zero if the upload cannot run. `rerun_driver.sh` now
 calls it at the end. Rule from here on: **a box is not destroyed until `save_off_box.sh` exits 0.**

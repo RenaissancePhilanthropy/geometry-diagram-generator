@@ -36,6 +36,10 @@ if [ ! -d "${WORKDIR}" ]; then
 fi
 cd "${WORKDIR}"
 
+echo "==> aws cli (for interp/save_off_box.sh -> s3://renphil-geogen-interp; auth = aws sso login)"
+command -v aws >/dev/null 2>&1 || pip install -q awscli
+mkdir -p ~/.aws; [ -f ~/.aws/config ] || echo "   NOTE: scp ~/.aws/config from the laptop, then: aws sso login --profile renphil --use-device-code"
+
 echo "==> install deps — PIN the image's CUDA torch so nothing can replace it"
 # Drop the torch line from requirements, and pin the already-installed torch via
 # a constraints file. Constraints stop transitive deps (e.g. nnsight) from

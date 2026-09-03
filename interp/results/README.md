@@ -9,10 +9,11 @@ was saved from. Top-level files are the cross-run analysis caches
 (`plot_cache.json`, `tier1_review.json`, `temporal_analysis.json`).
 
 The `.npz` activations themselves are NOT here (gigabytes): Tier B of the same script
-uploads them to `$RCLONE_REMOTE` / `$RSYNC_DEST`. To rerun probes or
+uploads them to **`s3://renphil-geogen-interp/activations/<run>/`** (RenPhil AWS, us-east-1;
+auth via `aws sso login --profile renphil`, no static keys allowed by the org SCP). To rerun probes or
 `analysis/tier1_review.py`, restore a run dir by copying its npz files back next to
 its `meta.jsonl` under `interp/activations/<run>/`.
 
 Runs recorded here so far: `transfer_q15/{recipe,tikz,svg,english}` (Qwen2.5-1.5B reading-mode
-pilot; npz still on Mei's laptop, ~950 MB). The July 2026 matrix (`mtx_*`, `*_temporal`,
+pilot; npz on Mei's laptop and in the bucket, ~950 MB). The July 2026 matrix (`mtx_*`, `*_temporal`,
 `plot_cache.json`, `tier1_review.json`) was lost with its box — nothing to record.

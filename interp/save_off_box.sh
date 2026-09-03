@@ -12,22 +12,34 @@
 #      -> copied into interp/results/<run>/, which IS tracked by git, committed and pushed.
 #      Every headline number can be recomputed from these + the probe scores they contain.
 #   B. LARGE (gigabytes): the *.npz activation files needed to retrain probes / rerun
-#      tier1_review.py -> uploaded with rclone to $RCLONE_REMOTE, or rsync'd to $RSYNC_DEST.
-#      If neither is set the script REFUSES to exit 0, so a bare run cannot silently skip it.
+#      tier1_review.py -> by default `aws s3 sync` to s3://renphil-geogen-interp/activations
+#      (RenPhil AWS account 437659978445, us-east-1, private, SSE, IA after 30 days).
+#      Override with RCLONE_REMOTE=<remote>:<bucket> or RSYNC_DEST=user@host:/path.
+#      If the upload fails (most often: expired SSO credentials) the script exits non-zero,
+#      so a bare run cannot silently skip it.
+#
+# AWS auth on a rented box — the org SCP forbids IAM users / static keys, so use SSO:
+#   pip install awscli   (or the bundled installer)
+#   scp ~/.aws/config root@<box>:~/.aws/config        # carries the [profile renphil] block
+#   aws sso login --profile renphil --use-device-code  # prints a URL + code; open on laptop
+#   export AWS_PROFILE=renphil
+# Role credentials last ~1 hour per login. For a long run: let the driver finish, then log in
+# on the box and run this script by hand before destroying.
 #
 # Usage (from the repo root on the box):
 #   bash interp/save_off_box.sh --small                       # tier A only (seconds)
-#   RCLONE_REMOTE=b2:geogen-interp bash interp/save_off_box.sh   # A + B via rclone
-#   RSYNC_DEST=user@host:/data/geogen bash interp/save_off_box.sh # A + B via rsync
+#   AWS_PROFILE=renphil bash interp/save_off_box.sh           # A + B -> S3 (default)
+#   RCLONE_REMOTE=s3:renphil-geogen-interp bash interp/save_off_box.sh  # via rclone (env_auth)
+#   RSYNC_DEST=user@host:/data/geogen bash interp/save_off_box.sh       # via rsync
 #
-# rclone one-time setup on a fresh box:  curl https://rclone.org/install.sh | bash
-#   then `rclone config` (or copy ~/.config/rclone/rclone.conf from your laptop).
+# Restore a run later:  aws s3 sync s3://renphil-geogen-interp/activations/<run> interp/activations/<run>
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACT="$ROOT/interp/activations"
 RES="$ROOT/interp/results"
 SMALL_ONLY=0; [ "${1:-}" = "--small" ] && SMALL_ONLY=1
+S3_BUCKET="${S3_BUCKET:-renphil-geogen-interp}"
 TAG="$(hostname -s 2>/dev/null || echo box)-$(date +%Y%m%d-%H%M)"
 
 [ -d "$ACT" ] || { echo "no $ACT — nothing to save"; exit 0; }
@@ -75,11 +87,22 @@ elif [ -n "${RSYNC_DEST:-}" ]; then
   rsync -a --partial --info=progress2 "$ACT/" "$RSYNC_DEST/activations/"
   echo "   OK: rsync finished"
 else
-  cat <<MSG
-   !! $total of activations under $ACT and NO destination set.
-   Set one and rerun:   RCLONE_REMOTE=<remote>:<bucket>   or   RSYNC_DEST=user@host:/path
-   Do NOT destroy the box until this exits 0.
+  command -v aws >/dev/null || { echo "aws cli not installed: pip install awscli"; exit 1; }
+  if ! aws sts get-caller-identity --output text >/dev/null 2>&1; then
+    cat <<MSG
+   !! No valid AWS credentials ($total of activations NOT saved).
+   On the box:  aws sso login --profile renphil --use-device-code && export AWS_PROFILE=renphil
+   then rerun this script. Do NOT destroy the box until it exits 0.
 MSG
-  exit 2
+    exit 2
+  fi
+  echo "   aws s3 sync $ACT -> s3://$S3_BUCKET/activations  ($total)"
+  aws s3 sync "$ACT" "s3://$S3_BUCKET/activations" --only-show-errors
+  echo "   verifying…"
+  local_n=$(find "$ACT" -type f | wc -l | tr -d ' ')
+  remote_n=$(aws s3 ls --recursive "s3://$S3_BUCKET/activations/" | wc -l | tr -d ' ')
+  echo "   local files: $local_n   remote files (all runs): $remote_n"
+  [ "$remote_n" -ge "$local_n" ] || { echo "   !! remote has fewer files than local — rerun"; exit 3; }
+  echo "   OK: s3 sync finished"
 fi
 echo "==> SAVE COMPLETE ($TAG). Safe to destroy the box."
