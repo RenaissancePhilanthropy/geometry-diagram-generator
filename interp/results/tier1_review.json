@@ -143,30 +143,92 @@
         "fix_pooled": 0.571547342775139,
         "fix_per_fold": 0.575570072220374
       }
+    },
+    "mistral_temporal": {
+      "n": 364,
+      "pass": 0.1043956043956044,
+      "surface": {
+        "surf": 0.7834071159206428,
+        "act": 0.6763403836694541,
+        "act_early": 0.7331529758976881,
+        "both": 0.6777340547630759,
+        "increment": -0.10567306115756692
+      },
+      "decomp": {
+        "auroc_pre_internal": 0.7703312018363667,
+        "auroc_post_internal": 0.6763403836694541,
+        "auroc_resid": 0.5047548778488277,
+        "within_q_internal": 0.6166666666666667,
+        "within_q_resid": 0.6166666666666667,
+        "within_q_verbalized": 0.35833333333333334,
+        "n_mixed": 20
+      },
+      "selective": {
+        "internal": {
+          "1.0": 0.10584958217270195,
+          "0.8": 0.11498257839721254,
+          "0.6": 0.13488372093023257,
+          "0.4": 0.1597222222222222,
+          "0.2": 0.25
+        },
+        "verbalized": {
+          "1.0": 0.10584958217270195,
+          "0.8": 0.11846689895470383,
+          "0.6": 0.14418604651162792,
+          "0.4": 0.125,
+          "0.2": 0.18055555555555555
+        }
+      },
+      "boot_int_minus_verb": {
+        "mean": 0.060770792371553126,
+        "lo": -0.06037643876579841,
+        "hi": 0.19191628569775165,
+        "significant": false
+      },
+      "layer0": {
+        "pooled": 0.42277422528283326,
+        "per_fold": 0.5,
+        "fix_pooled": 0.6763403836694541,
+        "fix_per_fold": 0.7078589637223413
+      }
     }
   },
   "transfer": {
     "mistral": {
       "matrix": {
+        "geometry->geometry": 0.676,
+        "geometry->mmlu_pro": 0.671,
+        "geometry->math": 0.781,
+        "geometry->gpqa": 0.562,
+        "mmlu_pro->geometry": 0.699,
         "mmlu_pro->mmlu_pro": 0.754,
         "mmlu_pro->math": 0.838,
         "mmlu_pro->gpqa": 0.592,
+        "math->geometry": 0.802,
         "math->mmlu_pro": 0.717,
         "math->math": 0.834,
         "math->gpqa": 0.572,
+        "gpqa->geometry": 0.599,
         "gpqa->mmlu_pro": 0.687,
         "gpqa->math": 0.737,
         "gpqa->gpqa": 0.572
       },
       "cosines": {
+        "geometry~mmlu_pro": 0.643,
+        "geometry~math": 0.676,
+        "geometry~gpqa": 0.343,
+        "mmlu_pro~geometry": 0.643,
         "mmlu_pro~math": 0.821,
         "mmlu_pro~gpqa": 0.745,
+        "math~geometry": 0.676,
         "math~mmlu_pro": 0.821,
         "math~gpqa": 0.539,
+        "gpqa~geometry": 0.343,
         "gpqa~mmlu_pro": 0.745,
         "gpqa~math": 0.539
       },
       "cross_site_post_to_pre": {
+        "geometry": 0.648,
         "mmlu_pro": 0.49,
         "math": 0.624,
         "gpqa": 0.479
