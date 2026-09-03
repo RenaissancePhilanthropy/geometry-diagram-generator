@@ -178,8 +178,17 @@ def main() -> None:
     r_raw *= np.linalg.norm(w_raw) / (np.linalg.norm(r_raw) + 1e-8)
     r_hat = r_raw / (np.linalg.norm(r_raw) + 1e-8)
     mu_r = float((X @ r_hat).mean())
+    # Magnitude-matched random control for AMPLIFY mode (Codex review 2026-07-15, finding 3):
+    # amplify perturbs by (g-1)*|proj-mu|, and the correctness direction has a larger projection
+    # spread than a random one, so an unscaled random control gets smaller nudges. Scale the
+    # random perturbation by sigma_w/sigma_r so the per-record perturbation magnitudes match in
+    # distribution. In ADD mode the |w|-matched r_raw already matches, so scale=1 there.
+    sigma_w = float((X @ w_hat).std() + 1e-8)
+    sigma_r = float((X @ r_hat).std() + 1e-8)
+    rand_scale = (sigma_w / sigma_r) if args.mode == "amplify" else 1.0
     print(f"fit={len(fit)} eval={len(ev)} | layer acts={Lacts}/{n_layers} (block {Lacts-1}) | "
           f"|w|={np.linalg.norm(w_raw):.2f} median|h|={np.median(np.linalg.norm(X, axis=1)):.1f} | "
+          f"sigma_w={sigma_w:.3f} sigma_r={sigma_r:.3f} rand_scale={rand_scale:.2f} | "
           f"mode={args.mode} coeffs={coeffs}")
 
     def render(msgs, think):
@@ -197,7 +206,7 @@ def main() -> None:
         return render(msgs, conf_think)
 
     # ---- steering hook: last position on prefill, every step token after ------
-    state = {"vec": None, "coeff": 0.0, "mode": args.mode, "hat": None, "mu": 0.0}
+    state = {"vec": None, "coeff": 0.0, "mode": args.mode, "hat": None, "mu": 0.0, "scale": 1.0}
 
     def hook(mod, inp, out):
         h = out[0] if isinstance(out, tuple) else out
@@ -209,7 +218,7 @@ def main() -> None:
         else:                                       # amplify along hat
             hat = state["hat"]
             proj = (h[:, -1, :] @ hat) - state["mu"]
-            h[:, -1, :] += (state["coeff"] - 1.0) * proj.unsqueeze(-1) * hat
+            h[:, -1, :] += (state["coeff"] - 1.0) * state["scale"] * proj.unsqueeze(-1) * hat
         return out
 
     handle = block.register_forward_hook(hook)
@@ -218,11 +227,11 @@ def main() -> None:
     lo_ids = [t[0] for s in (args.low, " " + args.low)
               for t in [tok(s, add_special_tokens=False).input_ids] if t]
 
-    def run_record(ids, vec_np, hat_np, mu_v, coeff):
+    def run_record(ids, vec_np, hat_np, mu_v, coeff, scale=1.0):
         dt = model.dtype if hasattr(model, "dtype") else torch.float32
         state.update(vec=torch.tensor(vec_np, dtype=dt, device=args.device),
                      hat=torch.tensor(hat_np, dtype=dt, device=args.device),
-                     mu=mu_v, coeff=coeff)
+                     mu=mu_v, coeff=coeff, scale=scale)
         if (args.mode == "add" and coeff == 0.0) or (args.mode == "amplify" and coeff == 1.0):
             state["vec"] = None                     # exact no-op baseline (hook passes through)
         ids = ids.to(args.device)
@@ -239,14 +248,14 @@ def main() -> None:
         return conf, hi - lo
 
     results = {}
-    dirs = [("steer", w_raw, w_hat, mu)] + ([] if args.skip_random else
-                                            [("random", r_raw, r_hat, mu_r)])
+    dirs = [("steer", w_raw, w_hat, mu, 1.0)] + ([] if args.skip_random else
+                                                 [("random", r_raw, r_hat, mu_r, rand_scale)])
     try:
-        for dname, vec, hat, mu_v in dirs:
+        for dname, vec, hat, mu_v, scale in dirs:
             for c in coeffs:
                 confs, ldiffs, oks = [], [], []
                 for r in ev:
-                    conf, ld = run_record(turn3_ids(r), vec, hat, mu_v, c)
+                    conf, ld = run_record(turn3_ids(r), vec, hat, mu_v, c, scale)
                     confs.append(conf); ldiffs.append(ld)
                     oks.append(1 if r["grade"]["ok"] else 0)
                 have = np.array([x is not None for x in confs])
@@ -272,6 +281,8 @@ def main() -> None:
     pathlib.Path(out).write_text(json.dumps({
         "model": args.model, "task": args.task, "mode": args.mode, "layer_acts": Lacts,
         "coeffs": coeffs, "n_eval": len(ev), "degenerate_direction": degenerate,
+        "random_control": {"sigma_w": sigma_w, "sigma_r": sigma_r, "rand_scale": rand_scale,
+                           "magnitude_matched": True},
         "results": results}, indent=2))
     print("saved", out)
 
