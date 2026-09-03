@@ -33,11 +33,11 @@
 \begin{abstract}
 Language models often answer math problems wrong while reporting high confidence.
 Does the model lack self-knowledge, or does it have it and fail to express it?
-We separate the two by reading the residual stream directly.
-The study is anchored by a geometry-construction testbed whose outputs are graded exactly by a symbolic compiler, with no human or model judge.
+To separate the two, we read the model's internal state directly instead of asking it.
+The study is anchored by a geometry-construction testbed whose outputs a symbolic compiler grades exactly, so no human or model judge is in the loop.
 We test four open models with distinct architectures on four domains: compiler-verified geometry, MMLU-Pro, MATH, and GPQA-Diamond.
-A linear probe on the residual stream predicts whether an attempt is correct better than the model's stated confidence in 12 of 16 cells (one tie, mean $+0.09$ AUROC).
-The gap is largest on MATH ($+0.20$), where wrong answers carry no surface tell.
+A simple linear detector trained on that state, a probe, predicts whether an attempt is correct better than the model's stated confidence in 12 of 16 cells (one tie, mean $+0.09$ AUROC).
+The gap is largest on MATH ($+0.20$), where a wrong answer looks as clean as a right one.
 The signal is specific to the attempt: it survives a within-question control that pushes the model's own P(True) toward chance.
 It is largely domain-general: a probe trained in one domain still discriminates in the others.
 And the model uses it.
@@ -52,7 +52,7 @@ How much of that knowledge reaches speech varies by architecture, and we outline
 A mathematical agent that errs is unavoidable.
 One that errs \emph{and knows it} can abstain, retry, or escalate.
 Stated confidence is a weak guide to correctness, and weakest where mathematics is hardest.
-A wrong multi-step derivation still ends in a well-formed \texttt{\textbackslash boxed\{answer\}} with no surface tell.
+A wrong multi-step derivation still ends in a cleanly formatted final answer, and nothing on the page gives it away.
 We split the problem into two questions.
 Do models internally represent that an output is wrong (\textbf{knowing})?
 Does that representation reach what they report (\textbf{saying})?
@@ -74,7 +74,7 @@ We argue that this dependence is itself the finding.
 \label{sec:testbed}
 
 Metacognition experiments live or die by their correctness labels, and labels from an LLM judge inherit the judge's blind spots.
-Our anchor domain uses no judge.
+Our anchor domain uses no judge: instead of judging a diagram by eye, it compiles the construction and checks each requirement of the prompt as an equation.
 In \GeoGenBench, a model receives a natural-language request for a geometric construction, for example ``draw an acute triangle $EFG$ with $\angle E{=}60^\circ$, $\angle F{=}70^\circ$; construct the altitude from $G$ meeting $EF$ at $H$.''
 Its output is compiled to SymPy coordinates.
 Each clause of the prompt is then decided as an exact symbolic predicate (15 typed predicates, tolerance $5{\times}10^{-3}$).
@@ -87,7 +87,7 @@ We report a benchmark of six frontier models on the 801-prompt suite elsewhere.
 Two findings matter here.
 A structured intermediate representation lifts every model ($+2$ to $+25$\pp, with three flagships converging within $1$\pp).
 And most wrong outputs are rendered diagrams with wrong geometry, not broken code.
-They are fluent, confident, and false, which is exactly the failure mode that motivates reading the model's internals.
+They read as fluent and confident, and they are wrong, which is the failure mode that motivates reading the model's internals.
 MMLU-Pro, MATH, and GPQA-Diamond complete the domain grid with programmatic grading.
 We drop benchmarks the models have saturated, since metacognition is failure-hungry.
 
@@ -99,9 +99,12 @@ We test four open models with different architectures: Qwen3.6-27B (hybrid Mamba
 Each runs on all four domains, about 750 records per cell.
 Each problem takes three turns: prospective confidence, the attempt, and retrospective confidence.
 Grading is external and never shown to the model, so any post-attempt revision is blind self-assessment.
-We take four readouts of the same latent quantity on identical records: stated confidence (0--100), P(True), answer log-probability, and a linear \emph{probe}.
-The probe is a logistic regression on the residual stream at the confidence decision token, scored out-of-fold with question-grouped folds, and reported at one pre-specified layer at 0.7 of network depth rather than the best layer.
-Four controls.
+We take four readouts of the same latent quantity on identical records: stated confidence (0--100); P(True), the model's probability of answering ``True'' when asked whether its answer is correct; the answer's log-probability; and a linear \emph{probe}.
+The residual stream is the model's internal state, a vector of a few thousand numbers at every token and layer.
+The probe is a logistic regression trained to read correctness from that vector at the confidence decision token, the position that is about to produce the confidence digit.
+It is scored out-of-fold with question-grouped folds and reported at one pre-specified layer at 0.7 of network depth rather than the best layer.
+Our metric throughout is AUROC, the probability that a random correct attempt scores above a random wrong one: 0.5 is chance, 1.0 is perfect.
+Four controls guard the readout.
 The probe adds $+0.22$ mean AUROC over a surface-features baseline (answer length and shape) in 15 of 16 cells.
 The read token is identical across records, so layer-0 activations carry no signal by construction (per-fold AUROC 0.500); anything decoded deeper was computed during the attempt.
 A within-question control holds difficulty fixed.
@@ -136,6 +139,7 @@ Mistral $\times$ MATH & \textbf{0.72} & 0.59 \\
 \end{table}
 
 \paragraph{Knowing exceeds saying, most where errors look clean.}
+The internal state ranks right and wrong answers better than the model's own words do.
 The probe beats stated confidence in \textbf{12 of 16} cells (\cref{tab:knowing}, left).
 The three losses are small-$n$ cells, two of them Gemma-4.
 The gap is widest on MATH (mean $+0.20$).
@@ -146,11 +150,13 @@ Post-attempt internal readouts also exceed pre-attempt ones.
 Doing the work sharpens the internal signal even where it degrades the stated one.
 
 \paragraph{The signal tracks the attempt, not the question.}
+A skeptic's alternative is that the probe has only learned which questions are hard.
+Holding the question fixed rules this out.
 Within a single question, across its five sampled attempts, only attempt-level information can discriminate.
 There the model's own P(True) falls toward chance while the probe holds (\cref{tab:knowing}, right).
 P(True) largely recovers \emph{which questions are hard}.
 The probe tracks \emph{whether this attempt succeeded}.
-Two decompositions sharpen this.
+Two further cuts of the data agree.
 Residualizing post-attempt probe scores on pre-attempt scores leaves substantial AUROC (0.59--0.87), so the post signal is attempt-specific rather than difficulty re-expressed.
 And the post-attempt direction transfers only weakly to the pre-attempt site.
 \emph{Did I succeed?} and \emph{Is this hard?} are largely distinct directions.
@@ -158,7 +164,8 @@ Blind post-attempt confidence drops are also larger on failures than on successe
 That is a genuine, under-expressed self-monitoring process.
 
 \paragraph{One correctness direction, largely domain-general.}
-A probe trained in one domain and evaluated in another keeps most of its in-domain AUROC.
+If the model had one internal sense of ``this is wrong,'' a probe trained on one subject should work on another.
+It does: a probe trained in one domain and evaluated in another keeps most of its in-domain AUROC.
 In the original matrix, retention was about 87--90\% (Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), and sometimes lossless within QA (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91).
 A fresh Mistral capture across MMLU-Pro, MATH, and GPQA, analysed with a corrected standardization step, gives 96\% retention (off-diagonal 0.69 vs.\ diagonal 0.72; MMLU-Pro$\to$MATH 0.84 vs.\ 0.83 in-domain), with direction cosines of 0.54--0.82.
 GPQA is Mistral's weakest domain (in-domain 0.57), and transfer into it is bounded accordingly.
@@ -168,6 +175,7 @@ Probes trained on the generative task can latch onto task-specific features; QA-
 A shared correctness direction is what a deployable readout needs, and what a workspace account (below) predicts.
 
 \paragraph{The signal is causally used.}
+Reading shows the signal exists; steering shows the model uses it.
 We steer at the confidence token, after the answer is written, so the answer cannot change.
 We amplify the model's own projection onto its correctness direction, with no labels at intervention time.
 On Mistral $\times$ MATH, as gain rises from 1 to 2 to 4, stated confidence on \emph{failed} answers falls from 80 to 65 to 43.
@@ -185,7 +193,7 @@ Trained probes invite an overfitting critique, so we added an unsupervised instr
 The lens is fit on generic text, with no task labels anywhere in its construction, and scores the same stored activations as a wrong-vs-correct disposition.
 On dense models it lands in probe territory (Mistral 0.76--0.82; Qwen2.5-14B, a dense within-family control, 0.88) and beats stated confidence with no labels.
 Two independent instruments find one direction.
-The knowledge is not just present but \emph{speakable}.
+And because the lens reads through the model's own speech pathway, the knowledge it finds sits in the subspace the model can put into words: it is \emph{speakable}.
 On the other architectures the lens itself fails (Mamba-hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model.
 The failure has a fingerprint.
 Transported through the averaged map, the lens's ``correct'' and ``wrong'' readout vectors collapse to cosine $0.96$ on MoE, against about $0.4$ on dense models.
