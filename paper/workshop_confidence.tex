@@ -147,21 +147,23 @@ That is a genuine, under-expressed self-monitoring process.
 If the model had one internal sense of ``this is wrong,'' a probe trained on one subject should work on another.
 It does: a probe trained in one domain and evaluated in another keeps most of its in-domain AUROC.
 In the original matrix, retention was about 87--90\% (Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), and sometimes lossless within QA (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91).
-A fresh Mistral capture across MMLU-Pro, MATH, and GPQA, analysed with a corrected standardization step, gives 96\% retention (\cref{tab:transfer}: off-diagonal mean 0.69 vs.\ diagonal 0.72), with direction cosines of 0.54--0.82.
+A fresh Mistral capture across all four domains, analysed with a corrected standardization step, gives 97\% retention (\cref{tab:transfer}: off-diagonal mean 0.69 vs.\ diagonal 0.71), with direction cosines of 0.34--0.82.
 GPQA is Mistral's weakest domain (in-domain 0.57), and transfer into it is bounded accordingly.
+On Mistral the geometry anomaly does not recur: a MATH-trained probe reads geometry at 0.80, above geometry's own in-domain 0.68, so the anti-transfer below is specific to Gemma-4.
 
 \begin{table}[t]
-\caption{Left: cross-domain probe transfer for Mistral on a fresh 2,250-record capture (rows train, columns test; AUROC at the fixed layer; diagonal is in-domain out-of-fold). Right: steering Mistral on MATH by amplifying its own correctness direction at the confidence token, with the random control scaled to the same per-record perturbation magnitude (stated confidence on failed / correct answers; ECE).}
+\caption{Left: cross-domain probe transfer for Mistral on a fresh 2,614-record capture (rows train, columns test; AUROC at the fixed layer; diagonal is in-domain out-of-fold; Geo = GeoGenBench). Right: steering Mistral on MATH by amplifying its own correctness direction at the confidence token, with the random control scaled to the same per-record perturbation magnitude (stated confidence on failed / correct answers; ECE).}
 \label{tab:transfer}
 \centering
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{train $\downarrow$ test $\rightarrow$} & \textbf{MMLU-Pro} & \textbf{MATH} & \textbf{GPQA} \\
+\textbf{train $\downarrow$ test $\rightarrow$} & \textbf{Geo} & \textbf{MMLU-Pro} & \textbf{MATH} & \textbf{GPQA} \\
 \midrule
-MMLU-Pro & \textbf{0.75} & 0.84 & 0.59 \\
-MATH & 0.72 & \textbf{0.83} & 0.57 \\
-GPQA & 0.69 & 0.74 & \textbf{0.57} \\
+Geo & \textbf{0.68} & 0.67 & 0.78 & 0.56 \\
+MMLU-Pro & 0.70 & \textbf{0.75} & 0.84 & 0.59 \\
+MATH & 0.80 & 0.72 & \textbf{0.83} & 0.57 \\
+GPQA & 0.60 & 0.69 & 0.74 & \textbf{0.57} \\
 \bottomrule
 \end{tabular}
 \hspace{1.5em}
@@ -175,7 +177,7 @@ random, fail / ok & 84 / 96 & 84 / 96 & unparseable \\
 \bottomrule
 \end{tabular}
 \end{table}
-Geometry is partly special.
+Geometry is partly special on one model.
 On Gemma-4, geometry-trained probes \emph{anti-transfer} to QA (0.31--0.39), while QA-trained probes work on geometry (about 0.70).
 Probes trained on the generative task can latch onto task-specific features; QA-trained probes find the general direction.
 A shared correctness direction is what a deployable readout needs, and what a workspace account (below) predicts.
