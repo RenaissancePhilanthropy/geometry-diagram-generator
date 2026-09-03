@@ -632,3 +632,22 @@ Mistral matrix after gpqa + geometry finish.
 Caveat: transformers warns the Mistral-2501 tokenizer regex is wrong without `fix_mistral_regex=True`
 (affects pre-tokenization of some strings); July runs used the same loader. Not expected to matter at
 the confidence decision token; flagged for the next capture.
+
+**Same day, GPQA + 3-domain transfer (fixed scaler, `tier1_review.py` now includes gpqa):**
+`fix_mistral_gpqa` 750 records, pass 0.44. Weak cell: act-only 0.572 vs surf 0.518, verbalized 0.566,
+paired boot +0.006 ns; within-q 0.553 (91 mixed). GPQA is Mistral's weakest domain, consistent with the
+low end of the July matrix.
+
+Transfer matrix (rows = train, cols = test; POST site, fixed layer):
+
+| | mmlu_pro | math | gpqa |
+|---|---|---|---|
+| mmlu_pro | 0.754 | 0.838 | 0.592 |
+| math | 0.717 | 0.834 | 0.572 |
+| gpqa | 0.687 | 0.737 | 0.572 |
+
+mean diagonal 0.720, mean off-diagonal 0.690 → **96% retention**; cosines mmlu~math 0.82, mmlu~gpqa
+0.74, math~gpqa 0.54. Transfer *into* gpqa is bounded by its weak in-domain signal; gpqa-trained probes
+still reach 0.69/0.74 on mmlu/math. Paper (`52df35a` on paper/workshop-4pager) now reports this and
+drops the "preliminary" caveat. Geometry temporal capture running at ~1.35 rec/min (364 → ~4.5 h);
+adds the 4th domain when done.
