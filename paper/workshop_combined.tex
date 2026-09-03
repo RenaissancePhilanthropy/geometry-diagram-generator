@@ -172,8 +172,8 @@ We amplify the model's own projection onto its correctness direction, with no la
 On Mistral $\times$ MATH, as gain rises from 1 to 2 to 4, stated confidence on \emph{failed} answers falls from 80 to 65 to 43.
 Correct answers hold near 90.
 Calibration error halves ($0.31 \to 0.13$).
-A random direction is flat (norm-matched in the additive variant, not magnitude-matched in amplify mode, a known limitation).
 Dampening the signal \emph{increases} overconfidence, so the dose--response runs both ways.
+An independent replication on a fresh 750-record capture, with the random control scaled to the same per-record perturbation magnitude, reproduces the effect: failed-answer confidence $84 \to 69 \to 55$, correct $96 \to 94 \to 88$, calibration error $0.33 \to 0.18$, while the matched random direction leaves confidence unchanged at gain 2 and only degrades the output at gain 4.
 Replication depends on architecture.
 Gemma-4 shows the right specificity but is underpowered.
 GLM is null at the gains we tested; its stated confidence saturates near 100, exactly where the probe most exceeds P(True).
