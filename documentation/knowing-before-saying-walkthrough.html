@@ -137,7 +137,7 @@
   <ol>
     <li><a href="#s1"><span class="n">1</span>The puzzle</a></li>
     <li><a href="#s2"><span class="n">2</span>Two questions</a></li>
-    <li><a href="#s3"><span class="n">3</span>The instrument</a></li>
+    <li><a href="#s3"><span class="n">3</span>Four subjects</a></li>
     <li><a href="#s4"><span class="n">4</span>The protocol</a></li>
     <li><a href="#s5"><span class="n">5</span>Reading the state</a></li>
     <li><a href="#s6"><span class="n">6</span>It knows</a></li>
@@ -235,8 +235,8 @@
 
 <!-- 3 -->
 <section class="step" id="s3">
-  <div class="step-head"><div class="step-num">3</div><h2>You need ground truth you can trust. A compiler gives it.</h2></div>
-  <p class="lede">Every comparison depends on knowing, for certain, which answers were right. Our anchor domain grades answers with a symbolic compiler instead of a human or another model.</p>
+  <div class="step-head"><div class="step-num">3</div><h2>Four subjects, one of them graded by a compiler.</h2></div>
+  <p class="lede">Three standard benchmarks with programmatic grading, plus a geometry-construction task where a symbolic compiler decides right or wrong. The geometry task is not where the results are strongest. It is where the labels are most trustworthy.</p>
   <div class="two">
     <figure class="figbox">
       <svg viewBox="0 0 560 200" role="img" aria-label="Pipeline: a natural-language geometry request goes to the model, which writes a construction; a compiler turns it into exact coordinates; fifteen symbolic predicates check each clause of the request and return pass or fail.">
@@ -269,10 +269,10 @@
     <div class="prose">
       <p>Labels from an LLM judge inherit the judge's blind spots. A compiler has none. Prompts and their rubrics are generated from the same source code, so the grader cannot drift from the question.</p>
       <p>A pre-registered human study with 200 items and two trained raters found the verifier's disagreements with humans run in one direction only: it is lenient, never harsh. So a <b>fail</b> label, the one this study needs, is trustworthy.</p>
-      <p>Three standard benchmarks with programmatic grading complete the grid: MMLU-Pro, MATH, and GPQA-Diamond. Benchmarks the models have saturated were dropped, because you cannot study self-knowledge of failure where there are no failures.</p>
+      <p>The other three subjects are MMLU-Pro, MATH, and GPQA-Diamond. MATH is where the findings are sharpest. Geometry is also the one generative task: the model writes a whole construction rather than picking an answer. Benchmarks the models have saturated were dropped, because you cannot study self-knowledge of failure where there are no failures.</p>
     </div>
   </div>
-  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Our geometry benchmark is the instrument. It tells us right or wrong with certainty, and that certainty is what lets us trust everything downstream."</p></aside>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Four subjects. Three are standard benchmarks. The fourth is a geometry task graded by a compiler, which is the one place we know right from wrong with certainty."</p></aside>
 </section>
 
 <!-- 4 -->
@@ -664,7 +664,7 @@
 </div>
 
 <footer>
-  Numbers: lab notebook entries of 7 July and 3 September 2026; steering and transfer replication from the fresh Mistral capture of 2–3 September 2026. Paper source: <code>paper/workshop_combined.tex</code> on branch <code>paper/workshop-4pager</code>. This page: <code>documentation/knowing-before-saying-walkthrough.html</code>.
+  Numbers: lab notebook entries of 7 July and 3 September 2026; steering and transfer replication from the fresh Mistral capture of 2–3 September 2026. Paper source: <code>paper/workshop_confidence.tex</code> on branch <code>paper/workshop-4pager</code>. This page: <code>documentation/knowing-before-saying-walkthrough.html</code>.
 </footer>
 
 <div id="tip" role="tooltip"></div>
