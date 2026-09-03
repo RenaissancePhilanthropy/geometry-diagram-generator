@@ -44,7 +44,7 @@ import numpy as np
 warnings.filterwarnings("ignore")
 
 MODELS = ["gemma4", "qwen36", "glm", "mistral"]
-QA = ["mmlu_pro", "gsm8k", "math"]
+QA = ["mmlu_pro", "gsm8k", "math", "gpqa"]
 CELLS = [(f"mtx_{m}_{b}", m, b) for m in MODELS for b in QA] + \
         [(f"{m}_temporal", m, "geometry") for m in MODELS]
 COVS = (1.0, 0.8, 0.6, 0.4, 0.2)
