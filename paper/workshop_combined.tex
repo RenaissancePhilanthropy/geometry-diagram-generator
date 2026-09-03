@@ -159,8 +159,9 @@ That is a genuine, under-expressed self-monitoring process.
 
 \paragraph{One correctness direction, largely domain-general.}
 A probe trained in one domain and evaluated in another keeps most of its in-domain AUROC.
-In a preliminary analysis, retention is about 87--90\% (Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), and sometimes lossless within QA (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91).
-These numbers await re-verification after a correction to the analysis's standardization step.
+In the original matrix, retention was about 87--90\% (Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), and sometimes lossless within QA (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91).
+A fresh Mistral capture across MMLU-Pro, MATH, and GPQA, analysed with a corrected standardization step, gives 96\% retention (off-diagonal 0.69 vs.\ diagonal 0.72; MMLU-Pro$\to$MATH 0.84 vs.\ 0.83 in-domain), with direction cosines of 0.54--0.82.
+GPQA is Mistral's weakest domain (in-domain 0.57), and transfer into it is bounded accordingly.
 Geometry is partly special.
 On Gemma-4, geometry-trained probes \emph{anti-transfer} to QA (0.31--0.39), while QA-trained probes work on geometry (about 0.70).
 Probes trained on the generative task can latch onto task-specific features; QA-trained probes find the general direction.
