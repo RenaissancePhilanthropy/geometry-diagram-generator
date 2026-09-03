@@ -1,0 +1,455 @@
+<title>Knowing Before Saying, Up Close</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FCFCFB; --bg-2: #F3F3F0; --ink: #131318; --ink-2: #4A4A55; --muted: #737382; --rule: #DDDDD8;
+    --internal: #E0562B; --internal-soft: #FBE3DA; --internal-mid: #F4B39A; --internal-deep: #C4441B;
+    --stated: #2F6DB5; --stated-soft: #DCE8F6;
+    --ok: #2E7D4F; --ok-soft: #DDEFE3; --bad: #B3261E; --bad-soft: #F6DDDA; --note-bg: #FFF7F3;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171A; --bg-2: #1D2024; --ink: #ECEEF0; --ink-2: #C3C7CC; --muted: #9AA1A9; --rule: #2E3238;
+      --internal: #E8663C; --internal-soft: #4A2A1F; --internal-mid: #8A4630; --internal-deep: #F08A66;
+      --stated: #5E97E0; --stated-soft: #22314A; --ok: #6CC493; --ok-soft: #1F3A2A; --bad: #F08A80; --bad-soft: #442222; --note-bg: #22201E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171A; --bg-2: #1D2024; --ink: #ECEEF0; --ink-2: #C3C7CC; --muted: #9AA1A9; --rule: #2E3238;
+    --internal: #E8663C; --internal-soft: #4A2A1F; --internal-mid: #8A4630; --internal-deep: #F08A66;
+    --stated: #5E97E0; --stated-soft: #22314A; --ok: #6CC493; --ok-soft: #1F3A2A; --bad: #F08A80; --bad-soft: #442222; --note-bg: #22201E;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: Manrope, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.55; }
+  h1, h2, h3 { font-family: Newsreader, Georgia, "Times New Roman", serif; font-weight: 500; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+  h3 { font-size: 20px; margin: 22px 0 8px; }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  header.hero { max-width: 1120px; margin: 0 auto; padding: 56px 24px 20px; display: grid; gap: 18px; }
+  header.hero h1 { font-size: clamp(36px, 5.5vw, 58px); line-height: 1.04; }
+  header.hero .dek { font-family: Newsreader, Georgia, serif; font-size: 21px; line-height: 1.35; color: var(--ink-2); max-width: 36em; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 8px 24px 80px; display: grid; grid-template-columns: 230px 1fr; gap: 40px; align-items: start; }
+  nav.rail { position: sticky; top: 24px; font-size: 13.5px; }
+  nav.rail ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--rule); }
+  nav.rail li a { display: block; padding: 6px 0 6px 14px; color: var(--muted); text-decoration: none; margin-left: -2px; border-left: 2px solid transparent; }
+  nav.rail li a:hover, nav.rail li a:focus-visible { color: var(--ink); border-left-color: var(--internal); outline: none; }
+  nav.rail .n { display: inline-block; width: 22px; font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 600; }
+  main { min-width: 0; }
+  section.step { padding: 44px 0 8px; border-top: 1px solid var(--rule); scroll-margin-top: 16px; }
+  section.step:first-of-type { border-top: 0; padding-top: 24px; }
+  .step-head { display: grid; grid-template-columns: 56px 1fr; gap: 16px; align-items: baseline; margin-bottom: 14px; }
+  .step-num { font-family: Newsreader, Georgia, serif; font-size: 40px; line-height: 1; color: var(--internal); font-variant-numeric: tabular-nums; }
+  .step h2 { font-size: clamp(24px, 3vw, 31px); line-height: 1.15; }
+  .body { margin-left: 72px; }
+  .body p { margin: 0 0 12px; max-width: 66ch; }
+  .body ul, .body ol { margin: 0 0 12px; padding-left: 20px; max-width: 66ch; }
+  .body li { margin: 5px 0; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 26px; align-items: start; }
+  .two > * { min-width: 0; }
+  figure { margin: 0; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
+  .figbox { background: var(--bg-2); border-radius: 8px; padding: 18px 18px 14px; margin: 8px 0 16px; }
+  .say { margin: 20px 0 0; background: var(--note-bg); border-left: 3px solid var(--internal); padding: 12px 16px; max-width: 72ch; }
+  .say .eyebrow { color: var(--internal); margin-bottom: 4px; }
+  .say p { margin: 0; font-family: Newsreader, Georgia, serif; font-size: 18px; line-height: 1.4; }
+  .honest { margin: 16px 0; background: var(--bg-2); border-left: 3px solid var(--muted); padding: 12px 16px; max-width: 72ch; font-size: 15px; }
+  .honest .eyebrow { margin-bottom: 4px; }
+  /* record card */
+  .record { border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; margin: 8px 0 16px; font-size: 14.5px; }
+  .record .rhead { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 14px; background: var(--bg-2); border-bottom: 1px solid var(--rule); }
+  .record .rhead .id { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .record .row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+  .record .row:last-child { border-bottom: 0; }
+  .record .k { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
+  .record .v { min-width: 0; overflow-wrap: anywhere; }
+  .record .v.math { font-family: var(--mono); font-size: 13px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; letter-spacing: .04em; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.stated { background: var(--stated-soft); color: var(--stated); }
+  .pill.internal { background: var(--internal-soft); color: var(--internal); }
+  table.data { border-collapse: collapse; font-size: 14px; width: 100%; font-variant-numeric: tabular-nums; margin: 6px 0 14px; }
+  table.data th, table.data td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.data th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  table.data td.num, table.data th.num { text-align: right; }
+  table.data .stated { color: var(--stated); font-weight: 600; }
+  table.data .internal { color: var(--internal); font-weight: 700; }
+  .eq { font-family: var(--mono); font-size: 14px; background: var(--bg-2); padding: 10px 14px; border-radius: 6px; margin: 10px 0 14px; overflow-x: auto; white-space: pre; line-height: 1.5; }
+  .steps { counter-reset: st; list-style: none; padding: 0; margin: 8px 0 14px; max-width: 70ch; }
+  .steps li { counter-increment: st; position: relative; display: block; padding: 8px 0 8px 40px; border-top: 1px solid var(--rule); }
+  .steps li::before { content: counter(st); position: absolute; left: 0; top: 8px; font-family: Newsreader, Georgia, serif; font-size: 20px; color: var(--internal); line-height: 1.1; }
+  .steps li b { display: block; margin-bottom: 2px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 16px; }
+  .tile { background: var(--bg-2); border-radius: 8px; padding: 14px 16px; }
+  .tile .v { font-family: Newsreader, Georgia, serif; font-size: 32px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile .l { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .tile.internal .v { color: var(--internal); } .tile.stated .v { color: var(--stated); }
+  .bar { position: relative; height: 10px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12.5px; padding: 6px 9px; border-radius: 5px; opacity: 0; transform: translate(-50%, calc(-100% - 10px)); transition: opacity .12s; z-index: 10; white-space: nowrap; }
+  #tip.on { opacity: 1; }
+  footer { max-width: 1120px; margin: 0 auto; padding: 24px 24px 56px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); }
+  footer a { color: var(--ink-2); }
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: 1fr; gap: 12px; }
+    nav.rail { position: static; } nav.rail ol { display: flex; flex-wrap: wrap; gap: 2px 10px; border-left: 0; } nav.rail li a { padding: 4px 0; border-left: 0; }
+    .two { grid-template-columns: 1fr; } .body { margin-left: 0; } .step-head { grid-template-columns: 44px 1fr; }
+    .record .row { grid-template-columns: 1fr; gap: 4px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+</style>
+
+<header class="hero">
+  <div class="eyebrow">Companion to the walkthrough · the confidence study in detail</div>
+  <h1>Knowing Before Saying, Up Close</h1>
+  <p class="dek">One real record, followed end to end. How the probe is built, number by number. How the score becomes an AUROC. Why the controls are shaped the way they are. Every example on this page is an actual attempt from the Mistral MATH capture of 2 September 2026, with its real probe score.</p>
+  <div class="meta">
+    <span><b>Cell</b> Mistral-Small-24B × MATH-500, 150 problems × 5 attempts = 750 records</span>
+    <span><b>Read site</b> the confidence decision token, layer 28 of 40, 5,120 numbers</span>
+    <span><b>This cell</b> probe AUROC 0.834 · stated confidence 0.778 · pass rate 65%</span>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="rail" aria-label="Sections">
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>One record</a></li>
+    <li><a href="#s2"><span class="n">2</span>The vector</a></li>
+    <li><a href="#s3"><span class="n">3</span>The probe, step by step</a></li>
+    <li><a href="#s4"><span class="n">4</span>A toy version</a></li>
+    <li><a href="#s5"><span class="n">5</span>Guardrails</a></li>
+    <li><a href="#s6"><span class="n">6</span>From scores to AUROC</a></li>
+    <li><a href="#s7"><span class="n">7</span>Real records, scored</a></li>
+    <li><a href="#s8"><span class="n">8</span>Within one question</a></li>
+    <li><a href="#s9"><span class="n">9</span>Steering, the math</a></li>
+    <li><a href="#s10"><span class="n">10</span>Reading the numbers</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- 1 -->
+<section class="step" id="s1">
+  <div class="step-head"><div class="step-num">1</div><h2>One record, end to end.</h2></div>
+  <div class="body">
+    <p>Everything in the study is built from records like this one. The model saw a MATH problem, said how confident it felt, solved it, said how confident it felt again, and was graded in silence. This is attempt 1 of 5 on a precalculus problem.</p>
+    <div class="record">
+      <div class="rhead"><span class="id">math_test_precalculus_145 · attempt s1</span><span class="pill bad">graded: wrong</span></div>
+      <div class="row"><div class="k">problem</div><div class="v">There are an infinite number of vectors <span class="mono">v</span> such that <span class="mono">(1, 2, −5) × v = (90, 30, 30)</span>. Find the vector <span class="mono">v</span> that has the smallest magnitude.</div></div>
+      <div class="row"><div class="k">turn 1 · before</div><div class="v">"How confident are you that you'll get this right?" → <span class="pill stated">Confidence: 30</span></div></div>
+      <div class="row"><div class="k">turn 2 · attempt</div><div class="v">Let v = (x, y, z). Then (1, 2, −5) × (x, y, z) = (2z + 5y, −5x + z, −2x + 5y). Com… <span style="color:var(--muted)">[continues for several hundred tokens]</span></div></div>
+      <div class="row"><div class="k">final answer</div><div class="v math">model: (0, 6, 30) &nbsp;&nbsp; correct: (−7, 16, 5)</div></div>
+      <div class="row"><div class="k">turn 3 · after</div><div class="v">"How confident are you that your answer is correct?" → <span class="pill stated">Confidence: 100</span></div></div>
+      <div class="row"><div class="k">P(True)</div><div class="v"><span class="stated" style="color:var(--stated);font-weight:600">0.22</span> &nbsp;<span style="color:var(--muted)">the model's own probability of answering "True" to "is your answer correct?"</span></div></div>
+      <div class="row"><div class="k">probe</div><div class="v"><span class="pill internal">0.64</span> &nbsp;<span style="color:var(--muted)">probability of "correct" read from the internal state at turn 3, by a probe that never saw this question</span></div></div>
+    </div>
+    <p>Three readouts, three different stories. The model went from 30 to 100 after doing the work and getting it wrong. Its P(True) sat at 0.22, unusually low for this model. The probe leaned toward "correct" but without conviction, 0.64 against a median of 0.93 for answers that really were correct.</p>
+    <p>No single record proves anything. The study is about what these readouts do across 750 records per cell and 16 cells. But every number in the paper is an aggregate of records exactly like this one, and it is worth holding one in mind.</p>
+  </div>
+  <aside class="say" style="margin-left:72px"><div class="eyebrow">Say it like this</div><p>"Here is one attempt. The model said 30 before, 100 after, and it was wrong. Our detector, reading the model's internal state at that moment, was noticeably less sure than the model was."</p></aside>
+</section>
+
+<!-- 2 -->
+<section class="step" id="s2">
+  <div class="step-head"><div class="step-num">2</div><h2>The vector we read.</h2></div>
+  <div class="body">
+    <p>At turn 3 the model has written <span class="mono">Confidence:</span> and is about to produce the digit. At that exact position, at every layer, it holds an internal state vector. For Mistral-Small-24B that vector has 5,120 numbers, and there are 40 layers, so 40 such vectors. We take the one at layer 28, which is 0.7 of the way through, and store it as 5,120 half-precision floats per record.</p>
+    <div class="two">
+      <figure class="figbox">
+        <svg viewBox="0 0 520 210" role="img" aria-label="The text 'answer is correct. Confidence:' with the decision token highlighted, and a column of 40 stacked cells above it representing layers; the cell at layer 28 is marked as the one read, labeled 5,120 numbers.">
+          <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+            <g stroke="currentColor" stroke-opacity=".2" fill="none">
+              <rect x="40" y="20" width="360" height="140"/>
+              <line x1="100" y1="20" x2="100" y2="160"/><line x1="160" y1="20" x2="160" y2="160"/><line x1="220" y1="20" x2="220" y2="160"/><line x1="280" y1="20" x2="280" y2="160"/><line x1="340" y1="20" x2="340" y2="160"/>
+            </g>
+            <rect x="340" y="20" width="60" height="140" fill="var(--internal-soft)"/>
+            <rect x="340" y="59" width="60" height="6" fill="var(--internal)"/>
+            <text x="30" y="27" text-anchor="end" fill="#737382" font-size="10">layer 40</text>
+            <text x="30" y="64" text-anchor="end" fill="var(--internal)" font-weight="700" font-size="10">layer 28</text>
+            <text x="30" y="160" text-anchor="end" fill="#737382" font-size="10">layer 0</text>
+            <g text-anchor="middle" font-size="11">
+              <text x="70" y="180">…</text><text x="130" y="180">answer</text><text x="190" y="180">is</text><text x="250" y="180">correct.</text><text x="310" y="180">Confidence</text><text x="370" y="180" font-weight="700">:</text>
+            </g>
+            <text x="370" y="198" text-anchor="middle" font-size="10" fill="var(--internal)">decision token</text>
+            <line x1="400" y1="62" x2="430" y2="62" stroke="var(--internal)" stroke-width="2"/>
+            <text x="436" y="58" font-size="10.5" fill="var(--internal)" font-weight="700">h</text>
+            <text x="436" y="72" font-size="10" fill="var(--ink-2)">5,120 numbers</text>
+            <text x="436" y="86" font-size="10" fill="#737382">one per hidden unit</text>
+          </g>
+        </svg>
+        <figcaption>The residual stream at one token is a column. We store one cell of it, the layer-28 vector <span class="mono">h</span>.</figcaption>
+      </figure>
+      <div>
+        <p><b>Why this token.</b> The words around it are the same for every record: <span class="mono">Confidence:</span> after a fixed question. So the vector cannot differ between records because of what word it is. It can only differ because of what the model computed on the way here. That is what makes layer 0, which is just the token's embedding, identical across records and useless as a predictor. Anything a probe finds deeper was computed during the attempt.</p>
+        <p><b>Why layer 28.</b> Choosing the best layer after seeing the results inflates the number. We picked 0.7 of depth in advance for every model and report that. The lab notebook records that picking the best layer would add roughly 0.05 to 0.13 AUROC, which is why we do not.</p>
+        <p><b>What is in the vector.</b> Nobody knows in detail. It is not a list of interpretable features. The claim of the study is narrower: somewhere in those 5,120 numbers, a direction exists along which correct and wrong attempts separate, and a straight line can find it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="step" id="s3">
+  <div class="step-head"><div class="step-num">3</div><h2>The probe, step by step.</h2></div>
+  <div class="body">
+    <p>The probe is a logistic regression. Given a vector, it outputs a probability that the attempt was correct. It has one weight per input dimension plus a bias, and nothing else. This is the exact pipeline the analysis code uses, in the order it runs.</p>
+    <ol class="steps">
+      <li><b>Collect training pairs.</b> For each record in the training fold, take the layer-28 vector <span class="mono">h</span> (5,120 numbers) and the grader's label <span class="mono">y</span>: 1 if correct, 0 if wrong. About 600 records per fold.</li>
+      <li><b>Standardize each dimension.</b> For each of the 5,120 positions, subtract the training mean and divide by the training standard deviation. Afterwards every dimension has mean 0 and spread 1. Without this, a few large-magnitude dimensions would dominate everything downstream.</li>
+      <li><b>Reduce to 50 dimensions with PCA.</b> Principal component analysis finds the 50 directions along which the training vectors vary most, and expresses each vector by its 50 coordinates along them. With 600 examples in 5,120 dimensions, a straight line could separate anything by memorizing; 50 dimensions is a deliberate handicap that forces the probe to use directions that carry real variation.</li>
+      <li><b>Fit the logistic regression.</b> Find 50 weights <span class="mono">w</span> and a bias <span class="mono">b</span> so that the score <span class="mono">s = w·h̃ + b</span> is high for correct attempts and low for wrong ones. The probability is the sigmoid of the score.</li>
+      <li><b>Score the held-out fold.</b> Apply the same scaler, the same PCA, and the same weights to records the probe has never seen. Those out-of-fold scores are the only ones ever reported.</li>
+    </ol>
+    <div class="eq">score      s = w·h̃ + b               (h̃ = the 50 PCA coordinates)
+probability p = σ(s) = 1 / (1 + e^(−s))
+
+s = −3   →  p = 0.05        s = 0  →  p = 0.50        s = +3  →  p = 0.95
+s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.96  (the correct record in §7)</div>
+    <h3>What "fit" means</h3>
+    <p>Training minimizes cross-entropy: for each example it pays a penalty of <span class="mono">−log p</span> if the answer was correct and <span class="mono">−log(1 − p)</span> if it was wrong, so confident mistakes are expensive and confident correct calls are cheap. A small penalty on the size of <span class="mono">w</span> keeps the weights from growing without bound.</p>
+    <p>The gradient of that loss with respect to the weights has a simple form: sum over examples of <span class="mono">(p − y) · h̃</span>. Read it as a rule. For each example, look at the error <span class="mono">p − y</span>. If the probe said 0.8 for a wrong answer, the error is +0.8, and the update pushes <span class="mono">w</span> away from that example's vector. If it said 0.3 for a correct answer, the error is −0.7, and the update pulls <span class="mono">w</span> toward that vector. Repeat until the pushes and pulls balance.</p>
+    <h3>What the probe is, geometrically</h3>
+    <p>The 50 weights, mapped back through the PCA basis, are a single direction in the original 5,120-dimensional space. Scoring a record means projecting its vector onto that direction. That direction is the "am I correct?" axis the whole study is about, and it is the same object the steering experiment later pushes along.</p>
+    <p>A cruder estimate of the same axis is the difference of class means: average vector of correct attempts minus average vector of wrong attempts. Logistic regression is roughly that difference, rescaled by the spread of the data in each direction. The steering experiment uses the difference of means directly because it needs a direction in raw residual space, not in PCA coordinates.</p>
+  </div>
+  <aside class="say" style="margin-left:72px"><div class="eyebrow">Say it like this</div><p>"The probe is a straight line through the model's internal state. We give it six hundred examples with right-or-wrong labels and it finds the one direction that best separates them. Then we test it on questions it never saw."</p></aside>
+</section>
+
+<!-- 4 -->
+<section class="step" id="s4">
+  <div class="step-head"><div class="step-num">4</div><h2>A toy version you can see.</h2></div>
+  <div class="body">
+    <p>Two dimensions instead of 5,120, eight attempts instead of 600. The mechanism is identical.</p>
+    <div class="two">
+      <figure class="figbox">
+        <svg viewBox="0 0 480 330" role="img" aria-label="A two-dimensional scatter of eight points, four correct and four wrong, with a straight decision line separating them and an arrow w perpendicular to the line pointing toward the correct side. One wrong point sits close to the line on the correct side.">
+          <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+            <g stroke="currentColor" stroke-opacity=".2"><line x1="50" y1="280" x2="450" y2="280"/><line x1="50" y1="30" x2="50" y2="280"/></g>
+            <text x="250" y="305" text-anchor="middle" fill="#737382">dimension 1 of the state (standardized)</text>
+            <text x="22" y="155" text-anchor="middle" fill="#737382" transform="rotate(-90 22 155)">dimension 2</text>
+            <!-- decision line: from (90,60) to (420,270) -->
+            <line x1="80" y1="52" x2="430" y2="275" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="6 4"/>
+            <text x="404" y="256" fill="var(--ink-2)" font-size="10.5">s = 0</text>
+            <!-- w arrow perpendicular, pointing up-right side -->
+            <line x1="255" y1="163" x2="318" y2="64" stroke="var(--internal)" stroke-width="2.5"/>
+            <polygon points="318,64 305,72 314,80" fill="var(--internal)"/>
+            <text x="330" y="60" fill="var(--internal)" font-weight="700" font-size="13">w</text>
+            <!-- correct points (upper-right of line) -->
+            <g fill="var(--ok)" stroke="var(--bg)" stroke-width="2">
+              <circle data-tip="correct · s = +2.6 · p = 0.93" cx="330" cy="90" r="8"/>
+              <circle data-tip="correct · s = +1.9 · p = 0.87" cx="380" cy="150" r="8"/>
+              <circle data-tip="correct · s = +3.4 · p = 0.97" cx="240" cy="40" r="8"/>
+              <circle data-tip="correct · s = +0.8 · p = 0.69" cx="300" cy="160" r="8"/>
+            </g>
+            <!-- wrong points (lower-left) -->
+            <g fill="var(--bad)" stroke="var(--bg)" stroke-width="2">
+              <circle data-tip="wrong · s = −2.8 · p = 0.06" cx="110" cy="200" r="8"/>
+              <circle data-tip="wrong · s = −1.5 · p = 0.18" cx="180" cy="220" r="8"/>
+              <circle data-tip="wrong · s = −2.1 · p = 0.11" cx="140" cy="120" r="8"/>
+              <circle data-tip="wrong, misranked · s = +0.4 · p = 0.60" cx="290" cy="215" r="8"/>
+            </g>
+            <text x="300" y="240" font-size="10.5" fill="var(--bad)">a wrong attempt on the wrong side</text>
+            <g font-size="11"><circle cx="70" cy="42" r="5" fill="var(--ok)"/><text x="82" y="46">graded correct</text><circle cx="70" cy="62" r="5" fill="var(--bad)"/><text x="82" y="66">graded wrong</text></g>
+          </g>
+        </svg>
+        <figcaption>Each dot is one attempt. The dashed line is where the score is zero. The arrow <span class="mono">w</span> is the probe. Distance from the line, in the direction of the arrow, is the score. Hover a dot.</figcaption>
+      </figure>
+      <div>
+        <p>Read the picture the way the probe does. Every attempt is a point. Training moves the dashed line until correct points sit on one side and wrong points on the other, as far as possible. The arrow is the direction perpendicular to the line: that is <span class="mono">w</span>.</p>
+        <p>To score a new attempt, drop its point on the plot and measure how far it sits from the line along the arrow. Far on the arrow's side gives a high score and a probability near 1. Far on the other side gives a low score and a probability near 0. Near the line gives about 0.5.</p>
+        <p>One wrong attempt has landed slightly on the correct side. That is a misranking, and it is the normal state of affairs: a linear probe on real data does not separate perfectly. In the real cell, the median probe score for wrong answers is 0.33 and for correct answers 0.93, with plenty of overlap between them.</p>
+        <p>In the real setting the plot has 50 axes after PCA instead of 2, and 600 points instead of 8. Nothing else changes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="step" id="s5">
+  <div class="step-head"><div class="step-num">5</div><h2>Guardrails, and what each one prevents.</h2></div>
+  <div class="body">
+    <div class="two">
+      <figure class="figbox">
+        <svg viewBox="0 0 480 240" role="img" aria-label="Five attempts of one question shown as a group of five squares. Five folds shown as bands; the whole group of five moves together into one fold, never split across the train and test sides.">
+          <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+            <text x="20" y="22" font-weight="700">Grouped five-fold split</text>
+            <text x="20" y="38" fill="#737382" font-size="10.5">a question's five attempts always land in the same fold</text>
+            <g stroke="currentColor" stroke-opacity=".2" fill="none">
+              <rect x="20" y="56" width="440" height="30" rx="4"/><rect x="20" y="92" width="440" height="30" rx="4"/><rect x="20" y="128" width="440" height="30" rx="4"/><rect x="20" y="164" width="440" height="30" rx="4"/><rect x="20" y="200" width="440" height="30" rx="4"/>
+            </g>
+            <g fill="#737382" font-size="10"><text x="26" y="75">fold 1</text><text x="26" y="111">fold 2</text><text x="26" y="147">fold 3</text><text x="26" y="183">fold 4</text><text x="26" y="219">fold 5</text></g>
+            <!-- test fold highlighted: fold 3 -->
+            <rect x="20" y="128" width="440" height="30" rx="4" fill="var(--internal-soft)"/>
+            <text x="420" y="147" fill="var(--internal)" font-size="10" font-weight="700">held out</text>
+            <!-- one question's 5 attempts as a tight group in fold 3 -->
+            <g fill="var(--internal)"><rect x="90" y="134" width="14" height="18" rx="2"/><rect x="106" y="134" width="14" height="18" rx="2"/><rect x="122" y="134" width="14" height="18" rx="2"/><rect x="138" y="134" width="14" height="18" rx="2"/><rect x="154" y="134" width="14" height="18" rx="2"/></g>
+            <text x="129" y="127" text-anchor="middle" font-size="10" fill="var(--internal)">question 753, attempts s0–s4</text>
+            <!-- other questions as grey groups -->
+            <g fill="currentColor" fill-opacity=".25">
+              <rect x="90" y="62" width="80" height="18" rx="2"/><rect x="190" y="62" width="80" height="18" rx="2"/><rect x="290" y="62" width="80" height="18" rx="2"/>
+              <rect x="90" y="98" width="80" height="18" rx="2"/><rect x="190" y="98" width="80" height="18" rx="2"/><rect x="290" y="98" width="80" height="18" rx="2"/>
+              <rect x="190" y="134" width="80" height="18" rx="2"/><rect x="290" y="134" width="80" height="18" rx="2"/>
+              <rect x="90" y="170" width="80" height="18" rx="2"/><rect x="190" y="170" width="80" height="18" rx="2"/><rect x="290" y="170" width="80" height="18" rx="2"/>
+              <rect x="90" y="206" width="80" height="18" rx="2"/><rect x="190" y="206" width="80" height="18" rx="2"/><rect x="290" y="206" width="80" height="18" rx="2"/>
+            </g>
+          </g>
+        </svg>
+        <figcaption>Each block is one question's five attempts. A probe trained on folds 1, 2, 4, 5 scores fold 3. Repeat five times so every record gets a score from a probe that never saw its question.</figcaption>
+      </figure>
+      <div>
+        <p><b>Grouped folds</b> prevent the most embarrassing failure. If attempt s0 of a question were in training and attempt s2 in test, the probe could learn "this question" rather than "correctness." This bug was actually caught in July, when sibling attempts straddled the split, and it is why the folds are grouped.</p>
+        <p><b>The fixed layer</b> prevents choosing the flattering number after the fact.</p>
+        <p><b>The surface baseline</b> asks whether the probe is just reading the shape of the answer. Five features of the answer text are used: character count, digit count, line count, word count, and count of opening braces. On this cell those features alone reach 0.74 AUROC, because odd-looking MATH answers are more often wrong. The probe reaches 0.83, so it adds 0.07 beyond shape here, and 0.22 on average across the study. MATH is the domain where this margin is smallest, which the paper flags.</p>
+        <p><b>Layer zero</b> is a sanity check that costs nothing: the input token is identical, so its embedding is identical, and the probe there scores exactly 0.5 per fold. If it ever did not, something would be leaking.</p>
+        <p><b>The deviations log</b> records four bugs caught by these controls, fixed, and rerun. The probe direction you see is the survivor of those checks.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="step" id="s6">
+  <div class="step-head"><div class="step-num">6</div><h2>From 750 scores to one number: AUROC.</h2></div>
+  <div class="body">
+    <p>Every readout gives each attempt a score: the stated confidence, P(True), or the probe's probability. AUROC asks one question of those scores: if you pick a random correct attempt and a random wrong attempt, how often does the correct one have the higher score? Ties count half.</p>
+    <div class="two">
+      <div>
+        <p><b>Worked micro-example.</b> Three correct attempts with scores 0.91, 0.80, 0.55. Two wrong attempts with scores 0.62, 0.30. That is six pairs to compare.</p>
+        <table class="data">
+          <thead><tr><th>correct score</th><th>wrong score</th><th>correct wins?</th></tr></thead>
+          <tbody>
+            <tr><td>0.91</td><td>0.62</td><td style="color:var(--ok)">yes</td></tr>
+            <tr><td>0.91</td><td>0.30</td><td style="color:var(--ok)">yes</td></tr>
+            <tr><td>0.80</td><td>0.62</td><td style="color:var(--ok)">yes</td></tr>
+            <tr><td>0.80</td><td>0.30</td><td style="color:var(--ok)">yes</td></tr>
+            <tr><td>0.55</td><td>0.62</td><td style="color:var(--bad)">no</td></tr>
+            <tr><td>0.55</td><td>0.30</td><td style="color:var(--ok)">yes</td></tr>
+          </tbody>
+        </table>
+        <p>Five wins out of six pairs: AUROC = 5/6 = 0.83. That happens to be the probe's value on this very cell.</p>
+      </div>
+      <div>
+        <p><b>Why this metric.</b> It does not care whether the scores are on a 0-to-100 scale or a 0-to-1 scale, only how they rank. So a model that says 95 for everything and 100 for a few is judged on the ranking, not the inflation. It does not care that 65 percent of attempts were correct; a lopsided pass rate cannot inflate it the way plain accuracy can. And it needs no threshold, so there is no "confident means above 70" line to argue about.</p>
+        <p><b>What it does not measure.</b> Calibration. A readout can rank perfectly and still be wildly overconfident. That is measured separately by ECE, the expected calibration error, which is the average gap between stated confidence and actual accuracy. The steering result reports both.</p>
+        <p><b>This cell.</b> Probe 0.834. Stated confidence 0.778. That gap of 0.056 is one of the smaller ones in the study; Mistral is comparatively honest on MATH. The largest gaps are on MATH for other models, up to 0.20.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="step" id="s7">
+  <div class="step-head"><div class="step-num">7</div><h2>Real records, scored by all three readouts.</h2></div>
+  <div class="body">
+    <p>Four attempts from the cell, chosen to show the range. All probe scores are out-of-fold. The bars show the probe's probability of "correct."</p>
+    <table class="data">
+      <thead><tr><th>problem, final answer</th><th class="num">stated</th><th class="num">P(True)</th><th class="num">probe</th><th style="width:26%">probe bar</th><th>graded</th></tr></thead>
+      <tbody>
+        <tr><td>Simplify a product of quartic terms in <span class="mono">n</span>.<br><span class="mono" style="font-size:12.5px">correct: 8n² + 4n + 1 &nbsp; model: "No straightforward solution"</span></td><td class="num stated">95</td><td class="num">–</td><td class="num internal">0.00</td><td><div class="bar"><i style="width:1%;background:var(--internal)"></i></div></td><td><span class="pill bad">wrong</span></td></tr>
+        <tr><td>Find the period-related constant from a graph of <span class="mono">a·sin(bx + c) + d</span>.<br><span class="mono" style="font-size:12.5px">correct: π &nbsp; model: 0</span></td><td class="num stated">100</td><td class="num">–</td><td class="num internal">0.01</td><td><div class="bar"><i style="width:1%;background:var(--internal)"></i></div></td><td><span class="pill bad">wrong</span></td></tr>
+        <tr><td>Smallest-magnitude vector with a given cross product (the record from section 1).<br><span class="mono" style="font-size:12.5px">correct: (−7, 16, 5) &nbsp; model: (0, 6, 30)</span></td><td class="num stated">100</td><td class="num">0.22</td><td class="num internal">0.64</td><td><div class="bar"><i style="width:64%;background:var(--internal)"></i></div></td><td><span class="pill bad">wrong</span></td></tr>
+        <tr><td>Susan buys four $20 tickets with a coupon; how much does she save?<br><span class="mono" style="font-size:12.5px">correct: 10 &nbsp; model: 10</span></td><td class="num stated">100</td><td class="num">–</td><td class="num internal">1.00</td><td><div class="bar"><i style="width:100%;background:var(--internal)"></i></div></td><td><span class="pill ok">correct</span></td></tr>
+      </tbody>
+    </table>
+    <p>The first two rows are the clearest kind of knowing-without-saying. The model wrote "no straightforward solution" and then reported 95 percent confidence; the probe read the internal state and put the probability of correctness at zero. The third row is the honest middle: the probe leaned the wrong way but weakly. The fourth is a clean success on both channels.</p>
+    <div class="tiles">
+      <div class="tile stated"><div class="v">102</div><div class="l">of 264 wrong answers were stated at 95 or higher</div></div>
+      <div class="tile internal"><div class="v">39</div><div class="l">of those 102, the probe scored below 0.5</div></div>
+      <div class="tile internal"><div class="v">0.33 / 0.93</div><div class="l">median probe score, wrong vs correct</div></div>
+    </div>
+    <p>P(True) is blank on some rows because it is only recorded when the model's answer to "is this correct?" could be parsed. Where it exists on this cell it is low across the board, correct or not, which is why it ranks poorly.</p>
+  </div>
+  <aside class="say" style="margin-left:72px"><div class="eyebrow">Say it like this</div><p>"This model wrote 'no straightforward solution' as its final answer and then said it was 95 percent confident. The detector, reading its internal state, put the chance of being right at zero."</p></aside>
+</section>
+
+<!-- 8 -->
+<section class="step" id="s8">
+  <div class="step-head"><div class="step-num">8</div><h2>Within one question: the difficulty control, on real attempts.</h2></div>
+  <div class="body">
+    <p>The objection: maybe the probe just learned which problems are hard, and hard problems are more often wrong. The answer: look inside a single problem, where difficulty is constant, and see whether the readouts can tell the successful attempts from the failed ones. Here is one of the 54 problems in this cell with mixed outcomes.</p>
+    <div class="record">
+      <div class="rhead"><span class="id">math_test_prealgebra_1995 · five attempts</span><span>correct answer: <span class="mono">8/21</span></span></div>
+      <div class="row"><div class="k">problem</div><div class="v">Simplify <span class="mono">(1/5) · (8/7) ÷ (12/20)</span>.</div></div>
+    </div>
+    <table class="data">
+      <thead><tr><th>attempt</th><th>model's answer</th><th class="num">stated</th><th class="num">P(True)</th><th class="num">probe</th><th>graded</th></tr></thead>
+      <tbody>
+        <tr><td>s0</td><td class="mono">8/21</td><td class="num stated">100</td><td class="num">0.22</td><td class="num internal">0.91</td><td><span class="pill ok">correct</span></td></tr>
+        <tr><td>s1</td><td class="mono">8/21</td><td class="num stated">95</td><td class="num">0.38</td><td class="num internal">0.94</td><td><span class="pill ok">correct</span></td></tr>
+        <tr><td>s2</td><td class="mono">32/105</td><td class="num stated">100</td><td class="num">0.22</td><td class="num internal">0.51</td><td><span class="pill bad">wrong</span></td></tr>
+        <tr><td>s3</td><td class="mono">40/21</td><td class="num stated">95</td><td class="num">0.18</td><td class="num internal">0.90</td><td><span class="pill bad">wrong</span></td></tr>
+        <tr><td>s4</td><td class="mono">8/21</td><td class="num stated">100</td><td class="num">0.32</td><td class="num internal">0.96</td><td><span class="pill ok">correct</span></td></tr>
+      </tbody>
+    </table>
+    <p>Stated confidence is 100, 95, 100, 95, 100. It carries no information about which attempts failed: within this question its AUROC is 0.58, close to a coin flip. P(True) does a little better at 0.83 here. The probe ranks all three correct attempts above both wrong ones, AUROC 1.0 within this question, though attempt s3 at 0.90 is a near miss: the probe was almost fooled by that one.</p>
+    <div class="honest">
+      <div class="eyebrow">An honest note about this cell</div>
+      Across all 54 mixed-outcome problems in this fresh Mistral MATH capture, the within-question AUROC averages 0.63 for the probe, 0.65 for stated confidence, and 0.55 for P(True). So here the probe beats P(True), which is the comparison the paper makes, but it does not beat stated confidence within-question. The July run of this same cell gave the probe 0.72 against P(True) 0.59. Individual cells move between runs; the paper's within-question claim rests on the pattern across cells, with the strongest cases on GLM, where a 50 percent pass rate gives many more mixed questions to average over. Present the example above as an illustration of the mechanism, not as proof.
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="step" id="s9">
+  <div class="step-head"><div class="step-num">9</div><h2>Steering: the same direction, used as a dial.</h2></div>
+  <div class="body">
+    <p>Reading shows the direction exists. Steering asks whether the model uses it when it speaks. The mechanics are three lines of algebra applied inside the model during turn 3 only.</p>
+    <ol class="steps">
+      <li><b>Find the direction.</b> On half the questions, take the average layer-28 vector of correct attempts minus the average of wrong attempts. Call the unit vector <span class="mono">ŵ</span>. Record the mean projection <span class="mono">μ</span> of all training vectors onto it, and the spread <span class="mono">σ_w</span> of those projections. For this cell <span class="mono">σ_w</span> was 3.62.</li>
+      <li><b>Amplify.</b> On the other half of the questions, while the model generates its confidence, intercept the layer-28 vector <span class="mono">h</span> at every generated token and replace it with <span class="mono">h + (g − 1) · (h·ŵ − μ) · ŵ</span>. The term <span class="mono">h·ŵ − μ</span> is how far this record already sits along the correctness axis, relative to average. Multiplying it by <span class="mono">g − 1</span> and adding it back stretches that displacement by a factor of <span class="mono">g</span>. Gain 1 changes nothing. Gain 4 quadruples the model's own signal, in whichever direction it already pointed.</li>
+      <li><b>Control.</b> Do the same with a random unit direction <span class="mono">r̂</span>. A random direction has almost no spread in the data, <span class="mono">σ_r</span> = 0.065 here, so an unscaled random push would be 55 times gentler than the real one. The September rerun multiplies the random perturbation by <span class="mono">σ_w / σ_r</span> so both pushes have the same size per record. This was the fix to the July control, which was not size-matched.</li>
+    </ol>
+    <div class="eq">steer:   h ← h + (g − 1) · (h·ŵ − μ)  · ŵ
+random:  h ← h + (g − 1) · (h·r̂ − μ_r) · (σ_w / σ_r) · r̂        σ_w / σ_r = 55.8 on this cell</div>
+    <table class="data">
+      <thead><tr><th>gain g</th><th class="num">steer: wrong</th><th class="num">steer: correct</th><th class="num">steer: ECE</th><th class="num">random: wrong</th><th class="num">random: correct</th></tr></thead>
+      <tbody>
+        <tr><td>0.5 (dampen)</td><td class="num">88</td><td class="num">97</td><td class="num">0.36</td><td class="num">83</td><td class="num">96</td></tr>
+        <tr><td>1 (no change)</td><td class="num">84</td><td class="num">96</td><td class="num">0.33</td><td class="num">84</td><td class="num">96</td></tr>
+        <tr><td>2</td><td class="num internal">69</td><td class="num">94</td><td class="num internal">0.26</td><td class="num stated">84</td><td class="num stated">96</td></tr>
+        <tr><td>4</td><td class="num internal">55</td><td class="num">88</td><td class="num internal">0.18</td><td class="num" colspan="2" style="text-align:center;color:var(--muted)">output no longer parseable</td></tr>
+      </tbody>
+    </table>
+    <p>Stated confidence on wrong answers falls 30 points. Correct answers fall 8. Calibration error nearly halves. Turning the dial down instead raises overconfidence, so the effect runs both ways. The random direction of matched size does nothing at gain 2, and at gain 4 the model's output degrades into text that no longer contains a confidence number. A same-size push in a meaningless direction is destructive rather than informative, which is itself evidence that the correctness direction is a special one.</p>
+    <p>Two things the design guarantees. The answer cannot change, because steering starts only after the answer is written. And no label is ever used at steering time: the intervention amplifies whatever the model already computed about its own attempt.</p>
+  </div>
+  <aside class="say" style="margin-left:72px"><div class="eyebrow">Say it like this</div><p>"We find the direction that separates right from wrong in the model's state, then multiply the model's own position along it by four while it decides what confidence to say. Wrong answers lose thirty points of confidence. Right answers lose eight. A random direction of the same strength does nothing."</p></aside>
+</section>
+
+<!-- 10 -->
+<section class="step" id="s10">
+  <div class="step-head"><div class="step-num">10</div><h2>Reading the numbers without overreading them.</h2></div>
+  <div class="body">
+    <ul>
+      <li><b>A cell is one model on one benchmark.</b> Cells vary. Mistral on MATH is one of the more honest cells, gap 0.06. Gemma on MATH has a gap of 0.21. The paper's headline, 12 of 16 cells, is a count across cells; no single cell is the result.</li>
+      <li><b>Runs vary too.</b> The same cell captured in July and in September gave probe AUROCs of 0.83 both times, but within-question numbers moved from 0.72 to 0.63. Everything is a single seed. Treat second decimals as noise.</li>
+      <li><b>The probe is a floor, not a ceiling.</b> A straight line at one token, through 50 dimensions, is the weakest reasonable detector. Anything nonlinear or multi-token could only find more.</li>
+      <li><b>MATH has a lexical caveat.</b> The final answer sits right next to the read site. Odd-looking answers are more often wrong, and an early layer might read that. The surface baseline is high on MATH for this reason, and the steering test is what carries the causal claim there.</li>
+      <li><b>"Uses" means for speech, not for solving.</b> Steering changes what the model says about its answer. A separate, preliminary test found that pushing the same direction during the attempt does not improve accuracy. The direction is a gauge the model reads, not a wheel that drives the answer.</li>
+    </ul>
+    <p>The claim that survives all of this is deliberately modest and, for that reason, hard to knock down: at the moment a model states its confidence, its internal state carries a linearly readable signal about whether this attempt was correct, that signal is sharper than the number it writes, and amplifying it makes the number more honest.</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Records and probe scores: <code>interp/results/fix_mistral_math/meta.jsonl</code> and out-of-fold scores from <code>interp/analysis/tier1_review.py</code> (grouped 5-fold, StandardScaler → PCA(50) → LogisticRegression, layer 28), computed 3 September 2026. Steering: <code>steer_amplify.json</code> on the same cell. The overview walkthrough is <a href="https://claude.ai/code/artifact/be735b3d-98ef-4cd4-8583-f8a0719844e4">Knowing Before Saying</a>. Paper source: <code>paper/workshop_confidence.tex</code>.
+</footer>
+
+<div id="tip" role="tooltip"></div>
+<script>
+  (function () {
+    var tip = document.getElementById('tip'), els = document.querySelectorAll('[data-tip]');
+    function show(e) { tip.textContent = e.currentTarget.getAttribute('data-tip'); tip.classList.add('on'); move(e); }
+    function move(e) { var r = e.currentTarget.getBoundingClientRect(); tip.style.left = (r.left + r.width / 2) + 'px'; tip.style.top = r.top + 'px'; }
+    function hide() { tip.classList.remove('on'); }
+    for (var i = 0; i < els.length; i++) { var el = els[i]; el.addEventListener('mouseenter', show); el.addEventListener('mousemove', move); el.addEventListener('mouseleave', hide); el.addEventListener('focus', show); el.addEventListener('blur', hide); el.setAttribute('tabindex', '0'); }
+  })();
+</script>
