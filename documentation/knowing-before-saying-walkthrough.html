@@ -1,0 +1,695 @@
+<title>Knowing Before Saying</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --bg: #FCFCFB;
+    --bg-2: #F3F3F0;
+    --ink: #131318;
+    --ink-2: #4A4A55;
+    --muted: #737382;
+    --rule: #DDDDD8;
+    --internal: #E0562B;      /* coral: the model's internal signal / probe / steer */
+    --internal-soft: #FBE3DA;
+    --internal-mid: #F4B39A;
+    --internal-deep: #C4441B;
+    --stated: #2F6DB5;        /* blue: what the model says / random control */
+    --stated-soft: #DCE8F6;
+    --ok: #2E7D4F;
+    --bad: #B3261E;
+    --note-bg: #FFF7F3;
+    --shadow: 0 1px 2px rgba(19,19,24,.06), 0 8px 24px rgba(19,19,24,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171A; --bg-2: #1D2024; --ink: #ECEEF0; --ink-2: #C3C7CC; --muted: #9AA1A9; --rule: #2E3238;
+      --internal: #E8663C; --internal-soft: #4A2A1F; --internal-mid: #8A4630; --internal-deep: #F08A66;
+      --stated: #5E97E0; --stated-soft: #22314A; --ok: #6CC493; --bad: #F08A80; --note-bg: #22201E;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171A; --bg-2: #1D2024; --ink: #ECEEF0; --ink-2: #C3C7CC; --muted: #9AA1A9; --rule: #2E3238;
+    --internal: #E8663C; --internal-soft: #4A2A1F; --internal-mid: #8A4630; --internal-deep: #F08A66;
+    --stated: #5E97E0; --stated-soft: #22314A; --ok: #6CC493; --bad: #F08A80; --note-bg: #22201E;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: Manrope, "Helvetica Neue", Arial, sans-serif; font-size: 16px; line-height: 1.55; }
+  a { color: inherit; }
+  h1, h2, h3 { font-family: Newsreader, Georgia, "Times New Roman", serif; font-weight: 500; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+  header.hero { max-width: 1120px; margin: 0 auto; padding: 56px 24px 24px; display: grid; grid-template-columns: 1fr; gap: 20px; }
+  header.hero h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.02; }
+  header.hero h1 em { font-style: italic; color: var(--internal); }
+  header.hero .dek { font-family: Newsreader, Georgia, serif; font-size: 22px; line-height: 1.35; color: var(--ink-2); max-width: 34em; }
+  .meta { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+  .key { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; font-size: 14px; color: var(--ink-2); padding-top: 6px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 8px; }
+  .swatch.internal { background: var(--internal); }
+  .swatch.stated { background: var(--stated); }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 8px 24px 80px; display: grid; grid-template-columns: 220px 1fr; gap: 40px; align-items: start; }
+  nav.rail { position: sticky; top: 24px; font-size: 13.5px; }
+  nav.rail ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--rule); }
+  nav.rail li a { display: block; padding: 6px 0 6px 14px; color: var(--muted); text-decoration: none; margin-left: -2px; border-left: 2px solid transparent; }
+  nav.rail li a:hover, nav.rail li a:focus-visible { color: var(--ink); border-left-color: var(--internal); outline: none; }
+  nav.rail .n { display: inline-block; width: 22px; font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 600; }
+  main { min-width: 0; }
+
+  section.step { padding: 44px 0 8px; border-top: 1px solid var(--rule); scroll-margin-top: 16px; }
+  section.step:first-of-type { border-top: 0; padding-top: 24px; }
+  .step-head { display: grid; grid-template-columns: 56px 1fr; gap: 16px; align-items: baseline; margin-bottom: 18px; }
+  .step-num { font-family: Newsreader, Georgia, serif; font-size: 40px; line-height: 1; color: var(--internal); font-variant-numeric: tabular-nums; }
+  .step h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.15; }
+  .step .lede { font-size: 17px; color: var(--ink-2); max-width: 62ch; margin: 0 0 22px 72px; }
+  .two { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; margin-left: 72px; }
+  .two > * { min-width: 0; }
+  .prose p { margin: 0 0 12px; max-width: 62ch; }
+  .prose ul { margin: 0 0 12px; padding-left: 18px; max-width: 62ch; }
+  .prose li { margin: 4px 0; }
+  figure { margin: 0; }
+  figure svg { display: block; width: 100%; height: auto; max-width: 100%; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
+  .figbox { background: var(--bg-2); border-radius: 8px; padding: 18px 18px 14px; }
+  .say { margin: 22px 0 0 72px; background: var(--note-bg); border-left: 3px solid var(--internal); padding: 12px 16px; max-width: 70ch; }
+  .say .eyebrow { color: var(--internal); margin-bottom: 4px; }
+  .say p { margin: 0; font-family: Newsreader, Georgia, serif; font-size: 18px; line-height: 1.4; }
+
+  table.data { border-collapse: collapse; font-size: 14px; width: 100%; font-variant-numeric: tabular-nums; }
+  table.data th, table.data td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); }
+  table.data th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  table.data td.num { text-align: right; }
+  table.data td.win { font-weight: 700; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 16px; }
+  .tile { background: var(--bg-2); border-radius: 8px; padding: 14px 16px; }
+  .tile .v { font-family: Newsreader, Georgia, serif; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile .l { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .tile.internal .v { color: var(--internal); }
+  .tile.stated .v { color: var(--stated); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--ink-2); margin: 0 0 8px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 7px; border-radius: 2px; }
+  .legend i.dash { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); height: 3px; }
+
+  /* tooltip */
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12.5px; padding: 6px 9px; border-radius: 5px; box-shadow: var(--shadow); opacity: 0; transform: translate(-50%, calc(-100% - 10px)); transition: opacity .12s; z-index: 10; white-space: nowrap; }
+  #tip.on { opacity: 1; }
+  [data-tip] { cursor: default; }
+
+  details.gloss { margin-left: 72px; }
+  details.gloss summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+  dl.gloss { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; font-size: 15px; max-width: 78ch; }
+  dl.gloss dt { font-weight: 700; color: var(--ink); }
+  dl.gloss dd { margin: 0; color: var(--ink-2); }
+  footer { max-width: 1120px; margin: 0 auto; padding: 24px 24px 56px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); }
+
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: 1fr; gap: 12px; }
+    nav.rail { position: static; }
+    nav.rail ol { display: flex; flex-wrap: wrap; gap: 2px 10px; border-left: 0; }
+    nav.rail li a { padding: 4px 0; border-left: 0; }
+    .two { grid-template-columns: 1fr; margin-left: 0; }
+    .step .lede, .say, details.gloss { margin-left: 0; }
+    .step-head { grid-template-columns: 44px 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+</style>
+
+<header class="hero">
+  <div class="eyebrow">A visual walkthrough of the MATH-AI 2026 workshop paper</div>
+  <h1>Knowing Before Saying</h1>
+  <p class="dek">Language models say they are confident whether they are right or wrong. Their internal state tells a different story. This page walks through how we read that state, how we know it is real, and how we made a model say what it knew.</p>
+  <div class="meta">
+    <span><b>Paper</b> Knowing Before Saying: Internal Correctness Signals in Mathematical Reasoning</span>
+    <span><b>Venue</b> The 6th Workshop on Mathematical Reasoning and AI, NeurIPS 2026</span>
+    <span><b>Numbers as of</b> 3 September 2026</span>
+  </div>
+  <div class="key">
+    <span><i class="swatch stated"></i>What the model <b>says</b> (stated confidence, P(True), random control)</span>
+    <span><i class="swatch internal"></i>What the model <b>knows</b> (probe on the internal state, steering along it)</span>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="rail" aria-label="Steps">
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>The puzzle</a></li>
+    <li><a href="#s2"><span class="n">2</span>Two questions</a></li>
+    <li><a href="#s3"><span class="n">3</span>The instrument</a></li>
+    <li><a href="#s4"><span class="n">4</span>The protocol</a></li>
+    <li><a href="#s5"><span class="n">5</span>Reading the state</a></li>
+    <li><a href="#s6"><span class="n">6</span>It knows</a></li>
+    <li><a href="#s7"><span class="n">7</span>This attempt</a></li>
+    <li><a href="#s8"><span class="n">8</span>One direction</a></li>
+    <li><a href="#s9"><span class="n">9</span>It uses it</a></li>
+    <li><a href="#s10"><span class="n">10</span>Label-free</a></li>
+    <li><a href="#s11"><span class="n">11</span>Caveats</a></li>
+    <li><a href="#s12"><span class="n">12</span>Sixty seconds</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- 1 -->
+<section class="step" id="s1">
+  <div class="step-head"><div class="step-num">1</div><h2>Models are confident whether they are right or wrong.</h2></div>
+  <p class="lede">Ask a model for a confidence number after a math problem and you get a high number almost every time. The number barely moves when the answer is wrong.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 210" role="img" aria-label="Two answers from the same model: a correct one stated at 96 percent confidence and a wrong one stated at 84 percent; the bars are nearly the same length.">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+        <g font-family="Manrope, Arial, sans-serif" font-size="12" fill="currentColor">
+          <text x="20" y="28" font-size="11" letter-spacing="1.2" fill="#737382">MISTRAL-SMALL-24B, MATH, 750 ATTEMPTS</text>
+          <!-- right -->
+          <rect x="20" y="48" width="520" height="62" rx="6" fill="none" stroke="currentColor" stroke-opacity=".25"/>
+          <text x="36" y="72" font-weight="700">Correct answers</text>
+          <text x="36" y="92" fill="#737382">grader says: right</text>
+          <rect x="220" y="62" width="285" height="14" rx="3" fill="var(--stated)"/>
+          <text x="512" y="73" text-anchor="start" font-weight="600" fill="var(--stated)">96</text>
+          <text x="220" y="95" font-size="11" fill="#737382">average stated confidence</text>
+          <!-- wrong -->
+          <rect x="20" y="126" width="520" height="62" rx="6" fill="none" stroke="currentColor" stroke-opacity=".25"/>
+          <text x="36" y="150" font-weight="700">Wrong answers</text>
+          <text x="36" y="170" fill="#737382">grader says: wrong</text>
+          <rect x="220" y="140" width="249" height="14" rx="3" fill="var(--stated)"/>
+          <text x="476" y="151" text-anchor="start" font-weight="600" fill="var(--stated)">84</text>
+          <text x="220" y="173" font-size="11" fill="#737382">average stated confidence</text>
+        </g>
+      </svg>
+      <figcaption>Stated confidence for right and wrong answers, Mistral on MATH. A twelve-point difference on a hundred-point scale. Other models in the study are worse: one 7B model said 99 on nearly every answer while getting six in seven wrong.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>A wrong multi-step derivation ends in a clean, well-formatted final answer. Nothing on the page gives it away. So the confidence a model writes down tracks how fluent the answer looks, not whether the computation was right.</p>
+      <p>This matters for any system that has to decide when to trust an answer, retry, or ask a human. A model that errs is unavoidable. A model that errs and knows it is deployable.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"When you ask a model how sure it is, you get a high number whether it is right or wrong. The question we asked is: does it actually not know, or does it know and not say?"</p></aside>
+</section>
+
+<!-- 2 -->
+<section class="step" id="s2">
+  <div class="step-head"><div class="step-num">2</div><h2>Split the question in two: knowing and saying.</h2></div>
+  <p class="lede">The stated number is one output channel. The model's internal state is another. If the two disagree, the model knows more than it says.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 230" role="img" aria-label="A model box in the middle. One path leads from its internal state to a probe that reads right or wrong. Another path leads through the speech channel to a stated confidence number. The gap between the two readings is labeled knowing versus saying.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="12" fill="currentColor" stroke="currentColor">
+          <rect x="40" y="70" width="170" height="90" rx="8" fill="none" stroke-opacity=".6"/>
+          <text x="125" y="98" text-anchor="middle" font-weight="700" stroke="none">the model</text>
+          <text x="125" y="118" text-anchor="middle" stroke="none" fill="#737382">solving a problem</text>
+          <rect x="70" y="128" width="110" height="18" rx="4" fill="var(--internal-soft)" stroke="var(--internal)"/>
+          <text x="125" y="141" text-anchor="middle" font-size="10.5" stroke="none" fill="var(--ink)">internal state</text>
+          <!-- saying path -->
+          <line x1="210" y1="95" x2="330" y2="60" stroke="var(--stated)" stroke-width="2" marker-end="url(#arr2)"/>
+          <text x="262" y="66" text-anchor="middle" font-size="11" stroke="none" fill="var(--stated)">speech channel</text>
+          <rect x="336" y="38" width="190" height="44" rx="6" fill="var(--stated-soft)" stroke="var(--stated)"/>
+          <text x="431" y="57" text-anchor="middle" stroke="none" font-weight="700" fill="var(--ink)">"Confidence: 84"</text>
+          <text x="431" y="73" text-anchor="middle" stroke="none" font-size="11" fill="var(--ink-2)">what it says</text>
+          <!-- knowing path -->
+          <line x1="180" y1="137" x2="330" y2="170" stroke="var(--internal)" stroke-width="2" marker-end="url(#arr3)"/>
+          <text x="262" y="166" text-anchor="middle" font-size="11" stroke="none" fill="var(--internal)">a probe reads it</text>
+          <rect x="336" y="148" width="190" height="44" rx="6" fill="var(--internal-soft)" stroke="var(--internal)"/>
+          <text x="431" y="167" text-anchor="middle" stroke="none" font-weight="700" fill="var(--ink)">"this one is wrong"</text>
+          <text x="431" y="183" text-anchor="middle" stroke="none" font-size="11" fill="var(--ink-2)">what it knows</text>
+          <!-- gap -->
+          <line x1="540" y1="86" x2="540" y2="144" stroke-opacity=".5" stroke-dasharray="3 3"/>
+          <text x="548" y="118" font-size="11" stroke="none" fill="#737382" transform="rotate(90 548 118)">the gap</text>
+        </g>
+        <defs>
+          <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--stated)"/></marker>
+          <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--internal)"/></marker>
+        </defs>
+      </svg>
+      <figcaption>Two readouts of the same moment. The speech channel produces a number. A probe reads the internal state directly. The paper measures the gap between them.</figcaption>
+    </figure>
+    <div class="prose">
+      <p><b>Knowing.</b> Does the model's internal state carry the information that this particular answer is wrong?</p>
+      <p><b>Saying.</b> Does that information reach the confidence number the model writes?</p>
+      <p>If knowing exceeds saying, two things follow. There is an unused reliability signal sitting inside every deployed model. And the model has a form of self-knowledge it cannot, or does not, express.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"We read the model's mind with a detector and compared that to what it wrote down. Everything else in the paper is about making sure that comparison is fair."</p></aside>
+</section>
+
+<!-- 3 -->
+<section class="step" id="s3">
+  <div class="step-head"><div class="step-num">3</div><h2>You need ground truth you can trust. A compiler gives it.</h2></div>
+  <p class="lede">Every comparison depends on knowing, for certain, which answers were right. Our anchor domain grades answers with a symbolic compiler instead of a human or another model.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 200" role="img" aria-label="Pipeline: a natural-language geometry request goes to the model, which writes a construction; a compiler turns it into exact coordinates; fifteen symbolic predicates check each clause of the request and return pass or fail.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11.5" fill="currentColor" stroke="currentColor">
+          <rect x="10" y="60" width="118" height="70" rx="6" fill="none" stroke-opacity=".6"/>
+          <text x="69" y="86" text-anchor="middle" font-weight="700" stroke="none">request</text>
+          <text x="69" y="103" text-anchor="middle" stroke="none" fill="#737382">"draw triangle EFG,</text>
+          <text x="69" y="117" text-anchor="middle" stroke="none" fill="#737382">altitude from G to EF"</text>
+          <line x1="128" y1="95" x2="152" y2="95" stroke-opacity=".7" marker-end="url(#arr)"/>
+          <rect x="154" y="60" width="100" height="70" rx="6" fill="none" stroke-opacity=".6"/>
+          <text x="204" y="90" text-anchor="middle" font-weight="700" stroke="none">model</text>
+          <text x="204" y="108" text-anchor="middle" stroke="none" fill="#737382">writes construction</text>
+          <line x1="254" y1="95" x2="278" y2="95" stroke-opacity=".7" marker-end="url(#arr)"/>
+          <rect x="280" y="60" width="118" height="70" rx="6" fill="none" stroke-opacity=".6"/>
+          <text x="339" y="86" text-anchor="middle" font-weight="700" stroke="none">compiler</text>
+          <text x="339" y="103" text-anchor="middle" stroke="none" fill="#737382">exact coordinates</text>
+          <text x="339" y="117" text-anchor="middle" stroke="none" fill="#737382">(SymPy)</text>
+          <line x1="398" y1="95" x2="422" y2="95" stroke-opacity=".7" marker-end="url(#arr)"/>
+          <rect x="424" y="46" width="126" height="98" rx="6" fill="var(--internal-soft)" stroke="var(--internal)"/>
+          <text x="487" y="68" text-anchor="middle" font-weight="700" stroke="none">15 predicates</text>
+          <text x="440" y="90" stroke="none" fill="var(--ok)" font-weight="700">✓</text><text x="454" y="90" stroke="none">is a triangle</text>
+          <text x="440" y="107" stroke="none" fill="var(--ok)" font-weight="700">✓</text><text x="454" y="107" stroke="none">∠E = 60°</text>
+          <text x="440" y="124" stroke="none" fill="var(--bad)" font-weight="700">✗</text><text x="454" y="124" stroke="none">GH ⟂ EF</text>
+          <text x="487" y="140" text-anchor="middle" stroke="none" font-size="10.5" fill="var(--ink-2)">→ label: fail</text>
+          <text x="280" y="176" text-anchor="middle" stroke="none" fill="#737382">deterministic · reproducible · about 1000× cheaper than a vision-language judge</text>
+        </g>
+      </svg>
+      <figcaption>GeoGenBench grades a construction by compiling it and checking every clause of the request as a symbolic predicate. No judgment calls anywhere in the loop.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Labels from an LLM judge inherit the judge's blind spots. A compiler has none. Prompts and their rubrics are generated from the same source code, so the grader cannot drift from the question.</p>
+      <p>A pre-registered human study with 200 items and two trained raters found the verifier's disagreements with humans run in one direction only: it is lenient, never harsh. So a <b>fail</b> label, the one this study needs, is trustworthy.</p>
+      <p>Three standard benchmarks with programmatic grading complete the grid: MMLU-Pro, MATH, and GPQA-Diamond. Benchmarks the models have saturated were dropped, because you cannot study self-knowledge of failure where there are no failures.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Our geometry benchmark is the instrument. It tells us right or wrong with certainty, and that certainty is what lets us trust everything downstream."</p></aside>
+</section>
+
+<!-- 4 -->
+<section class="step" id="s4">
+  <div class="step-head"><div class="step-num">4</div><h2>Three turns per problem, graded in silence.</h2></div>
+  <p class="lede">Ask for confidence before, let the model work, ask for confidence after. The grader never tells the model how it did.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 190" role="img" aria-label="Timeline of three turns: turn one asks for prospective confidence, turn two is the attempt, turn three asks for retrospective confidence. A marker shows the read site at the token that produces the confidence digit. The grader sits outside the conversation.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11.5" fill="currentColor" stroke="currentColor">
+          <line x1="20" y1="70" x2="540" y2="70" stroke-opacity=".35"/>
+          <g stroke="none">
+            <circle cx="80" cy="70" r="6" fill="var(--stated)"/>
+            <text x="80" y="40" text-anchor="middle" font-weight="700">turn 1</text>
+            <text x="80" y="54" text-anchor="middle" fill="#737382">before</text>
+            <text x="80" y="96" text-anchor="middle">"How confident are you</text>
+            <text x="80" y="110" text-anchor="middle">that you'll get this right?"</text>
+            <text x="80" y="128" text-anchor="middle" fill="var(--stated)" font-weight="600">Confidence: 45</text>
+            <circle cx="280" cy="70" r="6" fill="currentColor"/>
+            <text x="280" y="40" text-anchor="middle" font-weight="700">turn 2</text>
+            <text x="280" y="54" text-anchor="middle" fill="#737382">the attempt</text>
+            <text x="280" y="96" text-anchor="middle">solve the problem</text>
+            <text x="280" y="110" text-anchor="middle">(reasoning allowed here only)</text>
+            <text x="280" y="128" text-anchor="middle" font-weight="600">\boxed{42}</text>
+            <circle cx="480" cy="70" r="6" fill="var(--internal)"/>
+            <text x="480" y="40" text-anchor="middle" font-weight="700">turn 3</text>
+            <text x="480" y="54" text-anchor="middle" fill="#737382">after</text>
+            <text x="480" y="96" text-anchor="middle">"How confident are you</text>
+            <text x="480" y="110" text-anchor="middle">that your answer is correct?"</text>
+            <text x="480" y="128" text-anchor="middle" fill="var(--stated)" font-weight="600">Confidence: 8<tspan fill="var(--internal)">▮</tspan></text>
+            <text x="480" y="146" text-anchor="middle" font-size="10.5" fill="var(--internal)">← read the internal state here</text>
+          </g>
+          <rect x="200" y="160" width="160" height="22" rx="4" fill="none" stroke-opacity=".5" stroke-dasharray="3 3"/>
+          <text x="280" y="175" text-anchor="middle" stroke="none" fill="#737382" font-size="10.5">grader scores turn 2, tells the model nothing</text>
+        </g>
+      </svg>
+      <figcaption>The read site is the token that is about to produce the confidence digit. Its surrounding words are identical for every problem, so anything a probe finds there was computed by the model, not leaked by the wording.</figcaption>
+    </figure>
+    <div class="prose">
+      <p><b>Scale.</b> Four open models with different architectures: Qwen3.6-27B (hybrid Mamba), GLM-4.7-Flash (mixture of experts), Mistral-Small-24B (dense), Gemma-4-26B (mixture of experts). Four domains. About 750 attempts per cell, 16 cells. Every question is attempted five times.</p>
+      <p><b>Four readouts</b> of the same moment on identical records: the stated number, P(True), the answer's log-probability, and the probe.</p>
+      <p><b>Blind updating.</b> Because the grader is silent, any drop in confidence after a failed attempt is the model's own assessment.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Before, attempt, after. We grade in silence and read the internal state at the exact moment the model is about to write its confidence number."</p></aside>
+</section>
+
+<!-- 5 -->
+<section class="step" id="s5">
+  <div class="step-head"><div class="step-num">5</div><h2>Reading the state: a probe at one token, one depth.</h2></div>
+  <p class="lede">The model's internal state is a long vector at every token and every layer. We take one snapshot and train the simplest possible detector on it.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 250" role="img" aria-label="A grid of tokens along the bottom and layers stacked upward. Each column is the residual stream for one token. The column for the confidence decision token is highlighted, and a probe reads the cell at 0.7 of depth to output right or wrong.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor" stroke="currentColor">
+          <!-- layers grid: 6 rows x 6 cols -->
+          <g stroke-opacity=".25" fill="none">
+            <rect x="60" y="40" width="330" height="160"/>
+            <line x1="60" y1="66.7" x2="390" y2="66.7"/><line x1="60" y1="93.3" x2="390" y2="93.3"/><line x1="60" y1="120" x2="390" y2="120"/><line x1="60" y1="146.7" x2="390" y2="146.7"/><line x1="60" y1="173.3" x2="390" y2="173.3"/>
+            <line x1="115" y1="40" x2="115" y2="200"/><line x1="170" y1="40" x2="170" y2="200"/><line x1="225" y1="40" x2="225" y2="200"/><line x1="280" y1="40" x2="280" y2="200"/><line x1="335" y1="40" x2="335" y2="200"/>
+          </g>
+          <!-- highlighted column -->
+          <rect x="335" y="40" width="55" height="160" fill="var(--internal-soft)" stroke="none" opacity=".9"/>
+          <rect x="335" y="66.7" width="55" height="26.6" fill="var(--internal)" stroke="none"/>
+          <g stroke="none">
+            <text x="40" y="47" text-anchor="end" fill="#737382" font-size="10">last layer</text>
+            <text x="40" y="84" text-anchor="end" fill="var(--internal)" font-weight="700" font-size="10">0.7 depth</text>
+            <text x="40" y="198" text-anchor="end" fill="#737382" font-size="10">layer 0</text>
+            <text x="87" y="220" text-anchor="middle">…</text>
+            <text x="142" y="220" text-anchor="middle">answer</text>
+            <text x="197" y="220" text-anchor="middle">is</text>
+            <text x="252" y="220" text-anchor="middle">correct.</text>
+            <text x="307" y="220" text-anchor="middle">Confidence</text>
+            <text x="362" y="220" text-anchor="middle" font-weight="700">:</text>
+            <text x="362" y="238" text-anchor="middle" font-size="10" fill="var(--internal)">decision token</text>
+            <text x="225" y="28" text-anchor="middle" fill="#737382" font-size="10.5">one column = the residual stream for one token, layer by layer</text>
+          </g>
+          <line x1="390" y1="80" x2="430" y2="80" stroke="var(--internal)" stroke-width="2" marker-end="url(#arr3)"/>
+          <rect x="434" y="58" width="116" height="44" rx="6" fill="none" stroke="var(--internal)"/>
+          <text x="492" y="76" text-anchor="middle" stroke="none" font-weight="700">probe</text>
+          <text x="492" y="92" text-anchor="middle" stroke="none" font-size="10.5" fill="var(--ink-2)">logistic regression</text>
+          <line x1="492" y1="102" x2="492" y2="128" stroke="var(--internal)" stroke-width="2" marker-end="url(#arr3)"/>
+          <text x="492" y="146" text-anchor="middle" stroke="none" font-weight="700" fill="var(--internal)">right or wrong?</text>
+        </g>
+      </svg>
+      <figcaption>One token, one depth, roughly five thousand numbers. The probe is a straight line through that space. We use one pre-specified depth, 0.7 of the way through the network, never the best layer after the fact.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Four guards make the readout honest.</p>
+      <ul>
+        <li><b>Held-out questions.</b> The probe is always scored on questions it never saw, with all five attempts of a question kept on the same side of the split.</li>
+        <li><b>Surface baseline.</b> A model of answer length and shape gets 0.54 to 0.74. The probe adds +0.22 on top of it on average, in 15 of 16 cells.</li>
+        <li><b>Layer zero.</b> The read token is the same everywhere, so layer 0 carries no signal by construction. Anything deeper was computed during the attempt.</li>
+        <li><b>A deviations log.</b> Four bugs were caught by planned controls, fixed, and rerun. The log is public.</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"The detector is deliberately dumb: a straight line through one snapshot. If a straight line can read it, the information is sitting right there."</p></aside>
+</section>
+
+<!-- 6 -->
+<section class="step" id="s6">
+  <div class="step-head"><div class="step-num">6</div><h2>Finding one: the probe beats the model's own words.</h2></div>
+  <p class="lede">In 12 of 16 model-and-domain cells, the probe ranks right and wrong answers better than stated confidence. The gap is largest on MATH.</p>
+  <div class="two">
+    <figure class="figbox">
+      <div class="legend"><span><i style="background:var(--stated)"></i>stated confidence</span><span><i style="background:var(--internal)"></i>probe on internal state</span></div>
+      <svg viewBox="0 0 640 260" role="img" aria-label="Paired bar chart of AUROC for four cells. Gemma-4 on MATH: stated 0.57, probe 0.78. Qwen3.6 on MMLU-Pro: 0.67 versus 0.84. GLM on MMLU-Pro: 0.67 versus 0.85. Mistral on MATH: 0.79 versus 0.83.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+          <g stroke="currentColor" stroke-opacity=".15">
+            <line x1="60" y1="200" x2="620" y2="200"/><line x1="60" y1="166" x2="620" y2="166"/><line x1="60" y1="132" x2="620" y2="132"/><line x1="60" y1="98" x2="620" y2="98"/><line x1="60" y1="64" x2="620" y2="64"/><line x1="60" y1="30" x2="620" y2="30"/>
+          </g>
+          <g fill="#737382" font-size="10.5" text-anchor="end">
+            <text x="52" y="204">0.5</text><text x="52" y="170">0.6</text><text x="52" y="136">0.7</text><text x="52" y="102">0.8</text><text x="52" y="68">0.9</text><text x="52" y="34">1.0</text>
+          </g>
+          <text x="52" y="18" text-anchor="end" fill="#737382" font-size="10">AUROC</text>
+          <!-- Gemma MATH -->
+          <rect data-tip="Gemma-4 × MATH · stated confidence · AUROC 0.57" x="68" y="176.2" width="40" height="23.8" rx="3" fill="var(--stated)"/>
+          <rect data-tip="Gemma-4 × MATH · probe · AUROC 0.78" x="112" y="104.8" width="40" height="95.2" rx="3" fill="var(--internal)"/>
+          <text x="88" y="172" text-anchor="middle" font-size="10.5">0.57</text><text x="132" y="100" text-anchor="middle" font-size="10.5" font-weight="700">0.78</text>
+          <text x="110" y="222" text-anchor="middle">Gemma-4</text><text x="110" y="236" text-anchor="middle" fill="#737382">MATH</text>
+          <!-- Qwen MMLU -->
+          <rect data-tip="Qwen3.6 × MMLU-Pro · stated confidence · AUROC 0.67" x="208" y="142.2" width="40" height="57.8" rx="3" fill="var(--stated)"/>
+          <rect data-tip="Qwen3.6 × MMLU-Pro · probe · AUROC 0.84" x="252" y="84.4" width="40" height="115.6" rx="3" fill="var(--internal)"/>
+          <text x="228" y="138" text-anchor="middle" font-size="10.5">0.67</text><text x="272" y="80" text-anchor="middle" font-size="10.5" font-weight="700">0.84</text>
+          <text x="250" y="222" text-anchor="middle">Qwen3.6</text><text x="250" y="236" text-anchor="middle" fill="#737382">MMLU-Pro</text>
+          <!-- GLM MMLU -->
+          <rect data-tip="GLM-4.7-Flash × MMLU-Pro · stated confidence · AUROC 0.67" x="348" y="142.2" width="40" height="57.8" rx="3" fill="var(--stated)"/>
+          <rect data-tip="GLM-4.7-Flash × MMLU-Pro · probe · AUROC 0.85" x="392" y="81" width="40" height="119" rx="3" fill="var(--internal)"/>
+          <text x="368" y="138" text-anchor="middle" font-size="10.5">0.67</text><text x="412" y="77" text-anchor="middle" font-size="10.5" font-weight="700">0.85</text>
+          <text x="390" y="222" text-anchor="middle">GLM</text><text x="390" y="236" text-anchor="middle" fill="#737382">MMLU-Pro</text>
+          <!-- Mistral MATH -->
+          <rect data-tip="Mistral-Small-24B × MATH · stated confidence · AUROC 0.79" x="488" y="101.4" width="40" height="98.6" rx="3" fill="var(--stated)"/>
+          <rect data-tip="Mistral-Small-24B × MATH · probe · AUROC 0.83" x="532" y="87.8" width="40" height="112.2" rx="3" fill="var(--internal)"/>
+          <text x="508" y="97" text-anchor="middle" font-size="10.5">0.79</text><text x="552" y="83" text-anchor="middle" font-size="10.5" font-weight="700">0.83</text>
+          <text x="530" y="222" text-anchor="middle">Mistral</text><text x="530" y="236" text-anchor="middle" fill="#737382">MATH</text>
+          <line x1="60" y1="200" x2="620" y2="200" stroke="currentColor" stroke-opacity=".5"/>
+        </g>
+      </svg>
+      <figcaption>AUROC, four representative cells. 0.5 is a coin flip, 1.0 is perfect ranking. Hover a bar for the exact figure.</figcaption>
+    </figure>
+    <div class="prose">
+      <div class="tiles">
+        <div class="tile internal"><div class="v">12 / 16</div><div class="l">cells where the probe wins (one tie)</div></div>
+        <div class="tile internal"><div class="v">+0.09</div><div class="l">mean AUROC gap, probe minus stated</div></div>
+        <div class="tile internal"><div class="v">+0.20</div><div class="l">the gap on MATH</div></div>
+      </div>
+      <p>The three losses are small-sample cells, two of them Gemma-4. A paired bootstrap is significantly positive in 10 of 16 cells and never significantly negative.</p>
+      <p>Why MATH? Verbalized confidence leans on how fluent the answer looks, and multi-step computation defeats fluency. The internal state encodes the computation itself. On MATH the probe reaches 0.95 in the best cell.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"The detector beats the model's own confidence in twelve of sixteen cases. The gap is biggest exactly where a wrong answer looks cleanest: hard math."</p></aside>
+</section>
+
+<!-- 7 -->
+<section class="step" id="s7">
+  <div class="step-head"><div class="step-num">7</div><h2>Finding two: it tracks this attempt, not how hard the question is.</h2></div>
+  <p class="lede">A skeptic says: the probe just learned which questions are hard. So we hold the question fixed and look only across its five attempts.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 250" role="img" aria-label="One question attempted five times: two correct, three wrong. The model's P(True) is nearly the same height for all five, so it cannot tell them apart. The probe score is higher on the two correct attempts, so it can.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+          <text x="20" y="24" font-weight="700">Same question, five attempts</text>
+          <text x="20" y="40" fill="#737382" font-size="10.5">difficulty is constant by construction; only attempt-level information can separate these</text>
+          <g font-size="16" text-anchor="middle">
+            <text x="120" y="70" fill="var(--ok)">✓</text><text x="200" y="70" fill="var(--bad)">✗</text><text x="280" y="70" fill="var(--ok)">✓</text><text x="360" y="70" fill="var(--bad)">✗</text><text x="440" y="70" fill="var(--bad)">✗</text>
+          </g>
+          <!-- P(True) row -->
+          <text x="20" y="112" fill="var(--stated)" font-weight="700">P(True)</text>
+          <text x="20" y="126" fill="#737382" font-size="10">its own bet</text>
+          <g fill="var(--stated)">
+            <rect x="100" y="98" width="40" height="18" rx="3"/><rect x="180" y="97" width="40" height="19" rx="3"/><rect x="260" y="99" width="40" height="17" rx="3"/><rect x="340" y="98" width="40" height="18" rx="3"/><rect x="420" y="97" width="40" height="19" rx="3"/>
+          </g>
+          <text x="500" y="112" fill="var(--stated)" font-size="10.5">flat: ≈ chance</text>
+          <!-- probe row -->
+          <text x="20" y="172" fill="var(--internal)" font-weight="700">probe</text>
+          <text x="20" y="186" fill="#737382" font-size="10">internal state</text>
+          <g fill="var(--internal)">
+            <rect x="100" y="146" width="40" height="30" rx="3"/><rect x="180" y="164" width="40" height="12" rx="3"/><rect x="260" y="148" width="40" height="28" rx="3"/><rect x="340" y="166" width="40" height="10" rx="3"/><rect x="420" y="162" width="40" height="14" rx="3"/>
+          </g>
+          <text x="500" y="166" fill="var(--internal)" font-size="10.5">separates</text>
+          <text x="500" y="180" fill="var(--internal)" font-size="10.5">✓ from ✗</text>
+          <line x1="100" y1="176" x2="460" y2="176" stroke="currentColor" stroke-opacity=".3"/>
+          <line x1="100" y1="116" x2="460" y2="116" stroke="currentColor" stroke-opacity=".3"/>
+          <text x="20" y="226" fill="#737382" font-size="10.5">bar height = the readout's score for that attempt (schematic)</text>
+        </g>
+      </svg>
+      <figcaption>Schematic of the within-question control. The model's own output-based confidence, P(True), mostly recovers which questions are hard. The probe tracks whether this specific attempt worked.</figcaption>
+    </figure>
+    <div class="prose">
+      <table class="data">
+        <thead><tr><th>within one question</th><th style="text-align:right">probe</th><th style="text-align:right">P(True)</th></tr></thead>
+        <tbody>
+          <tr><td>Qwen3.6 × MMLU-Pro</td><td class="num win" style="color:var(--internal)">0.74</td><td class="num">0.47</td></tr>
+          <tr><td>GLM × MMLU-Pro</td><td class="num win" style="color:var(--internal)">0.73</td><td class="num">0.59</td></tr>
+          <tr><td>Mistral × MATH</td><td class="num win" style="color:var(--internal)">0.72</td><td class="num">0.59</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:12px">Two more cuts agree. Removing everything the pre-attempt read could predict still leaves the post-attempt probe at 0.59 to 0.87. And the direction the probe finds after the attempt barely transfers to the read site before it. "Did I succeed?" and "Is this hard?" are different directions in the model's state.</p>
+      <p>Models also revise stated confidence downward after failures more than after successes, with the grader silent. The self-monitoring is real. It is just under-expressed.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Same question, five tries, some right and some wrong. The model's own bet can't tell them apart. The detector can. That is per-attempt self-knowledge, not difficulty."</p></aside>
+</section>
+
+<!-- 8 -->
+<section class="step" id="s8">
+  <div class="step-head"><div class="step-num">8</div><h2>Finding three: one correctness direction serves many subjects.</h2></div>
+  <p class="lede">Train the probe on one subject, test it on another. It keeps most of its accuracy, which means the model uses roughly one internal "this is wrong" direction everywhere.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 300" role="img" aria-label="A three by three heatmap for Mistral. Rows are the training subject, columns the test subject. Diagonal values are 0.75, 0.83, 0.57. Off-diagonal values range from 0.57 to 0.84. MMLU-Pro trained tested on MATH scores 0.84, higher than MATH's own in-domain 0.83.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="12" fill="currentColor">
+          <text x="290" y="22" text-anchor="middle" fill="#737382" font-size="11" letter-spacing="1">TESTED ON</text>
+          <text x="190" y="52" text-anchor="middle" font-weight="600">MMLU-Pro</text><text x="290" y="52" text-anchor="middle" font-weight="600">MATH</text><text x="390" y="52" text-anchor="middle" font-weight="600">GPQA</text>
+          <text x="22" y="160" text-anchor="middle" fill="#737382" font-size="11" letter-spacing="1" transform="rotate(-90 22 160)">TRAINED ON</text>
+          <g text-anchor="end" font-weight="600"><text x="132" y="98">MMLU-Pro</text><text x="132" y="178">MATH</text><text x="132" y="258">GPQA</text></g>
+          <!-- row 1 -->
+          <rect data-tip="trained MMLU-Pro → tested MMLU-Pro (in-domain) · 0.754" x="142" y="64" width="96" height="76" rx="4" fill="var(--internal-mid)"/><text x="190" y="107" text-anchor="middle" font-weight="700">0.75</text>
+          <rect data-tip="trained MMLU-Pro → tested MATH · 0.838" x="242" y="64" width="96" height="76" rx="4" fill="var(--internal-deep)"/><text x="290" y="107" text-anchor="middle" font-weight="700" fill="var(--bg)">0.84</text>
+          <rect data-tip="trained MMLU-Pro → tested GPQA · 0.592" x="342" y="64" width="96" height="76" rx="4" fill="var(--internal-soft)"/><text x="390" y="107" text-anchor="middle" font-weight="700">0.59</text>
+          <!-- row 2 -->
+          <rect data-tip="trained MATH → tested MMLU-Pro · 0.717" x="142" y="144" width="96" height="76" rx="4" fill="var(--internal-mid)"/><text x="190" y="187" text-anchor="middle" font-weight="700">0.72</text>
+          <rect data-tip="trained MATH → tested MATH (in-domain) · 0.834" x="242" y="144" width="96" height="76" rx="4" fill="var(--internal-deep)"/><text x="290" y="187" text-anchor="middle" font-weight="700" fill="var(--bg)">0.83</text>
+          <rect data-tip="trained MATH → tested GPQA · 0.572" x="342" y="144" width="96" height="76" rx="4" fill="var(--internal-soft)"/><text x="390" y="187" text-anchor="middle" font-weight="700">0.57</text>
+          <!-- row 3 -->
+          <rect data-tip="trained GPQA → tested MMLU-Pro · 0.687" x="142" y="224" width="96" height="76" rx="4" fill="var(--internal-mid)"/><text x="190" y="267" text-anchor="middle" font-weight="700">0.69</text>
+          <rect data-tip="trained GPQA → tested MATH · 0.737" x="242" y="224" width="96" height="76" rx="4" fill="var(--internal-mid)"/><text x="290" y="267" text-anchor="middle" font-weight="700">0.74</text>
+          <rect data-tip="trained GPQA → tested GPQA (in-domain) · 0.572" x="342" y="224" width="96" height="76" rx="4" fill="var(--internal-soft)"/><text x="390" y="267" text-anchor="middle" font-weight="700">0.57</text>
+          <!-- diagonal marks -->
+          <g stroke="currentColor" stroke-opacity=".6" fill="none" stroke-dasharray="3 3"><rect x="142" y="64" width="96" height="76" rx="4"/><rect x="242" y="144" width="96" height="76" rx="4"/><rect x="342" y="224" width="96" height="76" rx="4"/></g>
+          <text x="470" y="100" fill="#737382" font-size="10.5">dashed =</text><text x="470" y="114" fill="#737382" font-size="10.5">in-domain</text>
+          <text x="470" y="150" fill="#737382" font-size="10.5">darker =</text><text x="470" y="164" fill="#737382" font-size="10.5">higher AUROC</text>
+        </g>
+      </svg>
+      <figcaption>Mistral, fresh capture, September 2026. Probes moved to a new subject keep 0.69 AUROC on average against 0.72 at home: 96 percent retention. GPQA is Mistral's weakest subject, so anything transferring into it is capped by that.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The original four-model matrix showed 87 to 90 percent retention. That analysis had a scaling bug, so we recaptured one model and reran it with the fix. Retention went up, not down.</p>
+      <p>Geometry is partly special. On Gemma-4, a probe trained on geometry does badly on the QA subjects, while QA-trained probes work fine on geometry. Probes trained on a generative task can latch onto task-specific features; QA-trained probes find the general direction.</p>
+      <p>A shared direction is what a deployable readout needs. Train once, monitor everywhere.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"A detector trained on one subject works on the others. The model seems to have one internal sense of 'this is wrong,' not a separate one per topic."</p></aside>
+</section>
+
+<!-- 9 -->
+<section class="step" id="s9">
+  <div class="step-head"><div class="step-num">9</div><h2>Finding four: turn the signal up, and the model gets honest.</h2></div>
+  <p class="lede">Reading proves the signal exists. Steering proves the model uses it. We amplify the model's own correctness direction while it states confidence, and watch what it says.</p>
+  <div class="two">
+    <figure class="figbox">
+      <div class="legend">
+        <span style="color:var(--internal)"><i style="background:var(--internal)"></i>steer: wrong answers</span>
+        <span style="color:var(--internal)"><i class="dash"></i>steer: right answers</span>
+        <span style="color:var(--stated)"><i style="background:var(--stated)"></i>matched random: wrong</span>
+        <span style="color:var(--stated)"><i class="dash"></i>matched random: right</span>
+      </div>
+      <svg viewBox="0 0 640 300" role="img" aria-label="Line chart of stated confidence against steering gain 1, 2, 4. Steering along the correctness direction drops confidence on wrong answers from 84 to 69 to 55 while right answers go from 96 to 94 to 88. A random direction of matched size leaves both flat at gain 2 and produces unreadable output at gain 4.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11" fill="currentColor">
+          <g stroke="currentColor" stroke-opacity=".15"><line x1="70" y1="240" x2="620" y2="240"/><line x1="70" y1="173.3" x2="620" y2="173.3"/><line x1="70" y1="106.7" x2="620" y2="106.7"/><line x1="70" y1="40" x2="620" y2="40"/></g>
+          <g fill="#737382" font-size="10.5" text-anchor="end"><text x="62" y="244">40</text><text x="62" y="177">60</text><text x="62" y="111">80</text><text x="62" y="44">100</text></g>
+          <text x="62" y="26" text-anchor="end" fill="#737382" font-size="10">stated confidence</text>
+          <g fill="#737382" font-size="11" text-anchor="middle"><text x="120" y="264">gain 1</text><text x="120" y="278">no change</text><text x="340" y="264">gain 2</text><text x="560" y="264">gain 4</text></g>
+          <!-- random -->
+          <polyline points="120,53.3 340,53.3" fill="none" stroke="var(--stated)" stroke-width="2" stroke-dasharray="6 4"/>
+          <polyline points="120,93.3 340,93.3" fill="none" stroke="var(--stated)" stroke-width="2"/>
+          <g fill="var(--stated)" stroke="var(--bg)" stroke-width="2">
+            <circle data-tip="matched random · right answers · gain 1 · 96" cx="120" cy="53.3" r="5"/><circle data-tip="matched random · right answers · gain 2 · 96" cx="340" cy="53.3" r="5"/>
+            <circle data-tip="matched random · wrong answers · gain 1 · 84" cx="120" cy="93.3" r="5"/><circle data-tip="matched random · wrong answers · gain 2 · 84" cx="340" cy="93.3" r="5"/>
+          </g>
+          <text x="560" y="72" text-anchor="middle" fill="var(--stated)" font-size="10.5">random at gain 4:</text>
+          <text x="560" y="86" text-anchor="middle" fill="var(--stated)" font-size="10.5">output unreadable</text>
+          <!-- steer -->
+          <polyline points="120,53.3 340,60 560,80" fill="none" stroke="var(--internal)" stroke-width="2" stroke-dasharray="6 4"/>
+          <polyline points="120,93.3 340,143.3 560,190" fill="none" stroke="var(--internal)" stroke-width="2.5"/>
+          <g fill="var(--internal)" stroke="var(--bg)" stroke-width="2">
+            <circle data-tip="steer · right answers · gain 1 · 96" cx="120" cy="53.3" r="5"/><circle data-tip="steer · right answers · gain 2 · 94" cx="340" cy="60" r="5"/><circle data-tip="steer · right answers · gain 4 · 88" cx="560" cy="80" r="5"/>
+            <circle data-tip="steer · wrong answers · gain 1 · 84" cx="120" cy="93.3" r="5"/><circle data-tip="steer · wrong answers · gain 2 · 69" cx="340" cy="143.3" r="5"/><circle data-tip="steer · wrong answers · gain 4 · 55" cx="560" cy="190" r="6"/>
+          </g>
+          <g font-size="11" font-weight="700" fill="var(--internal)"><text x="588" y="84">88</text><text x="588" y="194">55</text></g>
+          <g font-size="11" fill="var(--ink-2)"><text x="96" y="50" text-anchor="end">96</text><text x="96" y="97" text-anchor="end">84</text></g>
+          <line x1="70" y1="240" x2="620" y2="240" stroke="currentColor" stroke-opacity=".5"/>
+        </g>
+      </svg>
+      <figcaption>Mistral on MATH, September 2026 replication, 150 held-out attempts. Calibration error (ECE) falls from 0.33 to 0.18 at gain 4. The original July run showed 80 to 43 with ECE 0.31 to 0.13. Hover a point for the exact value.</figcaption>
+    </figure>
+    <div class="prose">
+      <p><b>What "gain" means.</b> Picture the model's internal "I think this is wrong" signal as a dial set to 1. Gain 2 makes it twice as loud at the moment the model decides what confidence to write. Gain 4, four times. Gain 0.5 turns it down, and overconfidence goes up.</p>
+      <p><b>No labels.</b> We never tell the model which answers are wrong. We amplify whatever it already computed about its own answer. The steering happens only after the answer is written, so the answer itself cannot change.</p>
+      <p><b>The control.</b> A random direction pushed with the same strength does nothing at gain 2. At gain 4 it breaks the output entirely, which shows a same-size random push is destructive rather than meaningful. On a teacher-forced logit readout the random direction is flat at every gain.</p>
+      <p><b>Architecture matters.</b> Gemma-4 shows the same specificity but is underpowered. GLM is null at the gains tested: its stated confidence saturates near 100. How much internal knowledge reaches speech varies by model.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"We turned up the volume on the model's own doubt. Confidence on wrong answers fell thirty points. Right answers barely moved. A random dial of the same strength did nothing. So the model really does use this signal when it speaks."</p></aside>
+</section>
+
+<!-- 10 -->
+<section class="step" id="s10">
+  <div class="step-head"><div class="step-num">10</div><h2>Finding five: a second witness that needs no labels, and where it goes blind.</h2></div>
+  <p class="lede">A trained probe invites the objection that it memorized our dataset. So we brought in an instrument built with no labels at all, and it agrees on dense models.</p>
+  <div class="two">
+    <figure class="figbox">
+      <svg viewBox="0 0 560 250" role="img" aria-label="Horizontal bars of Jacobian-lens AUROC by model. Dense models Mistral 0.82 and Qwen2.5-14B 0.88 are high. The Mamba-hybrid Qwen3.6 at 0.43 and mixture-of-experts GLM at 0.31 are near or below chance. A note says the trained probe still reads all four.">
+        <g font-family="Manrope, Arial, sans-serif" font-size="11.5" fill="currentColor">
+          <text x="20" y="22" font-weight="700">Label-free lens, AUROC by model</text>
+          <g stroke="currentColor" stroke-opacity=".15"><line x1="180" y1="36" x2="180" y2="200"/><line x1="290" y1="36" x2="290" y2="200"/><line x1="400" y1="36" x2="400" y2="200"/><line x1="510" y1="36" x2="510" y2="200"/></g>
+          <g fill="#737382" font-size="10.5" text-anchor="middle"><text x="180" y="214">0.25</text><text x="290" y="214">0.50</text><text x="400" y="214">0.75</text><text x="510" y="214">1.00</text></g>
+          <!-- scale: x = 70 + v*440 -->
+          <g text-anchor="end" font-size="11.5"><text x="64" y="56">Mistral-24B</text><text x="64" y="70" fill="#737382" font-size="10">dense</text></g>
+          <rect data-tip="Mistral-Small-24B (dense) · lens AUROC 0.76–0.82" x="70" y="46" width="360.8" height="18" rx="3" fill="var(--internal)"/><text x="438" y="60" font-weight="700">0.82</text>
+          <g text-anchor="end" font-size="11.5"><text x="64" y="96">Qwen2.5-14B</text><text x="64" y="110" fill="#737382" font-size="10">dense control</text></g>
+          <rect data-tip="Qwen2.5-14B (dense, within-family control) · lens AUROC 0.88" x="70" y="86" width="387.2" height="18" rx="3" fill="var(--internal)"/><text x="464" y="100" font-weight="700">0.88</text>
+          <g text-anchor="end" font-size="11.5"><text x="64" y="136">Qwen3.6-27B</text><text x="64" y="150" fill="#737382" font-size="10">Mamba hybrid</text></g>
+          <rect data-tip="Qwen3.6-27B (Mamba-attention hybrid) · lens AUROC 0.43" x="70" y="126" width="189.2" height="18" rx="3" fill="var(--internal-mid)"/><text x="266" y="140" font-weight="700">0.43</text>
+          <g text-anchor="end" font-size="11.5"><text x="64" y="176">GLM-4.7-Flash</text><text x="64" y="190" fill="#737382" font-size="10">mixture of experts</text></g>
+          <rect data-tip="GLM-4.7-Flash (MoE) · lens AUROC 0.31" x="70" y="166" width="136.4" height="18" rx="3" fill="var(--internal-mid)"/><text x="213" y="180" font-weight="700">0.31</text>
+          <line x1="290" y1="36" x2="290" y2="200" stroke="currentColor" stroke-opacity=".5" stroke-dasharray="3 3"/>
+          <text x="296" y="198" fill="#737382" font-size="10">chance</text>
+          <text x="20" y="240" fill="#737382" font-size="10.5">The trained probe still reads the signal in every one of these models (0.57 to 0.95). Only the label-free shortcut is gated.</text>
+        </g>
+      </svg>
+      <figcaption>The Jacobian lens from Anthropic's global-workspace work, fit on generic text with no task labels anywhere in its construction, scoring the same stored activations. It matches the probe on dense models and fails on the two architectures whose internal routing changes per input.</figcaption>
+    </figure>
+    <div class="prose">
+      <p><b>Why it matters.</b> Two instruments with no shared evidence, one built from labels and one from the model's own wiring, find the same direction. A dataset artifact would have to fool both. And because the lens reads through the model's speech pathway, the knowledge it finds is not just present but speakable.</p>
+      <p><b>The gate.</b> The lens uses one averaged map of how internal states become words. That map is only faithful when the model's wiring barely varies per input. Mixture-of-experts and Mamba models re-route per input, so the map smears. The fingerprint: transported through it, the lens's "correct" and "wrong" readouts collapse to a cosine of 0.96 on the mixture-of-experts model, against about 0.4 on dense. Swap Mamba for dense within one model family and the lens goes from 0.43 to 0.88.</p>
+      <p>So: dense model, trust a label-free readout. Mixture of experts or Mamba, bring a trained probe.</p>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"A second tool that never saw a single right-or-wrong label agrees with our detector on dense models. On mixture-of-experts and Mamba models that tool goes blind, but the signal is still there for the detector. The knowledge is not gated. The shortcut is."</p></aside>
+</section>
+
+<!-- 11 -->
+<section class="step" id="s11">
+  <div class="step-head"><div class="step-num">11</div><h2>What we are careful about.</h2></div>
+  <p class="lede">The paper states these itself. Say them before someone else does.</p>
+  <div class="two">
+    <div class="prose">
+      <ul>
+        <li><b>Linear, single token.</b> A straight-line probe at one token undercounts anything nonlinear or spread across tokens. Our numbers are a floor.</li>
+        <li><b>The MATH early-layer channel.</b> The boxed answer sits next to the read site, so an early layer may pick up lexical hints about odd-looking answers. The within-question control cannot fully exclude this. Steering is the discriminator, which is why we weight it heavily.</li>
+        <li><b>Causal arm is thin.</b> One clean model, one underpowered replication, one null. The September rerun adds a fair random control on the clean model, not a second model.</li>
+        <li><b>Single seed.</b> Every number is one run. The bootstrap intervals are honest about sampling noise, not about seed variance.</li>
+        <li><b>Mechanism is a fingerprint, not a measurement.</b> The architecture explanation for the lens rests on the cosine collapse, not yet on a direct per-input wiring-variance measurement.</li>
+        <li><b>Is it preference tuning?</b> Whether the knowing-versus-saying gap is created by RLHF is open. A base-model arm would test it.</li>
+      </ul>
+    </div>
+    <div class="prose">
+      <p><b>What we would run next, in order.</b></p>
+      <ul>
+        <li>Steering on a second model, so one result becomes a pattern.</li>
+        <li>A direct per-input wiring-variance measurement, to turn the gate story into a measurement.</li>
+        <li>Steering along the lens direction, so the entire causal chain is label-free.</li>
+        <li>One base model, to see whether preference tuning creates the gap.</li>
+        <li>Multiple seeds.</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"Our controls found four real bugs in our own pipeline before anyone else could. The results that survived are the ones we are showing you, and the limitations section is where we list what still could be wrong."</p></aside>
+</section>
+
+<!-- 12 -->
+<section class="step" id="s12">
+  <div class="step-head"><div class="step-num">12</div><h2>The whole paper in sixty seconds.</h2></div>
+  <div class="two">
+    <div class="prose" style="grid-column: 1 / -1">
+      <p style="font-family: Newsreader, Georgia, serif; font-size: 20px; line-height: 1.45; max-width: 66ch;">"Ask a language model how confident it is and you get a high number whether it is right or wrong. We wanted to know if the model is clueless or bluffing. So we read its internal state directly, using a geometry benchmark where a compiler tells us the truth. A simple detector on that state predicts right versus wrong better than the model's own words in twelve of sixteen cases, most of all in hard math. The signal is about the specific attempt, not the difficulty of the question. It is roughly the same signal across subjects. And when we amplify it, the model drops its confidence on wrong answers by thirty points while leaving right answers alone. Models substantially know when they are wrong. The open question is what stands between the knowing and the saying, and we have a concrete test of that in flight."</p>
+    </div>
+  </div>
+  <details class="gloss" open>
+    <summary>Glossary for the walk</summary>
+    <dl class="gloss">
+      <dt>Residual stream</dt><dd>The model's running internal state: a vector of a few thousand numbers at every token, updated layer by layer.</dd>
+      <dt>Probe</dt><dd>A small detector trained to read that state and guess right or wrong. Ours is logistic regression, the simplest kind.</dd>
+      <dt>AUROC</dt><dd>How well a score ranks right answers above wrong ones. 0.5 is a coin flip, 1.0 is perfect. It ignores calibration, only order.</dd>
+      <dt>ECE</dt><dd>Calibration error: how far stated confidence sits from actual accuracy. Lower is better.</dd>
+      <dt>P(True)</dt><dd>The model's own probability of saying "True" when asked whether its answer is correct. An output-based confidence, distinct from the spoken number.</dd>
+      <dt>Decision token</dt><dd>The position where the model is about to write its confidence digit. Same surrounding words every time.</dd>
+      <dt>Out-of-fold, grouped</dt><dd>The probe is scored on questions it never trained on, with all attempts of a question kept together.</dd>
+      <dt>Within-question control</dt><dd>Same question, five attempts, some right and some wrong. Anything that separates them cannot be about difficulty.</dd>
+      <dt>Steering, gain</dt><dd>Amplifying the model's own right-versus-wrong direction while it states confidence. Gain 1 is normal, gain 4 is four times louder.</dd>
+      <dt>Jacobian lens</dt><dd>A label-free way to read the internal state through the model's own speech pathway, from Anthropic's global-workspace paper. A signal it finds is one the model could in principle say.</dd>
+    </dl>
+  </details>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Numbers: lab notebook entries of 7 July and 3 September 2026; steering and transfer replication from the fresh Mistral capture of 2–3 September 2026. Paper source: <code>paper/workshop_combined.tex</code> on branch <code>paper/workshop-4pager</code>. This page: <code>documentation/knowing-before-saying-walkthrough.html</code>.
+</footer>
+
+<div id="tip" role="tooltip"></div>
+<script>
+  (function () {
+    var tip = document.getElementById('tip');
+    var els = document.querySelectorAll('[data-tip]');
+    function show(e) {
+      tip.textContent = e.currentTarget.getAttribute('data-tip');
+      tip.classList.add('on');
+      move(e);
+    }
+    function move(e) {
+      var r = e.currentTarget.getBoundingClientRect();
+      tip.style.left = (r.left + r.width / 2) + 'px';
+      tip.style.top = r.top + 'px';
+    }
+    function hide() { tip.classList.remove('on'); }
+    for (var i = 0; i < els.length; i++) {
+      els[i].addEventListener('mouseenter', show);
+      els[i].addEventListener('mousemove', move);
+      els[i].addEventListener('mouseleave', hide);
+      els[i].addEventListener('focus', show);
+      els[i].addEventListener('blur', hide);
+      els[i].setAttribute('tabindex', '0');
+    }
+  })();
+</script>
