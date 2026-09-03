@@ -89,3 +89,7 @@ for m in "${MODELS[@]}"; do "run_$m"; done
 # template, so capture_qa needs a raw-completion prompt path first. Deferred.
 
 echo "===== RERUN COMPLETE  $(date +%F_%H:%M) ====="
+
+# Save everything off the box. Tier A (meta/json -> git) always; Tier B (npz -> rclone/rsync)
+# when RCLONE_REMOTE or RSYNC_DEST is set. The box will be destroyed — this is the only copy.
+bash "$(dirname "$0")/save_off_box.sh" || echo "!! save_off_box.sh did not complete — DO NOT destroy the box yet"

@@ -581,3 +581,18 @@ table rebuilt to match; script block still byte-identical to talk deck.
 transitions, per-slide + cross-slide Q&A ammo, numbers cheat-sheet, cut plan. Statuses shown:
 Gemma×GPQA steering rerun queued · pre/post figure queued · per-input variance proposed ·
 paper framing open.
+
+## 2026-09-02 — Data-loss note + off-box save step
+
+The vast.ai box that held the full matrix (`mtx_*`, `*_temporal`, `fix_*`, `plot_cache.json`,
+`tier1_review.json`, `temporal_analysis.json`, steering result files) was destroyed; none of it
+was copied off. Consequences: (1) the Tier-1 transfer numbers (87–90% retention, computed
+2026-07-07 with the pre-fix scaler) cannot be rerun without a full recapture (~55–65 GPU-h);
+the MATH-AI 4-pager marks them *preliminary*; (2) any new steering / per-input-variance work
+also needs fresh captures. Only the small J-lens readouts (`activations/jlens/*.npz`, tracked),
+the figures, and the laptop-only `transfer_q15` pilot survive.
+
+**Fix:** `interp/save_off_box.sh` — Tier A copies every `meta.jsonl` / json / csv / log into
+`interp/results/` (tracked) and commits+pushes; Tier B uploads the `.npz` activations via
+`RCLONE_REMOTE` or `RSYNC_DEST` and refuses to exit 0 if neither is set. `rerun_driver.sh` now
+calls it at the end. Rule from here on: **a box is not destroyed until `save_off_box.sh` exits 0.**
