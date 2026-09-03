@@ -651,3 +651,23 @@ mean diagonal 0.720, mean off-diagonal 0.690 → **96% retention**; cosines mmlu
 still reach 0.69/0.74 on mmlu/math. Paper (`52df35a` on paper/workshop-4pager) now reports this and
 drops the "preliminary" caveat. Geometry temporal capture running at ~1.35 rec/min (364 → ~4.5 h);
 adds the 4th domain when done.
+
+**Same day, evening — geometry cell + full 4×4 Mistral transfer.** `fix_mistral_temporal` 364 records
+(91 × 4, 3-turn), pass **0.10** (July temporal run: 0.21 at 1024/2560 tokens — different settings). Weak,
+surface-dominated cell for Mistral: act-only 0.676 vs surf-only **0.783** (increment −0.11), within-q internal
+0.617 vs verbalized 0.358 (20 mixed), boot ns. Failure stages: validate / lower / compile / parse (no check-stage
+failures among the 16 in the first 20).
+
+4×4 transfer (rows train, cols test):
+
+| | geometry | mmlu_pro | math | gpqa |
+|---|---|---|---|---|
+| geometry | 0.676 | 0.671 | 0.781 | 0.562 |
+| mmlu_pro | 0.699 | 0.754 | 0.838 | 0.592 |
+| math | **0.802** | 0.717 | 0.834 | 0.572 |
+| gpqa | 0.599 | 0.687 | 0.737 | 0.572 |
+
+mean diag 0.709, off-diag 0.688 → **97% retention**. **No Gemma-style anti-transfer on Mistral:** geometry-trained
+→ QA 0.56–0.78 (not below chance), and math-trained reads geometry at 0.80, *above* geometry's own in-domain 0.68.
+Cosines geom~math 0.68, geom~mmlu 0.64, geom~gpqa 0.34. Paper (`workshop_confidence.tex`) Table 2 is now 4×4
+and says the anti-transfer is Gemma-specific. All four cells + tier1_review.json saved to S3 / interp/results.
