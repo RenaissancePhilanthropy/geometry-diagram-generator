@@ -1,0 +1,184 @@
+% Knowing versus saying — 4-page workshop version (MATH-AI 2026)
+%
+% Condensed from interp/PAPER_DRAFT.md (v0.1) on feat/spatial-interp.
+% Target: 4 pages of body text (references excluded), NeurIPS style.
+% Swap style/neurips_2026 for the workshop's own style file when known.
+%
+% Build:  lualatex workshop_confidence && bibtex workshop_confidence && lualatex workshop_confidence && lualatex workshop_confidence
+%
+% TODO(mei): the Jacobian-lens / global-workspace account is cited in the full
+% draft as "Anthropic (2026)" — fill in the real reference before submission;
+% the mechanism paragraph is written so it can also be cut cleanly.
+
+\documentclass{article}
+
+\usepackage[nonatbib]{style/neurips_2026}              % anonymous submission
+
+\input{preamble}
+
+\title{Knowing versus Saying: Internal Correctness Signals \\ and Verbalized Confidence in Language Models}
+
+\author{%
+  Anonymous Authors\\
+  Affiliation\\
+  \texttt{anon@example.org}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Language models often answer incorrectly while reporting high confidence.
+We ask whether this reflects an absence of self-knowledge or a failure to express it, and separate the two by reading the residual stream directly.
+Across four open models spanning distinct architectures and four task domains --- a compiler-verified geometry construction task, MMLU-Pro, MATH, and GPQA-Diamond --- we elicit confidence in a three-turn protocol with external, hidden grading, and read a linear ``am-I-correct?'' signal at a content-neutral token.
+A linear probe on the residual stream predicts an attempt's correctness better than the model's own stated confidence in 15 of 16 model$\times$domain cells (mean $+0.11$ AUROC); the gap is largest on MATH, where wrong answers are surface-identical to right ones.
+Under a within-question control that fixes difficulty, the model's output-probability signal P(True) collapses toward chance while the probe holds.
+The signal is causal: amplifying a model's own correctness direction --- using no labels at intervention time --- lowers stated confidence on wrong answers from 80 to 43 while leaving correct answers near 90, halving calibration error.
+Models substantially \emph{know} when they are wrong; whether they \emph{say} so is a separate, and partly steerable, property.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+A mathematical agent that errs is unavoidable; one that errs \emph{and knows it} is deployable --- it can abstain, retry, or escalate to a stronger tool or a human.
+Yet stated confidence is a weak guide to correctness, and nowhere more so than in mathematics, where a well-formed wrong answer carries no surface tell.
+We decompose the problem into two questions: do models internally represent that an output is wrong (\textbf{knowing}), and does that representation reach what they report (\textbf{saying})?
+The gap between them, if it exists, is both an unused reliability signal for mathematical agents and a concrete claim about machine introspection.
+
+We borrow a distinction from metacognition research --- \emph{prospective} (``will I get this right?'') versus \emph{retrospective} (``did I?'') --- and measure both, per attempt, inside the model.
+Our contributions:
+\begin{enumerate}
+  \item A \textbf{three-turn, blind-graded protocol} that elicits pre- and post-attempt confidence while capturing the residual stream at a content-neutral read site, plus the model's output-distribution confidence (P(True), answer log-probabilities) --- four readouts of the same latent quantity on identical records.
+  \item A \textbf{claim ladder} of increasingly hard-to-deflate controls (decodable $\to$ beyond-difficulty $\to$ beyond-surface $\to$ beyond-the-output-distribution $\to$ causal), each killing one boring explanation.
+  \item Evidence, across four architectures and four domains, that the \textbf{internal signal exceeds verbalized confidence}, is \textbf{attempt-specific} (it survives a within-question difficulty control), exceeds the model's own bets on most architectures, and is \textbf{causally used} to set stated confidence.
+\end{enumerate}
+
+\paragraph{Related work.}
+\citet{kadavath2022language} showed that models' output probabilities (P(True), P(IK)) are often well calibrated even where verbalization is not; we treat this as the baseline our internal readout must beat, and test it under a difficulty control that prior work rarely applies.
+Work on internal truthfulness directions \citep{azaria2023internal, marks2024geometry, burns2023discovering} reads the \emph{truth of a given statement}; we read the \emph{correctness of the model's own output} on open-ended and multiple-choice tasks.
+Verbalized-calibration studies \citep{lin2022teaching, tian2023just} measure stated confidence; we contrast it head-to-head with the internal signal and then intervene, connecting to representation engineering \citep{zou2023representation}.
+What is distinctive here is the combination: temporal (pre/post) elicitation over the model's \emph{own attempts}, blind (no-feedback) updating, a domain-resolved knowing--saying dissociation, and a compiler-verified generative testbed.
+
+\section{Study design}
+\label{sec:methods}
+
+\paragraph{Models.}
+Qwen3.6-27B (hybrid Mamba--attention), GLM-4.7-Flash (mixture-of-experts), Mistral-Small-24B (dense), and Gemma-4-26B-A4B (MoE, VLM-derived) --- four distinct architectures, so that no result is a single-family artifact.
+
+\paragraph{Domains and grading.}
+Geometry: the model emits a construction program graded by a \texttt{parse$\to$validate$\to$lower$\to$compile$\to$check} pipeline over exact symbolic coordinates --- machine-checkable and hard (13--39\% pass rates).%
+\footnote{The geometry testbed is a symbolically verified diagram-generation benchmark (under review); grading is exact and requires no vision--language judge.}
+MMLU-Pro (letter match), MATH (symbolic-equivalence checking), and GPQA-Diamond (letter match) complete the grid.
+We drop benchmarks the models ceiling on (GSM8K and MedQA at 90--95\%): metacognition is failure-hungry, so benchmarks are chosen by error rate, not popularity.
+
+\paragraph{Protocol.}
+Three turns per problem --- (1) prospective confidence, (2) attempt, (3) retrospective confidence --- with grading external and never shown to the model, so post-failure confidence drops are \emph{blind} self-assessment.
+For hybrid reasoners, extended thinking is on for the attempt and off for the confidence turns, keeping the read site content-neutral.
+Scale: 4 models $\times$ 4 domains $\times$ 150 problems $\times$ 5 samples $\approx$ 750 records per cell (two MATH cells at 494--548 after a mid-run hardware failure; still well powered).
+
+\paragraph{Readouts.}
+\emph{Verbalized} (stated 0--100); \emph{P(True)} and \emph{answer log-probability} (output distribution, teacher-forced, no generation); \emph{probe} (logistic regression on the residual stream at the confidence decision token, StandardScaler$\to$PCA(50)$\to$LogReg, grouped out-of-fold, reported at a fixed mid--late layer band mean rather than best-of-layer).
+Discrimination is scored by AUROC, calibration by ECE; 95\% intervals by bootstrap, resampling questions for within-question metrics.
+
+\paragraph{Controls.}
+Read-site content-neutrality (layer-0 AUROC $= 0.500$ per fold in every cell); a within-question difficulty control (mixed-outcome questions only); surface and answer-length incremental-validity checks; and grader validity (extraction-failure rates plus spot-checks).
+A public deviations log records a train/test leak, a confounded read site, a MATH-grader bug, and a prompt-wording leak --- each caught by a planned control, fixed, and re-run.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Internal $\gg$ verbalized, across architectures and domains}
+
+Using the honest band-mean readout, the residual-stream probe predicts correctness better than the model's stated confidence in \textbf{15 of 16 cells} (mean gap $\mathbf{+0.11}$ AUROC).
+The read-site control passes everywhere --- layer-0 AUROC is exactly 0.500 per fold --- so the signal is computed in mid/late layers, not read off the prompt.
+\Cref{tab:headline} shows representative post-attempt cells.
+
+\begin{table}[t]
+\caption{Post-attempt correctness discrimination (AUROC): the model's stated confidence versus a linear probe on its residual stream, representative cells. Right: the within-question control, which fixes difficulty by comparing the five samples of a single question --- the model's own P(True) collapses toward chance while the probe holds.}
+\label{tab:headline}
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{model $\times$ domain} & \textbf{verbalized} & \textbf{probe} \\
+\midrule
+Gemma-4 $\times$ MATH & 0.57 & \textbf{0.78} \\
+Qwen3.6 $\times$ MMLU-Pro & 0.67 & \textbf{0.84} \\
+GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} \\
+Mistral $\times$ MATH & 0.79 & \textbf{0.83} \\
+\bottomrule
+\end{tabular}
+\hspace{1.5em}
+\begin{tabular}{lcc}
+\toprule
+\textbf{within-question} & \textbf{probe} & \textbf{P(True)} \\
+\midrule
+Qwen3.6 $\times$ MMLU-Pro & \textbf{0.74} & 0.47 \\
+GLM $\times$ MMLU-Pro & \textbf{0.73} & 0.59 \\
+Mistral $\times$ MATH & \textbf{0.72} & 0.59 \\
+\\[-0.85em]
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The knowing--saying gap is largest where errors look clean}
+
+The gap is widest on MATH, where a wrong \texttt{\textbackslash boxed\{answer\}} is surface-indistinguishable from a right one: verbalized confidence there is near-useless (0.57 for Gemma-4) while the internal signal is the strongest of any domain (band 0.76--0.90).
+Post-attempt internal readouts exceed pre-attempt ones --- doing the work sharpens the \emph{internal} signal even where it degrades the \emph{stated} one.
+The familiar ``confidence gets worse after answering'' effect on MATH is a verbalization failure, not a representational one.
+
+\subsection{The internal signal is attempt-specific; the model's bets are not}
+
+The sharpest control holds difficulty fixed: within a single question, across its five sampled attempts, only attempt-level information can discriminate.
+Here the model's own P(True) collapses toward chance while the probe holds (\cref{tab:headline}, right).
+P(True) largely re-derives \emph{which questions are hard}; the residual-stream probe tracks \emph{whether this particular attempt succeeded}.
+Across cells the probe beats P(True) on three of four architectures (decisively on GLM, 0.85 vs 0.60); Gemma-4 is the exception where P(True) is competitive --- one instance of the architecture-dependence that recurs throughout.
+
+\subsection{Blind self-correction}
+
+Without any feedback that it failed, confidence is revised \emph{downward} more on failures than on successes on geometry and MMLU-Pro --- consistent with a genuine, if under-expressed, self-monitoring process.
+
+\subsection{The signal is causal}
+
+Steering at the confidence token (turn 3 only, so the answer is unchanged by construction) establishes \emph{use}, not mere presence.
+Amplifying a model's own projection onto its correctness direction --- with no labels at intervention time --- closes the gap on Mistral $\times$ MATH: as gain increases ($1\to2\to4$), stated confidence on \emph{failed} answers falls $80 \to 65 \to 43$ while \emph{correct} answers hold near $90$; calibration error drops $0.31 \to 0.13$; a matched random direction is flat; and dampening the signal (gain $<1$) \emph{increases} overconfidence --- a bidirectional dose--response.
+
+Replication is architecture-dependent.
+Gemma-4 shows the correct specificity (steering moves only the failed answers) but its near-ceiling MATH cell is underpowered.
+GLM is null at tested gains: its stated confidence saturates near 100 under greedy decoding --- the speech channel appears decoupled precisely in the model where the probe most exceeds P(True).
+We read this not as a failed replication but as evidence that \emph{how much internal knowledge reaches speech} varies by model.
+
+\section{Discussion and limitations}
+\label{sec:discussion}
+
+\paragraph{Architecture-dependence is the through-line.}
+Internal $\gg$ verbalized is universal in our grid; the causal and output-distribution pictures are not.
+GLM carries strong internal correctness information that its stated confidence does not express and steering (at tested settings) does not move; Mistral's is fully expressible and steerable; Gemma-4 uniquely lets P(True) compete.
+A single-model study would have reported any one of these as ``the'' result.
+The honest claim is a \emph{spectrum} of how internal self-knowledge couples to speech.
+
+\paragraph{Why the gap is largest on MATH.}
+Multi-step computation yields well-formed but wrong answers with no surface tell, so verbalized confidence --- which appears to lean on surface fluency --- fails, while the internal state, which encodes the computation, does not.
+This predicts the gap should track \emph{error detectability from the surface}, a hypothesis testable across further domains.
+
+\paragraph{Practical upshot for mathematical agents.}
+The internal readout supports selective prediction: abstaining on its lowest-scoring outputs raises accuracy far more than abstaining on low \emph{stated} confidence (risk--coverage curves), and the steering result suggests calibration can be improved by amplification rather than retraining.
+For agentic pipelines with a verifier in the loop, the probe is a cheap pre-verification filter; for domains without a verifier, it is the only attempt-specific signal we found.
+
+\paragraph{Limitations.}
+Linear probes at a single token undercount nonlinear or multi-token signal; best-of-layer selection is optimistic, so we report fixed-band numbers; each cell uses a single dataset seed; two MATH cells run at reduced $n$; and the causal arm is one clean model plus one underpowered and one null replication.
+A mechanism arm --- testing whether the correctness signal enters the \emph{verbalizable} subspace, distinguishing speakable-but-suppressed knowledge from an access failure --- is in progress.
+Grader validity gates every number: one MATH-grader bug materially shifted results before a planned control caught it.
+These are recorded in a public deviations log rather than hidden.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Across four architectures and four domains, open language models carry a linear internal signal of their own correctness that (i) exceeds their stated confidence, (ii) is specific to the individual attempt rather than the question's difficulty, (iii) on most architectures exceeds even the model's own output-probability estimates, and (iv) is causally used --- amplifying it, with no labels, makes a model's stated confidence honest about the answers it gets wrong.
+Models substantially \emph{know} when they are wrong; whether they \emph{say} so is a separate property that varies by architecture and can, at least sometimes, be steered.
+
+\bibliographystyle{plainnat}
+\bibliography{refs_confidence}
+
+\end{document}
