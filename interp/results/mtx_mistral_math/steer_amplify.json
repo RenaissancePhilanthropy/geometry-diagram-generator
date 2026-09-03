@@ -1,0 +1,86 @@
+{
+  "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+  "task": "math",
+  "mode": "amplify",
+  "layer_acts": 28,
+  "coeffs": [
+    0.5,
+    1.0,
+    2.0,
+    4.0
+  ],
+  "n_eval": 150,
+  "degenerate_direction": false,
+  "random_control": {
+    "sigma_w": 3.617023229598999,
+    "sigma_r": 0.06481029838323593,
+    "rand_scale": 55.80939017146373,
+    "magnitude_matched": true
+  },
+  "results": {
+    "steer@0.5": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.56976744186046,
+      "mean_conf_fail": 88.28125,
+      "auroc": 0.8089571220930232,
+      "ece": 0.35700000000000026,
+      "logit_diff": 3.4866862138112387
+    },
+    "steer@1.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.04651162790698,
+      "mean_conf_fail": 83.671875,
+      "auroc": 0.8323946220930232,
+      "ece": 0.33433333333333337,
+      "logit_diff": 3.177925732533137
+    },
+    "steer@2.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 93.8953488372093,
+      "mean_conf_fail": 69.453125,
+      "auroc": 0.8445675872093024,
+      "ece": 0.2613333333333334,
+      "logit_diff": 2.5784296548366545
+    },
+    "steer@4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 87.96511627906976,
+      "mean_conf_fail": 54.53125,
+      "auroc": 0.8154978197674418,
+      "ece": 0.18499999999999997,
+      "logit_diff": 1.732089385787646
+    },
+    "random@0.5": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 95.98837209302326,
+      "mean_conf_fail": 83.046875,
+      "auroc": 0.8338481104651163,
+      "ece": 0.3313333333333336,
+      "logit_diff": 3.1747412419319154
+    },
+    "random@1.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.04651162790698,
+      "mean_conf_fail": 83.671875,
+      "auroc": 0.8323946220930232,
+      "ece": 0.33433333333333337,
+      "logit_diff": 3.177925732533137
+    },
+    "random@2.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.40697674418605,
+      "mean_conf_fail": 84.125,
+      "auroc": 0.840388808139535,
+      "ece": 0.33833333333333343,
+      "logit_diff": 3.173279190460841
+    },
+    "random@4.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 3.192307159304619
+    }
+  }
+}

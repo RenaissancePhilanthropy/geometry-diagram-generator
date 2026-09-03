@@ -1,0 +1,137 @@
+{
+  "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+  "task": "math",
+  "mode": "add",
+  "layer_acts": 28,
+  "coeffs": [
+    -16.0,
+    -8.0,
+    -4.0,
+    0.0,
+    4.0,
+    8.0,
+    16.0
+  ],
+  "n_eval": 150,
+  "degenerate_direction": false,
+  "random_control": {
+    "sigma_w": 3.617023229598999,
+    "sigma_r": 0.06481029838323593,
+    "rand_scale": 1.0,
+    "magnitude_matched": true
+  },
+  "results": {
+    "steer@-16.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": -0.12776133934656778
+    },
+    "steer@-8.0": {
+      "parse_rate": 0.66,
+      "mean_conf_ok": 11.016949152542374,
+      "mean_conf_fail": 13.75,
+      "auroc": 0.4620762711864406,
+      "ece": 0.494949494949495,
+      "logit_diff": -0.40932150681813556
+    },
+    "steer@-4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 40.81395348837209,
+      "mean_conf_fail": 27.5,
+      "auroc": 0.6716933139534884,
+      "ece": 0.2326666666666667,
+      "logit_diff": 1.1003653919696808
+    },
+    "steer@0.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.04651162790698,
+      "mean_conf_fail": 83.671875,
+      "auroc": 0.8323946220930232,
+      "ece": 0.33433333333333337,
+      "logit_diff": 3.177925732533137
+    },
+    "steer@4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 100.0,
+      "mean_conf_fail": 100.0,
+      "auroc": 0.5,
+      "ece": 0.42666666666666664,
+      "logit_diff": 1.234331987698873
+    },
+    "steer@8.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 0.4158811060587565
+    },
+    "steer@16.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 0.0004142985741297404
+    },
+    "random@-16.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": -0.0069991016387939455
+    },
+    "random@-8.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 2.0921299558877946
+    },
+    "random@-4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 92.61627906976744,
+      "mean_conf_fail": 74.6875,
+      "auroc": 0.812954215116279,
+      "ece": 0.2763333333333333,
+      "logit_diff": 3.211174433628718
+    },
+    "random@0.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.04651162790698,
+      "mean_conf_fail": 83.671875,
+      "auroc": 0.8323946220930232,
+      "ece": 0.33433333333333337,
+      "logit_diff": 3.177925732533137
+    },
+    "random@4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.37209302325581,
+      "mean_conf_fail": 85.96875,
+      "auroc": 0.8182231104651162,
+      "ece": 0.3460000000000001,
+      "logit_diff": 3.3063177804152173
+    },
+    "random@8.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 3.7292325826485953
+    },
+    "random@16.0": {
+      "parse_rate": 0.0,
+      "mean_conf_ok": null,
+      "mean_conf_fail": null,
+      "auroc": NaN,
+      "ece": NaN,
+      "logit_diff": 0.057597869237263996
+    }
+  }
+}
