@@ -118,16 +118,16 @@
 <div class="wrap">
 <nav class="rail" aria-label="Sections">
   <ol>
-    <li><a href="#s1"><span class="n">1</span>One record</a></li>
-    <li><a href="#s2"><span class="n">2</span>The vector</a></li>
-    <li><a href="#s3"><span class="n">3</span>The probe, step by step</a></li>
-    <li><a href="#s4"><span class="n">4</span>A toy version</a></li>
-    <li><a href="#s5"><span class="n">5</span>Guardrails</a></li>
-    <li><a href="#s6"><span class="n">6</span>From scores to AUROC</a></li>
-    <li><a href="#s7"><span class="n">7</span>Real records, scored</a></li>
-    <li><a href="#s8"><span class="n">8</span>Within one question</a></li>
-    <li><a href="#s9"><span class="n">9</span>Steering, the math</a></li>
-    <li><a href="#s10"><span class="n">10</span>Reading the numbers</a></li>
+    <li><a href="#s1"><span class="n">1</span>Record</a></li>
+    <li><a href="#s2"><span class="n">2</span>Residual stream</a></li>
+    <li><a href="#s3"><span class="n">3</span>Probe</a></li>
+    <li><a href="#s4"><span class="n">4</span>2-D analogue</a></li>
+    <li><a href="#s5"><span class="n">5</span>Controls</a></li>
+    <li><a href="#s6"><span class="n">6</span>AUROC</a></li>
+    <li><a href="#s7"><span class="n">7</span>Scored records</a></li>
+    <li><a href="#s8"><span class="n">8</span>Within-question</a></li>
+    <li><a href="#s9"><span class="n">9</span>Amplify steering</a></li>
+    <li><a href="#s10"><span class="n">10</span>Caveats</a></li>
   </ol>
 </nav>
 
@@ -135,7 +135,7 @@
 
 <!-- 1 -->
 <section class="step" id="s1">
-  <div class="step-head"><div class="step-num">1</div><h2>One record, end to end.</h2></div>
+  <div class="step-head"><div class="step-num">1</div><h2>Record</h2></div>
   <div class="body">
     <p>Everything in the study is built from records like this one. The model saw a MATH problem, said how confident it felt, solved it, said how confident it felt again, and was graded in silence. This is attempt 1 of 5 on a precalculus problem.</p>
     <div class="record">
@@ -156,7 +156,7 @@
 
 <!-- 2 -->
 <section class="step" id="s2">
-  <div class="step-head"><div class="step-num">2</div><h2>The vector we read.</h2></div>
+  <div class="step-head"><div class="step-num">2</div><h2>Residual stream at the decision token</h2></div>
   <div class="body">
     <p>At turn 3 the model has written <span class="mono">Confidence:</span> and is about to produce the digit. At that exact position, at every layer, it holds an internal state vector. For Mistral-Small-24B that vector has 5,120 numbers, and there are 40 layers, so 40 such vectors. We take the one at layer 28, which is 0.7 of the way through, and store it as 5,120 half-precision floats per record.</p>
     <div class="two">
@@ -195,7 +195,7 @@
 
 <!-- 3 -->
 <section class="step" id="s3">
-  <div class="step-head"><div class="step-num">3</div><h2>The probe, step by step.</h2></div>
+  <div class="step-head"><div class="step-num">3</div><h2>Probe: standardize → PCA(50) → logistic regression</h2></div>
   <div class="body">
     <p>The probe is a logistic regression. Given a vector, it outputs a probability that the attempt was correct. It has one weight per input dimension plus a bias, and nothing else. This is the exact pipeline the analysis code uses, in the order it runs.</p>
     <ol class="steps">
@@ -210,10 +210,10 @@ probability p = σ(s) = 1 / (1 + e^(−s))
 
 s = −3   →  p = 0.05        s = 0  →  p = 0.50        s = +3  →  p = 0.95
 s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.96  (the correct record in §7)</div>
-    <h3>What "fit" means</h3>
+    <h3>Objective and gradient</h3>
     <p>Training minimizes cross-entropy: for each example it pays a penalty of <span class="mono">−log p</span> if the answer was correct and <span class="mono">−log(1 − p)</span> if it was wrong, so confident mistakes are expensive and confident correct calls are cheap. A small penalty on the size of <span class="mono">w</span> keeps the weights from growing without bound.</p>
     <p>The gradient of that loss with respect to the weights has a simple form: sum over examples of <span class="mono">(p − y) · h̃</span>. Read it as a rule. For each example, look at the error <span class="mono">p − y</span>. If the probe said 0.8 for a wrong answer, the error is +0.8, and the update pushes <span class="mono">w</span> away from that example's vector. If it said 0.3 for a correct answer, the error is −0.7, and the update pulls <span class="mono">w</span> toward that vector. Repeat until the pushes and pulls balance.</p>
-    <h3>What the probe is, geometrically</h3>
+    <h3>Geometry of the weight vector</h3>
     <p>The 50 weights, mapped back through the PCA basis, are a single direction in the original 5,120-dimensional space. Scoring a record means projecting its vector onto that direction. That direction is the "am I correct?" axis the whole study is about, and it is the same object the steering experiment later pushes along.</p>
     <p>A cruder estimate of the same axis is the difference of class means: average vector of correct attempts minus average vector of wrong attempts. Logistic regression is roughly that difference, rescaled by the spread of the data in each direction. The steering experiment uses the difference of means directly because it needs a direction in raw residual space, not in PCA coordinates.</p>
   </div>
@@ -222,7 +222,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 4 -->
 <section class="step" id="s4">
-  <div class="step-head"><div class="step-num">4</div><h2>A toy version you can see.</h2></div>
+  <div class="step-head"><div class="step-num">4</div><h2>Two-dimensional analogue</h2></div>
   <div class="body">
     <p>Two dimensions instead of 5,120, eight attempts instead of 600. The mechanism is identical.</p>
     <div class="two">
@@ -271,7 +271,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 5 -->
 <section class="step" id="s5">
-  <div class="step-head"><div class="step-num">5</div><h2>Guardrails, and what each one prevents.</h2></div>
+  <div class="step-head"><div class="step-num">5</div><h2>Controls</h2></div>
   <div class="body">
     <div class="two">
       <figure class="figbox">
@@ -314,7 +314,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 6 -->
 <section class="step" id="s6">
-  <div class="step-head"><div class="step-num">6</div><h2>From 750 scores to one number: AUROC.</h2></div>
+  <div class="step-head"><div class="step-num">6</div><h2>AUROC</h2></div>
   <div class="body">
     <p>Every readout gives each attempt a score: the stated confidence, P(True), or the probe's probability. AUROC asks one question of those scores: if you pick a random correct attempt and a random wrong attempt, how often does the correct one have the higher score? Ties count half.</p>
     <div class="two">
@@ -344,7 +344,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 7 -->
 <section class="step" id="s7">
-  <div class="step-head"><div class="step-num">7</div><h2>Real records, scored by all three readouts.</h2></div>
+  <div class="step-head"><div class="step-num">7</div><h2>Scored records</h2></div>
   <div class="body">
     <p>Four attempts from the cell, chosen to show the range. All probe scores are out-of-fold. The bars show the probe's probability of "correct."</p>
     <table class="data">
@@ -369,7 +369,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 8 -->
 <section class="step" id="s8">
-  <div class="step-head"><div class="step-num">8</div><h2>Within one question: the difficulty control, on real attempts.</h2></div>
+  <div class="step-head"><div class="step-num">8</div><h2>Within-question control</h2></div>
   <div class="body">
     <p>The objection: maybe the probe just learned which problems are hard, and hard problems are more often wrong. The answer: look inside a single problem, where difficulty is constant, and see whether the readouts can tell the successful attempts from the failed ones. Here is one of the 54 problems in this cell with mixed outcomes.</p>
     <div class="record">
@@ -396,7 +396,7 @@ s = −1   →  p = 0.27        s = 1  →  p = 0.73        s = +3.1 → p = 0.9
 
 <!-- 9 -->
 <section class="step" id="s9">
-  <div class="step-head"><div class="step-num">9</div><h2>Steering: the same direction, used as a dial.</h2></div>
+  <div class="step-head"><div class="step-num">9</div><h2>Amplify steering: h ← h + (g − 1)(h·ŵ − μ)ŵ</h2></div>
   <div class="body">
     <p>Reading shows the direction exists. Steering asks whether the model uses it when it speaks. The mechanics are three lines of algebra applied inside the model during turn 3 only.</p>
     <ol class="steps">
@@ -423,7 +423,7 @@ random:  h ← h + (g − 1) · (h·r̂ − μ_r) · (σ_w / σ_r) · r̂       
 
 <!-- 10 -->
 <section class="step" id="s10">
-  <div class="step-head"><div class="step-num">10</div><h2>Reading the numbers without overreading them.</h2></div>
+  <div class="step-head"><div class="step-num">10</div><h2>Caveats</h2></div>
   <div class="body">
     <ul>
       <li><b>A cell is one model on one benchmark.</b> Cells vary. Mistral on MATH is one of the more honest cells, gap 0.06. Gemma on MATH has a gap of 0.21. The paper's headline, 12 of 16 cells, is a count across cells; no single cell is the result.</li>
