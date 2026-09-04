@@ -22,7 +22,7 @@ from geometry_diagrams.pydsl.handles import Point
 from geometry_diagrams.pydsl.sandbox import run_script
 
 
-def test_cookbook_names_lists_the_ticket_09_10_11_and_12_helpers():
+def test_cookbook_names_lists_all_current_helpers():
     assert pydsl_module.COOKBOOK_NAMES == [
         "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point", "chart_axes",
     ]

@@ -66,6 +66,7 @@ The Intermediate Representation is the central abstraction:
 - **`to_tikz.py`**: Converts compiled SymPy objects to TikZ code (`\tkzDefPoint`, `\tkzDrawSegment`, etc.). Computes canvas bounds and helper points automatically.
 - **`to_svg.py`**: Direct SVG rendering path — converts compiled SymPy objects to SVG without going through TikZ/LaTeX.
 - **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison.
+- **`label_bounds.py`**: Black-box post-render check that parses an already-rendered SVG's `data-bbox` label attributes (stamped by `to_svg.py`) and reports any label extending past the SVG's declared `viewBox`.
 - **`pre_assert_filter.py`**: Pure 4-stage pre-filter (API-name validation, generic-instance grounding, structural lints, request-relevance) for the pre-assert pre-step's proposed checks, with no model/network dependency of its own.
 - **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
 - **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.

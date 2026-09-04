@@ -884,9 +884,9 @@ async def main() -> None:
         default=False,
         help="Enable PythonFullStrategy's optional experimental diagram cookbook "
         "(ticket 08, diagram-kinds-poc's experimental gating infrastructure): "
-        "adds an advisory cookbook section (7 helpers: unit_grid, array_of, "
-        "tick_marks, bar, bars, table_grid, oblique_point) to the script-writer "
-        "prompt and, defense in depth, allows the sandboxed script to call any "
+        "adds an advisory cookbook section (8 helpers: unit_grid, array_of, "
+        "tick_marks, bar, bars, table_grid, oblique_point, chart_axes) to the "
+        "script-writer prompt and, defense in depth, allows the sandboxed script to call any "
         "cookbook helper. Only affects the 'python_full' strategy; ignored by "
         "all others. Off by default (matches PythonFullStrategy.run()'s own "
         "default).",
@@ -900,7 +900,14 @@ async def main() -> None:
         "checks every label against the rendered SVG's viewBox and retries "
         "generation if any label extends past the canvas. Only means "
         "something under the SVG renderer (a no-op under TikZRenderer). "
-        "Only affects the 'python_full' strategy; ignored by all others. Off "
+        "Measured real-world cost: a live 8-kind, 16-generation comparison "
+        "found that enabling this flag changed the outcome for 3 of 8 kinds -- "
+        "1 recovered after a retry, but 2 exhausted MAX_RETRIES and failed "
+        "generation outright on genuine label-overflow errors that succeeded "
+        "with the flag off. Trades reliability (no silently-clipped labels) "
+        "for real generation cost, including a non-trivial chance of outright "
+        "failure on kinds with persistent label-placement issues. Only "
+        "affects the 'python_full' strategy; ignored by all others. Off "
         "by default (matches PythonFullStrategy.run()'s own default).",
     )
     parser.add_argument(

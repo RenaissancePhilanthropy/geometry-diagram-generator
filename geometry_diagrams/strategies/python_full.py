@@ -1239,6 +1239,19 @@ class PythonFullStrategy(SubstanceStrategy):
         triggers a retry. Not a crash, and not a silent false pass from
         misparsing TikZ's own SVG conventions.
 
+        Real-world cost, measured (not theoretical): a live 8-kind,
+        16-generation comparison (`.scratch/pydsl-authoring-quality/reports/
+        02-verify-labels-strategy-flag-report.md`) found that turning this
+        flag on changed the outcome for 3 of 8 kinds versus leaving it off --
+        1 kind hit a real overflow and recovered after one retry, but 2 kinds
+        hit a *persistent* label-overflow the model failed to fix across all
+        `MAX_RETRIES` attempts, so generation failed outright where it had
+        succeeded with the flag off. This is a real trade: reliability (no
+        more silently-clipped/overflowing labels) against generation cost,
+        including a non-trivial chance of outright failure on kinds with
+        persistent label-placement issues -- not just an occasional extra
+        retry.
+
         Not available on the edit-mode paths (`_run_from_script`/
         `build_agent`'s patch/search_replace/hashline/line_number/
         `_edit_full_rewrite`) -- same precedent as
@@ -1255,10 +1268,11 @@ class PythonFullStrategy(SubstanceStrategy):
         include_cookbook) and the sandboxed script's tool namespace gains
         geometry_diagrams.pydsl.COOKBOOK_NAMES on top of the stable API
         (sandbox.run_script's enable_cookbook) -- COOKBOOK_NAMES now lists
-        cookbook.py's 7 real helper functions (unit_grid, array_of,
-        tick_marks, bar, bars, table_grid, oblique_point). Deliberately NOT
-        threaded through GeometryConfig/RecipeStrategy/facade.py -- those paths never
-        run pydsl scripts and must remain physically unable to enable this.
+        cookbook.py's 8 real helper functions (unit_grid, array_of,
+        tick_marks, bar, bars, table_grid, oblique_point, chart_axes).
+        Deliberately NOT threaded through GeometryConfig/RecipeStrategy/facade.py
+        -- those paths never run pydsl scripts and must remain physically
+        unable to enable this.
         Not available on the edit-mode paths (_run_from_script/build_agent's
         patch/search_replace/hashline/line_number/_edit_full_rewrite), same
         as use_pre_assert_step/precomputed_advisory_context above.
