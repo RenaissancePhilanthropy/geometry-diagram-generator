@@ -122,6 +122,7 @@ A DSL for declaratively specifying geometry constructions:
 - **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
 - **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
 - **`examples/`**: Pre-rendered SVG examples used for documentation.
+- **`retrospective-template.md`**: Optional post-ticket step for `subagent-execution`-style work in this repo — after an implementer subagent closes a ticket (especially one that struggled or hit a known gap), resume it and ask what tooling/information would have made the task easier. See `docs/specs/2026-09-04-diagram-kinds-retrospective-findings.md` for a worked example where this surfaced a convergent, actionable finding across unrelated tickets.
 
 ## Key Design Notes
 
