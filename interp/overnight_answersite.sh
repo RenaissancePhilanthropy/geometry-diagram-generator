@@ -13,6 +13,14 @@
 #   nohup bash interp/overnight_answersite.sh > ~/answersite.log 2>&1 &
 set -uo pipefail
 
+# `nohup bash ...` gets a NON-interactive shell: the vast.ai venv is not on PATH there
+# and python3 is the system one without torch. Resolve the interpreter explicitly.
+PY="${PY:-/venv/main/bin/python}"
+[ -x "$PY" ] || PY="$(command -v python3)"
+"$PY" -c "import torch, transformers, sklearn" 2>/dev/null \
+  || { echo "FATAL: $PY lacks torch/transformers/sklearn — set PY=/path/to/python"; exit 1; }
+echo "interpreter: $PY"
+
 MODEL=mistralai/Mistral-Small-24B-Instruct-2501
 ACT=interp/activations
 RES=interp/results
@@ -27,7 +35,7 @@ done
 echo "=== 1. answer-site capture (the biggest objection) ==="
 for task in math mmlu_pro gpqa; do
   echo "--- $task ---"
-  python -m interp.capture_answer_site \
+  "$PY" -m interp.capture_answer_site \
     --meta "$RES/fix_mistral_${task}/meta.jsonl" \
     --task "$task" --model "$MODEL" --per-turn-think \
     --n-traj 16 --out-dir "$ACT/ansite_mistral_${task}" \
@@ -38,7 +46,7 @@ echo "=== 2. ablation + dose-response, now logging per-record confidences ==="
 # coeff 0 in amplify mode REMOVES the correctness component: if stated-confidence AUROC
 # collapses toward 0.5 there, the report is mediated by this direction, which is stronger
 # than the current "amplifying it changes what the model says".
-python -m interp.steer_confidence \
+"$PY" -m interp.steer_confidence \
   --act-dir "$ACT/fix_mistral_math" --model "$MODEL" --task math \
   --mode amplify --coeffs 0,0.5,1,2,4 --n-eval 150 --per-turn-think \
   --out "$RES/fix_mistral_math/steer_amplify_ablate.json" \
@@ -46,7 +54,7 @@ python -m interp.steer_confidence \
 
 echo "=== 3. analysis (CPU) ==="
 for task in math mmlu_pro gpqa; do
-  python -m interp.analysis.answer_site_probe \
+  "$PY" -m interp.analysis.answer_site_probe \
     --answer-dir "$ACT/ansite_mistral_${task}" \
     --conf-dir   "$ACT/fix_mistral_${task}" \
     --out "$RES/temporal_sites_mistral_${task}.json" \
