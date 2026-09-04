@@ -93,7 +93,8 @@ def main() -> None:
     ap.add_argument("--quant", choices=("none", "4bit", "awq"), default="none")
     ap.add_argument("--layer", default="fix",
                     help="acts (hidden-state) layer index, or 'fix' = 0.7 * depth")
-    ap.add_argument("--mode", choices=("add", "amplify"), default="add")
+    ap.add_argument("--mode", choices=("add", "amplify"), default="add",
+                    help="amplify at coeff 0 REMOVES the component (ablation): sweep 0 to test whether stated confidence still tracks correctness without the direction")
     ap.add_argument("--coeffs", default=None,
                     help="add: multiples of the raw diff-of-means (default -16..16); "
                          "amplify: gains (default 0.5,1,2,4)")
@@ -250,6 +251,7 @@ def main() -> None:
         return conf, hi - lo
 
     results = {}
+    per_record = []   # every (direction, coeff, record) row: Brier/NLL/CIs offline
     dirs = [("steer", w_raw, w_hat, mu, 1.0)] + ([] if args.skip_random else
                                                  [("random", r_raw, r_hat, mu_r, rand_scale)])
     try:
@@ -260,6 +262,9 @@ def main() -> None:
                     conf, ld = run_record(turn3_ids(r), vec, hat, mu_v, c, scale)
                     confs.append(conf); ldiffs.append(ld)
                     oks.append(1 if r["grade"]["ok"] else 0)
+                    per_record.append({"dir": dname, "coeff": c, "pid": r["pid"],
+                                       "conf": conf, "logit_diff": ld,
+                                       "ok": bool(r["grade"]["ok"])})
                 have = np.array([x is not None for x in confs])
                 cv = np.array([x if x is not None else np.nan for x in confs], float)
                 ok = np.array(oks)
@@ -285,7 +290,7 @@ def main() -> None:
         "coeffs": coeffs, "n_eval": len(ev), "degenerate_direction": degenerate,
         "random_control": {"sigma_w": sigma_w, "sigma_r": sigma_r, "rand_scale": rand_scale,
                            "magnitude_matched": True},
-        "results": results}, indent=2))
+        "results": results, "per_record": per_record}, indent=2))
     print("saved", out)
 
 

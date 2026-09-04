@@ -66,8 +66,12 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git -C "$ROOT" add -A interp/results
   if ! git -C "$ROOT" diff --cached --quiet; then
     git -C "$ROOT" commit -q -m "results: snapshot small artifacts from $TAG (save_off_box.sh)"
-    git -C "$ROOT" push -q origin HEAD && echo "   committed + pushed interp/results" \
-      || echo "   !! push failed — commit is local only; push manually before destroying the box"
+    if git -C "$ROOT" push -q origin HEAD; then
+      echo "   committed + pushed interp/results"
+    else
+      TIER_A_PUSH_FAILED=1
+      echo "   !! push failed — commit is local only (need ssh -A agent forwarding?)"
+    fi
   else
     echo "   results unchanged, nothing to commit"
   fi
@@ -104,5 +108,11 @@ MSG
   echo "   local files: $local_n   remote files (all runs): $remote_n"
   [ "$remote_n" -ge "$local_n" ] || { echo "   !! remote has fewer files than local — rerun"; exit 3; }
   echo "   OK: s3 sync finished"
+fi
+if [ "${TIER_A_PUSH_FAILED:-0}" = 1 ]; then
+  echo "==> TIER B OK, but TIER A WAS NOT PUSHED ($TAG)."
+  echo "    DO NOT DESTROY THE BOX. Push interp/results first:"
+  echo "      ssh -A back in, then: git -C $ROOT push origin HEAD"
+  exit 4
 fi
 echo "==> SAVE COMPLETE ($TAG). Safe to destroy the box."
