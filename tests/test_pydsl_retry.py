@@ -145,15 +145,16 @@ def test_build_retry_message_has_no_suggestion_for_structural_errors():
     assert "not a vertex" in msg
 
 
-def test_public_api_function_names_auto_discovers_all_24_assert_predicates():
+def test_public_api_function_names_auto_discovers_all_25_assert_predicates():
     """PUBLIC_API_FUNCTION_NAMES is built generically from
     inspect.isfunction over pydsl.__all__ — no special-casing for assert_*.
-    This proves the 24-function assert_* surface added across tickets 01-04
-    is already in the did-you-mean candidate pool, with no change needed to
+    This proves the 25-function assert_* surface added across tickets 01-04
+    plus pydsl-authoring-quality's ticket 01 (assert_labels_in_canvas) is
+    already in the did-you-mean candidate pool, with no change needed to
     retry.py's candidate-pool logic itself."""
     from geometry_diagrams.pydsl import asserts as asserts_module
     from geometry_diagrams.pydsl.retry import PUBLIC_API_FUNCTION_NAMES
 
-    assert len(asserts_module.__all__) == 24
+    assert len(asserts_module.__all__) == 25
     for name in asserts_module.__all__:
         assert name in PUBLIC_API_FUNCTION_NAMES, f"{name} missing from PUBLIC_API_FUNCTION_NAMES"

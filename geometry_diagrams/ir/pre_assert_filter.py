@@ -41,7 +41,7 @@ from .to_sympy import compile_defs
 # Stage 1: API-name validation
 # ---------------------------------------------------------------------------
 
-# The real 24-function assert_* vocabulary, introspected the same way
+# The real 25-function assert_* vocabulary, introspected the same way
 # retry.py's PUBLIC_API_FUNCTION_NAMES already does for the shipped
 # hallucinated-name retry path -- functions only (not handle classes), and
 # restricted to the assert_ prefix since that's the only vocabulary a

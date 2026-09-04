@@ -343,6 +343,18 @@ def ir_to_svg(
     _nudge_labels_from_lines(pending_labels, drawn_segments)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     for lp in pending_labels:
+        # Stamp the final (post-nudge, post-collision-resolution) bbox and
+        # source text onto the emitted element itself, as data-* attributes.
+        # This is what lets geometry_diagrams/ir/label_bounds.py check for
+        # off-canvas labels as a black-box, post-render pass -- reading these
+        # attributes back off the rendered SVG -- without needing to
+        # re-derive positions/widths from to_svg.py's internal layout state,
+        # and without missing math/LaTeX labels: this runs for both the
+        # <text> path and the <g>-wrapped MathGlyph path below, since both
+        # go through the same _append_label(..., extra_attrs=lp.attrs) call.
+        bx0, by0, bx1, by1 = _label_bbox(lp)
+        lp.attrs["data-bbox"] = f"{bx0:.2f},{by0:.2f},{bx1:.2f},{by1:.2f}"
+        lp.attrs["data-label-text"] = lp.text
         _append_label(
             svg, lp.x, lp.y, lp.text, lp.color,
             anchor=lp.anchor, extra_attrs=lp.attrs,

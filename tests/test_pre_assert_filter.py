@@ -50,9 +50,9 @@ from geometry_diagrams.ir.pre_assert_filter import (
 # Stage 1: API-name validation
 # ---------------------------------------------------------------------------
 
-def test_real_assert_names_has_24_entries():
+def test_real_assert_names_has_25_entries():
     """Sanity check against the shipped assert_* feature's actual vocabulary."""
-    assert len(REAL_ASSERT_NAMES) == 24
+    assert len(REAL_ASSERT_NAMES) == 25
     assert "assert_collinear" in REAL_ASSERT_NAMES
     assert "assert_angle_equal" in REAL_ASSERT_NAMES
 

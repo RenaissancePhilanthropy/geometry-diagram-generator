@@ -10,18 +10,18 @@ import math
 import pytest
 
 from geometry_diagrams.pydsl.api import (
-    angle, canvas, circle, intersection, line_through, point, point_on,
-    polygon, ray, rotate_point, segment, tangent_line, triangle,
+    angle, canvas, circle, intersection, label_text, line_through, point,
+    point_on, polygon, ray, rotate_point, segment, tangent_line, triangle,
 )
 from geometry_diagrams.pydsl.asserts import (
     assert_angle_equal, assert_ccw, assert_centroid, assert_collinear,
     assert_congruent_triangles, assert_convex, assert_distance,
     assert_distinct_objects, assert_distinct_points, assert_equal_length,
-    assert_in_canvas, assert_min_distance, assert_not_collinear,
-    assert_not_on, assert_not_parallel, assert_on, assert_opposite_side,
-    assert_parallel, assert_perpendicular, assert_ratio_equal,
-    assert_right_angle, assert_same_side, assert_similar_triangles,
-    assert_tangent,
+    assert_in_canvas, assert_labels_in_canvas, assert_min_distance,
+    assert_not_collinear, assert_not_on, assert_not_parallel, assert_on,
+    assert_opposite_side, assert_parallel, assert_perpendicular,
+    assert_ratio_equal, assert_right_angle, assert_same_side,
+    assert_similar_triangles, assert_tangent,
 )
 from geometry_diagrams.pydsl.builder import GeometricAssertionError, new_builder_context
 
@@ -575,3 +575,89 @@ def test_assert_in_canvas_docstring_notes_ordering_hazard():
     doc = assert_in_canvas.__doc__.lower()
     assert "order" in doc
     assert "canvas(" in doc
+
+
+# ---------------------------------------------------------------------------
+# assert_labels_in_canvas (pydsl-only; not backed by an ir.Check kind;
+# renders the diagram built so far via the in-process SVGRenderer)
+# ---------------------------------------------------------------------------
+
+def test_assert_labels_in_canvas_passes_for_clean_plain_text_label():
+    with new_builder_context():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        label_text("hello", at=(0, 0))
+        assert_labels_in_canvas()
+
+
+def test_assert_labels_in_canvas_fails_for_out_of_bounds_plain_text_label():
+    with new_builder_context():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        label_text("way off canvas", at=(500, 0))
+        with pytest.raises(GeometricAssertionError) as excinfo:
+            assert_labels_in_canvas()
+    msg = str(excinfo.value)
+    assert "way off canvas" in msg
+
+
+def test_assert_labels_in_canvas_fails_for_out_of_bounds_math_label():
+    """Correctness requirement: math/LaTeX labels render as MathGlyph <g>
+    path groups, not <text> elements — this must be caught too, not just
+    plain text."""
+    with new_builder_context():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        label_text(r"\frac{1}{2}", at=(500, 0))
+        with pytest.raises(GeometricAssertionError) as excinfo:
+            assert_labels_in_canvas()
+    msg = str(excinfo.value)
+    assert r"\frac{1}{2}" in msg
+
+
+def test_assert_labels_in_canvas_reflects_state_only_up_to_call_time():
+    """Ordering hazard, same as assert_in_canvas: a label_text() call added
+    AFTER assert_labels_in_canvas() is invisible to it."""
+    with new_builder_context():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        assert_labels_in_canvas()  # nothing placed yet -> trivially passes
+        label_text("way off canvas", at=(500, 0))  # added after the check ran
+
+
+def test_assert_labels_in_canvas_docstring_notes_ordering_hazard():
+    doc = assert_labels_in_canvas.__doc__.lower()
+    assert "order" in doc
+    assert "canvas(" in doc
+
+
+def test_assert_labels_in_canvas_raises_through_a_real_sandboxed_script_run():
+    """Same real-sandbox discipline as
+    test_pydsl_end_to_end.py::test_pydsl_script_runs_through_the_real_sandbox_end_to_end
+    -- exercises the actual LocalPythonExecutor subprocess path, not the
+    direct new_builder_context() path every other test in this file uses."""
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = """
+canvas(x_range=(-5, 5), y_range=(-5, 5))
+point(0, 0)
+label_text("way off canvas", at=(500, 0))
+assert_labels_in_canvas()
+"""
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is not None
+    assert "way off canvas" in result.error
+
+
+def test_assert_labels_in_canvas_passes_through_a_real_sandboxed_script_run_when_clean():
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    script = """
+canvas(x_range=(-5, 5), y_range=(-5, 5))
+point(0, 0)
+label_text("hello", at=(0, 0))
+assert_labels_in_canvas()
+"""
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None

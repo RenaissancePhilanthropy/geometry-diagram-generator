@@ -52,6 +52,7 @@ __all__ = [
     "assert_min_distance",
     "assert_congruent_triangles",
     "assert_in_canvas",
+    "assert_labels_in_canvas",
 ]
 
 
@@ -314,4 +315,47 @@ def assert_in_canvas(p: Point) -> None:
         raise GeometricAssertionError(
             f"Point ({x:.2f}, {y:.2f}) is outside canvas bounds "
             f"[{canvas.xmin:.2f}, {canvas.xmax:.2f}] x [{canvas.ymin:.2f}, {canvas.ymax:.2f}]"
+        )
+
+
+def assert_labels_in_canvas() -> None:
+    """Assert that every label placed so far renders fully within the canvas.
+
+    Not backed by an ir.Check kind, like `assert_in_canvas` — but for a
+    different reason: label overflow only exists in *rendered pixel space*,
+    after `to_svg.py`'s layout pass (nudging, char-width/mathtext bbox
+    estimates, and the geometry→pixel scale), none of which is computable
+    from raw geometry coordinates the way `assert_in_canvas` checks a point.
+    So this renders the diagram built so far via the in-process
+    `SVGRenderer` (no Docker/network dependency) and parses the result with
+    `geometry_diagrams.ir.label_bounds.find_out_of_bounds_labels`, which
+    handles both plain-text `<text>` labels and math/LaTeX labels (rendered
+    as `<g>`-wrapped `MathGlyph` path groups, not `<text>` elements).
+
+    Ordering hazard, documented not hidden (same convention as
+    `assert_in_canvas`): this reflects the script as built up to the point
+    it is called — any `label_text()`/`canvas()`/other render_op added
+    afterward is invisible to this check. Call it near the end of a script,
+    after every label-producing call.
+
+    Sandbox cost: this performs a full render-and-parse pass (including
+    mathtext sizing via matplotlib for math/LaTeX labels) inside the
+    script's own sandboxed subprocess, which is CPU/time-limited (see
+    `pydsl/sandbox.py`) — avoid calling this in a loop or many times per
+    script.
+    """
+    from geometry_diagrams.ir.label_bounds import find_out_of_bounds_labels
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    builder = get_builder()
+    builder._advance_sym()
+    diagram = builder.build()
+    svg = SVGRenderer().render(diagram, builder._sym).output
+    violations = find_out_of_bounds_labels(svg)
+    if violations:
+        v = violations[0]
+        more = f" ({len(violations) - 1} more label(s) also out of bounds)" if len(violations) > 1 else ""
+        raise GeometricAssertionError(
+            f"Label {v.text!r} extends outside the canvas by {v.overflow:.2f}px "
+            f"(bbox {v.bbox}){more}"
         )

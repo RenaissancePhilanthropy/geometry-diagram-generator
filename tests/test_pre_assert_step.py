@@ -54,13 +54,13 @@ _ISOSCELES_REQUEST = (
 # Prompt construction
 # ---------------------------------------------------------------------------
 
-def test_build_assert_vocabulary_block_has_24_real_signatures():
+def test_build_assert_vocabulary_block_has_25_real_signatures():
     """Sanity check against the shipped assert_* feature's actual vocabulary --
     generated from live introspection, not a hand-copied string (see module
     docstring; mirrors instructions_python_full.py's approach)."""
     block = build_assert_vocabulary_block()
     lines = block.splitlines()
-    assert len(lines) == 24
+    assert len(lines) == 25
     assert all(line.startswith("def assert_") for line in lines)
     assert "def assert_collinear(" in block
     assert "def assert_in_canvas(" in block  # listed even though unsupported downstream

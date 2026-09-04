@@ -79,7 +79,7 @@ from .llm import get_chat_model, make_system_message
 
 
 def build_assert_vocabulary_block() -> str:
-    """The real 24 assert_* signatures + docstrings, generated from the live
+    """The real 25 assert_* signatures + docstrings, generated from the live
     pydsl API -- mirrors instructions_python_full.py's build_python_full_instructions()
     approach (call the stub generator at prompt-build time) rather than hand-copying a
     vocabulary string that can drift out of sync with the real API. `generate_stub()`
