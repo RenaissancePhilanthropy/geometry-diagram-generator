@@ -8,7 +8,10 @@ of a baseline SVG -- see docs/assemble_diagram_kinds_manifest.py's
 FRESH_CHOICES), this script runs each of
 diagram_kinds_prompts.FINAL_KIND_CONFIGS[kind]'s attempt prompts in order
 and saves every attempt's SVG (and mechanical generation facts) under
-docs/examples/diagram_kinds/attempts/<kind>_attempt<N>.svg and
+docs/examples/diagram_kinds/attempts/<kind>_attempt<N>.svg,  the exact
+generated pydsl script text under
+docs/examples/diagram_kinds/attempt_scripts/<kind>_attempt<N>.py (whenever
+StructuredRunResult.script is non-empty), and
 docs/examples/diagram_kinds/generation_log.json -- a human then reviews the
 saved SVGs and records a verdict per kind in
 assemble_diagram_kinds_manifest.py's FRESH_CHOICES, which
@@ -51,6 +54,7 @@ from geometry_diagrams.ir.renderer import SVGRenderer  # noqa: E402
 
 OUT_DIR = SCRIPT_DIR / "examples" / "diagram_kinds"
 ATTEMPTS_DIR = OUT_DIR / "attempts"
+ATTEMPT_SCRIPTS_DIR = OUT_DIR / "attempt_scripts"
 GENERATION_LOG_PATH = OUT_DIR / "generation_log.json"
 
 
@@ -70,6 +74,7 @@ async def generate_one(
         "error": None,
         "retries": None,
         "svg_path": None,
+        "script_path": None,
     }
     start = time.monotonic()
     try:
@@ -85,6 +90,17 @@ async def generate_one(
         svg_path = ATTEMPTS_DIR / f"{kind}_attempt{attempt_index}.svg"
         svg_path.write_text(result.svg)
         record["svg_path"] = str(svg_path.relative_to(OUT_DIR))
+        # Persist the actual generated pydsl script text alongside the SVG
+        # (StructuredRunResult.script) -- previously discarded after
+        # rendering, which meant no generation run left a record of the
+        # exact code the LLM wrote. Always saved when a script is present,
+        # not gated behind a flag: this is cheap, small, and useful for
+        # every future re-run, not just this ticket's 3 regenerations.
+        if result.script:
+            ATTEMPT_SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+            script_path = ATTEMPT_SCRIPTS_DIR / f"{kind}_attempt{attempt_index}.py"
+            script_path.write_text(result.script)
+            record["script_path"] = str(script_path.relative_to(OUT_DIR))
     except Exception as exc:  # noqa: BLE001 -- record and keep going; a
         # generation failure for one attempt shouldn't abort the whole run.
         record["error"] = str(exc)

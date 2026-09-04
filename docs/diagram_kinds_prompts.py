@@ -1,4 +1,4 @@
-"""Prompts for the 5 diagram kinds that needed a genuine fresh
+"""Prompts for the diagram kinds that needed a genuine fresh
 PythonFullStrategy.run() (not baseline reuse) when the diagram-kinds-poc
 gallery was assembled, per that ticket's corrected scope:
 
@@ -13,6 +13,18 @@ gallery was assembled, per that ticket's corrected scope:
   primitives) -- re-run WITHOUT the cookbook flag, with the prompt
   explicitly calling out margins/spacing informed by the exact baseline
   defect recorded in manifest.json.
+- work_table, l_prism, prism_net: added in a later round-2 gallery review
+  after these 3 previously "baseline-reuse" kinds were found to have their
+  own real construction bugs (see manifest.json / assemble_diagram_kinds_
+  manifest.py's FRESH_CHOICES notes for the exact coordinate evidence):
+  work_table had one non-uniform row height (fixed by re-running WITH
+  experimental_diagram_cookbook=True so table_grid() is available, which
+  computes uniform row heights by construction); l_prism had the same
+  depth edge braced twice in reversed direction (fixed by an explicit,
+  no-cookbook prompt enumerating every distinct edge to label exactly
+  once); prism_net had visually crowded (if numerically distinct) face
+  labels (attempted with an explicit no-cookbook prompt asking for a
+  larger/more-spaced net layout).
 
 Each kind maps to a list of attempt prompts, tried in order (index 0
 first) until one produces a clean render or the list is exhausted (known
@@ -155,8 +167,69 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
             "nothing overlaps or is clipped.",
         ],
     ),
+    "work_table": (
+        True,
+        [
+            "Draw a ratio table showing the number of cups of flour to cups "
+            "of sugar in a recipe: 1 to 2, 2 to 4, 3 to 6, and 4 to 8. Use a "
+            "single bordered grid (one header row for the two column "
+            "labels, then one data row per ratio pair) where every row, "
+            "including the header row, has EXACTLY the same height as "
+            "every other row -- no row may be taller or shorter than the "
+            "others for any reason.",
+        ],
+    ),
+    "l_prism": (
+        False,
+        [
+            "Draw a single L-shaped solid (3D, one combined shape, not two "
+            "separate boxes) formed by joining a 6-long by 4-wide by "
+            "3-tall rectangular block with a 2-by-2-by-3 rectangular notch "
+            "cut into one corner of it. Label exactly these 5 distinct "
+            "edge dimensions, each with its own brace, and label each one "
+            "EXACTLY ONCE: the overall length of 6, the overall width of "
+            "4, the overall height of 3, the notch width of 2, and the "
+            "notch depth of 2. Do not brace the same edge twice, and never "
+            "draw two braces between the same pair of endpoints (whether "
+            "in the same order or reversed) -- every brace must span a "
+            "visually distinct edge of the solid.",
+        ],
+    ),
+    "prism_net": (
+        False,
+        [
+            "Draw the flat unfolded net of a rectangular prism that is 4 "
+            "units long, 2 units wide, and 3 units tall, laid out on a "
+            "grid with each face labeled with its dimensions. Use a large "
+            "layout with generous spacing: leave clear empty space between "
+            "every pair of adjacent faces in the net, and place each "
+            "dimension label with enough room around it that it does not "
+            "sit tightly against a face's edge or another label -- prefer "
+            "a bigger overall canvas over cramming the net into a small "
+            "area.",
+            # Attempt 2 fallback: attempt 0 added a title caption above the
+            # net whose y-coordinate landed outside (above) the canvas's
+            # own viewBox, clipping it entirely invisible. Explicitly ban a
+            # title/caption above the net and require every label
+            # (including the net itself) to stay fully within the canvas
+            # bounds with real margin, while keeping the spacing ask.
+            "Draw the flat unfolded net of a rectangular prism that is 4 "
+            "units long, 2 units wide, and 3 units tall, laid out on a "
+            "grid with each face labeled only with its dimensions (for "
+            "example '4 x 3') -- do not add a face-name label like 'FRONT' "
+            "or 'TOP', and do not add any title or caption above or below "
+            "the net. Use a large layout with generous spacing: leave "
+            "clear empty space between every pair of adjacent faces, and "
+            "place each dimension label centered inside its own face with "
+            "room around it so it never touches an edge or another label. "
+            "Every label must be placed fully inside the canvas bounds, "
+            "with at least half a unit of blank margin on all four sides "
+            "of the whole net -- nothing may be clipped at or fall outside "
+            "any canvas edge.",
+        ],
+    ),
 }
 
 FINAL_KIND_NAMES: list[str] = list(FINAL_KIND_CONFIGS.keys())
 
-assert len(FINAL_KIND_NAMES) == 5, f"expected 5 fresh-generation kinds, got {len(FINAL_KIND_NAMES)}"
+assert len(FINAL_KIND_NAMES) == 8, f"expected 8 fresh-generation kinds, got {len(FINAL_KIND_NAMES)}"

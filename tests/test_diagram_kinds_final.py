@@ -1,10 +1,10 @@
 """Unit tests for the diagram-kinds gallery's final-assembly non-LLM logic:
 manifest schema validation (diagram_kinds_manifest_lib.py) and the
 baseline + fresh-choices combination logic
-(assemble_diagram_kinds_manifest.py). The 5 real fresh
-PythonFullStrategy.run() attempts (area_model, attribute_chart,
-coordinate_plane, scatter_plot, shape_comparison) are the integration work
-itself (see docs/gen_diagram_kinds_examples.py, docs/diagram_kinds_prompts.py,
+(assemble_diagram_kinds_manifest.py). The real fresh PythonFullStrategy.run()
+attempts (area_model, attribute_chart, coordinate_plane, scatter_plot,
+shape_comparison, plus round-2's work_table and l_prism) are the integration
+work itself (see docs/gen_diagram_kinds_examples.py, docs/diagram_kinds_prompts.py,
 and docs/examples/diagram_kinds/generation_log.json/manifest.json) and are
 intentionally not exercised here -- mirrors
 tests/test_diagram_kinds_baseline.py's precedent.
@@ -121,6 +121,27 @@ def test_write_and_read_manifest_round_trips(tmp_path, final_manifest_lib):
     assert loaded == entries
 
 
+def test_write_and_read_manifest_round_trips_script_path(tmp_path, final_manifest_lib):
+    entries = [
+        final_manifest_lib.FinalManifestEntry(
+            kind="work_table", svg_path="svgs/work_table.svg", source="fresh-generation",
+            status="ok", notes="uniform rows", script_path="scripts/work_table.py",
+        ),
+    ]
+    path = tmp_path / "manifest.json"
+    final_manifest_lib.write_manifest(entries, path)
+    loaded = final_manifest_lib.read_manifest(path)
+    assert loaded == entries
+    assert loaded[0].script_path == "scripts/work_table.py"
+
+
+def test_finalmanifestentry_script_path_defaults_to_none(final_manifest_lib):
+    entry = final_manifest_lib.FinalManifestEntry(
+        kind="grid_area", svg_path="svgs/grid_area.svg", source="baseline-reuse", status="ok",
+    )
+    assert entry.script_path is None
+
+
 def test_write_manifest_rejects_duplicate_kinds(tmp_path, final_manifest_lib):
     entries = [
         final_manifest_lib.FinalManifestEntry(kind="grid_area", svg_path=None, source="baseline-reuse", status="known-gap", notes="x"),
@@ -213,7 +234,28 @@ def test_build_final_entries_covers_all_30_real_kinds(assemble_manifest, kinds_p
     assert len(entries) == 30
 
 
-def test_real_fresh_choices_cover_exactly_the_five_flagged_kinds(assemble_manifest):
+def test_real_fresh_choices_cover_exactly_the_flagged_kinds(assemble_manifest):
     assert set(assemble_manifest.FRESH_CHOICES.keys()) == {
         "area_model", "attribute_chart", "coordinate_plane", "scatter_plot", "shape_comparison",
+        "work_table", "l_prism",
     }
+
+
+def test_build_final_entries_threads_script_path_from_fresh_choice(assemble_manifest):
+    baseline_manifest = [_baseline_row("work_table", "pass", "svgs/work_table.svg", "clean")]
+    fresh_choices = {
+        "work_table": {
+            "status": "ok",
+            "attempt_svg": "attempts/work_table_attempt0.svg",
+            "attempt_script": "attempt_scripts/work_table_attempt0.py",
+            "notes": "uniform row heights via table_grid()",
+        },
+    }
+    entries = assemble_manifest.build_final_entries(baseline_manifest, fresh_choices)
+    assert entries[0].script_path == "attempt_scripts/work_table_attempt0.py"
+
+
+def test_build_final_entries_omits_script_path_when_not_given(assemble_manifest):
+    baseline_manifest = [_baseline_row("grid_area", "pass", "svgs/grid_area.svg", "clean")]
+    entries = assemble_manifest.build_final_entries(baseline_manifest, fresh_choices={})
+    assert entries[0].script_path is None

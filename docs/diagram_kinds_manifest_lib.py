@@ -41,6 +41,13 @@ class FinalManifestEntry:
     source: str
     status: str
     notes: str = ""
+    script_path: "str | None" = None
+    """Path (relative to docs/examples/diagram_kinds/) to the exact pydsl
+    script text that generated svg_path, when captured (StructuredRunResult
+    .script -- see gen_diagram_kinds_examples.py). None for every kind whose
+    script wasn't captured at generation time (all baseline-reuse kinds
+    predate script capture, and any kind never regenerated since) -- this is
+    an acceptable, expected gap, not a validation error."""
 
     def __post_init__(self) -> None:
         if self.source not in VALID_SOURCES:

@@ -4,209 +4,239 @@
     "svg_path": "svgs/grid_area.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Clean 6x4 rectangle exactly aligned to the background unit grid; area label correct."
+    "notes": "Clean 6x4 rectangle exactly aligned to the background unit grid; area label correct.",
+    "script_path": null
   },
   {
     "kind": "tape_diagram",
     "svg_path": "svgs/tape_diagram.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Three equal sections labeled 4, brace labeled 12, title equation correct."
+    "notes": "Three equal sections labeled 4, brace labeled 12, title equation correct.",
+    "script_path": null
   },
   {
     "kind": "number_line",
     "svg_path": "svgs/number_line.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Clean 0-10 number line, correct tick marks, points at 3 and 7.5 plotted and labeled."
+    "notes": "Clean 0-10 number line, correct tick marks, points at 3 and 7.5 plotted and labeled.",
+    "script_path": null
   },
   {
     "kind": "coordinate_plane",
     "svg_path": "svgs/coordinate_plane.svg",
     "source": "fresh-generation",
     "status": "ok",
-    "notes": "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a prompt explicitly asking for the 'Translation: (x-2, y-3)' caption to be placed with safe left margin, not flush against the canvas edge. The caption now renders fully inside the canvas, bottom-left, fully legible -- baseline's clipped-caption defect is gone."
+    "notes": "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a prompt explicitly asking for the 'Translation: (x-2, y-3)' caption to be placed with safe left margin, not flush against the canvas edge. The caption now renders fully inside the canvas, bottom-left, fully legible -- baseline's clipped-caption defect is gone.",
+    "script_path": null
   },
   {
     "kind": "scatter_plot",
     "svg_path": null,
     "source": "fresh-generation",
     "status": "known-gap",
-    "notes": "3 fresh PythonFullStrategy.run() attempts (no cookbook), each with progressively more explicit margin/sizing instructions (adequate right-margin -> short axis labels + explicit margins -> an explicit 'landscape, ~1.5x wider than tall, coarse tick spacing, no grid, no slope triangle' rewrite). All 3 rendered with a tall, narrow canvas (viewBox widths ~80-92 vs height 500) and clipped/overlapping text (axis titles, rise/run labels, or point-label coordinates cut off at the right edge or overlapping each other); attempt 2 was visibly worse than attempt 0 (point-coordinate labels ran together at the bottom). Root cause identified by reading geometry_diagrams/ir/to_svg.py's ir_to_svg(): it computes one uniform scale = usable / max(geo_w, geo_h) shared by both axes (equal-unit geometric fidelity, correct for the tool's core geometry diagrams), so a canvas whose y-range (0-100 score) vastly exceeds its x-range (0-6/8 hours) is inherently rendered as a tall, narrow strip -- no amount of prompt wording about margins or 'wide canvas' can change that without either compressing the y-axis (misrepresenting the data) or an engineering change to allow independent x/y scaling, which is out of this ticket's scope (prompt refinement + re-running only). Recorded as an honest known gap, not silently patched over."
+    "notes": "3 fresh PythonFullStrategy.run() attempts (no cookbook), each with progressively more explicit margin/sizing instructions (adequate right-margin -> short axis labels + explicit margins -> an explicit 'landscape, ~1.5x wider than tall, coarse tick spacing, no grid, no slope triangle' rewrite). All 3 rendered with a tall, narrow canvas (viewBox widths ~80-92 vs height 500) and clipped/overlapping text (axis titles, rise/run labels, or point-label coordinates cut off at the right edge or overlapping each other); attempt 2 was visibly worse than attempt 0 (point-coordinate labels ran together at the bottom). Root cause identified by reading geometry_diagrams/ir/to_svg.py's ir_to_svg(): it computes one uniform scale = usable / max(geo_w, geo_h) shared by both axes (equal-unit geometric fidelity, correct for the tool's core geometry diagrams), so a canvas whose y-range (0-100 score) vastly exceeds its x-range (0-6/8 hours) is inherently rendered as a tall, narrow strip -- no amount of prompt wording about margins or 'wide canvas' can change that without either compressing the y-axis (misrepresenting the data) or an engineering change to allow independent x/y scaling, which is out of this ticket's scope (prompt refinement + re-running only). Recorded as an honest known gap, not silently patched over.",
+    "script_path": null
   },
   {
     "kind": "shape_comparison",
     "svg_path": "svgs/shape_comparison.svg",
     "source": "fresh-generation",
     "status": "ok",
-    "notes": "3 fresh PythonFullStrategy.run() attempts (no cookbook). Attempts 0-1 both wrapped the closing summary onto two lines whose vertical spacing was too small, so the lines rendered overlapping each other (baseline's exact defect, reproduced both times despite explicit margin/spacing instructions). Attempt 2's prompt instead forced a single short summary line ('Rectangle has more area; both have equal perimeter') -- this rendered cleanly with no overlap and no clipping, so it was kept as the final SVG."
+    "notes": "3 fresh PythonFullStrategy.run() attempts (no cookbook). Attempts 0-1 both wrapped the closing summary onto two lines whose vertical spacing was too small, so the lines rendered overlapping each other (baseline's exact defect, reproduced both times despite explicit margin/spacing instructions). Attempt 2's prompt instead forced a single short summary line ('Rectangle has more area; both have equal perimeter') -- this rendered cleanly with no overlap and no clipping, so it was kept as the final SVG.",
+    "script_path": null
   },
   {
     "kind": "attribute_chart",
     "svg_path": "svgs/attribute_chart.svg",
     "source": "fresh-generation",
     "status": "ok",
-    "notes": "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True (1 attempt). Single bordered table, one header row (Square/Rectangle/Triangle) and one header column (the three attributes), each check/X mark rendered exactly once -- baseline's defect (duplicated headers, 2 stray decorative bands) is gone."
+    "notes": "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True (1 attempt). Single bordered table, one header row (Square/Rectangle/Triangle) and one header column (the three attributes), each check/X mark rendered exactly once -- baseline's defect (duplicated headers, 2 stray decorative bands) is gone.",
+    "script_path": null
   },
   {
     "kind": "work_table",
     "svg_path": "svgs/work_table.svg",
-    "source": "baseline-reuse",
+    "source": "fresh-generation",
     "status": "ok",
-    "notes": "Clean two-column ratio table, correct values."
+    "notes": "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True (1 attempt), prompted to require every row -- including the header row -- to have exactly the same height. The generated script uses table_grid() with a uniform row_heights list; the rendered SVG's 6 row-divider lines land at y = 48.75, 106.25, 163.75, 221.25, 278.75, 336.25 -- every gap exactly 57.5 -- confirming baseline's defect (one row 69 tall vs. 46 for every other row) is gone.",
+    "script_path": "scripts/work_table.py"
   },
   {
     "kind": "area_model",
     "svg_path": "svgs/area_model.svg",
     "source": "fresh-generation",
     "status": "ok",
-    "notes": "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True (1 attempt). All 4 box-method cells (200, 30, 100, 15) render with distinct, non-overlapping labels and both factor braces (23 = 20+3, 15 = 10+5) are correct -- baseline's defect (2 empty right-column cells, overlapping left-column text) is gone."
+    "notes": "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True (1 attempt). All 4 box-method cells (200, 30, 100, 15) render with distinct, non-overlapping labels and both factor braces (23 = 20+3, 15 = 10+5) are correct -- baseline's defect (2 empty right-column cells, overlapping left-column text) is gone.",
+    "script_path": null
   },
   {
     "kind": "equation_steps",
     "svg_path": "svgs/equation_steps.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Five solving steps stacked cleanly and correctly using the new equation_steps() primitive."
+    "notes": "Five solving steps stacked cleanly and correctly using the new equation_steps() primitive.",
+    "script_path": null
   },
   {
     "kind": "angle_figure",
     "svg_path": "svgs/angle_figure.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Two parallel lines with matching arrowheads, transversal, and angles 1-4 correctly labeled."
+    "notes": "Two parallel lines with matching arrowheads, transversal, and angles 1-4 correctly labeled.",
+    "script_path": null
   },
   {
     "kind": "cube_volume",
     "svg_path": "svgs/cube_volume.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "3x2x2 prism with a unit-cube grid on every visible face; dimensions labeled."
+    "notes": "3x2x2 prism with a unit-cube grid on every visible face; dimensions labeled.",
+    "script_path": null
   },
   {
     "kind": "prism_3d",
     "svg_path": "svgs/prism_3d.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Labeled 5x3x4 prism with dashed hidden edges, clean vertex labels."
+    "notes": "Labeled 5x3x4 prism with dashed hidden edges, clean vertex labels.",
+    "script_path": null
   },
   {
     "kind": "l_prism",
     "svg_path": "svgs/l_prism.svg",
-    "source": "baseline-reuse",
+    "source": "fresh-generation",
     "status": "ok",
-    "notes": "Single joined L-shaped solid (not two separate boxes) with all edge lengths labeled."
+    "notes": "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a prompt explicitly enumerating the 5 distinct edge dimensions to brace (overall length 6, width 4, height 3, notch width 2, notch depth 2) and explicitly forbidding bracing the same edge twice or reusing the same endpoint pair reversed. The rendered SVG has exactly 5 draw_brace() paths, one per label (6, 4, 3, 2, 2), and all 5 have distinct (p1, p2) endpoint pairs (checked as unordered sets) -- baseline's defect (the same depth edge braced twice, forward and reversed, producing two overlapping '2' labels ~2px apart) is gone.",
+    "script_path": "scripts/l_prism.py"
   },
   {
     "kind": "prism_net",
     "svg_path": "svgs/prism_net.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct 6-face net on a grid with dimensions; face labels are a bit crowded but legible."
+    "notes": "Correct 6-face net on a grid with dimensions; face labels are a bit crowded but legible. Round-2 gallery review: 2 fresh PythonFullStrategy.run() attempts (no cookbook) were tried to fix the crowding -- attempt 0 (larger layout with generous spacing, plus per-face name labels) introduced a new defect (a title caption placed outside the canvas's own viewBox, clipping it entirely invisible); attempt 1 (banned the title/face-name labels, required all labels fully within canvas margin) rendered only 5 of the 6 net faces (BACK face dropped entirely) -- a correctness regression, not just a spacing one. Neither attempt improved on this baseline SVG, so per the 'don't force a worse result' guidance it was kept as-is.",
+    "script_path": null
   },
   {
     "kind": "composite_polygon",
     "svg_path": "svgs/composite_polygon.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "L-shaped floor plan correctly decomposed into two labeled rectangles with a total-area calculation."
+    "notes": "L-shaped floor plan correctly decomposed into two labeled rectangles with a total-area calculation.",
+    "script_path": null
   },
   {
     "kind": "dot_plot",
     "svg_path": "svgs/dot_plot.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct stacked-dot counts above each shoe size value; axis label legible."
+    "notes": "Correct stacked-dot counts above each shoe size value; axis label legible.",
+    "script_path": null
   },
   {
     "kind": "circle",
     "svg_path": "svgs/circle.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Circle with center, radius, and diameter segments correctly labeled (r = 4 cm, d = 8 cm)."
+    "notes": "Circle with center, radius, and diameter segments correctly labeled (r = 4 cm, d = 8 cm).",
+    "script_path": null
   },
   {
     "kind": "column_arithmetic",
     "svg_path": "svgs/column_arithmetic.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct column-addition layout with carry marks, rule line, and operator in the left column."
+    "notes": "Correct column-addition layout with carry marks, rule line, and operator in the left column.",
+    "script_path": null
   },
   {
     "kind": "long_division",
     "svg_path": "svgs/long_division.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct house/bracket layout with quotient above and multiply-subtract steps shown below."
+    "notes": "Correct house/bracket layout with quotient above and multiply-subtract steps shown below.",
+    "script_path": null
   },
   {
     "kind": "composite",
     "svg_path": "svgs/composite.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Two labeled figures (rectangle + circle) connected by a labeled draw_brace() curly brace."
+    "notes": "Two labeled figures (rectangle + circle) connected by a labeled draw_brace() curly brace.",
+    "script_path": null
   },
   {
     "kind": "object_array",
     "svg_path": "svgs/object_array.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "3 groups of 5 objects in distinct rows/colors with a correct summary label."
+    "notes": "3 groups of 5 objects in distinct rows/colors with a correct summary label.",
+    "script_path": null
   },
   {
     "kind": "bar_graph",
     "svg_path": "svgs/bar_graph.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct vertical bar chart with labeled axes and value labels; the 'Grapes' x-axis tick wraps onto two lines but is still readable."
+    "notes": "Correct vertical bar chart with labeled axes and value labels; the 'Grapes' x-axis tick wraps onto two lines but is still readable.",
+    "script_path": null
   },
   {
     "kind": "place_value_blocks",
     "svg_path": "svgs/place_value_blocks.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct 2 hundreds-flats / 4 tens-rods / 3 ones for 243, each internally ruled into unit squares."
+    "notes": "Correct 2 hundreds-flats / 4 tens-rods / 3 ones for 243, each internally ruled into unit squares.",
+    "script_path": null
   },
   {
     "kind": "place_value_chart",
     "svg_path": "svgs/place_value_chart.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Clean 4-column place-value chart with digits correctly placed."
+    "notes": "Clean 4-column place-value chart with digits correctly placed.",
+    "script_path": null
   },
   {
     "kind": "number_bond",
     "svg_path": "svgs/number_bond.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct part-whole number bond: 12 on top, 7 and 5 as parts below."
+    "notes": "Correct part-whole number bond: 12 on top, 7 and 5 as parts below.",
+    "script_path": null
   },
   {
     "kind": "ruler_measure",
     "svg_path": "svgs/ruler_measure.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Ruler with quarter-inch ticks and a pencil correctly aligned from 0 to 4.5 inches."
+    "notes": "Ruler with quarter-inch ticks and a pencil correctly aligned from 0 to 4.5 inches.",
+    "script_path": null
   },
   {
     "kind": "fill_level",
     "svg_path": "svgs/fill_level.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Two same-size containers correctly shaded to 25% and 75% with labels."
+    "notes": "Two same-size containers correctly shaded to 25% and 75% with labels.",
+    "script_path": null
   },
   {
     "kind": "balance_scale",
     "svg_path": "svgs/balance_scale.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct level beam on a fulcrum with two pans; left pan shows 2x+3, right pan shows 7, matching the requested equation."
+    "notes": "Correct level beam on a fulcrum with two pans; left pan shows 2x+3, right pan shows 7, matching the requested equation.",
+    "script_path": null
   },
   {
     "kind": "none",
     "svg_path": null,
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Not a rendering kind -- 'none' means no diagram should be shown, so there is nothing to generate or render."
+    "notes": "Not a rendering kind -- 'none' means no diagram should be shown, so there is nothing to generate or render.",
+    "script_path": null
   }
 ]

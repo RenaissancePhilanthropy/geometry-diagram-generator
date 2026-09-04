@@ -51,6 +51,7 @@ from diagram_kinds_manifest_lib import FinalManifestEntry, write_manifest  # noq
 BASELINE_MANIFEST_PATH = BASELINE_DIR / "manifest.json"
 FINAL_MANIFEST_PATH = OUT_DIR / "manifest.json"
 FINAL_SVG_DIR = OUT_DIR / "svgs"
+FINAL_SCRIPTS_DIR = OUT_DIR / "scripts"
 
 # Hand-reviewed outcome for each of the 5 kinds that needed a genuine fresh
 # PythonFullStrategy.run() (see gen_diagram_kinds_examples.py +
@@ -62,8 +63,32 @@ FINAL_SVG_DIR = OUT_DIR / "svgs"
 #   "status": "ok" | "known-gap",
 #   "attempt_svg": path relative to OUT_DIR (attempts/<kind>_attempt<N>.svg),
 #       required for "ok", omitted for "known-gap" (no presentable output),
+#   "attempt_script": path relative to OUT_DIR
+#       (attempt_scripts/<kind>_attempt<N>.py) to the exact generated pydsl
+#       script text, when captured -- optional; omitted for the original 5
+#       kinds below (area_model .. shape_comparison), whose generation
+#       predates script capture being added (round-2 gallery review) and
+#       whose attempts/ files were not kept around afterward,
 #   "notes": str,
 # }
+#
+# NOTE (round-2 gallery review): work_table and l_prism were originally
+# "baseline-reuse" kinds (see .scratch/diagram-kinds-poc/baseline/
+# manifest.json, verdict "pass") whose baseline SVGs were later found by a
+# human reviewer to have real construction bugs the original baseline
+# review missed (non-uniform row height; a depth edge braced twice in
+# reversed direction). They are added here as "fresh-generation" overrides
+# of that stale "pass" verdict -- see their notes below for the exact
+# coordinate evidence of the fix. prism_net's softer "crowded labels" issue
+# was also investigated (2 fresh PythonFullStrategy.run() attempts, no
+# cookbook) but deliberately NOT added here: attempt 0 introduced a new
+# defect (a title label clipped outside the canvas viewBox) and attempt 1
+# regressed further (dropped one of the 6 net faces entirely) -- neither
+# was an improvement on the baseline's "crowded but legible" SVG, so per
+# the "don't force a worse result" guidance the baseline SVG was kept as-is
+# and only its notes (in the final manifest.json, not this historical
+# baseline snapshot) were updated to record what was tried and why it
+# wasn't adopted.
 FRESH_CHOICES: "dict[str, dict]" = {
     "area_model": {
         "status": "ok",
@@ -137,6 +162,37 @@ FRESH_CHOICES: "dict[str, dict]" = {
             "clipping, so it was kept as the final SVG."
         ),
     },
+    "work_table": {
+        "status": "ok",
+        "attempt_svg": "attempts/work_table_attempt0.svg",
+        "attempt_script": "attempt_scripts/work_table_attempt0.py",
+        "notes": (
+            "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True "
+            "(1 attempt), prompted to require every row -- including the header "
+            "row -- to have exactly the same height. The generated script uses "
+            "table_grid() with a uniform row_heights list; the rendered SVG's 6 "
+            "row-divider lines land at y = 48.75, 106.25, 163.75, 221.25, 278.75, "
+            "336.25 -- every gap exactly 57.5 -- confirming baseline's defect (one "
+            "row 69 tall vs. 46 for every other row) is gone."
+        ),
+    },
+    "l_prism": {
+        "status": "ok",
+        "attempt_svg": "attempts/l_prism_attempt0.svg",
+        "attempt_script": "attempt_scripts/l_prism_attempt0.py",
+        "notes": (
+            "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a "
+            "prompt explicitly enumerating the 5 distinct edge dimensions to "
+            "brace (overall length 6, width 4, height 3, notch width 2, notch "
+            "depth 2) and explicitly forbidding bracing the same edge twice or "
+            "reusing the same endpoint pair reversed. The rendered SVG has "
+            "exactly 5 draw_brace() paths, one per label (6, 4, 3, 2, 2), and "
+            "all 5 have distinct (p1, p2) endpoint pairs (checked as unordered "
+            "sets) -- baseline's defect (the same depth edge braced twice, "
+            "forward and reversed, producing two overlapping '2' labels ~2px "
+            "apart) is gone."
+        ),
+    },
 }
 
 
@@ -167,6 +223,7 @@ def build_final_entries(
                     source="fresh-generation",
                     status=choice["status"],
                     notes=choice["notes"],
+                    script_path=choice.get("attempt_script"),
                 )
             )
             continue
@@ -189,7 +246,8 @@ def build_final_entries(
 
 
 def _copy_svgs(entries: "list[FinalManifestEntry]") -> "list[FinalManifestEntry]":
-    """Copy every entry's source SVG into ./svgs/<kind>.svg and return new
+    """Copy every entry's source SVG into ./svgs/<kind>.svg (and, when
+    present, its source script into ./scripts/<kind>.py) and return new
     entries pointing at the copies, so the final manifest is self-contained
     (does not depend on baseline's or gen_diagram_kinds_examples.py's
     output directories staying put)."""
@@ -205,6 +263,15 @@ def _copy_svgs(entries: "list[FinalManifestEntry]") -> "list[FinalManifestEntry]
             src = OUT_DIR / entry.svg_path
         dest = FINAL_SVG_DIR / f"{entry.kind}.svg"
         shutil.copyfile(src, dest)
+
+        script_path = None
+        if entry.script_path is not None:
+            FINAL_SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+            script_src = OUT_DIR / entry.script_path
+            script_dest = FINAL_SCRIPTS_DIR / f"{entry.kind}.py"
+            shutil.copyfile(script_src, script_dest)
+            script_path = str(script_dest.relative_to(OUT_DIR))
+
         updated.append(
             FinalManifestEntry(
                 kind=entry.kind,
@@ -212,6 +279,7 @@ def _copy_svgs(entries: "list[FinalManifestEntry]") -> "list[FinalManifestEntry]
                 source=entry.source,
                 status=entry.status,
                 notes=entry.notes,
+                script_path=script_path,
             )
         )
     return updated
