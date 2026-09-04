@@ -1,0 +1,45 @@
+[14:04] ===== capture mistral x gpqa =====
+[150/150] gpqa_85_s4 ok=False pre=45 post=70
+
+captured 750 record(s) -> interp/activations/fix_mistral_gpqa
+GRADER VALIDATION: extraction FAILED on 4/750 (0.5%) — high = suspect labels.
+spot-check (correct | extracted vs gold | answer snippet):
+   True | 'B' vs 'B' | 'Answer: B'
+   True | 'B' vs 'B' | 'Answer: B'
+   True | 'B' vs 'B' | 'Answer: B'
+   True | 'B' vs 'B' | 'Answer: B'
+  False | 'D' vs 'B' | 'Answer: D'
+   True | 'C' vs 'C' | 'To determine the momentum of the absorbed photon, we ne'
+   True | 'C' vs 'C' | 'First, we need to determine the energy difference betwe'
+   True | 'C' vs 'C' | 'To determine the momentum of the absorbed photon, we ne'
+   True | 'C' vs 'C' | 'To determine the momentum of the absorbed photon that w'
+   True | 'C' vs 'C' | 'To determine the momentum of the absorbed photon, we ne'
+  False | 'C' vs 'B' | 'To determine the correct starting materials, we need to'
+  False | 'C' vs 'B' | "First, let's analyze the reactions:\n\n1. The reduction o"
+  False | 'C' vs 'B' | 'The reactions involve the reduction of compounds to for'
+  False | 'C' vs 'B' | 'To determine the correct starting materials for the rea'
+  False | 'D' vs 'B' | 'To determine the correct starting materials for the rea'
+[16:35] gpqa records: 750
+[16:35] ===== capture mistral geometry (3-turn temporal, 91x4) =====
+[ 87/91] Mathematics_144_s2  grade=validate  pre=90 post=90
+[ 87/91] Mathematics_144_s3  grade=validate  pre=90 post=90
+[ 88/91] Mathematics_107_s0  grade=compile  pre=30 post=10
+[ 88/91] Mathematics_107_s1  grade=validate  pre=30 post=30
+[ 88/91] Mathematics_107_s2  grade=validate  pre=80 post=80
+[ 88/91] Mathematics_107_s3  grade=compile  pre=50 post=0
+[ 89/91] Mathematics_53_s0  grade=parse  pre=95 post=80
+[ 89/91] Mathematics_53_s1  grade=validate  pre=95 post=99
+[ 89/91] Mathematics_53_s2  grade=validate  pre=90 post=90
+[ 89/91] Mathematics_53_s3  grade=validate  pre=90 post=100
+[ 90/91] Mathematics_92_s0  grade=compile  pre=None post=95
+[ 90/91] Mathematics_92_s1  grade=compile  pre=90 post=90
+[ 90/91] Mathematics_92_s2  grade=validate  pre=90 post=80
+[ 90/91] Mathematics_92_s3  grade=compile  pre=90 post=90
+[ 91/91] Mathematics_58_s0  grade=validate  pre=75 post=80
+[ 91/91] Mathematics_58_s1  grade=compile  pre=90 post=80
+[ 91/91] Mathematics_58_s2  grade=compile  pre=80 post=90
+[ 91/91] Mathematics_58_s3  grade=compile  pre=90 post=95
+
+captured 364 record(s) -> interp/activations/fix_mistral_temporal
+[19:54] geometry records: 364
+[19:54] MORNING COMPLETE

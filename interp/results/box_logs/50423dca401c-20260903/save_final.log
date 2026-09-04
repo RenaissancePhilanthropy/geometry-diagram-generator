@@ -1,0 +1,23 @@
+==> Tier A: small artifacts -> /root/geometry-diagram-generator/interp/results
+   fix_mistral_gpqa                    751 npz      694M
+   fix_mistral_math                    751 npz      619M
+   fix_mistral_mmlu_pro                751 npz      689M
+   fix_mistral_temporal                365 npz      914M
+   jlens                                 4 npz      4.1M
+   mistral_temporal                    365 npz      914M
+   mtx_mistral_gpqa                    751 npz      694M
+   mtx_mistral_math                    751 npz      619M
+   mtx_mistral_mmlu_pro                751 npz      689M
+   results dir: 19M	/root/geometry-diagram-generator/interp/results
+git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+   !! push failed — commit is local only; push manually before destroying the box
+==> Tier B: activations (*.npz) -> off-box storage
+   aws s3 sync /root/geometry-diagram-generator/interp/activations -> s3://renphil-geogen-interp/activations  (2.9G)
+   verifying…
+   local files: 2629   remote files (all runs): 6458
+   OK: s3 sync finished
+==> SAVE COMPLETE (50423dca401c-20260903-2000). Safe to destroy the box.

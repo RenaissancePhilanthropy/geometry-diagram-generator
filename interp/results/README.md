@@ -8,6 +8,9 @@ P(True)/logprobs where captured, token positions) plus any analysis outputs, and
 was saved from. Top-level files are the cross-run analysis caches
 (`plot_cache.json`, `tier1_review.json`, `temporal_analysis.json`).
 
+Console logs from each GPU session live under `box_logs/<box-id>-<date>/`. `save_off_box.sh`
+does not collect them, so they are pulled off by hand before a box is destroyed.
+
 The `.npz` activations themselves are NOT here (gigabytes): Tier B of the same script
 uploads them to **`s3://renphil-geogen-interp/activations/<run>/`** (RenPhil AWS, us-east-1;
 auth via `aws sso login --profile renphil`, no static keys allowed by the org SCP). To rerun probes or

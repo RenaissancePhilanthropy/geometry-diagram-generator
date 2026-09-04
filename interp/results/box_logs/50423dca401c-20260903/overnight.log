@@ -1,0 +1,170 @@
+[03:23 +0h00m] download mistralai/Mistral-Small-24B-Instruct-2501
+Fetching 21 files:   0%|          | 0/21 [00:00<?, ?it/s]Fetching 21 files: 100%|██████████| 21/21 [00:00<00:00, 1793.42it/s]
+GPU0: NVIDIA GeForce RTX 5090 31 GB
+GPU1: NVIDIA GeForce RTX 5090 31 GB
+total VRAM 63 GB  (Mistral-24B bf16 needs ~50 GB + headroom; sharded automatically if >1 GPU)
+[03:23 +0h00m] ===== capture mistral x math -> fix_mistral_math =====
+[148/150] math_test_number_theory_89.json_s4 ok=False pre=85 post=100
+[149/150] math_test_number_theory_45.json_s0 ok=True pre=None post=100
+[149/150] math_test_number_theory_45.json_s1 ok=True pre=90 post=100
+[149/150] math_test_number_theory_45.json_s2 ok=True pre=80 post=100
+[149/150] math_test_number_theory_45.json_s3 ok=True pre=None post=100
+[149/150] math_test_number_theory_45.json_s4 ok=True pre=85 post=90
+[150/150] math_test_precalculus_826.json_s0 ok=True pre=None post=95
+[150/150] math_test_precalculus_826.json_s1 ok=False pre=30 post=50
+[150/150] math_test_precalculus_826.json_s2 ok=True pre=None post=100
+[150/150] math_test_precalculus_826.json_s3 ok=True pre=None post=90
+[150/150] math_test_precalculus_826.json_s4 ok=False pre=40 post=80
+
+captured 750 record(s) -> /root/geometry-diagram-generator/interp/activations/fix_mistral_math
+GRADER VALIDATION: extraction FAILED on 0/750 (0.0%) — high = suspect labels.
+spot-check (correct | extracted vs gold | answer snippet):
+   True | '900' vs '900' | 'To solve the problem step by step, we need to find the '
+   True | '900' vs '900' | 'First, we factorize 240 into its prime factors:\n\\[ 240 '
+   True | '900' vs '900' | 'To determine the smallest possible positive value of \\('
+   True | '900' vs '900' | 'To solve the problem, we start by factorizing 240 into '
+  False | '450' vs '900' | 'To determine the smallest possible positive value of $k'
+   True | '23' vs '23' | 'To solve the problem, we need to find the greatest comm'
+   True | '23' vs '23' | 'First, we need to find the greatest common factor (GCF)'
+   True | '23' vs '23' | 'First, we need to find the greatest common factor (GCF)'
+   True | '23' vs '23' | 'To find the greatest common factor (GCF) of 6432 and 13'
+   True | '23' vs '23' | 'To find the greatest common factor (GCF) of 6432 and 13'
+   True | '\\frac{1}{16}' vs '\\frac{1}{16}' | 'To solve the problem step by step, we will use trigonom'
+  False | '0' vs '\\frac{1}{16}' | 'First, we note that $\\cos \\left( \\frac{16 \\pi}{15} \\rig'
+   True | '\\frac{1}{16}' vs '\\frac{1}{16}' | 'To simplify the expression \\(\\cos \\left( \\frac{2 \\pi}{1'
+   True | '\\frac{1}{16}' vs '\\frac{1}{16}' | 'To solve the problem, we start by using the properties '
+  False | '\\frac{1}{32 \\sin \\left( \\frac{2 \\pi}{15} \\right)}' vs '\\frac{1}{16}' | 'To solve the problem, we will use a similar approach as'
+[06:42 +3h18m] records: 750
+[06:42 +3h18m] ===== steer amplify  (fix_mistral_math, matched random control) =====
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] The tokenizer you are loading from 'mistralai/Mistral-Small-24B-Instruct-2501' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+loading mistralai/Mistral-Small-24B-Instruct-2501 sharded across 2 GPUs (bf16) ...
+  device map: {'model.embed_tokens': 0, 'model.layers.0': 0, 'model.layers.1': 0} ...
+fit=375 eval=150 | layer acts=28/40 (block 27) | |w|=5.00 median|h|=19.7 | sigma_w=3.617 sigma_r=0.065 rand_scale=55.81 | mode=amplify coeffs=[0.5, 1.0, 2.0, 4.0]
+   steer c=  +0.50 | parse=1.00 conf ok/fail=97/88 AUROC=0.809 ECE=0.357 logitΔ=+3.49
+   steer c=  +1.00 | parse=1.00 conf ok/fail=96/84 AUROC=0.832 ECE=0.334 logitΔ=+3.18
+   steer c=  +2.00 | parse=1.00 conf ok/fail=94/69 AUROC=0.845 ECE=0.261 logitΔ=+2.58
+   steer c=  +4.00 | parse=1.00 conf ok/fail=88/55 AUROC=0.815 ECE=0.185 logitΔ=+1.73
+  random c=  +0.50 | parse=1.00 conf ok/fail=96/83 AUROC=0.834 ECE=0.331 logitΔ=+3.17
+  random c=  +1.00 | parse=1.00 conf ok/fail=96/84 AUROC=0.832 ECE=0.334 logitΔ=+3.18
+  random c=  +2.00 | parse=1.00 conf ok/fail=96/84 AUROC=0.840 ECE=0.338 logitΔ=+3.17
+  random c=  +4.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+3.19
+saved /root/geometry-diagram-generator/interp/activations/fix_mistral_math/steer_amplify.json
+[06:55 +3h31m] ===== steer add  (fix_mistral_math, matched random control) =====
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[transformers] The tokenizer you are loading from 'mistralai/Mistral-Small-24B-Instruct-2501' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+loading mistralai/Mistral-Small-24B-Instruct-2501 sharded across 2 GPUs (bf16) ...
+  device map: {'model.embed_tokens': 0, 'model.layers.0': 0, 'model.layers.1': 0} ...
+fit=375 eval=150 | layer acts=28/40 (block 27) | |w|=5.00 median|h|=19.7 | sigma_w=3.617 sigma_r=0.065 rand_scale=1.00 | mode=add coeffs=[-16.0, -8.0, -4.0, 0.0, 4.0, 8.0, 16.0]
+   steer c= -16.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=-0.13
+   steer c=  -8.00 | parse=0.66 conf ok/fail=11/14 AUROC=0.462 ECE=0.495 logitΔ=-0.41
+   steer c=  -4.00 | parse=1.00 conf ok/fail=41/28 AUROC=0.672 ECE=0.233 logitΔ=+1.10
+   steer c=  +0.00 | parse=1.00 conf ok/fail=96/84 AUROC=0.832 ECE=0.334 logitΔ=+3.18
+   steer c=  +4.00 | parse=1.00 conf ok/fail=100/100 AUROC=0.500 ECE=0.427 logitΔ=+1.23
+   steer c=  +8.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+0.42
+   steer c= +16.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+0.00
+  random c= -16.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=-0.01
+  random c=  -8.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+2.09
+  random c=  -4.00 | parse=1.00 conf ok/fail=93/75 AUROC=0.813 ECE=0.276 logitΔ=+3.21
+  random c=  +0.00 | parse=1.00 conf ok/fail=96/84 AUROC=0.832 ECE=0.334 logitΔ=+3.18
+  random c=  +4.00 | parse=1.00 conf ok/fail=96/86 AUROC=0.818 ECE=0.346 logitΔ=+3.31
+  random c=  +8.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+3.73
+  random c= +16.00 | parse=0.00 conf ok/fail=None/None AUROC=nan ECE=nan logitΔ=+0.06
+saved /root/geometry-diagram-generator/interp/activations/fix_mistral_math/steer_add.json
+[07:23 +3h59m] ===== capture mistral x mmlu_pro -> fix_mistral_mmlu_pro =====
+[148/150] mmlupro_8214_s4 ok=False pre=45 post=80
+[149/150] mmlupro_11758_s0 ok=False pre=30 post=45
+[149/150] mmlupro_11758_s1 ok=True pre=30 post=45
+[149/150] mmlupro_11758_s2 ok=False pre=40 post=50
+[149/150] mmlupro_11758_s3 ok=False pre=5 post=40
+[149/150] mmlupro_11758_s4 ok=False pre=45 post=40
+[150/150] mmlupro_797_s0 ok=True pre=95 post=95
+[150/150] mmlupro_797_s1 ok=False pre=95 post=95
+[150/150] mmlupro_797_s2 ok=False pre=90 post=90
+[150/150] mmlupro_797_s3 ok=True pre=90 post=95
+[150/150] mmlupro_797_s4 ok=False pre=95 post=95
+
+captured 750 record(s) -> /root/geometry-diagram-generator/interp/activations/fix_mistral_mmlu_pro
+GRADER VALIDATION: extraction FAILED on 1/750 (0.1%) — high = suspect labels.
+spot-check (correct | extracted vs gold | answer snippet):
+  False | 'E' vs 'B' | 'Given that $x_n \\cdot x_{n+1} = n$, we can derive the f'
+  False | 'A' vs 'B' | "First, let's analyze the given information. We know tha"
+  False | 'E' vs 'B' | 'Given that $\\lim_{n\\rightarrow\\infty}\\frac{x_n}{x_{n+1}'
+  False | 'A' vs 'B' | 'To solve this, we start by analyzing the given conditio'
+  False | 'A' vs 'B' | 'To determine the value of $\\pi \\cdot x_1^2$, we first n'
+  False | 'G' vs 'D' | 'To determine the change in head loss due to a temperatu'
+   True | 'D' vs 'D' | 'To determine the change in head loss due to a temperatu'
+  False | 'F' vs 'D' | 'To solve this problem, we need to consider how the chan'
+  False | 'A' vs 'D' | 'To determine the change in head loss when the temperatu'
+  False | 'H' vs 'D' | 'To determine the change in head loss due to a temperatu'
+   True | 'C' vs 'C' | 'Answer: C'
+  False | 'F' vs 'C' | 'Answer: F'
+  False | 'I' vs 'C' | 'Answer: I'
+   True | 'C' vs 'C' | 'To calculate the property tax, multiply the assessed va'
+  False | 'H' vs 'C' | 'Answer: H'
+[08:48 +5h24m] records: 750
+[08:48 +5h24m] ===== capture mistral x gpqa -> fix_mistral_gpqa =====
+Traceback (most recent call last):
+  File "/root/geometry-diagram-generator/interp/capture_qa.py", line 310, in <module>
+    main()
+  File "/root/geometry-diagram-generator/interp/capture_qa.py", line 306, in main
+    run(ap.parse_args())
+  File "/root/geometry-diagram-generator/interp/capture_qa.py", line 52, in run
+    items = task["load"](args.n, args.seed)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/geometry-diagram-generator/interp/tasks_qa.py", line 208, in _gpqa_load
+    ds = load_dataset("Idavidrein/gpqa", "gpqa_diamond", split="train")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/datasets/load.py", line 1696, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/datasets/load.py", line 1323, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/datasets/load.py", line 1209, in dataset_module_factory
+    raise e1 from None
+  File "/venv/main/lib/python3.12/site-packages/datasets/load.py", line 1197, in dataset_module_factory
+    raise DatasetNotFoundError(message) from e
+datasets.exceptions.DatasetNotFoundError: Dataset 'Idavidrein/gpqa' is a gated dataset on the Hub. You must be authenticated to access it.
+[08:48 +5h24m] records: 0
+[08:48 +5h24m] ===== save (Tier A now; Tier B needs your SSO login in the morning) =====
+==> Tier A: small artifacts -> /root/geometry-diagram-generator/interp/results
+   fix_mistral_gpqa                      0 npz         0
+   fix_mistral_math                    750 npz      606M
+   fix_mistral_mmlu_pro                750 npz      676M
+   jlens                                 4 npz      4.1M
+   results dir: 11M	/root/geometry-diagram-generator/interp/results
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got 'root@50423dca401c.(none)')
+==> Tier A: small artifacts -> /root/geometry-diagram-generator/interp/results
+   fix_mistral_gpqa                      0 npz         0
+   fix_mistral_math                    750 npz      606M
+   fix_mistral_mmlu_pro                750 npz      676M
+   jlens                                 4 npz      4.1M
+   results dir: 11M	/root/geometry-diagram-generator/interp/results
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got 'root@50423dca401c.(none)')
+!! Tier B not saved (expected without live SSO creds) — log in and rerun save_off_box.sh before destroying
+[08:48 +5h24m] OVERNIGHT COMPLETE

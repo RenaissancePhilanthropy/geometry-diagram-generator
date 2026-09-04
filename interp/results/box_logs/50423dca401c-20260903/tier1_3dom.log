@@ -1,0 +1,41 @@
+====================================================================================================
+TIER-1 PER-CELL: surface-incremental | decomposition/within-q | selective | stats
+====================================================================================================
+
+--- mtx_mistral_mmlu_pro  (n=750, pass=0.64) ---
+  surface: surf-only=0.541  act-only=0.754  act-early=0.619  surf+act=0.754  increment=+0.213
+  decomp : internal pre=0.568 post=0.754 resid=0.751 | within-q int=0.721 resid=0.721 verb=0.652 (n_mixed=66)
+  select : cov100% int=0.64/verb=0.64  cov80% int=0.73/verb=0.71  cov60% int=0.78/verb=0.72  cov40% int=0.84/verb=0.77  cov20% int=0.91/verb=0.77
+  boot   : internal-verbalized = +0.081 [+0.042,+0.123] SIGNIFICANT
+  layer0 : pooled=0.470 per-fold=0.500 | fix: pooled=0.754 per-fold=0.760
+
+--- mtx_mistral_math  (n=750, pass=0.65) ---
+  surface: surf-only=0.741  act-only=0.834  act-early=0.785  surf+act=0.816  increment=+0.074
+  decomp : internal pre=0.792 post=0.834 resid=0.701 | within-q int=0.627 resid=0.627 verb=0.646 (n_mixed=54)
+  select : cov100% int=0.65/verb=0.65  cov80% int=0.74/verb=0.75  cov60% int=0.86/verb=0.80  cov40% int=0.91/verb=0.85  cov20% int=0.93/verb=0.84
+  boot   : internal-verbalized = +0.056 [+0.024,+0.091] SIGNIFICANT
+  layer0 : pooled=0.436 per-fold=0.500 | fix: pooled=0.834 per-fold=0.832
+
+--- mtx_mistral_gpqa  (n=750, pass=0.44) ---
+  surface: surf-only=0.518  act-only=0.572  act-early=0.553  surf+act=0.565  increment=+0.047
+  decomp : internal pre=0.593 post=0.572 resid=0.544 | within-q int=0.553 resid=0.553 verb=0.533 (n_mixed=91)
+  select : cov100% int=0.44/verb=0.44  cov80% int=0.46/verb=0.46  cov60% int=0.47/verb=0.48  cov40% int=0.51/verb=0.48  cov20% int=0.56/verb=0.51
+  boot   : internal-verbalized = +0.006 [-0.045,+0.056] ns
+  layer0 : pooled=0.470 per-fold=0.500 | fix: pooled=0.572 per-fold=0.576
+
+====================================================================================================
+TIER-1 TRANSFER: train on domain A (POST site, fixed layer) -> test on domain B
+   diagonal = grouped-OOF in-domain; per-domain standardization; PCA(50) fit on train
+====================================================================================================
+
+--- mistral ---
+            mmlu_pro      math      gpqa
+  mmlu_pro     0.754     0.838     0.592
+  math         0.717     0.834     0.572
+  gpqa         0.687     0.737     0.572
+  mean diagonal (in-domain OOF) = 0.720 | mean off-diagonal (transfer) = 0.690
+  direction cosines: gpqa~math=+0.54  gpqa~mmlu=+0.74  math~gpqa=+0.54  math~mmlu=+0.82  mmlu~gpqa=+0.74  mmlu~math=+0.82
+  cross-site POST->cleanPRE: mmlu_p=0.490  math=0.624  gpqa=0.479
+
+saved interp/activations/tier1_review.json
+NOTE: QA surface features use the truncated (200-char) stored answer — length is right-censored; geometry uses the full construction text.
