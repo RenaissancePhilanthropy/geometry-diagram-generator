@@ -180,7 +180,7 @@
     "svg_path": "svgs/bar_graph.svg",
     "source": "baseline-reuse",
     "status": "ok",
-    "notes": "Correct vertical bar chart with labeled axes and value labels; the 'Grapes' x-axis tick wraps onto two lines but is still readable.",
+    "notes": "Correct vertical bar chart with labeled category ticks and a separate x-axis title (\"Fruit\") positioned below all the tick labels, as is standard; value labels above each bar. The \"Grapes\" tick and the \"Fruit\" axis title are two distinct, correctly-positioned <text> elements (y=472.58 and y=486.00 respectively), not one label wrapped across two lines.",
     "script_path": null
   },
   {
@@ -226,10 +226,10 @@
   {
     "kind": "balance_scale",
     "svg_path": "svgs/balance_scale.svg",
-    "source": "baseline-reuse",
+    "source": "fresh-generation",
     "status": "ok",
-    "notes": "Correct level beam on a fulcrum with two pans; left pan shows 2x+3, right pan shows 7, matching the requested equation.",
-    "script_path": null
+    "notes": "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a prompt spelling out the physical constraint that unsecured pan contents must rest ABOVE (smaller y than) the pan platform's surface, not below it. In the rendered SVG the left pan's platform polygon spans y = 239.95-243.97 and its contents (two steelblue blocks then three tomato unit-square blocks, stacked upward) span y = 200.43-239.95; the right pan's platform spans the same y = 239.95-243.97 and its contents (7 gold coins in two rows) span y = 203.78-239.95. Every content shape's y-range sits entirely at or above the platform's top surface (239.95) on both sides -- baseline's defect (pan contents drawn entirely below the platform, y = 313.33-443.33 vs. the platform's own 303.33-313.33) is gone.",
+    "script_path": "scripts/balance_scale.py"
   },
   {
     "kind": "none",

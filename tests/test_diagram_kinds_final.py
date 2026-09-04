@@ -3,8 +3,8 @@ manifest schema validation (diagram_kinds_manifest_lib.py) and the
 baseline + fresh-choices combination logic
 (assemble_diagram_kinds_manifest.py). The real fresh PythonFullStrategy.run()
 attempts (area_model, attribute_chart, coordinate_plane, scatter_plot,
-shape_comparison, plus round-2's work_table and l_prism) are the integration
-work itself (see docs/gen_diagram_kinds_examples.py, docs/diagram_kinds_prompts.py,
+shape_comparison, round-2's work_table and l_prism, plus round-3's
+balance_scale) are the integration work itself (see docs/gen_diagram_kinds_examples.py, docs/diagram_kinds_prompts.py,
 and docs/examples/diagram_kinds/generation_log.json/manifest.json) and are
 intentionally not exercised here -- mirrors
 tests/test_diagram_kinds_baseline.py's precedent.
@@ -237,7 +237,7 @@ def test_build_final_entries_covers_all_30_real_kinds(assemble_manifest, kinds_p
 def test_real_fresh_choices_cover_exactly_the_flagged_kinds(assemble_manifest):
     assert set(assemble_manifest.FRESH_CHOICES.keys()) == {
         "area_model", "attribute_chart", "coordinate_plane", "scatter_plot", "shape_comparison",
-        "work_table", "l_prism",
+        "work_table", "l_prism", "balance_scale",
     }
 
 

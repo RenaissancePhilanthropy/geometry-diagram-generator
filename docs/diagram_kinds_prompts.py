@@ -25,6 +25,18 @@ gallery was assembled, per that ticket's corrected scope:
   once); prism_net had visually crowded (if numerically distinct) face
   labels (attempted with an explicit no-cookbook prompt asking for a
   larger/more-spaced net layout).
+- balance_scale: added in a round-3 gallery review after this previously
+  "baseline-reuse" kind was found to have its own real construction bug
+  (see manifest.json / assemble_diagram_kinds_manifest.py's FRESH_CHOICES
+  notes for the exact coordinate evidence): each pan's contents (a stack of
+  blocks on one pan, a column of coins on the other) were drawn entirely
+  BELOW that pan's platform surface (larger y = lower on the SVG canvas),
+  i.e. hanging off the bottom of the pan rather than resting inside/on top
+  of it. Fixed by re-running WITHOUT the cookbook flag, with a prompt that
+  spells out the physical reasoning (unsecured objects resting on a pan
+  must be drawn above the platform's surface -- smaller y -- or they would
+  visually appear to fall out of/through the pan) rather than a bare
+  coordinate instruction.
 
 Each kind maps to a list of attempt prompts, tried in order (index 0
 first) until one produces a clean render or the list is exhausted (known
@@ -228,8 +240,27 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
             "any canvas edge.",
         ],
     ),
+    "balance_scale": (
+        False,
+        [
+            "Draw a balance scale with a level beam resting on a triangular "
+            "fulcrum, with a pan hanging from each end of the beam, to "
+            "illustrate the equation 2x + 3 = 7 balanced on the two sides. "
+            "Physical constraint: anything drawn on top of a pan (blocks, "
+            "coins, weights, or any other contents) is unsecured and "
+            "resting on the pan's flat platform surface under gravity -- it "
+            "must therefore be drawn entirely ABOVE that platform surface "
+            "(at a smaller y-coordinate / higher up on the canvas than the "
+            "platform), stacked upward from the platform's top edge. Never "
+            "draw pan contents below the platform's surface (at a larger "
+            "y-coordinate) -- that would place them underneath or hanging "
+            "off the bottom of the pan, which is physically impossible: "
+            "unsecured objects placed below a pan's surface would simply "
+            "fall out of the pan under gravity rather than rest in it.",
+        ],
+    ),
 }
 
 FINAL_KIND_NAMES: list[str] = list(FINAL_KIND_CONFIGS.keys())
 
-assert len(FINAL_KIND_NAMES) == 8, f"expected 8 fresh-generation kinds, got {len(FINAL_KIND_NAMES)}"
+assert len(FINAL_KIND_NAMES) == 9, f"expected 9 fresh-generation kinds, got {len(FINAL_KIND_NAMES)}"

@@ -89,6 +89,15 @@ FINAL_SCRIPTS_DIR = OUT_DIR / "scripts"
 # and only its notes (in the final manifest.json, not this historical
 # baseline snapshot) were updated to record what was tried and why it
 # wasn't adopted.
+#
+# NOTE (round-3 gallery review): balance_scale was also originally a
+# "baseline-reuse" kind whose baseline SVG was later found by a human
+# reviewer to have a real construction bug the original baseline review
+# missed: both pans' contents (blocks / coins) were drawn entirely below
+# (larger y than) their pan platform's surface -- i.e. hanging off the
+# bottom of the pan rather than resting inside/on top of it. It is added
+# here as a "fresh-generation" override of that stale "pass" verdict; see
+# its notes below for the exact coordinate evidence of the fix.
 FRESH_CHOICES: "dict[str, dict]" = {
     "area_model": {
         "status": "ok",
@@ -191,6 +200,26 @@ FRESH_CHOICES: "dict[str, dict]" = {
             "sets) -- baseline's defect (the same depth edge braced twice, "
             "forward and reversed, producing two overlapping '2' labels ~2px "
             "apart) is gone."
+        ),
+    },
+    "balance_scale": {
+        "status": "ok",
+        "attempt_svg": "attempts/balance_scale_attempt0.svg",
+        "attempt_script": "attempt_scripts/balance_scale_attempt0.py",
+        "notes": (
+            "Fresh PythonFullStrategy.run() (no cookbook; 1 attempt) with a "
+            "prompt spelling out the physical constraint that unsecured pan "
+            "contents must rest ABOVE (smaller y than) the pan platform's "
+            "surface, not below it. In the rendered SVG the left pan's "
+            "platform polygon spans y = 239.95-243.97 and its contents (two "
+            "steelblue blocks then three tomato unit-square blocks, stacked "
+            "upward) span y = 200.43-239.95; the right pan's platform spans "
+            "the same y = 239.95-243.97 and its contents (7 gold coins in "
+            "two rows) span y = 203.78-239.95. Every content shape's y-range "
+            "sits entirely at or above the platform's top surface (239.95) "
+            "on both sides -- baseline's defect (pan contents drawn entirely "
+            "below the platform, y = 313.33-443.33 vs. the platform's own "
+            "303.33-313.33) is gone."
         ),
     },
 }
