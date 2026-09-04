@@ -1,0 +1,62 @@
+[
+  {
+    "kind": "work_table",
+    "attempt": 0,
+    "prompt": "Draw a ratio table showing the number of cups of flour to cups of sugar in a recipe: 1 to 2, 2 to 4, 3 to 6, and 4 to 8. Use a single bordered grid (one header row for the two column labels, then one data row per ratio pair) where every row, including the header row, has EXACTLY the same height as every other row -- no row may be taller or shorter than the others for any reason.",
+    "use_cookbook": true,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/work_table_attempt0.svg",
+    "script_path": "attempt_scripts/work_table_attempt0.py",
+    "duration_s": 10.69
+  },
+  {
+    "kind": "l_prism",
+    "attempt": 0,
+    "prompt": "Draw a single L-shaped solid (3D, one combined shape, not two separate boxes) formed by joining a 6-long by 4-wide by 3-tall rectangular block with a 2-by-2-by-3 rectangular notch cut into one corner of it. Label exactly these 5 distinct edge dimensions, each with its own brace, and label each one EXACTLY ONCE: the overall length of 6, the overall width of 4, the overall height of 3, the notch width of 2, and the notch depth of 2. Do not brace the same edge twice, and never draw two braces between the same pair of endpoints (whether in the same order or reversed) -- every brace must span a visually distinct edge of the solid.",
+    "use_cookbook": false,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/l_prism_attempt0.svg",
+    "script_path": "attempt_scripts/l_prism_attempt0.py",
+    "duration_s": 28.54
+  },
+  {
+    "kind": "prism_net",
+    "attempt": 0,
+    "prompt": "Draw the flat unfolded net of a rectangular prism that is 4 units long, 2 units wide, and 3 units tall, laid out on a grid with each face labeled with its dimensions. Use a large layout with generous spacing: leave clear empty space between every pair of adjacent faces in the net, and place each dimension label with enough room around it that it does not sit tightly against a face's edge or another label -- prefer a bigger overall canvas over cramming the net into a small area.",
+    "use_cookbook": false,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/prism_net_attempt0.svg",
+    "script_path": "attempt_scripts/prism_net_attempt0.py",
+    "duration_s": 32.83
+  },
+  {
+    "kind": "prism_net",
+    "attempt": 1,
+    "prompt": "Draw the flat unfolded net of a rectangular prism that is 4 units long, 2 units wide, and 3 units tall, laid out on a grid with each face labeled only with its dimensions (for example '4 x 3') -- do not add a face-name label like 'FRONT' or 'TOP', and do not add any title or caption above or below the net. Use a large layout with generous spacing: leave clear empty space between every pair of adjacent faces, and place each dimension label centered inside its own face with room around it so it never touches an edge or another label. Every label must be placed fully inside the canvas bounds, with at least half a unit of blank margin on all four sides of the whole net -- nothing may be clipped at or fall outside any canvas edge.",
+    "use_cookbook": false,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/prism_net_attempt1.svg",
+    "script_path": "attempt_scripts/prism_net_attempt1.py",
+    "duration_s": 26.31
+  },
+  {
+    "kind": "balance_scale",
+    "attempt": 0,
+    "prompt": "Draw a balance scale with a level beam resting on a triangular fulcrum, with a pan hanging from each end of the beam, to illustrate the equation 2x + 3 = 7 balanced on the two sides. Physical constraint: anything drawn on top of a pan (blocks, coins, weights, or any other contents) is unsecured and resting on the pan's flat platform surface under gravity -- it must therefore be drawn entirely ABOVE that platform surface (at a smaller y-coordinate / higher up on the canvas than the platform), stacked upward from the platform's top edge. Never draw pan contents below the platform's surface (at a larger y-coordinate) -- that would place them underneath or hanging off the bottom of the pan, which is physically impossible: unsecured objects placed below a pan's surface would simply fall out of the pan under gravity rather than rest in it.",
+    "use_cookbook": false,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/balance_scale_attempt0.svg",
+    "script_path": "attempt_scripts/balance_scale_attempt0.py",
+    "duration_s": 41.06
+  }
+]
