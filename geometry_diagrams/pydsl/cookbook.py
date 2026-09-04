@@ -15,9 +15,10 @@ API (`point`, `segment`, `circle`, `rectangle`, `draw`, `fill`, ...) plus
 plain Python arithmetic/loops — no new IR node types, no sandbox changes.
 
 Ticket 09 (diagram-kinds-poc) adds the three grid/discrete-object helpers
-below. Later tickets (10-12) append further helpers here — keep each
-group under its own section comment so they can be added without
-restructuring what's already here.
+below. Tickets 10-12 each append further helpers here, keeping each group
+under its own section comment rather than restructuring what's already
+here — ticket 12's oblique_point (3D-to-2D projection) is the last one on
+this branch, so this file is feature-complete after it.
 """
 from __future__ import annotations
 
@@ -343,3 +344,49 @@ def table_grid(
         for c in range(n_cols)
     }
     return TableGrid(cells, n_rows, n_cols)
+
+
+# --- oblique_point: 2D oblique projection of a 3D coordinate (ticket 12) ----
+# Underlies cube_volume, prism_3d, l_prism, and prism_net. Ticket 07's
+# baseline found all four of these already got a "pass" verdict from
+# PythonFullStrategy using only hand-rolled arithmetic (each script computed
+# its own "x + skew*z, y + skew*z" projection inline) — this helper doesn't
+# fix anything broken, it just gives a name to the pattern so future scripts
+# (especially from a less capable model) don't have to reinvent/re-derive it
+# every time, and so every depth-axis point in one script uses a provably
+# consistent skew.
+#
+# There is NO depth/occlusion concept anywhere in the IR — to_sympy.py and
+# to_svg.py know nothing about which 3D face a segment "belongs to" or which
+# edges a solid face would hide. A script using oblique_point() must decide
+# for itself which edges represent hidden geometry (e.g. the back-bottom
+# edges of a box, hidden behind its front-bottom-left corner from the
+# viewer's implied vantage point) and mark exactly those `draw(..., dashed=True)`
+# — oblique_point() only computes coordinates, it has no way to do this for
+# the caller.
+
+def oblique_point(x: float, y: float, z: float, skew: float = 0.5) -> Point:
+    """A 2D oblique (cavalier-style) projection of a 3D coordinate (x, y, z)
+    onto the diagram plane — the standard "receding depth axis" trick for
+    drawing a box/prism/net in 2D: the visible width/height axes (x, y) are
+    drawn true-to-scale, and the depth axis z is projected by adding
+    `skew * z` to BOTH the x and y screen coordinates, so increasing z
+    walks "back and up" along a 45-degree receding direction (skew=0.5, the
+    default, is a common cavalier-projection ratio; pass a smaller skew for
+    a shallower recession, 0 to collapse z entirely and get a flat
+    front-on view). Returns an ordinary Point handle — usable directly with
+    `segment()`, `polygon()`, `draw()`, `.label()`, etc., exactly like a
+    point built via `point(x, y)`. Build every vertex of a 3D solid with
+    this SAME skew value so the whole shape shares one consistent
+    projection; e.g. for a box from (0,0,0) to (w,h,d):
+        front = [oblique_point(0, 0, 0), oblique_point(w, 0, 0),
+                 oblique_point(w, h, 0), oblique_point(0, h, 0)]
+        back  = [oblique_point(0, 0, d), oblique_point(w, 0, d),
+                 oblique_point(w, h, d), oblique_point(0, h, d)]
+        draw(polygon(*front))  # the near face: fully visible
+        draw(segment(back[2], back[3]), dashed=True)  # a hidden back edge
+        draw(segment(front[2], back[2]), dashed=True)  # a hidden connecting edge
+        draw(segment(front[1], back[1]))  # a visible connecting edge
+    See the section comment above for the manual-hidden-edge convention
+    this helper deliberately does NOT automate."""
+    return point(x + skew * z, y + skew * z)

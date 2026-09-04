@@ -107,3 +107,17 @@ def test_cookbook_section_documents_the_ticket_10_bar_helpers():
 def test_cookbook_section_documents_the_ticket_11_table_grid_helper():
     text = build_python_full_instructions(include_cookbook=True)
     assert "def table_grid(" in text, "cookbook section missing def table_grid("
+
+
+def test_cookbook_section_documents_the_ticket_12_oblique_point_helper():
+    text = build_python_full_instructions(include_cookbook=True)
+    assert "def oblique_point(" in text, "cookbook section missing def oblique_point("
+
+
+def test_cookbook_section_documents_the_manual_hidden_edge_convention():
+    """Ticket 12's acceptance criteria: the prompt must explicitly tell the
+    script author that there is no depth/occlusion concept in the IR, so
+    THEY must decide which edges to mark dashed=True as hidden."""
+    text = build_python_full_instructions(include_cookbook=True)
+    assert "depth/occlusion concept" in text
+    assert "dashed=True" in text

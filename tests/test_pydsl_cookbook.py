@@ -15,14 +15,17 @@ import pytest
 
 import geometry_diagrams.pydsl as pydsl_module
 from geometry_diagrams.ir.ir import CircleCenterRadius, Draw, Polygon as PolygonDef, PointFixed, Segment as SegmentDef
-from geometry_diagrams.pydsl.api import canvas, point
+from geometry_diagrams.pydsl.api import canvas, point, segment
 from geometry_diagrams.pydsl.builder import new_builder_context
-from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, table_grid, tick_marks, unit_grid
+from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, oblique_point, table_grid, tick_marks, unit_grid
+from geometry_diagrams.pydsl.handles import Point
 from geometry_diagrams.pydsl.sandbox import run_script
 
 
-def test_cookbook_names_lists_the_ticket_09_10_and_11_helpers():
-    assert pydsl_module.COOKBOOK_NAMES == ["unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid"]
+def test_cookbook_names_lists_the_ticket_09_10_11_and_12_helpers():
+    assert pydsl_module.COOKBOOK_NAMES == [
+        "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point",
+    ]
 
 
 def test_cookbook_names_is_not_exported_in_all():
@@ -478,6 +481,53 @@ def test_table_grid_forwards_draw_style_kwargs():
     assert style["thick"] is True
 
 
+# --- oblique_point (ticket 12) ----------------------------------------------
+
+def test_oblique_point_with_zero_depth_matches_x_y_exactly():
+    with new_builder_context():
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        p = oblique_point(3, 2, 0)
+    assert (p.x, p.y) == pytest.approx((3.0, 2.0))
+
+
+def test_oblique_point_applies_default_skew_to_both_axes():
+    with new_builder_context():
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        p = oblique_point(0, 0, 2)  # default skew=0.5 => +1 on both x and y
+    assert (p.x, p.y) == pytest.approx((1.0, 1.0))
+
+
+def test_oblique_point_honors_custom_skew():
+    with new_builder_context():
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        p = oblique_point(1, 1, 4, skew=0.25)
+    assert (p.x, p.y) == pytest.approx((2.0, 2.0))
+
+
+def test_oblique_point_negative_z_shifts_down_and_left():
+    with new_builder_context():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        p = oblique_point(0, 0, -2, skew=0.5)
+    assert (p.x, p.y) == pytest.approx((-1.0, -1.0))
+
+
+def test_oblique_point_returns_a_real_point_handle_usable_directly():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        a = oblique_point(0, 0, 0)
+        b = oblique_point(2, 0, 0)
+        seg = segment(a, b)
+        ir = builder.build()
+    assert isinstance(a, Point)
+    seg_defs = {d.id for d in ir.define if isinstance(d, SegmentDef)}
+    assert seg.id in seg_defs
+
+
+def test_oblique_point_requires_a_builder():
+    with pytest.raises(RuntimeError):
+        oblique_point(0, 0, 0)
+
+
 # --- end-to-end sandbox wiring (the ticket 08 gotcha, for real) --------------
 
 def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
@@ -489,10 +539,11 @@ def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
 def test_cookbook_helpers_reachable_in_real_sandbox_with_flag_enabled():
     """Runs an actual script through the real subprocess sandbox (not a
     mock, not a direct Python call) with enable_cookbook=True, using all
-    six cookbook helpers together (ticket 09's three, ticket 10's
-    bar/bars, and ticket 11's table_grid) — this is what would have raised
-    AttributeError if COOKBOOK_NAMES had been updated without also
-    re-exporting the functions from pydsl/__init__.py."""
+    seven cookbook helpers together (ticket 09's three, ticket 10's
+    bar/bars, ticket 11's table_grid, and ticket 12's oblique_point) —
+    this is what would have raised AttributeError if COOKBOOK_NAMES had
+    been updated without also re-exporting the functions from
+    pydsl/__init__.py."""
     script = """
 canvas(x_range=(-1, 10), y_range=(-10, 6))
 unit_grid(0, 0, cols=3, rows=3)
@@ -505,10 +556,19 @@ series = bars([1, 2, 3], x0=2, y0=-5, bar_width=0.8, fill_color="teal", labels=[
 grid = table_grid(0, -9, col_widths=[1.5, 1.5], row_heights=[1, 1])
 label_text("A", at=(grid.cell(0, 0).cx, grid.cell(0, 0).cy))
 label_text("B", at=(grid.cell(1, 1).cx, grid.cell(1, 1).cy))
+cube_a = oblique_point(6, -1, 0)
+cube_b = oblique_point(8, -1, 2)
+draw(segment(cube_a, cube_b))
 """
     result = run_script(script, timeout_seconds=10.0, enable_cookbook=True)
     assert result.error is None, result.error
     assert result.diagram_ir is not None
+
+
+def test_oblique_point_unreachable_in_sandbox_without_the_flag():
+    script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\noblique_point(0, 0, 1)\n"
+    result = run_script(script, enable_cookbook=False)
+    assert result.error is not None
 
 
 def test_bar_and_bars_unreachable_in_sandbox_without_the_flag():
