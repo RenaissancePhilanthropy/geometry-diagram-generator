@@ -66,3 +66,27 @@ def test_python_full_instructions_encourage_assert_usage_after_non_obvious_steps
     assert "isn't obvious from the construction steps" in text
     assert "assert_distinct_points" in text
     assert "raises immediately" in text
+
+
+def test_build_python_full_instructions_omits_cookbook_section_by_default():
+    """Ticket 08's regression requirement: with include_cookbook left at its
+    default (False), the prompt must be byte-identical to before this
+    ticket — in particular, no '## Cookbook (experimental)' section at all."""
+    text = build_python_full_instructions()
+    assert "## Cookbook (experimental)" not in text
+
+
+def test_build_python_full_instructions_omits_cookbook_section_when_explicitly_false():
+    text = build_python_full_instructions(include_cookbook=False)
+    assert "## Cookbook (experimental)" not in text
+
+
+def test_build_python_full_instructions_appends_cookbook_section_when_true():
+    """Proves the wiring works end-to-end before any real cookbook helper
+    exists (ticket 08) — the section header must appear, appended after the
+    rest of the prompt."""
+    without = build_python_full_instructions(include_cookbook=False)
+    with_cookbook = build_python_full_instructions(include_cookbook=True)
+    assert "## Cookbook (experimental)" in with_cookbook
+    # Additive only: everything from the default prompt must still be present.
+    assert without in with_cookbook

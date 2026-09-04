@@ -290,6 +290,60 @@ t = triangle(a, b, c)
     assert any(d.kind == "triangle" for d in result.diagram_ir.define)
 
 
+def test_run_script_defaults_enable_cookbook_to_false_in_the_child_payload():
+    """Regression: run_script's JSON payload to the child must carry
+    enable_cookbook explicitly (defaulting False) so the child never
+    silently assumes a stale default — mirrors sandbox_timeout_seconds'
+    own explicit-payload style."""
+    fake_stdin = io.StringIO()
+    with patch("subprocess.Popen") as mock_popen:
+        mock_proc = MagicMock()
+        mock_proc.stdin = fake_stdin
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = io.StringIO('{"kind": "error", "payload": ["boom", "sandbox_setup_error", "boom"]}\n')
+        mock_proc.stderr = io.StringIO("")
+        mock_proc.pid = 12345
+        mock_proc.poll.return_value = 0
+        mock_proc.wait.return_value = None
+        mock_popen.return_value = mock_proc
+        run_script("point(0, 0)")
+    payload = json.loads(fake_stdin.getvalue().strip())
+    assert payload["enable_cookbook"] is False
+
+
+def test_run_script_threads_enable_cookbook_true_into_the_child_payload():
+    fake_stdin = io.StringIO()
+    with patch("subprocess.Popen") as mock_popen:
+        mock_proc = MagicMock()
+        mock_proc.stdin = fake_stdin
+        mock_proc.stdin.close = MagicMock()
+        mock_proc.stdout = io.StringIO('{"kind": "error", "payload": ["boom", "sandbox_setup_error", "boom"]}\n')
+        mock_proc.stderr = io.StringIO("")
+        mock_proc.pid = 12345
+        mock_proc.poll.return_value = 0
+        mock_proc.wait.return_value = None
+        mock_popen.return_value = mock_proc
+        run_script("point(0, 0)", enable_cookbook=True)
+    payload = json.loads(fake_stdin.getvalue().strip())
+    assert payload["enable_cookbook"] is True
+
+
+def test_enable_cookbook_true_with_empty_cookbook_names_behaves_identically_to_default():
+    """Acceptance criterion: with the flag True and COOKBOOK_NAMES still
+    empty, real end-to-end script execution is unchanged."""
+    script = """
+a = point(0, 0)
+b = point(1, 0)
+c = point(0, 1)
+t = triangle(a, b, c)
+"""
+    default_result = run_script(script)
+    cookbook_result = run_script(script, enable_cookbook=True)
+    assert default_result.error is None
+    assert cookbook_result.error is None
+    assert default_result.diagram_ir == cookbook_result.diagram_ir
+
+
 def test_math_is_usable_with_no_import():
     """math is pre-injected into the sandbox namespace — a script can use
     math.pi/math.sqrt/etc. with no import statement, which matters since the

@@ -784,6 +784,13 @@ class PythonFullPipelineState(TypedDict):
     renderer: Optional[Any]
     metadata: PythonFullMetadata
     sandbox_timeout_seconds: float
+    # Ticket 08 (diagram-kinds-poc's experimental gating infrastructure):
+    # False by default everywhere this state dict is built, so the pipeline
+    # is byte-identical to before this field existed unless a caller
+    # explicitly opts in via PythonFullStrategy.run()'s own
+    # experimental_diagram_cookbook parameter. Read by
+    # _generate_script_node (prompt) and _run_script_node (sandbox gate).
+    experimental_diagram_cookbook: bool
 
 
 async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
@@ -827,14 +834,16 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
     attempt = state["attempt"]
     last_error = state.get("last_error", "")
     metadata = state["metadata"]
+    experimental_diagram_cookbook = state.get("experimental_diagram_cookbook", False)
 
     prompt = state["prompt"]
     if attempt > 0 and last_error:
         prompt = f"{prompt}\n\nPrevious attempt failed: {last_error}\nPlease produce a corrected script."
 
     from langchain_core.messages import HumanMessage
+    instructions = build_python_full_instructions(include_cookbook=experimental_diagram_cookbook)
     messages = [
-        make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model_id),
+        make_system_message(instructions, enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=prompt),
     ]
 
@@ -986,7 +995,10 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         return {"last_error": "No script available to run"}
 
     timeout_seconds = state.get("sandbox_timeout_seconds") or SANDBOX_TIMEOUT_SECONDS
-    result = await asyncio.to_thread(run_script, script, timeout_seconds=timeout_seconds)
+    enable_cookbook = state.get("experimental_diagram_cookbook", False)
+    result = await asyncio.to_thread(
+        run_script, script, timeout_seconds=timeout_seconds, enable_cookbook=enable_cookbook,
+    )
 
     if result.error is not None:
         # retry_message is None for ExecutionTimeoutError (sandbox.py's timeout branch never
@@ -1157,8 +1169,25 @@ class PythonFullStrategy(SubstanceStrategy):
         sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
         use_pre_assert_step: bool = False,
         precomputed_advisory_context: "str | None" = None,
+        experimental_diagram_cookbook: bool = False,
     ) -> StructuredRunResult:
-        """use_pre_assert_step and precomputed_advisory_context are the
+        """experimental_diagram_cookbook (ticket 08, diagram-kinds-poc's
+        experimental gating infrastructure): False by default, so leaving it
+        unset reproduces today's shipped prompt and sandbox tool namespace
+        exactly. When True, the script-generation prompt gains a
+        '## Cookbook (experimental)' section (build_python_full_instructions's
+        include_cookbook) and the sandboxed script's tool namespace gains
+        geometry_diagrams.pydsl.COOKBOOK_NAMES on top of the stable API
+        (sandbox.run_script's enable_cookbook) -- currently a no-op in
+        practice since COOKBOOK_NAMES is still empty; later tickets (09-12)
+        populate it with real cookbook helpers. Deliberately NOT threaded
+        through GeometryConfig/RecipeStrategy/facade.py -- those paths never
+        run pydsl scripts and must remain physically unable to enable this.
+        Not available on the edit-mode paths (_run_from_script/build_agent's
+        patch/search_replace/hashline/line_number/_edit_full_rewrite), same
+        as use_pre_assert_step/precomputed_advisory_context above.
+
+        use_pre_assert_step and precomputed_advisory_context are the
         pre-assert pipeline's two ways in (ticket 04, spec.md's Graph
         integration / Item-generation's actual need decisions), mutually
         exclusive:
@@ -1215,6 +1244,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "renderer": renderer,
             "metadata": metadata,
             "sandbox_timeout_seconds": sandbox_timeout_seconds,
+            "experimental_diagram_cookbook": experimental_diagram_cookbook,
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
 

@@ -381,3 +381,92 @@ def test_populate_partial_metadata_on_failure_for_python_full():
     assert record["output_tokens"] == 7
     assert record["python_full_metadata"]["attempt_traces"][0]["error"] == "syntax error"
     assert record["retries"] == 0  # max(0, 1 - 1)
+
+
+# ---------------------------------------------------------------------------
+# Ticket 08: --experimental-diagram-cookbook wiring through run_scenario,
+# gated to the "python_full" strategy branch only.
+# ---------------------------------------------------------------------------
+
+class _FakeCapturingStrategy:
+    """Records the kwargs its run() was called with, mirroring a real
+    strategy's async run() signature closely enough for run_scenario's
+    post-processing to succeed."""
+
+    def __init__(self, enable_cache: bool = False):
+        self.enable_cache = enable_cache
+
+    async def run(self, prompt, model=None, renderer=None, **kwargs):
+        _FakeCapturingStrategy.last_call_kwargs = kwargs
+        return _make_result()
+
+
+async def test_run_scenario_threads_experimental_diagram_cookbook_for_python_full(tmp_path, monkeypatch):
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "python_full", _FakeCapturingStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    await run_scenario(
+        scenario=scenario, strategy_name="python_full", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+        experimental_diagram_cookbook=True,
+    )
+
+    assert _FakeCapturingStrategy.last_call_kwargs["experimental_diagram_cookbook"] is True
+
+
+async def test_run_scenario_defaults_experimental_diagram_cookbook_to_false_for_python_full(tmp_path, monkeypatch):
+    """Regression: leaving the parameter unset must match today's shipped
+    behavior — False, not omitted or None."""
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "python_full", _FakeCapturingStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    await run_scenario(
+        scenario=scenario, strategy_name="python_full", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+    )
+
+    assert _FakeCapturingStrategy.last_call_kwargs["experimental_diagram_cookbook"] is False
+
+
+async def test_run_scenario_never_passes_experimental_diagram_cookbook_to_other_strategies(tmp_path, monkeypatch):
+    """experimental_diagram_cookbook is only meaningful for python_full
+    (mirrors use_pre_assert_step's own docstring) — passing it to
+    run_scenario for any other strategy must not reach that strategy's
+    run() at all, since other strategies' signatures don't accept it."""
+    class _FakeStrictStrategy:
+        def __init__(self, enable_cache: bool = False):
+            pass
+
+        async def run(self, prompt, model=None, renderer=None):
+            return _make_result()
+
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "structured", _FakeStrictStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    record = await run_scenario(
+        scenario=scenario, strategy_name="structured", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+        experimental_diagram_cookbook=True,
+    )
+    assert record["generation_success"] is True
+
+
+def test_experimental_diagram_cookbook_cli_flag_is_registered():
+    """The --experimental-diagram-cookbook flag exists, defaults to False,
+    and is documented as python_full-only — mirrors --use-pre-assert-step's
+    own registration."""
+    import subprocess
+    import sys as _sys
+
+    result = subprocess.run(
+        [_sys.executable, "-m", "evals.run", "--help"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert "--experimental-diagram-cookbook" in result.stdout
+    assert "python_full" in result.stdout

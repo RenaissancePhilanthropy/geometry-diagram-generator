@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 
-def build_python_full_instructions() -> str:
+def build_python_full_instructions(include_cookbook: bool = False) -> str:
     """Assemble the system prompt, embedding the live pydsl API stub text.
 
     Dynamic by design: calls generate_stub() at build time (not a static,
     hand-copied string) — a docstring/signature change to any pydsl op
     updates this prompt automatically, matching the stub generator's stated
     single-source-of-truth purpose.
+
+    include_cookbook (ticket 08, experimental gating infrastructure):
+    False by default, so the returned prompt is byte-identical to before
+    this parameter existed. When True, appends a '## Cookbook
+    (experimental)' section after the rest of the prompt — currently empty
+    (no cookbook helpers exist yet; later tickets populate it) — proving the
+    wiring works end-to-end ahead of any real cookbook content.
     """
     from ..pydsl.stub import generate_stub
 
-    return f"""\
+    base = f"""\
 You are a geometry diagram assistant. Given a user request, write a Python script \
 that constructs the diagram using ONLY the functions and classes below — no other \
 calls, no imports. The script runs in a restricted sandbox; only this API is available. \
@@ -155,4 +162,11 @@ works if you prefer to write it explicitly, but it isn't required.
   invariant doesn't hold, so a wrong `pick`/ratio/axis surfaces before rendering instead
   of silently producing a wrong-looking diagram.
 - The script is plain top-level statements — no function defs required, no return value.
+"""
+    if not include_cookbook:
+        return base
+    return base + """
+## Cookbook (experimental)
+
+(No cookbook helpers are available yet.)
 """

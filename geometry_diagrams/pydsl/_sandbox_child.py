@@ -47,6 +47,21 @@ def _send(kind: str, payload) -> None:
     sys.stdout.flush()
 
 
+def _build_tool_names(pydsl_module, enable_cookbook: bool) -> list:
+    """The names exposed to the sandboxed script as tools: the stable
+    public API (`pydsl_module.__all__`) always, plus the experimental
+    cookbook (`pydsl_module.COOKBOOK_NAMES`) only when `enable_cookbook` is
+    True (ticket 08, diagram-kinds-poc's experimental gating
+    infrastructure). `COOKBOOK_NAMES` is empty until later tickets (09-12)
+    populate `cookbook.py`, so `enable_cookbook=True` is currently a no-op
+    in practice — this function is what makes that wiring provable ahead of
+    any real cookbook content, independent of a real subprocess."""
+    names = list(pydsl_module.__all__)
+    if enable_cookbook:
+        names += list(pydsl_module.COOKBOOK_NAMES)
+    return names
+
+
 def _bind_to_builder(fn, builder: Builder):
     def wrapped(*args, **kwargs):
         token = _current_builder.set(builder)
@@ -62,6 +77,7 @@ def main() -> None:
     request = json.loads(sys.stdin.readline())
     script = request["script"]
     timeout_seconds = request["timeout_seconds"]
+    enable_cookbook = request.get("enable_cookbook", False)
 
     # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
     # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
@@ -150,7 +166,7 @@ def main() -> None:
     builder = Builder()
     tools = {
         name: _bind_to_builder(getattr(pydsl_module, name), builder)
-        for name in pydsl_module.__all__
+        for name in _build_tool_names(pydsl_module, enable_cookbook)
         if callable(getattr(pydsl_module, name)) and not isinstance(getattr(pydsl_module, name), type)
     }
 

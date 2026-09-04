@@ -93,3 +93,13 @@ __all__ = [
     "assert_congruent_triangles",
     "assert_in_canvas",
 ]
+
+# Experimental diagram cookbook (ticket 08, diagram-kinds-poc): names of
+# helper functions from geometry_diagrams.pydsl.cookbook, gated behind
+# PythonFullStrategy.run()'s experimental_diagram_cookbook flag /
+# sandbox.run_script()'s enable_cookbook flag. Deliberately kept OUT of
+# __all__ above — these must never reach a sandboxed script unless the
+# caller opts in (see cookbook.py's own docstring). Empty in this ticket;
+# later tickets (09-12) populate cookbook.py with real functions and list
+# their names here.
+COOKBOOK_NAMES: list[str] = []

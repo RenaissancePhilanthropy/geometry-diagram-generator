@@ -183,7 +183,16 @@ def run_script(
     script: str,
     timeout_seconds: float = 5.0,
     _child_argv: "list[str] | None" = None,
+    enable_cookbook: bool = False,
 ) -> ScriptResult:
+    # enable_cookbook: defense-in-depth gate (ticket 08, diagram-kinds-poc's
+    # experimental gating infrastructure) for the experimental diagram
+    # cookbook (geometry_diagrams/pydsl/cookbook.py) — False by default, so
+    # this call is byte-identical to before this parameter existed. Threaded
+    # through to the sandboxed child via the JSON payload below;
+    # _sandbox_child.py's _build_tool_names only adds
+    # pydsl_module.COOKBOOK_NAMES to the script's tool namespace when this
+    # is True.
     # _child_argv is a testing-only seam for substituting a fake child
     # command (e.g. `[sys.executable, "-c", "<script that sleeps before
     # printing ready>"]`) to exercise the bootstrap-wait/deadline protocol
@@ -211,7 +220,13 @@ def run_script(
     # populates these (they're typed Optional only because Popen supports
     # not redirecting a given stream at all).
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
-    proc.stdin.write(json.dumps({"script": script, "timeout_seconds": timeout_seconds}) + "\n")
+    proc.stdin.write(
+        json.dumps({
+            "script": script,
+            "timeout_seconds": timeout_seconds,
+            "enable_cookbook": enable_cookbook,
+        }) + "\n"
+    )
     proc.stdin.flush()
     proc.stdin.close()
     logger.info("sandbox: spawned pid=%s for a %.1fs script timeout", proc.pid, timeout_seconds)

@@ -305,6 +305,7 @@ async def run_scenario(
     judge_model: str = DEFAULT_AGENT_MODEL,
     enable_cache: bool = False,
     use_pre_assert_step: bool = False,
+    experimental_diagram_cookbook: bool = False,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict.
 
@@ -313,6 +314,10 @@ async def run_scenario(
     integration decision) — other strategies' run() signatures don't accept
     it, so it's passed through conditionally below rather than unconditionally
     kwarg-splatted into every strategy.run() call.
+
+    experimental_diagram_cookbook is the same story (ticket 08,
+    diagram-kinds-poc's experimental gating infrastructure) — only
+    PythonFullStrategy.run() accepts it.
     """
     record: dict[str, Any] = {
         "scenario_id": scenario["id"],
@@ -363,6 +368,7 @@ async def run_scenario(
                 model=model,
                 renderer=renderer,
                 use_pre_assert_step=use_pre_assert_step,
+                experimental_diagram_cookbook=experimental_diagram_cookbook,
             )
         else:
             result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
@@ -867,6 +873,18 @@ async def main() -> None:
         "default).",
     )
     parser.add_argument(
+        "--experimental-diagram-cookbook",
+        action="store_true",
+        default=False,
+        help="Enable PythonFullStrategy's optional experimental diagram cookbook "
+        "(ticket 08, diagram-kinds-poc's experimental gating infrastructure): "
+        "adds a (currently empty) advisory cookbook section to the script-writer "
+        "prompt and, defense in depth, allows the sandboxed script to call any "
+        "cookbook helper. Only affects the 'python_full' strategy; ignored by "
+        "all others. Off by default (matches PythonFullStrategy.run()'s own "
+        "default).",
+    )
+    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -990,6 +1008,7 @@ async def main() -> None:
                         judge_model=args.judge_model,
                         enable_cache=total > 1,
                         use_pre_assert_step=args.use_pre_assert_step,
+                        experimental_diagram_cookbook=args.experimental_diagram_cookbook,
                     ),
                     timeout=args.scenario_timeout,
                 )

@@ -269,6 +269,80 @@ async def test_run_threads_sandbox_timeout_seconds_into_run_script():
     assert mock_run_script.call_args.kwargs["timeout_seconds"] == 9.5
 
 
+@pytest.mark.asyncio
+async def test_run_defaults_experimental_diagram_cookbook_to_false_in_run_script():
+    """Regression (ticket 08): with experimental_diagram_cookbook left at
+    its default, run_script's enable_cookbook kwarg must be False —
+    byte-identical to before this ticket."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm), \
+         patch(
+             "geometry_diagrams.strategies.python_full.run_script",
+             return_value=ScriptResult(
+                 diagram_ir=None, error="boom", error_type="timeout", retry_message="boom",
+             ),
+         ) as mock_run_script:
+        strategy = PythonFullStrategy()
+        with pytest.raises(RuntimeError):
+            await strategy.run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            )
+    assert mock_run_script.call_args.kwargs["enable_cookbook"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_threads_experimental_diagram_cookbook_into_run_script():
+    """PythonFullStrategy.run()'s experimental_diagram_cookbook kwarg must
+    reach run_script's enable_cookbook end-to-end through the LangGraph
+    pipeline state — mirrors sandbox_timeout_seconds' own threading test."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    fake_result = ScriptResult(
+        diagram_ir=None, error="boom", error_type="timeout", retry_message="boom",
+    )
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm), \
+         patch("geometry_diagrams.strategies.python_full.run_script", return_value=fake_result) as mock_run_script:
+        strategy = PythonFullStrategy()
+        with pytest.raises(RuntimeError):
+            await strategy.run(
+                "a right triangle", model="anthropic:claude-sonnet-4-6",
+                renderer=SVGRenderer(), experimental_diagram_cookbook=True,
+            )
+    assert mock_run_script.call_args.kwargs["enable_cookbook"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_default_prompt_omits_cookbook_section():
+    """Regression (ticket 08's most important acceptance criterion): with
+    experimental_diagram_cookbook left at its default, the system prompt
+    sent to the script-writer must not contain the cookbook section at all."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+        )
+    structured_mock = mock_llm.with_structured_output.return_value
+    sent_system_prompt = structured_mock.ainvoke.call_args.args[0][0].content
+    assert "## Cookbook (experimental)" not in sent_system_prompt
+
+
+@pytest.mark.asyncio
+async def test_run_experimental_diagram_cookbook_true_adds_cookbook_section_to_prompt():
+    """Proves the wiring works end-to-end (ticket 08): with the flag True,
+    the system prompt sent to the script-writer gains the (empty) cookbook
+    section."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            experimental_diagram_cookbook=True,
+        )
+    structured_mock = mock_llm.with_structured_output.return_value
+    sent_system_prompt = structured_mock.ainvoke.call_args.args[0][0].content
+    assert "## Cookbook (experimental)" in sent_system_prompt
+
+
 from geometry_diagrams.strategies.python_full import PythonFullMetadata
 
 
