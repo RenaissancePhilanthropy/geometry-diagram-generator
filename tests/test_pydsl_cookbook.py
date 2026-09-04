@@ -17,14 +17,14 @@ import geometry_diagrams.pydsl as pydsl_module
 from geometry_diagrams.ir.ir import CircleCenterRadius, Draw, Polygon as PolygonDef, PointFixed, Segment as SegmentDef
 from geometry_diagrams.pydsl.api import canvas, point, segment
 from geometry_diagrams.pydsl.builder import new_builder_context
-from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, oblique_point, table_grid, tick_marks, unit_grid
+from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, chart_axes, oblique_point, table_grid, tick_marks, unit_grid
 from geometry_diagrams.pydsl.handles import Point
 from geometry_diagrams.pydsl.sandbox import run_script
 
 
 def test_cookbook_names_lists_the_ticket_09_10_11_and_12_helpers():
     assert pydsl_module.COOKBOOK_NAMES == [
-        "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point",
+        "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point", "chart_axes",
     ]
 
 
@@ -528,6 +528,76 @@ def test_oblique_point_requires_a_builder():
         oblique_point(0, 0, 0)
 
 
+# --- chart_axes: affine data-range -> square-ish geometry-region mapping ----
+# (ticket 03, pydsl-authoring-quality). No new IR node types and no builder
+# interaction at all — chart_axes() is pure arithmetic (unlike the other
+# cookbook helpers, it never calls point()/draw() itself), so it does not
+# require an active builder context; the caller feeds its .map(...) output
+# into their own point() calls.
+
+def test_chart_axes_maps_range_corners_and_midpoint():
+    axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), geom_size=10.0)
+    assert axes.map(0, 0) == pytest.approx((0.0, 0.0))
+    assert axes.map(8, 100) == pytest.approx((10.0, 10.0))
+    assert axes.map(4, 50) == pytest.approx((5.0, 5.0))
+
+
+def test_chart_axes_squares_up_a_wide_aspect_ratio_dataset():
+    # A dataset whose native range is 8 wide x 100 tall (aspect 1:12.5) maps
+    # onto an exactly geom_size x geom_size square, regardless of the data's
+    # own aspect ratio.
+    axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), geom_size=10.0)
+    x0, y0 = axes.map(0, 0)
+    x1, y1 = axes.map(8, 100)
+    assert (x1 - x0) == pytest.approx(10.0)
+    assert (y1 - y0) == pytest.approx(10.0)
+
+
+def test_chart_axes_handles_non_zero_origin_ranges():
+    axes = chart_axes(x_data_range=(2, 6), y_data_range=(10, 30), geom_size=5.0)
+    assert axes.map(2, 10) == pytest.approx((0.0, 0.0))
+    assert axes.map(6, 30) == pytest.approx((5.0, 5.0))
+    assert axes.map(4, 20) == pytest.approx((2.5, 2.5))
+
+
+def test_chart_axes_default_geom_size_is_ten():
+    axes = chart_axes(x_data_range=(0, 4), y_data_range=(0, 2))
+    assert axes.map(4, 2) == pytest.approx((10.0, 10.0))
+
+
+def test_chart_axes_does_not_require_a_builder():
+    # Pure arithmetic helper — unlike unit_grid/bar/table_grid/oblique_point,
+    # it never touches the active builder, so it must work with no
+    # new_builder_context() active at all.
+    axes = chart_axes(x_data_range=(0, 1), y_data_range=(0, 1))
+    assert axes.map(0.5, 0.5) == pytest.approx((5.0, 5.0))
+
+
+def test_chart_axes_rejects_zero_width_data_range():
+    with pytest.raises(ValueError):
+        chart_axes(x_data_range=(3, 3), y_data_range=(0, 1))
+    with pytest.raises(ValueError):
+        chart_axes(x_data_range=(0, 1), y_data_range=(5, 5))
+
+
+def test_chart_axes_rejects_non_positive_geom_size():
+    with pytest.raises(ValueError):
+        chart_axes(x_data_range=(0, 1), y_data_range=(0, 1), geom_size=0)
+    with pytest.raises(ValueError):
+        chart_axes(x_data_range=(0, 1), y_data_range=(0, 1), geom_size=-2)
+
+
+def test_chart_axes_map_usable_directly_with_point():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 11), y_range=(-1, 11))
+        axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), geom_size=10.0)
+        gx, gy = axes.map(4, 50)
+        p = point(gx, gy)
+        ir = builder.build()
+    points_by_id = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    assert (points_by_id[p.id].x, points_by_id[p.id].y) == pytest.approx((5.0, 5.0))
+
+
 # --- end-to-end sandbox wiring (the ticket 08 gotcha, for real) --------------
 
 def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
@@ -539,11 +609,11 @@ def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
 def test_cookbook_helpers_reachable_in_real_sandbox_with_flag_enabled():
     """Runs an actual script through the real subprocess sandbox (not a
     mock, not a direct Python call) with enable_cookbook=True, using all
-    seven cookbook helpers together (ticket 09's three, ticket 10's
-    bar/bars, ticket 11's table_grid, and ticket 12's oblique_point) —
-    this is what would have raised AttributeError if COOKBOOK_NAMES had
-    been updated without also re-exporting the functions from
-    pydsl/__init__.py."""
+    eight cookbook helpers together (ticket 09's three, ticket 10's
+    bar/bars, ticket 11's table_grid, ticket 12's oblique_point, and
+    ticket 03/pydsl-authoring-quality's chart_axes) — this is what would
+    have raised AttributeError if COOKBOOK_NAMES had been updated without
+    also re-exporting the functions from pydsl/__init__.py."""
     script = """
 canvas(x_range=(-1, 10), y_range=(-10, 6))
 unit_grid(0, 0, cols=3, rows=3)
@@ -559,6 +629,11 @@ label_text("B", at=(grid.cell(1, 1).cx, grid.cell(1, 1).cy))
 cube_a = oblique_point(6, -1, 0)
 cube_b = oblique_point(8, -1, 2)
 draw(segment(cube_a, cube_b))
+axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), geom_size=4.0)
+gx, gy = axes.map(4, 50)
+chart_pt = point(gx, gy)
+draw_points(chart_pt)
+label_text("(4, 50)", at=(gx, gy - 0.5))
 """
     result = run_script(script, timeout_seconds=10.0, enable_cookbook=True)
     assert result.error is None, result.error
@@ -579,5 +654,11 @@ def test_bar_and_bars_unreachable_in_sandbox_without_the_flag():
 
 def test_table_grid_unreachable_in_sandbox_without_the_flag():
     script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\ntable_grid(0, 0, col_widths=[1], row_heights=[1])\n"
+    result = run_script(script, enable_cookbook=False)
+    assert result.error is not None
+
+
+def test_chart_axes_unreachable_in_sandbox_without_the_flag():
+    script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\nchart_axes(x_data_range=(0, 8), y_data_range=(0, 100))\n"
     result = run_script(script, enable_cookbook=False)
     assert result.error is not None

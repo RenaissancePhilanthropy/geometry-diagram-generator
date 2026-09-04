@@ -390,3 +390,85 @@ def oblique_point(x: float, y: float, z: float, skew: float = 0.5) -> Point:
     See the section comment above for the manual-hidden-edge convention
     this helper deliberately does NOT automate."""
     return point(x + skew * z, y + skew * z)
+
+
+# --- chart_axes: affine data-range -> square-ish geometry-region mapping ----
+# (ticket 03, pydsl-authoring-quality). Replaces the rejected
+# canvas(preserve_aspect=False) idea, which would have required to_svg.py to
+# compute independent x/y scale factors — invasive (scale feeds ~30
+# downstream call sites: circle radii, arc/ellipse rendering, angle-mark
+# radii, tick_marks' perpendicular-offset math) and risks shearing every
+# other diagram kind that shares the renderer. chart_axes() achieves the
+# same practical outcome — a wide-aspect-ratio dataset (e.g. an x range of
+# 0-8 against a y range of 0-100) rendering with sane, roughly-square
+# proportions instead of a forced tall/narrow canvas — with ZERO renderer
+# changes: it only maps where points are PLACED, before any point() call is
+# made, so the underlying geometry stays uniformly scaled.
+#
+# Unlike every other cookbook helper above, chart_axes() never calls
+# point()/draw() itself and touches no builder state at all — it is pure
+# arithmetic, usable with no new_builder_context() active. A script calls it
+# once, then feeds its .map(x, y) output into point() for every data point
+# it plots — while still using the TRUE, unmapped data values as label text,
+# since only placement (not the underlying data) goes through the mapping.
+
+class ChartAxes:
+    """The return value of `chart_axes()`: an affine mapping from a
+    dataset's native (data_x, data_y) coordinates to (geom_x, geom_y)
+    geometry-space coordinates, compressing the data's own x/y ranges
+    (independently) into a `geom_size` x `geom_size` square region anchored
+    at the geometry origin. Call `.map(data_x, data_y)` for every data point
+    before passing it to `point()` — e.g. `point(*axes.map(hours, score))`.
+    Only placement goes through the mapping: draw any label with the TRUE,
+    unmapped data value as its text (e.g. `label_text(str(score), at=...)`),
+    never the mapped geom_x/geom_y, so the diagram never misrepresents the
+    underlying data."""
+    __slots__ = ("x_min", "x_max", "y_min", "y_max", "geom_size", "_scale_x", "_scale_y")
+
+    def __init__(self, x_min: float, x_max: float, y_min: float, y_max: float, geom_size: float):
+        self.x_min, self.x_max = x_min, x_max
+        self.y_min, self.y_max = y_min, y_max
+        self.geom_size = geom_size
+        self._scale_x = geom_size / (x_max - x_min)
+        self._scale_y = geom_size / (y_max - y_min)
+
+    def map(self, data_x: float, data_y: float) -> "tuple[float, float]":
+        """Map one (data_x, data_y) data-space coordinate to its
+        (geom_x, geom_y) geometry-space coordinate."""
+        geom_x = (data_x - self.x_min) * self._scale_x
+        geom_y = (data_y - self.y_min) * self._scale_y
+        return (geom_x, geom_y)
+
+
+def chart_axes(
+    x_data_range: "tuple[float, float]",
+    y_data_range: "tuple[float, float]",
+    geom_size: float = 10.0,
+) -> ChartAxes:
+    """Build an affine mapping that compresses a dataset's native
+    `x_data_range`/`y_data_range` into a roughly square `geom_size` x
+    `geom_size` geometry region — for plotting chart-shaped diagrams
+    (`scatter_plot` and similar) whose data ranges have very different
+    magnitudes on each axis (e.g. 0-8 hours studied vs. 0-100 test score),
+    which would otherwise force a tall/narrow canvas out of proportion with
+    the intended chart. Each axis is scaled independently to fit
+    `geom_size`, so the mapped region comes out exactly square regardless of
+    the data's own aspect ratio — this is a deliberate compression, not an
+    aspect-ratio-preserving transform.
+
+    Returns a `ChartAxes` — call `.map(data_x, data_y)` once per data point,
+    BEFORE calling `point()`, e.g. `point(*axes.map(hours, score))`. Use
+    this mapping for placement ONLY: any label text drawn on the chart
+    (axis tick labels, per-point value labels) must still show the TRUE,
+    unmapped data value, never the mapped geometry coordinate — e.g.
+    `label_text(str(score), at=(gx, gy - 0.3))` where `gx, gy =
+    axes.map(hours, score)`."""
+    x_min, x_max = x_data_range
+    y_min, y_max = y_data_range
+    if x_max == x_min:
+        raise ValueError(f"chart_axes(): x_data_range must have nonzero width, got {x_data_range!r}")
+    if y_max == y_min:
+        raise ValueError(f"chart_axes(): y_data_range must have nonzero width, got {y_data_range!r}")
+    if geom_size <= 0:
+        raise ValueError(f"chart_axes(): geom_size must be positive, got {geom_size!r}")
+    return ChartAxes(x_min, x_max, y_min, y_max, geom_size)

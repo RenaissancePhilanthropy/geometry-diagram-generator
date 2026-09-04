@@ -121,3 +121,16 @@ def test_cookbook_section_documents_the_manual_hidden_edge_convention():
     text = build_python_full_instructions(include_cookbook=True)
     assert "depth/occlusion concept" in text
     assert "dashed=True" in text
+
+
+def test_cookbook_section_documents_the_chart_axes_helper():
+    text = build_python_full_instructions(include_cookbook=True)
+    assert "def chart_axes(" in text, "cookbook section missing def chart_axes("
+
+
+def test_cookbook_section_documents_the_chart_axes_true_value_label_convention():
+    """chart_axes() maps point PLACEMENT only — the prompt must tell the
+    script author to keep label text as the true, unmapped data value."""
+    text = build_python_full_instructions(include_cookbook=True)
+    assert "PLACEMENT ONLY" in text
+    assert "TRUE, unmapped data value" in text
