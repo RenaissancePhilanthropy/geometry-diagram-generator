@@ -25,6 +25,7 @@ from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_
 from .structured import dispatch_query
 from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
+from ..ir.label_bounds import find_out_of_bounds_labels
 from ..ir.render_util import build_entity_manifest
 from ..ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from ..pydsl.patch import apply_script_patch
@@ -791,6 +792,14 @@ class PythonFullPipelineState(TypedDict):
     # experimental_diagram_cookbook parameter. Read by
     # _generate_script_node (prompt) and _run_script_node (sandbox gate).
     experimental_diagram_cookbook: bool
+    # Ticket 02 (pydsl-authoring-quality): False by default everywhere this
+    # state dict is built (including _run_from_script's edit-mode state
+    # dict, which never sets this key at all -- state.get() below then
+    # falls back to False), so the pipeline is byte-identical to before
+    # this field existed unless a caller explicitly opts in via
+    # PythonFullStrategy.run()'s own verify_labels_in_canvas parameter.
+    # Read by _run_script_node only, right after run_ir_pipeline() returns.
+    verify_labels_in_canvas: bool
 
 
 async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
@@ -1030,6 +1039,38 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
 
     try:
         pipeline_result = await run_ir_pipeline(diagram_ir, renderer)
+
+        # Ticket 02 (pydsl-authoring-quality): verify_labels_in_canvas gate.
+        # The checker parses SVG stamped by to_svg.py's own label-emission
+        # code (data-bbox attributes) -- that stamping only happens on the
+        # in-process SVGRenderer path, never on TikZRenderer's dvisvgm
+        # output. So this only means something under an SVGRenderer;
+        # anything else (TikZRenderer, or renderer=None which defaults to
+        # TikZRenderer inside run_ir_pipeline) is a documented no-op here,
+        # not a crash and not a false pass from misparsing TikZ's own SVG
+        # conventions.
+        if state.get("verify_labels_in_canvas", False) and isinstance(renderer, SVGRenderer):
+            violations = find_out_of_bounds_labels(pipeline_result.svg)
+            if violations:
+                v = violations[0]
+                more = (
+                    f" ({len(violations) - 1} more label(s) also out of bounds)"
+                    if len(violations) > 1 else ""
+                )
+                error_text = (
+                    f"Label {v.text!r} extends outside the canvas by {v.overflow:.2f}px"
+                    f"{more}. Move the label (or widen canvas()) so every label "
+                    "renders fully within the canvas bounds."
+                )
+                if metadata is not None:
+                    metadata.attempt_traces[-1].stage = "label_bounds"
+                    metadata.attempt_traces[-1].error = error_text
+                return {
+                    "last_error": error_text,
+                    "attempt": state["attempt"] + 1,
+                    "result": None,
+                }
+
         pipeline_result.retries = state["attempt"]
         # Strip leading/trailing blank lines from the STORED script (not the
         # executed one — a leading blank line is harmless to run). Left in,
@@ -1076,7 +1117,13 @@ async def _run_from_script(
     input_tokens/output_tokens/cost_usd seed the pipeline state with the
     edit-generation LLM call's own usage (e.g. from generate_search_replace)
     so it isn't dropped just because it happened before this script-only
-    pipeline run rather than inside it."""
+    pipeline run rather than inside it.
+
+    verify_labels_in_canvas (ticket 02) is deliberately out of scope here,
+    same precedent as experimental_diagram_cookbook/use_pre_assert_step:
+    the state dict below never sets that key, so _run_script_node's
+    state.get("verify_labels_in_canvas", False) falls back to False for
+    every edit-mode rerun."""
     state: PythonFullPipelineState = {
         "prompt": "", "model_id": "", "enable_cache": False,
         "attempt": 0, "last_error": "", "script": script, "result": None,
@@ -1170,8 +1217,37 @@ class PythonFullStrategy(SubstanceStrategy):
         use_pre_assert_step: bool = False,
         precomputed_advisory_context: "str | None" = None,
         experimental_diagram_cookbook: bool = False,
+        verify_labels_in_canvas: bool = False,
     ) -> StructuredRunResult:
-        """experimental_diagram_cookbook (ticket 08, diagram-kinds-poc's
+        """verify_labels_in_canvas (ticket 02, pydsl-authoring-quality):
+        False by default -- leaving it unset reproduces today's shipped
+        pipeline exactly. When True, right after the IR pipeline renders
+        each attempt, `_run_script_node` runs
+        `geometry_diagrams.ir.label_bounds.find_out_of_bounds_labels`
+        against the rendered SVG; any label extending past the canvas's
+        viewBox triggers the same retry shape as the "nothing was drawn"
+        guard (bumps `attempt`, sets `last_error`, bounded by the same
+        MAX_RETRIES loop as every other retry path here).
+
+        Renderer scope, documented no-op: the checker only understands SVG
+        stamped with `to_svg.py`'s own `data-bbox` label attributes, which
+        only the in-process `SVGRenderer` path produces. Under a
+        `TikZRenderer` (dvisvgm-rendered SVG, no such attributes) or the
+        default `renderer=None` (which `run_ir_pipeline` resolves to
+        `TikZRenderer`), `verify_labels_in_canvas=True` is a no-op: the
+        checker finds no `data-bbox` attributes to inspect and never
+        triggers a retry. Not a crash, and not a silent false pass from
+        misparsing TikZ's own SVG conventions.
+
+        Not available on the edit-mode paths (`_run_from_script`/
+        `build_agent`'s patch/search_replace/hashline/line_number/
+        `_edit_full_rewrite`) -- same precedent as
+        `experimental_diagram_cookbook` above: edit-mode reruns build their
+        own state dict independently and never set this key, so
+        `_run_script_node`'s `state.get("verify_labels_in_canvas", False)`
+        falls back to False there.
+
+        experimental_diagram_cookbook (ticket 08, diagram-kinds-poc's
         experimental gating infrastructure): False by default, so leaving it
         unset reproduces today's shipped prompt and sandbox tool namespace
         exactly. When True, the script-generation prompt gains a
@@ -1245,6 +1321,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "metadata": metadata,
             "sandbox_timeout_seconds": sandbox_timeout_seconds,
             "experimental_diagram_cookbook": experimental_diagram_cookbook,
+            "verify_labels_in_canvas": verify_labels_in_canvas,
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
 

@@ -2062,3 +2062,96 @@ def test_advisory_text_for_model_gates_extra_category_by_allowlist():
     )
     assert "assert_distinct_points(A, B)" in not_allowlisted_text
     assert "assert_equal_length(segment(A,B), segment(A,C))" not in not_allowlisted_text
+
+
+# ---------------------------------------------------------------------------
+# verify_labels_in_canvas (ticket 02, pydsl-authoring-quality): automatic
+# strategy-level call site for label_bounds.find_out_of_bounds_labels(),
+# mirroring the "nothing was drawn" retry shape in _run_script_node.
+# ---------------------------------------------------------------------------
+
+from geometry_diagrams.ir.renderer import RenderResult, TikZRenderer
+
+OVERFLOW_SCRIPT = """
+canvas(x_range=(-5, 5), y_range=(-5, 5))
+point(0, 0)
+label_text("way off canvas", at=(500, 0))
+"""
+
+
+@pytest.mark.asyncio
+async def test_verify_labels_in_canvas_retries_on_out_of_bounds_label():
+    """A genuine rendered violation (real SVGRenderer render, real
+    find_out_of_bounds_labels parse) must trigger the existing retry loop,
+    exactly like the "nothing was drawn" guard."""
+    mock_llm = _make_mock_llm([
+        _make_script_response(OVERFLOW_SCRIPT),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            verify_labels_in_canvas=True,
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 1
+
+
+@pytest.mark.asyncio
+async def test_verify_labels_in_canvas_is_noop_when_nothing_overflows():
+    """A clean render (no overflowing labels) must behave identically to
+    verify_labels_in_canvas=False -- no extra retry."""
+    mock_llm = _make_mock_llm([_make_script_response(VALID_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+            verify_labels_in_canvas=True,
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+
+
+@pytest.mark.asyncio
+async def test_verify_labels_in_canvas_defaults_to_false():
+    """Regression: leaving verify_labels_in_canvas unset must reproduce
+    today's shipped behavior exactly -- an out-of-bounds label does NOT
+    trigger a retry when the flag is left at its default."""
+    mock_llm = _make_mock_llm([_make_script_response(OVERFLOW_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer(),
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0
+
+
+@pytest.mark.asyncio
+async def test_verify_labels_in_canvas_is_noop_under_tikz_renderer():
+    """The checker only understands SVG stamped with to_svg.py's data-bbox
+    attributes -- under a TikZRenderer (dvisvgm output, no data-bbox
+    attributes at all), verify_labels_in_canvas=True must be a documented
+    no-op: no crash, no false-pass-turned-failure, identical behavior to
+    the flag being off. The mocked TikZRenderer.render() output below is
+    representative of real dvisvgm SVG: it has a viewBox but no data-bbox
+    attributes anywhere, since to_svg.py's label-stamping code never runs
+    on the TikZ path."""
+    tikz_like_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<text x="10" y="10">way off canvas</text></svg>'
+    )
+    mock_llm = _make_mock_llm([_make_script_response(OVERFLOW_SCRIPT)])
+    with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm), \
+         patch.object(
+             TikZRenderer, "render",
+             return_value=RenderResult(output=tikz_like_svg, format="svg", intermediate="% tikz code"),
+         ):
+        strategy = PythonFullStrategy()
+        result = await strategy.run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=TikZRenderer(),
+            verify_labels_in_canvas=True,
+        )
+    assert isinstance(result, StructuredRunResult)
+    assert result.retries == 0

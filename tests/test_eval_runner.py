@@ -470,3 +470,80 @@ def test_experimental_diagram_cookbook_cli_flag_is_registered():
     )
     assert "--experimental-diagram-cookbook" in result.stdout
     assert "python_full" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Ticket 02 (pydsl-authoring-quality): --verify-labels-in-canvas wiring
+# through run_scenario, gated to the "python_full" strategy branch only.
+# Mirrors ticket 08's experimental_diagram_cookbook tests above exactly.
+# ---------------------------------------------------------------------------
+
+async def test_run_scenario_threads_verify_labels_in_canvas_for_python_full(tmp_path, monkeypatch):
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "python_full", _FakeCapturingStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    await run_scenario(
+        scenario=scenario, strategy_name="python_full", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+        verify_labels_in_canvas=True,
+    )
+
+    assert _FakeCapturingStrategy.last_call_kwargs["verify_labels_in_canvas"] is True
+
+
+async def test_run_scenario_defaults_verify_labels_in_canvas_to_false_for_python_full(tmp_path, monkeypatch):
+    """Regression: leaving the parameter unset must match today's shipped
+    behavior — False, not omitted or None."""
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "python_full", _FakeCapturingStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    await run_scenario(
+        scenario=scenario, strategy_name="python_full", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+    )
+
+    assert _FakeCapturingStrategy.last_call_kwargs["verify_labels_in_canvas"] is False
+
+
+async def test_run_scenario_never_passes_verify_labels_in_canvas_to_other_strategies(tmp_path, monkeypatch):
+    """verify_labels_in_canvas is only meaningful for python_full (mirrors
+    experimental_diagram_cookbook's own docstring) — passing it to
+    run_scenario for any other strategy must not reach that strategy's
+    run() at all, since other strategies' signatures don't accept it."""
+    class _FakeStrictStrategy:
+        def __init__(self, enable_cache: bool = False):
+            pass
+
+        async def run(self, prompt, model=None, renderer=None):
+            return _make_result()
+
+    from evals.run import run_scenario
+
+    monkeypatch.setitem(_STRATEGY_MAP, "structured", _FakeStrictStrategy)
+    scenario = {"id": "s1", "prompt": "draw a triangle"}
+
+    record = await run_scenario(
+        scenario=scenario, strategy_name="structured", model="anthropic:claude-sonnet-4-6",
+        repeat_index=0, svg_output_dir=tmp_path, benchmark="test",
+        verify_labels_in_canvas=True,
+    )
+    assert record["generation_success"] is True
+
+
+def test_verify_labels_in_canvas_cli_flag_is_registered():
+    """The --verify-labels-in-canvas flag exists, defaults to False, and is
+    documented as python_full-only — mirrors --experimental-diagram-cookbook's
+    own registration."""
+    import subprocess
+    import sys as _sys
+
+    result = subprocess.run(
+        [_sys.executable, "-m", "evals.run", "--help"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert "--verify-labels-in-canvas" in result.stdout
+    assert "python_full" in result.stdout

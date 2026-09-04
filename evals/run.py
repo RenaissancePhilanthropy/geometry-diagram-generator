@@ -306,6 +306,7 @@ async def run_scenario(
     enable_cache: bool = False,
     use_pre_assert_step: bool = False,
     experimental_diagram_cookbook: bool = False,
+    verify_labels_in_canvas: bool = False,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict.
 
@@ -317,6 +318,10 @@ async def run_scenario(
 
     experimental_diagram_cookbook is the same story (ticket 08,
     diagram-kinds-poc's experimental gating infrastructure) — only
+    PythonFullStrategy.run() accepts it.
+
+    verify_labels_in_canvas is the same story again (ticket 02,
+    pydsl-authoring-quality's label-bounds checker) — only
     PythonFullStrategy.run() accepts it.
     """
     record: dict[str, Any] = {
@@ -369,6 +374,7 @@ async def run_scenario(
                 renderer=renderer,
                 use_pre_assert_step=use_pre_assert_step,
                 experimental_diagram_cookbook=experimental_diagram_cookbook,
+                verify_labels_in_canvas=verify_labels_in_canvas,
             )
         else:
             result = await strategy.run(scenario["prompt"], model=model, renderer=renderer)
@@ -886,6 +892,18 @@ async def main() -> None:
         "default).",
     )
     parser.add_argument(
+        "--verify-labels-in-canvas",
+        action="store_true",
+        default=False,
+        help="Enable PythonFullStrategy's optional automatic label-bounds check "
+        "(ticket 02, pydsl-authoring-quality): after each attempt renders, "
+        "checks every label against the rendered SVG's viewBox and retries "
+        "generation if any label extends past the canvas. Only means "
+        "something under the SVG renderer (a no-op under TikZRenderer). "
+        "Only affects the 'python_full' strategy; ignored by all others. Off "
+        "by default (matches PythonFullStrategy.run()'s own default).",
+    )
+    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -1010,6 +1028,7 @@ async def main() -> None:
                         enable_cache=total > 1,
                         use_pre_assert_step=args.use_pre_assert_step,
                         experimental_diagram_cookbook=args.experimental_diagram_cookbook,
+                        verify_labels_in_canvas=args.verify_labels_in_canvas,
                     ),
                     timeout=args.scenario_timeout,
                 )
