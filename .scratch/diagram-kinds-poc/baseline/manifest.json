@@ -1,0 +1,182 @@
+[
+  {
+    "kind": "grid_area",
+    "verdict": "pass",
+    "svg_path": "svgs/grid_area.svg",
+    "notes": "Clean 6x4 rectangle exactly aligned to the background unit grid; area label correct."
+  },
+  {
+    "kind": "tape_diagram",
+    "verdict": "pass",
+    "svg_path": "svgs/tape_diagram.svg",
+    "notes": "Three equal sections labeled 4, brace labeled 12, title equation correct."
+  },
+  {
+    "kind": "number_line",
+    "verdict": "pass",
+    "svg_path": "svgs/number_line.svg",
+    "notes": "Clean 0-10 number line, correct tick marks, points at 3 and 7.5 plotted and labeled."
+  },
+  {
+    "kind": "coordinate_plane",
+    "verdict": "partial",
+    "svg_path": "svgs/coordinate_plane.svg",
+    "notes": "Triangle, translation, and all vertex labels render correctly, but the 'Translation: (x-2, y-3)' caption is positioned partly off the left edge of the canvas and is clipped/unreadable."
+  },
+  {
+    "kind": "scatter_plot",
+    "verdict": "partial",
+    "svg_path": "svgs/scatter_plot.svg",
+    "notes": "Points, line of best fit, and slope triangle are correctly placed, but the canvas is far too narrow for the content: axis title 'Hours...', the 'rise'/'run' labels, and other text are cut off at the right edge."
+  },
+  {
+    "kind": "shape_comparison",
+    "verdict": "partial",
+    "svg_path": "svgs/shape_comparison.svg",
+    "notes": "Square and rectangle with correct dimensions, but the rectangle's 'Area=...'/'Perimeter=...' labels are placed on top of each other and the closing summary sentence is clipped at the bottom of the canvas."
+  },
+  {
+    "kind": "attribute_chart",
+    "verdict": "partial",
+    "svg_path": "svgs/attribute_chart.svg",
+    "notes": "Correct table structure and check/cross marks, but every column header and row label is duplicated (rendered twice, stacked), and two extra blank decorative header bands sit above the real table."
+  },
+  {
+    "kind": "work_table",
+    "verdict": "pass",
+    "svg_path": "svgs/work_table.svg",
+    "notes": "Clean two-column ratio table, correct values."
+  },
+  {
+    "kind": "area_model",
+    "verdict": "partial",
+    "svg_path": "svgs/area_model.svg",
+    "notes": "2x2 box-method grid with factors placed outside as requested, but the right-hand column's cells are completely empty (missing 3x5 and 3x10 partial products) and the left column's cell text overlaps/runs together."
+  },
+  {
+    "kind": "equation_steps",
+    "verdict": "pass",
+    "svg_path": "svgs/equation_steps.svg",
+    "notes": "Five solving steps stacked cleanly and correctly using the new equation_steps() primitive."
+  },
+  {
+    "kind": "angle_figure",
+    "verdict": "pass",
+    "svg_path": "svgs/angle_figure.svg",
+    "notes": "Two parallel lines with matching arrowheads, transversal, and angles 1-4 correctly labeled."
+  },
+  {
+    "kind": "cube_volume",
+    "verdict": "pass",
+    "svg_path": "svgs/cube_volume.svg",
+    "notes": "3x2x2 prism with a unit-cube grid on every visible face; dimensions labeled."
+  },
+  {
+    "kind": "prism_3d",
+    "verdict": "pass",
+    "svg_path": "svgs/prism_3d.svg",
+    "notes": "Labeled 5x3x4 prism with dashed hidden edges, clean vertex labels."
+  },
+  {
+    "kind": "l_prism",
+    "verdict": "pass",
+    "svg_path": "svgs/l_prism.svg",
+    "notes": "Single joined L-shaped solid (not two separate boxes) with all edge lengths labeled."
+  },
+  {
+    "kind": "prism_net",
+    "verdict": "pass",
+    "svg_path": "svgs/prism_net.svg",
+    "notes": "Correct 6-face net on a grid with dimensions; face labels are a bit crowded but legible."
+  },
+  {
+    "kind": "composite_polygon",
+    "verdict": "pass",
+    "svg_path": "svgs/composite_polygon.svg",
+    "notes": "L-shaped floor plan correctly decomposed into two labeled rectangles with a total-area calculation."
+  },
+  {
+    "kind": "dot_plot",
+    "verdict": "pass",
+    "svg_path": "svgs/dot_plot.svg",
+    "notes": "Correct stacked-dot counts above each shoe size value; axis label legible."
+  },
+  {
+    "kind": "circle",
+    "verdict": "pass",
+    "svg_path": "svgs/circle.svg",
+    "notes": "Circle with center, radius, and diameter segments correctly labeled (r = 4 cm, d = 8 cm)."
+  },
+  {
+    "kind": "column_arithmetic",
+    "verdict": "pass",
+    "svg_path": "svgs/column_arithmetic.svg",
+    "notes": "Correct column-addition layout with carry marks, rule line, and operator in the left column."
+  },
+  {
+    "kind": "long_division",
+    "verdict": "pass",
+    "svg_path": "svgs/long_division.svg",
+    "notes": "Correct house/bracket layout with quotient above and multiply-subtract steps shown below."
+  },
+  {
+    "kind": "composite",
+    "verdict": "pass",
+    "svg_path": "svgs/composite.svg",
+    "notes": "Two labeled figures (rectangle + circle) connected by a labeled draw_brace() curly brace."
+  },
+  {
+    "kind": "object_array",
+    "verdict": "pass",
+    "svg_path": "svgs/object_array.svg",
+    "notes": "3 groups of 5 objects in distinct rows/colors with a correct summary label."
+  },
+  {
+    "kind": "bar_graph",
+    "verdict": "pass",
+    "svg_path": "svgs/bar_graph.svg",
+    "notes": "Correct vertical bar chart with labeled axes and value labels; the 'Grapes' x-axis tick wraps onto two lines but is still readable."
+  },
+  {
+    "kind": "place_value_blocks",
+    "verdict": "pass",
+    "svg_path": "svgs/place_value_blocks.svg",
+    "notes": "Correct 2 hundreds-flats / 4 tens-rods / 3 ones for 243, each internally ruled into unit squares."
+  },
+  {
+    "kind": "place_value_chart",
+    "verdict": "pass",
+    "svg_path": "svgs/place_value_chart.svg",
+    "notes": "Clean 4-column place-value chart with digits correctly placed."
+  },
+  {
+    "kind": "number_bond",
+    "verdict": "pass",
+    "svg_path": "svgs/number_bond.svg",
+    "notes": "Correct part-whole number bond: 12 on top, 7 and 5 as parts below."
+  },
+  {
+    "kind": "ruler_measure",
+    "verdict": "pass",
+    "svg_path": "svgs/ruler_measure.svg",
+    "notes": "Ruler with quarter-inch ticks and a pencil correctly aligned from 0 to 4.5 inches."
+  },
+  {
+    "kind": "fill_level",
+    "verdict": "pass",
+    "svg_path": "svgs/fill_level.svg",
+    "notes": "Two same-size containers correctly shaded to 25% and 75% with labels."
+  },
+  {
+    "kind": "balance_scale",
+    "verdict": "pass",
+    "svg_path": "svgs/balance_scale.svg",
+    "notes": "Correct level beam on a fulcrum with two pans; left pan shows 2x+3, right pan shows 7, matching the requested equation."
+  },
+  {
+    "kind": "none",
+    "verdict": "pass",
+    "svg_path": null,
+    "notes": "Not a rendering kind -- 'none' means no diagram should be shown, so there is nothing to generate or render."
+  }
+]
