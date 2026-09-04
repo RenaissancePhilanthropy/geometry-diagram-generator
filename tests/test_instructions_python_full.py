@@ -102,3 +102,8 @@ def test_cookbook_section_documents_the_ticket_10_bar_helpers():
     text = build_python_full_instructions(include_cookbook=True)
     for name in ("def bar(", "def bars("):
         assert name in text, f"cookbook section missing {name}"
+
+
+def test_cookbook_section_documents_the_ticket_11_table_grid_helper():
+    text = build_python_full_instructions(include_cookbook=True)
+    assert "def table_grid(" in text, "cookbook section missing def table_grid("

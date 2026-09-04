@@ -17,12 +17,12 @@ import geometry_diagrams.pydsl as pydsl_module
 from geometry_diagrams.ir.ir import CircleCenterRadius, Draw, Polygon as PolygonDef, PointFixed, Segment as SegmentDef
 from geometry_diagrams.pydsl.api import canvas, point
 from geometry_diagrams.pydsl.builder import new_builder_context
-from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, tick_marks, unit_grid
+from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, table_grid, tick_marks, unit_grid
 from geometry_diagrams.pydsl.sandbox import run_script
 
 
-def test_cookbook_names_lists_the_ticket_09_and_10_helpers():
-    assert pydsl_module.COOKBOOK_NAMES == ["unit_grid", "array_of", "tick_marks", "bar", "bars"]
+def test_cookbook_names_lists_the_ticket_09_10_and_11_helpers():
+    assert pydsl_module.COOKBOOK_NAMES == ["unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid"]
 
 
 def test_cookbook_names_is_not_exported_in_all():
@@ -387,6 +387,97 @@ def test_bars_rejects_bad_orientation():
             bars([1, 2], orientation="diagonal")
 
 
+# --- table_grid --------------------------------------------------------------
+
+def test_table_grid_draws_interior_and_exterior_lines():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-10, 1))
+        table_grid(0, 0, col_widths=[2, 2, 2], row_heights=[1, 1])
+        ir = builder.build()
+    segment_ids = {d.id for d in ir.define if isinstance(d, SegmentDef)}
+    draws = [r for r in ir.render if isinstance(r, Draw) and r.obj in segment_ids]
+    # (3 cols => 4 vertical lines) + (2 rows => 3 horizontal lines) = 7
+    assert len(draws) == 7
+
+
+def test_table_grid_cell_extents_and_centers_for_uniform_grid():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-10, 1))
+        grid = table_grid(0, 0, col_widths=[2, 2], row_heights=[1, 1])
+    assert grid.n_rows == 2
+    assert grid.n_cols == 2
+    top_left = grid.cell(0, 0)
+    assert (top_left.x0, top_left.y0, top_left.x1, top_left.y1) == pytest.approx((0.0, 0.0, 2.0, -1.0))
+    assert (top_left.cx, top_left.cy) == pytest.approx((1.0, -0.5))
+    bottom_right = grid.cell(1, 1)
+    assert (bottom_right.x0, bottom_right.y0, bottom_right.x1, bottom_right.y1) == pytest.approx((2.0, -1.0, 4.0, -2.0))
+    assert (bottom_right.cx, bottom_right.cy) == pytest.approx((3.0, -1.5))
+
+
+def test_table_grid_supports_variable_column_widths_and_row_heights():
+    with new_builder_context():
+        canvas(x_range=(-1, 20), y_range=(-10, 1))
+        grid = table_grid(5, 5, col_widths=[1, 3, 2], row_heights=[2, 1])
+    # col 0: [5, 6), col 1: [6, 9), col 2: [9, 11)
+    assert grid.cell(0, 1).x0 == pytest.approx(6.0)
+    assert grid.cell(0, 1).x1 == pytest.approx(9.0)
+    assert grid.cell(0, 2).x0 == pytest.approx(9.0)
+    assert grid.cell(0, 2).x1 == pytest.approx(11.0)
+    # row 0: [5, 3), row 1: [3, 2) (top at y0=5, dropping by row_heights)
+    assert grid.cell(0, 0).y0 == pytest.approx(5.0)
+    assert grid.cell(0, 0).y1 == pytest.approx(3.0)
+    assert grid.cell(1, 0).y0 == pytest.approx(3.0)
+    assert grid.cell(1, 0).y1 == pytest.approx(2.0)
+
+
+def test_table_grid_cells_tile_without_gaps_or_overlaps():
+    with new_builder_context():
+        canvas(x_range=(-1, 20), y_range=(-10, 1))
+        grid = table_grid(0, 0, col_widths=[1, 2, 3], row_heights=[1, 2, 1])
+    for r in range(grid.n_rows):
+        for c in range(grid.n_cols - 1):
+            assert grid.cell(r, c).x1 == pytest.approx(grid.cell(r, c + 1).x0)
+    for c in range(grid.n_cols):
+        for r in range(grid.n_rows - 1):
+            assert grid.cell(r, c).y1 == pytest.approx(grid.cell(r + 1, c).y0)
+
+
+def test_table_grid_rejects_empty_widths_or_heights():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-10, 1))
+        with pytest.raises(ValueError):
+            table_grid(0, 0, col_widths=[], row_heights=[1])
+        with pytest.raises(ValueError):
+            table_grid(0, 0, col_widths=[1], row_heights=[])
+
+
+def test_table_grid_rejects_non_positive_dimensions():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-10, 1))
+        with pytest.raises(ValueError):
+            table_grid(0, 0, col_widths=[1, 0], row_heights=[1])
+        with pytest.raises(ValueError):
+            table_grid(0, 0, col_widths=[1], row_heights=[1, -1])
+
+
+def test_table_grid_requires_a_builder():
+    with pytest.raises(RuntimeError):
+        table_grid(0, 0, col_widths=[1], row_heights=[1])
+
+
+def test_table_grid_forwards_draw_style_kwargs():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-10, 1))
+        table_grid(0, 0, col_widths=[1], row_heights=[1], color="blue", thick=True)
+        ir = builder.build()
+    segment_ids = {d.id for d in ir.define if isinstance(d, SegmentDef)}
+    draws = [r for r in ir.render if isinstance(r, Draw) and r.obj in segment_ids]
+    assert draws
+    style = ir.styles[draws[0].style]
+    assert style["color"] == "blue"
+    assert style["thick"] is True
+
+
 # --- end-to-end sandbox wiring (the ticket 08 gotcha, for real) --------------
 
 def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
@@ -398,12 +489,12 @@ def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
 def test_cookbook_helpers_reachable_in_real_sandbox_with_flag_enabled():
     """Runs an actual script through the real subprocess sandbox (not a
     mock, not a direct Python call) with enable_cookbook=True, using all
-    five cookbook helpers together (ticket 09's three plus ticket 10's
-    bar/bars) — this is what would have raised AttributeError if
-    COOKBOOK_NAMES had been updated without also re-exporting the
-    functions from pydsl/__init__.py."""
+    six cookbook helpers together (ticket 09's three, ticket 10's
+    bar/bars, and ticket 11's table_grid) — this is what would have raised
+    AttributeError if COOKBOOK_NAMES had been updated without also
+    re-exporting the functions from pydsl/__init__.py."""
     script = """
-canvas(x_range=(-1, 10), y_range=(-6, 6))
+canvas(x_range=(-1, 10), y_range=(-10, 6))
 unit_grid(0, 0, cols=3, rows=3)
 shapes = array_of(4, shape="circle", cols=2, origin=(0, -4))
 a = point(0, 3)
@@ -411,6 +502,9 @@ b = point(6, 3)
 tick_marks(a, b, n=4)
 single = bar(0, -5, width=1, height=1, fill_color="orange", label="1")
 series = bars([1, 2, 3], x0=2, y0=-5, bar_width=0.8, fill_color="teal", labels=["a", "b", "c"])
+grid = table_grid(0, -9, col_widths=[1.5, 1.5], row_heights=[1, 1])
+label_text("A", at=(grid.cell(0, 0).cx, grid.cell(0, 0).cy))
+label_text("B", at=(grid.cell(1, 1).cx, grid.cell(1, 1).cy))
 """
     result = run_script(script, timeout_seconds=10.0, enable_cookbook=True)
     assert result.error is None, result.error
@@ -419,5 +513,11 @@ series = bars([1, 2, 3], x0=2, y0=-5, bar_width=0.8, fill_color="teal", labels=[
 
 def test_bar_and_bars_unreachable_in_sandbox_without_the_flag():
     script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\nbar(0, 0, width=1, height=1)\n"
+    result = run_script(script, enable_cookbook=False)
+    assert result.error is not None
+
+
+def test_table_grid_unreachable_in_sandbox_without_the_flag():
+    script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\ntable_grid(0, 0, col_widths=[1], row_heights=[1])\n"
     result = run_script(script, enable_cookbook=False)
     assert result.error is not None

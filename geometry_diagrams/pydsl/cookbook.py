@@ -236,3 +236,110 @@ def bars(
         lbl = labels[i] if labels is not None else None
         rects.append(bar(bx, by, w, h, fill_color=fill_color, label=lbl, **draw_style))
     return rects
+
+
+# --- table_grid: bordered grid of labeled cells (ticket 11) -----------------
+# Underlies attribute_chart, work_table, place_value_chart,
+# column_arithmetic, and long_division. A header row or label column is
+# just an ordinary row 0 / column 0 of the grid — placing each header/label
+# exactly once via one cell's `.cx`/`.cy` anchor is what avoids the
+# duplicate-header defect a hand-rolled table is prone to.
+
+class TableCell:
+    """One cell of a `table_grid()`, addressed by (row, col) starting at
+    (0, 0) for the top-left cell. `x0`/`y0` is the cell's top-left corner
+    and `x1`/`y1` its bottom-right corner (y0 >= y1, since row 0 sits at
+    the top and rows stack downward as y decreases); `width`/`height` are
+    always positive. `cx`/`cy` is the cell's center — pass it straight to
+    `label_text(text, at=(cell.cx, cell.cy))` to place a header, row label,
+    or value exactly once, precisely centered in the cell."""
+    __slots__ = ("row", "col", "x0", "y0", "x1", "y1", "width", "height", "cx", "cy")
+
+    def __init__(self, row: int, col: int, x0: float, y0: float, x1: float, y1: float):
+        self.row = row
+        self.col = col
+        self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
+        self.width = x1 - x0
+        self.height = y0 - y1
+        self.cx = (x0 + x1) / 2.0
+        self.cy = (y0 + y1) / 2.0
+
+
+class TableGrid:
+    """The return value of `table_grid()`: `n_rows` x `n_cols` cells,
+    addressable via `.cell(row, col)`. Iterating over a `TableGrid` yields
+    every `TableCell` in row-major order."""
+
+    def __init__(self, cells: "dict[tuple[int, int], TableCell]", n_rows: int, n_cols: int):
+        self._cells = cells
+        self.n_rows = n_rows
+        self.n_cols = n_cols
+
+    def cell(self, row: int, col: int) -> TableCell:
+        """The `TableCell` at (row, col). Raises KeyError if out of range."""
+        return self._cells[(row, col)]
+
+    def __iter__(self):
+        return iter(self._cells.values())
+
+
+def table_grid(
+    x0: float,
+    y0: float,
+    col_widths: "list[float]",
+    row_heights: "list[float]",
+    color: str = "black",
+    **draw_style,
+) -> TableGrid:
+    """Draw a bordered `len(row_heights)` x `len(col_widths)` table grid
+    anchored with its top-left corner at (x0, y0) — row 0 is the top row,
+    rows stacking downward (decreasing y) by each entry in `row_heights`;
+    column 0 is the leftmost column, columns extending rightward
+    (increasing x) by each entry in `col_widths`. Treat a header row or a
+    row-label column as an ordinary row 0 / column 0 of the SAME grid
+    (rather than drawing it as a separate table) — that is what keeps each
+    header/label rendered exactly once instead of duplicated.
+
+    Draws every interior and exterior grid line exactly once (shared
+    borders between adjacent cells are a single line, never doubled);
+    `color`/`draw_style` kwargs (thick, dashed, ...) are forwarded to each
+    `draw()` call, same as `unit_grid()`.
+
+    Returns a `TableGrid` — call `.cell(row, col)` to get that cell's
+    `TableCell`, whose `.cx`/`.cy` center is the anchor to pass to
+    `label_text(text, at=(cell.cx, cell.cy))` for a header, row label, or
+    value placed exactly once and precisely centered; `.x0`/`.y0`/`.x1`/
+    `.y1`/`.width`/`.height` give the cell's exact extent if you need to
+    `fill()` a highlighted cell via your own `rectangle()` call."""
+    if not col_widths:
+        raise ValueError("table_grid(): col_widths must be non-empty")
+    if not row_heights:
+        raise ValueError("table_grid(): row_heights must be non-empty")
+    if any(w <= 0 for w in col_widths):
+        raise ValueError(f"table_grid(): all col_widths must be positive, got {col_widths!r}")
+    if any(h <= 0 for h in row_heights):
+        raise ValueError(f"table_grid(): all row_heights must be positive, got {row_heights!r}")
+
+    col_edges = [x0]
+    for w in col_widths:
+        col_edges.append(col_edges[-1] + w)
+    row_edges = [y0]
+    for h in row_heights:
+        row_edges.append(row_edges[-1] - h)
+
+    n_cols = len(col_widths)
+    n_rows = len(row_heights)
+
+    for i in range(n_cols + 1):
+        x = col_edges[i]
+        draw(segment(point(x, row_edges[0]), point(x, row_edges[-1])), color=color, **draw_style)
+    for j in range(n_rows + 1):
+        y = row_edges[j]
+        draw(segment(point(col_edges[0], y), point(col_edges[-1], y)), color=color, **draw_style)
+
+    cells = {
+        (r, c): TableCell(r, c, col_edges[c], row_edges[r], col_edges[c + 1], row_edges[r + 1])
+        for r in range(n_rows)
+        for c in range(n_cols)
+    }
+    return TableGrid(cells, n_rows, n_cols)
