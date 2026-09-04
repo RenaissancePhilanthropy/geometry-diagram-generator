@@ -97,7 +97,16 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
         ],
     ),
     "scatter_plot": (
-        False,
+        # ticket 06, pydsl-authoring-quality: flipped to True for this
+        # kind's round-4 re-attempt, which needs the chart_axes() cookbook
+        # helper (ticket 03) to route around the tall/narrow-canvas root
+        # cause documented in manifest.json (to_svg.py's single shared
+        # x/y scale factor). Attempts 0-2 below are the original
+        # known-gap round's history (all run WITHOUT the cookbook flag,
+        # before chart_axes() existed) -- kept verbatim for the record,
+        # even though the flag they'd now be re-run under has changed.
+        # Attempt 3+ are this ticket's new chart_axes()-based attempts.
+        True,
         [
             "Draw a scatter plot of hours studied vs. test score for these "
             "points: (1, 55), (2, 60), (3, 68), (4, 74), (5, 85), (6, 90), "
@@ -135,6 +144,34 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
             "'Score' to the left of the axis both fit fully on the canvas "
             "with clear margin -- do not add a slope triangle or "
             "rise/run labels.",
+            # Attempt 4 (ticket 06, pydsl-authoring-quality): use the new
+            # chart_axes() cookbook helper to compress the x (0-8 hours)
+            # and y (0-100 score) data ranges into a square-ish geometry
+            # region for PLACEMENT only, so the renderer's single shared
+            # x/y scale (root cause of attempts 0-2's tall/narrow canvas)
+            # no longer forces a bad aspect ratio -- while every label
+            # still shows the true, unmapped data value.
+            "Draw a scatter plot of hours studied (x, 0 to 8) vs. test "
+            "score (y, 0 to 100) for these points: (1, 55), (2, 60), "
+            "(3, 68), (4, 74), (5, 85), (6, 90), plus a line of best fit "
+            "through the data. Because the x-axis and y-axis have very "
+            "different natural ranges, use the chart_axes() cookbook "
+            "helper to place everything: call "
+            "`axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), "
+            "geom_size=10.0)` once, then for every plotted point, both "
+            "endpoints of the best-fit line, and every axis tick mark, "
+            "compute `gx, gy = axes.map(data_x, data_y)` and use "
+            "`(gx, gy)` as that item's geometry position (e.g. "
+            "`point(*axes.map(hours, score))`). Draw x-axis ticks at "
+            "hours 0, 2, 4, 6, 8 and y-axis ticks at scores 0, 25, 50, "
+            "75, 100, each placed via axes.map() the same way. Label "
+            "every tick and every point with its TRUE, unmapped data "
+            "value as text (e.g. the point for (3, 68) must be labeled "
+            "'68', never its mapped geometry coordinate). Label the "
+            "x-axis 'Hours' and the y-axis 'Score'. Do not add a slope "
+            "triangle or rise/run labels. Leave clear margin around the "
+            "plotted region so no label, tick mark, or axis title is "
+            "clipped at any canvas edge.",
         ],
     ),
     "shape_comparison": (

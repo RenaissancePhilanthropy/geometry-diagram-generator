@@ -58,5 +58,17 @@
     "svg_path": "attempts/balance_scale_attempt0.svg",
     "script_path": "attempt_scripts/balance_scale_attempt0.py",
     "duration_s": 41.06
+  },
+  {
+    "kind": "scatter_plot",
+    "attempt": 3,
+    "prompt": "Draw a scatter plot of hours studied (x, 0 to 8) vs. test score (y, 0 to 100) for these points: (1, 55), (2, 60), (3, 68), (4, 74), (5, 85), (6, 90), plus a line of best fit through the data. Because the x-axis and y-axis have very different natural ranges, use the chart_axes() cookbook helper to place everything: call `axes = chart_axes(x_data_range=(0, 8), y_data_range=(0, 100), geom_size=10.0)` once, then for every plotted point, both endpoints of the best-fit line, and every axis tick mark, compute `gx, gy = axes.map(data_x, data_y)` and use `(gx, gy)` as that item's geometry position (e.g. `point(*axes.map(hours, score))`). Draw x-axis ticks at hours 0, 2, 4, 6, 8 and y-axis ticks at scores 0, 25, 50, 75, 100, each placed via axes.map() the same way. Label every tick and every point with its TRUE, unmapped data value as text (e.g. the point for (3, 68) must be labeled '68', never its mapped geometry coordinate). Label the x-axis 'Hours' and the y-axis 'Score'. Do not add a slope triangle or rise/run labels. Leave clear margin around the plotted region so no label, tick mark, or axis title is clipped at any canvas edge.",
+    "use_cookbook": true,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/scatter_plot_attempt3.svg",
+    "script_path": "attempt_scripts/scatter_plot_attempt3.py",
+    "duration_s": 15.95
   }
 ]
