@@ -484,6 +484,94 @@ def fmt_label_num(value: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# DrawBrace geometry (shared by to_svg.py and to_tikz.py)
+# ---------------------------------------------------------------------------
+
+BRACE_WIDTH = 0.3       # perpendicular distance from the p1-p2 line to the brace's tip
+_BRACE_CURVATURE = 0.6  # 0-1 shape parameter; see brace_quadratic_points docstring
+
+_BRACE_DIRECTION_VECTORS: dict[str, tuple[float, float]] = {
+    "up": (0.0, 1.0), "down": (0.0, -1.0), "left": (-1.0, 0.0), "right": (1.0, 0.0),
+}
+
+
+def brace_quadratic_points(
+    p1: "tuple[float, float]",
+    p2: "tuple[float, float]",
+    direction: str,
+    width: float = BRACE_WIDTH,
+    curvature: float = _BRACE_CURVATURE,
+) -> "dict[str, tuple[float, float]]":
+    """The key points of a standard two-hump curly-brace curve from p1 to p2.
+
+    Returns a dict with:
+      - "start"/"end": p1/p2 unchanged.
+      - "tip": the brace's pointed center, offset `width` from the p1-p2
+        line toward `direction`.
+      - "near1"/"near2": the brace's two shoulder points, at the 1/4 and 3/4
+        marks along p1-p2, offset partway toward the tip.
+      - "far1"/"far2": quadratic-Bezier control points near p1/p2 — only
+        needed by to_svg.py's exact cubic-Bezier conversion; to_tikz.py
+        ignores them and lets `plot[smooth]` interpolate the anchor points
+        directly.
+
+    Adapted from the well-known SVG curly-brace construction (e.g.
+    alexhornbake's "svg-curly-brace" gist): two mirror-image quadratic
+    curves, p1 -> near1 -> tip and p2 -> near2 -> tip, each with its control
+    point reflected at the shoulder so the curve stays smooth (C1-continuous)
+    there.
+
+    `direction` selects which side of the p1-p2 line the brace bulges
+    toward, as an absolute canvas direction (independent of p1-p2's own
+    orientation) — matching `DrawBrace.direction`'s Literal["left", "right",
+    "up", "down"]. The offset actually used is p1-p2's own perpendicular,
+    picked to have a positive component along `direction`; if p1-p2 runs
+    parallel to `direction` (so neither perpendicular candidate has any
+    component along it — e.g. a vertical segment with direction="up"), the
+    bulge falls back to `direction` itself rather than leaving the brace
+    flat.
+    """
+    if direction not in _BRACE_DIRECTION_VECTORS:
+        raise ValueError(
+            f"Unknown brace direction {direction!r}; expected one of "
+            f"{sorted(_BRACE_DIRECTION_VECTORS)}"
+        )
+
+    x1, y1 = p1
+    x2, y2 = p2
+    dx, dy = x2 - x1, y2 - y1
+    seg_len = math.hypot(dx, dy)
+    if seg_len < 1e-9:
+        ux, uy = 1.0, 0.0
+    else:
+        ux, uy = dx / seg_len, dy / seg_len
+
+    dirx, diry = _BRACE_DIRECTION_VECTORS[direction]
+    n1 = (-uy, ux)
+    n2 = (uy, -ux)
+    nx, ny = n1 if (n1[0] * dirx + n1[1] * diry) >= (n2[0] * dirx + n2[1] * diry) else n2
+    if abs(nx * dirx + ny * diry) < 1e-9:
+        nx, ny = dirx, diry
+
+    def along(t: float) -> "tuple[float, float]":
+        return (x1 + t * dx, y1 + t * dy)
+
+    def offset(point: "tuple[float, float]", amt: float) -> "tuple[float, float]":
+        return (point[0] + nx * amt, point[1] + ny * amt)
+
+    q = curvature
+    return {
+        "start": (x1, y1),
+        "far1": offset(along(0.0), q * width),
+        "near1": offset(along(0.25), (1 - q) * width),
+        "tip": offset(along(0.5), width),
+        "near2": offset(along(0.75), (1 - q) * width),
+        "far2": offset(along(1.0), q * width),
+        "end": (x2, y2),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Grid / axis tick math
 # ---------------------------------------------------------------------------
 

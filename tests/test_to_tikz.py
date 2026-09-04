@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from geometry_diagrams.ir.ir import (
     AnglePoints,
     Canvas,
@@ -799,6 +801,91 @@ def test_label_free_text_centroid_of_a_sector_does_not_crash():
     )
     tikz = _compile_tikz(diagram)
     assert r"\node at" in tikz and "{s}" in tikz
+
+
+# ---------------------------------------------------------------------------
+# DrawBrace
+# ---------------------------------------------------------------------------
+
+def test_draw_brace_emits_a_plot_smooth_path_not_decorations_pathreplacing():
+    """Must NOT depend on TikZ's decorations.pathreplacing library — this
+    repo has no local LaTeX preamble to add it to (the preamble lives in the
+    separate renderer service)."""
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\draw" in tikz
+    assert "plot[smooth" in tikz
+    assert "coordinates" in tikz
+    assert "decorations.pathreplacing" not in tikz
+    assert "brace" not in tikz.lower() or "decorate" not in tikz.lower()
+
+
+def test_draw_brace_path_coordinates_start_and_end_at_p1_p2():
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "(0,0)" in tikz
+    assert "(4,0)" in tikz
+
+
+@pytest.mark.parametrize("direction", ["left", "right", "up", "down"])
+def test_draw_brace_renders_for_every_direction(direction):
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[0.0, 4.0], direction=direction)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "plot[smooth" in tikz
+
+
+def test_draw_brace_with_label_emits_node_at_tip():
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", label="4 items")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at (2,-0.3) {4 items};" in tikz
+
+
+def test_draw_brace_without_label_emits_no_node():
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" not in tikz
+
+
+def test_draw_brace_respects_style_color():
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        styles={"redbrace": {"color": "red"}},
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", style="redbrace")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "color=red" in tikz
 
 
 def test_label_segment_on_a_line_produces_tkz_label():

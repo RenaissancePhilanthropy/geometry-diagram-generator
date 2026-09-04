@@ -11,6 +11,7 @@ from geometry_diagrams.ir.ir import (
     Canvas,
     DiagramIR,
     Draw,
+    DrawBrace,
     DrawPoints,
     Fill,
     LabelAngle,
@@ -1745,6 +1746,85 @@ def test_label_free_text_centroid_of_a_sector_does_not_crash():
     root = _parse(svg_str)
     labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
     assert len(labels) == 1
+
+
+# ---------------------------------------------------------------------------
+# DrawBrace
+# ---------------------------------------------------------------------------
+
+def test_draw_brace_emits_a_path_with_four_cubic_bezier_segments():
+    diagram = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    braces = [el for el in _findall(root, "path") if el.get("data-role") == "brace"]
+    assert len(braces) == 1
+    d = braces[0].get("d")
+    assert d.startswith("M ")
+    # Two mirror-image quadratic curves, each converted to two cubics.
+    assert d.count(" C ") == 4
+    assert braces[0].get("fill") == "none"
+
+
+def test_draw_brace_path_starts_and_ends_at_the_transformed_endpoints():
+    diagram = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    brace = next(el for el in _findall(root, "path") if el.get("data-role") == "brace")
+    d = brace.get("d")
+    # First point after "M " is p1; last coordinate pair in the path is p2.
+    tokens = d.replace(",", " ").split()
+    start_xy = (float(tokens[1]), float(tokens[2]))
+    end_xy = (float(tokens[-2]), float(tokens[-1]))
+    # Sanity: endpoints should lie within the rendered SVG canvas bounds.
+    assert 0 <= start_xy[0] <= 2000 and 0 <= start_xy[1] <= 2000
+    assert 0 <= end_xy[0] <= 2000 and 0 <= end_xy[1] <= 2000
+    assert start_xy != end_xy
+
+
+@pytest.mark.parametrize("direction", ["left", "right", "up", "down"])
+def test_draw_brace_renders_for_every_direction(direction):
+    diagram = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[0.0, 4.0], direction=direction)])
+    svg_str = _compile_svg(diagram)
+    check_svg_wellformed(svg_str)
+    root = _parse(svg_str)
+    braces = [el for el in _findall(root, "path") if el.get("data-role") == "brace"]
+    assert len(braces) == 1
+
+
+def test_draw_brace_with_label_renders_text_at_tip():
+    diagram = _triangle_ir([
+        DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", label="4 items"),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-brace"]
+    assert len(labels) == 1
+    assert labels[0].text == "4 items" or "".join(labels[0].itertext()) == "4 items"
+
+
+def test_draw_brace_without_label_renders_no_text():
+    diagram = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-brace"]
+    assert len(labels) == 0
+
+
+def test_draw_brace_respects_style_color():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        styles={"redbrace": {"color": "red"}},
+        render=[DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", style="redbrace")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    brace = next(el for el in _findall(root, "path") if el.get("data-role") == "brace")
+    assert brace.get("stroke") == "red"
 
 
 # ---------------------------------------------------------------------------

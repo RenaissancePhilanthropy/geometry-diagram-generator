@@ -1007,6 +1007,30 @@ def label_text(
     ))
 
 
+def draw_brace(
+    p1: "tuple[float, float]",
+    p2: "tuple[float, float]",
+    direction: str = "up",
+    label: "str | None" = None,
+) -> None:
+    """Draw a curly brace spanning two literal (x, y) coordinates — for
+    composite connectors and tape-diagram/number-bond-style groupings.
+    `direction` (one of "left", "right", "up", "down") selects which side of
+    the p1-p2 line the brace bulges toward. `label`, if given, is centered
+    at the brace's tip."""
+    from geometry_diagrams.ir.ir import DrawBrace
+
+    if label is not None:
+        label = _sanitize_label_text(label, "draw_brace")
+    builder = get_builder()
+    builder._add_render(DrawBrace(
+        p1=[float(p1[0]), float(p1[1])],
+        p2=[float(p2[0]), float(p2[1])],
+        direction=direction,
+        label=label,
+    ))
+
+
 def canvas(
     x_range: "tuple[float, float] | list[float]",
     y_range: "tuple[float, float] | list[float]",

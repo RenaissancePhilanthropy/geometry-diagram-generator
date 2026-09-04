@@ -939,9 +939,23 @@ class Fill(RenderBase):
     opacity: float = 1.0
 
 
+class DrawBrace(RenderBase):
+    """Curly brace spanning two literal points, for composite connectors and
+    tape-diagram/number-bond-style groupings.
+
+    Like ``LabelFreeText.at``, ``p1``/``p2`` are literal [x, y] construction
+    coordinates with no dependency on any defined geometric object.
+    """
+    kind: Literal["draw_brace"] = "draw_brace"
+    p1: List[float]          # [x, y] in construction coordinates
+    p2: List[float]          # [x, y] in construction coordinates
+    direction: Literal["left", "right", "up", "down"] = "up"
+    label: Optional[str] = None   # optional text centered at the brace's tip
+
+
 RenderOp = Annotated[
     Union[
-        Draw, DrawPoints, Fill,
+        Draw, DrawPoints, Fill, DrawBrace,
         MarkAngles, MarkRightAngles, MarkSegments,
         LabelPoint, LabelAngle, LabelSegment, LabelFreeText,
     ],

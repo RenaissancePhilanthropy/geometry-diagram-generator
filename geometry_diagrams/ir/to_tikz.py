@@ -14,6 +14,7 @@ from .render_util import (
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
+    brace_quadratic_points,
     centroid_of_obj,
     circle_center_through,
     compute_bounds,
@@ -525,6 +526,20 @@ def _emit_op(
                     return out
                 x, y = centroid_of_obj(obj)
             out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
+
+        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style):
+            pts = brace_quadratic_points(
+                (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction
+            )
+            coords = " ".join(
+                f"({fmt_num(x)},{fmt_num(y)})"
+                for x, y in (pts["start"], pts["near1"], pts["tip"], pts["near2"], pts["end"])
+            )
+            sopts = _style_str(style, styles)
+            out.append(f"\\draw{sopts} plot[smooth, tension=0.7] coordinates {{{coords}}};")
+            if label:
+                tx, ty = pts["tip"]
+                out.append(f"\\node at ({fmt_num(tx)},{fmt_num(ty)}) {{{label}}};")
 
     return out
 

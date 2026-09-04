@@ -31,6 +31,7 @@ from .render_util import (
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
+    brace_quadratic_points,
     centroid_of_obj,
     circle_center_through,
     compute_bounds,
@@ -989,6 +990,35 @@ def _emit_svg_op(
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
                       font_family=font_family, math_glyph=lp.math_glyph)
 
+        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style):
+            pts_px = {
+                key: gxy(*value)
+                for key, value in brace_quadratic_points(
+                    (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction
+                ).items()
+            }
+            attrs = _stroke_attrs(style, styles)
+            attrs.pop("marker-end", None)
+            attrs.pop("marker-start", None)
+            ET.SubElement(svg, "path", {
+                "data-role": "brace",
+                "d": _brace_svg_path(pts_px),
+                "fill": "none",
+                **attrs,
+            })
+            if label:
+                tx, ty = pts_px["tip"]
+                color = _color_from_style(style, styles) or "black"
+                lp = _make_label_placement(
+                    x=tx, y=ty, text=label, color=color, anchor="middle",
+                    attrs={"data-role": "label-brace"},
+                )
+                if pending_labels is not None:
+                    pending_labels.append(lp)
+                else:
+                    _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                          font_family=font_family, math_glyph=lp.math_glyph)
+
 
 # ---------------------------------------------------------------------------
 # Mark helpers
@@ -1911,6 +1941,46 @@ def _stroke_attrs(style_key: str | None, styles: dict, svg: ET.Element | None = 
     if style_key in _CSS_COLOR_NAMES:
         attrs["stroke"] = style_key
     return attrs
+
+
+def _brace_svg_path(pts: dict[str, tuple[float, float]]) -> str:
+    """Build an SVG cubic-Bezier path 'd' string for a curly brace from the
+    key points returned by render_util.brace_quadratic_points (already
+    transformed into SVG pixel space).
+
+    brace_quadratic_points describes the brace as two mirror-image
+    quadratic Bezier curves (start -> near1 -> tip, end -> near2 -> tip,
+    each itself built from two smoothly-joined quadratics around its
+    shoulder point). Each quadratic Q(P0, control, P1) has an exact cubic
+    equivalent with control points P0 + 2/3*(control-P0) and
+    P1 + 2/3*(control-P1) — used here to render the whole brace as four
+    explicit "C" (cubic-Bezier) path commands.
+    """
+    def third(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
+        return (a[0] + (b[0] - a[0]) * 2 / 3, a[1] + (b[1] - a[1]) * 2 / 3)
+
+    def reflect(around: tuple[float, float], point: tuple[float, float]) -> tuple[float, float]:
+        return (2 * around[0] - point[0], 2 * around[1] - point[1])
+
+    start, far1, near1, tip, near2, far2, end = (
+        pts["start"], pts["far1"], pts["near1"], pts["tip"], pts["near2"], pts["far2"], pts["end"],
+    )
+    reflect1 = reflect(near1, far1)  # control point for the near1 -> tip quadratic
+    reflect2 = reflect(near2, far2)  # control point for the tip -> near2 quadratic
+
+    def fmt(p: tuple[float, float]) -> str:
+        return f"{p[0]:.2f},{p[1]:.2f}"
+
+    segments = [
+        (third(start, far1), third(near1, far1), near1),
+        (third(near1, reflect1), third(tip, reflect1), tip),
+        (third(tip, reflect2), third(near2, reflect2), near2),
+        (third(near2, far2), third(end, far2), end),
+    ]
+    parts = [f"M {fmt(start)}"]
+    for c1, c2, p in segments:
+        parts.append(f"C {fmt(c1)} {fmt(c2)} {fmt(p)}")
+    return " ".join(parts)
 
 
 def _fill_attrs(
