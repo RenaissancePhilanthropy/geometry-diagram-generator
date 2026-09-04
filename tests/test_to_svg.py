@@ -1325,6 +1325,49 @@ def test_arc_large_arc_flag_for_major_sweep():
     assert sweep_flag == "0"
 
 
+def test_arc_with_dashed_style_emits_stroke_dasharray():
+    """Arcs go through the same generic Draw/_stroke_attrs path as segments and
+    circles, so a dashed style dict must produce stroke-dasharray on the arc's
+    <path> element."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1", style="dashedstyle")],
+        styles={"dashedstyle": {"dashed": True}},
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    arcs = [e for e in _findall(root, "path") if e.get("data-type") == "arc"]
+    assert len(arcs) == 1
+    assert arcs[0].get("stroke-dasharray") == "6,3"
+
+
+def test_sector_with_dashed_style_emits_stroke_dasharray():
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-4, xmax=4, ymin=-4, ymax=4),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec", style="dashedstyle")],
+        styles={"dashedstyle": {"dashed": True}},
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    secs = [e for e in _findall(root, "path") if e.get("data-type") == "sector"]
+    assert len(secs) == 1
+    assert secs[0].get("stroke-dasharray") == "6,3"
+
+
 def _parse_arc_flags(svg_str: str) -> tuple[str, str]:
     """Return (large_arc_flag, sweep_flag) from the first arc path in the SVG."""
     root = ET.fromstring(svg_str)

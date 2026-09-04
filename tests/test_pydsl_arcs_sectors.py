@@ -517,6 +517,26 @@ def test_arcs_sectors_work_through_the_real_sandbox():
     assert SectorCenterStartEnd in kinds
 
 
+def test_draw_dashed_kwarg_on_arc():
+    """draw()'s generic dashed kwarg isn't segment-specific — arc() handles
+    must accept it the same way, since Draw/style resolution in to_tikz.py
+    and to_svg.py never branches on def kind."""
+    from geometry_diagrams.pydsl.api import draw
+    from geometry_diagrams.ir.ir import Draw as DrawOp
+
+    with new_builder_context() as builder:
+        c = circle(point(0.0, 0.0), 5.0)
+        start = point_on(c, 0.0)
+        end = point_on(c, math.pi / 2)
+        the_arc = arc(c, start, end)
+        draw(the_arc, dashed=True)
+        ir = builder.build()
+    defs = [r for r in ir.render if isinstance(r, DrawOp) and r.obj == the_arc.id]
+    assert len(defs) == 1
+    style_key = defs[0].style
+    assert ir.styles[style_key] == {"dashed": True}
+
+
 def test_elliptical_arc_and_polyline_work_through_the_real_sandbox():
     from geometry_diagrams.pydsl.sandbox import run_script
 

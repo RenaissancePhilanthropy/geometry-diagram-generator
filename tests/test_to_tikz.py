@@ -878,6 +878,46 @@ def test_draw_sector_tikz():
     assert "arc" in tikz
 
 
+def test_draw_arc_with_dashed_style_emits_dashed_option():
+    """Arcs go through the same generic Draw/_style_str path as segments and
+    circles, so a dashed style dict must show up in the raw \\draw[...] arc[...]
+    command exactly like it does for tkzDrawSegment."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-2, xmax=2, ymin=-2, ymax=2),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=1, y=0),
+            PointFixed(id="B", x=0, y=1),
+            ArcCenterStartEnd(id="arc1", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="arc1", style="dashedstyle")],
+        styles={"dashedstyle": {"dashed": True}},
+    )
+    tikz = _compile_tikz(diagram)
+    assert "arc[" in tikz
+    assert "dashed" in tikz
+
+
+def test_draw_sector_with_dashed_style_emits_dashed_option():
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="A", x=3, y=0),
+            PointFixed(id="B", x=0, y=3),
+            SectorCenterStartEnd(id="sec", center="O", start="A", end="B"),
+        ],
+        render=[Draw(obj="sec", style="dashedstyle")],
+        styles={"dashedstyle": {"dashed": True}},
+    )
+    sym = compile_defs(diagram)
+    tikz = ir_to_tikz(diagram, sym)
+    assert "\\draw" in tikz
+    assert "arc" in tikz
+    assert "dashed" in tikz
+
+
 def test_fill_with_color_and_opacity_in_style_dict_emits_both():
     """Regression test for a real bug found during pydsl fill() design
     review: to_tikz.py's Fill handler only merges in Fill.opacity when NO
