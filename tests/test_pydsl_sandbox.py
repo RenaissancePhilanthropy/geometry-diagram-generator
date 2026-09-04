@@ -328,9 +328,10 @@ def test_run_script_threads_enable_cookbook_true_into_the_child_payload():
     assert payload["enable_cookbook"] is True
 
 
-def test_enable_cookbook_true_with_empty_cookbook_names_behaves_identically_to_default():
-    """Acceptance criterion: with the flag True and COOKBOOK_NAMES still
-    empty, real end-to-end script execution is unchanged."""
+def test_enable_cookbook_true_without_using_cookbook_helpers_behaves_identically_to_default():
+    """Acceptance criterion: enabling the flag only ADDS names to the
+    sandbox tool namespace — a script that never calls a cookbook helper
+    produces byte-identical output whether the flag is on or off."""
     script = """
 a = point(0, 0)
 b = point(1, 0)
