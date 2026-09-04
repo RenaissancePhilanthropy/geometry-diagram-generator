@@ -52,10 +52,10 @@ def _build_tool_names(pydsl_module, enable_cookbook: bool) -> list:
     public API (`pydsl_module.__all__`) always, plus the experimental
     cookbook (`pydsl_module.COOKBOOK_NAMES`) only when `enable_cookbook` is
     True (ticket 08, diagram-kinds-poc's experimental gating
-    infrastructure). `COOKBOOK_NAMES` is empty until later tickets (09-12)
-    populate `cookbook.py`, so `enable_cookbook=True` is currently a no-op
-    in practice — this function is what makes that wiring provable ahead of
-    any real cookbook content, independent of a real subprocess."""
+    infrastructure). `COOKBOOK_NAMES` now lists `cookbook.py`'s 7 real
+    helper functions (`unit_grid`, `array_of`, `tick_marks`, `bar`, `bars`,
+    `table_grid`, `oblique_point`), so `enable_cookbook=True` makes all of
+    them callable from the sandboxed script."""
     names = list(pydsl_module.__all__)
     if enable_cookbook:
         names += list(pydsl_module.COOKBOOK_NAMES)

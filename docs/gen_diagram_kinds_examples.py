@@ -1,26 +1,27 @@
-"""Ticket 13 driver: genuine PythonFullStrategy.run() calls for the 5 kinds
-that need a fresh fix (area_model, attribute_chart with
-experimental_diagram_cookbook=True; coordinate_plane, scatter_plot,
-shape_comparison without it), per final_prompts.FINAL_KIND_CONFIGS.
+"""Generate example SVG diagrams for the diagram-kinds cookbook gallery,
+using PythonFullStrategy (pydsl script generation) -- the diagram-kinds-poc
+counterpart to docs/gen_examples.py, which uses the structured IR pipeline
+directly instead.
 
-Mirrors ../baseline/run_baseline.py's call pattern exactly
-(PythonFullStrategy().run(prompt, model=..., renderer=SVGRenderer())) --
-same discipline: a fresh PythonFullStrategy() instance per attempt, no
-shared state, no hand-authored pydsl standing in for the LLM's output.
+For the 5 kinds that needed a genuine fresh generation (rather than reuse
+of a baseline SVG -- see docs/assemble_diagram_kinds_manifest.py's
+FRESH_CHOICES), this script runs each of
+diagram_kinds_prompts.FINAL_KIND_CONFIGS[kind]'s attempt prompts in order
+and saves every attempt's SVG (and mechanical generation facts) under
+docs/examples/diagram_kinds/attempts/<kind>_attempt<N>.svg and
+docs/examples/diagram_kinds/generation_log.json -- a human then reviews the
+saved SVGs and records a verdict per kind in
+assemble_diagram_kinds_manifest.py's FRESH_CHOICES, which
+assemble_diagram_kinds_manifest.py consumes to build the final manifest.
 
-Unlike the baseline (one attempt per kind, no verdict), this ticket
-explicitly allows a small amount of prompt iteration (2-3 tries): for each
-kind, this script runs each of final_prompts.FINAL_KIND_CONFIGS[kind]'s
-attempt prompts in order and saves every attempt's SVG (and mechanical
-generation facts) to attempts/<kind>_attempt<N>.svg /
-generation_log.json -- a human (the engineer running this) then reviews
-the saved SVGs and records a verdict per kind in review_verdicts.py,
-which assemble_manifest.py consumes.
+A small amount of prompt iteration (2-3 tries) is expected and intentional
+here -- this mirrors how the diagram-kinds-poc gallery was actually built,
+not a scripted one-shot generator.
 
-Usage:
-  .venv/bin/python .scratch/diagram-kinds-poc/final/run_final.py
-  .venv/bin/python .scratch/diagram-kinds-poc/final/run_final.py --kind area_model
-  .venv/bin/python .scratch/diagram-kinds-poc/final/run_final.py --kind coordinate_plane --attempt 1
+Run from the project root:
+  .venv/bin/python docs/gen_diagram_kinds_examples.py
+  .venv/bin/python docs/gen_diagram_kinds_examples.py --kind area_model
+  .venv/bin/python docs/gen_diagram_kinds_examples.py --kind coordinate_plane --attempt 1
 """
 
 from __future__ import annotations
@@ -32,13 +33,13 @@ import sys
 import time
 from pathlib import Path
 
-FINAL_DIR = Path(__file__).resolve().parent
-REPO_ROOT = FINAL_DIR.parents[2]
-for p in (str(FINAL_DIR), str(REPO_ROOT)):
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+for p in (str(SCRIPT_DIR), str(REPO_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from final_prompts import FINAL_KIND_CONFIGS  # noqa: E402
+from diagram_kinds_prompts import FINAL_KIND_CONFIGS  # noqa: E402
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -48,16 +49,17 @@ from geometry_diagrams.strategies.base import DEFAULT_AGENT_MODEL  # noqa: E402
 from geometry_diagrams.strategies.python_full import PythonFullStrategy  # noqa: E402
 from geometry_diagrams.ir.renderer import SVGRenderer  # noqa: E402
 
-ATTEMPTS_DIR = FINAL_DIR / "attempts"
-GENERATION_LOG_PATH = FINAL_DIR / "generation_log.json"
+OUT_DIR = SCRIPT_DIR / "examples" / "diagram_kinds"
+ATTEMPTS_DIR = OUT_DIR / "attempts"
+GENERATION_LOG_PATH = OUT_DIR / "generation_log.json"
 
 
 async def generate_one(
     kind: str, attempt_index: int, prompt: str, use_cookbook: bool, model: str
 ) -> dict:
     """Run PythonFullStrategy.run() once for one (kind, attempt) pair.
-    Returns raw generation facts only -- never a verdict (same discipline
-    as run_baseline.py's generate_one)."""
+    Returns raw generation facts only -- never a verdict; a human reviews
+    the saved SVG and records the verdict separately."""
     strategy = PythonFullStrategy()
     record: dict = {
         "kind": kind,
@@ -82,8 +84,9 @@ async def generate_one(
         ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
         svg_path = ATTEMPTS_DIR / f"{kind}_attempt{attempt_index}.svg"
         svg_path.write_text(result.svg)
-        record["svg_path"] = str(svg_path.relative_to(FINAL_DIR))
-    except Exception as exc:  # noqa: BLE001 -- see run_baseline.py's rationale
+        record["svg_path"] = str(svg_path.relative_to(OUT_DIR))
+    except Exception as exc:  # noqa: BLE001 -- record and keep going; a
+        # generation failure for one attempt shouldn't abort the whole run.
         record["error"] = str(exc)
         partial_meta = getattr(strategy, "_partial_python_full_metadata", None)
         if partial_meta is not None:

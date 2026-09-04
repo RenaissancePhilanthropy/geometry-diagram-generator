@@ -1,23 +1,32 @@
-"""Ticket 13: assemble the final 30-kind gallery manifest.
+"""Assemble the diagram-kinds gallery's final 30-kind manifest.
 
 Combines:
-- ../baseline/manifest.json (ticket 07): the 25 kinds with baseline
-  verdict "pass" (including "none", which needs no SVG) are reused as-is
-  -- source="baseline-reuse", status="ok".
+- .scratch/diagram-kinds-poc/baseline/manifest.json: the kinds with
+  baseline verdict "pass" (including "none", which needs no SVG) are
+  reused as-is -- source="baseline-reuse", status="ok".
 - FRESH_CHOICES below (hand-reviewed, after actually looking at every
-  rendered attempt's SVG -- see run_final.py's attempts/ and this
-  ticket's report for the full before/after comparison): the 5 kinds
-  that needed a genuine fresh PythonFullStrategy.run() -- source=
-  "fresh-generation", status="ok" (pointing at the winning attempt) or
-  "known-gap" (no clean render after reasonable iteration).
+  rendered attempt's SVG): the kinds that needed a genuine fresh
+  PythonFullStrategy.run() -- source="fresh-generation", status="ok"
+  (pointing at the winning attempt) or "known-gap" (no clean render after
+  reasonable iteration).
+
+NOTE: this script's baseline input lives under .scratch/diagram-kinds-poc/,
+diagram-kinds-poc's disposable working area. This script and its output
+(docs/examples/diagram_kinds/manifest.json + svgs/) were relocated out of
+.scratch to survive that area being deleted, but re-running this assembly
+script from scratch still depends on .scratch/diagram-kinds-poc/baseline/
+existing -- it was intentionally left in place at the time of this move
+(a separate decision for whoever eventually cleans up .scratch). If that
+directory is gone, this script can no longer be re-run as-is; the already
+-assembled manifest.json + svgs/ remain valid as a frozen snapshot either
+way.
 
 This module's `build_final_entries` is the pure, unit-testable assembly
-logic (mirrors ../baseline/finalize_manifest.py's build_entries
-precedent). `main()` additionally copies every referenced SVG into
-./svgs/ so the final manifest is self-contained, and writes the final
-manifest.json.
+logic. `main()` additionally copies every referenced SVG into ./svgs/ (or
+the attempts/ output of gen_diagram_kinds_examples.py) so the final
+manifest is self-contained, and writes the final manifest.json.
 
-Usage: .venv/bin/python .scratch/diagram-kinds-poc/final/assemble_manifest.py
+Usage: .venv/bin/python docs/assemble_diagram_kinds_manifest.py
 """
 
 from __future__ import annotations
@@ -27,28 +36,31 @@ import shutil
 import sys
 from pathlib import Path
 
-FINAL_DIR = Path(__file__).resolve().parent
-BASELINE_DIR = FINAL_DIR.parent / "baseline"
-for p in (str(FINAL_DIR), str(BASELINE_DIR)):
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+BASELINE_DIR = REPO_ROOT / ".scratch" / "diagram-kinds-poc" / "baseline"
+OUT_DIR = SCRIPT_DIR / "examples" / "diagram_kinds"
+
+for p in (str(SCRIPT_DIR), str(BASELINE_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
 from kinds_prompts import KIND_NAMES  # noqa: E402
-from final_manifest_lib import FinalManifestEntry, write_manifest  # noqa: E402
+from diagram_kinds_manifest_lib import FinalManifestEntry, write_manifest  # noqa: E402
 
 BASELINE_MANIFEST_PATH = BASELINE_DIR / "manifest.json"
-FINAL_MANIFEST_PATH = FINAL_DIR / "manifest.json"
-FINAL_SVG_DIR = FINAL_DIR / "svgs"
+FINAL_MANIFEST_PATH = OUT_DIR / "manifest.json"
+FINAL_SVG_DIR = OUT_DIR / "svgs"
 
 # Hand-reviewed outcome for each of the 5 kinds that needed a genuine fresh
-# PythonFullStrategy.run() (see run_final.py + final_prompts.py). Filled in
-# after visually reviewing every attempt's rendered SVG (headless-Chrome
-# screenshot, same discipline as ticket 07's baseline review) -- not a
-# hand-authored fix, a *choice* of which real strategy-run attempt to keep.
+# PythonFullStrategy.run() (see gen_diagram_kinds_examples.py +
+# diagram_kinds_prompts.py). Filled in after visually reviewing every
+# attempt's rendered SVG (headless-Chrome screenshot) -- not a hand-authored
+# fix, a *choice* of which real strategy-run attempt to keep.
 #
 # kind -> {
 #   "status": "ok" | "known-gap",
-#   "attempt_svg": path relative to final/ (attempts/<kind>_attempt<N>.svg),
+#   "attempt_svg": path relative to OUT_DIR (attempts/<kind>_attempt<N>.svg),
 #       required for "ok", omitted for "known-gap" (no presentable output),
 #   "notes": str,
 # }
@@ -107,8 +119,8 @@ FRESH_CHOICES: "dict[str, dict]" = {
             "amount of prompt wording about margins or 'wide canvas' can change "
             "that without either compressing the y-axis (misrepresenting the "
             "data) or an engineering change to allow independent x/y scaling, "
-            "which is out of this ticket's scope (prompt refinement + re-running "
-            "only). Recorded as an honest known gap, not silently patched over."
+            "which is out of scope (prompt refinement + re-running only). "
+            "Recorded as an honest known gap, not silently patched over."
         ),
     },
     "shape_comparison": {
@@ -141,8 +153,7 @@ def build_final_entries(
     a fresh run's outcome). Every other kind must have had baseline
     verdict "pass" -- raises if not, since a baseline "partial"/"fail"
     kind with no fresh_choices entry would otherwise silently end up
-    without any accounted-for outcome, which this ticket's Honesty
-    criterion forbids.
+    without any accounted-for outcome.
     """
     entries: "list[FinalManifestEntry]" = []
     for row in baseline_manifest:
@@ -180,7 +191,8 @@ def build_final_entries(
 def _copy_svgs(entries: "list[FinalManifestEntry]") -> "list[FinalManifestEntry]":
     """Copy every entry's source SVG into ./svgs/<kind>.svg and return new
     entries pointing at the copies, so the final manifest is self-contained
-    (does not depend on ../baseline/svgs/ or attempts/ staying put)."""
+    (does not depend on baseline's or gen_diagram_kinds_examples.py's
+    output directories staying put)."""
     FINAL_SVG_DIR.mkdir(parents=True, exist_ok=True)
     updated: "list[FinalManifestEntry]" = []
     for entry in entries:
@@ -190,13 +202,13 @@ def _copy_svgs(entries: "list[FinalManifestEntry]") -> "list[FinalManifestEntry]
         if entry.source == "baseline-reuse":
             src = BASELINE_DIR / entry.svg_path
         else:
-            src = FINAL_DIR / entry.svg_path
+            src = OUT_DIR / entry.svg_path
         dest = FINAL_SVG_DIR / f"{entry.kind}.svg"
         shutil.copyfile(src, dest)
         updated.append(
             FinalManifestEntry(
                 kind=entry.kind,
-                svg_path=str(dest.relative_to(FINAL_DIR)),
+                svg_path=str(dest.relative_to(OUT_DIR)),
                 source=entry.source,
                 status=entry.status,
                 notes=entry.notes,

@@ -1,10 +1,10 @@
-"""Ticket 13: prompts for the 5 kinds that need a genuine fresh
-PythonFullStrategy.run() (not baseline reuse), per the ticket's corrected
-scope:
+"""Prompts for the 5 diagram kinds that needed a genuine fresh
+PythonFullStrategy.run() (not baseline reuse) when the diagram-kinds-poc
+gallery was assembled, per that ticket's corrected scope:
 
 - area_model, attribute_chart: baseline verdict was "partial" and a
   cookbook helper now exists that targets their exact defect
-  (bar()/table_grid() respectively, tickets 10/11) -- re-run WITH
+  (bar()/table_grid() respectively) -- re-run WITH
   experimental_diagram_cookbook=True, describing the same content as the
   baseline prompt (the fix is expected to come from the cookbook helper
   being available to the script-writing LLM, not from new prompt wording).
@@ -12,13 +12,14 @@ scope:
   "partial" due to canvas-sizing / label-overlap defects (not missing
   primitives) -- re-run WITHOUT the cookbook flag, with the prompt
   explicitly calling out margins/spacing informed by the exact baseline
-  defect recorded in manifest.json, per the ticket's guidance.
+  defect recorded in manifest.json.
 
 Each kind maps to a list of attempt prompts, tried in order (index 0
 first) until one produces a clean render or the list is exhausted (known
 gap). Keeping every attempt's prompt text here (not just the final winner)
-so the report can show real iteration, per the ticket's "small amount of
-reasonable prompt iteration (2-3 tries) is acceptable and expected."
+so the generation history shows real iteration, per the "small amount of
+reasonable prompt iteration (2-3 tries) is acceptable and expected"
+guidance the gallery was built under.
 """
 
 from __future__ import annotations

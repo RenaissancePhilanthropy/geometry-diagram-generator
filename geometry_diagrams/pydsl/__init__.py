@@ -95,8 +95,8 @@ __all__ = [
     "assert_in_canvas",
 ]
 
-# Experimental diagram cookbook (ticket 08, diagram-kinds-poc): names of
-# helper functions from geometry_diagrams.pydsl.cookbook, gated behind
+# Experimental diagram cookbook (diagram-kinds-poc): names of helper
+# functions from geometry_diagrams.pydsl.cookbook, gated behind
 # PythonFullStrategy.run()'s experimental_diagram_cookbook flag /
 # sandbox.run_script()'s enable_cookbook flag. Deliberately kept OUT of
 # __all__ above — these must never reach a sandboxed script unless the
@@ -107,21 +107,6 @@ __all__ = [
 # _sandbox_child.py's _build_tool_names does getattr(pydsl_module, name) for
 # each of these, so a name added here without a matching import above
 # raises AttributeError the moment enable_cookbook=True.
-#
-# Ticket 09 populates this with its grid/discrete-object helpers; later
-# tickets (10-12) append further names as they add more cookbook.py
-# functions.
-#
-# Ticket 10 appends "bar"/"bars" (rectangle bars for tape diagrams, bar
-# graphs, area-model cells, and fill-level containers).
-#
-# Ticket 11 appends "table_grid" (a bordered grid of labeled cells,
-# underlying attribute_chart, work_table, place_value_chart,
-# column_arithmetic, and long_division).
-#
-# Ticket 12 (the last one on this branch) appends "oblique_point" (a 2D
-# oblique projection of a 3D coordinate, underlying cube_volume, prism_3d,
-# l_prism, and prism_net) — after this, cookbook.py is feature-complete.
 COOKBOOK_NAMES: list[str] = [
     "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point",
 ]

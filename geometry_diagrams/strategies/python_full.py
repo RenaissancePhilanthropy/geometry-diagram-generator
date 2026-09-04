@@ -1178,10 +1178,10 @@ class PythonFullStrategy(SubstanceStrategy):
         '## Cookbook (experimental)' section (build_python_full_instructions's
         include_cookbook) and the sandboxed script's tool namespace gains
         geometry_diagrams.pydsl.COOKBOOK_NAMES on top of the stable API
-        (sandbox.run_script's enable_cookbook) -- currently a no-op in
-        practice since COOKBOOK_NAMES is still empty; later tickets (09-12)
-        populate it with real cookbook helpers. Deliberately NOT threaded
-        through GeometryConfig/RecipeStrategy/facade.py -- those paths never
+        (sandbox.run_script's enable_cookbook) -- COOKBOOK_NAMES now lists
+        cookbook.py's 7 real helper functions (unit_grid, array_of,
+        tick_marks, bar, bars, table_grid, oblique_point). Deliberately NOT
+        threaded through GeometryConfig/RecipeStrategy/facade.py -- those paths never
         run pydsl scripts and must remain physically unable to enable this.
         Not available on the edit-mode paths (_run_from_script/build_agent's
         patch/search_replace/hashline/line_number/_edit_full_rewrite), same

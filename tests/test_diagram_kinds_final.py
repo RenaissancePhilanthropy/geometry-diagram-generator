@@ -1,16 +1,20 @@
-"""Unit tests for the diagram-kinds-poc ticket 13 final-gallery assembly's
-non-LLM logic: manifest schema validation (final_manifest_lib.py) and the
-baseline + fresh-choices combination logic (assemble_manifest.py). The 5
-real fresh PythonFullStrategy.run() attempts (area_model, attribute_chart,
+"""Unit tests for the diagram-kinds gallery's final-assembly non-LLM logic:
+manifest schema validation (diagram_kinds_manifest_lib.py) and the
+baseline + fresh-choices combination logic
+(assemble_diagram_kinds_manifest.py). The 5 real fresh
+PythonFullStrategy.run() attempts (area_model, attribute_chart,
 coordinate_plane, scatter_plot, shape_comparison) are the integration work
-itself (see .scratch/diagram-kinds-poc/final/run_final.py,
-final_prompts.py, and its generation_log.json/manifest.json output) and
-are intentionally not exercised here -- mirrors
-tests/test_diagram_kinds_baseline.py's precedent for ticket 07.
+itself (see docs/gen_diagram_kinds_examples.py, docs/diagram_kinds_prompts.py,
+and docs/examples/diagram_kinds/generation_log.json/manifest.json) and are
+intentionally not exercised here -- mirrors
+tests/test_diagram_kinds_baseline.py's precedent.
 
-These modules live under .scratch/diagram-kinds-poc/final/ (PoC
-artifacts, not part of the geometry_diagrams package), so this test file
-loads them directly by file path rather than via a normal package import.
+The assembly scripts live under docs/ (permanent, following the
+docs/gen_examples.py pattern) but still read the original baseline
+manifest from .scratch/diagram-kinds-poc/baseline/ (diagram-kinds-poc's
+disposable working area, left in place independently of this move), so
+this test file loads them directly by file path rather than via a normal
+package import.
 """
 
 from __future__ import annotations
@@ -21,11 +25,11 @@ from pathlib import Path
 
 import pytest
 
-FINAL_DIR = (
+DOCS_DIR = Path(__file__).resolve().parents[1] / "docs"
+BASELINE_DIR = (
     Path(__file__).resolve().parents[1]
-    / ".scratch" / "diagram-kinds-poc" / "final"
+    / ".scratch" / "diagram-kinds-poc" / "baseline"
 )
-BASELINE_DIR = FINAL_DIR.parent / "baseline"
 
 
 def _load_module(name: str, directory: Path):
@@ -43,16 +47,16 @@ def kinds_prompts():
 
 @pytest.fixture(scope="module")
 def final_manifest_lib():
-    return _load_module("final_manifest_lib", FINAL_DIR)
+    return _load_module("diagram_kinds_manifest_lib", DOCS_DIR)
 
 
 @pytest.fixture(scope="module")
 def assemble_manifest(final_manifest_lib, kinds_prompts):
-    # assemble_manifest.py imports kinds_prompts/final_manifest_lib by
-    # inserting both directories onto sys.path itself -- already satisfied
-    # since _load_module above runs after the two fixtures above have
-    # executed.
-    return _load_module("assemble_manifest", FINAL_DIR)
+    # assemble_diagram_kinds_manifest.py imports kinds_prompts/
+    # diagram_kinds_manifest_lib by inserting both directories onto
+    # sys.path itself -- already satisfied since _load_module above runs
+    # after the two fixtures above have executed.
+    return _load_module("assemble_diagram_kinds_manifest", DOCS_DIR)
 
 
 # ---------------------------------------------------------------------------

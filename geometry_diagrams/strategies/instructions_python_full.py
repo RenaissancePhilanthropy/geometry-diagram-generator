@@ -5,19 +5,23 @@ from __future__ import annotations
 def build_python_full_instructions(include_cookbook: bool = False) -> str:
     """Assemble the system prompt, embedding the live pydsl API stub text.
 
-    Dynamic by design: calls generate_stub() at build time (not a static,
-    hand-copied string) — a docstring/signature change to any pydsl op
-    updates this prompt automatically, matching the stub generator's stated
-    single-source-of-truth purpose.
+    The base '## Available API' section is dynamic by design: calls
+    generate_stub() at build time (not a static, hand-copied string) — a
+    docstring/signature change to any pydsl op updates this prompt
+    automatically, matching the stub generator's stated single-source-of-truth
+    purpose. The appended '## Cookbook (experimental)' section below is NOT
+    generated this way — it is a manually-maintained addendum, hand-copied
+    from each cookbook helper's docstring in cookbook.py, and must be kept in
+    sync by hand whenever those docstrings change.
 
     include_cookbook (ticket 08, experimental gating infrastructure):
     False by default, so the returned prompt is byte-identical to before
-    this parameter existed. When True, appends a '## Cookbook
+    this parameter existed. When True, appends the '## Cookbook
     (experimental)' section after the rest of the prompt, documenting the
     opt-in helper functions from geometry_diagrams/pydsl/cookbook.py (only
     reachable in the sandbox when PythonFullStrategy.run() is called with
-    experimental_diagram_cookbook=True). Ticket 09 adds the first three
-    (grid/discrete-object) helpers; later tickets (10-12) append more.
+    experimental_diagram_cookbook=True): unit_grid, array_of, tick_marks,
+    bar, bars, table_grid, and oblique_point.
     """
     from ..pydsl.stub import generate_stub
 
@@ -172,10 +176,11 @@ works if you prefer to write it explicitly, but it isn't required.
 
 These extra helper functions are ALSO available for this request only, on
 top of everything above. Each is built purely out of the ordinary API
-above — use them as shortcuts for grid/discrete-object diagrams instead of
-hand-writing the equivalent loops yourself.
+above — use them as shortcuts for grid/discrete-object, bar/container,
+table, and oblique-3D-projection diagrams instead of hand-writing the
+equivalent loops/arithmetic yourself.
 
-def unit_grid(x0, y0, cols, rows, cell_size=1.0, color="gray")  # Draw a cols x rows reference grid of unit-square lines, anchored bottom-left at (x0, y0). Use for a counting grid (grid_area), ruled flats (place_value_blocks), or a backdrop grid behind a composite shape (composite_polygon). Draws only — returns nothing, call canvas() yourself to fit its extent.
+def unit_grid(x0, y0, cols, rows, cell_size=1.0, color="gray")  # Draw a cols x rows reference grid of unit-square lines, anchored bottom-left at (x0, y0). Use for a counting grid (grid_area), ruled flats (place_value_blocks), or a backdrop grid behind a composite polygon. Draws only — returns nothing, call canvas() yourself to fit its extent.
 def array_of(n, shape="circle", cols=None, spacing=1.0, origin=(0.0, 0.0), size=0.3, color=None)  # Place n identical circles or squares in a row-major grid starting at origin (the first shape's center); cols defaults to a roughly-square layout. Use for equal-groups counting (object_array) or the stacked-dot pattern in dot_plot. Draws (and fills with color, if given) every shape and returns the list of handles in placement order.
 def tick_marks(p1, p2, n, length=0.2)  # Draw n evenly spaced tick segments perpendicular to the p1-p2 line, at n equally spaced positions from p1 (inclusive) to p2 (inclusive) — e.g. n=11 marks every unit of a 0..10 number line. Use for number_line's unit ticks or ruler_measure's graduation marks. Returns the list of drawn tick segments, in order from p1 to p2.
 def bar(x, y, width, height, fill_color=None, fill_opacity=1.0, label=None, **draw_style)  # Draw one rectangle bar with corner (x, y) and the given width/height. Use for a single tape-diagram section, a single bar-graph column, one area-model cell, or one fill-level container (call it twice for a container: once for the outline, once more sized to the filled fraction). fill_color/fill_opacity shade the interior; label is centered inside the bar (e.g. a cell's partial product); draw_style kwargs (color, thick, dashed, ...) style the outline. Returns the rectangle handle.

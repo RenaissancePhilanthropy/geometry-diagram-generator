@@ -1,27 +1,27 @@
-"""Schema + read/write helpers for ticket 13's final 30-kind gallery
-manifest.
+"""Schema + read/write helpers for the diagram-kinds-poc gallery's final
+30-kind manifest (docs/examples/diagram_kinds/manifest.json).
 
 Each entry records, for one of the 30 taxonomy kinds, where its gallery
 SVG comes from and whether it's presentable:
 
-- kind: the kind name (see ../baseline/kinds_prompts.KIND_NAMES).
-- svg_path: path (relative to this final/ directory) to the SVG to show
-  in the gallery, or None. Required for status="ok" except the "none"
-  kind (which is not a rendering kind at all -- same exception as
-  ../baseline/manifest_lib.ManifestEntry). Optional for status="known-gap"
-  (a known-gap kind has no presentable SVG by definition, though a
-  best-effort attempt may still be referenced elsewhere for evidence).
-- source: "baseline-reuse" (ticket 07's baseline SVG, verdict "pass", is
-  reused as-is) or "fresh-generation" (this ticket ran a genuine new
-  PythonFullStrategy.run() for it).
+- kind: the kind name (see .scratch/diagram-kinds-poc/baseline/kinds_prompts.KIND_NAMES,
+  while that PoC working area still exists).
+- svg_path: path (relative to docs/examples/diagram_kinds/) to the SVG to
+  show in the gallery, or None. Required for status="ok" except the "none"
+  kind (which is not a rendering kind at all). Optional for
+  status="known-gap" (a known-gap kind has no presentable SVG by
+  definition, though a best-effort attempt may still be referenced
+  elsewhere for evidence).
+- source: "baseline-reuse" (a kind whose original baseline SVG, verdict
+  "pass", was reused as-is) or "fresh-generation" (a genuine new
+  PythonFullStrategy.run() was used for it).
 - status: "ok" (a presentable SVG exists) or "known-gap" (no clean render
   was produced after reasonable iteration -- must carry a real note on
-  what was tried, per the ticket's Honesty criterion).
+  what was tried).
 - notes: short free-text note. Required (non-empty) for "known-gap".
 
-Kept separate from assemble_manifest.py (the assembly logic) so the
-schema is independently testable, mirroring ../baseline/manifest_lib.py's
-precedent for this feature.
+Kept separate from assemble_diagram_kinds_manifest.py (the assembly logic)
+so the schema is independently testable.
 """
 
 from __future__ import annotations

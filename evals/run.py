@@ -878,7 +878,8 @@ async def main() -> None:
         default=False,
         help="Enable PythonFullStrategy's optional experimental diagram cookbook "
         "(ticket 08, diagram-kinds-poc's experimental gating infrastructure): "
-        "adds a (currently empty) advisory cookbook section to the script-writer "
+        "adds an advisory cookbook section (7 helpers: unit_grid, array_of, "
+        "tick_marks, bar, bars, table_grid, oblique_point) to the script-writer "
         "prompt and, defense in depth, allows the sandboxed script to call any "
         "cookbook helper. Only affects the 'python_full' strategy; ignored by "
         "all others. Off by default (matches PythonFullStrategy.run()'s own "
