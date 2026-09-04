@@ -25,6 +25,10 @@ MODEL=mistralai/Mistral-Small-24B-Instruct-2501
 ACT=interp/activations
 RES=interp/results
 export PYTHONUNBUFFERED=1
+# step 0 and step 4 both need the SSO profile; only step 4 used to set it, so a
+# missing AWS_PROFILE made the restore fail with a warning and the run continue.
+export AWS_PROFILE="${AWS_PROFILE:-renphil}"
+export HF_HOME="${HF_HOME:-/root/.hf}"
 
 echo "=== 0. restore the confidence-token cells from S3 (needed for the comparison) ==="
 for cell in fix_mistral_math fix_mistral_mmlu_pro fix_mistral_gpqa; do
@@ -62,5 +66,5 @@ for task in math mmlu_pro gpqa; do
 done
 
 echo "=== 4. save off box (must exit 0 before destroying) ==="
-AWS_PROFILE=renphil bash interp/save_off_box.sh
+bash interp/save_off_box.sh
 echo "save_off_box exit=$?  (0 = safe to destroy; 4 = Tier A not pushed, DO NOT destroy)"
