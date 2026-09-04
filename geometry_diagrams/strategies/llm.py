@@ -371,6 +371,64 @@ def requires_forced_function_calling(model_id: str) -> bool:
     return model_id in _FORCED_FUNCTION_CALLING_MODELS
 
 
+# Models whose provider rejects a FORCED tool_choice outright ("Tool choice
+# must be auto") but works fine with tool_choice="auto" — distinct from
+# _RAW_TEXT_ONLY_MODELS above (which reject structured output entirely).
+# openrouter:z-ai/glm-5.3-flash (2026-08-26): with_structured_output's
+# "function_calling" method sends tool_choice="any" (LangChain's forced-choice
+# value), which Z.AI's OpenRouter endpoint 400s on unconditionally. Confirmed
+# via a direct API call that disabling reasoning (the qwen3.7-flash/
+# nemotron-3.5-lightning fix above) is NOT an option here — this endpoint
+# 400s with "Reasoning is mandatory for this endpoint and cannot be disabled."
+# But a direct call with tool_choice="auto" (reasoning left on) returned a
+# clean tool_calls response — so the fix is forcing "auto" instead of
+# disabling anything. Use bind_structured_output_auto_tool_choice() below
+# instead of with_structured_output() for these models.
+_AUTO_TOOL_CHOICE_MODELS: set[str] = {
+    "openrouter:z-ai/glm-5.3-flash",
+}
+
+
+def requires_auto_tool_choice(model_id: str) -> bool:
+    """Return True if structured output must bind tools with tool_choice="auto"
+    instead of the forced choice with_structured_output(method="function_calling")
+    would otherwise send (see _AUTO_TOOL_CHOICE_MODELS)."""
+    return model_id in _AUTO_TOOL_CHOICE_MODELS
+
+
+def bind_structured_output_auto_tool_choice(
+    llm: BaseChatModel, schema: type, include_raw: bool = True
+):
+    """Structured-output chain equivalent to
+    llm.with_structured_output(schema, method="function_calling", include_raw=include_raw),
+    except it binds the tool with tool_choice="auto" instead of a forced choice.
+
+    with_structured_output has no supported way to override the tool_choice
+    value it sends for "function_calling" mode (LangChain hardcodes
+    tool_choice="any"), so for models that reject a forced choice (see
+    requires_auto_tool_choice) the chain has to be built by hand, mirroring
+    what langchain_core.language_models.chat_models.BaseChatModel.with_structured_output
+    does internally for the function_calling method.
+    """
+    from operator import itemgetter
+
+    from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+    from langchain_core.runnables import RunnableMap, RunnablePassthrough
+
+    bound = llm.bind_tools([schema], tool_choice="auto")
+    parser = PydanticToolsParser(tools=[schema], first_tool_only=True)
+    if not include_raw:
+        return bound | parser
+    parser_assign = RunnablePassthrough.assign(
+        parsed=itemgetter("raw") | parser, parsing_error=lambda _: None
+    )
+    parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
+    parser_with_fallback = parser_assign.with_fallbacks(
+        [parser_none], exception_key="parsing_error"
+    )
+    return RunnableMap(raw=bound) | parser_with_fallback
+
+
 def is_anthropic_model(model_id: str) -> bool:
     """Return True if the model uses the Anthropic backend."""
     provider = _resolve_provider(model_id)

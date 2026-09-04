@@ -21,7 +21,14 @@ from langgraph.prebuilt import create_react_agent
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .structured import dispatch_query
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipeline
-from .llm import get_chat_model, extract_usage, make_system_message, is_openai_model
+from .llm import (
+    get_chat_model,
+    extract_usage,
+    make_system_message,
+    is_openai_model,
+    requires_auto_tool_choice,
+    bind_structured_output_auto_tool_choice,
+)
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
     load_catalog,
@@ -308,8 +315,11 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     # OpenAI's strict structured-outputs mode requires additionalProperties: false
     # on every object schema, which the free-form style/styles dict fields on
     # RecipeDSL can't satisfy. function_calling mode doesn't enforce that.
-    structured_kwargs = {"method": "function_calling"} if is_openai_model(model_id) else {}
-    structured = llm.with_structured_output(RecipeDSL, include_raw=True, **structured_kwargs)
+    if requires_auto_tool_choice(model_id):
+        structured = bind_structured_output_auto_tool_choice(llm, RecipeDSL, include_raw=True)
+    else:
+        structured_kwargs = {"method": "function_calling"} if is_openai_model(model_id) else {}
+        structured = llm.with_structured_output(RecipeDSL, include_raw=True, **structured_kwargs)
 
     raw_content: str | None = None
     in_tok = out_tok = 0
