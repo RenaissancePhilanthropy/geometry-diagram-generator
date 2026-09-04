@@ -15,6 +15,10 @@ from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ell
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
 
+_EQUATION_STEPS_CHAR_WIDTH = 0.5   # construction units per character, for canvas x-sizing
+_EQUATION_STEPS_MIN_HALF_WIDTH = 2.0  # floor so a single short line still gets a sane canvas
+_EQUATION_STEPS_MARGIN = 0.8      # matches render_util.BOUNDS_PADDING's padding-around-content feel
+
 
 def _nice_step(span: float, target_lines: float = _TARGET_LINES) -> float:
     """Round span/target_lines up to a 'nice' number: 1, 2, or 5 times a power
@@ -1089,4 +1093,34 @@ def canvas(
         axes=axes, tick_step=effective_tick_step,
         show_ticks=show_ticks, show_tick_labels=show_tick_labels,
         show_axis_labels=show_axis_labels,
+    )
+
+
+def equation_steps(
+    lines: "list[str]",
+    x: float = 0.0,
+    y_step: float = 1.2,
+) -> None:
+    """Stack a sequence of equation/algebra steps vertically as free-standing
+    text, one line per row, top to bottom (e.g. for a worked-solution
+    diagram: "3x + 5 = 20", "3x = 15", "x = 5"). Each line may use the same
+    LaTeX subset as other labels — fractions, sub/superscripts, arrows
+    (\\Rightarrow), overline, bold/italic.
+
+    Needs no defined geometry — a script can consist of nothing but a single
+    equation_steps() call. It calls canvas() itself, sized to fit all lines,
+    so do not call canvas() separately in the same script (canvas() may be
+    called at most once per script; calling it again raises ValueError)."""
+    if not lines:
+        raise ValueError("equation_steps() requires at least one line")
+
+    for i, line in enumerate(lines):
+        label_text(line, at=(x, -i * y_step))
+
+    n = len(lines)
+    max_chars = max(len(line) for line in lines)
+    half_width = max(max_chars * _EQUATION_STEPS_CHAR_WIDTH, _EQUATION_STEPS_MIN_HALF_WIDTH)
+    canvas(
+        x_range=(x - half_width, x + half_width),
+        y_range=(-(n - 1) * y_step - _EQUATION_STEPS_MARGIN, _EQUATION_STEPS_MARGIN),
     )
