@@ -17,12 +17,12 @@ import geometry_diagrams.pydsl as pydsl_module
 from geometry_diagrams.ir.ir import CircleCenterRadius, Draw, Polygon as PolygonDef, PointFixed, Segment as SegmentDef
 from geometry_diagrams.pydsl.api import canvas, point
 from geometry_diagrams.pydsl.builder import new_builder_context
-from geometry_diagrams.pydsl.cookbook import array_of, tick_marks, unit_grid
+from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, tick_marks, unit_grid
 from geometry_diagrams.pydsl.sandbox import run_script
 
 
-def test_cookbook_names_lists_the_three_ticket_09_helpers():
-    assert pydsl_module.COOKBOOK_NAMES == ["unit_grid", "array_of", "tick_marks"]
+def test_cookbook_names_lists_the_ticket_09_and_10_helpers():
+    assert pydsl_module.COOKBOOK_NAMES == ["unit_grid", "array_of", "tick_marks", "bar", "bars"]
 
 
 def test_cookbook_names_is_not_exported_in_all():
@@ -223,6 +223,170 @@ def test_tick_marks_rejects_coincident_points():
             tick_marks(p, p, n=3)
 
 
+# --- bar ----------------------------------------------------------------
+
+def test_bar_draws_a_rectangle_at_the_given_position_and_size():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        rect = bar(1, 0, width=2, height=3)
+        ir = builder.build()
+    rects = [d for d in ir.define if isinstance(d, PolygonDef)]
+    assert len(rects) == 1
+    assert rects[0].id == rect.id
+    points_by_id = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    xs = sorted({points_by_id[pid].x for pid in rects[0].points})
+    ys = sorted({points_by_id[pid].y for pid in rects[0].points})
+    assert xs == pytest.approx([1.0, 3.0])
+    assert ys == pytest.approx([0.0, 3.0])
+    draws = [r for r in ir.render if isinstance(r, Draw) and r.obj == rect.id]
+    assert len(draws) == 1
+
+
+def test_bar_fills_when_fill_color_given():
+    from geometry_diagrams.ir.ir import Fill
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        rect = bar(0, 0, width=1, height=1, fill_color="blue", fill_opacity=0.5)
+        ir = builder.build()
+    fills = [r for r in ir.render if isinstance(r, Fill) and r.obj == rect.id]
+    assert len(fills) == 1
+    style = ir.styles[fills[0].style]
+    assert style["color"] == "blue"
+    assert fills[0].opacity == pytest.approx(0.5)
+
+
+def test_bar_does_not_fill_when_no_fill_color_given():
+    from geometry_diagrams.ir.ir import Fill
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        bar(0, 0, width=1, height=1)
+        ir = builder.build()
+    assert [r for r in ir.render if isinstance(r, Fill)] == []
+
+
+def test_bar_labels_at_centroid_when_label_given():
+    from geometry_diagrams.ir.ir import LabelFreeText
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        bar(0, 0, width=2, height=2, label="12")
+        ir = builder.build()
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) == 1
+    assert labels[0].text == "12"
+
+
+def test_bar_forwards_draw_style_kwargs():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        rect = bar(0, 0, width=1, height=1, color="red", thick=True)
+        ir = builder.build()
+    draws = [r for r in ir.render if isinstance(r, Draw) and r.obj == rect.id]
+    style = ir.styles[draws[0].style]
+    assert style["color"] == "red"
+    assert style["thick"] is True
+
+
+def test_bar_rejects_zero_width_or_height():
+    with new_builder_context():
+        canvas(x_range=(-1, 5), y_range=(-1, 5))
+        with pytest.raises(ValueError):
+            bar(0, 0, width=0, height=1)
+        with pytest.raises(ValueError):
+            bar(0, 0, width=1, height=0)
+
+
+def test_bar_requires_a_builder():
+    with pytest.raises(RuntimeError):
+        bar(0, 0, width=1, height=1)
+
+
+# --- bars ------------------------------------------------------------------
+
+def test_bars_places_one_bar_per_value_vertical():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        rects = bars([2, 4, 3], x0=0, y0=0, bar_width=1, gap=0.5)
+        ir = builder.build()
+    assert len(rects) == 3
+    points_by_id = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    rect_defs = {d.id: d for d in ir.define if isinstance(d, PolygonDef)}
+    heights = []
+    x_starts = []
+    for r in rects:
+        xs = [points_by_id[pid].x for pid in rect_defs[r.id].points]
+        ys = [points_by_id[pid].y for pid in rect_defs[r.id].points]
+        heights.append(max(ys) - min(ys))
+        x_starts.append(min(xs))
+    assert heights == pytest.approx([2, 4, 3])
+    # bar_width=1, gap=0.5 => starts at 0, 1.5, 3.0
+    assert x_starts == pytest.approx([0.0, 1.5, 3.0])
+
+
+def test_bars_horizontal_orientation_stacks_along_y():
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        rects = bars([2, 4], x0=0, y0=0, bar_width=1, gap=0.5, orientation="horizontal")
+        ir = builder.build()
+    points_by_id = {d.id: d for d in ir.define if isinstance(d, PointFixed)}
+    rect_defs = {d.id: d for d in ir.define if isinstance(d, PolygonDef)}
+    widths = []
+    y_starts = []
+    for r in rects:
+        xs = [points_by_id[pid].x for pid in rect_defs[r.id].points]
+        ys = [points_by_id[pid].y for pid in rect_defs[r.id].points]
+        widths.append(max(xs) - min(xs))
+        y_starts.append(min(ys))
+    assert widths == pytest.approx([2, 4])
+    assert y_starts == pytest.approx([0.0, 1.5])
+
+
+def test_bars_labels_each_bar_when_labels_given():
+    from geometry_diagrams.ir.ir import LabelFreeText
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        bars([4, 4, 4], x0=0, y0=0, labels=["a", "b", "c"])
+        ir = builder.build()
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert sorted(l.text for l in labels) == ["a", "b", "c"]
+
+
+def test_bars_fills_every_bar_with_the_same_color():
+    from geometry_diagrams.ir.ir import Fill
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        bars([1, 2, 3], fill_color="green")
+        ir = builder.build()
+    fills = [r for r in ir.render if isinstance(r, Fill)]
+    assert len(fills) == 3
+    assert all(ir.styles[f.style]["color"] == "green" for f in fills)
+
+
+def test_bars_rejects_empty_values():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        with pytest.raises(ValueError):
+            bars([])
+
+
+def test_bars_rejects_mismatched_labels_length():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        with pytest.raises(ValueError):
+            bars([1, 2, 3], labels=["only one"])
+
+
+def test_bars_rejects_bad_orientation():
+    with new_builder_context():
+        canvas(x_range=(-1, 10), y_range=(-1, 10))
+        with pytest.raises(ValueError):
+            bars([1, 2], orientation="diagonal")
+
+
 # --- end-to-end sandbox wiring (the ticket 08 gotcha, for real) --------------
 
 def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
@@ -234,9 +398,10 @@ def test_cookbook_helpers_unreachable_in_sandbox_without_the_flag():
 def test_cookbook_helpers_reachable_in_real_sandbox_with_flag_enabled():
     """Runs an actual script through the real subprocess sandbox (not a
     mock, not a direct Python call) with enable_cookbook=True, using all
-    three new helpers together — this is what would have raised
-    AttributeError if COOKBOOK_NAMES had been updated without also
-    re-exporting the functions from pydsl/__init__.py."""
+    five cookbook helpers together (ticket 09's three plus ticket 10's
+    bar/bars) — this is what would have raised AttributeError if
+    COOKBOOK_NAMES had been updated without also re-exporting the
+    functions from pydsl/__init__.py."""
     script = """
 canvas(x_range=(-1, 10), y_range=(-6, 6))
 unit_grid(0, 0, cols=3, rows=3)
@@ -244,7 +409,15 @@ shapes = array_of(4, shape="circle", cols=2, origin=(0, -4))
 a = point(0, 3)
 b = point(6, 3)
 tick_marks(a, b, n=4)
+single = bar(0, -5, width=1, height=1, fill_color="orange", label="1")
+series = bars([1, 2, 3], x0=2, y0=-5, bar_width=0.8, fill_color="teal", labels=["a", "b", "c"])
 """
     result = run_script(script, timeout_seconds=10.0, enable_cookbook=True)
     assert result.error is None, result.error
     assert result.diagram_ir is not None
+
+
+def test_bar_and_bars_unreachable_in_sandbox_without_the_flag():
+    script = "canvas(x_range=(-1, 5), y_range=(-1, 5))\nbar(0, 0, width=1, height=1)\n"
+    result = run_script(script, enable_cookbook=False)
+    assert result.error is not None

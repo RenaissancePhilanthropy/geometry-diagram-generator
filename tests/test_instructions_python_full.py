@@ -96,3 +96,9 @@ def test_cookbook_section_documents_the_three_ticket_09_helpers():
     text = build_python_full_instructions(include_cookbook=True)
     for name in ("def unit_grid(", "def array_of(", "def tick_marks("):
         assert name in text, f"cookbook section missing {name}"
+
+
+def test_cookbook_section_documents_the_ticket_10_bar_helpers():
+    text = build_python_full_instructions(include_cookbook=True)
+    for name in ("def bar(", "def bars("):
+        assert name in text, f"cookbook section missing {name}"

@@ -23,8 +23,8 @@ from __future__ import annotations
 
 import math
 
-from geometry_diagrams.pydsl.api import circle, draw, fill, point, rectangle, segment
-from geometry_diagrams.pydsl.handles import Point
+from geometry_diagrams.pydsl.api import circle, draw, fill, label_text, point, rectangle, segment
+from geometry_diagrams.pydsl.handles import Point, Polygon
 
 
 # --- unit_grid: background reference grid -----------------------------------
@@ -149,3 +149,90 @@ def tick_marks(p1: Point, p2: Point, n: int, length: float = 0.2):
         draw(tick)
         ticks.append(tick)
     return ticks
+
+
+# --- bar / bars: rectangle bars for tape diagrams, bar graphs, area-model ----
+# cells, and fill-level containers (ticket 10) -------------------------------
+
+def bar(
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    fill_color: "str | None" = None,
+    fill_opacity: float = 1.0,
+    label: "str | None" = None,
+    **draw_style,
+) -> Polygon:
+    """A single rectangle bar with corner (x, y) and the given width/height
+    (same corner/width/height convention as `rectangle()`) — the one-bar
+    building block for a tape-diagram section, a single bar-graph column, an
+    area-model cell, or a fill-level container (call it twice: once for the
+    container outline, once more for the filled portion). `draw_style`
+    kwargs (color, thick, dashed, ...) are forwarded to `draw()` for the
+    outline. If `fill_color` is given, the bar's interior is filled (at
+    `fill_opacity`, default fully opaque) — e.g. a shaded fill-level portion
+    or a bar-graph bar's fill color. If `label` is given, it's placed at the
+    bar's centroid — e.g. an area-model cell's partial product, or a
+    tape-diagram section's value. Returns the underlying rectangle handle."""
+    if width == 0 or height == 0:
+        raise ValueError(f"bar(): width and height must be nonzero, got width={width!r}, height={height!r}")
+    rect = rectangle(corner=point(x, y), width=width, height=height)
+    draw(rect, **draw_style)
+    if fill_color is not None:
+        fill(rect, color=fill_color, opacity=fill_opacity)
+    if label is not None:
+        label_text(str(label), centroid_of=rect)
+    return rect
+
+
+def bars(
+    values: "list[float]",
+    x0: float = 0.0,
+    y0: float = 0.0,
+    bar_width: float = 1.0,
+    gap: float = 0.2,
+    orientation: str = "vertical",
+    fill_color: "str | None" = None,
+    labels: "list[str] | None" = None,
+    **draw_style,
+) -> "list[Polygon]":
+    """A row of `len(values)` equal-thickness bars laid out side by side,
+    starting at (x0, y0) — for a bar graph's whole series, or a tape
+    diagram's row of (typically equal) sections. Built on top of `bar()`,
+    called once per value.
+
+    orientation="vertical" (default): bars stand upright, each growing from
+    baseline y0 to height `values[i]`, arranged left-to-right along x, each
+    `bar_width` wide with `gap` between consecutive bars — a standard
+    vertical bar-graph layout.
+    orientation="horizontal": bars extend rightward from baseline x0 to
+    width `values[i]`, stacked top-to-bottom along y (same `bar_width`/`gap`
+    spacing) — a horizontal tape-diagram row of sections.
+
+    `fill_color`/`draw_style` are forwarded to every `bar()` call unchanged.
+    `labels[i]`, if given, is centered inside the i-th bar (e.g. each
+    section's value, or each column's bar value) — must be the same length
+    as `values` if given. Returns the list of rectangle handles, in the
+    same order as `values`."""
+    if orientation not in ("vertical", "horizontal"):
+        raise ValueError(f"bars(): orientation must be 'vertical' or 'horizontal', got {orientation!r}")
+    if not values:
+        raise ValueError("bars(): values must be non-empty")
+    if labels is not None and len(labels) != len(values):
+        raise ValueError(f"bars(): labels must be the same length as values ({len(values)}), got {len(labels)}")
+    if bar_width <= 0:
+        raise ValueError(f"bars(): bar_width must be positive, got {bar_width!r}")
+
+    rects = []
+    for i, v in enumerate(values):
+        offset = i * (bar_width + gap)
+        if orientation == "vertical":
+            bx, by = x0 + offset, y0
+            w, h = bar_width, v
+        else:
+            bx, by = x0, y0 + offset
+            w, h = v, bar_width
+        lbl = labels[i] if labels is not None else None
+        rects.append(bar(bx, by, w, h, fill_color=fill_color, label=lbl, **draw_style))
+    return rects
