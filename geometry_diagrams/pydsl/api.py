@@ -1096,6 +1096,43 @@ def canvas(
     )
 
 
+def stack_lines(
+    lines: "list[str]",
+    x: float = 0.0,
+    y_step: float = 1.2,
+) -> "tuple[float, float, float]":
+    """Place a sequence of text lines vertically as free-standing labels,
+    one line per row, top to bottom, via label_text(line, at=(x, -i *
+    y_step)) for i = 0, 1, 2, .... General primitive for stacked text
+    (equation/algebra steps, captions, etc.) — see equation_steps() for the
+    common equation-steps-only-script case, of which this is the core.
+
+    Returns (half_width, y_min, y_max): the extent — already padded with a
+    small margin — that a canvas must cover so none of the placed labels
+    get clipped.
+
+    Canvas contract: unlike equation_steps(), stack_lines() does NOT call
+    canvas() itself. This makes it usable *inside* a larger diagram
+    alongside other geometry, where the calling script must make its own
+    single canvas() call (canvas() may be called at most once per script).
+    A script using stack_lines() is responsible for folding the returned
+    extent into that canvas() call — e.g. by taking the min/max of it
+    against the bounds needed for the rest of the diagram's geometry — or
+    the stacked labels risk being clipped off the rendered canvas."""
+    if not lines:
+        raise ValueError("stack_lines() requires at least one line")
+
+    for i, line in enumerate(lines):
+        label_text(line, at=(x, -i * y_step))
+
+    n = len(lines)
+    max_chars = max(len(line) for line in lines)
+    half_width = max(max_chars * _EQUATION_STEPS_CHAR_WIDTH, _EQUATION_STEPS_MIN_HALF_WIDTH)
+    y_min = -(n - 1) * y_step - _EQUATION_STEPS_MARGIN
+    y_max = _EQUATION_STEPS_MARGIN
+    return half_width, y_min, y_max
+
+
 def equation_steps(
     lines: "list[str]",
     x: float = 0.0,
@@ -1110,17 +1147,13 @@ def equation_steps(
     Needs no defined geometry — a script can consist of nothing but a single
     equation_steps() call. It calls canvas() itself, sized to fit all lines,
     so do not call canvas() separately in the same script (canvas() may be
-    called at most once per script; calling it again raises ValueError)."""
-    if not lines:
-        raise ValueError("equation_steps() requires at least one line")
+    called at most once per script; calling it again raises ValueError).
 
-    for i, line in enumerate(lines):
-        label_text(line, at=(x, -i * y_step))
-
-    n = len(lines)
-    max_chars = max(len(line) for line in lines)
-    half_width = max(max_chars * _EQUATION_STEPS_CHAR_WIDTH, _EQUATION_STEPS_MIN_HALF_WIDTH)
+    A thin wrapper around stack_lines(): if you need stacked text alongside
+    other geometry in a larger diagram (which must own its own single
+    canvas() call), use stack_lines() directly instead."""
+    half_width, y_min, y_max = stack_lines(lines, x=x, y_step=y_step)
     canvas(
         x_range=(x - half_width, x + half_width),
-        y_range=(-(n - 1) * y_step - _EQUATION_STEPS_MARGIN, _EQUATION_STEPS_MARGIN),
+        y_range=(y_min, y_max),
     )
