@@ -268,7 +268,7 @@ def test_wrap_text_to_width_single_short_string_returns_one_line():
 # Seam (d): label_in_polygon() end to end -- overflow="wrap"
 # ---------------------------------------------------------------------------
 
-def test_label_in_polygon_overflow_wrap_produces_stacked_lines_that_each_fit(monkeypatch):
+def test_label_in_polygon_overflow_wrap_produces_stacked_lines_that_each_fit():
     with new_builder_context() as builder:
         p1 = point(0.0, 0.0)
         p2 = point(2.0, 0.0)
