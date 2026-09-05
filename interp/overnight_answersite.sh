@@ -46,7 +46,10 @@ for task in math mmlu_pro gpqa; do
     || echo "  !! answer-site capture FAILED for $task"
 done
 
-echo "=== 2. ablation + dose-response, now logging per-record confidences ==="
+echo "=== 2. ablation + dose-response (skipped if already run) ==="
+if [ -s "$ACT/fix_mistral_math/steer_ablation.json" ] || [ -s "$RES/causal/steer_ablation.json" ]; then
+  echo "  already have an ablation for Mistral x MATH (2026-09-05) — skipping, it is the same seed"
+else
 # coeff 0 in amplify mode REMOVES the correctness component: if stated-confidence AUROC
 # collapses toward 0.5 there, the report is mediated by this direction, which is stronger
 # than the current "amplifying it changes what the model says".
@@ -55,6 +58,7 @@ echo "=== 2. ablation + dose-response, now logging per-record confidences ==="
   --mode amplify --coeffs 0,0.5,1,2,4 --n-eval 150 --per-turn-think \
   --out "$RES/fix_mistral_math/steer_amplify_ablate.json" \
   || echo "  !! steering FAILED"
+fi
 
 echo "=== 3. analysis (CPU) ==="
 for task in math mmlu_pro gpqa; do
