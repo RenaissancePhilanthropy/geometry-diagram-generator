@@ -38,8 +38,8 @@ A simple linear detector trained on that state, a probe, predicts whether an att
 The gap is largest on MATH ($+0.20$), where a wrong answer looks as clean as a right one.
 The signal is specific to the attempt: it survives a within-question control that pushes the model's own P(True) toward chance.
 It is substantially shared across domains: a probe trained in one domain still discriminates in the others.
-And it causally influences what the model says.
-On Mistral, amplifying a correctness direction that was learned from labeled examples and then applied without per-example labels at intervention time drops stated confidence on wrong answers from 84 to 55 while correct answers hold near 90, and cuts calibration error from 0.33 to 0.18.
+And what the model says depends on it.
+On Mistral, removing that direction leaves stated confidence barely able to tell its own successes from its own failures (AUROC $0.84 \to 0.56$, while removing a matched random direction changes nothing), and amplifying it instead drops stated confidence on wrong answers from 84 to 54 with correct answers near 90, cutting calibration error from 0.34 to 0.19.
 Models carry substantially more information about their own errors than they state; we read that as knowing, and test the reading causally.
 How much of that knowledge reaches speech varies by architecture, and we outline a global-workspace test of why.
 \end{abstract}
@@ -184,18 +184,16 @@ On Gemma-4, geometry-trained probes \emph{anti-transfer} to QA (0.31--0.39), whi
 Probes trained on the generative task can latch onto task-specific features; QA-trained probes find the general direction.
 Cosines of 0.34--0.82 and off-diagonal AUROC near 0.69 are consistent with a shared correctness subspace rather than a single invariant axis, which is what a deployable readout needs and what a workspace account (below) predicts.
 
-\paragraph{Causal access: the signal influences stated confidence.}
-Reading shows the signal exists; steering shows it feeds the confidence the model reports.
-We steer at the confidence token, after the answer is written, so the answer cannot change.
-The direction is supervised: it is learned from labeled training examples, then applied without per-example labels at intervention time.
-On Mistral $\times$ MATH, as gain rises from 1 to 2 to 4, stated confidence on \emph{failed} answers falls from 84 to 69 to 55 while correct answers hold near 90, and calibration error falls from 0.33 to 0.18 (\cref{tab:transfer}, right).
-Dampening the signal \emph{increases} overconfidence, so the dose--response runs both ways.
-This is evidence that the representation influences the report, not yet that the model consults it by default; mediation and ablation would be needed for that.
-These are the replication numbers, from a fresh 750-record capture with the random control scaled to the same per-record perturbation magnitude; the matched random direction leaves confidence unchanged at gain 2 and only degrades the output at gain 4.
-Replication depends on architecture.
-Gemma-4 shows the right specificity but is underpowered.
-GLM is null at the gains we tested; its stated confidence saturates near 100, exactly where the probe most exceeds P(True).
-We read this spectrum as the finding: \emph{how much internal knowledge reaches speech varies by model}.
+\paragraph{Causal access: stated confidence depends on the direction.}
+Reading shows the signal exists; intervening shows the report depends on it.
+We intervene at the confidence token, after the answer is written, so the answer cannot change, scaling each record's own projection onto the correctness direction by a gain $g$ ($g{=}1$ is an exact no-op).
+The direction is supervised: learned from labeled examples, applied without per-example labels at intervention time.
+Numbers are Mistral $\times$ MATH, 150 held-out records, bootstrapped over questions, against a random direction rescaled to the same perturbation magnitude.
+Mean-ablating the direction ($g{=}0$) drops the AUROC of \emph{stated} confidence from 0.836 to 0.564, $-0.270$ $[-0.422,-0.122]$; ablating the matched random direction does nothing, $-0.002$ $[-0.032,+0.025]$.
+The failure has the wrong shape for damage: parse rate stays at 1.00 and confidence on wrong answers \emph{rises} from 84 to 97, converging with correct answers at 98.
+Amplifying instead drives failed-answer confidence to 70 and 54 at $g{=}2,4$ while correct answers hold near 90, halving calibration error, $0.34\to0.19$ (\cref{tab:transfer}, right); dampening increases overconfidence.
+Amplification does not significantly improve \emph{discrimination}, so the direction carries the information that makes stated confidence informative at all and the gain sets how much of it reaches the number.
+Two controls place it: the same intervention at $0.3$ depth does nothing ($+0.005$ $[-0.002,+0.015]$), reaching full effect by $0.7$; and a direction fitted on MMLU-Pro, where a surface baseline of 0.54 against a probe of 0.75 rules out ``my output looks malformed'', still governs MATH's self-report ($0.880\to0.709$).
 
 \paragraph{Expression: a label-free witness, and an architecture-gated gate.}
 Trained probes invite an overfitting critique, so we added an unsupervised instrument: the Jacobian lens of the global-workspace account \citep{gurnee2026workspace}.
@@ -228,7 +226,7 @@ The steering result suggests stated confidence itself can be made honest by ampl
 We read at the confidence token, not during the attempt, so the judgment is shown available when asked, not formed while solving; an answer-token read is the natural next control.
 A probe could also key on properties of failed derivations rather than a dedicated metacognitive variable: low token probability, hedging, or on MATH an early-layer channel next to the answer text; our surface baseline bounds this without closing it.
 Linear probes at a single token undercount nonlinear or multi-token signal.
-The causal arm is one clean model plus one underpowered and one null replication, and two MATH cells ran at reduced $n$.
+The causal arm is necessity and sufficiency on one model, with architectural replication under way, and two MATH cells ran at reduced $n$.
 Whether the knowing--saying gap is an artifact of preference tuning is open; a base-model arm would test it.
 
 
