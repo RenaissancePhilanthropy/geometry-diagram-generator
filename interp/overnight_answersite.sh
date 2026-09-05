@@ -41,7 +41,7 @@ for task in math mmlu_pro gpqa; do
   echo "--- $task ---"
   "$PY" -m interp.capture_answer_site \
     --meta "$RES/fix_mistral_${task}/meta.jsonl" \
-    --task "$task" --model "$MODEL" --per-turn-think \
+    --task "$task" --model "$MODEL" \
     --n-traj 16 --out-dir "$ACT/ansite_mistral_${task}" \
     || echo "  !! answer-site capture FAILED for $task"
 done
