@@ -988,6 +988,227 @@ def fill(
     ))
 
 
+def _sympy_polygon(vertices_xy: "list[tuple[float, float]]"):
+    """Build a sympy.geometry.Polygon from plain (x, y) float pairs, with
+    `evaluate=False` on every Point2D/Polygon construction. Without this,
+    sympy.geometry.Point silently rationalizes every float coordinate to an
+    exact Rational (see Point.__new__'s "Turn any Floats into rationals"
+    step) and every subsequent encloses_point()/distance() call does exact
+    symbolic arithmetic instead of numeric float arithmetic -- measured at
+    roughly an order of magnitude slower, which matters for the grid search
+    below running inside the sandbox's CPU-limited timeout
+    (geometry_diagrams/pydsl/sandbox.py)."""
+    import sympy.geometry as spg
+
+    return spg.Polygon(
+        *[spg.Point2D(x, y, evaluate=False) for x, y in vertices_xy],
+        evaluate=False,
+    )
+
+
+def _grid_search_interior_point(
+    sym_poly, vertices_xy: "list[tuple[float, float]]",
+    grid_n: int = 5, refine_rounds: int = 2,
+) -> "tuple[float, float, float]":
+    """A simplified polylabel-equivalent: coarse grid search over the
+    polygon's bounding box, keeping only encloses_point()-true candidates,
+    scored by distance() to the polygon boundary, refining the search box
+    around the best candidate for a few rounds. Built from sympy.geometry.Polygon's
+    own encloses_point()/distance() primitives directly (both already support
+    non-convex polygons) rather than hand-rolled per-edge distance math.
+
+    grid_n/refine_rounds default small: encloses_point()/distance() were
+    measured (2026-09) at ~9ms/~16ms per call on a modest polygon, so a
+    naive dense grid easily blows the sandbox's few-second CPU budget.
+    grid_n=5, refine_rounds=2 (grid_n**2 * (refine_rounds+1) = 75 candidate
+    points, worst case) keeps this comfortably under a second while still
+    finding a genuinely-interior, reasonably-central point for the concave
+    shapes this feature targets. Not tuned further -- no diagram in this
+    repo needs finer precision.
+
+    Only called for concave polygons -- convex polygons short-circuit to
+    the free, exact centroid in _polygon_interior_point() below."""
+    import sympy.geometry as spg
+
+    xs = [v[0] for v in vertices_xy]
+    ys = [v[1] for v in vertices_xy]
+    outer_xmin, outer_xmax, outer_ymin, outer_ymax = min(xs), max(xs), min(ys), max(ys)
+    bx0, bx1, by0, by1 = outer_xmin, outer_xmax, outer_ymin, outer_ymax
+
+    best: "tuple[float, float] | None" = None
+    best_dist = -1.0
+    for _round in range(refine_rounds + 1):
+        for i in range(grid_n):
+            for j in range(grid_n):
+                x = bx0 + (bx1 - bx0) * i / (grid_n - 1) if grid_n > 1 else (bx0 + bx1) / 2
+                y = by0 + (by1 - by0) * j / (grid_n - 1) if grid_n > 1 else (by0 + by1) / 2
+                pt = spg.Point2D(x, y, evaluate=False)
+                if sym_poly.encloses_point(pt):
+                    d = float(sym_poly.distance(pt))
+                    if d > best_dist:
+                        best_dist = d
+                        best = (x, y)
+        if best is None:
+            break
+        # Refine: shrink the search box to a quarter of its current size,
+        # centered on the best candidate so far (clipped to the original
+        # bounding box).
+        half_w = (bx1 - bx0) / 4.0
+        half_h = (by1 - by0) / 4.0
+        bx0, bx1 = max(outer_xmin, best[0] - half_w), min(outer_xmax, best[0] + half_w)
+        by0, by1 = max(outer_ymin, best[1] - half_h), min(outer_ymax, best[1] + half_h)
+
+    if best is None:
+        raise ValueError(
+            "label_in_polygon(): grid search found no interior point for this "
+            "polygon (degenerate or self-intersecting shape?)"
+        )
+    return best[0], best[1], best_dist
+
+
+def _polygon_interior_point(sym_poly, vertices_xy: "list[tuple[float, float]]") -> "tuple[float, float, float]":
+    """Returns (x, y, clearance): a point genuinely inside sym_poly and its
+    distance to the polygon boundary (sympy.geometry.Polygon.distance()).
+
+    Convex polygons (Polygon.is_convex()) short-circuit straight to the
+    plain centroid -- correct and free, and covers every rectangle (i.e.
+    every prism_net face today). Concave polygons fall through to
+    _grid_search_interior_point(), since a plain centroid can land outside
+    a concave shape entirely."""
+    if sym_poly.is_convex():
+        c = sym_poly.centroid
+        cx, cy = float(c.x), float(c.y)
+        clearance = float(sym_poly.distance(c))
+        return cx, cy, clearance
+    return _grid_search_interior_point(sym_poly, vertices_xy)
+
+
+def _horizontal_ray_width(
+    vertices_xy: "list[tuple[float, float]]", point_xy: "tuple[float, float]",
+) -> "float | None":
+    """Cast a horizontal ray through point_xy and return the width of the
+    run (the contiguous span of the polygon's interior along that ray) that
+    contains point_xy, or None if no such run is found (point_xy not
+    actually on any horizontal crossing -- shouldn't normally happen for a
+    genuinely-interior point; callers should fall back to a conservative
+    estimate in that case).
+
+    A plain point-to-boundary-distance-doubling budget (2 * clearance) is
+    always safe but systematically UNDER-estimates on wide/short rectangles
+    -- exactly the shape this feature is motivated by (e.g. a 60x40 face:
+    centroid clearance is 20, giving a 40-wide budget against 60 of real
+    horizontal room). This ray-cast finds the true horizontal run instead,
+    for a materially tighter estimate. Plain float arithmetic (not sympy) --
+    this is straightforward edge-intersection math, not polygon-boundary
+    distance, so it doesn't need sympy.geometry.Polygon.distance()."""
+    px, py = point_xy
+    n = len(vertices_xy)
+    crossings: list[float] = []
+    for i in range(n):
+        x1, y1 = vertices_xy[i]
+        x2, y2 = vertices_xy[(i + 1) % n]
+        if y1 == y2:
+            continue  # horizontal edge: no single-point crossing
+        # Half-open on one end so a ray through a shared vertex isn't
+        # double-counted by its two adjacent edges.
+        if (y1 <= py < y2) or (y2 <= py < y1):
+            t = (py - y1) / (y2 - y1)
+            crossings.append(x1 + t * (x2 - x1))
+    crossings.sort()
+    for i in range(0, len(crossings) - 1, 2):
+        x_lo, x_hi = crossings[i], crossings[i + 1]
+        if x_lo <= px <= x_hi:
+            return x_hi - x_lo
+    return None
+
+
+def _width_budget_at(
+    vertices_xy: "list[tuple[float, float]]", point_xy: "tuple[float, float]", clearance: float,
+) -> float:
+    """The estimated available width at point_xy, in construction units.
+    Prefers the horizontal ray-cast (materially tighter, see
+    _horizontal_ray_width's docstring); falls back to the always-safe but
+    under-estimating 2*clearance if the ray-cast can't find a bracketing
+    run for some reason."""
+    run = _horizontal_ray_width(vertices_xy, point_xy)
+    if run is not None and run > 0.0:
+        return run
+    return 2.0 * clearance
+
+
+def _estimate_text_width_construction_units(text: str) -> float:
+    """Estimate text's rendered width in construction (geometry) units --
+    NOT SVG pixels. to_svg.py's _estimate_text_width() returns SVG pixels;
+    the geometry->pixel scale factor is only fixed at render time (after
+    the script finishes), so it is not comparable to a polygon's
+    construction-unit clearance/width budget. Reuses
+    _EQUATION_STEPS_CHAR_WIDTH, the construction-unit character-width
+    heuristic stack_lines()/equation_steps() already use for exactly this
+    kind of pre-render estimate."""
+    return len(text) * _EQUATION_STEPS_CHAR_WIDTH
+
+
+def label_in_polygon(
+    poly: "Triangle | Polygon",
+    text: str,
+    overflow: str = "wrap",
+) -> None:
+    """Place `text` at a genuine interior point of a triangle/polygon --
+    correct for concave shapes, where a plain centroid can land outside the
+    shape entirely (unlike label_text(text, centroid_of=...), which always
+    uses the plain centroid). Also width-aware: if `text` is estimated not
+    to fit the available horizontal room at that point, applies an
+    `overflow` strategy instead of silently letting it bleed outside the
+    polygon:
+
+    - "raise": raise ValueError instead of silently overflowing. (the only
+      strategy this ticket implements)
+    - "wrap": word-wrap into multiple stacked lines that each fit the width
+      budget. NOT YET IMPLEMENTED -- raises NotImplementedError (see ticket
+      02 of the label-in-polygon feature).
+    - "shrink": reduce font size to fit instead of wrapping. NOT YET
+      IMPLEMENTED -- raises NotImplementedError (see ticket 03).
+
+    If the text already fits the estimated width budget, `overflow` is
+    never consulted -- the label is placed as-is via a single
+    label_text(text, at=interior_point) call."""
+    if overflow not in ("raise", "wrap", "shrink"):
+        raise ValueError(
+            f"label_in_polygon(): overflow must be one of 'raise', 'wrap', 'shrink', "
+            f"got {overflow!r}"
+        )
+    text = _sanitize_label_text(text, "label_in_polygon")
+
+    vertices_xy = [(v.x, v.y) for v in poly.vertices]
+    sym_poly = _sympy_polygon(vertices_xy)
+
+    x, y, clearance = _polygon_interior_point(sym_poly, vertices_xy)
+    width_budget = _width_budget_at(vertices_xy, (x, y), clearance)
+    text_width = _estimate_text_width_construction_units(text)
+
+    if text_width <= width_budget:
+        label_text(text, at=(x, y))
+        return
+
+    if overflow == "raise":
+        raise ValueError(
+            f"label_in_polygon(): text {text!r} (estimated width "
+            f"{text_width:.2f} construction units) does not fit the "
+            f"polygon's estimated width budget ({width_budget:.2f}) at its "
+            f"interior point ({x:.3f}, {y:.3f})"
+        )
+    if overflow == "wrap":
+        raise NotImplementedError(
+            "label_in_polygon(overflow='wrap') is not implemented yet -- see "
+            "ticket 02 of the label-in-polygon feature"
+        )
+    # overflow == "shrink"
+    raise NotImplementedError(
+        "label_in_polygon(overflow='shrink') is not implemented yet -- see "
+        "ticket 03 of the label-in-polygon feature"
+    )
+
+
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,

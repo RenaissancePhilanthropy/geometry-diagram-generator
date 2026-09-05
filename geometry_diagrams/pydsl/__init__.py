@@ -3,7 +3,7 @@
 Re-exports handles and op functions so callers (and the stub generator) have
 one place to introspect the public surface.
 """
-from geometry_diagrams.pydsl.api import altitude, angle, angle_bisector, arc, canvas, centroid, circle, circumcircle, dilate_point, distance, draw, draw_brace, draw_points, ellipse, equation_steps, fill, foot_of_perpendicular, incircle, intersection, label_text, line_through, mark_angle, mark_equal, mark_parallel, mark_proportional, mark_right_angle, median, parallel_through, perpendicular_bisector, perpendicular_through, point, point_on, polygon, polyline, ray, rectangle, reflect_point, regular_polygon, regular_sectors, rotate_point, sector, segment, stack_lines, tangent_line, triangle, walk
+from geometry_diagrams.pydsl.api import altitude, angle, angle_bisector, arc, canvas, centroid, circle, circumcircle, dilate_point, distance, draw, draw_brace, draw_points, ellipse, equation_steps, fill, foot_of_perpendicular, incircle, intersection, label_in_polygon, label_text, line_through, mark_angle, mark_equal, mark_parallel, mark_proportional, mark_right_angle, median, parallel_through, perpendicular_bisector, perpendicular_through, point, point_on, polygon, polyline, ray, rectangle, reflect_point, regular_polygon, regular_sectors, rotate_point, sector, segment, stack_lines, tangent_line, triangle, walk
 from geometry_diagrams.pydsl.asserts import assert_angle_equal, assert_ccw, assert_centroid, assert_collinear, assert_congruent_triangles, assert_convex, assert_distance, assert_distinct_objects, assert_distinct_points, assert_equal_length, assert_in_canvas, assert_labels_in_canvas, assert_min_distance, assert_not_collinear, assert_not_on, assert_not_parallel, assert_on, assert_opposite_side, assert_parallel, assert_perpendicular, assert_ratio_equal, assert_right_angle, assert_same_side, assert_similar_triangles, assert_tangent
 from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Ray, Sector, Segment, Triangle
 from geometry_diagrams.pydsl.cookbook import array_of, bar, bars, chart_axes, oblique_point, table_grid, tick_marks, unit_grid
@@ -48,6 +48,7 @@ __all__ = [
     "draw_points",
     "fill",
     "label_text",
+    "label_in_polygon",
     "equation_steps",
     "stack_lines",
     "point_on",
