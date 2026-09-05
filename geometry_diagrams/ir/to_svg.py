@@ -2627,8 +2627,14 @@ def _segment_label_side(
     return -1.0 if pos_weight > neg_weight else 1.0
 
 
-def _estimate_text_width(text: str) -> float:
-    """Approximate rendered text width in SVG pixels for collision detection."""
+def _estimate_text_width(text: str, font_size: float = _FONT_SIZE) -> float:
+    """Approximate rendered text width in SVG pixels for collision detection.
+
+    ``font_size`` defaults to ``_FONT_SIZE`` so every pre-existing caller
+    (tick labels, mathtext-fallback comparisons, etc.) keeps its exact prior
+    behavior; a caller that knows the label will actually render at a
+    different size (e.g. a style-supplied font-size override) can pass it
+    explicitly so the estimate scales correctly."""
     # Strip dollar signs and LaTeX commands (each becomes ~1 char wide)
     t = text.strip()
     if t.startswith("$") and t.endswith("$"):
@@ -2637,7 +2643,7 @@ def _estimate_text_width(text: str) -> float:
     t = re.sub(r"\\[a-zA-Z]+", "X", t)
     # Drop grouping chars
     t = re.sub(r"[{}_^]", "", t)
-    return max(len(t), 1) * _FONT_SIZE * 0.65
+    return max(len(t), 1) * font_size * 0.65
 
 
 def _make_label_placement(
@@ -2654,9 +2660,16 @@ def _make_label_placement(
     we render it via the mathtext engine to obtain an accurate bounding box and
     store the :class:`MathGlyph` for later emission.  Otherwise we fall back to
     the approximate char-count estimator and a plain ``<text>`` path.
+
+    Either path reads a style-supplied ``attrs["font-size"]`` override (see
+    ``_font_size_from_style``) so a shrunk label's reported width/height
+    estimate reflects its actual rendered size -- these estimates are what
+    ``assert_labels_in_canvas()`` and the collision-avoidance system in this
+    module actually consume, so an estimate computed at the wrong font size
+    would misjudge whether the label fits or collides.
     """
+    font_size = float(attrs.get("font-size", _FONT_SIZE))
     if label_needs_mathtext(text):
-        font_size = float(attrs.get("font-size", _FONT_SIZE))
         glyph = render_math_to_svg(text, font_size=font_size)
         if glyph is not None:
             return _LabelPlacement(
@@ -2668,7 +2681,8 @@ def _make_label_placement(
     # Fallback: plain text path with approximate sizing
     return _LabelPlacement(
         x=x, y=y, text=text, color=color, anchor=anchor, attrs=attrs,
-        width_est=_estimate_text_width(text),
+        width_est=_estimate_text_width(text, font_size),
+        height_est=font_size,
     )
 
 

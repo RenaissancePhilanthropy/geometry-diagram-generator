@@ -45,6 +45,7 @@ from geometry_diagrams.ir.to_svg import (
     _bisector_angle,
     _segment_label_side,
     _estimate_text_width,
+    _make_label_placement,
     _label_bbox,
     _bboxes_overlap,
     _LabelPlacement,
@@ -1509,6 +1510,57 @@ class TestEstimateTextWidth:
     def test_dollar_stripped(self):
         w = _estimate_text_width("$A$")
         assert w == pytest.approx(_estimate_text_width("A"), rel=0.01)
+
+    def test_default_font_size_matches_no_arg_call(self):
+        """Explicitly passing font_size=_FONT_SIZE must match the
+        no-argument call exactly -- the default arg's whole point is
+        backward compatibility with every pre-existing caller."""
+        assert _estimate_text_width("ABCDE", font_size=_FONT_SIZE) == pytest.approx(
+            _estimate_text_width("ABCDE")
+        )
+
+    def test_smaller_font_size_scales_width_down(self):
+        """A style-supplied smaller font-size must shrink the estimated
+        width proportionally -- this is what a shrunk label's reported
+        bounding box (consumed by assert_labels_in_canvas() and the
+        collision-avoidance system) actually depends on."""
+        full = _estimate_text_width("ABCDE", font_size=_FONT_SIZE)
+        half = _estimate_text_width("ABCDE", font_size=_FONT_SIZE / 2)
+        assert half == pytest.approx(full / 2, rel=0.01)
+
+
+# ---------------------------------------------------------------------------
+# _make_label_placement -- font-size propagation into width/height estimates
+# ---------------------------------------------------------------------------
+
+class TestMakeLabelPlacementFontSize:
+    def test_plain_text_path_uses_default_font_size_when_no_style(self):
+        lp = _make_label_placement(
+            x=0, y=0, text="a plain label", color="black", anchor="middle", attrs={},
+        )
+        assert lp.math_glyph is None
+        assert lp.width_est == pytest.approx(_estimate_text_width("a plain label", _FONT_SIZE))
+        assert lp.height_est == pytest.approx(_FONT_SIZE)
+
+    def test_plain_text_path_scales_width_and_height_with_style_font_size(self):
+        """This is finding 1's regression: a shrunk plain-text label (e.g.
+        via label_in_polygon(overflow="shrink")) must report a width_est/
+        height_est scaled to the smaller font, not the hardcoded default --
+        otherwise the fit/collision checks that consume these estimates are
+        evaluating against the wrong-sized box."""
+        small_font_size = _FONT_SIZE / 2
+        lp = _make_label_placement(
+            x=0, y=0, text="a plain label", color="black", anchor="middle",
+            attrs={"font-size": str(small_font_size)},
+        )
+        assert lp.math_glyph is None
+        assert lp.width_est == pytest.approx(
+            _estimate_text_width("a plain label", small_font_size)
+        )
+        assert lp.width_est == pytest.approx(
+            _estimate_text_width("a plain label", _FONT_SIZE) / 2, rel=0.01
+        )
+        assert lp.height_est == pytest.approx(small_font_size)
 
 
 # ---------------------------------------------------------------------------

@@ -333,22 +333,30 @@ def test_label_in_polygon_overflow_wrap_renders_multiple_label_free_text_ops():
     assert svg.count('data-role="label-free-text"') == len(labels)
 
 
+# Vertices/text combo used by the "shrink succeeds" tests below: chosen so
+# the required font size (_FONT_SIZE * budget / text_width) lands strictly
+# between _MIN_READABLE_FONT_SIZE and _FONT_SIZE -- i.e. the text overflows
+# enough to need shrinking, but not so much that shrinking would cross the
+# minimum-readable floor and raise instead (see the floor tests further
+# below, which reuse the original tiny-box/long-text combo specifically
+# because *that* combo's required size is well below the floor).
+_SHRINK_VERTICES_XY = [(0.0, 0.0), (6.0, 0.0), (6.0, 3.0), (0.0, 3.0)]
+_SHRINK_TEXT = "a slightly long label"
+
+
 def test_label_in_polygon_overflow_shrink_registers_a_smaller_font_size_style():
     from geometry_diagrams.ir.to_svg import _FONT_SIZE
 
-    vertices_xy = [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)]
+    vertices_xy = _SHRINK_VERTICES_XY
     sym_poly = _sympy_polygon(vertices_xy)
     x, y, clearance = _polygon_interior_point(sym_poly, vertices_xy)
     budget = _width_budget_at(vertices_xy, (x, y), clearance)
-    text = "a very long label that cannot possibly fit in this tiny box"
+    text = _SHRINK_TEXT
     text_width = _estimate_text_width_construction_units(text)
     expected_font_size = _FONT_SIZE * budget / text_width
 
     with new_builder_context() as builder:
-        p1 = point(0.0, 0.0)
-        p2 = point(2.0, 0.0)
-        p3 = point(2.0, 1.0)
-        p4 = point(0.0, 1.0)
+        p1, p2, p3, p4 = (point(*v) for v in vertices_xy)
         poly = polygon(p1, p2, p3, p4)
         label_in_polygon(poly, text, overflow="shrink")
         ir = builder.build()
@@ -374,13 +382,10 @@ def test_label_in_polygon_overflow_shrink_renders_a_smaller_font_size():
     from geometry_diagrams.ir.renderer import SVGRenderer
     from geometry_diagrams.pydsl.api import canvas
 
-    text = "a very long label that cannot possibly fit in this tiny box"
+    text = _SHRINK_TEXT
 
     with new_builder_context() as builder:
-        p1 = point(0.0, 0.0)
-        p2 = point(2.0, 0.0)
-        p3 = point(2.0, 1.0)
-        p4 = point(0.0, 1.0)
+        p1, p2, p3, p4 = (point(*v) for v in _SHRINK_VERTICES_XY)
         poly = polygon(p1, p2, p3, p4)
         label_in_polygon(poly, text, overflow="shrink")
         canvas(x_range=(-10.0, 10.0), y_range=(-10.0, 10.0))
@@ -396,6 +401,46 @@ def test_label_in_polygon_overflow_shrink_renders_a_smaller_font_size():
     assert len(labels) == 1
     rendered_font_size = float(labels[0].get("font-size"))
     assert 0.0 < rendered_font_size < _FONT_SIZE
+
+
+def test_label_in_polygon_overflow_shrink_raises_when_required_size_below_floor():
+    """Finding 2 (whole-branch review): a target font size below the
+    minimum-readable floor must raise instead of silently placing
+    illegible text or silently clamping to the floor (which would still
+    overflow at a readable size). Reuses the original tiny-box/long-text
+    combo, whose required size (~0.95px, see the module docstring above)
+    is far below any reasonable floor."""
+    from geometry_diagrams.pydsl.api import _MIN_READABLE_FONT_SIZE
+
+    with new_builder_context():
+        p1 = point(0.0, 0.0)
+        p2 = point(2.0, 0.0)
+        p3 = point(2.0, 1.0)
+        p4 = point(0.0, 1.0)
+        poly = polygon(p1, p2, p3, p4)
+        text = "a very long label that cannot possibly fit in this tiny box"
+        with pytest.raises(ValueError, match="minimum readable floor"):
+            label_in_polygon(poly, text, overflow="shrink")
+    # Sanity: the floor itself is a small-but-legible size, not e.g. 0.
+    assert 0.0 < _MIN_READABLE_FONT_SIZE < 14.0
+
+
+def test_label_in_polygon_overflow_shrink_below_floor_does_not_register_a_style():
+    """A raised shrink must not have side-effected a style/render op onto
+    the builder -- same no-partial-effect contract overflow="raise" already
+    has for the plain not-fits case."""
+    with new_builder_context() as builder:
+        p1 = point(0.0, 0.0)
+        p2 = point(2.0, 0.0)
+        p3 = point(2.0, 1.0)
+        p4 = point(0.0, 1.0)
+        poly = polygon(p1, p2, p3, p4)
+        text = "a very long label that cannot possibly fit in this tiny box"
+        with pytest.raises(ValueError):
+            label_in_polygon(poly, text, overflow="shrink")
+        ir = builder.build()
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) == 0
 
 
 def test_label_in_polygon_accepts_a_triangle_handle():

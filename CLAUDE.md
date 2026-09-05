@@ -118,6 +118,18 @@ A DSL for declaratively specifying geometry constructions:
 - **`expressions.py`**: Expression evaluation for recipe DSL parameters.
 - **`solve.py`**: Constraint solver used during recipe lowering.
 
+### Pydsl (`geometry_diagrams/pydsl/`)
+
+A Python-native DSL surface: a public builder-shim API plus the sandboxed execution machinery that lets an LLM write plain Python construction scripts against it instead of emitting DSL/IR JSON directly.
+
+- **`api.py`**: Public builder-shim API -- every function records an op against the ambient `Builder` and returns a handle (points, segments, circles, polygons, `label_text`/`label_in_polygon`, `assert_*` wiring, etc.).
+- **`stub.py`**: Generates LLM-readable signature+docstring text from the public pydsl API for prompt assembly, from `api.py`'s own signatures/docstrings as the single source of truth.
+- **`sandbox.py`**: Executes untrusted pydsl scripts inside a resource-limited subprocess (`smolagents.LocalPythonExecutor` plus RLIMIT_CPU and an RSS-polling watchdog).
+- **`cookbook.py`**: Experimental, opt-in helper functions layered on top of the core `api.py` surface, only exposed to the sandbox when explicitly enabled.
+- **`handles.py`**: Thin typed handles (`Point`, `Line`, `Circle`, `Triangle`, `Polygon`, ...) returned by pydsl API functions, wrapping internal ids so the model never re-derives geometric parts from raw point references.
+- **`builder.py`**: Ambient builder context -- a contextvar-scoped `Builder` that every `api.py` function records its op against, set fresh per script execution.
+- **`asserts.py`**: `assert_*` geometric-invariant predicates for the Python DSL surface, wrapping `ir.Check` kinds (plus canvas-membership checks with no backing `Check` kind).
+
 ### Docs (`docs/`)
 
 - **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.

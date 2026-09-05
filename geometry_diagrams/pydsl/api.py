@@ -1136,6 +1136,9 @@ def _width_budget_at(
     return 2.0 * clearance
 
 
+_MIN_READABLE_FONT_SIZE = 7.0  # px -- see label_in_polygon()'s "shrink" branch
+
+
 def _estimate_text_width_construction_units(text: str) -> float:
     """Estimate text's rendered width in construction (geometry) units --
     NOT SVG pixels. to_svg.py's _estimate_text_width() returns SVG pixels;
@@ -1213,13 +1216,13 @@ def label_in_polygon(
     text: str,
     overflow: str = "wrap",
 ) -> None:
-    """Place `text` at a genuine interior point of a triangle/polygon --
-    correct for concave shapes, where a plain centroid can land outside the
+    """Place text at a genuine interior point of a polygon, width-aware; overflow is one of 'wrap' (default, word-wrap), 'shrink' (reduce font size), or 'raise' (fail instead of overflowing).
+
+    Correct for concave shapes, where a plain centroid can land outside the
     shape entirely (unlike label_text(text, centroid_of=...), which always
-    uses the plain centroid). Also width-aware: if `text` is estimated not
-    to fit the available horizontal room at that point, applies an
-    `overflow` strategy instead of silently letting it bleed outside the
-    polygon:
+    uses the plain centroid). If `text` is estimated not to fit the
+    available horizontal room at that point, applies the `overflow`
+    strategy instead of silently letting it bleed outside the polygon:
 
     - "raise": raise ValueError instead of silently overflowing.
     - "wrap" (default): word-wrap into multiple stacked lines that each fit
@@ -1231,11 +1234,22 @@ def label_in_polygon(
       _FONT_SIZE down by the same ratio the text overflows the width
       budget by, and places the label via a single label_text(text,
       at=interior_point, font_size=...) call, using a registered style
-      dict (DiagramIR.styles) carrying the smaller font-size.
+      dict (DiagramIR.styles) carrying the smaller font-size. If the
+      required size would fall below a minimum-readable floor
+      (_MIN_READABLE_FONT_SIZE), raises the same ValueError overflow="raise"
+      would instead of silently placing illegible text.
 
     If the text already fits the estimated width budget, `overflow` is
     never consulted -- the label is placed as-is via a single
-    label_text(text, at=interior_point) call."""
+    label_text(text, at=interior_point) call.
+
+    Note: the font-size override this applies (both here and via
+    `label_text(font_size=...)` directly) only takes effect under
+    `SVGRenderer`. `to_tikz.py`'s `LabelFreeText` handling does not read
+    style for font-size, so under `TikZRenderer` the label silently renders
+    at the default size instead -- a known, accepted limitation (this
+    pipeline uses `SVGRenderer` exclusively; see the label-bounds checker's
+    similar SVG-only limitation from a prior feature)."""
     if overflow not in ("raise", "wrap", "shrink"):
         raise ValueError(
             f"label_in_polygon(): overflow must be one of 'raise', 'wrap', 'shrink', "
@@ -1276,6 +1290,19 @@ def label_in_polygon(
     from geometry_diagrams.ir.to_svg import _FONT_SIZE
 
     target_font_size = _FONT_SIZE * (width_budget / text_width)
+    if target_font_size < _MIN_READABLE_FONT_SIZE:
+        # Shrinking enough to fit would produce illegible text. Don't
+        # silently clamp to the floor (the label would still overflow at a
+        # readable size) and don't silently accept the illegible size
+        # either -- fail the same way overflow="raise" does.
+        raise ValueError(
+            f"label_in_polygon(): text {text!r} (estimated width "
+            f"{text_width:.2f} construction units) does not fit the "
+            f"polygon's estimated width budget ({width_budget:.2f}) at its "
+            f"interior point ({x:.3f}, {y:.3f}) -- overflow='shrink' would "
+            f"require a font size of {target_font_size:.2f}px, below the "
+            f"minimum readable floor of {_MIN_READABLE_FONT_SIZE}px"
+        )
     label_text(text, at=(x, y), font_size=target_font_size)
 
 
@@ -1294,7 +1321,13 @@ def label_text(
     uses for its color/thick/width/dashed kwargs, and attaches it to the
     resulting LabelFreeText op. Default None preserves every existing
     caller's behavior exactly -- no style is registered and to_svg.py falls
-    back to its default font size, same as before this parameter existed."""
+    back to its default font size, same as before this parameter existed.
+
+    Note: `font_size` only takes effect under `SVGRenderer`. `to_tikz.py`'s
+    `LabelFreeText` handling does not read style for font-size, so under
+    `TikZRenderer` the label silently renders at the default size instead
+    (a known, accepted limitation -- this pipeline uses `SVGRenderer`
+    exclusively)."""
     from geometry_diagrams.ir.ir import LabelFreeText
 
     has_at = at is not None
