@@ -95,7 +95,7 @@ We drop benchmarks the models have saturated, since metacognition is failure-hun
 \label{sec:knowing}
 
 \paragraph{Protocol.}
-We test four open models with different architectures: Qwen3.6-27B (hybrid Mamba--attention), GLM-4.7-Flash (MoE), Mistral-Small-24B (dense), and Gemma-4-26B-A4B (MoE, VLM-derived).
+We test four open models with different architectures: Qwen3.6-27B (hybrid linear/full attention), GLM-4.7-Flash (MoE), Mistral-Small-24B (dense), and Gemma-4-26B-A4B (MoE, VLM-derived).
 Each runs on all four domains, about 750 records per cell.
 Each problem takes three turns: prospective confidence, the attempt, and retrospective confidence.
 Grading is external and never shown to the model, so any post-attempt revision is blind self-assessment.
@@ -194,11 +194,11 @@ The lens is fit on generic text, with no task labels anywhere in its constructio
 On dense models it lands in probe territory (Mistral 0.76--0.82; Qwen2.5-14B, a dense within-family control, 0.88) and beats stated confidence with no labels.
 Two independent instruments find one direction.
 And because the lens reads through the model's own speech pathway, the knowledge it finds sits in the subspace the model can put into words: it is \emph{speakable}.
-On the other architectures the lens itself fails (Mamba-hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model.
+On the other architectures the lens itself fails (linear-attention hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model.
 The failure has a fingerprint.
 Transported through the averaged map, the lens's ``correct'' and ``wrong'' readout vectors collapse to cosine $0.96$ on MoE, against about $0.4$ on dense models.
-An averaged map is only faithful when wiring barely varies per input.
-Swapping Mamba for dense within one model family flips the lens from 0.43 to 0.88.
+An averaged map is only faithful when the routing barely varies per input, and both failing architectures vary theirs: a mixture of experts by which expert fires, and a gated linear-attention stack (48 of Qwen3.6's 64 layers) by its input-dependent gates.
+Swapping that hybrid for a dense model of the same family flips the lens from 0.43 to 0.88.
 So the \emph{label-free shortcut} is architecture-gated, and the signal is not.
 The open frontier is the gate itself.
 We want a direct per-input wiring-variance measurement, and to learn whether unexpressed knowledge on the failing architectures is speakable but suppressed, or an access failure.

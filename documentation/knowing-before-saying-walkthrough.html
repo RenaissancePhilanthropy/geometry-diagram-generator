@@ -312,7 +312,7 @@
       <figcaption>The read site is the token that is about to produce the confidence digit. Its surrounding words are identical for every problem, so anything a probe finds there was computed by the model, not leaked by the wording.</figcaption>
     </figure>
     <div class="prose">
-      <p><b>Scale.</b> Four open models with different architectures: Qwen3.6-27B (hybrid Mamba), GLM-4.7-Flash (mixture of experts), Mistral-Small-24B (dense), Gemma-4-26B (mixture of experts). Four domains. About 750 attempts per cell, 16 cells. Every question is attempted five times.</p>
+      <p><b>Scale.</b> Four open models with different architectures: Qwen3.6-27B (hybrid linear/full attention), GLM-4.7-Flash (mixture of experts), Mistral-Small-24B (dense), Gemma-4-26B (mixture of experts). Four domains. About 750 attempts per cell, 16 cells. Every question is attempted five times.</p>
       <p><b>Four readouts</b> of the same moment on identical records: the stated number, P(True), the answer's log-probability, and the probe.</p>
       <p><b>Blind updating.</b> Because the grader is silent, any drop in confidence after a failed attempt is the model's own assessment.</p>
     </div>
@@ -576,7 +576,7 @@
   <p class="lede">A trained probe invites the objection that it memorized our dataset. So we brought in an instrument built with no labels at all, and it agrees on dense models.</p>
   <div class="two">
     <figure class="figbox">
-      <svg viewBox="0 0 560 250" role="img" aria-label="Horizontal bars of Jacobian-lens AUROC by model. Dense models Mistral 0.82 and Qwen2.5-14B 0.88 are high. The Mamba-hybrid Qwen3.6 at 0.43 and mixture-of-experts GLM at 0.31 are near or below chance. A note says the trained probe still reads all four.">
+      <svg viewBox="0 0 560 250" role="img" aria-label="Horizontal bars of Jacobian-lens AUROC by model. Dense models Mistral 0.82 and Qwen2.5-14B 0.88 are high. The linear-attention hybrid Qwen3.6 at 0.43 and mixture-of-experts GLM at 0.31 are near or below chance. A note says the trained probe still reads all four.">
         <g font-family="Manrope, Arial, sans-serif" font-size="11.5" fill="currentColor">
           <text x="20" y="22" font-weight="700">Label-free lens, AUROC by model</text>
           <g stroke="currentColor" stroke-opacity=".15"><line x1="180" y1="36" x2="180" y2="200"/><line x1="290" y1="36" x2="290" y2="200"/><line x1="400" y1="36" x2="400" y2="200"/><line x1="510" y1="36" x2="510" y2="200"/></g>
@@ -586,8 +586,8 @@
           <rect data-tip="Mistral-Small-24B (dense) · lens AUROC 0.76–0.82" x="70" y="46" width="360.8" height="18" rx="3" fill="var(--internal)"/><text x="438" y="60" font-weight="700">0.82</text>
           <g text-anchor="end" font-size="11.5"><text x="64" y="96">Qwen2.5-14B</text><text x="64" y="110" fill="#737382" font-size="10">dense control</text></g>
           <rect data-tip="Qwen2.5-14B (dense, within-family control) · lens AUROC 0.88" x="70" y="86" width="387.2" height="18" rx="3" fill="var(--internal)"/><text x="464" y="100" font-weight="700">0.88</text>
-          <g text-anchor="end" font-size="11.5"><text x="64" y="136">Qwen3.6-27B</text><text x="64" y="150" fill="#737382" font-size="10">Mamba hybrid</text></g>
-          <rect data-tip="Qwen3.6-27B (Mamba-attention hybrid) · lens AUROC 0.43" x="70" y="126" width="189.2" height="18" rx="3" fill="var(--internal-mid)"/><text x="266" y="140" font-weight="700">0.43</text>
+          <g text-anchor="end" font-size="11.5"><text x="64" y="136">Qwen3.6-27B</text><text x="64" y="150" fill="#737382" font-size="10">linear-attention hybrid</text></g>
+          <rect data-tip="Qwen3.6-27B (hybrid linear/full attention) · lens AUROC 0.43" x="70" y="126" width="189.2" height="18" rx="3" fill="var(--internal-mid)"/><text x="266" y="140" font-weight="700">0.43</text>
           <g text-anchor="end" font-size="11.5"><text x="64" y="176">GLM-4.7-Flash</text><text x="64" y="190" fill="#737382" font-size="10">mixture of experts</text></g>
           <rect data-tip="GLM-4.7-Flash (MoE) · lens AUROC 0.31" x="70" y="166" width="136.4" height="18" rx="3" fill="var(--internal-mid)"/><text x="213" y="180" font-weight="700">0.31</text>
           <line x1="290" y1="36" x2="290" y2="200" stroke="currentColor" stroke-opacity=".5" stroke-dasharray="3 3"/>
@@ -599,11 +599,11 @@
     </figure>
     <div class="prose">
       <p><b>Why it matters.</b> Two instruments with no shared evidence, one built from labels and one from the model's own wiring, find the same direction. A dataset artifact would have to fool both. And because the lens reads through the model's speech pathway, the knowledge it finds is not just present but speakable.</p>
-      <p><b>The gate.</b> The lens uses one averaged map of how internal states become words. That map is only faithful when the model's wiring barely varies per input. Mixture-of-experts and Mamba models re-route per input, so the map smears. The fingerprint: transported through it, the lens's "correct" and "wrong" readouts collapse to a cosine of 0.96 on the mixture-of-experts model, against about 0.4 on dense. Swap Mamba for dense within one model family and the lens goes from 0.43 to 0.88.</p>
-      <p>So: dense model, trust a label-free readout. Mixture of experts or Mamba, bring a trained probe.</p>
+      <p><b>The gate.</b> The lens uses one averaged map of how internal states become words. That map is only faithful when the model's wiring barely varies per input. Mixture-of-experts and gated linear-attention models vary their routing per input, so the map smears. The fingerprint: transported through it, the lens's "correct" and "wrong" readouts collapse to a cosine of 0.96 on the mixture-of-experts model, against about 0.4 on dense. Swap that hybrid for a dense model of the same family and the lens goes from 0.43 to 0.88.</p>
+      <p>So: dense model, trust a label-free readout. Mixture of experts or gated linear attention, bring a trained probe.</p>
     </div>
   </div>
-  <aside class="say"><div class="eyebrow">Say it like this</div><p>"A second tool that never saw a single right-or-wrong label agrees with our detector on dense models. On mixture-of-experts and Mamba models that tool goes blind, but the signal is still there for the detector. The knowledge is not gated. The shortcut is."</p></aside>
+  <aside class="say"><div class="eyebrow">Say it like this</div><p>"A second tool that never saw a single right-or-wrong label agrees with our detector on dense models. On mixture-of-experts and gated linear-attention models that tool goes blind, but the signal is still there for the detector. The knowledge is not gated. The shortcut is."</p></aside>
 </section>
 
 <!-- 11 -->

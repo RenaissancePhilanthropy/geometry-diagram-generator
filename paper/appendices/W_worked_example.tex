@@ -1,0 +1,142 @@
+\section{The elicitation protocol, and one record end to end}
+\label{app:worked}
+
+This appendix gives the exact prompts behind every record, then one complete record
+from the Mistral-Small-24B $\times$ MATH cell, summarised first and then given in full.
+
+\begin{center}
+\footnotesize
+\fbox{\begin{minipage}{0.96\linewidth}
+\textbf{One record, Mistral-Small-24B $\times$ MATH.} \emph{What integer $n$ satisfies $0\le n<18$ and $n\equiv -11213141 \pmod{18}$?}
+The model sets the problem up correctly and gets $18\times622953 = 11213154$ right, then writes $r = -11213141 + 11213154 = 3$ and answers $3$.
+That subtraction gives $13$, which is the gold answer.
+Stated confidence: $90$ before the attempt, $95$ after it.
+Other readouts of the same attempt: P(True) $0.32$, mean answer log-prob $-0.05$, probe \TODO{OOF score pending}.
+\end{minipage}}
+\end{center}
+
+\noindent
+A single arithmetic slip inside a fluent derivation. Having just made the error, the model
+revises its stated confidence upward, while other readouts of that same attempt disagree
+with it. The rest of this appendix gives the prompts and the full transcript.
+
+\subsection{Prompts}
+
+Each record is four forward passes. A read is first taken at the last prompt token of the
+bare question, before any elicitation, then three turns are generated. The confidence turns
+run with thinking off so the read lands on a clean one-line reply; the attempt turn runs
+with thinking on for hybrid reasoners. The fixed \texttt{Confidence: N} format is what makes
+the read site content-neutral: the digit token has identical local context on every record,
+so layer-0 activations carry no signal by construction.
+
+\paragraph{System prompt (MATH).}
+\begin{quote}\ttfamily\footnotesize
+Solve the problem step by step. Put your final answer in \textbackslash boxed\{\}.
+\end{quote}
+
+\paragraph{Turn 1, prospective confidence.} The problem is followed by:
+\begin{quote}\ttfamily\footnotesize
+Before answering, estimate how likely you are to answer this question correctly. Reply with EXACTLY one line and nothing else:\\
+Confidence: N\\
+where N is an integer from 0 (certain to be wrong) to 100 (certain to be correct). Do NOT answer yet.
+\end{quote}
+
+\paragraph{Turn 2, the attempt.} The turn-1 reply is left in context as the assistant message, then:
+\begin{quote}\ttfamily\footnotesize
+Now give your final answer inside \textbackslash boxed\{\}.
+\end{quote}
+
+\paragraph{Turn 3, retrospective confidence.} The attempt is left in context, then:
+\begin{quote}\ttfamily\footnotesize
+Now assess the answer you just gave. On a scale of 0 to 100, how confident are you that it is correct? Reply with exactly one line and nothing else:\\
+Confidence: N
+\end{quote}
+
+\paragraph{P(True) baseline.} A separate teacher-forced branch off turn 2, no generation.
+Next-token mass on \texttt{True} versus \texttt{False}:
+\begin{quote}\ttfamily\footnotesize
+Consider your final answer above. Is it correct? Reply with exactly one word: True or False.
+\end{quote}
+
+Grading is external and is never shown to the model, so the turn-3 revision is blind
+self-assessment.
+
+\subsection{One record, verbatim}
+
+Record \texttt{math\_test\_number\_theory\_753}, sample 2 of 5.
+
+\paragraph{Problem.} \emph{What integer $n$ satisfies $0 \le n < 18$ and $n \equiv -11213141 \pmod{18}$?}
+
+\paragraph{Turn 1 reply.} \texttt{Confidence: 90}
+
+\paragraph{Turn 2 reply (complete).}
+\begin{quote}\footnotesize
+First, we need to find the remainder when $-11213141$ is divided by $18$.
+
+1. Calculate $-11213141 \bmod 18$:
+\[ -11213141 \div 18 \approx -622952.2778 \]
+The integer part of the division is $-622953$.
+\[ -11213141 = 18 \times (-622953) + r \]
+where $r$ is the remainder.
+
+2. Calculate the remainder $r$:
+\[ r = -11213141 - 18 \times (-622953) \]
+\[ r = -11213141 + 11213154 \]
+\[ r = 3 \]
+
+Therefore,
+\[ -11213141 \equiv 3 \pmod{18} \]
+
+So, the integer $n$ that satisfies $0 \le n < 18$ and $n \equiv -11213141 \pmod{18}$ is $3$.
+\end{quote}
+
+\paragraph{Turn 3 reply.} \texttt{Confidence: 95}
+
+\paragraph{What happened.}
+The method is right and every intermediate is right: $18 \times 622953 = 11213154$ checks out,
+and the model has written the correct subtraction on the line above its answer.
+It then evaluates $-11213141 + 11213154$ as $3$ rather than $13$. Gold is $13$.
+Nothing in the presentation marks the slip. The derivation is well-formed, correctly
+structured, and confidently laid out, which is precisely why stated confidence rises
+from $90$ to $95$ across an attempt that failed.
+
+\paragraph{Readouts of this attempt.}
+\begin{center}
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{readout} & \textbf{value} \\
+\midrule
+stated confidence, prospective (turn 1) & 90 \\
+stated confidence, retrospective (turn 3) & 95 \\
+P(True) & 0.32 \\
+mean answer log-probability & $-0.05$ \\
+residual-stream probe, out-of-fold & \TODO{pending} \\
+\midrule
+graded outcome & \textbf{incorrect} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+This is one record, chosen to illustrate the failure mode rather than to carry evidential
+weight; the cell-level numbers are in \cref{tab:knowing}.
+
+\section{Calibration beyond ECE, and cell-level multiplicity}
+\label{app:stats}
+
+ECE depends on binning and on sample composition, so we report two binning-free proper
+scoring rules alongside it. On Mistral $\times$ MATH (750 records, accuracy 0.648), the
+model's retrospective stated confidence gives Brier $0.262$ and NLL $1.470$ against a
+10-bin ECE of $0.271$. P(True) on the same records gives Brier $0.386$: better ordered
+than stated confidence, worse calibrated in absolute terms. The steering results in
+\cref{tab:transfer} are reported as ECE because the steered runs stored per-gain
+aggregates rather than per-record confidences; recomputing Brier and NLL at each gain
+requires re-running the intervention and is the first thing we would add.
+
+The cell-level bootstrap counts in \cref{tab:knowing} are uncorrected. With 16 cells,
+some individually significant results are expected under the null, so the cell counts
+should be read as descriptive and the aggregate direction of the effect, positive in
+15 of 16 cells and never significantly negative, as the claim that carries weight. A
+hierarchical model pooling across cells with model and domain as random effects is the
+right test and is not yet run.
