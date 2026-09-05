@@ -137,6 +137,24 @@ requires re-running the intervention and is the first thing we would add.
 The cell-level bootstrap counts in \cref{tab:knowing} are uncorrected. With 16 cells,
 some individually significant results are expected under the null, so the cell counts
 should be read as descriptive and the aggregate direction of the effect, positive in
-15 of 16 cells and never significantly negative, as the claim that carries weight. A
+14 of 16 cells, significantly so in 10, and never significantly negative, as the claim that carries weight. A
 hierarchical model pooling across cells with model and domain as random effects is the
 right test and is not yet run.
+
+\section{Alternative explanations for the probe signal}
+\label{app:alternatives}
+A probe could key on properties of failed derivations rather than on a dedicated
+metacognitive variable: low token probability, hedging language, or, on MATH, an
+early-layer channel next to the answer text. Our surface-features baseline (answer
+length, digit count, line count, word count, brace count) bounds this without closing
+it, and the bound is domain-dependent: the probe adds $+0.21$ over surface on MMLU-Pro
+but only $+0.07$ on MATH and $-0.11$ on geometry, where a construction that fails to
+compile is visibly malformed. Two results argue against a pure surface account on the
+domains where the signal is strong. A direction fitted on MMLU-Pro, where surface
+reaches only 0.54 against a probe of 0.75, still governs MATH's self-report under
+ablation ($0.880 \to 0.709$). And the pre-attempt read, taken where the activation is
+byte-identical across a question's attempts, cannot recover the post-attempt direction
+on MMLU-Pro (0.52, chance), which a surface-of-the-question account would predict it
+could. A linear probe at one token also undercounts nonlinear or multi-token signal, so
+the reported numbers are a floor.
+
