@@ -3,6 +3,7 @@
 ambient Builder (see builder.py) and returns a handle."""
 from __future__ import annotations
 
+import itertools
 import math
 
 from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
@@ -1222,23 +1223,23 @@ def _wrap_latex_safe_words(text: str) -> "list[str]":
     return words
 
 
-def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
-    """Greedy word-wrap: split `text` into however many lines each fit
-    `width_budget` construction units (per
-    _estimate_text_width_construction_units()), breaking only at the safe
-    word boundaries _wrap_latex_safe_words() finds -- never mid-token.
+def _greedy_wrap_lines(words: "list[str]", width_budget: float) -> "list[str]":
+    """Greedy word-wrap over an already-tokenized word list: pack words
+    onto the current line until the next word would push it over
+    width_budget construction units (per
+    _estimate_text_width_construction_units()), then start a new line.
 
     A single token that alone exceeds width_budget (e.g. one long
     \\frac{...}{...} construct) is still placed whole on its own line
     rather than split -- an accepted overflow of that one line, since
     splitting it would violate the "never split a command" requirement.
-    Simple greedy line-fill, not a sophisticated typesetting algorithm --
-    consistent with every other heuristic estimate label_in_polygon()
-    already uses."""
-    words = _wrap_latex_safe_words(text)
-    if not words:
-        return [text]
 
+    This provably yields the MINIMUM number of lines feasible for this
+    kind of packing (any split that used fewer lines would have to pack at
+    least one line beyond what greedy already found fits) -- so
+    _wrap_text_to_width() uses this purely to learn that minimum line
+    count `n`, then searches for a better-balanced n-line split than
+    greedy's own (see its docstring)."""
     lines: "list[str]" = []
     current = words[0]
     for word in words[1:]:
@@ -1250,6 +1251,80 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
             current = word
     lines.append(current)
     return lines
+
+
+# Safety valve for _wrap_text_to_width()'s brute-force enumeration below:
+# C(k-1, n-1) candidate splits are "trivial" (per this feature's own design
+# note) only for the short, few-word labels label_in_polygon() is meant for.
+# This backstop just falls back to the plain greedy split rather than ever
+# enumerating an unreasonable number of candidates -- it is not expected to
+# trigger for any real label in this codebase.
+_MAX_WRAP_CANDIDATE_SPLITS = 200_000
+
+
+def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
+    """Word-wrap `text` into the minimum number of lines feasible for
+    `width_budget` construction units (per
+    _estimate_text_width_construction_units()), choosing among same-line-
+    count splits the one with the least raggedness, rather than plain
+    greedy's first-fit packing -- breaking only at the safe word
+    boundaries _wrap_latex_safe_words() finds, never mid-token.
+
+    Greedy word-wrap (_greedy_wrap_lines()) provably produces the minimum
+    feasible line count `n` for this kind of packing, but *which* n-line
+    split it lands on is an accident of packing left-to-right as much as
+    possible onto each line -- it can leave one line much wider than
+    another when a more balanced n-line split of the same words was
+    available. This function keeps greedy's line-count budget `n` but then
+    enumerates every way to cut `words` (an ordered token list) into
+    exactly n contiguous runs -- C(k-1, n-1) of them, trivial for the
+    short, few-word labels label_in_polygon() handles -- and picks the
+    most balanced FEASIBLE one:
+
+    - A split is feasible only if every line either fits width_budget or
+      is a single token (mirroring _greedy_wrap_lines()'s own accepted
+      overflow for one oversized, unsplittable token) -- greedy's own
+      split is always itself a feasible member of this candidate set, so
+      one is always found.
+    - Among feasible splits, minimize max(line width); ties broken by
+      minimizing the sum of squared line widths, then by preferring the
+      split whose first line is widest.
+    """
+    words = _wrap_latex_safe_words(text)
+    if not words:
+        return [text]
+
+    greedy_lines = _greedy_wrap_lines(words, width_budget)
+    n = len(greedy_lines)
+    if n <= 1:
+        return greedy_lines
+
+    k = len(words)
+    if math.comb(k - 1, n - 1) > _MAX_WRAP_CANDIDATE_SPLITS:
+        return greedy_lines
+
+    best_lines: "list[str] | None" = None
+    best_key: "tuple[float, float, float] | None" = None
+    for cuts in itertools.combinations(range(1, k), n - 1):
+        boundaries = (0,) + cuts + (k,)
+        runs = [words[boundaries[i]:boundaries[i + 1]] for i in range(n)]
+        candidate_lines = [" ".join(run) for run in runs]
+        widths = [_estimate_text_width_construction_units(line) for line in candidate_lines]
+        feasible = all(
+            width <= width_budget or len(run) == 1
+            for width, run in zip(widths, runs)
+        )
+        if not feasible:
+            continue
+        max_width = max(widths)
+        sum_sq_width = sum(w * w for w in widths)
+        first_width = widths[0]
+        key = (max_width, sum_sq_width, -first_width)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_lines = candidate_lines
+
+    return best_lines if best_lines is not None else greedy_lines
 
 
 def label_in_polygon(

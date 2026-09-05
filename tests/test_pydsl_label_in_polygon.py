@@ -13,6 +13,7 @@ import pytest
 from geometry_diagrams.ir.ir import LabelFreeText
 from geometry_diagrams.pydsl.api import (
     _estimate_text_width_construction_units,
+    _greedy_wrap_lines,
     _grid_search_interior_point,
     _horizontal_ray_width,
     _polygon_interior_point,
@@ -262,6 +263,125 @@ def test_wrap_text_to_width_never_splits_a_frac_token_mid_command():
 def test_wrap_text_to_width_single_short_string_returns_one_line():
     lines = _wrap_text_to_width("hi", 100.0)
     assert lines == ["hi"]
+
+
+# ---------------------------------------------------------------------------
+# Seam (a): minimum-raggedness split never exceeds greedy's own line count
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "text,budget",
+    [
+        ("Back 4 x 3", 4.5),
+        ("Left 2 x 3", 3.5),
+        ("cat helicopter ox zebra", 9.0),
+        ("a bbbbb ccc dddddd ee", 4.5),
+        ("blah cat frog bananas", 4.0),
+        (" ".join(["word"] * 20), _estimate_text_width_construction_units("word word word")),
+        ("alpha beta gamma delta epsilon zeta", 5.0),
+    ],
+)
+def test_wrap_text_to_width_never_exceeds_greedys_line_count(text, budget):
+    words = _wrap_latex_safe_words(text)
+    greedy_lines = _greedy_wrap_lines(words, budget)
+    new_lines = _wrap_text_to_width(text, budget)
+    assert len(new_lines) == len(greedy_lines)
+
+
+# ---------------------------------------------------------------------------
+# Seam (b): minimum-raggedness selection itself
+# ---------------------------------------------------------------------------
+
+def test_wrap_text_to_width_prefers_balanced_split_over_lopsided_greedy():
+    # Greedy packs as much as possible onto each line before overflowing,
+    # which can leave an early line much wider than a later one even though
+    # a more balanced split (with the same line count) was available.
+    text = "cat helicopter ox zebra"
+    budget = 9.0
+    greedy_lines = _greedy_wrap_lines(_wrap_latex_safe_words(text), budget)
+    assert greedy_lines == ["cat helicopter ox", "zebra"]  # confirm greedy really is lopsided here
+
+    lines = _wrap_text_to_width(text, budget)
+    assert lines == ["cat helicopter", "ox zebra"]
+    widths = [_estimate_text_width_construction_units(line) for line in lines]
+    greedy_widths = [_estimate_text_width_construction_units(line) for line in greedy_lines]
+    assert max(widths) < max(greedy_widths)
+
+
+def test_wrap_text_to_width_tie_breaks_on_sum_of_squared_widths():
+    # Two feasible 3-line splits tie on max line width (4.5); the one with
+    # lower total squared width must win, not whichever is found first.
+    text = "a bbbbb ccc dddddd ee"
+    budget = 4.5
+    lines = _wrap_text_to_width(text, budget)
+    assert lines == ["a bbbbb", "ccc", "dddddd ee"]
+    widths = [_estimate_text_width_construction_units(line) for line in lines]
+    assert max(widths) == pytest.approx(4.5)
+    # The rejected candidate ("a" / "bbbbb ccc" / "dddddd ee") ties on max
+    # width but loses on sum-of-squares -- confirm it really is worse.
+    rejected = ["a", "bbbbb ccc", "dddddd ee"]
+    rejected_widths = [_estimate_text_width_construction_units(line) for line in rejected]
+    assert max(rejected_widths) == pytest.approx(4.5)
+    assert sum(w * w for w in rejected_widths) > sum(w * w for w in widths)
+
+
+def test_wrap_text_to_width_tie_breaks_on_widest_first_line():
+    # Two feasible 3-line splits tie on both max width and sum-of-squares;
+    # the one whose first line is widest must win.
+    text = "blah cat frog bananas"
+    budget = 4.0
+    lines = _wrap_text_to_width(text, budget)
+    assert lines == ["blah cat", "frog", "bananas"]
+    rejected = ["blah", "cat frog", "bananas"]
+    lines_w = [_estimate_text_width_construction_units(l) for l in lines]
+    rejected_w = [_estimate_text_width_construction_units(l) for l in rejected]
+    assert max(lines_w) == pytest.approx(max(rejected_w))
+    assert sum(w * w for w in lines_w) == pytest.approx(sum(w * w for w in rejected_w))
+    assert lines_w[0] > rejected_w[0]
+
+
+# ---------------------------------------------------------------------------
+# Seam (c): both Fable-recommendation worked examples, reproduced exactly
+# ---------------------------------------------------------------------------
+
+def test_wrap_text_to_width_worked_example_back_4_x_3():
+    lines = _wrap_text_to_width("Back 4 x 3", 4.5)
+    assert lines == ["Back", "4 x 3"]
+
+
+def test_wrap_text_to_width_worked_example_left_2_x_3():
+    lines = _wrap_text_to_width("Left 2 x 3", 3.5)
+    assert lines == ["Left", "2 x 3"]
+
+
+# ---------------------------------------------------------------------------
+# Seam (e): oversized single token still overflows onto its own line
+# ---------------------------------------------------------------------------
+
+def test_wrap_text_to_width_oversized_single_token_keeps_its_own_line():
+    long_token = "x" * 40
+    text = f"cat {long_token} dog"
+    budget = 3.0
+    lines = _wrap_text_to_width(text, budget)
+    assert lines == ["cat", long_token, "dog"]
+    # The oversized line is still allowed to exceed width_budget -- that's
+    # the accepted, unchanged overflow behavior for a single unsplittable
+    # token, not a regression.
+    assert _estimate_text_width_construction_units(long_token) > budget
+
+
+# ---------------------------------------------------------------------------
+# Seam (d): LaTeX-safe token boundaries are still respected under the new
+# minimum-raggedness selection (not just under plain greedy).
+# ---------------------------------------------------------------------------
+
+def test_wrap_text_to_width_still_never_splits_frac_token_with_multiple_candidate_splits():
+    text = r"a b c \frac{1}{2} d e f g h i j k l m n o p"
+    budget = _estimate_text_width_construction_units("a b c")
+    lines = _wrap_text_to_width(text, budget)
+    assert any(line == r"\frac{1}{2}" for line in lines)
+    for line in lines:
+        assert "\\frac{1}{2" not in line or line == r"\frac{1}{2}"
 
 
 # ---------------------------------------------------------------------------
