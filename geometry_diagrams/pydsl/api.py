@@ -1227,8 +1227,11 @@ def label_in_polygon(
       Known, accepted limitation: wrapping trades width for height with no
       vertical-fit re-check -- many wrapped lines could exceed the
       polygon's vertical room. Not guarded against.
-    - "shrink": reduce font size to fit instead of wrapping. NOT YET
-      IMPLEMENTED -- raises NotImplementedError (see ticket 03).
+    - "shrink": reduce font size to fit instead of wrapping. Scales
+      _FONT_SIZE down by the same ratio the text overflows the width
+      budget by, and places the label via a single label_text(text,
+      at=interior_point, font_size=...) call, using a registered style
+      dict (DiagramIR.styles) carrying the smaller font-size.
 
     If the text already fits the estimated width budget, `overflow` is
     never consulted -- the label is placed as-is via a single
@@ -1262,21 +1265,36 @@ def label_in_polygon(
         lines = _wrap_text_to_width(text, width_budget)
         stack_lines(lines, x=x, y=y)
         return
-    # overflow == "shrink"
-    raise NotImplementedError(
-        "label_in_polygon(overflow='shrink') is not implemented yet -- see "
-        "ticket 03 of the label-in-polygon feature"
-    )
+    # overflow == "shrink": reduce font size by the same ratio the text
+    # overflows the width budget by. Both text_width (construction units,
+    # via _estimate_text_width_construction_units()'s char-count heuristic)
+    # and a rendered label's width scale linearly with font size, so the
+    # ratio computed here in construction units carries over directly to
+    # the font-size domain -- no unit conversion needed, unlike the
+    # width-budget estimate itself (see _estimate_text_width_construction_units's
+    # docstring on construction units vs SVG pixels).
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+
+    target_font_size = _FONT_SIZE * (width_budget / text_width)
+    label_text(text, at=(x, y), font_size=target_font_size)
 
 
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,
     centroid_of: "Triangle | Polygon | None" = None,
+    font_size: "float | None" = None,
 ) -> None:
     """Place free-standing text at explicit (x, y) coordinates, or at the
     centroid of a triangle/polygon. Exactly one of `at`/`centroid_of` must
-    be given."""
+    be given.
+
+    `font_size`, if given, registers a style dict (`{"font-size":
+    font_size}`) via the same builder._register_style() mechanism draw()
+    uses for its color/thick/width/dashed kwargs, and attaches it to the
+    resulting LabelFreeText op. Default None preserves every existing
+    caller's behavior exactly -- no style is registered and to_svg.py falls
+    back to its default font size, same as before this parameter existed."""
     from geometry_diagrams.ir.ir import LabelFreeText
 
     has_at = at is not None
@@ -1285,10 +1303,12 @@ def label_text(
         raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
     text = _sanitize_label_text(text, "label_text")
     builder = get_builder()
+    style_key = builder._register_style({"font-size": font_size}) if font_size is not None else None
     builder._add_render(LabelFreeText(
         text=text,
         at=[float(at[0]), float(at[1])] if has_at else None,
         centroid_of=centroid_of.id if has_centroid else None,
+        style=style_key,
     ))
 
 

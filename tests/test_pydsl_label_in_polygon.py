@@ -5,9 +5,9 @@ search), the width-budget estimate, and the overflow="raise" path.
 
 overflow="wrap" (ticket 02) is implemented and tested below (word-wrap
 helper in isolation, plus an end-to-end rendered-output check).
-overflow="shrink" (ticket 03) is NOT implemented here — see the
-NotImplementedError stub in api.py's overflow dispatch, tested below only
-insofar as it raises (not that it works)."""
+overflow="shrink" (ticket 03) is implemented and tested below (the
+font-size-scaling formula in isolation, plus an end-to-end rendered-output
+check against the actual SVG font-size attribute)."""
 import pytest
 
 from geometry_diagrams.ir.ir import LabelFreeText
@@ -333,19 +333,69 @@ def test_label_in_polygon_overflow_wrap_renders_multiple_label_free_text_ops():
     assert svg.count('data-role="label-free-text"') == len(labels)
 
 
-def test_label_in_polygon_overflow_shrink_is_not_yet_implemented():
-    with new_builder_context():
+def test_label_in_polygon_overflow_shrink_registers_a_smaller_font_size_style():
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+
+    vertices_xy = [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)]
+    sym_poly = _sympy_polygon(vertices_xy)
+    x, y, clearance = _polygon_interior_point(sym_poly, vertices_xy)
+    budget = _width_budget_at(vertices_xy, (x, y), clearance)
+    text = "a very long label that cannot possibly fit in this tiny box"
+    text_width = _estimate_text_width_construction_units(text)
+    expected_font_size = _FONT_SIZE * budget / text_width
+
+    with new_builder_context() as builder:
         p1 = point(0.0, 0.0)
         p2 = point(2.0, 0.0)
         p3 = point(2.0, 1.0)
         p4 = point(0.0, 1.0)
         poly = polygon(p1, p2, p3, p4)
-        with pytest.raises(NotImplementedError):
-            label_in_polygon(
-                poly,
-                "a very long label that cannot possibly fit in this tiny box",
-                overflow="shrink",
-            )
+        label_in_polygon(poly, text, overflow="shrink")
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) == 1
+    assert labels[0].text == text
+    assert labels[0].at == pytest.approx([x, y])
+    assert labels[0].style is not None
+    style = ir.styles[labels[0].style]
+    assert style["font-size"] == pytest.approx(expected_font_size)
+    assert style["font-size"] < _FONT_SIZE
+
+
+def test_label_in_polygon_overflow_shrink_renders_a_smaller_font_size():
+    # Real rendered-output check, not a stub: compile and render through
+    # SVGRenderer, parse the actual font-size attribute of the emitted
+    # <text> element.
+    import xml.etree.ElementTree as ET
+
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+    from geometry_diagrams.ir.renderer import SVGRenderer
+    from geometry_diagrams.pydsl.api import canvas
+
+    text = "a very long label that cannot possibly fit in this tiny box"
+
+    with new_builder_context() as builder:
+        p1 = point(0.0, 0.0)
+        p2 = point(2.0, 0.0)
+        p3 = point(2.0, 1.0)
+        p4 = point(0.0, 1.0)
+        poly = polygon(p1, p2, p3, p4)
+        label_in_polygon(poly, text, overflow="shrink")
+        canvas(x_range=(-10.0, 10.0), y_range=(-10.0, 10.0))
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    svg = SVGRenderer().render(ir, sym).output
+    root = ET.fromstring(svg)
+    labels = [
+        el for el in root.iter()
+        if el.tag.rsplit("}", 1)[-1] == "text" and el.get("data-role") == "label-free-text"
+    ]
+    assert len(labels) == 1
+    rendered_font_size = float(labels[0].get("font-size"))
+    assert 0.0 < rendered_font_size < _FONT_SIZE
 
 
 def test_label_in_polygon_accepts_a_triangle_handle():

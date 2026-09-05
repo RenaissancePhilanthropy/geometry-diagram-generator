@@ -176,6 +176,26 @@ def test_label_text_neither_at_nor_centroid_of_raises_without_a_builder():
         label_text("h")
 
 
+def test_label_text_default_font_size_sets_no_style():
+    # Zero behavior change for every existing caller: no font_size given
+    # means no style at all, exactly today's behavior.
+    with new_builder_context() as builder:
+        label_text("h", at=(1.0, 2.0))
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert matches[0].style is None
+    assert ir.styles == {}
+
+
+def test_label_text_with_font_size_registers_a_style_carrying_it():
+    with new_builder_context() as builder:
+        label_text("h", at=(1.0, 2.0), font_size=7.0)
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert matches[0].style is not None
+    assert ir.styles[matches[0].style] == {"font-size": 7.0}
+
+
 def test_point_label_autofixes_python_escaped_latex_command():
     # A script author writing "\angle ABD" in a normal (non-raw) string
     # literal has Python's own parser consume the backslash as an escape

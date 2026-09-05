@@ -992,9 +992,13 @@ def _emit_svg_op(
                 lx, ly = gxy(cx, cy)
             label_text = text or ""
             color = _color_from_style(style, styles) or "black"
+            attrs = {"data-role": "label-free-text"}
+            font_size = _font_size_from_style(style, styles)
+            if font_size is not None:
+                attrs["font-size"] = str(font_size)
             lp = _make_label_placement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
-                attrs={"data-role": "label-free-text"},
+                attrs=attrs,
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
@@ -1270,12 +1274,13 @@ def _append_label(
     if math_glyph is not None:
         _append_math_label(svg, x, y, color, anchor, extra_attrs or {}, math_glyph)
     else:
+        font_size = (extra_attrs or {}).get("font-size", _FONT_SIZE)
         el = ET.SubElement(svg, "text", {
             **(extra_attrs or {}),
             "x": f"{x:.2f}",
             "y": f"{y:.2f}",
             "font-family": font_family,
-            "font-size": str(_FONT_SIZE),
+            "font-size": str(font_size),
             "fill": color,
             "text-anchor": anchor,
             "dominant-baseline": "central",
@@ -1868,6 +1873,16 @@ def _color_from_style(style_key: str | None, styles: dict) -> str | None:
         return d.get("color") or d.get("fill") or None
     if style_key in _CSS_COLOR_NAMES:
         return style_key
+    return None
+
+
+def _font_size_from_style(style_key: str | None, styles: dict) -> float | None:
+    """Extract a font-size override from a style key, or None if not
+    found -- same lookup pattern as _color_from_style()."""
+    if not style_key:
+        return None
+    if style_key in styles:
+        return styles[style_key].get("font-size")
     return None
 
 
@@ -2641,7 +2656,8 @@ def _make_label_placement(
     the approximate char-count estimator and a plain ``<text>`` path.
     """
     if label_needs_mathtext(text):
-        glyph = render_math_to_svg(text, font_size=float(_FONT_SIZE))
+        font_size = float(attrs.get("font-size", _FONT_SIZE))
+        glyph = render_math_to_svg(text, font_size=font_size)
         if glyph is not None:
             return _LabelPlacement(
                 x=x, y=y, text=text, color=color, anchor=anchor, attrs=attrs,

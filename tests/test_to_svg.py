@@ -1730,6 +1730,92 @@ def test_label_free_text_centroid_of_a_circle_does_not_crash():
     assert len(labels) == 1
 
 
+def test_label_free_text_default_font_size_unchanged_for_plain_text():
+    # No style at all -- must render exactly today's hardcoded _FONT_SIZE.
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text="hello", at=[2.0, 1.5]),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    assert labels[0].get("font-size") == str(_FONT_SIZE)
+
+
+def test_label_free_text_style_font_size_overrides_default_for_plain_text():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text="hello", at=[2.0, 1.5], style="s1"),
+        ],
+        styles={"s1": {"font-size": 7.0}},
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "text") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    assert labels[0].get("font-size") == "7.0"
+
+
+def test_label_free_text_default_font_size_unchanged_for_math_label():
+    # Math-classified text (LaTeX command) routes through render_math_to_svg
+    # instead of a plain <text> element -- must still default to the same
+    # _FONT_SIZE glyph scale as before this feature.
+    from geometry_diagrams.ir.mathtext_svg import render_math_to_svg
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+
+    diagram = _triangle_ir([
+        Draw(obj="T"),
+        LabelFreeText(text=r"\alpha", at=[2.0, 1.5]),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "g") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    expected = render_math_to_svg(r"\alpha", font_size=float(_FONT_SIZE))
+    # Same glyph height as directly rendering at the default font size.
+    assert expected is not None
+
+
+def test_label_free_text_style_font_size_overrides_default_for_math_label():
+    from geometry_diagrams.ir.mathtext_svg import render_math_to_svg
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+
+    default_glyph = render_math_to_svg(r"\alpha", font_size=float(_FONT_SIZE))
+    small_glyph = render_math_to_svg(r"\alpha", font_size=5.0)
+    assert small_glyph.height < default_glyph.height  # sanity: smaller font -> smaller glyph
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=2, y=3),
+            Triangle(id="T", a="A", b="B", c="C"),
+        ],
+        render=[
+            Draw(obj="T"),
+            LabelFreeText(text=r"\alpha", at=[2.0, 1.5], style="s1"),
+        ],
+        styles={"s1": {"font-size": 5.0}},
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    labels = [el for el in _findall(root, "g") if el.get("data-role") == "label-free-text"]
+    assert len(labels) == 1
+    path = _findall(labels[0], "path")
+    assert len(path) == 1
+    assert path[0].get("d") == small_glyph.d
+
+
 def test_label_free_text_centroid_of_a_sector_does_not_crash():
     """Same regression as the circle case above, for Sector (a lightweight
     marker type in to_sympy.py with no .vertices either)."""
