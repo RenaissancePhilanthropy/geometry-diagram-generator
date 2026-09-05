@@ -470,3 +470,95 @@ def test_label_in_polygon_appears_in_generated_stub_with_no_flag_required():
 
     stub = generate_stub()
     assert "def label_in_polygon(" in stub
+
+
+def test_label_in_polygon_overflow_wrap_uses_a_sensible_single_line_height_gap():
+    """Regression test for the wrap-spacing bug: label_in_polygon()'s "wrap"
+    branch used to reuse stack_lines()'s own y_step=1.2 default -- a value
+    only ever calibrated for equation_steps()'s self-sized canvas() call
+    (see _LABEL_IN_POLYGON_WRAP_Y_STEP's docstring comment in api.py). Under
+    an ambient diagram scale that default produced a near-double gap between
+    wrapped lines instead of a single-line-height one.
+
+    Builds a diagram with a *known* geometry-unit -> pixel scale (derived
+    from two drawn reference points at a known construction-unit distance,
+    not hardcoded renderer internals) containing a narrow rectangle sized
+    like prism_net's Left/Right faces (3 x 2), whose label overflows and
+    wraps into multiple lines. Asserts the actual rendered pixel gap
+    between the first two wrapped lines matches
+    _LABEL_IN_POLYGON_WRAP_Y_STEP * scale, and that this lands in a sane
+    single-line-height range -- clearly less than the old 1.2 default would
+    have produced at the same scale."""
+    import xml.etree.ElementTree as ET
+
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_svg import _FONT_SIZE
+    from geometry_diagrams.ir.renderer import SVGRenderer
+    from geometry_diagrams.pydsl.api import _LABEL_IN_POLYGON_WRAP_Y_STEP, canvas, draw_points
+
+    with new_builder_context() as builder:
+        # Two reference points 8 construction units apart in y, used below
+        # to back out the actual rendered px-per-unit scale -- not a segment
+        # or line, so _nudge_labels_from_lines() never touches them.
+        ref_lo = point(5.0, -4.0)
+        ref_hi = point(5.0, 4.0)
+        draw_points(ref_lo, ref_hi)
+
+        # A narrow rectangle (3 x 2) and label text taken directly from
+        # prism_net's actual Left face -- realistic case that genuinely
+        # needs wrapping, and wraps into exactly two lines (as verified by
+        # actually re-rendering docs/examples/diagram_kinds/scripts/
+        # prism_net.py during this fix). Deliberately not a longer string:
+        # a many-line stack triggers to_svg.py's separate label-label
+        # collision-resolution pass (_resolve_label_collisions), which can
+        # push lines further apart than y_step*scale alone predicts -- a
+        # real, pre-existing, unrelated effect this test isn't about. The
+        # canvas range below (-6..6, tighter than the reference points'
+        # +-4 span so it still frames them) is chosen specifically so the
+        # resulting scale keeps the raw y_step*scale gap comfortably above
+        # that collision-resolution pass's own ~_FONT_SIZE-ish trigger
+        # threshold -- otherwise it would kick in here too and the
+        # collision-avoidance push, not this fix's y_step, would dominate
+        # the measured gap.
+        p1 = point(-1.5, -1.0)
+        p2 = point(1.5, -1.0)
+        p3 = point(1.5, 1.0)
+        p4 = point(-1.5, 1.0)
+        poly = polygon(p1, p2, p3, p4)
+        text = "Left\n2 x 3"
+        label_in_polygon(poly, text, overflow="wrap")
+
+        canvas(x_range=(-6.0, 6.0), y_range=(-6.0, 6.0))
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) > 1
+
+    sym = compile_defs(ir)
+    svg = SVGRenderer().render(ir, sym).output
+    root = ET.fromstring(svg)
+
+    circles = [el for el in root.iter() if el.tag.rsplit("}", 1)[-1] == "circle"]
+    cys = sorted(float(c.get("cy")) for c in circles)
+    assert len(cys) == 2
+    scale = (cys[1] - cys[0]) / 8.0  # px per construction unit
+
+    text_els = [
+        el for el in root.iter()
+        if el.tag.rsplit("}", 1)[-1] == "text" and el.get("data-role") == "label-free-text"
+    ]
+    assert len(text_els) >= 2
+    line_ys = [float(el.get("y")) for el in text_els[:2]]
+    actual_gap = abs(line_ys[1] - line_ys[0])
+
+    expected_gap = _LABEL_IN_POLYGON_WRAP_Y_STEP * scale
+    assert actual_gap == pytest.approx(expected_gap, rel=0.05)
+
+    # Sane single-line-height range for the default 14px font -- not
+    # touching zero, not blown out to double a normal line pitch.
+    assert 0.5 * _FONT_SIZE <= actual_gap <= 2.0 * _FONT_SIZE
+
+    # Regression guard: clearly less than stack_lines()'s own y_step=1.2
+    # default would have produced at this same scale (the pre-fix bug).
+    old_gap = 1.2 * scale
+    assert actual_gap < 0.8 * old_gap

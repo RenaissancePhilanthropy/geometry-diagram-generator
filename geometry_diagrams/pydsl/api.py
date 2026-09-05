@@ -19,6 +19,47 @@ _EQUATION_STEPS_CHAR_WIDTH = 0.5   # construction units per character, for canva
 _EQUATION_STEPS_MIN_HALF_WIDTH = 2.0  # floor so a single short line still gets a sane canvas
 _EQUATION_STEPS_MARGIN = 0.8      # matches render_util.BOUNDS_PADDING's padding-around-content feel
 
+# stack_lines()'s own default y_step=1.2 is calibrated for equation_steps(),
+# whose canvas() call is auto-sized around the stacked text itself (see
+# stack_lines()'s "Canvas contract" docstring) -- so whatever geometry-unit
+# -> pixel scale that canvas ends up choosing is, by construction, one that
+# makes 1.2-unit line spacing look right for that stack. label_in_polygon()'s
+# "wrap" branch has no such luxury: it stacks lines at whatever scale the
+# surrounding diagram already fixed for its own (unrelated) geometry, so
+# reusing 1.2 can land on a wildly different, uncalibrated pixel gap.
+#
+# There's no way to know that ambient scale in advance, but we can borrow
+# the same style of implicit-calibration reasoning _EQUATION_STEPS_CHAR_WIDTH
+# already relies on: it equates 1 "character" of text to 0.5 construction
+# units, while to_svg.py's _estimate_text_width() separately equates 1
+# character to font_size * 0.65 pixels (at the default _FONT_SIZE=14, that's
+# ~9.1 px/char). Dividing one by the other gives the implied geometry-unit
+# -> pixel scale this codebase's width heuristics already assume elsewhere:
+# ~(14 * 0.65) / 0.5 ≈ 18.2 px per construction unit. A normal single-spaced
+# line pitch for a 14px font is about 1.2x the font size (~16.8px) -- so
+# 16.8 / 18.2 ≈ 0.9 construction units would reproduce that pitch exactly
+# under the *implied* scale above. Empirically re-rendering
+# docs/examples/diagram_kinds/scripts/prism_net.py (whose own ambient scale
+# is ~26.29 px/unit -- different from the 18.2 implied above, an unavoidable
+# consequence of "wrap" reusing an ambient scale it doesn't control) showed
+# 0.9 units there lands a bit roomier than a single line-height (~24px
+# center-to-center); 0.65 units tracks the target line-height much more
+# closely there (~17px center-to-center on the labels not otherwise
+# constrained -- see below), while still comfortably clearing 1.2's old
+# ~27-31px near-double gap. Split the difference in favor of the smaller,
+# better-verified value:
+_LABEL_IN_POLYGON_WRAP_Y_STEP = 0.65
+# Some of prism_net's labels (the ones sitting near a grid line, since that
+# script draws canvas(grid=True)) don't actually shrink below ~25px no
+# matter how small this constant gets -- to_svg.py's existing
+# _nudge_labels_from_lines() collision-avoidance pass pushes a label clear
+# of any drawn line/segment it would otherwise overlap, including grid
+# lines, and that floor is independent of this constant. That's expected
+# and correct (it's an existing, unrelated anti-collision guarantee, not a
+# regression from this change) -- this constant only removes *unnecessary*
+# extra spacing, it doesn't (and shouldn't) fight a real overlap-avoidance
+# floor imposed elsewhere.
+
 
 def _nice_step(span: float, target_lines: float = _TARGET_LINES) -> float:
     """Round span/target_lines up to a 'nice' number: 1, 2, or 5 times a power
@@ -1277,7 +1318,7 @@ def label_in_polygon(
         )
     if overflow == "wrap":
         lines = _wrap_text_to_width(text, width_budget)
-        stack_lines(lines, x=x, y=y)
+        stack_lines(lines, x=x, y=y, y_step=_LABEL_IN_POLYGON_WRAP_Y_STEP)
         return
     # overflow == "shrink": reduce font size by the same ratio the text
     # overflows the width budget by. Both text_width (construction units,
