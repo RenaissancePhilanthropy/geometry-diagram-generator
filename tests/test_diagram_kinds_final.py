@@ -237,7 +237,7 @@ def test_build_final_entries_covers_all_30_real_kinds(assemble_manifest, kinds_p
 def test_real_fresh_choices_cover_exactly_the_flagged_kinds(assemble_manifest):
     assert set(assemble_manifest.FRESH_CHOICES.keys()) == {
         "area_model", "attribute_chart", "coordinate_plane", "scatter_plot", "shape_comparison",
-        "work_table", "l_prism", "balance_scale",
+        "work_table", "l_prism", "balance_scale", "prism_net",
     }
 
 

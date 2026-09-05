@@ -70,5 +70,17 @@
     "svg_path": "attempts/scatter_plot_attempt3.svg",
     "script_path": "attempt_scripts/scatter_plot_attempt3.py",
     "duration_s": 15.95
+  },
+  {
+    "kind": "prism_net",
+    "attempt": 2,
+    "prompt": "Draw the flat unfolded net of a rectangular prism that is 4 units long, 2 units wide, and 3 units tall, laid out on a grid.\n\nRequirement 1 (faces, non-negotiable): the net must show ALL 6 faces of the prism -- Front, Back, Left, Right, Top, and Bottom -- each drawn as its own distinct polygon. Every one of these 6 faces must appear in the final diagram. This requirement is completely independent of the labeling requirement below; never omit, merge, or skip a face for any reason, including to avoid a label overflowing its face.\n\nRequirement 2 (labels, a separate concern): for each of the 6 faces, place its label (its face name and its two edge dimensions, e.g. 'Front 4 x 3') by calling label_in_polygon(face_polygon, label_text) -- do NOT use label_text(centroid_of=...), which has no width-awareness and lets long label text bleed across into a neighboring face. label_in_polygon() automatically wraps a label that doesn't fit into multiple stacked lines instead of letting it overflow.\n\nUse a large layout with generous spacing: leave clear empty space between every pair of adjacent faces in the net. Do not add any title or caption above or below the net. Every face polygon and every label must be fully inside the canvas bounds, with real margin on all four sides -- nothing may be clipped.",
+    "use_cookbook": false,
+    "ok": true,
+    "error": null,
+    "retries": 0,
+    "svg_path": "attempts/prism_net_attempt2.svg",
+    "script_path": "attempt_scripts/prism_net_attempt2.py",
+    "duration_s": null
   }
 ]

@@ -23,8 +23,17 @@ gallery was assembled, per that ticket's corrected scope:
   depth edge braced twice in reversed direction (fixed by an explicit,
   no-cookbook prompt enumerating every distinct edge to label exactly
   once); prism_net had visually crowded (if numerically distinct) face
-  labels (attempted with an explicit no-cookbook prompt asking for a
-  larger/more-spaced net layout).
+  labels (attempts 0-1, no cookbook, asking for a larger/more-spaced net
+  layout) -- neither improved on baseline (attempt 0 clipped a title off
+  -canvas; attempt 1 dropped a face entirely), so it stayed a known
+  crowded-but-legible baseline until the label-in-polygon feature (ticket
+  04) added attempt 2: a no-cookbook prompt using the new
+  label_in_polygon() API for every face label (width-aware wrap instead of
+  a plain unwrapped centroid label) with the "all 6 faces" and "wrap long
+  labels" requirements spelled out as two explicitly separate,
+  non-conflicting instructions -- this converged clean on the first try
+  (see manifest.json's updated prism_net notes for the exact coordinate
+  evidence).
 - balance_scale: added in a round-3 gallery review after this previously
   "baseline-reuse" kind was found to have its own real construction bug
   (see manifest.json / assemble_diagram_kinds_manifest.py's FRESH_CHOICES
@@ -275,6 +284,43 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
             "with at least half a unit of blank margin on all four sides "
             "of the whole net -- nothing may be clipped at or fall outside "
             "any canvas edge.",
+            # Attempt index 2 (the 3rd attempt overall; ticket 04,
+            # label-in-polygon feature): the real fix.
+            # Attempt 1's dropped BACK face (round-2 review) motivated
+            # separating the "all 6 faces" and "label fitting" instructions
+            # into two explicitly independent requirements, so the model
+            # can't over-apply a label-fitting constraint by skipping a
+            # whole face. Also switches labeling to the new
+            # label_in_polygon() API (width-aware word-wrap) instead of the
+            # unwrapped label_text(centroid_of=...) every prior attempt
+            # used -- label_text(centroid_of=...) has no width-awareness at
+            # all, which is the actual mechanism behind the original
+            # baseline's crowded/bleeding labels.
+            "Draw the flat unfolded net of a rectangular prism that is 4 "
+            "units long, 2 units wide, and 3 units tall, laid out on a "
+            "grid.\n\n"
+            "Requirement 1 (faces, non-negotiable): the net must show ALL "
+            "6 faces of the prism -- Front, Back, Left, Right, Top, and "
+            "Bottom -- each drawn as its own distinct polygon. Every one "
+            "of these 6 faces must appear in the final diagram. This "
+            "requirement is completely independent of the labeling "
+            "requirement below; never omit, merge, or skip a face for any "
+            "reason, including to avoid a label overflowing its face.\n\n"
+            "Requirement 2 (labels, a separate concern): for each of the "
+            "6 faces, place its label (its face name and its two edge "
+            "dimensions, e.g. 'Front 4 x 3') by calling "
+            "label_in_polygon(face_polygon, label_text) -- do NOT use "
+            "label_text(centroid_of=...), which has no width-awareness "
+            "and lets long label text bleed across into a neighboring "
+            "face. label_in_polygon() automatically wraps a label that "
+            "doesn't fit into multiple stacked lines instead of letting "
+            "it overflow.\n\n"
+            "Use a large layout with generous spacing: leave clear empty "
+            "space between every pair of adjacent faces in the net. Do "
+            "not add any title or caption above or below the net. Every "
+            "face polygon and every label must be fully inside the "
+            "canvas bounds, with real margin on all four sides -- "
+            "nothing may be clipped.",
         ],
     ),
     "balance_scale": (

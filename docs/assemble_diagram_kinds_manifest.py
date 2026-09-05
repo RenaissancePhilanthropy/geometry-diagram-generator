@@ -80,15 +80,19 @@ FINAL_SCRIPTS_DIR = OUT_DIR / "scripts"
 # reversed direction). They are added here as "fresh-generation" overrides
 # of that stale "pass" verdict -- see their notes below for the exact
 # coordinate evidence of the fix. prism_net's softer "crowded labels" issue
-# was also investigated (2 fresh PythonFullStrategy.run() attempts, no
-# cookbook) but deliberately NOT added here: attempt 0 introduced a new
-# defect (a title label clipped outside the canvas viewBox) and attempt 1
-# regressed further (dropped one of the 6 net faces entirely) -- neither
-# was an improvement on the baseline's "crowded but legible" SVG, so per
-# the "don't force a worse result" guidance the baseline SVG was kept as-is
-# and only its notes (in the final manifest.json, not this historical
-# baseline snapshot) were updated to record what was tried and why it
-# wasn't adopted.
+# was also investigated in that round-2 review (2 fresh
+# PythonFullStrategy.run() attempts, no cookbook) but was NOT fixed at the
+# time: attempt 0 introduced a new defect (a title label clipped outside the
+# canvas viewBox) and attempt 1 regressed further (dropped one of the 6 net
+# faces entirely) -- neither was an improvement on the baseline's "crowded
+# but legible" SVG, so per the "don't force a worse result" guidance the
+# baseline SVG was kept as-is at that time.
+#
+# NOTE (label-in-polygon feature, ticket 04): prism_net was revisited once
+# the new label_in_polygon() API existed (width-aware word-wrap, unlike the
+# unwrapped label_text(centroid_of=...) every prior attempt used) -- see its
+# entry below for the fresh-generation fix and the face-dropping bug
+# finding.
 #
 # NOTE (round-3 gallery review): balance_scale was also originally a
 # "baseline-reuse" kind whose baseline SVG was later found by a human
@@ -191,6 +195,46 @@ FRESH_CHOICES: "dict[str, dict]" = {
             "row-divider lines land at y = 48.75, 106.25, 163.75, 221.25, 278.75, "
             "336.25 -- every gap exactly 57.5 -- confirming baseline's defect (one "
             "row 69 tall vs. 46 for every other row) is gone."
+        ),
+    },
+    "prism_net": {
+        "status": "ok",
+        "attempt_svg": "attempts/prism_net_attempt2.svg",
+        "attempt_script": "attempt_scripts/prism_net_attempt2.py",
+        "notes": (
+            "Round-4 re-attempt (ticket 04, label-in-polygon feature) using the "
+            "new label_in_polygon() API for every face label, instead of the "
+            "unwrapped label_text(centroid_of=...) every prior attempt used -- "
+            "label_in_polygon() is width-aware and word-wraps a label that "
+            "doesn't fit its face instead of letting it bleed into a neighbor "
+            "(the original baseline's actual defect). The prompt also splits "
+            "'draw all 6 faces' and 'wrap long labels' into two explicitly "
+            "separate, non-conflicting requirements, targeting the round-2 "
+            "review's face-dropping regression (attempt 1 there rendered only "
+            "5 of 6 faces after a label-fitting instruction). Converged clean "
+            "on the first try (1 fresh PythonFullStrategy.run() attempt this "
+            "round, no cookbook): the rendered SVG has exactly 6 face outline "
+            "polygons (Back, Bottom, Front, Top, Left, Right, all present) "
+            "with correct per-face dimensions (Back/Front 4x3, Bottom/Top "
+            "4x2, Left/Right 2x3); every label's data-bbox lies fully inside "
+            "the canvas viewBox (0 0 460.571 500, checked programmatically, "
+            "none clipped); and no label's bbox overlaps any face polygon "
+            "other than its own owner face (checked pairwise against all 6 "
+            "face bounding boxes) -- confirming no bleeding into a neighbor. "
+            "Long labels (Back, Top) wrapped onto 2 stacked lines via "
+            "label_in_polygon()'s default overflow='wrap', both lines still "
+            "landing inside their own face or the empty inter-face gap, "
+            "never overlapping a neighboring face's fill. Face-dropping bug "
+            "finding: not conclusively root-caused, but the evidence leans "
+            "toward prompt-clarity over a structural juggling failure -- the "
+            "earlier attempt's prompt asked for 'every label...within canvas "
+            "margin' as its only constraint, with no explicit, independent "
+            "statement that all 6 faces must be drawn regardless; this "
+            "attempt's prompt states the two requirements as separate, "
+            "non-conflicting paragraphs and the model drew all 6 faces on "
+            "the first try with no sign of face-count confusion anywhere in "
+            "the generated script (each of the 6 faces has its own named "
+            "polygon variable, defined and drawn before any label call)."
         ),
     },
     "l_prism": {
