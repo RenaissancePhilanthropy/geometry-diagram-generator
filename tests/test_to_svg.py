@@ -1781,9 +1781,12 @@ def test_label_free_text_default_font_size_unchanged_for_math_label():
     root = _parse(svg_str)
     labels = [el for el in _findall(root, "g") if el.get("data-role") == "label-free-text"]
     assert len(labels) == 1
+    path = _findall(labels[0], "path")
+    assert len(path) == 1
     expected = render_math_to_svg(r"\alpha", font_size=float(_FONT_SIZE))
-    # Same glyph height as directly rendering at the default font size.
     assert expected is not None
+    # Same glyph path as directly rendering at the default font size.
+    assert path[0].get("d") == expected.d
 
 
 def test_label_free_text_style_font_size_overrides_default_for_math_label():
