@@ -16,8 +16,8 @@
 # confidence level dropping. Damage checks are built in: parse rate must stay ~1.0, and the
 # matched random ablation must leave the AUROC intact.
 #
-# Note on GLM: ~96 GB of weights in bf16. It only fits a >=96 GB card, and even then the
-# margin is thin. The script checks and refuses rather than dying halfway through a capture.
+# The script checks VRAM against the model's real weight size and refuses up front rather than
+# dying halfway through an expensive capture.
 #
 # Worth knowing before you read GLM's result: amplification was null on GLM because its stated
 # confidence saturates near 100, leaving no room to push down. Ablation asks the opposite
@@ -40,11 +40,14 @@ N="${N:-150}"; SAMPLES="${SAMPLES:-5}"; MAXTOK="${MAXTOK:-3072}"; NEVAL="${NEVAL
 t0=$(date +%s)
 stamp () { printf '[%s +%dm] ' "$(date +%H:%M)" $((($(date +%s)-t0)/60)); }
 
+# VRAM floors are weights-on-disk (bf16, from each model.safetensors.index.json) plus room for
+# activations. NB the "96 GB for GLM" figure carried in the July notes is WRONG: GLM-4.7-Flash is
+# 29.1 GiB, the smallest model in the study, not the largest. Measured 2026-09-05.
 case "$SHORT" in
-  qwen36)  MODEL="Qwen/Qwen3.6-27B";                          THINK="--per-turn-think"; NEED=60 ;;
-  gemma4)  MODEL="google/gemma-4-26B-A4B-it";                  THINK="";                NEED=60 ;;
-  glm)     MODEL="zai-org/GLM-4.7-Flash";                      THINK="--per-turn-think"; NEED=100 ;;
-  mistral) MODEL="mistralai/Mistral-Small-24B-Instruct-2501";  THINK="";                NEED=58 ;;
+  qwen36)  MODEL="Qwen/Qwen3.6-27B";                          THINK="--per-turn-think"; NEED=64 ;;  # 51.7 GiB
+  gemma4)  MODEL="google/gemma-4-26B-A4B-it";                  THINK="";                NEED=60 ;;  # 48.1 GiB
+  glm)     MODEL="zai-org/GLM-4.7-Flash";                      THINK="--per-turn-think"; NEED=40 ;;  # 29.1 GiB
+  mistral) MODEL="mistralai/Mistral-Small-24B-Instruct-2501";  THINK="";                NEED=58 ;;  # 43.9 GiB
   *) echo "unknown model '$SHORT'"; exit 2 ;;
 esac
 CELL="$ACT/fix_${SHORT}_math"
