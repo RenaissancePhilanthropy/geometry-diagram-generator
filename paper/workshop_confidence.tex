@@ -31,7 +31,7 @@
 
 \begin{abstract}
 Language models often answer math problems wrong while reporting high confidence.
-Does the model lack self-knowledge, or does it have it and fail to express it?
+Does the model lack the self-discernment to know it might be wrong, or does it have it and leave it unsaid?
 To separate the two, we read the model's internal state directly instead of asking it.
 We test four open models with distinct architectures on four domains: MMLU-Pro, MATH, GPQA-Diamond, and a geometry-construction task whose outputs a symbolic compiler grades exactly.
 A simple linear detector trained on that state, a probe, predicts whether an attempt is correct better than the model's stated confidence in 12 of 16 cells (one tie, mean $+0.09$ AUROC).
