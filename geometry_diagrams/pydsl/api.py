@@ -1148,6 +1148,66 @@ def _estimate_text_width_construction_units(text: str) -> float:
     return len(text) * _EQUATION_STEPS_CHAR_WIDTH
 
 
+def _wrap_latex_safe_words(text: str) -> "list[str]":
+    """Split `text` into word-like tokens at whitespace boundaries, without
+    ever splitting inside a brace group ({...}). label_text()'s LaTeX
+    subset (fractions \\frac{}{}, arrows, sub/superscripts _{}/^{},
+    overline/bold/italic \\command{...}) puts its argument(s) inside braces
+    -- tracking brace depth and only treating whitespace as a split point at
+    depth 0 keeps every such command atomic, even a command like
+    \\text{hello world} whose braced argument itself contains whitespace,
+    without needing to special-case each command name individually."""
+    words: "list[str]" = []
+    current: "list[str]" = []
+    depth = 0
+    for ch in text:
+        if ch == "{":
+            depth += 1
+            current.append(ch)
+        elif ch == "}":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch.isspace() and depth == 0:
+            if current:
+                words.append("".join(current))
+                current = []
+        else:
+            current.append(ch)
+    if current:
+        words.append("".join(current))
+    return words
+
+
+def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
+    """Greedy word-wrap: split `text` into however many lines each fit
+    `width_budget` construction units (per
+    _estimate_text_width_construction_units()), breaking only at the safe
+    word boundaries _wrap_latex_safe_words() finds -- never mid-token.
+
+    A single token that alone exceeds width_budget (e.g. one long
+    \\frac{...}{...} construct) is still placed whole on its own line
+    rather than split -- an accepted overflow of that one line, since
+    splitting it would violate the "never split a command" requirement.
+    Simple greedy line-fill, not a sophisticated typesetting algorithm --
+    consistent with every other heuristic estimate label_in_polygon()
+    already uses."""
+    words = _wrap_latex_safe_words(text)
+    if not words:
+        return [text]
+
+    lines: "list[str]" = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if _estimate_text_width_construction_units(candidate) <= width_budget:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
 def label_in_polygon(
     poly: "Triangle | Polygon",
     text: str,
@@ -1161,11 +1221,12 @@ def label_in_polygon(
     `overflow` strategy instead of silently letting it bleed outside the
     polygon:
 
-    - "raise": raise ValueError instead of silently overflowing. (the only
-      strategy this ticket implements)
-    - "wrap": word-wrap into multiple stacked lines that each fit the width
-      budget. NOT YET IMPLEMENTED -- raises NotImplementedError (see ticket
-      02 of the label-in-polygon feature).
+    - "raise": raise ValueError instead of silently overflowing.
+    - "wrap" (default): word-wrap into multiple stacked lines that each fit
+      the width budget, anchored at the interior point via stack_lines().
+      Known, accepted limitation: wrapping trades width for height with no
+      vertical-fit re-check -- many wrapped lines could exceed the
+      polygon's vertical room. Not guarded against.
     - "shrink": reduce font size to fit instead of wrapping. NOT YET
       IMPLEMENTED -- raises NotImplementedError (see ticket 03).
 
@@ -1198,10 +1259,9 @@ def label_in_polygon(
             f"interior point ({x:.3f}, {y:.3f})"
         )
     if overflow == "wrap":
-        raise NotImplementedError(
-            "label_in_polygon(overflow='wrap') is not implemented yet -- see "
-            "ticket 02 of the label-in-polygon feature"
-        )
+        lines = _wrap_text_to_width(text, width_budget)
+        stack_lines(lines, x=x, y=y)
+        return
     # overflow == "shrink"
     raise NotImplementedError(
         "label_in_polygon(overflow='shrink') is not implemented yet -- see "
@@ -1320,13 +1380,19 @@ def canvas(
 def stack_lines(
     lines: "list[str]",
     x: float = 0.0,
+    y: float = 0.0,
     y_step: float = 1.2,
 ) -> "tuple[float, float, float]":
     """Place a sequence of text lines vertically as free-standing labels,
-    one line per row, top to bottom, via label_text(line, at=(x, -i *
+    one line per row, top to bottom, via label_text(line, at=(x, y - i *
     y_step)) for i = 0, 1, 2, .... General primitive for stacked text
     (equation/algebra steps, captions, etc.) — see equation_steps() for the
     common equation-steps-only-script case, of which this is the core.
+
+    `y` (default 0.0, preserving every existing caller's behavior exactly)
+    anchors the whole stack's top line — pass the y-coordinate of an
+    arbitrary point (e.g. label_in_polygon()'s interior point) to stack
+    lines there instead of always at the origin's y.
 
     Returns (half_width, y_min, y_max): the extent — already padded with a
     small margin — that a canvas must cover so none of the placed labels
@@ -1344,13 +1410,13 @@ def stack_lines(
         raise ValueError("stack_lines() requires at least one line")
 
     for i, line in enumerate(lines):
-        label_text(line, at=(x, -i * y_step))
+        label_text(line, at=(x, y - i * y_step))
 
     n = len(lines)
     max_chars = max(len(line) for line in lines)
     half_width = max(max_chars * _EQUATION_STEPS_CHAR_WIDTH, _EQUATION_STEPS_MIN_HALF_WIDTH)
-    y_min = -(n - 1) * y_step - _EQUATION_STEPS_MARGIN
-    y_max = _EQUATION_STEPS_MARGIN
+    y_min = y - (n - 1) * y_step - _EQUATION_STEPS_MARGIN
+    y_max = y + _EQUATION_STEPS_MARGIN
     return half_width, y_min, y_max
 
 

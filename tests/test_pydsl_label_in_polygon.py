@@ -3,9 +3,11 @@
 feature): the interior-point search (convex short-circuit + concave grid
 search), the width-budget estimate, and the overflow="raise" path.
 
-overflow="wrap" (ticket 02) and overflow="shrink" (ticket 03) are NOT
-implemented here — see the NotImplementedError stubs in api.py's overflow
-dispatch, tested below only insofar as they raise (not that they work)."""
+overflow="wrap" (ticket 02) is implemented and tested below (word-wrap
+helper in isolation, plus an end-to-end rendered-output check).
+overflow="shrink" (ticket 03) is NOT implemented here — see the
+NotImplementedError stub in api.py's overflow dispatch, tested below only
+insofar as it raises (not that it works)."""
 import pytest
 
 from geometry_diagrams.ir.ir import LabelFreeText
@@ -16,6 +18,8 @@ from geometry_diagrams.pydsl.api import (
     _polygon_interior_point,
     _sympy_polygon,
     _width_budget_at,
+    _wrap_latex_safe_words,
+    _wrap_text_to_width,
     label_in_polygon,
     point,
     polygon,
@@ -204,19 +208,129 @@ def test_label_in_polygon_rejects_unknown_overflow_value():
             label_in_polygon(poly, "x", overflow="bogus")
 
 
-def test_label_in_polygon_overflow_wrap_is_not_yet_implemented():
-    with new_builder_context():
+# ---------------------------------------------------------------------------
+# Seam (b): word-wrap helper, in isolation
+# ---------------------------------------------------------------------------
+
+def test_wrap_latex_safe_words_splits_plain_text_on_whitespace():
+    words = _wrap_latex_safe_words("a very long label that cannot possibly fit")
+    assert words == ["a", "very", "long", "label", "that", "cannot", "possibly", "fit"]
+
+
+def test_wrap_latex_safe_words_keeps_braced_command_atomic_even_with_internal_space():
+    # \text{...} (and any other braced command) may contain internal
+    # whitespace -- that space must NOT become a wrap point.
+    words = _wrap_latex_safe_words(r"before \text{hello world} after")
+    assert words == ["before", r"\text{hello world}", "after"]
+
+
+def test_wrap_latex_safe_words_keeps_frac_atomic():
+    words = _wrap_latex_safe_words(r"see \frac{1}{2} here")
+    assert words == ["see", r"\frac{1}{2}", "here"]
+
+
+def test_wrap_text_to_width_breaks_long_plain_string_into_lines_that_each_fit():
+    text = " ".join(["word"] * 20)
+    budget = _estimate_text_width_construction_units("word word word")  # ~3 words per line
+    lines = _wrap_text_to_width(text, budget)
+    assert len(lines) > 1
+    for line in lines:
+        assert _estimate_text_width_construction_units(line) <= budget
+
+
+def test_wrap_text_to_width_reassembles_to_original_words_in_order():
+    text = " ".join(["word"] * 20)
+    budget = _estimate_text_width_construction_units("word word word")
+    lines = _wrap_text_to_width(text, budget)
+    assert " ".join(lines).split() == text.split()
+
+
+def test_wrap_text_to_width_never_splits_a_frac_token_mid_command():
+    text = r"a b c \frac{1}{2} d e f g h i j k l m n o p"
+    budget = _estimate_text_width_construction_units("a b c")
+    lines = _wrap_text_to_width(text, budget)
+    joined = " ".join(lines)
+    assert r"\frac{1}{2}" in joined
+    # The token must appear whole on some single line, never straddling two.
+    assert any(r"\frac{1}{2}" in line for line in lines)
+    for line in lines:
+        # Never a partial fragment like "\frac{1}{2" or "}" on its own from
+        # a split token.
+        assert "\\frac{1}{2" not in line or r"\frac{1}{2}" in line
+
+
+def test_wrap_text_to_width_single_short_string_returns_one_line():
+    lines = _wrap_text_to_width("hi", 100.0)
+    assert lines == ["hi"]
+
+
+# ---------------------------------------------------------------------------
+# Seam (d): label_in_polygon() end to end -- overflow="wrap"
+# ---------------------------------------------------------------------------
+
+def test_label_in_polygon_overflow_wrap_produces_stacked_lines_that_each_fit(monkeypatch):
+    with new_builder_context() as builder:
         p1 = point(0.0, 0.0)
         p2 = point(2.0, 0.0)
         p3 = point(2.0, 1.0)
         p4 = point(0.0, 1.0)
         poly = polygon(p1, p2, p3, p4)
-        with pytest.raises(NotImplementedError):
-            label_in_polygon(
-                poly,
-                "a very long label that cannot possibly fit in this tiny box",
-                overflow="wrap",
-            )
+        text = "a very long label that cannot possibly fit in this tiny box"
+        label_in_polygon(poly, text, overflow="wrap")
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) > 1
+    # Reassembling the wrapped lines' words reproduces the original text.
+    assert " ".join(l.text for l in labels).split() == text.split()
+
+    # Each individual line must fit the same width budget label_in_polygon()
+    # computed internally.
+    vertices_xy = [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)]
+    sym_poly = _sympy_polygon(vertices_xy)
+    x, y, clearance = _polygon_interior_point(sym_poly, vertices_xy)
+    budget = _width_budget_at(vertices_xy, (x, y), clearance)
+    for l in labels:
+        # A line with more than one word must fit the budget; a lone word
+        # is allowed to exceed it since it can't be split further (accepted
+        # per _wrap_text_to_width()'s docstring).
+        if " " in l.text:
+            assert _estimate_text_width_construction_units(l.text) <= budget
+
+    # Anchored at the interior point's x/y, not the origin.
+    assert labels[0].at[0] == pytest.approx(x)
+    assert labels[0].at[1] == pytest.approx(y)
+
+
+def test_label_in_polygon_overflow_wrap_renders_multiple_label_free_text_ops():
+    # Real rendered-output check (not just "didn't crash"): compile and
+    # render through the SVGRenderer, confirm every wrapped line actually
+    # made it into the rendered SVG.
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        p1 = point(0.0, 0.0)
+        p2 = point(2.0, 0.0)
+        p3 = point(2.0, 1.0)
+        p4 = point(0.0, 1.0)
+        poly = polygon(p1, p2, p3, p4)
+        text = "a very long label that cannot possibly fit in this tiny box"
+        label_in_polygon(poly, text, overflow="wrap")
+        ir = builder.build()
+        # label_in_polygon()/stack_lines() do not call canvas() -- the
+        # calling script must, same contract as stack_lines() documents.
+        from geometry_diagrams.pydsl.api import canvas
+
+        canvas(x_range=(-10.0, 10.0), y_range=(-10.0, 10.0))
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) > 1
+
+    sym = compile_defs(ir)
+    svg = SVGRenderer().render(ir, sym).output
+    assert svg.count('data-role="label-free-text"') == len(labels)
 
 
 def test_label_in_polygon_overflow_shrink_is_not_yet_implemented():

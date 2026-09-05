@@ -11,7 +11,7 @@ import pytest
 
 from geometry_diagrams.ir.ir import Canvas as CanvasDef
 from geometry_diagrams.ir.ir import LabelFreeText
-from geometry_diagrams.pydsl.api import canvas, stack_lines
+from geometry_diagrams.pydsl.api import _EQUATION_STEPS_MARGIN, canvas, stack_lines
 from geometry_diagrams.pydsl.builder import new_builder_context
 
 
@@ -37,6 +37,30 @@ def test_stack_lines_respects_x_and_y_step_overrides():
         ir = builder.build()
     labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
     assert [l.at for l in labels] == [[3.0, 0.0], [3.0, -2.0]]
+
+
+def test_stack_lines_y_defaults_to_zero_matching_prior_behavior():
+    # ticket 02: stack_lines() gains a `y` parameter, but its default must
+    # preserve every existing caller's behavior exactly -- this is the same
+    # assertion as test_stack_lines_records_stacked_label_free_text_ops_with_decreasing_y
+    # above, just pinning the new default explicitly.
+    with new_builder_context() as builder:
+        stack_lines(["3x + 5 = 20", "3x = 15", "x = 5"])
+        ir = builder.build()
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    ys = [l.at[1] for l in labels]
+    assert ys == [0.0, -1.2, -2.4]
+
+
+def test_stack_lines_anchors_stack_at_explicit_y():
+    with new_builder_context() as builder:
+        half_width, y_min, y_max = stack_lines(["a", "b", "c"], x=3.0, y=10.0, y_step=2.0)
+        ir = builder.build()
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert [l.at for l in labels] == [[3.0, 10.0], [3.0, 8.0], [3.0, 6.0]]
+    # The returned extent shifts by the same y offset.
+    assert y_min == pytest.approx(10.0 - 2 * 2.0 - _EQUATION_STEPS_MARGIN)
+    assert y_max == pytest.approx(10.0 + _EQUATION_STEPS_MARGIN)
 
 
 def test_stack_lines_returns_extent_covering_all_placed_labels():
