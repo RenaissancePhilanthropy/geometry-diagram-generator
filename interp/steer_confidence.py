@@ -10,6 +10,13 @@ is untouched by construction — the answer-invariance control is built in. Two 
            ok-minus-fail direction should move the STATED confidence up (+) / down (-).
            Establishes causal USE. Control: random direction of equal norm.
   amplify  h -> h + (coeff-1) * ((h·ŵ) - mu) * ŵ
+           coeff 0 is MEAN ABLATION: every record is moved to the mean projection mu, so the
+           direction still exists but carries no per-record information. Note |coeff-1| is the
+           perturbation size, so coeff 0 is exactly as large as coeff 2 (opposite sign) -- a
+           magnitude the model is known to tolerate (parse rate 1.0). Read the result as the
+           stated-confidence AUROC collapsing toward chance, NOT as the level dropping; a
+           generally damaged model produces worse text, it does not selectively lose the
+           ability to rank its own failures below its own successes.
            per-record gain on the model's OWN component along the direction — uses NO
            labels at steering time. The gap-closing demo: if verbalized calibration
            (AUROC/ECE vs the external grade) improves at gain > 1, the model can be
@@ -87,6 +94,11 @@ def _ece(conf01, y, bins=10):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--act-dir", required=True, help="a fix_* cell with full-text meta")
+    ap.add_argument("--dir-act-dir", default=None,
+                    help="fit the steering direction from THIS cell instead of --act-dir's fit half "
+                         "(specificity control: a direction learned where surface features cannot "
+                         "explain it, e.g. mmlu_pro, applied to a cell where they partly can, e.g. math). "
+                         "With this set, every record of --act-dir is available for evaluation.")
     ap.add_argument("--model", required=True)
     ap.add_argument("--task", required=True)
     ap.add_argument("--device", default="cuda")
@@ -137,9 +149,13 @@ def main() -> None:
     groups = sorted({base(r["pid"]) for r in recs})
     rng = np.random.default_rng(args.seed)
     rng.shuffle(groups)
-    fit_g = set(groups[: len(groups) // 2])
-    fit = [r for r in recs if base(r["pid"]) in fit_g]
-    ev = [r for r in recs if base(r["pid"]) not in fit_g][: args.n_eval]
+    if args.dir_act_dir:                           # direction comes from elsewhere:
+        fit = []                                   # nothing to hold back, evaluate on everything
+        ev = list(recs)[: args.n_eval]
+    else:
+        fit_g = set(groups[: len(groups) // 2])
+        fit = [r for r in recs if base(r["pid"]) in fit_g]
+        ev = [r for r in recs if base(r["pid"]) not in fit_g][: args.n_eval]
 
     tok, model = load_model(args.model, args.device, args.quant)
     model.eval()
@@ -152,11 +168,19 @@ def main() -> None:
         from transformers import AutoProcessor
         _tmpl = AutoProcessor.from_pretrained(args.model)
 
-    # ---- direction from the FIT half ------------------------------------------
+    # ---- direction: from the FIT half, or from a different cell entirely --------
+    dir_d = pathlib.Path(args.dir_act_dir) if args.dir_act_dir else d
+    if args.dir_act_dir:
+        dir_recs = [json.loads(l) for l in (dir_d / "meta.jsonl").read_text().splitlines()]
+        dir_recs = [r for r in dir_recs if (dir_d / f"{r['pid']}.npz").exists()]
+        print(f"direction fitted on {len(dir_recs)} records from {dir_d.name} "
+              f"(evaluating {len(ev)} records from {d.name})")
+    else:
+        dir_recs = fit
     X, y = [], []
-    for r in fit:
+    for r in dir_recs:
         try:                                       # skip 0-byte resume stubs / corrupt files
-            z = np.load(d / f"{r['pid']}.npz")
+            z = np.load(dir_d / f"{r['pid']}.npz")
         except (EOFError, OSError, ValueError):
             continue
         if "post_dtoken" in z:
@@ -166,7 +190,7 @@ def main() -> None:
     if X:
         X, y = np.stack(X), np.array(y)
     else:                                          # tiny smoke cells: no post reads in fit half
-        dim = np.load(d / f"{recs[0]['pid']}.npz")["prompt_dtoken"].shape[1]
+        dim = np.load(dir_d / f"{dir_recs[0]['pid']}.npz")["prompt_dtoken"].shape[1]
         X, y = np.zeros((1, dim), np.float32), np.array([0])
     if degenerate:
         print("WARN: fit half degenerate (empty/single-class) — random direction (pipeline smoke only)")
@@ -174,18 +198,39 @@ def main() -> None:
     else:
         w_raw = X[y == 1].mean(0) - X[y == 0].mean(0)
     w_hat = w_raw / (np.linalg.norm(w_raw) + 1e-8)
-    mu = float((X @ w_hat).mean())                 # mean projection on the fit half
     r_raw = rng.standard_normal(X.shape[1]).astype(np.float32)
     r_raw *= np.linalg.norm(w_raw) / (np.linalg.norm(r_raw) + 1e-8)
     r_hat = r_raw / (np.linalg.norm(r_raw) + 1e-8)
-    mu_r = float((X @ r_hat).mean())
+
+    # The centering constant mu must describe the population being STEERED, not the one the
+    # direction was learned from. Same-cell: the fit half is the same distribution as the eval
+    # half, so its mean is fine. Foreign direction (--dir-act-dir): the eval cell's projections
+    # can sit somewhere else entirely, and a wrong mu turns mean-ablation into ablation plus a
+    # constant shift, and amplification into amplification about the wrong centre. So recompute
+    # mu (and sigma, which sets the matched random scale) on the records we are about to steer.
+    Xc = X
+    if args.dir_act_dir:
+        Xe = []
+        for r in ev:
+            try:
+                z = np.load(d / f"{r['pid']}.npz")
+            except (EOFError, OSError, ValueError):
+                continue
+            if "post_dtoken" in z:
+                Xe.append(z["post_dtoken"][Lacts].astype(np.float32))
+        if len(Xe) >= 2:
+            Xc = np.stack(Xe)
+            print(f"centering on {len(Xc)} eval records from {d.name} "
+                  f"(direction from {dir_d.name})")
+    mu = float((Xc @ w_hat).mean())
+    mu_r = float((Xc @ r_hat).mean())
     # Magnitude-matched random control for AMPLIFY mode (Codex review 2026-07-15, finding 3):
     # amplify perturbs by (g-1)*|proj-mu|, and the correctness direction has a larger projection
     # spread than a random one, so an unscaled random control gets smaller nudges. Scale the
     # random perturbation by sigma_w/sigma_r so the per-record perturbation magnitudes match in
     # distribution. In ADD mode the |w|-matched r_raw already matches, so scale=1 there.
-    sigma_w = float((X @ w_hat).std() + 1e-8)
-    sigma_r = float((X @ r_hat).std() + 1e-8)
+    sigma_w = float((Xc @ w_hat).std() + 1e-8)
+    sigma_r = float((Xc @ r_hat).std() + 1e-8)
     rand_scale = (sigma_w / sigma_r) if args.mode == "amplify" else 1.0
     print(f"fit={len(fit)} eval={len(ev)} | layer acts={Lacts}/{n_layers} (block {Lacts-1}) | "
           f"|w|={np.linalg.norm(w_raw):.2f} median|h|={np.median(np.linalg.norm(X, axis=1)):.1f} | "
@@ -288,6 +333,7 @@ def main() -> None:
     pathlib.Path(out).write_text(json.dumps({
         "model": args.model, "task": args.task, "mode": args.mode, "layer_acts": Lacts,
         "coeffs": coeffs, "n_eval": len(ev), "degenerate_direction": degenerate,
+        "direction_from": (args.dir_act_dir or "fit half of " + str(d)),
         "random_control": {"sigma_w": sigma_w, "sigma_r": sigma_r, "rand_scale": rand_scale,
                            "magnitude_matched": True},
         "results": results, "per_record": per_record}, indent=2))
