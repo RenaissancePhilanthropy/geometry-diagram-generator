@@ -1267,7 +1267,10 @@ def label_in_polygon(
 
     - "raise": raise ValueError instead of silently overflowing.
     - "wrap" (default): word-wrap into multiple stacked lines that each fit
-      the width budget, anchored at the interior point via stack_lines().
+      the width budget, vertically CENTERED on the interior point (via
+      stack_lines(), whose own anchor is the stack's top line -- this
+      shifts that anchor up by half the block's total span first so the
+      placed lines' average y lands back on the interior point).
       Known, accepted limitation: wrapping trades width for height with no
       vertical-fit re-check -- many wrapped lines could exceed the
       polygon's vertical room. Not guarded against.
@@ -1318,7 +1321,17 @@ def label_in_polygon(
         )
     if overflow == "wrap":
         lines = _wrap_text_to_width(text, width_budget)
-        stack_lines(lines, x=x, y=y, y_step=_LABEL_IN_POLYGON_WRAP_Y_STEP)
+        # stack_lines() anchors its TOP line at the given y (line i placed at
+        # y - i * y_step), so passing the interior point's y directly would
+        # place the FIRST line there and leave the whole block's average y
+        # sitting (len(lines) - 1) * y_step / 2 below the true interior
+        # point. Shift the anchor up by half the block's total span so the
+        # placed lines' average y comes back to the interior point: for n
+        # lines at y_top - i*y_step (i=0..n-1), the average is
+        # y_top - (n-1)*y_step/2, so solving average == y gives
+        # y_top = y + (n-1)*y_step/2.
+        y_top = y + (len(lines) - 1) * _LABEL_IN_POLYGON_WRAP_Y_STEP / 2
+        stack_lines(lines, x=x, y=y_top, y_step=_LABEL_IN_POLYGON_WRAP_Y_STEP)
         return
     # overflow == "shrink": reduce font size by the same ratio the text
     # overflows the width budget by. Both text_width (construction units,
