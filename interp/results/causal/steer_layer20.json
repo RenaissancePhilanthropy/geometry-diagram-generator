@@ -1,0 +1,3648 @@
+{
+  "model": "mistralai/Mistral-Small-24B-Instruct-2501",
+  "task": "math",
+  "mode": "amplify",
+  "layer_acts": 20,
+  "coeffs": [
+    0.0,
+    1.0,
+    4.0
+  ],
+  "n_eval": 150,
+  "degenerate_direction": false,
+  "direction_from": "fit half of /root/geometry-diagram-generator/interp/activations/fix_mistral_math",
+  "random_control": {
+    "sigma_w": 1.6874172687530518,
+    "sigma_r": 0.03579980880022049,
+    "rand_scale": 47.134812316166865,
+    "magnitude_matched": true
+  },
+  "results": {
+    "steer@0.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.97674418604652,
+      "mean_conf_fail": 94.0625,
+      "auroc": 0.6920421511627908,
+      "ece": 0.3840000000000001,
+      "logit_diff": 3.6721643048524855
+    },
+    "steer@1.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 96.27906976744185,
+      "mean_conf_fail": 83.90625,
+      "auroc": 0.8359374999999999,
+      "ece": 0.3366666666666667,
+      "logit_diff": 3.171181886990865
+    },
+    "steer@4.0": {
+      "parse_rate": 1.0,
+      "mean_conf_ok": 89.06976744186046,
+      "mean_conf_fail": 59.609375,
+      "auroc": 0.8238553779069767,
+      "ece": 0.1943333333333334,
+      "logit_diff": 2.0404072697957356
+    }
+  },
+  "per_record": [
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_753.json_s0",
+      "conf": 100,
+      "logit_diff": 3.646317720413208,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_753.json_s1",
+      "conf": 95,
+      "logit_diff": 4.028212368488312,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_753.json_s2",
+      "conf": 95,
+      "logit_diff": 3.9179434180259705,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_753.json_s3",
+      "conf": 100,
+      "logit_diff": 3.6305702924728394,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_753.json_s4",
+      "conf": 95,
+      "logit_diff": 4.028212130069733,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1289.json_s0",
+      "conf": 100,
+      "logit_diff": 3.684305787086487,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1289.json_s1",
+      "conf": 100,
+      "logit_diff": 1.9477386474609375,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1289.json_s2",
+      "conf": 100,
+      "logit_diff": 3.319705843925476,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1289.json_s3",
+      "conf": 100,
+      "logit_diff": 3.5724103450775146,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1289.json_s4",
+      "conf": 100,
+      "logit_diff": 1.9477388858795166,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_525.json_s0",
+      "conf": 100,
+      "logit_diff": 0.8029540777206421,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_525.json_s1",
+      "conf": 90,
+      "logit_diff": 2.7991682291030884,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_525.json_s2",
+      "conf": 90,
+      "logit_diff": 3.631279170513153,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_525.json_s3",
+      "conf": 100,
+      "logit_diff": 3.741040289402008,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_525.json_s4",
+      "conf": 90,
+      "logit_diff": 3.5086710453033447,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_149.json_s0",
+      "conf": 95,
+      "logit_diff": 4.052094578742981,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_149.json_s1",
+      "conf": 95,
+      "logit_diff": 4.317573368549347,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_149.json_s2",
+      "conf": 90,
+      "logit_diff": 4.820638418197632,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_149.json_s3",
+      "conf": 100,
+      "logit_diff": 4.0520946979522705,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_149.json_s4",
+      "conf": 95,
+      "logit_diff": 4.3494680523872375,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_894.json_s0",
+      "conf": 95,
+      "logit_diff": 2.6720975041389465,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_894.json_s1",
+      "conf": 100,
+      "logit_diff": 2.295129179954529,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_894.json_s2",
+      "conf": 100,
+      "logit_diff": 1.8082330226898193,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_894.json_s3",
+      "conf": 95,
+      "logit_diff": 3.6179109811782837,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_894.json_s4",
+      "conf": 90,
+      "logit_diff": 0.9935228824615479,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_742.json_s0",
+      "conf": 95,
+      "logit_diff": 2.950901746749878,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_742.json_s1",
+      "conf": 90,
+      "logit_diff": 3.5086710453033447,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_742.json_s2",
+      "conf": 90,
+      "logit_diff": 4.2298974096775055,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_742.json_s3",
+      "conf": 100,
+      "logit_diff": 3.8772924542427063,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_742.json_s4",
+      "conf": 90,
+      "logit_diff": 3.95880925655365,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_232.json_s0",
+      "conf": 100,
+      "logit_diff": 4.398225784301758,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_232.json_s1",
+      "conf": 90,
+      "logit_diff": 4.317573428153992,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_232.json_s2",
+      "conf": 95,
+      "logit_diff": 4.631686478853226,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_232.json_s3",
+      "conf": 100,
+      "logit_diff": 4.121488630771637,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_232.json_s4",
+      "conf": 95,
+      "logit_diff": 4.521933943033218,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2779.json_s0",
+      "conf": 100,
+      "logit_diff": 3.630570650100708,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2779.json_s1",
+      "conf": 100,
+      "logit_diff": 3.9292104840278625,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2779.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7353177070617676,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2779.json_s3",
+      "conf": 100,
+      "logit_diff": 3.891222357749939,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2779.json_s4",
+      "conf": 95,
+      "logit_diff": 3.9751507341861725,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s0",
+      "conf": 100,
+      "logit_diff": 4.121488392353058,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s1",
+      "conf": 95,
+      "logit_diff": 4.422108054161072,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s2",
+      "conf": 95,
+      "logit_diff": 4.298569977283478,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s3",
+      "conf": 100,
+      "logit_diff": 4.287303030490875,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s4",
+      "conf": 95,
+      "logit_diff": 4.3175734877586365,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_686.json_s0",
+      "conf": 100,
+      "logit_diff": 3.319602847099304,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_686.json_s1",
+      "conf": 90,
+      "logit_diff": 3.6436129212379456,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_686.json_s2",
+      "conf": 95,
+      "logit_diff": 4.259119093418121,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_686.json_s3",
+      "conf": 95,
+      "logit_diff": 4.000638842582703,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_686.json_s4",
+      "conf": 90,
+      "logit_diff": 3.128177046775818,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s0",
+      "conf": 100,
+      "logit_diff": 3.3863744735717773,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s1",
+      "conf": 90,
+      "logit_diff": 2.9644495248794556,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s2",
+      "conf": 90,
+      "logit_diff": 2.6316274404525757,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s3",
+      "conf": 95,
+      "logit_diff": 3.631278872489929,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s4",
+      "conf": 90,
+      "logit_diff": 3.521316409111023,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_183.json_s0",
+      "conf": 100,
+      "logit_diff": 1.0196579694747925,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_183.json_s1",
+      "conf": 90,
+      "logit_diff": 1.7072324752807617,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_183.json_s2",
+      "conf": 100,
+      "logit_diff": 3.383435308933258,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_183.json_s3",
+      "conf": 90,
+      "logit_diff": 2.9644492268562317,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_geometry_183.json_s4",
+      "conf": 90,
+      "logit_diff": 3.4382243752479553,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1907.json_s0",
+      "conf": 100,
+      "logit_diff": 3.6463173627853394,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1907.json_s1",
+      "conf": 100,
+      "logit_diff": 3.8166520595550537,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1907.json_s2",
+      "conf": 90,
+      "logit_diff": 3.9632679224014282,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1907.json_s3",
+      "conf": 100,
+      "logit_diff": 3.694355607032776,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1907.json_s4",
+      "conf": 95,
+      "logit_diff": 3.711277723312378,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_675.json_s0",
+      "conf": 100,
+      "logit_diff": 3.980810046195984,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_675.json_s1",
+      "conf": 90,
+      "logit_diff": 4.564819872379303,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_675.json_s2",
+      "conf": 100,
+      "logit_diff": 3.495026707649231,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_675.json_s3",
+      "conf": 100,
+      "logit_diff": 4.0387508273124695,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_675.json_s4",
+      "conf": 90,
+      "logit_diff": 4.4745321571826935,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_1814.json_s0",
+      "conf": 100,
+      "logit_diff": 3.684305787086487,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_1814.json_s1",
+      "conf": 95,
+      "logit_diff": 4.185273587703705,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_1814.json_s2",
+      "conf": 95,
+      "logit_diff": 4.215576112270355,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_1814.json_s3",
+      "conf": 100,
+      "logit_diff": 4.052094578742981,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_1814.json_s4",
+      "conf": 95,
+      "logit_diff": 4.202195584774017,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_769.json_s0",
+      "conf": 100,
+      "logit_diff": 4.3683730363845825,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_769.json_s1",
+      "conf": 95,
+      "logit_diff": 4.014106452465057,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_769.json_s2",
+      "conf": 95,
+      "logit_diff": 4.555866122245789,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_769.json_s3",
+      "conf": 100,
+      "logit_diff": 4.2448344230651855,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_number_theory_769.json_s4",
+      "conf": 95,
+      "logit_diff": 4.194227159023285,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_722.json_s0",
+      "conf": 100,
+      "logit_diff": 2.7330780029296875,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_722.json_s1",
+      "conf": 100,
+      "logit_diff": 3.218104839324951,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_722.json_s2",
+      "conf": 100,
+      "logit_diff": 3.233159303665161,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_722.json_s3",
+      "conf": 100,
+      "logit_diff": 2.935765027999878,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_722.json_s4",
+      "conf": 100,
+      "logit_diff": 2.223278522491455,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_518.json_s0",
+      "conf": 100,
+      "logit_diff": 3.711277723312378,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_518.json_s1",
+      "conf": 95,
+      "logit_diff": 3.613258481025696,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_518.json_s2",
+      "conf": 95,
+      "logit_diff": 3.608301043510437,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_518.json_s3",
+      "conf": 95,
+      "logit_diff": 3.735204041004181,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_518.json_s4",
+      "conf": 95,
+      "logit_diff": 3.735203802585602,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1146.json_s0",
+      "conf": 95,
+      "logit_diff": 3.385551154613495,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1146.json_s1",
+      "conf": 90,
+      "logit_diff": 2.8253607749938965,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1146.json_s2",
+      "conf": 100,
+      "logit_diff": 3.8579261302948,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1146.json_s3",
+      "conf": 95,
+      "logit_diff": 2.2713162899017334,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1146.json_s4",
+      "conf": 90,
+      "logit_diff": 3.7048879265785217,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_356.json_s0",
+      "conf": 100,
+      "logit_diff": 3.806602418422699,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_356.json_s1",
+      "conf": 95,
+      "logit_diff": 4.202195584774017,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_356.json_s2",
+      "conf": 100,
+      "logit_diff": 3.5510939359664917,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_356.json_s3",
+      "conf": 100,
+      "logit_diff": 3.673038899898529,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_356.json_s4",
+      "conf": 95,
+      "logit_diff": 4.586168676614761,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_733.json_s0",
+      "conf": 90,
+      "logit_diff": 3.5086711645126343,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_733.json_s1",
+      "conf": 90,
+      "logit_diff": 3.9612892866134644,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_733.json_s2",
+      "conf": 90,
+      "logit_diff": 3.593500792980194,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_733.json_s3",
+      "conf": 90,
+      "logit_diff": 3.737000048160553,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_733.json_s4",
+      "conf": 95,
+      "logit_diff": 3.3028554916381836,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1840.json_s0",
+      "conf": 100,
+      "logit_diff": 3.7953354716300964,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1840.json_s1",
+      "conf": 95,
+      "logit_diff": 4.079066634178162,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1840.json_s2",
+      "conf": 90,
+      "logit_diff": 4.215576350688934,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1840.json_s3",
+      "conf": 95,
+      "logit_diff": 4.079066514968872,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_prealgebra_1840.json_s4",
+      "conf": 95,
+      "logit_diff": 4.10299277305603,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_737.json_s0",
+      "conf": 95,
+      "logit_diff": 3.9292103052139282,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_737.json_s1",
+      "conf": 95,
+      "logit_diff": 4.185273349285126,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_737.json_s2",
+      "conf": 95,
+      "logit_diff": 4.098035097122192,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_737.json_s3",
+      "conf": 95,
+      "logit_diff": 4.079066455364227,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_counting_and_probability_737.json_s4",
+      "conf": 95,
+      "logit_diff": 4.353864103555679,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s0",
+      "conf": 100,
+      "logit_diff": 3.8754749298095703,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s1",
+      "conf": 90,
+      "logit_diff": 3.8256057500839233,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7827200293540955,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s3",
+      "conf": 100,
+      "logit_diff": 3.8754751086235046,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s4",
+      "conf": 95,
+      "logit_diff": 4.06214451789856,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_776.json_s0",
+      "conf": 100,
+      "logit_diff": 3.4028226137161255,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_776.json_s1",
+      "conf": 95,
+      "logit_diff": 4.163956999778748,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_776.json_s2",
+      "conf": 90,
+      "logit_diff": 4.456165790557861,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_776.json_s3",
+      "conf": 100,
+      "logit_diff": 3.646317720413208,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_776.json_s4",
+      "conf": 95,
+      "logit_diff": 3.852542459964752,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s0",
+      "conf": 100,
+      "logit_diff": 3.613021731376648,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s1",
+      "conf": 95,
+      "logit_diff": 3.929210126399994,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s2",
+      "conf": 90,
+      "logit_diff": 4.545816361904144,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s3",
+      "conf": 100,
+      "logit_diff": 4.1372358202934265,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s4",
+      "conf": 95,
+      "logit_diff": 3.7925899028778076,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s0",
+      "conf": 100,
+      "logit_diff": 4.137235641479492,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s1",
+      "conf": 90,
+      "logit_diff": 4.185273468494415,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s2",
+      "conf": 95,
+      "logit_diff": 4.492081165313721,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s3",
+      "conf": 90,
+      "logit_diff": 4.534549415111542,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s4",
+      "conf": 90,
+      "logit_diff": 4.137235641479492,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1313.json_s0",
+      "conf": 100,
+      "logit_diff": 3.9830132126808167,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1313.json_s1",
+      "conf": 90,
+      "logit_diff": 2.489391803741455,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1313.json_s2",
+      "conf": 100,
+      "logit_diff": 3.12002694606781,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1313.json_s3",
+      "conf": 95,
+      "logit_diff": 1.7072322368621826,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_precalculus_1313.json_s4",
+      "conf": 90,
+      "logit_diff": 0.5680081844329834,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2551.json_s0",
+      "conf": 100,
+      "logit_diff": 3.795335531234741,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2551.json_s1",
+      "conf": 95,
+      "logit_diff": 4.079066157341003,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2551.json_s2",
+      "conf": 90,
+      "logit_diff": 4.098034977912903,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2551.json_s3",
+      "conf": 100,
+      "logit_diff": 4.0408278703689575,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_algebra_2551.json_s4",
+      "conf": 95,
+      "logit_diff": 4.107388734817505,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s0",
+      "conf": 100,
+      "logit_diff": 3.9588093161582947,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s1",
+      "conf": 90,
+      "logit_diff": 4.135580599308014,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s2",
+      "conf": 95,
+      "logit_diff": 3.958808958530426,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s3",
+      "conf": 100,
+      "logit_diff": 4.20776504278183,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 0.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s4",
+      "conf": 90,
+      "logit_diff": 4.084418594837189,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_753.json_s0",
+      "conf": 100,
+      "logit_diff": 3.4169281721115112,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_753.json_s1",
+      "conf": 100,
+      "logit_diff": 3.816651940345764,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_753.json_s2",
+      "conf": 100,
+      "logit_diff": 3.581364154815674,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_753.json_s3",
+      "conf": 100,
+      "logit_diff": 3.6305702924728394,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_753.json_s4",
+      "conf": 100,
+      "logit_diff": 3.7112777829170227,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1289.json_s0",
+      "conf": 100,
+      "logit_diff": 3.209151268005371,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1289.json_s1",
+      "conf": 100,
+      "logit_diff": 1.5384447574615479,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1289.json_s2",
+      "conf": 100,
+      "logit_diff": 2.9696974754333496,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1289.json_s3",
+      "conf": 100,
+      "logit_diff": 2.986619472503662,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1289.json_s4",
+      "conf": 100,
+      "logit_diff": 1.5384447574615479,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_525.json_s0",
+      "conf": 0,
+      "logit_diff": -1.0196579694747925,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_525.json_s1",
+      "conf": 50,
+      "logit_diff": 0.7847120761871338,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_525.json_s2",
+      "conf": 90,
+      "logit_diff": 2.8253605365753174,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_525.json_s3",
+      "conf": 90,
+      "logit_diff": 2.964449405670166,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_525.json_s4",
+      "conf": 80,
+      "logit_diff": 2.4345685243606567,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_149.json_s0",
+      "conf": 100,
+      "logit_diff": 4.062144458293915,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_149.json_s1",
+      "conf": 95,
+      "logit_diff": 4.209281504154205,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_149.json_s2",
+      "conf": 90,
+      "logit_diff": 4.703732460737228,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_149.json_s3",
+      "conf": 95,
+      "logit_diff": 4.052094399929047,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_149.json_s4",
+      "conf": 95,
+      "logit_diff": 4.234412908554077,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_894.json_s0",
+      "conf": 80,
+      "logit_diff": 1.1503238677978516,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_894.json_s1",
+      "conf": 80,
+      "logit_diff": 0.8177926540374756,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_894.json_s2",
+      "conf": 80,
+      "logit_diff": 0.45711398124694824,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_894.json_s3",
+      "conf": 90,
+      "logit_diff": 2.4278557300567627,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_894.json_s4",
+      "conf": 50,
+      "logit_diff": -1.442018747329712,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_742.json_s0",
+      "conf": 70,
+      "logit_diff": 0.0,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_742.json_s1",
+      "conf": 80,
+      "logit_diff": 2.897151827812195,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_742.json_s2",
+      "conf": 90,
+      "logit_diff": 3.7925899624824524,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_742.json_s3",
+      "conf": 90,
+      "logit_diff": 3.506564736366272,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_742.json_s4",
+      "conf": 90,
+      "logit_diff": 3.741040289402008,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_232.json_s0",
+      "conf": 95,
+      "logit_diff": 4.368372678756714,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_232.json_s1",
+      "conf": 90,
+      "logit_diff": 4.422107994556427,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_232.json_s2",
+      "conf": 95,
+      "logit_diff": 4.631686836481094,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_232.json_s3",
+      "conf": 95,
+      "logit_diff": 4.331303060054779,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_232.json_s4",
+      "conf": 95,
+      "logit_diff": 4.615939617156982,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2779.json_s0",
+      "conf": 100,
+      "logit_diff": 3.6463173627853394,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2779.json_s1",
+      "conf": 100,
+      "logit_diff": 3.5813636779785156,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2779.json_s2",
+      "conf": 100,
+      "logit_diff": 3.6305705308914185,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2779.json_s3",
+      "conf": 100,
+      "logit_diff": 3.768614172935486,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2779.json_s4",
+      "conf": 95,
+      "logit_diff": 3.8575002551078796,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s0",
+      "conf": 100,
+      "logit_diff": 4.309634327888489,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s1",
+      "conf": 100,
+      "logit_diff": 4.308619976043701,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s2",
+      "conf": 95,
+      "logit_diff": 4.308619827032089,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s3",
+      "conf": 95,
+      "logit_diff": 4.287303030490875,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s4",
+      "conf": 95,
+      "logit_diff": 4.202195465564728,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_686.json_s0",
+      "conf": 90,
+      "logit_diff": 2.7195446491241455,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_686.json_s1",
+      "conf": 80,
+      "logit_diff": 2.712102174758911,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_686.json_s2",
+      "conf": 90,
+      "logit_diff": 3.741039991378784,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_686.json_s3",
+      "conf": 90,
+      "logit_diff": 3.0440728068351746,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_686.json_s4",
+      "conf": 80,
+      "logit_diff": 2.313964605331421,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s0",
+      "conf": 90,
+      "logit_diff": 2.9581528902053833,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s1",
+      "conf": 70,
+      "logit_diff": 0.8901915550231934,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s2",
+      "conf": 50,
+      "logit_diff": 0.5537152290344238,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s3",
+      "conf": 90,
+      "logit_diff": 2.825360894203186,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s4",
+      "conf": 80,
+      "logit_diff": 2.4726476669311523,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_183.json_s0",
+      "conf": 50,
+      "logit_diff": -1.0945236682891846,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_183.json_s1",
+      "conf": 50,
+      "logit_diff": -0.43998241424560547,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_183.json_s2",
+      "conf": 90,
+      "logit_diff": 2.3380383253097534,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_183.json_s3",
+      "conf": 80,
+      "logit_diff": 1.138363242149353,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_geometry_183.json_s4",
+      "conf": 90,
+      "logit_diff": 3.3660399317741394,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1907.json_s0",
+      "conf": 100,
+      "logit_diff": 2.829675793647766,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1907.json_s1",
+      "conf": 100,
+      "logit_diff": 3.1194119453430176,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1907.json_s2",
+      "conf": 100,
+      "logit_diff": 3.0149415731430054,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1907.json_s3",
+      "conf": 100,
+      "logit_diff": 2.986619234085083,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1907.json_s4",
+      "conf": 100,
+      "logit_diff": 2.7739261388778687,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_675.json_s0",
+      "conf": 95,
+      "logit_diff": 4.106359422206879,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_675.json_s1",
+      "conf": 90,
+      "logit_diff": 4.422107934951782,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_675.json_s2",
+      "conf": 90,
+      "logit_diff": 3.166957378387451,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_675.json_s3",
+      "conf": 95,
+      "logit_diff": 3.8115705251693726,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_675.json_s4",
+      "conf": 90,
+      "logit_diff": 4.285634845495224,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_1814.json_s0",
+      "conf": 100,
+      "logit_diff": 3.3387093544006348,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_1814.json_s1",
+      "conf": 100,
+      "logit_diff": 3.846954822540283,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_1814.json_s2",
+      "conf": 100,
+      "logit_diff": 3.9751505851745605,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_1814.json_s3",
+      "conf": 100,
+      "logit_diff": 3.9292101860046387,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_1814.json_s4",
+      "conf": 100,
+      "logit_diff": 3.852542519569397,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_769.json_s0",
+      "conf": 95,
+      "logit_diff": 4.474532067775726,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_769.json_s1",
+      "conf": 95,
+      "logit_diff": 4.028212010860443,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_769.json_s2",
+      "conf": 90,
+      "logit_diff": 4.534549653530121,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_769.json_s3",
+      "conf": 95,
+      "logit_diff": 4.455011069774628,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_number_theory_769.json_s4",
+      "conf": 95,
+      "logit_diff": 4.317573130130768,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_722.json_s0",
+      "conf": 100,
+      "logit_diff": 2.1678860187530518,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_722.json_s1",
+      "conf": 100,
+      "logit_diff": 2.7633800506591797,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_722.json_s2",
+      "conf": 100,
+      "logit_diff": 2.312164783477783,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_722.json_s3",
+      "conf": 100,
+      "logit_diff": 2.8170599937438965,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_722.json_s4",
+      "conf": 100,
+      "logit_diff": 2.026721715927124,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_518.json_s0",
+      "conf": 100,
+      "logit_diff": 3.360058307647705,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_518.json_s1",
+      "conf": 100,
+      "logit_diff": 3.144753634929657,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_518.json_s2",
+      "conf": 100,
+      "logit_diff": 3.2647963166236877,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_518.json_s3",
+      "conf": 95,
+      "logit_diff": 3.625,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_518.json_s4",
+      "conf": 100,
+      "logit_diff": 3.6280550956726074,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1146.json_s0",
+      "conf": 90,
+      "logit_diff": 2.123600482940674,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1146.json_s1",
+      "conf": 70,
+      "logit_diff": 1.4481747150421143,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1146.json_s2",
+      "conf": 95,
+      "logit_diff": 3.950901448726654,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1146.json_s3",
+      "conf": 50,
+      "logit_diff": 0.2286832332611084,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1146.json_s4",
+      "conf": 90,
+      "logit_diff": 3.1406466960906982,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_356.json_s0",
+      "conf": 100,
+      "logit_diff": 3.8066020011901855,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_356.json_s1",
+      "conf": 100,
+      "logit_diff": 3.9751505851745605,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_356.json_s2",
+      "conf": 100,
+      "logit_diff": 3.5510936975479126,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_356.json_s3",
+      "conf": 100,
+      "logit_diff": 3.673039138317108,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_356.json_s4",
+      "conf": 95,
+      "logit_diff": 4.4730061292648315,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_733.json_s0",
+      "conf": 90,
+      "logit_diff": 3.0187013149261475,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_733.json_s1",
+      "conf": 90,
+      "logit_diff": 3.694128632545471,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_733.json_s2",
+      "conf": 90,
+      "logit_diff": 3.2164889574050903,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_733.json_s3",
+      "conf": 90,
+      "logit_diff": 3.3445451855659485,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_733.json_s4",
+      "conf": 90,
+      "logit_diff": 3.075360417366028,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1840.json_s0",
+      "conf": 100,
+      "logit_diff": 3.5724103450775146,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1840.json_s1",
+      "conf": 100,
+      "logit_diff": 3.730246424674988,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1840.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7434951066970825,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1840.json_s3",
+      "conf": 100,
+      "logit_diff": 3.7246580123901367,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_prealgebra_1840.json_s4",
+      "conf": 100,
+      "logit_diff": 3.628054618835449,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_737.json_s0",
+      "conf": 100,
+      "logit_diff": 3.226073741912842,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_737.json_s1",
+      "conf": 100,
+      "logit_diff": 3.602712631225586,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_737.json_s2",
+      "conf": 100,
+      "logit_diff": 3.735203742980957,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_737.json_s3",
+      "conf": 100,
+      "logit_diff": 3.365646481513977,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_counting_and_probability_737.json_s4",
+      "conf": 100,
+      "logit_diff": 3.991849362850189,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s0",
+      "conf": 95,
+      "logit_diff": 3.8754749298095703,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s1",
+      "conf": 90,
+      "logit_diff": 3.833573877811432,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s2",
+      "conf": 95,
+      "logit_diff": 3.8754748106002808,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s3",
+      "conf": 95,
+      "logit_diff": 3.9808104038238525,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s4",
+      "conf": 95,
+      "logit_diff": 3.9561820328235626,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_776.json_s0",
+      "conf": 100,
+      "logit_diff": 3.402822732925415,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_776.json_s1",
+      "conf": 100,
+      "logit_diff": 3.939259946346283,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_776.json_s2",
+      "conf": 95,
+      "logit_diff": 4.338922500610352,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_776.json_s3",
+      "conf": 100,
+      "logit_diff": 3.752866744995117,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_776.json_s4",
+      "conf": 100,
+      "logit_diff": 3.4961049556732178,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s0",
+      "conf": 100,
+      "logit_diff": 3.8167370557785034,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s1",
+      "conf": 100,
+      "logit_diff": 3.7033092975616455,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s2",
+      "conf": 90,
+      "logit_diff": 4.432157963514328,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s3",
+      "conf": 95,
+      "logit_diff": 4.331303030252457,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s4",
+      "conf": 95,
+      "logit_diff": 3.617910921573639,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s0",
+      "conf": 95,
+      "logit_diff": 4.162096798419952,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s1",
+      "conf": 90,
+      "logit_diff": 4.18527364730835,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s2",
+      "conf": 90,
+      "logit_diff": 4.331302851438522,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s3",
+      "conf": 90,
+      "logit_diff": 4.521933615207672,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s4",
+      "conf": 90,
+      "logit_diff": 3.8384053111076355,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1313.json_s0",
+      "conf": 90,
+      "logit_diff": 3.741039991378784,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1313.json_s1",
+      "conf": 70,
+      "logit_diff": 1.030912160873413,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1313.json_s2",
+      "conf": 90,
+      "logit_diff": 2.3670953512191772,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1313.json_s3",
+      "conf": 50,
+      "logit_diff": -0.7741451263427734,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_precalculus_1313.json_s4",
+      "conf": 30,
+      "logit_diff": -1.4279531240463257,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2551.json_s0",
+      "conf": 100,
+      "logit_diff": 3.3297559022903442,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2551.json_s1",
+      "conf": 100,
+      "logit_diff": 3.6083009243011475,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2551.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7352038621902466,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2551.json_s3",
+      "conf": 100,
+      "logit_diff": 3.572410225868225,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_algebra_2551.json_s4",
+      "conf": 100,
+      "logit_diff": 3.6280550360679626,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s0",
+      "conf": 90,
+      "logit_diff": 3.120026707649231,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s1",
+      "conf": 90,
+      "logit_diff": 3.6669567823410034,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s2",
+      "conf": 90,
+      "logit_diff": 2.9644493460655212,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s3",
+      "conf": 90,
+      "logit_diff": 3.9134327173233032,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 1.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s4",
+      "conf": 90,
+      "logit_diff": 3.5822802782058716,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_753.json_s0",
+      "conf": 100,
+      "logit_diff": 2.8170602321624756,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_753.json_s1",
+      "conf": 100,
+      "logit_diff": 2.7330775260925293,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_753.json_s2",
+      "conf": 100,
+      "logit_diff": 2.61604642868042,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_753.json_s3",
+      "conf": 100,
+      "logit_diff": 3.295823812484741,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_753.json_s4",
+      "conf": 100,
+      "logit_diff": 2.6329684257507324,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1289.json_s0",
+      "conf": 100,
+      "logit_diff": 2.385049819946289,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1289.json_s1",
+      "conf": 100,
+      "logit_diff": 1.200439691543579,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1289.json_s2",
+      "conf": 100,
+      "logit_diff": 2.237384796142578,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1289.json_s3",
+      "conf": 100,
+      "logit_diff": 2.2612669467926025,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1289.json_s4",
+      "conf": 100,
+      "logit_diff": 1.200439691543579,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_525.json_s0",
+      "conf": 20,
+      "logit_diff": -2.269876003265381,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_525.json_s1",
+      "conf": 20,
+      "logit_diff": -1.4987058639526367,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_525.json_s2",
+      "conf": 50,
+      "logit_diff": 0.44626426696777344,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_525.json_s3",
+      "conf": 50,
+      "logit_diff": 0.3410675525665283,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_525.json_s4",
+      "conf": 30,
+      "logit_diff": -0.1092529296875,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_149.json_s0",
+      "conf": 100,
+      "logit_diff": 3.3466780185699463,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_149.json_s1",
+      "conf": 100,
+      "logit_diff": 3.5964181423187256,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_149.json_s2",
+      "conf": 90,
+      "logit_diff": 4.3445103764534,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_149.json_s3",
+      "conf": 90,
+      "logit_diff": 4.274687469005585,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_149.json_s4",
+      "conf": 100,
+      "logit_diff": 3.624999761581421,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_894.json_s0",
+      "conf": 30,
+      "logit_diff": -0.8901915550231934,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_894.json_s1",
+      "conf": 20,
+      "logit_diff": -1.5866279602050781,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_894.json_s2",
+      "conf": 20,
+      "logit_diff": -1.8547375202178955,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_894.json_s3",
+      "conf": 50,
+      "logit_diff": -0.22014713287353516,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_894.json_s4",
+      "conf": 30,
+      "logit_diff": -2.655442237854004,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_742.json_s0",
+      "conf": 20,
+      "logit_diff": -2.5827062129974365,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_742.json_s1",
+      "conf": 50,
+      "logit_diff": 1.076960802078247,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_742.json_s2",
+      "conf": 60,
+      "logit_diff": 2.958153247833252,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_742.json_s3",
+      "conf": 50,
+      "logit_diff": 1.0309123992919922,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_742.json_s4",
+      "conf": 70,
+      "logit_diff": 2.8751221895217896,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_232.json_s0",
+      "conf": 90,
+      "logit_diff": 3.9588091373443604,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_232.json_s1",
+      "conf": 80,
+      "logit_diff": 4.121488690376282,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_232.json_s2",
+      "conf": 90,
+      "logit_diff": 4.755678445100784,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_232.json_s3",
+      "conf": 90,
+      "logit_diff": 4.039065182209015,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_232.json_s4",
+      "conf": 90,
+      "logit_diff": 4.382826507091522,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2779.json_s0",
+      "conf": 100,
+      "logit_diff": 3.5243725776672363,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2779.json_s1",
+      "conf": 100,
+      "logit_diff": 2.7330780029296875,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2779.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7353179454803467,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2779.json_s3",
+      "conf": 100,
+      "logit_diff": 3.768614172935486,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2779.json_s4",
+      "conf": 100,
+      "logit_diff": 2.8812947273254395,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s0",
+      "conf": 90,
+      "logit_diff": 4.206055641174316,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s1",
+      "conf": 100,
+      "logit_diff": 3.711277484893799,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s2",
+      "conf": 100,
+      "logit_diff": 3.7183631658554077,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s3",
+      "conf": 90,
+      "logit_diff": 4.492081195116043,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1123.json_s4",
+      "conf": 95,
+      "logit_diff": 4.092446863651276,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_686.json_s0",
+      "conf": 50,
+      "logit_diff": 0.0,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_686.json_s1",
+      "conf": 40,
+      "logit_diff": 0.20881080627441406,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_686.json_s2",
+      "conf": 50,
+      "logit_diff": 1.125137448310852,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_686.json_s3",
+      "conf": 50,
+      "logit_diff": 0.11089420318603516,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_686.json_s4",
+      "conf": 50,
+      "logit_diff": -0.21293044090270996,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s0",
+      "conf": 50,
+      "logit_diff": -0.32218337059020996,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s1",
+      "conf": 20,
+      "logit_diff": -1.761849045753479,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s2",
+      "conf": 30,
+      "logit_diff": -1.52373206615448,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s3",
+      "conf": 30,
+      "logit_diff": -0.8482775688171387,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1467.json_s4",
+      "conf": 30,
+      "logit_diff": -0.5265154838562012,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_183.json_s0",
+      "conf": 20,
+      "logit_diff": -2.236735224723816,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_183.json_s1",
+      "conf": 30,
+      "logit_diff": -1.9948866367340088,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_183.json_s2",
+      "conf": 50,
+      "logit_diff": -0.33701157569885254,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_183.json_s3",
+      "conf": 20,
+      "logit_diff": -1.2887861728668213,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_geometry_183.json_s4",
+      "conf": 90,
+      "logit_diff": 3.0440731048583984,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1907.json_s0",
+      "conf": 100,
+      "logit_diff": 2.303715705871582,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1907.json_s1",
+      "conf": 100,
+      "logit_diff": 2.61604642868042,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1907.json_s2",
+      "conf": 100,
+      "logit_diff": 2.0720460414886475,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1907.json_s3",
+      "conf": 100,
+      "logit_diff": 2.374999761581421,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1907.json_s4",
+      "conf": 100,
+      "logit_diff": 1.9477388858795166,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_675.json_s0",
+      "conf": 70,
+      "logit_diff": 2.5144290924072266,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_675.json_s1",
+      "conf": 80,
+      "logit_diff": 3.961289644241333,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_675.json_s2",
+      "conf": 50,
+      "logit_diff": 0.6850395202636719,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_675.json_s3",
+      "conf": 50,
+      "logit_diff": 1.6876287460327148,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_675.json_s4",
+      "conf": 70,
+      "logit_diff": 3.4950268864631653,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_1814.json_s0",
+      "conf": 100,
+      "logit_diff": 2.850992202758789,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_1814.json_s1",
+      "conf": 100,
+      "logit_diff": 2.986619234085083,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_1814.json_s2",
+      "conf": 100,
+      "logit_diff": 3.119412064552307,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_1814.json_s3",
+      "conf": 100,
+      "logit_diff": 3.7033090591430664,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_1814.json_s4",
+      "conf": 100,
+      "logit_diff": 3.1131170988082886,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_769.json_s0",
+      "conf": 90,
+      "logit_diff": 4.477464824914932,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_769.json_s1",
+      "conf": 100,
+      "logit_diff": 3.8066020011901855,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_769.json_s2",
+      "conf": 90,
+      "logit_diff": 4.331303119659424,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_769.json_s3",
+      "conf": 90,
+      "logit_diff": 3.913432240486145,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_number_theory_769.json_s4",
+      "conf": 95,
+      "logit_diff": 3.9632679224014282,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_722.json_s0",
+      "conf": 100,
+      "logit_diff": 1.6012070178985596,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_722.json_s1",
+      "conf": 100,
+      "logit_diff": 1.955707311630249,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_722.json_s2",
+      "conf": 100,
+      "logit_diff": 1.855341911315918,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_722.json_s3",
+      "conf": 100,
+      "logit_diff": 2.014106035232544,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_722.json_s4",
+      "conf": 100,
+      "logit_diff": 1.3059437274932861,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_518.json_s0",
+      "conf": 100,
+      "logit_diff": 2.1948230266571045,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_518.json_s1",
+      "conf": 100,
+      "logit_diff": 2.1006274223327637,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_518.json_s2",
+      "conf": 100,
+      "logit_diff": 2.1006276607513428,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_518.json_s3",
+      "conf": 100,
+      "logit_diff": 2.5583481788635254,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_518.json_s4",
+      "conf": 100,
+      "logit_diff": 2.558348059654236,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1146.json_s0",
+      "conf": 30,
+      "logit_diff": -0.6591947078704834,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1146.json_s1",
+      "conf": 20,
+      "logit_diff": -0.6686656475067139,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1146.json_s2",
+      "conf": 70,
+      "logit_diff": 2.476049780845642,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1146.json_s3",
+      "conf": 20,
+      "logit_diff": -1.6750965118408203,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1146.json_s4",
+      "conf": 50,
+      "logit_diff": 0.6686656475067139,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_356.json_s0",
+      "conf": 90,
+      "logit_diff": 3.9292104244232178,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_356.json_s1",
+      "conf": 100,
+      "logit_diff": 3.2394540309906006,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_356.json_s2",
+      "conf": 90,
+      "logit_diff": 3.6604232788085938,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_356.json_s3",
+      "conf": 90,
+      "logit_diff": 3.6730393171310425,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_356.json_s4",
+      "conf": 100,
+      "logit_diff": 3.984504461288452,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_733.json_s0",
+      "conf": 40,
+      "logit_diff": 1.3100385665893555,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_733.json_s1",
+      "conf": 70,
+      "logit_diff": 2.953811287879944,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_733.json_s2",
+      "conf": 60,
+      "logit_diff": 1.3270683288574219,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_733.json_s3",
+      "conf": 60,
+      "logit_diff": 1.9948865175247192,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_733.json_s4",
+      "conf": 60,
+      "logit_diff": 1.3816744089126587,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1840.json_s0",
+      "conf": 100,
+      "logit_diff": 2.5947299003601074,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1840.json_s1",
+      "conf": 100,
+      "logit_diff": 2.640054225921631,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1840.json_s2",
+      "conf": 100,
+      "logit_diff": 2.6519370079040527,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1840.json_s3",
+      "conf": 100,
+      "logit_diff": 2.7570858001708984,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_prealgebra_1840.json_s4",
+      "conf": 100,
+      "logit_diff": 2.204176425933838,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_737.json_s0",
+      "conf": 100,
+      "logit_diff": 2.4660675525665283,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_737.json_s1",
+      "conf": 100,
+      "logit_diff": 2.64005446434021,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_737.json_s2",
+      "conf": 100,
+      "logit_diff": 2.301619052886963,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_737.json_s3",
+      "conf": 100,
+      "logit_diff": 2.4153523445129395,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_counting_and_probability_737.json_s4",
+      "conf": 100,
+      "logit_diff": 2.54084849357605,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s0",
+      "conf": 90,
+      "logit_diff": 3.792737126350403,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s1",
+      "conf": 90,
+      "logit_diff": 3.840659737586975,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s2",
+      "conf": 80,
+      "logit_diff": 3.544072926044464,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s3",
+      "conf": 90,
+      "logit_diff": 3.8277721405029297,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1126.json_s4",
+      "conf": 95,
+      "logit_diff": 3.7246583104133606,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_776.json_s0",
+      "conf": 100,
+      "logit_diff": 3.295823574066162,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_776.json_s1",
+      "conf": 100,
+      "logit_diff": 3.467782735824585,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_776.json_s2",
+      "conf": 100,
+      "logit_diff": 3.735203981399536,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_776.json_s3",
+      "conf": 90,
+      "logit_diff": 3.646317481994629,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_776.json_s4",
+      "conf": 100,
+      "logit_diff": 2.5408482551574707,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s0",
+      "conf": 90,
+      "logit_diff": 3.8891048431396484,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s1",
+      "conf": 100,
+      "logit_diff": 2.850992441177368,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s2",
+      "conf": 90,
+      "logit_diff": 4.432157963514328,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s3",
+      "conf": 80,
+      "logit_diff": 3.7900859713554382,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_2152.json_s4",
+      "conf": 70,
+      "logit_diff": 2.0645971298217773,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s0",
+      "conf": 70,
+      "logit_diff": 2.3928792476654053,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s1",
+      "conf": 90,
+      "logit_diff": 4.175223767757416,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s2",
+      "conf": 90,
+      "logit_diff": 4.074248254299164,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s3",
+      "conf": 70,
+      "logit_diff": 3.827772617340088,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1350.json_s4",
+      "conf": 60,
+      "logit_diff": 2.355440378189087,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1313.json_s0",
+      "conf": 50,
+      "logit_diff": 1.8082329034805298,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1313.json_s1",
+      "conf": 20,
+      "logit_diff": -0.9122071266174316,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1313.json_s2",
+      "conf": 50,
+      "logit_diff": 0.11373281478881836,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1313.json_s3",
+      "conf": 20,
+      "logit_diff": -2.031758666038513,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_precalculus_1313.json_s4",
+      "conf": 20,
+      "logit_diff": -2.5105223655700684,
+      "ok": false
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2551.json_s0",
+      "conf": 100,
+      "logit_diff": 2.4786834716796875,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2551.json_s1",
+      "conf": 100,
+      "logit_diff": 2.7570853233337402,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2551.json_s2",
+      "conf": 100,
+      "logit_diff": 2.6463489532470703,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2551.json_s3",
+      "conf": 100,
+      "logit_diff": 2.8296759128570557,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_algebra_2551.json_s4",
+      "conf": 100,
+      "logit_diff": 2.5491394996643066,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s0",
+      "conf": 50,
+      "logit_diff": 0.11238431930541992,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s1",
+      "conf": 50,
+      "logit_diff": 1.7618489265441895,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s2",
+      "conf": 50,
+      "logit_diff": -0.11089444160461426,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s3",
+      "conf": 50,
+      "logit_diff": 1.2284687757492065,
+      "ok": true
+    },
+    {
+      "dir": "steer",
+      "coeff": 4.0,
+      "pid": "math_test_intermediate_algebra_1994.json_s4",
+      "conf": 60,
+      "logit_diff": 1.911716103553772,
+      "ok": true
+    }
+  ]
+}
