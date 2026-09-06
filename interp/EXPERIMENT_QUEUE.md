@@ -7,15 +7,27 @@ claim per hour of GPU. Kept current as things land. Status values: `queued`,
 The framing these serve: **decode, locate, intervene, measure**. Three of those four are
 supported today. The fourth is where most of the queue sits.
 
-| # | experiment | serves | status | cost | needs |
+| # | experiment | serves | status | lands | where |
 |---|---|---|---|---|---|
-| 1 | Answer-end read site | decode | queued | <1 h, no generation | a free box |
-| 2 | Confidence vs accuracy (monitor or driver) | measure | queued | ~2 h | a free box |
-| 3 | Ablation on GLM | intervene | running | — | box A, lands ~03:00 |
-| 4 | Ablation on Gemma-4 | intervene | queued behind 3 | ~7 h | box A |
-| 5 | Ablation on Qwen3.6 | intervene | running | — | box B, lands ~02:30 on the 7th |
-| 6 | Base-model arm | origin | queued | ~6 h + capture | a box, new model |
-| 7 | Multiple seeds | all | queued | recapture | cheap per seed, many seeds |
+| 1 | Answer-end read site | decode | **running** | within the hour | box C |
+| 2 | Confidence vs accuracy (monitor or driver) | measure | queued | ~2 h once a box frees | — |
+| 3 | Ablation on GLM | intervene | **running** | ~03:00 | box A |
+| 4 | Ablation on Gemma-4 | intervene | queued behind 3 | ~10:00 | box A |
+| 5 | Ablation on Qwen3.6 | intervene | **running** | ~02:30 on the 7th | box B |
+| 6 | Base-model arm | origin | queued | ~6 h + capture | needs a box |
+| 7 | Multiple seeds | all | queued | recapture | needs a box |
+
+Boxes, all RTX PRO 6000 Blackwell 97.9 GB, all with `~/.aws/config` and a live SSO login:
+
+| | address | job |
+|---|---|---|
+| A | `ssh -p 15713 root@ssh2.vast.ai` | GLM then Gemma (`~/chain.log`) |
+| B | `ssh -p 40021 root@98.86.102.84` | Qwen3.6 (`~/qwen.log`) |
+| C | `ssh -p 29766 root@206.41.207.98` | answer-site (`~/answersite.log`) |
+
+Clone needs `ssh -A`: the repo is private and the boxes authenticate through the
+forwarded agent. Every run pushes its capture to S3 as soon as it exists, so no box
+holds the only copy of anything.
 
 ---
 
