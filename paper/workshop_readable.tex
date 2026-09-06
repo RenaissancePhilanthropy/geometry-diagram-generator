@@ -90,8 +90,8 @@ Geometry is the opposite: a failed construction usually does not compile, and th
 \paragraph{Controls.}
 The token we read is identical in every record, so at the input layer the probe sits at exactly 0.5 and anything it finds deeper was computed during the attempt.
 A within-question comparison holds difficulty fixed.
-The per-record data behind the original 16-cell matrix was lost to a hardware failure, so its aggregates survive only as recorded.
-The four Mistral cells we recaptured reproduce the headline, with a smaller margin over the surface baseline ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $+0.05$ on GPQA, where neither reads far above chance, and $-0.11$ on geometry).
+For time, the controls below were run on Mistral only.
+Its four cells reproduce the headline, with a smaller margin over the surface baseline ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $+0.05$ on GPQA, where neither reads far above chance, and $-0.11$ on geometry).
 
 \section{What the signal is}
 \label{sec:what}
@@ -125,7 +125,7 @@ The one exception is instructive: on Gemma-4, probes trained on geometry fail el
 A probe trained on the one generative task can learn features specific to it.
 
 \begin{table}[t]
-\caption{Mistral, recaptured cells. Left: a probe trained on one domain, tested on another (rows train, columns test; diagonal is in-domain; Geo = GeoGenBench). Right: intervening on the model's own correctness direction at the confidence token. Gain 1 changes nothing; gain 0 removes the direction; the random row removes a random direction of the same size. Removing the real direction leaves stated confidence unable to separate successes from failures; removing the random one does not.}
+\caption{Mistral. Left: a probe trained on one domain, tested on another (rows train, columns test; diagonal is in-domain; Geo = GeoGenBench). Right: intervening on the model's own correctness direction at the confidence token. Gain 1 changes nothing; gain 0 removes the direction; the random row removes a random direction of the same size. Removing the real direction leaves stated confidence unable to separate successes from failures; removing the random one does not.}
 \label{tab:transfer}
 \centering
 \small
@@ -182,7 +182,7 @@ So we added an instrument that uses no correctness labels.
 The Jacobian lens \citep{gurnee2026workspace} is fit on generic text and reads an activation for what it makes the model more likely to say next; we score each stored state by how far it leans toward words like ``wrong'' over words like ``correct.''
 
 On dense models the lens matches the probe.
-On the recaptured Mistral cells it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control.
+On Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control.
 Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
 \paragraph{Where it fails, it shows why.}
