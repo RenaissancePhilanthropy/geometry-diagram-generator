@@ -813,3 +813,32 @@ exposed. Do not quote GLM's 0.92 as a clean decode.
   read sites.
 - Qwen3.6 lands ~02:30 on the 7th, the fourth point.
 
+### 6. Gemma-4 ablation — underpowered, as predicted (2026-09-06 06:24)
+
+Gemma-4-26B x MATH, 750 fresh records, layer 21. Pass rate **94%**: 706 correct, 44 wrong.
+35 of the 44 wrong answers were stated at confidence 100. The evaluation half contains
+**5 wrong answers**.
+
+| condition | parse | conf wrong / ok | stated AUROC |
+|---|---|---|---|
+| untouched | 1.00 | 100 / 100 | **0.500** |
+| direction removed | 1.00 | 100 / 100 | 0.500 |
+| amplified x2 | 1.00 | 92 / 100 | 0.900 |
+| amplified x4 | 1.00 | 87 / 100 | 1.000 |
+| matched random, any gain != 1 | **0.00** | — | — |
+
+Three things, none of them a result:
+- **Necessity is untestable.** Untouched stated AUROC is exactly 0.500: Gemma says 100 on
+  every eval record, correct or not. There is no discrimination to remove.
+- **Sufficiency is suggestive in Mistral's direction.** Amplifying lowers wrong-answer
+  confidence 100 → 92 → 87 while correct answers hold at 100, taking AUROC 0.5 → 1.0.
+  But that is five records. Not citable.
+- **The matched random control is broken on this model.** rand_scale 36.3; the random
+  perturbation destroys parseable output at every tested magnitude other than the no-op.
+  So "random does nothing" cannot be shown here.
+
+Verdict: Gemma cannot break the Mistral/GLM tie in either direction. The paper should say
+it passes 94% of MATH, leaving five failures in evaluation, and that amplification moves
+those five in Mistral's direction. Same conclusion the July notes reached ("underpowered").
+The fix is not more records; it is prompts Gemma can sometimes fail.
+

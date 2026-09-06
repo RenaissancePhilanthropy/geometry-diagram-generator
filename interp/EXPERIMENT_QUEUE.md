@@ -9,10 +9,10 @@ supported today. The fourth is where most of the queue sits.
 
 | # | experiment | serves | status | lands | where |
 |---|---|---|---|---|---|
-| 1 | Answer-end read site | decode | **running** | within the hour | box C |
+| 1 | Answer-end read site | decode | done: present on MMLU-Pro before the prompt | — | results/answersite |
 | 2 | Confidence vs accuracy (monitor or driver) | measure | queued | ~2 h once a box frees | — |
-| 3 | Ablation on GLM | intervene | **running** | ~03:00 | box A |
-| 4 | Ablation on Gemma-4 | intervene | queued behind 3 | ~10:00 | box A |
+| 3 | Ablation on GLM | intervene | done: clean null | — | results/causal_glm |
+| 4 | Ablation on Gemma-4 | intervene | done: underpowered (5 wrong in eval) | — | results/causal_gemma4 |
 | 5 | Ablation on Qwen3.6 | intervene | **running** | ~02:30 on the 7th | box B |
 | 6 | Base-model arm | origin | queued | ~6 h + capture | needs a box |
 | 7 | Multiple seeds | all | queued | recapture | needs a box |
