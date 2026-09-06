@@ -17,3 +17,14 @@ In this paper we aim to tell these two apart. We read the model's internal state
 We say a fact is *represented* when a probe can read it from the model's state, and *reported* when it reaches the confidence number the model writes. The title's "knowing" is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report. We make no claim about awareness, and a probe alone could not support one.
 
 Prior work has shown that a model's output probabilities are often better calibrated than its words [kadavath2022language], and that the truth of a given statement can be read from activations [azaria2023internal, burns2023discovering, marks2024geometry]. We apply those tools to the model's own attempts, and then intervene on the representation [zou2023representation] to ask whether the report depends on it.
+
+----
+
+
+A language model that is confidently wrong is a problem. Its stated confidence is a signal for deciding whether to trust its answer. This paper asks whether the model's activations contain the signal to know when it might be wrong.
+
+Two things could be going on. Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but unsurfaced to its confidence report. Hence it's either a capability problem or a reporting problem. 
+
+In this paper we aim to tell these two apart. We read the model's internal state directly with a linear detector, a *probe*, and compare what the probe finds to the model's reported confidence. We say a fact is *represented* when a probe can read it from the model's state, and *reported* when it reaches the confidence number the model writes. The title's "knowing" is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report. We make no claim about awareness, and a probe alone could not support one.
+
+Prior work has shown that a model's output probabilities are often better calibrated than its words [kadavath2022language], and that the truth of a given statement can be read from activations [azaria2023internal, burns2023discovering, marks2024geometry]. We apply those tools to the model's own attempts, and then intervene on the representation [zou2023representation] to ask whether the report depends on it.

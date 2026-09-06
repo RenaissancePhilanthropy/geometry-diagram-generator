@@ -42,19 +42,14 @@ Models carry more about their own errors than they report, and on at least one m
 
 A language model that is confidently wrong is a problem.
 Its stated confidence is a signal for deciding whether to trust its answer.
-This paper asks whether the model's activations carry a decodable signal of its answer's correctness.
+This paper asks whether the model's activations contain the signal to know when it might be wrong.
 
 Two things could be going on.
-Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but not surfaced in its confidence report.
-
-The first is a capability problem.
-The second is a reporting problem.
+Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but unsurfaced to its confidence report.
+Hence it is either a capability problem or a reporting problem.
 
 In this paper we aim to tell these two apart.
 We read the model's internal state directly with a linear detector, a \emph{probe}, and compare what the probe finds to the model's reported confidence.
-A probe that reads correctness could be reading something duller: which questions are hard, features of the output text, or an artifact of being asked.
-The sections below rule those out in turn, then ask whether the report depends on the signal at all.
-
 We say a fact is \emph{represented} when a probe can read it from the model's state, and \emph{reported} when it reaches the confidence number the model writes.
 The title's ``knowing'' is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report.
 We make no claim about awareness, and a probe alone could not support one.
