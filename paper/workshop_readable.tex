@@ -63,8 +63,12 @@ We apply those tools to the model's own attempts, and then intervene on the repr
 \paragraph{Models and tasks.}
 We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
 Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks every clause of the request.
-The compiler is why geometry is here: it grades against a formal specification, and a pre-registered human study ($N{=}200$, two trained raters; companion paper under review) found its disagreements with people ran one way only, lenient and never harsh: in that sample, every compiler \texttt{fail} was a true failure.
-That is 16 cells of about 750 attempts each.
+Geometry is here because a compiler checks each attempt against a formal specification.
+This gives labels without a judge.
+In a pre-registered human study ($N{=}200$, two trained raters; companion paper under review), every compiler-human disagreement went one way.
+The compiler was lenient, never harsh.
+Every compiler \texttt{fail} in that sample was a genuine failure.
+Across four models and four domains, that gives 16 cells of about 750 attempts each.
 
 \paragraph{Three turns, graded in silence.}
 Every attempt takes three turns: we ask the model how confident it is that it will get the problem right, let it try, then ask how confident it is that it did.
