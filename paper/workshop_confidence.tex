@@ -24,19 +24,15 @@
 \maketitle
 
 \begin{abstract}
-When a language model is confidently wrong, is the error unrepresented, or left unsaid?
-We test this by reading the model's internal state directly.
-Across four open models and four reasoning domains (MMLU-Pro, MATH, GPQA-Diamond, and a formally graded geometry task), a simple linear probe predicts whether an answer is correct better than the model's stated confidence in 12 of 16 model--domain settings (one tie; mean $+0.09$ AUROC).
-The gap is largest on MATH ($+0.20$), where many incorrect solutions remain fluent and well formed.
-
-The signal appears to reflect the model's particular attempt, rather than just question difficulty.
-When we compare multiple attempts at the same question, the model's own P(True) falls toward chance while the internal probe remains predictive.
-The signal also transfers across domains, suggesting that different tasks share some internal representation of correctness.
-
-Finally, we test whether this signal merely correlates with confidence or actually influences it.
-On Mistral-Small-24B, removing the learned correctness direction after the answer has been produced reduces the ability of stated confidence to distinguish correct from incorrect answers ($0.84 \to 0.56$ AUROC), while removing a matched random direction has almost no effect.
-Amplifying the same direction lowers confidence on incorrect answers and improves calibration.
-Together, these results suggest that language models can contain more information about the correctness of their own answers than they express in verbal confidence, and that some of this internal information is causally connected to what they report.
+When a language model is confidently wrong, is the error undetected or left unsaid?
+We look inside the model to find out.
+Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a simple linear detector reading the model's internal state predicts whether an answer is correct better than the model's own stated confidence in 12 of 16 settings, by a mean of $+0.09$ AUROC.
+The gap is widest on MATH ($+0.20$), where a wrong solution looks just as fluent as a right one.
+The detector is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed, and read before the model has attempted anything it is at chance.
+The signal is already there before we ask.
+At the last token of the answer, with no confidence question in play, correctness is readable on MMLU-Pro at 0.69 against 0.57 from the question alone.
+And on Mistral the model's report depends on it: remove that direction after the answer is written and stated confidence can no longer tell the model's successes from its failures ($0.84 \to 0.56$), while removing a random direction of the same size changes nothing; turn it up and confidence on wrong answers drops while calibration error halves.
+Models carry more about their own errors than they say, and on at least one model, what they say depends on it.
 \end{abstract}
 
 \section{Introduction}

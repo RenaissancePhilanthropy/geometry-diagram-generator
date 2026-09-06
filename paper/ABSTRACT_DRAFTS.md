@@ -93,9 +93,9 @@ before it), which is currently only in the body.
 
 ## D — colloquial rewrite (proposed; edit here, then tell me to apply)
 
-When a language model is confidently wrong, is the error unrepresented, or left unsaid? We
+When a language model is confidently wrong, is the error undetected or left unsaid? We
 look inside the model to find out. Across four open models and four domains (MMLU-Pro, MATH,
-GPQA-Diamond, and a geometry task graded exactly by a compiler), a simple linear detector
+GPQA-Diamond, and a geometry task graded by a compiler), a simple linear detector
 reading the model's internal state predicts whether an answer is correct better than the
 model's own stated confidence in 12 of 16 settings, by a mean of +0.09 AUROC. The gap is
 widest on MATH (+0.20), where a wrong solution looks just as fluent as a right one. The
