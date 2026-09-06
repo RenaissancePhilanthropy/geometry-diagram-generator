@@ -157,3 +157,35 @@ byte-identical across a question's attempts, cannot recover the post-attempt dir
 on MMLU-Pro (0.490, chance), which a surface-of-the-question account would predict it
 could. A linear probe at one token also undercounts nonlinear or multi-token signal, so
 the reported numbers are a floor.
+
+\section{Per-cell numbers and specificity controls}
+\label{app:cells}
+\begin{table}[h]
+\caption{Post-attempt correctness discrimination (AUROC). Left: stated confidence vs.\ the probe in representative cells; overall the probe wins 12 of 16 with one tie, mean $+0.09$, with a paired bootstrap significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}). Right: Mistral specificity controls. ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies that fitted post readout at the pre-attempt site, where only difficulty is visible.}
+\label{tab:knowing}
+\centering
+\scriptsize
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{model $\times$ domain} & \textbf{stated} & \textbf{probe} \\
+\midrule
+Gemma-4 $\times$ MATH & 0.57 & \textbf{0.78} \\
+Qwen3.6 $\times$ MMLU-Pro & 0.67 & \textbf{0.84} \\
+GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} \\
+Mistral $\times$ MATH & 0.79 & \textbf{0.83} \\
+\bottomrule
+\end{tabular}
+\hspace{0.9em}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Mistral} & \textbf{pre} & \textbf{post} & \textbf{resid.} & \textbf{post$\to$pre} \\
+\midrule
+MMLU-Pro & 0.568 & 0.754 & 0.751 & 0.490 \\
+MATH & 0.792 & 0.834 & 0.701 & 0.624 \\
+GPQA & 0.593 & 0.572 & 0.544 & 0.479 \\
+GeoGen & 0.770 & 0.676 & 0.505 & 0.648 \\
+\\[-0.85em]
+\bottomrule
+\end{tabular}
+\end{table}
+
