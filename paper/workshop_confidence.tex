@@ -1,14 +1,8 @@
-% Knowing Before Saying — confidence-study 4-pager (MATH-AI 2026). THE SUBMISSION FILE.
-% Mei (2026-09-03): split the knowing-vs-saying study out on its own; GeoGenBench is one of four
-% domains (the compiler-graded one), not the frame. Built from workshop_combined.tex (all
-% 2026-09-02/03 corrections: fixed-0.7L convention 12/16 +0.09, steering replication with a
-% magnitude-matched random control, transfer verified 96% on the fresh Mistral capture,
-% gurnee2026workspace verified, plain-prose + readability passes).
-% Older drafts: archive/workshop_confidence_v0_2026-09-01.tex, archive/workshop_geogenbench_only_2026-09-01.tex.
+% Confidence-study 4-pager for MATH-AI 2026.
+% GeoGenBench is one of four domains, not the frame.
 %
 % Build:  lualatex workshop_confidence && bibtex workshop_confidence && lualatex workshop_confidence && lualatex workshop_confidence
 %
-% TODO(mei): title is a proposal.
 
 \documentclass{article}
 
@@ -17,7 +11,7 @@
 
 \input{preamble}
 
-\title{Knowing Before Saying: Internal Correctness Signals in Mathematical Reasoning}
+\title{Knowing Before Saying: Internal Correctness Signals \\ in Mathematical Reasoning}
 
 \author{%
   Anonymous Authors\\
@@ -30,17 +24,20 @@
 \maketitle
 
 \begin{abstract}
-Language models often answer math problems wrong while reporting high confidence.
-Does the model lack the self-discernment to know it might be wrong, or does it know it but leave it unsaid?
-In this work we investigate when a model is aware of its own uncertainty, and why that awareness often fails to reach the confidence it reports.
-We read that state directly rather than asking for it.
-We test four open models with distinct architectures on four domains: MMLU-Pro, MATH, GPQA-Diamond, and a geometry-construction task whose outputs a symbolic compiler grades exactly.
-A simple linear detector trained on that state, a probe, predicts whether an attempt is correct better than the model's stated confidence in 12 of 16 cells (one tie, mean $+0.09$ AUROC).
-The gap is largest on MATH ($+0.20$), where a wrong answer looks as clean as a right one.
-The signal is specific to the attempt, surviving a within-question control that pushes the model's own P(True) toward chance, and substantially shared across domains.
-And what the model says depends on it: removing the direction leaves Mistral's stated confidence barely able to separate its own successes from its failures ($0.84 \to 0.56$, where removing a matched random direction changes nothing), while amplifying it drops stated confidence on wrong answers from 84 to 54 and cuts calibration error from 0.34 to 0.19.
-Models carry more information about their own errors than they state; we read that as knowing, and test the reading causally.
-How much of it reaches speech varies by architecture, and we outline a global-workspace test of why.
+Language models can give wrong answers with high confidence.
+But does that mean they lack information about their mistake, or simply fail to express it?
+We test this by reading the model's internal state directly.
+Across four open models and four reasoning domains (MMLU-Pro, MATH, GPQA-Diamond, and a formally graded geometry task), a simple linear probe predicts whether an answer is correct better than the model's stated confidence in 12 of 16 model--domain settings (one tie; mean $+0.09$ AUROC).
+The gap is largest on MATH ($+0.20$), where many incorrect solutions remain fluent and well formed.
+
+The signal appears to reflect the model's particular attempt, rather than just question difficulty.
+When we compare multiple attempts at the same question, the model's own P(True) falls toward chance while the internal probe remains predictive.
+The signal also transfers across domains, suggesting that different tasks share some internal representation of correctness.
+
+Finally, we test whether this signal merely correlates with confidence or actually influences it.
+On Mistral-Small-24B, removing the learned correctness direction after the answer has been produced reduces the ability of stated confidence to distinguish correct from incorrect answers ($0.84 \to 0.56$ AUROC), while removing a matched random direction has almost no effect.
+Amplifying the same direction lowers confidence on incorrect answers and improves calibration.
+Together, these results suggest that language models can contain more information about the correctness of their own answers than they express in verbal confidence, and that some of this internal information is causally connected to what they report.
 \end{abstract}
 
 \section{Introduction}
@@ -73,7 +70,7 @@ Decoding alone establishes only the first, which is why we test the other four; 
 \label{sec:knowing}
 
 \paragraph{Models and domains.}
-We test four open models with different architectures: Qwen3.6-27B (hybrid linear/full attention), GLM-4.7-Flash (MoE), Mistral-Small-24B (dense), and Gemma-4-26B-A4B (MoE, VLM-derived).
+We test four open models with different architectures: Qwen3.6-27B (hybrid gated linear/full attention), GLM-4.7-Flash (MoE), Mistral-Small-24B (dense), and Gemma-4-26B-A4B (MoE, VLM-derived).
 Each runs on four domains, about 750 records per cell: MMLU-Pro, MATH, and GPQA-Diamond with programmatic grading, and a geometry-construction task (GeoGenBench) in which the model writes a construction from a natural-language request and a symbolic compiler decides each clause of the request exactly.
 The compiler matters because metacognition experiments live or die by their correctness labels, and it grades exactly against the formal specification: a pre-registered human study ($N{=}200$, two trained raters) found its disagreements with humans ran in one direction only, lenient and never harsh, so a \texttt{fail} label is trustworthy.
 Geometry is also the one generative domain; the others are answer-selection or short-answer tasks.
@@ -91,15 +88,15 @@ Four controls guard the readout.
 The probe adds $+0.22$ mean AUROC over a surface-features baseline (answer length and shape) in 15 of 16 cells.
 The read token is identical across records, so layer-0 activations carry no signal by construction (per-fold AUROC 0.500); anything decoded deeper was computed during the attempt.
 A within-question control holds difficulty fixed.
-A public deviations log records four bugs that planned controls caught, which we fixed and re-ran.
-The matrix predates a hardware loss and cannot be recomputed; the four Mistral cells we recaptured reproduce the headline but give a weaker surface margin ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $-0.11$ on geometry, where a failed construction is visibly malformed).
+A deviations log records four bugs that planned controls caught; the affected control analyses were fixed and rerun.
+The four Mistral cells recaptured after these fixes reproduce the headline but give a less uniform surface margin ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $-0.11$ on geometry, where a failed construction is visibly malformed).
 
 \begin{table}[t]
-\caption{Post-attempt correctness discrimination (AUROC) in representative cells. Left: stated confidence vs.\ the probe; overall the probe wins 12 of 16 with one tie, mean $+0.09$, a paired bootstrap significantly positive in 10 of 16 and never negative, uncorrected at the cell level (\cref{app:stats}). Right: with difficulty held fixed, the model's own P(True) falls toward chance while the probe holds.}
+\caption{Post-attempt correctness discrimination (AUROC). Left: stated confidence vs.\ the probe in representative cells; overall the probe wins 12 of 16 with one tie, mean $+0.09$, with a paired bootstrap significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}). Right: Mistral specificity controls. ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies that fitted post readout at the pre-attempt site, where only difficulty is visible.}
 \label{tab:knowing}
 \centering
-\small
-\begin{tabular}{lcc}
+\scriptsize
+\begin{tabular}{@{}lcc@{}}
 \toprule
 \textbf{model $\times$ domain} & \textbf{stated} & \textbf{probe} \\
 \midrule
@@ -109,14 +106,15 @@ GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} \\
 Mistral $\times$ MATH & 0.79 & \textbf{0.83} \\
 \bottomrule
 \end{tabular}
-\hspace{1.5em}
-\begin{tabular}{lcc}
+\hspace{0.9em}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{within-question} & \textbf{probe} & \textbf{P(True)} \\
+\textbf{Mistral} & \textbf{pre} & \textbf{post} & \textbf{resid.} & \textbf{post$\to$pre} \\
 \midrule
-Qwen3.6 $\times$ MMLU-Pro & \textbf{0.74} & 0.47 \\
-GLM $\times$ MMLU-Pro & \textbf{0.73} & 0.59 \\
-Mistral $\times$ MATH & \textbf{0.72} & 0.59 \\
+MMLU-Pro & 0.568 & 0.754 & 0.751 & 0.490 \\
+MATH & 0.792 & 0.834 & 0.701 & 0.624 \\
+GPQA & 0.593 & 0.572 & 0.544 & 0.479 \\
+GeoGen & 0.770 & 0.676 & 0.505 & 0.648 \\
 \\[-0.85em]
 \bottomrule
 \end{tabular}
@@ -126,7 +124,7 @@ Mistral $\times$ MATH & \textbf{0.72} & 0.59 \\
 The probe beats stated confidence in \textbf{12 of 16} cells (\cref{tab:knowing}, left).
 The three losses are small-$n$ cells, two of them Gemma-4.
 The gap is widest on MATH (mean $+0.20$).
-Stated confidence there is weak while the internal signal is the strongest of any domain (0.95 on Qwen3.6, 0.83 on the recaptured Mistral cell).
+Stated confidence there is weak, while the internal signal is the strongest of any domain (0.95 on Qwen3.6, 0.83 on the recaptured Mistral cell).
 On MATH the spoken channel does not merely fail but moves the wrong way: with the grade never revealed, Mistral \emph{raises} its stated confidence after attempting, and more on the attempts it got wrong ($+22$) than on those it got right ($+16$), while the probe on the same records reads 0.83.
 Elsewhere blind revision runs the expected way (geometry, MMLU-Pro) and is null on GPQA.
 
@@ -159,20 +157,26 @@ random, stated AUROC & 0.83 & 0.84 & 0.84 & unparseable \\
 
 \paragraph{Specificity: the signal tracks the attempt, not the question.}
 A skeptic's alternative is that the probe has only learned which questions are hard.
-Holding the question fixed rules this out.
-Within a single question, across its five sampled attempts, only attempt-level information can discriminate.
-There the model's own P(True) falls toward chance while the probe holds (\cref{tab:knowing}, right).
+A first control holds the question fixed.
+Within a single question, across its five sampled attempts, only attempt-level information can discriminate; in representative cells the model's own P(True) falls toward chance (0.47--0.59) while the probe holds (0.72--0.74).
 P(True) largely recovers \emph{which questions are hard}.
 The probe tracks \emph{whether this attempt succeeded}.
-A sharper version tests directions rather than scores: the pre-attempt read sits at the last prompt token, where the vector is byte-identical across a question's five attempts and so encodes difficulty alone.
-Evaluating the post-attempt probe there gives 0.52 on MMLU-Pro, chance, so the direction separating successful from failed attempts does not exist before the attempt; residualizing the post scores on the pre scores likewise leaves 0.75 of 0.75.
-On geometry, where the model can see failure coming, both tests invert (0.60, and residual 0.50): there the signal really is difficulty.
+
+A sharper version tests directions rather than scores (\cref{tab:knowing}, right).
+The pre-attempt read sits at the last prompt token; within a question it is identical across the five attempts, so it can encode difficulty but not the outcome of a sampled attempt.
+Train the post-attempt readout, then evaluate the same fitted pipeline at that pre-attempt site.
+On Mistral MMLU-Pro it is chance before the attempt (0.490) but strong after it (0.754), and residualizing away the pre-attempt score leaves 0.751.
+This is the cleanest evidence that the direction encodes \emph{this attempt went wrong}, not just \emph{this question is hard}.
+MATH is mixed, with both difficulty and attempt-level signal.
+GPQA is weak throughout.
+Geometry is the boundary case: the pre-site already predicts failure and the post readout transfers back before the attempt, so this cell is mostly difficulty or template structure rather than attempt-local self-assessment.
 
 \paragraph{Generality: a substantially shared correctness direction.}
 If the model had one internal sense of ``this is wrong,'' a probe trained on one subject should work on another.
 It does: a probe trained in one domain and evaluated in another keeps most of its in-domain AUROC.
 In the original matrix, retention was about 87--90\% (Qwen3.6 off-diagonal 0.71 vs.\ diagonal 0.81), and sometimes lossless within QA (Qwen3.6 MMLU-Pro$\to$MATH 0.86 vs.\ 0.91).
 A fresh Mistral capture across all four domains, analysed with a corrected standardization step, gives 97\% retention (\cref{tab:transfer}: off-diagonal mean 0.69 vs.\ diagonal 0.71), with direction cosines of 0.34--0.82.
+Transfer into GPQA is bounded by its weak in-domain signal (0.57).
 On Mistral the geometry anomaly does not recur: a MATH-trained probe reads geometry at 0.80, above geometry's own in-domain 0.68, so the anti-transfer below is specific to Gemma-4.
 
 Geometry is partly special on one model.
@@ -186,19 +190,25 @@ We intervene at the confidence token, after the answer is written, so the answer
 The direction is supervised: learned from labeled examples, applied without per-example labels at intervention time.
 Numbers are Mistral $\times$ MATH, 150 held-out records, bootstrapped over questions, against a random direction rescaled to the same perturbation magnitude.
 Mean-ablating the direction ($g{=}0$) drops the AUROC of \emph{stated} confidence from 0.836 to 0.564, $-0.270$ $[-0.422,-0.122]$; ablating the matched random direction does nothing, $-0.002$ $[-0.032,+0.025]$.
-The failure has the wrong shape for damage: parse rate stays at 1.00 and confidence on wrong answers \emph{rises} from 84 to 97, converging with correct answers at 98.
+This does not look like generic damage: parse rate stays at 1.00 and confidence on wrong answers \emph{rises} from 84 to 97, converging with correct answers at 98.
 Amplifying instead drives failed-answer confidence to 70 and 54 at $g{=}2,4$ while correct answers hold near 90, halving calibration error, $0.34\to0.19$ (\cref{tab:transfer}, right); dampening increases overconfidence.
-Amplification does not significantly improve \emph{discrimination}, so the direction carries the information that makes stated confidence informative at all and the gain sets how much of it reaches the number.
+Amplification does not reliably improve \emph{discrimination}, so the direction carries the information that makes stated confidence informative at all and the gain sets how much of it reaches the number.
 Two controls place it: the same intervention at $0.3$ depth does nothing ($+0.005$ $[-0.002,+0.015]$), reaching full effect by $0.7$; and a direction fitted on MMLU-Pro, where a surface baseline of 0.54 against a probe of 0.75 rules out ``my output looks malformed'', still governs MATH's self-report ($0.880\to0.709$).
 
-\paragraph{Expression: a label-free witness, and an architecture-gated gate.}
-Trained probes invite an overfitting critique, so we added an unsupervised instrument: the Jacobian lens of the global-workspace account \citep{gurnee2026workspace}, fit on generic text with no task labels anywhere in its construction and scoring the same stored activations as a wrong-vs-correct disposition.
-On dense models it lands in probe territory (Mistral 0.76--0.82; Qwen2.5-14B, a dense within-family control, 0.88) and beats stated confidence with no labels, so two independent instruments find one direction.
-Because the lens reads through the model's own output pathway, the signal it finds is \emph{positioned to influence that pathway}, though whether it is verbalizable as a concept we do not test.
-On the other architectures the lens fails (linear-attention hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model, and the failure has a fingerprint: transported through the averaged map, its ``correct'' and ``wrong'' readout vectors collapse to cosine $0.96$ on MoE against about $0.4$ on dense.
-An averaged map is faithful only when routing barely varies per input, and both failing architectures vary theirs, a mixture of experts by which expert fires and a gated linear-attention stack by its input-dependent gates; swapping that hybrid for a dense model of the same family flips the lens from 0.43 to 0.88.
-So the \emph{label-free shortcut} is architecture-gated and the signal is not, and the open frontier is the gate itself: a direct per-input wiring-variance measurement, and whether unexpressed knowledge on the failing architectures is available to the output pathway but suppressed, or inaccessible to it.
-The question is no longer \emph{whether} models know, but \emph{what gates the knowing from the saying}.
+\paragraph{Expression: a label-free witness, with architectural limits.}
+Trained probes invite an overfitting critique, so we added an unsupervised instrument: the Jacobian lens of the global-workspace account \citep{gurnee2026workspace}.
+The lens is fit on generic text, with no task labels anywhere in its construction, and scores the same stored activations as a wrong-vs-correct disposition.
+On dense models it lands in probe territory (Mistral 0.76--0.82; Qwen2.5-14B, a dense within-family control, 0.88) and beats stated confidence with no labels.
+Re-scoring those readouts against the recaptured Mistral cells reproduces it without labels: 0.82 on MATH and 0.75 on MMLU-Pro, against a supervised probe at 0.83 and 0.75, layer-0 control 0.49--0.51.
+Two independent instruments find one direction.
+Because the lens reads through the model's own output pathway, the signal it finds is \emph{positioned to influence that pathway}; whether it is verbalizable as a concept is a further question we do not test.
+On the other architectures the lens itself fails (linear-attention hybrid 0.43, MoE 0.31) while the supervised probe still reads the signal in every model.
+Transported through the averaged map, the lens's ``correct'' and ``wrong'' readout vectors collapse to cosine $0.96$ on MoE, against about $0.4$ on dense models.
+An averaged map is only faithful when the routing barely varies per input, and both failing architectures vary theirs: a mixture of experts by which expert fires, and a gated linear-attention stack by its input-dependent gates.
+Swapping that hybrid for a dense model of the same family flips the lens from 0.43 to 0.88.
+Our reading is narrower than the mechanism: the label-free shortcut depends on architecture, while supervised probes still find the signal.
+A direct per-input wiring-variance measurement is the next test; without it, the workspace account remains a hypothesis for the expression gap.
+The question is no longer only \emph{whether} models carry the signal, but \emph{what gates the knowing from the saying}.
 
 \section{Discussion}
 \label{sec:discussion}
@@ -209,19 +219,21 @@ Where it does not, the internal signal is the best attempt-specific readout we f
 And because the report depends causally on the direction, stated confidence can be made honest by amplification rather than retraining.
 
 \paragraph{Limitations.}
-We read at the confidence token, not during the attempt, so the judgment is shown available when asked rather than formed while solving; an answer-token read is the natural next control.
+An answer-end read, taken at the last token the model writes and before any confidence question exists, finds the signal already present on MMLU-Pro (0.69, against 0.57 from the question alone), so it is generated by attempting rather than by being asked; the prompt still sharpens it to 0.77. MATH cannot separate the two, its question-only read being 0.81 already.
 A probe could also key on properties of failed derivations rather than a dedicated metacognitive variable; our surface baseline bounds this without closing it, more tightly on MMLU-Pro than on MATH or geometry (\cref{app:alternatives}).
-The causal arm is necessity and sufficiency on one model, with architectural replication under way, and two MATH cells ran at reduced $n$.
+The causal arm is cleanest on one model, with architectural replication under way, and two MATH cells ran at reduced $n$.
 Whether the knowing--saying gap is an artifact of preference tuning is open; a base-model arm would test it.
+
+\paragraph{Takeaway.}
+The conservative claim is not that a probe proves introspection.
+It is that mathematical models carry attempt-specific error information that their stated confidence often fails to report, and that on Mistral the reporting channel depends on that direction.
+Reliability work should read, test, and route that signal rather than treating the spoken confidence number as the whole story.
 
 
 \bibliographystyle{plainnat}
 \bibliography{refs,refs_confidence}
 
 \appendix
-\crefalias{section}{appendix}
-\crefname{appendix}{Appendix}{Appendices}
-\Crefname{appendix}{Appendix}{Appendices}
 \input{appendices/W_worked_example}
 
 \end{document}

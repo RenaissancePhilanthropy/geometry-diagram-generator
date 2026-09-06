@@ -11,14 +11,14 @@ from the Mistral-Small-24B $\times$ MATH cell, summarised first and then given i
 The model sets the problem up correctly and gets $18\times622953 = 11213154$ right, then writes $r = -11213141 + 11213154 = 3$ and answers $3$.
 That subtraction gives $13$, which is the gold answer.
 Stated confidence: $90$ before the attempt, $95$ after it.
-Other readouts of the same attempt: P(True) $0.32$, mean answer log-prob $-0.05$, probe \TODO{OOF score pending}.
+Other readouts of the same attempt: P(True) $0.32$, mean answer log-prob $-0.05$.
 \end{minipage}}
 \end{center}
 
 \noindent
 A single arithmetic slip inside a fluent derivation. Having just made the error, the model
-revises its stated confidence upward, while other readouts of that same attempt disagree
-with it. The rest of this appendix gives the prompts and the full transcript.
+revises its stated confidence upward, while P(True) on the same transcript assigns only
+0.32 probability to correctness. The rest of this appendix gives the prompts and the full transcript.
 
 \subsection{Prompts}
 
@@ -111,7 +111,6 @@ stated confidence, prospective (turn 1) & 90 \\
 stated confidence, retrospective (turn 3) & 95 \\
 P(True) & 0.32 \\
 mean answer log-probability & $-0.05$ \\
-residual-stream probe, out-of-fold & \TODO{pending} \\
 \midrule
 graded outcome & \textbf{incorrect} \\
 \bottomrule
@@ -136,8 +135,9 @@ requires re-running the intervention and is the first thing we would add.
 
 The cell-level bootstrap counts in \cref{tab:knowing} are uncorrected. With 16 cells,
 some individually significant results are expected under the null, so the cell counts
-should be read as descriptive and the aggregate direction of the effect, positive in
-14 of 16 cells, significantly so in 10, and never significantly negative, as the claim that carries weight. A
+should be read as descriptive. The aggregate pattern is the claim that carries weight:
+the effect is positive in 12 of 16 cells with one tie, significantly positive in 10,
+and never significantly negative. A
 hierarchical model pooling across cells with model and domain as random effects is the
 right test and is not yet run.
 
@@ -154,7 +154,6 @@ domains where the signal is strong. A direction fitted on MMLU-Pro, where surfac
 reaches only 0.54 against a probe of 0.75, still governs MATH's self-report under
 ablation ($0.880 \to 0.709$). And the pre-attempt read, taken where the activation is
 byte-identical across a question's attempts, cannot recover the post-attempt direction
-on MMLU-Pro (0.52, chance), which a surface-of-the-question account would predict it
+on MMLU-Pro (0.490, chance), which a surface-of-the-question account would predict it
 could. A linear probe at one token also undercounts nonlinear or multi-token signal, so
 the reported numbers are a floor.
-
