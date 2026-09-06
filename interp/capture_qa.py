@@ -50,6 +50,10 @@ def run(args) -> None:
     meta_path = out_dir / "meta.jsonl"
 
     items = task["load"](args.n, args.seed)
+    if args.question_range:                        # split one capture across boxes:
+        lo, hi = (int(x) for x in args.question_range.split(":"))   # same --n/--seed everywhere,
+        items = items[lo:hi]                       # each box takes a half-open slice [lo:hi)
+        print(f"question slice [{lo}:{hi}) -> {len(items)} questions")
     tok, model = load_model(args.model, args.device, args.quant)
     n_hs = _num_hidden_layers(model) + 1
     layers = resolve_layers(args.layers, n_hs)
@@ -303,6 +307,9 @@ def main() -> None:
                     help="skip the P(True) / answer-logprob output-distribution baselines")
     ap.add_argument("--out-dir", default="interp/activations/qa")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--question-range", default=None, metavar="LO:HI",
+                    help="only capture questions [LO:HI) of the seeded list; lets two boxes "
+                         "split one cell (records are named by question, so the halves merge by copy)")
     run(ap.parse_args())
 
 
