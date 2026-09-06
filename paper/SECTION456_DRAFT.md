@@ -14,7 +14,7 @@ Synced from workshop_readable.tex at commit 2691511.
 
 **Result on GLM.** GLM has the strongest signal in the study: within a question, the probe reads 0.87 while the model's own P(True) reads 0.53. Yet erasing the direction leaves self-report where it was, 0.76 before and after. GLM represents its errors more sharply than Mistral and reports them less. This is our cleanest case of represented but not reported, and it makes the causal result a fact about particular models, not models in general.
 
-## A second witness
+## The Jacobian lens
 
 **A label-free check.** A trained probe might have overfit to our data. So we added an instrument that uses no correctness labels. The Jacobian lens [gurnee2026workspace] is fit on generic text and reads an activation for what it pushes the model to say next; we score each state by how far it leans toward "wrong" over "correct." On dense models the lens matches the probe: on Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control. Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
