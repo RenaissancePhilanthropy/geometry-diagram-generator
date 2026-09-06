@@ -66,6 +66,7 @@ Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, G
 That is 16 cells of about 750 attempts each.
 
 \paragraph{Prompting structure.}
+
 \begin{enumerate}[nosep,leftmargin=1.4em]
   \item The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
   \item It answers.
@@ -73,10 +74,11 @@ That is 16 cells of about 750 attempts each.
 \end{enumerate}
 
 \paragraph{The probe.}
-At the moment the model is about to write its confidence digit, we record the number and the hidden state behind it, a vector of a few thousand numbers.
-On that vector we train the probe: a logistic regression that predicts whether the attempt was correct.
-It is always tested on questions it never saw in training, and always read at one depth fixed in advance, 70\% of the way through the network.
-We score every readout with AUROC, the chance that a random correct attempt outranks a random wrong one, where 0.5 is useless and 1.0 is perfect.
+At the moment the model is about to write its confidence digit, we record the number and the residual-stream hidden state at that token (2,048 to 5,120 dimensions, depending on the model).
+The probe is a linear classifier on that vector: features are standardized, reduced to 50 principal components, and fed to an L2-regularized logistic regression that predicts whether the attempt was correct.
+We fit it with five-fold cross-validation grouped by question, so all five attempts at a question fall in the same fold and the probe is always scored on questions it never saw.
+The read depth is fixed in advance at 70\% of the network (layer 28 of 40 for Mistral, 33 of 47 for GLM, 21 of 30 for Gemma, 45 of 64 for Qwen3.6); we do not pick the best layer per cell.
+Every readout is scored with AUROC, where 0.5 is chance.
 
 \paragraph{The state carries more than the report.}
 The probe outranks the model's own stated confidence in \textbf{12 of 16} cells, one tie, by a mean of $+0.09$ AUROC (\cref{app:cells}).
