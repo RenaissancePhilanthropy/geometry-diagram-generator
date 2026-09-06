@@ -1,16 +1,12 @@
 # Section 2, for editing
 
-Edit the prose directly. Each paragraph is one block; a bold lead like **Prompting structure.** is a subheading and stays bold. Keep `[citation keys]` and `{ref:...}` markers where they are; I map them back. Math stays as $...$. Tell me to apply when done.
+Edit the prose directly. Each paragraph is one block; a bold lead like **Prompting structure.** Every attempt takes three turns.
 
-Synced from `workshop_readable.tex` at commit `c24b1f2`.
+1. The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
+2. It answers.
+3. It is asked how confident it is that the answer it just gave is correct.
 
----
-
-## Reading the state
-
-**Models and tasks.** We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction. That is 16 cells of about 750 attempts each.
-
-**Prompting structure.** Every attempt takes three turns: we ask the model how confident it is that it will get the problem right, let it try, then ask how confident it is that it did. A grader scores the attempt and never tells the model, so any movement in stated confidence is the model's own.
+A grader scores the attempt and never tells the model, so any movement in stated confidence is the model's own.
 
 **The probe.** At the moment the model is about to write its confidence digit, we record the number and the hidden state behind it, a vector of a few thousand numbers. On that vector we train the probe: a logistic regression that predicts whether the attempt was correct. It is always tested on questions it never saw in training, and always read at one depth fixed in advance, 70% of the way through the network. We score every readout with AUROC, the chance that a random correct attempt outranks a random wrong one, where 0.5 is useless and 1.0 is perfect.
 
