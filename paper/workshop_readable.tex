@@ -81,11 +81,14 @@ The read depth is fixed in advance at 70\% of the network (layer 28 of 40 for Mi
 Every readout is scored with AUROC.
 
 \paragraph{The state carries more than the report.}
-The probe outranks the model's own stated confidence in \textbf{12 of 16} cells, one tie, by a mean of $+0.09$ AUROC (\cref{app:cells}).
-The gap is widest on MATH, $+0.20$, and MATH is also where the report goes most wrong.
-On the Mistral MATH cell, with the grade never revealed, the model raises its confidence after attempting, and raises it \emph{more} on the attempts it got wrong ($+22$) than on the ones it got right ($+16$).
-The probe on those same records reads 0.83.
-The number moves away from the truth while the state tracks it.
+The probe beats the model's stated confidence in \textbf{12 of 16} cells, with one tie.
+The mean gain is $+0.09$ AUROC (\cref{app:cells}).
+The gap is largest on MATH, at $+0.20$.
+Mistral on MATH is a good example of what this looks like.
+The model is never told whether it got the answer right.
+Yet after attempting, it raises its confidence, and it raises it more on the attempts it got wrong ($+22$ points) than on the ones it got right ($+16$ points).
+The probe on the same records reads 0.83.
+In other words, the stated confidence moves away from the truth while the internal state tracks it.
 
 \paragraph{Why MATH.}
 A wrong derivation ends in a clean boxed answer that reads like a correct solution; \cref{app:worked} follows one, a single wrong subtraction after which the model \emph{raises} its confidence.
