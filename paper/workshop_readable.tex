@@ -215,13 +215,13 @@ The Jacobian lens \citep{gurnee2026workspace} is fit on generic text and reads a
 Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
 \paragraph{Where the lens fails.}
-On GLM (mixture of experts) and Qwen3.6 (gated linear attention) the lens fails, at 0.31 and 0.43, while the probe still works.
-Its ``correct'' and ``wrong'' readouts collapse together, cosine 0.96 on the MoE model against 0.4 on dense.
-The lens averages one map over all inputs, and these architectures route differently per input, so the average smears.
-Swap Qwen3.6 for dense Qwen2.5-14B, same family, and the lens jumps to 0.88.
-
-Put together: the probe finds the signal in every model we tested.
-Whether it reaches self-report, and whether a label-free instrument can read it, varies by model.
+The lens is a fixed dictionary from hidden-state directions to words, built once from generic text.
+On a dense model one dictionary is enough, because every input takes the same path to the output.
+GLM routes each input through a different subset of experts, and Qwen3.6 mixes two kinds of attention layers, so there is no single path and the lens averages many into a blur.
+The numbers show it: on GLM the lens's entries for ``correct'' and ``wrong'' point almost the same way, cosine 0.96, against 0.4 on a dense model, and it scores 0.31 there and 0.43 on Qwen3.6, while the probe still works on both.
+Swap Qwen3.6 for Qwen2.5-14B, same family but dense, and the lens jumps to 0.88.
+The signal is there in every model.
+A label-free reader only works where the architecture gives it one path to read.
 
 \section{What this means}
 \label{sec:discussion}
