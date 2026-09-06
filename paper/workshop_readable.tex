@@ -88,7 +88,7 @@ Mistral on MATH is a good example of what this looks like.
 The model is never told whether it got the answer right.
 Yet after attempting, it raises its confidence, and it raises it more on the attempts it got wrong ($+22$ points) than on the ones it got right ($+16$ points).
 The probe on the same records reads 0.83.
-Self-report moves away from the truth while the state tracks it.
+The state tracks correctness better than the self-report does.
 
 \paragraph{Why MATH.}
 A wrong derivation ends in a clean boxed answer that reads like a correct solution; \cref{app:worked} follows one, a single wrong subtraction after which the model \emph{raises} its confidence.
