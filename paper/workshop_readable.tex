@@ -30,10 +30,9 @@
 When a language model is confidently wrong, is the error undetected or left unsaid?
 We look inside the model to find out.
 Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a simple linear detector reading the model's internal state predicts whether an answer is correct better than the model's own stated confidence in 12 of 16 settings, by a mean of $+0.09$ AUROC.
-The gap is widest on MATH ($+0.20$), where an error leaves no visible trace on the page.
-The detector is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed, and read before the model has attempted anything it is at chance.
-The signal is already there before we ask.
-At the last token of the answer, with no confidence question in play, correctness is readable on MMLU-Pro at 0.69 against 0.57 from the question alone.
+The gap is widest on MATH ($+0.20$), where the model's stated confidence tracks correctness worst.
+The detector is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed, and on MMLU-Pro, read before the model has attempted anything, it is at chance.
+On MMLU-Pro the signal is already there before we ask: at the last token of the answer, with no confidence question in play, correctness is readable at 0.69 against 0.57 from the question alone.
 And on Mistral the model's report depends on it: remove that direction after the answer is written and stated confidence can no longer tell the model's successes from its failures ($0.84 \to 0.56$), while removing a random direction of the same size changes nothing; turn it up and confidence on wrong answers drops while calibration error halves.
 Models carry more about their own errors than they report, and on at least one model, what they report depends on it.
 \end{abstract}
@@ -49,7 +48,7 @@ Two very different things could be going on inside that model.
 Its internal state might carry no trace of the error, so that the confident number is the honest output of a system with no idea it has slipped.
 Or the error might be represented somewhere in the computation and simply fail to reach the number the model writes down.
 The first is a capability problem.
-The second is a reporting problem, and reporting problems can be fixed.
+The second is a reporting problem, and a reporting problem is one an intervention can reach.
 
 This paper is about telling those two apart.
 We read the model's internal state directly with a linear detector, a \emph{probe}, and compare what the probe finds to what the model says.
@@ -68,7 +67,7 @@ We apply those tools to the model's own attempts, and then intervene on the repr
 \paragraph{Models and tasks.}
 We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
 Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks every clause of the request.
-The compiler is why geometry is here: it grades against a formal specification, and a pre-registered human study ($N{=}200$, two trained raters) found its disagreements with people ran one way only, lenient and never harsh; when it says \texttt{fail}, it is right.
+The compiler is why geometry is here: it grades against a formal specification, and a pre-registered human study ($N{=}200$, two trained raters) found its disagreements with people ran one way only, lenient and never harsh: in that sample, every compiler \texttt{fail} was a true failure.
 That is 16 cells of about 750 attempts each.
 
 \paragraph{Three turns, graded in silence.}
@@ -89,15 +88,14 @@ The probe on those same records reads 0.83.
 The number moves away from the truth while the state tracks it.
 
 \paragraph{Why MATH.}
-A wrong derivation ends in a clean boxed answer with no visible sign of the error.
-If stated confidence leans on how polished the output looks, MATH is exactly where that fails.
-Geometry is the opposite: a failed construction usually does not compile, the failure is visible on the page, and there a baseline built only from the answer's length and shape does as well as the probe.
+A wrong derivation ends in a clean boxed answer that reads like a right one.
+Its length and shape still carry signal, a surface baseline reaches 0.74, but the model's stated confidence does not use it; the probe reads 0.83, $+0.07$ over surface.
+Geometry is the opposite: a failed construction usually does not compile, and there the surface baseline does as well as the probe.
 
 \paragraph{Controls.}
 The token we read is identical in every record, so at the input layer the probe sits at exactly 0.5 and anything it finds deeper was computed during the attempt.
 A within-question comparison holds difficulty fixed.
-And a deviations log records four bugs these controls caught, which we fixed and reran.
-One honest note: the original 16-cell matrix was lost to a hardware failure.
+One honest note: the per-record data behind the original 16-cell matrix was lost to a hardware failure, so its aggregates survive only as recorded.
 The four Mistral cells we recaptured reproduce the headline, with a smaller margin over the surface baseline ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $-0.11$ on geometry).
 
 \section{What the signal is}
@@ -107,7 +105,7 @@ The four Mistral cells we recaptured reproduce the headline, with a smaller marg
 A probe that outranks stated confidence could still be doing something dull: learning which questions are hard.
 Hard questions fail more often, so a difficulty detector would predict correctness without reading the attempt at all.
 
-Two tests rule that out.
+Two tests argue against it.
 First, hold the question fixed.
 Across five attempts at one question, difficulty cannot vary, yet the probe still separates the successes from the failures (0.72 to 0.74 in representative cells) while the model's own P(True), its probability of answering ``True'' when asked whether it was right, falls to near chance (0.47 to 0.59).
 Second, test the direction itself.
@@ -127,7 +125,7 @@ The signal is made by working, and the prompt clarifies rather than creates it.
 MATH cannot run this test, because its question-only read is already 0.81.
 
 \paragraph{It is not tied to a subject.}
-A probe trained on one domain and tested on another keeps about 97\% of its accuracy on Mistral (0.69 off the diagonal against 0.71 on it, \cref{tab:transfer} left), and 87 to 90\% in the original matrix.
+A probe trained on one domain and tested on another keeps about 97\% of its AUROC on Mistral (0.69 off the diagonal against 0.71 on it, \cref{tab:transfer} left), and 87 to 90\% in the original matrix.
 The one exception is instructive: on Gemma-4, probes trained on geometry fail elsewhere (0.31 to 0.39) while probes trained elsewhere work on geometry (about 0.70).
 A probe trained on the one generative task can learn features specific to it.
 
@@ -170,7 +168,7 @@ The numbers are Mistral on MATH, 150 held-out records, against a random directio
 \paragraph{On Mistral, the report depends on it.}
 Remove the direction ($g{=}0$) and stated confidence can no longer tell the model's successes from its failures: 0.84 drops to 0.56, a change of $-0.27$ $[-0.42, -0.12]$.
 Remove the random direction and nothing happens ($-0.00$ $[-0.03, +0.03]$).
-This is not damage.
+This does not look like generic damage.
 The output stays perfectly well formed, and confidence on wrong answers goes \emph{up}, from 84 to 97, until it matches confidence on right answers; the model becomes uniformly sure.
 Turn the direction up instead and confidence on wrong answers falls to 70 and then 54 at $g{=}2$ and $4$ while right answers hold near 90; calibration error halves, $0.34 \to 0.19$.
 The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls MATH's report ($0.88 \to 0.71$).
@@ -187,7 +185,7 @@ That is our cleanest case of represented but not reported, and it makes the caus
 
 \paragraph{A label-free instrument agrees.}
 A trained probe invites one more objection: it might have overfit to our data.
-So we added an instrument that uses no labels at all.
+So we added an instrument that uses no correctness labels.
 The Jacobian lens \citep{gurnee2026workspace} is fit on generic text and reads an activation for what it disposes the model to say next; we score each stored state by how far it leans toward words like ``wrong'' over words like ``correct.''
 
 On dense models the lens matches the probe.
@@ -200,7 +198,7 @@ Its ``correct'' and ``wrong'' readouts collapse onto each other, cosine 0.96 on 
 The lens averages one map over all inputs, and these architectures route differently per input, so the average smears.
 Swap the hybrid for a dense model from the same family and the lens jumps from 0.43 to 0.88.
 
-Put the two witnesses together: the signal is present in every model we tested, and whether it reaches the report, or a label-free instrument, depends on the architecture.
+Put the two witnesses together: the signal is present in every model we tested, and whether it reaches the report, or a label-free instrument, differs by architecture among the models we tested.
 
 \section{What this means}
 \label{sec:discussion}
@@ -208,12 +206,12 @@ Put the two witnesses together: the signal is present in every model we tested, 
 \paragraph{For reliability.}
 Where a task has an exact checker, use it.
 Where it does not, the probe is the best per-attempt readout we found: keeping only the attempts it scores highest raises accuracy far more than keeping the ones the model is most confident about, and it still works where the model's confidence is useless.
-On Mistral, because the report depends on the direction, the model can be made honest by amplification rather than retraining.
+On Mistral, because the report depends on the direction, amplification rather than retraining lowered its overconfidence.
 
 \paragraph{Limitations.}
 A probe could be reading properties of failed output rather than a dedicated self-assessment; the surface baseline bounds this without closing it, and the bound is loosest on MATH and geometry (\cref{app:alternatives}) and on GLM, whose surface baseline nearly matches its probe.
 Every number is a single seed.
-The causal result holds on Mistral and fails on GLM; Gemma-4 and Qwen3.6 are being tested.
+The causal result holds on Mistral and fails on GLM; Gemma-4 passes 94\% of MATH, leaving five failures in evaluation, too few to test; Qwen3.6 is being tested.
 Whether preference tuning creates the gap between representing and reporting is open; a base model would answer it.
 
 \paragraph{Takeaway.}
