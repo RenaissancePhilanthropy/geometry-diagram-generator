@@ -165,11 +165,11 @@ At the confidence token, after the answer is written so the answer itself cannot
 Gain 1 leaves the model untouched.
 Gain 0 erases the per-attempt information along that direction.
 Gains 2 and 4 exaggerate it.
-We run this on Mistral, MATH, 150 held-out records, and repeat it with a random direction of the same size as a control.
+We run this on Mistral and MATH, and repeat it with a random direction of the same size as a control.
 \cref{tab:ablation} shows what the model wrote at each setting.
 
 \begin{table}[t]
-\caption{Mistral on MATH. One direction in the hidden state, scaled by a gain at the confidence token after the answer is written. Gain 1 is the untouched model; gain 0 erases the per-attempt information along the direction; gains 2 and 4 exaggerate it.}
+\caption{Mistral on MATH, 150 held-out records. The correctness direction scaled by a gain at the confidence token, after the answer is written.}
 \label{tab:ablation}
 \centering
 \small
