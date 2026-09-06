@@ -481,6 +481,71 @@ def test_label_in_polygon_overflow_wrap_renders_multiple_label_free_text_ops():
     assert svg.count('data-role="label-free-text"') == len(labels)
 
 
+# ---------------------------------------------------------------------------
+# Regression: label_in_polygon()'s width estimate must use the diagram's
+# real canvas scale when one is available, not a flat per-character guess
+# calibrated for a different, self-sizing context (equation_steps()).
+# ---------------------------------------------------------------------------
+
+def test_label_in_polygon_uses_canvas_scale_to_avoid_overwrapping_short_numeric_text():
+    # Reproduces a real bug found by direct inspection of the prism_net
+    # gallery diagram: on a 2-unit-wide face, the flat per-character
+    # estimate (_EQUATION_STEPS_CHAR_WIDTH = 0.5/char) rated "2 x 3" (5
+    # chars) at 2.5 construction units -- over the 2.0-unit budget -- and
+    # forced an unwanted extra wrap into "2" / "x 3", even though the true
+    # rendered width (measured directly against the real SVG output) fits
+    # comfortably inside the face. Once canvas() has been called, the
+    # scale-aware estimator must use it instead of the flat guess.
+    from geometry_diagrams.pydsl.api import canvas
+
+    vertices_xy = _rect_vertices_xy(0.0, 2.0, 2.0, 5.0)  # prism_net's Left face
+    with new_builder_context() as builder:
+        canvas(x_range=(-0.5, 12.5), y_range=(-0.5, 7.5))
+        p1, p2, p3, p4 = (point(*v) for v in vertices_xy)
+        poly = polygon(p1, p2, p3, p4)
+        label_in_polygon(poly, "2 x 3", overflow="wrap")
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) == 1
+    assert labels[0].text == "2 x 3"
+
+
+def test_label_in_polygon_falls_back_to_flat_estimate_without_a_canvas():
+    # No canvas() call has happened -- the scale-aware estimator can't
+    # compute a real scale, so this must fall back to the pre-existing flat
+    # estimate exactly (same combo used above, still forces a wrap without
+    # a canvas -- confirms the fallback is live, not silently bypassed).
+    vertices_xy = _rect_vertices_xy(0.0, 2.0, 2.0, 5.0)
+    with new_builder_context() as builder:
+        p1, p2, p3, p4 = (point(*v) for v in vertices_xy)
+        poly = polygon(p1, p2, p3, p4)
+        label_in_polygon(poly, "2 x 3", overflow="wrap")
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) > 1
+
+
+def test_label_in_polygon_normalizes_embedded_newline_before_fitting():
+    # A script author may hand-insert a literal "\n" as an intended line
+    # break (this codebase's own prism_net prompt does exactly that, e.g.
+    # "Front\n4 x 3"). SVG <text> has no notion of an embedded newline, so
+    # a label short enough to fit on one line must not carry the raw
+    # control character straight through to the rendered text.
+    vertices_xy = _rect_vertices_xy(0.0, 0.0, 20.0, 20.0)  # generously wide
+    with new_builder_context() as builder:
+        p1, p2, p3, p4 = (point(*v) for v in vertices_xy)
+        poly = polygon(p1, p2, p3, p4)
+        label_in_polygon(poly, "Left\n2 x 3", overflow="wrap")
+        ir = builder.build()
+
+    labels = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert len(labels) == 1
+    assert "\n" not in labels[0].text
+    assert labels[0].text == "Left 2 x 3"
+
+
 # Vertices/text combo used by the "shrink succeeds" tests below: chosen so
 # the required font size (_FONT_SIZE * budget / text_width) lands strictly
 # between _MIN_READABLE_FONT_SIZE and _FONT_SIZE -- i.e. the text overflows

@@ -1184,13 +1184,79 @@ _MIN_READABLE_FONT_SIZE = 7.0  # px -- see label_in_polygon()'s "shrink" branch
 def _estimate_text_width_construction_units(text: str) -> float:
     """Estimate text's rendered width in construction (geometry) units --
     NOT SVG pixels. to_svg.py's _estimate_text_width() returns SVG pixels;
-    the geometry->pixel scale factor is only fixed at render time (after
-    the script finishes), so it is not comparable to a polygon's
-    construction-unit clearance/width budget. Reuses
-    _EQUATION_STEPS_CHAR_WIDTH, the construction-unit character-width
+    the geometry->pixel scale factor isn't fixed until ir_to_svg actually
+    computes final canvas bounds, so in general it's not knowable here.
+    Reuses _EQUATION_STEPS_CHAR_WIDTH, the construction-unit character-width
     heuristic stack_lines()/equation_steps() already use for exactly this
-    kind of pre-render estimate."""
+    kind of pre-render estimate: equation_steps() calls this BEFORE its own
+    canvas() call (it self-sizes the canvas to fit), so no scale exists yet
+    to convert from -- this flat guess is the only option there, and
+    overestimating is harmless since the canvas just grows to fit.
+
+    label_in_polygon() does NOT use this -- see
+    _label_in_polygon_text_width_construction_units() below, which needs a
+    real estimate against an already-fixed face width, not a self-sizing
+    canvas, and can usually recover the actual scale from a canvas() call
+    that already happened."""
     return len(text) * _EQUATION_STEPS_CHAR_WIDTH
+
+
+def _px_per_construction_unit() -> "float | None":
+    """The geometry-unit -> SVG-pixel scale ir_to_svg() will use for this
+    script's diagram, computed from the canvas() bounds already recorded on
+    the ambient Builder -- or None if canvas() hasn't been called yet.
+
+    Mirrors ir_to_svg()'s own scale computation (geometry_diagrams/ir/to_svg.py)
+    exactly: a single scale is derived from max(geo_w, geo_h) to preserve
+    aspect ratio, then applied uniformly to both axes.
+
+    Known limitation: if a later script op places geometry (a circle, arc,
+    or a point) outside the canvas() bounds already declared, ir_to_svg
+    widens the FINAL bounds beyond what's assumed here, so the true scale
+    can end up smaller than this estimate. Not tracked or guarded against --
+    an accepted approximation that holds for the common case of canvas()
+    being called with bounds that already contain all of a script's
+    geometry (true of every diagram-kinds gallery script today)."""
+    from geometry_diagrams.ir.to_svg import _SVG_SIZE, _CANVAS_MARGIN_PX
+
+    canvas_def = get_builder()._canvas
+    if canvas_def is None:
+        return None
+    geo_w = canvas_def.xmax - canvas_def.xmin
+    geo_h = canvas_def.ymax - canvas_def.ymin
+    if geo_w <= 0 or geo_h <= 0:
+        return None
+    usable = _SVG_SIZE - 2 * _CANVAS_MARGIN_PX
+    return usable / max(geo_w, geo_h)
+
+
+def _label_in_polygon_text_width_construction_units(text: str) -> float:
+    """label_in_polygon()'s text-width estimate: converts to_svg.py's real,
+    SVG-pixel-calibrated _estimate_text_width() into construction units via
+    this script's actual canvas scale (_px_per_construction_unit()), instead
+    of _estimate_text_width_construction_units()'s flat per-character guess.
+
+    That flat guess (_EQUATION_STEPS_CHAR_WIDTH = 0.5/char) was calibrated
+    for equation_steps()'s self-sizing canvas, where overestimating is
+    harmless. label_in_polygon() checks a label against a face's ALREADY-
+    FIXED width instead, where the same flat constant both (a) miscalibrates
+    per string -- confirmed directly against real rendered output: a narrow,
+    numeric/operator-heavy string like "2 x 3" was overestimated by roughly
+    2x, forcing an unnecessary extra wrap -- and (b) bakes in a hidden,
+    wrong assumption about pixels-per-construction-unit that varies by
+    diagram. Reusing the renderer's own pixel-space estimator and this
+    script's real scale fixes both at once.
+
+    Falls back to the flat estimator if canvas() hasn't been called yet (so
+    a scale can't be computed) -- preserves the pre-existing behavior for
+    that edge case rather than guessing further."""
+    from geometry_diagrams.ir.to_svg import _estimate_text_width, _FONT_SIZE
+
+    scale = _px_per_construction_unit()
+    if scale is None:
+        return _estimate_text_width_construction_units(text)
+    px_width = _estimate_text_width(text, font_size=_FONT_SIZE)
+    return px_width / scale
 
 
 def _wrap_latex_safe_words(text: str) -> "list[str]":
@@ -1223,11 +1289,23 @@ def _wrap_latex_safe_words(text: str) -> "list[str]":
     return words
 
 
-def _greedy_wrap_lines(words: "list[str]", width_budget: float) -> "list[str]":
+def _greedy_wrap_lines(
+    words: "list[str]",
+    width_budget: float,
+    estimate_width: "Callable[[str], float]" = _estimate_text_width_construction_units,
+) -> "list[str]":
     """Greedy word-wrap over an already-tokenized word list: pack words
     onto the current line until the next word would push it over
-    width_budget construction units (per
-    _estimate_text_width_construction_units()), then start a new line.
+    width_budget construction units (per `estimate_width`, defaulting to
+    _estimate_text_width_construction_units()'s flat per-character guess),
+    then start a new line.
+
+    `estimate_width` is injectable so label_in_polygon() can pass its own,
+    scale-aware estimator (_label_in_polygon_text_width_construction_units())
+    instead -- see that function's docstring for why the flat default is
+    wrong for label_in_polygon()'s already-fixed-width-face use case. The
+    default preserves this function's own pre-existing behavior for every
+    other/test caller.
 
     A single token that alone exceeds width_budget (e.g. one long
     \\frac{...}{...} construct) is still placed whole on its own line
@@ -1244,7 +1322,7 @@ def _greedy_wrap_lines(words: "list[str]", width_budget: float) -> "list[str]":
     current = words[0]
     for word in words[1:]:
         candidate = f"{current} {word}"
-        if _estimate_text_width_construction_units(candidate) <= width_budget:
+        if estimate_width(candidate) <= width_budget:
             current = candidate
         else:
             lines.append(current)
@@ -1275,10 +1353,16 @@ _WRAP_CONNECTIVE_TOKENS = frozenset({
 })
 
 
-def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
+def _wrap_text_to_width(
+    text: str,
+    width_budget: float,
+    estimate_width: "Callable[[str], float]" = _estimate_text_width_construction_units,
+) -> "list[str]":
     """Word-wrap `text` into the minimum number of lines feasible for
-    `width_budget` construction units (per
-    _estimate_text_width_construction_units()), choosing among same-line-
+    `width_budget` construction units (per `estimate_width`, defaulting to
+    _estimate_text_width_construction_units()'s flat per-character guess --
+    see _greedy_wrap_lines()'s docstring on why label_in_polygon() injects
+    its own scale-aware estimator instead), choosing among same-line-
     count splits the one with the least raggedness, rather than plain
     greedy's first-fit packing -- breaking only at the safe word
     boundaries _wrap_latex_safe_words() finds, never mid-token.
@@ -1317,7 +1401,7 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
     if not words:
         return [text]
 
-    greedy_lines = _greedy_wrap_lines(words, width_budget)
+    greedy_lines = _greedy_wrap_lines(words, width_budget, estimate_width=estimate_width)
     n = len(greedy_lines)
     if n <= 1:
         return greedy_lines
@@ -1340,7 +1424,7 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
         boundaries = (0,) + cuts + (k,)
         runs = [words[boundaries[i]:boundaries[i + 1]] for i in range(n)]
         candidate_lines = [" ".join(run) for run in runs]
-        widths = [_estimate_text_width_construction_units(line) for line in candidate_lines]
+        widths = [estimate_width(line) for line in candidate_lines]
         feasible = all(
             width <= width_budget or len(run) == 1
             for width, run in zip(widths, runs)
@@ -1407,13 +1491,30 @@ def label_in_polygon(
             f"got {overflow!r}"
         )
     text = _sanitize_label_text(text, "label_in_polygon")
+    # A script author may hand-insert a literal "\n" (or "\t"/"\r") as an
+    # intended line break -- this codebase's own prompts have done exactly
+    # that for face labels (e.g. "Front\n4 x 3"). SVG <text> has no notion
+    # of an embedded newline, so passing one straight through to
+    # label_text() below renders as a stray literal character, not an
+    # actual line break. This was previously masked: the old, overly
+    # generous flat width estimate almost always forced these strings into
+    # the "wrap" branch below, whose tokenizer treats any whitespace
+    # (newlines included) as an ordinary split point and rejoins lines with
+    # a plain space -- incidentally cleaning this up as a side effect. Now
+    # that the width estimate is accurate (see
+    # _label_in_polygon_text_width_construction_units()), some such labels
+    # correctly fit on one line and take the fast path below instead,
+    # exposing the raw control character. Normalize it here so label_in_polygon()
+    # always makes its OWN wrapping decision from the real text, regardless
+    # of which path a given label happens to take.
+    text = text.replace("\n", " ").replace("\t", " ").replace("\r", " ")
 
     vertices_xy = [(v.x, v.y) for v in poly.vertices]
     sym_poly = _sympy_polygon(vertices_xy)
 
     x, y, clearance = _polygon_interior_point(sym_poly, vertices_xy)
     width_budget = _width_budget_at(vertices_xy, (x, y), clearance)
-    text_width = _estimate_text_width_construction_units(text)
+    text_width = _label_in_polygon_text_width_construction_units(text)
 
     if text_width <= width_budget:
         label_text(text, at=(x, y))
@@ -1427,7 +1528,10 @@ def label_in_polygon(
             f"interior point ({x:.3f}, {y:.3f})"
         )
     if overflow == "wrap":
-        lines = _wrap_text_to_width(text, width_budget)
+        lines = _wrap_text_to_width(
+            text, width_budget,
+            estimate_width=_label_in_polygon_text_width_construction_units,
+        )
         # stack_lines() anchors its TOP line at the given y (line i placed at
         # y - i * y_step), so passing the interior point's y directly would
         # place the FIRST line there and leave the whole block's average y
@@ -1442,12 +1546,10 @@ def label_in_polygon(
         return
     # overflow == "shrink": reduce font size by the same ratio the text
     # overflows the width budget by. Both text_width (construction units,
-    # via _estimate_text_width_construction_units()'s char-count heuristic)
-    # and a rendered label's width scale linearly with font size, so the
-    # ratio computed here in construction units carries over directly to
-    # the font-size domain -- no unit conversion needed, unlike the
-    # width-budget estimate itself (see _estimate_text_width_construction_units's
-    # docstring on construction units vs SVG pixels).
+    # via _label_in_polygon_text_width_construction_units()) and a rendered
+    # label's width scale linearly with font size, so the ratio computed
+    # here in construction units carries over directly to the font-size
+    # domain -- no unit conversion needed.
     from geometry_diagrams.ir.to_svg import _FONT_SIZE
 
     target_font_size = _FONT_SIZE * (width_budget / text_width)

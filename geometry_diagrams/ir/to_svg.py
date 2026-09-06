@@ -59,6 +59,12 @@ logger = logging.getLogger(__name__)
 
 # SVG canvas dimensions in pixels (geometry is mapped into this space)
 _SVG_SIZE = 500
+# px margin reserved on every side when mapping geometry bounds into
+# _SVG_SIZE (see ir_to_svg's scale computation below) -- hoisted to module
+# level so pydsl/api.py's label_in_polygon() can reproduce the same
+# geometry-unit -> px scale ir_to_svg will actually use, instead of
+# guessing at a text-width budget with no knowledge of the real scale.
+_CANVAS_MARGIN_PX = 20
 _POINT_RADIUS = 2.5        # px — radius of drawn points
 _TICK_LEN = 6              # px — half-length of segment tick marks
 _CHEVRON_TIP = 5           # px — tip length of chevron marks
@@ -155,7 +161,7 @@ def ir_to_svg(
 
     # Scale: map geometry units → SVG pixels
     # Keep aspect ratio; add a small pixel margin
-    _MARGIN = 20  # px
+    _MARGIN = _CANVAS_MARGIN_PX
     usable = _SVG_SIZE - 2 * _MARGIN
     scale = usable / max(geo_w, geo_h)
 
