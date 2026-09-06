@@ -6,12 +6,11 @@ Synced from `workshop_readable.tex` at commit `3a58855`.
 
 ---
 
-A language model that is confidently wrong is a problem. Its stated confidence is a signal for deciding whether to trust its answer. This paper asks whether the model's activations carry decodable signal on its answer correctness. Does the model contain the self-aware signal to know when it might be wrong? 
+A language model that is confidently wrong is a problem. Its stated confidence is a signal for deciding whether to trust its answer. This paper asks whether the model's activations carry a decodable signal of its answer's correctness.
 
-Two things could be going on. Upon giving incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but unsurfaced to its confidence report. 
+Two things could be going on. Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but not surfaced in its confidence report.
 
-
-The first is a capability problem. The second is a reporting problem. 
+The first is a capability problem. The second is a reporting problem.
 
 In this paper we aim to tell these two apart. We read the model's internal state directly with a linear detector, a *probe*, and compare what the probe finds to the model's reported confidence. A probe that reads correctness could be reading something duller: which questions are hard, features of the output text, or an artifact of being asked. The sections below rule those out in turn, then ask whether the report depends on the signal at all.
 
