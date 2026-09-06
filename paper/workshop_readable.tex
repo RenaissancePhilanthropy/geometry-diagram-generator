@@ -174,10 +174,10 @@ Turn the direction up instead and confidence on wrong answers falls to 70 and th
 The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls MATH's report ($0.88 \to 0.71$).
 
 \paragraph{On GLM, it does not.}
-GLM's internal signal is the strongest in the study: within a question, the probe reads 0.87 while the model's own words read 0.53.
-Yet removing the direction leaves stated confidence exactly where it was, 0.76 before and after.
+GLM's signal is the strongest in the study: within a question, the probe reads 0.87 while the model's own words read 0.53.
+Yet removing the direction leaves stated confidence where it was, 0.76 before and after.
 GLM represents its errors more sharply than Mistral and reports them less.
-That is our cleanest case of represented but not reported, and it makes the causal result a fact about particular models rather than models in general.
+That is our cleanest case of represented but not reported, so the causal result is a fact about particular models, not models in general.
 
 \section{A second witness}
 \label{sec:lens}
@@ -193,29 +193,27 @@ Two instruments built from different evidence find the same direction, and becau
 
 \paragraph{Where it fails, it shows why.}
 On the mixture-of-experts and gated-linear-attention models the lens fails (0.31 and 0.43) while the probe still works.
-Its ``correct'' and ``wrong'' readouts collapse onto each other, cosine 0.96 on MoE against 0.4 on dense.
-The lens averages one map over all inputs, and these architectures route differently per input, so the average smears.
-Swap the hybrid for a dense model from the same family and the lens jumps from 0.43 to 0.88.
+Its ``correct'' and ``wrong'' readouts collapse together, cosine 0.96 on MoE against 0.4 on dense.
+The lens averages one map over all inputs; these architectures route differently per input, so the average smears.
+Swap the hybrid for a dense model of the same family and the lens jumps to 0.88.
 
-Put the two witnesses together: the signal is present in every model we tested; whether it reaches the report, and whether a label-free instrument can read it, varies from model to model.
+Together: the signal is present in every model we tested; whether it reaches the report, and whether a label-free instrument can read it, varies by model.
 
 \section{What this means}
 \label{sec:discussion}
 
 \paragraph{For reliability.}
-Where a task has an exact checker, use it.
-Where it does not, the probe is the best per-attempt readout we found: keeping only the attempts it scores highest raises accuracy far more than keeping the ones the model is most confident about, and it still works where the model's confidence is useless.
-On Mistral, because the report depends on the direction, amplification rather than retraining lowered its overconfidence.
+Without an exact checker, the probe is the best per-attempt readout we found: keeping the attempts it scores highest raises accuracy far more than keeping the ones the model is most confident in, and it works where the model's confidence is useless.
 
 \paragraph{Limitations.}
 A probe could be reading properties of failed output rather than a dedicated self-assessment; the surface baseline bounds this without closing it, most loosely on MATH and geometry (\cref{app:alternatives}) and on GLM, where surface nearly matches the probe.
 Every number is a single seed.
-The causal result holds on Mistral and fails on GLM; Gemma-4 passes 94\% of MATH, leaving five failures in evaluation, too few to test; Qwen3.6 is being tested.
-Whether preference tuning creates the gap between representing and reporting is open; a base model would answer it.
+The causal result holds on Mistral and fails on GLM; Gemma-4 passes 94\% of MATH, leaving five failures, too few to test; the Qwen3.6 run did not finish in time.
+Whether preference tuning creates the gap is open; a base model would answer it.
 
 \paragraph{Takeaway.}
-These models carry information about their own errors that their stated confidence does not report, and on at least one model the reported number depends on it.
-A confidence score is not the whole story, and the rest of the story is readable.
+These models carry information about their own errors that their stated confidence does not report, and on one model the report depends on it.
+The rest of the story is readable.
 
 \bibliographystyle{plainnat}
 \bibliography{refs,refs_confidence}
