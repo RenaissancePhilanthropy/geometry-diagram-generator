@@ -2,7 +2,7 @@
 \label{app:worked}
 
 This appendix gives the exact prompts behind every record, then one complete record
-from the Mistral-Small-24B $\times$ MATH cell, summarised first and then given in full.
+from the Mistral-Small-24B $\times$ MATH cell, summarized first and then given in full.
 
 \begin{center}
 \footnotesize
@@ -11,7 +11,7 @@ from the Mistral-Small-24B $\times$ MATH cell, summarised first and then given i
 The model sets the problem up correctly and gets $18\times622953 = 11213154$ right, then writes $r = -11213141 + 11213154 = 3$ and answers $3$.
 That subtraction gives $13$, which is the gold answer.
 Stated confidence: $90$ before the attempt, $95$ after it.
-Other readouts of the same attempt: P(True) $0.32$, mean answer log-prob $-0.05$.
+Other readouts of the same attempt: P(True), the probability the model assigns to ``True'' when asked whether its answer is correct, $0.32$; mean answer log-prob $-0.05$.
 \end{minipage}}
 \end{center}
 
@@ -22,8 +22,8 @@ revises its stated confidence upward, while P(True) on the same transcript assig
 
 \subsection{Prompts}
 
-Each record is four forward passes. A read is first taken at the last prompt token of the
-bare question, before any elicitation, then three turns are generated. The confidence turns
+Each record is four forward passes: the three turns of \cref{sec:reading} plus one read taken
+beforehand, at the last prompt token of the bare question, before any elicitation. The confidence turns
 run with thinking off so the read lands on a clean one-line reply; the attempt turn runs
 with thinking on for hybrid reasoners. The fixed \texttt{Confidence: N} format is what makes
 the read site content-neutral: the digit token has identical local context on every record,
@@ -119,7 +119,7 @@ graded outcome & \textbf{incorrect} \\
 
 \noindent
 This is one record, chosen to illustrate the failure mode rather than to carry evidential
-weight; the cell-level numbers are in \cref{tab:knowing}.
+weight; representative cell-level numbers are in \cref{tab:knowing}, \cref{app:cells}.
 
 \section{Calibration beyond ECE, and cell-level multiplicity}
 \label{app:stats}
