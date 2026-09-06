@@ -1,6 +1,16 @@
 # Section 2, for editing
 
-Edit the prose directly. Each paragraph is one block; a bold lead like **Prompting structure.** Every attempt takes three turns.
+Edit the prose directly. Each paragraph is one block. A bold lead such as the first words of the probe paragraph is a subheading and stays bold. A numbered list (1., 2., 3.) becomes a compact list in the PDF. Keep [citation keys] and {ref:...} markers where they are; I map them back. Math stays as $...$. Tell me to apply when done.
+
+Synced from workshop_readable.tex at commit c24b1f2, plus the numbered prompting structure.
+
+---
+
+## Reading the state
+
+**Models and tasks.** We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction. That is 16 cells of about 750 attempts each.
+
+**Prompting structure.** Every attempt takes three turns.
 
 1. The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
 2. It answers.
