@@ -671,3 +671,145 @@ mean diag 0.709, off-diag 0.688 → **97% retention**. **No Gemma-style anti-tra
 → QA 0.56–0.78 (not below chance), and math-trained reads geometry at 0.80, *above* geometry's own in-domain 0.68.
 Cosines geom~math 0.68, geom~mmlu 0.64, geom~gpqa 0.34. Paper (`workshop_confidence.tex`) Table 2 is now 4×4
 and says the anti-transfer is Gemma-specific. All four cells + tier1_review.json saved to S3 / interp/results.
+
+---
+
+## 2026-09-06 — the causal night: ablation, answer-site, GLM null, cross-site re-encoding
+
+Four runs across three boxes. Mistral's causal chain closed, the answer-site objection
+retired, the lens verified on reproducible data, and the causal claim failed to generalise
+to GLM. Raw results in `interp/results/causal/`, `interp/results/causal_glm/`,
+`interp/results/answersite/`; activations in S3 under the same names.
+
+### 1. Ablation on Mistral x MATH — necessity (`a929654`)
+
+Mean-ablating the correctness direction (amplify gain 0: every record moved to the mean
+projection, so the axis survives but carries no per-record information) at layer 28,
+n_eval 150 over 30 questions, paired bootstrap over questions:
+
+| condition | stated AUROC | change | 95% CI | parse |
+|---|---|---|---|---|
+| direction removed | **0.564** | −0.270 | [−0.422, −0.122] | 1.00 |
+| half removed | 0.810 | −0.026 | [−0.050, −0.004] | 1.00 |
+| untouched | 0.836 | — | — | 1.00 |
+| amplified x2 | 0.845 | +0.009 | [−0.014, +0.029] | 1.00 |
+| amplified x4 | 0.823 | −0.014 | [−0.045, +0.014] | 1.00 |
+| matched random removed | 0.833 | −0.002 | [−0.032, +0.025] | 1.00 |
+
+Confidence on wrong answers *rises* 83.9 → 96.5, converging with correct at 97.9 (gap
+12.4 → 1.4). Damage cannot be selective in that direction, and parse rate never moves.
+
+**Correction to how we had been describing amplification:** it does NOT significantly
+improve discrimination. It improves calibration (ECE 0.337 → 0.186). The direction carries
+the information that makes stated confidence informative at all; the gain sets how much of
+it reaches the number. Removing it removes the information.
+
+Localization: the identical intervention at 0.3 depth does nothing (+0.005 [−0.002,+0.015]),
+appears at 0.5, full at 0.7 and 0.9. Not generic perturbation.
+
+Not surface: a direction fitted on MMLU-Pro (surface 0.54 vs probe 0.75, so it cannot be a
+"my output looks malformed" detector) still governs MATH's self-report, ablation
+0.880 → 0.709 [−0.246,−0.102], matched random −0.020 n.s.
+
+### 2. Answer-end read site (`e5a20cd`)
+
+Teacher-forced replay of stored answers, no generation: `meta.jsonl` holds the full turn-2
+context, so each record is one forward pass. Four sites, same probe, grouped-OOF, layer 28.
+
+| read site | MATH | MMLU-Pro | GPQA |
+|---|---|---|---|
+| question only | 0.807 | 0.565 | 0.602 |
+| asked, not attempted | 0.764 | 0.684 | 0.584 |
+| **answer end, no prompt** | 0.833 | **0.693** | 0.586 |
+| asked, attempted | 0.828 | 0.772 | 0.573 |
+
+The objection this kills: every probe number previously came from a site the model reaches
+*after* being asked to assess itself. On MMLU-Pro the model cannot see failure coming
+(0.565) yet correctness is readable at 0.693 the moment it stops writing, with no confidence
+question in play. Working generates the signal.
+
+Two honest complications. Being asked also adds signal: the prompt alone, before any
+attempt, lifts 0.565 → 0.684, so introspection prompts *cause computation* rather than only
+revealing a standing state. And MATH cannot demonstrate any of this because its question-only
+read is already 0.807. **The finding rests on MMLU-Pro alone**; GPQA is flat everywhere.
+
+Trajectory across the MATH answer: 0.78 at the first token, sagging to ~0.65 mid-derivation,
+recovering to 0.83 at the last. Least readable while working, readable once committed.
+
+### 3. Cross-site: the direction is re-encoded, not carried (`e5a20cd`)
+
+Each site whitened by its own statistics, class difference-of-means compared, against a
+200-draw label-shuffled null run through the identical procedure.
+
+| | cosine | null 95th pct | verdict |
+|---|---|---|---|
+| MATH | +0.098 | 0.063 | just above: small real shared component |
+| MMLU-Pro | +0.023 | 0.079 | inside the null: no shared axis |
+
+So there is no single correctness direction computed during the answer and carried intact to
+the confidence token. What little is shared on MATH is plausibly the difficulty component,
+which is present at every site there (question-only 0.807); MMLU-Pro has almost no readable
+difficulty and shares nothing.
+
+**Do not cite `analysis/cross_site_probe.py` for this.** A probe carries a standardizer and
+PCA basis fitted at one site, so it fails at another whether or not the direction is shared;
+both hypotheses predict that result. `analysis/cross_site_axis.py` is the test that
+separates them.
+
+**Open, and the obvious follow-up:** read at several points *between* the answer's end and
+the confidence token and watch where the information moves. Also unresolved: whether the two
+sites encode the same fact differently, or genuinely different facts that both predict
+correctness ("that derivation felt shaky" vs "this answer looks wrong on review").
+
+**Consequence for the write-up:** the Generality section's "one correctness direction" is
+about transfer between *domains at one site*, which holds. It must not be readable as
+transfer between *sites*, which does not.
+
+### 4. Jacobian lens verified on reproducible data (`4c67e19`)
+
+The tracked readouts (`activations/jlens/jlens_readouts_mistral.npz`) re-scored against the
+recaptured cells. This claim previously rested entirely on the destroyed matrix.
+
+| | stated | P(True) | probe | lens (no labels) |
+|---|---|---|---|---|
+| MMLU-Pro | 0.674 | 0.705 | 0.754 | **0.749** |
+| MATH | 0.778 | 0.765 | 0.834 | **0.817** |
+| GPQA | 0.565 | 0.611 | 0.572 | **0.605** |
+
+Layer-0 control 0.49/0.51/0.49. The lens matches the supervised probe within a hundredth or
+two on both strong cells and beats stated confidence in all three. On GPQA it beats the
+probe, which is the cell where the supervised readout is null.
+
+### 5. GLM ablation — a clean null (`fcf0be0`)
+
+GLM-4.7-Flash x MATH, 750 fresh records, layer 33.
+
+Decode is the strongest in the study: probe **0.923** vs stated 0.732, boot +0.191
+[+0.153,+0.230]; **within-question probe 0.873 vs stated 0.525**, the widest knowing-saying
+gap measured anywhere; resid-on-pre 0.882; layer-0 per-fold 0.500.
+
+Ablation does nothing: stated AUROC 0.762 at gain 0 against 0.762 untouched, matched random
+0.747. Mistral moved 0.836 → 0.564 under the identical operation. Amplification runs
+*backwards* here (fail-confidence 82.3 → 89.2 at gain 4).
+
+So GLM is the pure case: information richly present, attempt-specific, and the report does
+not route through it. A real negative for the generality of the causal claim, and it sharpens
+rather than undermines the Expression finding.
+
+**Caveat cutting the other way:** GLM's surface baseline is 0.898 against the probe's 0.923,
+an increment of only +0.025, so much of what the probe reads may be output form and the
+ablated direction may be partly a surface direction. The within-question number is less
+exposed. Do not quote GLM's 0.92 as a clean decode.
+
+### Standing to-do from this night
+
+- **Gemma-4 is capturing** (started 02:44, ~6 h). Its ablation is the third data point.
+  Hold the paper's wording until it lands: "failed on one of two" and "replicated on neither
+  of two" read very differently.
+- **The paper's Limitations currently says the causal arm has "architectural replication
+  under way". That is now false** — it ran and failed on GLM. Two versions of the replacement
+  sentence to be drafted, one per Gemma outcome.
+- **Scope the Generality wording** so "one correctness direction" cannot be read as spanning
+  read sites.
+- Qwen3.6 lands ~02:30 on the 7th, the fourth point.
+
