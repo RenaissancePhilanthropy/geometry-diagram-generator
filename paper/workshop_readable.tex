@@ -162,16 +162,14 @@ GPQA & 0.60 & 0.69 & 0.74 & \textbf{0.57} \\
 \end{tabular}
 \end{table}
 
-\section{Whether the report depends on it}
+\section{Whether self-report depends on the residual signal}
 \label{sec:causal}
 
 \paragraph{Intervention.}
-A model could carry a perfect internal record of its errors and never consult it when writing the number.
+A model could carry a perfect internal record of its errors and never consult it during self-report.
 The only way to find out is to change the record and watch the number.
-At the confidence token, after the answer is written so the answer itself cannot change, we scale the model's position along the correctness direction by a gain $g$.
-Gain 1 leaves the model untouched.
-Gain 0 erases the per-attempt information along it.
-Gains 2 and 4 exaggerate it.
+At the confidence token, after the answer is written so the answer cannot change, we scale the model's position along the correctness direction by a gain $g$.
+Gain 1 leaves the model untouched, gain 0 erases the per-attempt information, and gains 2 and 4 exaggerate it.
 We run this on Mistral and MATH, 150 held-out records, with a random direction of the same size as a control.
 \cref{tab:ablation} shows what the model wrote at each setting.
 
@@ -193,51 +191,37 @@ same, with a random direction & 0.84 & 0.83 & 0.84 & output broke \\
 \end{table}
 
 \paragraph{Result on Mistral.}
-Erase the direction and the self-report loses its information.
-Its AUROC falls from 0.84 to 0.56, a change of $-0.27$ $[-0.42, -0.12]$.
-Erase a random direction instead and nothing happens ($-0.00$ $[-0.03, +0.03]$).
+Erase the direction and self-report loses its information: AUROC falls from 0.84 to 0.56, a change of $-0.27$ $[-0.42, -0.12]$.
+Erase a random direction and nothing happens ($-0.00$ $[-0.03, +0.03]$).
 This is not generic damage.
-The output stays well formed.
-Confidence on wrong answers goes \emph{up} until it matches confidence on right answers, so the model becomes uniformly sure rather than confused.
-Exaggerate the direction and the opposite happens.
-Confidence on wrong answers falls while right answers hold, and calibration error halves, $0.34 \to 0.19$.
-Two more checks say the effect is specific.
-The same intervention 30\% of the way through the network does nothing.
-And a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
+The output stays well formed, and confidence on wrong answers goes \emph{up} to match right answers, so the model becomes uniformly sure rather than confused.
+Exaggerate the direction and confidence on wrong answers falls while right answers hold; calibration error halves, $0.34 \to 0.19$.
+Two checks say the effect is specific.
+The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
 
 \paragraph{Result on GLM.}
-GLM has the strongest signal in the study.
-Within a question, the probe reads 0.87 while the model's own P(True) reads 0.53.
-Yet erasing the direction leaves stated confidence where it was, 0.76 before and after.
+GLM has the strongest signal in the study: within a question, the probe reads 0.87 while the model's own P(True) reads 0.53.
+Yet erasing the direction leaves self-report where it was, 0.76 before and after.
 GLM represents its errors more sharply than Mistral and reports them less.
-This is our cleanest case of represented but not reported.
-It also means the causal result is a fact about particular models, not models in general.
+This is our cleanest case of represented but not reported, and it makes the causal result a fact about particular models, not models in general.
 
 \section{A second witness}
 \label{sec:lens}
 
 \paragraph{A label-free check.}
-A trained probe invites one more objection.
-It might have overfit to our data.
-So we added an instrument that uses no correctness labels at all.
-The Jacobian lens \citep{gurnee2026workspace} is fit on generic text.
-It reads an activation for what it pushes the model to say next.
-We score each stored state by how far it leans toward ``wrong'' over ``correct.''
-
-On dense models the lens matches the probe.
-On Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control.
-Two instruments built from different evidence find the same direction.
-And because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
+A trained probe might have overfit to our data.
+So we added an instrument that uses no correctness labels.
+The Jacobian lens \citep{gurnee2026workspace} is fit on generic text and reads an activation for what it pushes the model to say next; we score each state by how far it leans toward ``wrong'' over ``correct.'' On dense models the lens matches the probe: on Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control.
+Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
 \paragraph{Where the lens fails.}
 On GLM (mixture of experts) and Qwen3.6 (gated linear attention) the lens fails, at 0.31 and 0.43, while the probe still works.
-Its ``correct'' and ``wrong'' readouts collapse together: cosine 0.96 on the MoE model against 0.4 on dense.
-The lens averages one map over all inputs.
-These architectures route differently per input, so the average smears.
+Its ``correct'' and ``wrong'' readouts collapse together, cosine 0.96 on the MoE model against 0.4 on dense.
+The lens averages one map over all inputs, and these architectures route differently per input, so the average smears.
 Swap Qwen3.6 for dense Qwen2.5-14B, same family, and the lens jumps to 0.88.
 
-Put together: the archived matrix finds the signal in every model we tested.
-Whether it reaches the report, and whether a label-free instrument can read it, varies by model.
+Put together: the probe finds the signal in every model we tested.
+Whether it reaches self-report, and whether a label-free instrument can read it, varies by model.
 
 \section{What this means}
 \label{sec:discussion}
@@ -247,17 +231,14 @@ Without an exact checker, the probe is the best per-attempt readout we found.
 Keeping the attempts it scores highest raises accuracy far more than keeping the ones the model is most confident in, and it works where the model's confidence is useless.
 
 \paragraph{Limitations.}
-A probe could be reading properties of failed output rather than a dedicated self-assessment.
-The surface baseline bounds this without closing it, most loosely on MATH and geometry (\cref{app:alternatives}) and on GLM, where surface nearly matches the probe.
+A probe could be reading properties of failed output rather than a self-assessment; the surface baseline bounds this without closing it, most loosely on MATH, geometry (\cref{app:alternatives}), and GLM.
 Every number is a single seed.
-The before-asking test runs only on MMLU-Pro; on MATH the question alone already predicts correctness at 0.81, leaving no room to see what the attempt adds.
-The causal result holds on Mistral and fails on GLM.
-Gemma-4 passes 94\% of MATH, leaving five failures, too few to test.
-The Qwen3.6 run did not finish in time.
+The before-asking test runs only on MMLU-Pro; on MATH the question alone already predicts correctness at 0.81.
+The causal result holds on Mistral and fails on GLM; Gemma-4 leaves too few failures to test, and the Qwen3.6 run did not finish in time.
 Whether preference tuning creates the gap is open; a base model would answer it.
 
 \paragraph{Takeaway.}
-These models carry information about their own errors that their stated confidence does not report, and on one model the report depends on it.
+These models carry information about their own errors that their self-report does not, and on one model self-report depends on it.
 
 \bibliographystyle{plainnat}
 \bibliography{refs,refs_confidence}
