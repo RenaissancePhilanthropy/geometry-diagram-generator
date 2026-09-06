@@ -53,7 +53,8 @@ The second is a reporting problem, and reporting problems are the kind an interv
 
 This paper is about telling those two apart.
 We read the model's internal state directly with a linear detector, a \emph{probe}, and compare what the probe finds to what the model says.
-The question we keep asking is whether the difference between them is real, and each section below answers one way it could be an illusion.
+A probe that reads correctness could be reading something duller: which questions are hard, features of the output text, or an artifact of being asked.
+The sections below rule those out in turn, then ask whether the report depends on the signal at all.
 
 We say a fact is \emph{represented} when a probe can read it from the model's state, and \emph{reported} when it reaches the confidence number the model writes.
 The title's ``knowing'' is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report.
