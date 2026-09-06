@@ -3,7 +3,7 @@
 Scratch file for editing. Open beside `workshop_confidence.tex`. Delete before submission.
 Edit A in place and tell me to apply it, or say which of B/C to take.
 
-Synced with the paper as of commit `0d341b9`.
+Synced with the paper as of commit `0d341b9`. D added after.
 
 ---
 
@@ -88,6 +88,44 @@ depends on it.
 
 **C also folds in** the cross-site result (a probe fitted after the attempt reads at chance
 before it), which is currently only in the body.
+
+---
+
+## D — colloquial rewrite (proposed; edit here, then tell me to apply)
+
+When a language model is confidently wrong, is the error unrepresented, or left unsaid? We
+look inside the model to find out. Across four open models and four domains (MMLU-Pro, MATH,
+GPQA-Diamond, and a geometry task graded exactly by a compiler), a simple linear detector
+reading the model's internal state predicts whether an answer is correct better than the
+model's own stated confidence in 12 of 16 settings, by a mean of +0.09 AUROC. The gap is
+widest on MATH (+0.20), where a wrong solution looks just as fluent as a right one. The
+detector is not just spotting hard questions: given the same question several times, it still
+separates the attempts that succeeded from the ones that failed, and read before the model
+has attempted anything it is at chance. The signal is already there before we ask. At the
+last token of the answer, with no confidence question in play, correctness is readable on
+MMLU-Pro at 0.69 against 0.57 from the question alone. And on Mistral the model's report
+depends on it: remove that direction after the answer is written and stated confidence can no
+longer tell the model's successes from its failures (0.84 → 0.56), while removing a random
+direction of the same size changes nothing; turn it up and confidence on wrong answers drops
+while calibration error halves. Models carry more about their own errors than they say, and
+on at least one model, what they say depends on it.
+
+**What changed from A, and why**
+
+- The difficulty argument is stated the way it was explained in conversation: "given the
+  same question several times, it still separates the attempts that succeeded from the ones
+  that failed." No P(True), no "within-question control"; those live in the body.
+- The direction-level test is in ("read before the model has attempted anything it is at
+  chance"), since it is the strongest form of the specificity argument.
+- The answer-end result is in. It was missing from A and is the most novel finding.
+- The ablation reads as an action ("remove that direction") rather than an operation on a
+  learned object; "a random direction of the same size" replaces "matched random direction".
+- The closing says "on at least one model" because the causal result failed to replicate
+  on GLM. If Gemma replicates, this clause can strengthen.
+- The cross-domain transfer sentence is dropped. It was the weakest claim in A and the body
+  covers it.
+
+**Length:** roughly the same as A once A's paragraph breaks are removed.
 
 ---
 
