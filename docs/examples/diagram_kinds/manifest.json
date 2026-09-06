@@ -116,7 +116,7 @@
     "svg_path": "svgs/prism_net.svg",
     "source": "fresh-generation",
     "status": "ok",
-    "notes": "Net of a rectangular prism: six faces (front, back, top, bottom, left, right) unfolded flat, each labeled with its name and dimensions. Long face labels wrap onto multiple lines and stay centered within each face.",
+    "notes": "Net of a rectangular prism: six faces (front, back, top, bottom, left, right) unfolded flat in a cross layout, each labeled with its name and dimensions. Adjacent faces share a full edge with no gap between them, as a real fold-able net would, and each label wraps to fit fully inside its own face.",
     "script_path": "scripts/prism_net.py"
   },
   {

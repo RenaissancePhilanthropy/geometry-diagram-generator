@@ -315,12 +315,17 @@ FINAL_KIND_CONFIGS: "dict[str, tuple[bool, list[str]]]" = {
             "face. label_in_polygon() automatically wraps a label that "
             "doesn't fit into multiple stacked lines instead of letting "
             "it overflow.\n\n"
-            "Use a large layout with generous spacing: leave clear empty "
-            "space between every pair of adjacent faces in the net. Do "
-            "not add any title or caption above or below the net. Every "
-            "face polygon and every label must be fully inside the "
-            "canvas bounds, with real margin on all four sides -- "
-            "nothing may be clipped.",
+            "Requirement 3 (this is a real net, not six floating "
+            "rectangles): every pair of faces that are adjacent in the "
+            "net's cross/T layout must share a full edge -- the exact "
+            "same pair of endpoint coordinates -- with ZERO gap between "
+            "them, exactly as if the net could be folded back up along "
+            "those shared edges into the solid it came from. Do not "
+            "leave empty space between adjacent faces. Do not add any "
+            "title or caption above or below the net. The whole net "
+            "(all 6 faces and their labels) must still be fully inside "
+            "the canvas bounds, with real margin only around the "
+            "net's own outer boundary -- nothing may be clipped.",
         ],
     ),
     "balance_scale": (
