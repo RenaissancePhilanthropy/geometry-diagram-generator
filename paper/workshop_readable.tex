@@ -101,10 +101,12 @@ A failed construction usually does not compile, so the failure is visible in the
 The internal signal matters most where the failure is invisible from outside.
 
 \paragraph{Controls.}
-The token we read is identical in every record, so at the input layer the probe sits at exactly 0.5 and anything it finds deeper was computed during the attempt.
-A within-question comparison holds difficulty fixed.
-For time, the controls below were run on Mistral only.
-Its four cells reproduce the headline, with a smaller margin over the surface baseline ($+0.21$ on MMLU-Pro, $+0.07$ on MATH, $+0.05$ on GPQA, where neither reads far above chance, and $-0.11$ on geometry).
+Three things could make a probe look better than it is, and the next section tests each.
+It could be reading how hard the question is rather than the attempt, so we compare attempts within one question.
+It could be reading the shape of the output, so we compare it with the surface baseline in every cell; on Mistral the probe's margin over the baseline is $+0.21$ on MMLU-Pro, $+0.07$ on MATH, $+0.05$ on GPQA, and $-0.11$ on geometry.
+And it could be reading something that was there before the attempt, so we check the input layer, where the token is identical in every record and the probe sits at exactly 0.5.
+For time, these controls were run on Mistral only.
+Its four cells reproduce the headline.
 
 \section{What the signal is}
 \label{sec:what}
