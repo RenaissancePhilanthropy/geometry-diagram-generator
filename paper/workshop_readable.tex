@@ -66,15 +66,10 @@ Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, G
 That is 16 cells of about 750 attempts each.
 
 \paragraph{Prompting structure.}
-Every attempt takes three turns.
-
-\begin{enumerate}[nosep,leftmargin=1.4em]
-  \item The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
-  \item It answers.
-  \item It is asked how confident it is that the answer it just gave is correct.
-\end{enumerate}
-
-A grader scores the attempt and never tells the model, so any movement in stated confidence is the model's own.
+1.
+The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right. 2.
+It answers. 3.
+It is asked how confident it is that the answer it just gave is correct.
 
 \paragraph{The probe.}
 At the moment the model is about to write its confidence digit, we record the number and the hidden state behind it, a vector of a few thousand numbers.
