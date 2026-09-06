@@ -65,7 +65,7 @@ We tested four open models built in four different ways: Mistral-Small-24B (dens
 Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction.
 That is 16 cells of about 750 attempts each.
 
-\paragraph{Three turns, graded in silence.}
+\paragraph{Prompting structure.}
 Every attempt takes three turns: we ask the model how confident it is that it will get the problem right, let it try, then ask how confident it is that it did.
 A grader scores the attempt and never tells the model, so any movement in stated confidence is the model's own.
 
