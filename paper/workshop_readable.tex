@@ -133,12 +133,13 @@ The signal is made by working, and the prompt clarifies rather than creates it.
 MATH cannot run this test, because its question-only read is already 0.81.
 
 \paragraph{It is not tied to one subject.}
-A probe trained on one domain and tested on another keeps about 90\% of its lift above chance on Mistral (0.69 off the diagonal against 0.71 on it, \cref{tab:transfer} left), and the original matrix showed the same pattern in every model.
+\cref{tab:transfer} trains a probe on one domain and tests it on each of the others.
+On Mistral it keeps about 90\% of its lift above chance (0.69 off the diagonal against 0.71 on it), and the original matrix showed the same pattern in every model.
 The one exception is instructive: on Gemma-4, probes trained on geometry fail elsewhere (0.31 to 0.39) while probes trained elsewhere work on geometry (about 0.70).
 A probe trained on the one generative task can learn features specific to it.
 
 \begin{table}[t]
-\caption{Mistral. Left: a probe trained on one domain, tested on another (rows train, columns test; diagonal is in-domain; Geo = GeoGenBench). Right: intervening on the model's own correctness direction at the confidence token. Gain 1 changes nothing; gain 0 removes the direction; the random row removes a random direction of the same size. Removing the real direction leaves stated confidence unable to separate successes from failures; removing the random one does not.}
+\caption{Mistral. A probe trained on the row's domain and tested on the column's; the diagonal is in-domain. Geo = GeoGenBench.}
 \label{tab:transfer}
 \centering
 \small
@@ -152,32 +153,44 @@ MATH & 0.80 & 0.72 & \textbf{0.83} & 0.57 \\
 GPQA & 0.60 & 0.69 & 0.74 & \textbf{0.57} \\
 \bottomrule
 \end{tabular}
-\hspace{1.5em}
-\begin{tabular}{lcccc}
-\toprule
-\textbf{gain} & \textbf{0} & \textbf{1} & \textbf{2} & \textbf{4} \\
-\midrule
-confidence, wrong / right & \textbf{97 / 98} & 84 / 96 & 70 / 94 & \textbf{54 / 88} \\
-stated AUROC & \textbf{0.56} & 0.84 & 0.85 & 0.82 \\
-random direction, AUROC & 0.83 & 0.84 & 0.84 & unparseable \\
-\bottomrule
-\end{tabular}
 \end{table}
 
 \section{Whether the report depends on it}
 \label{sec:causal}
 
 \paragraph{Present is not used.}
-A model could carry a perfect internal record of its errors and never consult it when writing the number, so we intervene.
-At the confidence token, after the answer is written so the answer itself cannot change, we scale the model's own projection onto the correctness direction by a gain $g$, where $g{=}1$ changes nothing.
-Numbers: Mistral on MATH, 150 held-out records, against a matched random direction (\cref{tab:transfer} right).
+A model could carry a perfect internal record of its errors and never consult it when writing the number.
+So we intervene.
+At the confidence token, after the answer is written so the answer itself cannot change, we scale the model's position along the correctness direction by a gain $g$.
+Gain 1 leaves the model untouched.
+Gain 0 erases the per-attempt information along that direction.
+Gains 2 and 4 exaggerate it.
+We run this on Mistral, MATH, 150 held-out records, and repeat it with a random direction of the same size as a control.
+\cref{tab:ablation} shows what the model wrote at each setting.
+
+\begin{table}[t]
+\caption{Mistral on MATH. One direction in the hidden state, scaled by a gain at the confidence token after the answer is written. Gain 1 is the untouched model; gain 0 erases the per-attempt information along the direction; gains 2 and 4 exaggerate it.}
+\label{tab:ablation}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & \textbf{untouched} & \textbf{erased} & \textbf{doubled} & \textbf{quadrupled} \\
+gain on the correctness direction & 1 & 0 & 2 & 4 \\
+\midrule
+mean confidence, wrong / right answers & 84 / 96 & \textbf{97 / 98} & 70 / 94 & \textbf{54 / 88} \\
+AUROC of stated confidence & 0.84 & \textbf{0.56} & 0.85 & 0.82 \\
+same, with a random direction & 0.84 & 0.83 & 0.84 & output broke \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{On Mistral, the report depends on it.}
 Remove the direction ($g{=}0$) and stated confidence can no longer tell the model's successes from its failures: 0.84 drops to 0.56, a change of $-0.27$ $[-0.42, -0.12]$.
 Remove the random direction and nothing happens ($-0.00$ $[-0.03, +0.03]$).
 This does not look like generic damage.
-The output stays perfectly well formed, and confidence on wrong answers goes \emph{up}, from 84 to 97, until it matches confidence on right answers; the model becomes uniformly sure.
-Turn the direction up instead and confidence on wrong answers falls to 70 and then 54 at $g{=}2$ and $4$ while right answers hold near 90; calibration error halves, $0.34 \to 0.19$.
+The output stays well formed, and confidence on wrong answers goes \emph{up} until it matches confidence on right answers; the model becomes uniformly sure.
+Turn the direction up instead and confidence on wrong answers falls while right answers hold; calibration error halves, $0.34 \to 0.19$.
 The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls MATH's report ($0.88 \to 0.71$).
 
 \paragraph{On GLM, it does not.}

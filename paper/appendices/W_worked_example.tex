@@ -129,7 +129,7 @@ scoring rules alongside it. On Mistral $\times$ MATH (750 records, accuracy 0.64
 model's retrospective stated confidence gives Brier $0.262$ and NLL $1.470$ against a
 10-bin ECE of $0.271$. P(True) on the same records gives Brier $0.386$: better ordered
 than stated confidence, worse calibrated in absolute terms. The steering results in
-\cref{tab:transfer} are reported as ECE because the steered runs stored per-gain
+\cref{tab:ablation} are reported as ECE because the steered runs stored per-gain
 aggregates rather than per-record confidences; recomputing Brier and NLL at each gain
 requires re-running the intervention and is the first thing we would add.
 
