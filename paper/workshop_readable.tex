@@ -40,11 +40,10 @@ Models carry more about their own errors than they report, and on at least one m
 \section{Introduction}
 \label{sec:intro}
 
-Language models are often confidently wrong.
-Asked to solve competition math problems and rate its own answers, the model we study most closely stated 84 percent confidence, on average, on the answers it got wrong, more than a third of them at 95 or above, and the wrong derivations looked as clean as the right ones.
-For anything built on top of a model, this is the failure that matters.
-A model that is sometimes wrong can be managed.
-A model that is wrong and sure cannot be caught.
+A language model that is confidently wrong is a problem.
+Its stated confidence is the one signal a downstream system has for deciding whether to trust an answer, and when that number is high on a wrong answer, nothing downstream can catch the error.
+A model that is sometimes wrong can be managed; a model that is wrong and sure cannot.
+This paper asks whether the model's activations carry what its stated confidence does not: a readable signal, at the moment the number is written, of whether the answer is right.
 
 Two very different things could be going on inside that model.
 Its internal state might carry no trace of the error, so that the confident number is the honest output of a system with no idea it has slipped.
