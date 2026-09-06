@@ -10,7 +10,8 @@ Synced from workshop_readable.tex at commit c24b1f2, plus the numbered prompting
 
 **Models and tasks.** We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction. That is 16 cells of about 750 attempts each.
 
-**Prompting structure.** 
+**Prompting structure.**
+
 1. The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
 2. It answers.
 3. It is asked how confident it is that the answer it just gave is correct.
