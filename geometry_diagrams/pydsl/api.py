@@ -1261,6 +1261,19 @@ def _greedy_wrap_lines(words: "list[str]", width_budget: float) -> "list[str]":
 # trigger for any real label in this codebase.
 _MAX_WRAP_CANDIDATE_SPLITS = 200_000
 
+# Infix connective tokens that read as broken when a line boundary lands
+# right next to them (e.g. "Top 4" / "x 2" separates "x" from both the
+# numbers it relates) -- these bind to their neighbors on either side, unlike
+# an ordinary word. Kept as a token-identity set, not a lexical "NUMBER x
+# NUMBER" pattern: that would make "keep dimensions together" a hard
+# constraint (a genuinely-too-wide "4 x 2 x 3 x 9" would become one
+# unsplittable run and overflow) instead of a soft preference among splits
+# that already fit width_budget.
+_WRAP_CONNECTIVE_TOKENS = frozenset({
+    "x", "×", "\\times", "\\cdot", "·", "*", "/", ":", "=",
+    "\\to", "\\rightarrow", "\\Rightarrow", "→", "<", ">", "\\leq", "\\geq", "≤", "≥",
+})
+
 
 def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
     """Word-wrap `text` into the minimum number of lines feasible for
@@ -1286,9 +1299,19 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
       overflow for one oversized, unsplittable token) -- greedy's own
       split is always itself a feasible member of this candidate set, so
       one is always found.
-    - Among feasible splits, minimize max(line width); ties broken by
-      minimizing the sum of squared line widths, then by preferring the
-      split whose first line is widest.
+    - Among feasible splits, minimize the count of line breaks that fall
+      right next to an infix connective token (see
+      _WRAP_CONNECTIVE_TOKENS) -- keeping e.g. "4 x 2" whole in preference
+      to splitting it as "4" / "x 2"; ties broken by minimizing max(line
+      width), then the sum of squared line widths, then by preferring the
+      split whose first line is widest. Connective-cohesion is checked
+      first because it would never otherwise get a say: a split like
+      "Top 4" / "x 2" already ties or beats "Top" / "4 x 2" on max(line
+      width) alone, so any criterion placed after max(line width) never
+      fires for this case. It's safe as the primary key exactly because
+      feasibility (fits width_budget) is filtered before it -- preferring
+      cohesion can only trade one fitting split for another, never
+      introduce an overflow.
     """
     words = _wrap_latex_safe_words(text)
     if not words:
@@ -1303,8 +1326,16 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
     if math.comb(k - 1, n - 1) > _MAX_WRAP_CANDIDATE_SPLITS:
         return greedy_lines
 
+    # Gap i sits between words[i] and words[i+1]; it's "bound" if either
+    # side is a connective token, so cutting there separates it from a
+    # neighbor it relates to.
+    bound_gaps = {
+        i for i in range(k - 1)
+        if words[i] in _WRAP_CONNECTIVE_TOKENS or words[i + 1] in _WRAP_CONNECTIVE_TOKENS
+    }
+
     best_lines: "list[str] | None" = None
-    best_key: "tuple[float, float, float] | None" = None
+    best_key: "tuple[int, float, float, float] | None" = None
     for cuts in itertools.combinations(range(1, k), n - 1):
         boundaries = (0,) + cuts + (k,)
         runs = [words[boundaries[i]:boundaries[i + 1]] for i in range(n)]
@@ -1316,10 +1347,11 @@ def _wrap_text_to_width(text: str, width_budget: float) -> "list[str]":
         )
         if not feasible:
             continue
+        broken_bonds = sum(1 for cut in cuts if (cut - 1) in bound_gaps)
         max_width = max(widths)
         sum_sq_width = sum(w * w for w in widths)
         first_width = widths[0]
-        key = (max_width, sum_sq_width, -first_width)
+        key = (broken_bonds, max_width, sum_sq_width, -first_width)
         if best_key is None or key < best_key:
             best_key = key
             best_lines = candidate_lines

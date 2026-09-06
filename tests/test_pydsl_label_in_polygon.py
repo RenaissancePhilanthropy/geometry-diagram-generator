@@ -354,6 +354,31 @@ def test_wrap_text_to_width_worked_example_left_2_x_3():
     assert lines == ["Left", "2 x 3"]
 
 
+def test_wrap_text_to_width_keeps_dimension_expression_together_on_a_true_tie():
+    # "Top" / "4 x 2" and "Top 4" / "x 2" tie exactly on both max(line
+    # width) and sum-of-squares (same two widths, just swapped), so the
+    # widest-first-line tie-break used to decide it -- which happened to
+    # prefer "Top 4" / "x 2", separating "x" from both numbers it relates
+    # to. Connective-cohesion is checked before that tie-break and must
+    # settle it in favor of keeping "4 x 2" whole.
+    lines = _wrap_text_to_width("Top 4 x 2", 2.5)
+    assert lines == ["Top", "4 x 2"]
+
+
+def test_wrap_text_to_width_connective_bias_yields_to_feasibility():
+    # A dimension expression too wide to keep whole must still split --
+    # cohesion is a preference among fitting splits, never a constraint
+    # that could force an overflow.
+    text = "Width 40 x 20 x 30"
+    budget = _estimate_text_width_construction_units("Width 40")
+    lines = _wrap_text_to_width(text, budget)
+    assert all(
+        _estimate_text_width_construction_units(line) <= budget or len(line.split()) == 1
+        for line in lines
+    )
+    assert " ".join(lines).split() == text.split()
+
+
 # ---------------------------------------------------------------------------
 # Seam (e): oversized single token still overflows onto its own line
 # ---------------------------------------------------------------------------
