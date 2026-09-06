@@ -13,7 +13,7 @@ supported today. The fourth is where most of the queue sits.
 | 2 | Confidence vs accuracy (monitor or driver) | measure | queued | ~2 h once a box frees | — |
 | 3 | Ablation on GLM | intervene | done: clean null | — | results/causal_glm |
 | 4 | Ablation on Gemma-4 | intervene | done: underpowered (5 wrong in eval) | — | results/causal_gemma4 |
-| 5 | Ablation on Qwen3.6 | intervene | **running, split** | ~18:00 on the 6th | boxes B [0:115) + D [115:150) |
+| 5 | Ablation on Qwen3.6 | intervene | **blocked**: vast.ai credit ran out 2026-09-06 ~17:30 UTC; boxes stopped with 559/575 + ~51/175 records on their disks, none in S3 | needs top-up + restart of boxes B and D | boxes B [0:115) + D [115:150) |
 | 6 | Base-model arm | origin | queued | ~6 h + capture | needs a box |
 | 7 | Multiple seeds | all | queued | recapture | needs a box |
 
@@ -22,13 +22,14 @@ Boxes, all RTX PRO 6000 Blackwell 97.9 GB, all with `~/.aws/config` and a live S
 | | address | job |
 |---|---|---|
 | A | `ssh -p 15713 root@ssh2.vast.ai` | GLM then Gemma (`~/chain.log`) |
-| B | `ssh -p 40021 root@98.86.102.84` | Qwen3.6 (`~/qwen.log`) |
+| B | `ssh -p 40021 root@98.86.102.84` | Qwen3.6 (`~/qwen.log`) — STOPPED (no credit), 559 records on disk, not in S3 |
 | C | `ssh -p 29766 root@206.41.207.98` | answer-site, done, destroyed |
-| D | `ssh -p 12187 root@ssh4.vast.ai` | Qwen questions [115:150) (`~/qwen_half2.log`); merges + ablates at the end |
+| D | `ssh -p 12187 root@ssh4.vast.ai` | Qwen questions [115:150) (`~/qwen_half2.log`) — STOPPED (no credit), ~51 records on disk, not in S3 |
 
 Clone needs `ssh -A`: the repo is private and the boxes authenticate through the
-forwarded agent. Every run pushes its capture to S3 as soon as it exists, so no box
-holds the only copy of anything.
+forwarded agent. Every run pushes its capture to S3 when it completes. That was not enough on 2026-09-06:
+the account ran out of credit mid-capture and both Qwen boxes stopped holding the only
+copy. TODO before the next run: push every 50 records from inside `capture_qa.py`.
 
 ---
 

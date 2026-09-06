@@ -842,3 +842,19 @@ it passes 94% of MATH, leaving five failures in evaluation, and that amplificati
 those five in Mistral's direction. Same conclusion the July notes reached ("underpowered").
 The fix is not more records; it is prompts Gemma can sometimes fail.
 
+
+
+## 2026-09-06, evening: Qwen ablation lost to a zero balance
+
+At about 17:30 UTC all three vast.ai boxes went "Connection refused" at once. Cause: the
+account balance hit zero, and vast.ai stops every instance when that happens. Box B held
+559 of 575 Qwen records for questions [0:115) and box D about 51 of 175 for [115:150).
+Neither half had reached S3: B never had AWS credentials, and D's push only fires at the
+end of the run. The data is probably still on the stopped disks, but restarting needs a
+top-up and the same GPU being free on each host.
+
+Decision (Mei): submit with what we have. The paper's Limitations now says the Qwen3.6
+run did not finish in time. Nothing else in the draft depended on it; Qwen's decode
+numbers in the appendix come from the original July matrix.
+
+Lesson: completion-time pushes are not enough. Push partial captures every N records.
