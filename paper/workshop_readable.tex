@@ -29,12 +29,12 @@
 \begin{abstract}
 When a language model is confidently wrong, is the error undetected or left unsaid?
 We look inside the model to find out.
-Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a simple linear detector reading the model's internal state predicts whether an answer is correct better than the model's own stated confidence in 12 of 16 settings, by a mean of $+0.09$ AUROC.
+Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a linear probe on the model's hidden state predicts whether an answer is correct better than the model's own self-report in 12 of 16 settings, by a mean of $+0.09$ AUROC.
 The gap is widest on MATH ($+0.20$).
-The detector is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed.
+The probe is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed.
 On Mistral, the signal exists before we ask for it: on MMLU-Pro, a probe fitted after the attempt reads at chance before it, and at the last token of the answer, with no confidence question in play, correctness is readable at 0.69 against 0.57 from the question alone.
-And on Mistral, though not on GLM, the model's report depends on it: remove that direction after the answer is written and stated confidence can no longer tell the model's successes from its failures ($0.84 \to 0.56$), while removing a random direction of the same size changes nothing; turn it up and confidence on wrong answers drops while calibration error halves.
-Models carry more about their own errors than they report, and on at least one model, what they report depends on it.
+And on Mistral, though not on GLM, self-report depends on it: remove that direction after the answer is written and self-report can no longer tell the model's successes from its failures ($0.84 \to 0.56$), while removing a random direction of the same size changes nothing; turn it up and confidence on wrong answers drops while calibration error halves.
+These models carry more about their own errors than they self-report, and on one model the self-report depends on it.
 \end{abstract}
 
 \section{Introduction}
