@@ -79,6 +79,16 @@ _TICK_PX = 5               # px — tick mark half-length
 _TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
 
 
+def px_per_construction_unit(geo_w: float, geo_h: float) -> float:
+    """The construction-unit -> SVG-pixel scale ir_to_svg() applies uniformly
+    to both axes for a diagram whose geometry bounds span geo_w x geo_h,
+    derived from the larger of the two to preserve aspect ratio. This is the
+    single source of truth for that formula -- ir_to_svg() itself calls this
+    rather than re-deriving it, and pydsl/api.py's _px_per_construction_unit()
+    calls it too, so the two never independently drift out of sync."""
+    return (_SVG_SIZE - 2 * _CANVAS_MARGIN_PX) / max(geo_w, geo_h)
+
+
 # ---------------------------------------------------------------------------
 # Deferred label placement
 # ---------------------------------------------------------------------------
@@ -162,8 +172,7 @@ def ir_to_svg(
     # Scale: map geometry units → SVG pixels
     # Keep aspect ratio; add a small pixel margin
     _MARGIN = _CANVAS_MARGIN_PX
-    usable = _SVG_SIZE - 2 * _MARGIN
-    scale = usable / max(geo_w, geo_h)
+    scale = px_per_construction_unit(geo_w, geo_h)
 
     # Wide y-axis tick labels (e.g. multi-digit numbers on a large canvas) can
     # be wider than the default margin reserves, clipping off the left edge —

@@ -199,42 +199,14 @@ FRESH_CHOICES: "dict[str, dict]" = {
     },
     "prism_net": {
         "status": "ok",
-        "attempt_svg": "attempts/prism_net_attempt2.svg",
-        "attempt_script": "attempt_scripts/prism_net_attempt2.py",
+        "attempt_svg": "attempts/prism_net_attempt3.svg",
+        "attempt_script": "attempt_scripts/prism_net_attempt3.py",
         "notes": (
-            "Round-4 re-attempt (ticket 04, label-in-polygon feature) using the "
-            "new label_in_polygon() API for every face label, instead of the "
-            "unwrapped label_text(centroid_of=...) every prior attempt used -- "
-            "label_in_polygon() is width-aware and word-wraps a label that "
-            "doesn't fit its face instead of letting it bleed into a neighbor "
-            "(the original baseline's actual defect). The prompt also splits "
-            "'draw all 6 faces' and 'wrap long labels' into two explicitly "
-            "separate, non-conflicting requirements, targeting the round-2 "
-            "review's face-dropping regression (attempt 1 there rendered only "
-            "5 of 6 faces after a label-fitting instruction). Converged clean "
-            "on the first try (1 fresh PythonFullStrategy.run() attempt this "
-            "round, no cookbook): the rendered SVG has exactly 6 face outline "
-            "polygons (Back, Bottom, Front, Top, Left, Right, all present) "
-            "with correct per-face dimensions (Back/Front 4x3, Bottom/Top "
-            "4x2, Left/Right 2x3); every label's data-bbox lies fully inside "
-            "the canvas viewBox (0 0 460.571 500, checked programmatically, "
-            "none clipped); and no label's bbox overlaps any face polygon "
-            "other than its own owner face (checked pairwise against all 6 "
-            "face bounding boxes) -- confirming no bleeding into a neighbor. "
-            "Long labels (Back, Top) wrapped onto 2 stacked lines via "
-            "label_in_polygon()'s default overflow='wrap', both lines still "
-            "landing inside their own face or the empty inter-face gap, "
-            "never overlapping a neighboring face's fill. Face-dropping bug "
-            "finding: not conclusively root-caused, but the evidence leans "
-            "toward prompt-clarity over a structural juggling failure -- the "
-            "earlier attempt's prompt asked for 'every label...within canvas "
-            "margin' as its only constraint, with no explicit, independent "
-            "statement that all 6 faces must be drawn regardless; this "
-            "attempt's prompt states the two requirements as separate, "
-            "non-conflicting paragraphs and the model drew all 6 faces on "
-            "the first try with no sign of face-count confusion anywhere in "
-            "the generated script (each of the 6 faces has its own named "
-            "polygon variable, defined and drawn before any label call)."
+            "Net of a rectangular prism: six faces (front, back, top, bottom, "
+            "left, right) unfolded flat in a cross layout, each labeled with "
+            "its name and dimensions. Adjacent faces share a full edge with "
+            "no gap between them, as a real fold-able net would, and each "
+            "label wraps to fit fully inside its own face."
         ),
     },
     "l_prism": {

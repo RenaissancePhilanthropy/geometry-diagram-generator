@@ -196,6 +196,19 @@ def test_label_text_with_font_size_registers_a_style_carrying_it():
     assert ir.styles[matches[0].style] == {"font-size": 7.0}
 
 
+def test_label_text_normalizes_embedded_newline_and_tab_and_cr():
+    # _sanitize_label_text() is the shared chokepoint every label-placing
+    # function calls -- this confirms the embedded-\n/\t/\r-to-space
+    # normalization lives there (not just inside label_in_polygon()), so a
+    # DIRECT label_text() call with a hand-inserted "\n" doesn't emit a raw
+    # control character straight into the rendered SVG <text> element.
+    with new_builder_context() as builder:
+        label_text("Left\n2\tx\r3", at=(1.0, 2.0))
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert matches[0].text == "Left 2 x 3"
+
+
 def test_point_label_autofixes_python_escaped_latex_command():
     # A script author writing "\angle ABD" in a normal (non-raw) string
     # literal has Python's own parser consume the backslash as an escape

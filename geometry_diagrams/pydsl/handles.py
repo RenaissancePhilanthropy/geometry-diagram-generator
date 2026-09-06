@@ -58,7 +58,15 @@ def _sanitize_label_text(text: str, fn_name: str) -> str:
     _LATEX_UNICODE table (the same substitution to_svg.py would have made
     had the model wrapped it in $...$) silently repairs it to the correct
     Unicode symbol. Everything else raises a clear error rather than let a
-    mystery control character reach the renderer."""
+    mystery control character reach the renderer.
+
+    Also normalizes embedded \\n/\\t/\\r to a plain space: a script author
+    may hand-insert a literal "\\n" as an intended line break (e.g. a face
+    label "Front\\n4 x 3"), but SVG <text> has no notion of an embedded
+    newline -- passing one straight through renders as a stray literal
+    character, not an actual line break. This runs after the control-character
+    repair above and is unaffected by it: _CONTROL_CHAR_RE explicitly excludes
+    \\t/\\n/\\r from the bytes it matches, so the two steps never interact."""
     from geometry_diagrams.ir.to_svg import _LATEX_UNICODE
 
     def _replace(match: "re.Match") -> str:
@@ -89,7 +97,8 @@ def _sanitize_label_text(text: str, fn_name: str) -> str:
             "≥, →, α, θ, π)."
         )
 
-    return _CONTROL_CHAR_RE.sub(_replace, text)
+    text = _CONTROL_CHAR_RE.sub(_replace, text)
+    return text.replace("\n", " ").replace("\t", " ").replace("\r", " ")
 
 
 def _record_literal_point(builder: "object", x: float, y: float) -> "Point":

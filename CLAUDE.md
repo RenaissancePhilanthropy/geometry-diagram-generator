@@ -134,7 +134,7 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 
 - **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
 - **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
-- **`examples/`**: Pre-rendered SVG examples used for documentation.
+- **`examples/`**: Pre-rendered SVG examples used for documentation, including `diagram_kinds/attempts/` and `diagram_kinds/attempt_scripts/`, which hold per-attempt generation artifacts (SVGs/scripts) for `assemble_diagram_kinds_manifest.py`'s fresh-generation kinds.
 - **`retrospective-template.md`**: Optional post-ticket step for `subagent-execution`-style work in this repo — after an implementer subagent closes a ticket (especially one that struggled or hit a known gap), resume it and ask what tooling/information would have made the task easier. See `docs/specs/2026-09-04-diagram-kinds-retrospective-findings.md` for a worked example where this surfaced a convergent, actionable finding across unrelated tickets.
 
 ## Key Design Notes

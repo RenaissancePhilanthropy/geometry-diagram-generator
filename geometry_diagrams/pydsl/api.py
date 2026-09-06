@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from typing import Callable
 
 from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
@@ -1206,9 +1207,9 @@ def _px_per_construction_unit() -> "float | None":
     script's diagram, computed from the canvas() bounds already recorded on
     the ambient Builder -- or None if canvas() hasn't been called yet.
 
-    Mirrors ir_to_svg()'s own scale computation (geometry_diagrams/ir/to_svg.py)
-    exactly: a single scale is derived from max(geo_w, geo_h) to preserve
-    aspect ratio, then applied uniformly to both axes.
+    Calls geometry_diagrams.ir.to_svg's own px_per_construction_unit() helper
+    -- the single source of truth ir_to_svg() itself uses for this formula --
+    so this estimate can never independently drift out of sync with it.
 
     Known limitation: if a later script op places geometry (a circle, arc,
     or a point) outside the canvas() bounds already declared, ir_to_svg
@@ -1217,7 +1218,7 @@ def _px_per_construction_unit() -> "float | None":
     an accepted approximation that holds for the common case of canvas()
     being called with bounds that already contain all of a script's
     geometry (true of every diagram-kinds gallery script today)."""
-    from geometry_diagrams.ir.to_svg import _SVG_SIZE, _CANVAS_MARGIN_PX
+    from geometry_diagrams.ir.to_svg import px_per_construction_unit
 
     canvas_def = get_builder()._canvas
     if canvas_def is None:
@@ -1226,8 +1227,7 @@ def _px_per_construction_unit() -> "float | None":
     geo_h = canvas_def.ymax - canvas_def.ymin
     if geo_w <= 0 or geo_h <= 0:
         return None
-    usable = _SVG_SIZE - 2 * _CANVAS_MARGIN_PX
-    return usable / max(geo_w, geo_h)
+    return px_per_construction_unit(geo_w, geo_h)
 
 
 def _label_in_polygon_text_width_construction_units(text: str) -> float:
@@ -1448,7 +1448,7 @@ def label_in_polygon(
     text: str,
     overflow: str = "wrap",
 ) -> None:
-    """Place text at a genuine interior point of a polygon, width-aware; overflow is one of 'wrap' (default, word-wrap), 'shrink' (reduce font size), or 'raise' (fail instead of overflowing).
+    """Place text at a genuine interior point of a polygon, width-aware (call canvas() before any label_in_polygon() calls for the most accurate estimate); overflow is one of 'wrap' (default, word-wrap), 'shrink' (reduce font size), or 'raise' (fail instead of overflowing).
 
     Correct for concave shapes, where a plain centroid can land outside the
     shape entirely (unlike label_text(text, centroid_of=...), which always
@@ -1464,7 +1464,14 @@ def label_in_polygon(
       placed lines' average y lands back on the interior point).
       Known, accepted limitation: wrapping trades width for height with no
       vertical-fit re-check -- many wrapped lines could exceed the
-      polygon's vertical room. Not guarded against.
+      polygon's vertical room. Not guarded against. For a net-style diagram
+      with edge-adjacent shapes (zero gap between them, e.g. prism_net),
+      this risk is no longer bounded by inter-shape spacing the way it was
+      when shapes had a buffer gap between them -- an overflowing wrapped
+      line can now bleed into a neighboring shape's fill, reproducing the
+      original unwrapped-label bleed bug this function was built to fix.
+      Callers placing edge-adjacent shapes should keep labels short enough
+      to fit vertically.
     - "shrink": reduce font size to fit instead of wrapping. Scales
       _FONT_SIZE down by the same ratio the text overflows the width
       budget by, and places the label via a single label_text(text,
@@ -1478,6 +1485,13 @@ def label_in_polygon(
     never consulted -- the label is placed as-is via a single
     label_text(text, at=interior_point) call.
 
+    Note: the width-estimate this uses (`_label_in_polygon_text_width_construction_units()`)
+    is, like the shrink-path font-size override below, calibrated for
+    `SVGRenderer`: it's derived from `to_svg.py`'s own SVG-pixel text-width
+    estimator and canvas-scale constants, and does not reflect
+    `TikZRenderer`'s actual rendering -- an accepted limitation, consistent
+    with the rest of this pipeline's SVG-only design.
+
     Note: the font-size override this applies (both here and via
     `label_text(font_size=...)` directly) only takes effect under
     `SVGRenderer`. `to_tikz.py`'s `LabelFreeText` handling does not read
@@ -1490,24 +1504,14 @@ def label_in_polygon(
             f"label_in_polygon(): overflow must be one of 'raise', 'wrap', 'shrink', "
             f"got {overflow!r}"
         )
+    # _sanitize_label_text() normalizes embedded "\n"/"\t"/"\r" to a plain
+    # space (a script author may hand-insert a literal "\n" as an intended
+    # line break -- this codebase's own prompts have done exactly that for
+    # face labels, e.g. "Front\n4 x 3" -- but SVG <text> has no notion of an
+    # embedded newline) -- so label_in_polygon() always makes its OWN
+    # wrapping decision from the real text, regardless of which path below a
+    # given label happens to take.
     text = _sanitize_label_text(text, "label_in_polygon")
-    # A script author may hand-insert a literal "\n" (or "\t"/"\r") as an
-    # intended line break -- this codebase's own prompts have done exactly
-    # that for face labels (e.g. "Front\n4 x 3"). SVG <text> has no notion
-    # of an embedded newline, so passing one straight through to
-    # label_text() below renders as a stray literal character, not an
-    # actual line break. This was previously masked: the old, overly
-    # generous flat width estimate almost always forced these strings into
-    # the "wrap" branch below, whose tokenizer treats any whitespace
-    # (newlines included) as an ordinary split point and rejoins lines with
-    # a plain space -- incidentally cleaning this up as a side effect. Now
-    # that the width estimate is accurate (see
-    # _label_in_polygon_text_width_construction_units()), some such labels
-    # correctly fit on one line and take the fast path below instead,
-    # exposing the raw control character. Normalize it here so label_in_polygon()
-    # always makes its OWN wrapping decision from the real text, regardless
-    # of which path a given label happens to take.
-    text = text.replace("\n", " ").replace("\t", " ").replace("\r", " ")
 
     vertices_xy = [(v.x, v.y) for v in poly.vertices]
     sym_poly = _sympy_polygon(vertices_xy)
