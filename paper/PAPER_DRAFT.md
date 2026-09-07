@@ -22,7 +22,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 
 ## Reading the state
 
-**Models and tasks.** We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench. GeoGenBench is a geometry task. The model writes a construction and a compiler checks it against a formal specification, so its labels need no judge. In a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction. That is 16 cells of about 750 attempts each.
+**Models and tasks.** We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench. GeoGenBench is a geometry task. The model writes a construction and a compiler checks it against a formal specification, so its labels need no judge. That is 16 cells of about 750 attempts each.
 
 **Prompting structure.**
 
