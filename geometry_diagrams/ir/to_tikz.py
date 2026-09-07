@@ -527,9 +527,10 @@ def _emit_op(
                 x, y = centroid_of_obj(obj)
             out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
 
-        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style):
+        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style, width=width):
             pts = brace_quadratic_points(
-                (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction
+                (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction,
+                width=width,
             )
             coords = " ".join(
                 f"({fmt_num(x)},{fmt_num(y)})"

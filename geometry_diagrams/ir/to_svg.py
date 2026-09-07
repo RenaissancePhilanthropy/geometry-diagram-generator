@@ -1021,11 +1021,12 @@ def _emit_svg_op(
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
                       font_family=font_family, math_glyph=lp.math_glyph)
 
-        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style):
+        case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style, width=width):
             pts_px = {
                 key: gxy(*value)
                 for key, value in brace_quadratic_points(
-                    (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction
+                    (float(p1[0]), float(p1[1])), (float(p2[0]), float(p2[1])), direction,
+                    width=width,
                 ).items()
             }
             attrs = _stroke_attrs(style, styles)

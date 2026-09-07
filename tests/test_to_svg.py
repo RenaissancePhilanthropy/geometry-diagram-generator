@@ -1957,6 +1957,23 @@ def _parse_brace_path_corners(d: str) -> "tuple[tuple[float, float], tuple[float
     return as_point(tokens[1]), as_point(tokens[9]), as_point(tokens[17])
 
 
+def test_draw_brace_width_widens_the_tip_offset():
+    # A wider `width` must move the tip further from the p1-p2 baseline in
+    # the rendered path -- not just get recorded on the IR and ignored by
+    # the renderer.
+    narrow = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", width=0.3)])
+    wide = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", width=1.2)])
+
+    def tip_distance_from_mid(diagram):
+        root = _parse(_compile_svg(diagram))
+        brace = next(el for el in _findall(root, "path") if el.get("data-role") == "brace")
+        start, tip, end = _parse_brace_path_corners(brace.get("d"))
+        mid = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
+        return math.hypot(tip[0] - mid[0], tip[1] - mid[1])
+
+    assert tip_distance_from_mid(wide) > tip_distance_from_mid(narrow)
+
+
 def test_draw_brace_label_is_offset_beyond_the_tip_not_centered_on_it():
     # Regression test: the label used to be placed exactly at pts_px["tip"]
     # (label centered right on the brace's point, no breathing room). It

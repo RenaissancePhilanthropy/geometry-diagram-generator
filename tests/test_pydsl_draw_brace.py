@@ -22,6 +22,19 @@ def test_draw_brace_records_draw_brace_op_with_defaults():
     assert matches[0].p2 == [4.0, 0.0]
     assert matches[0].direction == "up"
     assert matches[0].label is None
+    assert matches[0].width == pytest.approx(0.3)
+
+
+def test_draw_brace_accepts_a_wider_width():
+    # Regression test: a brace packed close against other geometry (e.g. a
+    # compact 3D solid in oblique projection) can need more clearance than
+    # the default 0.3 gives -- the brace's curve, and its label, would
+    # otherwise land on top of a neighboring face instead of in clear space.
+    with new_builder_context() as builder:
+        draw_brace((0.0, 0.0), (4.0, 0.0), width=1.2)
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, DrawBrace)]
+    assert matches[0].width == pytest.approx(1.2)
 
 
 def test_draw_brace_accepts_direction_and_label():

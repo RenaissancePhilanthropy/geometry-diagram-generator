@@ -1617,12 +1617,18 @@ def draw_brace(
     p2: "tuple[float, float]",
     direction: str = "up",
     label: "str | None" = None,
+    width: float = 0.3,
 ) -> None:
     """Draw a curly brace spanning two literal (x, y) coordinates — for
     composite connectors and tape-diagram/number-bond-style groupings.
     `direction` (one of "left", "right", "up", "down") selects which side of
     the p1-p2 line the brace bulges toward. `label`, if given, is centered
-    at the brace's tip."""
+    near the brace's tip. `width` (default 0.3 construction units) is how
+    far the tip pokes out from the p1-p2 line -- raise it for a short brace
+    packed close against other geometry (e.g. a compact 3D solid in oblique
+    projection), where the default can leave the brace's curve, or its
+    label, overlapping a neighboring face instead of sitting in clear
+    space."""
     from geometry_diagrams.ir.ir import DrawBrace
 
     if label is not None:
@@ -1633,6 +1639,7 @@ def draw_brace(
         p2=[float(p2[0]), float(p2[1])],
         direction=direction,
         label=label,
+        width=float(width),
     ))
 
 

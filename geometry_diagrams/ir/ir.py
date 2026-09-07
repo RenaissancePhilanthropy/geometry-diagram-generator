@@ -951,6 +951,12 @@ class DrawBrace(RenderBase):
     p2: List[float]          # [x, y] in construction coordinates
     direction: Literal["left", "right", "up", "down"] = "up"
     label: Optional[str] = None   # optional text centered at the brace's tip
+    width: float = 0.3       # perpendicular distance from p1-p2 to the brace's tip, in
+                             # construction units. Must match render_util.BRACE_WIDTH's
+                             # value -- duplicated here (rather than imported) to avoid a
+                             # circular import, since render_util.py already imports this
+                             # module; render_util.brace_quadratic_points() itself still
+                             # owns the real default for any caller that skips this field.
 
 
 RenderOp = Annotated[
