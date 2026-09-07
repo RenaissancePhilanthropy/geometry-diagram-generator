@@ -144,10 +144,11 @@ A subtler worry.
 Every read so far came after the model was asked to assess itself.
 Maybe the question creates the signal rather than reveals it.
 So we read the state at the last token of the answer, before any confidence question exists.
-We report MMLU-Pro because it is the one domain where this test can work: from the question alone, correctness is unreadable there (0.57), so anything readable at the end of the answer was made by attempting.
-On MATH the question alone already predicts 0.79, leaving no room to see what the attempt adds, and on GPQA nothing is readable at any site.
-On MMLU-Pro, correctness is readable at the end of the answer at 0.69.
-Asking the model to self-assess sharpens the signal to 0.77.
+This test can only work where the question alone predicts nothing.
+That rules out MATH, where the question alone already predicts correctness at 0.79, and GPQA, where nothing is readable at any site.
+On MMLU-Pro the question alone reads 0.57, chance.
+At the end of the answer, correctness reads 0.69.
+Asking the model to self-assess sharpens it to 0.77.
 
 \paragraph{Transfer across domains.}
 \cref{tab:transfer} trains a probe on one domain and tests it on each of the others.
