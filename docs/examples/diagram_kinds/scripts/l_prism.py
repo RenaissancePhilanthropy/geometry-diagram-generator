@@ -102,24 +102,50 @@ draw(segment(F0, F3), color="black", thick=True)
 A3.label("", pos="above left")
 
 # Now add braces for the 5 labeled dimensions
+
+def offset_perp(p1, p2, direction, standoff):
+    """Shift both endpoints of a segment sideways by `standoff`, along the
+    same perpendicular draw_brace() itself will bulge toward for this
+    p1/p2/direction combo -- a parallel dimension line pulled clear of the
+    solid, rather than sitting flush on the real edge. Several of this
+    solid's edges (see below) are short AND run diagonally in this oblique
+    projection, so bracing them in place -- even with a much bigger
+    `width` -- still produces a visibly warped, squiggly curve (the brace
+    curve's own shoulder geometry assumes a bulge that's small relative to
+    the segment length; a short diagonal edge boxed in by neighboring
+    faces doesn't leave room for that). Moving the whole baseline out to
+    open space first, then bracing it with draw_brace()'s normal small
+    default width, gives a properly-proportioned curly brace instead."""
+    (x1, y1), (x2, y2) = p1, p2
+    dx, dy = x2 - x1, y2 - y1
+    seg_len = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / seg_len, dy / seg_len
+    n1, n2 = (-uy, ux), (uy, -ux)
+    dirx, diry = {"up": (0, 1), "down": (0, -1), "left": (-1, 0), "right": (1, 0)}[direction]
+    nx, ny = n1 if (n1[0] * dirx + n1[1] * diry) >= (n2[0] * dirx + n2[1] * diry) else n2
+    return (x1 + nx * standoff, y1 + ny * standoff), (x2 + nx * standoff, y2 + ny * standoff)
+
 # 1. Overall length = 6: brace along front bottom edge A0 to B0
 # A0 is proj(0,0,0), B0 is proj(6,0,0)
 draw_brace((A0.x, A0.y), (B0.x, B0.y), direction="down", label="6")
 
 # 2. Overall width = 4: brace along left face bottom edge A0 to F0
-# A0=proj(0,0,0), F0=proj(0,4,0)
-draw_brace((A0.x, A0.y), (F0.x, F0.y), direction="left", label="4")
+# A0=proj(0,0,0), F0=proj(0,4,0) -- this edge is short and diagonal in the
+# projection, boxed in by the front/left faces, so brace it on an offset
+# parallel line pulled clear of the solid instead of the true edge.
+p1, p2 = offset_perp((A0.x, A0.y), (F0.x, F0.y), "right", 0.5)
+draw_brace(p1, p2, direction="right", label="4")
 
 # 3. Overall height = 3: brace along left vertical edge A0 to A3
 # A0=proj(0,0,0), A3=proj(0,0,3)
 draw_brace((A0.x, A0.y), (A3.x, A3.y), direction="left", label="3")
 
 # 4. Notch width = 2: brace along the notch inner face bottom edge C0 to D0
-# C0=proj(6,2,0), D0=proj(4,2,0)
-# This is the edge from x=6 to x=4 at y=2 z=0
-draw_brace((D0.x, D0.y), (C0.x, C0.y), direction="down", label="2")
+# C0=proj(6,2,0), D0=proj(4,2,0) -- same issue as the width brace above.
+p1, p2 = offset_perp((D0.x, D0.y), (C0.x, C0.y), "down", 0.3)
+draw_brace(p1, p2, direction="down", label="2")
 
 # 5. Notch depth = 2: brace along the notch left face bottom D0 to E0
-# D0=proj(4,2,0), E0=proj(4,4,0)
-# This is the edge from y=2 to y=4 at x=4 z=0
-draw_brace((D0.x, D0.y), (E0.x, E0.y), direction="right", label="2")
+# D0=proj(4,2,0), E0=proj(4,4,0) -- same issue as the width brace above.
+p1, p2 = offset_perp((D0.x, D0.y), (E0.x, E0.y), "right", 0.9)
+draw_brace(p1, p2, direction="right", label="2")
