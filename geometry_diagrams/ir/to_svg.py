@@ -311,13 +311,24 @@ def ir_to_svg(
     group_chevron_counts: dict[str, int] = {}  # parallel: 1/2/3 chevrons
     equal_idx = 0
     parallel_idx = 0
+    _TICK_COUNT_RE = re.compile(r"^tick(\d+)$")
+    _PARALLEL_COUNT_RE = re.compile(r"^parallel(\d+)$")
     for g in seg_groups:
         if g.startswith("parallel"):
-            group_chevron_counts[g] = (parallel_idx % 3) + 1
-            parallel_idx += 1
+            m = _PARALLEL_COUNT_RE.match(g)
+            if m:
+                group_chevron_counts[g] = min(max(int(m.group(1)), 1), 3)
+            else:
+                group_chevron_counts[g] = (parallel_idx % 3) + 1
+                parallel_idx += 1
         else:
-            group_mark_symbols[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
-            equal_idx += 1
+            m = _TICK_COUNT_RE.match(g)
+            if m:
+                n = min(max(int(m.group(1)), 1), len(_MARK_SYMBOLS))
+                group_mark_symbols[g] = _MARK_SYMBOLS[n - 1]
+            else:
+                group_mark_symbols[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
+                equal_idx += 1
 
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
@@ -829,10 +840,14 @@ def _emit_svg_op(
                     stroke = "black"
             n_arcs = 1
             if group:
-                try:
-                    n_arcs = min(int(str(group)), 3)
-                except (ValueError, TypeError):
-                    pass
+                m = re.match(r"^arc(\d+)$", str(group))
+                if m:
+                    n_arcs = min(int(m.group(1)), 3)
+                else:
+                    try:
+                        n_arcs = min(int(str(group)), 3)
+                    except (ValueError, TypeError):
+                        pass
             for angle in angles:
                 missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
                 if missing:
