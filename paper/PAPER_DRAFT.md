@@ -74,4 +74,4 @@ Second, ask when the direction appears. Before the attempt, all five tries at a 
 
 **Limitations.** A probe could be reading properties of failed output rather than a self-assessment. The surface baseline bounds this without closing it, most loosely on MATH, geometry ({ref:app:alternatives}), and GLM. Every number is a single seed.  The causal result holds on Mistral. On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it. Gemma-4 leaves too few failures to test. Whether preference tuning creates the gap is open. A base model would answer it.
 
-**Takeaway.** These models carry information about their own errors that their self-report does not. On one model, self-report depends on it.
+**Takeaway.** Four open models carry information about their own errors that their self-report does not. One uses it when it self-reports, and two do not.
