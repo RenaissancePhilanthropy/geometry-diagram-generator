@@ -24,7 +24,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 
 **Models and tasks.** We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench. GeoGenBench is a geometry task. The model writes a construction and a compiler checks it against a formal specification, so its labels need no judge. That is 16 cells of about 750 attempts each.
 
-**Prompting structure.**
+**Three-step prompting structure.**
 
 1. The model is shown the question and asked, before answering, how confident it is, from 0 to 100, that it will get it right.
 2. It answers.
