@@ -1,0 +1,195 @@
+% GeoGenBench — 4-page workshop version
+%
+% Condensed from the full NeurIPS submission (geogenbench.tex).
+% Target: 4 pages of body text (references excluded), NeurIPS style.
+% Swap style/neurips_2026 for the workshop's own style file when known.
+%
+% Build:  lualatex workshop && bibtex workshop && lualatex workshop && lualatex workshop
+
+\documentclass{article}
+
+\usepackage[nonatbib]{style/neurips_2026}              % anonymous submission
+
+\input{preamble}
+
+\title{GeoGenBench: Symbolically Verified Generation \\ of Geometry Diagrams}
+
+\author{%
+  Anonymous Authors\\
+  Affiliation\\
+  \texttt{anon@example.org}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Existing geometry benchmarks ask models to \emph{interpret} a diagram; none ask whether a model can \emph{produce} a correct diagram from a description.
+We introduce \textbf{\GeoGen}, a methodology for automatically-verifiable benchmarks of generative geometric reasoning, and \textbf{\GeoGenBench}, its first instance: 801 prompts paired with machine-checkable property lists.
+\GeoGen co-generates prompts and rubrics from shared Python source, then renders the model's TikZ output and decides each predicate symbolically against compiled SymPy coordinates --- no human grading, no vision--language judge.
+Benchmarking six frontier models under a raw-TikZ and a structured-IR strategy, we find the cost--quality Pareto frontier collapses to a single corner: three flagships tie within $1$\pp at a $7\times$ cost spread under the IR, which lifts models by $2$--$25$\pp (most for those weakest at raw TikZ).
+One vendor's model rejects the IR schema outright --- a portability gap, not a capability gap.
+A pre-registered $N{=}200$ human study finds moderate auto/expert agreement ($\kappa{=}0.455$) with strictly one-directional verifier lenience.
+We release the dataset, template engine, verification toolkit, and leaderboard.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Frontier LLMs now author visual artifacts --- slide decks, worksheets, technical illustrations.
+The most-deployed such artifact in K--12 education is the geometry diagram, yet every existing geometry benchmark evaluates the inverse direction: given a diagram, answer a question.
+None measures whether a model can \emph{produce} a correct diagram from a textual description.
+\GeoGenBench fills this gap.
+
+Consider \textit{``Draw an acute triangle $EFG$ with vertex angles $60^\circ$, $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''}
+A correct rendering must satisfy $\angle E = 60^\circ$, $\angle F = 70^\circ$, $H$ on segment $EF$ (not its extension), $\angle GHE = 90^\circ$, and acuteness.
+\GeoGenBench encodes each clause as a machine-checkable predicate over the SymPy-compiled coordinates of the model's rendered TikZ: in our pilot, one flagship placed $H$ on line $EF$ but \emph{outside} the segment; another drew an obtuse triangle.
+The verifier flags each failure with a specific predicate verdict, not a holistic score.
+
+We distinguish \textbf{\GeoGen}, the methodology --- (i) procedural co-generation of prompts and property-list rubrics from shared source, and (ii) a render-then-symbolic-verify pipeline driven by a declarative predicate language --- from \textbf{\GeoGenBench}, its 801-prompt plane-geometry instance.
+Future \GeoGen-family benchmarks (coordinate-plane algebra, 3D solids, engineering drawings) inherit the methodology and extend the per-domain primitives.
+
+\paragraph{Related work.}
+Geometry3K \citep{lu2021intergps}, GeoQA \citep{chen2021geoqa}, UniGeo \citep{chen2022unigeo}, MathVista \citep{lu2024mathvista}, GeoEval \citep{zhang2024geoeval}, and GeoBench \citep{geobench2026} all measure diagram \emph{interpretation}.
+On the generation side, T2I-CompBench++ \citep{huang2025t2icompbenchpp} and GenExam \citep{wang2025genexam} grade generated \emph{images} via CLIP/MLLM or LLM judges, which cannot tell whether a ``right triangle'' actually has a right angle --- only whether the image looks like one.
+\GeoGenBench grades in symbolic space (TikZ $\to$ compiled SymPy geometry), where a \propname{right\_angle} verdict is an exact numeric check, deterministic, reproducible, and $\sim$$1000\times$ cheaper than an MLLM judge.
+Lean/Isabelle corpora and AlphaGeometry \citep{trinh2024alphageometry} machine-check \emph{proofs}; \GeoGenBench extends automatic verification to \emph{diagram generation}, occupying the previously-empty generation-side, automatically-graded cell.
+
+\section{The \GeoGen methodology and the \GeoGenBench instance}
+\label{sec:design}
+
+\paragraph{Pillar 1: Procedural co-generation.}
+Both the natural-language prompt and the machine-checkable property list are emitted by the same Python template (\cref{fig:cogen}): a single \texttt{altitude\_template($A,B,C,H$)} returns both the prose request and the predicate list \texttt{[right\_angle($A$,$H$,$B$), point\_on\_segment($H$,$B$,$C$)]} any correct rendering must satisfy.
+This eliminates rubric/question drift and provides a contamination defence: reviewers can re-roll the engine with fresh seeds at the same difficulty distribution.
+Where co-generation is impractical, the methodology supports hand- or LLM-extracted prompts with hand-authored rubrics, reported separately by source.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    every node/.style={font=\small},
+    func/.style={draw, rounded corners, fill=blue!8, align=center,
+                 text width=70mm, minimum height=9mm, font=\ttfamily\small},
+    outbox/.style={draw, rounded corners, fill=green!6, align=center,
+                text width=53mm, minimum height=16mm, inner sep=3pt},
+    role/.style={font=\scriptsize\itshape, color=gray!50!black, align=center},
+    >=Stealth, line width=0.5pt
+]
+  \node[func] (fn) {altitude\_template($A,B,C,H$,\ ang$_A$,\ ang$_B$):};
+  \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.2)$) {%
+    \textbf{Natural-language prompt}\\[2pt]
+    \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
+    Construct the altitude from $C$ meeting $AB$ at $H$.''};
+  \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.2)$) {%
+    \textbf{Property list (rubric)}\\[2pt]
+    \scriptsize\ttfamily right\_angle($C, H, A$)\\
+    point\_on\_segment($H, A, B$)\\
+    angle\_equal($\angle BAC$, $60^\circ$)};
+  \draw[->] (fn.south) .. controls +(0,-0.5) and +(0,0.5) .. (prompt.north);
+  \draw[->] (fn.south) .. controls +(0,-0.5) and +(0,0.5) .. (rubric.north);
+  \node[role, below=0.5mm of prompt, text width=53mm] {shown to the model};
+  \node[role, below=0.5mm of rubric, text width=53mm] {used to grade (never shown to the model)};
+\end{tikzpicture}
+\caption{Procedural co-generation: one Python template emits both the prompt and the rubric, guaranteeing they stay mutually consistent.}
+\label{fig:cogen}
+\end{figure}
+
+\paragraph{Pillar 2: Render-then-symbolic-verify.}
+The model emits TikZ; a containerised LuaLaTeX renderer compiles it to SVG; an extractor compiles the same source to a coordinate-bearing SymPy representation; a fixed-vocabulary, typed predicate language is decided against that representation in microseconds per predicate.
+The v1 language comprises 17 symbolic predicates (e.g.\ \propname{right\_angle}, \propname{midpoint}, \propname{collinear}, \propname{parallel}, \propname{tangent}, \propname{angle\_equal}, \propname{point\_on\_segment}) decided with numeric tolerance $\tau = 5\times10^{-3}$, plus 2 intentionally-weaker source-string checks (label/mark presence) contributing only to a \emph{loose} pass.
+The language is declarative (authors specify \emph{what} must hold, not \emph{how} to check it), versioned, and renderer-agnostic.
+
+\paragraph{Task and scoring.}
+A scenario is $\mathcal{S} = \langle \text{prompt},\ \mathcal{P},\ \mathcal{L},\ \mathcal{C} \rangle$; the model sees only the prompt --- properties are the rubric, never the input.
+Each output scores \texttt{pass} (all checks pass), \texttt{soft\_pass} (no failures, $\geq1$ check skipped), \texttt{fail}, or a generation/render failure.
+
+\paragraph{Composition.}
+801 prompts: 600 templated scenarios from 30 procedural templates, 200 per difficulty tier --- \tone\ (single shape), \ttwo\ (one auxiliary construction), \tthree\ (multi-step composition) --- plus 201 curriculum scenarios LLM-extracted against the topical scaffold of a state-adopted K--12 curriculum \citep{bluebonnet2024}, adding breadth at the cost of LLM-authored ground truth.
+Metrics are decomposed by source; the templated half serves as the calibration anchor.
+
+\section{Verification reliability}
+\label{sec:verification}
+
+\paragraph{Completeness and adversarial soundness.}
+A property list is \emph{complete} if every diagram passing it is congruent (up to rigid motion and scale) to the intended construction.
+Auditing all 30 templates yields $18/11/1$ tight/loose/skeletal ($63\%/35\%/2\%$ of scenarios): loose templates pin the named relations but leave continuous parameters free, matching educational practice.
+For each of the 17 symbolic predicates we attempted adversarial TikZ that passes the predicate while contradicting the prompt; five predicates show soft spots, all addressable by hardening or template-side pairing, and we estimate $<5\%$ of strict passes are vulnerable in the wild because templates pair check types so single-check loopholes close.
+
+\paragraph{Hardening.}
+Three verifier changes (closed-form intersection solving, a pgfmath-style coordinate evaluator, the \propname{centroid} predicate) promoted $4.6\%$ of pilot records from \texttt{soft\_pass} to \texttt{pass} with zero demotions --- and shrank the apparent structured-vs-raw strategy effect by roughly half, showing that part of the ``strategy gap'' was verifier weakness on raw outputs, not model weakness.
+All reported numbers are post-hardening.
+
+\paragraph{Human-correlation study.}
+A pre-registered study ($N{=}200$; stratified sample over the pilot; two domain-expert raters --- a PhD mathematician and a K--12 mathematics educator --- rating blind to the auto-verdict, then meeting to consensus) yields $\kappa = 0.455$ on the binary collapse (95\% CI $[0.304, 0.590]$; balanced accuracy $0.684$): \textbf{moderate agreement}, below the pre-registered $0.70$ threshold.
+Inter-rater agreement is substantial ($\kappa = 0.704$), so the instrument is consistent; the gap is between raters and verifier.
+Crucially, the disagreement is \emph{one-directional}: $18\%$ of strict-pass records overturn to expert \texttt{fail}, zero the reverse.
+Per-tier, the disagreement concentrates entirely on \ttwo\ ($\kappa = 0.160$ vs $0.651$/$0.796$ on \tone/\tthree), where property lists check the named auxiliary construction but not prompt-specified numeric parameters --- the loose-completeness pattern made empirical ($89\%$ of disagreements code as ``verifier missed prompt-numeric constraint'').
+Leaderboard rates are therefore conservative against the verifier-bias axis, and cell \emph{differences} are largely preserved since the lenience applies uniformly across cells on affected templates; the v2 fix (numeric predicates lifting affected \ttwo\ templates to tight) is committed follow-up.
+
+\section{Experiments}
+\label{sec:results}
+
+\paragraph{Setup.}
+Six production models across three vendors ($\sim$$20\times$ price spread): \opus, \sonnet, \haiku, \gpt, \geminipro, \geminiflash; temperature $1.0$; published April-2026 rates.
+Two reference strategies: \textbf{\rawcode} (the model emits TikZ directly from the prompt plus a TikZ tutorial; zero scaffolding) and \textbf{\structured} (the model emits typed JSON for a Pydantic intermediate representation --- points, segments, intersections, circles, render ops, and \emph{check} declarations --- which code compiles to SymPy, then TikZ; declared checks run before render, so the strategy self-corrects with up to 3 retries).
+The headline run covers all 12 (model $\times$ strategy) cells at 600 templated scenarios $\times$ 3 repeats; a subprocess-isolated runner with an OS-level kill timeout keeps per-cell coverage $\geq 91\%$ except where noted.
+
+\begin{table}[t]
+\caption{Headline leaderboard ($600$ scenarios $\times$ $3$ repeats, post-hardening). Strict $=$ \texttt{pass}; loose adds \texttt{soft\_pass}. $^*$ marginally partial coverage; $^\dagger$ blocked at the API layer (\cref{ssec:findings}).}
+\label{tab:headline}
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
+\midrule
+\gpt & \structured & $2{,}304^*$ & \textbf{94.1\%} & 94.1\% & \dollars{0.075} & 33.6\,s \\
+\sonnet & \structured & $2{,}861$ & 93.4\% & 93.4\% & \dollars{0.088} & 19.0\,s \\
+\opus & \structured & $2{,}292^*$ & 93.3\% & 93.3\% & \dollars{0.532} & 23.9\,s \\
+\gpt & \rawcode & $1{,}800$ & 91.9\% & 95.3\% & \dollars{0.058} & 14.8\,s \\
+\geminipro & \structured & $1{,}140^{*}$ & 83.1\% & 83.1\% & \dollars{0.050} & 75.7\,s \\
+\sonnet & \rawcode & $1{,}800$ & 81.2\% & 95.3\% & \dollars{0.044} & 16.4\,s \\
+\haiku & \structured & $2{,}232$ & 75.3\% & 76.8\% & \dollars{0.032} & 8.0\,s \\
+\opus & \rawcode & $1{,}800$ & 71.6\% & 95.3\% & \dollars{0.262} & 13.8\,s \\
+\haiku & \rawcode & $2{,}403$ & 70.5\% & 76.0\% & \dollars{0.019} & 9.5\,s \\
+\geminipro & \rawcode & $1{,}800$ & 58.4\% & 89.9\% & \dollars{0.049} & 32.9\,s \\
+\geminiflash & \rawcode & $2{,}403$ & 35.9\% & 42.2\% & \dollars{0.012} & 22.1\,s \\
+\midrule
+\geminiflash & \structured & $0^\dagger$ & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Findings}
+\label{ssec:findings}
+
+\paragraph{Strategy choice helps unevenly.}
+\structured\ lifts every model: \gpt\ $+2.2$\pp, \haiku\ $+4.8$, \sonnet\ $+12.2$, \opus\ $+21.7$, \geminipro\ $+24.7$.
+The lift is largest for the models weakest at \rawcode\ and smallest for the strongest.
+
+\paragraph{Frontier convergence.}
+Under \structured, \gpt\ ($94.1\%$, \dollars{0.075}/scen), \sonnet\ ($93.4\%$, \dollars{0.088}), and \opus\ ($93.3\%$, \dollars{0.532}) span $0.8$\pp at a $\mathbf{7\times}$ cost ratio: the frontier-tier model carries no measurable quality premium under IR scaffolding, and the Pareto frontier collapses to the \gpt + \structured\ corner.
+On \rawcode\ the spread is wide ($91.9\% \to 35.9\%$); \opus + \rawcode\ is the most-dominated cell, beaten by \gpt + \rawcode\ by $20$\pp at $4.5\times$ lower cost.
+By tier, \tone\ is near-saturated for every Anthropic/OpenAI \structured\ cell (v2 needs harder \tone\ templates); \ttwo\ is where strategy first matters (\opus\ $+43$\pp, \geminipro\ $+54$\pp); \tthree\ separates the frontier cells (\gpt\ $93\%$, \sonnet\ $87\%$, \opus\ $82\%$).
+Most wrong outputs are \emph{rendered diagrams with wrong geometry}, not broken LaTeX.
+
+\paragraph{Portability: the schema-state cap.}
+\structured\ depends on schema-constrained generation, which OpenAI and Google compile to a server-side FSM with vendor-specific caps.
+Our IR schema ($\sim$20-variant discriminated union) compiles to thousands of states; \geminiflash\ rejects it at the API layer (HTTP 400: \emph{``too many states for serving''}) before generating a single token.
+This is a portability gap, not a capability gap --- and a caution for any benchmark shipping a multi-variant discriminated-union IR.
+
+\section{Limitations and conclusion}
+\label{sec:discussion}
+
+\GeoGenBench\ measures whether a model can translate a textual specification of a 2D plane-geometry construction into a globally-consistent metric realisation; it does not test proof construction, 3D solids, or teaching utility.
+$35\%$ of templated scenarios are intentionally loose (a pass means \emph{a} diagram consistent with the stated constraints, not \emph{the} canonical one), and the human study localises the resulting verifier lenience to \ttwo\ numeric constraints, with the v2 fix identified.
+On the cells run at headline N, the curriculum split is materially harder for every model measured (e.g.\ \haiku + \rawcode\ drops $82.1\% \to 36.0\%$); headline findings are templated-split findings.
+
+\GeoGen's two pillars extend beyond plane geometry: co-generation reuses wherever a domain admits a Python-expressible construction, and render-then-symbolic-verify extends along the versioned predicate-language axis.
+In flight: a GenExam-Math integration \citep{wang2025genexam} comparing symbolic verification against vision-LM judging on a shared 91-prompt subset, and coordinate-plane/3D extensions.
+We release the dataset, template engine, verification toolkit, Docker renderer, and leaderboard data under permissive licenses.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
