@@ -144,8 +144,9 @@ A subtler worry.
 Every read so far came after the model was asked to assess itself.
 Maybe the question creates the signal rather than reveals it.
 So we read the state at the last token of the answer, before any confidence question exists.
-On MMLU-Pro, correctness is readable there at 0.69.
-From the question alone it is 0.57, so the model cannot see failure coming.
+We report MMLU-Pro because it is the one domain where this test can work: from the question alone, correctness is unreadable there (0.57), so anything readable at the end of the answer was made by attempting.
+On MATH the question alone already predicts 0.79, leaving no room to see what the attempt adds, and on GPQA nothing is readable at any site.
+On MMLU-Pro, correctness is readable at the end of the answer at 0.69.
 Asking the model to self-assess sharpens the signal to 0.77.
 
 \paragraph{Transfer across domains.}
@@ -254,7 +255,6 @@ It works where the model's confidence is useless.
 A probe could be reading properties of failed output rather than a self-assessment.
 The surface baseline bounds this without closing it, most loosely on MATH, geometry (\cref{app:alternatives}), and GLM.
 Every number is a single seed.
-The before-asking test runs only on MMLU-Pro, because on MATH the question alone already predicts correctness at 0.79.
 The causal result holds on Mistral.
 On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it.
 Gemma-4 leaves too few failures to test.
