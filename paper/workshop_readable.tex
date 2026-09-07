@@ -50,21 +50,26 @@ Two things could be going on.
 Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but does not surface it in its self-report.
 Hence it is either a capability problem or a reporting problem.
 
-In this paper we aim to tell these two apart.
-We read the model's internal state directly with a linear detector, a \emph{probe}, and compare what the probe finds to the model's reported confidence.
+In this paper we tell these two apart.
+We read the model's hidden state with a linear \emph{probe} and compare what the probe finds to what the model reports.
 We say a fact is \emph{represented} when a probe can read it from the model's state, and \emph{reported} when it reaches the confidence number the model writes.
 The title's ``knowing'' is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report.
-We make no claim about awareness, and a probe alone could not support one.
+We make no claim about awareness.
+A probe alone could not support one.
 
 Prior work has shown that a model's output probabilities are often better calibrated than its words~\citep{kadavath2022language}, and that the truth of a given statement can be read from activations~\citep{azaria2023internal, burns2023discovering, marks2024geometry}.
-We apply those tools to the model's own attempts, and then intervene on the representation~\citep{zou2023representation} to ask whether the report depends on it.
+We apply those tools to the model's own attempts.
+Then we intervene on the representation~\citep{zou2023representation} to ask whether the report depends on it.
 
 \section{Reading the state}
 \label{sec:reading}
 
 \paragraph{Models and tasks.}
 We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
-Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction.
+Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench.
+GeoGenBench is a geometry task.
+The model writes a construction and a compiler checks it against a formal specification, so its labels need no judge.
+In a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction.
 That is 16 cells of about 750 attempts each.
 
 \paragraph{Prompting structure.}
@@ -196,13 +201,16 @@ same, with a random direction & 0.84 & 0.83 & 0.84 & unparseable \\
 \end{table}
 
 \paragraph{Result on Mistral.}
-Erase the direction and self-report loses its information: AUROC falls from 0.84 to 0.56, a change of $-0.27$ (95\% bootstrap interval $-0.42$ to $-0.12$).
-Erase a random direction and nothing happens ($-0.00$, interval $-0.03$ to $+0.03$).
+Erase the direction and self-report loses its information.
+Its AUROC falls from 0.84 to 0.56 (95\% bootstrap interval on the change, $-0.42$ to $-0.12$).
+Erase a random direction and nothing happens (interval $-0.03$ to $+0.03$).
 This is not generic damage.
-The output stays well formed, and confidence on wrong answers goes \emph{up} to match right answers, so the model becomes uniformly sure rather than confused.
-Exaggerate the direction and confidence on wrong answers falls while right answers hold; expected calibration error halves, $0.34 \to 0.19$.
+The output stays well formed.
+Confidence on wrong answers goes \emph{up} to match right answers, so the model becomes uniformly sure rather than confused.
+Amplify the direction and the opposite happens: confidence on wrong answers falls while right answers hold, and expected calibration error halves, $0.34 \to 0.19$.
 Two checks say the effect is specific.
-The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
+The same intervention 30\% of the way through the network does nothing.
+A direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
 
 \paragraph{Result on GLM.}
 GLM has the strongest signal in the study: within a question on MATH, the probe reads 0.87 while the model's own P(True) reads 0.53.
@@ -216,8 +224,13 @@ This is our cleanest case of represented but not reported, and it makes the caus
 \paragraph{A label-free check.}
 A trained probe might have overfit to our data.
 So we add an instrument that uses no correctness labels.
-The Jacobian lens~\citep{gurnee2026workspace} is fit on generic text and reads an activation for what it pushes the model to say next; we score each state by how far it leans toward ``wrong'' over ``correct.'' On dense models the lens matches the probe: on Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, and reads 0.5 at the input layer, as it should.
-Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
+The Jacobian lens~\citep{gurnee2026workspace} is fit on generic text.
+It reads an activation for what it pushes the model to say next.
+We score each state by how far it leans toward ``wrong'' over ``correct.''
+On dense models the lens matches the probe.
+On Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, and it reads 0.5 at the input layer, as it should.
+Two instruments built from different evidence find the same direction.
+And because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
 \paragraph{Where the lens fails.}
 The lens is a fixed dictionary from hidden-state directions to words, built once from generic text.
@@ -233,17 +246,23 @@ A label-free reader works only where the architecture gives it one path.
 
 \paragraph{Practical use.}
 Without an exact checker, the probe is the best per-attempt readout we found.
-Keeping the attempts it scores highest raises accuracy far more than keeping the ones the model is most confident in, and it works where the model's confidence is useless.
+Keeping the attempts it scores highest raises accuracy more than keeping the ones the model is most confident in.
+It works where the model's confidence is useless.
 
 \paragraph{Limitations.}
-A probe could be reading properties of failed output rather than a self-assessment; the surface baseline bounds this without closing it, most loosely on MATH, geometry (\cref{app:alternatives}), and GLM.
+A probe could be reading properties of failed output rather than a self-assessment.
+The surface baseline bounds this without closing it, most loosely on MATH, geometry (\cref{app:alternatives}), and GLM.
 Every number is a single seed.
-The before-asking test runs only on MMLU-Pro; on MATH the question alone already predicts correctness at 0.79.
-The causal result holds on Mistral and fails on GLM; Gemma-4 leaves too few failures to test, and the Qwen3.6 run did not finish in time.
-Whether preference tuning creates the gap is open; a base model would answer it.
+The before-asking test runs only on MMLU-Pro, because on MATH the question alone already predicts correctness at 0.79.
+The causal result holds on Mistral and fails on GLM.
+Gemma-4 leaves too few failures to test.
+The Qwen3.6 run did not finish in time.
+Whether preference tuning creates the gap is open.
+A base model would answer it.
 
 \paragraph{Takeaway.}
-These models carry information about their own errors that their self-report does not, and on one model self-report depends on it.
+These models carry information about their own errors that their self-report does not.
+On one model, self-report depends on it.
 
 \bibliographystyle{plainnat}
 \bibliography{refs,refs_confidence}
