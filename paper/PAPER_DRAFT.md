@@ -22,7 +22,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 
 ## Reading the state
 
-**Models and tasks.** We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench. GeoGenBench is a geometry task that uses a compiler to check the constructions. Four models times four tasks gives 16 cells, of about 750 attempts each.
+**Models and tasks.** We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts). Each answers 150 questions, five times each, on MMLU-Pro, MATH, and GPQA-Diamond, and 91 constructions, four times each, on GeoGenBench, a geometry task that uses a compiler to check the constructions. Four models times four tasks gives 16 cells: 750 attempts each, or 364 for geometry.
 
 **Three-step prompting structure.**
 
@@ -30,7 +30,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 2. It answers.
 3. It is asked how confident it is that the answer it just gave is correct.
 
-**The probe.** At the moment the model is about to write its confidence digit, we record the number and the residual-stream hidden state at that token (2,048 to 5,120 dimensions, depending on the model). The probe is a linear classifier on that vector: features are standardized, reduced to 50 principal components, and fed to an L2-regularized logistic regression that predicts whether the attempt was correct. We fit it with five-fold cross-validation grouped by question, so all five attempts at a question fall in the same fold and the probe is always scored on questions it never saw. The read depth is fixed in advance at 70% of the network ({ref:app:checkpoints}). Every readout is scored with AUROC.
+**The probe.** At the moment the model is about to write its confidence digit, we record the number and the residual-stream hidden state at that token (2,048 to 5,120 dimensions, depending on the model). The probe is a linear classifier on that vector: features are standardized, reduced to 50 principal components, and fed to an L2-regularized logistic regression that predicts whether the attempt was correct. We fit it with five-fold cross-validation grouped by question, so all attempts at a question fall in the same fold and the probe is always scored on questions it never saw. The read depth is fixed in advance at 70% of the network ({ref:app:checkpoints}). Every readout is scored with AUROC.
 
 **The activation state carries more than self-report.** The probe beats the model's self-report in **12 of 16** cells, with one tie. The mean gain is $+0.09$ AUROC ({ref:app:cells}). The gap is largest on MATH, at $+0.20$. Mistral on MATH is a good example of what this looks like. The model is never told whether it got the answer right. Yet after attempting, it raises its confidence, and it raises it more on the attempts it got wrong ($+22$ points) than on the ones it got right ($+16$ points). The probe on the same records reads 0.83. The state tracks correctness better than the self-report does.
 

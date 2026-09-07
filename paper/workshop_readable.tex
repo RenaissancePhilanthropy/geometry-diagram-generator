@@ -72,9 +72,8 @@ We apply those tools to the model's own attempts, and then ask whether the self-
 
 \paragraph{Models and tasks.}
 We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
-Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench.
-GeoGenBench is a geometry task that uses a compiler to check the constructions.
-Four models times four tasks gives 16 cells, of about 750 attempts each.
+Each answers 150 questions, five times each, on MMLU-Pro, MATH, and GPQA-Diamond, and 91 constructions, four times each, on GeoGenBench, a geometry task that uses a compiler to check the constructions.
+Four models times four tasks gives 16 cells: 750 attempts each, or 364 for geometry.
 
 \paragraph{Three-step prompting structure.}
 
@@ -87,7 +86,7 @@ Four models times four tasks gives 16 cells, of about 750 attempts each.
 \paragraph{The probe.}
 At the moment the model is about to write its confidence digit, we record the number and the residual-stream hidden state at that token (2,048 to 5,120 dimensions, depending on the model).
 The probe is a linear classifier on that vector: features are standardized, reduced to 50 principal components, and fed to an L2-regularized logistic regression that predicts whether the attempt was correct.
-We fit it with five-fold cross-validation grouped by question, so all five attempts at a question fall in the same fold and the probe is always scored on questions it never saw.
+We fit it with five-fold cross-validation grouped by question, so all attempts at a question fall in the same fold and the probe is always scored on questions it never saw.
 The read depth is fixed in advance at 70\% of the network (\cref{app:checkpoints}).
 Every readout is scored with AUROC.
 
