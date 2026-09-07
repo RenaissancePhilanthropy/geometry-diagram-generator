@@ -106,12 +106,11 @@ FRESH_CHOICES: "dict[str, dict]" = {
     "area_model": {
         "status": "ok",
         "attempt_svg": "attempts/area_model_attempt0.svg",
+        "attempt_script": "attempt_scripts/area_model_attempt0.py",
         "notes": (
-            "Fresh PythonFullStrategy.run() with experimental_diagram_cookbook=True "
-            "(1 attempt). All 4 box-method cells (200, 30, 100, 15) render with "
-            "distinct, non-overlapping labels and both factor braces (23 = 20+3, "
-            "15 = 10+5) are correct -- baseline's defect (2 empty right-column "
-            "cells, overlapping left-column text) is gone."
+            "An area model (box method) for 23 x 15: a 2x2 grid split by the "
+            "factors 20/3 and 10/5, with each cell labeled by its partial "
+            "product and a sum check below."
         ),
     },
     "attribute_chart": {
