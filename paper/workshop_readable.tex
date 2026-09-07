@@ -73,7 +73,7 @@ We apply those tools to the model's own attempts, and then ask whether the self-
 \paragraph{Models and tasks.}
 We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
 Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench.
-GeoGenBench is a geometry task that uses a compiler to check the constructions, so its labels need no judge.
+GeoGenBench is a geometry task that uses a compiler to check the constructions.
 Four models times four tasks gives 16 cells, of about 750 attempts each.
 
 \paragraph{Three-step prompting structure.}
