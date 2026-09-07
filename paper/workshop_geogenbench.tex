@@ -22,56 +22,52 @@
 \maketitle
 
 \begin{abstract}
-Existing geometry benchmarks ask a model to read a diagram.
-None asks whether it can draw one.
-We introduce \GeoGenBench: 801 prompts that each ask for a plane-geometry construction, paired with a list of properties a correct drawing must have.
-The prompt and the property list come from the same Python template, so they cannot drift apart.
+Geometry benchmarks ask a model to read a diagram.
+None asks it to draw one.
+\GeoGenBench does.
+It has 801 prompts, each asking for a plane-geometry construction and each paired with the properties a correct drawing must have.
 The model writes TikZ.
-We compile it, recover the coordinates, and check every property symbolically.
+We compile it, recover the coordinates, and check every property exactly.
 No human grades and no vision model judges.
-We test six frontier models under two strategies.
+We test six frontier models.
 Asking for a typed intermediate representation instead of raw TikZ lifts every model, by 2 to 25 points, most for the weakest.
-Under that strategy, three flagship models land within one point of each other at a $7\times$ cost spread.
-One model cannot use the strategy at all, because its API rejects the schema.
-A pre-registered human check of 200 outputs finds the verifier lenient in one direction only: it never fails a correct drawing, and experts overturn 18\% of its passes, almost all on one difficulty tier.
-We release the dataset, the template engine, the verifier, and the leaderboard.
+Under that scaffold the three best models tie within one point at a $7\times$ cost spread.
+A human check of 200 outputs finds the verifier lenient in one direction only: it never fails a correct drawing.
+We release the dataset, the templates, the verifier, and the leaderboard.
 \end{abstract}
 
 \section{Introduction}
 \label{sec:intro}
 
-Frontier language models now write slide decks, worksheets, and technical illustrations.
-In K--12 education the most common such artifact is the geometry diagram.
-Every existing geometry benchmark tests the other direction: given a diagram, answer a question.
-None tests whether a model can produce a correct diagram from a description.
-\GeoGenBench fills that gap.
+Language models now write worksheets and slides, and in school the picture they most often need to draw is a geometry diagram.
+Every geometry benchmark tests the other direction: here is a diagram, answer a question.
+None tests whether a model can draw a correct diagram from a description.
 
 Take the prompt \textit{``Draw an acute triangle $EFG$ with angles $60^\circ$ and $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''}
-A correct drawing has $\angle E = 60^\circ$, $\angle F = 70^\circ$, $H$ on the segment $EF$ rather than its extension, $\angle GHE = 90^\circ$, and all three angles acute.
-Each of those is a predicate we can check on the coordinates of the model's drawing.
-In our pilot, one flagship model put $H$ on the line $EF$ but outside the segment.
+A correct drawing has those two angles, $H$ on the segment $EF$ and not beyond it, a right angle at $H$, and no obtuse angle.
+Each of those is a check we can run on the coordinates of the model's drawing.
+In our pilot, one flagship model put $H$ beyond the segment.
 Another drew an obtuse triangle.
-The verifier names the failed predicate in each case rather than giving a holistic score.
+The verifier names the check that failed.
 
 Two ideas make this work.
-The prompt and its rubric are generated together from one template, so a rubric can never ask for something the prompt did not.
-And the drawing is graded in symbolic space, from coordinates, so a ``right angle'' verdict is a numeric check rather than a judgment about how the picture looks.
-We call the method \GeoGen and its first instance \GeoGenBench.
+The prompt and its checks come from the same template, so the checks can never ask for something the prompt did not.
+And the drawing is graded from its coordinates, so ``right angle'' is a calculation, not an opinion about how the picture looks.
 
 \paragraph{Prior work.}
-Geometry3K~\citep{lu2021intergps}, GeoQA~\citep{chen2021geoqa}, UniGeo~\citep{chen2022unigeo}, MathVista~\citep{lu2024mathvista}, GeoEval~\citep{zhang2024geoeval}, and GeoBench~\citep{geobench2026} all test diagram interpretation.
-On the generation side, T2I-CompBench++~\citep{huang2025t2icompbenchpp} and GenExam~\citep{wang2025genexam} grade generated images with CLIP, multimodal, or language-model judges, which can say whether an image looks like a right triangle but not whether it has a right angle.
-Lean and Isabelle corpora and AlphaGeometry~\citep{trinh2024alphageometry} machine-check proofs.
-\GeoGenBench applies machine checking to diagram generation, a cell that was empty.
+Geometry3K~\citep{lu2021intergps}, GeoQA~\citep{chen2021geoqa}, UniGeo~\citep{chen2022unigeo}, MathVista~\citep{lu2024mathvista}, GeoEval~\citep{zhang2024geoeval}, and GeoBench~\citep{geobench2026} test diagram reading.
+T2I-CompBench++~\citep{huang2025t2icompbenchpp} and GenExam~\citep{wang2025genexam} grade generated images with a model as judge, which can say whether a picture looks like a right triangle but not whether it has a right angle.
+AlphaGeometry~\citep{trinh2024alphageometry} and the Lean corpora machine-check proofs.
+\GeoGenBench machine-checks drawings.
 
 \section{The benchmark}
 \label{sec:design}
 
 \paragraph{Co-generation.}
-One Python template emits both the prompt and the rubric (\cref{fig:cogen}).
-The altitude template above returns the prose request and the predicate list \texttt{[right\_angle($A$,$H$,$B$), point\_on\_segment($H$,$B$,$C$)]} that any correct drawing must satisfy.
-This removes drift between question and rubric.
-It also defends against contamination, because a reviewer can re-roll the engine with fresh seeds at the same difficulty.
+One Python template writes both the prompt and its checks (\cref{fig:cogen}).
+The altitude template returns the sentence the model sees and the list \texttt{[right\_angle($A$,$H$,$B$), point\_on\_segment($H$,$B$,$C$)]} the grader uses.
+The two cannot drift apart.
+A reviewer worried about contamination can re-roll the template with a fresh seed.
 
 \begin{figure}[t]
 \centering
@@ -105,62 +101,59 @@ It also defends against contamination, because a reviewer can re-roll the engine
 
 \paragraph{Symbolic verification.}
 The model emits TikZ.
-A containerised LuaLaTeX renderer compiles it to SVG, and an extractor compiles the same source into SymPy geometry with coordinates.
-A fixed, typed predicate language is then decided against those coordinates in microseconds per predicate.
-Version 1 has 15 symbolic predicates, such as \propname{right\_angle}, \propname{midpoint}, \propname{collinear}, \propname{parallel}, \propname{tangent}, and \propname{point\_on\_segment}, decided with numeric tolerance $\tau = 5\times10^{-3}$.
-Two weaker source-string checks, for labels and marks, count only toward a \emph{loose} pass.
-Authors state what must hold, not how to check it.
+We compile it twice: once to an image, once to SymPy geometry with coordinates.
+Fifteen checks such as \propname{right\_angle}, \propname{midpoint}, \propname{parallel}, and \propname{point\_on\_segment} run on those coordinates in microseconds, with a small numeric tolerance.
+Two weaker checks on labels and marks count only toward a loose pass.
+Template authors say what must hold, not how to test it.
 
 \paragraph{Scoring.}
 The model sees only the prompt.
-Each output scores \texttt{pass} if every check passes, \texttt{soft\_pass} if nothing fails but at least one check was skipped, \texttt{fail}, or a generation or render failure.
+An output passes if every check passes.
+It gets a soft pass if nothing fails but a check was skipped.
+Otherwise it fails, or it never rendered.
 
 \paragraph{Composition.}
-801 prompts.
-600 come from 30 procedural templates, 200 per difficulty tier: \tone is a single shape, \ttwo adds one auxiliary construction, \tthree composes several steps.
-The other 201 are extracted by a language model from the topical scaffold of a state-adopted K--12 curriculum~\citep{bluebonnet2024}, which adds breadth at the cost of model-authored ground truth.
-We report the two sources separately, and the templated half is the calibration anchor.
+600 of the 801 prompts come from 30 templates, 200 per tier: \tone is a single shape, \ttwo adds one construction, \tthree combines several.
+The other 201 were extracted by a language model from a state K--12 curriculum~\citep{bluebonnet2024}.
+We report the two sources separately and treat the templated 600 as the anchor.
 
 \section{Verifier reliability}
 \label{sec:verification}
 
 \paragraph{Completeness.}
-A property list is complete if every drawing that passes it is congruent to the intended construction, up to rigid motion and scale.
-Auditing all 30 templates gives 18 tight, 11 loose, and 1 skeletal, or 63\%, 35\%, and 2\% of scenarios.
-Loose templates pin the named relations but leave continuous parameters free, which matches educational practice.
-For each predicate we tried to write TikZ that passes the predicate while contradicting the prompt.
-Five predicates have soft spots.
-All are closable by hardening or by pairing checks in the template, and because templates already pair check types, we estimate fewer than 5\% of strict passes are exploitable in the wild.
+A check list is complete if every drawing that passes it is the intended construction, up to position and scale.
+Of the 30 templates, 18 are that tight.
+The other 12 pin the named relations but leave free parameters, as a teacher's instructions usually do.
+We also tried to fool each check with TikZ that passes it while contradicting the prompt.
+Five checks can be fooled alone.
+Templates pair checks, so we estimate under 5\% of passes are exploitable.
 
 \paragraph{Hardening.}
-Three verifier changes, closed-form intersection solving, a pgfmath-style coordinate evaluator, and a \propname{centroid} predicate, promoted 4.6\% of pilot records from \texttt{soft\_pass} to \texttt{pass} with no demotions.
-They also cut the apparent gap between the two strategies by about half.
-Part of the ``strategy gap'' was the verifier struggling with raw output, not the models.
-All numbers below are post-hardening.
+Three verifier fixes promoted 4.6\% of pilot outputs from soft pass to pass and demoted none.
+They also halved the apparent gap between the two strategies.
+Part of that gap had been the verifier's, not the models'.
+Every number below is post-fix.
 
 \paragraph{Human check.}
-A pre-registered study rated 200 outputs, stratified over the pilot.
-Two raters, a PhD mathematician who is an award-winning educator and an engineer with mathematics-teaching experience, rated blind to the verifier's verdict, then met to reach consensus.
-Agreement between verifier and raters is moderate: $\kappa = 0.455$ (95\% interval 0.30 to 0.59), balanced accuracy 0.68, below the pre-registered threshold of 0.70.
-The raters agree with each other ($\kappa = 0.704$), so the instrument is consistent and the gap is between raters and verifier.
+Two raters, a PhD mathematician and an engineer who has taught mathematics, judged 200 outputs blind to the verifier's verdict.
+Verifier and raters agree moderately ($\kappa = 0.455$), below the 0.70 we had pre-registered.
+The raters agree well with each other, so the gap is the verifier's.
 The disagreement runs one way.
-Experts overturned 18\% of strict passes to fail and never overturned a fail to pass.
-Nearly all of it sits on \ttwo ($\kappa = 0.16$, against 0.65 and 0.80 on \tone and \tthree), where property lists check the named auxiliary construction but not the numeric parameters the prompt specifies.
-89\% of disagreements code as ``verifier missed a prompt-numeric constraint.''
-Leaderboard rates are therefore conservative, and differences between cells survive, because the lenience applies to every model on the same templates.
-Numeric predicates that lift the affected \ttwo templates to tight are the committed version-2 fix.
+The raters overturned 18\% of the verifier's passes and none of its fails.
+Almost all of those sit on \ttwo, where the checks confirm the construction but not the numbers the prompt gave.
+Leaderboard rates are therefore a little generous, evenly across models.
+Numeric checks for those templates are the planned fix.
 
 \section{Experiments}
 \label{sec:results}
 
 \paragraph{Setup.}
-Six production models from three vendors, spanning a $20\times$ price range: \opus, \sonnet, \haiku, \gpt, \geminipro, and \geminiflash, at temperature 1.0 and April 2026 prices.
+Six models from three vendors at a $20\times$ price spread: \opus, \sonnet, \haiku, \gpt, \geminipro, and \geminiflash.
 Two strategies.
-\rawcode gives the model the prompt and a TikZ tutorial and takes the TikZ it writes.
-\structured asks the model for typed JSON in a Pydantic intermediate representation, with points, segments, intersections, circles, render operations, and check declarations, which code compiles to SymPy and then TikZ.
-Declared checks run before rendering, so the strategy corrects itself with up to three retries.
-The headline run covers all 12 model-by-strategy cells on the 600 templated scenarios, three repeats each.
-A subprocess-isolated runner with a hard timeout keeps coverage at or above 91\% per cell except where noted.
+\rawcode hands the model the prompt and a TikZ tutorial and takes what it writes.
+\structured asks for typed JSON describing points, segments, circles, and checks, which our code turns into SymPy and then TikZ.
+The checks run before rendering, so the model gets up to three retries.
+Every model-by-strategy cell runs on the 600 templated prompts three times.
 
 \begin{table}[t]
 \caption{Headline leaderboard ($600$ scenarios $\times$ $3$ repeats, post-hardening). Strict $=$ \texttt{pass}; loose adds \texttt{soft\_pass}. $^*$ marginally partial coverage; $^\dagger$ blocked at the API layer (\cref{sec:results}).}
@@ -188,40 +181,37 @@ A subprocess-isolated runner with a hard timeout keeps coverage at or above 91\%
 \end{tabular}
 \end{table}
 
-\paragraph{Structured output helps unevenly.}
-\structured lifts every model: \gpt by 2.2 points, \haiku by 4.8, \sonnet by 12.2, \opus by 21.7, and \geminipro by 24.7.
-The lift is largest for the models weakest at raw TikZ and smallest for the strongest.
+\paragraph{The scaffold lifts every model.}
+\structured helps each model, from 2 points for \gpt to 25 for \geminipro.
+The weaker a model is at raw TikZ, the more it gains.
 
 \paragraph{The frontier converges.}
-Under \structured, \gpt (94.1\%, \dollars{0.075} per scenario), \sonnet (93.4\%, \dollars{0.088}), and \opus (93.3\%, \dollars{0.532}) span 0.8 points at a $7\times$ cost ratio.
-The most expensive model carries no measurable quality premium once the scaffold is in place, and the cost-quality frontier collapses to one corner.
-Under \rawcode the spread is wide, from 91.9\% down to 35.9\%, and \opus is the most dominated cell, beaten by \gpt by 20 points at $4.5\times$ lower cost.
-By tier, \tone is nearly saturated for every Anthropic and OpenAI \structured cell.
-\ttwo is where strategy first matters (\opus $+43$ points, \geminipro $+54$).
-\tthree separates the frontier cells (\gpt 93\%, \sonnet 87\%, \opus 82\%).
-Most wrong outputs are rendered diagrams with wrong geometry, not broken LaTeX.
+With the scaffold, \gpt, \sonnet, and \opus finish within one point of each other, at 94\%, 93\%, and 93\%.
+\opus costs seven times what \gpt does.
+Without the scaffold the spread runs from 92\% down to 36\%.
+\tone is nearly solved.
+\ttwo is where the scaffold first matters.
+\tthree is where the frontier models separate.
+Most wrong outputs are clean diagrams with the wrong geometry, not broken code.
 
 \paragraph{Portability.}
-\structured relies on schema-constrained generation, which OpenAI and Google compile into a server-side state machine with vendor-specific limits.
-Our schema, a discriminated union of about 20 variants, compiles to thousands of states.
-\geminiflash rejects it at the API layer, HTTP 400, ``too many states for serving,'' before generating a token.
-That is a portability gap, not a capability gap, and a caution for any benchmark that ships a multi-variant schema.
+\structured needs schema-constrained decoding.
+Our schema compiles to thousands of states, and one vendor's API refuses it before the model writes a token.
+That is a gap in the API, not the model, and a warning for any benchmark built on a large schema.
 
 \section{Conclusion}
 \label{sec:discussion}
 
 \paragraph{Limitations.}
-\GeoGenBench measures whether a model can turn a text specification of a plane-geometry construction into a consistent drawing.
-It does not test proofs, 3D solids, or teaching value.
-35\% of templated scenarios are intentionally loose, so a pass means a drawing consistent with the stated constraints rather than the one canonical drawing.
-The human study localises the verifier's lenience to \ttwo numeric constraints, and the fix is identified.
-The curriculum split is harder for every model measured; \haiku under \rawcode drops from 82.1\% to 36.0\%.
-The headline findings are templated-split findings.
+\GeoGenBench tests whether a model can turn a sentence into a consistent plane drawing.
+It does not test proofs, solids, or teaching.
+A third of the templates accept any drawing that meets the stated constraints, not one canonical drawing.
+The curriculum prompts are harder for every model than the templated ones, and the headline numbers are templated numbers.
 
 \paragraph{Takeaway.}
 A geometry drawing can be graded exactly, from its coordinates, with no judge.
-Graded that way, the scaffold matters more than the model: a typed intermediate representation lifts every model, erases the premium of the most expensive one, and fails only where a vendor's API cannot accept the schema.
-We release the dataset, template engine, verifier, renderer, and leaderboard.
+Graded that way, the scaffold matters more than the model.
+We release everything needed to run it.
 
 \bibliographystyle{plainnat}
 \bibliography{refs}
