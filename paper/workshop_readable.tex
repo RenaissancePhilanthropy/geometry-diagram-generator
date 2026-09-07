@@ -35,7 +35,7 @@ The gap is largest on MATH.
 The probe is not just detecting hard questions: it still works when the same question is attempted five times.
 The signal exists before the model is asked how confident it is.
 On Mistral, the model uses this signal when it reports confidence: erase it from the hidden state and stated confidence no longer separates right answers from wrong ($0.84 \to 0.56$), while erasing a random direction does nothing.
-On GLM, erasing it changes nothing.
+On GLM and Qwen3.6, erasing it changes nothing.
 In short, these models carry more information about their own errors than they report, and at least one of them uses that information when it reports.
 \end{abstract}
 
@@ -214,11 +214,14 @@ Two checks say the effect is specific.
 The same intervention 30\% of the way through the network does nothing.
 A direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
 
-\paragraph{Result on GLM.}
+\paragraph{Results on GLM and Qwen3.6.}
 GLM has the strongest signal in the study: within a question on MATH, the probe reads 0.87 while the model's own P(True) reads 0.53.
 Yet erasing the direction leaves self-report where it was, 0.76 before and after.
-GLM represents its errors more sharply than Mistral and reports them less.
-This is our cleanest case of represented but not reported, and it makes the causal result a fact about particular models, not models in general.
+Qwen3.6 is a third case.
+Its self-report on MATH is nearly uninformative to begin with (AUROC 0.54; it writes 97 or 98 on right and wrong answers alike), so erasing the direction has nothing to remove.
+Amplifying the direction fourfold raises the self-report's AUROC to 0.63, while a random direction leaves it at 0.54.
+Both models represent their errors and report them poorly.
+These are our cleanest cases of represented but not reported, and they make the causal result a fact about particular models, not models in general.
 
 \section{The Jacobian lens}
 \label{sec:lens}
@@ -256,9 +259,9 @@ A probe could be reading properties of failed output rather than a self-assessme
 The surface baseline bounds this without closing it, most loosely on MATH, geometry (\cref{app:alternatives}), and GLM.
 Every number is a single seed.
 The before-asking test runs only on MMLU-Pro, because on MATH the question alone already predicts correctness at 0.79.
-The causal result holds on Mistral and fails on GLM.
+The causal result holds on Mistral.
+On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it.
 Gemma-4 leaves too few failures to test.
-The Qwen3.6 run did not finish in time.
 Whether preference tuning creates the gap is open.
 A base model would answer it.
 
