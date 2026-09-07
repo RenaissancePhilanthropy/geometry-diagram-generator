@@ -70,7 +70,7 @@ Second, test where the probe's direction lives. The probe is a direction in the 
 
 ## What this means
 
-**Practical use.** Without an exact checker, the probe is the best per-attempt readout we found. Keeping the attempts it scores highest raises accuracy more than keeping the ones the model is most confident in. It works where the model's confidence is useless.
+**Practical use.** Without an exact checker, the probe is the best per-attempt readout we found. It works where the model's confidence is useless.
 
 **Limitations.** A probe could be reading properties of failed output rather than a self-assessment. The surface baseline bounds this without closing it, most loosely on MATH, geometry ({ref:app:alternatives}), and GLM. Every number is a single seed. The before-asking test runs only on MMLU-Pro, because on MATH the question alone already predicts correctness at 0.79. The causal result holds on Mistral. On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it. Gemma-4 leaves too few failures to test. Whether preference tuning creates the gap is open. A base model would answer it.
 
