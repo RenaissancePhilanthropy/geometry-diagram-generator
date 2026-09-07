@@ -40,7 +40,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 
 ## What the signal is
 
-**Difficulty control.** A probe that beats self-report could be doing something simpler. It could be learning which questions are hard. Hard questions fail more often, so a difficulty detector would predict correctness without reading the attempt. We run two checks.
+**Difficulty control.** A probe that beats self-report could be doing something simpler. It could be learning which questions are hard. Hard questions fail more often, so a difficulty detector would predict correctness without reading the attempt. We run two checks to investigate this.
 
 First, hold the question fixed. Each question is attempted five times, so within one question, difficulty cannot vary. The probe still separates the successful attempts from the failed ones (0.72 to 0.74 in the cells of {ref:tab:knowing} in {ref:app:cells}). The model's own P(True), its probability of answering "True" when asked whether it was right, drops to near chance (0.47 to 0.59).
 
