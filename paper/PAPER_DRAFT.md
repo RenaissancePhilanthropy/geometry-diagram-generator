@@ -2,7 +2,7 @@
 
 Edit the prose directly. `## ` is a section heading; a bold lead is a subheading. A numbered list (1., 2., 3.) becomes a compact list. Keep [citation keys] and {ref:...} markers where they are; I map them back. Math stays as $...$. Tables are not shown; the `{{TABLE:...}}` lines mark where each sits and must stay. The appendix is not here; ask if you want it. Tell me to apply when done.
 
-Synced from workshop_readable.tex at commit a0bbfb7.
+Synced from workshop_readable.tex at commit 21ccc61.
 
 ---
 
