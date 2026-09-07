@@ -42,7 +42,7 @@ Prior work reads the truth of a statement from activations [azaria2023internal, 
 
 **Difficulty control.** A probe that beats self-report could be doing something simpler. It could be learning which questions are hard. Hard questions fail more often, so a difficulty detector would predict correctness without reading the attempt. We run two checks.
 
-First, hold the question fixed. Each question is attempted five times, so within one question, difficulty cannot vary. The probe still separates the successful attempts from the failed ones (0.72 to 0.74 in the cells of {ref:tab:knowing}). The model's own P(True), its probability of answering "True" when asked whether it was right, drops to near chance (0.47 to 0.59).
+First, hold the question fixed. Each question is attempted five times, so within one question, difficulty cannot vary. The probe still separates the successful attempts from the failed ones (0.72 to 0.74 in the cells of {ref:tab:knowing} in {ref:app:cells}). The model's own P(True), its probability of answering "True" when asked whether it was right, drops to near chance (0.47 to 0.59).
 
 Second, ask when the direction appears. Before the attempt, all five tries at a question look identical to the model. Anything readable at that moment is about the question, not the attempt. A difficulty detector would still work there. Our probe, trained on the state after the attempt, reads 0.49 at that pre-attempt point on MMLU-Pro, which is chance, against 0.75 at the post-attempt token where it was trained. Geometry is the exception. There the pre-attempt state already predicts failure, so that cell is mostly difficulty.
 
