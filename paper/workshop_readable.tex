@@ -211,9 +211,9 @@ Erase a random direction and nothing happens.
 This is not generic damage.
 The output stays well formed.
 Confidence on wrong answers goes \emph{up} to match right answers, so the model becomes uniformly sure rather than confused.
-Amplify the direction and the opposite happens: confidence on wrong answers falls while right answers hold, and expected calibration error halves, $0.34 \to 0.19$.
+Amplify the direction and the opposite happens: confidence on wrong answers falls while right answers hold, and the expected calibration error halves, $0.34 \to 0.19$.
 Two checks say the effect is specific.
-The same intervention 30\% of the way through the network does nothing.
+The same intervention at 30\% of the way through the network does nothing.
 A direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
 
 \paragraph{Results on GLM and Qwen3.6.}
@@ -231,11 +231,11 @@ These are our cleanest cases of represented but not reported, and they make the 
 \paragraph{A label-free check.}
 A trained probe might have overfit to our data.
 So we add an instrument that uses no correctness labels.
-The Jacobian lens~\citep{gurnee2026workspace} is fit on generic text.
+We fit the Jacobian lens~\citep{gurnee2026workspace} on generic text.
 It reads an activation for what it pushes the model to say next.
 We score each state by how far it leans toward ``wrong'' over ``correct.''
 On dense models the lens matches the probe.
-On Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, and it reads 0.5 at the input layer, as it should.
+On Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, and it reads 0.5 at the input layer, as expected.
 Two instruments built from different evidence find the same direction.
 And because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
