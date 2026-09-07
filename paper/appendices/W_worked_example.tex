@@ -11,7 +11,7 @@ from the Mistral-Small-24B $\times$ MATH cell, summarized first and then given i
 The model sets the problem up correctly and gets $18\times622953 = 11213154$ right, then writes $r = -11213141 + 11213154 = 3$ and answers $3$.
 That subtraction gives $13$, which is the gold answer.
 Stated confidence: $90$ before the attempt, $95$ after it.
-Other readouts of the same attempt: P(True), the probability the model assigns to ``True'' when asked whether its answer is correct, $0.32$; mean answer log-prob $-0.05$.
+Other readouts of the same attempt: P(True), the probability the model assigns to ``True'' when asked whether its answer is correct, $0.32$; mean answer log-probability $-0.05$.
 \end{minipage}}
 \end{center}
 
@@ -96,7 +96,7 @@ So, the integer $n$ that satisfies $0 \le n < 18$ and $n \equiv -11213141 \pmod{
 The method is right and every intermediate is right: $18 \times 622953 = 11213154$ checks out,
 and the model has written the correct subtraction on the line above its answer.
 It then evaluates $-11213141 + 11213154$ as $3$ rather than $13$. Gold is $13$.
-Nothing in the presentation marks the slip. The derivation is well-formed, correctly
+Nothing in the presentation marks the slip. The derivation is well formed, correctly
 structured, and confidently laid out, which is precisely why stated confidence rises
 from $90$ to $95$ across an attempt that failed.
 
@@ -147,7 +147,7 @@ A probe could key on properties of failed derivations rather than on a dedicated
 metacognitive variable: low token probability, hedging language, or, on MATH, an
 early-layer channel next to the answer text. Our surface-features baseline (answer
 length, digit count, line count, word count, brace count) bounds this without closing
-it, and the bound is domain-dependent: adding the probe to the surface features raises
+it, and the bound is domain dependent: adding the probe to the surface features raises
 AUROC by $+0.21$ on MMLU-Pro but only $+0.07$ on MATH and $-0.11$ on geometry, where a
 construction that fails to compile is visibly malformed. Two results argue against a pure surface account on the
 domains where the signal is strong. A direction fitted on MMLU-Pro, where surface
@@ -160,19 +160,19 @@ the reported numbers are a floor.
 
 \section{Per-cell numbers and specificity controls}
 \label{app:cells}
-\begin{table}[h]
-\caption{Post-attempt correctness discrimination (AUROC). Left: stated confidence vs.\ the probe in representative cells; overall the probe wins 12 of 16 with one tie, mean $+0.09$, with a paired bootstrap significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}). Right: Mistral specificity controls. ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies that fitted post readout at the pre-attempt site, where only difficulty is visible.}
+\begin{table}[H]
+\caption{Post-attempt correctness discrimination (AUROC). Left: self-report vs.\ the probe in representative cells, and the same comparison holding the question fixed (``within''), where the model's yardstick is P(True) across the five attempts at one question; overall the probe wins 12 of 16 with one tie, mean $+0.09$, with a paired bootstrap significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}). Right: Mistral specificity controls. ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies that fitted post readout at the pre-attempt site, where only difficulty is visible.}
 \label{tab:knowing}
 \centering
 \scriptsize
-\begin{tabular}{@{}lcc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{model $\times$ domain} & \textbf{stated} & \textbf{probe} \\
+\textbf{model $\times$ domain} & \textbf{self-report} & \textbf{probe} & \textbf{within: P(True)} & \textbf{within: probe} \\
 \midrule
-Gemma-4 $\times$ MATH & 0.57 & \textbf{0.78} \\
-Qwen3.6 $\times$ MMLU-Pro & 0.67 & \textbf{0.84} \\
-GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} \\
-Mistral $\times$ MATH & 0.79 & \textbf{0.83} \\
+Gemma-4 $\times$ MATH & 0.57 & \textbf{0.78} & -- & -- \\
+Qwen3.6 $\times$ MMLU-Pro & 0.67 & \textbf{0.84} & 0.47 & \textbf{0.74} \\
+GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} & 0.59 & \textbf{0.73} \\
+Mistral $\times$ MATH & 0.79 & \textbf{0.83} & 0.59 & \textbf{0.72} \\
 \bottomrule
 \end{tabular}
 \hspace{0.9em}

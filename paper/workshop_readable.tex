@@ -29,7 +29,7 @@
 \begin{abstract}
 When a language model is confidently wrong, is the error undetected or left unsaid?
 We look inside the model to find out.
-Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a linear probe on the model's hidden state predicts whether an answer is correct better than the model's own self-report in 12 of 16 settings, by a mean of $+0.09$ AUROC.
+Across four open models and four domains (MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler), a linear probe on the model's hidden state predicts whether an answer is correct better than the model's own self-report in 12 of 16 cells, by a mean of $+0.09$ AUROC (area under the ROC curve).
 The gap is widest on MATH ($+0.20$).
 The probe is not just spotting hard questions: given the same question several times, it still separates the attempts that succeeded from the ones that failed.
 On Mistral, the signal exists before we ask for it: on MMLU-Pro, a probe fitted after the attempt reads at chance before it, and at the last token of the answer, with no confidence question in play, correctness is readable at 0.69 against 0.57 from the question alone.
@@ -41,11 +41,11 @@ These models carry more about their own errors than they self-report, and on one
 \label{sec:intro}
 
 A language model that is confidently wrong is a problem.
-Its stated confidence is a signal for deciding whether to trust its answer.
-This paper asks whether the model's activations contain the signal to know when it might be wrong.
+Its stated confidence, which we call its self-report, is a signal for deciding whether to trust its answer.
+This paper asks whether the model's activations contain a signal of when it is wrong.
 
 Two things could be going on.
-Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but unsurfaced to its confidence report.
+Upon giving an incorrect answer and saying it has high confidence, either the model genuinely has no idea it might be wrong and is just blindly confident, or it deep down holds the error signal in its activations but does not surface it in its self-report.
 Hence it is either a capability problem or a reporting problem.
 
 In this paper we aim to tell these two apart.
@@ -54,15 +54,15 @@ We say a fact is \emph{represented} when a probe can read it from the model's st
 The title's ``knowing'' is shorthand for a representation that is present, specific to the attempt, and, in at least one model, used by the report.
 We make no claim about awareness, and a probe alone could not support one.
 
-Prior work has shown that a model's output probabilities are often better calibrated than its words \citep{kadavath2022language}, and that the truth of a given statement can be read from activations \citep{azaria2023internal, burns2023discovering, marks2024geometry}.
-We apply those tools to the model's own attempts, and then intervene on the representation \citep{zou2023representation} to ask whether the report depends on it.
+Prior work has shown that a model's output probabilities are often better calibrated than its words~\citep{kadavath2022language}, and that the truth of a given statement can be read from activations~\citep{azaria2023internal, burns2023discovering, marks2024geometry}.
+We apply those tools to the model's own attempts, and then intervene on the representation~\citep{zou2023representation} to ask whether the report depends on it.
 
 \section{Reading the state}
 \label{sec:reading}
 
 \paragraph{Models and tasks.}
-We tested four open models built in four different ways: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
-Each answered 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction.
+We test four open models of three architectures: Mistral-Small-24B (dense), Qwen3.6-27B (gated linear attention interleaved with full attention), and GLM-4.7-Flash and Gemma-4-26B (mixture of experts).
+Each answers 150 questions, five times each, in four domains: MMLU-Pro, MATH, GPQA-Diamond, and GeoGenBench, a geometry task in which the model writes a construction and a compiler checks it against a formal specification, so its labels need no judge; in a pre-registered check of 200 attempts by two trained raters, the compiler never failed a correct construction.
 That is 16 cells of about 750 attempts each.
 
 \paragraph{Prompting structure.}
@@ -77,11 +77,11 @@ That is 16 cells of about 750 attempts each.
 At the moment the model is about to write its confidence digit, we record the number and the residual-stream hidden state at that token (2,048 to 5,120 dimensions, depending on the model).
 The probe is a linear classifier on that vector: features are standardized, reduced to 50 principal components, and fed to an L2-regularized logistic regression that predicts whether the attempt was correct.
 We fit it with five-fold cross-validation grouped by question, so all five attempts at a question fall in the same fold and the probe is always scored on questions it never saw.
-The read depth is fixed in advance at 70\% of the network (layer 28 of 40 for Mistral, 33 of 47 for GLM, 21 of 30 for Gemma, 45 of 64 for Qwen3.6).
+The read depth is fixed in advance at 70\% of the network (layer 28 of 40 for Mistral, 33 of 47 for GLM, 21 of 30 for Gemma-4, 45 of 64 for Qwen3.6).
 Every readout is scored with AUROC.
 
 \paragraph{The activation state carries more than self-report.}
-The probe beats the model's stated confidence in \textbf{12 of 16} cells, with one tie.
+The probe beats the model's self-report in \textbf{12 of 16} cells, with one tie.
 The mean gain is $+0.09$ AUROC (\cref{app:cells}).
 The gap is largest on MATH, at $+0.20$.
 Mistral on MATH is a good example of what this looks like.
@@ -98,31 +98,32 @@ Shape still carries a little signal.
 A baseline classifier that sees only surface features of the answer text, such as its length and line count, reaches 0.74, but the probe reaches 0.83.
 Geometry is the opposite case.
 A failed construction usually does not compile, so the failure is visible in the answer itself, and there the surface baseline does as well as the probe.
-The internal signal matters most where the failure is invisible from outside.
+The internal signal helps most where the failure is invisible from outside.
 
 \paragraph{Controls.}
-Three things could make a probe look better than it is, and the next section tests each.
+Three things could make a probe look better than it is; the next section tests each.
 It could be reading how hard the question is rather than the attempt, so we compare attempts within one question.
 It could be reading the shape of the output, so we compare it with the surface baseline in every cell; on Mistral, adding the probe to the surface features raises AUROC by $+0.21$ on MMLU-Pro, $+0.07$ on MATH, $+0.05$ on GPQA, and $-0.11$ on geometry.
 And it could be reading something that was there before the attempt, so we check the input layer, where the token is identical in every record and the probe sits at exactly 0.5.
-For time, these controls were run on Mistral only.
+These controls were run on Mistral only, for time.
 Its four cells reproduce the headline.
 
 \section{What the signal is}
 \label{sec:what}
 
 \paragraph{Difficulty control.}
-A probe that beats stated confidence could be doing something simpler.
+A probe that beats self-report could be doing something simpler.
 It could be learning which questions are hard.
 Hard questions fail more often, so a difficulty detector would predict correctness without reading the attempt.
 We run two checks.
 
 First, hold the question fixed.
 Each question is attempted five times, so within one question, difficulty cannot vary.
-The probe still separates the successful attempts from the failed ones (0.72 to 0.74 in representative cells).
+The probe still separates the successful attempts from the failed ones (0.72 to 0.74 in the cells of \cref{tab:knowing}).
 The model's own P(True), its probability of answering ``True'' when asked whether it was right, drops to near chance (0.47 to 0.59).
 
-Second, test where the direction lives.
+Second, test where the probe's direction lives.
+The probe is a direction in the hidden state, and we can ask when that direction appears.
 Before the attempt, at the last token of the question, the model's state is the same across all five attempts.
 It can encode difficulty and nothing else.
 A probe trained after the attempt and read at that point scores 0.49 on MMLU-Pro, which is chance, against 0.75 at its own site.
@@ -131,32 +132,32 @@ Geometry is the exception.
 There the pre-attempt state already predicts failure, so that cell is mostly difficulty.
 
 \paragraph{Reading before the question.}
-There is a subtler worry.
-Every read so far came from a token the model reaches after being asked to assess itself.
+A subtler worry.
+Every read so far came after the model was asked to assess itself.
 Maybe the question creates the signal rather than reveals it.
-So we also read the state at the last token of the answer, before any confidence question exists.
-On MMLU-Pro, correctness is already readable there at 0.69.
+So we read the state at the last token of the answer, before any confidence question exists.
+On MMLU-Pro, correctness is readable there at 0.69.
 From the question alone it is 0.57, so the model cannot see failure coming.
 Asking the model to self-assess sharpens the signal to 0.77.
 
 \paragraph{Transfer across domains.}
 \cref{tab:transfer} trains a probe on one domain and tests it on each of the others.
 On Mistral it keeps about 90\% of its lift above chance (0.69 off the diagonal against 0.71 on it).
-The original matrix showed the same pattern in every model.
+The full four-model matrix showed the same pattern.
 The one exception is Gemma-4.
 There, probes trained on geometry fail elsewhere (0.31 to 0.39), while probes trained elsewhere work on geometry (about 0.70).
 A probe trained on the one generative task can learn features specific to it.
 
 \begin{table}[t]
-\caption{Mistral. Rows: training domain. Columns: test domain. Geo = GeoGenBench.}
+\caption{Mistral. Rows: training domain; columns: test domain; bold: in-domain.}
 \label{tab:transfer}
 \centering
 \small
 \begin{tabular}{lcccc}
 \toprule
-\textbf{train $\downarrow$ test $\rightarrow$} & \textbf{Geo} & \textbf{MMLU-Pro} & \textbf{MATH} & \textbf{GPQA} \\
+\textbf{train $\downarrow$ test $\rightarrow$} & \textbf{GeoGen} & \textbf{MMLU-Pro} & \textbf{MATH} & \textbf{GPQA} \\
 \midrule
-Geo & \textbf{0.68} & 0.67 & 0.78 & 0.56 \\
+GeoGen & \textbf{0.68} & 0.67 & 0.78 & 0.56 \\
 MMLU-Pro & 0.70 & \textbf{0.75} & 0.84 & 0.59 \\
 MATH & 0.80 & 0.72 & \textbf{0.83} & 0.57 \\
 GPQA & 0.60 & 0.69 & 0.74 & \textbf{0.57} \\
@@ -176,7 +177,7 @@ We run this on Mistral and MATH, 150 held-out records, with a random direction o
 \cref{tab:ablation} shows what the model wrote at each setting.
 
 \begin{table}[t]
-\caption{Mistral on MATH, 150 held-out records. The correctness direction scaled by a gain at the confidence token, after the answer is written.}
+\caption{Mistral on MATH, 150 held-out records. The correctness direction scaled by a gain at the confidence token, after the answer is written. Bold marks the erased and quadrupled settings; unparseable means the output no longer parsed as a confidence.}
 \label{tab:ablation}
 \centering
 \small
@@ -186,23 +187,23 @@ We run this on Mistral and MATH, 150 held-out records, with a random direction o
 gain on the correctness direction & 1 & 0 & 2 & 4 \\
 \midrule
 mean confidence, wrong / right answers & 84 / 96 & \textbf{97 / 98} & 70 / 94 & \textbf{54 / 88} \\
-AUROC of stated confidence & 0.84 & \textbf{0.56} & 0.85 & 0.82 \\
-same, with a random direction & 0.84 & 0.83 & 0.84 & output broke \\
+AUROC of self-report & 0.84 & \textbf{0.56} & 0.85 & 0.82 \\
+same, with a random direction & 0.84 & 0.83 & 0.84 & unparseable \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Result on Mistral.}
-Erase the direction and self-report loses its information: AUROC falls from 0.84 to 0.56, a change of $-0.27$ $[-0.42, -0.12]$.
-Erase a random direction and nothing happens ($-0.00$ $[-0.03, +0.03]$).
+Erase the direction and self-report loses its information: AUROC falls from 0.84 to 0.56, a change of $-0.27$ (95\% bootstrap interval $-0.42$ to $-0.12$).
+Erase a random direction and nothing happens ($-0.00$, interval $-0.03$ to $+0.03$).
 This is not generic damage.
 The output stays well formed, and confidence on wrong answers goes \emph{up} to match right answers, so the model becomes uniformly sure rather than confused.
-Exaggerate the direction and confidence on wrong answers falls while right answers hold; calibration error halves, $0.34 \to 0.19$.
+Exaggerate the direction and confidence on wrong answers falls while right answers hold; expected calibration error halves, $0.34 \to 0.19$.
 Two checks say the effect is specific.
 The same intervention 30\% of the way through the network does nothing, and a direction learned on MMLU-Pro, where surface features cannot explain the probe, still controls the MATH report ($0.88 \to 0.71$).
 
 \paragraph{Result on GLM.}
-GLM has the strongest signal in the study: within a question, the probe reads 0.87 while the model's own P(True) reads 0.53.
+GLM has the strongest signal in the study: within a question on MATH, the probe reads 0.87 while the model's own P(True) reads 0.53.
 Yet erasing the direction leaves self-report where it was, 0.76 before and after.
 GLM represents its errors more sharply than Mistral and reports them less.
 This is our cleanest case of represented but not reported, and it makes the causal result a fact about particular models, not models in general.
@@ -212,18 +213,18 @@ This is our cleanest case of represented but not reported, and it makes the caus
 
 \paragraph{A label-free check.}
 A trained probe might have overfit to our data.
-So we added an instrument that uses no correctness labels.
-The Jacobian lens \citep{gurnee2026workspace} is fit on generic text and reads an activation for what it pushes the model to say next; we score each state by how far it leans toward ``wrong'' over ``correct.'' On dense models the lens matches the probe: on Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, with a clean input-layer control.
+So we add an instrument that uses no correctness labels.
+The Jacobian lens~\citep{gurnee2026workspace} is fit on generic text and reads an activation for what it pushes the model to say next; we score each state by how far it leans toward ``wrong'' over ``correct.'' On dense models the lens matches the probe: on Mistral it reads 0.82 on MATH and 0.75 on MMLU-Pro, against the probe's 0.83 and 0.75, and reads 0.5 at the input layer, as it should.
 Two instruments built from different evidence find the same direction, and because the lens reads through the model's own output pathway, that direction sits where it could influence what the model says.
 
 \paragraph{Where the lens fails.}
 The lens is a fixed dictionary from hidden-state directions to words, built once from generic text.
 On a dense model one dictionary is enough, because every input takes the same path to the output.
 GLM routes each input through a different subset of experts, and Qwen3.6 mixes two kinds of attention layers, so there is no single path and the lens averages many into a blur.
-The numbers show it: on GLM the lens's entries for ``correct'' and ``wrong'' point almost the same way, cosine 0.96, against 0.4 on a dense model, and it scores 0.31 there and 0.43 on Qwen3.6, while the probe still works on both.
+The numbers show it: on GLM the lens's entries for ``correct'' and ``wrong'' point almost the same way, cosine 0.96, against 0.40 on a dense model, and it scores 0.31 there and 0.43 on Qwen3.6, while the probe still works on both.
 Swap Qwen3.6 for Qwen2.5-14B, same family but dense, and the lens jumps to 0.88.
 The signal is there in every model.
-A label-free reader only works where the architecture gives it one path to read.
+A label-free reader works only where the architecture gives it one path.
 
 \section{What this means}
 \label{sec:discussion}
