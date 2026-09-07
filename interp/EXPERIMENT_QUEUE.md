@@ -13,7 +13,7 @@ supported today. The fourth is where most of the queue sits.
 | 2 | Confidence vs accuracy (monitor or driver) | measure | queued | ~2 h once a box frees | — |
 | 3 | Ablation on GLM | intervene | done: clean null | — | results/causal_glm |
 | 4 | Ablation on Gemma-4 | intervene | done: underpowered (5 wrong in eval) | — | results/causal_gemma4 |
-| 5 | Ablation on Qwen3.6 | intervene | **blocked**: vast.ai credit ran out 2026-09-06 ~17:30 UTC; boxes stopped with 559/575 + ~51/175 records on their disks, none in S3 | needs top-up + restart of boxes B and D | boxes B [0:115) + D [115:150) |
+| 5 | Ablation on Qwen3.6 | intervene | done 2026-09-07 01:11 UTC: self-report at floor (0.54, writes 97/98 on right and wrong alike); erase null; amplify x4 -> 0.63; random flat | — | results/causal_qwen36 |
 | 6 | Base-model arm | origin | queued | ~6 h + capture | needs a box |
 | 7 | Multiple seeds | all | queued | recapture | needs a box |
 

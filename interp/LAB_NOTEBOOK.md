@@ -858,3 +858,37 @@ run did not finish in time. Nothing else in the draft depended on it; Qwen's dec
 numbers in the appendix come from the original July matrix.
 
 Lesson: completion-time pushes are not enough. Push partial captures every N records.
+
+
+## 2026-09-07, 01:11 UTC: Qwen3.6 ablation, recovered and finished
+
+Recovery. Vast.ai lets a stopped instance's disk be copied to a running one, so B's 567
+records and D's 93 were copied onto a fresh box (F, 50099955) and E (50099915) took the
+last nine questions in parallel. Total 750 records, all in S3. B, D, E destroyed after the
+data was verified in the bucket.
+
+Result (`results/causal_qwen36/steer_ablation.json`, Mistral protocol: gains 0, 0.5, 1, 2, 4,
+matched random control, 150 held-out records, fit on 705 records, layer 45 of 64):
+
+| gain | self-report AUROC | mean conf wrong / right | random-direction AUROC |
+|---|---|---|---|
+| 1 (untouched) | 0.54 | 97 / 98 | 0.54 |
+| 0 (erased) | 0.54 | 97 / 98 | 0.53 |
+| 2 | 0.59 | 97 / 98 | 0.53 |
+| 4 | 0.63 | 97 / 98 | 0.54 |
+
+Reading. Qwen3.6's self-report on MATH is saturated near 97 and carries almost no
+information (0.54), so erasing the direction has nothing to remove: a floor effect, the
+mirror of GLM's ceiling. Amplifying it fourfold does move the report (0.54 -> 0.63) while
+the random direction stays flat, so the direction can reach the report even though the
+report does not use it by default. ECE stays 0.49 throughout: the means do not move, only
+the ordering. Parse rate 1.0 at every gain.
+
+Paper: section 4 "Results on GLM and Qwen3.6", Limitations, and the abstract updated.
+
+Incident. While merging E's index I keyed a dedupe on a field the records lack ("record_id"),
+which collapsed meta.jsonl to one line and the S3 sync overwrote the good copy. Rebuilt from
+B's nested copy (567), meta_D (93), meta_E (45), plus 45 partial lines (pid, grade, pre/post
+confidence) recovered from the capture log for F's own new records; those 45 lack prompt,
+answer text, P(True) and mean log-prob. The ablation had already consumed the full records.
+Bucket versioning is now ON. Lesson: never dedupe on a guessed key; the key is `pid`.
