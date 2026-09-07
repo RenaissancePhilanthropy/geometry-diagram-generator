@@ -1,14 +1,14 @@
 # Full paper body, for editing
 
-Edit the prose directly. `## ` is a section heading; a bold lead is a subheading. A numbered list (1., 2., 3.) becomes a compact list. Keep [citation keys] and {ref:...} markers where they are; I map them back. Math stays as $...$. Tables are not shown; the `{{TABLE:...}}` lines mark where each sits and must stay. Do not edit the appendix here; tell me and I will export it separately. Tell me to apply when done.
+Edit the prose directly. `## ` is a section heading; a bold lead is a subheading. A numbered list (1., 2., 3.) becomes a compact list. Keep [citation keys] and {ref:...} markers where they are; I map them back. Math stays as $...$. Tables are not shown; the `{{TABLE:...}}` lines mark where each sits and must stay. The appendix is not here; ask if you want it. Tell me to apply when done.
 
-Synced from workshop_readable.tex after the style pass (commit 49fb06c plus this pass).
+Synced from workshop_readable.tex at commit a0bbfb7.
 
 ---
 
 ## Abstract
 
-Language models are often confidently wrong. We ask whether a model's activations carry a better signal of its own errors than its stated confidence does. We test four open models on four tasks: MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler. We put a linear probe on the hidden state to predict whether an answer is right. This probe was better than the model's stated confidence in 12 of 16 cases, by 0.09 AUROC on average. The gap is largest on MATH. The probe is not just detecting hard questions: it still works when the same question is attempted five times. The signal exists before the model is asked how confident it is. On Mistral, the model uses this signal when it reports confidence. When we erase the signal from the hidden state, the stated confidence no longer separates right answers from wrong ($0.84 \to 0.56$), while erasing a random direction did nothing. On GLM and Qwen3.6, erasing it changes nothing. In short, four open models carry more confidence signal about their own errors than they report. One of them uses that information when it self-reports. 
+Language models are often confidently wrong. We ask whether a model's activations carry a better signal of its own errors than its stated confidence does. We test four open models on four tasks: MMLU-Pro, MATH, GPQA-Diamond, and a geometry task graded by a compiler. We put a linear probe on the hidden state to predict whether an answer is right. This probe was better than the model's stated confidence in 12 of 16 cases, by 0.09 AUROC on average. The gap is largest on MATH. The probe is not just detecting hard questions: it still works when the same question is attempted five times. The signal exists before the model is asked how confident it is. On Mistral, the model uses this signal when it reports confidence. When we erase the signal from the hidden state, the stated confidence no longer separates right answers from wrong ($0.84 \to 0.56$), while erasing a random direction did nothing. On GLM and Qwen3.6, erasing it changes nothing. In short, four open models carry more confidence signal about their own errors than they report. One of them uses that information when it self-reports.
 
 ## Introduction
 
@@ -72,6 +72,6 @@ Second, ask when the direction appears. Before the attempt, all five tries at a 
 
 **Practical use.** Without an exact checker, the probe is the best per-attempt readout we found. It works where the model's confidence is useless.
 
-**Limitations.** A probe could be reading properties of failed output rather than a self-assessment. The surface baseline bounds this without closing it, most loosely on MATH, geometry ({ref:app:alternatives}), and GLM. Every number is a single seed.  The causal result holds on Mistral. On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it. Gemma-4 leaves too few failures to test. Whether preference tuning creates the gap is open. A base model would answer it.
+**Limitations.** A probe could be reading properties of failed output rather than a self-assessment. The surface baseline bounds this without closing it, most loosely on MATH, geometry ({ref:app:alternatives}), and GLM. Every number is a single seed. The causal result holds on Mistral. On GLM erasing does nothing, and on Qwen3.6 the self-report is too uninformative for erasing to test, though amplifying moves it. Gemma-4 leaves too few failures to test. Whether preference tuning creates the gap is open. A base model would answer it.
 
 **Takeaway.** Four open models carry information about their own errors that their self-report does not. One uses it when it self-reports. In two, erasing it changes nothing.
