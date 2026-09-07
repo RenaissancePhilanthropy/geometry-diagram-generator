@@ -54,7 +54,7 @@ Second, ask when the direction appears. Before the attempt, all five tries at a 
 
 ## Whether self-report depends on the residual signal
 
-**Intervention.** A model could carry a perfect internal record of its errors and never consult it during self-report. The only way to find out is to change the record and watch the number. At the confidence token, after the answer is written so the answer cannot change, we scale the model's position along the correctness direction by a gain $g$. Gain 1 leaves the model untouched, gain 0 erases the per-attempt information, and gains 2 and 4 exaggerate it. We run this on Mistral and MATH, 150 held-out records, with a random direction of the same size as a control. {ref:tab:ablation} shows what the model wrote at each setting.
+**Erasing and amplifying the signal direction.** A model could carry a perfect internal record of its errors and never consult it during self-report. The only way to find out is to change the record and watch the number. At the confidence token, after the answer is written so the answer cannot change, we scale the model's position along the correctness direction by a gain $g$. Gain 1 leaves the model untouched, gain 0 erases the per-attempt information, and gains 2 and 4 exaggerate it. We run this on Mistral and MATH, 150 held-out records, with a random direction of the same size as a control. {ref:tab:ablation} shows what the model wrote at each setting.
 
 {{TABLE:tab:ablation}}
 
