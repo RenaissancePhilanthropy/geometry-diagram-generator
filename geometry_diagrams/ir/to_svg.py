@@ -1039,9 +1039,22 @@ def _emit_svg_op(
             })
             if label:
                 tx, ty = pts_px["tip"]
+                # Push the label further out along the same tip-vs-baseline
+                # direction the brace already bulges toward, so it doesn't
+                # sit centered exactly on the brace's point (was: tx, ty
+                # used unmodified, label overlapping the tip) -- same
+                # "offset a label away from the geometry it annotates"
+                # pattern as LabelSegment above, reusing _LABEL_OFFSET.
+                sx, sy = pts_px["start"]
+                ex, ey = pts_px["end"]
+                mx, my = (sx + ex) / 2, (sy + ey) / 2
+                dx, dy = tx - mx, ty - my
+                mag = math.hypot(dx, dy) or 1
+                lx = tx + (dx / mag) * _LABEL_OFFSET
+                ly = ty + (dy / mag) * _LABEL_OFFSET
                 color = _color_from_style(style, styles) or "black"
                 lp = _make_label_placement(
-                    x=tx, y=ty, text=label, color=color, anchor="middle",
+                    x=lx, y=ly, text=label, color=color, anchor="middle",
                     attrs={"data-role": "label-brace"},
                 )
                 if pending_labels is not None:

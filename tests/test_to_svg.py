@@ -1943,6 +1943,50 @@ def test_draw_brace_with_label_renders_text_at_tip():
     assert labels[0].text == "4 items" or "".join(labels[0].itertext()) == "4 items"
 
 
+def _parse_brace_path_corners(d: str) -> "tuple[tuple[float, float], tuple[float, float], tuple[float, float]]":
+    """Extract (start, tip, end) from a _brace_svg_path() 'd' string: fixed
+    "M start C c1 c2 near1 C c1 c2 tip C c1 c2 near2 C c1 c2 end" structure
+    (see _brace_svg_path()'s docstring) -- start is the M point, tip is the
+    2nd "C" command's 3rd point, end is the 4th "C" command's 3rd point."""
+    tokens = d.split()
+
+    def as_point(tok: str) -> "tuple[float, float]":
+        x, y = tok.split(",")
+        return float(x), float(y)
+
+    return as_point(tokens[1]), as_point(tokens[9]), as_point(tokens[17])
+
+
+def test_draw_brace_label_is_offset_beyond_the_tip_not_centered_on_it():
+    # Regression test: the label used to be placed exactly at pts_px["tip"]
+    # (label centered right on the brace's point, no breathing room). It
+    # must now sit further out along the same start/end-midpoint-to-tip
+    # direction, at least _LABEL_OFFSET beyond the tip itself.
+    from geometry_diagrams.ir.to_svg import _LABEL_OFFSET
+
+    diagram = _triangle_ir([
+        DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down", label="4 items"),
+    ])
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    brace = next(el for el in _findall(root, "path") if el.get("data-role") == "brace")
+    start, tip, end = _parse_brace_path_corners(brace.get("d"))
+    mid = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
+
+    label = next(el for el in _findall(root, "text") if el.get("data-role") == "label-brace")
+    lx, ly = float(label.get("x")), float(label.get("y"))
+
+    dist_tip_to_mid = math.hypot(tip[0] - mid[0], tip[1] - mid[1])
+    dist_label_to_mid = math.hypot(lx - mid[0], ly - mid[1])
+    dist_label_to_tip = math.hypot(lx - tip[0], ly - tip[1])
+
+    # Not sitting on the tip anymore ...
+    assert dist_label_to_tip == pytest.approx(_LABEL_OFFSET, abs=0.5)
+    # ... and specifically pushed further AWAY from the baseline, not to
+    # either side of it.
+    assert dist_label_to_mid == pytest.approx(dist_tip_to_mid + _LABEL_OFFSET, abs=0.5)
+
+
 def test_draw_brace_without_label_renders_no_text():
     diagram = _triangle_ir([DrawBrace(p1=[0.0, 0.0], p2=[4.0, 0.0], direction="down")])
     svg_str = _compile_svg(diagram)
