@@ -36,21 +36,31 @@ Two ideas make this work. The prompt and its checks come from the same template,
 
 **Hardening.** Three verifier fixes promoted 4.6% of pilot outputs from soft pass to pass and demoted none. They also halved the apparent gap between the two strategies. Part of that gap had been the verifier's, not the models'. Every number below is post-fix.
 
-**Human check.** Two raters, a PhD mathematician and an engineer who has taught mathematics, judged 200 outputs blind to the verifier's verdict. Verifier and raters agree moderately ($\kappa = 0.455$), below the 0.70 we had pre-registered. The raters agree well with each other, so the gap is the verifier's. The disagreement runs one way. The raters overturned 18% of the verifier's passes and none of its fails. Almost all of those sit on \ttwo, where the checks confirm the construction but not the numbers the prompt gave. Leaderboard rates are therefore a little generous, evenly across models. Numeric checks for those templates are the planned fix.
+**Human check.** Two raters, a PhD mathematician and an engineer who has taught mathematics, judged 200 outputs blind to the verifier's verdict. Verifier and raters agree moderately ($\kappa = 0.455$), below the 0.70 we had pre-registered, while the raters agree well with each other. The raters overturned 18% of the verifier's passes and none of its fails. We return to this in {ref:sec:discussion}.
 
-## Experiments
+## Results
 
-**Setup.** Six models from three vendors at a $20\times$ price spread: \opus, \sonnet, \haiku, \gpt, \geminipro, and \geminiflash. Two strategies. \rawcode hands the model the prompt and a TikZ tutorial and takes what it writes. \structured asks for typed JSON describing points, segments, circles, and checks, which our code turns into SymPy and then TikZ. The checks run before rendering, so the model gets up to three retries. Every model-by-strategy cell runs on the 600 templated prompts three times.
+**Setup.** Six models from three vendors at a $20\times$ price spread: \opus, \sonnet, \haiku, \gpt, \geminipro, and \geminiflash. Two strategies. \rawcode hands the model the prompt and a TikZ tutorial and takes what it writes. \structured asks for typed JSON describing points, segments, circles, and checks, which our code turns into SymPy and then TikZ. The checks run before rendering, so the model gets up to three retries. Every model-by-strategy cell runs on the 600 templated prompts three times ({ref:tab:headline}).
 
 {{FLOAT:tab:headline}}
 
-**The scaffold lifts every model.** \structured helps each model, from 2 points for \gpt to 25 for \geminipro. The weaker a model is at raw TikZ, the more it gains.
+**The scaffold lifts every model.** \structured helps each model: \gpt by 2 points, \haiku by 5, \sonnet by 12, \opus by 22, and \geminipro by 25. The weaker a model is at raw TikZ, the more it gains.
 
-**The frontier converges.** With the scaffold, \gpt, \sonnet, and \opus finish within one point of each other, at 94%, 93%, and 93%. \opus costs seven times what \gpt does. Without the scaffold the spread runs from 92% down to 36%. \tone is nearly solved. \ttwo is where the scaffold first matters. \tthree is where the frontier models separate. Most wrong outputs are clean diagrams with the wrong geometry, not broken code.
+**The frontier converges.** With the scaffold, \gpt, \sonnet, and \opus finish at 94%, 93%, and 93%, within one point of each other. \opus costs seven times what \gpt does. Without the scaffold the spread runs from 92% down to 36%, and \opus is the most dominated cell, 20 points behind \gpt at four times the cost.
 
-**Portability.** \structured needs schema-constrained decoding. Our schema compiles to thousands of states, and one vendor's API refuses it before the model writes a token. That is a gap in the API, not the model, and a warning for any benchmark built on a large schema.
+**Difficulty tiers separate the strategies, then the models.** \tone is nearly solved by every Anthropic and OpenAI model under the scaffold. \ttwo is where the scaffold first matters: it lifts \opus by 43 points and \geminipro by 54. \tthree is where the frontier models separate: \gpt 93%, \sonnet 87%, \opus 82%.
 
-## Conclusion
+**Wrong drawings, not broken code.** Most failures are clean, rendered diagrams with the wrong geometry. The verifier catches them; a human glancing at the picture often would not.
+
+**Portability.** \structured needs schema-constrained decoding. Our schema compiles to thousands of decoder states, and one vendor's API refuses it before the model writes a token. That is a gap in the API, not the model, and a warning for any benchmark built on a large schema.
+
+## Discussion
+
+**Exact grading is practical.** Every drawing in {ref:tab:headline} was graded by a program, in microseconds, with the same verdict every time. A model judge would have cost roughly a thousand times more per drawing and could not have told a right angle from one that looks right.
+
+**The scaffold matters more than the model.** The largest single effect in the study is not which model you buy but whether you ask it for a typed representation before it draws. That representation lets the model check its own work before rendering. The most expensive model gains the most from it and, once it has it, no longer earns its price.
+
+**The verifier errs in one direction only.** The human study found the verifier lenient, never harsh. Every drawing it fails is wrong, and about one pass in six is not as right as it looks, almost always on \ttwo, where the checks confirm the construction but not the numbers. That lenience applies to every model on the same prompts, so the rankings hold even where the absolute rates are a little high. Numeric checks for those templates are the planned fix.
 
 **Limitations.** \GeoGenBench tests whether a model can turn a sentence into a consistent plane drawing. It does not test proofs, solids, or teaching. A third of the templates accept any drawing that meets the stated constraints, not one canonical drawing. The curriculum prompts are harder for every model than the templated ones, and the headline numbers are templated numbers.
 
