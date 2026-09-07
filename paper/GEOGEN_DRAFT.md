@@ -50,7 +50,7 @@ Two ideas make this work. The prompt and its rubric are generated together from 
 
 **Portability.** \structured relies on schema-constrained generation, which OpenAI and Google compile into a server-side state machine with vendor-specific limits. Our schema, a discriminated union of about 20 variants, compiles to thousands of states. \geminiflash rejects it at the API layer, HTTP 400, "too many states for serving," before generating a token. That is a portability gap, not a capability gap, and a caution for any benchmark that ships a multi-variant schema.
 
-## What this means
+## Conclusion
 
 **Limitations.** \GeoGenBench measures whether a model can turn a text specification of a plane-geometry construction into a consistent drawing. It does not test proofs, 3D solids, or teaching value. 35% of templated scenarios are intentionally loose, so a pass means a drawing consistent with the stated constraints rather than the one canonical drawing. The human study localises the verifier's lenience to \ttwo numeric constraints, and the fix is identified. The curriculum split is harder for every model measured; \haiku under \rawcode drops from 82.1% to 36.0%. The headline findings are templated-split findings.
 
