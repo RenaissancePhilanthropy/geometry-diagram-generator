@@ -153,9 +153,7 @@ Asking the model to self-assess sharpens the signal to 0.77.
 \cref{tab:transfer} trains a probe on one domain and tests it on each of the others.
 On Mistral it keeps about 90\% of its lift above chance (0.69 off the diagonal against 0.71 on it).
 The full four-model matrix showed the same pattern.
-The one exception is Gemma-4.
-There, probes trained on geometry fail elsewhere (0.31 to 0.39), while probes trained elsewhere work on geometry (about 0.70).
-A probe trained on the one generative task can learn features specific to it.
+The one exception is Gemma-4, where probes trained on geometry do not transfer out, though probes trained elsewhere transfer in.
 
 \begin{table}[t]
 \caption{Mistral. Rows: training domain; columns: test domain; bold: in-domain.}

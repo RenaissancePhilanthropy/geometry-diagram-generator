@@ -48,7 +48,7 @@ Second, test where the probe's direction lives. The probe is a direction in the 
 
 **Reading before the question.** A subtler worry. Every read so far came after the model was asked to assess itself. Maybe the question creates the signal rather than reveals it. So we read the state at the last token of the answer, before any confidence question exists. On MMLU-Pro, correctness is readable there at 0.69. From the question alone it is 0.57, so the model cannot see failure coming. Asking the model to self-assess sharpens the signal to 0.77.
 
-**Transfer across domains.** {ref:tab:transfer} trains a probe on one domain and tests it on each of the others. On Mistral it keeps about 90% of its lift above chance (0.69 off the diagonal against 0.71 on it). The full four-model matrix showed the same pattern. The one exception is Gemma-4. There, probes trained on geometry fail elsewhere (0.31 to 0.39), while probes trained elsewhere work on geometry (about 0.70). A probe trained on the one generative task can learn features specific to it.
+**Transfer across domains.** {ref:tab:transfer} trains a probe on one domain and tests it on each of the others. On Mistral it keeps about 90% of its lift above chance (0.69 off the diagonal against 0.71 on it). The full four-model matrix showed the same pattern. The one exception is Gemma-4, where probes trained on geometry do not transfer out, though probes trained elsewhere transfer in.
 
 {{TABLE:tab:transfer}}
 
