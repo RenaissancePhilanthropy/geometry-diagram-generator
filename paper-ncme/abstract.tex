@@ -1,7 +1,7 @@
 \begin{abstract}
 Language models can draw geometry diagrams that look right but are actually
 wrong. We found a more reliable way to generate diagrams is to have the model
-first describe the construction (instead of picking coordinates), then have a
+first describe the construction, then have a
 geometry engine compute every point and check the result against the stated
 geometric requirements, and only then render the diagram. Because the same
 checks also grade the diagram, grading is automatic: no one writes or applies
