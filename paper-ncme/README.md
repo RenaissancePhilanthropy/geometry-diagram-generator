@@ -4,9 +4,9 @@ A 6-page, plain-language paper condensed from the full GeoGenBench paper
 (`../paper/`, branch `feat/geogen-paper`), prepared for NCME.
 
 **NCME uses the ACL format**, so this is typeset with the official ACL style
-(`acl.sty`, vendored here) in `[preprint]` mode: the ACL two-column layout with
-page numbers, but *without* the "Anonymous ACL submission" line or review line
-numbers (those appear only in `[review]` mode).
+(`acl.sty`, vendored here) in `[final]` mode: the ACL two-column camera-ready
+layout with no line numbers and no page numbers, as the AIME-Con proceedings
+require.
 
 **Focus:** how diagrams are *generated* — the model describes a construction, a
 geometry engine computes the exact figure — and how automatic grading falls out
@@ -26,9 +26,9 @@ No local TeX toolchain? Upload this folder to Overleaf (main document =
 
 ## Format
 
-- ACL style (`acl.sty`), two-column, Times. `[preprint]` mode in `main.tex`.
+- ACL style (`acl.sty`), two-column, Times. `[final]` mode in `main.tex`.
 - For a line-numbered anonymous review copy, change `[preprint]` → `[review]`.
-- Title ≤ 12 words; abstract ≤ 50 words (NCME portal limits).
+- Title ≤ 12 words; abstract ≤ 50 words (NCME portal limits). Camera-ready: up to 6 pages of text, excluding references, tables, and figures.
 - Citations: author–year (`acl_natbib`). Only real, verifiable references — no placeholders.
 
 ## Layout
