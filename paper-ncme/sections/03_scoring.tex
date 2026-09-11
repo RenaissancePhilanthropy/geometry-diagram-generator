@@ -36,7 +36,7 @@ Here is the move that makes this practical: each item and its answer key come fr
 \end{figure*}
 
 \paragraph{A small, readable checklist.}
-Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:predicates}): is this a right angle, is this the midpoint, are these lines parallel, does this point lie on that segment, and so on. There are 15 such checks in the current version, and each is decided exactly on the coordinates (within a tiny rounding tolerance). A diagram passes only if every check on its list passes. The list is, in plain terms, the definition of what the item is testing.
+Every requirement is written in a small, fixed vocabulary of checks (\cref{tab:predicates}): is this a right angle, is this the midpoint, are these lines parallel, does this point lie on that segment, and so on. There are 15 such checks in the current version, and each is decided exactly on the coordinates (within a tiny rounding tolerance). A diagram passes only if every check on its list passes. The list is, in plain terms, the definition of what the item is testing. It plays the role a specification plays in formal methods: a statement of what must hold, written so that a machine can check it. The check here is numeric and applied to one figure at a time, not a proof over all figures, which is why we say \emph{verifiable} rather than \emph{verified}.
 
 \begin{table}[t]
 \centering
