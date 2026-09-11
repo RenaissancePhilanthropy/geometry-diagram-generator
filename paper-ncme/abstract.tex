@@ -3,14 +3,12 @@ Language models can draw geometry diagrams that look right but are actually
 wrong. We found a more reliable way to generate diagrams is to have the model
 first describe the construction (instead of picking coordinates), then have a
 geometry engine compute every point and check the result against the stated
-geometric requirements, and only then render the diagram. That check step is
-what makes this useful for testing. The item's wording and its list of
-requirements come from the same template, so every item arrives with its
-answer key already written, and the engine grades whatever diagram comes back
-against it. We tested this on 600 benchmark prompts across six models and
-found that structured generation raised pass rates for every model that could
-run it. We also had two human graders check the grader. They showed it is
-lenient in one direction: it passed 36 of 200 diagrams they failed and failed
-none they passed. So the automatic score is good enough for benchmarking, but
-not yet for high-stakes scoring.
+geometric requirements, and only then render the diagram. Because the same
+checks also grade the diagram, grading is automatic: no one writes or applies
+an answer key by hand. We tested this on 600 benchmark prompts across six
+models and found that structured generation raised pass rates for every model
+that could run it. We also had two human graders check the grader. They showed
+it is lenient in one direction: it passed 36 of 200 diagrams they failed and
+failed none they passed. So the automatic score is good enough for
+benchmarking, but not yet for high-stakes scoring.
 \end{abstract}
