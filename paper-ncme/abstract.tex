@@ -1,7 +1,12 @@
 \begin{abstract}
-Language models draw diagrams that look right but are wrong. The model
-describes the construction, not the coordinates. A geometry engine computes the
-figure and checks each requirement, so an item model yields item and key
-together. Structured generation raises pass rates. Human grading shows the
-checker misses errors.
+Language models draw geometry diagrams that look right but are wrong. A right
+angle comes out at $88^\circ$, and nothing in the picture says so. We have the
+model describe the construction instead of picking coordinates. A geometry
+engine then computes every point and checks each stated requirement. Because
+the item's wording and its checklist come from the same template, one item
+model yields the item and its answer key together. On 600 benchmark prompts,
+structured generation raised pass rates for every model that could run it. Two
+human graders showed the checker is lenient in one direction: it passed 36 of
+200 diagrams they failed and failed none they passed. The automatic score is
+fit for benchmarking, not yet for high-stakes scoring.
 \end{abstract}
