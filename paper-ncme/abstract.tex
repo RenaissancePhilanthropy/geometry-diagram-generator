@@ -1,12 +1,15 @@
 \begin{abstract}
-Language models draw geometry diagrams that look right but are wrong. A right
-angle comes out at $88^\circ$, and nothing in the picture says so. We have the
-model describe the construction instead of picking coordinates. A geometry
-engine then computes every point and checks each stated requirement. Because
-the item's wording and its checklist come from the same template, one item
-model yields the item and its answer key together. On 600 benchmark prompts,
-structured generation raised pass rates for every model that could run it. Two
-human graders showed the checker is lenient in one direction: it passed 36 of
-200 diagrams they failed and failed none they passed. The automatic score is
-fit for benchmarking, not yet for high-stakes scoring.
+Language models can draw geometry diagrams that look right but are actually
+wrong. We found a more reliable way to generate diagrams is to have the model
+first describe the construction (instead of picking coordinates), then have a
+geometry engine compute every point, and only then render the diagram. This
+has a second benefit. Because the item's wording and its checklist come from
+the same template, we get the answer key for free, and the same engine can
+check whether a generated diagram satisfies it. We tested this on 600
+benchmark prompts across six models and found that structured generation
+raised pass rates for every model that could run it. We also had two human
+graders check the checker. They showed it is lenient in one direction: it
+passed 36 of 200 diagrams they failed and failed none they passed. So the
+automatic score is good enough for benchmarking, but not yet for high-stakes
+scoring.
 \end{abstract}
