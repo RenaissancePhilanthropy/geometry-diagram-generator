@@ -1,7 +1,7 @@
 \section{How the model draws a diagram}
 \label{sec:pipeline}
 
-A request becomes a picture in three steps (\cref{fig:trace}). The model writes a short, structured description of the construction. A geometry engine turns that description into exact coordinates. A renderer turns the coordinates into a drawing. The division of labour is the central idea: \textbf{the model decides what to build, and the engine decides where the points lie.} The model never writes a coordinate.
+The model specifies geometric relationships, and a geometry engine computes the coordinates. A renderer then produces the diagram (\cref{fig:trace}). The division of labour is the central idea: \textbf{the model decides what to build, and the engine decides where the points lie.} The model writes no coordinate for any constructed point.
 
 \begin{figure*}[t]
 \centering
@@ -49,7 +49,7 @@ A request becomes a picture in three steps (\cref{fig:trace}). The model writes 
 \end{figure*}
 
 \paragraph{Step 1: a description, not coordinates.}
-The model fills in a simple, typed form. We call it the intermediate representation, or IR. The form offers 31 kinds of building block: points, segments, lines, circles, ellipses, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$.'' It never writes ``$H = (3.07, 0)$.'' Because the form is typed, structural mistakes are caught immediately, before any geometry is computed. A missing point or a wrong number of arguments never reaches the engine.
+The model fills in a simple, typed form. We call it the intermediate representation, or IR. The form offers 31 kinds of building block: points, segments, lines, circles, ellipses, polygons, and intersections. Each block names a \emph{relationship} rather than a position. A point can be ``the midpoint of $A$ and $B$,'' ``where these two lines cross,'' or ``the foot of the perpendicular from $C$.'' In our example the model writes ``$H$ is where line $AB$ meets the perpendicular to $AB$ through $C$.'' It never writes ``$H = (3.07, 0)$.'' Because the form is typed, structural mistakes are caught immediately, before any geometry is computed. A missing point or a wrong number of arguments never reaches the engine. A free point, one that nothing constrains, such as $A$ or $B$ in the example, is placed by the engine at random within the canvas, or at a rough position the model may suggest.
 
 \paragraph{Step 2: the engine solves for the points.}
 A geometry engine reads the description and computes the coordinates, handling the building blocks in dependency order. We use SymPy, a symbolic-mathematics library. Symbolic methods have recently solved olympiad geometry problems~\citep{trinh2024alphageometry}. Here the engine has a more modest task. It determines where the points of a described figure lie. When a step is ambiguous, for example when two circles meet at two points, the description states which one to keep. The engine, not the model, produces every coordinate. That is what makes the right angle in our example exactly $90^\circ$ rather than approximately so.
