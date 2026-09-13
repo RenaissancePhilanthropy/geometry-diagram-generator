@@ -4,7 +4,7 @@
 The finished diagram is a set of exact coordinates, so many of a prompt's requirements can be scored directly, as explicit geometric predicates. ``Is the angle at $H$ a right angle?'' is settled by a single calculation on the coordinates. No judge is asked whether the picture appears square. This makes scoring inspectable and inexpensive. It does not make scoring complete. The checklist's validity still depends on whether it captures everything the prompt asks for and the visual conventions a reader expects. We examine both limits below.
 
 \paragraph{The question and its answer key are written together.}
-What makes this practical is that each item and its answer key come from the \emph{same} short program (\cref{fig:cogen}). One item model produces both the wording shown to the model and the checklist used to score it. Because the two are emitted together, they are far less likely to drift apart through manual editing. Errors in the item model itself remain possible. An author can still omit a predicate, encode the wrong one, or write wording whose intended constraint the checklist does not fully capture. Re-running the item model with a new random seed produces a fresh, parallel item. The checklist is never shown to the model while it works.
+What makes this practical is that each item and its answer key come from the \emph{same} short program (\cref{fig:cogen}). One item model produces both the wording shown to the language model and the checklist used to score it. Because the two are emitted together, they are far less likely to drift apart through manual editing. Errors in the item model itself remain possible. An author can still omit a predicate, encode the wrong one, or write wording whose intended constraint the checklist does not fully capture. Re-running the item model with a new random seed produces a fresh, parallel item. The checklist is never shown to the language model while it works.
 
 \begin{figure*}[t]
 \centering
@@ -19,7 +19,7 @@ What makes this practical is that each item and its answer key come from the \em
 ]
   \node[func] (fn) {altitude\_template($A,B,C,H$,\ ang$_A$,\ ang$_B$):};
   \node[outbox, anchor=north] (prompt) at ($(fn.south)+(-4.0,-1.4)$) {%
-    \textbf{Prompt (shown to the model)}\\[2pt]
+    \textbf{Prompt (shown to the language model)}\\[2pt]
     \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
     Construct the altitude from $C$ meeting $AB$ at $H$.''};
   \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.4)$) {%
@@ -28,8 +28,8 @@ What makes this practical is that each item and its answer key come from the \em
     point\_on\_segment($H, A, B$)};
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (prompt.north);
   \draw[->] (fn.south) .. controls +(0,-0.6) and +(0,0.6) .. (rubric.north);
-  \node[role, below=1mm of prompt, text width=53mm] {what the model sees};
-  \node[role, below=1mm of rubric, text width=53mm] {hidden from the model};
+  \node[role, below=1mm of prompt, text width=53mm] {what the language model sees};
+  \node[role, below=1mm of rubric, text width=53mm] {hidden from the language model};
 \end{tikzpicture}
 \caption{One item model writes both the question and its answer key. The two cannot drift apart through separate editing. An item model can still leave a check out. This key confirms the altitude but not the two stated angles. That gap is the main finding of the human study reported in this section.}
 \label{fig:cogen}
@@ -64,4 +64,4 @@ An automatic score is useful only if it agrees with a careful human grader, so w
 We did not clear that bar. Agreement was moderate, Cohen's $\kappa = 0.46$, well short of the pre-registered $0.70$. We treat this as a central limitation. The disagreements run \emph{one way}. In 36 of the 200 cases the automatic scorer passed a diagram the graders failed. In \emph{zero} cases was it too harsh. In this sample, that one-sidedness meant no model was penalised unjustly. It is nonetheless the more serious direction once a score is read as a certificate of correctness, because every disagreement is a false positive. We therefore state it plainly: \textbf{the pass rates in \cref{sec:benchmark} are optimistic}. In our sample the checker erred only toward passing, never toward failing. The errors concentrate in one place. They come from items with an added construction, like our altitude, where the checklist confirms the construction but does not separately re-check the prompt's stated angles. The two graders agreed with \emph{each other} at the $0.70$ we had asked the scorer to reach. The gap is therefore in the checklist, not in the human ratings. The fix is to add the missing numeric checks to those item models. That revision was not applied to the results reported here. Instead, \cref{sec:benchmark} reports, alongside each automatic pass rate, the share of automatic passes the graders confirmed, and uses it to correct the rates.
 
 \paragraph{What the checks cannot see.}
-That particular gap closes with more checks. A deeper one does not. The checks read the geometry, the coordinates, and nothing else. They never look at how the figure is drawn. A diagram can satisfy every requirement and still mislead a reader. A right-angle mark can be placed outside the corner. An angle can be labelled on the wrong side. A figure can pass every check and still be laid out so poorly that a reader cannot follow it. This is the converse of the model-based judge in \cref{sec:motivation}. A judge sees how a picture looks but cannot check its geometry. Our checks test the geometry but cannot see how it looks. The two are complementary. The checks say whether the computed geometry is correct. Whether the drawing presents that geometry faithfully and clearly still requires visual review.
+That particular gap closes with more checks. A deeper one does not. The checks read the geometry, the coordinates, and nothing else. They never look at how the figure is drawn. A diagram can satisfy every requirement and still mislead a reader. A right-angle mark can be placed outside the corner. An angle can be labelled on the wrong side. A figure can pass every check and still be laid out so poorly that a reader cannot follow it. This is the converse of the language model-based judge in \cref{sec:motivation}. A judge sees how a picture looks but cannot check its geometry. Our checks test the geometry but cannot see how it looks. The two are complementary. The checks say whether the computed geometry is correct. Whether the drawing presents that geometry faithfully and clearly still requires visual review.
