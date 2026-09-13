@@ -27,18 +27,18 @@ an answer key by hand. We tested this on 600 benchmark prompts across six
 models and found that structured generation raised pass rates for every model
 that could run it. We also had two human graders check the grader. They showed
 it is lenient in one direction: it passed 36 of 200 diagrams they failed and
-failed none they passed.
+failed none the human graders passed.
 
 
 ## Introduction  {label:sec:motivation}
 
-*Automatic item generation* (AIG) can reduce the work of producing new test items and their answer keys. In template-based AIG, an author writes a single template, or *item model*, from which a computer generates many items, each carrying its own answer key [bejar2002generative,gierl2013aig]. AIG has worked best for items built from text. It has struggled with items whose response is a *picture*. In K-12 mathematics, the picture that matters most is the geometry diagram.
+*Automatic item generation* (AIG) can reduce the workload of producing new test items and their answer keys. In template-based AIG, an author writes a single template, or *item model*, from which a computer generates many items, each carrying its own answer key [bejar2002generative,gierl2013aig]. AIG has worked best for items built from text. It has struggled with items whose response is a *picture*. In K-12 mathematics, the picture that often matters most is the geometry diagram.
 
-Producing a correct one is harder than it looks. Take a simple request:
+Producing a correct diagram is harder than it looks. Take a simple request:
 
 > *"Draw an acute triangle $ABC$ with $\angle A = 60^\circ$ and $\angle B = 70^\circ$, then draw the altitude from $C$, meeting $AB$ at $H$."*
 
-To be correct, the drawing has to get several things *exactly* right. Angle $A$ is $60^\circ$. The point $H$ lies on the segment $AB$, not past its end. The altitude meets $AB$ at a true right angle. If a model produces the drawing by guessing coordinates, these facts hold only by luck. And when they fail, they fail silently. The result still looks like a triangle with a line through it, even if that right angle is really $88^\circ$ or the foot of the altitude slipped just past $B$.
+To be correct, the drawing has to get several things *exactly* right. Angle $A$ is $60^\circ$. The point $H$ lies on the segment $AB$, not past its end. The altitude meets $AB$ at a true right angle. When these fail, they fail silently. The result still looks like a triangle with a line through it, even if that right angle is really $88^\circ$ or the foot of the altitude slipped just past $B$.
 
 The same exactness makes such diagrams hard to score. Most geometry benchmarks run the task backwards. They show the model a finished diagram and ask a question about it [lu2021intergps,lu2024mathvista]. They do not ask whether a model can *produce* a correct figure. The benchmarks that do score generated pictures were built for everyday images. They rely on an AI "judge" that looks at the output [huang2025t2icompbenchpp,wang2025genexam]. A judge can say a shape *looks like* a right triangle. It cannot certify that an angle is exactly $90^\circ$. For geometry diagrams, then, neither making the item nor scoring it comes for free.
 
