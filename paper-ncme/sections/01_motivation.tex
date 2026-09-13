@@ -1,7 +1,7 @@
 \section{Introduction}
 \label{sec:motivation}
 
-\emph{Automatic item generation} (AIG) can reduce the workload of producing new test items and their answer keys. In template-based AIG, an author writes a single \emph{template}, which the field calls an item model, from which a computer generates many items, each carrying its own answer key~\citep{bejar2002generative,gierl2013aig}. AIG has been applied mainly to items built from text. Items whose response is a \emph{picture} have been harder to reach. In K--12 mathematics, the most common picture is the geometry diagram.
+\emph{Automatic item generation} (AIG) can reduce the workload of producing new test items and their answer keys. In template-based AIG, an author writes a single \emph{item model}, a template from which a computer generates many items, each carrying its own answer key~\citep{bejar2002generative,gierl2013aig}. AIG has been applied mainly to items built from text. Items whose response is a \emph{picture} have been harder to reach. In K--12 mathematics, the most common picture is the geometry diagram.
 
 Producing a correct diagram is harder than it appears. Consider a simple request:
 
@@ -20,6 +20,6 @@ Our approach removes both the guessing and the inspection. The model describes t
 \item \textbf{Automatic scoring.} The finished figure is a set of exact coordinates, so each requirement can be checked directly. The question ``is this angle $90^\circ$?'' replaces a judge's impression of the picture.
 \end{itemize}
 
-That is this paper's contribution: a \emph{machine-verifiable template framework} for geometry diagrams. One template emits both the prompt and a \emph{computed} answer key. The key is a machine-checkable list of geometric requirements. The figure produced in response is verified against that key. We make two empirical claims and are deliberate about their strength. Structured construction improves how often models get the geometry right (\cref{sec:benchmark}). Human validation shows the automatic score is optimistic, so it is not yet a validated high-stakes score (\cref{sec:scoring}). Here the benchmark is evidence for these two claims, not the contribution itself.
+That is this paper's contribution: a \emph{machine-verifiable item-model framework} for geometry diagrams. One item model emits both the prompt and a \emph{computed} answer key. The key is a machine-checkable list of geometric requirements. The figure produced in response is verified against that key. We make two empirical claims and are deliberate about their strength. Structured construction improves how often models get the geometry right (\cref{sec:benchmark}). Human validation shows the automatic score is optimistic, so it is not yet a validated high-stakes score (\cref{sec:scoring}). Here the benchmark is evidence for these two claims, not the contribution itself.
 
 The rest of the paper explains how the model describes a diagram (\cref{sec:pipeline}), how scoring follows from that same description (\cref{sec:scoring}), what we found on six large models (\cref{sec:benchmark}), and why this matters for educational measurement (\cref{sec:measurement}).
