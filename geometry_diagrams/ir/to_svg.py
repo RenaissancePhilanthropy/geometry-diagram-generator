@@ -486,9 +486,12 @@ def _emit_svg_op(
                 p1_id, p2_id = line_endpoints(obj_id, stmt_by_id, helpers)
                 x1, y1 = _geo_coord(p1_id, coords, helpers)
                 x2, y2 = _geo_coord(p2_id, coords, helpers)
-                sx1, sy1, sx2, sy2 = _clip_line_to_bounds(
-                    x1, y1, x2, y2, xmin, xmax, ymin, ymax
-                )
+                if _clips_to_own_extent(style, styles):
+                    sx1, sy1, sx2, sy2 = x1, y1, x2, y2
+                else:
+                    sx1, sy1, sx2, sy2 = _clip_line_to_bounds(
+                        x1, y1, x2, y2, xmin, xmax, ymin, ymax
+                    )
                 if sx1 is not None:
                     px1, py1 = gxy(sx1, sy1)
                     px2, py2 = gxy(sx2, sy2)
@@ -507,10 +510,13 @@ def _emit_svg_op(
                 stmt = stmt_by_id[obj_id]
                 ax, ay = _geo_coord(stmt.a, coords, helpers)
                 bx, by = _geo_coord(stmt.b, coords, helpers)
-                # Extend ray to canvas edge
-                sx1, sy1, sx2, sy2 = _clip_ray_to_bounds(
-                    ax, ay, bx, by, xmin, xmax, ymin, ymax
-                )
+                if _clips_to_own_extent(style, styles):
+                    sx1, sy1, sx2, sy2 = ax, ay, bx, by
+                else:
+                    # Extend ray to canvas edge
+                    sx1, sy1, sx2, sy2 = _clip_ray_to_bounds(
+                        ax, ay, bx, by, xmin, xmax, ymin, ymax
+                    )
                 if sx1 is not None:
                     px1, py1 = gxy(sx1, sy1)
                     px2, py2 = gxy(sx2, sy2)
@@ -1928,6 +1934,18 @@ def _font_size_from_style(style_key: str | None, styles: dict) -> float | None:
     if style_key in styles:
         return styles[style_key].get("font-size")
     return None
+
+
+def _clips_to_own_extent(style_key: str | None, styles: dict) -> bool:
+    """True if this style opts a LineThrough/Ray out of canvas-bounds
+    extension, rendering only between its own two defining points instead.
+
+    Default (no style, or no "clip" property) is today's behavior: extend
+    to the diagram's canvas bounds.
+    """
+    if not style_key or style_key not in styles:
+        return False
+    return styles[style_key].get("clip") == "own_extent"
 
 
 def _slugify_color(color: str) -> str:

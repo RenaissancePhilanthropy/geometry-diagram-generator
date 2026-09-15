@@ -245,12 +245,18 @@ def _emit_op(
                 out.append(f"\\tkzDrawSegment{sopts}({a},{b})")
             elif isinstance(sym_obj, spg.Line):
                 p1, p2 = _line_pts(obj_id, stmt_by_id, helpers)
-                add_opt = f"add={add[0]} and {add[1]}" if add else "add=20 and 20"
+                if add:
+                    add_opt = f"add={add[0]} and {add[1]}"
+                elif _clips_to_own_extent(style, styles):
+                    add_opt = "add=0 and 0"
+                else:
+                    add_opt = "add=20 and 20"
                 opts = _merge_opts(add_opt, sopts)
                 out.append(f"\\tkzDrawLine[{opts}]({p1},{p2})")
             elif isinstance(sym_obj, spg.Ray):
                 stmt = stmt_by_id[obj_id]
-                out.append(f"\\tkzDrawLine[add=0 and 1{sopts}]({stmt.a},{stmt.b})")
+                add_opt = "add=0 and 0" if _clips_to_own_extent(style, styles) else "add=0 and 1"
+                out.append(f"\\tkzDrawLine[{add_opt}{sopts}]({stmt.a},{stmt.b})")
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzDrawCircle{sopts}({center},{through})")
@@ -583,6 +589,8 @@ def _style_str(style_key: str | None, styles: dict) -> str:
         for k, v in styles[style_key].items():
             if v is False:
                 continue
+            if k == "clip":
+                continue  # renderer-internal directive, not a TikZ option
             if k == "line_width":
                 parts.append(f"line width={v}pt")
             elif v is True:
@@ -593,6 +601,18 @@ def _style_str(style_key: str | None, styles: dict) -> str:
     if style_key in _TIKZ_COLOR_NAMES:
         return f"[color={style_key}]"
     return ""
+
+
+def _clips_to_own_extent(style_key: str | None, styles: dict) -> bool:
+    """True if this style opts a LineThrough/Ray out of its default TikZ
+    extension, drawing only between its own two defining points instead.
+
+    Mirrors ``to_svg._clips_to_own_extent`` so both renderers agree on the
+    ``{"clip": "own_extent"}`` style convention.
+    """
+    if not style_key or style_key not in styles:
+        return False
+    return styles[style_key].get("clip") == "own_extent"
 
 
 def _merge_opts(base: str, extra_bracket: str) -> str:

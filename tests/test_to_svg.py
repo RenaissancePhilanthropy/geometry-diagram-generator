@@ -2129,6 +2129,68 @@ def test_arrow_style_colored_ray_gets_matching_marker_fill():
     assert path.get("fill") == "red"
 
 
+def test_line_through_with_own_extent_style_is_not_extended_to_canvas():
+    """A LineThrough normally extends to the diagram's canvas bounds; the
+    {"clip": "own_extent"} style opts a specific object out, rendering only
+    between its own two defining points -- e.g. a short line reused from
+    an earlier sub-question whose real drawn ink is much shorter than the
+    rest of the figure."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            LineThrough(id="m", p="A", q="B"),
+        ],
+        styles={"short": {"clip": "own_extent"}},
+        render=[Draw(obj="m", style="short")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    line_el = [l for l in _findall(root, "line") if l.get("data-type") == "line"][0]
+    x1, x2 = float(line_el.get("x1")), float(line_el.get("x2"))
+    # Own-extent (A to B, 1 geometry unit apart) is far shorter than a
+    # canvas-clipped line would be on this -20..20 canvas.
+    assert 0 < abs(x1 - x2) < 20
+
+
+def test_line_through_without_own_extent_style_still_extends_to_canvas():
+    """Default behavior (no style, or a style without "clip") is unchanged:
+    LineThrough still extends to the canvas bounds."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            LineThrough(id="m", p="A", q="B"),
+        ],
+        render=[Draw(obj="m")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    line_el = [l for l in _findall(root, "line") if l.get("data-type") == "line"][0]
+    x1, x2 = float(line_el.get("x1")), float(line_el.get("x2"))
+    assert abs(x1 - x2) > 10
+
+
+def test_ray_with_own_extent_style_is_not_extended_to_canvas():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            Ray(id="r", a="A", b="B"),
+        ],
+        styles={"short": {"clip": "own_extent"}},
+        render=[Draw(obj="r", style="short")],
+    )
+    svg_str = _compile_svg(diagram)
+    root = _parse(svg_str)
+    ray_line = [l for l in _findall(root, "line") if l.get("data-type") == "ray"][0]
+    x1, x2 = float(ray_line.get("x1")), float(ray_line.get("x2"))
+    assert 0 < abs(x1 - x2) < 20
+
+
 # ---------------------------------------------------------------------------
 # Canvas bounds — circles/ellipses must not be clipped
 # ---------------------------------------------------------------------------

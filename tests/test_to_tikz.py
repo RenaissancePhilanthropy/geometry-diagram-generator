@@ -1103,3 +1103,84 @@ def test_to_tikz_renders_elliptical_sector_draw_and_fill():
     assert "y radius=1" in tikz
     assert "\\fill[" in tikz
     assert "\\draw" in tikz
+
+
+def test_line_through_with_own_extent_style_uses_zero_add():
+    """A {"clip": "own_extent"} style opts a LineThrough out of tkz-euclide's
+    default extension (add=20 and 20), drawing only between its own two
+    defining points -- mirrors to_svg.py's own-extent style handling."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            LineThrough(id="m", p="A", q="B"),
+        ],
+        styles={"short": {"clip": "own_extent"}},
+        render=[Draw(obj="m", style="short")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "add=0 and 0" in tikz
+    assert "clip=" not in tikz  # renderer-internal directive, not a real TikZ option
+
+
+def test_line_through_without_own_extent_style_still_uses_default_add():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            LineThrough(id="m", p="A", q="B"),
+        ],
+        render=[Draw(obj="m")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "add=20 and 20" in tikz
+
+
+def test_line_through_explicit_add_wins_over_own_extent_style():
+    """An explicit Draw.add override still takes precedence over a
+    {"clip": "own_extent"} style default."""
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            LineThrough(id="m", p="A", q="B"),
+        ],
+        styles={"short": {"clip": "own_extent"}},
+        render=[Draw(obj="m", add=[5, 5], style="short")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "add=5.0 and 5.0" in tikz
+
+
+def test_ray_with_own_extent_style_uses_zero_add():
+    from geometry_diagrams.ir.ir import Ray
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            Ray(id="r", a="A", b="B"),
+        ],
+        styles={"short": {"clip": "own_extent"}},
+        render=[Draw(obj="r", style="short")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "add=0 and 0" in tikz
+
+
+def test_ray_without_own_extent_style_still_uses_default_add():
+    from geometry_diagrams.ir.ir import Ray
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-20, xmax=20, ymin=-20, ymax=20),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=1, y=0),
+            Ray(id="r", a="A", b="B"),
+        ],
+        render=[Draw(obj="r")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "add=0 and 1" in tikz
