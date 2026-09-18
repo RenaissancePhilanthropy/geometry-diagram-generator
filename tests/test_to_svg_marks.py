@@ -337,3 +337,63 @@ class TestMarksSvgWellFormed:
         svg = _compile_svg(_six_segments_diagram())
         root = ET.fromstring(svg)
         assert root is not None
+
+
+# ---------------------------------------------------------------------------
+# 6. Explicit MarkSegments.ticks — arbitrary count, no palette cap
+# ---------------------------------------------------------------------------
+
+class TestExplicitTicksCount:
+    def _one_segment_diagram(self, **mark_kwargs) -> DiagramIR:
+        return DiagramIR(
+            canvas=Canvas(xmin=-1, xmax=5, ymin=-1, ymax=3),
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=4, y=0),
+                Segment(id="AB", a="A", b="B"),
+            ],
+            render=[Draw(obj="AB"), MarkSegments(segs=["AB"], **mark_kwargs)],
+        )
+
+    def test_explicit_ticks_beyond_palette_emits_exact_count(self):
+        """ticks=7 exceeds the 6-entry mark-symbol palette but must still
+        emit exactly 7 tick strokes — no cap for the explicit-count path."""
+        svg = _compile_svg(self._one_segment_diagram(ticks=7))
+        root = _parse(svg)
+        marks = _mark_elements(root)
+        assert len(marks) == 7, f"Expected 7 mark-segment elements, got {len(marks)}"
+
+    def test_explicit_ticks_overrides_group_derived_count(self):
+        """An explicit `ticks` count wins over whatever the group name would
+        otherwise imply."""
+        svg = _compile_svg(self._one_segment_diagram(group="g1", ticks=5))
+        root = _parse(svg)
+        marks = _mark_elements(root)
+        assert len(marks) == 5
+
+    def test_explicit_ticks_does_not_consume_a_group_slot(self):
+        """An op carrying an explicit `ticks` count must not shift the
+        auto-assigned symbol given to other (implicit) groups."""
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-1, xmax=10, ymin=-1, ymax=3),
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=2, y=0),
+                PointFixed(id="C", x=3, y=0),
+                PointFixed(id="D", x=5, y=0),
+                Segment(id="s1", a="A", b="B"),
+                Segment(id="s2", a="C", b="D"),
+            ],
+            render=[
+                Draw(obj="s1"), Draw(obj="s2"),
+                MarkSegments(segs=["s1"], group="explicit_group", ticks=6),
+                MarkSegments(segs=["s2"], group="alpha"),
+            ],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        alpha_marks = [el for el in _mark_elements(root) if el.get("data-segment") == "s2"]
+        assert len(alpha_marks) == 1, (
+            "alpha is the first implicit group encountered and should get the "
+            f"first auto-assigned symbol (a single tick), got {len(alpha_marks)}"
+        )

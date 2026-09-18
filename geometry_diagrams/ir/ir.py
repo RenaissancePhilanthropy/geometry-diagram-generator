@@ -874,6 +874,19 @@ class MarkSegments(RenderBase):
     kind: Literal["mark_segments"] = "mark_segments"
     segs: List[SegmentId]
     group: Optional[str] = None
+    # Explicit tick count, taking priority over any count implied by `group`
+    # (a "tickN" name or first-encounter order). Unlike the group-derived
+    # count, which is capped by the renderers' fixed symbol palette, this
+    # has no upper bound in either renderer. Always renders as plain
+    # perpendicular tick marks — meaningless combined with a "parallelN"
+    # group name (those always render as chevrons instead).
+    ticks: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _check_ticks_positive(self) -> "MarkSegments":
+        if self.ticks is not None and self.ticks < 1:
+            raise ValueError("MarkSegments.ticks must be >= 1")
+        return self
 
 
 class LabelPoint(RenderBase):

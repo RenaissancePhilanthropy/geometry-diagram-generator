@@ -527,6 +527,16 @@ Mark multiple angles as visually matching (same number of arcs, same label).
 #### `mark_equal_lengths`
 Mark segments as equal with tick marks.
 
+> **Note:** this section predates the current implementation and its
+> `{segments: [[P,Q],...], ticks: n}` shape does not match any real schema
+> today. The actual IR-level render op is `ir.MarkSegments` (see
+> `geometry_diagrams/ir/ir.py`): it takes `segs` (a list of already-defined
+> segment ids, not raw point pairs) plus either a `group` string (an
+> equal-length group name; a "tickN" name or first-encounter order decides
+> the count, capped at 6 by the renderers' mark-symbol palette) or an
+> explicit `ticks: int` field with no upper bound. `ticks` is IR/renderer-only
+> — the recipe DSL and pydsl surfaces don't expose it yet.
+
 | Field      | Type    | Description                               |
 |------------|---------|-------------------------------------------|
 | `groups`   | array   | Each group: {segments: [[P,Q],...], ticks: n} |

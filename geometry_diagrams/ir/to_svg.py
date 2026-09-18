@@ -52,7 +52,11 @@ from .render_util import (
     seg_endpoints,
     synthesize_helpers,
     sympy_to_float,
+    tick_mark_segments,
     tick_values,
+    resolve_mark_group_indices,
+    _TICK_COUNT_RE,
+    _PARALLEL_COUNT_RE,
 )
 
 logger = logging.getLogger(__name__)
@@ -300,35 +304,30 @@ def ir_to_svg(
     # Pre-compute group → mark symbol / chevron-count for MarkSegments.
     # Equal-length groups cycle through _MARK_SYMBOLS (matching TikZ's tkz-euclide).
     # Parallel groups cycle through chevron counts.
+    # MarkSegments.ticks (an explicit count) bypasses this entirely — it is
+    # resolved per-op at emission time in _emit_svg_op instead.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
-        if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
+        if (
+            isinstance(op, ir.MarkSegments) and op.group and op.ticks is None
+            and (op.style or op.group) not in _styles
+        ):
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_mark_symbols: dict[str, str] = {}   # equal-length: symbol like "|", "s|", …
-    group_chevron_counts: dict[str, int] = {}  # parallel: 1/2/3 chevrons
-    equal_idx = 0
-    parallel_idx = 0
-    _TICK_COUNT_RE = re.compile(r"^tick(\d+)$")
-    _PARALLEL_COUNT_RE = re.compile(r"^parallel(\d+)$")
-    for g in seg_groups:
-        if g.startswith("parallel"):
-            m = _PARALLEL_COUNT_RE.match(g)
-            if m:
-                group_chevron_counts[g] = min(max(int(m.group(1)), 1), 3)
-            else:
-                group_chevron_counts[g] = (parallel_idx % 3) + 1
-                parallel_idx += 1
-        else:
-            m = _TICK_COUNT_RE.match(g)
-            if m:
-                n = min(max(int(m.group(1)), 1), len(_MARK_SYMBOLS))
-                group_mark_symbols[g] = _MARK_SYMBOLS[n - 1]
-            else:
-                group_mark_symbols[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
-                equal_idx += 1
+    tick_groups = [g for g in seg_groups if not g.startswith("parallel")]
+    parallel_groups = [g for g in seg_groups if g.startswith("parallel")]
+    tick_group_indices = resolve_mark_group_indices(tick_groups, _TICK_COUNT_RE)
+    parallel_group_indices = resolve_mark_group_indices(parallel_groups, _PARALLEL_COUNT_RE)
+    # equal-length: symbol like "|", "s|", … (capped by the fixed 6-entry palette)
+    group_mark_symbols: dict[str, str] = {
+        g: _MARK_SYMBOLS[min(idx, len(_MARK_SYMBOLS)) - 1] for g, idx in tick_group_indices.items()
+    }
+    # parallel: 1/2/3 chevrons (capped — tkz-euclide's `>`/`>>`/`>>>` marks go no higher)
+    group_chevron_counts: dict[str, int] = {
+        g: min(idx, 3) for g, idx in parallel_group_indices.items()
+    }
 
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
@@ -874,7 +873,7 @@ def _emit_svg_op(
                     arc_attrs["data-group"] = str(group)
                 _append_angle_arc(svg, a, o, b, pt, stroke, n_arcs, extra_attrs=arc_attrs)
 
-        case ir.MarkSegments(segs=segs, group=group, style=style):
+        case ir.MarkSegments(segs=segs, group=group, style=style, ticks=ticks):
             stroke = _color_from_style(style or group, styles) or "black"
             for seg_id in segs:
                 if seg_id not in stmt_by_id:
@@ -887,7 +886,11 @@ def _emit_svg_op(
                 }
                 if group:
                     mark_attrs["data-group"] = str(group)
-                if group and group.startswith("parallel"):
+                if ticks is not None:
+                    # Explicit count: always plain tick marks, no palette cap.
+                    mark_attrs["data-ticks"] = str(ticks)
+                    _append_seg_ticks(svg, a, b, pt, stroke, ticks, extra_attrs=mark_attrs)
+                elif group and group.startswith("parallel"):
                     # Parallel segments: use chevron marks (incrementing count per group)
                     n_chevrons = group_chevron_counts.get(group, 1)
                     _append_seg_chevrons(svg, a, b, pt, stroke, n_chevrons, extra_attrs=mark_attrs)
@@ -1227,28 +1230,18 @@ def _append_seg_ticks(
     n_ticks: int,
     extra_attrs: dict[str, str] | None = None,
 ) -> None:
-    """Draw n_ticks perpendicular tick marks at the midpoint of segment AB."""
-    ax, ay = pt(a_id)
-    bx, by = pt(b_id)
-    mx, my = (ax + bx) / 2, (ay + by) / 2
-    dx, dy = bx - ax, by - ay
-    mag = math.hypot(dx, dy) or 1
-    # Perpendicular direction
-    nx, ny = -dy / mag, dx / mag
-    # Tick spacing along the segment direction
-    spacing = 4  # px between multiple ticks
-    along_x, along_y = dx / mag, dy / mag
+    """Draw n_ticks perpendicular tick marks at the midpoint of segment AB.
 
-    for i in range(n_ticks):
-        offset = (i - (n_ticks - 1) / 2) * spacing
-        tx = mx + along_x * offset
-        ty = my + along_y * offset
+    No upper bound on n_ticks — strokes are evenly spaced along AB regardless
+    of count (see MarkSegments.ticks)."""
+    spacing = 4  # px between multiple ticks
+    for (x1, y1), (x2, y2) in tick_mark_segments(pt(a_id), pt(b_id), n_ticks, _TICK_LEN, spacing):
         ET.SubElement(svg, "line", {
             **(extra_attrs or {}),
-            "x1": f"{tx - nx * _TICK_LEN:.2f}",
-            "y1": f"{ty - ny * _TICK_LEN:.2f}",
-            "x2": f"{tx + nx * _TICK_LEN:.2f}",
-            "y2": f"{ty + ny * _TICK_LEN:.2f}",
+            "x1": f"{x1:.2f}",
+            "y1": f"{y1:.2f}",
+            "x2": f"{x2:.2f}",
+            "y2": f"{y2:.2f}",
             "stroke": stroke,
             "stroke-width": "1.5",
         })

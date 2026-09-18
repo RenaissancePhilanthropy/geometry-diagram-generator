@@ -35,7 +35,13 @@ from .render_util import (
     seg_endpoints,
     synthesize_helpers,
     sympy_to_float,
+    tick_mark_segments,
     tick_values,
+    resolve_mark_group_indices,
+    SEG_TICK_HALF_LENGTH,
+    SEG_TICK_SPACING,
+    _TICK_COUNT_RE,
+    _PARALLEL_COUNT_RE,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,24 +131,30 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
     # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
+    # A "tickN"/"parallelN" group name resolves to N directly (matching to_svg.py);
+    # any other name falls back to first-encounter order. MarkSegments.ticks
+    # (an explicit count) bypasses this entirely — resolved per-op in _emit_op.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
-        if isinstance(op, ir.MarkSegments) and op.group and (op.style or op.group) not in _styles:
+        if (
+            isinstance(op, ir.MarkSegments) and op.group and op.ticks is None
+            and (op.style or op.group) not in _styles
+        ):
             if op.group not in seg_groups:
                 seg_groups.append(op.group)
-    group_marks: dict[str, str] = {}
-    equal_idx = 0
-    parallel_idx = 0
-    for g in seg_groups:
-        if g.startswith("parallel"):
-            group_marks[g] = _PARALLEL_MARKS[parallel_idx % len(_PARALLEL_MARKS)]
-            parallel_idx += 1
-        else:
-            group_marks[g] = _MARK_SYMBOLS[equal_idx % len(_MARK_SYMBOLS)]
-            equal_idx += 1
+    tick_groups = [g for g in seg_groups if not g.startswith("parallel")]
+    parallel_groups = [g for g in seg_groups if g.startswith("parallel")]
+    tick_group_indices = resolve_mark_group_indices(tick_groups, _TICK_COUNT_RE)
+    parallel_group_indices = resolve_mark_group_indices(parallel_groups, _PARALLEL_COUNT_RE)
+    group_marks: dict[str, str] = {
+        g: _MARK_SYMBOLS[min(idx, len(_MARK_SYMBOLS)) - 1] for g, idx in tick_group_indices.items()
+    }
+    group_marks.update({
+        g: _PARALLEL_MARKS[min(idx, len(_PARALLEL_MARKS)) - 1] for g, idx in parallel_group_indices.items()
+    })
 
     for op in sorted_ops:
         chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)
@@ -433,9 +445,14 @@ def _emit_op(
                 merged = _merge_opts("size=0.5", sopts)
                 out.append(f"\\tkzMarkAngle[{merged}]({a},{o},{b})")
 
-        case ir.MarkSegments(segs=segs, group=group, style=style):
+        case ir.MarkSegments(segs=segs, group=group, style=style, ticks=ticks):
             mark_key = style or group
-            if mark_key and mark_key in styles:
+            if ticks is not None:
+                # Explicit count: draw raw perpendicular strokes directly —
+                # tkz-euclide's `\tkzMarkSegment` mark= option only has fixed
+                # entries up to 3 ticks, so it can't express an arbitrary count.
+                draw_opts = _style_str(mark_key, styles)
+            elif mark_key and mark_key in styles:
                 sopts = _style_str(mark_key, styles)
             elif group and group_marks and group in group_marks:
                 sopts = f"[mark={group_marks[group]}]"
@@ -449,7 +466,18 @@ def _emit_op(
                         warnings.append(msg)
                     continue
                 a, b = _seg_pts(seg_id, stmt_by_id)
-                out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
+                if ticks is not None:
+                    a_xy = (_f(sym[a].x), _f(sym[a].y))
+                    b_xy = (_f(sym[b].x), _f(sym[b].y))
+                    for (x1, y1), (x2, y2) in tick_mark_segments(
+                        a_xy, b_xy, ticks, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
+                    ):
+                        out.append(
+                            f"\\draw{draw_opts} ({_fmt_num(x1)},{_fmt_num(y1)}) -- "
+                            f"({_fmt_num(x2)},{_fmt_num(y2)});"
+                        )
+                else:
+                    out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:

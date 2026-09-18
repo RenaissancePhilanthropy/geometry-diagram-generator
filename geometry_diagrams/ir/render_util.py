@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from typing import Any
 
 import sympy.geometry as spg
@@ -436,6 +437,72 @@ def orient_angle(
     if (want_small and cross < 0) or (not want_small and cross > 0):
         return b, o, a
     return a, o, b
+
+
+_TICK_COUNT_RE = re.compile(r"^tick(\d+)$")
+_PARALLEL_COUNT_RE = re.compile(r"^parallel(\d+)$")
+
+# Half-length / spacing (construction units) for to_tikz.py's raw-drawn
+# segment tick marks (MarkSegments.ticks path, and any group index beyond
+# the mark-symbol palette). Not used by to_svg.py, which works in pixel
+# space post-projection (see _TICK_LEN/spacing in to_svg.py).
+SEG_TICK_HALF_LENGTH = 0.12
+SEG_TICK_SPACING = 0.09
+
+
+def resolve_mark_group_indices(seg_groups: list[str], name_re: "re.Pattern[str]") -> dict[str, int]:
+    """Assign a 1-based count to each mark group, in first-encounter order.
+
+    A group whose name matches `name_re` (e.g. "tick3", "parallel2") with a
+    captured digit gets that digit directly; every other group gets the next
+    number in encounter order. Shared by to_svg.py and to_tikz.py so a
+    diagram's MarkSegments groups resolve to the same counts on both
+    backends — a group named by convention no longer silently falls back to
+    encounter order on one backend while honoring its name on the other.
+    """
+    indices: dict[str, int] = {}
+    encounter_idx = 0
+    for g in seg_groups:
+        m = name_re.match(g)
+        if m:
+            indices[g] = max(int(m.group(1)), 1)
+        else:
+            encounter_idx += 1
+            indices[g] = encounter_idx
+    return indices
+
+
+def tick_mark_segments(
+    a: "tuple[float, float]",
+    b: "tuple[float, float]",
+    n_ticks: int,
+    half_length: float,
+    spacing: float,
+) -> "list[tuple[tuple[float, float], tuple[float, float]]]":
+    """Return n_ticks short perpendicular strokes centered on segment a-b's
+    midpoint, evenly spaced along a-b. Each element is the stroke's own
+    ((x1, y1), (x2, y2)) endpoints, in whatever coordinate space a/b are
+    given in (pixels for to_svg.py, construction units for to_tikz.py).
+    Has no upper bound on n_ticks — unlike the fixed-size mark-symbol
+    palettes both renderers use for the group-derived (non-explicit) count.
+    """
+    ax, ay = a
+    bx, by = b
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    dx, dy = bx - ax, by - ay
+    mag = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / mag, dx / mag
+    along_x, along_y = dx / mag, dy / mag
+    strokes: "list[tuple[tuple[float, float], tuple[float, float]]]" = []
+    for i in range(n_ticks):
+        offset = (i - (n_ticks - 1) / 2) * spacing
+        tx = mx + along_x * offset
+        ty = my + along_y * offset
+        strokes.append((
+            (tx - nx * half_length, ty - ny * half_length),
+            (tx + nx * half_length, ty + ny * half_length),
+        ))
+    return strokes
 
 
 def second_line_point(

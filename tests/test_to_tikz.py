@@ -350,6 +350,93 @@ def test_mark_segments_mixed_parallel_and_equal():
     assert "mark=>" in tikz
 
 
+def test_mark_segments_group_name_derives_count_not_encounter_order():
+    # A "tickN" group name must resolve to N directly, exactly like to_svg.py —
+    # regardless of which group is *encountered* first in the render list.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="tick4"),
+            MarkSegments(segs=["s2"], group="alpha"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "[mark=s]" in tikz    # tick4 -> 4th palette entry, not 1st-encountered "|"
+    assert "[mark=|]" in tikz   # alpha still gets the first auto-assigned symbol
+
+
+def test_mark_segments_explicit_ticks_draws_raw_strokes_not_tkzmarksegment():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="s1", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["s1"], ticks=5)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkSegment" not in tikz
+    assert tikz.count("\\draw") == 5
+
+
+def test_mark_segments_explicit_ticks_overrides_parallel_group():
+    # `ticks` always renders plain tick strokes, even for a "parallelN"-style
+    # group name that would otherwise render chevrons.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="s1", a="A", b="B"),
+        ],
+        render=[MarkSegments(segs=["s1"], group="parallel1", ticks=4)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "mark=>" not in tikz
+    assert tikz.count("\\draw") == 4
+
+
+def test_mark_segments_explicit_ticks_honors_style_color():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="s1", a="A", b="B"),
+        ],
+        styles={"red_ticks": {"color": "red"}},
+        render=[MarkSegments(segs=["s1"], style="red_ticks", ticks=3)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\draw[color=red]") == 3
+
+
+def test_mark_segments_explicit_ticks_does_not_consume_a_group_slot():
+    # An op with an explicit `ticks` count must not be added to the
+    # group-index bookkeeping used for other (implicit) groups.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=2, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Segment(id="s2", a="C", b="D"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="explicit_group", ticks=6),
+            MarkSegments(segs=["s2"], group="alpha"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "[mark=|]" in tikz   # alpha still gets the first auto symbol
+
+
 # ---------------------------------------------------------------------------
 # check_render_angles tests
 # ---------------------------------------------------------------------------

@@ -75,3 +75,29 @@ def test_draw_brace_is_a_valid_render_op_member():
     dumped = diagram.model_dump()
     rebuilt = DiagramIR.model_validate(dumped)
     assert isinstance(rebuilt.render[0], DrawBrace)
+
+
+def test_mark_segments_ticks_defaults_to_none():
+    from geometry_diagrams.ir.ir import MarkSegments
+
+    op = MarkSegments(segs=["s1"])
+    assert op.ticks is None
+
+
+def test_mark_segments_accepts_ticks_beyond_the_mark_symbol_palette():
+    from geometry_diagrams.ir.ir import MarkSegments
+
+    op = MarkSegments(segs=["s1"], ticks=7)
+    assert op.ticks == 7
+
+
+def test_mark_segments_rejects_non_positive_ticks():
+    import pytest
+    from pydantic import ValidationError
+
+    from geometry_diagrams.ir.ir import MarkSegments
+
+    with pytest.raises(ValidationError):
+        MarkSegments(segs=["s1"], ticks=0)
+    with pytest.raises(ValidationError):
+        MarkSegments(segs=["s1"], ticks=-1)
