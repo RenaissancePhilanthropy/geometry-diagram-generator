@@ -1,6 +1,8 @@
-# CLAUDE.md
+# CLAUDE.md / AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+(`AGENTS.md` is a symlink to this file — there is only one copy to keep in sync.)
+
+This file provides guidance to AI coding agents (Claude Code, Codex, etc.) when working with code in this repository.
 
 ## Commands
 
@@ -71,6 +73,15 @@ The Intermediate Representation is the central abstraction:
 - **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
 - **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.
 - **`renderer.py`**: Dispatch layer — `TikZRenderer` (HTTP to Docker container) and `SVGRenderer` (in-process, no Docker needed).
+- **`errors.py`**: `IRCompileError`, raised with the failing `def_id` during IR compilation.
+- **`refs.py`**: Extracts ID references from IR definition statements; used by `compile_defs` (`to_sympy.py`) for topological sorting.
+- **`auto_checks.py`**: Auto-generates implicit checks from definition types (e.g., verifying an intersection point lies on both parent objects), complementing LLM-specified checks.
+- **`angle_pairs.py`**: Post-compile resolver for `mark_angle_pair` annotations — replaces each `PendingAnglePair` with a concrete `MarkAngles` render op once coordinates are known (can't be done at lowering time, before SymPy has resolved the geometry).
+- **`plan.py`**: `ConstructionPlan` schema for the two-phase strategy — the planner LLM describes construction steps in natural language, the constructor LLM translates each into IR.
+- **`edit_diagnostics.py`**: Diagnostic-only edit-locality checker for pydsl multi-turn editing — compares two compiled turns to report which named entities moved unexpectedly; never gates whether an edit succeeds.
+- **`font.py`**: `FontConfig` for diagram renderers (family, base64-embedded font data).
+- **`mathtext_svg.py`**: Renders LaTeX math strings to self-contained SVG path data via matplotlib's mathtext engine — no LaTeX binary required.
+- **`test_scenarios.py`**: Instantiates `DiagramIR` for the eval scenarios to confirm schema expressiveness.
 
 ### Strategies (`geometry_diagrams/strategies/`)
 
@@ -83,12 +94,15 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 - **`structured.py`**: Full IR pipeline — LLM produces `DiagramIR` JSON → compile → check → render. Uses a `StateGraph` retry loop (up to `MAX_RETRIES=3`). This is more robust and easier to debug than raw code generation.
 - **`recipe.py`**: Strategy that uses the recipe DSL to specify constructions. Uses a two-node `StateGraph`: selector (configurable cheap model picks relevant recipes) → DSL generator → lowering → IR pipeline. Currently the main strategy to use.
 - **`pre_assert_step.py`**: Optional pre-step LLM call (before construction) that proposes geometric invariants, parses them, and runs each through `pre_assert_filter.py`'s 4-stage pre-filter to build advisory context for the script-writer.
+- **`python_full.py`**: LLM writes a plain Python construction script against the `geometry_diagrams/pydsl/` builder-shim API (rather than emitting DSL/IR JSON), executed via `pydsl/sandbox.py`, with a retry loop over `pydsl/retry.py`/`retry_loop.py` on failure.
+
+**`ir_pipeline.py`**: Shared deterministic pipeline — compile a `DiagramIR`, resolve pending angle pairs, run geometric checks, then render. Used by every strategy that produces a `DiagramIR` (`structured.py`, `recipe.py`, `python_full.py`), regardless of how that IR was produced.
 
 **`llm.py`**: Model factory — maps `"anthropic:MODEL"` / `"openai:MODEL"` / `"google:MODEL"` IDs to LangChain chat models (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`). Provides `get_chat_model()`, `extract_usage()`, `make_system_message()`, and `is_gemini_model()`.
 
 **`stages.py`**: Shared rendering tool helpers used by raw strategies.
 
-Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, and related files.
+Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, `instructions_python_full.py` (the `python_full.py` prompt, embedding the live pydsl API stub text), `instructions.py` (shared fragments reused across templates), and related files.
 
 ### Renderer (`renderer/`)
 
@@ -103,6 +117,10 @@ A Docker container running a FastAPI server (port 8001) that compiles LaTeX to S
 - **`svg_checks.py`**: Validates rendered SVG output properties.
 - **`llm_judge.py`**: LLM-based quality evaluation of rendered diagrams.
 - **`message_helpers.py`**: Helpers for extracting SVG/TikZ/tool content from LangChain message lists.
+- **`tikz_extraction.py`**: Regex-based extraction of geometric objects (points, draw commands, marks, labels, canvas features) from TikZ/tkz-euclide source — no coordinate computation.
+- **`tikz_geometry.py`**: Resolves derived point coordinates from `tikz_extraction.py`'s output and validates geometric properties (right angles, midpoints, parallelism, etc.) against them.
+- **`tikz_validation.py`**: Higher-level scenario validators composing `tikz_extraction.py`/`tikz_geometry.py` to check labels, canvas features, expected point positions, and required draw entities.
+- **`tracing.py`**: LangFuse callback handler factory, enabled via the `LANGFUSE_BASE_URL` env var; returns `None` (no-op) when unset.
 
 ### Evals (`evals/`)
 
@@ -129,6 +147,13 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 - **`handles.py`**: Thin typed handles (`Point`, `Line`, `Circle`, `Triangle`, `Polygon`, ...) returned by pydsl API functions, wrapping internal ids so the model never re-derives geometric parts from raw point references.
 - **`builder.py`**: Ambient builder context -- a contextvar-scoped `Builder` that every `api.py` function records its op against, set fresh per script execution.
 - **`asserts.py`**: `assert_*` geometric-invariant predicates for the Python DSL surface, wrapping `ir.Check` kinds (plus canvas-membership checks with no backing `Check` kind).
+- **`_sandbox_child.py`**: Entrypoint for the sandboxed script's own child process, invoked via `subprocess.Popen` from `sandbox.py` — deliberately not `multiprocessing`, which would re-execute host init code in the child.
+- **`hashline.py`**: Content-hash line-anchored script editing ("hashline") — each line is tagged `{line_number}:{hash}`; a stale tag means the line changed since the model last saw it.
+- **`line_number.py`**: Plain line-number-anchored script editing ("line_number") — same op model as `hashline.py`, but references a line by its plain 1-indexed position instead of a content hash.
+- **`patch.py`**: Applies a unified-diff-shaped patch to a pydsl script — exact context-line matching only, no fuzzy offset search.
+- **`search_replace.py`**: Applies a sequential list of exact-match search/replace blocks to a pydsl script (Aider-style semantics: blocks apply in order against a single mutating buffer).
+- **`retry.py`**: Classifies executor failures and builds a retry prompt message, including did-you-mean suggestions for hallucinated API names.
+- **`retry_loop.py`**: Runs successive script attempts through `run_script`, stopping on the first success or once a caller-supplied attempt cap is reached.
 
 ### Docs (`docs/`)
 

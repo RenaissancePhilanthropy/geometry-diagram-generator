@@ -31,13 +31,15 @@ The LLM avoids picking coordinates directly. It describes *what* to construct (m
 
 | Strategy | Description |
 |---|---|
-| `structured` | Full IR pipeline — most robust; LLM outputs DiagramIR JSON |
+| `recipe` | Uses predefined YAML templates for common constructions — the main strategy to use |
+| `structured` | Full IR pipeline — LLM outputs DiagramIR JSON directly |
+| `python_full` | LLM writes a plain Python construction script against the pydsl builder API |
 | `raw_code` | LLM generates TikZ directly |
 | `raw_code_with_revise` | Raw TikZ with a revision loop on failure |
-| `plan_and_code` | Two-stage: planning agent sets coordinates, then generates TikZ |
-| `recipe` | Uses predefined YAML templates for common constructions |
+| `raw_svg` | LLM generates SVG directly |
+| `raw_svg_with_revise` | Raw SVG with a revision loop on failure |
 
-Set the active strategy via `STRATEGY` env var (default: `structured`).
+Set the active strategy via `STRATEGY` env var (default: `raw_code`) and the rendering backend via `RENDERER` (`svg` or `tikz`, default: `svg`).
 
 ## Quick start
 
@@ -48,9 +50,10 @@ Set the active strategy via `STRATEGY` env var (default: `structured`).
 uv sync
 
 # 2. Set API keys
-cp .env.example .env   # then fill in ANTHROPIC_API_KEY
+# Create a .env with ANTHROPIC_API_KEY (and OPENAI_API_KEY / GOOGLE_API_KEY as needed)
 
-# 3. Build and start the renderer (LaTeX → SVG)
+# 3. (Optional) Build and start the TikZ renderer container — only needed for RENDERER=tikz;
+#    the default RENDERER=svg renders in-process, no Docker required
 docker build -t tikz-renderer renderer/
 docker run -p 8001:8001 tikz-renderer
 
@@ -84,16 +87,18 @@ cd eval-viewer-ui && pnpm dev        # frontend proxies /api to :8002
 ## Project layout
 
 ```
-ir/               Intermediate representation: schema, SymPy compiler, TikZ emitter, checks
-strategies/       LLM strategy implementations
-renderer/         Docker container: FastAPI server wrapping lualatex + dvisvgm
-evals/            Benchmark harness, scenarios, result viewer
-demo-ui/          Vite frontend (served from / by main.py)
-eval-viewer-ui/   Vite frontend for browsing eval results
-util/             Shared utilities (renderer client, SVG checks, LLM judge)
-recipe/           YAML recipe templates for common constructions
-docs/             DSL specification (geometry-dsl-spec.md)
-tests/            Unit and integration tests
+geometry_diagrams/        Core package (also the unit copied into other projects)
+  ir/                        Intermediate representation: schema, SymPy compiler, TikZ/SVG emitters, checks
+  strategies/                LLM strategy implementations
+  recipe/                    Declarative DSL + YAML templates for common constructions
+  pydsl/                     Python-native DSL: builder-shim API + sandboxed script execution
+  util/                      Shared utilities (renderer client, SVG/TikZ checks, LLM judge)
+renderer/                  Docker container: FastAPI server wrapping lualatex + dvisvgm
+evals/                     Benchmark harness, scenarios, result viewer
+demo-ui/                   Vite frontend (served from / by main.py once built)
+eval-viewer-ui/            Vite frontend for browsing eval results
+docs/                      DSL specification (geometry-dsl-spec.md) and rendered examples
+tests/                     Unit and integration tests
 ```
 
 ## Architecture notes
@@ -101,4 +106,4 @@ tests/            Unit and integration tests
 - See [CLAUDE.md](CLAUDE.md) for the full pipeline description and design rationale.
 - See [docs/geometry-dsl-spec.md](docs/geometry-dsl-spec.md) for the IR schema specification.
 - The renderer container exposes `POST /render` (TikZ → SVG) and `GET /health` on port 8001.
-- `pydantic-ai` is used for LLM agent orchestration with Anthropic and OpenAI backends.
+- **LangGraph** and **LangChain** are used for LLM agent orchestration, with Anthropic, OpenAI, and Google backends.
