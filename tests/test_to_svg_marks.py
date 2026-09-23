@@ -11,14 +11,23 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 import pytest
 
+import math
+
 from geometry_diagrams.ir.ir import (
+    ArcCenterStartEnd,
     Canvas,
     DiagramIR,
     Draw,
+    EllipticalArcCenterStartEnd,
+    LabelAlongArc,
+    MarkArcs,
     MarkSegments,
     PointFixed,
     Segment,
+    SectorCenterStartEnd,
 )
+from geometry_diagrams.ir.label_bounds import find_out_of_bounds_labels
+from geometry_diagrams.ir.render_util import arc_params
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import ir_to_svg
 
@@ -48,6 +57,39 @@ def _findall(root: ET.Element, tag: str) -> list[ET.Element]:
 def _mark_elements(root: ET.Element) -> list[ET.Element]:
     """Return all elements with data-role='mark-segment'."""
     return [el for el in root.iter() if el.get("data-role") == "mark-segment"]
+
+
+def _arc_mark_elements(root: ET.Element) -> list[ET.Element]:
+    """Return all elements with data-role='mark-arc'."""
+    return [el for el in root.iter() if el.get("data-role") == "mark-arc"]
+
+
+def _arc_text_wrappers(root: ET.Element) -> list[ET.Element]:
+    """Return the per-glyph <g data-role='label-along-arc'> wrapper(s), i.e.
+    one <g> holding one <text> per curved glyph.
+
+    Deliberately excludes the single-label fallback (used when a label
+    can't be laid out glyph-by-glyph), which carries the same data-role but
+    is either a bare <text> (plain string) or a <g><path/></g> (mathtext) —
+    see _arc_text_fallback_labels(). A wrapper is identified by containing
+    at least one <text> CHILD; the mathtext fallback's <g> wraps a <path>
+    instead.
+    """
+    return [
+        el for el in root.iter()
+        if el.tag.endswith("g") and el.get("data-role") == "label-along-arc"
+        and any(child.tag.endswith("text") for child in el)
+    ]
+
+
+def _arc_text_fallback_labels(root: ET.Element) -> list[ET.Element]:
+    """Return the single-label fallback element(s) for LabelAlongArc: either
+    a bare <text> (plain string) or a <g><path/></g> (mathtext)."""
+    return [
+        el for el in root.iter()
+        if el.get("data-role") == "label-along-arc"
+        and (el.tag.endswith("text") or (el.tag.endswith("g") and el not in _arc_text_wrappers(root)))
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -397,3 +439,288 @@ class TestExplicitTicksCount:
             "alpha is the first implicit group encountered and should get the "
             f"first auto-assigned symbol (a single tick), got {len(alpha_marks)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 7. MarkArcs — radial ticks on circular arcs and sectors
+# ---------------------------------------------------------------------------
+
+def _arc_diagram(def_cls=ArcCenterStartEnd, **mark_kwargs) -> DiagramIR:
+    return DiagramIR(
+        canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            def_cls(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[MarkArcs(arcs=["arc1"], **mark_kwargs)],
+    )
+
+
+class TestMarkArcs:
+    def test_explicit_ticks_emits_exact_count(self):
+        svg = _compile_svg(_arc_diagram(ticks=4))
+        root = _parse(svg)
+        marks = _arc_mark_elements(root)
+        assert len(marks) == 4
+
+    def test_ticks_straddle_the_curve_radially(self):
+        """Each stroke's two endpoints sit just inside and just outside the
+        arc's own radius (in pixel space) -- proves these are curved-edge
+        ticks, not a radius, and that they're centered on the curve."""
+        from geometry_diagrams.ir.to_svg import _TICK_LEN, px_per_construction_unit
+
+        diagram = _arc_diagram(ticks=3)
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym)
+        root = _parse(svg)
+        cx, cy, r, _s, _e, _sx, _sy = arc_params("arc1", sym)
+        scale = px_per_construction_unit(6.0, 6.0)  # Canvas(-3..3) on both axes
+        px_center = (250.0, 250.0)  # canvas is symmetric about the origin
+        marks = _arc_mark_elements(root)
+        assert len(marks) == 3
+        for el in marks:
+            x1, y1 = float(el.get("x1")), float(el.get("y1"))
+            x2, y2 = float(el.get("x2")), float(el.get("y2"))
+            d1 = math.hypot(x1 - px_center[0], y1 - px_center[1])
+            d2 = math.hypot(x2 - px_center[0], y2 - px_center[1])
+            inner, outer = sorted((d1, d2))
+            assert inner == pytest.approx(r * scale - _TICK_LEN, abs=0.5)
+            assert outer == pytest.approx(r * scale + _TICK_LEN, abs=0.5)
+
+    def test_sector_gets_ticks_on_its_curved_edge_only(self):
+        svg = _compile_svg(_arc_diagram(def_cls=SectorCenterStartEnd, ticks=2))
+        root = _parse(svg)
+        marks = _arc_mark_elements(root)
+        assert len(marks) == 2
+
+    def test_shared_group_gives_a_segment_and_an_arc_the_same_count(self):
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-3, xmax=5, ymin=-3, ymax=3),
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=4, y=0),
+                Segment(id="AB", a="A", b="B"),
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[
+                MarkSegments(segs=["AB"], group="tick2"),
+                MarkArcs(arcs=["arc1"], group="tick2"),
+            ],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        assert len(_mark_elements(root)) == 2
+        assert len(_arc_mark_elements(root)) == 2
+
+    def test_mark_arcs_group_participates_in_encounter_order_with_segments(self):
+        """An unnamed group on a MarkArcs op, encountered first, should
+        claim the first auto-assigned symbol -- ahead of a MarkSegments
+        group encountered later."""
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-3, xmax=5, ymin=-3, ymax=3),
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=4, y=0),
+                Segment(id="AB", a="A", b="B"),
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[
+                MarkArcs(arcs=["arc1"], group="alpha"),
+                MarkSegments(segs=["AB"], group="beta"),
+            ],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        # alpha is encountered first -> index 1 -> 1 arc tick.
+        assert len(_arc_mark_elements(root)) == 1
+        # beta is encountered second -> index 2 -> "||" -> 2 segment ticks.
+        assert len(_mark_elements(root)) == 2
+
+    def test_elliptical_arc_is_skipped_with_a_warning(self):
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-5, xmax=5, ymin=-2, ymax=2),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=4, y=0),
+                PointFixed(id="E", x=0, y=1),
+                EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
+            ],
+            render=[MarkArcs(arcs=["ea1"], ticks=2)],
+        )
+        sym = compile_defs(diagram)
+        warnings: list[str] = []
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        root = _parse(svg)
+        assert any("is not a circular arc/sector" in w for w in warnings)
+        assert len(_arc_mark_elements(root)) == 0
+
+    def test_undefined_arc_is_skipped_with_a_warning(self):
+        diagram = DiagramIR(define=[], render=[MarkArcs(arcs=["missing"])])
+        sym = compile_defs(diagram)
+        warnings: list[str] = []
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        assert any("missing" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# 8. LabelAlongArc — per-glyph rotated text
+# ---------------------------------------------------------------------------
+
+class TestLabelAlongArc:
+    def _diagram(self, text="ABC", **kwargs) -> DiagramIR:
+        return DiagramIR(
+            canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[LabelAlongArc(arc="arc1", text=text, **kwargs)],
+        )
+
+    def test_emits_one_rotated_text_per_glyph(self):
+        svg = _compile_svg(self._diagram("ABC"))
+        root = _parse(svg)
+        wrapper = _arc_text_wrappers(root)[0]
+        texts = _findall(wrapper, "text")
+        assert len(texts) == 3
+        for el in texts:
+            assert el.get("transform", "").startswith("rotate(")
+
+    def test_wrapper_carries_data_bbox_and_label_text(self):
+        svg = _compile_svg(self._diagram("ABC"))
+        root = _parse(svg)
+        wrapper = _arc_text_wrappers(root)[0]
+        assert wrapper.get("data-bbox") is not None
+        assert wrapper.get("data-label-text") == "ABC"
+
+    def test_wrapper_is_the_only_element_with_data_bbox(self):
+        svg = _compile_svg(self._diagram("ABC"))
+        root = _parse(svg)
+        wrapper = _arc_text_wrappers(root)[0]
+        stamped = [el for el in wrapper.iter() if el.get("data-bbox")]
+        assert stamped == [wrapper]
+
+    def test_bbox_contains_every_glyph_anchor(self):
+        svg = _compile_svg(self._diagram("ABC"))
+        root = _parse(svg)
+        wrapper = _arc_text_wrappers(root)[0]
+        x0, y0, x1, y1 = (float(v) for v in wrapper.get("data-bbox").split(","))
+        for el in _findall(wrapper, "text"):
+            x, y = float(el.get("x")), float(el.get("y"))
+            assert x0 <= x <= x1
+            assert y0 <= y <= y1
+
+    def test_bbox_is_accepted_by_label_bounds(self):
+        svg = _compile_svg(self._diagram("ABC"))
+        assert find_out_of_bounds_labels(svg) == []
+
+    def test_rotation_is_negated_versus_geometry_space(self):
+        """SVG's rotate() must be the negation of the geometry-space angle
+        arc_text_glyph_layout() computes -- to_svg.py's y-flip requires it."""
+        from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+        diagram = self._diagram("x")  # arc1: O=(0,0), S=(2,0), E=(0,2)
+        sym = compile_defs(diagram)
+        cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params("arc1", sym)
+        expected_rot_geo = arc_text_glyph_layout(cx, cy, r, s_deg, e_deg, [1.0])[0][2]
+
+        svg = ir_to_svg(diagram, sym)
+        root = _parse(svg)
+        el = _findall(_arc_text_wrappers(root)[0], "text")[0]
+        transform = el.get("transform")
+        angle = float(transform[len("rotate("):].split(",")[0])
+        assert angle == pytest.approx(-expected_rot_geo, abs=0.5)
+
+    def test_lower_half_text_is_not_upside_down(self):
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=-0.01, y=-1),
+                PointFixed(id="E", x=0.01, y=-1),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[LabelAlongArc(arc="arc1", text="abc")],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        for el in _findall(_arc_text_wrappers(root)[0], "text"):
+            transform = el.get("transform")
+            angle = float(transform[len("rotate("):].split(",")[0])
+            assert abs((angle + 180) % 360 - 180) <= 90.0
+
+    def test_inside_places_glyphs_closer_to_the_center_than_outside(self):
+        svg_out = _compile_svg(self._diagram("x", side="outside"))
+        svg_in = _compile_svg(self._diagram("x", side="inside"))
+        root_out = _parse(svg_out)
+        root_in = _parse(svg_in)
+        el_out = _findall(_arc_text_wrappers(root_out)[0], "text")[0]
+        el_in = _findall(_arc_text_wrappers(root_in)[0], "text")[0]
+        cx, cy = 250.0, 250.0  # canvas is symmetric about the origin -> center of SVG
+        d_out = math.hypot(float(el_out.get("x")) - cx, float(el_out.get("y")) - cy)
+        d_in = math.hypot(float(el_in.get("x")) - cx, float(el_in.get("y")) - cy)
+        assert d_in < d_out
+
+    def test_sector_text_follows_the_curved_edge(self):
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                SectorCenterStartEnd(id="sec1", center="O", start="S", end="E"),
+            ],
+            render=[LabelAlongArc(arc="sec1", text="abc")],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        assert len(_arc_text_wrappers(root)) == 1
+        assert len(_findall(_arc_text_wrappers(root)[0], "text")) == 3
+
+    def test_math_text_falls_back_to_a_single_label_with_a_warning(self):
+        diagram = self._diagram(text=r"\frac{1}{2}")
+        sym = compile_defs(diagram)
+        warnings: list[str] = []
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        assert any("cannot be laid out per glyph" in w for w in warnings)
+        root = _parse(svg)
+        assert _arc_text_wrappers(root) == []
+        assert len(_arc_text_fallback_labels(root)) == 1
+
+    def test_subscript_text_falls_back_rather_than_dropping_the_subscript(self):
+        diagram = self._diagram(text="P_1")
+        sym = compile_defs(diagram)
+        warnings: list[str] = []
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        assert any("cannot be laid out per glyph" in w for w in warnings)
+        root = _parse(svg)
+        assert _arc_text_wrappers(root) == []
+        assert len(_arc_text_fallback_labels(root)) == 1
+
+    def test_elliptical_arc_is_skipped_with_a_warning(self):
+        diagram = DiagramIR(
+            canvas=Canvas(xmin=-5, xmax=5, ymin=-2, ymax=2),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=4, y=0),
+                PointFixed(id="E", x=0, y=1),
+                EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
+            ],
+            render=[LabelAlongArc(arc="ea1", text="abc")],
+        )
+        sym = compile_defs(diagram)
+        warnings: list[str] = []
+        svg = ir_to_svg(diagram, sym, warnings=warnings)
+        assert any("is not a circular arc/sector" in w for w in warnings)
+        root = _parse(svg)
+        assert _arc_text_wrappers(root) == []

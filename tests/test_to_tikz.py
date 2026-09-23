@@ -438,6 +438,201 @@ def test_mark_segments_explicit_ticks_does_not_consume_a_group_slot():
 
 
 # ---------------------------------------------------------------------------
+# MarkArcs tests
+# ---------------------------------------------------------------------------
+
+def _one_arc_diagram(def_cls=None, **mark_kwargs):
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, MarkArcs
+
+    def_cls = def_cls or ArcCenterStartEnd
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            def_cls(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[MarkArcs(arcs=["arc1"], **mark_kwargs)],
+    )
+
+
+def test_mark_arcs_draws_raw_strokes_not_tkzmarksegment():
+    diagram = _one_arc_diagram(ticks=3)
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkSegment" not in tikz
+    assert tikz.count("\\draw") == 3
+
+
+def test_mark_arcs_group_without_explicit_ticks_still_draws_raw_strokes():
+    # The key TikZ-specific assertion: a group-DERIVED count (no explicit
+    # `ticks`) must still take the raw-\draw path -- \tkzMarkSegment needs
+    # named tkz points, which arcs (raw-coordinate \draw ... arc[...]) don't
+    # have, unlike MarkSegments which can use \tkzMarkSegment for its
+    # group-derived path.
+    diagram = _one_arc_diagram(group="tick2")
+    tikz = _compile_tikz(diagram)
+    assert r"\tkzMarkSegment" not in tikz
+    assert tikz.count("\\draw") == 2
+
+
+def test_mark_arcs_group_shared_with_mark_segments_gets_the_same_count():
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, MarkArcs
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            Segment(id="s1", a="A", b="B"),
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[
+            MarkSegments(segs=["s1"], group="tick3"),
+            MarkArcs(arcs=["arc1"], group="tick3"),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    assert "[mark=|||]" in tikz         # segment side: group index 3
+    assert tikz.count("\\draw") == 3    # arc side: 3 raw ticks, same index
+
+
+def test_mark_arcs_on_a_sector_uses_the_curved_edge():
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd
+
+    diagram = _one_arc_diagram(def_cls=SectorCenterStartEnd, ticks=2)
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\draw") == 2
+
+
+def test_mark_arcs_honors_style_color():
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, MarkArcs
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        styles={"red_ticks": {"color": "red"}},
+        render=[MarkArcs(arcs=["arc1"], style="red_ticks", ticks=3)],
+    )
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\draw[color=red]") == 3
+
+
+def test_mark_arcs_skips_elliptical_arc_with_warning():
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd, MarkArcs
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[MarkArcs(arcs=["ea1"], ticks=2)],
+    )
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
+    assert any("is not a circular arc/sector" in w for w in warnings)
+    assert "\\draw" not in tikz
+
+
+# ---------------------------------------------------------------------------
+# LabelAlongArc tests
+# ---------------------------------------------------------------------------
+
+def _one_labeled_arc_diagram(text="ABC", **op_kwargs):
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, LabelAlongArc
+
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[LabelAlongArc(arc="arc1", text=text, **op_kwargs)],
+    )
+
+
+def test_label_along_arc_emits_one_rotated_node_per_glyph():
+    diagram = _one_labeled_arc_diagram("ABC")
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\node[rotate=") == 3
+
+
+def test_label_along_arc_needs_no_tikz_library():
+    diagram = _one_labeled_arc_diagram("ABC")
+    tikz = _compile_tikz(diagram)
+    assert "decorations" not in tikz
+    assert "usetikzlibrary" not in tikz
+
+
+def test_label_along_arc_nodes_are_upright_on_the_lower_half():
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, LabelAlongArc
+    import re
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=-1, y=-2),
+            PointFixed(id="E", x=1, y=-2),
+            ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+        ],
+        render=[LabelAlongArc(arc="arc1", text="abc")],
+    )
+    tikz = _compile_tikz(diagram)
+    angles = [float(a) for a in re.findall(r"rotate=(-?[\d.]+)", tikz)]
+    assert angles
+    for a in angles:
+        assert abs((a + 180) % 360 - 180) <= 90.0
+
+
+def test_label_along_arc_math_text_falls_back_to_a_single_node():
+    diagram = _one_labeled_arc_diagram(text=r"\frac{1}{2}")
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
+    assert any("cannot be laid out per glyph" in w for w in warnings)
+    assert "rotate=" not in tikz
+    assert tikz.count("\\node") == 1
+
+
+def test_label_along_arc_subscript_falls_back_to_a_single_node():
+    diagram = _one_labeled_arc_diagram(text="P_1")
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
+    assert any("cannot be laid out per glyph" in w for w in warnings)
+    assert "rotate=" not in tikz
+    assert tikz.count("\\node") == 1
+
+
+def test_label_along_arc_skips_elliptical_sector_with_warning():
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd, LabelAlongArc
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[LabelAlongArc(arc="es1", text="abc")],
+    )
+    sym = compile_defs(diagram)
+    warnings: list[str] = []
+    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
+    assert any("is not a circular arc/sector" in w for w in warnings)
+    assert "\\node" not in tikz
+
+
+# ---------------------------------------------------------------------------
 # check_render_angles tests
 # ---------------------------------------------------------------------------
 

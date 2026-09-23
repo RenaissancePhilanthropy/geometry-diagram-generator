@@ -186,3 +186,223 @@ def test_build_entity_manifest_includes_named_and_anonymous_entries():
     label_entry = next(e for e in manifest["anonymous"] if e["type"] == "label_point")
     assert label_entry["text"] == "A"
     assert label_entry["approx_position"] == [0.0, 0.0]
+
+
+# ---------------------------------------------------------------------------
+# tick_mark_arcs — the arc-space counterpart of tick_mark_segments
+# ---------------------------------------------------------------------------
+
+def test_tick_mark_arcs_returns_one_stroke_per_tick():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    strokes = tick_mark_arcs(0, 0, 1, 0, 90, 4, 0.1, 0.05)
+    assert len(strokes) == 4
+
+
+def test_tick_mark_arcs_strokes_are_radial_and_straddle_the_curve():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    strokes = tick_mark_arcs(0, 0, 1.0, 0, 90, 3, 0.1, 0.05)
+    for (x1, y1), (x2, y2) in strokes:
+        r1 = math.hypot(x1, y1)
+        r2 = math.hypot(x2, y2)
+        assert r1 == pytest.approx(0.9)
+        assert r2 == pytest.approx(1.1)
+        # Stroke midpoint sits on the curve itself.
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        assert math.hypot(mx, my) == pytest.approx(1.0)
+
+
+def test_tick_mark_arcs_centers_odd_count_on_the_midpoint_angle():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    strokes = tick_mark_arcs(0, 0, 1.0, 0, 90, 3, 0.1, 0.05)
+    (mx1, my1), (mx2, my2) = strokes[1]  # middle stroke
+    mx, my = (mx1 + mx2) / 2, (my1 + my2) / 2
+    assert math.degrees(math.atan2(my, mx)) == pytest.approx(45.0, abs=1e-6)
+
+
+def test_tick_mark_arcs_spacing_is_arc_length_not_angle():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    def angular_gap(r):
+        strokes = tick_mark_arcs(0, 0, r, 0, 90, 3, 0.01, 0.1)
+        angles = []
+        for (x1, y1), (x2, y2) in strokes:
+            mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+            angles.append(math.atan2(my, mx))
+        return angles[1] - angles[0]
+
+    gap_r1 = angular_gap(1.0)
+    gap_r4 = angular_gap(4.0)
+    assert gap_r4 == pytest.approx(gap_r1 / 4.0)
+
+
+def test_tick_mark_arcs_returns_empty_for_degenerate_radius():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    assert tick_mark_arcs(0, 0, 0, 0, 90, 3, 0.1, 0.05) == []
+
+
+def test_tick_mark_arcs_returns_empty_for_non_positive_ticks():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    assert tick_mark_arcs(0, 0, 1, 0, 90, 0, 0.1, 0.05) == []
+
+
+def test_tick_mark_arcs_clamps_the_inner_endpoint_at_the_center():
+    from geometry_diagrams.ir.render_util import tick_mark_arcs
+
+    strokes = tick_mark_arcs(0, 0, 0.05, 0, 90, 1, 0.5, 0.05)
+    (x1, y1), (x2, y2) = strokes[0]
+    assert math.hypot(x1, y1) == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# arc_text_glyphs — per-character advances
+# ---------------------------------------------------------------------------
+
+def test_arc_text_glyphs_advances_sum_matches_estimate_text_width():
+    from geometry_diagrams.ir.render_util import arc_text_glyphs
+    from geometry_diagrams.ir.to_svg import _estimate_text_width
+
+    for t in ["ABC", "x^2", r"\alpha b"]:
+        glyphs = arc_text_glyphs(t, 14)
+        total = sum(adv for _, adv in glyphs)
+        assert total == pytest.approx(_estimate_text_width(t, 14))
+
+
+def test_arc_text_glyphs_collapses_a_latex_command_to_one_glyph():
+    from geometry_diagrams.ir.render_util import arc_text_glyphs
+
+    glyphs = arc_text_glyphs(r"\alpha", 14)
+    assert len(glyphs) == 1
+
+
+def test_arc_text_glyphs_returns_one_entry_per_plain_character():
+    from geometry_diagrams.ir.render_util import arc_text_glyphs
+
+    glyphs = arc_text_glyphs("ABC", 14)
+    assert [ch for ch, _ in glyphs] == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
+# arc_text_is_layoutable — the shared per-glyph-vs-fallback gate
+# ---------------------------------------------------------------------------
+
+def test_arc_text_is_layoutable_accepts_plain_ascii():
+    from geometry_diagrams.ir.render_util import arc_text_is_layoutable
+
+    assert arc_text_is_layoutable("ABC") is True
+    assert arc_text_is_layoutable("major arc") is True
+
+
+@pytest.mark.parametrize("text", [r"\frac{1}{2}", "$A$", "P_1", "x^2"])
+def test_arc_text_is_layoutable_rejects_mathtext_and_scripts(text):
+    from geometry_diagrams.ir.render_util import arc_text_is_layoutable
+
+    assert arc_text_is_layoutable(text) is False
+
+
+# ---------------------------------------------------------------------------
+# arc_text_glyph_layout — per-glyph position + rotation along an arc
+# ---------------------------------------------------------------------------
+
+def test_arc_text_glyph_layout_returns_one_entry_per_advance():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    layout = arc_text_glyph_layout(0, 0, 1, 0, 180, [1.0, 1.0, 1.0])
+    assert len(layout) == 3
+
+
+def test_arc_text_glyph_layout_returns_empty_for_no_advances():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    assert arc_text_glyph_layout(0, 0, 1, 0, 180, []) == []
+
+
+def test_arc_text_glyph_layout_centers_the_string_on_pos():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    layout = arc_text_glyph_layout(0, 0, 1, 0, 180, [0.05, 0.05, 0.05, 0.05], pos=0.25)
+    angles = [math.atan2(y, x) for x, y, _ in layout]
+    mean_angle = sum(angles) / len(angles)
+    anchor_angle = math.radians(0.25 * 180)
+    assert mean_angle == pytest.approx(anchor_angle, abs=1e-6)
+
+
+def test_arc_text_glyph_layout_outside_is_beyond_the_radius_and_inside_is_within():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    outside = arc_text_glyph_layout(0, 0, 1.0, 0, 180, [0.1], offset=0.2, side="outside")
+    inside = arc_text_glyph_layout(0, 0, 1.0, 0, 180, [0.1], offset=0.2, side="inside")
+    x_out, y_out, _ = outside[0]
+    x_in, y_in, _ = inside[0]
+    assert math.hypot(x_out, y_out) == pytest.approx(1.2)
+    assert math.hypot(x_in, y_in) == pytest.approx(0.8)
+
+
+def test_arc_text_glyph_layout_auto_flip_is_upright_at_top_and_bottom():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    # A short arc straddling the top of the circle (90 deg): text should be
+    # (near) horizontal, upright.
+    top = arc_text_glyph_layout(0, 0, 1, 89, 91, [0.01])
+    assert top[0][2] == pytest.approx(0.0, abs=1.0)
+
+    # A short arc straddling the bottom of the circle (270 deg): auto-flip
+    # must keep it upright too, not upside down (rotation within +/-90 deg
+    # of horizontal, never near +/-180).
+    bottom = arc_text_glyph_layout(0, 0, 1, 269, 271, [0.01])
+    rot = bottom[0][2]
+    assert abs(rot) <= 90.0
+
+
+def test_arc_text_glyph_layout_reads_left_to_right_on_both_halves():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    for start, end in [(80, 100), (260, 280)]:
+        layout = arc_text_glyph_layout(0, 0, 1, start, end, [0.05, 0.05, 0.05])
+        xs = [x for x, _, _ in layout]
+        assert xs == sorted(xs)
+
+
+def test_arc_text_glyph_layout_forced_flip_inverts_rotation_sign():
+    from geometry_diagrams.ir.render_util import arc_text_glyph_layout
+
+    default = arc_text_glyph_layout(0, 0, 1, 89, 91, [0.01], flip=False)
+    forced = arc_text_glyph_layout(0, 0, 1, 89, 91, [0.01], flip=True)
+    # Forcing the opposite flip rotates the glyph by ~180 degrees.
+    diff = abs(default[0][2] - forced[0][2])
+    assert diff == pytest.approx(180.0, abs=1e-6)
+
+
+def test_arc_label_anchor_pos_defaults_to_the_midpoint():
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, ArcCenterStartEnd
+    from geometry_diagrams.ir.render_util import arc_label_anchor
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=1, y=0),
+        PointFixed(id="E", x=0, y=1),
+        ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+    ]))
+    cx, cy, px, py, r = arc_label_anchor("arc1", sym)
+    assert math.degrees(math.atan2(py - cy, px - cx)) == pytest.approx(45.0, abs=1e-6)
+
+
+def test_arc_label_anchor_honors_explicit_pos():
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, ArcCenterStartEnd
+    from geometry_diagrams.ir.render_util import arc_label_anchor
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=1, y=0),
+        PointFixed(id="E", x=0, y=1),
+        ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+    ]))
+    cx, cy, px, py, r = arc_label_anchor("arc1", sym, pos=0.0)
+    assert px == pytest.approx(1.0, abs=1e-6)
+    assert py == pytest.approx(0.0, abs=1e-6)

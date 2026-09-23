@@ -31,6 +31,9 @@ from .render_util import (
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
+    arc_text_glyph_layout,
+    arc_text_glyphs,
+    arc_text_is_layoutable,
     brace_quadratic_points,
     centroid_of_obj,
     circle_center_through,
@@ -52,6 +55,7 @@ from .render_util import (
     seg_endpoints,
     synthesize_helpers,
     sympy_to_float,
+    tick_mark_arcs,
     tick_mark_segments,
     tick_values,
     resolve_mark_group_indices,
@@ -296,22 +300,37 @@ def ir_to_svg(
     _Z_ORDER = {
         "fill": 0,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
+        # mark_arcs MUST share mark_segments' z-value: sorted_ops is a STABLE
+        # sort and the group precompute below derives first-encounter order
+        # from it, so any other value would bunch all arc ops before/after
+        # all segment ops and silently renumber existing diagrams' groups.
+        "mark_arcs": 1,
         "draw_points": 2,
         "label_point": 3, "label_angle": 3, "label_segment": 3, "label_free_text": 3,
+        "label_along_arc": 3,
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
-    # Pre-compute group → mark symbol / chevron-count for MarkSegments.
-    # Equal-length groups cycle through _MARK_SYMBOLS (matching TikZ's tkz-euclide).
-    # Parallel groups cycle through chevron counts.
-    # MarkSegments.ticks (an explicit count) bypasses this entirely — it is
-    # resolved per-op at emission time in _emit_svg_op instead.
+    # Pre-compute group → mark symbol / chevron-count for MarkSegments, and
+    # group → raw tick count for MarkArcs. Equal-length groups cycle through
+    # _MARK_SYMBOLS (matching TikZ's tkz-euclide). Parallel groups cycle
+    # through chevron counts. MarkArcs shares MarkSegments' `group`
+    # namespace (so "this chord is congruent to this arc" gets matching
+    # marks) but reads the raw, uncapped index (group_tick_counts) rather
+    # than group_mark_symbols — the 6-entry palette's slash glyphs ("s",
+    # "s|", "s||") have no arc form, so an arc just draws N plain ticks
+    # regardless of where in the palette a segment would land.
+    # MarkSegments.ticks / MarkArcs.ticks (an explicit count) bypasses this
+    # entirely — it is resolved per-op at emission time in _emit_svg_op
+    # instead.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
+        if not isinstance(op, (ir.MarkSegments, ir.MarkArcs)):
+            continue
         if (
-            isinstance(op, ir.MarkSegments) and op.group and op.ticks is None
+            op.group and op.ticks is None
             and (op.style or op.group) not in _styles
         ):
             if op.group not in seg_groups:
@@ -328,6 +347,8 @@ def ir_to_svg(
     group_chevron_counts: dict[str, int] = {
         g: min(idx, 3) for g, idx in parallel_group_indices.items()
     }
+    # raw, UNCAPPED index per group — what MarkArcs reads.
+    group_tick_counts: dict[str, int] = {**tick_group_indices, **parallel_group_indices}
 
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
@@ -345,6 +366,7 @@ def ir_to_svg(
             op, svg, sym, stmt_by_id, coords, helpers, _styles,
             group_mark_symbols, pt, gxy, scale, xmin, xmax, ymin, ymax,
             group_chevron_counts=group_chevron_counts,
+            group_tick_counts=group_tick_counts,
             incident_angles=incident_angles,
             angle_mark_wedges=angle_mark_wedges,
             warnings=warnings,
@@ -412,6 +434,7 @@ def _emit_svg_op(
     ymin: float,
     ymax: float,
     group_chevron_counts: dict[str, int] = None,
+    group_tick_counts: dict[str, int] | None = None,
     incident_angles: dict[str, list[float]] | None = None,
     angle_mark_wedges: dict[str, list[tuple[float, float]]] | None = None,
     warnings: list[str] | None = None,
@@ -904,6 +927,26 @@ def _emit_svg_op(
                     if n_ticks:
                         _append_seg_ticks(svg, a, b, pt, stroke, n_ticks, extra_attrs=mark_attrs)
 
+        case ir.MarkArcs(arcs=arcs, group=group, style=style, ticks=ticks):
+            stroke = _color_from_style(style or group, styles) or "black"
+            for arc_id in arcs:
+                if arc_id not in stmt_by_id:
+                    _warn(warnings, f"Skipping MarkArcs for undefined '{arc_id}'")
+                    continue
+                if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
+                    _warn(warnings, f"Skipping MarkArcs: '{arc_id}' is not a circular arc/sector")
+                    continue
+                n = ticks if ticks is not None else (group_tick_counts or {}).get(group, 1)
+                mark_attrs: dict[str, str] = {
+                    "data-role": "mark-arc",
+                    "data-arc": arc_id,
+                }
+                if group:
+                    mark_attrs["data-group"] = str(group)
+                if ticks is not None:
+                    mark_attrs["data-ticks"] = str(ticks)
+                _append_arc_ticks(svg, arc_id, sym, gxy, scale, stroke, n, extra_attrs=mark_attrs)
+
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
                 _warn(warnings, f"Skipping LabelPoint for undefined '{p}'")
@@ -1044,6 +1087,47 @@ def _emit_svg_op(
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
                       font_family=font_family, math_glyph=lp.math_glyph)
+
+        case ir.LabelAlongArc(arc=arc_id, text=text, side=side, pos=pos, flip=flip, style=style):
+            if arc_id not in stmt_by_id:
+                _warn(warnings, f"Skipping LabelAlongArc for undefined '{arc_id}'")
+                return
+            if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
+                _warn(warnings, f"Skipping LabelAlongArc: '{arc_id}' is not a circular arc/sector")
+                return
+            color = _color_from_style(style, styles) or "black"
+            if not arc_text_is_layoutable(text):
+                # No per-glyph advances exist for this string (mathtext or a
+                # sub/superscript) -- fall back to the same single-label
+                # placement LabelSegment's arc branch uses. Unlike the
+                # curved path below, this DOES go through pending_labels, so
+                # it gets the usual nudge/collision pass.
+                _warn(
+                    warnings,
+                    f"LabelAlongArc: {text!r} cannot be laid out per glyph; "
+                    "placing a single label at the arc anchor",
+                )
+                cx_g, cy_g, px_g, py_g, _r_g = arc_label_anchor(arc_id, sym, pos=pos)
+                dx, dy = px_g - cx_g, py_g - cy_g
+                mag = math.hypot(dx, dy) or 1
+                sgn = 1.0 if side == "outside" else -1.0
+                lx, ly = gxy(px_g, py_g)
+                lx += (dx / mag) * _LABEL_OFFSET * sgn
+                ly -= (dy / mag) * _LABEL_OFFSET * sgn  # SVG y is flipped vs. geometry y
+                lp = _make_label_placement(
+                    x=lx, y=ly, text=text, color=color, anchor="middle",
+                    attrs={"data-role": "label-along-arc", "data-for": arc_id},
+                )
+                if pending_labels is not None:
+                    pending_labels.append(lp)
+                else:
+                    _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
+                          font_family=font_family, math_glyph=lp.math_glyph)
+                return
+            _append_arc_text(
+                svg, arc_id, sym, gxy, scale, text, color,
+                side=side, pos=pos, flip=flip, font_family=font_family,
+            )
 
         case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style, width=width):
             pts_px = {
@@ -1247,6 +1331,42 @@ def _append_seg_ticks(
         })
 
 
+def _append_arc_ticks(
+    svg: ET.Element,
+    arc_id: str,
+    sym: SymTable,
+    gxy,
+    scale: float,
+    stroke: str,
+    n_ticks: int,
+    extra_attrs: dict[str, str] | None = None,
+) -> None:
+    """Draw n_ticks radial tick marks straddling the arc's midpoint.
+
+    Unlike _append_seg_ticks, this takes the arc id and the raw gxy/scale
+    projection rather than two point ids and pt(): arcs are drawn from raw
+    coordinates and have no named endpoint helpers to resolve. tick_mark_arcs()
+    works in geometry space, so the pixel constants convert by /scale — gxy is
+    a uniform scale + y-flip, so the projected strokes come out the same
+    visual size as _append_seg_ticks' (_TICK_LEN px half-length, 4px apart).
+    """
+    cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+    for (x1, y1), (x2, y2) in tick_mark_arcs(
+        cx, cy, r, s_deg, e_deg, n_ticks, _TICK_LEN / scale, 4.0 / scale
+    ):
+        px1, py1 = gxy(x1, y1)
+        px2, py2 = gxy(x2, y2)
+        ET.SubElement(svg, "line", {
+            **(extra_attrs or {}),
+            "x1": f"{px1:.2f}",
+            "y1": f"{py1:.2f}",
+            "x2": f"{px2:.2f}",
+            "y2": f"{py2:.2f}",
+            "stroke": stroke,
+            "stroke-width": "1.5",
+        })
+
+
 def _append_seg_chevrons(
     svg: ET.Element,
     a_id: str,
@@ -1369,6 +1489,80 @@ def _append_math_label(
         "d": glyph.d,
         "fill": color,
     })
+
+
+_ARC_TEXT_OFFSET = 8  # px — radial clearance from the curve to the glyph
+                      # centers. Smaller than _LABEL_OFFSET (12) because the
+                      # glyphs hug the curve instead of sitting as one box.
+
+
+def _append_arc_text(
+    svg: ET.Element,
+    arc_id: str,
+    sym: SymTable,
+    gxy,
+    scale: float,
+    text: str,
+    color: str,
+    *,
+    side: str,
+    pos: float,
+    flip: bool | None,
+    font_family: str,
+) -> None:
+    """Emit arc text as one rotated <text> per glyph inside a wrapper <g>.
+
+    Emitted DIRECTLY into svg, not via pending_labels: _LabelPlacement has no
+    rotation, and _resolve_label_collisions/_nudge_labels_from_lines translate
+    placements freely, which would slide the glyph run off the curve.
+    Consequences: arc text paints below every deferred label (they are all
+    appended after the op loop), and the collision system cannot see it.
+
+    Each glyph is guaranteed plain (no $, \\command, {}, _, ^) by the
+    arc_text_is_layoutable() gate the caller already applied, so a glyph's
+    text is set directly rather than routed through _build_tspans.
+    """
+    cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+    glyphs = arc_text_glyphs(text, _FONT_SIZE / scale)  # advances in geometry units
+    layout = arc_text_glyph_layout(
+        cx, cy, r, s_deg, e_deg, [adv for _, adv in glyphs],
+        pos=pos, offset=_ARC_TEXT_OFFSET / scale, side=side, flip=flip,
+    )
+    g = ET.SubElement(svg, "g", {"data-role": "label-along-arc", "data-for": arc_id})
+    boxes: list[tuple[float, float, float, float]] = []
+    for (ch, adv), (gx_g, gy_g, rot_geo) in zip(glyphs, layout):
+        px, py = gxy(gx_g, gy_g)
+        rot_svg = -rot_geo  # gy() is y-flipped: screen-CCW == SVG rotate(-)
+        w = adv * scale     # advance back in px
+        h = float(_FONT_SIZE)
+        # AABB of a w x h box rotated about its own center.
+        c, s = abs(math.cos(math.radians(rot_svg))), abs(math.sin(math.radians(rot_svg)))
+        hx, hy = (w / 2) * c + (h / 2) * s, (w / 2) * s + (h / 2) * c
+        boxes.append((px - hx, py - hy, px + hx, py + hy))
+        if not ch.strip():
+            continue  # whitespace advances the cursor, emits nothing
+        el = ET.SubElement(g, "text", {
+            "x": f"{px:.2f}",
+            "y": f"{py:.2f}",
+            "font-family": font_family,
+            "font-size": str(_FONT_SIZE),
+            "fill": color,
+            "text-anchor": "middle",
+            "dominant-baseline": "central",
+            "transform": f"rotate({rot_svg:.2f},{px:.2f},{py:.2f})",
+        })
+        el.text = ch
+    if boxes:
+        x0 = min(b[0] for b in boxes)
+        y0 = min(b[1] for b in boxes)
+        x1 = max(b[2] for b in boxes)
+        y1 = max(b[3] for b in boxes)
+        # Stamp the union of the ROTATED glyph AABBs on the WRAPPER ONLY.
+        # find_out_of_bounds_labels() walks root.iter() and reports every
+        # element carrying data-bbox, so stamping the children too would
+        # multiply one overflow into N. Children stay bare.
+        g.set("data-bbox", f"{x0:.2f},{y0:.2f},{x1:.2f},{y1:.2f}")
+        g.set("data-label-text", text)
 
 
 def _build_tspans(parent: ET.Element, text: str) -> None:

@@ -889,6 +889,43 @@ class MarkSegments(RenderBase):
         return self
 
 
+class MarkArcs(RenderBase):
+    """Congruence tick marks across an arc: short radial strokes straddling
+    the curve, centered on the arc's own midpoint angle.
+
+    Mirrors MarkSegments field-for-field and SHARES ITS `group` NAMESPACE:
+    a group name used by both a MarkSegments op and a MarkArcs op resolves
+    to the same group index on both, so "this chord is congruent to this
+    arc" reads correctly. Caveat: shared INDEX, not glyph. Indices 1-3
+    render identically on both (1/2/3 strokes); from index 4 on, a segment
+    switches to the renderers' slash-mark palette ("s", "s|", "s||"), while
+    an arc, which has no slash form, just draws N plain radial ticks.
+
+    `arcs` may name an `arc_center_start_end` or a `sector_center_start_end`.
+    For a SECTOR the ticks go on its CURVED EDGE ONLY — never on either of
+    its two straight radii. Elliptical variants
+    (`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
+    are out of scope and are skipped with a warning by both backends:
+    constant-arc-length tick spacing has no closed form on an ellipse.
+
+    A "parallelN" group name is meaningless here (parallelism is not an arc
+    property) — it still resolves to N, rendered as N plain ticks, never as
+    the chevrons MarkSegments would draw for that name.
+    """
+    kind: Literal["mark_arcs"] = "mark_arcs"
+    arcs: List[ObjId]
+    group: Optional[str] = None
+    # Explicit tick count, taking priority over any count implied by `group`.
+    # Same semantics as MarkSegments.ticks: no upper bound in either renderer.
+    ticks: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _check_ticks_positive(self) -> "MarkArcs":
+        if self.ticks is not None and self.ticks < 1:
+            raise ValueError("MarkArcs.ticks must be >= 1")
+        return self
+
+
 class LabelPoint(RenderBase):
     kind: Literal["label_point"] = "label_point"
     p: PointId
@@ -934,6 +971,55 @@ class LabelFreeText(RenderBase):
         return self
 
 
+class LabelAlongArc(RenderBase):
+    """Text laid out along a circular arc, one rotated glyph at a time.
+
+    Distinct from LabelSegment's existing arc handling, which places a
+    single upright label near the arc's midpoint: this one follows the
+    curve, glyph by glyph.
+
+    `arc` may name an `arc_center_start_end` or a `sector_center_start_end`;
+    for a sector the text follows its CURVED EDGE ONLY. Elliptical variants
+    (`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
+    are out of scope and are skipped with a warning by both backends.
+
+    Fallback: a `text` that cannot be split into glyphs — anything the
+    mathtext engine owns (LaTeX commands, $...$, fractions, Greek letters)
+    or anything carrying a sub/superscript — degrades to a single unrotated
+    label at the arc anchor, plus a warning, rather than silently dropping
+    the un-layoutable part. Both backends apply the identical gate, so the
+    same IR never curves on one backend and not the other.
+
+    Rendering carries no new dependencies: SVG emits one rotated <text> per
+    glyph inside a wrapper <g>, TikZ one `\\node[rotate=...]` per glyph. No
+    SVG <textPath>, no TikZ `decorations.text` library, no preamble change.
+    """
+    kind: Literal["label_along_arc"] = "label_along_arc"
+    arc: ObjId
+    text: str
+    # Which radial side of the curve the glyphs sit on.
+    side: Literal["outside", "inside"] = "outside"
+    # Fraction along the arc's CCW sweep the string is CENTERED on. 0.5 is
+    # the midpoint arc_label_anchor() uses. Not clamped away from the
+    # endpoints: pos=0 centers the string on the start point, so half of it
+    # overhangs before the arc begins.
+    pos: float = 0.5
+    # None = auto: glyph tops point away from the center on the upper half
+    # of the circle and toward it on the lower half, so text on the bottom
+    # of a circle reads right-side up rather than upside down. One decision
+    # for the whole string, taken at the anchor angle. True/False force tops
+    # inward/outward — useful for a sweep crossing the horizontal, where no
+    # single auto choice is right everywhere, or for deliberate seal-style
+    # text.
+    flip: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _check_pos_in_range(self) -> "LabelAlongArc":
+        if not (0.0 <= self.pos <= 1.0):
+            raise ValueError("LabelAlongArc.pos must be in [0, 1]")
+        return self
+
+
 class MarkRightAngles(RenderBase):
     """Emits the square symbol at each angle. Distinct from MarkAngles (arc)."""
     kind: Literal["mark_right_angles"] = "mark_right_angles"
@@ -975,8 +1061,8 @@ class DrawBrace(RenderBase):
 RenderOp = Annotated[
     Union[
         Draw, DrawPoints, Fill, DrawBrace,
-        MarkAngles, MarkRightAngles, MarkSegments,
-        LabelPoint, LabelAngle, LabelSegment, LabelFreeText,
+        MarkAngles, MarkRightAngles, MarkSegments, MarkArcs,
+        LabelPoint, LabelAngle, LabelSegment, LabelFreeText, LabelAlongArc,
     ],
     Field(discriminator="kind")
 ]

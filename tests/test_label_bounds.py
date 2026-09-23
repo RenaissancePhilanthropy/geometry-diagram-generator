@@ -87,3 +87,23 @@ def test_svg_with_no_viewbox_returns_no_violations():
 def test_svg_with_no_labels_returns_no_violations():
     svg = '<svg viewBox="0 0 100 100"></svg>'
     assert find_out_of_bounds_labels(svg) == []
+
+
+def test_rotated_arc_text_wrapper_bbox_is_reported():
+    """LabelAlongArc's per-glyph <g> wrapper stamps one data-bbox for the
+    whole run (the union of every rotated glyph's own AABB), not per glyph
+    -- this is a direct regression test on that contract, independent of
+    to_svg.py's own layout math: a hand-built wrapper whose stamped bbox
+    sits outside the viewBox must be reported exactly once."""
+    svg = (
+        '<svg viewBox="0 0 100 100">'
+        '<g data-role="label-along-arc" data-bbox="150,150,180,180" '
+        'data-label-text="off canvas">'
+        '<text x="160" y="165">o</text>'
+        "</g>"
+        "</svg>"
+    )
+    violations = find_out_of_bounds_labels(svg)
+    assert len(violations) == 1
+    assert violations[0].text == "off canvas"
+    assert violations[0].overflow > 0

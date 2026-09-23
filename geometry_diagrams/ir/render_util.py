@@ -202,11 +202,14 @@ def line_label_endpoints(
     return None
 
 
-def arc_label_anchor(arc_id: str, sym: "SymTable") -> tuple[float, float, float, float, float]:
-    """Return (cx, cy, px, py, r) in geometry space: the arc's center, its
-    own midpoint-angle point on the arc itself (radius r, no offset yet),
-    and that radius (so callers can size their offset proportionally to
-    the arc — a fixed absolute offset would look right on one diagram's
+def arc_label_anchor(
+    arc_id: str, sym: "SymTable", pos: float = 0.5
+) -> tuple[float, float, float, float, float]:
+    """Return (cx, cy, px, py, r) in geometry space: the arc's center, the
+    point on the arc itself at fractional position ``pos`` along its CCW
+    sweep (radius r, no offset yet, ``pos=0.5`` the default midpoint), and
+    that radius (so callers can size their offset proportionally to the
+    arc — a fixed absolute offset would look right on one diagram's
     coordinate scale and wrong on another's).
 
     Callers apply their own backend-space offset along the center->point
@@ -214,8 +217,8 @@ def arc_label_anchor(arc_id: str, sym: "SymTable") -> tuple[float, float, float,
     space may flip the y axis), so the offset can't be baked in here.
     Mirrors how LabelAngle places its text beyond the angle-mark arc."""
     cx, cy, r, start_deg, end_deg, _sx, _sy = arc_params(arc_id, sym)
-    mid_rad = math.radians((start_deg + end_deg) / 2.0)
-    return cx, cy, cx + r * math.cos(mid_rad), cy + r * math.sin(mid_rad), r
+    anchor_rad = math.radians(start_deg + pos * (end_deg - start_deg))
+    return cx, cy, cx + r * math.cos(anchor_rad), cy + r * math.sin(anchor_rad), r
 
 
 def circle_center_through(
@@ -443,9 +446,11 @@ _TICK_COUNT_RE = re.compile(r"^tick(\d+)$")
 _PARALLEL_COUNT_RE = re.compile(r"^parallel(\d+)$")
 
 # Half-length / spacing (construction units) for to_tikz.py's raw-drawn
-# segment tick marks (MarkSegments.ticks path, and any group index beyond
-# the mark-symbol palette). Not used by to_svg.py, which works in pixel
-# space post-projection (see _TICK_LEN/spacing in to_svg.py).
+# segment AND arc tick marks (MarkSegments.ticks / MarkArcs, and any group
+# index beyond the mark-symbol palette). Shared between the two so a tick
+# on a segment and a tick on an arc marked with the same group are the same
+# visual size. Not used by to_svg.py, which works in pixel space
+# post-projection (see _TICK_LEN/spacing in to_svg.py).
 SEG_TICK_HALF_LENGTH = 0.12
 SEG_TICK_SPACING = 0.09
 
@@ -503,6 +508,199 @@ def tick_mark_segments(
             (tx + nx * half_length, ty + ny * half_length),
         ))
     return strokes
+
+
+def tick_mark_arcs(
+    cx: float,
+    cy: float,
+    r: float,
+    start_deg: float,
+    end_deg: float,
+    n_ticks: int,
+    half_length: float,
+    spacing: float,
+) -> "list[tuple[tuple[float, float], tuple[float, float]]]":
+    """Return n_ticks short RADIAL strokes straddling a circular arc,
+    centered on the arc's own midpoint angle and evenly spaced along it by
+    arc length. Each element is the stroke's own ((x1, y1), (x2, y2))
+    endpoints, in whatever coordinate space cx/cy/r/half_length/spacing are
+    given in (pixels for to_svg.py, construction units for to_tikz.py).
+
+    The arc-space counterpart of tick_mark_segments(): both backends call
+    this in GEOMETRY space and project the result themselves — to_svg.py's
+    projection is a uniform scale + y-flip (a similarity transform), so a
+    radial stroke stays radial and a pixel-space length is just the
+    geometry-space length times scale.
+
+    ``spacing`` is an ARC LENGTH, converted to a central angle via
+    ``dtheta = spacing / r``, so two arcs of different radii marked with the
+    same count get strokes the same visual distance apart rather than the
+    same angle apart.
+
+    Like tick_mark_segments(), this does not clamp overrun past the arc's
+    own endpoints — a large n_ticks on a short sweep will place its
+    outermost strokes beyond where the arc itself ends. It does clamp the
+    inner radius at 0 so a half_length larger than r can't cross the center.
+    """
+    if n_ticks < 1 or r <= 0:
+        return []
+    mid_rad = math.radians((start_deg + end_deg) / 2.0)
+    dtheta = spacing / r
+    r_in = max(r - half_length, 0.0)
+    r_out = r + half_length
+    strokes: "list[tuple[tuple[float, float], tuple[float, float]]]" = []
+    for i in range(n_ticks):
+        theta = mid_rad + (i - (n_ticks - 1) / 2) * dtheta
+        ux, uy = math.cos(theta), math.sin(theta)
+        strokes.append((
+            (cx + r_in * ux, cy + r_in * uy),
+            (cx + r_out * ux, cy + r_out * uy),
+        ))
+    return strokes
+
+
+# Uniform per-character text-advance fraction of the em size, used by
+# arc_text_glyphs() below. Deliberately the same factor to_svg.py's
+# _estimate_text_width() uses (0.65): that function produces the width
+# estimate every label's data-bbox and collision box is built from, so an
+# arc-text glyph splitter using a different factor would lay glyphs out
+# somewhere its own bbox didn't cover.
+TEXT_ADVANCE_EM = 0.65
+
+# Nominal em size in construction units for to_tikz.py's arc text. TikZ has
+# no font metrics available at IR-emission time. \tkzInit maps one
+# construction unit to 1cm and the default document font is ~10pt (~0.35cm),
+# so one em is about 0.35 construction units regardless of the diagram's own
+# xmin/xmax range (a wider range makes the picture physically bigger, not
+# the font smaller).
+TIKZ_TEXT_EM = 0.35
+
+
+def arc_text_glyphs(text: str, em: float) -> "list[tuple[str, float]]":
+    """Split *text* into per-glyph (character, advance) pairs, advances in
+    whatever length unit *em* is given in (SVG px, or construction units).
+
+    Uses the same uniform TEXT_ADVANCE_EM heuristic as to_svg.py's
+    _estimate_text_width(), and the same normalization (strip an outer
+    $...$, collapse a \\command to one glyph, drop {}_^), so the returned
+    advances sum to exactly _estimate_text_width(text, em). Neither backend
+    has real per-character font metrics: TikZ has none at all, and the SVG
+    backend only gets whole-string metrics — from matplotlib, and only for
+    mathtext labels.
+
+    The \\command rule is defensive only: arc_text_is_layoutable() already
+    routes every string containing one to the single-label fallback, so this
+    function should never actually see a backslash in practice.
+
+    Whitespace characters are kept (with their advance) so the cursor still
+    moves correctly across a run with spaces — callers should skip emitting
+    a visible glyph for them, not skip them here.
+    """
+    t = text.strip()
+    if t.startswith("$") and t.endswith("$"):
+        t = t[1:-1]
+    t = re.sub(r"\\[a-zA-Z]+", "X", t)
+    t = re.sub(r"[{}_^]", "", t)
+    advance = em * TEXT_ADVANCE_EM
+    return [(ch, advance) for ch in t]
+
+
+def arc_text_is_layoutable(text: str) -> bool:
+    """True if *text* can be laid out glyph-by-glyph along an arc; False if
+    the caller should fall back to a single unrotated label at the arc
+    anchor instead.
+
+    False for two classes of string:
+      * anything label_needs_mathtext() routes to the monolithic mathtext
+        vector path — mathtext_svg.MathGlyph carries one ``d`` path string
+        and whole-string metrics, so there are no per-glyph advances to lay
+        out at all, and a fraction/radical is a 2-D box that rotating it
+        per sub-glyph would mangle anyway; and
+      * anything carrying a sub/superscript, which arc_text_glyphs() would
+        otherwise flatten ("P_1" -> "P1"). Silently dropping a subscript is
+        worse than falling back to a straight label.
+
+    Shared by both backends so they agree on exactly which strings curve —
+    a per-backend gate would make the same IR render differently in SVG and
+    TikZ, which is the one failure mode this op cannot afford.
+    """
+    # Function-local: mathtext_svg imports matplotlib at module scope, and
+    # to_tikz.py's import path is otherwise matplotlib-free.
+    from .mathtext_svg import label_needs_mathtext
+
+    if "_" in text or "^" in text:
+        return False
+    return not label_needs_mathtext(text)
+
+
+def arc_text_glyph_layout(
+    cx: float,
+    cy: float,
+    r: float,
+    start_deg: float,
+    end_deg: float,
+    advances: "list[float]",
+    pos: float = 0.5,
+    offset: float = 0.0,
+    side: str = "outside",
+    flip: "bool | None" = None,
+) -> "list[tuple[float, float, float]]":
+    """Lay a string out along a circular arc, one glyph at a time.
+
+    Returns one (x, y, rotation_deg) per entry in *advances*, all in
+    GEOMETRY space: (x, y) is the glyph's own center (callers anchor
+    middle/central on it and rotate about it), and rotation_deg is a
+    math-CCW angle. to_svg.py must NEGATE it before use — its gy() is
+    y-flipped, so a screen-CCW rotation is an SVG rotate() of the opposite
+    sign. to_tikz.py uses it as-is (TikZ's y axis is not flipped).
+
+    - ``pos`` in [0, 1] picks the anchor angle along the arc's CCW sweep
+      that the string is CENTERED on (0.5 = the midpoint arc_label_anchor()
+      uses). Not clamped away from the endpoints: pos=0 centers the string
+      on the arc's start point, so half of it overhangs before the arc
+      begins.
+    - ``side`` = "outside" puts the baseline at radius r + offset, "inside"
+      at r - offset (clamped above 0).
+    - ``flip`` = None auto-derives: glyph tops point away from the center on
+      the upper half of the circle and toward it on the lower half, so text
+      at the bottom of a circle reads right-side up instead of upside down.
+      One decision for the whole string, taken at the anchor angle — a
+      per-glyph decision would invert a word mid-way. True/False force tops
+      inward/outward regardless of position (e.g. for a sweep crossing the
+      horizontal, where no single auto choice is right everywhere, or for
+      deliberate seal-style text).
+    """
+    if not advances:
+        return []
+    baseline_r = (r + offset) if side == "outside" else max(r - offset, 1e-9)
+    anchor = math.radians(start_deg + pos * (end_deg - start_deg))
+    if flip is None:
+        # Upper half -> glyph tops point outward; lower half -> inward
+        # (upright either way).
+        up_sign = 1.0 if math.sin(anchor) >= 0.0 else -1.0
+    else:
+        up_sign = -1.0 if flip else 1.0
+    # Reading direction is opposite the "up" direction: with tops pointing
+    # outward, text reads clockwise (decreasing theta).
+    step = -up_sign
+    # Angular width is computed AT THE BASELINE radius, not at r — a large
+    # offset would otherwise over-space the glyphs relative to how far apart
+    # they actually render.
+    total_rad = sum(advances) / baseline_r
+    cursor = anchor - step * total_rad / 2.0
+    out: "list[tuple[float, float, float]]" = []
+    for adv in advances:
+        dt = adv / baseline_r
+        theta = cursor + step * dt / 2.0
+        rot = math.degrees(theta) + (-90.0 if up_sign > 0 else 90.0)
+        rot = (rot + 180.0) % 360.0 - 180.0  # normalize to (-180, 180]
+        out.append((
+            cx + baseline_r * math.cos(theta),
+            cy + baseline_r * math.sin(theta),
+            rot,
+        ))
+        cursor += step * dt
+    return out
 
 
 def second_line_point(

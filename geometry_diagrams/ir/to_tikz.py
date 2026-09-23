@@ -14,6 +14,9 @@ from .render_util import (
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
+    arc_text_glyph_layout,
+    arc_text_glyphs,
+    arc_text_is_layoutable,
     brace_quadratic_points,
     centroid_of_obj,
     circle_center_through,
@@ -35,11 +38,13 @@ from .render_util import (
     seg_endpoints,
     synthesize_helpers,
     sympy_to_float,
+    tick_mark_arcs,
     tick_mark_segments,
     tick_values,
     resolve_mark_group_indices,
     SEG_TICK_HALF_LENGTH,
     SEG_TICK_SPACING,
+    TIKZ_TEXT_EM,
     _TICK_COUNT_RE,
     _PARALLEL_COUNT_RE,
 )
@@ -125,22 +130,34 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     _Z_ORDER = {
         "fill": 0,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
+        # mark_arcs MUST share mark_segments' z-value: sorted_ops is a STABLE
+        # sort and the group precompute below derives first-encounter order
+        # from it, so any other value would bunch all arc ops before/after
+        # all segment ops and silently renumber existing diagrams' groups.
+        "mark_arcs": 1,
         "draw_points": 2,
         "label_point": 3, "label_angle": 3, "label_segment": 3, "label_free_text": 3,
+        "label_along_arc": 3,
     }
     sorted_ops = sorted(diagram.render, key=lambda op: _Z_ORDER.get(op.kind, 1))
 
-    # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style.
-    # A "tickN"/"parallelN" group name resolves to N directly (matching to_svg.py);
-    # any other name falls back to first-encounter order. MarkSegments.ticks
-    # (an explicit count) bypasses this entirely — resolved per-op in _emit_op.
+    # Pre-compute group -> mark symbol for MarkSegments ops that lack an explicit style,
+    # and group -> raw tick count for MarkArcs. A "tickN"/"parallelN" group name resolves
+    # to N directly (matching to_svg.py); any other name falls back to first-encounter
+    # order. MarkArcs shares MarkSegments' `group` namespace but reads the raw, uncapped
+    # index (group_tick_counts) rather than group_marks — the 6-entry palette's slash
+    # glyphs ("s", "s|", "s||") have no arc form, so an arc just draws N plain ticks.
+    # MarkSegments.ticks / MarkArcs.ticks (an explicit count) bypasses this entirely —
+    # resolved per-op in _emit_op.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
     seg_groups: list[str] = []
     for op in sorted_ops:
+        if not isinstance(op, (ir.MarkSegments, ir.MarkArcs)):
+            continue
         if (
-            isinstance(op, ir.MarkSegments) and op.group and op.ticks is None
+            op.group and op.ticks is None
             and (op.style or op.group) not in _styles
         ):
             if op.group not in seg_groups:
@@ -155,9 +172,14 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     group_marks.update({
         g: _PARALLEL_MARKS[min(idx, len(_PARALLEL_MARKS)) - 1] for g, idx in parallel_group_indices.items()
     })
+    # raw, UNCAPPED index per group — what MarkArcs reads.
+    group_tick_counts: dict[str, int] = {**tick_group_indices, **parallel_group_indices}
 
     for op in sorted_ops:
-        chunk = _emit_op(op, sym, stmt_by_id, helpers, diagram.styles, group_marks, warnings=warnings)
+        chunk = _emit_op(
+            op, sym, stmt_by_id, helpers, diagram.styles, group_marks,
+            group_tick_counts=group_tick_counts, warnings=warnings,
+        )
         lines.extend(chunk)
 
     return "\n".join(lines)
@@ -230,6 +252,7 @@ def _emit_op(
     helpers: dict[str, tuple[float, float]],
     styles: dict[str, dict],
     group_marks: dict[str, str] | None = None,
+    group_tick_counts: dict[str, int] | None = None,
     warnings: list[str] | None = None,
 ) -> list[str]:
     out: list[str] = []
@@ -479,6 +502,36 @@ def _emit_op(
                 else:
                     out.append(f"\\tkzMarkSegment{sopts}({a},{b})")
 
+        case ir.MarkArcs(arcs=arcs, group=group, style=style, ticks=ticks):
+            # Always raw \draw strokes, regardless of where the count came
+            # from: \tkzMarkSegment needs two NAMED tkz points, and arcs are
+            # emitted as raw `\draw ... arc[...]` with no \tkzDefPoint behind
+            # them. There is no group-vs-explicit split here, unlike
+            # MarkSegments.
+            draw_opts = _style_str(style or group, styles)
+            for arc_id in arcs:
+                if arc_id not in stmt_by_id:
+                    msg = f"Skipping render op MarkArcs for undefined object '{arc_id}'"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    continue
+                if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
+                    msg = f"Skipping render op MarkArcs: '{arc_id}' is not a circular arc/sector"
+                    logger.warning(msg)
+                    if warnings is not None:
+                        warnings.append(msg)
+                    continue
+                n = ticks if ticks is not None else (group_tick_counts or {}).get(group, 1)
+                cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+                for (x1, y1), (x2, y2) in tick_mark_arcs(
+                    cx, cy, r, s_deg, e_deg, n, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
+                ):
+                    out.append(
+                        f"\\draw{draw_opts} ({_fmt_num(x1)},{_fmt_num(y1)}) -- "
+                        f"({_fmt_num(x2)},{_fmt_num(y2)});"
+                    )
+
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
             if p not in sym:
                 msg = f"Skipping render op LabelPoint for undefined object '{p}'"
@@ -560,6 +613,61 @@ def _emit_op(
                     return out
                 x, y = centroid_of_obj(obj)
             out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
+
+        case ir.LabelAlongArc(arc=arc_id, text=text, side=side, pos=pos, flip=flip, style=style):
+            if arc_id not in stmt_by_id:
+                msg = f"Skipping render op LabelAlongArc for undefined object '{arc_id}'"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
+                return out
+            if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
+                msg = f"Skipping render op LabelAlongArc: '{arc_id}' is not a circular arc/sector"
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
+                return out
+            color_opt = _style_str(style, styles).strip("[]")
+            cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+            if not arc_text_is_layoutable(text):
+                # Same gate as to_svg.py, so the two backends curve exactly
+                # the same set of strings. Falls back to LabelSegment's arc-
+                # branch placement: a single \node, offset radially, scaled
+                # by r since raw TikZ coordinates are in the diagram's own
+                # geometry units.
+                msg = (
+                    f"LabelAlongArc: {text!r} cannot be laid out per glyph; "
+                    "placing a single node at the arc anchor"
+                )
+                logger.warning(msg)
+                if warnings is not None:
+                    warnings.append(msg)
+                acx, acy, apx, apy, ar = arc_label_anchor(arc_id, sym, pos=pos)
+                dx, dy = apx - acx, apy - acy
+                mag = math.hypot(dx, dy) or 1
+                sgn = 1.0 if side == "outside" else -1.0
+                off = max(0.3, ar * 0.15) * sgn
+                lx = apx + (dx / mag) * off
+                ly = apy + (dy / mag) * off
+                out.append(f"\\node at ({fmt_num(lx)},{fmt_num(ly)}) {{${_to_latex(text)}$}};")
+                return out
+            glyphs = arc_text_glyphs(text, TIKZ_TEXT_EM)
+            layout = arc_text_glyph_layout(
+                cx, cy, r, s_deg, e_deg, [adv for _, adv in glyphs],
+                pos=pos, offset=max(0.18, r * 0.09), side=side, flip=flip,
+            )
+            for (ch, _adv), (x, y, rot) in zip(glyphs, layout):
+                if not ch.strip():
+                    continue
+                # rot is a math-CCW geometry angle and TikZ's y is NOT
+                # flipped, so it is used as-is — the opposite of to_svg.py,
+                # which must negate it. `rotate=` is core PGF: no
+                # \usetikzlibrary, no decorations.text, no preamble change.
+                opts = f"rotate={fmt_num(rot)}" + (f",{color_opt}" if color_opt else "")
+                out.append(
+                    f"\\node[{opts}] at ({fmt_num(x)},{fmt_num(y)}) "
+                    f"{{${_to_latex(ch)}$}};"
+                )
 
         case ir.DrawBrace(p1=p1, p2=p2, direction=direction, label=label, style=style, width=width):
             pts = brace_quadratic_points(

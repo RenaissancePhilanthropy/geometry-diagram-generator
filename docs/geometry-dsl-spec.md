@@ -535,7 +535,9 @@ Mark segments as equal with tick marks.
 > equal-length group name; a "tickN" name or first-encounter order decides
 > the count, capped at 6 by the renderers' mark-symbol palette) or an
 > explicit `ticks: int` field with no upper bound. `ticks` is IR/renderer-only
-> — the recipe DSL and pydsl surfaces don't expose it yet.
+> — the recipe DSL and pydsl surfaces don't expose it yet. `group` is a
+> namespace shared with `ir.MarkArcs` below — a segment and an arc marked
+> with the same group name resolve to the same tick count.
 
 | Field      | Type    | Description                               |
 |------------|---------|-------------------------------------------|
@@ -558,6 +560,33 @@ Mark lines as parallel with arrow marks.
 | `groups` | array   | Each group: {lines: [[P,Q],...], arrows: n}  |
 
 Same grouping logic as equal lengths.
+
+#### `mark_arcs`
+
+> **Note:** this op has no recipe DSL or pydsl surface yet — it exists only
+> as the IR-level render op `ir.MarkArcs` (see
+> `geometry_diagrams/ir/ir.py`).
+
+Mark a circular arc (or a sector's curved edge) with radial tick marks, the
+arc-space counterpart of `mark_equal_lengths`.
+
+| Field   | Type          | Description                                    |
+|---------|---------------|-------------------------------------------------|
+| `arcs`  | array         | Already-defined `arc_center_start_end` or `sector_center_start_end` ids |
+| `group` | string        | Shared with `ir.MarkSegments`'s `group` namespace — see note above |
+| `ticks` | integer       | Explicit tick count, no upper bound            |
+
+For a `sector_center_start_end`, ticks go on its curved edge only, never on
+either of its two straight radii. Elliptical variants
+(`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
+are unsupported — both renderers skip them with a warning, since
+constant-arc-length tick spacing has no closed form on an ellipse.
+
+A shared `group` gives a segment and an arc the same tick *index*, not
+necessarily the same *glyph*: indices 1–3 render identically on both (1/2/3
+plain ticks), but a segment's mark-symbol palette diverges from index 4
+onward into diagonal-slash forms ("s", "s|", "s||") that have no arc
+equivalent — an arc always draws N plain radial ticks regardless.
 
 ### Labels
 
@@ -585,6 +614,34 @@ Add a text label to a circle.
 |---------|--------|----------------------------|
 | `circle`| string | Circle ID                  |
 | `text`  | string | Label text                 |
+
+#### `label_along_arc`
+
+> **Note:** this op has no recipe DSL or pydsl surface yet — it exists only
+> as the IR-level render op `ir.LabelAlongArc` (see
+> `geometry_diagrams/ir/ir.py`).
+
+Text laid out along a circular arc (or a sector's curved edge), one rotated
+glyph at a time — distinct from `label_segment`'s existing arc handling,
+which places a single upright label near the arc's midpoint.
+
+| Field   | Type                    | Description                          |
+|---------|-------------------------|---------------------------------------|
+| `arc`   | string                  | Already-defined `arc_center_start_end` or `sector_center_start_end` id |
+| `text`  | string                  | Label text                            |
+| `side`  | "outside" \| "inside"   | Which radial side of the curve the glyphs sit on (default "outside") |
+| `pos`   | number, 0–1             | Fraction along the arc's sweep the string is centered on (default 0.5, the midpoint) |
+| `flip`  | bool \| null            | `null` (default) auto-orients glyphs upright regardless of which half of the circle the arc sits on; `true`/`false` forces the orientation |
+
+For a `sector_center_start_end`, the text follows its curved edge only.
+Elliptical variants are unsupported and skipped with a warning, same as
+`mark_arcs`.
+
+A `text` that can't be split into glyphs — anything the mathtext engine
+owns (LaTeX commands, `$...$`, fractions, Greek letters) or anything
+carrying a sub/superscript — degrades to a single unrotated label at the
+arc anchor, plus a warning, rather than silently dropping the un-layoutable
+part (e.g. flattening a subscript).
 
 ### Style
 

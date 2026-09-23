@@ -101,3 +101,77 @@ def test_mark_segments_rejects_non_positive_ticks():
         MarkSegments(segs=["s1"], ticks=0)
     with pytest.raises(ValidationError):
         MarkSegments(segs=["s1"], ticks=-1)
+
+
+def test_mark_arcs_defaults_to_no_group_and_no_ticks():
+    from geometry_diagrams.ir.ir import MarkArcs
+
+    op = MarkArcs(arcs=["a1"])
+    assert op.group is None
+    assert op.ticks is None
+
+
+def test_mark_arcs_rejects_non_positive_ticks():
+    import pytest
+    from pydantic import ValidationError
+
+    from geometry_diagrams.ir.ir import MarkArcs
+
+    with pytest.raises(ValidationError):
+        MarkArcs(arcs=["a1"], ticks=0)
+    with pytest.raises(ValidationError):
+        MarkArcs(arcs=["a1"], ticks=-1)
+
+
+def test_mark_arcs_is_a_valid_render_op_member():
+    from geometry_diagrams.ir.ir import DiagramIR, MarkArcs, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[MarkArcs(arcs=["arc1"], ticks=2)],
+    )
+    assert isinstance(diagram.render[0], MarkArcs)
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.render[0], MarkArcs)
+
+
+def test_label_along_arc_defaults_to_outside_midpoint_auto_flip():
+    from geometry_diagrams.ir.ir import LabelAlongArc
+
+    op = LabelAlongArc(arc="arc1", text="hi")
+    assert op.side == "outside"
+    assert op.pos == 0.5
+    assert op.flip is None
+
+
+def test_label_along_arc_accepts_the_closed_unit_interval():
+    from geometry_diagrams.ir.ir import LabelAlongArc
+
+    assert LabelAlongArc(arc="arc1", text="hi", pos=0.0).pos == 0.0
+    assert LabelAlongArc(arc="arc1", text="hi", pos=1.0).pos == 1.0
+
+
+def test_label_along_arc_rejects_pos_outside_the_unit_interval():
+    import pytest
+    from pydantic import ValidationError
+
+    from geometry_diagrams.ir.ir import LabelAlongArc
+
+    with pytest.raises(ValidationError):
+        LabelAlongArc(arc="arc1", text="hi", pos=-0.1)
+    with pytest.raises(ValidationError):
+        LabelAlongArc(arc="arc1", text="hi", pos=1.1)
+
+
+def test_label_along_arc_is_a_valid_render_op_member():
+    from geometry_diagrams.ir.ir import DiagramIR, LabelAlongArc, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[LabelAlongArc(arc="arc1", text="major arc")],
+    )
+    assert isinstance(diagram.render[0], LabelAlongArc)
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.render[0], LabelAlongArc)
