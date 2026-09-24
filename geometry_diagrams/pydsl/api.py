@@ -940,6 +940,49 @@ def tangent_line(
     return Line(id=line_id, _builder=builder)
 
 
+def tangent_circle(circle: Circle, point: Point, radius: float, internal: bool = False) -> Circle:
+    """A new circle of the given `radius`, tangent to `circle` at `point` —
+    `point` must already lie on `circle`'s boundary.
+
+    - internal=False (default): the new circle sits outside `circle`,
+      touching it from the opposite side.
+    - internal=True: the new circle sits inside (or, for a radius larger
+      than `circle`'s own, encloses) `circle`, touching it from the same
+      side. An internal=True radius equal to `circle`'s own radius is
+      rejected — it would reproduce `circle` exactly.
+
+    `circle` must be a genuine circle (an ellipse is rejected). Like
+    circumcircle()/incircle(), `point`-not-on-`circle`, an elliptical
+    `circle`, and the identical-circle degenerate case are all rejected at
+    compile time (inside compile_defs()), not eagerly here — only a
+    non-positive `radius` is caught immediately, by CircleTangentAt's own
+    model validation.
+
+    The new circle's center is reachable as `.center` on the returned
+    handle, an ordinary lazily-resolving Point addressable under its own
+    derived id (see geometry_diagrams.ir.ir.tangent_circle_center_id) —
+    same convention as circumcircle()/incircle()'s derived centers."""
+    from geometry_diagrams.ir.ir import CircleTangentAt, tangent_circle_center_id
+
+    builder = get_builder()
+    cid = builder._fresh_hidden_id("tangent_circle")
+    builder._add(CircleTangentAt(
+        id=cid,
+        circle=circle.id,
+        point=point.id,
+        radius=radius,
+        tangency="internal" if internal else "external",
+    ))
+    center_id = tangent_circle_center_id(cid)
+    return Circle(
+        id=cid,
+        center=Point(id=center_id, _builder=builder),
+        _radius_thunk=lambda: radius,
+        _builder=builder,
+        _from_derived_center=True,
+    )
+
+
 def draw(
     obj,
     color: "str | None" = None,
