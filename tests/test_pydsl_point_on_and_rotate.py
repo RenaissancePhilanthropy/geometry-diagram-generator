@@ -148,3 +148,108 @@ def test_dilate_point_scales_about_center():
     # center + 2*(source-center) = (1,1) + 2*(2,0) = (5, 1)
     assert math.isclose(dx, 5.0, abs_tol=1e-9)
     assert math.isclose(dy, 1.0, abs_tol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# point_on_arc_between() -- the only pydsl authoring path to the IR's
+# ArcBetweenConstraint / PointOnIntent mechanism.
+# ---------------------------------------------------------------------------
+
+def _arc_between_ir(from_t: float, to_t: float):
+    from geometry_diagrams.pydsl.api import circle, point_on_arc_between
+
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 2)
+        f = point_on(c, from_t)
+        t = point_on(c, to_t)
+        p = point_on_arc_between(c, f, t)
+        ir = builder.build()
+    return ir, c, f, t, p
+
+
+def test_point_on_arc_between_records_a_point_on_intent_def():
+    from geometry_diagrams.ir.ir import ArcBetweenConstraint, PointOnIntent
+
+    ir, c, f, t, p = _arc_between_ir(0.0, math.pi / 2)
+    defs = [d for d in ir.define if isinstance(d, PointOn) and d.id == p.id]
+    assert len(defs) == 1
+    assert defs[0].on == c.id
+    assert isinstance(defs[0].how, PointOnIntent)
+    assert defs[0].how.constraints == [
+        ArcBetweenConstraint(from_point=f.id, to_point=t.id)
+    ]
+
+
+def test_point_on_arc_between_returns_an_unresolved_point_handle():
+    """Same convention as point_on(): a handle whose coordinates only exist
+    once the builder's IR is compiled."""
+    from geometry_diagrams.pydsl.api import circle, point_on_arc_between
+    from geometry_diagrams.pydsl.handles import Point
+
+    with new_builder_context():
+        c = circle(point(0, 0), 2)
+        p = point_on_arc_between(c, point_on(c, 0.0), point_on(c, math.pi / 2))
+        assert isinstance(p, Point)
+
+
+def test_point_on_arc_between_resolves_inside_the_requested_arc():
+    """The resolved angle must land in the requested quarter, not just
+    anywhere on the circle -- checked across many RNG seeds so a lucky
+    single draw can't pass this."""
+    from random import Random
+
+    ir, c, f, t, p = _arc_between_ir(0.0, math.pi / 2)
+    angles = []
+    for seed in range(20):
+        sym = compile_defs(ir, rng=Random(seed))
+        pt = sym[p.id]
+        angles.append(math.degrees(math.atan2(float(pt.y), float(pt.x))) % 360.0)
+        assert math.isclose(float(pt.x) ** 2 + float(pt.y) ** 2, 4.0, abs_tol=1e-9)
+    assert all(0.0 <= a <= 90.0 for a in angles), angles
+    # ...and it is genuinely sampled, not pinned to one convenient spot.
+    assert len(set(round(a, 6) for a in angles)) > 1, angles
+
+
+def test_point_on_arc_between_honours_the_counter_clockwise_sweep():
+    """from=90 deg, to=0 deg is the 270 deg CCW sweep, not the short way."""
+    from random import Random
+
+    ir, c, f, t, p = _arc_between_ir(math.pi / 2, 0.0)
+    for seed in range(20):
+        pt = compile_defs(ir, rng=Random(seed))[p.id]
+        a = math.degrees(math.atan2(float(pt.y), float(pt.x))) % 360.0
+        assert 90.0 <= a <= 360.0 or math.isclose(a, 0.0, abs_tol=1e-9), a
+
+
+def test_point_on_arc_between_reaches_the_rejection_sampling_compiler_path():
+    """Guard against the result merely *looking* right: the compiler's
+    _point_on_intent rejection sampler must actually be the code that
+    produced it, with the ArcBetweenConstraint in hand."""
+    from geometry_diagrams.ir import to_sympy
+    from geometry_diagrams.ir.ir import ArcBetweenConstraint
+
+    ir, c, f, t, p = _arc_between_ir(0.0, math.pi / 2)
+    calls = []
+    original = to_sympy._point_on_intent
+
+    def spy(obj, constraints, sym, rng, def_id, **kwargs):
+        calls.append((def_id, list(constraints)))
+        return original(obj, constraints, sym, rng, def_id, **kwargs)
+
+    to_sympy._point_on_intent = spy
+    try:
+        compile_defs(ir)
+    finally:
+        to_sympy._point_on_intent = original
+
+    assert [def_id for def_id, _ in calls] == [p.id]
+    assert calls[0][1] == [ArcBetweenConstraint(from_point=f.id, to_point=t.id)]
+
+
+def test_point_on_arc_between_is_reachable_from_a_sandboxed_script():
+    """It must be in pydsl.__all__, which is what the sandbox exposes."""
+    import geometry_diagrams.pydsl as pydsl_module
+    from geometry_diagrams.pydsl.stub import generate_stub
+
+    assert "point_on_arc_between" in pydsl_module.__all__
+    assert "def point_on_arc_between(" in generate_stub()

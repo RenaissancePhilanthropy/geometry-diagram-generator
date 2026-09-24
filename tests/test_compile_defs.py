@@ -2335,6 +2335,45 @@ class TestArcBetweenConstraint:
         angles = self._sample_angles((1, -SQRT3), (SQRT3, 1))
         assert all(a >= 300.0 or a <= 30.0 for a in angles), angles
 
+    def test_constraint_endpoints_are_dependencies_of_the_point_they_bound(self):
+        """The topological sort has to see the constraint's from_point/to_point
+        as dependencies. 'F' below is deeper in the DAG than the PointOn is, so
+        a sort that only looks at `on=` compiles the PointOn first and blows up
+        on a missing symbol."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            PointFixed(id="T", x=0, y=2),          # 90 deg
+            PointFixed(id="Pa", x=-5, y=-1),
+            PointFixed(id="Pb", x=5, y=-1),
+            PointMidpoint(id="M", p="Pa", q="Pb"),
+            PointFixed(id="Pc", x=6, y=0),
+            LineThrough(id="L2", p="M", q="Pc"),
+            PointIntersection(id="F", obj1="c", obj2="L2", pick=PickIndex(k=0)),
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                ArcBetweenConstraint(from_point="F", to_point="T"),
+            ])),
+        )
+        assert approx(sym["P"].distance(sym["O"]), 2.0, tol=1e-9)
+
+    def test_same_side_constraint_refs_are_dependencies_too(self):
+        """Same dependency rule, via a different SpatialConstraint member."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            PointFixed(id="Pa", x=-5, y=0),
+            PointFixed(id="Pb", x=5, y=0),
+            PointFixed(id="Pc", x=0, y=9),
+            PointMidpoint(id="M", p="Pa", q="Pb"),
+            LineThrough(id="L2", p="M", q="Pc"),
+            PointIntersection(id="R", obj1="c", obj2="L2", pick=PickIndex(k=0)),
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                NotNearConstraint(point="R", min_dist=1.0),
+            ])),
+        )
+        assert float(sym["P"].distance(sym["R"]).evalf()) >= 1.0
+
+
 def test_sweep_membership_treats_both_endpoints_as_inside():
     """The one angular tolerance shared by the intersection filter (to_sympy)
     and the containment check (checks.py), so the two agree at a boundary."""

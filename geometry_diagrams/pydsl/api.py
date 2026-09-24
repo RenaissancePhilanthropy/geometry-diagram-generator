@@ -760,6 +760,44 @@ def point_on(obj, t: float) -> Point:
     return Point(id=pid, _builder=builder)
 
 
+def point_on_arc_between(circle: Circle, from_point: Point, to_point: Point) -> Point:
+    """An unspecified point on `circle`, restricted to the arc running
+    counter-clockwise from `from_point` to `to_point` (both must already lie
+    on `circle`'s boundary — build them with point_on(circle, angle), or use
+    points the construction already put there).
+
+    Use this when the construction needs "some point on this side of the
+    circle" and the exact angle genuinely doesn't matter — e.g. an inscribed
+    angle's apex that must sit on the major arc of a chord, so the figure
+    reads correctly whichever angle the compiler picks. When you do know the
+    angle you want, use point_on(circle, angle) instead: it is exact and
+    deterministic, and this function is not.
+
+    The sweep is always counter-clockwise from `from_point` to `to_point`,
+    never "whichever of the two arcs is shorter" — swapping the two arguments
+    selects the complementary arc, so order matters. Both endpoints count as
+    inside the arc.
+
+    The compiler places the point by rejection sampling, so the exact
+    coordinates depend on the RNG seed and are stable only for a fixed seed.
+    If no sample satisfies the constraint (e.g. `from_point` and `to_point`
+    are the same point, leaving a zero-width sweep), compilation fails with
+    an IRCompileError naming this point.
+    """
+    from geometry_diagrams.ir.ir import ArcBetweenConstraint, PointOnIntent
+
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("pt_arc_between")
+    builder._add(PointOn(
+        id=pid,
+        on=circle.id,
+        how=PointOnIntent(constraints=[
+            ArcBetweenConstraint(from_point=from_point.id, to_point=to_point.id)
+        ]),
+    ))
+    return Point(id=pid, _builder=builder)
+
+
 def rotate_point(source: Point, center: Point, angle: float) -> Point:
     """Rotate source around center by angle radians (positive = counter-clockwise)."""
     builder = get_builder()
