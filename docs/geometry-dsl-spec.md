@@ -345,6 +345,33 @@ Tangent to a circle at a point on the circle.
 | `circle` | string | Circle ID                                |
 | `at`     | string | Point on the circle (must be on circle)  |
 
+#### `circle_tangent_at`
+A new circle of a given radius, tangent to an existing circle at a point on
+that circle's boundary. The IR-level definition is `ir.CircleTangentAt`; the
+recipe DSL surface is `geometry_diagrams.recipe.dsl.CircleTangentAtOp`, and
+the pydsl surface is `geometry_diagrams.pydsl.api.tangent_circle`.
+
+| Field      | Type           | Description                                       |
+|------------|----------------|---------------------------------------------------|
+| `id`       | string         | Name for the new circle                           |
+| `circle`   | string         | Reference circle ID (must be a genuine circle, not an ellipse) |
+| `point`    | string         | Tangency point; must already lie on `circle`'s boundary |
+| `radius`   | number or expr | Radius of the new circle (must be positive)       |
+| `tangency` | string         | `"external"` (default) or `"internal"`            |
+
+`tangency: "external"` sits the new circle outside the reference one, the two
+touching from opposite sides; `"internal"` sits it on the same side — nested
+inside the reference circle, or enclosing it when `radius` exceeds the
+reference radius (both are valid; only a circle identical to the reference is
+rejected). A `point` that is not on `circle`'s boundary is a compile-time
+error, never silently reprojected.
+
+The new circle's center is an OUTPUT, addressable as `<id>_center` by later
+operations (e.g. a segment joining the two centers, or a label on the center)
+— the same way `circumcircle`/`incircle` name their derived centers. From the
+recipe DSL this op additionally emits an auto-generated `circles_tangent`
+check on the two circles as a safety net.
+
 #### `extend_segment`
 Extend a segment beyond one of its endpoints.
 
@@ -818,6 +845,16 @@ After execution, the system checks:
    - `ccw(P)`: polygon P's vertices are wound counter-clockwise (positive signed area)
    - `min_distance(A, B, min_dist)`: points A and B are at least min_dist apart
    - `congruent_triangles(T1, T2)`: triangles T1 and T2 are congruent (SSS: matching sorted side lengths, no required vertex correspondence)
+   - `equal_radius([C1, C2, ...])`: all listed circles have the same radius — the circle-family counterpart of `equal_lengths` (requires at least two circles; "length" means nothing for a circle, so these stay separate check kinds)
+   - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(expected, 1.0)`)
+   - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` applies to the radius term in length units and to the sweep term in radians. Elliptical arcs/sectors are rejected with a clear message naming the unsupported type.
+   - `angle_value(A, O, B, expected_deg)`: the angle at O equals `expected_deg` degrees — complements `right_angle` (a fixed 90°) and `angle_equal` (two angles compared to each other, never to an absolute value). `tol` is in radians.
+   - `circles_tangent(C1, C2)`: circles C1 and C2 are tangent to each other, externally (centers separated by the sum of the radii) or internally (by the difference). Distinct from `tangent`, whose `line` field is explicitly a line/segment/ray; two identical circles are not considered tangent.
+
+   Each check kind above is also reachable from the Python builder surface as
+   an `assert_*` function (`assert_equal_radius`, `assert_radius`,
+   `assert_congruent_arcs`, `assert_angle_value`, `assert_circles_tangent` —
+   see `geometry_diagrams/pydsl/asserts.py`).
 
 3. **Annotation completeness**: All requested marks are present.
 
