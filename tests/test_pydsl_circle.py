@@ -114,6 +114,44 @@ def test_tangent_circle_center_is_reachable_as_a_point_handle():
     assert float(resolved_center.y.evalf()) == pytest.approx(0.0)
 
 
+def test_tangent_circle_center_resolves_through_the_incremental_compile_path():
+    """`.center` is documented as "an ordinary, lazily-resolving Point" — so
+    reading its coordinates mid-script (which goes through Builder's
+    incremental `_advance_sym()`, not a whole-diagram `compile_defs()`) must
+    work, not raise "has no known coordinates"."""
+    with new_builder_context():
+        circ = circle(point(0, 0), 2.0)
+        touch = point_on(circ, 0.0)  # (2, 0)
+        new_circ = tangent_circle(circ, touch, 1.0)  # external: center at (3, 0)
+        assert new_circ.center.x == pytest.approx(3.0)
+        assert new_circ.center.y == pytest.approx(0.0)
+
+
+def test_definition_on_a_tangent_circle_survives_a_mid_script_resolve():
+    """A def referencing the derived centre (here: an arc, whose IR def
+    carries the circle's centre id) must still compile when something later
+    in the script forces an incremental resolve — an assert_*, a `.x` read,
+    anything. Regression test: the incremental path used to not register the
+    derived centre at all, so this raised UndefinedRefError even though the
+    final whole-diagram compile succeeded."""
+    import math
+
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.pydsl.api import arc, draw
+    from geometry_diagrams.pydsl.asserts import assert_radius
+
+    with new_builder_context():
+        circ = circle(point(0, 0), 2.0)
+        new_circ = tangent_circle(circ, point_on(circ, 0.0), 1.0)
+        a = arc(new_circ, point_on(new_circ, 0.0), point_on(new_circ, math.pi / 2))
+        assert_radius(new_circ, 1.0)  # forces the incremental resolve
+        draw(circ)
+        draw(a)
+        ir = get_builder().build()
+
+    compile_defs(ir)  # the whole-diagram path keeps working too
+
+
 def test_tangent_circle_end_to_end_draw_and_render():
     """Builder script -> compiled diagram -> rendered SVG, including drawing
     the new circle and a segment referencing its center."""

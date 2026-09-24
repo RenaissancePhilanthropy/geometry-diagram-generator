@@ -132,6 +132,19 @@ class Builder:
             self._sym[stmt.id] = obj
             if isinstance(obj, spg.Point):
                 self._coord_floats[stmt.id] = (float(obj.x), float(obj.y))
+            if isinstance(stmt, ir_mod.CircleTangentAt) and isinstance(obj, spg.Circle):
+                # Mirror compile_defs()'s own post-compile registration of
+                # this construction's derived centre as an addressable point.
+                # Without it, the incremental table disagrees with the
+                # whole-diagram one: `.center.x` reads "no known coordinates"
+                # and any def carrying the derived centre id (an arc/sector
+                # built on the new circle, a segment to it) fails with
+                # UndefinedRefError the moment anything forces a mid-script
+                # resolve -- even though the final compile_defs() succeeds.
+                center_id = ir_mod.tangent_circle_center_id(stmt.id)
+                if center_id not in self._sym:
+                    self._sym[center_id] = obj.center
+                    self._coord_floats[center_id] = (float(obj.center.x), float(obj.center.y))
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
         self._sym_watermark = len(self._defs)
