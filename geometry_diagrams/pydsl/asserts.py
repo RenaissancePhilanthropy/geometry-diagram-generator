@@ -1,19 +1,20 @@
 # geometry_diagrams/pydsl/asserts.py
 """assert_* geometric-invariant predicates for the Python DSL surface.
 
-All functions except `assert_in_canvas` are thin wrappers around an existing
-`ir.Check` kind: build the matching `ir.Check` object from the caller's
-handle ids, force resolution of any not-yet-materialized point via
-`Builder._advance_sym()`, run it through `checks._check_one` (the same
-dispatcher the JSON/recipe DSL uses), and raise `GeometricAssertionError`
-with a message that has every recognized point id substituted for its
-resolved `(x.xx, y.yy)` coordinate string (pydsl ids are opaque
-auto-generated hidden ids the LLM never wrote, so a raw id in a failure
-message is useless to it).
+All functions except `assert_in_canvas` and `assert_labels_in_canvas` are
+thin wrappers around an existing `ir.Check` kind: build the matching
+`ir.Check` object from the caller's handle ids, force resolution of any
+not-yet-materialized point via `Builder._advance_sym()`, run it through
+`checks._check_one` (the same dispatcher the JSON/recipe DSL uses), and
+raise `GeometricAssertionError` with a message that has every recognized
+point id substituted for its resolved `(x.xx, y.yy)` coordinate string
+(pydsl ids are opaque auto-generated hidden ids the LLM never wrote, so a
+raw id in a failure message is useless to it).
 
-`assert_in_canvas` is the one exception: it has no backing `ir.Check` kind
-(a deliberate design decision — see its own docstring) and instead reads
-`builder._canvas` directly and compares bounds itself.
+`assert_in_canvas` and `assert_labels_in_canvas` are the two exceptions:
+neither has a backing `ir.Check` kind (each a deliberate design decision —
+see their own docstrings), and each reads/renders the diagram built so far
+directly instead of going through `ir.Check`.
 
 `GeometricAssertionError` is a `ValueError` subclass (defined in
 `builder.py`, imported here) so any code that already catches `ValueError`

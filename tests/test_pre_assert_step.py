@@ -17,15 +17,19 @@ part of the real, current pydsl API).
 """
 from __future__ import annotations
 
+import ast
+import inspect
 import random
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from geometry_diagrams.ir import ir as ir_mod
+from geometry_diagrams.ir.pre_assert_filter import REAL_ASSERT_NAMES
 from geometry_diagrams.strategies.pre_assert_step import (
     FilteredCheck,
     ParsedCheck,
+    _build_check_from_call,
     assemble_advisory_text,
     build_assert_vocabulary_block,
     build_pre_step_system_prompt,
@@ -64,6 +68,34 @@ def test_build_assert_vocabulary_block_has_30_real_signatures():
     assert all(line.startswith("def assert_") for line in lines)
     assert "def assert_collinear(" in block
     assert "def assert_in_canvas(" in block  # listed even though unsupported downstream
+
+
+def test_build_check_from_call_has_a_branch_for_every_real_assert_except_canvas_ones():
+    """Drift guard: this parser's docstring claims it handles every real
+    assert_* name except assert_in_canvas/assert_labels_in_canvas -- the
+    five curved-family asserts (assert_equal_radius, assert_radius,
+    assert_congruent_arcs, assert_angle_value, assert_circles_tangent) were
+    added to asserts.py/pydsl.__all__ and the vocabulary block model-facing
+    text without ever getting a branch here, so the model could be told
+    they're usable while every proposal using them silently degraded to a
+    parse_error. Checks the literal `fn == "..."` names in
+    _build_check_from_call's own source against REAL_ASSERT_NAMES, so a
+    future name added the same way fails this test instead of shipping
+    silently unhandled."""
+    source = inspect.getsource(_build_check_from_call)
+    tree = ast.parse(source)
+    handled = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name) and node.left.id == "fn"
+            and len(node.ops) == 1 and isinstance(node.ops[0], ast.Eq)
+            and isinstance(node.comparators[0], ast.Constant)
+        ):
+            handled.add(node.comparators[0].value)
+
+    expected = REAL_ASSERT_NAMES - {"assert_in_canvas", "assert_labels_in_canvas"}
+    assert handled == expected
 
 
 def test_build_pre_step_system_prompt_includes_vocab_and_grammar():
@@ -173,6 +205,48 @@ def test_parse_ignores_assert_in_canvas_no_backing_check_kind():
     assert parsed.check is None
     assert parsed.unresolved_name is None
     assert parsed.parse_error is not None
+
+
+def test_parse_ignores_assert_labels_in_canvas_no_backing_check_kind():
+    """Same reasoning as assert_in_canvas: a real assert_* name, no backing
+    ir.Check kind, so a parse_error rather than an unresolved_name or crash."""
+    text = "assert_labels_in_canvas()\n"
+    proposal = parse_proposal_text(text)
+    parsed = proposal.checks[0]
+    assert parsed.check is None
+    assert parsed.unresolved_name is None
+    assert parsed.parse_error is not None
+
+
+def test_parse_resolves_the_five_curved_family_asserts():
+    """The five assert_* functions added alongside the curve-family-parity
+    checks (EqualRadius/RadiusEquals/CongruentArcs/AngleValue/CirclesTangent)
+    -- previously real, advertised names this parser had no branch for at
+    all, silently degrading to a parse_error instead of a structured check."""
+    text = (
+        "assert_equal_radius(c1, c2)\n"
+        "assert_radius(c1, 3.0)\n"
+        "assert_congruent_arcs(arc1, arc2)\n"
+        "assert_angle_value(angle(A, O, B), 90.0)\n"
+        "assert_circles_tangent(c1, c2)\n"
+    )
+    proposal = parse_proposal_text(text)
+    assert len(proposal.checks) == 5
+    checks = [p.check for p in proposal.checks]
+    assert all(c is not None for c in checks), proposal.checks
+
+    equal_radius, radius, congruent_arcs, angle_value, circles_tangent = checks
+    assert isinstance(equal_radius, ir_mod.EqualRadius)
+    assert equal_radius.circles == ["c1", "c2"]
+    assert isinstance(radius, ir_mod.RadiusEquals)
+    assert (radius.circle, radius.expected) == ("c1", 3.0)
+    assert isinstance(congruent_arcs, ir_mod.CongruentArcs)
+    assert congruent_arcs.arcs == ["arc1", "arc2"]
+    assert isinstance(angle_value, ir_mod.AngleValue)
+    assert (angle_value.angle.a, angle_value.angle.o, angle_value.angle.b) == ("A", "O", "B")
+    assert angle_value.expected_deg == 90.0
+    assert isinstance(circles_tangent, ir_mod.CirclesTangent)
+    assert (circles_tangent.c1, circles_tangent.c2) == ("c1", "c2")
 
 
 def test_parse_records_prose_and_blank_lines_as_unparsed_not_errors():

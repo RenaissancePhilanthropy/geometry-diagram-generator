@@ -79,7 +79,7 @@ from .llm import get_chat_model, make_system_message
 
 
 def build_assert_vocabulary_block() -> str:
-    """The real 25 assert_* signatures + docstrings, generated from the live
+    """The real assert_* signatures + docstrings, generated from the live
     pydsl API -- mirrors instructions_python_full.py's build_python_full_instructions()
     approach (call the stub generator at prompt-build time) rather than hand-copying a
     vocabulary string that can drift out of sync with the real API. `generate_stub()`
@@ -335,8 +335,9 @@ def _build_check_from_call(
     """Build an ir.Check from one assert_*(...) call's AST, or None if this
     module's parser can't map its argument shapes (an unsupported wrapper, a
     non-literal numeric argument, a variable-bound angle ref, ...). Every real
-    assert_* function except assert_in_canvas (which has no backing ir.Check
-    kind -- see asserts.py's own docstring) is handled below."""
+    assert_* function except assert_in_canvas and assert_labels_in_canvas
+    (neither has a backing ir.Check kind -- see their own docstrings in
+    asserts.py) is handled below."""
     fn = call.func.id if isinstance(call.func, ast.Name) else None
     args = call.args
 
@@ -435,6 +436,26 @@ def _build_check_from_call(
         p, q, min_dist = ref(args[0]), ref(args[1]), _const_float(args[2])
         if p and q and min_dist is not None:
             return ir.MinDistance(a=p, b=q, min_dist=min_dist)
+    elif fn == "assert_equal_radius" and len(args) >= 2:
+        ids = [ref(a) for a in args]
+        if all(ids):
+            return ir.EqualRadius(circles=ids)
+    elif fn == "assert_radius" and len(args) == 2:
+        circle, expected = ref(args[0]), _const_float(args[1])
+        if circle and expected is not None:
+            return ir.RadiusEquals(circle=circle, expected=expected)
+    elif fn == "assert_congruent_arcs" and len(args) >= 2:
+        ids = [ref(a) for a in args]
+        if all(ids):
+            return ir.CongruentArcs(arcs=ids)
+    elif fn == "assert_angle_value" and len(args) == 2:
+        angle, expected_deg = _resolve_angle_arg(args[0]), _const_float(args[1])
+        if angle and expected_deg is not None:
+            return ir.AngleValue(angle=angle, expected_deg=expected_deg)
+    elif fn == "assert_circles_tangent" and len(args) == 2:
+        c1, c2 = ref(args[0]), ref(args[1])
+        if c1 and c2:
+            return ir.CirclesTangent(c1=c1, c2=c2)
     return None
 
 
