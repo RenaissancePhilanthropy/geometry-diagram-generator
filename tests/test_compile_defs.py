@@ -1982,6 +1982,94 @@ class TestArcAsIntersectionOperand:
         assert approx(sym["X"].x, 1.5, tol=1e-9)
         assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
 
+    def _tangent_circle_defs(self):
+        """Circle O2 (center (4,0), radius 2) is externally tangent to circle O
+        at exactly one point, (2,0) -- 0 deg about O, 180 deg about O2."""
+        return [
+            PointFixed(id="O2", x=4, y=0),
+            PointFixed(id="T1", x=4, y=2),   # 90 deg about O2
+            PointFixed(id="T2", x=4, y=-2),  # 270 deg about O2
+        ]
+
+    def test_arc_and_arc_with_zero_raw_candidates_raises(self):
+        """Disjoint underlying circles produce no raw candidates at all, so
+        neither arc's sweep ever gets consulted."""
+        with pytest.raises(IntersectionError, match="no intersection points"):
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="FAR", x=10, y=0),
+                PointFixed(id="F1", x=11, y=0),
+                PointFixed(id="F2", x=10, y=1),
+                CircleCenterRadius(id="cfar", center="FAR", radius=1),
+                ArcCenterStartEnd(id="arc2", center="FAR", start="F1", end="F2"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_arc_and_arc_with_one_raw_candidate_inside_both_sweeps(self):
+        """Tangent underlying circles yield a single raw candidate, (2,0); it
+        sits on both sweeps (it's arc's own start point), so it survives."""
+        sym = _compile(
+            *self._quarter_arc(),
+            *self._tangent_circle_defs(),
+            ArcCenterStartEnd(id="arc2", center="O2", start="T1", end="T2"),  # 90..270 about O2
+            PointIntersection(id="X", obj1="arc", obj2="arc2"),
+        )
+        assert approx(sym["X"].x, 2.0, tol=1e-9)
+        assert approx(sym["X"].y, 0.0, tol=1e-9)
+
+    def test_arc_and_arc_with_one_raw_candidate_outside_a_sweep_raises(self):
+        """Same single tangency point, but the first arc now sweeps 90..270
+        about O, which excludes the 0 deg candidate."""
+        with pytest.raises(IntersectionError, match="sweep"):
+            _compile(
+                *_unit_circle_defs(),
+                PointFixed(id="W", x=0, y=-2),   # 270 deg about O
+                ArcCenterStartEnd(id="arc", center="O", start="E", end="W"),  # 90..270 about O
+                *self._tangent_circle_defs(),
+                ArcCenterStartEnd(id="arc2", center="O2", start="T1", end="T2"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_sector_and_segment_keeps_only_the_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *_unit_circle_defs(),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+            PointFixed(id="P", x=0, y=0),
+            PointFixed(id="Q", x=3, y=3),
+            Segment(id="seg", a="P", b="Q"),
+            PointIntersection(id="X", obj1="sec", obj2="seg"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+        assert approx(sym["X"].y, SQRT2, tol=1e-9)
+
+    def test_sector_and_circle_keeps_only_the_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *_unit_circle_defs(),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+            PointFixed(id="O2", x=3, y=0),
+            CircleCenterRadius(id="c2", center="O2", radius=2),
+            PointIntersection(id="X", obj1="sec", obj2="c2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_sector_and_sector_filters_by_both_sweeps(self):
+        """Sector x sector, the arc x arc case's sector twin: both candidates
+        clear the first sector's sweep, the second's picks between them."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="LO", x=1, y=-SQRT3),
+            PointFixed(id="HI", x=1, y=SQRT3),
+            SectorCenterStartEnd(id="sec", center="O", start="LO", end="HI"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=2),   # 90 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            SectorCenterStartEnd(id="sec2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="sec", obj2="sec2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
     def test_sector_operand_behaves_like_its_arc(self):
         sym = _compile(
             *_unit_circle_defs(),
@@ -2246,7 +2334,6 @@ class TestArcBetweenConstraint:
         """from=300 deg, to=30 deg spans the 0 deg/360 deg seam."""
         angles = self._sample_angles((1, -SQRT3), (SQRT3, 1))
         assert all(a >= 300.0 or a <= 30.0 for a in angles), angles
-
 
 def test_sweep_membership_treats_both_endpoints_as_inside():
     """The one angular tolerance shared by the intersection filter (to_sympy)
