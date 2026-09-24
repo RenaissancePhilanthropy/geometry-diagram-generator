@@ -7,7 +7,8 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .to_sympy import EllipticalSector, Sector, SymTable
+from .render_util import arc_params
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 
 
 DEFAULT_TOL = 5e-3
@@ -230,6 +231,54 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 len2 = [f"{l:.4f}" for l in lengths2]
                 msg = "" if ok else f"Triangles not congruent: {len1} vs {len2}"
 
+            case ir.EqualRadius(circles=circles):
+                radii = [float(sym[c].radius.evalf()) for c in circles]
+                ok = all(abs(r - radii[0]) < t for r in radii[1:])
+                if ok:
+                    msg = ""
+                else:
+                    pairs = ", ".join(f"{c}={r:.4f}" for c, r in zip(circles, radii))
+                    msg = f"Circle radii not equal: {pairs}"
+
+            case ir.RadiusEquals(circle=circle, expected=expected):
+                radius = float(sym[circle].radius.evalf())
+                ok = abs(radius - expected) < t * max(expected, 1.0)
+                msg = "" if ok else (
+                    f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
+                )
+
+            case ir.CongruentArcs(arcs=arcs):
+                ok, msg = _check_congruent_arcs(arcs, sym, t)
+
+            case ir.AngleValue(angle=angle, expected_deg=expected_deg):
+                av = _angle_at(sym[angle.a], sym[angle.o], sym[angle.b])
+                expected_rad = math.radians(expected_deg)
+                ok = abs(av - expected_rad) < t
+                if ok:
+                    msg = ""
+                else:
+                    msg = (
+                        f"Angle {angle.a}-{angle.o}-{angle.b} is "
+                        f"{math.degrees(av):.3f}°, not {expected_deg:.3f}°"
+                    )
+                    cands = _candidate_angles_at(angle.o, sym, expected_deg, t)
+                    if cands:
+                        msg += f" | angles={expected_deg:.1f}° at {angle.o}: {', '.join(cands)}"
+
+            case ir.CirclesTangent(c1=c1, c2=c2):
+                circ1, circ2 = sym[c1], sym[c2]
+                d = float(circ1.center.distance(circ2.center).evalf())
+                r1 = float(circ1.radius.evalf())
+                r2 = float(circ2.radius.evalf())
+                identical = d < t and abs(r1 - r2) < t
+                externally_tangent = abs(d - (r1 + r2)) < t
+                internally_tangent = abs(d - abs(r1 - r2)) < t
+                ok = (externally_tangent or internally_tangent) and not identical
+                msg = "" if ok else (
+                    f"Circles {c1!r} and {c2!r} are not tangent: "
+                    f"center distance={d:.4f}, r1={r1:.4f}, r2={r2:.4f}"
+                )
+
             case _:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True
@@ -309,6 +358,43 @@ def _as_line(obj: Any) -> spg.Line:
     if isinstance(obj, (spg.Segment, spg.Ray)):
         return spg.Line(obj.p1, obj.p2)
     raise TypeError(f"Cannot convert {type(obj).__name__} to Line")
+
+
+def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[bool, str]:
+    """Compare a list of circular arcs/sectors for equal radius and equal
+    (reflex-aware) central-angle sweep.
+
+    Rejects elliptical arcs/sectors up front with a clear, named-type message
+    instead of letting an AttributeError (no `.radius`) fall through to the
+    generic exception handler in `_check_one`.
+    """
+    radii: list[float] = []
+    sweeps_rad: list[float] = []
+    for arc_id in arcs:
+        obj = sym[arc_id]
+        if isinstance(obj, (EllipticalArc, EllipticalSector)):
+            return False, (
+                f"Arc {arc_id!r} is an elliptical arc/sector "
+                f"({type(obj).__name__}); congruent_arcs only supports "
+                f"circular arcs/sectors"
+            )
+        if not isinstance(obj, (Arc, Sector)):
+            return False, f"Object {arc_id!r} is not an arc or sector (got {type(obj).__name__})"
+        _cx, _cy, r, start_deg, end_deg, _sx, _sy = arc_params(arc_id, sym)
+        radii.append(r)
+        sweeps_rad.append(math.radians(end_deg - start_deg))
+
+    ok = (
+        all(abs(r - radii[0]) < tol for r in radii[1:])
+        and all(abs(s - sweeps_rad[0]) < tol for s in sweeps_rad[1:])
+    )
+    if ok:
+        return True, ""
+    pairs = ", ".join(
+        f"{arc_id}=(r={r:.4f}, sweep={math.degrees(s):.2f}°)"
+        for arc_id, r, s in zip(arcs, radii, sweeps_rad)
+    )
+    return False, f"Arcs not congruent: {pairs}"
 
 
 def _seg_length(obj: Any):

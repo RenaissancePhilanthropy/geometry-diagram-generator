@@ -175,3 +175,160 @@ def test_label_along_arc_is_a_valid_render_op_member():
     dumped = diagram.model_dump()
     rebuilt = DiagramIR.model_validate(dumped)
     assert isinstance(rebuilt.render[0], LabelAlongArc)
+
+
+# ---------------------------------------------------------------------------
+# EqualRadius
+# ---------------------------------------------------------------------------
+
+def test_equal_radius_defaults():
+    from geometry_diagrams.ir.ir import EqualRadius
+
+    check = EqualRadius(circles=["c1", "c2"])
+    assert check.kind == "equal_radius"
+    assert check.level == "must"
+    assert check.tol is None
+    assert check.source is None
+
+
+def test_equal_radius_rejects_fewer_than_two_circles():
+    import pytest
+    from pydantic import ValidationError
+
+    from geometry_diagrams.ir.ir import EqualRadius
+
+    with pytest.raises(ValidationError):
+        EqualRadius(circles=["c1"])
+    with pytest.raises(ValidationError):
+        EqualRadius(circles=[])
+
+
+def test_equal_radius_is_a_valid_check_union_member():
+    from geometry_diagrams.ir.ir import DiagramIR, EqualRadius, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        checks=[EqualRadius(circles=["c1", "c2"], source="test")],
+    )
+    assert isinstance(diagram.checks[0], EqualRadius)
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.checks[0], EqualRadius)
+    assert rebuilt.checks[0].circles == ["c1", "c2"]
+
+
+# ---------------------------------------------------------------------------
+# RadiusEquals
+# ---------------------------------------------------------------------------
+
+def test_radius_equals_defaults():
+    from geometry_diagrams.ir.ir import RadiusEquals
+
+    check = RadiusEquals(circle="c1", expected=5.0)
+    assert check.kind == "radius_equals"
+    assert check.level == "must"
+    assert check.tol is None
+    assert check.expected == 5.0
+
+
+def test_radius_equals_is_a_valid_check_union_member():
+    from geometry_diagrams.ir.ir import DiagramIR, RadiusEquals, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        checks=[RadiusEquals(circle="c1", expected=3.5)],
+    )
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.checks[0], RadiusEquals)
+    assert rebuilt.checks[0].expected == 3.5
+
+
+# ---------------------------------------------------------------------------
+# CongruentArcs
+# ---------------------------------------------------------------------------
+
+def test_congruent_arcs_defaults():
+    from geometry_diagrams.ir.ir import CongruentArcs
+
+    check = CongruentArcs(arcs=["a1", "a2"])
+    assert check.kind == "congruent_arcs"
+    assert check.level == "must"
+    assert check.tol is None
+
+
+def test_congruent_arcs_rejects_fewer_than_two_arcs():
+    import pytest
+    from pydantic import ValidationError
+
+    from geometry_diagrams.ir.ir import CongruentArcs
+
+    with pytest.raises(ValidationError):
+        CongruentArcs(arcs=["a1"])
+    with pytest.raises(ValidationError):
+        CongruentArcs(arcs=[])
+
+
+def test_congruent_arcs_is_a_valid_check_union_member():
+    from geometry_diagrams.ir.ir import DiagramIR, CongruentArcs, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        checks=[CongruentArcs(arcs=["a1", "a2"])],
+    )
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.checks[0], CongruentArcs)
+    assert rebuilt.checks[0].arcs == ["a1", "a2"]
+
+
+# ---------------------------------------------------------------------------
+# AngleValue
+# ---------------------------------------------------------------------------
+
+def test_angle_value_defaults():
+    from geometry_diagrams.ir.ir import AngleValue, AnglePoints
+
+    check = AngleValue(angle=AnglePoints(a="A", o="B", b="C"), expected_deg=90.0)
+    assert check.kind == "angle_value"
+    assert check.level == "must"
+    assert check.expected_deg == 90.0
+
+
+def test_angle_value_is_a_valid_check_union_member():
+    from geometry_diagrams.ir.ir import DiagramIR, AngleValue, AnglePoints, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        checks=[AngleValue(angle=AnglePoints(a="A", o="B", b="C"), expected_deg=45.0)],
+    )
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.checks[0], AngleValue)
+    assert rebuilt.checks[0].expected_deg == 45.0
+
+
+# ---------------------------------------------------------------------------
+# CirclesTangent
+# ---------------------------------------------------------------------------
+
+def test_circles_tangent_defaults():
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    check = CirclesTangent(c1="c1", c2="c2")
+    assert check.kind == "circles_tangent"
+    assert check.level == "must"
+
+
+def test_circles_tangent_is_a_valid_check_union_member():
+    from geometry_diagrams.ir.ir import DiagramIR, CirclesTangent, PointFixed
+
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        checks=[CirclesTangent(c1="c1", c2="c2", source="test")],
+    )
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.checks[0], CirclesTangent)
+    assert rebuilt.checks[0].c1 == "c1"
+    assert rebuilt.checks[0].c2 == "c2"

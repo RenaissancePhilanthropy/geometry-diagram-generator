@@ -823,16 +823,80 @@ class CongruentTriangles(CheckBase):
     t2: TriangleId
 
 
+class EqualRadius(CheckBase):
+    """All listed circles have the same radius. Mirrors EqualLength, but for
+    circle radii rather than segment lengths — a shared check would force a
+    model to guess which concept it means."""
+    kind: Literal["equal_radius"] = "equal_radius"
+    circles: List[CircleId]  # 2+
+
+    @model_validator(mode="after")
+    def _check_min_two_circles(self) -> "EqualRadius":
+        if len(self.circles) < 2:
+            raise ValueError("equal_radius: requires at least two circles")
+        return self
+
+
+class RadiusEquals(CheckBase):
+    """A circle's radius equals an expected value. Same relative-tolerance
+    convention as DistanceEquals: |actual - expected| < tol * max(expected, 1.0).
+    """
+    kind: Literal["radius_equals"] = "radius_equals"
+    circle: CircleId
+    expected: float
+
+
+class CongruentArcs(CheckBase):
+    """Two or more circular arcs/sectors are congruent: equal radius AND equal
+    central-angle sweep. The sweep comparison is reflex-aware — a minor arc
+    and a reflex arc sharing the same two endpoints are not congruent. `tol`
+    applies to the radius term in length units and to the sweep term in
+    radians. Arcs must be circular (`arc_center_start_end` /
+    `sector_center_start_end`); an elliptical arc/sector is rejected with a
+    clear error rather than an opaque attribute error.
+    """
+    kind: Literal["congruent_arcs"] = "congruent_arcs"
+    arcs: List[ObjId]  # 2+
+
+    @model_validator(mode="after")
+    def _check_min_two_arcs(self) -> "CongruentArcs":
+        if len(self.arcs) < 2:
+            raise ValueError("congruent_arcs: requires at least two arcs")
+        return self
+
+
+class AngleValue(CheckBase):
+    """Angle a-o-b equals an expected absolute value, in degrees. Complements
+    AngleEqual, which only compares two angles to each other, never to an
+    absolute value."""
+    kind: Literal["angle_value"] = "angle_value"
+    angle: AngleSpec
+    expected_deg: float
+
+
+class CirclesTangent(CheckBase):
+    """Two circles are tangent to each other: externally (centers separated by
+    the sum of the radii) or internally (centers separated by the difference
+    of the radii). Distinct from Tangent, whose `line` field is explicitly a
+    line/segment/ray tangent to a circle. Two identical circles (same center,
+    same radius) are not considered tangent.
+    """
+    kind: Literal["circles_tangent"] = "circles_tangent"
+    c1: CircleId
+    c2: CircleId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
         NonCollinear, Collinear,
         Contains, NotContains,
         Parallel, NotParallel, Perpendicular,
-        RightAngle, AngleEqual,
+        RightAngle, AngleEqual, AngleValue,
         EqualLength, DistanceEquals, RatioEqual,
-        SimilarTriangles, CongruentTriangles,
-        Tangent,
+        EqualRadius, RadiusEquals,
+        SimilarTriangles, CongruentTriangles, CongruentArcs,
+        Tangent, CirclesTangent,
         OppositeSide, SameSide,
         Centroid,
         Convex, CCW, MinDistance,
