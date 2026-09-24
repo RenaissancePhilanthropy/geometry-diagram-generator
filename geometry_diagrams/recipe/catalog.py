@@ -570,7 +570,9 @@ Side-by-side: use separate constructions with offset centers and a wide canvas.
 
 ## checks (optional)
 
-The `checks` field accepts a list of geometric assertions. These are validated at parse time.
+The `checks` field accepts a list of geometric assertions. Their shape is validated
+at parse time; the assertions themselves are checked against the compiled geometry
+after construction, before rendering — same as every auto-generated check below.
 
 Supported check kinds:
   {"check": "distance", "points": ["A", "B"], "expected": 5.0}
@@ -579,10 +581,12 @@ Supported check kinds:
   {"check": "angle_equals", "points": ["A", "B", "C"], "expected": 90.0}
   {"check": "collinear", "points": ["A", "B", "C"]}
   {"check": "on_circle", "point": "P", "circle": "c1"}
-  {"check": "tangent", "obj1": "c1", "obj2": "L1"}
+  {"check": "tangent", "obj1": "c1", "obj2": "L1"}  (obj1/obj2: one circle + one line/segment/ray,
+  or two circles — order doesn't matter)
 
-Note: The lowerer auto-generates checks from construction ops (triangles, altitudes, etc.).
-Explicit checks in this field are supplemental assertions.
+Note: The lowerer also auto-generates checks from some construction ops (triangles,
+altitudes, circle_tangent_at, etc.) as a safety net. Checks in this field are
+additional, explicit assertions on top of those.
 
 ## ID rules
 - All IDs must be unique

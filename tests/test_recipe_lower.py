@@ -32,7 +32,7 @@ from geometry_diagrams.ir.ir import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _dsl(construction, annotations=None, mode="abstract"):
+def _dsl(construction, annotations=None, mode="abstract", checks=None):
     ops = []
     for item in construction:
         if hasattr(item, "op"):
@@ -40,7 +40,7 @@ def _dsl(construction, annotations=None, mode="abstract"):
         else:
             ops.append(item)
     ann = annotations or DSLAnnotations(auto_draw_all=False, auto_label_points=False)
-    return RecipeDSL(mode=mode, construction=construction, annotations=ann)
+    return RecipeDSL(mode=mode, construction=construction, annotations=ann, checks=checks or [])
 
 
 def _kinds(ir: DiagramIR) -> list[str]:
@@ -2242,3 +2242,198 @@ def test_circle_tangent_at_unknown_circle_raises():
     ])
     with pytest.raises(LoweringError, match="no_such_circle"):
         lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# Explicit `checks:` field wiring
+# ---------------------------------------------------------------------------
+
+def test_check_distance_lowers_to_distance_equals_and_registers_a_segment():
+    from geometry_diagrams.recipe.dsl import CheckDistance
+    from geometry_diagrams.ir.ir import DistanceEquals
+
+    dsl = _dsl(
+        [PointOp(id="A", coords=[0.0, 0.0]), PointOp(id="B", coords=[3.0, 0.0])],
+        checks=[CheckDistance(points=["A", "B"], expected=5.0)],
+    )
+    ir = lower_to_ir(dsl)
+    distance_checks = [c for c in ir.checks if isinstance(c, DistanceEquals)]
+    assert len(distance_checks) == 1
+    assert distance_checks[0].expected == 5.0
+    seg = next(d for d in ir.define if isinstance(d, Segment) and d.id == distance_checks[0].seg)
+    assert {seg.a, seg.b} == {"A", "B"}
+
+
+def test_check_parallel_lowers_to_parallel_and_reuses_existing_segments():
+    """A segment already drawn for the pair must be reused, not duplicated --
+    same dedup guarantee _ensure_segment already gives mark_equal_lengths."""
+    from geometry_diagrams.recipe.dsl import CheckParallel
+    from geometry_diagrams.ir.ir import Parallel
+
+    dsl = _dsl(
+        [
+            PointOp(id="A", coords=[0.0, 0.0]), PointOp(id="B", coords=[3.0, 0.0]),
+            PointOp(id="C", coords=[0.0, 2.0]), PointOp(id="D", coords=[3.0, 2.0]),
+            SegmentOp(id="ab", endpoints=["A", "B"]),
+        ],
+        checks=[CheckParallel(seg1=["A", "B"], seg2=["C", "D"])],
+    )
+    ir = lower_to_ir(dsl)
+    parallel_checks = [c for c in ir.checks if isinstance(c, Parallel)]
+    assert len(parallel_checks) == 1
+    assert parallel_checks[0].l1 == "ab"  # reused, not a fresh __mark_seg_A_B
+    seg_defs = [d for d in ir.define if isinstance(d, Segment)]
+    assert len(seg_defs) == 2  # "ab" plus one new segment for C-D, no duplicate
+
+
+def test_check_perpendicular_lowers_to_perpendicular():
+    from geometry_diagrams.recipe.dsl import CheckPerpendicular
+    from geometry_diagrams.ir.ir import Perpendicular
+
+    dsl = _dsl(
+        [
+            PointOp(id="A", coords=[0.0, 0.0]), PointOp(id="B", coords=[3.0, 0.0]),
+            PointOp(id="C", coords=[0.0, 2.0]),
+        ],
+        checks=[CheckPerpendicular(seg1=["A", "B"], seg2=["A", "C"])],
+    )
+    ir = lower_to_ir(dsl)
+    perp_checks = [c for c in ir.checks if isinstance(c, Perpendicular)]
+    assert len(perp_checks) == 1
+
+
+def test_check_angle_equals_lowers_to_angle_value():
+    from geometry_diagrams.recipe.dsl import CheckAngleEquals
+    from geometry_diagrams.ir.ir import AngleValue
+
+    dsl = _dsl(
+        [
+            PointOp(id="A", coords=[0.0, 0.0]), PointOp(id="B", coords=[3.0, 0.0]),
+            PointOp(id="C", coords=[0.0, 2.0]),
+        ],
+        checks=[CheckAngleEquals(points=["B", "A", "C"], expected=90.0)],
+    )
+    ir = lower_to_ir(dsl)
+    angle_checks = [c for c in ir.checks if isinstance(c, AngleValue)]
+    assert len(angle_checks) == 1
+    assert (angle_checks[0].angle.a, angle_checks[0].angle.o, angle_checks[0].angle.b) == ("B", "A", "C")
+    assert angle_checks[0].expected_deg == 90.0
+
+
+def test_check_collinear_lowers_to_collinear():
+    from geometry_diagrams.recipe.dsl import CheckCollinear
+    from geometry_diagrams.ir.ir import Collinear
+
+    dsl = _dsl(
+        [PointOp(id="A", coords=[0.0, 0.0]), PointOp(id="B", coords=[1.0, 1.0]), PointOp(id="C", coords=[2.0, 2.0])],
+        checks=[CheckCollinear(points=["A", "B", "C"])],
+    )
+    ir = lower_to_ir(dsl)
+    collinear_checks = [c for c in ir.checks if isinstance(c, Collinear)]
+    assert len(collinear_checks) == 1
+    assert collinear_checks[0].points == ["A", "B", "C"]
+
+
+def test_check_on_circle_lowers_to_contains():
+    from geometry_diagrams.recipe.dsl import CheckPointOnCircle
+
+    dsl = _dsl(
+        [PointOp(id="O", coords=[0.0, 0.0]), CircleOp(id="c1", center="O", radius=3.0), PointOp(id="P", coords=[3.0, 0.0])],
+        checks=[CheckPointOnCircle(point="P", circle="c1")],
+    )
+    ir = lower_to_ir(dsl)
+    contains_checks = [c for c in ir.checks if isinstance(c, Contains)]
+    assert len(contains_checks) == 1
+    assert (contains_checks[0].p, contains_checks[0].obj) == ("P", "c1")
+
+
+def test_check_tangent_between_a_line_and_a_circle_lowers_to_tangent():
+    from geometry_diagrams.recipe.dsl import CheckTangent
+    from geometry_diagrams.ir.ir import Tangent
+
+    dsl = _dsl(
+        [
+            PointOp(id="O", coords=[0.0, 0.0]), CircleOp(id="c1", center="O", radius=3.0),
+            PointOp(id="P", coords=[3.0, 0.0]), PointOp(id="Q", coords=[3.0, 5.0]),
+            LineThroughOp(id="L1", points=["P", "Q"]),
+        ],
+        checks=[CheckTangent(obj1="c1", obj2="L1")],
+    )
+    ir = lower_to_ir(dsl)
+    tangent_checks = [c for c in ir.checks if isinstance(c, Tangent)]
+    assert len(tangent_checks) == 1
+    assert (tangent_checks[0].line, tangent_checks[0].circle) == ("L1", "c1")
+
+
+def test_check_tangent_argument_order_is_disambiguated_not_positional():
+    """obj1/obj2 carry no type tag in the DSL -- the line-vs-circle role must
+    come from which one is a known circle id, not from argument position."""
+    from geometry_diagrams.recipe.dsl import CheckTangent
+    from geometry_diagrams.ir.ir import Tangent
+
+    dsl = _dsl(
+        [
+            PointOp(id="O", coords=[0.0, 0.0]), CircleOp(id="c1", center="O", radius=3.0),
+            PointOp(id="P", coords=[3.0, 0.0]), PointOp(id="Q", coords=[3.0, 5.0]),
+            LineThroughOp(id="L1", points=["P", "Q"]),
+        ],
+        checks=[CheckTangent(obj1="L1", obj2="c1")],  # line first this time
+    )
+    ir = lower_to_ir(dsl)
+    tangent_checks = [c for c in ir.checks if isinstance(c, Tangent)]
+    assert len(tangent_checks) == 1
+    assert (tangent_checks[0].line, tangent_checks[0].circle) == ("L1", "c1")
+
+
+def test_check_tangent_between_two_circles_lowers_to_circles_tangent():
+    from geometry_diagrams.recipe.dsl import CheckTangent
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    dsl = _dsl(
+        [
+            PointOp(id="O1", coords=[0.0, 0.0]), CircleOp(id="c1", center="O1", radius=3.0),
+            PointOp(id="O2", coords=[6.0, 0.0]), CircleOp(id="c2", center="O2", radius=3.0),
+        ],
+        checks=[CheckTangent(obj1="c1", obj2="c2")],
+    )
+    ir = lower_to_ir(dsl)
+    tangent_checks = [c for c in ir.checks if isinstance(c, CirclesTangent)]
+    assert len(tangent_checks) == 1
+    assert (tangent_checks[0].c1, tangent_checks[0].c2) == ("c1", "c2")
+
+
+def test_check_tangent_neither_id_a_circle_raises():
+    from geometry_diagrams.recipe.dsl import CheckTangent
+
+    dsl = _dsl(
+        [
+            PointOp(id="P", coords=[0.0, 0.0]), PointOp(id="Q", coords=[1.0, 0.0]),
+            PointOp(id="R", coords=[0.0, 1.0]), PointOp(id="S", coords=[1.0, 1.0]),
+            LineThroughOp(id="L1", points=["P", "Q"]),
+            LineThroughOp(id="L2", points=["R", "S"]),
+        ],
+        checks=[CheckTangent(obj1="L1", obj2="L2")],
+    )
+    with pytest.raises(LoweringError, match="tangent"):
+        lower_to_ir(dsl)
+
+
+def test_explicit_checks_are_tagged_distinctly_from_auto_generated_ones():
+    """Explicit checks must be attributable back to the checks: field, not
+    confused with a construction op's own auto-generated safety-net check."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp, CheckCollinear
+
+    dsl = _dsl(
+        [
+            PointOp(id="O", coords=[0.0, 0.0]), CircleOp(id="c1", center="O", radius=3.0),
+            PointOp(id="P", coords=[3.0, 0.0]),
+            CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0),
+            PointOp(id="X", coords=[1.0, 1.0]), PointOp(id="Y", coords=[2.0, 2.0]),
+        ],
+        checks=[CheckCollinear(points=["P", "X", "Y"])],
+    )
+    ir = lower_to_ir(dsl)
+    assert len(ir.checks) == 2
+    sources = {c.source for c in ir.checks}
+    assert any(s and s.startswith("explicit check:") for s in sources)
+    assert any(s is None for s in sources)  # circle_tangent_at's own auto-generated check

@@ -1079,7 +1079,7 @@ AnnotationMark = Annotated[
 
 
 # ---------------------------------------------------------------------------
-# DSL checks (typed; validated at parse time; lowering consumption TBD)
+# DSL checks (typed; validated at parse time; lowered by _Lowerer._lower_checks())
 # ---------------------------------------------------------------------------
 
 class CheckDistance(BaseModel):
@@ -1259,9 +1259,10 @@ class RecipeDSL(BaseModel):
     construction: list[DSLOp]
     annotations: DSLAnnotations = Field(default_factory=DSLAnnotations)
     checks: list[DSLCheck] = Field(default_factory=list)
-    # Note: checks are validated at parse time but not yet consumed by the lowerer.
-    # Lowerer auto-generates checks from construction ops. Explicit check
-    # consumption is a planned follow-on (see design spec section 2.3).
+    # Lowered by _Lowerer._lower_checks(), tagged source="explicit check: ..."
+    # so a failure is distinguishable from a construction op's own
+    # auto-generated safety-net check (e.g. circle_tangent_at's
+    # CirclesTangent).
 
     @model_validator(mode="before")
     @classmethod

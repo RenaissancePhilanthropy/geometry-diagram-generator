@@ -46,8 +46,11 @@ default below is safe to leave out entirely — do not spell it out for clarity.
   - annotations.auto_mark_right_angles: default false — omit unless enabling it.
   - annotations.draws / marks / labels / styles: default empty — omit any of these
     entirely when you have nothing to put in them; do not emit [] or {}.
-  - checks: default empty — omit it. The lowerer auto-generates checks from
-    construction ops; this field is not yet consumed even if populated.
+  - checks: default empty — omit it unless you need an assertion the lowerer's own
+    auto-generated checks don't already cover (see the catalog's "checks" section
+    for supported kinds). The lowerer auto-generates checks from many construction
+    ops (triangles, altitudes, circle_tangent_at, etc.) as a safety net; this field
+    is for anything beyond that.
 
 Key rules:
 - "Abstract" mode only means the VERTICES of a triangle/rectangle/regular_polygon/

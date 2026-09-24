@@ -23,7 +23,7 @@ from ..ir.ir import (
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual, PendingAnglePair,
-    CirclesTangent,
+    CirclesTangent, Collinear, DistanceEquals, Tangent, AngleValue,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, MarkArcs as IRMarkArcs, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
@@ -32,6 +32,8 @@ from ..ir.ir import (
 )
 from .dsl import (
     RecipeDSL, DSLAnnotations,
+    CheckDistance, CheckParallel, CheckPerpendicular, CheckAngleEquals,
+    CheckCollinear, CheckPointOnCircle, CheckTangent,
     TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
@@ -147,6 +149,7 @@ class _Lowerer:
         for op in dsl.construction:
             self._lower_op(op)
         self._apply_annotations(dsl.annotations, dsl.construction)
+        self._lower_checks(dsl.checks)
         canvas = self._canvas or self._auto_canvas()
         return DiagramIR(
             define=self._defs,
@@ -1213,6 +1216,79 @@ class _Lowerer:
         seg_id = f"__mark_seg_{p}_{q}"
         self._defs.append(Segment(id=seg_id, a=p, b=q))
         return seg_id
+
+    # ------------------------------------------------------------------
+    # Explicit checks (the document's `checks:` field)
+    # ------------------------------------------------------------------
+
+    def _lower_checks(self, dsl_checks: list) -> None:
+        """Lower the document's explicit `checks:` field into ir.Check
+        objects, tagged source="explicit check: ..." so a failure is
+        distinguishable from a construction op's own auto-generated
+        safety-net check (e.g. circle_tangent_at's CirclesTangent, appended
+        directly by its own _lower_* method, never through here)."""
+        for check in dsl_checks:
+            if isinstance(check, CheckDistance):
+                seg_id = self._ensure_segment(check.points[0], check.points[1])
+                self._checks.append(DistanceEquals(
+                    seg=seg_id, expected=check.expected,
+                    source=f"explicit check: distance({check.points[0]},{check.points[1]})",
+                ))
+            elif isinstance(check, CheckParallel):
+                seg1 = self._ensure_segment(check.seg1[0], check.seg1[1])
+                seg2 = self._ensure_segment(check.seg2[0], check.seg2[1])
+                self._checks.append(Parallel(
+                    l1=seg1, l2=seg2,
+                    source=f"explicit check: parallel({check.seg1},{check.seg2})",
+                ))
+            elif isinstance(check, CheckPerpendicular):
+                seg1 = self._ensure_segment(check.seg1[0], check.seg1[1])
+                seg2 = self._ensure_segment(check.seg2[0], check.seg2[1])
+                self._checks.append(Perpendicular(
+                    l1=seg1, l2=seg2,
+                    source=f"explicit check: perpendicular({check.seg1},{check.seg2})",
+                ))
+            elif isinstance(check, CheckAngleEquals):
+                a, vertex, b = check.points
+                self._checks.append(AngleValue(
+                    angle=AnglePoints(a=a, o=vertex, b=b),
+                    expected_deg=check.expected,
+                    source=f"explicit check: angle_equals({a},{vertex},{b})",
+                ))
+            elif isinstance(check, CheckCollinear):
+                self._checks.append(Collinear(
+                    points=list(check.points),
+                    source=f"explicit check: collinear({check.points})",
+                ))
+            elif isinstance(check, CheckPointOnCircle):
+                self._checks.append(Contains(
+                    p=check.point, obj=check.circle,
+                    source=f"explicit check: on_circle({check.point},{check.circle})",
+                ))
+            elif isinstance(check, CheckTangent):
+                self._checks.append(self._build_tangent_check(check.obj1, check.obj2))
+
+    def _build_tangent_check(self, obj1: str, obj2: str) -> Check:
+        """CheckTangent's obj1/obj2 carry no type tag, so disambiguate by
+        circle-ness via self._circle_centers (populated for every
+        circle-producing op, by id): both circles -> CirclesTangent, exactly
+        one -> Tangent(line=the other, circle=that one). Order-agnostic,
+        since the DSL doesn't document which of obj1/obj2 must be the
+        circle."""
+        obj1_is_circle = obj1 in self._circle_centers
+        obj2_is_circle = obj2 in self._circle_centers
+        source = f"explicit check: tangent({obj1},{obj2})"
+        if obj1_is_circle and obj2_is_circle:
+            return CirclesTangent(c1=obj1, c2=obj2, source=source)
+        if obj1_is_circle:
+            return Tangent(line=obj2, circle=obj1, source=source)
+        if obj2_is_circle:
+            return Tangent(line=obj1, circle=obj2, source=source)
+        raise LoweringError(
+            f"check 'tangent': neither {obj1!r} nor {obj2!r} is a known circle id -- "
+            "a tangent check needs exactly one circle (line-circle tangency) "
+            "or two circles (circle-circle tangency)"
+        )
 
     # ------------------------------------------------------------------
     # Canvas
