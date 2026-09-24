@@ -2101,6 +2101,69 @@ class TestArcAsIntersectionOperand:
         assert "no intersection points" in missed
         assert "sweep" in outside and "sweep" not in missed
 
+    def test_pick_on_object_can_select_a_candidate_by_an_arc(self):
+        """Two candidates survive the first arc's sweep; PickOnObject names a
+        second arc to choose between them."""
+        sym = _compile(
+            *self._wide_arc(),
+            PointFixed(id="P", x=1.5, y=-3),
+            PointFixed(id="Q", x=1.5, y=3),
+            LineThrough(id="L", p="P", q="Q"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=2),   # 90 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="arc2")),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_pick_on_object_can_select_a_candidate_by_a_sector(self):
+        sym = _compile(
+            *self._wide_arc(),
+            PointFixed(id="P", x=1.5, y=-3),
+            PointFixed(id="Q", x=1.5, y=3),
+            LineThrough(id="L", p="P", q="Q"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=-2),  # 270 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            SectorCenterStartEnd(id="sec2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="sec2")),
+        )
+        assert approx(sym["X"].y, -CROSS_Y, tol=1e-9)
+
+    def test_pick_on_object_respects_the_arcs_sweep(self):
+        """Both candidates lie on the pick target's underlying circle, but
+        outside the arc it actually draws -- so no candidate qualifies."""
+        with pytest.raises(PickError, match="no candidate lies on"):
+            _compile(
+                *self._wide_arc(),
+                PointFixed(id="P", x=1.5, y=-3),
+                PointFixed(id="Q", x=1.5, y=3),
+                LineThrough(id="L", p="P", q="Q"),
+                PointFixed(id="O2", x=3, y=0),
+                PointFixed(id="S2", x=5, y=0),   # 0 deg about O2
+                PointFixed(id="E2", x=3, y=2),   # 90 deg about O2
+                ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="arc2")),
+            )
+
+    def test_pick_on_object_rejects_an_elliptical_arc_by_name(self):
+        with pytest.raises(IRCompileError, match="EllipticalArc"):
+            _compile(
+                *self._wide_arc(),
+                PointFixed(id="P", x=1.5, y=-3),
+                PointFixed(id="Q", x=1.5, y=3),
+                LineThrough(id="L", p="P", q="Q"),
+                PointFixed(id="O2", x=3, y=0),
+                PointFixed(id="S2", x=7, y=0),
+                PointFixed(id="E2", x=3, y=2),
+                EllipticalArcCenterStartEnd(
+                    id="ea", center="O2", hradius=4, vradius=2, start="S2", end="E2"
+                ),
+                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="ea")),
+            )
+
     def test_elliptical_arc_operand_is_rejected_by_name(self):
         with pytest.raises(IRCompileError, match="EllipticalArc"):
             _compile(

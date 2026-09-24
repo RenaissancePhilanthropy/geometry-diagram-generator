@@ -7,11 +7,8 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .render_util import arc_params, arc_params_of
-from .to_sympy import (
-    Arc, EllipticalArc, EllipticalSector, Sector, SymTable,
-    angle_about_deg, angle_within_sweep,
-)
+from .render_util import arc_params
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, point_on_arc
 
 
 DEFAULT_TOL = 5e-3
@@ -335,14 +332,9 @@ def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
             f"containment operand; only circular arcs/sectors are"
         )
     if isinstance(obj, (Arc, Sector)):
-        # "On" an arc/sector means on its curved edge: at the right radius from
-        # the center AND within the sweep. A sector's two straight radii and its
-        # filled interior are deliberately not part of this — they are available
-        # as ordinary segments from its center to its start/end points.
-        cx, cy, r, start_deg, end_deg, _sx, _sy = arc_params_of(obj)
-        if abs(float(point.distance(obj.center).evalf()) - r) >= tol:
-            return False
-        return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
+        # On the curved edge only — see point_on_arc(), which the pick_on_object
+        # rule in to_sympy.py shares, so the two can't drift apart.
+        return point_on_arc(point, obj, tol)
     if isinstance(obj, spg.Circle):
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())

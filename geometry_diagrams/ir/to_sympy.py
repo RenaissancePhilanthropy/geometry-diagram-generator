@@ -30,6 +30,12 @@ CIRCLE_TANGENT_TOL = 1e-6
 # disagree about a boundary point.
 SWEEP_TOL_DEG = 1e-6
 
+# How far off an arc's/sector's radius a candidate point may sit and still count
+# as lying on its curved edge, when a pick rule asks. Candidates reaching a pick
+# rule come from an exact SymPy intersection, so this only absorbs float noise —
+# checks.py deliberately uses its own (looser) check tolerance instead.
+PICK_ON_ARC_TOL = 1e-9
+
 
 class Arc:
     """Marker type for a circular arc in the symbol table.
@@ -193,6 +199,20 @@ def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
     """Does `point` fall within the angular sweep of a circular arc/sector?"""
     cx, cy, start_deg, end_deg = _arc_sweep_degrees(arc)
     return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
+
+
+def point_on_arc(point: spg.Point, arc: Arc | Sector, tol: float) -> bool:
+    """Is `point` on the curved edge of a circular arc/sector — at its radius
+    (within `tol`) and within its sweep?
+
+    A sector's two straight radii and its filled interior are deliberately not
+    part of this: a model that needs those has them as ordinary segments from
+    the center to the start/end points. Shared by every caller that asks "does
+    this point lie on this arc" — the `pick_on_object` rule below and
+    ``checks.py``'s containment check.
+    """
+    radius_error = abs(float(point.distance(arc.center).evalf()) - float(arc.radius.evalf()))
+    return radius_error < tol and _point_within_arc_sweep(point, arc)
 
 
 def _underlying_circle(obj: Any) -> Any:
@@ -1144,7 +1164,19 @@ def _apply_pick(
 
         case ir.PickOnObject(obj=obj_id):
             obj = _resolve(sym, obj_id, def_id=def_id)
-            on = [p for p in points if obj.contains(p)]
+            if isinstance(obj, (EllipticalArc, EllipticalSector)):
+                raise IRCompileError(
+                    def_id,
+                    f"pick_on_object: {obj_id!r} is an elliptical arc/sector "
+                    f"({type(obj).__name__}); only circular arcs/sectors can be used "
+                    f"as a pick target — pick on the underlying ellipse instead"
+                )
+            if isinstance(obj, (Arc, Sector)):
+                # Marker types have no .contains(); "on" an arc/sector means on
+                # its curved edge, i.e. at its radius and within its sweep.
+                on = [p for p in points if point_on_arc(p, obj, PICK_ON_ARC_TOL)]
+            else:
+                on = [p for p in points if obj.contains(p)]
             if not on:
                 raise PickError(def_id, f"no candidate lies on {obj_id!r}")
             return on[0]
@@ -1407,8 +1439,12 @@ def _check_spatial_constraint(
         case ir.ArcBetweenConstraint(from_point=from_id, to_point=to_id):
             center = getattr(obj, "center", None)
             if center is None:
-                # Only meaningful on a circle: without a center there are no
-                # angles to compare, so the constraint restricts nothing.
+                # On a line/segment/ray there is no center to measure angles
+                # from, so the constraint restricts nothing. Any center-based
+                # conic is accepted: for an axis-aligned ellipse the polar angle
+                # is a strictly increasing function of the parametric angle, so
+                # "inside the CCW sweep from `from_point` to `to_point`" gives
+                # the same answer measured either way.
                 return True
             cx, cy = float(center.x.evalf()), float(center.y.evalf())
             start_deg = angle_about_deg(sym[from_id], cx, cy)
