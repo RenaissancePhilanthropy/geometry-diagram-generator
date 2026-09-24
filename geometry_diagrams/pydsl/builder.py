@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextvars
 from contextlib import contextmanager
+from random import Random
 from typing import Iterator
 
 from geometry_diagrams.ir.ir import DefBase, DefStmt, DiagramIR
@@ -37,6 +38,16 @@ class Builder:
         self._mark_group_counter = 0
         self._sym: dict = {}
         self._sym_watermark: int = 0
+        # ONE rng for the whole script, mirroring how compile_defs() threads a
+        # single Random(42) through a whole diagram. _advance_sym() compiles
+        # the script incrementally, in as many slices as there are mid-script
+        # coordinate reads, and an rng-consuming def (PointOn with a
+        # PointOnIntent, whose constraints are satisfied by rejection
+        # sampling) must see the same stream position it would in the
+        # whole-diagram compile. Rebuilding Random(42) per slice rewinds the
+        # stream, so a point resolved mid-script would silently disagree with
+        # the coordinates the rendered diagram ends up with.
+        self._rng = Random(42)
 
     @property
     def op_count(self) -> int:
@@ -113,15 +124,15 @@ class Builder:
         return self._coord_floats[pid]
 
     def _advance_sym(self) -> None:
-        from random import Random
-
         import sympy.geometry as spg
 
         from geometry_diagrams.ir import ir as ir_mod
         from geometry_diagrams.ir.to_sympy import _compile_one
 
         canvas = self._canvas or ir_mod.Canvas()
-        rng = Random(42)  # PointFree/random defs are dead code for pydsl; any seed is fine
+        # self._rng, NOT a fresh Random(42): see __init__ for why the stream
+        # has to survive across _advance_sym() calls.
+        rng = self._rng
         # Iterate a SLICE (a copy) taken once up front -- _pin_intersection
         # appends new hidden PointFixed defs to self._defs mid-loop, which
         # must not be picked up by this iteration (they're compiled and

@@ -246,10 +246,98 @@ def test_point_on_arc_between_reaches_the_rejection_sampling_compiler_path():
     assert calls[0][1] == [ArcBetweenConstraint(from_point=f.id, to_point=t.id)]
 
 
-def test_point_on_arc_between_is_reachable_from_a_sandboxed_script():
-    """It must be in pydsl.__all__, which is what the sandbox exposes."""
+def test_point_on_arc_between_is_advertised_in_all_and_in_the_stub():
+    """pydsl.__all__ is what the sandbox exposes as a tool name and what
+    retry.py builds its did-you-mean suggestions from; the stub is what the
+    model reads."""
     import geometry_diagrams.pydsl as pydsl_module
     from geometry_diagrams.pydsl.stub import generate_stub
 
     assert "point_on_arc_between" in pydsl_module.__all__
     assert "def point_on_arc_between(" in generate_stub()
+
+
+def test_point_on_arc_between_runs_in_a_real_sandboxed_script():
+    """The name being in __all__ is necessary but not sufficient -- actually
+    execute a script through the sandbox, compile what it produced, and check
+    the sampled point landed inside the requested arc."""
+    from geometry_diagrams.ir.renderer import SVGRenderer
+    from geometry_diagrams.ir.ir import ArcBetweenConstraint, PointOn, PointOnIntent
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    result = run_script(
+        "c = circle(point(0, 0), 2)\n"
+        "f = point_on(c, 0.0)\n"
+        "t = point_on(c, 1.5707963267948966)\n"
+        "p = point_on_arc_between(c, f, t)\n"
+        "draw(c)\n"
+        "p.label('P')\n"
+    )
+    assert result.error is None, result.error
+    diagram = result.diagram_ir
+    sampled = [
+        d for d in diagram.define
+        if isinstance(d, PointOn) and isinstance(d.how, PointOnIntent)
+    ]
+    assert len(sampled) == 1
+    assert isinstance(sampled[0].how.constraints[0], ArcBetweenConstraint)
+
+    sym = compile_defs(diagram)
+    pt = sym[sampled[0].id]
+    angle = math.degrees(math.atan2(float(pt.y), float(pt.x))) % 360.0
+    assert 0.0 <= angle <= 90.0, angle
+    # ...and the whole thing renders, so nothing downstream chokes on it.
+    assert "<circle" in SVGRenderer().render(diagram, sym).output
+
+
+def test_point_on_arc_between_mid_script_coordinates_match_the_final_compile():
+    """point_on_arc_between() is the first rng-consuming def reachable from
+    pydsl, so Builder._advance_sym()'s incremental compile and the final
+    whole-diagram compile_defs() must draw from the SAME rng stream. They
+    didn't: _advance_sym() built a fresh Random(42) per call, so a coordinate
+    read between two sampled points rewound the stream and the second point
+    silently resolved to one place mid-script and a different place in the
+    rendered diagram."""
+    from geometry_diagrams.pydsl.api import circle, label_text, point_on_arc_between
+
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 2)
+        f = point_on(c, 0.0)
+        t = point_on(c, math.pi)
+        p1 = point_on_arc_between(c, f, t)
+        label_text("x", at=(p1.x, p1.y))  # forces the incremental resolve
+        p2 = point_on_arc_between(c, f, t)
+        mid_p1 = (p1.x, p1.y)
+        mid_p2 = (p2.x, p2.y)
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    for pid, mid in ((p1.id, mid_p1), (p2.id, mid_p2)):
+        final = (float(sym[pid].x), float(sym[pid].y))
+        assert math.isclose(mid[0], final[0], abs_tol=1e-9), (pid, mid, final)
+        assert math.isclose(mid[1], final[1], abs_tol=1e-9), (pid, mid, final)
+
+
+def test_repeated_mid_script_reads_do_not_rewind_the_builders_rng():
+    """Three sampled points with a forced resolve after each: every one must
+    still agree with the final compile, and they must not all collapse onto
+    the same coordinates (which is what a rewound stream produces)."""
+    from geometry_diagrams.pydsl.api import circle, label_text, point_on_arc_between
+
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 2)
+        f = point_on(c, 0.0)
+        t = point_on(c, math.pi)
+        sampled = []
+        for _ in range(3):
+            p = point_on_arc_between(c, f, t)
+            label_text("x", at=(p.x, p.y))  # forces a resolve after each one
+            sampled.append((p, (p.x, p.y)))
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    for p, mid in sampled:
+        final = (float(sym[p.id].x), float(sym[p.id].y))
+        assert math.isclose(mid[0], final[0], abs_tol=1e-9), (p.id, mid, final)
+        assert math.isclose(mid[1], final[1], abs_tol=1e-9), (p.id, mid, final)
+    assert len({tuple(round(v, 9) for v in mid) for _, mid in sampled}) == 3
