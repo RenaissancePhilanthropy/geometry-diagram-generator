@@ -2766,3 +2766,17 @@ def test_circle_tangent_at_internal_renders_inside_the_reference():
     r_ref = float(by_id["c1"].get("r"))
     dx = float(by_id["tc"].get("cx")) - float(by_id["c1"].get("cx"))
     assert dx == pytest.approx(r_ref * 2 / 3, rel=1e-3)
+
+
+def test_circle_tangent_at_stamps_its_derived_centre_as_data_center():
+    """A tangent circle's centre really is an addressable point (registered
+    under `{id}_center`), so the rendered element must carry it the same way
+    a centre-and-radius circle carries its named centre."""
+    from geometry_diagrams.ir.ir import tangent_circle_center_id
+
+    svg = _compile_svg(_tangent_circle_diagram())
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    assert by_id["c1"].get("data-center") == "O"
+    assert by_id["tc"].get("data-center") == tangent_circle_center_id("tc")
+    assert by_id["tc"].get("data-center") == "tc_center"
