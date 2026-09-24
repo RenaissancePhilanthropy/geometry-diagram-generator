@@ -2152,3 +2152,93 @@ def test_mark_equal_lengths_and_mark_arcs_share_group_resolve_same_tick_count():
     tick_re = re.compile(r"^tick(\d+)$")
     counts = resolve_mark_group_indices([seg_mark.group, arc_mark.group], tick_re)
     assert counts[seg_mark.group] == counts[arc_mark.group]
+
+
+# ---------------------------------------------------------------------------
+# circle_tangent_at construction op
+# ---------------------------------------------------------------------------
+
+def test_circle_tangent_at_lowers_to_circle_tangent_at_def():
+    """circle_tangent_at should emit an ir.CircleTangentAt def with the given fields."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0, tangency="external"),
+    ])
+    ir = lower_to_ir(dsl)
+    tangent_def = next(d for d in ir.define if d.id == "c2")
+    assert isinstance(tangent_def, CircleTangentAt)
+    assert tangent_def.circle == "c1"
+    assert tangent_def.point == "P"
+    assert tangent_def.radius == 1.0
+    assert tangent_def.tangency == "external"
+
+
+def test_circle_tangent_at_registers_derived_center_for_later_reference():
+    """The new circle's center should be registered under tangent_circle_center_id(id)
+    in the lowerer's circle-center tracking, so a later tangent-at construction
+    referencing the new circle by id can find its center."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import tangent_circle_center_id, LineThrough
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0),
+        PointOp(id="Q", coords=[5.0, 0.0]),
+        TangentLineOp(id="tang2", circle="c2", at="Q"),
+    ])
+    ir = lower_to_ir(dsl)
+    radius_line = next(d for d in ir.define if d.id == "__tang2_radius")
+    assert isinstance(radius_line, LineThrough)
+    assert set([radius_line.p, radius_line.q]) == {tangent_circle_center_id("c2"), "Q"}
+
+
+def test_circle_tangent_at_emits_circles_tangent_check():
+    """Lowering circle_tangent_at should append an auto-generated CirclesTangent check."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0, tangency="internal"),
+    ])
+    ir = lower_to_ir(dsl)
+    tangent_checks = [c for c in ir.checks if isinstance(c, CirclesTangent)]
+    assert len(tangent_checks) == 1
+    assert tangent_checks[0].c1 == "c1"
+    assert tangent_checks[0].c2 == "c2"
+
+
+def test_circle_tangent_at_is_drawable():
+    """The new circle should appear in renders when auto_draw_all=True."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0),
+    ], annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False))
+    ir = lower_to_ir(dsl)
+    drawn_ids = {r.obj for r in ir.render if r.kind == "draw"}
+    assert "c2" in drawn_ids
+
+
+def test_circle_tangent_at_unknown_circle_raises():
+    """circle_tangent_at referencing an unknown circle raises LoweringError."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+
+    dsl = _dsl([
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="no_such_circle", point="P", radius=1.0),
+    ])
+    with pytest.raises(LoweringError, match="no_such_circle"):
+        lower_to_ir(dsl)

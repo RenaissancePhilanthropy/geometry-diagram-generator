@@ -303,6 +303,14 @@ is invalid; the segment between A and C is always side_CA.
 - incircle: {op, id, of:<triangle_id>, center}
   Same as circumcircle: center is an OUTPUT (the incenter), created by this op.
   Do NOT pre-define it or reference it before this op runs.
+- circle_tangent_at: {op, id, circle, point, radius, tangency?:"external"|"internal"}
+  New circle of `radius`, tangent to the reference `circle` at boundary `point`
+  (`point` must already lie on `circle`). tangency:"external" (default) sits the
+  new circle outside the reference one, touching from opposite sides; "internal"
+  sits it on the same side (nested inside or enclosing the reference circle,
+  depending on `radius`). The new circle's center is an OUTPUT, addressable
+  as "<id>_center" for later ops (e.g. a segment joining the two centers).
+  Auto-generates a circles_tangent check on {circle, id} as a safety net.
 - perpendicular_bisector: {op, id, of:[P,Q], mid}
   mid is an OUTPUT — this op creates that point (the midpoint of P,Q) for you;
   do not pre-define it or reference it before this op runs.
@@ -359,6 +367,9 @@ is invalid; the segment between A and C is always side_CA.
 - rotation: {op, id, point, center, angle}  (angle in degrees)
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
+  Tangent line(s) from an external point; selector picks among the two candidates.
+  Alternate form — tangent AT a point already on the circle's boundary (no selector,
+  since there's exactly one such tangent): {op, id, circle, at:<point_on_circle>}
 - point_foot: {op, id, source, onto}
   Foot of the perpendicular dropped from `source` onto the line/segment `onto`.
   `onto` MUST be a segment/line/ray id — it CANNOT be a triangle id. To drop a

@@ -17,12 +17,13 @@ from ..ir.ir import (
     PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
-    CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt, tangent_circle_center_id,
     ArcCenterStartEnd, SectorCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual, PendingAnglePair,
+    CirclesTangent,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
     MarkAngles, MarkSegments, MarkArcs as IRMarkArcs, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
@@ -35,7 +36,7 @@ from .dsl import (
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
     LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,
-    PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
+    PointOnSegmentOp, TangentLineOp, CircleTangentAtOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
@@ -237,6 +238,8 @@ class _Lowerer:
                 self._point_ids.append(op.id)
             case TangentLineOp():
                 self._lower_tangent_line(op)
+            case CircleTangentAtOp():
+                self._lower_circle_tangent_at(op)
             case PointAlongOp():
                 self._lower_point_along(op)
             case ExtendSegmentOp():
@@ -607,6 +610,28 @@ class _Lowerer:
         else:
             raise LoweringError(f"TangentLineOp '{op.id}': must specify 'from_point' or 'at'")
         self._drawable.add(op.id)
+
+    def _lower_circle_tangent_at(self, op: CircleTangentAtOp) -> None:
+        if op.circle not in self._circle_centers:
+            raise LoweringError(
+                f"CircleTangentAtOp '{op.id}': circle '{op.circle}' not found. "
+                "Define the circle before the tangent circle."
+            )
+        self._add(CircleTangentAt(
+            id=op.id,
+            circle=op.circle,
+            point=op.point,
+            radius=op.radius,
+            tangency=op.tangency,
+        ))
+        self._drawable.add(op.id)
+        # Register the new circle's derived center so a later tangent
+        # construction referencing this circle by id can find its center,
+        # same as any other circle-producing op.
+        self._circle_centers[op.id] = tangent_circle_center_id(op.id)
+        # Auto-generate the tangency check as a safety net, consistent with
+        # other constructions' own auto-generated verification checks.
+        self._checks.append(CirclesTangent(c1=op.circle, c2=op.id))
 
     # ------------------------------------------------------------------
     # Derived helpers

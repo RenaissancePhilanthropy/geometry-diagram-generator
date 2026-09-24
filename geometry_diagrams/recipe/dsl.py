@@ -380,6 +380,21 @@ class TangentLineOp(DSLOpBase):
         return self
 
 
+class CircleTangentAtOp(DSLOpBase):
+    """New circle of `radius`, tangent to `circle` at boundary point `point`.
+
+    ``tangency="external"``: the new circle sits outside `circle`, touching
+    from opposite sides. ``tangency="internal"``: the new circle sits on the
+    same side (nested inside or enclosing `circle`, depending on `radius`).
+    See ``ir.CircleTangentAt`` for the full geometric definition.
+    """
+    op: Literal["circle_tangent_at"] = "circle_tangent_at"
+    circle: str  # reference circle id
+    point: str   # tangency point; must already lie on `circle`
+    radius: Union[int, float, str]
+    tangency: Literal["external", "internal"] = "external"
+
+
 # ---------------------------------------------------------------------------
 # Composite ops
 # ---------------------------------------------------------------------------
@@ -846,7 +861,7 @@ DSLOp = Annotated[
         # Derived
         MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
         LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,
-        PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
+        PointOnSegmentOp, TangentLineOp, CircleTangentAtOp, PointFootOp, CircleThrough3Op,
         # Composite
         AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
         AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
