@@ -47,6 +47,29 @@ class Builder:
         # whole-diagram compile. Rebuilding Random(42) per slice rewinds the
         # stream, so a point resolved mid-script would silently disagree with
         # the coordinates the rendered diagram ends up with.
+        #
+        # KNOWN RESIDUAL (deliberately open): sharing one rng closes the
+        # rewind, but not the whole divergence. _advance_sym() compiles in
+        # INSERTION order; compile_defs() compiles in TOPOLOGICAL order. Those
+        # agree on the relative order of two rng-consuming defs only while
+        # they sit at the same dependency depth. Put two point_on_arc_between()
+        # points on circles at different depths -- say one circle built
+        # straight from a literal centre and another whose centre comes out of
+        # an intersection -- and the two compiles disagree about which point
+        # draws first, so the samples swap and both points move between the
+        # mid-script read and the rendered diagram. There is no seed that fixes
+        # this; it is an ordering mismatch, not a stream-position one.
+        #
+        # Left open on purpose: nothing outside this feature's own tests calls
+        # point_on_arc_between() yet, and closing it properly needs a new
+        # mechanism rather than a patch here. The pattern to extend is
+        # _pin_intersection() below, which already solves exactly this class of
+        # problem for PointIntersection: once the incremental compile has
+        # OBSERVED a result, it rewrites the def into a dependency-pure pinned
+        # form so a later from-scratch compile is guaranteed to reproduce it. A
+        # future fix would do the same for an observed PointOn(PointOnIntent) --
+        # pin it to the sampled coordinates -- which removes the rng from the
+        # final compile entirely and makes ordering irrelevant.
         self._rng = Random(42)
 
     @property
@@ -166,7 +189,11 @@ class Builder:
         coordinates, so a later full recompile-from-scratch reproduces the
         same candidate regardless of what else is in its sym table by
         then. Bypasses self._add() deliberately -- this hidden bookkeeping
-        def must not count against the script's op cap."""
+        def must not count against the script's op cap.
+
+        This observe-then-pin pattern is also the shape a future fix for the
+        PointOnIntent sampling residual would take (see __init__'s note on
+        self._rng): pin the observed sample instead of re-drawing it."""
         from geometry_diagrams.ir import ir as ir_mod
 
         hidden_pid = self._fresh_hidden_id("pin")
