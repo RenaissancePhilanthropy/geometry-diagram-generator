@@ -172,13 +172,20 @@ def angle_within_sweep(
     return offset <= span + tol_deg or offset >= 360.0 - tol_deg
 
 
-def _arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
+def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
     """Return (cx, cy, start_deg, end_deg) for a circular arc/sector's CCW sweep.
 
-    Mirrors ``render_util.arc_params()``'s reflex handling — including the
-    endpoint swap that makes the traversal counter-clockwise — but is duplicated
-    here deliberately: ``render_util`` imports this module for the Arc/Sector
-    marker types, so importing it back would be a circular import.
+    The canonical sweep computation for everything that is *not* rendering:
+    the sweep filter and containment logic below, and ``checks.py``'s
+    ``congruent_arcs`` validation. Mirrors ``render_util.arc_params()``'s
+    reflex handling — including the endpoint swap that makes the traversal
+    counter-clockwise — but is duplicated here deliberately: ``render_util``
+    imports this module for the Arc/Sector marker types, so importing it back
+    would be a circular import. Validation code belongs on this copy, not on
+    the rendering one.
+
+    The object's radius is deliberately not part of the return: a caller that
+    needs it reads ``float(arc.radius.evalf())`` directly.
     """
     cx = float(arc.center.x.evalf())
     cy = float(arc.center.y.evalf())
@@ -197,7 +204,7 @@ def _arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
 
 def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
     """Does `point` fall within the angular sweep of a circular arc/sector?"""
-    cx, cy, start_deg, end_deg = _arc_sweep_degrees(arc)
+    cx, cy, start_deg, end_deg = arc_sweep_degrees(arc)
     return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
 
 
@@ -1450,7 +1457,7 @@ def _check_spatial_constraint(
             start_deg = angle_about_deg(sym[from_id], cx, cy)
             end_deg = angle_about_deg(sym[to_id], cx, cy)
             if end_deg <= start_deg:
-                end_deg += 360.0  # unwrap to a CCW sweep, as _arc_sweep_degrees does
+                end_deg += 360.0  # unwrap to a CCW sweep, as arc_sweep_degrees does
             return angle_within_sweep(angle_about_deg(candidate, cx, cy), start_deg, end_deg)
 
         case ir.BeyondConstraint():

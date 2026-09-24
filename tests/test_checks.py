@@ -650,3 +650,19 @@ class TestContainsArcOrSector:
         assert not result.passed
         assert "EllipticalArc" in result.message
         assert "circular arcs" in result.message
+
+    def test_elliptical_rejection_message_is_direct_not_generically_wrapped(self):
+        """Same message shape as congruent_arcs's elliptical rejection: a clean,
+        direct sentence, not the generic "Error in <kind>:" exception wrapper."""
+        result = self._contains("ES", elliptical=True)
+        assert not result.message.startswith("Error in ")
+
+    def test_not_contains_on_an_elliptical_arc_is_rejected_too(self):
+        """A rejected operand must not make NotContains vacuously pass."""
+        from geometry_diagrams.ir.ir import NotContains
+        result = _check_one(
+            NotContains(p="ES", obj="a"), self._sym(elliptical=True), DEFAULT_TOL
+        )
+        assert not result.passed
+        assert not result.message.startswith("Error in ")
+        assert "EllipticalArc" in result.message

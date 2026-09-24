@@ -7,11 +7,30 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .render_util import arc_params
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, point_on_arc
+from .to_sympy import (
+    Arc,
+    EllipticalArc,
+    EllipticalSector,
+    Sector,
+    SymTable,
+    arc_sweep_degrees,
+    point_on_arc,
+)
 
 
 DEFAULT_TOL = 5e-3
+
+
+class UnsupportedOperand(TypeError):
+    """An operand a check deliberately does not support (e.g. an elliptical
+    arc/sector where only circular ones work).
+
+    A `TypeError` subclass so any caller already catching `TypeError` keeps
+    working. `_check_one` reports it as a clean, direct failure message —
+    the same shape `_check_congruent_arcs` returns for the same kind of
+    rejection — rather than wrapping it in the generic ``Error in <kind>:``
+    prefix reserved for unexpected exceptions.
+    """
 
 
 class CheckResult(BaseModel):
@@ -288,6 +307,14 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             msg = f"[{check.source}] {msg}"
         return CheckResult(check=check, passed=ok, message=msg)
 
+    except UnsupportedOperand as exc:
+        # A deliberate rejection, not a surprise — report it as directly as a
+        # check that returns its own failure message would.
+        msg = str(exc)
+        if check.source:
+            msg = f"[{check.source}] {msg}"
+        return CheckResult(check=check, passed=False, message=msg)
+
     except Exception as exc:
         return CheckResult(check=check, passed=False, message=f"Error in {check.kind!r}: {exc}")
 
@@ -327,7 +354,7 @@ def _to_bool(expr: Any) -> bool:
 def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
     """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
     if isinstance(obj, (EllipticalArc, EllipticalSector)):
-        raise TypeError(
+        raise UnsupportedOperand(
             f"{type(obj).__name__} (elliptical arc/sector) is not supported as a "
             f"containment operand; only circular arcs/sectors are"
         )
@@ -376,6 +403,10 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
     Rejects elliptical arcs/sectors up front with a clear, named-type message
     instead of letting an AttributeError (no `.radius`) fall through to the
     generic exception handler in `_check_one`.
+
+    Sweep math comes from `to_sympy.arc_sweep_degrees()` — the same canonical
+    source `_contains()`/`point_on_arc()` use — not from `render_util`, which
+    owns arc math for *rendering* only.
     """
     radii: list[float] = []
     sweeps_rad: list[float] = []
@@ -389,8 +420,8 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
             )
         if not isinstance(obj, (Arc, Sector)):
             return False, f"Object {arc_id!r} is not an arc or sector (got {type(obj).__name__})"
-        _cx, _cy, r, start_deg, end_deg, _sx, _sy = arc_params(arc_id, sym)
-        radii.append(r)
+        _cx, _cy, start_deg, end_deg = arc_sweep_degrees(obj)
+        radii.append(float(obj.radius.evalf()))
         sweeps_rad.append(math.radians(end_deg - start_deg))
 
     ok = (
