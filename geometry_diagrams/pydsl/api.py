@@ -1669,11 +1669,15 @@ def label_text(
     centroid/center of a triangle, polygon, circle, ellipse, sector, or
     polyline. Exactly one of `at`/`centroid_of` must be given.
 
-    centroid_of doesn't take a Point, an AngleRef, or a straight-line-family
-    handle (segment, line, ray, arc) — each of those already has its own
-    `.label()` method that offsets the text away from the geometry; a
-    centroid_of anchor for one of them would just be its own midpoint, which
-    places the text directly on top of the geometry instead.
+    centroid_of accepts only those six shapes. It doesn't take a Point, an
+    AngleRef, or a straight-line-family handle (segment, line, ray, arc) —
+    each of those already has its own `.label()` method that offsets the text
+    away from the geometry; a centroid_of anchor for one of them would just
+    be its own midpoint, which places the text directly on top of the
+    geometry instead. It also doesn't take a composite handle (median,
+    altitude, perpendicular bisector): those are records that delegate to
+    sub-handles, so label the sub-handle (e.g. `med.segment.label(...)`)
+    instead.
 
     `font_size`, if given, registers a style dict (`{"font-size":
     font_size}`) via the same builder._register_style() mechanism draw()
@@ -1693,17 +1697,30 @@ def label_text(
     has_centroid = centroid_of is not None
     if has_at == has_centroid:
         raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
-    if isinstance(centroid_of, Point):
-        raise ValueError("label_text() doesn't take a Point for centroid_of — use Point.label(...) instead")
-    if isinstance(centroid_of, AngleRef):
-        raise ValueError("label_text() doesn't take an AngleRef for centroid_of — use AngleRef.label(...) instead")
-    if isinstance(centroid_of, (Segment, Line, Ray, Arc)):
+    # Allowlist, not a blocklist: only these six shapes have a centroid the
+    # LabelFreeText renderer can compute. Naming the *bad* types instead
+    # would silently let anything else with an `.id` through -- notably the
+    # composite handles (Median/Altitude/PerpendicularBisectorLine), whose
+    # `.id` is their underlying segment/line def, so the label would land on
+    # that sub-object's own midpoint rather than raising.
+    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline)):
         type_name = type(centroid_of).__name__
         article = "an" if type_name[0] in "AEIOU" else "a"
+        if isinstance(centroid_of, (Point, AngleRef)):
+            raise ValueError(
+                f"label_text() doesn't take {article} {type_name} for centroid_of — "
+                f"use {type_name}.label(...) instead"
+            )
+        if isinstance(centroid_of, (Segment, Line, Ray, Arc)):
+            raise ValueError(
+                f"label_text() doesn't take {article} {type_name} for centroid_of — "
+                f"use {type_name}.label(...) instead, which offsets the text "
+                "away from the geometry instead of placing it directly on the midpoint"
+            )
         raise ValueError(
-            f"label_text() doesn't take {article} {type_name} for centroid_of — "
-            f"use {type_name}.label(...) instead, which offsets the text "
-            "away from the geometry instead of placing it directly on the midpoint"
+            f"label_text(): {type_name} is not supported for centroid_of — only "
+            "Triangle, Polygon, Circle, Ellipse, Sector and Polyline have a "
+            "centroid to anchor free text at"
         )
     text = _sanitize_label_text(text, "label_text")
     builder = get_builder()

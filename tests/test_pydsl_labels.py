@@ -6,8 +6,8 @@ are already rendered by to_tikz.py/to_svg.py."""
 import pytest
 
 from geometry_diagrams.pydsl.api import (
-    arc, canvas, circle, ellipse, label_text, line_through, point, point_on, polyline, ray, sector, segment,
-    triangle,
+    altitude, arc, canvas, circle, ellipse, label_text, line_through, median, perpendicular_bisector,
+    point, point_on, polygon, polyline, ray, sector, segment, triangle,
 )
 from geometry_diagrams.pydsl.builder import new_builder_context
 from geometry_diagrams.pydsl.sandbox import run_script
@@ -292,6 +292,69 @@ def test_label_text_rejects_arc_for_centroid_of():
         a = arc(c, start, end)
         with pytest.raises(ValueError, match=r"doesn't take an Arc.*\.label\(\.\.\.\)"):
             label_text("h", centroid_of=a)
+
+
+def test_label_text_rejects_composite_handles_for_centroid_of():
+    """Median/Altitude/PerpendicularBisectorLine are composite records that
+    delegate to sub-handles, not standalone constructible shapes — they carry
+    an `.id` (the underlying segment/line def) so a blocklist-shaped check
+    used to let them through and silently anchor the label on that
+    sub-object's own midpoint. The check is an allowlist, so they're
+    rejected."""
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        for handle in (median(t, a), altitude(t, a), perpendicular_bisector(b, c)):
+            with pytest.raises(ValueError, match="not supported for centroid_of"):
+                label_text("h", centroid_of=handle)
+
+
+def test_label_text_rejects_an_arbitrary_non_shape_for_centroid_of():
+    """The allowlist rejects anything that isn't one of the six supported
+    shapes, including a type it has never heard of."""
+    class Bogus:
+        id = "bogus"
+
+    with new_builder_context():
+        with pytest.raises(ValueError, match="not supported for centroid_of"):
+            label_text("h", centroid_of=Bogus())
+
+
+def test_label_text_centroid_of_allowlist_sweep():
+    """Regression guard: all six supported handle types still work, and all
+    six specifically-named unsupported types still raise their own message."""
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        poly = polygon(point(10, 0), point(12, 0), point(12, 2), point(10, 2))
+        circ = circle(point(20, 0), 3)
+        ell = ellipse(center=point(30, 0), hradius=2, vradius=1)
+        start, end = point_on(circ, 0.0), point_on(circ, 1.0)
+        sec = sector(circ, start, end)
+        pl = polyline(point(40, 0), point(41, 0), point(40, 1))
+        accepted = [t, poly, circ, ell, sec, pl]
+        for i, handle in enumerate(accepted):
+            label_text(f"ok{i}", centroid_of=handle)
+
+        rejected = [
+            (a, r"doesn't take a Point"),
+            (t.angle_at(b), r"doesn't take an AngleRef"),
+            (segment(a, b), r"doesn't take a Segment"),
+            (line_through(a, b), r"doesn't take a Line"),
+            (ray(a, b), r"doesn't take a Ray"),
+            (arc(circ, start, end), r"doesn't take an Arc"),
+        ]
+        for handle, pattern in rejected:
+            with pytest.raises(ValueError, match=pattern):
+                label_text("bad", centroid_of=handle)
+        ir = builder.build()
+
+    labelled = {
+        r.centroid_of for r in ir.render
+        if isinstance(r, LabelFreeText) and r.text.startswith("ok")
+    }
+    assert labelled == {h.id for h in accepted}
+    assert not [r for r in ir.render if isinstance(r, LabelFreeText) and r.text == "bad"]
 
 
 def test_label_text_requires_exactly_one_of_at_or_centroid_of():
