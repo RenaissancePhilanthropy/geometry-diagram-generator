@@ -341,3 +341,73 @@ def test_repeated_mid_script_reads_do_not_rewind_the_builders_rng():
         assert math.isclose(mid[0], final[0], abs_tol=1e-9), (p.id, mid, final)
         assert math.isclose(mid[1], final[1], abs_tol=1e-9), (p.id, mid, final)
     assert len({tuple(round(v, 9) for v in mid) for _, mid in sampled}) == 3
+
+
+def test_mid_script_read_pins_point_on_intent_to_a_dependency_pure_param():
+    """The observe-then-pin mechanism itself, mirroring how
+    test_pydsl_builder.py checks _pin_intersection's PickClosestTo rewrite:
+    once a PointOn(PointOnIntent) def has been compiled by _advance_sym(), it
+    must no longer carry a PointOnIntent -- it's rewritten in place to a
+    PointOnParam recovering the observed coordinates exactly."""
+    from geometry_diagrams.ir.ir import PointOnIntent, PointOnParam
+    from geometry_diagrams.pydsl.api import circle, point_on_arc_between
+
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 2)
+        f = point_on(c, 0.0)
+        t = point_on(c, math.pi / 2)
+        p = point_on_arc_between(c, f, t)
+
+        p_def = next(d for d in builder._defs if d.id == p.id)
+        assert isinstance(p_def.how, PointOnIntent)  # unpinned before any read
+
+        x, y = p.x, p.y  # forces the incremental resolve
+        assert isinstance(p_def.how, PointOnParam)
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    final = (float(sym[p.id].x), float(sym[p.id].y))
+    assert math.isclose(x, final[0], abs_tol=1e-9)
+    assert math.isclose(y, final[1], abs_tol=1e-9)
+
+
+def test_point_on_arc_between_at_different_dependency_depths_matches_final_compile():
+    """The residual the single-shared-rng fix left open: _advance_sym()
+    compiles in INSERTION order, compile_defs() in TOPOLOGICAL order, and a
+    circle built straight from a literal centre (shallow) vs. one whose
+    centre comes from further up a dependency chain (deep, here via an
+    intersection feeding a circumcircle) can be visited in a different
+    relative order by the two compiles -- swapping which point_on_arc_between
+    call draws first from the shared rng stream. Without pinning, this
+    desyncs both points between the mid-script read and the final render."""
+    from geometry_diagrams.pydsl.api import (
+        circumcircle, circle, intersection, line_through, point_on_arc_between, triangle,
+    )
+
+    with new_builder_context() as builder:
+        # Deep circle: circumcircle of a triangle with an intersection vertex.
+        a = point(0, 0)
+        b = point(4, 0)
+        l1 = line_through(point(2, -2), point(2, 2))
+        l2 = line_through(point(0, 0), point(2, 4))
+        deep_vertex = intersection(l1, l2)
+        c_deep = circumcircle(triangle(a, b, deep_vertex))
+        f2 = point_on(c_deep, 0.0)
+        t2 = point_on(c_deep, math.pi / 2)
+        p2 = point_on_arc_between(c_deep, f2, t2)
+
+        # Shallow circle: a literal centre.
+        c_shallow = circle(point(10, 10), 2)
+        f1 = point_on(c_shallow, 0.0)
+        t1 = point_on(c_shallow, math.pi)
+        p1 = point_on_arc_between(c_shallow, f1, t1)
+
+        mid_p1 = (p1.x, p1.y)
+        mid_p2 = (p2.x, p2.y)
+        ir = builder.build()
+
+    sym = compile_defs(ir)
+    for pid, mid in ((p1.id, mid_p1), (p2.id, mid_p2)):
+        final = (float(sym[pid].x), float(sym[pid].y))
+        assert math.isclose(mid[0], final[0], abs_tol=1e-9), (pid, mid, final)
+        assert math.isclose(mid[1], final[1], abs_tol=1e-9), (pid, mid, final)

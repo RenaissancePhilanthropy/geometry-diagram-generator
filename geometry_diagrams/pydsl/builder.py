@@ -48,28 +48,18 @@ class Builder:
         # stream, so a point resolved mid-script would silently disagree with
         # the coordinates the rendered diagram ends up with.
         #
-        # KNOWN RESIDUAL (deliberately open): sharing one rng closes the
-        # rewind, but not the whole divergence. _advance_sym() compiles in
-        # INSERTION order; compile_defs() compiles in TOPOLOGICAL order. Those
-        # agree on the relative order of two rng-consuming defs only while
-        # they sit at the same dependency depth. Put two point_on_arc_between()
-        # points on circles at different depths -- say one circle built
-        # straight from a literal centre and another whose centre comes out of
-        # an intersection -- and the two compiles disagree about which point
-        # draws first, so the samples swap and both points move between the
-        # mid-script read and the rendered diagram. There is no seed that fixes
-        # this; it is an ordering mismatch, not a stream-position one.
-        #
-        # Left open on purpose: nothing outside this feature's own tests calls
-        # point_on_arc_between() yet, and closing it properly needs a new
-        # mechanism rather than a patch here. The pattern to extend is
-        # _pin_intersection() below, which already solves exactly this class of
-        # problem for PointIntersection: once the incremental compile has
-        # OBSERVED a result, it rewrites the def into a dependency-pure pinned
-        # form so a later from-scratch compile is guaranteed to reproduce it. A
-        # future fix would do the same for an observed PointOn(PointOnIntent) --
-        # pin it to the sampled coordinates -- which removes the rng from the
-        # final compile entirely and makes ordering irrelevant.
+        # Sharing one rng instance closes the rewind, but not the whole
+        # divergence by itself: _advance_sym() compiles in INSERTION order,
+        # compile_defs() in TOPOLOGICAL order, and those only agree on the
+        # relative order of two rng-consuming defs while they sit at the same
+        # dependency depth. That residual is closed separately, by
+        # _pin_point_on() below: the moment a PointOnIntent def is compiled
+        # here, its sampled result is pinned into a dependency-pure
+        # PointOnParam (see that method), so no PointOnIntent def is ever
+        # left for compile_defs() to re-sample once it has passed through
+        # this incremental compiler -- ordering can no longer matter for it,
+        # because there is no rng draw left for either compile's order to
+        # affect.
         self._rng = Random(42)
 
     @property
@@ -181,6 +171,8 @@ class Builder:
                     self._coord_floats[center_id] = (float(obj.center.x), float(obj.center.y))
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
+            if isinstance(stmt, ir_mod.PointOn) and isinstance(stmt.how, ir_mod.PointOnIntent):
+                self._pin_point_on(stmt, obj)
         self._sym_watermark = len(self._defs)
 
     def _pin_intersection(self, stmt, obj) -> None:
@@ -191,9 +183,8 @@ class Builder:
         then. Bypasses self._add() deliberately -- this hidden bookkeeping
         def must not count against the script's op cap.
 
-        This observe-then-pin pattern is also the shape a future fix for the
-        PointOnIntent sampling residual would take (see __init__'s note on
-        self._rng): pin the observed sample instead of re-drawing it."""
+        This observe-then-pin pattern is also the shape _pin_point_on() below
+        uses for the analogous PointOnIntent case."""
         from geometry_diagrams.ir import ir as ir_mod
 
         hidden_pid = self._fresh_hidden_id("pin")
@@ -201,6 +192,25 @@ class Builder:
         self._sym[hidden_pid] = obj
         self._coord_floats[hidden_pid] = (float(obj.x), float(obj.y))
         stmt.pick = ir_mod.PickClosestTo(p=hidden_pid)
+
+    def _pin_point_on(self, stmt, obj) -> None:
+        """Rewrite a PointOn(PointOnIntent)'s how to a dependency-pure
+        PointOnParam recovering the just-observed coordinates, so a later
+        full recompile-from-scratch reproduces the same sampled point
+        regardless of what order _advance_sym() and compile_defs() visit
+        rng-consuming defs in -- closes the KNOWN RESIDUAL noted in
+        __init__. Keeps the def as PointOn (not PointFixed, unlike
+        _pin_intersection's hidden helper above) so it still satisfies
+        checks._build_linear_pairs' on-object membership. Every
+        PointOnIntent def compiled in a slice gets pinned here, not only
+        whichever handle's coordinates were actually read -- a later
+        cached read of a sibling point must see the same pinned value."""
+        from geometry_diagrams.ir import ir as ir_mod
+        from geometry_diagrams.ir.to_sympy import _invert_param
+
+        on_obj = self._sym[stmt.on]
+        t = _invert_param(on_obj, float(obj.x), float(obj.y), stmt.id)
+        stmt.how = ir_mod.PointOnParam(t=t)
 
 
 _current_builder: contextvars.ContextVar["Builder | None"] = contextvars.ContextVar(

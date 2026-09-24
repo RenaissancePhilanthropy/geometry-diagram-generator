@@ -780,10 +780,9 @@ def point_on_arc_between(circle: Circle, from_point: Point, to_point: Point) -> 
 
     The compiler places the point by rejection sampling, so the exact
     coordinates depend on the RNG seed and are stable only for a fixed seed.
-    Don't build on this point's `.x`/`.y` mid-script: a sampled point's
-    coordinates are not guaranteed to survive into the rendered diagram
-    unchanged (see Builder.__init__'s note on self._rng). Draw it, label it
-    and reference it by handle instead. If no sample satisfies the constraint
+    Once resolved (including by reading `.x`/`.y` mid-script), the sampled
+    coordinates are pinned and are guaranteed to match the rendered diagram
+    exactly. If no sample satisfies the constraint
     (e.g. `from_point` and `to_point` are the same point, leaving a zero-width
     sweep), compilation fails with an IRCompileError naming this point.
     """

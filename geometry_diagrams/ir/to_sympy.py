@@ -1395,6 +1395,29 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     raise IRCompileError(def_id, f"cannot place point on object of type {type(obj).__name__}")
 
 
+def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
+    """Recover a parameter t such that _eval_param(obj, t, def_id) reproduces
+    the concrete point (x, y) exactly -- the inverse of _eval_param, one
+    branch per type it supports. Used to pin an already-sampled
+    PointOnIntent result to a dependency-pure PointOnParam (see
+    Builder._pin_point_on)."""
+    if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
+        cx, cy = float(obj.center.x), float(obj.center.y)
+        a, b = float(obj.hradius), float(obj.vradius)
+        return math.atan2((y - cy) / b, (x - cx) / a)
+    if isinstance(obj, (spg.Segment, spg.Line, spg.Ray)):
+        # Segment/Line/Ray are all affine in t, so two reference evaluations
+        # are enough to invert regardless of arbitrary_point's exact
+        # parameterization -- avoids duplicating that logic here.
+        p0 = _eval_param(obj, 0.0, def_id)
+        p1 = _eval_param(obj, 1.0, def_id)
+        dx, dy = float(p1.x - p0.x), float(p1.y - p0.y)
+        if abs(dx) >= abs(dy):
+            return (x - float(p0.x)) / dx
+        return (y - float(p0.y)) / dy
+    raise IRCompileError(def_id, f"cannot pin a sampled point on object of type {type(obj).__name__}")
+
+
 def _point_on_intent(
     obj: Any,
     constraints: list[ir.SpatialConstraint],
