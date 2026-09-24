@@ -163,6 +163,27 @@ def test_model_specific_kwargs_does_not_leak_to_other_mantle_family_models(monke
     assert "max_tokens" not in kwargs
 
 
+def test_model_specific_kwargs_applies_reasoning_effort_none_to_gpt_6_luna_only():
+    """gpt-6-luna needs reasoning_effort="none" — confirmed 2026-09-24: forced
+    tool_choice (what RecipeStrategy's DSL generation sends) 400s on
+    /v1/chat/completions with the model's default reasoning_effort ("Function
+    tools with reasoning_effort are not supported ... set reasoning_effort to
+    'none'."). This is a hard requirement, unlike gpt-5.6-luna's latency-only
+    "low" tuning below."""
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openai:gpt-6-luna")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["reasoning_effort"] == "none"
+
+
+def test_model_specific_kwargs_gpt_6_luna_override_does_not_leak_to_sibling_model():
+    """gpt-5.6-luna must keep its own "low" override, not gpt-6-luna's "none"."""
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+        get_chat_model("openai:gpt-5.6-luna")
+        _, kwargs = mock_chat_openai.call_args
+    assert kwargs["reasoning_effort"] == "low"
+
+
 # ---------------------------------------------------------------------------
 # make_system_message's cache_control content-block form is an Anthropic-only
 # extension. Sending it to a non-Anthropic provider is at best a silently

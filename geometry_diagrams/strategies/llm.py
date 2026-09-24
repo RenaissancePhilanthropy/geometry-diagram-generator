@@ -213,6 +213,17 @@ _MODEL_SPECIFIC_KWARGS: dict[str, dict] = {
     # Pending: comparison against the model's own (unset) default effort
     # from its concurrent full-curriculum run.
     "openai:gpt-5.6-luna": {"reasoning_effort": "low"},
+    # Hard requirement, not a latency tuning like gpt-5.6-luna above: gpt-6-luna's
+    # default reasoning_effort rejects forced tool calls on /v1/chat/completions
+    # outright — "Function tools with reasoning_effort are not supported for
+    # gpt-6-luna in /v1/chat/completions. To use function tools, use /v1/responses
+    # or set reasoning_effort to 'none'." (confirmed 2026-09-24: RecipeStrategy's
+    # forced-tool-choice DSL generation 400'd on all 3 retry attempts without this).
+    # With reasoning_effort="none", 3/3 quick trials succeeded on the first
+    # attempt (~4.5-4.7s each) — no comparison yet against routing through
+    # "openai-responses:gpt-6-luna" instead, which the error message names as
+    # the other way to keep function tools with reasoning enabled.
+    "openai:gpt-6-luna": {"reasoning_effort": "none"},
 }
 
 
