@@ -1564,3 +1564,43 @@ def test_ray_without_own_extent_style_still_uses_default_add():
     )
     tikz = _compile_tikz(diagram)
     assert "add=0 and 1" in tikz
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+def _tangent_circle_diagram(tangency: str = "external") -> DiagramIR:
+    """Unit-radius circle tangent to a radius-3 circle at (3, 0)."""
+    from geometry_diagrams.ir.ir import CircleCenterRadius, CircleTangentAt
+
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1, tangency=tangency),
+        ],
+        render=[Draw(obj="c1"), Draw(obj="tc")],
+    )
+
+
+def test_circle_tangent_at_draws_via_synthesized_centre_and_through_points():
+    tikz = _compile_tikz(_tangent_circle_diagram())
+    assert "\\tkzDrawCircle(_cc_tc,_rt_tc)" in tikz
+    # centre at (4, 0), through-point one radius to its right
+    assert "\\tkzDefPoint(4,0){_cc_tc}" in tikz
+    assert "\\tkzDefPoint(5,0){_rt_tc}" in tikz
+
+
+def test_circle_tangent_at_internal_draws_the_nested_centre():
+    tikz = _compile_tikz(_tangent_circle_diagram("internal"))
+    assert "\\tkzDrawCircle(_cc_tc,_rt_tc)" in tikz
+    assert "\\tkzDefPoint(2,0){_cc_tc}" in tikz
+    assert "\\tkzDefPoint(3,0){_rt_tc}" in tikz
+
+
+def test_circle_tangent_at_centre_is_addressable_as_a_tikz_point():
+    """The compile-time derived centre is emitted like any other named point."""
+    tikz = _compile_tikz(_tangent_circle_diagram())
+    assert "\\tkzDefPoint(4,0){tc_center}" in tikz

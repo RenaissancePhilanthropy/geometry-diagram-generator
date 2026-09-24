@@ -1692,3 +1692,191 @@ def test_elliptical_sector_compiles_to_marker():
     assert isinstance(obj, EllipticalSector)
     assert obj.reflex is True
 
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+class TestCircleTangentAt:
+    """A circle of a given radius, tangent to a reference circle at a boundary point."""
+
+    # Reference circle: centre O=(0,0), radius 3; tangency point P=(3,0) on it.
+    def _defs(self, **kwargs):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        return [
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", **kwargs),
+        ]
+
+    def _compile_tangent(self, **kwargs):
+        return compile_defs(DiagramIR(define=self._defs(**kwargs)))
+
+    def test_external_tangency_places_centre_beyond_the_touch_point(self):
+        sym = self._compile_tangent(radius=1)
+        circ = sym["tc"]
+        assert isinstance(circ, spg.Circle)
+        assert approx(circ.radius, 1)
+        # centres are r_ref + r_new apart, on the ray O -> P
+        assert approx(sym["O"].distance(circ.center), 4)
+        assert approx(circ.center.x, 4) and approx(circ.center.y, 0)
+        # and the two circles really touch at P
+        assert approx(circ.center.distance(sym["P"]), 1)
+
+    def test_internal_tangency_nests_the_smaller_circle_inside(self):
+        sym = self._compile_tangent(radius=1, tangency="internal")
+        circ = sym["tc"]
+        assert approx(circ.radius, 1)
+        # centres are |r_ref - r_new| apart
+        assert approx(sym["O"].distance(circ.center), 2)
+        assert approx(circ.center.x, 2) and approx(circ.center.y, 0)
+        assert approx(circ.center.distance(sym["P"]), 1)
+
+    def test_internal_tangency_with_larger_radius_encloses_the_reference(self):
+        sym = self._compile_tangent(radius=5, tangency="internal")
+        circ = sym["tc"]
+        assert approx(circ.radius, 5)
+        d = sym["O"].distance(circ.center)
+        assert approx(d, 2)  # |r_ref - r_new| = |3 - 5|
+        # reference circle lies inside the new one: d + r_ref == r_new
+        assert approx(d + 3, 5)
+        assert approx(circ.center.x, -2) and approx(circ.center.y, 0)
+        assert approx(circ.center.distance(sym["P"]), 5)
+
+    def test_tangency_point_is_off_the_ray_when_it_is_elsewhere_on_the_circle(self):
+        """The centre follows the touch point, not the x-axis."""
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=0, y=3),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=2),
+        ]))
+        circ = sym["tc"]
+        assert approx(circ.center.x, 0) and approx(circ.center.y, 5)
+
+    def test_symbolic_radius_resolves_through_params(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(
+            params=Params(assign={"r": 2}),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=3, y=0),
+                CircleTangentAt(id="tc", circle="c1", point="P", radius="r/2"),
+            ],
+        ))
+        assert approx(sym["tc"].radius, 1)
+
+    # --- the derived, addressable centre ---
+
+    def test_centre_is_registered_under_the_derived_id(self):
+        from geometry_diagrams.ir.ir import tangent_circle_center_id
+
+        sym = self._compile_tangent(radius=1)
+        cid = tangent_circle_center_id("tc")
+        assert cid in sym, f"{cid} not in sym"
+        assert isinstance(sym[cid], spg.Point)
+        assert sym[cid] == sym["tc"].center
+
+    def test_later_definition_can_reference_the_derived_centre(self):
+        """A forward reference to the derived centre must sort after its owner.
+
+        The referencing statement is deliberately listed BEFORE the
+        CircleTangentAt that derives the name, so only the dependency-graph
+        substitution can order it correctly.
+        """
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            Segment(id="axis", a="O", b="tc_center"),
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert isinstance(sym["axis"], spg.Segment)
+        assert approx(sym["axis"].length, 4)
+
+    def test_an_explicit_statement_of_the_same_name_wins_over_the_derived_centre(self):
+        """A real DefStmt named `tc_center` is not clobbered by the derivation."""
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            PointFixed(id="tc_center", x=9, y=9),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert sym["tc_center"] == spg.Point(9, 9)
+
+    # --- rejections ---
+
+    def test_point_not_on_the_reference_circle_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="not on circle"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=2, y=0),  # inside the circle
+                CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+            ]))
+
+    def test_point_within_tolerance_of_the_boundary_is_accepted(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3 + 1e-9, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert approx(sym["O"].distance(sym["tc"].center), 4, tol=1e-6)
+
+    def test_elliptical_reference_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="genuine circle"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                EllipseCenterAxes(id="e1", center="O", hradius=4, vradius=2),
+                PointFixed(id="P", x=4, y=0),
+                CircleTangentAt(id="tc", circle="e1", point="P", radius=1),
+            ]))
+
+    def test_internal_tangency_with_the_reference_radius_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="identical"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=3, y=0),
+                CircleTangentAt(id="tc", circle="c1", point="P", radius=3, tangency="internal"),
+            ]))
+
+    def test_external_tangency_with_the_reference_radius_is_allowed(self):
+        """Only the internal, identical-circle case is degenerate."""
+        sym = self._compile_tangent(radius=3)
+        assert approx(sym["O"].distance(sym["tc"].center), 6)
+
+    def test_non_positive_symbolic_radius_is_rejected_at_compile_time(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="radius must be positive"):
+            compile_defs(DiagramIR(
+                params=Params(assign={"r": 1}),
+                define=[
+                    PointFixed(id="O", x=0, y=0),
+                    CircleCenterRadius(id="c1", center="O", radius=3),
+                    PointFixed(id="P", x=3, y=0),
+                    CircleTangentAt(id="tc", circle="c1", point="P", radius="r - 1"),
+                ],
+            ))

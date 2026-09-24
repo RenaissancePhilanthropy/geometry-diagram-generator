@@ -315,6 +315,53 @@ class CircleThrough3(DefBase):
     c: PointId
 
 
+def tangent_circle_center_id(def_id: str) -> str:
+    """The derived id under which CircleTangentAt registers its computed center.
+
+    Single source of truth for the convention, so the compiler, later
+    definitions and tests all agree on the name.
+    """
+    return f"{def_id}_center"
+
+
+class CircleTangentAt(DefBase):
+    """Circle of the given `radius`, tangent to `circle` at the boundary point `point`.
+
+    `point` must already lie on `circle` (validated at compile time — an
+    off-circle point is a contradiction, not something to reinterpret). The
+    new circle's center is placed on the line from `circle`'s center through
+    `point`, at whichever distance makes the two circles tangent:
+
+    - ``tangency="external"``: the circles touch from opposite sides, their
+      centers ``r_ref + radius`` apart — the new circle sits outside the
+      reference one.
+    - ``tangency="internal"``: the circles touch from the same side, their
+      centers ``|r_ref - radius|`` apart. ``radius < r_ref`` nests the new
+      circle inside the reference one; ``radius > r_ref`` makes it enclose the
+      reference one instead. ``radius == r_ref`` is rejected — it would
+      reproduce the reference circle exactly.
+
+    `circle` must be a genuine circle; an ellipse is rejected.
+
+    The computed center is registered as its own referenceable point under
+    ``{id}_center`` (see `tangent_circle_center_id`), so later definitions can
+    address it directly — e.g. to join the two centers or drop a radius.
+    """
+    kind: Literal["circle_tangent_at"] = "circle_tangent_at"
+    circle: CircleId
+    point: PointId  # tangency point; must lie on `circle`
+    radius: Union[int, float, str]
+    tangency: Literal["external", "internal"] = "external"
+
+    @model_validator(mode="after")
+    def _check_radius_positive(self) -> "CircleTangentAt":
+        # String radii are expressions resolved later; the compiler re-checks
+        # the evaluated value.
+        if isinstance(self.radius, (int, float)) and self.radius <= 0:
+            raise ValueError(f"circle_tangent_at: 'radius' must be positive, got {self.radius}")
+        return self
+
+
 class ArcCenterStartEnd(DefBase):
     """Circular arc between `start` and `end` around `center`.
     Draws the minor (≤180°) arc by default; set `reflex=True` for the >180°
@@ -615,7 +662,7 @@ DefStmt = Annotated[
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
-        CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+        CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt,
         ArcCenterStartEnd,
         SectorCenterStartEnd,
         EllipticalArcCenterStartEnd,

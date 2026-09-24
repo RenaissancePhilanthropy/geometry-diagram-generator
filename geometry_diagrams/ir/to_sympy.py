@@ -17,6 +17,12 @@ from .refs import def_references
 # Symbol table: maps definition id -> SymPy geometry object
 SymTable = dict[str, Any]
 
+# Tolerance for CircleTangentAt's degeneracy checks: how far the tangency point
+# may sit off the reference circle's boundary, and how close the new radius may
+# come to the reference radius before an internal tangency counts as the same
+# circle. Anything larger is a contradiction, not floating-point noise.
+CIRCLE_TANGENT_TOL = 1e-6
+
 
 class Arc:
     """Marker type for a circular arc in the symbol table.
@@ -162,10 +168,12 @@ def compile_defs(
     all_ids = {stmt.id for stmt in diagram.define}
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
-    # Build a mapping from polygon sub-vertex names → their parent polygon ID.
-    # PolygonExterior and PolygonOnEdge register sub-vertices in sym as a side effect,
-    # so any DefStmt that references a sub-vertex name needs to depend on the polygon.
-    poly_vertex_to_poly: dict[str, str] = {}
+    # Build a mapping from derived point names → the id of the statement that
+    # produces them. PolygonExterior/PolygonOnEdge register sub-vertices and
+    # CircleTangentAt registers its computed center in sym as a side effect, so
+    # any DefStmt that references one of those derived names needs to depend on
+    # the statement that owns it.
+    derived_point_owner: dict[str, str] = {}
     for stmt in diagram.define:
         if isinstance(stmt, ir.PolygonExterior):
             names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
@@ -174,19 +182,23 @@ def compile_defs(
             # would overwrite the parent polygon's ownership and create a self-loop.
             for vname in names[2:]:
                 if vname not in all_ids:  # only synthesized names, not real DefStmts
-                    poly_vertex_to_poly[vname] = stmt.id
+                    derived_point_owner[vname] = stmt.id
         if isinstance(stmt, ir.PolygonOnEdge):
             for vname in stmt.vertex_names[2:]:   # only new vertices
                 if vname not in all_ids:
-                    poly_vertex_to_poly[vname] = stmt.id
+                    derived_point_owner[vname] = stmt.id
+        if isinstance(stmt, ir.CircleTangentAt):
+            cname = ir.tangent_circle_center_id(stmt.id)
+            if cname not in all_ids:
+                derived_point_owner[cname] = stmt.id
 
     # Build dependency graph and sort topologically so forward references work.
-    # Substitute polygon sub-vertex refs with their parent polygon so the sort
-    # correctly places the polygon before any statement that uses its vertices.
+    # Substitute derived point refs with their owning statement so the sort
+    # correctly places that statement before any statement that uses them.
     graph: dict[str, set[str]] = {}
     for stmt in diagram.define:
         raw_refs = def_references(stmt)
-        resolved = {poly_vertex_to_poly.get(r, r) for r in raw_refs}
+        resolved = {derived_point_owner.get(r, r) for r in raw_refs}
         graph[stmt.id] = resolved & all_ids
 
     try:
@@ -215,6 +227,12 @@ def compile_defs(
             for i, vname in enumerate(stmt.vertex_names):
                 if vname not in sym:
                     sym[vname] = obj.vertices[i]
+        # CircleTangentAt: also register its computed center as an addressable
+        # point, so later definitions can reference it by its derived id.
+        if isinstance(stmt, ir.CircleTangentAt) and isinstance(obj, spg.Circle):
+            center_id = ir.tangent_circle_center_id(stmt.id)
+            if center_id not in sym:
+                sym[center_id] = obj.center
 
     return sym
 
@@ -502,6 +520,46 @@ def _compile_one(
                     f"no circle passes through them"
                 )
             return spg.Circle(a_pt, b_pt, c_pt)
+
+        case ir.CircleTangentAt(circle=circle_id, point=point_id, radius=radius, tangency=tangency):
+            ref_circle = ref(circle_id)
+            if not isinstance(ref_circle, spg.Circle):
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: '{circle_id}' must be a genuine circle, got "
+                    f"{type(ref_circle).__name__} — an ellipse has no single radius to be tangent to"
+                )
+            r_new = ev(radius)
+            r_new_f = float(r_new.evalf())
+            if r_new_f <= 0:
+                raise IRCompileError(did, f"circle_tangent_at: radius must be positive, got {r_new}")
+
+            c_ref = ref_circle.center
+            r_ref = ref_circle.radius
+            r_ref_f = float(r_ref.evalf())
+            touch = ref(point_id)
+            reach = c_ref.distance(touch)
+            reach_f = float(reach.evalf())
+            if abs(reach_f - r_ref_f) > CIRCLE_TANGENT_TOL:
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: point '{point_id}' is not on circle '{circle_id}' — "
+                    f"it is {reach_f:.6g} from the center, but the radius is {r_ref_f:.6g}"
+                )
+            if tangency == "internal" and abs(r_new_f - r_ref_f) <= CIRCLE_TANGENT_TOL:
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: internal tangency with radius {r_new_f:.6g} would be "
+                    f"identical to circle '{circle_id}' — use a different radius"
+                )
+            # The center sits on the line through c_ref and the touch point, at
+            # r_ref + r_new (external) or r_ref - r_new (internal) from c_ref.
+            # A negative distance simply puts it on the far side of c_ref, which
+            # is exactly the internal case where the new circle encloses the
+            # reference one.
+            signed = r_new if tangency == "external" else -r_new
+            center = c_ref + (touch - c_ref) * ((r_ref + signed) / reach)
+            return spg.Circle(center, r_new)
 
         # --- Arcs ---
         case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):

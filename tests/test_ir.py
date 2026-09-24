@@ -332,3 +332,63 @@ def test_circles_tangent_is_a_valid_check_union_member():
     assert isinstance(rebuilt.checks[0], CirclesTangent)
     assert rebuilt.checks[0].c1 == "c1"
     assert rebuilt.checks[0].c2 == "c2"
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+def test_circle_tangent_at_defaults():
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    stmt = CircleTangentAt(id="c2", circle="c1", point="P", radius=1.5)
+    assert stmt.kind == "circle_tangent_at"
+    assert stmt.circle == "c1"
+    assert stmt.point == "P"
+    assert stmt.radius == 1.5
+    assert stmt.tangency == "external"
+
+
+def test_circle_tangent_at_accepts_symbolic_radius():
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    stmt = CircleTangentAt(id="c2", circle="c1", point="P", radius="r/2")
+    assert stmt.radius == "r/2"
+
+
+def test_circle_tangent_at_rejects_non_positive_radius():
+    import pytest
+    from pydantic import ValidationError
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    with pytest.raises(ValidationError):
+        CircleTangentAt(id="c2", circle="c1", point="P", radius=0)
+    with pytest.raises(ValidationError):
+        CircleTangentAt(id="c2", circle="c1", point="P", radius=-2)
+
+
+def test_circle_tangent_at_rejects_unknown_tangency_mode():
+    import pytest
+    from pydantic import ValidationError
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    with pytest.raises(ValidationError):
+        CircleTangentAt(id="c2", circle="c1", point="P", radius=1, tangency="inside")
+
+
+def test_circle_tangent_at_is_a_valid_def_union_member():
+    from geometry_diagrams.ir.ir import CircleTangentAt, DiagramIR
+
+    diagram = DiagramIR(
+        define=[CircleTangentAt(id="c2", circle="c1", point="P", radius=2, tangency="internal")]
+    )
+    dumped = diagram.model_dump()
+    rebuilt = DiagramIR.model_validate(dumped)
+    assert isinstance(rebuilt.define[0], CircleTangentAt)
+    assert rebuilt.define[0].tangency == "internal"
+
+
+def test_tangent_circle_center_id_is_the_published_derived_name():
+    from geometry_diagrams.ir.ir import tangent_circle_center_id
+
+    assert tangent_circle_center_id("c2") == "c2_center"

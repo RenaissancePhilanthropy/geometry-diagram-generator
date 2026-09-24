@@ -27,7 +27,7 @@ _REF_FIELDS = {
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
                    "radius", "sides", "level", "tol", "which", "how", "k", "opacity",
                    "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation",
-                   "reflex", "vertex_names"}
+                   "reflex", "vertex_names", "tangency"}
 
 
 def def_references(stmt: ir.DefStmt) -> set[str]:

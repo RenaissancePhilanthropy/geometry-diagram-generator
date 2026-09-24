@@ -95,8 +95,8 @@ def synthesize_helpers(
 
     Returns a dict of helper-name → (x, y).  Helpers are:
     - ``_lp_{id}`` — second anchor for non-LineThrough line types
-    - ``_rt_{id}`` — through-point for CircleCenterRadius
-    - ``_cc_{id}`` — center for CircleThrough3
+    - ``_rt_{id}`` — through-point for CircleCenterRadius / CircleTangentAt
+    - ``_cc_{id}`` — center for CircleThrough3 / CircleTangentAt
     """
     helpers: dict[str, tuple[float, float]] = {}
     for stmt in diagram.define:
@@ -120,6 +120,14 @@ def synthesize_helpers(
                 sympy_to_float(circ.center.x),
                 sympy_to_float(circ.center.y),
             )
+        elif isinstance(stmt, ir.CircleTangentAt):
+            # Neither the center nor any point at radius distance is named by
+            # the statement itself, so synthesize both from the compiled circle.
+            circ = sym[stmt.id]
+            cx = sympy_to_float(circ.center.x)
+            cy = sympy_to_float(circ.center.y)
+            helpers[f"_cc_{stmt.id}"] = (cx, cy)
+            helpers[f"_rt_{stmt.id}"] = (cx + sympy_to_float(circ.radius), cy)
         elif isinstance(stmt, (ir.EllipseCenterAxes, ir.EllipseBBox, ir.EllipseFoci, ir.EllipseCenterEccentricity)):
             ell = sym[stmt.id]
             helpers[f"_ec_{stmt.id}"] = (
@@ -300,6 +308,8 @@ def circle_center_through(
             return c, f"_rt_{circle_id}"
         case ir.CircleThrough3(a=a):
             return f"_cc_{circle_id}", a
+        case ir.CircleTangentAt():
+            return f"_cc_{circle_id}", f"_rt_{circle_id}"
         case _:
             raise ValueError(f"Unknown circle def kind {stmt.kind!r}")
 

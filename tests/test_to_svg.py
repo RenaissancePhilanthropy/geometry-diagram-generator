@@ -2724,3 +2724,45 @@ def test_segment_label_does_not_overlap_axis_tick_label():
             assert not overlap(bb_seg, bb_tick), (
                 f"label {seg.text!r} at {bb_seg} overlaps tick label {tick.text!r} at {bb_tick}"
             )
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+def _tangent_circle_diagram(tangency: str = "external") -> DiagramIR:
+    """Unit-radius circle tangent to a radius-3 circle at (3, 0)."""
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1, tangency=tangency),
+        ],
+        render=[Draw(obj="c1"), Draw(obj="tc")],
+    )
+
+
+def test_circle_tangent_at_renders_both_circles():
+    svg = _compile_svg(_tangent_circle_diagram())
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    assert set(by_id) >= {"c1", "tc"}
+    r_ref = float(by_id["c1"].get("r"))
+    r_new = float(by_id["tc"].get("r"))
+    assert r_new == pytest.approx(r_ref / 3, rel=1e-3)
+    # centres 4 geometry units apart, i.e. 4/3 of the reference radius
+    dx = float(by_id["tc"].get("cx")) - float(by_id["c1"].get("cx"))
+    assert dx == pytest.approx(r_ref * 4 / 3, rel=1e-3)
+    assert float(by_id["tc"].get("cy")) == pytest.approx(float(by_id["c1"].get("cy")), abs=1e-6)
+
+
+def test_circle_tangent_at_internal_renders_inside_the_reference():
+    svg = _compile_svg(_tangent_circle_diagram("internal"))
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    r_ref = float(by_id["c1"].get("r"))
+    dx = float(by_id["tc"].get("cx")) - float(by_id["c1"].get("cx"))
+    assert dx == pytest.approx(r_ref * 2 / 3, rel=1e-3)
