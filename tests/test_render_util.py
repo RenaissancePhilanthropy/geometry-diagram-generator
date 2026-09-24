@@ -4,8 +4,8 @@ import math
 import pytest
 import sympy.geometry as spg
 
-from geometry_diagrams.ir.render_util import build_entity_manifest, centroid_of_obj, tick_values
-from geometry_diagrams.ir.ir import DiagramIR, LineThrough
+from geometry_diagrams.ir.render_util import build_entity_manifest, centroid_of_obj, seg_endpoints, tick_values
+from geometry_diagrams.ir.ir import DiagramIR, LineThrough, Ray, Segment, Triangle
 
 
 def test_centroid_of_obj_returns_midpoint_for_line():
@@ -69,6 +69,33 @@ def test_build_entity_manifest_logs_a_warning_for_a_still_unhandled_sympy_type(c
         "mystery" in record.getMessage() and "UnknownGeometryType" in record.getMessage()
         for record in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# seg_endpoints — Segment/Ray endpoint resolution shared by both backends'
+# MarkSegments handling
+# ---------------------------------------------------------------------------
+
+def test_seg_endpoints_returns_ab_for_segment():
+    stmt_by_id = {"s1": Segment(id="s1", a="A", b="B")}
+    assert seg_endpoints("s1", stmt_by_id) == ("A", "B")
+
+
+def test_seg_endpoints_returns_ab_for_ray():
+    """A Ray def has the same a/b point-id fields as a Segment — a ray
+    handle marked via mark_equal()/mark_parallel()/mark_proportional() must
+    resolve endpoints the same way a segment does, not raise. Before this
+    fix, seg_endpoints() only recognized ir.Segment and raised ValueError
+    for anything else, including a Ray, crashing uncaught deep in the
+    renderer's MarkSegments handling."""
+    stmt_by_id = {"r1": Ray(id="r1", a="A", b="B")}
+    assert seg_endpoints("r1", stmt_by_id) == ("A", "B")
+
+
+def test_seg_endpoints_rejects_a_non_segment_non_ray_def():
+    stmt_by_id = {"t1": Triangle(id="t1", a="A", b="B", c="C")}
+    with pytest.raises(ValueError, match="Expected Segment or Ray def"):
+        seg_endpoints("t1", stmt_by_id)
 
 
 def test_tick_values_excludes_zero():

@@ -163,10 +163,15 @@ def poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
 
 
 def seg_endpoints(seg_id: str, stmt_by_id: dict) -> tuple[str, str]:
-    """Return (a, b) endpoint IDs for a Segment DefStmt."""
+    """Return (a, b) endpoint IDs for a Segment or Ray DefStmt — a Ray has
+    the same a/b point-id fields as a Segment (a, extending through and
+    beyond b), so it resolves the same way. Used by both rendering
+    backends' MarkSegments handling, which is why a ray marked equal/
+    parallel/proportional to a segment must resolve here instead of
+    raising."""
     stmt = stmt_by_id[seg_id]
-    if not isinstance(stmt, ir.Segment):
-        raise ValueError(f"Expected Segment def for {seg_id!r}, got {stmt.kind!r}")
+    if not isinstance(stmt, (ir.Segment, ir.Ray)):
+        raise ValueError(f"Expected Segment or Ray def for {seg_id!r}, got {stmt.kind!r}")
     return stmt.a, stmt.b
 
 

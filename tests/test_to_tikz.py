@@ -499,6 +499,28 @@ def test_mark_arcs_group_shared_with_mark_segments_gets_the_same_count():
     assert tikz.count("\\draw") == 3    # arc side: 3 raw ticks, same index
 
 
+def test_mark_segments_on_a_ray_renders_without_crashing():
+    """render_util.seg_endpoints() must recognize ir.Ray (same a/b point-id
+    fields as ir.Segment) — before ticket 06's fix, a ray passed to
+    MarkSegments compiled fine and only crashed uncaught at render time
+    inside seg_endpoints()."""
+    from geometry_diagrams.ir.ir import Ray
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=4, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Ray(id="r1", a="C", b="D"),
+        ],
+        render=[MarkSegments(segs=["s1", "r1"], group="g1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\tkzMarkSegment") == 2
+
+
 def test_mark_arcs_on_a_sector_uses_the_curved_edge():
     from geometry_diagrams.ir.ir import SectorCenterStartEnd
 

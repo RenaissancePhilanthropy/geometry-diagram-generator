@@ -7,7 +7,7 @@ import itertools
 import math
 from typing import Callable
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkArcs, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -648,45 +648,88 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
     )
 
 
-def _mark_segments(kind: str, segments: tuple[Segment, ...]) -> None:
-    if len(segments) < 2:
-        raise ValueError(f"mark_{kind}() requires at least 2 segments, got {len(segments)}")
+def _mark_group(kind: str, items: "tuple[Segment | Ray | Arc | Sector, ...]") -> None:
+    """Shared implementation of mark_equal/mark_parallel/mark_proportional:
+    dispatch each handle in `items` by its concrete type instead of blindly
+    forwarding whatever ids it's given.
+
+    A Segment or Ray joins the group's MarkSegments op; an Arc or Sector
+    joins its MarkArcs op (mark_parallel() rejects a curved item outright
+    instead — chevron marks have no arc-form, so "these arcs are parallel"
+    isn't a renderable claim). Both ops share exactly ONE freshly-generated
+    group string, generated once per call regardless of how many ops it
+    ends up producing: ir.MarkArcs was specifically designed to share
+    ir.MarkSegments' group namespace (see its docstring), so a call mixing
+    a straight-line item with a curved one reads as one congruence class,
+    not two separate ones. Anything else raises, naming the offending
+    type."""
+    if len(items) < 2:
+        raise ValueError(f"mark_{kind}() requires at least 2 items, got {len(items)}")
+
+    straight_ids: "list[str]" = []
+    curved_ids: "list[str]" = []
+    for item in items:
+        if isinstance(item, (Segment, Ray)):
+            straight_ids.append(item.id)
+        elif isinstance(item, (Arc, Sector)):
+            if kind == "parallel":
+                raise ValueError(
+                    f"mark_parallel(): can't mark a {type(item).__name__} as "
+                    "parallel — chevron marks have no arc-form"
+                )
+            curved_ids.append(item.id)
+        else:
+            raise ValueError(
+                f"mark_{kind}(): unsupported type {type(item).__name__!r} — "
+                "expected Segment, Ray, Arc, or Sector"
+            )
+
     builder = get_builder()
     group = builder._fresh_mark_group(kind)
-    builder._add_render(MarkSegments(segs=[s.id for s in segments], group=group))
+    if straight_ids:
+        builder._add_render(MarkSegments(segs=straight_ids, group=group))
+    if curved_ids:
+        builder._add_render(MarkArcs(arcs=curved_ids, group=group))
 
 
-def mark_equal(*segments: Segment) -> None:
-    """Mark segments as equal in length with matching tick marks. Each
+def mark_equal(*items: "Segment | Ray | Arc | Sector") -> None:
+    """Mark segments, rays, arcs, and/or sectors as equal in length (straight
+    items) or equal arc-length (curved items) with matching tick marks. Each
     call gets a fresh tick symbol automatically — pass all mutually-equal
-    segments in ONE call (e.g. mark_equal(ab, cd, ef)) rather than
-    multiple calls, since separate calls always get visually distinct
-    symbols, never the same one. Requires at least 2 segments. Note: only
-    6 distinct tick symbols exist (shared with mark_proportional()'s
-    calls too) and marks draw at each segment's midpoint — more than 6
-    mark_equal()/mark_proportional() calls in one diagram silently reuse
-    a symbol, and a segment passed to two different mark_*() calls gets
-    overlapping marks at the same midpoint."""
-    _mark_segments("equal", segments)
+    items in ONE call (e.g. mark_equal(ab, cd, ef)) rather than multiple
+    calls, since separate calls always get visually distinct symbols, never
+    the same one. Mixing a straight-line item with a curved one in the same
+    call marks them congruent with EACH OTHER too (e.g. "this chord equals
+    this arc"), not just within their own family. Requires at least 2 items.
+    Note: only 6 distinct tick symbols exist (shared with
+    mark_proportional()'s calls too) and marks draw at each item's midpoint
+    (or arc midpoint) — more than 6 mark_equal()/mark_proportional() calls
+    in one diagram silently reuse a symbol, and an item passed to two
+    different mark_*() calls gets overlapping marks at the same spot."""
+    _mark_group("equal", items)
 
 
-def mark_parallel(*segments: Segment) -> None:
-    """Mark segments as parallel with matching chevron marks (>, >>, >>>,
-    ...). Same one-call-per-group contract as mark_equal(). Requires at
-    least 2 segments. Note: only 3 distinct chevron counts exist — a 4th
-    mark_parallel() call in one diagram silently reuses one."""
-    _mark_segments("parallel", segments)
+def mark_parallel(*items: "Segment | Ray") -> None:
+    """Mark segments/rays as parallel with matching chevron marks (>, >>,
+    >>>, ...). Same one-call-per-group contract as mark_equal(). Requires
+    at least 2 items. Note: only 3 distinct chevron counts exist — a 4th
+    mark_parallel() call in one diagram silently reuses one. Rejects an
+    Arc/Sector outright (ValueError naming the type) rather than silently
+    routing it through the arc-tick-mark op — parallelism isn't a
+    renderable claim about a curve."""
+    _mark_group("parallel", items)
 
 
-def mark_proportional(*segments: Segment) -> None:
-    """Mark segments as proportional (not necessarily equal) — NOTE:
-    renders with the same tick-mark symbols as mark_equal(), since the
-    underlying renderer has no separate visual convention for
+def mark_proportional(*items: "Segment | Ray | Arc | Sector") -> None:
+    """Mark segments/rays/arcs/sectors as proportional (not necessarily
+    equal) — NOTE: renders with the same tick-mark symbols as mark_equal(),
+    since the underlying renderer has no separate visual convention for
     "proportional." Use this over mark_equal() only for the script's own
-    semantic clarity; the diagram itself won't look different. Requires
-    at least 2 segments. Shares mark_equal()'s 6-symbol limit (see its
-    docstring) — the two functions draw from the same symbol cycle."""
-    _mark_segments("proportional", segments)
+    semantic clarity; the diagram itself won't look different. Requires at
+    least 2 items. Shares mark_equal()'s 6-symbol limit and mixed
+    straight/curved group-sharing behavior (see its docstring) — the two
+    functions draw from the same symbol cycle."""
+    _mark_group("proportional", items)
 
 
 def mark_right_angle(ref: AngleRef) -> None:
