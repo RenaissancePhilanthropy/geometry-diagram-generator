@@ -51,6 +51,11 @@ __all__ = [
     "assert_ccw",
     "assert_min_distance",
     "assert_congruent_triangles",
+    "assert_equal_radius",
+    "assert_radius",
+    "assert_congruent_arcs",
+    "assert_angle_value",
+    "assert_circles_tangent",
     "assert_in_canvas",
     "assert_labels_in_canvas",
 ]
@@ -289,6 +294,79 @@ def assert_congruent_triangles(t1: Triangle, t2: Triangle, *, tol: float | None 
     lengths, no required vertex correspondence)."""
     builder = get_builder()
     check = ir.CongruentTriangles(t1=t1.id, t2=t2.id, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+# ---------------------------------------------------------------------------
+# Curved-family predicates (circle radius, arc congruence, angle value,
+# circle-to-circle tangency)
+# ---------------------------------------------------------------------------
+
+def assert_equal_radius(*circles, tol: float | None = None) -> None:
+    """Assert that two or more circles all have the same radius.
+
+    The circle-family mirror of assert_equal_length (which is about segment
+    lengths — "length" means nothing for a circle, so these stay separate).
+    """
+    builder = get_builder()
+    ids = [c.id for c in circles]
+    check = ir.EqualRadius(circles=ids, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_radius(circle, expected: float, *, tol: float | None = None) -> None:
+    """Assert that a circle's radius equals a specific expected value.
+
+    Uses the same relative-tolerance convention as assert_distance:
+    |actual - expected| < tol * max(expected, 1.0).
+    """
+    builder = get_builder()
+    check = ir.RadiusEquals(circle=circle.id, expected=expected, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_congruent_arcs(*arcs, tol: float | None = None) -> None:
+    """Assert that two or more circular arcs/sectors are congruent (equal
+    radius AND equal central-angle sweep).
+
+    Reflex-aware: a minor arc and a reflex arc sharing the same two endpoints
+    are never congruent. Circular arcs/sectors only — an elliptical arc or
+    sector is rejected with a clear message naming its type.
+    """
+    builder = get_builder()
+    ids = [a.id for a in arcs]
+    check = ir.CongruentArcs(arcs=ids, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_angle_value(ref: AngleRef, expected_deg: float, *, tol: float | None = None) -> None:
+    """Assert that an angle (from an AngleRef, e.g. t.angle_at(v)) has a
+    specific expected measure in degrees.
+
+    Complements assert_angle_equal, which only compares two angles to each
+    other, never to an absolute value. `tol` is in radians, matching
+    ir.AngleValue's own convention.
+
+    Known limitation: same as assert_right_angle's — checks.py's
+    alternative-angle "try: ..." hints are always empty for pydsl-originated
+    checks, since every pydsl point id is hidden-prefixed and the hint search
+    filters those out. Documented, not a bug.
+    """
+    builder = get_builder()
+    angle = ir.AnglePoints(a=ref.a.id, o=ref.o.id, b=ref.b.id)
+    check = ir.AngleValue(angle=angle, expected_deg=expected_deg, tol=tol)
+    _run_assertion(builder, check, [ref.a.id, ref.o.id, ref.b.id])
+
+
+def assert_circles_tangent(c1, c2, *, tol: float | None = None) -> None:
+    """Assert that two circles are tangent to each other, externally or
+    internally.
+
+    Distinct from assert_tangent, which is about a line/segment/ray tangent
+    to a circle. Two identical circles are not considered tangent.
+    """
+    builder = get_builder()
+    check = ir.CirclesTangent(c1=c1.id, c2=c2.id, tol=tol)
     _run_assertion(builder, check, [])
 
 

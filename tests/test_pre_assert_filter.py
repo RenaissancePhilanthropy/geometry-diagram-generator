@@ -50,11 +50,15 @@ from geometry_diagrams.ir.pre_assert_filter import (
 # Stage 1: API-name validation
 # ---------------------------------------------------------------------------
 
-def test_real_assert_names_has_25_entries():
+def test_real_assert_names_has_30_entries():
     """Sanity check against the shipped assert_* feature's actual vocabulary."""
-    assert len(REAL_ASSERT_NAMES) == 25
+    assert len(REAL_ASSERT_NAMES) == 30
     assert "assert_collinear" in REAL_ASSERT_NAMES
     assert "assert_angle_equal" in REAL_ASSERT_NAMES
+    # curve-family-parity's five curved-family predicates, picked up by the
+    # same live introspection with no change to this module.
+    assert "assert_equal_radius" in REAL_ASSERT_NAMES
+    assert "assert_circles_tangent" in REAL_ASSERT_NAMES
 
 
 def test_extract_assert_tokens_finds_all_shaped_tokens():
