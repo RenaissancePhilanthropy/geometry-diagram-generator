@@ -19,6 +19,7 @@ class GeometryConfig:
     """
 
     renderer: Literal["tikz", "svg"] = "tikz"
+    strategy: Literal["recipe", "python_full"] = "recipe"
     model: str = _DEFAULT_MODEL
     selector_model: str = _DEFAULT_SELECTOR_MODEL
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001
@@ -44,6 +45,7 @@ class GeometryConfig:
         """Build config from environment variables with hardcoded fallbacks."""
         return cls(
             renderer=os.environ.get("GEOMETRY_RENDERER", os.environ.get("RENDERER", "tikz")),  # type: ignore[arg-type]
+            strategy=os.environ.get("GEOMETRY_STRATEGY", "recipe"),  # type: ignore[arg-type]
             model=os.environ.get("GEOMETRY_MODEL", os.environ.get("MODEL", _DEFAULT_MODEL)),
             selector_model=os.environ.get("GEOMETRY_SELECTOR_MODEL", _DEFAULT_SELECTOR_MODEL),
             renderer_url=os.environ.get("TIKZ_RENDERER_URL") or None,
@@ -59,6 +61,7 @@ def resolve_config(
     base: Optional[GeometryConfig] = None,
     *,
     renderer: Optional[str] = None,
+    strategy: Optional[str] = None,
     model: Optional[str] = None,
     selector_model: Optional[str] = None,
     renderer_url: Optional[str] = None,
@@ -71,6 +74,7 @@ def resolve_config(
     cfg = base if base is not None else GeometryConfig.from_env()
     return GeometryConfig(
         renderer=renderer or cfg.renderer,  # type: ignore[arg-type]
+        strategy=strategy or cfg.strategy,  # type: ignore[arg-type]
         model=model or cfg.model,
         selector_model=selector_model or cfg.selector_model,
         renderer_url=renderer_url if renderer_url is not None else cfg.renderer_url,

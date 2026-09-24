@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 from .config import GeometryConfig, resolve_config
 from .ir.font import FontConfig
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
+from .strategies.base import SubstanceStrategy
+from .strategies.python_full import PythonFullStrategy
 from .strategies.recipe import RecipeStrategy
 
 
@@ -23,10 +25,11 @@ class DiagramResult:
     tikz: str        # empty string when renderer == "svg"
     input_tokens: int
     output_tokens: int
-    dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump())
+    dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump()); recipe strategy only
     diagram_ir: Optional[dict] = None   # serialized DiagramIR (ir.model_dump())
-    recipes: Optional[list[str]] = None # selected recipe IDs
-    retry_count: int = 0 # number of DSL-generation attempts (len of attempt_traces)
+    recipes: Optional[list[str]] = None # selected recipe IDs; recipe strategy only
+    retry_count: int = 0 # number of generation attempts (len of attempt_traces)
+    script: Optional[str] = None        # pydsl script source; python_full strategy only
 
 
 def _make_renderer(cfg: GeometryConfig) -> Renderer:
@@ -38,8 +41,12 @@ def _make_renderer(cfg: GeometryConfig) -> Renderer:
     raise ValueError(f"Unknown renderer: {cfg.renderer!r} (expected 'tikz' or 'svg')")
 
 
-def _make_strategy(cfg: GeometryConfig) -> RecipeStrategy:
-    return RecipeStrategy(enable_cache=True, selector_model=cfg.selector_model)
+def _make_strategy(cfg: GeometryConfig) -> SubstanceStrategy:
+    if cfg.strategy == "python_full":
+        return PythonFullStrategy(enable_cache=True)
+    if cfg.strategy == "recipe":
+        return RecipeStrategy(enable_cache=True, selector_model=cfg.selector_model)
+    raise ValueError(f"Unknown strategy: {cfg.strategy!r} (expected 'recipe' or 'python_full')")
 
 
 async def render_geometry_diagram(
@@ -47,6 +54,7 @@ async def render_geometry_diagram(
     *,
     config: Optional[GeometryConfig] = None,
     renderer: Optional[str] = None,
+    strategy: Optional[str] = None,
     model: Optional[str] = None,
     selector_model: Optional[str] = None,
     renderer_url: Optional[str] = None,
@@ -57,40 +65,68 @@ async def render_geometry_diagram(
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
-    Uses the recipe strategy (recipe selection → DSL generation → IR compile → render).
-    Returns a DiagramResult with the SVG and (if using TikZ renderer) the intermediate TikZ.
+    Uses either the recipe strategy (recipe selection → DSL generation → IR compile →
+    render) or the python_full strategy (LLM-authored pydsl script → sandboxed execution
+    → IR compile → render), per `strategy`/`config.strategy`. Returns a DiagramResult with
+    the SVG and (if using TikZ renderer) the intermediate TikZ.
 
     Args:
         prompt: Natural-language description of the diagram to render.
         config: Optional base GeometryConfig. Falls back to GeometryConfig.from_env().
         renderer: Override renderer choice ("tikz" or "svg").
+        strategy: Override strategy choice ("recipe" or "python_full").
         model: Override generation model id (e.g. "anthropic:claude-sonnet-4-6").
-        selector_model: Override recipe selector model id.
+        selector_model: Override recipe selector model id (recipe strategy only).
         renderer_url: Override TikZ renderer URL (only used when renderer="tikz").
         font_family: Override font family name.
         previous_dsl: Prior DSL dict (from DiagramResult.dsl) to anchor an edit.
+            Only supported by the recipe strategy — passing this with
+            strategy="python_full" raises ValueError, since PythonFullStrategy has
+            no stateless edit entry point (its only edit path is the stateful
+            build_agent() ReAct agent, not exposed through this facade).
         run_config: LangChain RunnableConfig dict to thread into LLM calls (e.g. for
             LangFuse tracing or get_anthropic_callback cost tracking). Its "callbacks"
             list is merged with the package's env-driven handler and any `callbacks` arg.
+            Only honored by the recipe strategy — PythonFullStrategy.run() takes no
+            config/callbacks parameter, so both are silently ignored under
+            strategy="python_full" (its own env-driven tracing handler still applies).
         callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
+            Same python_full caveat as run_config above.
     """
     cfg = resolve_config(
         config,
         renderer=renderer,
+        strategy=strategy,
         model=model,
         selector_model=selector_model,
         renderer_url=renderer_url,
         font_family=font_family,
     )
-    strategy = _make_strategy(cfg)
-    result = await strategy.run(
-        prompt,
-        model=cfg.model,
-        renderer=_make_renderer(cfg),
-        previous_dsl=previous_dsl,
-        config=run_config,
-        callbacks=callbacks,
-    )
+    strategy_obj = _make_strategy(cfg)
+
+    if cfg.strategy == "python_full":
+        if previous_dsl is not None:
+            raise ValueError(
+                "previous_dsl is not supported with strategy='python_full' — "
+                "PythonFullStrategy has no stateless edit entry point (its only "
+                "edit path is the stateful build_agent() ReAct agent)."
+            )
+        result = await strategy_obj.run(
+            prompt,
+            model=cfg.model,
+            renderer=_make_renderer(cfg),
+            sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+        )
+    else:
+        result = await strategy_obj.run(
+            prompt,
+            model=cfg.model,
+            renderer=_make_renderer(cfg),
+            previous_dsl=previous_dsl,
+            config=run_config,
+            callbacks=callbacks,
+        )
+
     # Extract structured artifacts if available
     _recipes = None
     _dsl = None
@@ -113,6 +149,7 @@ async def render_geometry_diagram(
         diagram_ir=_diagram_ir,
         recipes=_recipes,
         retry_count=len(traces),
+        script=getattr(result, "script", "") or None,
     )
 
 
@@ -194,7 +231,10 @@ async def edit_geometry_diagram(
     Args:
         prompt: Natural-language description of the change to apply.
         previous_dsl: The dsl dict from a prior DiagramResult.
-        Remaining kwargs: same as render_geometry_diagram.
+        Remaining kwargs: same as render_geometry_diagram. Note strategy="python_full"
+        (via config or GEOMETRY_STRATEGY) always raises ValueError here, since
+        previous_dsl is never None on this path and PythonFullStrategy has no
+        stateless edit entry point.
     """
     return await render_geometry_diagram(
         prompt,

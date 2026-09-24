@@ -75,3 +75,32 @@ def test_resolve_config_keeps_base_sandbox_timeout_seconds_when_not_overridden()
     base = GeometryConfig(sandbox_timeout_seconds=8.0)
     cfg = resolve_config(base)
     assert cfg.sandbox_timeout_seconds == 8.0
+
+
+def test_default_strategy_is_recipe():
+    cfg = GeometryConfig()
+    assert cfg.strategy == "recipe"
+
+
+def test_from_env_default_strategy_is_recipe(monkeypatch):
+    monkeypatch.delenv("GEOMETRY_STRATEGY", raising=False)
+    cfg = GeometryConfig.from_env()
+    assert cfg.strategy == "recipe"
+
+
+def test_from_env_reads_geometry_strategy():
+    with patch.dict(os.environ, {"GEOMETRY_STRATEGY": "python_full"}, clear=False):
+        cfg = GeometryConfig.from_env()
+    assert cfg.strategy == "python_full"
+
+
+def test_resolve_config_overrides_strategy():
+    base = GeometryConfig(strategy="recipe")
+    cfg = resolve_config(base, strategy="python_full")
+    assert cfg.strategy == "python_full"
+
+
+def test_resolve_config_keeps_base_strategy_when_not_overridden():
+    base = GeometryConfig(strategy="python_full")
+    cfg = resolve_config(base)
+    assert cfg.strategy == "python_full"

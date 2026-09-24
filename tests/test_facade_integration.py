@@ -10,14 +10,16 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from geometry_diagrams.config import GeometryConfig
 from geometry_diagrams.strategies.base import SubstanceStrategy, DEFAULT_AGENT_MODEL
+from geometry_diagrams.strategies.python_full import PythonFullStrategy
 from geometry_diagrams.strategies.recipe import (
     RecipeStrategy,
     RecipeMetadata,
     RecipeAttemptTrace,
 )
 from geometry_diagrams.strategies.structured import StructuredRunResult
-from geometry_diagrams.facade import DiagramResult, render_geometry_diagram
+from geometry_diagrams.facade import DiagramResult, _make_strategy, render_geometry_diagram
 from geometry_diagrams import render_diagram  # the @tool
 
 
@@ -448,6 +450,78 @@ async def test_previous_dsl_invalid_raises_value_error():
             "edit it",
             model=DEFAULT_AGENT_MODEL,
             previous_dsl={"invalid_field": 123},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test Group 4b — strategy selection ("recipe" vs "python_full")
+# ---------------------------------------------------------------------------
+
+class TestMakeStrategy:
+
+    def test_default_strategy_is_recipe_strategy(self):
+        assert isinstance(_make_strategy(GeometryConfig()), RecipeStrategy)
+
+    def test_python_full_strategy_selected(self):
+        assert isinstance(_make_strategy(GeometryConfig(strategy="python_full")), PythonFullStrategy)
+
+    def test_unknown_strategy_raises_value_error(self):
+        cfg = GeometryConfig()
+        cfg.strategy = "bogus"  # bypass the Literal type check to exercise the runtime guard
+        with pytest.raises(ValueError, match="Unknown strategy"):
+            _make_strategy(cfg)
+
+
+@pytest.mark.asyncio
+async def test_render_geometry_diagram_python_full_populates_script(monkeypatch):
+    """strategy='python_full' calls PythonFullStrategy.run and maps .script into
+    DiagramResult.script, leaving dsl/recipes None (python_full has neither)."""
+    ir_mock = MagicMock()
+    ir_mock.model_dump = MagicMock(return_value={"canvas": {}})
+    fake_result = StructuredRunResult(
+        diagram_ir=ir_mock,
+        tikz="",
+        svg="<svg/>",
+        sym_table={},
+        sym_full={},
+        script="p1 = point(0, 0)\n",
+    )
+    fake_result.input_tokens = 7
+    fake_result.output_tokens = 3
+
+    captured = {}
+
+    async def fake_run(self, prompt, *, model=None, renderer=None, sandbox_timeout_seconds=None):
+        captured["model"] = model
+        captured["sandbox_timeout_seconds"] = sandbox_timeout_seconds
+        return fake_result
+
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+
+    result = await render_geometry_diagram(
+        "draw a triangle",
+        strategy="python_full",
+    )
+
+    assert captured["sandbox_timeout_seconds"] == GeometryConfig().sandbox_timeout_seconds
+    assert result.script == "p1 = point(0, 0)\n"
+    assert result.dsl is None
+    assert result.recipes is None
+    assert result.retry_count == 0
+    assert result.svg == "<svg/>"
+    assert result.input_tokens == 7
+    assert result.output_tokens == 3
+
+
+@pytest.mark.asyncio
+async def test_render_geometry_diagram_python_full_rejects_previous_dsl():
+    """previous_dsl + strategy='python_full' raises before any strategy.run call —
+    PythonFullStrategy has no stateless edit entry point."""
+    with pytest.raises(ValueError, match="previous_dsl is not supported"):
+        await render_geometry_diagram(
+            "edit it",
+            strategy="python_full",
+            previous_dsl={"mode": "abstract", "construction": []},
         )
 
 
