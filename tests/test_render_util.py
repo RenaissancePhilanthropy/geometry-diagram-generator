@@ -406,3 +406,62 @@ def test_arc_label_anchor_honors_explicit_pos():
     cx, cy, px, py, r = arc_label_anchor("arc1", sym, pos=0.0)
     assert px == pytest.approx(1.0, abs=1e-6)
     assert py == pytest.approx(0.0, abs=1e-6)
+
+
+def _elliptical_arc_sym(hr: float = 4.0, vr: float = 1.0):
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, EllipticalArcCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    return compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=hr, y=0),
+        PointFixed(id="E", x=0, y=vr),
+        EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=hr, vradius=vr, start="S", end="E"),
+    ]))
+
+
+def test_elliptical_arc_label_anchor_pos_defaults_to_the_midpoint():
+    """The elliptical analogue of test_arc_label_anchor_pos_defaults_to_the_
+    midpoint above. Unlike a circle, the anchor point is NOT at the direction
+    angle halfway between the endpoint directions (45deg here) -- it's at
+    the ellipse's own parametric midpoint t=45deg, i.e.
+    (hr*cos(45), vr*sin(45)), which for hr != vr points somewhere else
+    entirely. A naive reuse of the circular arc_label_anchor() (a single
+    radius r) would get this wrong for any hr != vr."""
+    from geometry_diagrams.ir.render_util import elliptical_arc_label_anchor
+
+    sym = _elliptical_arc_sym(hr=4.0, vr=1.0)
+    cx, cy, px, py, r = elliptical_arc_label_anchor("ea1", sym)
+    t = math.radians(45.0)
+    assert px == pytest.approx(4.0 * math.cos(t), abs=1e-6)
+    assert py == pytest.approx(1.0 * math.sin(t), abs=1e-6)
+    # Sanity: this is NOT the same as the (wrong, circle-shaped) angle you'd
+    # get from treating 45deg as the actual direction from the center.
+    wrong_angle = math.degrees(math.atan2(py - cy, px - cx))
+    assert wrong_angle != pytest.approx(45.0, abs=1.0)
+
+
+def test_elliptical_arc_label_anchor_honors_explicit_pos():
+    from geometry_diagrams.ir.render_util import elliptical_arc_label_anchor
+
+    sym = _elliptical_arc_sym(hr=4.0, vr=1.0)
+    cx, cy, px, py, r = elliptical_arc_label_anchor("ea1", sym, pos=0.0)
+    assert px == pytest.approx(4.0, abs=1e-6)
+    assert py == pytest.approx(0.0, abs=1e-6)
+
+
+def test_centroid_of_obj_handles_compiled_open_polyline():
+    """Regression test: a compiled PolylineOpen is a plain Python list of
+    sympy Points (see to_sympy.py's ir.PolylineOpen case), not an object
+    with a .vertices attribute like Polygon/Triangle -- centroid_of_obj used
+    to raise AttributeError for it."""
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, PolylineOpen
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointFixed(id="C", x=4, y=4),
+        PolylineOpen(id="poly", points=["A", "B", "C"]),
+    ]))
+    assert centroid_of_obj(sym["poly"]) == (8.0 / 3, 4.0 / 3)

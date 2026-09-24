@@ -33,6 +33,8 @@ from geometry_diagrams.ir.ir import (
     EllipseCenterAxes,
     ArcCenterStartEnd,
     SectorCenterStartEnd,
+    EllipticalArcCenterStartEnd,
+    EllipticalSectorCenterStartEnd,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import (
@@ -436,6 +438,107 @@ def test_label_segment_on_an_arc_produces_text():
             ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
         ],
         render=[LabelSegment(seg="arc1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_a_sector_produces_text():
+    """Bug: labeling a SectorCenterStartEnd silently dropped the label
+    entirely -- the arc-anchor dispatch only checked for ArcCenterStartEnd,
+    so a sector fell through to line_label_endpoints() (None) and got
+    skipped with a warning, never reaching a label placement at all."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec1", center="O", start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="sec1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_elliptical_arc_produces_text():
+    """Bug: labeling an EllipticalArcCenterStartEnd silently dropped the
+    label -- an already-shipped, documented IR capability with no working
+    label placement."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="ea1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_elliptical_sector_produces_text():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="es1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_arc_honors_pos_parameter():
+    """Bug: LabelSegment.pos was accepted but silently ignored on the
+    arc/sector/elliptical-arc placement path -- every pos value produced
+    the same midpoint-anchored label. A label at pos=0.0 (anchored near the
+    arc's start point S=(2,0)) should land at a materially different x than
+    one at pos=1.0 (anchored near the end point E=(0,2))."""
+    def _label_x(pos):
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[LabelSegment(seg="arc1", text="alpha", pos=pos)],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        texts = _findall(root, "text")
+        assert len(texts) == 1
+        return float(texts[0].get("x"))
+
+    x_start = _label_x(0.0)
+    x_end = _label_x(1.0)
+    assert x_start != pytest.approx(x_end, abs=1e-3)
+
+
+def test_label_free_text_centroid_of_an_open_polyline_does_not_crash():
+    """Regression test: a compiled PolylineOpen is a plain list of Points,
+    not an object with .vertices -- centroid_of_obj used to raise
+    AttributeError for it, escaping the retry loop entirely."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=4, y=4),
+            PolylineOpen(id="poly", points=["A", "B", "C"]),
+        ],
+        render=[LabelFreeText(text="p", centroid_of="poly")],
     )
     svg = _compile_svg(diagram)
     root = _parse(svg)
