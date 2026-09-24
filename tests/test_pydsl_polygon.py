@@ -1,7 +1,7 @@
 """Tests for the Polygon handle and polygon() op."""
 import pytest
 
-from geometry_diagrams.pydsl.api import point, polygon, polyline
+from geometry_diagrams.pydsl.api import intersection, line_through, point, polygon, polyline
 from geometry_diagrams.pydsl.builder import get_builder, new_builder_context
 
 
@@ -70,6 +70,38 @@ def test_polyline_builds_polyline_open_def():
     assert len(polyline_defs) == 1
     assert polyline_defs[0].points == [pt.id for pt in pts]
     assert pl.id == polyline_defs[0].id
+
+
+def test_polygon_area_for_unit_square():
+    with new_builder_context():
+        pts = [point(0, 0), point(1, 0), point(1, 1), point(0, 1)]
+        p = polygon(*pts)
+    assert p.area == pytest.approx(1.0)
+
+
+def test_polygon_perimeter_for_unit_square():
+    with new_builder_context():
+        pts = [point(0, 0), point(1, 0), point(1, 1), point(0, 1)]
+        p = polygon(*pts)
+    assert p.perimeter == pytest.approx(4.0)
+
+
+def test_polygon_area_and_perimeter_resolve_for_vertex_derived_from_intersection():
+    """The fourth vertex is not a literal coordinate but the intersection of
+    two lines, resolving to (0, 1) only via Point.x/.y's lazy builder
+    resolution -- confirms area/perimeter don't only work for the simplest,
+    already-literal inputs."""
+    with new_builder_context():
+        a, b, c = point(0, 0), point(1, 0), point(1, 1)
+        h1, h2 = point(-1, 1), point(2, 1)  # line y = 1
+        v1, v2 = point(0, -1), point(0, 2)  # line x = 0
+        horiz = line_through(h1, h2)
+        vert = line_through(v1, v2)
+        d = intersection(horiz, vert)  # resolves to (0, 1)
+        p = polygon(a, b, c, d)
+    # Same unit square as the concrete-vertex tests above.
+    assert p.area == pytest.approx(1.0)
+    assert p.perimeter == pytest.approx(4.0)
 
 
 def test_polyline_renders_through_real_sandbox():
