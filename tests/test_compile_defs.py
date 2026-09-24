@@ -2031,10 +2031,14 @@ class TestArcAsIntersectionOperand:
             )
 
     def test_sector_and_segment_keeps_only_the_candidate_inside_the_sweep(self):
+        """The segment spans the whole circle, so it yields TWO raw candidates
+        -- 45 deg and 225 deg. Only the first is inside the 0..90 sweep, so
+        this genuinely exercises filtering down from two, not a lucky single
+        candidate."""
         sym = _compile(
             *_unit_circle_defs(),
             SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
-            PointFixed(id="P", x=0, y=0),
+            PointFixed(id="P", x=-3, y=-3),
             PointFixed(id="Q", x=3, y=3),
             Segment(id="seg", a="P", b="Q"),
             PointIntersection(id="X", obj1="sec", obj2="seg"),
@@ -2356,7 +2360,7 @@ class TestArcBetweenConstraint:
         )
         assert approx(sym["P"].distance(sym["O"]), 2.0, tol=1e-9)
 
-    def test_same_side_constraint_refs_are_dependencies_too(self):
+    def test_not_near_constraint_refs_are_dependencies_too(self):
         """Same dependency rule, via a different SpatialConstraint member."""
         sym = _compile(
             PointFixed(id="O", x=0, y=0),
@@ -2372,6 +2376,36 @@ class TestArcBetweenConstraint:
             ])),
         )
         assert float(sym["P"].distance(sym["R"]).evalf()) >= 1.0
+
+    def test_same_side_constraint_refs_are_dependencies_too(self):
+        """SameSideConstraint is the only member with a LIST-valued id field
+        (`line`), so it's the only thing that exercises refs.py's list branch.
+        `F`/`G` (the chord's endpoints) and `REF` are all deeper in the DAG
+        than the PointOn, so a sort that ignores constraint refs compiles the
+        PointOn first and dies on a missing symbol."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            # The chord y = -1, reached only through a midpoint + a line.
+            PointFixed(id="Ca", x=-5, y=-1),
+            PointFixed(id="Cb", x=5, y=-1),
+            PointMidpoint(id="Cm", p="Ca", q="Cb"),        # (0, -1)
+            PointFixed(id="Cc", x=6, y=-1),
+            LineThrough(id="chord", p="Cm", q="Cc"),
+            PointIntersection(id="F", obj1="c", obj2="chord", pick=PickIndex(k=0)),
+            PointIntersection(id="G", obj1="c", obj2="chord", pick=PickIndex(k=1)),
+            # A reference point above that chord, also several hops deep.
+            PointFixed(id="Ua", x=0, y=16),
+            PointFixed(id="Ub", x=0, y=4),
+            PointMidpoint(id="U1", p="Ua", q="Ub"),        # (0, 10)
+            PointMidpoint(id="U2", p="U1", q="Ub"),        # (0, 7)
+            PointMidpoint(id="REF", p="U2", q="Ub"),       # (0, 5.5)
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                SameSideConstraint(line=["F", "G"], ref="REF"),
+            ])),
+        )
+        assert approx(sym["P"].distance(sym["O"]), 2.0, tol=1e-9)
+        assert float(sym["P"].y.evalf()) > -1.0   # same side of the chord as REF
 
 
 def test_sweep_membership_treats_both_endpoints_as_inside():
