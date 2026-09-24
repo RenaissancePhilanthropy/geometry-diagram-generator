@@ -60,3 +60,29 @@ def test_stub_auto_discovers_all_30_assert_predicates_with_no_stub_code_change()
         first_line = doc.splitlines()[0] if doc else ""
         assert first_line, f"{name} is missing a docstring"
         assert first_line in stub, f"missing docstring first line for {name}"
+
+
+def test_stub_documents_a_class_block_for_every_handle_in_pydsl_all():
+    """Every handle class re-exported from pydsl.__all__ must get its own
+    `class Foo:` block — Polyline was silently missing from stub.py's
+    _HANDLE_CLASS_NAMES, so Polyline.label() was invisible to any model
+    reading the stub even though the polyline() constructor was listed."""
+    import geometry_diagrams.pydsl as pydsl_module
+
+    stub = generate_stub()
+    handle_names = [
+        name for name in pydsl_module.__all__
+        if inspect.isclass(getattr(pydsl_module, name))
+    ]
+    assert "Polyline" in handle_names
+    for name in handle_names:
+        assert f"class {name}:" in stub, f"missing 'class {name}:' block in stub"
+
+
+def test_stub_documents_polyline_label_method():
+    stub = generate_stub()
+    block = stub.split("class Polyline:")[1]
+    # Everything up to the next top-level construct is Polyline's own block.
+    body = block.split("\nclass ")[0].split("\ndef ")[0]
+    assert "def label(" in body
+    assert "polyline's own centroid" in body
