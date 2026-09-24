@@ -570,3 +570,83 @@ def test_circles_tangent_fails_for_non_touching_circles():
     check = CirclesTangent(c1="c1", c2="c2")
     result = _check_one(check, sym, DEFAULT_TOL)
     assert not result.passed
+
+
+# ---------------------------------------------------------------------------
+# Contains / NotContains on arcs and sectors
+# ---------------------------------------------------------------------------
+
+class TestContainsArcOrSector:
+    """"On an arc" means on its curved edge, within its angular sweep."""
+
+    def _sym(self, *, reflex=False, sector=False, elliptical=False):
+        """Arc/sector of radius 2 about the origin, from 0 deg to 90 deg."""
+        from geometry_diagrams.ir.ir import (
+            ArcCenterStartEnd, SectorCenterStartEnd, EllipticalArcCenterStartEnd,
+            DiagramIR, PointFixed,
+        )
+        from geometry_diagrams.ir.to_sympy import compile_defs
+
+        root2 = 2 ** 0.5
+        if elliptical:
+            curve = EllipticalArcCenterStartEnd(
+                id="a", center="O", hradius=4, vradius=2, start="ES", end="E"
+            )
+        elif sector:
+            curve = SectorCenterStartEnd(id="a", center="O", start="S", end="E", reflex=reflex)
+        else:
+            curve = ArcCenterStartEnd(id="a", center="O", start="S", end="E", reflex=reflex)
+        return compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),      # 0 deg, on the circle
+            PointFixed(id="ES", x=4, y=0),     # 0 deg, on the ellipse
+            PointFixed(id="E", x=0, y=2),      # 90 deg, on the circle
+            PointFixed(id="IN", x=root2, y=root2),      # 45 deg, on the circle
+            PointFixed(id="OUT", x=-root2, y=-root2),   # 225 deg, on the circle
+            PointFixed(id="NEAR", x=1, y=1),   # 45 deg, but inside the circle
+            curve,
+        ]))
+
+    def _contains(self, point_id, **kwargs):
+        from geometry_diagrams.ir.ir import Contains
+        return _check_one(Contains(p=point_id, obj="a"), self._sym(**kwargs), DEFAULT_TOL)
+
+    def test_point_on_the_curved_edge_inside_the_sweep_is_contained(self):
+        result = self._contains("IN")
+        assert result.passed
+        assert result.message == ""
+
+    def test_point_on_the_circle_but_outside_the_sweep_is_not_contained(self):
+        result = self._contains("OUT")
+        assert not result.passed
+        assert "'a'" in result.message and "'OUT'" in result.message
+
+    def test_point_exactly_on_a_sweep_endpoint_is_contained(self):
+        assert self._contains("S").passed
+        assert self._contains("E").passed
+
+    def test_point_at_the_right_angle_but_the_wrong_radius_is_not_contained(self):
+        assert not self._contains("NEAR").passed
+
+    def test_a_reflex_arc_contains_the_points_of_its_major_sweep(self):
+        assert self._contains("OUT", reflex=True).passed
+        assert not self._contains("IN", reflex=True).passed
+
+    def test_a_sector_contains_its_curved_edge_only(self):
+        assert self._contains("IN", sector=True).passed
+        # The centre and the interior belong to the region, not to the curve
+        assert not self._contains("O", sector=True).passed
+        assert not self._contains("NEAR", sector=True).passed
+        assert not self._contains("OUT", sector=True).passed
+
+    def test_not_contains_passes_for_a_point_outside_the_sweep(self):
+        from geometry_diagrams.ir.ir import NotContains
+        result = _check_one(NotContains(p="OUT", obj="a"), self._sym(), DEFAULT_TOL)
+        assert result.passed
+
+    def test_elliptical_arc_is_rejected_by_name(self):
+        """A deliberate, named rejection -- not an AttributeError leaking through."""
+        result = self._contains("ES", elliptical=True)
+        assert not result.passed
+        assert "EllipticalArc" in result.message
+        assert "circular arcs" in result.message

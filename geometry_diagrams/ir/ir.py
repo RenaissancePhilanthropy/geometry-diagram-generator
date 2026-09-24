@@ -87,8 +87,10 @@ class NotNearConstraint(SpatialConstraintBase):
 
 class ArcBetweenConstraint(SpatialConstraintBase):
     """For circles: point must be on the arc from from_point to to_point (CCW).
-    NOTE: enforcement is not yet implemented — accepted in schema but currently no-ops.
-    Do NOT document this constraint to the LLM until it is implemented."""
+
+    `from_point`/`to_point` are points on the circle's boundary; the sampled
+    point is restricted to the counter-clockwise sweep between them (endpoints
+    included), not to whichever of the two arcs is shorter."""
     kind: Literal["arc_between"] = "arc_between"
     from_point: PointId
     to_point: PointId

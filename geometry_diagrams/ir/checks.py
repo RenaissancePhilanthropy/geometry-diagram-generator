@@ -7,8 +7,11 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .render_util import arc_params
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
+from .render_util import arc_params, arc_params_of
+from .to_sympy import (
+    Arc, EllipticalArc, EllipticalSector, Sector, SymTable,
+    angle_about_deg, angle_within_sweep,
+)
 
 
 DEFAULT_TOL = 5e-3
@@ -326,6 +329,20 @@ def _to_bool(expr: Any) -> bool:
 
 def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
     """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
+    if isinstance(obj, (EllipticalArc, EllipticalSector)):
+        raise TypeError(
+            f"{type(obj).__name__} (elliptical arc/sector) is not supported as a "
+            f"containment operand; only circular arcs/sectors are"
+        )
+    if isinstance(obj, (Arc, Sector)):
+        # "On" an arc/sector means on its curved edge: at the right radius from
+        # the center AND within the sweep. A sector's two straight radii and its
+        # filled interior are deliberately not part of this — they are available
+        # as ordinary segments from its center to its start/end points.
+        cx, cy, r, start_deg, end_deg, _sx, _sy = arc_params_of(obj)
+        if abs(float(point.distance(obj.center).evalf()) - r) >= tol:
+            return False
+        return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
     if isinstance(obj, spg.Circle):
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())

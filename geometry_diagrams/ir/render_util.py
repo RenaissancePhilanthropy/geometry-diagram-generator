@@ -334,13 +334,22 @@ def arc_params(
 ) -> tuple[float, float, float, float, float, float, float]:
     """Return (cx, cy, r, start_deg, end_deg, sx, sy) for the given arc id.
 
+    See ``arc_params_of()`` for the meaning of each element.
+    """
+    return arc_params_of(sym[arc_id])
+
+
+def arc_params_of(
+    arc: Any,
+) -> tuple[float, float, float, float, float, float, float]:
+    """Return (cx, cy, r, start_deg, end_deg, sx, sy) for the given Arc/Sector.
+
     - ``start_deg`` / ``end_deg`` delimit a math-CCW sweep (end_deg > start_deg).
     - The magnitude ``end_deg - start_deg`` is ≤180° when ``reflex=False``
       (minor arc, the default) and >180° when ``reflex=True``.
     - ``sx``, ``sy`` are the Cartesian coordinates of the returned start point
       (may be swapped relative to the IR's ``start`` to satisfy the above).
     """
-    arc = sym[arc_id]
     cx = sympy_to_float(arc.center.x)
     cy = sympy_to_float(arc.center.y)
     sx = sympy_to_float(arc.start.x)

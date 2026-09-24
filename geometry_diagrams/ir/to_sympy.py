@@ -23,6 +23,13 @@ SymTable = dict[str, Any]
 # circle. Anything larger is a contradiction, not floating-point noise.
 CIRCLE_TANGENT_TOL = 1e-6
 
+# Angular slack (in degrees) allowed when deciding whether a point lies within
+# an arc's/sector's sweep, so that a point landing exactly on a sweep endpoint
+# counts as inside despite floating-point noise. Shared by the intersection
+# sweep filter here and by checks.py's containment test, so the two can never
+# disagree about a boundary point.
+SWEEP_TOL_DEG = 1e-6
+
 
 class Arc:
     """Marker type for a circular arc in the symbol table.
@@ -130,6 +137,73 @@ class EllipticalSector:
             f"EllipticalSector(center={self.center}, start={self.start}, end={self.end}, "
             f"hradius={self.hradius}, vradius={self.vradius}, reflex={self.reflex})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Angular sweep helpers (shared with checks.py)
+# ---------------------------------------------------------------------------
+
+def angle_about_deg(point: spg.Point, cx: float, cy: float) -> float:
+    """Polar angle of `point` about the center (cx, cy), in [0, 360)."""
+    px, py = float(point.x.evalf()), float(point.y.evalf())
+    return math.degrees(math.atan2(py - cy, px - cx)) % 360.0
+
+
+def angle_within_sweep(
+    theta_deg: float,
+    start_deg: float,
+    end_deg: float,
+    tol_deg: float = SWEEP_TOL_DEG,
+) -> bool:
+    """Is `theta_deg` inside the counter-clockwise sweep `start_deg` → `end_deg`?
+
+    Both endpoints count as inside (within `tol_deg`). `end_deg` must already be
+    unwrapped so that ``start_deg < end_deg <= start_deg + 360`` — exactly the
+    form ``render_util.arc_params()`` returns.
+    """
+    span = end_deg - start_deg
+    offset = (theta_deg - start_deg) % 360.0
+    return offset <= span + tol_deg or offset >= 360.0 - tol_deg
+
+
+def _arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
+    """Return (cx, cy, start_deg, end_deg) for a circular arc/sector's CCW sweep.
+
+    Mirrors ``render_util.arc_params()``'s reflex handling — including the
+    endpoint swap that makes the traversal counter-clockwise — but is duplicated
+    here deliberately: ``render_util`` imports this module for the Arc/Sector
+    marker types, so importing it back would be a circular import.
+    """
+    cx = float(arc.center.x.evalf())
+    cy = float(arc.center.y.evalf())
+    s_deg = angle_about_deg(arc.start, cx, cy)
+    e_deg = angle_about_deg(arc.end, cx, cy)
+    ccw = (e_deg - s_deg) % 360.0
+    if ccw == 0:
+        ccw = 360.0
+    # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
+    if (ccw <= 180.0) == bool(arc.reflex):
+        s_deg, e_deg = e_deg, s_deg
+    if e_deg <= s_deg:
+        e_deg += 360.0
+    return (cx, cy, s_deg, e_deg)
+
+
+def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
+    """Does `point` fall within the angular sweep of a circular arc/sector?"""
+    cx, cy, start_deg, end_deg = _arc_sweep_degrees(arc)
+    return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
+
+
+def _underlying_circle(obj: Any) -> Any:
+    """Substitute the full underlying circle for a circular arc/sector.
+
+    Any other object is returned unchanged, so callers can run the ordinary
+    SymPy intersection machinery over the result.
+    """
+    if isinstance(obj, (Arc, Sector)):
+        return spg.Circle(obj.center, obj.radius)
+    return obj
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +432,19 @@ def _compile_one(
             if obj1_id == obj2_id:
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
+            operands = ((obj1_id, obj1), (obj2_id, obj2))
+            for oid, operand in operands:
+                if isinstance(operand, (EllipticalArc, EllipticalSector)):
+                    raise IRCompileError(
+                        did,
+                        f"point_intersection: {oid!r} is an elliptical arc/sector "
+                        f"({type(operand).__name__}); only circular arcs/sectors can be "
+                        f"intersected — intersect the underlying ellipse instead"
+                    )
+            # A circular arc/sector intersects exactly where its underlying full
+            # circle does; the candidates are narrowed to its sweep below.
+            swept = [(oid, o) for oid, o in operands if isinstance(o, (Arc, Sector))]
+            obj1, obj2 = _underlying_circle(obj1), _underlying_circle(obj2)
             try:
                 raw = obj1.intersection(obj2)
             except ValueError as exc:
@@ -375,6 +462,21 @@ def _compile_one(
             points = [c for c in candidates if isinstance(c, spg.Point)]
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
+            if swept:
+                within = [
+                    p for p in points
+                    if all(_point_within_arc_sweep(p, arc) for _, arc in swept)
+                ]
+                if not within:
+                    which = " and ".join(repr(oid) for oid, _ in swept)
+                    raise IntersectionError(
+                        did,
+                        f"{obj1_id!r} and {obj2_id!r} meet outside the sweep of {which}: "
+                        f"the underlying circle(s) do intersect, but no intersection point "
+                        f"lies on the drawn part of the arc/sector — widen the sweep, or "
+                        f"intersect the full circle instead"
+                    )
+                points = within
             return _apply_pick(points, pick, sym, did, canvas=canvas)
 
         case ir.PointAlias(ref=ref_id):
@@ -1269,7 +1371,7 @@ def _point_on_intent(
         candidate = _eval_param(obj, t, def_id)
         ok = True
         for c in constraints:
-            if not _check_spatial_constraint(c, candidate, sym):
+            if not _check_spatial_constraint(c, candidate, sym, obj):
                 constraint_failures[c.kind] = constraint_failures.get(c.kind, 0) + 1
                 ok = False
                 break
@@ -1287,7 +1389,10 @@ def _check_spatial_constraint(
     constraint: ir.SpatialConstraint,
     candidate: spg.Point,
     sym: SymTable,
+    obj: Any,
 ) -> bool:
+    """Does `candidate` satisfy `constraint`? `obj` is the object it was sampled
+    on — ArcBetweenConstraint needs its center to measure angles from."""
     match constraint:
         case ir.SameSideConstraint(line=line_pts, ref=ref_id):
             a, b, ref = sym[line_pts[0]], sym[line_pts[1]], sym[ref_id]
@@ -1299,8 +1404,18 @@ def _check_spatial_constraint(
             ref_pt = sym[pt_id]
             return float(candidate.distance(ref_pt).evalf()) >= min_d
 
-        case ir.ArcBetweenConstraint():
-            return True  # TODO: implement full arc check
+        case ir.ArcBetweenConstraint(from_point=from_id, to_point=to_id):
+            center = getattr(obj, "center", None)
+            if center is None:
+                # Only meaningful on a circle: without a center there are no
+                # angles to compare, so the constraint restricts nothing.
+                return True
+            cx, cy = float(center.x.evalf()), float(center.y.evalf())
+            start_deg = angle_about_deg(sym[from_id], cx, cy)
+            end_deg = angle_about_deg(sym[to_id], cx, cy)
+            if end_deg <= start_deg:
+                end_deg += 360.0  # unwrap to a CCW sweep, as _arc_sweep_degrees does
+            return angle_within_sweep(angle_about_deg(candidate, cx, cy), start_deg, end_deg)
 
         case ir.BeyondConstraint():
             return True  # TODO: implement for segment parameterization
