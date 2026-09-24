@@ -478,6 +478,17 @@ distance from segment[0].
   "alternate_exterior" pair to tick-mark them as equal — do NOT also add
   mark_angle entries for the same angles; mark_angle_pair already emits both.
 
+### mark_arcs — congruence ticks on an arc's curved edge
+  {"kind":"mark_arcs", "arcs":["arc1"], "group":1}
+  Radial tick marks across one or more already-defined "arc"/"sector" ids
+  (for a sector, ticks land on its curved edge only, never its two radii).
+  "group" shares mark_equal_lengths' group namespace: mark a chord and an
+  arc with the SAME group number to tick-mark them as congruent to each
+  other, e.g. a chord's endpoints subtending a marked arc.
+    {"kind":"mark_equal_lengths", "segments":[["A","B"]], "group":1}
+    {"kind":"mark_arcs", "arcs":["arc1"], "group":1}
+  Elliptical arcs/sectors are not supported (skipped with a warning).
+
 ### annotations.labels — explicit text callouts
   {"kind":"label_segment", "endpoints":["A","B"], "text":"c"}
       Text beside midpoint of segment AB (side lengths, etc.)
@@ -489,6 +500,15 @@ distance from segment[0].
       Append the point's compiled (x, y) coordinates to the label text.
       Useful for coordinate geometry problems. Combine with axes:true on
       the canvas for full coordinate-plane diagrams.
+  {"kind":"label_along_arc", "arc":"arc1", "text":"60 degrees"}
+      Text that follows an already-defined "arc"/"sector" id's curve, one
+      rotated glyph at a time — unlike label_segment's arc handling, which
+      places a single upright label near the arc's midpoint. Optional:
+      side ("outside" default | "inside"), pos (0-1 fraction along the
+      sweep, default 0.5), flip (null default auto-orients glyphs upright;
+      true/false forces the orientation). For a sector, follows its curved
+      edge only. A text with LaTeX/sub/superscripts falls back to a single
+      unrotated label at the arc anchor.
 
 Label objects do NOT take a "visible" field (that's a construction-op-only field).
 To hide a point's label, either set visible:false on the point's own construction

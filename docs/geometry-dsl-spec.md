@@ -563,18 +563,22 @@ Same grouping logic as equal lengths.
 
 #### `mark_arcs`
 
-> **Note:** this op has no recipe DSL or pydsl surface yet — it exists only
-> as the IR-level render op `ir.MarkArcs` (see
-> `geometry_diagrams/ir/ir.py`).
-
 Mark a circular arc (or a sector's curved edge) with radial tick marks, the
 arc-space counterpart of `mark_equal_lengths`.
+
+The IR-level render op is `ir.MarkArcs` (see `geometry_diagrams/ir/ir.py`),
+with `arcs`, `group`, `ticks` fields as below. The recipe DSL surface
+(`geometry_diagrams.recipe.dsl.MarkArcs`, `{"kind": "mark_arcs", ...}` in
+`annotations.marks`) exposes `arcs` and `group` only — `ticks` (an explicit,
+uncapped count) is IR/renderer-only, same as `mark_equal_lengths`. The
+pydsl surface (`geometry_diagrams.pydsl.api.mark_equal`) dispatches to this
+op automatically when passed a curved handle.
 
 | Field   | Type          | Description                                    |
 |---------|---------------|-------------------------------------------------|
 | `arcs`  | array         | Already-defined `arc_center_start_end` or `sector_center_start_end` ids |
 | `group` | string        | Shared with `ir.MarkSegments`'s `group` namespace — see note above |
-| `ticks` | integer       | Explicit tick count, no upper bound            |
+| `ticks` | integer       | Explicit tick count, no upper bound (IR/renderer-only) |
 
 For a `sector_center_start_end`, ticks go on its curved edge only, never on
 either of its two straight radii. Elliptical variants
@@ -617,9 +621,11 @@ Add a text label to a circle.
 
 #### `label_along_arc`
 
-> **Note:** this op has no recipe DSL or pydsl surface yet — it exists only
-> as the IR-level render op `ir.LabelAlongArc` (see
-> `geometry_diagrams/ir/ir.py`).
+> **Note:** this op has no pydsl surface yet — it exists as the IR-level
+> render op `ir.LabelAlongArc` (see `geometry_diagrams/ir/ir.py`) and, as of
+> this DSL surface, as `geometry_diagrams.recipe.dsl.LabelAlongArc`
+> (`{"kind": "label_along_arc", ...}` in `annotations.labels`), a close-to-
+> pure field passthrough — the fields below are identical to `ir.LabelAlongArc`'s.
 
 Text laid out along a circular arc (or a sector's curved edge), one rotated
 glyph at a time — distinct from `label_segment`'s existing arc handling,

@@ -1039,8 +1039,26 @@ class LabelAngle(BaseModel):
         return self
 
 
+class MarkArcs(BaseModel):
+    """Mark congruence tick marks across one or more already-defined arcs.
+
+    Mirrors ``mark_equal_lengths`` field-for-field, but on arcs instead of
+    segments, and SHARES ITS `group` NAMESPACE the same plain way (a bare
+    stringified group number, NOT the "parallel_N"-style prefixed
+    convention ``mark_parallel``/``mark_proportional`` use) — this is what
+    lets a segment marked equal via ``mark_equal_lengths`` and an arc marked
+    equal via ``mark_arcs`` in the same group actually render the same tick
+    count. ``arcs`` names one or more already-defined ``arc`` or ``sector``
+    ids; for a sector the ticks land on its curved edge only.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["mark_arcs"] = "mark_arcs"
+    arcs: list[str]   # already-defined arc/sector ids
+    group: Optional[int] = None
+
+
 AnnotationMark = Annotated[
-    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair],
+    Union[MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair, MarkArcs],
     Field(discriminator="kind")
 ]
 
@@ -1143,8 +1161,32 @@ class LabelFreeText(BaseModel):
         return self
 
 
+class LabelAlongArc(BaseModel):
+    """Text laid out along an already-defined circular arc, one rotated
+    glyph at a time — distinct from ``label_segment``'s existing arc
+    handling, which places a single upright label near the arc's midpoint.
+
+    Close-to-pure field passthrough to ``ir.LabelAlongArc``: ``side``,
+    ``pos``, and ``flip`` carry the same defaults the render op itself
+    already has. ``arc`` names an already-defined ``arc`` or ``sector`` id;
+    for a sector the text follows its curved edge only.
+
+    Examples::
+
+        {"kind": "label_along_arc", "arc": "arc1", "text": "60 degrees"}
+        {"kind": "label_along_arc", "arc": "arc1", "text": "R", "side": "inside", "pos": 0.25}
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["label_along_arc"] = "label_along_arc"
+    arc: str
+    text: str
+    side: Literal["outside", "inside"] = "outside"
+    pos: float = 0.5
+    flip: Optional[bool] = None
+
+
 AnnotationLabel = Annotated[
-    Union[LabelSegment, LabelPoint, LabelAngle, LabelFreeText],
+    Union[LabelSegment, LabelPoint, LabelAngle, LabelFreeText, LabelAlongArc],
     Field(discriminator="kind")
 ]
 

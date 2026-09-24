@@ -24,8 +24,9 @@ from ..ir.ir import (
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual, PendingAnglePair,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
-    MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
+    MarkAngles, MarkSegments, MarkArcs as IRMarkArcs, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
+    LabelAlongArc as IRLabelAlongArc,
     RenderOp, DefStmt, PickRule,
 )
 from .dsl import (
@@ -39,10 +40,12 @@ from .dsl import (
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair,
+    MarkArcs as DSLMarkArcs,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
     LabelFreeText as DSLLabelFreeText,
+    LabelAlongArc as DSLLabelAlongArc,
     DrawObj,
 )
 from .solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
@@ -1102,6 +1105,13 @@ class _Lowerer:
                     ray_ref_v2=mark.rays_along[1],
                     group=str(mark.group) if mark.group is not None else None,
                 ))
+            elif isinstance(mark, DSLMarkArcs):
+                # Same plain stringification as mark_equal_lengths — NOT
+                # mark_parallel's "parallel_N" prefixed convention — so a
+                # shared group number here actually joins ir.MarkArcs into
+                # ir.MarkSegments' group namespace.
+                group_str = str(mark.group) if mark.group is not None else None
+                self._renders.append(IRMarkArcs(arcs=list(mark.arcs), group=group_str))
 
         # Cross-entry proportionality: all mark_proportional entries claim the
         # same ratio.  e.g. [AB,DE], [BC,EF], [AC,DF] → AB/DE == BC/EF == AC/DF.
@@ -1151,6 +1161,14 @@ class _Lowerer:
                     text=label.text,
                     at=label.at,
                     centroid_of=label.centroid_of,
+                ))
+            elif isinstance(label, DSLLabelAlongArc):
+                self._renders.append(IRLabelAlongArc(
+                    arc=label.arc,
+                    text=label.text,
+                    side=label.side,
+                    pos=label.pos,
+                    flip=label.flip,
                 ))
 
         # Explicit draws (with optional per-element styles)
