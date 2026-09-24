@@ -87,8 +87,10 @@ class NotNearConstraint(SpatialConstraintBase):
 
 class ArcBetweenConstraint(SpatialConstraintBase):
     """For circles: point must be on the arc from from_point to to_point (CCW).
-    NOTE: enforcement is not yet implemented — accepted in schema but currently no-ops.
-    Do NOT document this constraint to the LLM until it is implemented."""
+
+    `from_point`/`to_point` are points on the circle's boundary; the sampled
+    point is restricted to the counter-clockwise sweep between them (endpoints
+    included), not to whichever of the two arcs is shorter."""
     kind: Literal["arc_between"] = "arc_between"
     from_point: PointId
     to_point: PointId
@@ -313,6 +315,53 @@ class CircleThrough3(DefBase):
     a: PointId
     b: PointId
     c: PointId
+
+
+def tangent_circle_center_id(def_id: str) -> str:
+    """The derived id under which CircleTangentAt registers its computed center.
+
+    Single source of truth for the convention, so the compiler, later
+    definitions and tests all agree on the name.
+    """
+    return f"{def_id}_center"
+
+
+class CircleTangentAt(DefBase):
+    """Circle of the given `radius`, tangent to `circle` at the boundary point `point`.
+
+    `point` must already lie on `circle` (validated at compile time — an
+    off-circle point is a contradiction, not something to reinterpret). The
+    new circle's center is placed on the line from `circle`'s center through
+    `point`, at whichever distance makes the two circles tangent:
+
+    - ``tangency="external"``: the circles touch from opposite sides, their
+      centers ``r_ref + radius`` apart — the new circle sits outside the
+      reference one.
+    - ``tangency="internal"``: the circles touch from the same side, their
+      centers ``|r_ref - radius|`` apart. ``radius < r_ref`` nests the new
+      circle inside the reference one; ``radius > r_ref`` makes it enclose the
+      reference one instead. ``radius == r_ref`` is rejected — it would
+      reproduce the reference circle exactly.
+
+    `circle` must be a genuine circle; an ellipse is rejected.
+
+    The computed center is registered as its own referenceable point under
+    ``{id}_center`` (see `tangent_circle_center_id`), so later definitions can
+    address it directly — e.g. to join the two centers or drop a radius.
+    """
+    kind: Literal["circle_tangent_at"] = "circle_tangent_at"
+    circle: CircleId
+    point: PointId  # tangency point; must lie on `circle`
+    radius: Union[int, float, str]
+    tangency: Literal["external", "internal"] = "external"
+
+    @model_validator(mode="after")
+    def _check_radius_positive(self) -> "CircleTangentAt":
+        # String radii are expressions resolved later; the compiler re-checks
+        # the evaluated value.
+        if isinstance(self.radius, (int, float)) and self.radius <= 0:
+            raise ValueError(f"circle_tangent_at: 'radius' must be positive, got {self.radius}")
+        return self
 
 
 class ArcCenterStartEnd(DefBase):
@@ -615,7 +664,7 @@ DefStmt = Annotated[
         Segment, Ray,
         LineThrough, LineParallelThrough, LinePerpendicularThrough,
         LineAngleBisector, LineTangent,
-        CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+        CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt,
         ArcCenterStartEnd,
         SectorCenterStartEnd,
         EllipticalArcCenterStartEnd,
@@ -823,16 +872,80 @@ class CongruentTriangles(CheckBase):
     t2: TriangleId
 
 
+class EqualRadius(CheckBase):
+    """All listed circles have the same radius. Mirrors EqualLength, but for
+    circle radii rather than segment lengths — a shared check would force a
+    model to guess which concept it means."""
+    kind: Literal["equal_radius"] = "equal_radius"
+    circles: List[CircleId]  # 2+
+
+    @model_validator(mode="after")
+    def _check_min_two_circles(self) -> "EqualRadius":
+        if len(self.circles) < 2:
+            raise ValueError("equal_radius: requires at least two circles")
+        return self
+
+
+class RadiusEquals(CheckBase):
+    """A circle's radius equals an expected value. Same relative-tolerance
+    convention as DistanceEquals: |actual - expected| < tol * max(expected, 1.0).
+    """
+    kind: Literal["radius_equals"] = "radius_equals"
+    circle: CircleId
+    expected: float
+
+
+class CongruentArcs(CheckBase):
+    """Two or more circular arcs/sectors are congruent: equal radius AND equal
+    central-angle sweep. The sweep comparison is reflex-aware — a minor arc
+    and a reflex arc sharing the same two endpoints are not congruent. `tol`
+    applies to the radius term in length units and to the sweep term in
+    radians. Arcs must be circular (`arc_center_start_end` /
+    `sector_center_start_end`); an elliptical arc/sector is rejected with a
+    clear error rather than an opaque attribute error.
+    """
+    kind: Literal["congruent_arcs"] = "congruent_arcs"
+    arcs: List[ObjId]  # 2+
+
+    @model_validator(mode="after")
+    def _check_min_two_arcs(self) -> "CongruentArcs":
+        if len(self.arcs) < 2:
+            raise ValueError("congruent_arcs: requires at least two arcs")
+        return self
+
+
+class AngleValue(CheckBase):
+    """Angle a-o-b equals an expected absolute value, in degrees. Complements
+    AngleEqual, which only compares two angles to each other, never to an
+    absolute value."""
+    kind: Literal["angle_value"] = "angle_value"
+    angle: AngleSpec
+    expected_deg: float
+
+
+class CirclesTangent(CheckBase):
+    """Two circles are tangent to each other: externally (centers separated by
+    the sum of the radii) or internally (centers separated by the difference
+    of the radii). Distinct from Tangent, whose `line` field is explicitly a
+    line/segment/ray tangent to a circle. Two identical circles (same center,
+    same radius) are not considered tangent.
+    """
+    kind: Literal["circles_tangent"] = "circles_tangent"
+    c1: CircleId
+    c2: CircleId
+
+
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
         NonCollinear, Collinear,
         Contains, NotContains,
         Parallel, NotParallel, Perpendicular,
-        RightAngle, AngleEqual,
+        RightAngle, AngleEqual, AngleValue,
         EqualLength, DistanceEquals, RatioEqual,
-        SimilarTriangles, CongruentTriangles,
-        Tangent,
+        EqualRadius, RadiusEquals,
+        SimilarTriangles, CongruentTriangles, CongruentArcs,
+        Tangent, CirclesTangent,
         OppositeSide, SameSide,
         Centroid,
         Convex, CCW, MinDistance,

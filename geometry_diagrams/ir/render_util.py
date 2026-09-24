@@ -64,6 +64,12 @@ def centroid_of_obj(obj: Any) -> tuple[float, float]:
         pts = [obj.center]
     elif isinstance(obj, LinearEntity):
         pts = [obj.p1, obj.p2]
+    elif isinstance(obj, list):
+        # A compiled PolylineOpen (to_sympy.py's ir.PolylineOpen case) is a
+        # plain list of Points, not an object with .vertices -- this used to
+        # raise AttributeError, same failure mode as the other marker types
+        # above.
+        pts = obj
     else:
         pts = list(obj.vertices)
     cx = sum(sympy_to_float(p.x) for p in pts) / len(pts)
@@ -89,8 +95,8 @@ def synthesize_helpers(
 
     Returns a dict of helper-name → (x, y).  Helpers are:
     - ``_lp_{id}`` — second anchor for non-LineThrough line types
-    - ``_rt_{id}`` — through-point for CircleCenterRadius
-    - ``_cc_{id}`` — center for CircleThrough3
+    - ``_rt_{id}`` — through-point for CircleCenterRadius / CircleTangentAt
+    - ``_cc_{id}`` — center for CircleThrough3 / CircleTangentAt
     """
     helpers: dict[str, tuple[float, float]] = {}
     for stmt in diagram.define:
@@ -114,6 +120,14 @@ def synthesize_helpers(
                 sympy_to_float(circ.center.x),
                 sympy_to_float(circ.center.y),
             )
+        elif isinstance(stmt, ir.CircleTangentAt):
+            # Neither the center nor any point at radius distance is named by
+            # the statement itself, so synthesize both from the compiled circle.
+            circ = sym[stmt.id]
+            cx = sympy_to_float(circ.center.x)
+            cy = sympy_to_float(circ.center.y)
+            helpers[f"_cc_{stmt.id}"] = (cx, cy)
+            helpers[f"_rt_{stmt.id}"] = (cx + sympy_to_float(circ.radius), cy)
         elif isinstance(stmt, (ir.EllipseCenterAxes, ir.EllipseBBox, ir.EllipseFoci, ir.EllipseCenterEccentricity)):
             ell = sym[stmt.id]
             helpers[f"_ec_{stmt.id}"] = (
@@ -149,10 +163,15 @@ def poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
 
 
 def seg_endpoints(seg_id: str, stmt_by_id: dict) -> tuple[str, str]:
-    """Return (a, b) endpoint IDs for a Segment DefStmt."""
+    """Return (a, b) endpoint IDs for a Segment or Ray DefStmt — a Ray has
+    the same a/b point-id fields as a Segment (a, extending through and
+    beyond b), so it resolves the same way. Used by both rendering
+    backends' MarkSegments handling, which is why a ray marked equal/
+    parallel/proportional to a segment must resolve here instead of
+    raising."""
     stmt = stmt_by_id[seg_id]
-    if not isinstance(stmt, ir.Segment):
-        raise ValueError(f"Expected Segment def for {seg_id!r}, got {stmt.kind!r}")
+    if not isinstance(stmt, (ir.Segment, ir.Ray)):
+        raise ValueError(f"Expected Segment or Ray def for {seg_id!r}, got {stmt.kind!r}")
     return stmt.a, stmt.b
 
 
@@ -221,6 +240,65 @@ def arc_label_anchor(
     return cx, cy, cx + r * math.cos(anchor_rad), cy + r * math.sin(anchor_rad), r
 
 
+def elliptical_arc_label_anchor(
+    arc_id: str, sym: "SymTable", pos: float = 0.5
+) -> tuple[float, float, float, float, float]:
+    """The elliptical-arc analogue of arc_label_anchor(), for a compiled
+    EllipticalArc/EllipticalSector. Returns (cx, cy, px, py, r): the arc's
+    center, the point on the arc itself at fractional position ``pos`` along
+    its CCW sweep, and the center-to-point distance at that position (not a
+    true radius -- an ellipse's boundary distance from its center varies by
+    angle -- but usable the same way arc_label_anchor()'s r is, to scale a
+    caller's offset proportionally to the curve's local size).
+
+    An ellipse's true outward normal at a boundary point generally isn't the
+    same as the center-to-point direction (they only coincide at the four
+    axis vertices) -- computing the exact normal would need the ellipse's
+    gradient at that point. This accepts the same center-to-point
+    approximation arc_label_anchor()'s own docstring already accepts for the
+    circular case, rather than adding an exact calculation only this one
+    caller would need.
+
+    Cannot delegate to arc_label_anchor(): that function's anchor point is
+    cx + r*cos/sin(angle) for a single radius r, which is only correct when
+    hradius == vradius. This instead evaluates the ellipse's own parametric
+    form (hr*cos(t), vr*sin(t)) at the interpolated parametric angle t that
+    elliptical_arc_params() recovers."""
+    cx, cy, hr, vr, start_deg, end_deg, _sx, _sy = elliptical_arc_params(arc_id, sym)
+    t = math.radians(start_deg + pos * (end_deg - start_deg))
+    px = cx + hr * math.cos(t)
+    py = cy + vr * math.sin(t)
+    r = math.hypot(px - cx, py - cy)
+    return cx, cy, px, py, r
+
+
+def label_segment_arc_anchor(
+    seg_id: str,
+    stmt_by_id: dict,
+    sym: "SymTable",
+    pos: "float | None",
+) -> "tuple[float, float, float, float, float] | None":
+    """Return the (cx, cy, px, py, r) label anchor for seg_id if it names a
+    circular or elliptical arc/sector def, honoring an explicit
+    LabelSegment.pos (None defaults to the midpoint, 0.5) -- the arc-family
+    counterpart of line_label_endpoints(). Returns None for any other def
+    kind (the caller should fall back to line_label_endpoints() instead).
+
+    Shared by to_svg.py and to_tikz.py so their LabelSegment dispatch agrees
+    on exactly which def kinds route to radial-offset placement instead of
+    the straight-line midpoint+perpendicular-offset scheme -- previously
+    each backend re-implemented (and under-implemented) this check itself,
+    each only recognizing ArcCenterStartEnd and silently dropping the label
+    for a sector or an elliptical arc/sector."""
+    stmt = stmt_by_id[seg_id]
+    p = 0.5 if pos is None else pos
+    if isinstance(stmt, (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
+        return arc_label_anchor(seg_id, sym, pos=p)
+    if isinstance(stmt, (ir.EllipticalArcCenterStartEnd, ir.EllipticalSectorCenterStartEnd)):
+        return elliptical_arc_label_anchor(seg_id, sym, pos=p)
+    return None
+
+
 def circle_center_through(
     circle_id: str,
     stmt_by_id: dict,
@@ -235,6 +313,8 @@ def circle_center_through(
             return c, f"_rt_{circle_id}"
         case ir.CircleThrough3(a=a):
             return f"_cc_{circle_id}", a
+        case ir.CircleTangentAt():
+            return f"_cc_{circle_id}", f"_rt_{circle_id}"
         case _:
             raise ValueError(f"Unknown circle def kind {stmt.kind!r}")
 

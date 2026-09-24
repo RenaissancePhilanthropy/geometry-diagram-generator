@@ -281,7 +281,7 @@ def test_tangent_line_from_point_no_pick_records_pick_none():
         from geometry_diagrams.ir.ir import CircleCenterRadius
         builder._add(CircleCenterRadius(id="c1", center=circ_center.id, radius=1.0))
         from geometry_diagrams.pydsl.handles import Circle
-        circ = Circle(id="c1", center=circ_center, _radius_thunk=lambda: 1.0)
+        circ = Circle(id="c1", center=circ_center, _radius_thunk=lambda: 1.0, _builder=builder)
         result = tangent_line(circ, from_point=far)
         ir = builder.build()
     defs = [d for d in ir.define if isinstance(d, LineTangent) and d.id == result.id]
@@ -308,7 +308,7 @@ def test_tangent_line_from_point_near_and_side_of_validation_matches_intersectio
         from geometry_diagrams.ir.ir import CircleCenterRadius
         builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
         from geometry_diagrams.pydsl.handles import Circle
-        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0, _builder=builder)
         far = point(3, 0)
         ref = point(0, 5)
         s1, s2 = point(0, 0), point(1, 0)
@@ -332,7 +332,7 @@ def test_tangent_line_from_point_no_pick_two_tangents_raises_at_compile_time():
         from geometry_diagrams.ir.ir import CircleCenterRadius
         builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
         from geometry_diagrams.pydsl.handles import Circle
-        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0, _builder=builder)
         far = point(3, 0)
         tangent_line(circ, from_point=far)  # no pick -> ambiguous (2 tangents)
         ir = builder.build()
@@ -350,7 +350,7 @@ def test_tangent_line_near_selects_geometrically_correct_tangent():
         from geometry_diagrams.ir.ir import CircleCenterRadius
         builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
         from geometry_diagrams.pydsl.handles import Circle
-        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0, _builder=builder)
         far = point(3, 0)
         ref = point(0, 5)  # far above -> nearer to the +y touch point
         result = tangent_line(circ, from_point=far, near=ref)
@@ -370,7 +370,7 @@ def test_tangent_line_side_left_vs_right_select_opposite_tangents():
         from geometry_diagrams.ir.ir import CircleCenterRadius
         builder._add(CircleCenterRadius(id="c1", center=origin.id, radius=1.0))
         from geometry_diagrams.pydsl.handles import Circle
-        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0)
+        circ = Circle(id="c1", center=origin, _radius_thunk=lambda: 1.0, _builder=builder)
         far = point(3, 0)
         s1, s2 = point(0, 0), point(1, 0)  # directed +x axis: "left" = +y side
         left_result = tangent_line(circ, from_point=far, side_of=(s1, s2), side="left")

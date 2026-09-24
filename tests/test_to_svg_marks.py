@@ -23,6 +23,7 @@ from geometry_diagrams.ir.ir import (
     MarkArcs,
     MarkSegments,
     PointFixed,
+    Ray,
     Segment,
     SectorCenterStartEnd,
 )
@@ -568,6 +569,38 @@ class TestMarkArcs:
         warnings: list[str] = []
         svg = ir_to_svg(diagram, sym, warnings=warnings)
         assert any("missing" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# 7.5. MarkSegments on a Ray — render_util.seg_endpoints() widened to
+# recognize ir.Ray (same a/b point-id fields as ir.Segment), not just
+# ir.Segment. Ticket 06: a ray marked equal to a segment previously
+# compiled fine but crashed uncaught inside seg_endpoints() at render time.
+# ---------------------------------------------------------------------------
+
+def test_mark_segments_on_a_ray_renders_without_crashing():
+    diagram = DiagramIR(
+        canvas=Canvas(xmin=-1, xmax=10, ymin=-1, ymax=6),
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=2, y=0),
+            PointFixed(id="C", x=0, y=3),
+            PointFixed(id="D", x=2, y=3),
+            Segment(id="seg1", a="A", b="B"),
+            Ray(id="ray1", a="C", b="D"),
+        ],
+        render=[
+            Draw(obj="seg1"), Draw(obj="ray1"),
+            MarkSegments(segs=["seg1", "ray1"], group="g1"),
+        ],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    marks_by_seg = {}
+    for el in _mark_elements(root):
+        marks_by_seg.setdefault(el.get("data-segment"), []).append(el)
+    assert len(marks_by_seg.get("seg1", [])) == 1
+    assert len(marks_by_seg.get("ray1", [])) == 1
 
 
 # ---------------------------------------------------------------------------

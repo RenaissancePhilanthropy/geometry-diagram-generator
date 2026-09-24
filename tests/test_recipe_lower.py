@@ -2035,3 +2035,210 @@ def test_mark_angle_pair_lowers_to_pending():
     assert pending.group == "2"
     # No MarkAngles should be emitted yet — resolution happens post-compile.
     assert not any(r.kind == "mark_angles" for r in diagram_ir.render)
+
+
+# ---------------------------------------------------------------------------
+# mark_arcs / label_along_arc
+# ---------------------------------------------------------------------------
+
+def _arc_dsl(marks=None, labels=None):
+    return RecipeDSL.model_validate({
+        "mode": "grid",
+        "construction": [
+            {"op": "point", "id": "O", "coords": [0, 0]},
+            {"op": "point", "id": "P", "coords": [1, 0]},
+            {"op": "point", "id": "Q", "coords": [0, 1]},
+            {"op": "arc", "id": "arc1", "center": "O", "start": "P", "end": "Q"},
+        ],
+        "annotations": {
+            "marks": marks or [],
+            "labels": labels or [],
+        },
+    })
+
+
+def test_mark_arcs_lowered():
+    """marks: [{kind: mark_arcs, ...}] → ir.MarkArcs render op referencing an
+    already-defined arc id."""
+    from geometry_diagrams.ir.ir import MarkArcs as IRMarkArcs
+    dsl = _arc_dsl(marks=[{"kind": "mark_arcs", "arcs": ["arc1"], "group": 1}])
+    ir = lower_to_ir(dsl)
+    arc_marks = [r for r in ir.render if isinstance(r, IRMarkArcs)]
+    assert len(arc_marks) == 1
+    assert arc_marks[0].arcs == ["arc1"]
+    assert arc_marks[0].group == "1"
+
+
+def test_mark_arcs_group_omitted_is_none():
+    from geometry_diagrams.ir.ir import MarkArcs as IRMarkArcs
+    dsl = _arc_dsl(marks=[{"kind": "mark_arcs", "arcs": ["arc1"]}])
+    ir = lower_to_ir(dsl)
+    arc_marks = [r for r in ir.render if isinstance(r, IRMarkArcs)]
+    assert len(arc_marks) == 1
+    assert arc_marks[0].group is None
+
+
+def test_label_along_arc_lowered():
+    """labels: [{kind: label_along_arc, ...}] → ir.LabelAlongArc render op,
+    a close-to-pure field passthrough."""
+    from geometry_diagrams.ir.ir import LabelAlongArc as IRLabelAlongArc
+    dsl = _arc_dsl(labels=[{
+        "kind": "label_along_arc", "arc": "arc1", "text": "R",
+        "side": "inside", "pos": 0.25, "flip": True,
+    }])
+    ir = lower_to_ir(dsl)
+    label_ops = [r for r in ir.render if isinstance(r, IRLabelAlongArc)]
+    assert len(label_ops) == 1
+    op = label_ops[0]
+    assert op.arc == "arc1"
+    assert op.text == "R"
+    assert op.side == "inside"
+    assert op.pos == 0.25
+    assert op.flip is True
+
+
+def test_label_along_arc_defaults_match_render_op_defaults():
+    """Omitted placement fields fall back to ir.LabelAlongArc's own defaults
+    (side='outside', pos=0.5, flip=None), not some separate DSL default."""
+    from geometry_diagrams.ir.ir import LabelAlongArc as IRLabelAlongArc
+    dsl = _arc_dsl(labels=[{"kind": "label_along_arc", "arc": "arc1", "text": "R"}])
+    ir = lower_to_ir(dsl)
+    op = [r for r in ir.render if isinstance(r, IRLabelAlongArc)][0]
+    assert op.side == "outside"
+    assert op.pos == 0.5
+    assert op.flip is None
+
+
+def test_mark_equal_lengths_and_mark_arcs_share_group_resolve_same_tick_count():
+    """A segment marked equal (mark_equal_lengths) and an arc marked equal
+    (mark_arcs) sharing the same group name must resolve to the same tick
+    count — ir.MarkArcs was specifically designed to share ir.MarkSegments'
+    group namespace (plain stringification, NOT mark_parallel's "parallel_N"
+    prefixed convention), so a chord and an arc marked congruent in the same
+    recipe get the same visual tick count.
+    """
+    import re
+    from geometry_diagrams.ir.ir import MarkSegments, MarkArcs as IRMarkArcs
+    from geometry_diagrams.ir.render_util import resolve_mark_group_indices
+
+    dsl = RecipeDSL.model_validate({
+        "mode": "grid",
+        "construction": [
+            {"op": "point", "id": "A", "coords": [0, 0]},
+            {"op": "point", "id": "B", "coords": [3, 0]},
+            {"op": "point", "id": "O", "coords": [0, 0]},
+            {"op": "point", "id": "P", "coords": [1, 0]},
+            {"op": "point", "id": "Q", "coords": [0, 1]},
+            {"op": "arc", "id": "arc1", "center": "O", "start": "P", "end": "Q"},
+        ],
+        "annotations": {
+            "marks": [
+                {"kind": "mark_equal_lengths", "segments": [["A", "B"]], "group": 7},
+                {"kind": "mark_arcs", "arcs": ["arc1"], "group": 7},
+            ],
+        },
+    })
+    ir = lower_to_ir(dsl)
+    seg_mark = [r for r in ir.render if isinstance(r, MarkSegments)][0]
+    arc_mark = [r for r in ir.render if isinstance(r, IRMarkArcs)][0]
+
+    # Plain stringification, shared namespace — not "parallel_7" or similar.
+    assert seg_mark.group == "7"
+    assert arc_mark.group == "7"
+    assert seg_mark.group == arc_mark.group
+
+    # And the shared group actually resolves to the same tick count under
+    # the renderers' own group->count resolution logic.
+    tick_re = re.compile(r"^tick(\d+)$")
+    counts = resolve_mark_group_indices([seg_mark.group, arc_mark.group], tick_re)
+    assert counts[seg_mark.group] == counts[arc_mark.group]
+
+
+# ---------------------------------------------------------------------------
+# circle_tangent_at construction op
+# ---------------------------------------------------------------------------
+
+def test_circle_tangent_at_lowers_to_circle_tangent_at_def():
+    """circle_tangent_at should emit an ir.CircleTangentAt def with the given fields."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0, tangency="external"),
+    ])
+    ir = lower_to_ir(dsl)
+    tangent_def = next(d for d in ir.define if d.id == "c2")
+    assert isinstance(tangent_def, CircleTangentAt)
+    assert tangent_def.circle == "c1"
+    assert tangent_def.point == "P"
+    assert tangent_def.radius == 1.0
+    assert tangent_def.tangency == "external"
+
+
+def test_circle_tangent_at_registers_derived_center_for_later_reference():
+    """The new circle's center should be registered under tangent_circle_center_id(id)
+    in the lowerer's circle-center tracking, so a later tangent-at construction
+    referencing the new circle by id can find its center."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import tangent_circle_center_id, LineThrough
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0),
+        PointOp(id="Q", coords=[5.0, 0.0]),
+        TangentLineOp(id="tang2", circle="c2", at="Q"),
+    ])
+    ir = lower_to_ir(dsl)
+    radius_line = next(d for d in ir.define if d.id == "__tang2_radius")
+    assert isinstance(radius_line, LineThrough)
+    assert set([radius_line.p, radius_line.q]) == {tangent_circle_center_id("c2"), "Q"}
+
+
+def test_circle_tangent_at_emits_circles_tangent_check():
+    """Lowering circle_tangent_at should append an auto-generated CirclesTangent check."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0, tangency="internal"),
+    ])
+    ir = lower_to_ir(dsl)
+    tangent_checks = [c for c in ir.checks if isinstance(c, CirclesTangent)]
+    assert len(tangent_checks) == 1
+    assert tangent_checks[0].c1 == "c1"
+    assert tangent_checks[0].c2 == "c2"
+
+
+def test_circle_tangent_at_is_drawable():
+    """The new circle should appear in renders when auto_draw_all=True."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        CircleOp(id="c1", center="O", radius=3.0),
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="c1", point="P", radius=1.0),
+    ], annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False))
+    ir = lower_to_ir(dsl)
+    drawn_ids = {r.obj for r in ir.render if r.kind == "draw"}
+    assert "c2" in drawn_ids
+
+
+def test_circle_tangent_at_unknown_circle_raises():
+    """circle_tangent_at referencing an unknown circle raises LoweringError."""
+    from geometry_diagrams.recipe.dsl import CircleTangentAtOp
+
+    dsl = _dsl([
+        PointOp(id="P", coords=[3.0, 0.0]),
+        CircleTangentAtOp(id="c2", circle="no_such_circle", point="P", radius=1.0),
+    ])
+    with pytest.raises(LoweringError, match="no_such_circle"):
+        lower_to_ir(dsl)

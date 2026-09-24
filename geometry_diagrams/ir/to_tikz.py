@@ -28,6 +28,7 @@ from .render_util import (
     extract_coords,
     fmt_label_num,
     fmt_num,
+    label_segment_arc_anchor,
     line_endpoints,
     line_label_endpoints,
     orient_angle,
@@ -573,15 +574,17 @@ def _emit_op(
                 if warnings is not None:
                     warnings.append(msg)
                 return out
-            if isinstance(stmt_by_id[seg_id], ir.ArcCenterStartEnd):
-                # Arcs are drawn as plain \draw ... arc[...] (raw coordinates),
-                # not tkz-euclide named points, so \tkzLabelSegment doesn't
-                # apply — place a \node directly, offset radially outward
-                # from the arc's own midpoint angle. The offset scales with
-                # the arc's radius since raw TikZ coordinates are in the
-                # diagram's own geometry units, which vary in scale across
-                # diagrams (unlike the SVG backend's fixed pixel canvas).
-                cx, cy, px, py, r = arc_label_anchor(seg_id, sym)
+            arc_anchor = label_segment_arc_anchor(seg_id, stmt_by_id, sym, pos)
+            if arc_anchor is not None:
+                # Arcs/sectors (circular or elliptical) are drawn as plain
+                # \draw ... arc[...] (raw coordinates), not tkz-euclide named
+                # points, so \tkzLabelSegment doesn't apply — place a \node
+                # directly, offset radially outward from the curve's own
+                # anchor point at `pos`. The offset scales with the curve's
+                # local size since raw TikZ coordinates are in the diagram's
+                # own geometry units, which vary in scale across diagrams
+                # (unlike the SVG backend's fixed pixel canvas).
+                cx, cy, px, py, r = arc_anchor
                 dx, dy = px - cx, py - cy
                 mag = math.hypot(dx, dy) or 1
                 offset = max(0.3, r * 0.15)
@@ -591,7 +594,7 @@ def _emit_op(
                 return out
             endpoints = line_label_endpoints(seg_id, stmt_by_id, {})
             if endpoints is None:
-                msg = f"Skipping render op LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc"
+                msg = f"Skipping render op LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc/sector"
                 logger.warning(msg)
                 if warnings is not None:
                     warnings.append(msg)

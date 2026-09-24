@@ -8,6 +8,7 @@ accessor pattern that replaces the DSL's string-id threading.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -193,6 +194,14 @@ class Line:
 @dataclass(frozen=True)
 class Ray:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this ray with text, e.g. r.label("r")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
@@ -211,6 +220,14 @@ class Arc:
 @dataclass(frozen=True)
 class Sector:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this sector with text, placed near its curved edge, e.g. sec.label("S")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
@@ -226,12 +243,74 @@ class Segment:
         self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
+def _polygon_area(vertices_xy: "list[tuple[float, float]]") -> float:
+    """Shoelace-formula area of a simple polygon, given vertex coordinates
+    in perimeter order as plain floats -- deliberately not a SymPy
+    Polygon.area computation; see api.py's _sympy_polygon docstring for the
+    (measured, order-of-magnitude) performance reason to avoid exact SymPy
+    arithmetic for this kind of computation inside the sandboxed builder."""
+    n = len(vertices_xy)
+    signed_area = 0.0
+    for i in range(n):
+        x1, y1 = vertices_xy[i]
+        x2, y2 = vertices_xy[(i + 1) % n]
+        signed_area += x1 * y2 - x2 * y1
+    return abs(signed_area) / 2.0
+
+
+def _polygon_perimeter(vertices_xy: "list[tuple[float, float]]") -> float:
+    """Sum of consecutive-vertex distances, wrapping the last vertex back
+    to the first -- plain floats, same rationale as _polygon_area."""
+    n = len(vertices_xy)
+    total = 0.0
+    for i in range(n):
+        x1, y1 = vertices_xy[i]
+        x2, y2 = vertices_xy[(i + 1) % n]
+        total += math.hypot(x2 - x1, y2 - y1)
+    return total
+
+
+def _unsigned_angle_radians(
+    ax: float, ay: float, ox: float, oy: float, bx: float, by: float
+) -> float:
+    """Unsigned angle at (ox, oy) in configuration a-o-b, in radians in
+    [0, pi]. Same dot-product/acos formula and range as
+    geometry_diagrams.ir.checks._angle_at (not a signed atan2-based angle
+    -- no notion of clockwise vs. counterclockwise), reimplemented locally
+    over plain floats so AngleRef.radians/.degrees don't need to force a
+    SymPy compile. See test_pydsl_angle.py's cross-check against
+    checks._angle_at for the same three points, which keeps the two
+    conventions from silently drifting apart."""
+    vax, vay = ax - ox, ay - oy
+    vbx, vby = bx - ox, by - oy
+    dot = vax * vbx + vay * vby
+    mag_a = math.hypot(vax, vay)
+    mag_b = math.hypot(vbx, vby)
+    if mag_a < 1e-15 or mag_b < 1e-15:
+        raise ValueError("Degenerate angle: vertex coincides with a leg point")
+    cos_val = max(-1.0, min(1.0, dot / (mag_a * mag_b)))
+    return math.acos(cos_val)
+
+
 @dataclass(frozen=True)
 class Triangle:
     id: str
     vertices: tuple[Point, Point, Point]
     _builder: "object" = field(repr=False, compare=False)  # type is Builder; avoid a
                                                              # circular import at module load
+
+    @property
+    def area(self) -> float:
+        """This triangle's area (shoelace formula), computed from its
+        (possibly still-resolving) vertex coordinates -- e.g. a vertex
+        derived from an intersection resolves the same as a literal one."""
+        return _polygon_area([(v.x, v.y) for v in self.vertices])
+
+    @property
+    def perimeter(self) -> float:
+        """This triangle's perimeter: the sum of its three side lengths,
+        computed from its (possibly still-resolving) vertex coordinates."""
+        return _polygon_perimeter([(v.x, v.y) for v in self.vertices])
 
     def side(self, p: Point, q: Point) -> "Segment":
         vertex_ids = {v.id for v in self.vertices}
@@ -260,6 +339,7 @@ class Circle:
     id: str
     center: Point
     _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+    _builder: "object" = field(repr=False, compare=False)
     # True for circumcircle()/incircle() (their center is a PointTriangleCenter,
     # not a direct literal) — False for circle(). Gates regular_sectors(),
     # which requires a literal circle() so its radius is always plain numeric.
@@ -269,6 +349,13 @@ class Circle:
     def radius(self) -> "float | str":
         return self._radius_thunk()
 
+    def label(self, text: str) -> None:
+        """Place a floating label at this circle's own center, e.g. c.label("O")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
+
 
 @dataclass(frozen=True)
 class Ellipse:
@@ -276,6 +363,7 @@ class Ellipse:
     center: Point
     _hradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
     _vradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
+    _builder: "object" = field(repr=False, compare=False)
 
     @property
     def hradius(self) -> float:
@@ -285,12 +373,32 @@ class Ellipse:
     def vradius(self) -> float:
         return self._vradius_thunk()
 
+    def label(self, text: str) -> None:
+        """Place a floating label at this ellipse's own center, e.g. e.label("E")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
+
 
 @dataclass(frozen=True)
 class Polygon:
     id: str
     vertices: tuple[Point, ...]
     _builder: "object" = field(repr=False, compare=False)
+
+    @property
+    def area(self) -> float:
+        """This polygon's area (shoelace formula), computed from its
+        (possibly still-resolving) vertex coordinates -- e.g. a vertex
+        derived from an intersection resolves the same as a literal one."""
+        return _polygon_area([(v.x, v.y) for v in self.vertices])
+
+    @property
+    def perimeter(self) -> float:
+        """This polygon's perimeter: the sum of its side lengths,
+        computed from its (possibly still-resolving) vertex coordinates."""
+        return _polygon_perimeter([(v.x, v.y) for v in self.vertices])
 
     def side(self, v1: Point, v2: Point) -> "Segment":
         ids = [v.id for v in self.vertices]
@@ -328,6 +436,13 @@ class Polyline:
     vertices: tuple[Point, ...]
     _builder: "object" = field(repr=False, compare=False)
 
+    def label(self, text: str) -> None:
+        """Place a floating label at this polyline's own centroid, e.g. pl.label("P")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
+
 
 @dataclass(frozen=True)
 class AngleRef:
@@ -335,6 +450,23 @@ class AngleRef:
     o: Point
     b: Point
     _builder: "object" = field(repr=False, compare=False)
+
+    @property
+    def radians(self) -> float:
+        """The unsigned angle at o between rays o->a and o->b, in radians
+        in [0, pi] -- same convention geometry_diagrams.ir.checks._angle_at
+        uses, so this value and one an angle-related Check reports for the
+        same three points always agree. Resolves the same for a
+        still-resolving point (e.g. one derived from an intersection) as
+        for a literal one."""
+        return _unsigned_angle_radians(
+            self.a.x, self.a.y, self.o.x, self.o.y, self.b.x, self.b.y
+        )
+
+    @property
+    def degrees(self) -> float:
+        """`radians`, expressed in degrees."""
+        return math.degrees(self.radians)
 
     def label(self, text: str, pos: "float | None" = None) -> None:
         """Label this angle with text, e.g. ref.label("theta")."""

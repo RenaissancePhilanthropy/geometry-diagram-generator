@@ -33,6 +33,8 @@ from geometry_diagrams.ir.ir import (
     EllipseCenterAxes,
     ArcCenterStartEnd,
     SectorCenterStartEnd,
+    EllipticalArcCenterStartEnd,
+    EllipticalSectorCenterStartEnd,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import (
@@ -436,6 +438,107 @@ def test_label_segment_on_an_arc_produces_text():
             ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
         ],
         render=[LabelSegment(seg="arc1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_a_sector_produces_text():
+    """Bug: labeling a SectorCenterStartEnd silently dropped the label
+    entirely -- the arc-anchor dispatch only checked for ArcCenterStartEnd,
+    so a sector fell through to line_label_endpoints() (None) and got
+    skipped with a warning, never reaching a label placement at all."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec1", center="O", start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="sec1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_elliptical_arc_produces_text():
+    """Bug: labeling an EllipticalArcCenterStartEnd silently dropped the
+    label -- an already-shipped, documented IR capability with no working
+    label placement."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="ea1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_elliptical_sector_produces_text():
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="O", hradius=4, vradius=1, start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="es1", text="alpha")],
+    )
+    svg = _compile_svg(diagram)
+    root = _parse(svg)
+    texts = _findall(root, "text")
+    assert len(texts) >= 1
+
+
+def test_label_segment_on_an_arc_honors_pos_parameter():
+    """Bug: LabelSegment.pos was accepted but silently ignored on the
+    arc/sector/elliptical-arc placement path -- every pos value produced
+    the same midpoint-anchored label. A label at pos=0.0 (anchored near the
+    arc's start point S=(2,0)) should land at a materially different x than
+    one at pos=1.0 (anchored near the end point E=(0,2))."""
+    def _label_x(pos):
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[LabelSegment(seg="arc1", text="alpha", pos=pos)],
+        )
+        svg = _compile_svg(diagram)
+        root = _parse(svg)
+        texts = _findall(root, "text")
+        assert len(texts) == 1
+        return float(texts[0].get("x"))
+
+    x_start = _label_x(0.0)
+    x_end = _label_x(1.0)
+    assert x_start != pytest.approx(x_end, abs=1e-3)
+
+
+def test_label_free_text_centroid_of_an_open_polyline_does_not_crash():
+    """Regression test: a compiled PolylineOpen is a plain list of Points,
+    not an object with .vertices -- centroid_of_obj used to raise
+    AttributeError for it, escaping the retry loop entirely."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=4, y=4),
+            PolylineOpen(id="poly", points=["A", "B", "C"]),
+        ],
+        render=[LabelFreeText(text="p", centroid_of="poly")],
     )
     svg = _compile_svg(diagram)
     root = _parse(svg)
@@ -2621,3 +2724,59 @@ def test_segment_label_does_not_overlap_axis_tick_label():
             assert not overlap(bb_seg, bb_tick), (
                 f"label {seg.text!r} at {bb_seg} overlaps tick label {tick.text!r} at {bb_tick}"
             )
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+def _tangent_circle_diagram(tangency: str = "external") -> DiagramIR:
+    """Unit-radius circle tangent to a radius-3 circle at (3, 0)."""
+    from geometry_diagrams.ir.ir import CircleTangentAt
+
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1, tangency=tangency),
+        ],
+        render=[Draw(obj="c1"), Draw(obj="tc")],
+    )
+
+
+def test_circle_tangent_at_renders_both_circles():
+    svg = _compile_svg(_tangent_circle_diagram())
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    assert set(by_id) >= {"c1", "tc"}
+    r_ref = float(by_id["c1"].get("r"))
+    r_new = float(by_id["tc"].get("r"))
+    assert r_new == pytest.approx(r_ref / 3, rel=1e-3)
+    # centres 4 geometry units apart, i.e. 4/3 of the reference radius
+    dx = float(by_id["tc"].get("cx")) - float(by_id["c1"].get("cx"))
+    assert dx == pytest.approx(r_ref * 4 / 3, rel=1e-3)
+    assert float(by_id["tc"].get("cy")) == pytest.approx(float(by_id["c1"].get("cy")), abs=1e-6)
+
+
+def test_circle_tangent_at_internal_renders_inside_the_reference():
+    svg = _compile_svg(_tangent_circle_diagram("internal"))
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    r_ref = float(by_id["c1"].get("r"))
+    dx = float(by_id["tc"].get("cx")) - float(by_id["c1"].get("cx"))
+    assert dx == pytest.approx(r_ref * 2 / 3, rel=1e-3)
+
+
+def test_circle_tangent_at_stamps_its_derived_centre_as_data_center():
+    """A tangent circle's centre really is an addressable point (registered
+    under `{id}_center`), so the rendered element must carry it the same way
+    a centre-and-radius circle carries its named centre."""
+    from geometry_diagrams.ir.ir import tangent_circle_center_id
+
+    svg = _compile_svg(_tangent_circle_diagram())
+    root = _parse(svg)
+    by_id = {c.get("data-ir-id"): c for c in _findall(root, "circle")}
+    assert by_id["c1"].get("data-center") == "O"
+    assert by_id["tc"].get("data-center") == tangent_circle_center_id("tc")
+    assert by_id["tc"].get("data-center") == "tc_center"

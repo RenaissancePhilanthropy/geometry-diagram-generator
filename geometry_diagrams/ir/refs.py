@@ -27,7 +27,7 @@ _REF_FIELDS = {
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
                    "radius", "sides", "level", "tol", "which", "how", "k", "opacity",
                    "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation",
-                   "reflex", "vertex_names"}
+                   "reflex", "vertex_names", "tangency"}
 
 
 def def_references(stmt: ir.DefStmt) -> set[str]:
@@ -35,6 +35,23 @@ def def_references(stmt: ir.DefStmt) -> set[str]:
     refs: set[str] = set()
     data = stmt.model_dump()
     for key, value in data.items():
+        if key == "how" and isinstance(value, dict):
+            # PointOnIntent's spatial constraints reference other points
+            # (ArcBetweenConstraint's from_point/to_point, NotNear's point,
+            # SameSide's line/ref, ...). Those are genuine dependency edges:
+            # the constraint is evaluated while this statement compiles, so
+            # each referenced id must already be in the symbol table.
+            for constraint in value.get("constraints") or ():
+                if not isinstance(constraint, dict):
+                    continue
+                for ck, cv in constraint.items():
+                    if ck == "kind":
+                        continue
+                    if isinstance(cv, str):
+                        refs.add(cv)
+                    elif isinstance(cv, list):
+                        refs.update(v for v in cv if isinstance(v, str))
+            continue
         if key in _NON_REF_FIELDS:
             continue
         if key == "points" and isinstance(value, list):

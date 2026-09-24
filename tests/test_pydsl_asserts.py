@@ -1,5 +1,5 @@
 # tests/test_pydsl_asserts.py
-"""Tests for pydsl's 19 assert_* mirror predicates (geometry_diagrams/pydsl/asserts.py).
+"""Tests for pydsl's assert_* mirror predicates (geometry_diagrams/pydsl/asserts.py).
 
 Each predicate mirrors an existing ir.Check kind via the shared _run_assertion
 dispatch helper. Matches test_pydsl_marks_and_holes.py's structure: build
@@ -10,18 +10,21 @@ import math
 import pytest
 
 from geometry_diagrams.pydsl.api import (
-    angle, canvas, circle, intersection, label_text, line_through, point,
-    point_on, polygon, ray, rotate_point, segment, tangent_line, triangle,
+    angle, arc, canvas, circle, intersection, label_text, line_through, point,
+    point_on, polygon, ray, rotate_point, sector, segment, tangent_circle,
+    tangent_line, triangle,
 )
 from geometry_diagrams.pydsl.asserts import (
-    assert_angle_equal, assert_ccw, assert_centroid, assert_collinear,
+    assert_angle_equal, assert_angle_value, assert_ccw, assert_centroid,
+    assert_circles_tangent, assert_collinear, assert_congruent_arcs,
     assert_congruent_triangles, assert_convex, assert_distance,
     assert_distinct_objects, assert_distinct_points, assert_equal_length,
-    assert_in_canvas, assert_labels_in_canvas, assert_min_distance,
-    assert_not_collinear, assert_not_on, assert_not_parallel, assert_on,
-    assert_opposite_side, assert_parallel, assert_perpendicular,
-    assert_ratio_equal, assert_right_angle, assert_same_side,
-    assert_similar_triangles, assert_tangent,
+    assert_equal_radius, assert_in_canvas, assert_labels_in_canvas,
+    assert_min_distance, assert_not_collinear, assert_not_on,
+    assert_not_parallel, assert_on, assert_opposite_side, assert_parallel,
+    assert_perpendicular, assert_radius, assert_ratio_equal,
+    assert_right_angle, assert_same_side, assert_similar_triangles,
+    assert_tangent,
 )
 from geometry_diagrams.pydsl.builder import GeometricAssertionError, new_builder_context
 
@@ -532,6 +535,188 @@ def test_assert_congruent_triangles_distinguishes_from_similar():
         assert_similar_triangles(t1, t2)
         with pytest.raises(GeometricAssertionError):
             assert_congruent_triangles(t1, t2)
+
+
+# ---------------------------------------------------------------------------
+# assert_equal_radius
+# ---------------------------------------------------------------------------
+
+def test_assert_equal_radius_pass():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        c2 = circle(point(6, 0), 2.0)
+        c3 = circle(point(0, 6), 2.0)
+        assert_equal_radius(c1, c2, c3)
+
+
+def test_assert_equal_radius_fail():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        c2 = circle(point(6, 0), 3.0)
+        with pytest.raises(GeometricAssertionError):
+            assert_equal_radius(c1, c2)
+
+
+def test_assert_equal_radius_needs_at_least_two_circles():
+    """ir.EqualRadius's own min-two validator is what rejects this — the
+    pydantic ValidationError it raises is a ValueError, like
+    GeometricAssertionError, so a script's error handling sees the same type."""
+    with new_builder_context():
+        c = circle(point(0, 0), 2.0)
+        with pytest.raises(ValueError):
+            assert_equal_radius(c)
+
+
+# ---------------------------------------------------------------------------
+# assert_radius
+# ---------------------------------------------------------------------------
+
+def test_assert_radius_pass():
+    with new_builder_context():
+        c = circle(point(0, 0), 2.5)
+        assert_radius(c, 2.5)
+
+
+def test_assert_radius_fail():
+    with new_builder_context():
+        c = circle(point(0, 0), 2.5)
+        with pytest.raises(GeometricAssertionError):
+            assert_radius(c, 1.0)
+
+
+def test_assert_radius_tol_override_permits_looser_match():
+    with new_builder_context():
+        c = circle(point(0, 0), 2.5)
+        assert_radius(c, 2.6, tol=0.5)
+
+
+# ---------------------------------------------------------------------------
+# assert_congruent_arcs
+# ---------------------------------------------------------------------------
+
+def test_assert_congruent_arcs_pass():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        a1 = arc(c1, point_on(c1, 0.0), point_on(c1, math.pi / 2))
+        c2 = circle(point(6, 0), 2.0)
+        a2 = arc(c2, point_on(c2, 0.0), point_on(c2, math.pi / 2))
+        assert_congruent_arcs(a1, a2)
+
+
+def test_assert_congruent_arcs_fail_on_different_radius():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        a1 = arc(c1, point_on(c1, 0.0), point_on(c1, math.pi / 2))
+        c2 = circle(point(6, 0), 3.0)
+        a2 = arc(c2, point_on(c2, 0.0), point_on(c2, math.pi / 2))
+        with pytest.raises(GeometricAssertionError):
+            assert_congruent_arcs(a1, a2)
+
+
+def test_assert_congruent_arcs_fail_on_minor_vs_reflex_same_endpoints():
+    """Same circle, same two endpoints — but one arc is the minor sweep and
+    the other the reflex one, so they are not congruent."""
+    with new_builder_context():
+        c = circle(point(0, 0), 2.0)
+        start, end = point_on(c, 0.0), point_on(c, math.pi / 2)
+        minor = arc(c, start, end)
+        reflex = arc(c, start, end, reflex=True)
+        with pytest.raises(GeometricAssertionError):
+            assert_congruent_arcs(minor, reflex)
+
+
+def test_assert_congruent_arcs_needs_at_least_two_arcs():
+    """Rejected by ir.CongruentArcs's own min-two validator (see
+    test_assert_equal_radius_needs_at_least_two_circles for the error type)."""
+    with new_builder_context():
+        c = circle(point(0, 0), 2.0)
+        a = arc(c, point_on(c, 0.0), point_on(c, math.pi / 2))
+        with pytest.raises(ValueError):
+            assert_congruent_arcs(a)
+
+
+def test_assert_congruent_arcs_works_for_sectors_too():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        s1 = sector(c1, point_on(c1, 0.0), point_on(c1, math.pi / 2))
+        c2 = circle(point(6, 0), 2.0)
+        s2 = sector(c2, point_on(c2, 0.0), point_on(c2, math.pi / 2))
+        assert_congruent_arcs(s1, s2)
+
+
+# ---------------------------------------------------------------------------
+# assert_angle_value
+# ---------------------------------------------------------------------------
+
+def test_assert_angle_value_pass():
+    with new_builder_context():
+        o = point(0, 0)
+        ref = angle(point(4, 0), o, point(0, 4))
+        assert_angle_value(ref, 90.0)
+
+
+def test_assert_angle_value_fail():
+    with new_builder_context():
+        o = point(0, 0)
+        ref = angle(point(4, 0), o, point(0, 4))
+        with pytest.raises(GeometricAssertionError):
+            assert_angle_value(ref, 45.0)
+
+
+def test_assert_angle_value_fail_message_substitutes_coordinates():
+    with new_builder_context():
+        o = point(0, 0)
+        ref = angle(point(4, 0), o, point(0, 4))
+        with pytest.raises(GeometricAssertionError) as excinfo:
+            assert_angle_value(ref, 45.0)
+        msg = str(excinfo.value)
+        assert "(0.00, 0.00)" in msg
+        assert "(4.00, 0.00)" in msg
+        assert "__pydsl_" not in msg
+
+
+def test_assert_angle_value_tol_override_permits_looser_match():
+    with new_builder_context():
+        o = point(0, 0)
+        ref = angle(point(4, 0), o, point(0, 4))
+        # tol is in radians (matching ir.AngleValue's own convention)
+        assert_angle_value(ref, 88.0, tol=0.1)
+
+
+# ---------------------------------------------------------------------------
+# assert_circles_tangent
+# ---------------------------------------------------------------------------
+
+def test_assert_circles_tangent_pass_externally():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        c2 = circle(point(5, 0), 3.0)  # centers 5 apart == 2 + 3
+        assert_circles_tangent(c1, c2)
+
+
+def test_assert_circles_tangent_pass_internally():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 3.0)
+        c2 = circle(point(1, 0), 2.0)  # centers 1 apart == 3 - 2
+        assert_circles_tangent(c1, c2)
+
+
+def test_assert_circles_tangent_fail():
+    with new_builder_context():
+        c1 = circle(point(0, 0), 2.0)
+        c2 = circle(point(3, 0), 2.0)  # overlapping, not tangent
+        with pytest.raises(GeometricAssertionError):
+            assert_circles_tangent(c1, c2)
+
+
+def test_assert_circles_tangent_pass_for_a_tangent_circle_construction():
+    """The construction and the check agree: a circle built by
+    tangent_circle() satisfies assert_circles_tangent()."""
+    with new_builder_context():
+        c = circle(point(0, 0), 3.0)
+        touch = point_on(c, 0.0)
+        c2 = tangent_circle(c, touch, 1.0)
+        assert_circles_tangent(c, c2)
 
 
 # ---------------------------------------------------------------------------

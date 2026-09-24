@@ -29,6 +29,7 @@ from geometry_diagrams.ir.ir import (
     EllipseCenterAxes,
     EllipticalArcCenterStartEnd,
     EllipticalSectorCenterStartEnd,
+    PolylineOpen,
 )
 import sympy.geometry as spg
 from geometry_diagrams.ir.checks import check_render_angles
@@ -496,6 +497,28 @@ def test_mark_arcs_group_shared_with_mark_segments_gets_the_same_count():
     tikz = _compile_tikz(diagram)
     assert "[mark=|||]" in tikz         # segment side: group index 3
     assert tikz.count("\\draw") == 3    # arc side: 3 raw ticks, same index
+
+
+def test_mark_segments_on_a_ray_renders_without_crashing():
+    """render_util.seg_endpoints() must recognize ir.Ray (same a/b point-id
+    fields as ir.Segment) — before ticket 06's fix, a ray passed to
+    MarkSegments compiled fine and only crashed uncaught at render time
+    inside seg_endpoints()."""
+    from geometry_diagrams.ir.ir import Ray
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=0, y=2),
+            PointFixed(id="D", x=4, y=2),
+            Segment(id="s1", a="A", b="B"),
+            Ray(id="r1", a="C", b="D"),
+        ],
+        render=[MarkSegments(segs=["s1", "r1"], group="g1")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert tikz.count("\\tkzMarkSegment") == 2
 
 
 def test_mark_arcs_on_a_sector_uses_the_curved_edge():
@@ -1210,6 +1233,103 @@ def test_label_segment_on_an_arc_produces_a_node():
     assert r"\node at" in tikz and "{$alpha$}" in tikz
 
 
+def test_label_segment_on_a_sector_produces_a_node():
+    """Bug: labeling a SectorCenterStartEnd silently dropped the label --
+    the arc-anchor dispatch only checked for ArcCenterStartEnd, so a sector
+    fell through to line_label_endpoints() (None) and got skipped with a
+    warning instead of placing a node."""
+    from geometry_diagrams.ir.ir import SectorCenterStartEnd, LabelSegment
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),
+            PointFixed(id="E", x=0, y=2),
+            SectorCenterStartEnd(id="sec1", center="O", start="S", end="E"),
+        ],
+        render=[LabelSegment(seg="sec1", text="alpha")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{$alpha$}" in tikz
+
+
+def test_label_segment_on_an_elliptical_arc_produces_a_node():
+    """Bug: labeling an EllipticalArcCenterStartEnd silently dropped the
+    label -- an already-shipped, documented IR capability with no working
+    label placement."""
+    from geometry_diagrams.ir.ir import LabelSegment
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalArcCenterStartEnd(id="ea1", center="c", hradius=4, vradius=1, start="s", end="e"),
+        ],
+        render=[LabelSegment(seg="ea1", text="alpha")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{$alpha$}" in tikz
+
+
+def test_label_segment_on_an_elliptical_sector_produces_a_node():
+    from geometry_diagrams.ir.ir import LabelSegment
+
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="c", x=0, y=0),
+            PointFixed(id="s", x=4, y=0),
+            PointFixed(id="e", x=0, y=1),
+            EllipticalSectorCenterStartEnd(id="es1", center="c", hradius=4, vradius=1, start="s", end="e"),
+        ],
+        render=[LabelSegment(seg="es1", text="alpha")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{$alpha$}" in tikz
+
+
+def test_label_segment_on_an_arc_honors_pos_parameter():
+    """Bug: LabelSegment.pos was accepted but silently ignored on the
+    arc/sector/elliptical-arc placement path -- every pos value produced a
+    \\node at the same midpoint-anchored coordinate."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd, LabelSegment
+
+    def _node_coords(pos):
+        diagram = DiagramIR(
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=0, y=2),
+                ArcCenterStartEnd(id="arc1", center="O", start="S", end="E"),
+            ],
+            render=[LabelSegment(seg="arc1", text="alpha", pos=pos)],
+        )
+        tikz = _compile_tikz(diagram)
+        assert tikz.count(r"\node at") == 1
+        return tikz
+
+    tikz_start = _node_coords(0.0)
+    tikz_end = _node_coords(1.0)
+    assert tikz_start != tikz_end
+
+
+def test_label_free_text_centroid_of_an_open_polyline_does_not_crash():
+    """Regression test: a compiled PolylineOpen is a plain list of Points,
+    not an object with .vertices -- centroid_of_obj used to raise
+    AttributeError for it, escaping the retry loop entirely."""
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=4, y=0),
+            PointFixed(id="C", x=4, y=4),
+            PolylineOpen(id="poly", points=["A", "B", "C"]),
+        ],
+        render=[LabelFreeText(text="p", centroid_of="poly")],
+    )
+    tikz = _compile_tikz(diagram)
+    assert r"\node at" in tikz and "{p}" in tikz
+
+
 def test_fill_sector_tikz():
     """Fill of a sector uses \\fill with arc syntax."""
     from geometry_diagrams.ir.ir import SectorCenterStartEnd, Fill
@@ -1466,3 +1586,43 @@ def test_ray_without_own_extent_style_still_uses_default_add():
     )
     tikz = _compile_tikz(diagram)
     assert "add=0 and 1" in tikz
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+def _tangent_circle_diagram(tangency: str = "external") -> DiagramIR:
+    """Unit-radius circle tangent to a radius-3 circle at (3, 0)."""
+    from geometry_diagrams.ir.ir import CircleCenterRadius, CircleTangentAt
+
+    return DiagramIR(
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1, tangency=tangency),
+        ],
+        render=[Draw(obj="c1"), Draw(obj="tc")],
+    )
+
+
+def test_circle_tangent_at_draws_via_synthesized_centre_and_through_points():
+    tikz = _compile_tikz(_tangent_circle_diagram())
+    assert "\\tkzDrawCircle(_cc_tc,_rt_tc)" in tikz
+    # centre at (4, 0), through-point one radius to its right
+    assert "\\tkzDefPoint(4,0){_cc_tc}" in tikz
+    assert "\\tkzDefPoint(5,0){_rt_tc}" in tikz
+
+
+def test_circle_tangent_at_internal_draws_the_nested_centre():
+    tikz = _compile_tikz(_tangent_circle_diagram("internal"))
+    assert "\\tkzDrawCircle(_cc_tc,_rt_tc)" in tikz
+    assert "\\tkzDefPoint(2,0){_cc_tc}" in tikz
+    assert "\\tkzDefPoint(3,0){_rt_tc}" in tikz
+
+
+def test_circle_tangent_at_centre_is_addressable_as_a_tikz_point():
+    """The compile-time derived centre is emitted like any other named point."""
+    tikz = _compile_tikz(_tangent_circle_diagram())
+    assert "\\tkzDefPoint(4,0){tc_center}" in tikz

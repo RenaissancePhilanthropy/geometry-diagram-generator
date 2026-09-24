@@ -4,8 +4,8 @@ import math
 import pytest
 import sympy.geometry as spg
 
-from geometry_diagrams.ir.render_util import build_entity_manifest, centroid_of_obj, tick_values
-from geometry_diagrams.ir.ir import DiagramIR, LineThrough
+from geometry_diagrams.ir.render_util import build_entity_manifest, centroid_of_obj, seg_endpoints, tick_values
+from geometry_diagrams.ir.ir import DiagramIR, LineThrough, Ray, Segment, Triangle
 
 
 def test_centroid_of_obj_returns_midpoint_for_line():
@@ -69,6 +69,33 @@ def test_build_entity_manifest_logs_a_warning_for_a_still_unhandled_sympy_type(c
         "mystery" in record.getMessage() and "UnknownGeometryType" in record.getMessage()
         for record in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# seg_endpoints — Segment/Ray endpoint resolution shared by both backends'
+# MarkSegments handling
+# ---------------------------------------------------------------------------
+
+def test_seg_endpoints_returns_ab_for_segment():
+    stmt_by_id = {"s1": Segment(id="s1", a="A", b="B")}
+    assert seg_endpoints("s1", stmt_by_id) == ("A", "B")
+
+
+def test_seg_endpoints_returns_ab_for_ray():
+    """A Ray def has the same a/b point-id fields as a Segment — a ray
+    handle marked via mark_equal()/mark_parallel()/mark_proportional() must
+    resolve endpoints the same way a segment does, not raise. Before this
+    fix, seg_endpoints() only recognized ir.Segment and raised ValueError
+    for anything else, including a Ray, crashing uncaught deep in the
+    renderer's MarkSegments handling."""
+    stmt_by_id = {"r1": Ray(id="r1", a="A", b="B")}
+    assert seg_endpoints("r1", stmt_by_id) == ("A", "B")
+
+
+def test_seg_endpoints_rejects_a_non_segment_non_ray_def():
+    stmt_by_id = {"t1": Triangle(id="t1", a="A", b="B", c="C")}
+    with pytest.raises(ValueError, match="Expected Segment or Ray def"):
+        seg_endpoints("t1", stmt_by_id)
 
 
 def test_tick_values_excludes_zero():
@@ -406,3 +433,62 @@ def test_arc_label_anchor_honors_explicit_pos():
     cx, cy, px, py, r = arc_label_anchor("arc1", sym, pos=0.0)
     assert px == pytest.approx(1.0, abs=1e-6)
     assert py == pytest.approx(0.0, abs=1e-6)
+
+
+def _elliptical_arc_sym(hr: float = 4.0, vr: float = 1.0):
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, EllipticalArcCenterStartEnd
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    return compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=hr, y=0),
+        PointFixed(id="E", x=0, y=vr),
+        EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=hr, vradius=vr, start="S", end="E"),
+    ]))
+
+
+def test_elliptical_arc_label_anchor_pos_defaults_to_the_midpoint():
+    """The elliptical analogue of test_arc_label_anchor_pos_defaults_to_the_
+    midpoint above. Unlike a circle, the anchor point is NOT at the direction
+    angle halfway between the endpoint directions (45deg here) -- it's at
+    the ellipse's own parametric midpoint t=45deg, i.e.
+    (hr*cos(45), vr*sin(45)), which for hr != vr points somewhere else
+    entirely. A naive reuse of the circular arc_label_anchor() (a single
+    radius r) would get this wrong for any hr != vr."""
+    from geometry_diagrams.ir.render_util import elliptical_arc_label_anchor
+
+    sym = _elliptical_arc_sym(hr=4.0, vr=1.0)
+    cx, cy, px, py, r = elliptical_arc_label_anchor("ea1", sym)
+    t = math.radians(45.0)
+    assert px == pytest.approx(4.0 * math.cos(t), abs=1e-6)
+    assert py == pytest.approx(1.0 * math.sin(t), abs=1e-6)
+    # Sanity: this is NOT the same as the (wrong, circle-shaped) angle you'd
+    # get from treating 45deg as the actual direction from the center.
+    wrong_angle = math.degrees(math.atan2(py - cy, px - cx))
+    assert wrong_angle != pytest.approx(45.0, abs=1.0)
+
+
+def test_elliptical_arc_label_anchor_honors_explicit_pos():
+    from geometry_diagrams.ir.render_util import elliptical_arc_label_anchor
+
+    sym = _elliptical_arc_sym(hr=4.0, vr=1.0)
+    cx, cy, px, py, r = elliptical_arc_label_anchor("ea1", sym, pos=0.0)
+    assert px == pytest.approx(4.0, abs=1e-6)
+    assert py == pytest.approx(0.0, abs=1e-6)
+
+
+def test_centroid_of_obj_handles_compiled_open_polyline():
+    """Regression test: a compiled PolylineOpen is a plain Python list of
+    sympy Points (see to_sympy.py's ir.PolylineOpen case), not an object
+    with a .vertices attribute like Polygon/Triangle -- centroid_of_obj used
+    to raise AttributeError for it."""
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed, PolylineOpen
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        PointFixed(id="C", x=4, y=4),
+        PolylineOpen(id="poly", points=["A", "B", "C"]),
+    ]))
+    assert centroid_of_obj(sym["poly"]) == (8.0 / 3, 4.0 / 3)

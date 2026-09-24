@@ -5,7 +5,10 @@ AngleRef.label(), and label_text() — all wrapping IR RenderOp kinds
 are already rendered by to_tikz.py/to_svg.py."""
 import pytest
 
-from geometry_diagrams.pydsl.api import arc, circle, label_text, line_through, point, point_on, segment, triangle
+from geometry_diagrams.pydsl.api import (
+    altitude, arc, canvas, circle, ellipse, label_text, line_through, median, perpendicular_bisector,
+    point, point_on, polygon, polyline, ray, sector, segment, triangle,
+)
 from geometry_diagrams.pydsl.builder import new_builder_context
 from geometry_diagrams.pydsl.sandbox import run_script
 from geometry_diagrams.ir.ir import (
@@ -120,6 +123,65 @@ def test_arc_label_records_label_segment():
     assert matches[0].text == "alpha"
 
 
+def test_ray_label_records_label_segment():
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(4, 0)
+        r = ray(a, b)
+        r.label("r")
+        ir = builder.build()
+    matches = [x for x in ir.render if isinstance(x, LabelSegment) and x.seg == r.id]
+    assert len(matches) == 1
+    assert matches[0].text == "r"
+    assert matches[0].pos is None
+
+
+def test_sector_label_records_label_segment():
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 3)
+        start = point_on(c, 0.0)
+        end = point_on(c, 0.25)
+        s = sector(c, start, end)
+        s.label("S")
+        ir = builder.build()
+    matches = [x for x in ir.render if isinstance(x, LabelSegment) and x.seg == s.id]
+    assert len(matches) == 1
+    assert matches[0].text == "S"
+
+
+def test_circle_label_records_label_free_text_at_centroid_of():
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 3)
+        c.label("O")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText) and r.centroid_of == c.id]
+    assert len(matches) == 1
+    assert matches[0].text == "O"
+    assert matches[0].at is None
+
+
+def test_ellipse_label_records_label_free_text_at_centroid_of():
+    with new_builder_context() as builder:
+        e = ellipse(center=point(0, 0), hradius=4, vradius=1)
+        e.label("E")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText) and r.centroid_of == e.id]
+    assert len(matches) == 1
+    assert matches[0].text == "E"
+    assert matches[0].at is None
+
+
+def test_polyline_label_records_label_free_text_at_centroid_of():
+    with new_builder_context() as builder:
+        pts = [point(0, 0), point(2, 0), point(1, 2)]
+        pl = polyline(*pts)
+        pl.label("P")
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText) and r.centroid_of == pl.id]
+    assert len(matches) == 1
+    assert matches[0].text == "P"
+    assert matches[0].at is None
+
+
 def test_angle_ref_label_records_label_angle():
     with new_builder_context() as builder:
         a, b, c = point(0, 0), point(4, 0), point(1, 3)
@@ -159,6 +221,140 @@ def test_label_text_at_triangle_centroid():
     assert matches[0].text == "T"
     assert matches[0].at is None
     assert matches[0].centroid_of == t.id
+
+
+def test_label_text_accepts_circle_ellipse_sector_and_polyline_for_centroid_of():
+    # The type hint used to say Triangle | Polygon only, but the body never
+    # actually checked the type -- circle/ellipse/sector/polyline all
+    # already worked (centroid_of_obj supports them), just weren't
+    # documented as accepted. This locks that acceptance in.
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 3)
+        label_text("C", centroid_of=c)
+        e = ellipse(center=point(10, 0), hradius=2, vradius=1)
+        label_text("E", centroid_of=e)
+        start = point_on(c, 0.0)
+        end = point_on(c, 0.25)
+        s = sector(c, start, end)
+        label_text("S", centroid_of=s)
+        pl = polyline(point(20, 0), point(21, 0), point(20, 1))
+        label_text("P", centroid_of=pl)
+        ir = builder.build()
+    matches = [r for r in ir.render if isinstance(r, LabelFreeText)]
+    assert {m.centroid_of for m in matches} == {c.id, e.id, s.id, pl.id}
+
+
+def test_label_text_rejects_point_for_centroid_of():
+    with new_builder_context():
+        p = point(0, 0)
+        with pytest.raises(ValueError, match=r"doesn't take a Point"):
+            label_text("h", centroid_of=p)
+
+
+def test_label_text_rejects_angle_ref_for_centroid_of():
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        ref = t.angle_at(b)
+        with pytest.raises(ValueError, match=r"doesn't take an AngleRef"):
+            label_text("h", centroid_of=ref)
+
+
+def test_label_text_rejects_segment_for_centroid_of():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        s = segment(a, b)
+        with pytest.raises(ValueError, match=r"doesn't take a Segment.*\.label\(\.\.\.\)"):
+            label_text("h", centroid_of=s)
+
+
+def test_label_text_rejects_line_for_centroid_of():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        ell = line_through(a, b)
+        with pytest.raises(ValueError, match=r"doesn't take a Line.*\.label\(\.\.\.\)"):
+            label_text("h", centroid_of=ell)
+
+
+def test_label_text_rejects_ray_for_centroid_of():
+    with new_builder_context():
+        a, b = point(0, 0), point(4, 0)
+        r = ray(a, b)
+        with pytest.raises(ValueError, match=r"doesn't take a Ray.*\.label\(\.\.\.\)"):
+            label_text("h", centroid_of=r)
+
+
+def test_label_text_rejects_arc_for_centroid_of():
+    with new_builder_context():
+        c = circle(point(0, 0), 5)
+        start = point_on(c, 0.0)
+        end = point_on(c, 0.25)
+        a = arc(c, start, end)
+        with pytest.raises(ValueError, match=r"doesn't take an Arc.*\.label\(\.\.\.\)"):
+            label_text("h", centroid_of=a)
+
+
+def test_label_text_rejects_composite_handles_for_centroid_of():
+    """Median/Altitude/PerpendicularBisectorLine are composite records that
+    delegate to sub-handles, not standalone constructible shapes — they carry
+    an `.id` (the underlying segment/line def) so a blocklist-shaped check
+    used to let them through and silently anchor the label on that
+    sub-object's own midpoint. The check is an allowlist, so they're
+    rejected."""
+    with new_builder_context():
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        for handle in (median(t, a), altitude(t, a), perpendicular_bisector(b, c)):
+            with pytest.raises(ValueError, match="not supported for centroid_of"):
+                label_text("h", centroid_of=handle)
+
+
+def test_label_text_rejects_an_arbitrary_non_shape_for_centroid_of():
+    """The allowlist rejects anything that isn't one of the six supported
+    shapes, including a type it has never heard of."""
+    class Bogus:
+        id = "bogus"
+
+    with new_builder_context():
+        with pytest.raises(ValueError, match="not supported for centroid_of"):
+            label_text("h", centroid_of=Bogus())
+
+
+def test_label_text_centroid_of_allowlist_sweep():
+    """Regression guard: all six supported handle types still work, and all
+    six specifically-named unsupported types still raise their own message."""
+    with new_builder_context() as builder:
+        a, b, c = point(0, 0), point(4, 0), point(1, 3)
+        t = triangle(a, b, c)
+        poly = polygon(point(10, 0), point(12, 0), point(12, 2), point(10, 2))
+        circ = circle(point(20, 0), 3)
+        ell = ellipse(center=point(30, 0), hradius=2, vradius=1)
+        start, end = point_on(circ, 0.0), point_on(circ, 1.0)
+        sec = sector(circ, start, end)
+        pl = polyline(point(40, 0), point(41, 0), point(40, 1))
+        accepted = [t, poly, circ, ell, sec, pl]
+        for i, handle in enumerate(accepted):
+            label_text(f"ok{i}", centroid_of=handle)
+
+        rejected = [
+            (a, r"doesn't take a Point"),
+            (t.angle_at(b), r"doesn't take an AngleRef"),
+            (segment(a, b), r"doesn't take a Segment"),
+            (line_through(a, b), r"doesn't take a Line"),
+            (ray(a, b), r"doesn't take a Ray"),
+            (arc(circ, start, end), r"doesn't take an Arc"),
+        ]
+        for handle, pattern in rejected:
+            with pytest.raises(ValueError, match=pattern):
+                label_text("bad", centroid_of=handle)
+        ir = builder.build()
+
+    labelled = {
+        r.centroid_of for r in ir.render
+        if isinstance(r, LabelFreeText) and r.text.startswith("ok")
+    }
+    assert labelled == {h.id for h in accepted}
+    assert not [r for r in ir.render if isinstance(r, LabelFreeText) and r.text == "bad"]
 
 
 def test_label_text_requires_exactly_one_of_at_or_centroid_of():
@@ -271,6 +467,90 @@ def test_label_text_autofixes_python_escaped_latex_command():
     assert matches[0].text == "∠"
 
 
+def test_ray_label_renders_through_svg_renderer_without_warnings():
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        a, b = point(0, 0), point(3, 0)
+        r = ray(a, b)
+        r.label("r")
+        ir = builder.build()
+    sym = compile_defs(ir)
+    warnings: list[str] = []
+    svg = SVGRenderer().render(ir, sym, warnings=warnings).output
+    assert warnings == []
+    assert f'data-for="{r.id}"' in svg
+
+
+def test_sector_label_renders_near_curved_edge_without_being_dropped():
+    """Regression test for ticket 01's label_segment_arc_anchor fix: before
+    that fix, a Sector's LabelSegment fell through to
+    render_util.line_label_endpoints (which doesn't recognize a sector
+    def), silently dropping the label with a "not a labelable
+    segment/ray/line/arc/sector" warning instead of placing text near the
+    curved edge."""
+    import re
+
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        c = circle(point(0, 0), 3)
+        start = point_on(c, 0.0)
+        end = point_on(c, 0.25)
+        s = sector(c, start, end)
+        s.label("S")
+        ir = builder.build()
+    sym = compile_defs(ir)
+    warnings: list[str] = []
+    svg = SVGRenderer().render(ir, sym, warnings=warnings).output
+    assert warnings == []
+    match = re.search(rf'<text[^>]*data-for="{s.id}"[^>]*x="(-?[0-9.]+)"[^>]*y="(-?[0-9.]+)"', svg)
+    assert match is not None, svg
+    # Just confirms real, finite pixel coordinates were emitted -- proof the
+    # label was actually placed, not silently skipped.
+    float(match.group(1))
+    float(match.group(2))
+
+
+def test_circle_ellipse_polyline_labels_each_anchor_at_their_own_shape():
+    """Three LabelFreeText labels via .label(), anchored on three shapes
+    placed at well-separated x-centers -- confirms centroid_of_obj (whose
+    list/Polyline branch ticket 01 fixed) is reached independently per
+    shape, not collapsed onto one shared anchor. gx() in to_svg.py is
+    monotonic increasing in construction x, so the labels' rendered
+    x-pixel order must match the shapes' construction x-order."""
+    import re
+
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    with new_builder_context() as builder:
+        canvas(x_range=(-2, 24), y_range=(-4, 4))
+        c = circle(point(0, 0), 1)
+        c.label("C")
+        e = ellipse(center=point(10, 0), hradius=1, vradius=0.5)
+        e.label("E")
+        pl = polyline(point(19, -1), point(20, 1), point(21, -1))
+        pl.label("P")
+        ir = builder.build()
+    sym = compile_defs(ir)
+    warnings: list[str] = []
+    svg = SVGRenderer().render(ir, sym, warnings=warnings).output
+    assert warnings == []
+
+    x_by_label = {}
+    for label_char in ("C", "E", "P"):
+        match = re.search(
+            rf'<text[^>]*data-role="label-free-text"[^>]*x="(-?[0-9.]+)"[^>]*>(?:(?!</text>).)*{label_char}(?:(?!</text>).)*</text>',
+            svg, re.S,
+        )
+        assert match is not None, (label_char, svg)
+        x_by_label[label_char] = float(match.group(1))
+    assert x_by_label["C"] < x_by_label["E"] < x_by_label["P"]
+
+
 def test_labels_and_segment_work_through_the_real_sandbox():
     script = (
         "a = point(0, 0)\n"
@@ -288,3 +568,43 @@ def test_labels_and_segment_work_through_the_real_sandbox():
     seg_labels = [r for r in result.diagram_ir.render if isinstance(r, LabelSegment)]
     assert any(r.text == "A" for r in point_labels)
     assert any(r.text == "r" for r in seg_labels)
+
+
+def test_curved_family_labels_work_through_the_real_sandbox():
+    script = (
+        "a = point(0, 0)\n"
+        "b = point(3, 0)\n"
+        "r = ray(a, b)\n"
+        "r.label('ray1')\n"
+        "c = circle(point(6, 0), 2)\n"
+        "c.label('O')\n"
+        "start = point_on(c, 0.0)\n"
+        "end = point_on(c, 0.25)\n"
+        "sec = sector(c, start, end)\n"
+        "sec.label('S')\n"
+        "e = ellipse(center=point(12, 0), hradius=2, vradius=1)\n"
+        "e.label('E')\n"
+        "pl = polyline(point(16, 0), point(17, 1), point(18, 0))\n"
+        "pl.label('P')\n"
+        "canvas(x_range=(-2, 20), y_range=(-4, 4))\n"
+    )
+    result = run_script(script, timeout_seconds=10.0)
+    assert result.error is None, result.error
+    assert result.diagram_ir is not None
+    seg_labels = [r for r in result.diagram_ir.render if isinstance(r, LabelSegment)]
+    free_texts = [r for r in result.diagram_ir.render if isinstance(r, LabelFreeText)]
+    assert {r.text for r in seg_labels} == {"ray1", "S"}
+    assert {r.text for r in free_texts} == {"O", "E", "P"}
+
+    # Full pipeline, not just the sandboxed build step: compile the IR the
+    # real sandbox produced and render it through SVGRenderer, confirming
+    # none of the five new labels got silently dropped along the way.
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.renderer import SVGRenderer
+
+    sym = compile_defs(result.diagram_ir)
+    render_warnings: list[str] = []
+    svg = SVGRenderer().render(result.diagram_ir, sym, warnings=render_warnings).output
+    assert render_warnings == []
+    assert svg.count('data-role="label-segment"') == 2
+    assert svg.count('data-role="label-free-text"') == 3

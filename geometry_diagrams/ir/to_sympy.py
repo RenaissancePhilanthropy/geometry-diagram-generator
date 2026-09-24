@@ -17,6 +17,25 @@ from .refs import def_references
 # Symbol table: maps definition id -> SymPy geometry object
 SymTable = dict[str, Any]
 
+# Tolerance for CircleTangentAt's degeneracy checks: how far the tangency point
+# may sit off the reference circle's boundary, and how close the new radius may
+# come to the reference radius before an internal tangency counts as the same
+# circle. Anything larger is a contradiction, not floating-point noise.
+CIRCLE_TANGENT_TOL = 1e-6
+
+# Angular slack (in degrees) allowed when deciding whether a point lies within
+# an arc's/sector's sweep, so that a point landing exactly on a sweep endpoint
+# counts as inside despite floating-point noise. Shared by the intersection
+# sweep filter here and by checks.py's containment test, so the two can never
+# disagree about a boundary point.
+SWEEP_TOL_DEG = 1e-6
+
+# How far off an arc's/sector's radius a candidate point may sit and still count
+# as lying on its curved edge, when a pick rule asks. Candidates reaching a pick
+# rule come from an exact SymPy intersection, so this only absorbs float noise —
+# checks.py deliberately uses its own (looser) check tolerance instead.
+PICK_ON_ARC_TOL = 1e-9
+
 
 class Arc:
     """Marker type for a circular arc in the symbol table.
@@ -127,6 +146,94 @@ class EllipticalSector:
 
 
 # ---------------------------------------------------------------------------
+# Angular sweep helpers (shared with checks.py)
+# ---------------------------------------------------------------------------
+
+def angle_about_deg(point: spg.Point, cx: float, cy: float) -> float:
+    """Polar angle of `point` about the center (cx, cy), in [0, 360)."""
+    px, py = float(point.x.evalf()), float(point.y.evalf())
+    return math.degrees(math.atan2(py - cy, px - cx)) % 360.0
+
+
+def angle_within_sweep(
+    theta_deg: float,
+    start_deg: float,
+    end_deg: float,
+    tol_deg: float = SWEEP_TOL_DEG,
+) -> bool:
+    """Is `theta_deg` inside the counter-clockwise sweep `start_deg` → `end_deg`?
+
+    Both endpoints count as inside (within `tol_deg`). `end_deg` must already be
+    unwrapped so that ``start_deg < end_deg <= start_deg + 360`` — exactly the
+    form ``render_util.arc_params()`` returns.
+    """
+    span = end_deg - start_deg
+    offset = (theta_deg - start_deg) % 360.0
+    return offset <= span + tol_deg or offset >= 360.0 - tol_deg
+
+
+def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
+    """Return (cx, cy, start_deg, end_deg) for a circular arc/sector's CCW sweep.
+
+    The canonical sweep computation for everything that is *not* rendering:
+    the sweep filter and containment logic below, and ``checks.py``'s
+    ``congruent_arcs`` validation. Mirrors ``render_util.arc_params()``'s
+    reflex handling — including the endpoint swap that makes the traversal
+    counter-clockwise — but is duplicated here deliberately: ``render_util``
+    imports this module for the Arc/Sector marker types, so importing it back
+    would be a circular import. Validation code belongs on this copy, not on
+    the rendering one.
+
+    The object's radius is deliberately not part of the return: a caller that
+    needs it reads ``float(arc.radius.evalf())`` directly.
+    """
+    cx = float(arc.center.x.evalf())
+    cy = float(arc.center.y.evalf())
+    s_deg = angle_about_deg(arc.start, cx, cy)
+    e_deg = angle_about_deg(arc.end, cx, cy)
+    ccw = (e_deg - s_deg) % 360.0
+    if ccw == 0:
+        ccw = 360.0
+    # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
+    if (ccw <= 180.0) == bool(arc.reflex):
+        s_deg, e_deg = e_deg, s_deg
+    if e_deg <= s_deg:
+        e_deg += 360.0
+    return (cx, cy, s_deg, e_deg)
+
+
+def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
+    """Does `point` fall within the angular sweep of a circular arc/sector?"""
+    cx, cy, start_deg, end_deg = arc_sweep_degrees(arc)
+    return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
+
+
+def point_on_arc(point: spg.Point, arc: Arc | Sector, tol: float) -> bool:
+    """Is `point` on the curved edge of a circular arc/sector — at its radius
+    (within `tol`) and within its sweep?
+
+    A sector's two straight radii and its filled interior are deliberately not
+    part of this: a model that needs those has them as ordinary segments from
+    the center to the start/end points. Shared by every caller that asks "does
+    this point lie on this arc" — the `pick_on_object` rule below and
+    ``checks.py``'s containment check.
+    """
+    radius_error = abs(float(point.distance(arc.center).evalf()) - float(arc.radius.evalf()))
+    return radius_error < tol and _point_within_arc_sweep(point, arc)
+
+
+def _underlying_circle(obj: Any) -> Any:
+    """Substitute the full underlying circle for a circular arc/sector.
+
+    Any other object is returned unchanged, so callers can run the ordinary
+    SymPy intersection machinery over the result.
+    """
+    if isinstance(obj, (Arc, Sector)):
+        return spg.Circle(obj.center, obj.radius)
+    return obj
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -162,10 +269,12 @@ def compile_defs(
     all_ids = {stmt.id for stmt in diagram.define}
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
-    # Build a mapping from polygon sub-vertex names → their parent polygon ID.
-    # PolygonExterior and PolygonOnEdge register sub-vertices in sym as a side effect,
-    # so any DefStmt that references a sub-vertex name needs to depend on the polygon.
-    poly_vertex_to_poly: dict[str, str] = {}
+    # Build a mapping from derived point names → the id of the statement that
+    # produces them. PolygonExterior/PolygonOnEdge register sub-vertices and
+    # CircleTangentAt registers its computed center in sym as a side effect, so
+    # any DefStmt that references one of those derived names needs to depend on
+    # the statement that owns it.
+    derived_point_owner: dict[str, str] = {}
     for stmt in diagram.define:
         if isinstance(stmt, ir.PolygonExterior):
             names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
@@ -174,19 +283,23 @@ def compile_defs(
             # would overwrite the parent polygon's ownership and create a self-loop.
             for vname in names[2:]:
                 if vname not in all_ids:  # only synthesized names, not real DefStmts
-                    poly_vertex_to_poly[vname] = stmt.id
+                    derived_point_owner[vname] = stmt.id
         if isinstance(stmt, ir.PolygonOnEdge):
             for vname in stmt.vertex_names[2:]:   # only new vertices
                 if vname not in all_ids:
-                    poly_vertex_to_poly[vname] = stmt.id
+                    derived_point_owner[vname] = stmt.id
+        if isinstance(stmt, ir.CircleTangentAt):
+            cname = ir.tangent_circle_center_id(stmt.id)
+            if cname not in all_ids:
+                derived_point_owner[cname] = stmt.id
 
     # Build dependency graph and sort topologically so forward references work.
-    # Substitute polygon sub-vertex refs with their parent polygon so the sort
-    # correctly places the polygon before any statement that uses its vertices.
+    # Substitute derived point refs with their owning statement so the sort
+    # correctly places that statement before any statement that uses them.
     graph: dict[str, set[str]] = {}
     for stmt in diagram.define:
         raw_refs = def_references(stmt)
-        resolved = {poly_vertex_to_poly.get(r, r) for r in raw_refs}
+        resolved = {derived_point_owner.get(r, r) for r in raw_refs}
         graph[stmt.id] = resolved & all_ids
 
     try:
@@ -215,6 +328,12 @@ def compile_defs(
             for i, vname in enumerate(stmt.vertex_names):
                 if vname not in sym:
                     sym[vname] = obj.vertices[i]
+        # CircleTangentAt: also register its computed center as an addressable
+        # point, so later definitions can reference it by its derived id.
+        if isinstance(stmt, ir.CircleTangentAt) and isinstance(obj, spg.Circle):
+            center_id = ir.tangent_circle_center_id(stmt.id)
+            if center_id not in sym:
+                sym[center_id] = obj.center
 
     return sym
 
@@ -340,6 +459,19 @@ def _compile_one(
             if obj1_id == obj2_id:
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
+            operands = ((obj1_id, obj1), (obj2_id, obj2))
+            for oid, operand in operands:
+                if isinstance(operand, (EllipticalArc, EllipticalSector)):
+                    raise IRCompileError(
+                        did,
+                        f"point_intersection: {oid!r} is an elliptical arc/sector "
+                        f"({type(operand).__name__}); only circular arcs/sectors can be "
+                        f"intersected — intersect the underlying ellipse instead"
+                    )
+            # A circular arc/sector intersects exactly where its underlying full
+            # circle does; the candidates are narrowed to its sweep below.
+            swept = [(oid, o) for oid, o in operands if isinstance(o, (Arc, Sector))]
+            obj1, obj2 = _underlying_circle(obj1), _underlying_circle(obj2)
             try:
                 raw = obj1.intersection(obj2)
             except ValueError as exc:
@@ -357,6 +489,21 @@ def _compile_one(
             points = [c for c in candidates if isinstance(c, spg.Point)]
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
+            if swept:
+                within = [
+                    p for p in points
+                    if all(_point_within_arc_sweep(p, arc) for _, arc in swept)
+                ]
+                if not within:
+                    which = " and ".join(repr(oid) for oid, _ in swept)
+                    raise IntersectionError(
+                        did,
+                        f"{obj1_id!r} and {obj2_id!r} meet outside the sweep of {which}: "
+                        f"the underlying circle(s) do intersect, but no intersection point "
+                        f"lies on the drawn part of the arc/sector — widen the sweep, or "
+                        f"intersect the full circle instead"
+                    )
+                points = within
             return _apply_pick(points, pick, sym, did, canvas=canvas)
 
         case ir.PointAlias(ref=ref_id):
@@ -502,6 +649,46 @@ def _compile_one(
                     f"no circle passes through them"
                 )
             return spg.Circle(a_pt, b_pt, c_pt)
+
+        case ir.CircleTangentAt(circle=circle_id, point=point_id, radius=radius, tangency=tangency):
+            ref_circle = ref(circle_id)
+            if not isinstance(ref_circle, spg.Circle):
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: '{circle_id}' must be a genuine circle, got "
+                    f"{type(ref_circle).__name__} — an ellipse has no single radius to be tangent to"
+                )
+            r_new = ev(radius)
+            r_new_f = float(r_new.evalf())
+            if r_new_f <= 0:
+                raise IRCompileError(did, f"circle_tangent_at: radius must be positive, got {r_new}")
+
+            c_ref = ref_circle.center
+            r_ref = ref_circle.radius
+            r_ref_f = float(r_ref.evalf())
+            touch = ref(point_id)
+            reach = c_ref.distance(touch)
+            reach_f = float(reach.evalf())
+            if abs(reach_f - r_ref_f) > CIRCLE_TANGENT_TOL:
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: point '{point_id}' is not on circle '{circle_id}' — "
+                    f"it is {reach_f:.6g} from the center, but the radius is {r_ref_f:.6g}"
+                )
+            if tangency == "internal" and abs(r_new_f - r_ref_f) <= CIRCLE_TANGENT_TOL:
+                raise IRCompileError(
+                    did,
+                    f"circle_tangent_at: internal tangency with radius {r_new_f:.6g} would be "
+                    f"identical to circle '{circle_id}' — use a different radius"
+                )
+            # The center sits on the line through c_ref and the touch point, at
+            # r_ref + r_new (external) or r_ref - r_new (internal) from c_ref.
+            # A negative distance simply puts it on the far side of c_ref, which
+            # is exactly the internal case where the new circle encloses the
+            # reference one.
+            signed = r_new if tangency == "external" else -r_new
+            center = c_ref + (touch - c_ref) * ((r_ref + signed) / reach)
+            return spg.Circle(center, r_new)
 
         # --- Arcs ---
         case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):
@@ -984,7 +1171,19 @@ def _apply_pick(
 
         case ir.PickOnObject(obj=obj_id):
             obj = _resolve(sym, obj_id, def_id=def_id)
-            on = [p for p in points if obj.contains(p)]
+            if isinstance(obj, (EllipticalArc, EllipticalSector)):
+                raise IRCompileError(
+                    def_id,
+                    f"pick_on_object: {obj_id!r} is an elliptical arc/sector "
+                    f"({type(obj).__name__}); only circular arcs/sectors can be used "
+                    f"as a pick target — pick on the underlying ellipse instead"
+                )
+            if isinstance(obj, (Arc, Sector)):
+                # Marker types have no .contains(); "on" an arc/sector means on
+                # its curved edge, i.e. at its radius and within its sweep.
+                on = [p for p in points if point_on_arc(p, obj, PICK_ON_ARC_TOL)]
+            else:
+                on = [p for p in points if obj.contains(p)]
             if not on:
                 raise PickError(def_id, f"no candidate lies on {obj_id!r}")
             return on[0]
@@ -1211,7 +1410,7 @@ def _point_on_intent(
         candidate = _eval_param(obj, t, def_id)
         ok = True
         for c in constraints:
-            if not _check_spatial_constraint(c, candidate, sym):
+            if not _check_spatial_constraint(c, candidate, sym, obj):
                 constraint_failures[c.kind] = constraint_failures.get(c.kind, 0) + 1
                 ok = False
                 break
@@ -1229,7 +1428,10 @@ def _check_spatial_constraint(
     constraint: ir.SpatialConstraint,
     candidate: spg.Point,
     sym: SymTable,
+    obj: Any,
 ) -> bool:
+    """Does `candidate` satisfy `constraint`? `obj` is the object it was sampled
+    on — ArcBetweenConstraint needs its center to measure angles from."""
     match constraint:
         case ir.SameSideConstraint(line=line_pts, ref=ref_id):
             a, b, ref = sym[line_pts[0]], sym[line_pts[1]], sym[ref_id]
@@ -1241,8 +1443,22 @@ def _check_spatial_constraint(
             ref_pt = sym[pt_id]
             return float(candidate.distance(ref_pt).evalf()) >= min_d
 
-        case ir.ArcBetweenConstraint():
-            return True  # TODO: implement full arc check
+        case ir.ArcBetweenConstraint(from_point=from_id, to_point=to_id):
+            center = getattr(obj, "center", None)
+            if center is None:
+                # On a line/segment/ray there is no center to measure angles
+                # from, so the constraint restricts nothing. Any center-based
+                # conic is accepted: for an axis-aligned ellipse the polar angle
+                # is a strictly increasing function of the parametric angle, so
+                # "inside the CCW sweep from `from_point` to `to_point`" gives
+                # the same answer measured either way.
+                return True
+            cx, cy = float(center.x.evalf()), float(center.y.evalf())
+            start_deg = angle_about_deg(sym[from_id], cx, cy)
+            end_deg = angle_about_deg(sym[to_id], cx, cy)
+            if end_deg <= start_deg:
+                end_deg += 360.0  # unwrap to a CCW sweep, as arc_sweep_degrees does
+            return angle_within_sweep(angle_about_deg(candidate, cx, cy), start_deg, end_deg)
 
         case ir.BeyondConstraint():
             return True  # TODO: implement for segment parameterization

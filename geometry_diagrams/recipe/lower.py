@@ -17,15 +17,17 @@ from ..ir.ir import (
     PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
-    CircleCenterPoint, CircleCenterRadius, CircleThrough3,
+    CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt, tangent_circle_center_id,
     ArcCenterStartEnd, SectorCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
     Check, Perpendicular, Contains, RightAngle, AnglePoints,
     AngleEqual, EqualLength, Parallel, RatioEqual, PendingAnglePair,
+    CirclesTangent,
     Draw, DrawPoints, Fill, LabelPoint as IRLabelPoint, MarkRightAngles,
-    MarkAngles, MarkSegments, LabelSegment as IRLabelSegment,
+    MarkAngles, MarkSegments, MarkArcs as IRMarkArcs, LabelSegment as IRLabelSegment,
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
+    LabelAlongArc as IRLabelAlongArc,
     RenderOp, DefStmt, PickRule,
 )
 from .dsl import (
@@ -34,15 +36,17 @@ from .dsl import (
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
     LineThroughOp, SegmentOp, RayOp, ReflectionOp, RotationOp,
-    PointOnSegmentOp, TangentLineOp, PointFootOp, CircleThrough3Op,
+    PointOnSegmentOp, TangentLineOp, CircleTangentAtOp, PointFootOp, CircleThrough3Op,
     AltitudeOp, CircumcircleOp, IncircleOp, PerpendicularBisectorOp,
     AngleBisectorOp, CentroidOp, MedianOp, PolygonExteriorOp,
     RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, FillOp, ArcOp, SectorOp, RegularSectorsOp,
     MarkAngle, MarkRightAngle, MarkEqualLengths, MarkParallel, MarkProportional, MarkAnglePair,
+    MarkArcs as DSLMarkArcs,
     LabelSegment as DSLLabelSegment,
     LabelPoint as DSLLabelPoint,
     LabelAngle as DSLLabelAngle,
     LabelFreeText as DSLLabelFreeText,
+    LabelAlongArc as DSLLabelAlongArc,
     DrawObj,
 )
 from .solve import solve_triangle, solve_rectangle, solve_polygon_from_sides, solve_polygon_from_angles_and_sides
@@ -234,6 +238,8 @@ class _Lowerer:
                 self._point_ids.append(op.id)
             case TangentLineOp():
                 self._lower_tangent_line(op)
+            case CircleTangentAtOp():
+                self._lower_circle_tangent_at(op)
             case PointAlongOp():
                 self._lower_point_along(op)
             case ExtendSegmentOp():
@@ -604,6 +610,28 @@ class _Lowerer:
         else:
             raise LoweringError(f"TangentLineOp '{op.id}': must specify 'from_point' or 'at'")
         self._drawable.add(op.id)
+
+    def _lower_circle_tangent_at(self, op: CircleTangentAtOp) -> None:
+        if op.circle not in self._circle_centers:
+            raise LoweringError(
+                f"CircleTangentAtOp '{op.id}': circle '{op.circle}' not found. "
+                "Define the circle before the tangent circle."
+            )
+        self._add(CircleTangentAt(
+            id=op.id,
+            circle=op.circle,
+            point=op.point,
+            radius=op.radius,
+            tangency=op.tangency,
+        ))
+        self._drawable.add(op.id)
+        # Register the new circle's derived center so a later tangent
+        # construction referencing this circle by id can find its center,
+        # same as any other circle-producing op.
+        self._circle_centers[op.id] = tangent_circle_center_id(op.id)
+        # Auto-generate the tangency check as a safety net, consistent with
+        # other constructions' own auto-generated verification checks.
+        self._checks.append(CirclesTangent(c1=op.circle, c2=op.id))
 
     # ------------------------------------------------------------------
     # Derived helpers
@@ -1102,6 +1130,13 @@ class _Lowerer:
                     ray_ref_v2=mark.rays_along[1],
                     group=str(mark.group) if mark.group is not None else None,
                 ))
+            elif isinstance(mark, DSLMarkArcs):
+                # Same plain stringification as mark_equal_lengths — NOT
+                # mark_parallel's "parallel_N" prefixed convention — so a
+                # shared group number here actually joins ir.MarkArcs into
+                # ir.MarkSegments' group namespace.
+                group_str = str(mark.group) if mark.group is not None else None
+                self._renders.append(IRMarkArcs(arcs=list(mark.arcs), group=group_str))
 
         # Cross-entry proportionality: all mark_proportional entries claim the
         # same ratio.  e.g. [AB,DE], [BC,EF], [AC,DF] → AB/DE == BC/EF == AC/DF.
@@ -1151,6 +1186,14 @@ class _Lowerer:
                     text=label.text,
                     at=label.at,
                     centroid_of=label.centroid_of,
+                ))
+            elif isinstance(label, DSLLabelAlongArc):
+                self._renders.append(IRLabelAlongArc(
+                    arc=label.arc,
+                    text=label.text,
+                    side=label.side,
+                    pos=label.pos,
+                    flip=label.flip,
                 ))
 
         # Explicit draws (with optional per-element styles)

@@ -326,3 +326,343 @@ def test_congruent_triangles_distinguishes_from_similar():
     congruent_result = _check_one(CongruentTriangles(t1="T1", t2="T2"), sym, DEFAULT_TOL)
     assert similar_result.passed
     assert not congruent_result.passed
+
+
+# ---------------------------------------------------------------------------
+# EqualRadius checks
+# ---------------------------------------------------------------------------
+
+def test_equal_radius_passes_for_matching_circles():
+    from geometry_diagrams.ir.ir import EqualRadius
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(0, 0), 5),
+        "c2": spg.Circle(spg.Point2D(10, 0), 5),
+    }
+    check = EqualRadius(circles=["c1", "c2"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_equal_radius_fails_for_mismatched_circles():
+    from geometry_diagrams.ir.ir import EqualRadius
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(0, 0), 5),
+        "c2": spg.Circle(spg.Point2D(10, 0), 3),
+    }
+    check = EqualRadius(circles=["c1", "c2"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "c1" in result.message and "c2" in result.message
+
+
+# ---------------------------------------------------------------------------
+# RadiusEquals checks
+# ---------------------------------------------------------------------------
+
+def test_radius_equals_passes_when_circle_has_expected_radius():
+    from geometry_diagrams.ir.ir import RadiusEquals
+
+    sym = {"c1": spg.Circle(spg.Point2D(0, 0), 5)}
+    check = RadiusEquals(circle="c1", expected=5.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_radius_equals_fails_when_circle_has_wrong_radius():
+    from geometry_diagrams.ir.ir import RadiusEquals
+
+    sym = {"c1": spg.Circle(spg.Point2D(0, 0), 5)}
+    check = RadiusEquals(circle="c1", expected=10.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "c1" in result.message
+
+
+# ---------------------------------------------------------------------------
+# CongruentArcs checks
+# ---------------------------------------------------------------------------
+
+def test_congruent_arcs_passes_for_equal_radius_and_sweep():
+    """Two arcs on different circles, same radius, same 60-degree sweep: congruent."""
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O1", x=0, y=0),
+        PointFixed(id="S1", x=5, y=0),
+        PointFixed(id="E1", x=2.5, y=4.330127018922194),  # 60 degrees, r=5
+        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+
+        PointFixed(id="O2", x=10, y=0),
+        PointFixed(id="S2", x=15, y=0),
+        PointFixed(id="E2", x=12.5, y=4.330127018922194),  # 60 degrees, r=5
+        ArcCenterStartEnd(id="a2", center="O2", start="S2", end="E2"),
+    ]))
+    check = CongruentArcs(arcs=["a1", "a2"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_congruent_arcs_fails_for_different_radius():
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O1", x=0, y=0),
+        PointFixed(id="S1", x=5, y=0),
+        PointFixed(id="E1", x=2.5, y=4.330127018922194),  # r=5, 60 degrees
+        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+
+        PointFixed(id="O2", x=10, y=0),
+        PointFixed(id="S2", x=13, y=0),
+        PointFixed(id="E2", x=11.5, y=2.598076211353316),  # r=3, 60 degrees
+        ArcCenterStartEnd(id="a2", center="O2", start="S2", end="E2"),
+    ]))
+    check = CongruentArcs(arcs=["a1", "a2"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+
+
+def test_congruent_arcs_is_reflex_aware():
+    """Minor and reflex arcs sharing the same endpoints are NOT congruent —
+    same radius, but very different sweep (60 degrees vs 300 degrees)."""
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=5, y=0),
+        PointFixed(id="E", x=2.5, y=4.330127018922194),  # 60 degrees from S
+        ArcCenterStartEnd(id="minor", center="O", start="S", end="E", reflex=False),
+        ArcCenterStartEnd(id="reflex", center="O", start="S", end="E", reflex=True),
+    ]))
+    check = CongruentArcs(arcs=["minor", "reflex"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+
+
+def test_congruent_arcs_rejects_elliptical_arc_with_clear_message():
+    """An elliptical arc/sector in the list is rejected with a clear, named-type
+    error rather than an opaque AttributeError bubbling up through the generic
+    exception handler."""
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, EllipticalArcCenterStartEnd,
+        PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O1", x=0, y=0),
+        PointFixed(id="S1", x=5, y=0),
+        PointFixed(id="E1", x=2.5, y=4.330127018922194),
+        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+
+        PointFixed(id="O2", x=10, y=0),
+        PointFixed(id="S2", x=14, y=0),
+        PointFixed(id="E2", x=10, y=2),
+        EllipticalArcCenterStartEnd(id="ea1", center="O2", hradius=4, vradius=2, start="S2", end="E2"),
+    ]))
+    check = CongruentArcs(arcs=["a1", "ea1"])
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "ea1" in result.message
+    assert "elliptical" in result.message.lower()
+    # Must not be the opaque generic-exception wrapper message.
+    assert not result.message.startswith("Error in ")
+    assert "has no attribute" not in result.message
+
+
+# ---------------------------------------------------------------------------
+# AngleValue checks
+# ---------------------------------------------------------------------------
+
+def test_angle_value_passes_for_matching_angle():
+    from geometry_diagrams.ir.ir import AngleValue, AnglePoints
+
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(3, 0),
+        "C": spg.Point2D(0, 4),
+    }
+    # The right angle is at vertex A (legs to B and C).
+    check = AngleValue(angle=AnglePoints(a="B", o="A", b="C"), expected_deg=90.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_angle_value_fails_for_mismatched_angle():
+    from geometry_diagrams.ir.ir import AngleValue, AnglePoints
+
+    sym = {
+        "A": spg.Point2D(0, 0),
+        "B": spg.Point2D(3, 0),
+        "C": spg.Point2D(0, 4),
+    }
+    check = AngleValue(angle=AnglePoints(a="B", o="A", b="C"), expected_deg=45.0)
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "90" in result.message
+    assert "45" in result.message
+
+
+# ---------------------------------------------------------------------------
+# CirclesTangent checks
+# ---------------------------------------------------------------------------
+
+def test_circles_tangent_passes_for_external_tangency():
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(0, 0), 3),
+        "c2": spg.Circle(spg.Point2D(8, 0), 5),  # centers 8 apart = 3 + 5
+    }
+    check = CirclesTangent(c1="c1", c2="c2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_circles_tangent_passes_for_internal_tangency():
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(0, 0), 5),
+        "c2": spg.Circle(spg.Point2D(2, 0), 3),  # centers 2 apart = 5 - 3
+    }
+    check = CirclesTangent(c1="c1", c2="c2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert result.passed
+    assert result.message == ""
+
+
+def test_circles_tangent_fails_for_identical_circles():
+    """Two identical circles (same center, same radius) are not tangent."""
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(1, 1), 4),
+        "c2": spg.Circle(spg.Point2D(1, 1), 4),
+    }
+    check = CirclesTangent(c1="c1", c2="c2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+
+
+def test_circles_tangent_fails_for_non_touching_circles():
+    from geometry_diagrams.ir.ir import CirclesTangent
+
+    sym = {
+        "c1": spg.Circle(spg.Point2D(0, 0), 3),
+        "c2": spg.Circle(spg.Point2D(100, 0), 5),
+    }
+    check = CirclesTangent(c1="c1", c2="c2")
+    result = _check_one(check, sym, DEFAULT_TOL)
+    assert not result.passed
+
+
+# ---------------------------------------------------------------------------
+# Contains / NotContains on arcs and sectors
+# ---------------------------------------------------------------------------
+
+class TestContainsArcOrSector:
+    """"On an arc" means on its curved edge, within its angular sweep."""
+
+    def _sym(self, *, reflex=False, sector=False, elliptical=False):
+        """Arc/sector of radius 2 about the origin, from 0 deg to 90 deg."""
+        from geometry_diagrams.ir.ir import (
+            ArcCenterStartEnd, SectorCenterStartEnd, EllipticalArcCenterStartEnd,
+            DiagramIR, PointFixed,
+        )
+        from geometry_diagrams.ir.to_sympy import compile_defs
+
+        root2 = 2 ** 0.5
+        if elliptical:
+            curve = EllipticalArcCenterStartEnd(
+                id="a", center="O", hradius=4, vradius=2, start="ES", end="E"
+            )
+        elif sector:
+            curve = SectorCenterStartEnd(id="a", center="O", start="S", end="E", reflex=reflex)
+        else:
+            curve = ArcCenterStartEnd(id="a", center="O", start="S", end="E", reflex=reflex)
+        return compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=2, y=0),      # 0 deg, on the circle
+            PointFixed(id="ES", x=4, y=0),     # 0 deg, on the ellipse
+            PointFixed(id="E", x=0, y=2),      # 90 deg, on the circle
+            PointFixed(id="IN", x=root2, y=root2),      # 45 deg, on the circle
+            PointFixed(id="OUT", x=-root2, y=-root2),   # 225 deg, on the circle
+            PointFixed(id="NEAR", x=1, y=1),   # 45 deg, but inside the circle
+            curve,
+        ]))
+
+    def _contains(self, point_id, **kwargs):
+        from geometry_diagrams.ir.ir import Contains
+        return _check_one(Contains(p=point_id, obj="a"), self._sym(**kwargs), DEFAULT_TOL)
+
+    def test_point_on_the_curved_edge_inside_the_sweep_is_contained(self):
+        result = self._contains("IN")
+        assert result.passed
+        assert result.message == ""
+
+    def test_point_on_the_circle_but_outside_the_sweep_is_not_contained(self):
+        result = self._contains("OUT")
+        assert not result.passed
+        assert "'a'" in result.message and "'OUT'" in result.message
+
+    def test_point_exactly_on_a_sweep_endpoint_is_contained(self):
+        assert self._contains("S").passed
+        assert self._contains("E").passed
+
+    def test_point_at_the_right_angle_but_the_wrong_radius_is_not_contained(self):
+        assert not self._contains("NEAR").passed
+
+    def test_a_reflex_arc_contains_the_points_of_its_major_sweep(self):
+        assert self._contains("OUT", reflex=True).passed
+        assert not self._contains("IN", reflex=True).passed
+
+    def test_a_sector_contains_its_curved_edge_only(self):
+        assert self._contains("IN", sector=True).passed
+        # The centre and the interior belong to the region, not to the curve
+        assert not self._contains("O", sector=True).passed
+        assert not self._contains("NEAR", sector=True).passed
+        assert not self._contains("OUT", sector=True).passed
+
+    def test_not_contains_passes_for_a_point_outside_the_sweep(self):
+        from geometry_diagrams.ir.ir import NotContains
+        result = _check_one(NotContains(p="OUT", obj="a"), self._sym(), DEFAULT_TOL)
+        assert result.passed
+
+    def test_elliptical_arc_is_rejected_by_name(self):
+        """A deliberate, named rejection -- not an AttributeError leaking through."""
+        result = self._contains("ES", elliptical=True)
+        assert not result.passed
+        assert "EllipticalArc" in result.message
+        assert "circular arcs" in result.message
+
+    def test_elliptical_rejection_message_is_direct_not_generically_wrapped(self):
+        """Same message shape as congruent_arcs's elliptical rejection: a clean,
+        direct sentence, not the generic "Error in <kind>:" exception wrapper."""
+        result = self._contains("ES", elliptical=True)
+        assert not result.message.startswith("Error in ")
+
+    def test_not_contains_on_an_elliptical_arc_is_rejected_too(self):
+        """A rejected operand must not make NotContains vacuously pass."""
+        from geometry_diagrams.ir.ir import NotContains
+        result = _check_one(
+            NotContains(p="ES", obj="a"), self._sym(elliptical=True), DEFAULT_TOL
+        )
+        assert not result.passed
+        assert not result.message.startswith("Error in ")
+        assert "EllipticalArc" in result.message

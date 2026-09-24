@@ -303,6 +303,14 @@ is invalid; the segment between A and C is always side_CA.
 - incircle: {op, id, of:<triangle_id>, center}
   Same as circumcircle: center is an OUTPUT (the incenter), created by this op.
   Do NOT pre-define it or reference it before this op runs.
+- circle_tangent_at: {op, id, circle, point, radius, tangency?:"external"|"internal"}
+  New circle of `radius`, tangent to the reference `circle` at boundary `point`
+  (`point` must already lie on `circle`). tangency:"external" (default) sits the
+  new circle outside the reference one, touching from opposite sides; "internal"
+  sits it on the same side (nested inside or enclosing the reference circle,
+  depending on `radius`). The new circle's center is an OUTPUT, addressable
+  as "<id>_center" for later ops (e.g. a segment joining the two centers).
+  Auto-generates a circles_tangent check on {circle, id} as a safety net.
 - perpendicular_bisector: {op, id, of:[P,Q], mid}
   mid is an OUTPUT — this op creates that point (the midpoint of P,Q) for you;
   do not pre-define it or reference it before this op runs.
@@ -359,6 +367,9 @@ is invalid; the segment between A and C is always side_CA.
 - rotation: {op, id, point, center, angle}  (angle in degrees)
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
+  Tangent line(s) from an external point; selector picks among the two candidates.
+  Alternate form — tangent AT a point already on the circle's boundary (no selector,
+  since there's exactly one such tangent): {op, id, circle, at:<point_on_circle>}
 - point_foot: {op, id, source, onto}
   Foot of the perpendicular dropped from `source` onto the line/segment `onto`.
   `onto` MUST be a segment/line/ray id — it CANNOT be a triangle id. To drop a
@@ -478,6 +489,17 @@ distance from segment[0].
   "alternate_exterior" pair to tick-mark them as equal — do NOT also add
   mark_angle entries for the same angles; mark_angle_pair already emits both.
 
+### mark_arcs — congruence ticks on an arc's curved edge
+  {"kind":"mark_arcs", "arcs":["arc1"], "group":1}
+  Radial tick marks across one or more already-defined "arc"/"sector" ids
+  (for a sector, ticks land on its curved edge only, never its two radii).
+  "group" shares mark_equal_lengths' group namespace: mark a chord and an
+  arc with the SAME group number to tick-mark them as congruent to each
+  other, e.g. a chord's endpoints subtending a marked arc.
+    {"kind":"mark_equal_lengths", "segments":[["A","B"]], "group":1}
+    {"kind":"mark_arcs", "arcs":["arc1"], "group":1}
+  Elliptical arcs/sectors are not supported (skipped with a warning).
+
 ### annotations.labels — explicit text callouts
   {"kind":"label_segment", "endpoints":["A","B"], "text":"c"}
       Text beside midpoint of segment AB (side lengths, etc.)
@@ -489,6 +511,15 @@ distance from segment[0].
       Append the point's compiled (x, y) coordinates to the label text.
       Useful for coordinate geometry problems. Combine with axes:true on
       the canvas for full coordinate-plane diagrams.
+  {"kind":"label_along_arc", "arc":"arc1", "text":"60 degrees"}
+      Text that follows an already-defined "arc"/"sector" id's curve, one
+      rotated glyph at a time — unlike label_segment's arc handling, which
+      places a single upright label near the arc's midpoint. Optional:
+      side ("outside" default | "inside"), pos (0-1 fraction along the
+      sweep, default 0.5), flip (null default auto-orients glyphs upright;
+      true/false forces the orientation). For a sector, follows its curved
+      edge only. A text with LaTeX/sub/superscripts falls back to a single
+      unrotated label at the arc anchor.
 
 Label objects do NOT take a "visible" field (that's a construction-op-only field).
 To hide a point's label, either set visible:false on the point's own construction

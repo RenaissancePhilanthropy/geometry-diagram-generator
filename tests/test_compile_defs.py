@@ -22,8 +22,10 @@ from geometry_diagrams.ir.ir import (
     CircleCenterPoint, CircleCenterRadius, CircleThrough3,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolylineOpen,
+    ArcCenterStartEnd, SectorCenterStartEnd,
+    EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd,
     PointOnParam, PointOnRandom, PointOnIntent,
-    SameSideConstraint, NotNearConstraint,
+    SameSideConstraint, NotNearConstraint, ArcBetweenConstraint,
     PickIndex, PickClosestTo, PickOnObject,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
@@ -1692,3 +1694,732 @@ def test_elliptical_sector_compiles_to_marker():
     assert isinstance(obj, EllipticalSector)
     assert obj.reflex is True
 
+
+
+# ---------------------------------------------------------------------------
+# CircleTangentAt
+# ---------------------------------------------------------------------------
+
+class TestCircleTangentAt:
+    """A circle of a given radius, tangent to a reference circle at a boundary point."""
+
+    # Reference circle: centre O=(0,0), radius 3; tangency point P=(3,0) on it.
+    def _defs(self, **kwargs):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        return [
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", **kwargs),
+        ]
+
+    def _compile_tangent(self, **kwargs):
+        return compile_defs(DiagramIR(define=self._defs(**kwargs)))
+
+    def test_external_tangency_places_centre_beyond_the_touch_point(self):
+        sym = self._compile_tangent(radius=1)
+        circ = sym["tc"]
+        assert isinstance(circ, spg.Circle)
+        assert approx(circ.radius, 1)
+        # centres are r_ref + r_new apart, on the ray O -> P
+        assert approx(sym["O"].distance(circ.center), 4)
+        assert approx(circ.center.x, 4) and approx(circ.center.y, 0)
+        # and the two circles really touch at P
+        assert approx(circ.center.distance(sym["P"]), 1)
+
+    def test_internal_tangency_nests_the_smaller_circle_inside(self):
+        sym = self._compile_tangent(radius=1, tangency="internal")
+        circ = sym["tc"]
+        assert approx(circ.radius, 1)
+        # centres are |r_ref - r_new| apart
+        assert approx(sym["O"].distance(circ.center), 2)
+        assert approx(circ.center.x, 2) and approx(circ.center.y, 0)
+        assert approx(circ.center.distance(sym["P"]), 1)
+
+    def test_internal_tangency_with_larger_radius_encloses_the_reference(self):
+        sym = self._compile_tangent(radius=5, tangency="internal")
+        circ = sym["tc"]
+        assert approx(circ.radius, 5)
+        d = sym["O"].distance(circ.center)
+        assert approx(d, 2)  # |r_ref - r_new| = |3 - 5|
+        # reference circle lies inside the new one: d + r_ref == r_new
+        assert approx(d + 3, 5)
+        assert approx(circ.center.x, -2) and approx(circ.center.y, 0)
+        assert approx(circ.center.distance(sym["P"]), 5)
+
+    def test_tangency_point_is_off_the_ray_when_it_is_elsewhere_on_the_circle(self):
+        """The centre follows the touch point, not the x-axis."""
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=0, y=3),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=2),
+        ]))
+        circ = sym["tc"]
+        assert approx(circ.center.x, 0) and approx(circ.center.y, 5)
+
+    def test_symbolic_radius_resolves_through_params(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(
+            params=Params(assign={"r": 2}),
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=3, y=0),
+                CircleTangentAt(id="tc", circle="c1", point="P", radius="r/2"),
+            ],
+        ))
+        assert approx(sym["tc"].radius, 1)
+
+    # --- the derived, addressable centre ---
+
+    def test_centre_is_registered_under_the_derived_id(self):
+        from geometry_diagrams.ir.ir import tangent_circle_center_id
+
+        sym = self._compile_tangent(radius=1)
+        cid = tangent_circle_center_id("tc")
+        assert cid in sym, f"{cid} not in sym"
+        assert isinstance(sym[cid], spg.Point)
+        assert sym[cid] == sym["tc"].center
+
+    def test_later_definition_can_reference_the_derived_centre(self):
+        """A forward reference to the derived centre must sort after its owner.
+
+        The referencing statement is deliberately listed BEFORE the
+        CircleTangentAt that derives the name, so only the dependency-graph
+        substitution can order it correctly.
+        """
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            Segment(id="axis", a="O", b="tc_center"),
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert isinstance(sym["axis"], spg.Segment)
+        assert approx(sym["axis"].length, 4)
+
+    def test_an_explicit_statement_of_the_same_name_wins_over_the_derived_centre(self):
+        """A real DefStmt named `tc_center` is not clobbered by the derivation."""
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3, y=0),
+            PointFixed(id="tc_center", x=9, y=9),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert sym["tc_center"] == spg.Point(9, 9)
+
+    # --- rejections ---
+
+    def test_point_not_on_the_reference_circle_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="not on circle"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=2, y=0),  # inside the circle
+                CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+            ]))
+
+    def test_point_within_tolerance_of_the_boundary_is_accepted(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        sym = compile_defs(DiagramIR(define=[
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c1", center="O", radius=3),
+            PointFixed(id="P", x=3 + 1e-9, y=0),
+            CircleTangentAt(id="tc", circle="c1", point="P", radius=1),
+        ]))
+        assert approx(sym["O"].distance(sym["tc"].center), 4, tol=1e-6)
+
+    def test_elliptical_reference_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="genuine circle"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                EllipseCenterAxes(id="e1", center="O", hradius=4, vradius=2),
+                PointFixed(id="P", x=4, y=0),
+                CircleTangentAt(id="tc", circle="e1", point="P", radius=1),
+            ]))
+
+    def test_internal_tangency_with_the_reference_radius_is_rejected(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="identical"):
+            compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c1", center="O", radius=3),
+                PointFixed(id="P", x=3, y=0),
+                CircleTangentAt(id="tc", circle="c1", point="P", radius=3, tangency="internal"),
+            ]))
+
+    def test_external_tangency_with_the_reference_radius_is_allowed(self):
+        """Only the internal, identical-circle case is degenerate."""
+        sym = self._compile_tangent(radius=3)
+        assert approx(sym["O"].distance(sym["tc"].center), 6)
+
+    def test_non_positive_symbolic_radius_is_rejected_at_compile_time(self):
+        from geometry_diagrams.ir.ir import CircleTangentAt
+
+        with pytest.raises(IRCompileError, match="radius must be positive"):
+            compile_defs(DiagramIR(
+                params=Params(assign={"r": 1}),
+                define=[
+                    PointFixed(id="O", x=0, y=0),
+                    CircleCenterRadius(id="c1", center="O", radius=3),
+                    PointFixed(id="P", x=3, y=0),
+                    CircleTangentAt(id="tc", circle="c1", point="P", radius="r - 1"),
+                ],
+            ))
+
+
+# ---------------------------------------------------------------------------
+# Arc / sector as an intersection operand
+# ---------------------------------------------------------------------------
+
+SQRT2 = math.sqrt(2)
+SQRT3 = math.sqrt(3)
+# Circle O (radius 2) and circle O2 (center (3,0), radius 2) cross at
+# (1.5, +-sqrt(1.75)) -- 41.41 deg / 318.59 deg about O, 138.59 deg / 221.41 deg about O2.
+CROSS_Y = math.sqrt(1.75)
+
+
+def _angle_deg_about(point, cx=0.0, cy=0.0) -> float:
+    """Polar angle of `point` about (cx, cy), in [0, 360)."""
+    return math.degrees(math.atan2(float(point.y) - cy, float(point.x) - cx)) % 360.0
+
+
+def _unit_circle_defs():
+    """Circle O of radius 2, with its 0 deg / 90 deg boundary points S and E."""
+    return [
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=2, y=0),
+        PointFixed(id="E", x=0, y=2),
+    ]
+
+
+class TestArcAsIntersectionOperand:
+    """A circular arc/sector intersects like its underlying circle, then the
+    raw candidates are filtered to the arc's own angular sweep."""
+
+    def _quarter_arc(self, **kwargs):
+        """Minor arc of circle O from (2,0) to (0,2) -- sweep 0 deg .. 90 deg."""
+        return [*_unit_circle_defs(), ArcCenterStartEnd(id="arc", center="O", start="S", end="E", **kwargs)]
+
+    def _wide_arc(self):
+        """Minor arc of circle O from -60 deg to 60 deg (spans 0 deg)."""
+        return [
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="LO", x=1, y=-SQRT3),
+            PointFixed(id="HI", x=1, y=SQRT3),
+            ArcCenterStartEnd(id="arc", center="O", start="LO", end="HI"),
+        ]
+
+    def test_arc_and_line_keeps_only_the_candidate_inside_the_sweep(self):
+        """The 45 deg candidate is inside the 0..90 sweep; the 225 deg one is not."""
+        sym = _compile(
+            *self._quarter_arc(),
+            PointFixed(id="P", x=-1, y=-1),
+            PointFixed(id="Q", x=1, y=1),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="arc", obj2="L"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+        assert approx(sym["X"].y, SQRT2, tol=1e-9)
+
+    def test_arc_and_segment_with_a_single_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *self._quarter_arc(),
+            PointFixed(id="P", x=0, y=0),
+            PointFixed(id="Q", x=3, y=3),
+            Segment(id="seg", a="P", b="Q"),
+            PointIntersection(id="X", obj1="seg", obj2="arc"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+
+    def test_arc_and_ray_with_a_single_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *self._quarter_arc(),
+            PointFixed(id="P", x=0, y=0),
+            PointFixed(id="Q", x=1, y=1),
+            Ray(id="r", a="P", b="Q"),
+            PointIntersection(id="X", obj1="arc", obj2="r"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+
+    def test_arc_and_circle_keeps_only_the_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *self._quarter_arc(),
+            PointFixed(id="O2", x=3, y=0),
+            CircleCenterRadius(id="c2", center="O2", radius=2),
+            PointIntersection(id="X", obj1="arc", obj2="c2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_arc_and_arc_filters_by_both_sweeps(self):
+        """Both candidates are inside the first arc's sweep; only one is inside
+        the second arc's, so the second operand's sweep decides."""
+        sym = _compile(
+            *self._wide_arc(),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=2),   # 90 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="arc", obj2="arc2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def _tangent_circle_defs(self):
+        """Circle O2 (center (4,0), radius 2) is externally tangent to circle O
+        at exactly one point, (2,0) -- 0 deg about O, 180 deg about O2."""
+        return [
+            PointFixed(id="O2", x=4, y=0),
+            PointFixed(id="T1", x=4, y=2),   # 90 deg about O2
+            PointFixed(id="T2", x=4, y=-2),  # 270 deg about O2
+        ]
+
+    def test_arc_and_arc_with_zero_raw_candidates_raises(self):
+        """Disjoint underlying circles produce no raw candidates at all, so
+        neither arc's sweep ever gets consulted."""
+        with pytest.raises(IntersectionError, match="no intersection points"):
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="FAR", x=10, y=0),
+                PointFixed(id="F1", x=11, y=0),
+                PointFixed(id="F2", x=10, y=1),
+                CircleCenterRadius(id="cfar", center="FAR", radius=1),
+                ArcCenterStartEnd(id="arc2", center="FAR", start="F1", end="F2"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_arc_and_arc_with_one_raw_candidate_inside_both_sweeps(self):
+        """Tangent underlying circles yield a single raw candidate, (2,0); it
+        sits on both sweeps (it's arc's own start point), so it survives."""
+        sym = _compile(
+            *self._quarter_arc(),
+            *self._tangent_circle_defs(),
+            ArcCenterStartEnd(id="arc2", center="O2", start="T1", end="T2"),  # 90..270 about O2
+            PointIntersection(id="X", obj1="arc", obj2="arc2"),
+        )
+        assert approx(sym["X"].x, 2.0, tol=1e-9)
+        assert approx(sym["X"].y, 0.0, tol=1e-9)
+
+    def test_arc_and_arc_with_one_raw_candidate_outside_a_sweep_raises(self):
+        """Same single tangency point, but the first arc now sweeps 90..270
+        about O, which excludes the 0 deg candidate."""
+        with pytest.raises(IntersectionError, match="sweep"):
+            _compile(
+                *_unit_circle_defs(),
+                PointFixed(id="W", x=0, y=-2),   # 270 deg about O
+                ArcCenterStartEnd(id="arc", center="O", start="E", end="W"),  # 90..270 about O
+                *self._tangent_circle_defs(),
+                ArcCenterStartEnd(id="arc2", center="O2", start="T1", end="T2"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_sector_and_segment_keeps_only_the_candidate_inside_the_sweep(self):
+        """The segment spans the whole circle, so it yields TWO raw candidates
+        -- 45 deg and 225 deg. Only the first is inside the 0..90 sweep, so
+        this genuinely exercises filtering down from two, not a lucky single
+        candidate."""
+        sym = _compile(
+            *_unit_circle_defs(),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+            PointFixed(id="P", x=-3, y=-3),
+            PointFixed(id="Q", x=3, y=3),
+            Segment(id="seg", a="P", b="Q"),
+            PointIntersection(id="X", obj1="sec", obj2="seg"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+        assert approx(sym["X"].y, SQRT2, tol=1e-9)
+
+    def test_sector_and_circle_keeps_only_the_candidate_inside_the_sweep(self):
+        sym = _compile(
+            *_unit_circle_defs(),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+            PointFixed(id="O2", x=3, y=0),
+            CircleCenterRadius(id="c2", center="O2", radius=2),
+            PointIntersection(id="X", obj1="sec", obj2="c2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_sector_and_sector_filters_by_both_sweeps(self):
+        """Sector x sector, the arc x arc case's sector twin: both candidates
+        clear the first sector's sweep, the second's picks between them."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="LO", x=1, y=-SQRT3),
+            PointFixed(id="HI", x=1, y=SQRT3),
+            SectorCenterStartEnd(id="sec", center="O", start="LO", end="HI"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=2),   # 90 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            SectorCenterStartEnd(id="sec2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="sec", obj2="sec2"),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_sector_operand_behaves_like_its_arc(self):
+        sym = _compile(
+            *_unit_circle_defs(),
+            SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+            PointFixed(id="P", x=-1, y=-1),
+            PointFixed(id="Q", x=1, y=1),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="sec", obj2="L"),
+        )
+        assert approx(sym["X"].x, SQRT2, tol=1e-9)
+
+    def test_reflex_arc_keeps_the_candidate_in_its_major_sweep(self):
+        """The reflex arc from (2,0) to (0,2) sweeps 90 deg .. 360 deg, so it
+        keeps the 225 deg candidate rather than the 45 deg one."""
+        sym = _compile(
+            *self._quarter_arc(reflex=True),
+            PointFixed(id="P", x=-1, y=-1),
+            PointFixed(id="Q", x=1, y=1),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="arc", obj2="L"),
+        )
+        assert approx(sym["X"].x, -SQRT2, tol=1e-9)
+        assert approx(sym["X"].y, -SQRT2, tol=1e-9)
+
+    def test_candidate_exactly_on_a_sweep_endpoint_is_included(self):
+        """(2,0) is the arc's own start point -- a boundary hit counts as inside."""
+        sym = _compile(
+            *self._quarter_arc(),
+            PointFixed(id="P", x=0, y=0),
+            PointFixed(id="Q", x=3, y=0),
+            Segment(id="seg", a="P", b="Q"),
+            PointIntersection(id="X", obj1="arc", obj2="seg"),
+        )
+        assert approx(sym["X"].x, 2.0, tol=1e-9)
+        assert approx(sym["X"].y, 0.0, tol=1e-9)
+
+    def test_both_candidates_inside_the_sweep_are_kept(self):
+        """A vertical line crosses the wide arc twice, at 41.4 deg and 318.6 deg;
+        sweep filtering must not drop either one."""
+        picked = []
+        for k in (0, 1):
+            sym = _compile(
+                *self._wide_arc(),
+                PointFixed(id="P", x=1.5, y=-3),
+                PointFixed(id="Q", x=1.5, y=3),
+                LineThrough(id="L", p="P", q="Q"),
+                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickIndex(k=k)),
+            )
+            picked.append(sym["X"])
+        assert picked[0] != picked[1]
+        assert all(approx(p.x, 1.5, tol=1e-9) for p in picked)
+
+    def test_two_arcs_on_the_same_circle_have_no_intersection_points(self):
+        """Co-circular arcs overlap rather than crossing -- same treatment as
+        two coincident lines: no intersection points at all."""
+        with pytest.raises(IntersectionError, match="no intersection points"):
+            _compile(
+                *_unit_circle_defs(),
+                PointFixed(id="W", x=-2, y=0),
+                ArcCenterStartEnd(id="arc", center="O", start="S", end="E"),
+                ArcCenterStartEnd(id="arc2", center="O", start="E", end="W"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_single_candidate_outside_the_sweep_raises(self):
+        with pytest.raises(IntersectionError, match="sweep"):
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="P", x=0, y=0),
+                PointFixed(id="Q", x=-3, y=-3),
+                Segment(id="seg", a="P", b="Q"),
+                PointIntersection(id="X", obj1="arc", obj2="seg"),
+            )
+
+    def test_both_candidates_outside_the_sweep_raises(self):
+        """y = -1 meets circle O at 210 deg and 330 deg, both outside 0..90."""
+        with pytest.raises(IntersectionError, match="sweep"):
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="P", x=-3, y=-1),
+                PointFixed(id="Q", x=3, y=-1),
+                LineThrough(id="L", p="P", q="Q"),
+                PointIntersection(id="X", obj1="arc", obj2="L"),
+            )
+
+    def test_second_operands_sweep_alone_can_reject_every_candidate(self):
+        with pytest.raises(IntersectionError, match="sweep"):
+            _compile(
+                *self._wide_arc(),
+                PointFixed(id="O2", x=3, y=0),
+                PointFixed(id="S2", x=5, y=0),   # 0 deg about O2
+                PointFixed(id="E2", x=3, y=2),   # 90 deg about O2
+                ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+                PointIntersection(id="X", obj1="arc", obj2="arc2"),
+            )
+
+    def test_missed_circles_and_missed_sweep_report_different_messages(self):
+        """A model debugging a construction must be able to tell "the circles
+        never meet" apart from "they meet, but outside the sweep"."""
+        with pytest.raises(IntersectionError) as no_circle_hit:
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="FAR", x=10, y=0),
+                CircleCenterRadius(id="cfar", center="FAR", radius=1),
+                PointIntersection(id="X", obj1="arc", obj2="cfar"),
+            )
+        with pytest.raises(IntersectionError) as outside_sweep:
+            _compile(
+                *self._quarter_arc(),
+                PointFixed(id="O2", x=-3, y=0),
+                CircleCenterRadius(id="c2", center="O2", radius=2),
+                PointIntersection(id="X", obj1="arc", obj2="c2"),
+            )
+        missed = str(no_circle_hit.value)
+        outside = str(outside_sweep.value)
+        assert missed != outside
+        assert "no intersection points" in missed
+        assert "sweep" in outside and "sweep" not in missed
+
+    def test_pick_on_object_can_select_a_candidate_by_an_arc(self):
+        """Two candidates survive the first arc's sweep; PickOnObject names a
+        second arc to choose between them."""
+        sym = _compile(
+            *self._wide_arc(),
+            PointFixed(id="P", x=1.5, y=-3),
+            PointFixed(id="Q", x=1.5, y=3),
+            LineThrough(id="L", p="P", q="Q"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=2),   # 90 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="arc2")),
+        )
+        assert approx(sym["X"].x, 1.5, tol=1e-9)
+        assert approx(sym["X"].y, CROSS_Y, tol=1e-9)
+
+    def test_pick_on_object_can_select_a_candidate_by_a_sector(self):
+        sym = _compile(
+            *self._wide_arc(),
+            PointFixed(id="P", x=1.5, y=-3),
+            PointFixed(id="Q", x=1.5, y=3),
+            LineThrough(id="L", p="P", q="Q"),
+            PointFixed(id="O2", x=3, y=0),
+            PointFixed(id="S2", x=3, y=-2),  # 270 deg about O2
+            PointFixed(id="E2", x=1, y=0),   # 180 deg about O2
+            SectorCenterStartEnd(id="sec2", center="O2", start="S2", end="E2"),
+            PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="sec2")),
+        )
+        assert approx(sym["X"].y, -CROSS_Y, tol=1e-9)
+
+    def test_pick_on_object_respects_the_arcs_sweep(self):
+        """Both candidates lie on the pick target's underlying circle, but
+        outside the arc it actually draws -- so no candidate qualifies."""
+        with pytest.raises(PickError, match="no candidate lies on"):
+            _compile(
+                *self._wide_arc(),
+                PointFixed(id="P", x=1.5, y=-3),
+                PointFixed(id="Q", x=1.5, y=3),
+                LineThrough(id="L", p="P", q="Q"),
+                PointFixed(id="O2", x=3, y=0),
+                PointFixed(id="S2", x=5, y=0),   # 0 deg about O2
+                PointFixed(id="E2", x=3, y=2),   # 90 deg about O2
+                ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="arc2")),
+            )
+
+    def test_pick_on_object_rejects_an_elliptical_arc_by_name(self):
+        with pytest.raises(IRCompileError, match="EllipticalArc"):
+            _compile(
+                *self._wide_arc(),
+                PointFixed(id="P", x=1.5, y=-3),
+                PointFixed(id="Q", x=1.5, y=3),
+                LineThrough(id="L", p="P", q="Q"),
+                PointFixed(id="O2", x=3, y=0),
+                PointFixed(id="S2", x=7, y=0),
+                PointFixed(id="E2", x=3, y=2),
+                EllipticalArcCenterStartEnd(
+                    id="ea", center="O2", hradius=4, vradius=2, start="S2", end="E2"
+                ),
+                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="ea")),
+            )
+
+    def test_elliptical_arc_operand_is_rejected_by_name(self):
+        with pytest.raises(IRCompileError, match="EllipticalArc"):
+            _compile(
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=4, y=0),
+                PointFixed(id="E", x=0, y=2),
+                EllipticalArcCenterStartEnd(id="ea", center="O", hradius=4, vradius=2, start="S", end="E"),
+                PointFixed(id="P", x=-1, y=-1),
+                PointFixed(id="Q", x=1, y=1),
+                LineThrough(id="L", p="P", q="Q"),
+                PointIntersection(id="X", obj1="ea", obj2="L"),
+            )
+
+    def test_elliptical_sector_operand_is_rejected_by_name(self):
+        with pytest.raises(IRCompileError, match="EllipticalSector"):
+            _compile(
+                PointFixed(id="O", x=0, y=0),
+                PointFixed(id="S", x=4, y=0),
+                PointFixed(id="E", x=0, y=2),
+                EllipticalSectorCenterStartEnd(id="es", center="O", hradius=4, vradius=2, start="S", end="E"),
+                PointFixed(id="P", x=-1, y=-1),
+                PointFixed(id="Q", x=1, y=1),
+                LineThrough(id="L", p="P", q="Q"),
+                PointIntersection(id="X", obj1="es", obj2="L"),
+            )
+
+
+def test_auto_checks_pass_for_an_arc_arc_intersection():
+    """The Contains checks auto-generated for every PointIntersection must hold
+    when the operands are arcs -- containment has to understand arcs too."""
+    diag = DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="LO", x=1, y=-SQRT3),
+        PointFixed(id="HI", x=1, y=SQRT3),
+        ArcCenterStartEnd(id="arc", center="O", start="LO", end="HI"),
+        PointFixed(id="O2", x=3, y=0),
+        PointFixed(id="S2", x=3, y=2),
+        PointFixed(id="E2", x=1, y=0),
+        ArcCenterStartEnd(id="arc2", center="O2", start="S2", end="E2"),
+        PointIntersection(id="X", obj1="arc", obj2="arc2"),
+    ])
+    sym = compile_defs(diag)
+    results = run_auto_checks(diag, sym)
+    assert len(results) == 2
+    assert all(r.passed for r in results), [r.message for r in results if not r.passed]
+
+
+# ---------------------------------------------------------------------------
+# ArcBetweenConstraint (PointOnIntent)
+# ---------------------------------------------------------------------------
+
+class TestArcBetweenConstraint:
+    """A point sampled on a circle can be restricted to one arc's worth of it."""
+
+    def _sample_angles(self, from_xy, to_xy, seeds=range(12)) -> list[float]:
+        angles = []
+        for seed in seeds:
+            sym = compile_defs(DiagramIR(define=[
+                PointFixed(id="O", x=0, y=0),
+                CircleCenterRadius(id="c", center="O", radius=2),
+                PointFixed(id="F", x=from_xy[0], y=from_xy[1]),
+                PointFixed(id="T", x=to_xy[0], y=to_xy[1]),
+                PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                    ArcBetweenConstraint(from_point="F", to_point="T"),
+                ])),
+            ]), rng=Random(seed))
+            angles.append(_angle_deg_about(sym["P"]))
+        return angles
+
+    def test_point_is_restricted_to_the_requested_quarter_of_the_circle(self):
+        angles = self._sample_angles((2, 0), (0, 2))  # 0 deg -> 90 deg
+        assert all(0.0 <= a <= 90.0 for a in angles), angles
+
+    def test_sweep_runs_counter_clockwise_not_along_the_shorter_arc(self):
+        """from=90 deg, to=0 deg means the 270 deg CCW sweep, not the 90 deg one."""
+        angles = self._sample_angles((0, 2), (2, 0))  # 90 deg -> 360 deg
+        assert all(90.0 <= a <= 360.0 for a in angles), angles
+
+    def test_sweep_wrapping_past_zero_is_handled(self):
+        """from=300 deg, to=30 deg spans the 0 deg/360 deg seam."""
+        angles = self._sample_angles((1, -SQRT3), (SQRT3, 1))
+        assert all(a >= 300.0 or a <= 30.0 for a in angles), angles
+
+    def test_constraint_endpoints_are_dependencies_of_the_point_they_bound(self):
+        """The topological sort has to see the constraint's from_point/to_point
+        as dependencies. 'F' below is deeper in the DAG than the PointOn is, so
+        a sort that only looks at `on=` compiles the PointOn first and blows up
+        on a missing symbol."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            PointFixed(id="T", x=0, y=2),          # 90 deg
+            PointFixed(id="Pa", x=-5, y=-1),
+            PointFixed(id="Pb", x=5, y=-1),
+            PointMidpoint(id="M", p="Pa", q="Pb"),
+            PointFixed(id="Pc", x=6, y=0),
+            LineThrough(id="L2", p="M", q="Pc"),
+            PointIntersection(id="F", obj1="c", obj2="L2", pick=PickIndex(k=0)),
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                ArcBetweenConstraint(from_point="F", to_point="T"),
+            ])),
+        )
+        assert approx(sym["P"].distance(sym["O"]), 2.0, tol=1e-9)
+
+    def test_not_near_constraint_refs_are_dependencies_too(self):
+        """Same dependency rule, via a different SpatialConstraint member."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            PointFixed(id="Pa", x=-5, y=0),
+            PointFixed(id="Pb", x=5, y=0),
+            PointFixed(id="Pc", x=0, y=9),
+            PointMidpoint(id="M", p="Pa", q="Pb"),
+            LineThrough(id="L2", p="M", q="Pc"),
+            PointIntersection(id="R", obj1="c", obj2="L2", pick=PickIndex(k=0)),
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                NotNearConstraint(point="R", min_dist=1.0),
+            ])),
+        )
+        assert float(sym["P"].distance(sym["R"]).evalf()) >= 1.0
+
+    def test_same_side_constraint_refs_are_dependencies_too(self):
+        """SameSideConstraint is the only member with a LIST-valued id field
+        (`line`), so it's the only thing that exercises refs.py's list branch.
+        `F`/`G` (the chord's endpoints) and `REF` are all deeper in the DAG
+        than the PointOn, so a sort that ignores constraint refs compiles the
+        PointOn first and dies on a missing symbol."""
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            CircleCenterRadius(id="c", center="O", radius=2),
+            # The chord y = -1, reached only through a midpoint + a line.
+            PointFixed(id="Ca", x=-5, y=-1),
+            PointFixed(id="Cb", x=5, y=-1),
+            PointMidpoint(id="Cm", p="Ca", q="Cb"),        # (0, -1)
+            PointFixed(id="Cc", x=6, y=-1),
+            LineThrough(id="chord", p="Cm", q="Cc"),
+            PointIntersection(id="F", obj1="c", obj2="chord", pick=PickIndex(k=0)),
+            PointIntersection(id="G", obj1="c", obj2="chord", pick=PickIndex(k=1)),
+            # A reference point above that chord, also several hops deep.
+            PointFixed(id="Ua", x=0, y=16),
+            PointFixed(id="Ub", x=0, y=4),
+            PointMidpoint(id="U1", p="Ua", q="Ub"),        # (0, 10)
+            PointMidpoint(id="U2", p="U1", q="Ub"),        # (0, 7)
+            PointMidpoint(id="REF", p="U2", q="Ub"),       # (0, 5.5)
+            PointOn(id="P", on="c", how=PointOnIntent(constraints=[
+                SameSideConstraint(line=["F", "G"], ref="REF"),
+            ])),
+        )
+        assert approx(sym["P"].distance(sym["O"]), 2.0, tol=1e-9)
+        assert float(sym["P"].y.evalf()) > -1.0   # same side of the chord as REF
+
+
+def test_sweep_membership_treats_both_endpoints_as_inside():
+    """The one angular tolerance shared by the intersection filter (to_sympy)
+    and the containment check (checks.py), so the two agree at a boundary."""
+    from geometry_diagrams.ir.to_sympy import SWEEP_TOL_DEG, angle_within_sweep
+
+    slack = SWEEP_TOL_DEG / 2
+    assert angle_within_sweep(0.0, 0.0, 90.0)
+    assert angle_within_sweep(90.0, 0.0, 90.0)
+    assert angle_within_sweep(-slack, 0.0, 90.0)        # a hair before the start
+    assert angle_within_sweep(90.0 + slack, 0.0, 90.0)  # a hair past the end
+    assert not angle_within_sweep(90.1, 0.0, 90.0)
+    assert not angle_within_sweep(359.9, 0.0, 90.0)
+    # A sweep unwrapped past 360 deg (e.g. a reflex arc from 300 deg to 420 deg)
+    assert angle_within_sweep(30.0, 300.0, 420.0)
+    assert not angle_within_sweep(90.0, 300.0, 420.0)

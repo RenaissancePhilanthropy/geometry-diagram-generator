@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextvars
 from contextlib import contextmanager
+from random import Random
 from typing import Iterator
 
 from geometry_diagrams.ir.ir import DefBase, DefStmt, DiagramIR
@@ -37,6 +38,39 @@ class Builder:
         self._mark_group_counter = 0
         self._sym: dict = {}
         self._sym_watermark: int = 0
+        # ONE rng for the whole script, mirroring how compile_defs() threads a
+        # single Random(42) through a whole diagram. _advance_sym() compiles
+        # the script incrementally, in as many slices as there are mid-script
+        # coordinate reads, and an rng-consuming def (PointOn with a
+        # PointOnIntent, whose constraints are satisfied by rejection
+        # sampling) must see the same stream position it would in the
+        # whole-diagram compile. Rebuilding Random(42) per slice rewinds the
+        # stream, so a point resolved mid-script would silently disagree with
+        # the coordinates the rendered diagram ends up with.
+        #
+        # KNOWN RESIDUAL (deliberately open): sharing one rng closes the
+        # rewind, but not the whole divergence. _advance_sym() compiles in
+        # INSERTION order; compile_defs() compiles in TOPOLOGICAL order. Those
+        # agree on the relative order of two rng-consuming defs only while
+        # they sit at the same dependency depth. Put two point_on_arc_between()
+        # points on circles at different depths -- say one circle built
+        # straight from a literal centre and another whose centre comes out of
+        # an intersection -- and the two compiles disagree about which point
+        # draws first, so the samples swap and both points move between the
+        # mid-script read and the rendered diagram. There is no seed that fixes
+        # this; it is an ordering mismatch, not a stream-position one.
+        #
+        # Left open on purpose: nothing outside this feature's own tests calls
+        # point_on_arc_between() yet, and closing it properly needs a new
+        # mechanism rather than a patch here. The pattern to extend is
+        # _pin_intersection() below, which already solves exactly this class of
+        # problem for PointIntersection: once the incremental compile has
+        # OBSERVED a result, it rewrites the def into a dependency-pure pinned
+        # form so a later from-scratch compile is guaranteed to reproduce it. A
+        # future fix would do the same for an observed PointOn(PointOnIntent) --
+        # pin it to the sampled coordinates -- which removes the rng from the
+        # final compile entirely and makes ordering irrelevant.
+        self._rng = Random(42)
 
     @property
     def op_count(self) -> int:
@@ -113,15 +147,15 @@ class Builder:
         return self._coord_floats[pid]
 
     def _advance_sym(self) -> None:
-        from random import Random
-
         import sympy.geometry as spg
 
         from geometry_diagrams.ir import ir as ir_mod
         from geometry_diagrams.ir.to_sympy import _compile_one
 
         canvas = self._canvas or ir_mod.Canvas()
-        rng = Random(42)  # PointFree/random defs are dead code for pydsl; any seed is fine
+        # self._rng, NOT a fresh Random(42): see __init__ for why the stream
+        # has to survive across _advance_sym() calls.
+        rng = self._rng
         # Iterate a SLICE (a copy) taken once up front -- _pin_intersection
         # appends new hidden PointFixed defs to self._defs mid-loop, which
         # must not be picked up by this iteration (they're compiled and
@@ -132,6 +166,19 @@ class Builder:
             self._sym[stmt.id] = obj
             if isinstance(obj, spg.Point):
                 self._coord_floats[stmt.id] = (float(obj.x), float(obj.y))
+            if isinstance(stmt, ir_mod.CircleTangentAt) and isinstance(obj, spg.Circle):
+                # Mirror compile_defs()'s own post-compile registration of
+                # this construction's derived centre as an addressable point.
+                # Without it, the incremental table disagrees with the
+                # whole-diagram one: `.center.x` reads "no known coordinates"
+                # and any def carrying the derived centre id (an arc/sector
+                # built on the new circle, a segment to it) fails with
+                # UndefinedRefError the moment anything forces a mid-script
+                # resolve -- even though the final compile_defs() succeeds.
+                center_id = ir_mod.tangent_circle_center_id(stmt.id)
+                if center_id not in self._sym:
+                    self._sym[center_id] = obj.center
+                    self._coord_floats[center_id] = (float(obj.center.x), float(obj.center.y))
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
         self._sym_watermark = len(self._defs)
@@ -142,7 +189,11 @@ class Builder:
         coordinates, so a later full recompile-from-scratch reproduces the
         same candidate regardless of what else is in its sym table by
         then. Bypasses self._add() deliberately -- this hidden bookkeeping
-        def must not count against the script's op cap."""
+        def must not count against the script's op cap.
+
+        This observe-then-pin pattern is also the shape a future fix for the
+        PointOnIntent sampling residual would take (see __init__'s note on
+        self._rng): pin the observed sample instead of re-drawing it."""
         from geometry_diagrams.ir import ir as ir_mod
 
         hidden_pid = self._fresh_hidden_id("pin")

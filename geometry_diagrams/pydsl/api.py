@@ -7,7 +7,7 @@ import itertools
 import math
 from typing import Callable
 
-from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
+from geometry_diagrams.ir.ir import AnglePoints, CircleCenterRadius, Draw, DrawPoints, LineAngleBisector, LineParallelThrough, LinePerpendicularThrough, LineThrough, MarkAngles, MarkArcs, MarkSegments, PointDilate, PointFixed, PointFoot, PointMidpoint, PointOn, PointOnParam, PointReflect, PointRotate, PointTriangleCenter
 from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
@@ -107,7 +107,7 @@ def ray(a: Point, b: Point) -> Ray:
     builder = get_builder()
     rid = builder._fresh_hidden_id("ray")
     builder._add(RayDef(id=rid, a=a.id, b=b.id))
-    return Ray(id=rid)
+    return Ray(id=rid, _builder=builder)
 
 
 def triangle(a: Point, b: Point, c: Point) -> Triangle:
@@ -292,7 +292,7 @@ def circumcircle(t: Triangle) -> Circle:
             )
         return round((side_a * side_b * side_c) / (4 * area), 10)
 
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius, _from_derived_center=True)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius, _builder=builder, _from_derived_center=True)
 
 
 def incircle(t: Triangle) -> Circle:
@@ -330,7 +330,7 @@ def incircle(t: Triangle) -> Circle:
             f"/ sqrt((length({b_id},{c_id})+length({a_id},{c_id})+length({a_id},{b_id}))/2)"
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius, _from_derived_center=True)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius, _builder=builder, _from_derived_center=True)
 
 
 def circle(center: Point, radius: float) -> Circle:
@@ -340,7 +340,7 @@ def circle(center: Point, radius: float) -> Circle:
     builder = get_builder()
     cid = builder._fresh_hidden_id("circle")
     builder._add(CircleCenterRadius(id=cid, center=center.id, radius=radius))
-    return Circle(id=cid, center=center, _radius_thunk=lambda: radius)
+    return Circle(id=cid, center=center, _radius_thunk=lambda: radius, _builder=builder)
 
 
 def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: str) -> None:
@@ -474,7 +474,7 @@ def sector(
     and the arc between them, on shape (a circle() or ellipse()). Same
     start/end/reflex/bulge_toward contract as arc() — see its docstring."""
     sid = _arc_or_sector("sector", shape, start, end, reflex, bulge_toward)
-    return Sector(id=sid)
+    return Sector(id=sid, _builder=get_builder())
 
 
 def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
@@ -549,7 +549,7 @@ def ellipse(
                 f"{hradius!r}, {vradius!r}"
             )
         builder._add(EllipseCenterAxes(id=eid, center=center.id, hradius=hradius, vradius=vradius))
-        return Ellipse(id=eid, center=center, _hradius_thunk=lambda: hradius, _vradius_thunk=lambda: vradius)
+        return Ellipse(id=eid, center=center, _hradius_thunk=lambda: hradius, _vradius_thunk=lambda: vradius, _builder=builder)
 
     builder._add(EllipseBBox(id=eid, corner1=corner1.id, corner2=corner2.id))
     mid_id = builder._fresh_hidden_id("ellipse_center")
@@ -578,7 +578,7 @@ def ellipse(
         _, y2 = coord_floats[corner2.id]
         return abs(y2 - y1) / 2
 
-    return Ellipse(id=eid, center=center_pt, _hradius_thunk=_compute_hradius, _vradius_thunk=_compute_vradius)
+    return Ellipse(id=eid, center=center_pt, _hradius_thunk=_compute_hradius, _vradius_thunk=_compute_vradius, _builder=builder)
 
 
 def median(t: Triangle, from_vertex: Point) -> Median:
@@ -648,45 +648,88 @@ def mark_angle(ref: AngleRef, group: int | None = None) -> None:
     )
 
 
-def _mark_segments(kind: str, segments: tuple[Segment, ...]) -> None:
-    if len(segments) < 2:
-        raise ValueError(f"mark_{kind}() requires at least 2 segments, got {len(segments)}")
+def _mark_group(kind: str, items: "tuple[Segment | Ray | Arc | Sector, ...]") -> None:
+    """Shared implementation of mark_equal/mark_parallel/mark_proportional:
+    dispatch each handle in `items` by its concrete type instead of blindly
+    forwarding whatever ids it's given.
+
+    A Segment or Ray joins the group's MarkSegments op; an Arc or Sector
+    joins its MarkArcs op (mark_parallel() rejects a curved item outright
+    instead — chevron marks have no arc-form, so "these arcs are parallel"
+    isn't a renderable claim). Both ops share exactly ONE freshly-generated
+    group string, generated once per call regardless of how many ops it
+    ends up producing: ir.MarkArcs was specifically designed to share
+    ir.MarkSegments' group namespace (see its docstring), so a call mixing
+    a straight-line item with a curved one reads as one congruence class,
+    not two separate ones. Anything else raises, naming the offending
+    type."""
+    if len(items) < 2:
+        raise ValueError(f"mark_{kind}() requires at least 2 items, got {len(items)}")
+
+    straight_ids: "list[str]" = []
+    curved_ids: "list[str]" = []
+    for item in items:
+        if isinstance(item, (Segment, Ray)):
+            straight_ids.append(item.id)
+        elif isinstance(item, (Arc, Sector)):
+            if kind == "parallel":
+                raise ValueError(
+                    f"mark_parallel(): can't mark a {type(item).__name__} as "
+                    "parallel — chevron marks have no arc-form"
+                )
+            curved_ids.append(item.id)
+        else:
+            raise ValueError(
+                f"mark_{kind}(): unsupported type {type(item).__name__!r} — "
+                "expected Segment, Ray, Arc, or Sector"
+            )
+
     builder = get_builder()
     group = builder._fresh_mark_group(kind)
-    builder._add_render(MarkSegments(segs=[s.id for s in segments], group=group))
+    if straight_ids:
+        builder._add_render(MarkSegments(segs=straight_ids, group=group))
+    if curved_ids:
+        builder._add_render(MarkArcs(arcs=curved_ids, group=group))
 
 
-def mark_equal(*segments: Segment) -> None:
-    """Mark segments as equal in length with matching tick marks. Each
+def mark_equal(*items: "Segment | Ray | Arc | Sector") -> None:
+    """Mark segments, rays, arcs, and/or sectors as equal in length (straight
+    items) or equal arc-length (curved items) with matching tick marks. Each
     call gets a fresh tick symbol automatically — pass all mutually-equal
-    segments in ONE call (e.g. mark_equal(ab, cd, ef)) rather than
-    multiple calls, since separate calls always get visually distinct
-    symbols, never the same one. Requires at least 2 segments. Note: only
-    6 distinct tick symbols exist (shared with mark_proportional()'s
-    calls too) and marks draw at each segment's midpoint — more than 6
-    mark_equal()/mark_proportional() calls in one diagram silently reuse
-    a symbol, and a segment passed to two different mark_*() calls gets
-    overlapping marks at the same midpoint."""
-    _mark_segments("equal", segments)
+    items in ONE call (e.g. mark_equal(ab, cd, ef)) rather than multiple
+    calls, since separate calls always get visually distinct symbols, never
+    the same one. Mixing a straight-line item with a curved one in the same
+    call marks them congruent with EACH OTHER too (e.g. "this chord equals
+    this arc"), not just within their own family. Requires at least 2 items.
+    Note: only 6 distinct tick symbols exist (shared with
+    mark_proportional()'s calls too) and marks draw at each item's midpoint
+    (or arc midpoint) — more than 6 mark_equal()/mark_proportional() calls
+    in one diagram silently reuse a symbol, and an item passed to two
+    different mark_*() calls gets overlapping marks at the same spot."""
+    _mark_group("equal", items)
 
 
-def mark_parallel(*segments: Segment) -> None:
-    """Mark segments as parallel with matching chevron marks (>, >>, >>>,
-    ...). Same one-call-per-group contract as mark_equal(). Requires at
-    least 2 segments. Note: only 3 distinct chevron counts exist — a 4th
-    mark_parallel() call in one diagram silently reuses one."""
-    _mark_segments("parallel", segments)
+def mark_parallel(*items: "Segment | Ray") -> None:
+    """Mark segments/rays as parallel with matching chevron marks (>, >>,
+    >>>, ...). Same one-call-per-group contract as mark_equal(). Requires
+    at least 2 items. Note: only 3 distinct chevron counts exist — a 4th
+    mark_parallel() call in one diagram silently reuses one. Rejects an
+    Arc/Sector outright (ValueError naming the type) rather than silently
+    routing it through the arc-tick-mark op — parallelism isn't a
+    renderable claim about a curve."""
+    _mark_group("parallel", items)
 
 
-def mark_proportional(*segments: Segment) -> None:
-    """Mark segments as proportional (not necessarily equal) — NOTE:
-    renders with the same tick-mark symbols as mark_equal(), since the
-    underlying renderer has no separate visual convention for
+def mark_proportional(*items: "Segment | Ray | Arc | Sector") -> None:
+    """Mark segments/rays/arcs/sectors as proportional (not necessarily
+    equal) — NOTE: renders with the same tick-mark symbols as mark_equal(),
+    since the underlying renderer has no separate visual convention for
     "proportional." Use this over mark_equal() only for the script's own
-    semantic clarity; the diagram itself won't look different. Requires
-    at least 2 segments. Shares mark_equal()'s 6-symbol limit (see its
-    docstring) — the two functions draw from the same symbol cycle."""
-    _mark_segments("proportional", segments)
+    semantic clarity; the diagram itself won't look different. Requires at
+    least 2 items. Shares mark_equal()'s 6-symbol limit and mixed
+    straight/curved group-sharing behavior (see its docstring) — the two
+    functions draw from the same symbol cycle."""
+    _mark_group("proportional", items)
 
 
 def mark_right_angle(ref: AngleRef) -> None:
@@ -714,6 +757,47 @@ def point_on(obj, t: float) -> Point:
     builder = get_builder()
     pid = builder._fresh_hidden_id("pt_on")
     builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))
+    return Point(id=pid, _builder=builder)
+
+
+def point_on_arc_between(circle: Circle, from_point: Point, to_point: Point) -> Point:
+    """An unspecified point on `circle`, restricted to the arc running
+    counter-clockwise from `from_point` to `to_point` (both must already lie
+    on `circle`'s boundary — build them with point_on(circle, angle), or use
+    points the construction already put there).
+
+    Use this when the construction needs "some point on this side of the
+    circle" and the exact angle genuinely doesn't matter — e.g. an inscribed
+    angle's apex that must sit on the major arc of a chord, so the figure
+    reads correctly whichever angle the compiler picks. When you do know the
+    angle you want, use point_on(circle, angle) instead: it is exact and
+    deterministic, and this function is not.
+
+    The sweep is always counter-clockwise from `from_point` to `to_point`,
+    never "whichever of the two arcs is shorter" — swapping the two arguments
+    selects the complementary arc, so order matters. Both endpoints count as
+    inside the arc.
+
+    The compiler places the point by rejection sampling, so the exact
+    coordinates depend on the RNG seed and are stable only for a fixed seed.
+    Don't build on this point's `.x`/`.y` mid-script: a sampled point's
+    coordinates are not guaranteed to survive into the rendered diagram
+    unchanged (see Builder.__init__'s note on self._rng). Draw it, label it
+    and reference it by handle instead. If no sample satisfies the constraint
+    (e.g. `from_point` and `to_point` are the same point, leaving a zero-width
+    sweep), compilation fails with an IRCompileError naming this point.
+    """
+    from geometry_diagrams.ir.ir import ArcBetweenConstraint, PointOnIntent
+
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("pt_arc_between")
+    builder._add(PointOn(
+        id=pid,
+        on=circle.id,
+        how=PointOnIntent(constraints=[
+            ArcBetweenConstraint(from_point=from_point.id, to_point=to_point.id)
+        ]),
+    ))
     return Point(id=pid, _builder=builder)
 
 
@@ -895,6 +979,49 @@ def tangent_line(
     line_id = builder._fresh_hidden_id("tangent")
     builder._add(LineTangent(id=line_id, point=from_point.id, circle=circle.id, pick=pick))
     return Line(id=line_id, _builder=builder)
+
+
+def tangent_circle(circle: Circle, point: Point, radius: float, internal: bool = False) -> Circle:
+    """A new circle of the given `radius`, tangent to `circle` at `point` —
+    `point` must already lie on `circle`'s boundary.
+
+    - internal=False (default): the new circle sits outside `circle`,
+      touching it from the opposite side.
+    - internal=True: the new circle sits inside (or, for a radius larger
+      than `circle`'s own, encloses) `circle`, touching it from the same
+      side. An internal=True radius equal to `circle`'s own radius is
+      rejected — it would reproduce `circle` exactly.
+
+    `circle` must be a genuine circle (an ellipse is rejected). Like
+    circumcircle()/incircle(), `point`-not-on-`circle`, an elliptical
+    `circle`, and the identical-circle degenerate case are all rejected at
+    compile time (inside compile_defs()), not eagerly here — only a
+    non-positive `radius` is caught immediately, by CircleTangentAt's own
+    model validation.
+
+    The new circle's center is reachable as `.center` on the returned
+    handle, an ordinary lazily-resolving Point addressable under its own
+    derived id (see geometry_diagrams.ir.ir.tangent_circle_center_id) —
+    same convention as circumcircle()/incircle()'s derived centers."""
+    from geometry_diagrams.ir.ir import CircleTangentAt, tangent_circle_center_id
+
+    builder = get_builder()
+    cid = builder._fresh_hidden_id("tangent_circle")
+    builder._add(CircleTangentAt(
+        id=cid,
+        circle=circle.id,
+        point=point.id,
+        radius=radius,
+        tangency="internal" if internal else "external",
+    ))
+    center_id = tangent_circle_center_id(cid)
+    return Circle(
+        id=cid,
+        center=Point(id=center_id, _builder=builder),
+        _radius_thunk=lambda: radius,
+        _builder=builder,
+        _from_derived_center=True,
+    )
 
 
 def draw(
@@ -1576,12 +1703,22 @@ def label_in_polygon(
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,
-    centroid_of: "Triangle | Polygon | None" = None,
+    centroid_of: "Triangle | Polygon | Circle | Ellipse | Sector | Polyline | None" = None,
     font_size: "float | None" = None,
 ) -> None:
     """Place free-standing text at explicit (x, y) coordinates, or at the
-    centroid of a triangle/polygon. Exactly one of `at`/`centroid_of` must
-    be given.
+    centroid/center of a triangle, polygon, circle, ellipse, sector, or
+    polyline. Exactly one of `at`/`centroid_of` must be given.
+
+    centroid_of accepts only those six shapes. It doesn't take a Point, an
+    AngleRef, or a straight-line-family handle (segment, line, ray, arc) —
+    each of those already has its own `.label()` method that offsets the text
+    away from the geometry; a centroid_of anchor for one of them would just
+    be its own midpoint, which places the text directly on top of the
+    geometry instead. It also doesn't take a composite handle (median,
+    altitude, perpendicular bisector): those are records that delegate to
+    sub-handles, so label the sub-handle (e.g. `med.segment.label(...)`)
+    instead.
 
     `font_size`, if given, registers a style dict (`{"font-size":
     font_size}`) via the same builder._register_style() mechanism draw()
@@ -1601,6 +1738,31 @@ def label_text(
     has_centroid = centroid_of is not None
     if has_at == has_centroid:
         raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
+    # Allowlist, not a blocklist: only these six shapes have a centroid the
+    # LabelFreeText renderer can compute. Naming the *bad* types instead
+    # would silently let anything else with an `.id` through -- notably the
+    # composite handles (Median/Altitude/PerpendicularBisectorLine), whose
+    # `.id` is their underlying segment/line def, so the label would land on
+    # that sub-object's own midpoint rather than raising.
+    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline)):
+        type_name = type(centroid_of).__name__
+        article = "an" if type_name[0] in "AEIOU" else "a"
+        if isinstance(centroid_of, (Point, AngleRef)):
+            raise ValueError(
+                f"label_text() doesn't take {article} {type_name} for centroid_of — "
+                f"use {type_name}.label(...) instead"
+            )
+        if isinstance(centroid_of, (Segment, Line, Ray, Arc)):
+            raise ValueError(
+                f"label_text() doesn't take {article} {type_name} for centroid_of — "
+                f"use {type_name}.label(...) instead, which offsets the text "
+                "away from the geometry instead of placing it directly on the midpoint"
+            )
+        raise ValueError(
+            f"label_text(): {type_name} is not supported for centroid_of — only "
+            "Triangle, Polygon, Circle, Ellipse, Sector and Polyline have a "
+            "centroid to anchor free text at"
+        )
     text = _sanitize_label_text(text, "label_text")
     builder = get_builder()
     style_key = builder._register_style({"font-size": font_size}) if font_size is not None else None

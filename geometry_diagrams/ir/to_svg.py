@@ -45,6 +45,7 @@ from .render_util import (
     extract_coords,
     fmt_label_num,
     fmt_num,
+    label_segment_arc_anchor,
     line_endpoints,
     line_label_endpoints,
     orient_angle,
@@ -1009,8 +1010,9 @@ def _emit_svg_op(
             if seg_id not in stmt_by_id:
                 _warn(warnings, f"Skipping LabelSegment for undefined '{seg_id}'")
                 return
-            if isinstance(stmt_by_id[seg_id], ir.ArcCenterStartEnd):
-                cx_g, cy_g, px_g, py_g, _r_g = arc_label_anchor(seg_id, sym)
+            arc_anchor = label_segment_arc_anchor(seg_id, stmt_by_id, sym, pos)
+            if arc_anchor is not None:
+                cx_g, cy_g, px_g, py_g, _r_g = arc_anchor
                 dx, dy = px_g - cx_g, py_g - cy_g
                 mag = math.hypot(dx, dy) or 1
                 lx, ly = gxy(px_g, py_g)
@@ -1030,7 +1032,7 @@ def _emit_svg_op(
                 return
             endpoints = line_label_endpoints(seg_id, stmt_by_id, helpers)
             if endpoints is None:
-                _warn(warnings, f"Skipping LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc")
+                _warn(warnings, f"Skipping LabelSegment: '{seg_id}' is not a labelable segment/ray/line/arc/sector")
                 return
             a, b = endpoints
             ax, ay = pt(a)
@@ -3025,6 +3027,11 @@ def _circle_center_id(circle_id: str, stmt_by_id: dict) -> str | None:
         return stmt.center
     if isinstance(stmt, ir.CircleCenterRadius):
         return stmt.center
+    if isinstance(stmt, ir.CircleTangentAt):
+        # The computed centre is registered in the symbol table under a
+        # derived id, so it is just as addressable as an explicitly named
+        # one. Ask ir.py for the name rather than rebuilding the convention.
+        return ir.tangent_circle_center_id(circle_id)
     # CircleThrough3 has no named center point
     return None
 
