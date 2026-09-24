@@ -107,7 +107,7 @@ def ray(a: Point, b: Point) -> Ray:
     builder = get_builder()
     rid = builder._fresh_hidden_id("ray")
     builder._add(RayDef(id=rid, a=a.id, b=b.id))
-    return Ray(id=rid)
+    return Ray(id=rid, _builder=builder)
 
 
 def triangle(a: Point, b: Point, c: Point) -> Triangle:
@@ -292,7 +292,7 @@ def circumcircle(t: Triangle) -> Circle:
             )
         return round((side_a * side_b * side_c) / (4 * area), 10)
 
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius, _from_derived_center=True)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=_compute_radius, _builder=builder, _from_derived_center=True)
 
 
 def incircle(t: Triangle) -> Circle:
@@ -330,7 +330,7 @@ def incircle(t: Triangle) -> Circle:
             f"/ sqrt((length({b_id},{c_id})+length({a_id},{c_id})+length({a_id},{b_id}))/2)"
         )
     builder._add(CircleCenterRadius(id=cid, center=center_id, radius=radius))
-    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius, _from_derived_center=True)
+    return Circle(id=cid, center=Point(id=center_id, _builder=builder), _radius_thunk=lambda: radius, _builder=builder, _from_derived_center=True)
 
 
 def circle(center: Point, radius: float) -> Circle:
@@ -340,7 +340,7 @@ def circle(center: Point, radius: float) -> Circle:
     builder = get_builder()
     cid = builder._fresh_hidden_id("circle")
     builder._add(CircleCenterRadius(id=cid, center=center.id, radius=radius))
-    return Circle(id=cid, center=center, _radius_thunk=lambda: radius)
+    return Circle(id=cid, center=center, _radius_thunk=lambda: radius, _builder=builder)
 
 
 def _validate_on_circle(fn_name: str, circle: Circle, point: Point, point_role: str) -> None:
@@ -474,7 +474,7 @@ def sector(
     and the arc between them, on shape (a circle() or ellipse()). Same
     start/end/reflex/bulge_toward contract as arc() — see its docstring."""
     sid = _arc_or_sector("sector", shape, start, end, reflex, bulge_toward)
-    return Sector(id=sid)
+    return Sector(id=sid, _builder=get_builder())
 
 
 def regular_sectors(circle: Circle, n: int) -> tuple[Sector, ...]:
@@ -549,7 +549,7 @@ def ellipse(
                 f"{hradius!r}, {vradius!r}"
             )
         builder._add(EllipseCenterAxes(id=eid, center=center.id, hradius=hradius, vradius=vradius))
-        return Ellipse(id=eid, center=center, _hradius_thunk=lambda: hradius, _vradius_thunk=lambda: vradius)
+        return Ellipse(id=eid, center=center, _hradius_thunk=lambda: hradius, _vradius_thunk=lambda: vradius, _builder=builder)
 
     builder._add(EllipseBBox(id=eid, corner1=corner1.id, corner2=corner2.id))
     mid_id = builder._fresh_hidden_id("ellipse_center")
@@ -578,7 +578,7 @@ def ellipse(
         _, y2 = coord_floats[corner2.id]
         return abs(y2 - y1) / 2
 
-    return Ellipse(id=eid, center=center_pt, _hradius_thunk=_compute_hradius, _vradius_thunk=_compute_vradius)
+    return Ellipse(id=eid, center=center_pt, _hradius_thunk=_compute_hradius, _vradius_thunk=_compute_vradius, _builder=builder)
 
 
 def median(t: Triangle, from_vertex: Point) -> Median:
@@ -1619,12 +1619,18 @@ def label_in_polygon(
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,
-    centroid_of: "Triangle | Polygon | None" = None,
+    centroid_of: "Triangle | Polygon | Circle | Ellipse | Sector | Polyline | None" = None,
     font_size: "float | None" = None,
 ) -> None:
     """Place free-standing text at explicit (x, y) coordinates, or at the
-    centroid of a triangle/polygon. Exactly one of `at`/`centroid_of` must
-    be given.
+    centroid/center of a triangle, polygon, circle, ellipse, sector, or
+    polyline. Exactly one of `at`/`centroid_of` must be given.
+
+    centroid_of doesn't take a Point, an AngleRef, or a straight-line-family
+    handle (segment, line, ray, arc) — each of those already has its own
+    `.label()` method that offsets the text away from the geometry; a
+    centroid_of anchor for one of them would just be its own midpoint, which
+    places the text directly on top of the geometry instead.
 
     `font_size`, if given, registers a style dict (`{"font-size":
     font_size}`) via the same builder._register_style() mechanism draw()
@@ -1644,6 +1650,18 @@ def label_text(
     has_centroid = centroid_of is not None
     if has_at == has_centroid:
         raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
+    if isinstance(centroid_of, Point):
+        raise ValueError("label_text() doesn't take a Point for centroid_of — use Point.label(...) instead")
+    if isinstance(centroid_of, AngleRef):
+        raise ValueError("label_text() doesn't take an AngleRef for centroid_of — use AngleRef.label(...) instead")
+    if isinstance(centroid_of, (Segment, Line, Ray, Arc)):
+        type_name = type(centroid_of).__name__
+        article = "an" if type_name[0] in "AEIOU" else "a"
+        raise ValueError(
+            f"label_text() doesn't take {article} {type_name} for centroid_of — "
+            f"use {type_name}.label(...) instead, which offsets the text "
+            "away from the geometry instead of placing it directly on the midpoint"
+        )
     text = _sanitize_label_text(text, "label_text")
     builder = get_builder()
     style_key = builder._register_style({"font-size": font_size}) if font_size is not None else None

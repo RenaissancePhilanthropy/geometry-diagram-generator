@@ -194,6 +194,14 @@ class Line:
 @dataclass(frozen=True)
 class Ray:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this ray with text, e.g. r.label("r")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
@@ -212,6 +220,14 @@ class Arc:
 @dataclass(frozen=True)
 class Sector:
     id: str
+    _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str, pos: "float | None" = None) -> None:
+        """Label this sector with text, placed near its curved edge, e.g. sec.label("S")."""
+        from geometry_diagrams.ir.ir import LabelSegment
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelSegment(seg=self.id, text=text, pos=pos))
 
 
 @dataclass(frozen=True)
@@ -323,6 +339,7 @@ class Circle:
     id: str
     center: Point
     _radius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float | str]
+    _builder: "object" = field(repr=False, compare=False)
     # True for circumcircle()/incircle() (their center is a PointTriangleCenter,
     # not a direct literal) — False for circle(). Gates regular_sectors(),
     # which requires a literal circle() so its radius is always plain numeric.
@@ -332,6 +349,13 @@ class Circle:
     def radius(self) -> "float | str":
         return self._radius_thunk()
 
+    def label(self, text: str) -> None:
+        """Place a floating label at this circle's own center, e.g. c.label("O")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
+
 
 @dataclass(frozen=True)
 class Ellipse:
@@ -339,6 +363,7 @@ class Ellipse:
     center: Point
     _hradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
     _vradius_thunk: "object" = field(repr=False, compare=False)  # Callable[[], float]
+    _builder: "object" = field(repr=False, compare=False)
 
     @property
     def hradius(self) -> float:
@@ -347,6 +372,13 @@ class Ellipse:
     @property
     def vradius(self) -> float:
         return self._vradius_thunk()
+
+    def label(self, text: str) -> None:
+        """Place a floating label at this ellipse's own center, e.g. e.label("E")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
 
 
 @dataclass(frozen=True)
@@ -403,6 +435,13 @@ class Polyline:
     id: str
     vertices: tuple[Point, ...]
     _builder: "object" = field(repr=False, compare=False)
+
+    def label(self, text: str) -> None:
+        """Place a floating label at this polyline's own centroid, e.g. pl.label("P")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
 
 
 @dataclass(frozen=True)
