@@ -17,7 +17,8 @@ from langchain_core.messages import HumanMessage
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import (
     get_chat_model, is_gemini_model, requires_raw_text_generation,
-    requires_forced_function_calling, extract_usage, extract_cost, make_system_message,
+    requires_forced_function_calling, requires_auto_tool_choice,
+    bind_structured_output_auto_tool_choice, extract_usage, extract_cost, make_system_message,
 )
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
@@ -896,6 +897,11 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
 
         if is_gemini_model(model_id):
             structured = llm.with_structured_output(PydslScriptOutput, method="json_mode", include_raw=True)
+        elif requires_auto_tool_choice(model_id):
+            # See llm.py's _AUTO_TOOL_CHOICE_MODELS — a forced tool_choice
+            # (what with_structured_output's default/function_calling method
+            # sends) 400s outright for these models; tool_choice="auto" works.
+            structured = bind_structured_output_auto_tool_choice(llm, PydslScriptOutput, include_raw=True)
         elif requires_forced_function_calling(model_id):
             # Only for models confirmed to need it (see llm.py's
             # _FORCED_FUNCTION_CALLING_MODELS) — do NOT force this by default

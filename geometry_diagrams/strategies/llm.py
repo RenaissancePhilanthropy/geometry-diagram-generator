@@ -397,6 +397,12 @@ def requires_forced_function_calling(model_id: str) -> bool:
 # instead of with_structured_output() for these models.
 _AUTO_TOOL_CHOICE_MODELS: set[str] = {
     "openrouter:z-ai/glm-5.3-flash",
+    # anthropic:claude-opus-5-5 (2026-09-25): a forced tool_choice (what
+    # with_structured_output(method="function_calling") sends) 400s outright —
+    # "tool_choice: type \"tool\" and \"any\" are not supported for this
+    # model." Confirmed via a direct API call that tool_choice="auto" with
+    # the same tool works fine (clean tool_use block on the first call).
+    "anthropic:claude-opus-5-5",
 }
 
 
