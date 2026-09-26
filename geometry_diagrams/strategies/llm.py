@@ -464,6 +464,30 @@ def is_openai_model(model_id: str) -> bool:
     return provider is not None and provider["backend"] == "openai"
 
 
+def extract_text(content) -> str:
+    """Return the text of a LangChain message .content, regardless of whether it's
+    a plain string or a list of content blocks.
+
+    Anthropic models (confirmed on claude-opus-5-5, 2026-09-26) return .content as
+    a list of blocks — e.g. a "thinking" block followed by a "text" block — rather
+    than collapsing to a bare string, on a real fraction of calls even with the
+    exact same prompt/model (5 of 12 identical-shape selector calls in one batch).
+    Code that assumes .content is always a string (e.g. regexing JSON out of it)
+    crashes with "TypeError: expected string or bytes-like object, got 'list'" on
+    exactly those calls, and retrying doesn't help when a specific prompt reliably
+    triggers the list shape every time.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return str(content)
+
+
 def extract_usage(response: AIMessage) -> tuple[int, int]:
     """Extract (input_tokens, output_tokens) from a LangChain AIMessage response."""
     usage = response.usage_metadata or {}

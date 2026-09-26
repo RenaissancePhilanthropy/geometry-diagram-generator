@@ -24,6 +24,7 @@ from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipelin
 from .llm import (
     get_chat_model,
     extract_usage,
+    extract_text,
     make_system_message,
     is_openai_model,
     requires_auto_tool_choice,
@@ -220,7 +221,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
         HumanMessage(content=selection_prompt),
     ]
     response = await llm.ainvoke(messages)
-    raw_text = response.content if hasattr(response, "content") else str(response)
+    raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
 
     in_tok, out_tok = extract_usage(response)
 
@@ -505,7 +506,7 @@ async def select_recipes(
         HumanMessage(content=selection_prompt),
     ]
     response = await llm.ainvoke(messages)
-    raw_text = response.content if hasattr(response, "content") else str(response)
+    raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
     in_tok, out_tok = extract_usage(response)
 
     selected_recipes: list[str] = []
