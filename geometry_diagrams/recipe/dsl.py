@@ -169,16 +169,31 @@ class TriangleOp(DSLOpBase):
         v0, v1, v2 = vertices
         spec = dict(spec)
 
+        # When a triangle's vertex names are themselves a permutation of "A"/"B"/"C"
+        # (e.g. vertices=["A","C","B"]), an alias string built from those vertex
+        # names can collide with a *different* canonical key that's already sitting
+        # in spec with its own legitimate value (e.g. alias "side_CA" for the AB
+        # slot colliding with the actual canonical "side_CA" key). Renaming into
+        # that key would silently clobber or steal a value instead of a genuine
+        # side_DE-style alias for non-A/B/C vertex names. Guard by skipping any
+        # alias that is itself one of the canonical keys, so only a real rename
+        # (alias not already meaningful under the positional convention) proceeds.
+        side_canonical_names = {"side_AB", "side_BC", "side_CA"}
         side_pairs = [("side_AB", v0, v1), ("side_BC", v1, v2), ("side_CA", v2, v0)]
         for canonical, a, b in side_pairs:
             for alias in (f"side_{a}{b}", f"side_{b}{a}"):
+                if alias != canonical and alias in side_canonical_names:
+                    continue
                 if alias in spec:
                     value = spec.pop(alias)
                     spec.setdefault(canonical, value)
 
+        angle_canonical_names = {"angle_A", "angle_B", "angle_C"}
         angle_slots = [("angle_A", v0), ("angle_B", v1), ("angle_C", v2)]
         for canonical, v in angle_slots:
             alias = f"angle_{v}"
+            if alias != canonical and alias in angle_canonical_names:
+                continue
             if alias in spec:
                 value = spec.pop(alias)
                 spec.setdefault(canonical, value)
