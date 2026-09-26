@@ -151,6 +151,30 @@ def test_triangle_spec_accepts_real_vertex_letter_right_angle_at():
                      spec={"right_angle_at": "D", "side_DE": 3, "side_EF": 4})
     assert op.spec.right_angle_at == "A"
 
+def test_triangle_spec_permuted_abc_vertices_does_not_corrupt_sides():
+    """A triangle whose vertices are a permutation of A/B/C other than the
+    identity order (e.g. vertices=["A","C","B"], naming a real correspondence
+    like "triangle ACB") must not have its already-canonical spec keys
+    clobbered by the real-vertex-letter alias normalization: an alias string
+    built from these vertex letters (e.g. "side_CA" for the AB slot) can
+    coincide with a *different* canonical key already holding its own
+    legitimate value, and renaming into it must not steal or discard that
+    value."""
+    op = TriangleOp(id="T2", vertices=["A", "C", "B"],
+                     spec={"side_AB": 6, "side_BC": 3, "side_CA": 4})
+    assert op.spec.side_AB == 6.0
+    assert op.spec.side_BC == 3.0
+    assert op.spec.side_CA == 4.0
+
+def test_triangle_spec_permuted_abc_vertices_does_not_corrupt_angles():
+    """Same collision risk as the side-key case above, for angle_{vertex}
+    aliases when vertices are a non-identity permutation of A/B/C."""
+    op = TriangleOp(id="T2", vertices=["A", "C", "B"],
+                     spec={"angle_A": 50, "angle_B": 60, "angle_C": 70})
+    assert op.spec.angle_A == 50.0
+    assert op.spec.angle_B == 60.0
+    assert op.spec.angle_C == 70.0
+
 def test_circle_op_radius():
     op = CircleOp(id="c", center="O", radius=5)
     assert op.op == "circle"
