@@ -192,3 +192,62 @@ async def test_recipe_strategy_retries_on_ir_compile_error():
     assert pipeline_calls["n"] == 2, (
         f"Expected 2 pipeline calls (retry after IRCompileError), got {pipeline_calls['n']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: lenient-parse fallback recovers a list-shaped raw_msg.content
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_recipe_strategy_recovers_dsl_from_list_shaped_raw_content():
+    """When the model answers with plain text instead of calling the RecipeDSL
+    tool (parsed=None), _generate_dsl_node falls back to
+    _parse_recipe_dsl_leniently(raw_content). Anthropic models can return
+    raw_msg.content as a list of blocks (e.g. a "thinking" block followed by a
+    "text" block) rather than a plain string — raw_content must be built via
+    extract_text() to recover the JSON, not str(), which would produce a
+    Python-repr string that never parses as JSON."""
+    strategy = RecipeStrategy()
+    fake_result = _make_fake_result()
+
+    list_content = [
+        {"type": "thinking", "thinking": "reasoning...", "signature": "sig"},
+        {"type": "text", "text": (
+            '{"mode": "grid", "construction": ['
+            '{"op": "point", "id": "A", "coords": [0.0, 0.0]}, '
+            '{"op": "point", "id": "B", "coords": [3.0, 0.0]}, '
+            '{"op": "segment", "id": "s1", "endpoints": ["A", "B"]}], '
+            '"annotations": {"auto_draw_all": true, "auto_label_points": false}}'
+        )},
+    ]
+    raw = MagicMock()
+    raw.content = list_content
+    raw.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 8}}
+
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = AsyncMock(
+        return_value={"raw": raw, "parsed": None, "parsing_error": None}
+    )
+
+    selector_response = MagicMock()
+    selector_response.content = '{"selected_recipes": [], "unmatched_concepts": []}'
+    selector_response.response_metadata = {"usage": {"input_tokens": 5, "output_tokens": 8}}
+
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=selector_response)
+    mock_llm.with_structured_output = MagicMock(return_value=structured_mock)
+
+    with (
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate"),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+    ):
+        result = await strategy.run("draw a segment", model="anthropic:claude-haiku-4-5-20251001")
+
+    assert isinstance(result, StructuredRunResult)
+    traces = result.recipe_metadata.attempt_traces
+    assert traces[-1].stage == "success"
+    assert traces[-1].dsl_json is not None

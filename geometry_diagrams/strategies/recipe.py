@@ -333,7 +333,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
 
         # Capture raw content for failure diagnostics
         if raw_msg is not None:
-            raw_content = raw_msg.content if isinstance(raw_msg.content, str) else str(raw_msg.content)
+            raw_content = extract_text(raw_msg.content)
 
         if dsl is None and raw_content:
             dsl = _parse_recipe_dsl_leniently(raw_content)
