@@ -1,4 +1,5 @@
 # tests/test_recipe_dsl.py
+from itertools import permutations
 import pytest
 from pydantic import ValidationError
 from geometry_diagrams.recipe.dsl import (
@@ -174,6 +175,129 @@ def test_triangle_spec_permuted_abc_vertices_does_not_corrupt_angles():
     assert op.spec.angle_A == 50.0
     assert op.spec.angle_B == 60.0
     assert op.spec.angle_C == 70.0
+
+
+# ---- Triangle vertex-permutation matrix (see a74ea43 and the follow-up
+# ambiguity documented below) ----
+#
+# TriangleSpec's side_AB/side_BC/side_CA and angle_A/angle_B/angle_C fields are
+# positional (A=vertices[0], B=vertices[1], C=vertices[2]) by schema
+# definition, but TriangleOp's before-validator also accepts the SAME key
+# spelled using the triangle's own real vertex letters as an alias for the
+# positional slot (e.g. side_DE for vertices ["D","E","F"]). When a triangle's
+# vertices happen to be a permutation of "A"/"B"/"C" themselves, a real-vertex
+# alias string can be spelled identically to a *different* positional
+# canonical key. There is no way to tell, from the key string alone, whether
+# the model meant that spelling positionally or as a real-vertex-letter pair
+# — both are valid, commonly produced conventions. The tests below pin down
+# exactly which of the 6 vertex-letter permutations are safe (identity, and
+# any case where the two conventions happen to agree) versus genuinely
+# ambiguous (12 of the 36 real-edge/spelling combinations across the 6
+# permutations, per direct enumeration).
+
+ALL_ABC_VERTEX_PERMUTATIONS = list(permutations(["A", "B", "C"]))
+
+
+@pytest.mark.parametrize("vertices", ALL_ABC_VERTEX_PERMUTATIONS)
+def test_triangle_spec_canonical_side_keys_preserved_for_every_abc_permutation(vertices):
+    """Regression coverage for a74ea43, generalized from the single
+    vertices=["A","C","B"] case to all 6 permutations of A/B/C: a spec already
+    using the schema's own canonical positional keys must never be altered by
+    the real-vertex-letter alias normalization, no matter how the triangle's
+    own vertex letters happen to be ordered."""
+    op = TriangleOp(id="T", vertices=list(vertices),
+                     spec={"side_AB": 6, "side_BC": 3, "side_CA": 4})
+    assert op.spec.side_AB == 6.0
+    assert op.spec.side_BC == 3.0
+    assert op.spec.side_CA == 4.0
+
+
+@pytest.mark.parametrize("vertices", ALL_ABC_VERTEX_PERMUTATIONS)
+def test_triangle_spec_canonical_angle_keys_preserved_for_every_abc_permutation(vertices):
+    """Angle-key counterpart of the test above."""
+    op = TriangleOp(id="T", vertices=list(vertices),
+                     spec={"angle_A": 50, "angle_B": 60, "angle_C": 70})
+    assert op.spec.angle_A == 50.0
+    assert op.spec.angle_B == 60.0
+    assert op.spec.angle_C == 70.0
+
+
+@pytest.mark.parametrize(
+    "vertices,real_vertex",
+    [(v, rv) for v in ALL_ABC_VERTEX_PERMUTATIONS for rv in v],
+)
+def test_triangle_spec_right_angle_at_round_trips_for_every_abc_permutation(vertices, real_vertex):
+    """right_angle_at has no key-collision risk (it substitutes a single
+    scalar value, it doesn't rename a dict key), so it round-trips correctly
+    for every vertex permutation: TriangleOp's before-validator maps the real
+    vertex letter to its positional slot, and _lower_triangle's `_slot` dict
+    (geometry_diagrams/recipe/lower.py) maps that positional slot back to the
+    same real vertex — confirmed by direct enumeration (18 combinations, 6
+    permutations x 3 vertices each), independent of the side/angle key
+    ambiguity below."""
+    op = TriangleOp(id="T", vertices=list(vertices),
+                     spec={"right_angle_at": real_vertex, "side_AB": 3, "side_BC": 4})
+    slot_to_vertex = {"A": vertices[0], "B": vertices[1], "C": vertices[2]}
+    assert slot_to_vertex[op.spec.right_angle_at] == real_vertex
+
+
+# The 12 (of 36) real-edge/spelling combinations where a real-vertex-letter
+# alias collides with a *different* canonical key than the one it should
+# resolve to. Derived by direct enumeration against
+# TriangleOp._normalize_spec_keys_to_positional_slots (see conversation
+# history / the downstream bug report on 2026-09-28: a model narrating "right
+# angle at B" for vertices=["B","A","C"] and writing side_BC=4 to mean the
+# real edge B-to-C lands the value on the wrong positional slot). Each tuple
+# is (vertices, written_key, value, canonical_slot_the_real_edge_should_land_on).
+KNOWN_AMBIGUOUS_REAL_VERTEX_SIDE_ALIASES = [
+    (("A", "C", "B"), "side_CA", "side_AB"),
+    (("A", "C", "B"), "side_AB", "side_CA"),
+    (("B", "A", "C"), "side_CA", "side_BC"),
+    (("B", "A", "C"), "side_BC", "side_CA"),
+    (("B", "C", "A"), "side_BC", "side_AB"),
+    (("B", "C", "A"), "side_CA", "side_BC"),
+    (("B", "C", "A"), "side_AB", "side_CA"),
+    (("C", "A", "B"), "side_CA", "side_AB"),
+    (("C", "A", "B"), "side_AB", "side_BC"),
+    (("C", "A", "B"), "side_BC", "side_CA"),
+    (("C", "B", "A"), "side_BC", "side_AB"),
+    (("C", "B", "A"), "side_AB", "side_BC"),
+]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known unresolved ambiguity: a real-vertex-letter side alias that "
+           "happens to be spelled like a *different* canonical positional key "
+           "is currently taken literally (positionally) rather than resolved "
+           "by real-vertex meaning, because the two conventions are "
+           "indistinguishable from the key string alone. See "
+           "KNOWN_AMBIGUOUS_REAL_VERTEX_SIDE_ALIASES above for the full "
+           "12-combination scope. Needs a design decision (e.g. dropping the "
+           "positional convention entirely in favor of always-real-vertex-"
+           "letter keys) before this can be fixed, not just another alias-loop "
+           "tweak.",
+)
+@pytest.mark.parametrize("vertices,written_key,expected_canonical",
+                          KNOWN_AMBIGUOUS_REAL_VERTEX_SIDE_ALIASES)
+def test_triangle_spec_real_vertex_side_alias_ambiguity_is_unresolved(
+    vertices, written_key, expected_canonical
+):
+    """Documents (as an expected failure, not accepted behavior) that writing
+    a side by real vertex letters — rather than positional slots — can
+    silently land on the wrong edge when those letters coincide with a
+    different canonical key's spelling.
+
+    written_key is itself always one of the 3 canonical spellings (that's the
+    source of the ambiguity), so the other two canonical fields are filled in
+    directly to make a complete, otherwise-unambiguous SSS spec — isolating
+    the alias-resolution question from TriangleSpec's separate "needs 3
+    constraints" validation."""
+    other_canonical_fields = [k for k in ("side_AB", "side_BC", "side_CA") if k != written_key]
+    spec = {written_key: 99.0, other_canonical_fields[0]: 1.0, other_canonical_fields[1]: 2.0}
+    op = TriangleOp(id="T", vertices=list(vertices), spec=spec)
+    assert getattr(op.spec, expected_canonical) == 99.0
+
 
 def test_circle_op_radius():
     op = CircleOp(id="c", center="O", radius=5)
