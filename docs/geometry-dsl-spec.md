@@ -120,10 +120,15 @@ Create a triangle from a property specification.
 | `vertices` | [string, string, string] | Names for the three vertices    |
 | `spec`     | object            | Properties (see below)                 |
 
-Spec accepts any sufficient combination of:
-- `side_AB`, `side_BC`, `side_CA` — side lengths
-- `angle_A`, `angle_B`, `angle_C` — angle measures in degrees
-- `right_angle_at` — shorthand for setting one angle to 90
+Spec keys always use this triangle's own vertex IDs from `vertices` (e.g. for
+`vertices: ["P","Q","R"]`, use `side_PQ`/`angle_P`, not fixed letters). Accepts
+any sufficient combination of:
+- `side_XY` for each pair of vertices X, Y — side length (either letter order
+  accepted, e.g. `side_PQ` and `side_QP` name the same segment; give each edge
+  only once)
+- `angle_X` for each vertex X — angle measure in degrees
+- `right_angle_at` — the vertex name with a right angle (shorthand for setting
+  that angle to 90)
 
 The system computes all unspecified values and chooses a realization.
 Layout convention: base edge horizontal, triangle above the base.

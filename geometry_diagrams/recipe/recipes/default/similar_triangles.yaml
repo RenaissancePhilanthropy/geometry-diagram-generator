@@ -18,9 +18,9 @@ example:
       id: T2
       vertices: [D, E, F]
       spec:
-        angle_A: 50
-        angle_B: 70
-        side_AB: 4.5
+        angle_D: 50
+        angle_E: 70
+        side_DE: 4.5
       center: [5.5, 2]
   annotations:
     marks:
@@ -35,8 +35,8 @@ example:
         group: 3
 notes:
   - "CRITICAL — place triangles side by side using the 'center' field: first triangle center at [1.5, 2], second at [5.5, 2]. Without different centers both triangles overlap at (2,2)."
-  - "Similar triangles have equal angles but proportional sides — use the SAME angle_A and angle_B values in both specs"
-  - "Scale the second triangle by changing side_AB: here 4.5 = 1.5 × 3, so scale factor is 1.5"
+  - "Similar triangles have equal angles but proportional sides — use the SAME angle values at corresponding vertices in both specs (T1's angle_A/angle_B = T2's angle_D/angle_E)"
+  - "Scale the second triangle by changing its corresponding side: here side_DE=4.5 = 1.5 × side_AB=3, so scale factor is 1.5"
   - "Use mark_proportional (NOT mark_equal_lengths) for corresponding sides — proportional marks show similarity, not congruence"
   - "Corresponding vertex pairs: A↔D, B↔E, C↔F — mark_proportional groups match AB↔DE (group 1), BC↔EF (group 2), AC↔DF (group 3)"
   - "Offset centers by ~4 units horizontally so the triangles are clearly separated with a visible gap between them"

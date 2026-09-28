@@ -236,27 +236,29 @@ RecipeDSL is a JSON object with these top-level fields:
 - annotations: optional batch flags and explicit marks/labels
 
 ## Foundation ops
-- triangle: {op, id, vertices:[A,B,C], spec:{angle_A, angle_B, side_AB, ...}}
+- triangle: {op, id, vertices:[P,Q,R], spec:{angle_P, angle_Q, side_PQ, ...}}
 
 ## triangle op
 
-spec fields (A/B/C are positional slots: A=vertices[0], B=vertices[1], C=vertices[2]):
+spec keys ALWAYS use this triangle's own vertex IDs from `vertices` (never fixed
+letters like A/B/C unless the vertices themselves are literally named A/B/C):
 
-| Form | Required fields | Example spec |
+| Form | Required fields (P,Q,R stand for this triangle's own vertex IDs) | Example spec |
 |------|----------------|--------------|
-| SSS  | side_AB, side_BC, side_CA | {"side_AB": 4, "side_BC": 3, "side_CA": 5} |
-| SAS  | two sides + included angle | {"side_AB": 4, "angle_B": 60, "side_BC": 3} |
-| ASA  | two angles + included side | {"angle_A": 45, "side_AB": 5, "angle_B": 60} |
-| AAS  | two angles + non-included side | {"angle_A": 45, "angle_B": 60, "side_BC": 4} |
-| right_at | right_angle_at + 2 constraints | {"right_angle_at": "B", "side_AB": 3, "side_BC": 4} |
-| right_at (no scale) | right_angle_at alone, nothing else | {"right_angle_at": "B"} — legs adjacent to the right angle default to 3 and 4 |
-| equilateral | one side + at most one angle | {"side_AB": 4}  — angles default to 60° |
-| AAA (no scale) | two or three angles, no side | {"angle_A": 70, "angle_B": 60} — side_AB defaults to 4 |
+| SSS  | side_PQ, side_QR, side_RP | {"side_PQ": 4, "side_QR": 3, "side_RP": 5} |
+| SAS  | two sides + included angle | {"side_PQ": 4, "angle_Q": 60, "side_QR": 3} |
+| ASA  | two angles + included side | {"angle_P": 45, "side_PQ": 5, "angle_Q": 60} |
+| AAS  | two angles + non-included side | {"angle_P": 45, "angle_Q": 60, "side_QR": 4} |
+| right_at | right_angle_at + 2 constraints | {"right_angle_at": "Q", "side_PQ": 3, "side_QR": 4} |
+| right_at (no scale) | right_angle_at alone, nothing else | {"right_angle_at": "Q"} — legs adjacent to the right angle default to 3 and 4 |
+| equilateral | one side + at most one angle | {"side_PQ": 4}  — angles default to 60° |
+| AAA (no scale) | two or three angles, no side | {"angle_P": 70, "angle_Q": 60} — one side defaults to 4 |
 
-IMPORTANT: A/B/C always refer to the first, second, and third entry in `vertices`, regardless
-of what those vertex IDs are named. Never use actual vertex IDs (like P, Q, R) in the spec.
-Side keys MUST use exactly this cyclic order: side_AB, side_BC, side_CA — "side_AC" (reversed)
-is invalid; the segment between A and C is always side_CA.
+IMPORTANT: side_PQ names the actual segment between whichever vertices are literally
+called P and Q in THIS triangle's `vertices` list — there is no positional slot
+scheme, so never key a spec by fixed letters unless `vertices` itself uses those
+exact letters. Either letter order is accepted for a side (side_PQ and side_QP name
+the same segment) — but give each edge only once, not both orderings.
   NOT supported: SSA (ambiguous)
   The "no scale" rows above (bare right_angle_at, or angles with no side) only apply when
   NOTHING else was asked to constrain the shape or size — e.g. a prompt that just says "draw
@@ -282,10 +284,15 @@ is invalid; the segment between A and C is always side_CA.
     label center with its coordinates: annotations.labels [{kind:"label_point", point:"O", text:"(1, 3)"}]
 - polygon: {op, id, vertices:[...]}
 - point: {op, id, coords:[x, y]}  (grid mode)
-- rectangle: {op, id, vertices:[A,B,C,D], spec:{side_AB:<w>, side_BC:<h>}}
-  Axis-aligned; A=top-left, B=top-right, C=bottom-right, D=bottom-left, going clockwise.
-  spec keys MUST use the actual vertex-name pairs (e.g. if vertices are [P,Q,R,S], use
-  side_PQ/side_QR, not side_AB/side_BC). Optional rotation (degrees).
+- rectangle: {op, id, vertices:[P,Q,R,S], spec:{side_PQ:<w>, side_QR:<h>}}
+  Axis-aligned; first vertex=top-left, second=top-right, third=bottom-right,
+  fourth=bottom-left, going clockwise. spec keys ALWAYS use this rectangle's own
+  vertex IDs (e.g. for vertices [P,Q,R,S], use side_PQ/side_QR — never fixed
+  letters like side_AB unless the vertices themselves are literally A/B/C/D).
+  Either letter order is accepted (side_PQ and side_QP name the same segment) —
+  give each edge only once. Provide at least two ADJACENT side lengths (e.g.
+  side_PQ + side_QR); opposite sides alone are not sufficient. Optional rotation
+  (degrees).
 - regular_polygon: {op, id, center, radius, vertices:[...], start_angle?, star?}
   N equally-spaced points on a circle of the given radius, connected into a polygon
   (N = len(vertices)). Always provide explicit names in "vertices" — never guess
