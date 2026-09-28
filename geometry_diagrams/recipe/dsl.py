@@ -43,170 +43,157 @@ class DSLOpBase(BaseModel):
 # Foundation ops
 # ---------------------------------------------------------------------------
 
-class TriangleSpec(BaseModel):
-    """Triangle constraints using positional A/B/C slots.
+class TriangleOp(DSLOpBase):
+    """Triangle defined by side lengths and/or angles.
 
-    A=vertices[0], B=vertices[1], C=vertices[2] always.
-    Provide any combination of sides and angles that uniquely determines
-    the triangle. right_angle_at takes priority over angle constraints.
+    ``vertices``: exactly 3 vertex names for this triangle, e.g. ["D","E","F"].
+
+    ``spec`` keys use THIS triangle's own vertex letters (never fixed A/B/C
+    slots): ``side_XY`` or ``side_YX`` for a side length (either letter order
+    is accepted — they name the same segment; provide each edge only once),
+    ``angle_X`` for the angle at vertex X in degrees, ``right_angle_at: "X"``
+    naming the vertex with a right angle (takes priority over angle
+    constraints). Provide any combination that uniquely determines the
+    triangle:
 
     Supported forms:
-        SSS:       side_AB, side_BC, side_CA
-        SAS:       two sides + included angle (e.g. side_AB, angle_B, side_BC)
+        SSS:       side_XY, side_YZ, side_ZX
+        SAS:       two sides + included angle (e.g. side_XY, angle_Y, side_YZ)
         ASA/AAS:   two angles + one side
         right_at:  right_angle_at + at least 2 other constraints
     """
-    model_config = ConfigDict(extra="forbid")
+    op: Literal["triangle"] = "triangle"
+    vertices: list[str]  # exactly 3 names for the vertices
+    spec: dict[str, float | str] = Field(
+        default_factory=dict,
+        description=(
+            "Side/angle constraints keyed by THIS triangle's own vertex letters: "
+            'side_XY (or side_YX) for a side length, angle_X for an angle in '
+            'degrees, right_angle_at: "X" naming the vertex with the right angle.'
+        ),
+    )
+    center: Optional[list[float]] = None
 
-    side_AB: Optional[float] = None
-    side_BC: Optional[float] = None
-    side_CA: Optional[float] = None
-    angle_A: Optional[float] = None
-    angle_B: Optional[float] = None
-    angle_C: Optional[float] = None
-    right_angle_at: Optional[Literal["A", "B", "C"]] = None
-
-    @model_validator(mode="before")
+    @field_validator("vertices")
     @classmethod
-    def _normalize_reversed_side_keys(cls, data: Any) -> Any:
-        """A side has no direction, so side_AC/side_BA/side_CB (reversed pairs)
-        are accepted as aliases for side_CA/side_AB/side_BC — this is a very
-        common, natural naming choice (the model tends to name a segment by
-        the two points it read in the order it read them)."""
-        if not isinstance(data, dict):
-            return data
-        aliases = {"side_AC": "side_CA", "side_BA": "side_AB", "side_CB": "side_BC"}
-        for reversed_key, canonical_key in aliases.items():
-            if reversed_key in data:
-                data = dict(data)
-                value = data.pop(reversed_key)
-                data.setdefault(canonical_key, value)
-        return data
+    def _three_distinct_vertices(cls, v: list[str]) -> list[str]:
+        if len(v) != 3:
+            raise ValueError(f"TriangleOp requires exactly 3 vertices, got {len(v)}")
+        if len(set(v)) != 3:
+            raise ValueError(f"TriangleOp vertices must be distinct, got {v}")
+        return v
 
     @model_validator(mode="after")
-    def _validate_sufficient_constraints(self) -> "TriangleSpec":
-        sides = [k for k in ["side_AB", "side_BC", "side_CA"]
-                 if getattr(self, k) is not None]
-        angles = [k for k in ["angle_A", "angle_B", "angle_C"]
-                  if getattr(self, k) is not None]
+    def _validate_and_normalize_spec(self) -> "TriangleOp":
+        """Parse spec's real-vertex-letter keys against this triangle's own
+        vertices (rather than fixed positional A/B/C slots — see the bug
+        thread that led here: a triangle whose vertices happen to be a
+        permutation of "A"/"B"/"C" made positional and real-vertex-letter
+        keys indistinguishable from the key string alone, causing both
+        silent data corruption and silent misinterpretation). Every key is
+        checked against this triangle's actual vertices, either letter order
+        is accepted for a side, and the sufficiency/defaulting logic (SSS/
+        SAS/ASA/AAS counting, equilateral/AAA/3-4-5 defaults) runs on the
+        parsed real-vertex-keyed constraints."""
+        v0, v1, v2 = self.vertices
+        pairs = [(v0, v1), (v1, v2), (v2, v0)]
+        sides: dict[frozenset, float] = {}
+        angles: dict[str, float] = {}
+        right_angle_at: Optional[str] = None
 
-        if self.right_angle_at is not None:
-            if len(sides) + len(angles) == 0:
+        for key, value in self.spec.items():
+            matched_edge = None
+            for a, b in pairs:
+                if key in (f"side_{a}{b}", f"side_{b}{a}"):
+                    matched_edge = frozenset((a, b))
+                    break
+            if matched_edge is not None:
+                if matched_edge in sides:
+                    a, b = tuple(matched_edge)
+                    raise ValueError(
+                        f"Triangle '{self.id}': side between {a} and {b} given twice "
+                        f"(both letter orderings) — provide it once."
+                    )
+                if not isinstance(value, (int, float)):
+                    raise ValueError(f"Triangle '{self.id}': {key} must be a number, got {value!r}")
+                sides[matched_edge] = float(value)
+                continue
+            if key.startswith("angle_"):
+                vertex = key[len("angle_"):]
+                if vertex not in self.vertices:
+                    raise ValueError(
+                        f"Triangle '{self.id}': angle_{vertex} — {vertex!r} is not one of "
+                        f"this triangle's vertices {self.vertices}"
+                    )
+                if not isinstance(value, (int, float)):
+                    raise ValueError(f"Triangle '{self.id}': {key} must be a number, got {value!r}")
+                angles[vertex] = float(value)
+                continue
+            if key == "right_angle_at":
+                if value not in self.vertices:
+                    raise ValueError(
+                        f"Triangle '{self.id}': right_angle_at={value!r} is not one of "
+                        f"this triangle's vertices {self.vertices}"
+                    )
+                right_angle_at = value
+                continue
+            raise ValueError(
+                f"Triangle '{self.id}': unknown spec key {key!r}. Valid keys for vertices "
+                f"{self.vertices}: side_{v0}{v1} (or side_{v1}{v0}), "
+                f"side_{v1}{v2} (or side_{v2}{v1}), side_{v2}{v0} (or side_{v0}{v2}), "
+                f"angle_{v0}, angle_{v1}, angle_{v2}, right_angle_at."
+            )
+
+        n_sides, n_angles = len(sides), len(angles)
+        if right_angle_at is not None:
+            if n_sides + n_angles == 0:
                 # "a right triangle at B" with nothing else specified — no
                 # shape or scale was ever requested, so default to a classic
                 # 3-4-5 right triangle (legs adjacent to the right angle).
-                legs_by_vertex = {
-                    "A": ("side_AB", "side_CA"),
-                    "B": ("side_AB", "side_BC"),
-                    "C": ("side_BC", "side_CA"),
-                }
-                leg1, leg2 = legs_by_vertex[self.right_angle_at]
-                setattr(self, leg1, 3.0)
-                setattr(self, leg2, 4.0)
-                return self
-            if len(sides) + len(angles) + 1 < 3:
+                other = [v for v in self.vertices if v != right_angle_at]
+                sides[frozenset((right_angle_at, other[0]))] = 3.0
+                sides[frozenset((right_angle_at, other[1]))] = 4.0
+            elif n_sides + n_angles + 1 < 3:
                 raise ValueError(
-                    "right_angle_at triangle needs at least 2 additional constraints "
-                    "(sides and/or angles)"
+                    f"Triangle '{self.id}': right_angle_at triangle needs at least 2 "
+                    f"additional constraints (sides and/or angles)"
                 )
-            return self
+        else:
+            total = n_sides + n_angles
+            # equilateral shortcut: one side + at most one angle, and any given
+            # angle is 60° — the other two angles default to 60° rather than
+            # requiring them to be spelled out.
+            if n_sides == 1 and total < 3 and all(a == 60 for a in angles.values()):
+                for v in self.vertices:
+                    angles.setdefault(v, 60.0)
+            # AAA shortcut: two or three angles given and no side at all — a
+            # bare "draw a triangle" request has no scale to honor, so default
+            # one side to a standard length rather than rejecting the shape.
+            elif n_sides == 0 and n_angles >= 2:
+                sides[frozenset((v0, v1))] = 4.0
+            elif total < 3:
+                raise ValueError(
+                    f"Triangle '{self.id}' needs at least 3 constraints, got {total}. "
+                    f"Supported: SSS, SAS, ASA, AAS, or right_angle_at+2."
+                )
+            elif n_sides == 0:
+                raise ValueError(
+                    f"Triangle '{self.id}': at least one side length is required "
+                    f"(AAA is underdetermined — infinitely many similar triangles)"
+                )
 
-        total = len(sides) + len(angles)
-
-        # equilateral shortcut: one side + at most one angle, and any given
-        # angle is 60° — the other two angles default to 60° rather than
-        # requiring them to be spelled out.
-        if len(sides) == 1 and total < 3 and all(getattr(self, k) == 60 for k in angles):
-            for angle_key in ("angle_A", "angle_B", "angle_C"):
-                if getattr(self, angle_key) is None:
-                    setattr(self, angle_key, 60.0)
-            return self
-
-        # AAA shortcut: two or three angles given and no side at all — a bare
-        # "draw a triangle" request has no scale to honor, so default one
-        # side to a standard length rather than rejecting the shape outright.
-        if len(sides) == 0 and len(angles) >= 2:
-            setattr(self, "side_AB", 4.0)
-            return self
-
-        if total < 3:
-            raise ValueError(
-                f"Triangle needs at least 3 constraints, got {total}. "
-                "Supported: SSS, SAS, ASA, AAS, or right_angle_at+2."
-            )
-        if len(sides) == 0:
-            raise ValueError(
-                "At least one side length is required (AAA is underdetermined — "
-                "infinitely many similar triangles)"
-            )
+        normalized: dict[str, float | str] = {}
+        for a, b in pairs:
+            edge = frozenset((a, b))
+            if edge in sides:
+                normalized[f"side_{a}{b}"] = sides[edge]
+        for v in self.vertices:
+            if v in angles:
+                normalized[f"angle_{v}"] = angles[v]
+        if right_angle_at is not None:
+            normalized["right_angle_at"] = right_angle_at
+        self.spec = normalized
         return self
-
-
-class TriangleOp(DSLOpBase):
-    """Triangle defined by angles/sides. A/B/C in spec are positional slots:
-    A=vertices[0], B=vertices[1], C=vertices[2]."""
-    op: Literal["triangle"] = "triangle"
-    vertices: list[str]  # exactly 3 names for the vertices
-    spec: TriangleSpec
-    center: Optional[list[float]] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_spec_keys_to_positional_slots(cls, data: Any) -> Any:
-        """Accept side_/angle_ keys (and right_angle_at) written using this op's
-        OWN vertex letters as aliases for the positional A/B/C slots — a model
-        very often infers it should key constraints by the triangle's real
-        vertex names rather than the schema's positional slots, especially for
-        a second or third triangle in the same construction whose vertices
-        aren't literally A, B, C (e.g. vertices ["D","E","F"] with side_DE
-        instead of side_AB)."""
-        if not isinstance(data, dict) or "vertices" not in data or "spec" not in data:
-            return data
-        vertices = data["vertices"]
-        spec = data["spec"]
-        if not (isinstance(vertices, list) and len(vertices) == 3 and isinstance(spec, dict)):
-            return data
-        v0, v1, v2 = vertices
-        spec = dict(spec)
-
-        # When a triangle's vertex names are themselves a permutation of "A"/"B"/"C"
-        # (e.g. vertices=["A","C","B"]), an alias string built from those vertex
-        # names can collide with a *different* canonical key that's already sitting
-        # in spec with its own legitimate value (e.g. alias "side_CA" for the AB
-        # slot colliding with the actual canonical "side_CA" key). Renaming into
-        # that key would silently clobber or steal a value instead of a genuine
-        # side_DE-style alias for non-A/B/C vertex names. Guard by skipping any
-        # alias that is itself one of the canonical keys, so only a real rename
-        # (alias not already meaningful under the positional convention) proceeds.
-        side_canonical_names = {"side_AB", "side_BC", "side_CA"}
-        side_pairs = [("side_AB", v0, v1), ("side_BC", v1, v2), ("side_CA", v2, v0)]
-        for canonical, a, b in side_pairs:
-            for alias in (f"side_{a}{b}", f"side_{b}{a}"):
-                if alias != canonical and alias in side_canonical_names:
-                    continue
-                if alias in spec:
-                    value = spec.pop(alias)
-                    spec.setdefault(canonical, value)
-
-        angle_canonical_names = {"angle_A", "angle_B", "angle_C"}
-        angle_slots = [("angle_A", v0), ("angle_B", v1), ("angle_C", v2)]
-        for canonical, v in angle_slots:
-            alias = f"angle_{v}"
-            if alias != canonical and alias in angle_canonical_names:
-                continue
-            if alias in spec:
-                value = spec.pop(alias)
-                spec.setdefault(canonical, value)
-
-        if "right_angle_at" in spec:
-            slot_by_vertex = {v0: "A", v1: "B", v2: "C"}
-            raw = spec["right_angle_at"]
-            if raw in slot_by_vertex:
-                spec["right_angle_at"] = slot_by_vertex[raw]
-
-        data = dict(data)
-        data["spec"] = spec
-        return data
 
 
 class CircleOp(DSLOpBase):
@@ -605,64 +592,33 @@ class CircleThrough3Op(DSLOpBase):
     center: str         # name for the circumcenter point
 
 
-class RectangleSpec(BaseModel):
-    """Rectangle dimensions using positional A/B/C/D slots.
-
-    A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3] always.
-    Provide at least two adjacent side lengths. Adjacent pairs:
-        AB+BC, BC+CD, CD+DA, DA+AB
-    Opposite pairs (AB+CD, BC+DA) are not sufficient.
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    side_AB: Optional[float] = None
-    side_BC: Optional[float] = None
-    side_CD: Optional[float] = None
-    side_DA: Optional[float] = None
-    rotation: float = 0.0  # degrees CCW
-
-    @model_validator(mode="after")
-    def _validate_two_adjacent(self) -> "RectangleSpec":
-        provided = [k for k in ["side_AB", "side_BC", "side_CD", "side_DA"]
-                    if getattr(self, k) is not None]
-        if len(provided) < 2:
-            raise ValueError(
-                "Rectangle needs at least 2 side lengths. "
-                "Provide two adjacent sides, e.g. side_AB and side_BC."
-            )
-        ADJACENT = {
-            ("side_AB", "side_BC"), ("side_BC", "side_CD"),
-            ("side_CD", "side_DA"), ("side_DA", "side_AB"),
-        }
-        pairs = [(provided[i], provided[j])
-                 for i in range(len(provided)) for j in range(i + 1, len(provided))]
-        if not any((a, b) in ADJACENT or (b, a) in ADJACENT for a, b in pairs):
-            raise ValueError(
-                "Rectangle needs two adjacent side lengths (sharing a vertex). "
-                "Opposite sides (side_AB + side_CD or side_BC + side_DA) are not sufficient."
-            )
-        return self
-
-
 class RectangleOp(DSLOpBase):
     """Axis-aligned rectangle with labeled side lengths.
 
-    ``vertices`` lists the 4 corner names in perimeter order: A, B, C, D
-    where AB and BC are adjacent sides. A/B/C/D in ``spec`` are positional
-    slots: A=vertices[0], B=vertices[1], C=vertices[2], D=vertices[3].
+    ``vertices`` lists the 4 corner names in perimeter order (AB and BC are
+    adjacent sides), e.g. ["P","Q","R","S"]. Default layout (rotation=0):
+    first top-left, second top-right, third bottom-right, fourth bottom-left.
 
-    ``spec`` keys:
-    - ``side_AB``, ``side_BC``, etc.: lengths for positional slot pairs.
-      Provide at least two adjacent sides.
-    - ``rotation`` (optional, degrees CCW, default 0).
+    ``spec`` keys use THIS rectangle's own vertex letters (never fixed
+    A/B/C/D slots): ``side_XY`` or ``side_YX`` for the length of the side
+    between vertices X and Y (either letter order accepted — they name the
+    same segment). Provide at least two ADJACENT side lengths (opposite
+    sides, e.g. the two long sides, are not sufficient — they don't fix the
+    rectangle's other dimension).
 
+    ``rotation`` (optional, degrees CCW, default 0).
     ``center`` (optional): [x, y] override for the rectangle centroid; default (2, 2).
-
-    Default layout (rotation=0): A top-left, B top-right, C bottom-right, D bottom-left.
     """
     op: Literal["rectangle"] = "rectangle"
     vertices: list[str]
-    spec: RectangleSpec
+    spec: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Side-length constraints keyed by THIS rectangle's own vertex "
+            "letters: side_XY (or side_YX). Provide at least two adjacent sides."
+        ),
+    )
+    rotation: float = 0.0  # degrees CCW
     center: Optional[list[float]] = None
 
     @field_validator("vertices")
@@ -670,7 +626,62 @@ class RectangleOp(DSLOpBase):
     def _four_vertices(cls, v: list[str]) -> list[str]:
         if len(v) != 4:
             raise ValueError(f"RectangleOp requires exactly 4 vertices, got {len(v)}")
+        if len(set(v)) != 4:
+            raise ValueError(f"RectangleOp vertices must be distinct, got {v}")
         return v
+
+    @model_validator(mode="after")
+    def _validate_and_normalize_spec(self) -> "RectangleOp":
+        v0, v1, v2, v3 = self.vertices
+        pairs = [(v0, v1), (v1, v2), (v2, v3), (v3, v0)]
+        sides: dict[frozenset, float] = {}
+
+        for key, value in self.spec.items():
+            matched_edge = None
+            for a, b in pairs:
+                if key in (f"side_{a}{b}", f"side_{b}{a}"):
+                    matched_edge = frozenset((a, b))
+                    break
+            if matched_edge is None:
+                raise ValueError(
+                    f"Rectangle '{self.id}': unknown spec key {key!r}. Valid keys for "
+                    f"vertices {self.vertices}: side_{v0}{v1} (or side_{v1}{v0}), "
+                    f"side_{v1}{v2} (or side_{v2}{v1}), side_{v2}{v3} (or side_{v3}{v2}), "
+                    f"side_{v3}{v0} (or side_{v0}{v3})."
+                )
+            if matched_edge in sides:
+                a, b = tuple(matched_edge)
+                raise ValueError(
+                    f"Rectangle '{self.id}': side between {a} and {b} given twice "
+                    f"(both letter orderings) — provide it once."
+                )
+            sides[matched_edge] = float(value)
+
+        if len(sides) < 2:
+            raise ValueError(
+                f"Rectangle '{self.id}' needs at least 2 side lengths. "
+                f"Provide two adjacent sides, e.g. side_{v0}{v1} and side_{v1}{v2}."
+            )
+        adjacent_pairs = [
+            (frozenset((v0, v1)), frozenset((v1, v2))),
+            (frozenset((v1, v2)), frozenset((v2, v3))),
+            (frozenset((v2, v3)), frozenset((v3, v0))),
+            (frozenset((v3, v0)), frozenset((v0, v1))),
+        ]
+        given = set(sides.keys())
+        if not any(e1 in given and e2 in given for e1, e2 in adjacent_pairs):
+            raise ValueError(
+                f"Rectangle '{self.id}' needs two adjacent side lengths (sharing a "
+                f"vertex). Opposite sides given are not sufficient."
+            )
+
+        normalized: dict[str, float] = {}
+        for a, b in pairs:
+            edge = frozenset((a, b))
+            if edge in sides:
+                normalized[f"side_{a}{b}"] = sides[edge]
+        self.spec = normalized
+        return self
 
 
 class PolygonFromSidesOp(DSLOpBase):

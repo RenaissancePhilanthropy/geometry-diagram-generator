@@ -17,7 +17,7 @@ from geometry_diagrams.pydsl.sandbox import run_script
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.checks import run_checks
 
-from geometry_diagrams.recipe.dsl import RecipeDSL, TriangleOp, TriangleSpec
+from geometry_diagrams.recipe.dsl import RecipeDSL, TriangleOp
 from geometry_diagrams.recipe.lower import lower_to_ir
 
 # Vertices chosen so the triangle's side lengths are exact, checkable values:
@@ -83,15 +83,15 @@ def _build_equivalent_dsl_triangle_ir():
     # unit tests; duplicating it here as a second DSL comparison wouldn't
     # add coverage beyond what those already assert.
     #
-    # TriangleSpec() with no fields is NOT valid — solve_triangle raises
-    # (verified against recipe/solve.py: it needs enough constraints to fix
-    # the triangle, e.g. three sides). Use the exact SSS side lengths of the
-    # pydsl triangle at (0,0)/(4,0)/(1,3) so the two constructions are
-    # actually comparable, not just independently valid.
+    # An empty spec is NOT valid — solve_triangle raises (verified against
+    # recipe/solve.py: it needs enough constraints to fix the triangle, e.g.
+    # three sides). Use the exact SSS side lengths of the pydsl triangle at
+    # (0,0)/(4,0)/(1,3) so the two constructions are actually comparable, not
+    # just independently valid.
     dsl = RecipeDSL(construction=[
         TriangleOp(
             id="T", vertices=["A", "B", "C"],
-            spec=TriangleSpec(side_AB=4.0, side_BC=math.sqrt(18), side_CA=math.sqrt(10)),
+            spec={"side_AB": 4.0, "side_BC": math.sqrt(18), "side_CA": math.sqrt(10)},
         ),
     ])
     ir = lower_to_ir(dsl)

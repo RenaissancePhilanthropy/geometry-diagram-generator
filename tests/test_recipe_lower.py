@@ -79,24 +79,22 @@ def test_triangle_point_fixed_coords_are_floats():
 
 
 def test_triangle_lowering_with_non_abc_vertices():
-    """Non-ABC vertices with positional spec should lower correctly."""
+    """Non-ABC vertices keyed by their own real letters should lower correctly."""
     dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
-                            spec={"side_AB": 3, "side_BC": 4, "side_CA": 5})])
+                            spec={"side_PQ": 3, "side_QR": 4, "side_RP": 5})])
     ir = lower_to_ir(dsl)
-    # side_AB means side_PQ=3, side_BC means side_QR=4, side_CA means side_RP=5
     kinds = [d.kind for d in ir.define]
     assert kinds.count("point_fixed") == 3
     assert kinds.count("triangle") == 1
 
 def test_triangle_right_angle_at_b_generates_check():
-    """right_angle_at='B' with non-ABC vertices maps to the correct vertex."""
+    """right_angle_at names a real vertex directly, no positional slot."""
     dsl = _dsl([TriangleOp(id="T", vertices=["P", "Q", "R"],
-                            spec={"right_angle_at": "B", "side_AB": 3, "side_BC": 4})])
+                            spec={"right_angle_at": "Q", "side_PQ": 3, "side_QR": 4})])
     ir = lower_to_ir(dsl)
     from geometry_diagrams.ir.ir import RightAngle
     ra_checks = [c for c in ir.checks if isinstance(c, RightAngle)]
     assert len(ra_checks) == 1
-    # B slot → Q vertex
     assert ra_checks[0].angle.o == "Q"
 
 def test_remap_triangle_spec_no_longer_exists():
@@ -432,13 +430,10 @@ def test_point_on_segment_ratio_2_colon_1_lowers_correctly():
 
 
 def test_point_on_segment_ratio_af_fd_1_2():
-    """'AF:FD=1:2' → F is 1/3 from A → segment=[A,D], ratio='1:2'.
-
-    TriangleSpec uses positional angle_A/B/C regardless of vertex names.
-    """
+    """'AF:FD=1:2' → F is 1/3 from A → segment=[A,D], ratio='1:2'."""
     dsl = _dsl([
         TriangleOp(id="T", vertices=["A","D","X"],
-                   spec={"angle_A": 60, "angle_B": 60, "side_AB": 3}),
+                   spec={"angle_A": 60, "angle_D": 60, "side_AD": 3}),
         PointOnSegmentOp(id="F", segment=["A","D"], ratio="1:2"),
     ])
     ir = lower_to_ir(dsl)
@@ -639,7 +634,7 @@ def test_multiple_triangles_circumcircle():
         {"op": "triangle", "id": "T1", "vertices": ["A","B","C"],
          "spec": {"angle_A": 60, "angle_B": 70, "side_AB": 4}},
         {"op": "triangle", "id": "T2", "vertices": ["P","Q","R"],
-         "spec": {"angle_A": 50, "angle_B": 60, "side_AB": 4}},
+         "spec": {"angle_P": 50, "angle_Q": 60, "side_PQ": 4}},
         {"op": "circumcircle", "id": "cc2", "of": "T2", "center": "O2"},
     ])
     ir = lower_to_ir(dsl)
@@ -780,7 +775,7 @@ def test_two_triangles_with_centers_non_overlapping():
         {"op": "triangle", "id": "t1", "vertices": ["A", "B", "C"],
          "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 3}, "center": [2, 2]},
         {"op": "triangle", "id": "t2", "vertices": ["D", "E", "F"],
-         "spec": {"angle_A": 50, "angle_B": 70, "side_AB": 5}, "center": [8, 2]},
+         "spec": {"angle_D": 50, "angle_E": 70, "side_DE": 5}, "center": [8, 2]},
     ])
     ir = lower_to_ir(dsl)
     coords = {d.id: (d.x, d.y) for d in ir.define if hasattr(d, 'x') and hasattr(d, 'y')}
@@ -1462,10 +1457,10 @@ def test_label_segment_pos_auto_lowered_to_none():
 
 
 def test_rectangle_lowering_with_non_abcd_vertices():
-    """Non-ABCD vertices with positional spec should lower correctly."""
+    """Non-ABCD vertices keyed by their own real letters should lower correctly."""
     from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
-                             spec={"side_AB": 4, "side_BC": 3})])
+                             spec={"side_PQ": 4, "side_QR": 3})])
     ir = lower_to_ir(dsl)
     kinds = [d.kind for d in ir.define]
     assert kinds.count("point_fixed") == 4
@@ -1477,48 +1472,45 @@ def test_rectangle_lowering_with_non_abcd_vertices():
     assert abs(pq_dist - 4.0) < 1e-6
 
 
-def test_rectangle_lowering_bc_cd():
-    """BC + CD adjacent pair should lower correctly."""
+def test_rectangle_lowering_qr_rs():
+    """QR + RS adjacent pair should lower correctly."""
     import math
     from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
-                             spec={"side_BC": 3, "side_CD": 4})])
+                             spec={"side_QR": 3, "side_RS": 4})])
     ir = lower_to_ir(dsl)
     kinds = [d.kind for d in ir.define]
     assert kinds.count("point_fixed") == 4
     assert kinds.count("polygon") == 1
     pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
-    # QR distance should be side_BC = 3
     qr_dist = math.hypot(pts["R"][0] - pts["Q"][0], pts["R"][1] - pts["Q"][1])
     assert abs(qr_dist - 3.0) < 1e-6
 
 
-def test_rectangle_lowering_cd_da():
-    """CD + DA adjacent pair should lower correctly."""
+def test_rectangle_lowering_rs_sp():
+    """RS + SP adjacent pair should lower correctly."""
     import math
     from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
-                             spec={"side_CD": 4, "side_DA": 3})])
+                             spec={"side_RS": 4, "side_SP": 3})])
     ir = lower_to_ir(dsl)
     kinds = [d.kind for d in ir.define]
     assert kinds.count("point_fixed") == 4
     pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
-    # RS distance should be side_CD = 4
     rs_dist = math.hypot(pts["S"][0] - pts["R"][0], pts["S"][1] - pts["R"][1])
     assert abs(rs_dist - 4.0) < 1e-6
 
 
-def test_rectangle_lowering_da_ab():
-    """DA + AB adjacent pair should lower correctly."""
+def test_rectangle_lowering_sp_pq():
+    """SP + PQ adjacent pair should lower correctly."""
     import math
     from geometry_diagrams.recipe.dsl import RectangleOp
     dsl = _dsl([RectangleOp(id="R", vertices=["P","Q","R","S"],
-                             spec={"side_DA": 3, "side_AB": 4})])
+                             spec={"side_SP": 3, "side_PQ": 4})])
     ir = lower_to_ir(dsl)
     kinds = [d.kind for d in ir.define]
     assert kinds.count("point_fixed") == 4
     pts = {d.id: (d.x, d.y) for d in ir.define if d.kind == "point_fixed"}
-    # PQ distance should be side_AB = 4
     pq_dist = math.hypot(pts["Q"][0] - pts["P"][0], pts["Q"][1] - pts["P"][1])
     assert abs(pq_dist - 4.0) < 1e-6
 

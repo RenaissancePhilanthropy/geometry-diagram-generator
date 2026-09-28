@@ -325,23 +325,11 @@ class _Lowerer:
     # ------------------------------------------------------------------
 
     def _lower_triangle(self, op: TriangleOp) -> None:
-        v0, v1, v2 = op.vertices[0], op.vertices[1], op.vertices[2]
-        spec = op.spec
-        _slot = {"A": v0, "B": v1, "C": v2}
-
-        # Translate positional TriangleSpec to vertex-keyed dict for solve_triangle
-        spec_dict: dict[str, Any] = {}
-        if spec.side_AB is not None: spec_dict[f"side_{v0}{v1}"] = spec.side_AB
-        if spec.side_BC is not None: spec_dict[f"side_{v1}{v2}"] = spec.side_BC
-        if spec.side_CA is not None: spec_dict[f"side_{v2}{v0}"] = spec.side_CA
-        if spec.angle_A is not None: spec_dict[f"angle_{v0}"] = spec.angle_A
-        if spec.angle_B is not None: spec_dict[f"angle_{v1}"] = spec.angle_B
-        if spec.angle_C is not None: spec_dict[f"angle_{v2}"] = spec.angle_C
-        if spec.right_angle_at is not None:
-            spec_dict["right_angle_at"] = _slot[spec.right_angle_at]
-
+        # op.spec is already keyed by this triangle's own real vertex letters
+        # (side_XY/angle_X/right_angle_at="X") — no positional translation
+        # needed, it's the same shape solve_triangle expects natively.
         try:
-            coords = solve_triangle(op.vertices, spec_dict, center=op.center)
+            coords = solve_triangle(op.vertices, op.spec, center=op.center)
         except Exception as e:
             raise LoweringError(f"Triangle '{op.id}': {e}") from e
 
@@ -356,23 +344,17 @@ class _Lowerer:
         self._triangle_vertices[op.id] = list(op.vertices)
 
         # Auto-generate right_angle check if spec has right_angle_at
-        if spec.right_angle_at is not None:
-            ra = _slot[spec.right_angle_at]
-            others = [v for v in op.vertices if v != ra]
-            triple = (others[0], ra, others[1])
+        right_angle_at = op.spec.get("right_angle_at")
+        if right_angle_at is not None:
+            others = [v for v in op.vertices if v != right_angle_at]
+            triple = (others[0], right_angle_at, others[1])
             self._checks.append(RightAngle(angle=AnglePoints(a=triple[0], o=triple[1], b=triple[2])))
             self._right_angle_triples.append(triple)
 
     def _lower_rectangle(self, op: RectangleOp) -> None:
-        v = op.vertices  # [v0, v1, v2, v3] = A, B, C, D positional slots
-        spec = op.spec
-
-        # Translate positional RectangleSpec to vertex-keyed dict for solve_rectangle
-        spec_dict: dict[str, Any] = {"rotation": spec.rotation}
-        if spec.side_AB is not None: spec_dict[f"side_{v[0]}{v[1]}"] = spec.side_AB
-        if spec.side_BC is not None: spec_dict[f"side_{v[1]}{v[2]}"] = spec.side_BC
-        if spec.side_CD is not None: spec_dict[f"side_{v[2]}{v[3]}"] = spec.side_CD
-        if spec.side_DA is not None: spec_dict[f"side_{v[3]}{v[0]}"] = spec.side_DA
+        # op.spec is already keyed by this rectangle's own real vertex letters
+        # (side_XY) — no positional translation needed.
+        spec_dict: dict[str, Any] = {"rotation": op.rotation, **op.spec}
 
         try:
             center = tuple(op.center) if op.center is not None else (2.0, 2.0)
