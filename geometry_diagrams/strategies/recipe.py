@@ -167,6 +167,14 @@ def _build_retry_hints(last_error: str) -> str:
             "For a perpendicular bisector, use a point on the original segment (like A or B) as 'toward', "
             "not the midpoint M."
         )
+    if re.search(r"unknown spec key|given twice \(both letter", last_error, re.IGNORECASE):
+        hints.append(
+            "Hint: triangle/rectangle spec keys always use that shape's own vertex IDs "
+            "from its own 'vertices' list (e.g. side_PQ/angle_P for vertices "
+            "[\"P\",\"Q\",\"R\"]), never fixed letters like side_AB unless the vertices "
+            "themselves are literally named that. Either letter order names the same "
+            "side (side_PQ = side_QP) — give each edge only once, not both orderings."
+        )
     return "\n".join(hints)
 
 

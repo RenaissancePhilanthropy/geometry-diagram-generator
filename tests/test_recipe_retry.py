@@ -102,6 +102,19 @@ def test_build_retry_hints_no_match_returns_empty():
     assert hints == ""
 
 
+def test_build_retry_hints_unknown_spec_key():
+    error = ("Triangle 'T4': unknown spec key 'side_BD'. Valid keys for vertices "
+              "['B', 'C', 'A']: side_BC (or side_CB), side_CA (or side_AC), side_AB (or side_BA)")
+    hints = _build_retry_hints(error)
+    assert "vertex IDs" in hints
+
+
+def test_build_retry_hints_duplicate_edge():
+    error = "Triangle 'T3': side between B and C given twice (both letter orderings) — provide it once."
+    hints = _build_retry_hints(error)
+    assert "give each edge only once" in hints
+
+
 # ---------------------------------------------------------------------------
 # Test 1: OutputParserException caught and becomes retriable
 # ---------------------------------------------------------------------------
