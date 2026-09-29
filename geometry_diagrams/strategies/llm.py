@@ -119,6 +119,11 @@ def _generic_openai_provider(prefix: str) -> dict | None:
     return provider
 
 
+# Shared value for the three "sort by throughput instead of pinning specific
+# OpenRouter upstream provider names" fixes below — same object, not three
+# separately-typed-out literals, so they can't quietly drift apart.
+_SORT_BY_THROUGHPUT_EXTRA_BODY: dict = {"provider": {"sort": "throughput"}}
+
 # Extra body fields for one specific misbehaving model (keyed on the full
 # "{provider}:{model}" id), as opposed to _GENERIC_DEFAULT_KWARGS above (a whole
 # provider prefix). Merged into (not replacing) whatever extra_body the provider
@@ -163,9 +168,7 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     # provider names (which drift out of date as performance changes),
     # use OpenRouter's "sort": "throughput" to always route to whichever
     # upstream provider currently has the best throughput for this model.
-    "openrouter:google/gemma-4-31b-it": {
-        "provider": {"sort": "throughput"},
-    },
+    "openrouter:google/gemma-4-31b-it": _SORT_BY_THROUGHPUT_EXTRA_BODY,
     # openrouter:qwen/qwen3.6-27b hit an 18/39 (46%) scenario-timeout rate
     # on a curriculum re-run (2026-08-08), even running alone with no
     # concurrent contention. Per-endpoint stats show a real latency spread
@@ -174,17 +177,13 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
     # (~5.4x/~6.4x worse) — plus a smaller but real throughput spread
     # (26-63 tok/s). Same fix as gemma-4-31b-it above: sort by throughput
     # rather than pin specific providers.
-    "openrouter:qwen/qwen3.6-27b": {
-        "provider": {"sort": "throughput"},
-    },
+    "openrouter:qwen/qwen3.6-27b": _SORT_BY_THROUGHPUT_EXTRA_BODY,
     # openrouter:qwen/qwen3.6-35b-a3b hit a 25/78 (32%) scenario-timeout
     # rate on a clean, uncontended curriculum re-run (2026-08-08).
     # Per-endpoint stats show a 7x throughput spread (19-138 tok/s) and
     # 5.5x latency spread (p50 299ms CoreWeave to 1631ms SiliconFlow)
     # across 9 upstream providers. Same fix as gemma-4-31b-it/qwen3.6-27b.
-    "openrouter:qwen/qwen3.6-35b-a3b": {
-        "provider": {"sort": "throughput"},
-    },
+    "openrouter:qwen/qwen3.6-35b-a3b": _SORT_BY_THROUGHPUT_EXTRA_BODY,
     # NOTE: openrouter:kwaipilot/kat-coder-air-v2.5 was checked for the same
     # issue (21/67 = 31% timeout rate, 2026-08-08) but has only ONE upstream
     # provider on OpenRouter (StreamLake, p50 2276ms / p90 9576ms) — no
@@ -444,6 +443,47 @@ def bind_structured_output_auto_tool_choice(
         [parser_none], exception_key="parsing_error"
     )
     return RunnableMap(raw=bound) | parser_with_fallback
+
+
+def bind_structured_output_for_model(
+    llm: BaseChatModel, schema: type, model_id: str, *,
+    include_raw: bool = True, force_function_calling_for_openai: bool = False,
+):
+    """Return the correct structured-output chain for model_id, applying every
+    known per-model quirk uniformly (see this module's model registries) —
+    this is the single place that combines them, instead of each strategy's
+    own generation node re-deriving (and risking drifting apart on) the same
+    branching:
+
+    1. Gemini needs method="json_mode" (LangChain's default doesn't work).
+    2. A model in _AUTO_TOOL_CHOICE_MODELS rejects a forced tool_choice
+       outright — bind with tool_choice="auto" instead.
+    3. A model in _FORCED_FUNCTION_CALLING_MODELS needs the method forced to
+       "function_calling" because auto-detection picks the wrong one for it
+       specifically (do NOT force this for every model — see the regression
+       this caused for mantle-oa:google.gemma-4-31b, documented on
+       _FORCED_FUNCTION_CALLING_MODELS itself).
+    4. Otherwise, plain with_structured_output (auto-detected method).
+
+    force_function_calling_for_openai is a SCHEMA-specific opt-in, not a
+    model quirk: pass True when schema has a free-form dict field (e.g.
+    RecipeDSL's style/styles, or TriangleOp/RectangleOp's spec dicts) that
+    can't satisfy OpenAI's strict json_schema structured-outputs mode
+    (which requires additionalProperties: false on every object schema) —
+    function_calling mode doesn't enforce that. Checked after the three
+    per-model quirks above (a hard API rejection always wins), so it only
+    ever changes behavior for an is_openai_model() call that would otherwise
+    have fallen through to the plain default.
+    """
+    if is_gemini_model(model_id):
+        return llm.with_structured_output(schema, method="json_mode", include_raw=include_raw)
+    if requires_auto_tool_choice(model_id):
+        return bind_structured_output_auto_tool_choice(llm, schema, include_raw=include_raw)
+    if requires_forced_function_calling(model_id):
+        return llm.with_structured_output(schema, method="function_calling", include_raw=include_raw)
+    if force_function_calling_for_openai and is_openai_model(model_id):
+        return llm.with_structured_output(schema, method="function_calling", include_raw=include_raw)
+    return llm.with_structured_output(schema, include_raw=include_raw)
 
 
 def is_anthropic_model(model_id: str) -> bool:

@@ -6,9 +6,17 @@ regardless of the ambient environment.
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from geometry_diagrams.strategies.llm import get_chat_model, make_system_message
+from pydantic import BaseModel
+
+from geometry_diagrams.strategies.llm import (
+    get_chat_model, make_system_message, bind_structured_output_for_model,
+)
+
+
+class _DummySchema(BaseModel):
+    x: int = 0
 
 
 def _set_openrouter_env(monkeypatch):
@@ -221,3 +229,83 @@ def test_make_system_message_defaults_to_cache_control_when_model_id_omitted():
         "text": "hello",
         "cache_control": {"type": "ephemeral"},
     }]
+
+
+# ---------------------------------------------------------------------------
+# bind_structured_output_for_model: the single place that combines every
+# known per-model structured-output quirk, instead of each strategy's own
+# generation node re-deriving (and risking drifting apart on) the same
+# branching. Regression coverage for the models each branch was confirmed
+# necessary for (see llm.py's own registries for the empirical evidence).
+# ---------------------------------------------------------------------------
+
+def test_bind_structured_output_uses_json_mode_for_gemini():
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(mock_llm, _DummySchema, "google:gemini-3.5-pro")
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "json_mode"
+
+
+def test_bind_structured_output_uses_auto_tool_choice_for_glm53flash():
+    """openrouter:z-ai/glm-5.3-flash rejects a forced tool_choice outright —
+    must go through bind_structured_output_auto_tool_choice (bind_tools with
+    tool_choice="auto"), not with_structured_output at all."""
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(mock_llm, _DummySchema, "openrouter:z-ai/glm-5.3-flash")
+    mock_llm.bind_tools.assert_called_once()
+    _, kwargs = mock_llm.bind_tools.call_args
+    assert kwargs["tool_choice"] == "auto"
+    mock_llm.with_structured_output.assert_not_called()
+
+
+def test_bind_structured_output_forces_function_calling_for_qwen37flash():
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(mock_llm, _DummySchema, "openrouter:qwen/qwen3.7-flash")
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
+
+
+def test_bind_structured_output_does_not_force_method_by_default():
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(mock_llm, _DummySchema, "mantle-oa:google.gemma-4-31b")
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert "method" not in kwargs
+
+
+def test_bind_structured_output_openai_flag_forces_function_calling(monkeypatch):
+    monkeypatch.setenv("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(
+        mock_llm, _DummySchema, "fireworks:accounts/fireworks/models/some-model",
+        force_function_calling_for_openai=True,
+    )
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
+
+
+def test_bind_structured_output_openai_flag_off_does_not_force_method(monkeypatch):
+    """The flag is opt-in per schema — a caller that doesn't pass it must get
+    the plain default for an OpenAI-backend model, same as before this
+    helper existed (this is python_full.py's/structured.py's case: none of
+    their schemas have RecipeDSL's free-form-dict incompatibility)."""
+    monkeypatch.setenv("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(
+        mock_llm, _DummySchema, "fireworks:accounts/fireworks/models/some-model",
+    )
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert "method" not in kwargs
+
+
+def test_bind_structured_output_auto_tool_choice_takes_priority_over_openai_flag():
+    """A hard API rejection (auto tool choice needed) must win over the
+    softer schema-specific openai-forcing preference, regardless of flag."""
+    mock_llm = MagicMock()
+    bind_structured_output_for_model(
+        mock_llm, _DummySchema, "openrouter:z-ai/glm-5.3-flash",
+        force_function_calling_for_openai=True,
+    )
+    mock_llm.bind_tools.assert_called_once()
+    mock_llm.with_structured_output.assert_not_called()
