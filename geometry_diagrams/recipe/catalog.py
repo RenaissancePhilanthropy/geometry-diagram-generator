@@ -408,12 +408,13 @@ and addends together:
   WRONG: mark_angle group=1 on angles 55°, 65°, and 120°  (55≠65≠120)
   RIGHT: label_angle for each, explain the sum relationship in a label_free_text
 
-### mark_angle label_only mode
-When the problem states an angle that may be geometrically inconsistent with the given sides
-(e.g. the stated angle does not match what the constructed shape actually has), set
-label_only: true on mark_angle. This draws the arc and respects the expected field for
-display purposes but skips the geometric consistency assertion:
-  {"kind": "mark_angle", "a": "A", "vertex": "C", "b": "B", "expected": 30, "label_only": true}
+### A stated angle that may be inconsistent with the given sides
+mark_angle's own "expected" is a pure geometric assertion — it is NEVER shown as
+text (mark_angle only draws the arc). To actually DISPLAY the angle's value, use a
+paired label_angle (see the label_angle entry above): omit its "text" to derive the
+real value, or give the problem's stated value with "given":true if it isn't
+expected to exactly match the constructed geometry. Do NOT rely on mark_angle's
+"expected" for display — it draws nothing.
 
 ## selector (for intersection and tangent_line ops)
 
@@ -539,10 +540,21 @@ For problems that require displaying x/y coordinates on a grid:
            axes:true, show_tick_labels:true, show_axis_labels:true}
   Then use show_coords:true on label_point entries for each labeled point.
 
-  {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C", "text":"45°"}
+  {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C"}
       Text inside the angle at vertex A formed by rays AB and AC. Shorthand
-      form: {"kind":"label_angle", "at":"A", "of":"tri_ABC", "text":"α"}.
+      form: {"kind":"label_angle", "at":"A", "of":"tri_ABC"}.
       Pair with a mark_angle to also draw the arc.
+      OMIT "text" (as above) to auto-derive the label from the constructed
+      geometry, e.g. "72°" — do this whenever the label is just this
+      angle's measure; it can never disagree with the diagram, since it IS
+      the diagram. Give an explicit numeric-degree "text" (e.g. "70°") to
+      additionally validate it against the constructed geometry (same 5°
+      tolerance as mark_angle's "expected") — set "given":true to skip that
+      validation when the problem states a value that isn't expected to
+      reproduce exactly (a rounded or approximate given):
+        {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C", "text":"70°", "given":true}
+      An algebraic label ("x°", "2x") or angle numbering ("1", "2") is never
+      validated regardless of "given" — there's no single value to check.
   {"kind":"label_free_text", "text":"S_1", "centroid_of":"poly1"}
       Place text at the centroid of a named polygon or triangle.
   {"kind":"label_free_text", "text":"s^{2} = r^{2} + h^{2}", "at":[3.0, 1.5]}
