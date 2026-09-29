@@ -47,7 +47,10 @@ example:
       segment: [A, C]
       beyond: C
       by: 1.2
-    # CRITICAL: add explicit segments for each arm so the angle validator accepts the angle triples
+    # These arm segments are drawn because the recipe's whole point is
+    # showing "all six side-extensions drawn" — not required for the angle
+    # validator (it recognizes an extend_segment point as collinear with its
+    # originating segment automatically).
     - op: segment
       id: arm_AC
       endpoints: [A, A_from_C]
@@ -97,7 +100,7 @@ example:
 notes:
   - "Each tip angle equals the corresponding interior angle of triangle ABC by vertical angles."
   - "Sum of tip angles = angle_A + angle_B + angle_C = 180°."
-  - "CRITICAL: after every extend_segment, add an explicit 'segment' from the vertex to the extended point."
+  - "An extend_segment point is automatically recognized as collinear with its originating segment for angle-mark purposes — no explicit connecting segment is required. This recipe still draws the arm segments anyway, since showing all six extensions is the point of the diagram."
   - "At each vertex, two arms are created by extending the two adjacent sides beyond the vertex."
   - "Do NOT try to find tips via 'intersection beyond' — lines AB, BC, CA only intersect at A, B, C themselves."
   - "mark_angle(A_from_C, A, A_from_B): A_from_C is on extension of CA past A; A_from_B is on extension of BA past A. Not collinear. ✓"

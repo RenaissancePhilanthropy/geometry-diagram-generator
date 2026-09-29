@@ -41,8 +41,11 @@ example:
       segment: [D, E]
       beyond: E
       by: 1.0
-    # CRITICAL: add explicit segments from each vertex to its extended point.
-    # Without these segments, the angle validator cannot verify the angle triples.
+    # These arm segments are drawn to visually show each extended ray — not
+    # required for the angle validator (it recognizes an extend_segment
+    # point as collinear with its originating segment automatically), but
+    # keep them for visual clarity: without a drawn arm, the exterior angle
+    # has nothing to visibly point along.
     - op: segment
       id: arm_A
       endpoints: [A, extA]
@@ -113,8 +116,7 @@ example:
         b: A
         text: "5"
 notes:
-  - "CRITICAL: after every extend_segment op, add an explicit 'segment' op from the vertex to the extended point."
-  - "Without the explicit arm segment, the angle triple validator rejects mark_angle — the extended point is not connected to the vertex."
+  - "An extend_segment point is automatically recognized as collinear with its originating segment for angle-mark purposes — no explicit connecting segment is required. This recipe still draws one 'arm' segment per vertex anyway, because the exterior angle needs a visible ray to point along, not because the validator needs it."
   - "extend_segment [prev, vertex] beyond vertex: this places extX in the direction away from prev, past the vertex."
   - "mark_angle(extA, A, B): extA is the outward arm, A is the vertex, B is the next polygon side. These are not collinear. ✓"
   - "Each exterior angle = 180° - interior angle = 180° - 108° = 72° for a regular pentagon."
