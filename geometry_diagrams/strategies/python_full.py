@@ -185,7 +185,7 @@ async def generate_search_replace(
         HumanMessage(content=prompt),
     ]
     response = await llm.ainvoke(messages)
-    text = response.content if isinstance(response.content, str) else response.content[0].get("text", "")
+    text = extract_text(response.content)
     in_tok, out_tok = extract_usage(response)
     cost = extract_cost(response)
     return _parse_search_replace_blocks(text), in_tok, out_tok, cost
