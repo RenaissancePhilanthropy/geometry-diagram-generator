@@ -16,9 +16,8 @@ from langchain_core.messages import HumanMessage
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import (
-    get_chat_model, is_gemini_model, requires_raw_text_generation,
-    requires_forced_function_calling, requires_auto_tool_choice,
-    bind_structured_output_auto_tool_choice, extract_usage, extract_cost, make_system_message,
+    get_chat_model, requires_raw_text_generation, bind_structured_output_for_model,
+    extract_usage, extract_cost, extract_text, make_system_message,
 )
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline
@@ -82,7 +81,7 @@ async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -
     of this generation call, so edit turns using patch mode don't silently
     report zero cost for the LLM call that actually produced the edit."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslScriptPatchOutput, include_raw=True)
+    structured = bind_structured_output_for_model(llm, PydslScriptPatchOutput, model, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
@@ -243,7 +242,7 @@ async def _generate_hashline_ops(
     Returns (ops, input_tokens, output_tokens, cost_usd), mirroring
     _generate_patch/generate_search_replace's usage-tracking shape."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslHashlineOutput, include_raw=True)
+    structured = bind_structured_output_for_model(llm, PydslHashlineOutput, model, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
@@ -313,7 +312,7 @@ async def _generate_line_number_ops(
     Returns (ops, input_tokens, output_tokens, cost_usd), mirroring
     _generate_hashline_ops's usage-tracking shape."""
     llm = get_chat_model(model, enable_cache=enable_cache)
-    structured = llm.with_structured_output(PydslLineNumberOutput, include_raw=True)
+    structured = bind_structured_output_for_model(llm, PydslLineNumberOutput, model, include_raw=True)
     messages = [
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
@@ -895,25 +894,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
                 "cost_usd": cost_usd,
             }
 
-        if is_gemini_model(model_id):
-            structured = llm.with_structured_output(PydslScriptOutput, method="json_mode", include_raw=True)
-        elif requires_auto_tool_choice(model_id):
-            # See llm.py's _AUTO_TOOL_CHOICE_MODELS — a forced tool_choice
-            # (what with_structured_output's default/function_calling method
-            # sends) 400s outright for these models; tool_choice="auto" works.
-            structured = bind_structured_output_auto_tool_choice(llm, PydslScriptOutput, include_raw=True)
-        elif requires_forced_function_calling(model_id):
-            # Only for models confirmed to need it (see llm.py's
-            # _FORCED_FUNCTION_CALLING_MODELS) — do NOT force this by default
-            # for every model. Forcing it universally regressed
-            # mantle-oa:google.gemma-4-31b from 84% to 57% pass rate
-            # (2026-08-07): auto-detection is what most models, including
-            # gemma, actually need; qwen3.7-flash is the confirmed exception.
-            structured = llm.with_structured_output(
-                PydslScriptOutput, method="function_calling", include_raw=True
-            )
-        else:
-            structured = llm.with_structured_output(PydslScriptOutput, include_raw=True)
+        structured = bind_structured_output_for_model(llm, PydslScriptOutput, model_id, include_raw=True)
 
         response = await structured.ainvoke(messages)
         raw_msg = response.get("raw")
