@@ -575,6 +575,12 @@ class _Lowerer:
         self._defs.append(PointFixed(id=op.id, x=px, y=py))
         self._point_ids.append(op.id)
         self._coord_floats[op.id] = (px, py)
+        # This point is on the line through the circle's center in the given
+        # direction by construction — register that invisibly (never added
+        # to _drawable) so an angle mark using it as a leg (at the center)
+        # validates without a decorative segment. See checks.py's
+        # _build_linear_pairs geometric fallback, which this feeds.
+        self._add(LineThrough(id=f"__{op.id}_line", p=center_id, q=op.id))
 
     def _lower_tangent_line(self, op: TangentLineOp) -> None:
         pick = op.selector  # already a PickRule or None
@@ -807,6 +813,12 @@ class _Lowerer:
         self._defs.append(PointFixed(id=op.id, x=px, y=py))
         self._point_ids.append(op.id)
         self._coord_floats[op.id] = (px, py)
+        # This point is on the infinite line through from_id/toward_id by
+        # construction — register that invisibly (never added to _drawable)
+        # so an angle mark using it as a leg validates without the model
+        # having to separately draw a decorative segment. See checks.py's
+        # _build_linear_pairs geometric fallback, which this feeds.
+        self._add(LineThrough(id=f"__{op.id}_line", p=from_id, q=toward_id))
 
     def _lower_extend_segment(self, op: ExtendSegmentOp) -> None:
         a_id, b_id = op.segment[0], op.segment[1]
@@ -834,6 +846,15 @@ class _Lowerer:
         self._defs.append(PointFixed(id=op.id, x=px, y=py))
         self._point_ids.append(op.id)
         self._coord_floats[op.id] = (px, py)
+        # This point is on the infinite line through the original segment's
+        # endpoints by construction — register that invisibly (never added
+        # to _drawable), so a chain of extensions (extend BC beyond C to D,
+        # then CD beyond D to E) still validates an angle mark spanning the
+        # far ends (e.g. B and E): LineThrough is unbounded, unlike a
+        # Segment, so it merges every point on the line regardless of how
+        # far out a later extension goes. See checks.py's _build_linear_pairs
+        # geometric fallback, which this feeds.
+        self._add(LineThrough(id=f"__{op.id}_line", p=other_id, q=op.id))
 
     def _lower_point_foot(self, op: PointFootOp) -> None:
         self._defs.append(PointFoot(id=op.id, source=op.source, onto=op.onto))

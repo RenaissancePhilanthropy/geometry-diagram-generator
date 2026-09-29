@@ -13,7 +13,7 @@ from geometry_diagrams.recipe.dsl import (
     PolygonExteriorOp, MidpointOp, PerpendicularOp, ParallelOp,
     LineThroughOp, SegmentOp, IntersectionOp, CircleOp, CanvasOp,
     PolygonOp, PointOp, ReflectionOp, RotationOp, PointOnSegmentOp,
-    RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
+    RegularPolygonOp, PointAlongOp, ExtendSegmentOp, PointExternalOp,
     PointFootOp, CircleThrough3Op, TangentLineOp, RectangleOp,
 )
 from geometry_diagrams.ir.ir import Contains
@@ -2429,3 +2429,102 @@ def test_explicit_checks_are_tagged_distinctly_from_auto_generated_ones():
     sources = {c.source for c in ir.checks}
     assert any(s and s.startswith("explicit check:") for s in sources)
     assert any(s is None for s in sources)  # circle_tangent_at's own auto-generated check
+
+
+# ---------------------------------------------------------------------------
+# Synthetic invisible LineThrough for coordinate-only points that are
+# collinear with named points by construction (extend_segment, point_along,
+# point_external) — lets an angle-mark leg use these points without the
+# model having to add a purely decorative segment. See checks.py's
+# _build_linear_pairs geometric fallback, which these feed.
+# ---------------------------------------------------------------------------
+
+def _synthetic_line_through(ir: DiagramIR, p: str, q: str) -> LineThrough | None:
+    for d in ir.define:
+        if isinstance(d, LineThrough) and d.id.startswith("__") and {d.p, d.q} == {p, q}:
+            return d
+    return None
+
+
+def test_extend_segment_registers_synthetic_invisible_linethrough():
+    dsl = _dsl(
+        [
+            PointOp(id="B", coords=[0.0, 0.0]),
+            PointOp(id="C", coords=[1.0, 0.0]),
+            ExtendSegmentOp(id="D", segment=["B", "C"], beyond="C", by=1.0),
+        ],
+        annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False),
+    )
+    ir = lower_to_ir(dsl)
+    # p=B (the segment's other, non-extended endpoint), not C: using the far
+    # anchor rather than the immediately-adjacent point is what makes a
+    # CHAIN of extensions work (extend BC beyond C to D, then CD beyond D to
+    # E) — each new synthetic line still reaches back to the original B, so
+    # B and E end up on the same registered line without needing to track
+    # the whole chain explicitly.
+    line = _synthetic_line_through(ir, "B", "D")
+    assert line is not None, f"no synthetic LineThrough(B,D) found in {ir.define}"
+    # Never auto-drawn, despite auto_draw_all=True.
+    assert not any(getattr(r, "obj", None) == line.id for r in ir.render)
+
+
+def test_point_along_registers_synthetic_invisible_linethrough():
+    dsl = _dsl(
+        [
+            PointOp(id="A", coords=[0.0, 0.0]),
+            PointOp(id="B", coords=[1.0, 0.0]),
+            SegmentOp(id="s1", endpoints=["A", "B"]),
+            PointAlongOp(id="P", on="s1", **{"from": "A"}, toward="B", distance=5.0),
+        ],
+        annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False),
+    )
+    ir = lower_to_ir(dsl)
+    line = _synthetic_line_through(ir, "A", "B")
+    assert line is not None, f"no synthetic LineThrough(A,B) found in {ir.define}"
+    assert not any(getattr(r, "obj", None) == line.id for r in ir.render)
+
+
+def test_point_external_registers_synthetic_invisible_linethrough():
+    dsl = _dsl(
+        [
+            PointOp(id="O", coords=[0.0, 0.0]),
+            CircleOp(id="c1", center="O", radius=3.0),
+            PointExternalOp(id="Q", relative_to="c1", direction=0.0, distance_ratio=2.0),
+        ],
+        annotations=DSLAnnotations(auto_draw_all=True, auto_label_points=False),
+    )
+    ir = lower_to_ir(dsl)
+    line = _synthetic_line_through(ir, "O", "Q")
+    assert line is not None, f"no synthetic LineThrough(O,Q) found in {ir.define}"
+    assert not any(getattr(r, "obj", None) == line.id for r in ir.render)
+
+
+def test_chained_extend_segment_validates_angle_across_the_whole_chain():
+    """extend BC beyond C to D, then CD beyond D to E: B, C, D, E all lie on
+    one real line. Each extend_segment call registers its own synthetic
+    LineThrough back to the ORIGINAL far anchor (not the immediately-prior
+    point), so an angle mark spanning the two ends of the chain (B and E)
+    validates without any explicit connecting segment — this is the actual
+    motivating case for using an unbounded LineThrough rather than a bounded
+    Segment (see lower.py's _lower_extend_segment)."""
+    from geometry_diagrams.ir.checks import check_render_angles
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    dsl = _dsl(
+        [
+            PointOp(id="B", coords=[0.0, 0.0]),
+            PointOp(id="C", coords=[1.0, 0.0]),
+            SegmentOp(id="s1", endpoints=["B", "C"]),
+            ExtendSegmentOp(id="D", segment=["B", "C"], beyond="C", by=1.0),
+            ExtendSegmentOp(id="E", segment=["C", "D"], beyond="D", by=1.0),
+            PointOp(id="G", coords=[3.0, 3.0]),
+            SegmentOp(id="s2", endpoints=["E", "G"]),
+        ],
+        annotations=DSLAnnotations(
+            auto_draw_all=True, auto_label_points=False,
+            marks=[{"kind": "mark_angle", "a": "B", "vertex": "E", "b": "G"}],
+        ),
+    )
+    ir = lower_to_ir(dsl)
+    sym = compile_defs(ir)
+    assert check_render_angles(ir, sym) == []
