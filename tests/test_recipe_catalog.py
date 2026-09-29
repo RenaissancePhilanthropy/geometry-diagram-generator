@@ -10,6 +10,7 @@ from geometry_diagrams.recipe.catalog import (
 from geometry_diagrams.recipe.dsl import RecipeDSL
 from geometry_diagrams.recipe.lower import lower_to_ir, LoweringError
 from geometry_diagrams.ir.errors import IRCompileError
+from geometry_diagrams.ir.to_sympy import compile_defs
 
 _ALL_CATALOGS = "default,curriculum,genexam"
 
@@ -80,6 +81,16 @@ def test_recipe_example_is_self_contained(recipe_id):
     ids that only exist in `setup` — the LLM never sees `setup`, so if the
     example only lowers successfully with setup prepended, the LLM is being
     taught an incomplete pattern it can never actually reproduce on its own.
+
+    Checks both lower_to_ir AND compile_defs — lowering alone isn't enough:
+    lower.py's `_inject_implicit_points` silently auto-creates any point
+    referenced but never defined at (0,0) rather than raising "undefined id",
+    so an example missing a setup-only point (e.g. a triangle's own vertices)
+    lowers "successfully" with every such point silently coincident at the
+    origin, a degenerate configuration that only fails once compile_defs
+    actually tries to resolve real geometry from it (confirmed: this is
+    exactly how equilateral_on_segment/square_on_segment shipped broken
+    despite this test passing — lower_to_ir alone never caught it).
     """
     recipe = load_recipe(recipe_id, catalog=_ALL_CATALOGS)
     setup_ids = {op.get("id") for op in recipe.setup if isinstance(op, dict)}
@@ -88,12 +99,13 @@ def test_recipe_example_is_self_contained(recipe_id):
 
     dsl = RecipeDSL.model_validate(recipe.example)
     try:
-        lower_to_ir(dsl)
+        ir = lower_to_ir(dsl)
+        compile_defs(ir)
     except (LoweringError, IRCompileError) as e:
         pytest.fail(
-            f"{recipe_id}: example.construction is not self-contained — lowering it "
-            f"alone (without `setup`, which the LLM never sees) failed: {e}. "
-            f"setup-only ids: {sorted(setup_ids)}"
+            f"{recipe_id}: example.construction is not self-contained — lowering "
+            f"and compiling it alone (without `setup`, which the LLM never sees) "
+            f"failed: {e}. setup-only ids: {sorted(setup_ids)}"
         )
 
 

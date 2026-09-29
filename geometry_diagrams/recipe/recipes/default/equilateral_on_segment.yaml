@@ -13,6 +13,17 @@ setup:
 example:
   mode: abstract
   construction:
+    # T_ex defines A, B, C directly (matching setup's triangle constraints) —
+    # the example must be self-contained, since setup is context only and is
+    # never sent to the model. A separate id from setup's "T" (setup and
+    # example ids must be disjoint).
+    - op: triangle
+      id: T_ex
+      vertices: [A, B, C]
+      spec:
+        angle_A: 60
+        angle_B: 70
+        side_AB: 4
     - op: polygon_exterior
       id: eq_tri
       base: [B, C]
@@ -21,3 +32,4 @@ example:
       vertices: [eq_v2]
 notes:
   - "n=3 for equilateral triangle; only one extra vertex (v2) needed"
+  - "A/B/C are defined directly here via T_ex, NOT by referencing setup's own triangle T — an example must define every point it uses itself, since setup is background context only and is never shown to you."
