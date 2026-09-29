@@ -16,6 +16,12 @@ example:
       id: P
       segment: [A, B]
       ratio: "2:3"
+    - op: segment
+      id: AP
+      endpoints: [A, P]
+    - op: segment
+      id: PB
+      endpoints: [P, B]
   annotations:
     labels:
       - kind: label_segment
@@ -30,4 +36,5 @@ notes:
   - "Float ratio: a value in [0, 1] is the fraction of AB from A. ratio: 0.4 gives the same result as '2:3'."
   - "To place a point BEYOND B (extension): use a float greater than 1.0. ratio: 1.2 places P 20% past B along the AB direction."
   - "If the problem states 'AP = 3 and AB = 5', compute ratio: 3/5 = 0.6 as a float, or '3:2' as a string."
-  - "To label the two sub-segments, add label_segment entries for [A,P] and [P,B] in annotations.labels."
+  - "CRITICAL: add explicit 'segment' ops for [A,P] and [P,B] (or a single [A,B] segment) — label_segment only places text, it does NOT draw a line. Without an explicit segment op, label_segment's auto-created bookkeeping segment is invisible and the diagram shows floating labeled points with no line connecting them."
+  - "To label the two sub-segments, add label_segment entries for [A,P] and [P,B] in annotations.labels — these must reference the SAME endpoints as explicitly-drawn segment ops above, or they'll silently attach to an invisible one instead."
