@@ -40,6 +40,18 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
     def dist(a: tuple, b: tuple) -> float:
         return math.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
 
+    def angle_at(o_id: str, p_id: str, q_id: str) -> float:
+        """Angle p-o-q in radians, given point ids."""
+        O, P, Q = pt(o_id), pt(p_id), pt(q_id)
+        va = (P[0] - O[0], P[1] - O[1])
+        vb = (Q[0] - O[0], Q[1] - O[1])
+        mag_a = math.sqrt(va[0]**2 + va[1]**2)
+        mag_b = math.sqrt(vb[0]**2 + vb[1]**2)
+        if mag_a < 1e-12 or mag_b < 1e-12:
+            raise ValueError("Degenerate angle")
+        cos_v = max(-1.0, min(1.0, (va[0]*vb[0] + va[1]*vb[1]) / (mag_a * mag_b)))
+        return math.acos(cos_v)
+
     match ptype:
         case "right_angle":
             a, o, b = args[0], args[1], args[2]
@@ -72,10 +84,21 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
             return ok, "" if ok else f"Points {args} are not collinear (cross={cross:.4f})"
 
         case "equal_lengths":
-            d1 = dist(pt(args[0][0]), pt(args[0][1]))
-            d2 = dist(pt(args[1][0]), pt(args[1][1]))
-            ok = abs(d1 - d2) < tol
-            return ok, "" if ok else f"|{args[0]}|={d1:.4f} ≠ |{args[1]}|={d2:.4f}"
+            # args: [[A,B], [C,D], ...] — 2 or more segments, all must be equal length.
+            # Every segment is compared against the first (transitively equivalent to
+            # all-pairs for equality), so N segments still only need N-1 comparisons.
+            lengths = [dist(pt(seg[0]), pt(seg[1])) for seg in args]
+            d0 = lengths[0]
+            mismatches = [
+                (args[i], lengths[i]) for i in range(1, len(lengths))
+                if abs(lengths[i] - d0) >= tol
+            ]
+            ok = not mismatches
+            msg = "" if ok else (
+                f"|{args[0]}|={d0:.4f} but " +
+                ", ".join(f"|{seg}|={d:.4f}" for seg, d in mismatches)
+            )
+            return ok, msg
 
         case "parallel":
             A, B = pt(args[0][0]), pt(args[0][1])
@@ -133,23 +156,41 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
 
         case "angle_bisector":
             # args: [D, A, B, C] — ray AD bisects angle BAC
-            D, A, B, C = pt(args[0]), pt(args[1]), pt(args[2]), pt(args[3])
-            # angle BAD vs angle DAC
-            def _angle(o, v1, v2):
-                a = (v1[0] - o[0], v1[1] - o[1])
-                b = (v2[0] - o[0], v2[1] - o[1])
-                dot_ab = a[0]*b[0] + a[1]*b[1]
-                mag_a = math.sqrt(a[0]**2 + a[1]**2)
-                mag_b = math.sqrt(b[0]**2 + b[1]**2)
-                if mag_a < 1e-12 or mag_b < 1e-12:
-                    raise ValueError("Degenerate angle")
-                return math.acos(max(-1.0, min(1.0, dot_ab / (mag_a * mag_b))))
-            ang_bad = _angle(A, B, D)
-            ang_dac = _angle(A, D, C)
+            a_id, o_id, b_id, c_id = args[0], args[1], args[2], args[3]
+            ang_bad = angle_at(o_id, b_id, a_id)
+            ang_dac = angle_at(o_id, a_id, c_id)
             ok = abs(ang_bad - ang_dac) < tol
             return ok, "" if ok else (
                 f"angle BAD={math.degrees(ang_bad):.2f}° ≠ angle DAC={math.degrees(ang_dac):.2f}°"
             )
+
+        case "angle_equal":
+            # args: [[a1, o1, b1], [a2, o2, b2]] — angle a1-o1-b1 equals angle a2-o2-b2
+            (a1, o1, b1), (a2, o2, b2) = args[0], args[1]
+            ang1 = angle_at(o1, a1, b1)
+            ang2 = angle_at(o2, a2, b2)
+            ok = abs(ang1 - ang2) < tol
+            return ok, "" if ok else (
+                f"angle {a1}-{o1}-{b1}={math.degrees(ang1):.2f}° ≠ "
+                f"angle {a2}-{o2}-{b2}={math.degrees(ang2):.2f}°"
+            )
+
+        case "angle_value":
+            # args: [a, o, b, expected_deg] — angle a-o-b equals expected_deg
+            a_id, o_id, b_id, expected_deg = args[0], args[1], args[2], args[3]
+            ang = angle_at(o_id, a_id, b_id)
+            tol_deg = math.degrees(tol)
+            ok = abs(math.degrees(ang) - expected_deg) < tol_deg
+            return ok, "" if ok else (
+                f"angle {a_id}-{o_id}-{b_id}={math.degrees(ang):.2f}° ≠ expected {expected_deg}°"
+            )
+
+        case "distance_equals":
+            # args: [[p1, p2], expected] — distance p1-p2 equals expected
+            (p1_id, p2_id), expected = args[0], args[1]
+            d = dist(pt(p1_id), pt(p2_id))
+            ok = abs(d - expected) < tol
+            return ok, "" if ok else f"|{p1_id}{p2_id}|={d:.4f} ≠ expected {expected}"
 
         case "intersects":
             # args: [[A, B], [C, D], P] — P lies on both lines AB and CD

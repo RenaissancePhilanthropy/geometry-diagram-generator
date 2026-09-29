@@ -3,6 +3,14 @@ from __future__ import annotations
 
 from typing import Any
 
+# Kept in sync with the `match ptype` cases in evals/sympy_checks.py's
+# _check_sympy_property BY HAND — the two are not derived from a single
+# source of truth. A type listed as "supported" here but unhandled there
+# doesn't raise; it just silently no-ops every scenario check of that type
+# (see _check_sympy_property's `case _` fallback). This is exactly how
+# "angle_equal" went unchecked across dozens of existing scenarios for an
+# unknown period — this file called it supported while sympy_checks.py had
+# no case for it. When adding a type to one file, add it to the other too.
 _SUPPORTED_PROPERTY_TYPES = {
     "right_angle",
     "midpoint",
@@ -15,6 +23,8 @@ _SUPPORTED_PROPERTY_TYPES = {
     "point_on_circle",
     "tangent",
     "angle_equal",
+    "angle_value",
+    "distance_equals",
     "angle_bisector",
     "intersects",
     "label_present",
