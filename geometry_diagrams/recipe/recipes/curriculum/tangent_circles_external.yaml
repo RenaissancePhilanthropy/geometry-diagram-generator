@@ -80,12 +80,12 @@ example:
   annotations:
     marks:
       - kind: mark_right_angle
-        a: A
-        vertex: O1
+        a: O1
+        vertex: A
         b: E_sim
       - kind: mark_right_angle
-        a: B
-        vertex: O2
+        a: O2
+        vertex: B
         b: E_sim
 notes:
   - "Externally tangent: distance O1O2 = r1 + r2 = 2 + 3 = 5. ✓"
@@ -93,5 +93,5 @@ notes:
   - "External center of similitude: E = (r1·O2 - r2·O1)/(r1 - r2). For r1=2, r2=3, O2=(5,0): E=(-10, 0)."
   - "CRITICAL: tangent_line from E_sim to c1 only. Then intersect that SAME line with c2 for B — do NOT make a separate tangent_line to c2."
   - "Use upper_of_line / lower_of_line to disambiguate. Only one external tangent is shown; add lower one similarly if needed."
-  - "mark_right_angle(A, O1, E_sim): radius O1A ⊥ tangent line. Same for O2B."
+  - "mark_right_angle(O1, A, E_sim): vertex is A, the point OF tangency — the radius O1-A is perpendicular to the tangent line's own direction there (A-E_sim, since both A and E_sim lie on that tangent line). The angle does NOT belong at O1 or O2: radius and tangent line only meet (and form a right angle) at the tangency point itself. Same reasoning for O2/B."
   - "The internal tangent at T (just the touching point) is shown by seg_O1T and seg_O2T."
