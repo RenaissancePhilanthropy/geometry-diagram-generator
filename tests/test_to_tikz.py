@@ -20,10 +20,12 @@ from geometry_diagrams.ir.ir import (
     MarkAngles,
     MarkRightAngles,
     MarkSegments,
+    PointDilate,
     PointFixed,
     PointIntersection,
     PointOn,
     PointOnParam,
+    PointReflect,
     Segment,
     Triangle,
     EllipseCenterAxes,
@@ -821,6 +823,65 @@ def test_check_render_angles_line_angle_bisector():
         render=[MarkAngles(angles=[AnglePoints(a="A", o="V", b="D")])],
     )
     assert check_render_angles(diagram) == []
+
+
+def test_check_render_angles_point_reflect_point_mode_is_collinear():
+    # Point-symmetry reflection (across a POINT, not a line): source, across,
+    # and the result are always collinear by construction. G is connected to
+    # the pivot M via an explicit segment, isolating what's under test: R
+    # (the reflected point) must validate as a leg at M with no segment of
+    # its own, purely via the geometric fallback recognizing the reflection's
+    # own collinearity.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="S", x=0, y=0),
+            PointFixed(id="M", x=1, y=0),
+            PointReflect(id="R", source="S", across="M"),
+            PointFixed(id="G", x=3, y=3),
+            Segment(id="seg", a="M", b="G"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="S", o="M", b="G")])],
+    )
+    sym = compile_defs(diagram)
+    assert check_render_angles(diagram, sym) == []
+
+
+def test_check_render_angles_point_reflect_mirror_mode_is_not_collinear():
+    # Mirror reflection (across a LINE): the source and result are NOT
+    # collinear in general — must NOT be swept up by the point-mode fix
+    # above, or a genuinely invalid angle triple would silently validate.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="S2", x=0, y=1),
+            PointFixed(id="L1", x=0, y=0),
+            PointFixed(id="L2", x=1, y=0),
+            LineThrough(id="axis", p="L1", q="L2"),
+            PointReflect(id="R2", source="S2", across="axis"),
+            PointFixed(id="G2", x=3, y=3),
+            Segment(id="seg2", a="R2", b="G2"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="S2", o="R2", b="G2")])],
+    )
+    sym = compile_defs(diagram)
+    errors = check_render_angles(diagram, sym)
+    assert len(errors) == 1
+    assert "'S2'" in errors[0]
+
+
+def test_check_render_angles_point_dilate_is_collinear():
+    # Dilation about a center is always collinear with center and source.
+    diagram = DiagramIR(
+        define=[
+            PointFixed(id="C", x=0, y=0),
+            PointFixed(id="Src", x=1, y=0),
+            PointDilate(id="Dil", center="C", source="Src", ratio=3.0),
+            PointFixed(id="G3", x=3, y=3),
+            Segment(id="seg3", a="C", b="G3"),
+        ],
+        render=[MarkAngles(angles=[AnglePoints(a="Dil", o="C", b="G3")])],
+    )
+    sym = compile_defs(diagram)
+    assert check_render_angles(diagram, sym) == []
 
 
 # ---------------------------------------------------------------------------

@@ -552,6 +552,42 @@ def _build_linear_pairs(
             if isinstance(obj, (Sector, EllipticalSector)):
                 linear_objs[f"{oid}__radius_start"] = spg.Segment(obj.center, obj.start)
                 linear_objs[f"{oid}__radius_end"] = spg.Segment(obj.center, obj.end)
+        # point_reflect (point-symmetry mode) and point_dilate are always
+        # collinear with their own defining points by construction — source,
+        # across/center, and the result all lie on one line — but that fact
+        # is only visible here, not to whichever strategy produced the IR
+        # (the recipe DSL's ReflectionOp, or structured/pydsl building
+        # PointReflect/PointDilate directly, none of which carry a distinct
+        # "this result is collinear with X, Y" marker once lowered), so
+        # fixing this once here — shared by every strategy — is more direct
+        # than teaching each producing pathway to separately emit a
+        # synthetic linear def. Mirror-mode point_reflect (across a line/
+        # segment/ray) is NOT collinear with source in general, so it's
+        # deliberately excluded — only checked when `across` resolves to a
+        # point. Guarded against degenerate (coincident) inputs, which would
+        # otherwise raise constructing spg.Line — lower.py already rejects
+        # these for the recipe DSL's own ops, but this path is shared with
+        # strategies that build the IR directly and may not pre-validate it.
+        for stmt in diagram.define:
+            match stmt:
+                case ir.PointReflect(id=oid, source=source_id, across=across_id):
+                    across_obj = sym.get(across_id)
+                    source_obj = sym.get(source_id)
+                    if (
+                        isinstance(across_obj, spg.Point2D)
+                        and isinstance(source_obj, spg.Point2D)
+                        and across_obj != source_obj
+                    ):
+                        linear_objs[f"{oid}__reflect_axis"] = spg.Line(source_obj, across_obj)
+                case ir.PointDilate(id=oid, center=center_id, source=source_id):
+                    center_obj = sym.get(center_id)
+                    source_obj = sym.get(source_id)
+                    if (
+                        isinstance(center_obj, spg.Point2D)
+                        and isinstance(source_obj, spg.Point2D)
+                        and center_obj != source_obj
+                    ):
+                        linear_objs[f"{oid}__dilate_line"] = spg.Line(center_obj, source_obj)
         # Points referenced by angle triples in render ops must be eligible for
         # geometric validation even when implicit (__-prefixed) — the resolver
         # in angle_pairs.py synthesizes such points on real lines by construction.
