@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .llm import get_chat_model, is_gemini_model, extract_usage, make_system_message
+from .llm import get_chat_model, bind_structured_output_for_model, extract_usage, make_system_message
 from .instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
 from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipeline
 from ..ir.ir import DiagramIR
@@ -134,10 +134,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
 
     try:
         llm = get_chat_model(model_id, enable_cache=enable_cache)
-        if is_gemini_model(model_id):
-            structured = llm.with_structured_output(DiagramIR, method="json_mode", include_raw=True)
-        else:
-            structured = llm.with_structured_output(DiagramIR, include_raw=True)
+        structured = bind_structured_output_for_model(llm, DiagramIR, model_id, include_raw=True)
 
         response = await structured.ainvoke(messages)
         # include_raw=True returns {"raw": AIMessage, "parsed": DiagramIR|None, "parsing_error": ...}

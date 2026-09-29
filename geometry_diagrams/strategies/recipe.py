@@ -26,9 +26,7 @@ from .llm import (
     extract_usage,
     extract_text,
     make_system_message,
-    is_openai_model,
-    requires_auto_tool_choice,
-    bind_structured_output_auto_tool_choice,
+    bind_structured_output_for_model,
 )
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
@@ -321,14 +319,14 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     ]
 
     llm = get_chat_model(model_id, enable_cache=enable_cache)
-    # OpenAI's strict structured-outputs mode requires additionalProperties: false
-    # on every object schema, which the free-form style/styles dict fields on
-    # RecipeDSL can't satisfy. function_calling mode doesn't enforce that.
-    if requires_auto_tool_choice(model_id):
-        structured = bind_structured_output_auto_tool_choice(llm, RecipeDSL, include_raw=True)
-    else:
-        structured_kwargs = {"method": "function_calling"} if is_openai_model(model_id) else {}
-        structured = llm.with_structured_output(RecipeDSL, include_raw=True, **structured_kwargs)
+    # force_function_calling_for_openai=True: OpenAI's strict structured-
+    # outputs mode requires additionalProperties: false on every object
+    # schema, which the free-form style/styles and TriangleOp/RectangleOp
+    # spec dict fields on RecipeDSL can't satisfy. function_calling mode
+    # doesn't enforce that.
+    structured = bind_structured_output_for_model(
+        llm, RecipeDSL, model_id, include_raw=True, force_function_calling_for_openai=True,
+    )
 
     raw_content: str | None = None
     in_tok = out_tok = 0

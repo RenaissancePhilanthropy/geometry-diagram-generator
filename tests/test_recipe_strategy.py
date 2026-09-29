@@ -251,3 +251,34 @@ async def test_recipe_strategy_recovers_dsl_from_list_shaped_raw_content():
     traces = result.recipe_metadata.attempt_traces
     assert traces[-1].stage == "success"
     assert traces[-1].dsl_json is not None
+
+
+# ---------------------------------------------------------------------------
+# Test: RecipeStrategy's DSL generation now goes through the shared
+# bind_structured_output_for_model helper (see llm.py), which gives it two
+# fixes it previously lacked (it only ever checked requires_auto_tool_choice
+# and is_openai_model, unlike python_full.py/structured.py): Gemini's
+# method="json_mode" requirement, and qwen3.7-flash's forced
+# method="function_calling" (unforced, LangChain picks json_mode for it,
+# which the provider rejects outright — see llm.py's
+# _FORCED_FUNCTION_CALLING_MODELS).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_recipe_strategy_forces_function_calling_for_qwen37flash():
+    strategy = RecipeStrategy()
+    fake_result = _make_fake_result()
+    mock_llm = _make_mock_llm()
+
+    with (
+        patch("geometry_diagrams.strategies.recipe.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.recipe._run_ir_pipeline", new=AsyncMock(return_value=fake_result)),
+        patch("geometry_diagrams.strategies.recipe.load_catalog", return_value=[]),
+        patch("geometry_diagrams.strategies.recipe.build_selection_prompt", return_value="select"),
+        patch("geometry_diagrams.strategies.recipe.build_generation_prompt", return_value="generate"),
+        patch("geometry_diagrams.strategies.recipe.lower_to_ir", return_value=MagicMock()),
+    ):
+        await strategy.run("draw two points", model="openrouter:qwen/qwen3.7-flash")
+
+    _, kwargs = mock_llm.with_structured_output.call_args
+    assert kwargs["method"] == "function_calling"
