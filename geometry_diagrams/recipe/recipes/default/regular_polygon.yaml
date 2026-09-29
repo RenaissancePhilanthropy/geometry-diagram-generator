@@ -1,0 +1,23 @@
+name: regular_polygon
+description: "A regular polygon (equal sides and angles) with named vertices on a circle"
+tags: [polygon, regular, hexagon, basic]
+context: "Given a center point O and a radius, construct a regular polygon (e.g. a regular hexagon) with N equally-spaced vertices."
+setup: []
+example:
+  mode: abstract
+  construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+      visible: false
+    - op: regular_polygon
+      id: hexagon
+      center: O
+      radius: 3
+      vertices: [A, B, C, D, E, F]
+notes:
+  - "Never compute a regular polygon's vertex coordinates by hand (cos/sin at 360/N-degree increments for each vertex) — 'regular_polygon' does this exactly: {op, id, center, radius, vertices:[...]}, N = len(vertices). start_angle (degrees, default 0 = first vertex at the rightmost point) rotates the whole shape if needed."
+  - "This op is for a polygon that is regular BY CONSTRUCTION (equal sides and angles, fixed by center+radius alone). Do not use it when the problem instead gives side lengths and/or angles as input — that's 'polygon_from_sides' or 'polygon_from_angles_and_sides', which solve for vertex positions from those constraints and may not be regular at all."
+  - "vertices must be given in consecutive perimeter order (they're placed counter-clockwise starting from start_angle) — do not reorder them or the polygon op will connect them out of sequence."
+  - "Set star:true (with an odd vertex count >= 5) to connect every 2nd vertex instead, producing a star polygon (e.g. a pentagram) rather than the convex polygon."
+  - "The center point O is rarely part of the requested figure itself — mark it visible:false unless the problem specifically asks for the center to be shown."

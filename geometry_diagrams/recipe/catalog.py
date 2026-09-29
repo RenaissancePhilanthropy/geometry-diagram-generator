@@ -373,6 +373,27 @@ the same segment) — but give each edge only once, not both orderings.
 - reflection: {op, id, point, over}
 - rotation: {op, id, point, center, angle}  (angle in degrees)
 - point_on_segment: {op, id, segment:[A,B], ratio}  (ratio 0-1)
+- point_along: {op, id, on, from, distance, toward}
+  Places a point at an exact `distance` from point `from`, in the direction of
+  point `toward` (both must already exist with known coordinates). `on` is
+  context only (the line/segment/ray it conceptually lies on) — it is never
+  resolved or validated, so it doesn't need to exist yet. Use this whenever a
+  point must sit at a stated absolute distance (not a fraction) from another
+  point — e.g. "mark M on ray AB with AM = 3" — instead of guessing coordinates
+  by hand, which requires correctly computing the unit vector from `from`
+  toward `toward` yourself (easy to get wrong whenever that direction isn't
+  axis-aligned). Prefer `point_on_segment`'s ratio instead when the target is
+  naturally a fraction of the segment (e.g. "1/3 of the way from A to B").
+- point_external: {op, id, relative_to:<circle_id>, direction, distance_ratio}
+  Places a point outside circle `relative_to`, at `distance_ratio` × its radius,
+  in `direction` — either a cardinal ("left"/"right"/"above"/"below") or a
+  numeric angle in degrees measured from the circle's center. Requires the
+  circle to have been defined with a literal numeric radius ({op:circle,
+  center, radius:<number>}); it cannot resolve the radius of a circle whose
+  size is only known after solving (e.g. a circumcircle or incircle). Prefer
+  this over a raw guessed coordinate whenever the direction is a specific
+  angle (guessing means computing cos/sin by hand) or whenever the point must
+  stay correctly placed if the circle's radius changes elsewhere.
 - tangent_line: {op, id, circle, from_point, selector:{kind,...}}
   Tangent line(s) from an external point; selector picks among the two candidates.
   Alternate form — tangent AT a point already on the circle's boundary (no selector,

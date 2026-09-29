@@ -1,0 +1,63 @@
+name: tangent_from_external_at_angle
+description: "An external point placed at a specific angle/distance from a circle, with its two tangent lines to the circle"
+tags: [circle, tangent, external-point, point_external, intermediate]
+context: "Given a circle c with center O and radius r, place an external point P at a specific direction and distance from the circle, then draw the two tangent lines from P to c."
+setup: []
+example:
+  mode: grid
+  construction:
+    - op: point
+      id: O
+      coords: [0, 0]
+    - op: circle
+      id: c
+      center: O
+      radius: 2
+    - op: point_external
+      id: P
+      relative_to: c
+      direction: 35
+      distance_ratio: 2.5
+    - op: tangent_line
+      id: t1
+      circle: c
+      from_point: P
+      selector:
+        kind: upper_of_line
+        a: O
+        b: P
+      visible: false
+    - op: intersection
+      id: T1
+      of: [t1, c]
+      selector:
+        kind: upper_of_line
+        a: O
+        b: P
+    - op: tangent_line
+      id: t2
+      circle: c
+      from_point: P
+      selector:
+        kind: lower_of_line
+        a: O
+        b: P
+      visible: false
+    - op: intersection
+      id: T2
+      of: [t2, c]
+      selector:
+        kind: lower_of_line
+        a: O
+        b: P
+    - op: segment
+      id: seg_t1
+      endpoints: [P, T1]
+    - op: segment
+      id: seg_t2
+      endpoints: [P, T2]
+notes:
+  - "point_external requires the circle to have a literal numeric 'radius' (i.e. defined as {op:circle, center, radius:<number>}) — it cannot resolve the radius of a circle whose size is only known after solving (e.g. a circumcircle or incircle), since lowering runs before that solve step."
+  - "direction accepts the cardinals 'left'/'right'/'above'/'below' OR a numeric angle in degrees (measured from the circle's center, standard math convention). Use the numeric form whenever the request specifies (or implies) a non-axis-aligned direction — computing that placement by hand means getting cos/sin of the angle right, which is exactly the kind of manual trig that silently produces a slightly-wrong point (still 'roughly outside' the circle, but not where the problem actually asked for)."
+  - "distance_ratio is a multiple of the circle's radius, not an absolute distance — this is what makes the same recipe correct regardless of what radius the circle ends up with elsewhere (e.g. if the radius comes from a variable in the prompt). A raw hardcoded coordinate for P would need to be individually recomputed by hand every time the radius changes to still guarantee P is strictly outside the circle; distance_ratio never needs that recomputation."
+  - "Reuses the upper_of_line/lower_of_line selector pattern from tangent_from_external.yaml to pick the two distinct tangent lines from P — see that recipe for the base construction without a specific placement angle."

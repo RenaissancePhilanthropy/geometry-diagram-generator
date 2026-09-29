@@ -205,3 +205,74 @@
     - name: equal_legs
       type: equal_lengths
       args: [[A, D], [B, C]]
+
+# --- Recipe-recall scenarios: each targets a construction that has exactly
+# one matching catalog recipe, added specifically because the model was
+# previously observed free-handing the underlying arithmetic (manual
+# trig/coordinate guessing) instead of using the exact-computation DSL op
+# the recipe demonstrates. See angle_at_vertex.yaml / point_at_distance_along_ray.yaml /
+# tangent_from_external_at_angle.yaml / regular_polygon.yaml for the recipes themselves.
+
+- id: angle-at-vertex
+  tier: 1
+  tags: [angle, ray, rotation, recipe-recall]
+  prompt: "Draw a 60-degree angle with vertex B and rays to points A and C. Label the points A, B, and C."
+  required_labels: [A, B, C]
+  expected_properties:
+    - name: angle_ABC_is_60
+      type: angle_value
+      args: [A, B, C, 60]
+
+- id: point-at-distance-along-ray
+  tier: 1
+  tags: [point, distance, ray, recipe-recall]
+  prompt: "Draw a ray from point A through point B. Mark point M on the ray such that AM = 3. Label points A, B, and M."
+  required_labels: [A, B, M]
+  expected_properties:
+    - name: M_on_line_AB
+      type: point_on_line
+      args: [M, A, B]
+    - name: AM_is_3
+      type: distance_equals
+      args: [[A, M], 3.0]
+    - name: M_same_side_as_B
+      type: not_between
+      args: [A, M, B]
+
+- id: tangent-from-external-at-angle
+  tier: 2
+  tags: [circle, tangent, external-point, recipe-recall]
+  prompt: "Draw a circle centered at O with radius 2. Mark R, the point on the circle along the positive x-axis from O. Place an external point P such that angle ROP = 35 degrees and OP = 5 (2.5 times the radius). From P, draw the two tangent lines to the circle, marking the two points of tangency T1 and T2. Label O, R, P, T1, and T2."
+  required_labels: [O, R, P, T1, T2]
+  expected_properties:
+    - name: P_direction_from_O
+      type: angle_value
+      args: [R, O, P, 35]
+    - name: P_distance_from_O
+      type: distance_equals
+      args: [[O, P], 5.0]
+    - name: T1_on_circle
+      type: point_on_circle
+      args: [T1, O, R]
+    - name: T2_on_circle
+      type: point_on_circle
+      args: [T2, O, R]
+    - name: tangent_at_T1
+      type: tangent
+      args: [[P, T1], O, T1]
+    - name: tangent_at_T2
+      type: tangent
+      args: [[P, T2], O, T2]
+
+- id: regular-hexagon
+  tier: 1
+  tags: [polygon, regular, hexagon, recipe-recall]
+  prompt: "Draw a regular hexagon with vertices A, B, C, D, E, and F in order."
+  required_labels: [A, B, C, D, E, F]
+  expected_properties:
+    - name: all_sides_equal
+      type: equal_lengths
+      args: [[A, B], [B, C], [C, D], [D, E], [E, F], [F, A]]
+    - name: angle_at_B_is_120
+      type: angle_value
+      args: [A, B, C, 120]

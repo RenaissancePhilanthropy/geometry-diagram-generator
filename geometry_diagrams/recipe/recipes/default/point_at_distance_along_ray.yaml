@@ -1,0 +1,33 @@
+name: point_at_distance_along_ray
+description: "A point at an exact distance from a named point, along a ray toward another point"
+tags: [point, distance, ray, basic]
+context: "Given points A and B (A defines the origin, B defines the direction), mark a point M on ray AB at a specific distance from A."
+setup: []
+example:
+  mode: abstract
+  construction:
+    - op: point
+      id: A
+      coords: [0, 0]
+    - op: point
+      id: B
+      coords: [4, 3]
+    - op: ray
+      id: ray_AB
+      from: A
+      through: B
+    - op: point_along
+      id: M
+      "on": ray_AB
+      from: A
+      distance: 3
+      toward: B
+  annotations:
+    labels:
+      - kind: label_segment
+        endpoints: [A, M]
+        text: "3"
+notes:
+  - "Never place a point required to be an exact distance from another point via raw guessed coordinates — that requires computing a unit vector by hand (fine only when the direction happens to be axis-aligned, wrong the moment it isn't, e.g. here where |AB|=5 and the direction is (4/5, 3/5)). Use 'point_along' instead: {op, id, on, from, distance, toward} places the point at exactly from + distance * unit_vector(from→toward), regardless of direction."
+  - "'on' is context only (the line/segment/ray the point conceptually lies on) — it does not need to be defined before 'point_along', and lowering ignores it computationally. Only 'from' and 'toward' (which must already exist as points with known coordinates) determine the placement."
+  - "Do not use 'point_on_segment's ratio parameter as a substitute when the target is stated as an absolute distance (e.g. 'AM = 3') rather than a fraction of AB — ratio requires knowing |AB| in advance to convert, which is exactly the manual arithmetic this op exists to avoid. Reach for 'point_on_segment' only when the request is naturally a fraction/ratio (e.g. 'the point 1/3 of the way from A to B')."
