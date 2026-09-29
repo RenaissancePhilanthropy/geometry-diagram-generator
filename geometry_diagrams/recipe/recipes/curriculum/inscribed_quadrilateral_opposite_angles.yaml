@@ -55,32 +55,48 @@ example:
       endpoints: [D, A]
   annotations:
     marks:
-      # Label each interior angle with its degree measure
+      # expected here is a real assertion (not label_only) — the rotation
+      # placement is designed to produce exactly these angles, so keep the
+      # check as a guard against future construction drift.
       - kind: mark_angle
         a: D
         vertex: A
         b: B
         expected: 110.0
-        label_only: true
       - kind: mark_angle
         a: A
         vertex: B
         b: C
         expected: 85.0
-        label_only: true
       - kind: mark_angle
         a: B
         vertex: C
         b: D
         expected: 70.0
-        label_only: true
       - kind: mark_angle
         a: C
         vertex: D
         b: A
         expected: 95.0
-        label_only: true
     labels:
+      # text omitted -> auto-derived from the constructed geometry, so the
+      # displayed number can never drift from the actual angle.
+      - kind: label_angle
+        a: D
+        vertex: A
+        b: B
+      - kind: label_angle
+        a: A
+        vertex: B
+        b: C
+      - kind: label_angle
+        a: B
+        vertex: C
+        b: D
+      - kind: label_angle
+        a: C
+        vertex: D
+        b: A
       - kind: label_free_text
         text: "∠A + ∠C = 110° + 70° = 180°"
         at: [0, -3.8]
@@ -92,6 +108,6 @@ notes:
   - "Use rotation ops to place each vertex at the correct arc position. This guarantees exact inscribed angles."
   - "Arc assignments: AB=40°, BC=150°, CD=70°, DA=100°. Vertex angles: A=90°, B=130°, C=280°, D=350° (all measured from ref at 0°)."
   - "Inscribed angle = half the intercepted arc (the arc NOT containing that vertex)."
-  - "Use label_only: true on mark_angle to display the degree label without a geometric arc check."
+  - "mark_angle draws the arc only — it never shows text. Pair it with a label_angle (omit text to auto-derive the degree value) to actually display the number."
   - "Opposite angle pairs: A+C=180° (110+70), B+D=180° (85+95). This holds for any cyclic quadrilateral."
   - "Do NOT use circle_through_3 after placing the vertices — they are already exactly on the circle by construction."

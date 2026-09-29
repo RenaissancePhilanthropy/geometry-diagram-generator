@@ -20,4 +20,4 @@ example:
 notes:
   - "The circumcenter O is outside the triangle for obtuse triangles"
   - "When combining with perpendicular bisectors: construct the bisectors first (perpendicular_bisector op), define their intersection as a named point, then pass that point as the circumcircle center. Do not construct the circumcircle independently and add bisectors after — construction order matters."
-  - "When the problem gives triangle constraints that are mutually inconsistent with a requested angle label, use label_only: true on mark_angle to draw the arc and text without asserting geometric correctness."
+  - "When the problem states an angle that may be inconsistent with the constructed geometry, draw the arc with mark_angle (omit its expected) and show the value with a separate label_angle using given:true — mark_angle's own expected is never shown as text, only checked geometrically."
