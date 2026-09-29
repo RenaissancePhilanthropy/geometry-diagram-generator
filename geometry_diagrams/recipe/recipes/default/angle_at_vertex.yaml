@@ -1,0 +1,43 @@
+name: angle_at_vertex
+description: "A standalone angle of a specific measure between two rays from a vertex (no triangle involved)"
+tags: [angle, ray, rotation, basic]
+context: "Given a vertex B and a target angle measure, construct two rays from B that form exactly that angle."
+setup: []
+example:
+  mode: abstract
+  construction:
+    - op: point
+      id: B
+      coords: [0, 0]
+    - op: point
+      id: C
+      coords: [4, 0]
+    - op: rotation
+      id: A
+      point: C
+      center: B
+      angle: 60
+    - op: ray
+      id: ray_BC
+      from: B
+      through: C
+    - op: ray
+      id: ray_BA
+      from: B
+      through: A
+  annotations:
+    marks:
+      - kind: mark_angle
+        a: C
+        vertex: B
+        b: A
+        expected: 60
+    labels:
+      - kind: label_angle
+        a: C
+        vertex: B
+        b: A
+notes:
+  - "Never place the second ray's point via raw guessed coordinates when a specific angle measure is required — manual trigonometry by the model is unreliable (it sometimes lands on the correct angle, sometimes its supplement, sometimes an arbitrary wrong value). Instead place the first ray's point anywhere convenient, then compute the second ray's point with a 'rotation' op (point/center/angle in degrees) so the solver places it exactly."
+  - "mark_angle's expected is safe to set here (unlike cases with a possibly-inconsistent problem statement) because rotation guarantees the constructed angle exactly matches the requested measure."
+  - "label_angle's text is left unset so it auto-derives from the constructed geometry (e.g. '60°') rather than being hardcoded — this also serves as an independent check that the rotation was applied correctly."
