@@ -1907,33 +1907,32 @@ def test_regular_sectors_sectors_share_boundary_points():
 
 
 # ---------------------------------------------------------------------------
-# mark_angle label_only mode
+# mark_angle.expected validation (label_only was removed — it was a no-op
+# beyond omitting `expected`, see commit history; a stated-but-inconsistent
+# angle now belongs on label_angle with given=True instead, see below)
 # ---------------------------------------------------------------------------
 
-def test_mark_angle_label_only_skips_geometric_check():
-    """mark_angle with label_only=True and inconsistent expected value lowers without error.
+def test_mark_angle_without_expected_never_raises():
+    """Omitting `expected` entirely (the label_only replacement) always lowers
+    without error, regardless of the actual constructed angle.
 
     Triangle with sides AB=12, BC=18 (right-angle at B). The actual angle at C
-    is ~33.7°. Marking it as 30° with label_only=True should succeed because the
-    geometric assertion is suppressed.
+    is ~33.7°; no assertion is made about it here.
     """
     dsl = RecipeDSL(construction=[
         {"op": "triangle", "id": "T", "vertices": ["A", "B", "C"],
          "spec": {"right_angle_at": "B", "side_AB": 12, "side_BC": 18}},
     ], annotations={"marks": [
-        {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
-         "expected": 30, "label_only": True},
+        {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A"},
     ]})
     ir = lower_to_ir(dsl)  # must not raise
-    assert ir is not None
-    # The MarkAngles render op must still be emitted
     from geometry_diagrams.ir.ir import MarkAngles
     mark_ops = [op for op in ir.render if isinstance(op, MarkAngles)]
     assert len(mark_ops) >= 1
 
 
-def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
-    """Without label_only, an expected value far from actual raises LoweringError.
+def test_mark_angle_with_expected_raises_on_inconsistent_value():
+    """With `expected` given, a value far from actual raises LoweringError.
 
     The actual angle at C is ~33.7°. Using expected=60 (>5° away) triggers the check.
     """
@@ -1945,6 +1944,83 @@ def test_mark_angle_without_label_only_raises_on_inconsistent_expected():
             {"kind": "mark_angle", "a": "B", "vertex": "C", "b": "A",
              "expected": 60},
         ]}))
+
+
+# ---------------------------------------------------------------------------
+# label_angle: text=None auto-derives from constructed geometry; a bare
+# numeric-degree text is validated against it unless given=True; anything
+# else (algebraic, numbering, ...) passes through unchecked.
+# ---------------------------------------------------------------------------
+
+def _label_angle_text(ir: DiagramIR) -> str:
+    from geometry_diagrams.ir.ir import LabelAngle as IRLabelAngle
+    labels = [r for r in ir.render if isinstance(r, IRLabelAngle)]
+    assert len(labels) == 1
+    return labels[0].text
+
+
+def test_label_angle_auto_derives_text_when_omitted():
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0.0, 0.0]},
+        {"op": "point", "id": "B", "coords": [4.0, 0.0]},
+        {"op": "point", "id": "C", "coords": [0.0, 4.0]},
+    ], annotations={"labels": [
+        {"kind": "label_angle", "a": "B", "vertex": "A", "b": "C"},
+    ]})
+    ir = lower_to_ir(dsl)
+    assert _label_angle_text(ir) == "90°"
+
+
+def test_label_angle_matching_numeric_text_passes():
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0.0, 0.0]},
+        {"op": "point", "id": "B", "coords": [4.0, 0.0]},
+        {"op": "point", "id": "C", "coords": [0.0, 4.0]},
+    ], annotations={"labels": [
+        {"kind": "label_angle", "a": "B", "vertex": "A", "b": "C", "text": "90°"},
+    ]})
+    ir = lower_to_ir(dsl)
+    assert _label_angle_text(ir) == "90°"
+
+
+def test_label_angle_mismatched_numeric_text_raises_by_default():
+    with pytest.raises(LoweringError):
+        lower_to_ir(RecipeDSL(construction=[
+            {"op": "point", "id": "A", "coords": [0.0, 0.0]},
+            {"op": "point", "id": "B", "coords": [4.0, 0.0]},
+            {"op": "point", "id": "C", "coords": [0.0, 4.0]},
+        ], annotations={"labels": [
+            {"kind": "label_angle", "a": "B", "vertex": "A", "b": "C", "text": "70°"},
+        ]}))
+
+
+def test_label_angle_mismatched_numeric_text_allowed_with_given():
+    """given=True is the label_only replacement: a problem's stated (but not
+    exactly reproduced) value is shown as-is, no assertion made."""
+    dsl = RecipeDSL(construction=[
+        {"op": "point", "id": "A", "coords": [0.0, 0.0]},
+        {"op": "point", "id": "B", "coords": [4.0, 0.0]},
+        {"op": "point", "id": "C", "coords": [0.0, 4.0]},
+    ], annotations={"labels": [
+        {"kind": "label_angle", "a": "B", "vertex": "A", "b": "C", "text": "70°", "given": True},
+    ]})
+    ir = lower_to_ir(dsl)
+    assert _label_angle_text(ir) == "70°"
+
+
+def test_label_angle_non_numeric_text_passes_through_unchecked():
+    """Algebraic labels ("x°") and angle numbering ("1") have no single
+    checkable geometric value — always passed through as written."""
+    for text in ("x°", "2x", "1", "\\alpha"):
+        dsl = RecipeDSL(construction=[
+            {"op": "point", "id": "A", "coords": [0.0, 0.0]},
+            {"op": "point", "id": "B", "coords": [4.0, 0.0]},
+            {"op": "point", "id": "C", "coords": [0.0, 4.0]},
+        ], annotations={"labels": [
+            {"kind": "label_angle", "a": "B", "vertex": "A", "b": "C", "text": text},
+        ]})
+        ir = lower_to_ir(dsl)
+        assert _label_angle_text(ir) == text
 
 
 # ---------------------------------------------------------------------------

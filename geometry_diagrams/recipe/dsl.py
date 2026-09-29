@@ -917,7 +917,6 @@ class MarkAngle(BaseModel):
     of: Optional[str] = None  # triangle id (shorthand)
     group: Optional[int] = None  # tick-group for equal-angle marking
     expected: Optional[Union[float, Literal["acute", "right", "obtuse"]]] = None
-    label_only: bool = False  # when True, skip geometric assertion; emit only visual arc
 
     @model_validator(mode="after")
     def _check_form(self) -> "MarkAngle":
@@ -1055,6 +1054,19 @@ class LabelAngle(BaseModel):
       - shorthand: at (vertex within triangle), of (triangle id)
     Pair with a ``mark_angle`` entry in ``annotations.marks`` if you also want
     the arc to be drawn.
+
+    ``text``: omit it (leave ``None``) to auto-derive the label from the
+    constructed geometry, e.g. "72°" — this is the default and the
+    recommended choice whenever the label is just this angle's measure.
+    Give an explicit numeric-degree string (e.g. "70°") to additionally
+    VALIDATE it against the constructed geometry (same 5° tolerance as
+    ``mark_angle``'s ``expected``) — set ``given=True`` to skip that
+    validation when the label is a problem's stated value that isn't
+    expected to reproduce exactly (e.g. a rounded or approximate given).
+    Any other text (an algebraic label like "x°"/"2x", angle numbering like
+    "1"/"2", or any string without a degree sign) is never validated and
+    passes through unchanged, since there's no single geometric value to
+    check it against.
     """
     model_config = ConfigDict(extra="forbid")
     kind: Literal["label_angle"] = "label_angle"
@@ -1063,7 +1075,8 @@ class LabelAngle(BaseModel):
     b: Optional[str] = None
     at: Optional[str] = None  # vertex name within triangle (shorthand)
     of: Optional[str] = None  # triangle id (shorthand)
-    text: str
+    text: Optional[str] = None  # None -> derive the measure from constructed geometry
+    given: bool = False  # True -> a numeric-degree text is a stated given; skip validation
     pos: Literal[
         "auto", "above", "below", "left", "right",
         "above left", "above right", "below left", "below right",

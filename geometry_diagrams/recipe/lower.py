@@ -9,6 +9,7 @@ are computed using recipe.solve.solve_triangle (basic trig only).
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from ..ir.ir import (
@@ -72,6 +73,11 @@ _POS_TO_ANGLE: dict[str, float | None] = {
     "below right": 315.0,
 }
 
+# Matches a bare numeric degree label, e.g. "70°" or "70.5°" — deliberately
+# does NOT match algebraic labels ("x°", "2x"), angle numbering ("1", "2"),
+# or anything else with no degree sign, since none of those name a single
+# checkable geometric value.
+_NUMERIC_DEGREE_RE = re.compile(r"^\s*\d+(\.\d+)?\s*°\s*$")
 
 
 class _Lowerer:
@@ -230,6 +236,23 @@ class _Lowerer:
                 angle_rad = float(op.angle) * _DEG_TO_RAD
                 self._add(PointRotate(id=op.id, center=op.center, source=op.point, angle=angle_rad))
                 self._point_ids.append(op.id)
+                # Rotating a point with an already-known coordinate around an
+                # already-known center by a fixed angle is plain closed-form
+                # trig — no SymPy solving needed. Populating _coord_floats
+                # here (best-effort; a symbolic center/source with no float
+                # coords yet just leaves this point unresolved at lowering
+                # time, same as before) lets label_angle auto-derive its text
+                # immediately for the common case of rotating already-placed
+                # points, instead of always needing full SymPy compilation.
+                if op.center in self._coord_floats and op.point in self._coord_floats:
+                    ox, oy = self._coord_floats[op.center]
+                    px, py = self._coord_floats[op.point]
+                    dx, dy = px - ox, py - oy
+                    cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
+                    self._coord_floats[op.id] = (
+                        round(ox + dx * cos_a - dy * sin_a, 10),
+                        round(oy + dx * sin_a + dy * cos_a, 10),
+                    )
             case PointOnSegmentOp():
                 if op.segment[0] == op.segment[1]:
                     raise LoweringError(
@@ -1011,7 +1034,7 @@ class _Lowerer:
             if abs(angle_deg - expected) > 5.0:
                 hint = self._candidate_angles_at(vertex, expected)
                 raise LoweringError(
-                    f"MarkAngle at {vertex}: expected {expected}° but "
+                    f"Angle at {vertex}: expected {expected}° but "
                     f"{a}-{vertex}-{b} = {angle_deg:.1f}°{hint}"
                 )
         else:
@@ -1019,9 +1042,44 @@ class _Lowerer:
             if cat != expected:
                 hint = self._candidate_angles_at(vertex, expected)
                 raise LoweringError(
-                    f"MarkAngle at {vertex}: expected {expected} but "
+                    f"Angle at {vertex}: expected {expected} but "
                     f"{a}-{vertex}-{b} = {angle_deg:.1f}° ({cat}){hint}"
                 )
+
+    def _resolve_label_angle_text(self, a: str, vertex: str, b: str, label: "DSLLabelAngle") -> str:
+        """Resolve a label_angle's displayed text.
+
+        text=None: derive it from the constructed geometry (the common
+        case — this is what most callers want, and it can never disagree
+        with the diagram since it comes from the same computation).
+        A bare numeric-degree string (e.g. "70°"), unless `given=True`, is
+        validated against the constructed geometry with the same tolerance
+        and hint as mark_angle's `expected` — this is what catches a
+        mismatched label instead of silently rendering a wrong number (see
+        the label_only bug thread: mark_angle's own `expected` was never
+        rendered as text at all, so a label's text was never checked by
+        anything, in any recipe, regardless of label_only).
+        Anything else (algebraic labels, angle numbering, ...) passes
+        through unchanged — there's no single geometric value to check it
+        against.
+        """
+        if label.text is None:
+            angle_deg = self._angle_deg(a, vertex, b)
+            if angle_deg is None:
+                raise LoweringError(
+                    f"label_angle at {vertex}: cannot auto-derive text — "
+                    f"coordinates for {a}, {vertex}, or {b} are not available"
+                )
+            rounded = round(angle_deg)
+            if abs(angle_deg - rounded) < 0.05:
+                return f"{rounded}°"
+            return f"{angle_deg:.1f}°"
+
+        if _NUMERIC_DEGREE_RE.match(label.text) and not label.given:
+            expected = float(label.text.replace("°", "").strip())
+            self._check_angle_expected(a, vertex, b, expected)
+
+        return label.text
 
     def _apply_annotations(self, ann: DSLAnnotations, dsl_ops: list | None = None) -> None:
         import warnings
@@ -1084,7 +1142,7 @@ class _Lowerer:
         for mark in ann.marks:
             if isinstance(mark, MarkAngle):
                 a, vertex, b = self._resolve_angle_mark(mark)
-                if mark.expected is not None and not mark.label_only:
+                if mark.expected is not None:
                     self._check_angle_expected(a, vertex, b, mark.expected)
                 self._renders.append(MarkAngles(
                     angles=[AnglePoints(a=a, o=vertex, b=b)],
@@ -1182,9 +1240,10 @@ class _Lowerer:
                 ))
             elif isinstance(label, DSLLabelAngle):
                 a, vertex, b = self._resolve_angle_mark(label)
+                text = self._resolve_label_angle_text(a, vertex, b, label)
                 self._renders.append(IRLabelAngle(
                     angle=AnglePoints(a=a, o=vertex, b=b),
-                    text=label.text,
+                    text=text,
                     pos=_POS_TO_ANGLE[label.pos],
                 ))
             elif isinstance(label, DSLLabelFreeText):
