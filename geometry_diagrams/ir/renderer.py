@@ -54,9 +54,11 @@ class SVGRenderer(Renderer):
         self,
         font_config: FontConfig | None = None,
         embed_fonts: bool = False,
+        debug_show_implicit: bool = False,
     ) -> None:
         self._font_config = font_config if font_config is not None else default_font_config()
         self._embed_fonts = embed_fonts
+        self._debug_show_implicit = debug_show_implicit
 
     def render(
         self,
@@ -75,6 +77,7 @@ class SVGRenderer(Renderer):
             warnings=warnings,
             font_config=self._font_config,
             embed_fonts=self._embed_fonts,
+            debug_show_implicit=self._debug_show_implicit,
         )
         return RenderResult(output=svg, format="svg", intermediate="")
 

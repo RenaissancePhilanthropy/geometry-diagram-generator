@@ -35,7 +35,11 @@ class DiagramResult:
 def _make_renderer(cfg: GeometryConfig) -> Renderer:
     fc = FontConfig(family=cfg.font_family)
     if cfg.renderer == "svg":
-        return SVGRenderer(font_config=fc, embed_fonts=cfg.embed_fonts)
+        return SVGRenderer(
+            font_config=fc,
+            embed_fonts=cfg.embed_fonts,
+            debug_show_implicit=cfg.debug_show_implicit,
+        )
     if cfg.renderer == "tikz":
         return TikZRenderer(renderer_url=cfg.renderer_url, font_config=fc)
     raise ValueError(f"Unknown renderer: {cfg.renderer!r} (expected 'tikz' or 'svg')")

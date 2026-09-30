@@ -26,6 +26,7 @@ from geometry_diagrams.ir.ir import (
     Ray,
     Segment,
     SectorCenterStartEnd,
+    Triangle,
 )
 from geometry_diagrams.ir.label_bounds import find_out_of_bounds_labels
 from geometry_diagrams.ir.render_util import arc_params
@@ -757,3 +758,58 @@ class TestLabelAlongArc:
         assert any("is not a circular arc/sector" in w for w in warnings)
         root = _parse(svg)
         assert _arc_text_wrappers(root) == []
+
+
+class TestDebugShowImplicit:
+    """A segment auto-anchoring a tick mark on an already-drawn triangle side
+    is never given its own Draw op (see recipe/lower.py's _ensure_segment) --
+    debug_show_implicit=True should surface it anyway, tagged for inspector
+    tooling, and stay off by default so normal rendering is unaffected."""
+
+    def _diagram(self) -> DiagramIR:
+        return DiagramIR(
+            canvas=Canvas(xmin=-1, xmax=5, ymin=-1, ymax=5),
+            define=[
+                PointFixed(id="A", x=0, y=0),
+                PointFixed(id="B", x=4, y=0),
+                PointFixed(id="C", x=0, y=3),
+                Triangle(id="tri", a="A", b="B", c="C"),
+                # Mirrors recipe/lower.py's _ensure_segment: a hidden Segment
+                # def backing a tick mark on a side already drawn via the
+                # triangle's polygon outline -- never itself given a Draw op.
+                Segment(id="__mark_seg_A_B", a="A", b="B"),
+            ],
+            render=[
+                Draw(obj="tri"),
+                MarkSegments(segs=["__mark_seg_A_B"], group="equal1"),
+            ],
+        )
+
+    def test_implicit_shape_is_absent_by_default(self):
+        diagram = self._diagram()
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym)
+        root = _parse(svg)
+        assert not any(el.get("data-implicit") for el in root.iter())
+
+    def test_implicit_shape_is_emitted_when_enabled(self):
+        diagram = self._diagram()
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym, debug_show_implicit=True)
+        root = _parse(svg)
+        implicit = [el for el in root.iter() if el.get("data-implicit") == "true"]
+        assert len(implicit) == 1
+        el = implicit[0]
+        assert el.get("data-ir-id") == "__mark_seg_A_B"
+        assert el.get("data-endpoints") == "A,B"
+        assert el.get("opacity") == "0"
+
+    def test_explicitly_drawn_segment_is_not_duplicated_as_implicit(self):
+        diagram = self._diagram()
+        # Give the hidden segment its own explicit Draw op too -- it should
+        # no longer count as "implicit" since it now has a real Draw op.
+        diagram.render.insert(1, Draw(obj="__mark_seg_A_B"))
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym, debug_show_implicit=True)
+        root = _parse(svg)
+        assert not any(el.get("data-implicit") for el in root.iter())

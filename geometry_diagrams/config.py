@@ -25,6 +25,13 @@ class GeometryConfig:
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001
     font_family: str = "NunitoSans"
     embed_fonts: bool = False
+    # Debug-only, SVGRenderer-specific: also emit (hidden, tagged
+    # data-implicit="true") SVG elements for defs that a tick/arc mark
+    # references but that never got their own Draw op -- e.g. a segment
+    # auto-created to anchor a tick on a triangle side already drawn via
+    # the triangle's outline. For interactive-inspector tooling; not used
+    # by the strategies/evals pipeline itself.
+    debug_show_implicit: bool = False
     # search_replace is the recommended default as of 2026-08-12, per a
     # cross-model eval comparison (Claude Sonnet, Gemma, DeepSeek V4
     # Flash, nvidia/nemotron-3.5-lightning) that found it won or tied for
@@ -51,6 +58,7 @@ class GeometryConfig:
             renderer_url=os.environ.get("TIKZ_RENDERER_URL") or None,
             font_family=os.environ.get("DIAGRAM_FONT_FAMILY", "NunitoSans"),
             embed_fonts=os.environ.get("DIAGRAM_EMBED_FONTS", "0") in ("1", "true", "True"),
+            debug_show_implicit=os.environ.get("DIAGRAM_DEBUG_SHOW_IMPLICIT", "0") in ("1", "true", "True"),
             edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"),  # type: ignore[arg-type]
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
             sandbox_timeout_seconds=float(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5")),
@@ -80,6 +88,7 @@ def resolve_config(
         renderer_url=renderer_url if renderer_url is not None else cfg.renderer_url,
         font_family=font_family or cfg.font_family,
         embed_fonts=cfg.embed_fonts,
+        debug_show_implicit=cfg.debug_show_implicit,
         edit_generation_mode=edit_generation_mode or cfg.edit_generation_mode,  # type: ignore[arg-type]
         hash_algorithm=hash_algorithm or cfg.hash_algorithm,  # type: ignore[arg-type]
         sandbox_timeout_seconds=(

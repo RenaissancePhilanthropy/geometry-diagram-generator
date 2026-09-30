@@ -144,8 +144,19 @@ def ir_to_svg(
     warnings: list[str] | None = None,
     font_config: FontConfig | None = None,
     embed_fonts: bool = False,
+    debug_show_implicit: bool = False,
 ) -> str:
-    """Compile a DiagramIR + resolved SymTable to an SVG string."""
+    """Compile a DiagramIR + resolved SymTable to an SVG string.
+
+    debug_show_implicit: when True, also emit an SVG element for every def
+    that a MarkSegments/MarkArcs op references but that never got its own
+    Draw op -- e.g. a segment auto-created to anchor a tick mark on a
+    triangle side that's already drawn as part of the triangle's polygon
+    outline. These are tagged data-implicit="true" and hidden by default
+    (opacity 0) so normal rendering is unaffected; a downstream inspector
+    can select them via that attribute to give them their own hover/
+    highlight styling. Off by default: it's a debugging aid, not something
+    strategies/evals should depend on."""
     if font_config is None:
         font_config = default_font_config()
 
@@ -378,6 +389,17 @@ def ir_to_svg(
             font_family=font_config.family,
         )
 
+    if debug_show_implicit:
+        drawn_obj_ids = {op.obj for op in diagram.render if isinstance(op, ir.Draw)}
+        mark_referenced_ids: set[str] = set()
+        for op in diagram.render:
+            if isinstance(op, ir.MarkSegments):
+                mark_referenced_ids.update(op.segs)
+            elif isinstance(op, ir.MarkArcs):
+                mark_referenced_ids.update(op.arcs)
+        for obj_id in sorted(mark_referenced_ids - drawn_obj_ids):
+            _emit_implicit_shape(obj_id, svg, sym, stmt_by_id, pt, gxy, scale, warnings=warnings)
+
     # Deduplicate coincident point labels (keep first occurrence at each position)
     _dedup_coincident_labels(pending_labels)
 
@@ -412,6 +434,87 @@ def ir_to_svg(
 
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
+
+
+# ---------------------------------------------------------------------------
+# Debug-only: implicit (never-drawn) shapes referenced by tick/arc marks
+# ---------------------------------------------------------------------------
+
+def _emit_implicit_shape(
+    obj_id: str,
+    svg: ET.Element,
+    sym: SymTable,
+    stmt_by_id: dict,
+    pt,
+    gxy,
+    scale: float,
+    warnings: list[str] | None = None,
+) -> None:
+    """Emit obj_id's geometry as a hidden, hoverable SVG element (used only
+    when debug_show_implicit=True). Mirrors the relevant Draw branches in
+    _emit_svg_op, but only for the shape kinds MarkSegments/MarkArcs can
+    reference (Segment/Ray for segs, Arc/Sector for arcs) -- those are the
+    only defs that end up in this never-drawn set."""
+    if obj_id not in sym:
+        return
+    sym_obj = sym[obj_id]
+    base_attrs = {
+        "data-ir-id": obj_id,
+        "data-implicit": "true",
+        "stroke": "black",
+        "opacity": "0",
+        "pointer-events": "stroke",
+    }
+    if isinstance(sym_obj, (spg.Segment, spg.Ray)):
+        a, b = seg_endpoints(obj_id, stmt_by_id)
+        x1, y1 = pt(a)
+        x2, y2 = pt(b)
+        ET.SubElement(svg, "line", {
+            "data-type": "segment" if isinstance(sym_obj, spg.Segment) else "ray",
+            "data-endpoints": f"{a},{b}",
+            "x1": f"{x1:.2f}", "y1": f"{y1:.2f}",
+            "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
+            **base_attrs,
+        })
+    elif isinstance(sym_obj, Arc):
+        cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+        r_s = r_g * scale
+        end_rad = math.radians(end_deg)
+        ex_g = cx_g + r_g * math.cos(end_rad)
+        ey_g = cy_g + r_g * math.sin(end_rad)
+        sx_s, sy_s = gxy(sx_g, sy_g)
+        ex_s, ey_s = gxy(ex_g, ey_g)
+        large_arc = 1 if (end_deg - start_deg) > 180.0 else 0
+        d = (
+            f"M {sx_s:.2f} {sy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f}"
+        )
+        ET.SubElement(svg, "path", {
+            "data-type": "arc", "d": d, "fill": "none",
+            **base_attrs,
+        })
+    elif isinstance(sym_obj, Sector):
+        cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
+        r_s = r_g * scale
+        end_rad = math.radians(end_deg)
+        ex_g = cx_g + r_g * math.cos(end_rad)
+        ey_g = cy_g + r_g * math.sin(end_rad)
+        cx_s, cy_s = gxy(cx_g, cy_g)
+        sx_s, sy_s = gxy(sx_g, sy_g)
+        ex_s, ey_s = gxy(ex_g, ey_g)
+        large_arc = 1 if (end_deg - start_deg) > 180.0 else 0
+        d = (
+            f"M {cx_s:.2f} {cy_s:.2f} "
+            f"L {sx_s:.2f} {sy_s:.2f} "
+            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
+            f"L {cx_s:.2f} {cy_s:.2f}"
+        )
+        ET.SubElement(svg, "path", {
+            "data-type": "sector", "d": d, "fill": "none",
+            **base_attrs,
+        })
+    else:
+        _warn(warnings, f"debug_show_implicit: unsupported shape kind for '{obj_id}'")
 
 
 # ---------------------------------------------------------------------------
