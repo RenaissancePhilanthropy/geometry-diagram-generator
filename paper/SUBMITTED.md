@@ -15,8 +15,10 @@
 - Appendices: `appendices/W_worked_example.tex`. References: `refs.bib` + `refs_confidence.bib`.
 - Style: `style/neurips_2026.sty`, identical to the MATH-AI template, option `dblblindworkshop`.
 
-`workshop_confidence.tex` and `workshop_combined.tex` are earlier drafts kept for history.
-Do not edit them. `geogenbench.tex` is the separate GeoGenBench paper.
+Earlier drafts (`workshop_confidence.tex`, `workshop_combined.tex`, `workshop.tex`) were
+removed on 2026-10-02 to avoid confusion; they are in git history before commit `cbb9ee8`
+and in `archive/`. `geogenbench.tex` is the separate full-length GeoGenBench paper, not a
+draft of this one. The GeoGenBench workshop 4-pager lives on branch `paper/geogenbench-4pager`.
 
 Data behind the paper: `s3://renphil-geogen-interp/activations/` (all cells) and the
 `interp/results/` directory on branch `feat/spatial-interp` of the geometry-diagram-generator repo.
