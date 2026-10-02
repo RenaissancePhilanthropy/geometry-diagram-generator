@@ -61,6 +61,24 @@ Consider your final answer above. Is it correct? Reply with exactly one word: Tr
 Grading is external and is never shown to the model, so the turn-3 revision is blind
 self-assessment.
 
+\subsection{Read sites}
+\label{app:sites}
+Four positions in the three-turn exchange are read in the paper. Each is the residual-stream state at one token, at 70\% of depth unless stated.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}lp{0.46\linewidth}p{0.36\linewidth}@{}}
+\toprule
+\textbf{site} & \textbf{token} & \textbf{used in} \\
+\midrule
+prompt & last token of the bare question, before turn 1 & ``question alone'' reads, \cref{sec:what} \\
+pre & the confidence digit of turn 1, before the attempt & ``pre'' column of \cref{tab:knowing} \\
+answer & last token of the turn-2 answer, before any confidence question & ``reading before the question,'' \cref{sec:what} \\
+post & the confidence digit of turn 3, after the attempt & the probe, the lens, the intervention; every number not marked otherwise \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{One record, verbatim}
 
 Record \texttt{math\_test\_number\_theory\_753}, sample 2 of 5.
@@ -161,21 +179,46 @@ the reported numbers are a floor.
 \section{Per-cell numbers and specificity controls}
 \label{app:cells}
 \begin{table}[H]
-\caption{Post-attempt correctness discrimination (AUROC). Left: self-report vs.\ the probe in representative cells, and the same comparison holding the question fixed (``within''), where the model's yardstick is P(True) across the five attempts at one question; overall the probe wins 12 of 16 with one tie, mean $+0.09$, with a paired bootstrap significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}). Right: Mistral specificity controls. ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies that fitted post readout at the pre-attempt site, where only difficulty is visible.}
-\label{tab:knowing}
-\centering
-\scriptsize
+\caption{All 16 cells, post-attempt, AUROC against the external grade: stated confidence / probe at the fixed 70\% layer, bold marks the larger. The probe wins 12, ties 1 (Mistral $\times$ GPQA) and loses 3; mean gap $+0.10$; MATH mean gap $+0.20$. A paired bootstrap is significantly positive in 10 of 16 and never significantly negative, uncorrected at the cell level (\cref{app:stats}).}
+\label{tab:cells}
+\centering\small
 \begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{model $\times$ domain} & \textbf{self-report} & \textbf{probe} & \textbf{within: P(True)} & \textbf{within: probe} \\
+\textbf{stated / probe} & \textbf{MMLU-Pro} & \textbf{MATH} & \textbf{GPQA} & \textbf{Geometry} \\
 \midrule
-Gemma-4 $\times$ MATH & 0.57 & \textbf{0.78} & -- & -- \\
-Qwen3.6 $\times$ MMLU-Pro & 0.67 & \textbf{0.84} & 0.47 & \textbf{0.74} \\
-GLM $\times$ MMLU-Pro & 0.67 & \textbf{0.85} & 0.59 & \textbf{0.73} \\
-Mistral $\times$ MATH & 0.79 & \textbf{0.83} & 0.59 & \textbf{0.72} \\
+Gemma-4 & \textbf{0.76} / 0.74 & 0.57 / \textbf{0.75} & \textbf{0.80} / 0.75 & 0.66 / \textbf{0.71} \\
+Qwen3.6 & 0.74 / \textbf{0.75} & 0.59 / \textbf{0.90} & 0.61 / \textbf{0.81} & \textbf{0.87} / 0.70 \\
+GLM & 0.67 / \textbf{0.85} & 0.70 / \textbf{0.95} & 0.54 / \textbf{0.70} & 0.66 / \textbf{0.95} \\
+Mistral & 0.67 / \textbf{0.74} & 0.79 / \textbf{0.83} & 0.57 / 0.57 & 0.65 / \textbf{0.80} \\
 \bottomrule
 \end{tabular}
-\hspace{0.9em}
+\end{table}
+
+\begin{table}[H]
+\caption{Label-free baselines and within-question numbers on the seven cells whose records we hold (\cref{app:checkpoints}). Pooled: AUROC over all attempts. Within: mean AUROC over questions with both outcomes ($n$ in the second column). P(True) is the model's probability of answering ``True'' when asked whether its answer was right; log-prob is the mean token log-probability of the answer. Within-question probe values are available for the Mistral cells only; the probe here is the matrix-capture probe of \cref{tab:cells}. Gemma-4 $\times$ MATH has four mixed questions, so its within-question values are not meaningful and are omitted.}
+\label{tab:baselines}
+\centering\scriptsize\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}lccccccccc@{}}
+\toprule
+ & & \multicolumn{4}{c}{\textbf{pooled}} & \multicolumn{3}{c}{\textbf{within question}} \\
+\cmidrule(lr){3-6}\cmidrule(lr){7-9}
+\textbf{cell} & \textbf{acc. / mixed} & \textbf{stated} & \textbf{P(True)} & \textbf{log-prob} & \textbf{probe} & \textbf{stated} & \textbf{P(True)} & \textbf{probe} \\
+\midrule
+Mistral $\times$ MMLU-Pro & 0.64 / 66 & 0.67 & 0.71 & \textbf{0.72} & \textbf{0.74} & 0.65 & 0.69 & \textbf{0.72} \\
+Mistral $\times$ MATH & 0.65 / 54 & 0.78 & 0.77 & 0.72 & \textbf{0.83} & \textbf{0.65} & 0.55 & 0.63 \\
+Mistral $\times$ GPQA & 0.44 / 91 & 0.57 & \textbf{0.61} & 0.56 & 0.57 & 0.53 & \textbf{0.63} & 0.55 \\
+Mistral $\times$ Geometry & 0.10 / 20 & 0.62 & -- & -- & \textbf{0.80} & 0.36 & -- & \textbf{0.62} \\
+GLM $\times$ MATH & 0.71 / 54 & 0.73 & 0.74 & 0.66 & \textbf{0.95} & 0.53 & \textbf{0.62} & -- \\
+Qwen3.6 $\times$ MATH & 0.48 / 88 & 0.59 & 0.86 & 0.70 & \textbf{0.90} & 0.50 & \textbf{0.77} & -- \\
+Gemma-4 $\times$ MATH & 0.94 / 4 & 0.60 & \textbf{0.82} & 0.78 & 0.75 & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\caption{Mistral specificity controls (AUROC). ``pre'' is the last prompt token before the attempt; ``post'' is after the attempt; ``resid.'' removes the pre score; ``post$\to$pre'' applies the fitted post readout at the pre-attempt site, where only difficulty is visible. Within-question comparisons for Qwen3.6 and GLM on MMLU-Pro from the matrix capture: probe 0.74 and 0.73 against P(True) 0.47 and 0.59.}
+\label{tab:knowing}
+\centering\small
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 \textbf{Mistral} & \textbf{pre} & \textbf{post} & \textbf{resid.} & \textbf{post$\to$pre} \\
@@ -184,14 +227,19 @@ MMLU-Pro & 0.568 & 0.754 & 0.751 & 0.490 \\
 MATH & 0.792 & 0.834 & 0.701 & 0.624 \\
 GPQA & 0.593 & 0.572 & 0.544 & 0.479 \\
 GeoGen & 0.770 & 0.676 & 0.505 & 0.648 \\
-\\[-0.85em]
 \bottomrule
 \end{tabular}
 \end{table}
 
+\section{The intervention, exactly}
+\label{app:intervention}
+The steering direction is not the probe. It is the difference of means, right minus wrong, of the post-attempt hidden state at the fixed layer (28 of 40 on Mistral) in the raw residual stream, with no standardization or PCA. The questions of a cell are split in half at random; the direction $\hat{w}$ is fitted on one half and the 150 evaluation records are drawn from the other, so no evaluated attempt contributed to the direction. Let $\mu$ be the mean projection of the evaluation records onto $\hat{w}$. A forward hook on that layer's output rewrites the state $h$ at the last position of the prefill and at every generated token after it:
+\[ h \leftarrow h + (g-1)\,\big((h\cdot\hat{w}) - \mu\big)\,\hat{w}. \]
+Gain $g=1$ is the identity. Gain $0$ moves every record to the mean projection, which is mean ablation of the direction. Gains 2 and 4 double and quadruple each record's own displacement from the mean. The random control draws a Gaussian direction, scales it to the norm of the raw difference of means, and in this amplify form also rescales the perturbation by the ratio of projection standard deviations $\sigma_w/\sigma_r$, so the per-record perturbation magnitudes match in distribution. We report one random draw per experiment. Turn 3 is regenerated greedily under the hook with the attempt and both earlier turns in context. For the MMLU-Pro-direction experiment the direction is fitted on all MMLU-Pro records and $\mu$ and $\sigma_w$ are recomputed on the MATH records being steered. We also stored, at a forced ``Confidence:'' slot, the log-odds of a high versus a low confidence token; it reads 0.57 to 0.60 against correctness at every gain, including untouched, so it does not track the written integer and cannot separate the ceiling ties from lost information.
+
 \section{Checkpoints}
 \label{app:checkpoints}
-All models are public Hugging Face releases, run in bfloat16 without quantization, greedy decoding:
+All models are public Hugging Face releases, run in bfloat16 without quantization:
 \texttt{mistralai/Mistral-Small-24B-Instruct-2501},
 \texttt{Qwen/Qwen3.6-27B},
 \texttt{zai-org/GLM-4.7-Flash},
@@ -199,5 +247,13 @@ All models are public Hugging Face releases, run in bfloat16 without quantizatio
 the dense within-family control for the lens is \texttt{Qwen/Qwen2.5-14B-Instruct}.
 Probe read layers, 70\% of depth: Mistral 28 of 40, GLM 33 of 47, Gemma-4 21 of 30, Qwen3.6 45 of 64.
 
-\paragraph{Why 70\%.} A pilot probed every layer and found the correctness signal rises through the network, plateaus from about half to 90\% of depth, and drops in the last few layers, where the state is being turned into output tokens. Picking the best layer per cell inflated AUROC by 0.05 to 0.13, so we fixed one depth in advance for every model and every cell. Seventy percent is the middle of that plateau. The choice matches where prior work finds truth probes strongest~\citep{azaria2023internal, marks2024geometry, li2023iti}, and the ablation checked it after the fact: on Mistral the same intervention at 30\% of depth does nothing (\cref{sec:causal}).
+\paragraph{Sampling.} The submitted version of this appendix said greedy decoding; that was wrong, and we thank the reviewers for catching it. Every turn of every attempt is sampled with temperature 0.8 and top-$p$ 0.95, with the random seed fixed per attempt (seed $1000+k$ for attempt $k$), so the five attempts at a question are five draws from the model's own distribution. Only the steering runs of \cref{sec:causal}, which regenerate turn 3 under intervention, decode greedily; that is why the untouched self-report AUROC there (0.84 on Mistral $\times$ MATH) differs from the sampled self-report on the same cell (0.79). The within-question analyses use only questions with at least one right and one wrong attempt. Their counts, of 150 questions per cell (91 for geometry): Mistral MMLU-Pro 66, MATH 54, GPQA 91, geometry 20; GLM MATH 54; Qwen3.6 MATH 88; Gemma-4 MATH 4, which is why Gemma-4 has no within-question numbers.
+
+\paragraph{Thinking.} Qwen3.6 and GLM-4.7-Flash are hybrid reasoners. In the captures used for steering they answer turn 2 with thinking on and write both confidence turns with thinking off, so the confidence token is a one-line reply at a content-neutral slot. Both models' chat templates drop the thinking trace of an earlier assistant turn when a later turn is rendered, so at turn 3 the self-report and the probe condition on the same context: the question, the turn-1 number, and the final answer without its thinking. The 16-cell matrix was captured earlier with thinking off throughout. Mistral and Gemma-4 have no thinking mode.
+
+\paragraph{Two captures.} The 16-cell comparison in \cref{tab:cells} and the Mistral specificity controls come from the matrix capture. The MATH cells used for steering on GLM, Qwen3.6 and Gemma-4 are later recaptures of the same 150 questions with the thinking split above; the Mistral cells are the same records in both. Where a number in the body comes from a recapture, the text says so.
+
+\paragraph{Why 70\%.} A pilot probed every layer and found the correctness signal rises through the network, plateaus from about half to 90\% of depth, and drops in the last few layers, where the state is being turned into output tokens. Picking the best layer per cell inflated AUROC by 0.05 to 0.13, so we fixed one depth in advance for every model and every cell. Seventy percent is the middle of that plateau. \Cref{fig:layers} in the body shows the curve on the four MATH recaptures.
+
+ The choice matches where prior work finds truth probes strongest~\citep{azaria2023internal, marks2024geometry, li2023iti}, and the ablation checked it after the fact: on Mistral the same intervention at 30\% of depth does nothing (\cref{sec:causal}).
 
