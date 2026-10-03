@@ -295,10 +295,15 @@ def ir_to_svg(
     # Populated by the grid/axes below (if enabled) and by geometry ops during
     # the main render loop.
     drawn_segments: list[tuple[float, float, float, float]] = []
-    # Likewise for drawn circles/arcs (SVG pixel coords: cx, cy, r) -- an arc
-    # contributes its FULL circle here, not just its drawn sweep (see
-    # _nudge_labels_from_circles's own docstring for why that's deliberate).
+    # Likewise for drawn circles/arcs/sectors (SVG pixel coords: cx, cy, r) --
+    # an arc or sector contributes its FULL circle here, not just its drawn
+    # sweep (see _nudge_labels_from_circles's own docstring for why that's
+    # deliberate).
     drawn_circles: list[tuple[float, float, float]] = []
+    # Likewise for drawn ellipses/elliptical arcs/sectors (SVG pixel coords:
+    # cx, cy, rx, ry) -- same full-shape-not-just-sweep convention as
+    # drawn_circles above.
+    drawn_ellipses: list[tuple[float, float, float, float]] = []
     # Axis tick label bounding boxes — fixed obstacles other labels must avoid
     # (tick labels are drawn immediately below, not through pending_labels).
     tick_label_boxes: list[tuple[float, float, float, float]] = []
@@ -393,6 +398,7 @@ def ir_to_svg(
             seen_angle_triples=_seen_angle_triples,
             drawn_segments=drawn_segments,
             drawn_circles=drawn_circles,
+            drawn_ellipses=drawn_ellipses,
             font_family=font_config.family,
         )
 
@@ -410,16 +416,18 @@ def ir_to_svg(
     # Deduplicate coincident point labels (keep first occurrence at each position)
     _dedup_coincident_labels(pending_labels)
 
-    # Nudge labels away from drawn lines/segments/circles and fixed tick-label
-    # boxes, then resolve label-label collisions, then nudge again —
-    # collision resolution can push labels back into segments/circles/tick
-    # labels, so the second pass re-establishes clearance.
+    # Nudge labels away from drawn lines/segments/circles/ellipses and fixed
+    # tick-label boxes, then resolve label-label collisions, then nudge again
+    # — collision resolution can push labels back into segments/circles/
+    # ellipses/tick labels, so the second pass re-establishes clearance.
     _nudge_labels_from_lines(pending_labels, drawn_segments)
     _nudge_labels_from_circles(pending_labels, drawn_circles)
+    _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
     _nudge_labels_from_lines(pending_labels, drawn_segments)
     _nudge_labels_from_circles(pending_labels, drawn_circles)
+    _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     for lp in pending_labels:
         # Stamp the final (post-nudge, post-collision-resolution) bbox and
@@ -556,6 +564,7 @@ def _emit_svg_op(
     seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
     drawn_circles: list[tuple[float, float, float]] | None = None,
+    drawn_ellipses: list[tuple[float, float, float, float]] | None = None,
     font_family: str = "serif",
 ) -> None:
     match op:
@@ -699,6 +708,8 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_ellipses is not None:
+                    drawn_ellipses.append((cx_s, cy_s, rx_s, ry_s))
 
             elif isinstance(sym_obj, Arc):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
@@ -757,6 +768,10 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_circles is not None:
+                    # The sector's FULL circle, not just its drawn sweep --
+                    # see _nudge_labels_from_circles's own docstring for why.
+                    drawn_circles.append((cx_s, cy_s, r_s))
 
             elif isinstance(sym_obj, EllipticalArc):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
@@ -782,6 +797,12 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_ellipses is not None:
+                    # The arc's FULL ellipse, not just its drawn sweep --
+                    # see _nudge_labels_from_circles's docstring (same
+                    # over-approximation convention) for why.
+                    cx_s, cy_s = gxy(cx_g, cy_g)
+                    drawn_ellipses.append((cx_s, cy_s, hr_s, vr_s))
 
             elif isinstance(sym_obj, EllipticalSector):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
@@ -808,6 +829,9 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_ellipses is not None:
+                    # The sector's FULL ellipse, not just its drawn sweep.
+                    drawn_ellipses.append((cx_s, cy_s, hr_s, vr_s))
 
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"
@@ -3023,6 +3047,118 @@ def _nudge_labels_from_circles(
     where the label would otherwise land.
     """
     _iteratively_nudge_from_obstacles(labels, drawn_circles, _circle_clearance)
+
+
+def _newton_refine_ellipse_param(qx: float, qy: float, hr: float, vr: float, t: float, max_iterations: int) -> float:
+    """One Newton's-method run on g(t) = 0 (see _nearest_point_on_ellipse's
+    docstring for the derivation), starting from angle t. g has up to four
+    roots on an ellipse (the curve's two axes of symmetry each contribute a
+    local min AND a local max of distance), so this alone can converge to
+    the wrong one depending on the starting angle -- the caller runs it from
+    several starts and picks the actual-nearest result, this function just
+    does the local root-polish."""
+    for _ in range(max_iterations):
+        sin_t, cos_t = math.sin(t), math.cos(t)
+        g = (vr * vr - hr * hr) * sin_t * cos_t + hr * qx * sin_t - vr * qy * cos_t
+        g_prime = (
+            (vr * vr - hr * hr) * (cos_t * cos_t - sin_t * sin_t)
+            + hr * qx * cos_t + vr * qy * sin_t
+        )
+        if abs(g_prime) < 1e-12:
+            break
+        step = g / g_prime
+        t -= step
+        if abs(step) < 1e-10:
+            break
+    return t
+
+
+def _nearest_point_on_ellipse(
+    px: float, py: float, cx: float, cy: float, hr: float, vr: float,
+    max_iterations: int = 20,
+) -> tuple[float, float]:
+    """The closest point on an axis-aligned ellipse (center (cx, cy),
+    semi-axes hr, vr) to (px, py).
+
+    Unlike a circle, there's no closed form: minimizing squared distance to
+    (px, py) over the parametric angle t (the boundary point at parameter t
+    is (cx + hr·cos t, cy + vr·sin t)) means solving g(t) = 0 where
+    g(t) = (vr²−hr²)·sin t·cos t + hr·qx·sin t − vr·qy·cos t (qx, qy being
+    (px, py) in the ellipse's centered frame) via Newton's method -- but g
+    has up to four roots (both the nearest AND farthest boundary point along
+    each of the ellipse's two symmetry axes are critical points of the
+    distance function), so Newton's method can converge to the wrong one
+    depending on the starting angle, especially for a point well inside an
+    eccentric ellipse. Guarded against by running it from several starting
+    angles (the point's own parametric angle -- exact, zero-iteration
+    convergence when hr == vr, i.e. a circle -- plus the four axis-aligned
+    angles as a fixed, cheap spread) and keeping whichever converged result
+    is actually closest to (px, py), not just whichever root Newton found
+    first.
+    """
+    qx, qy = px - cx, py - cy
+    if hr < 1e-9 or vr < 1e-9:
+        t = math.atan2(qy, qx)  # degenerate axis; nothing to converge toward
+        return cx + hr * math.cos(t), cy + vr * math.sin(t)
+
+    starts = [math.atan2(qy / vr, qx / hr), 0.0, math.pi / 2, math.pi, 3 * math.pi / 2]
+    best_d2 = None
+    best = None
+    for t0 in starts:
+        t = _newton_refine_ellipse_param(qx, qy, hr, vr, t0, max_iterations)
+        bx, by = hr * math.cos(t), vr * math.sin(t)  # centered frame, matches qx/qy
+        d2 = (qx - bx) ** 2 + (qy - by) ** 2
+        if best_d2 is None or d2 < best_d2:
+            best_d2, best = d2, (bx, by)
+    bx, by = best
+    return cx + bx, cy + by
+
+
+def _ellipse_clearance(
+    cx: float, cy: float, lp: _LabelPlacement, ellipse: tuple[float, float, float, float],
+) -> tuple[float, float, float] | None:
+    """One drawn ellipse's clearance verdict for a label currently centered
+    at (cx, cy) -- the non-circular counterpart to _circle_clearance.
+
+    The push direction is normalize(point − nearest_boundary_point): this is
+    the gradient of "distance to the nearest boundary point", valid on
+    both sides of the boundary without an explicit inside/outside branch
+    (for a true circle this reduces to exactly _circle_clearance's radial
+    direction, since a circle's nearest point always lies along the
+    center-point line -- the general ellipse case needs the actual nearest
+    point because that's no longer true once hr != vr)."""
+    ecx, ecy, hr, vr = ellipse
+    nx, ny = _nearest_point_on_ellipse(cx, cy, ecx, ecy, hr, vr)
+    dx_raw, dy_raw = cx - nx, cy - ny
+    dist_to_ring = math.hypot(dx_raw, dy_raw)
+    if dist_to_ring < 1e-6:
+        # Label center exactly on the boundary -- push in an arbitrary but
+        # stable direction. (A point exactly at the ellipse's own center
+        # does NOT land here except for a vanishingly small ellipse: its
+        # nearest point is a genuine min(hr, vr) away, handled by the normal
+        # branch below.)
+        dx, dy = 0.0, -1.0
+    else:
+        dx, dy = dx_raw / dist_to_ring, dy_raw / dist_to_ring
+
+    half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+    min_dist = half_extent + _NUDGE_MARGIN
+
+    if dist_to_ring >= min_dist:
+        return None
+    return dx, dy, min_dist - dist_to_ring
+
+
+def _nudge_labels_from_ellipses(
+    labels: list[_LabelPlacement],
+    drawn_ellipses: list[tuple[float, float, float, float]],
+) -> None:
+    """Nudge labels whose bbox overlaps or is too close to a drawn ellipse's
+    boundary -- the non-circular counterpart to _nudge_labels_from_circles,
+    for Ellipse/EllipticalArc/EllipticalSector (an elliptical arc/sector
+    contributes its FULL ellipse, not just its drawn sweep, same
+    over-approximation convention as the circular case)."""
+    _iteratively_nudge_from_obstacles(labels, drawn_ellipses, _ellipse_clearance)
 
 
 def _nudge_labels_from_fixed_boxes(

@@ -19,17 +19,23 @@ from geometry_diagrams.ir.ir import (
     CircleCenterRadius,
     DiagramIR,
     Draw,
+    EllipseCenterAxes,
+    EllipticalArcCenterStartEnd,
     LabelPoint,
     LabelSegment,
     PointFixed,
     Segment,
+    SectorCenterStartEnd,
     Triangle,
 )
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import (
     _LabelPlacement,
+    _ellipse_clearance,
     _label_bbox,
+    _nearest_point_on_ellipse,
     _nudge_labels_from_circles,
+    _nudge_labels_from_ellipses,
     _nudge_labels_from_lines,
     _resolve_label_collisions,
     _segment_label_side,
@@ -476,3 +482,213 @@ class TestNudgeFromCircle:
             f"Label bbox ({bx0:.1f},{by0:.1f})-({bx1:.1f},{by1:.1f}) still sits "
             f"on circle C's ring (center=({cx:.1f},{cy:.1f}), r={r:.1f})"
         )
+
+
+# ---------------------------------------------------------------------------
+# 6. Sector/Ellipse/EllipticalArc/EllipticalSector get the same circle/
+# ellipse-nudge treatment Circle/Arc already have -- previously missing
+# entirely (confirmed by review: none of these four appended to
+# drawn_circles/drawn_ellipses at all), leaving labels free to land on a
+# drawn sector, ellipse, or elliptical arc's boundary with nothing to push
+# them clear.
+# ---------------------------------------------------------------------------
+
+def _brute_force_nearest_on_ellipse(px, py, cx, cy, hr, vr, n=100_000):
+    """Independent cross-check for _nearest_point_on_ellipse: sample many
+    boundary points directly and take the closest, rather than trusting the
+    same Newton's-method derivation the function under test uses."""
+    best_d2 = None
+    best = None
+    for i in range(n):
+        t = 2 * math.pi * i / n
+        bx, by = cx + hr * math.cos(t), cy + vr * math.sin(t)
+        d2 = (px - bx) ** 2 + (py - by) ** 2
+        if best_d2 is None or d2 < best_d2:
+            best_d2, best = d2, (bx, by)
+    return best
+
+
+class TestNearestPointOnEllipse:
+    def test_matches_circle_math_when_axes_are_equal(self):
+        """hr == vr degenerates to a true circle: nearest point must be
+        exactly along the center-point line, same as _circle_clearance's
+        direct radial computation."""
+        nx, ny = _nearest_point_on_ellipse(130.0, 40.0, 0.0, 0.0, 100.0, 100.0)
+        expected_angle = math.atan2(40.0, 130.0)
+        assert nx == pytest.approx(100.0 * math.cos(expected_angle), abs=1e-6)
+        assert ny == pytest.approx(100.0 * math.sin(expected_angle), abs=1e-6)
+
+    def test_major_axis_point_needs_more_than_one_newton_start(self):
+        """A point on the major axis, inside a wide ellipse, is the exact
+        case multi-start guards against: intuition (and a single Newton run
+        from this point's own parametric angle, which lands exactly on the
+        on-axis root at t=0) both say the nearest point is straight out
+        along the same axis at (10, 0) -- but it's provably not (brute-force
+        cross-checked): the true nearest point is off-axis, at (4, ~4.58),
+        distance^2=22 vs (10,0)'s distance^2=49. A single-start solver
+        would silently return the wrong (merely locally-nearest) point here."""
+        nx, ny = _nearest_point_on_ellipse(3.0, 0.0, 0.0, 0.0, 10.0, 5.0)
+        bx, by = _brute_force_nearest_on_ellipse(3.0, 0.0, 0.0, 0.0, 10.0, 5.0)
+        assert nx == pytest.approx(bx, abs=0.05)
+        assert ny == pytest.approx(by, abs=0.05)
+        assert nx == pytest.approx(4.0, abs=0.05)
+        assert abs(ny) == pytest.approx(math.sqrt(21), abs=0.05)  # 5*sin(acos(4/10)) = sqrt(21)
+
+    def test_matches_brute_force_search_for_an_off_axis_point(self):
+        """General off-axis case, cross-checked against direct sampling
+        rather than re-deriving the same calculus by hand."""
+        cx, cy, hr, vr = 5.0, -2.0, 12.0, 7.0
+        px, py = 20.0, 6.0  # well outside, off both axes
+        nx, ny = _nearest_point_on_ellipse(px, py, cx, cy, hr, vr)
+        bx, by = _brute_force_nearest_on_ellipse(px, py, cx, cy, hr, vr)
+        assert nx == pytest.approx(bx, abs=0.05)
+        assert ny == pytest.approx(by, abs=0.05)
+
+    def test_handles_a_point_well_inside_the_ellipse(self):
+        """An interior, off-center point also converges to a real boundary
+        point, cross-checked the same way as the exterior case."""
+        cx, cy, hr, vr = 0.0, 0.0, 20.0, 10.0
+        px, py = 2.0, -1.0
+        nx, ny = _nearest_point_on_ellipse(px, py, cx, cy, hr, vr)
+        bx, by = _brute_force_nearest_on_ellipse(px, py, cx, cy, hr, vr)
+        assert nx == pytest.approx(bx, abs=0.05)
+        assert ny == pytest.approx(by, abs=0.05)
+
+
+class TestEllipseClearance:
+    def test_label_far_from_ellipse_not_moved(self):
+        lp = _make_lp(300.0, 300.0)
+        assert _ellipse_clearance(lp.x, lp.y, lp, (0.0, 0.0, 100.0, 50.0)) is None
+
+    def test_label_too_close_outside_gets_pushed_further_out(self):
+        ellipse = (0.0, 0.0, 100.0, 50.0)
+        lp = _make_lp(102.0, 0.0)  # just outside, on the major axis
+        result = _ellipse_clearance(lp.x, lp.y, lp, ellipse)
+        assert result is not None
+        dx, dy, deficit = result
+        assert dx > 0.9  # pushes further along +x, away from the boundary
+        assert deficit > 0
+
+    def test_label_too_close_inside_gets_pushed_toward_center(self):
+        ellipse = (0.0, 0.0, 100.0, 50.0)
+        lp = _make_lp(0.0, 48.0)  # just inside, on the minor axis
+        result = _ellipse_clearance(lp.x, lp.y, lp, ellipse)
+        assert result is not None
+        dx, dy, deficit = result
+        assert dy < -0.9  # pushes further along -y, toward the center
+        assert deficit > 0
+
+
+class TestNudgeFromEllipse:
+    def test_label_outside_near_boundary_is_pushed_further_out(self):
+        ellipses = [(0.0, 0.0, 100.0, 50.0)]
+        lp = _make_lp(102.0, 0.0)
+        _nudge_labels_from_ellipses([lp], ellipses)
+        nx, ny = _nearest_point_on_ellipse(lp.x, lp.y, 0.0, 0.0, 100.0, 50.0)
+        assert math.hypot(lp.x - nx, lp.y - ny) > 2.0
+
+    def test_sector_registers_its_full_circle_for_nudging(self, monkeypatch):
+        """Confirms the actual wiring defect this fixes: a drawn Sector must
+        reach _nudge_labels_from_circles with its full circle, the same way
+        Circle/Arc already do -- confirmed missing entirely before this fix
+        (Sector's render branch never appended to drawn_circles at all). The
+        nudge math itself is already covered by the unit tests above; this
+        checks the data actually gets there during a real ir_to_svg call."""
+        import geometry_diagrams.ir.to_svg as to_svg_mod
+
+        captured: list[tuple[float, float, float]] = []
+        original = to_svg_mod._nudge_labels_from_circles
+
+        def spy(labels, drawn_circles):
+            # ir_to_svg calls this twice (pre/post collision-resolution);
+            # the obstacle list itself doesn't change between calls, so only
+            # the first call's snapshot is needed to confirm registration.
+            if not captured:
+                captured.extend(drawn_circles)
+            return original(labels, drawn_circles)
+
+        monkeypatch.setattr(to_svg_mod, "_nudge_labels_from_circles", spy)
+
+        d = DiagramIR(
+            define=[
+                PointFixed(id="O", x=-1.3, y=0),
+                PointFixed(id="S", x=-1.3, y=1.3),
+                PointFixed(id="E", x=-2.6, y=0),
+                SectorCenterStartEnd(id="Sec", center="O", start="S", end="E"),
+            ],
+            render=[Draw(obj="Sec")],
+        )
+        sym = compile_defs(d)
+        to_svg_mod.ir_to_svg(d, sym)
+
+        assert len(captured) == 1
+        cx_s, cy_s, r_s = captured[0]
+        assert r_s > 0  # a real, positive radius reached the nudge pass
+
+    def test_elliptical_arc_and_sector_register_their_full_ellipse_for_nudging(self, monkeypatch):
+        """Same wiring check as above, for EllipticalArc/EllipticalSector
+        against drawn_ellipses -- also confirmed missing entirely before
+        this fix."""
+        import geometry_diagrams.ir.to_svg as to_svg_mod
+
+        captured: list[tuple[float, float, float, float]] = []
+        original = to_svg_mod._nudge_labels_from_ellipses
+
+        def spy(labels, drawn_ellipses):
+            # Same reasoning as the circle spy above: only the first call is
+            # needed to confirm registration happened at all.
+            if not captured:
+                captured.extend(drawn_ellipses)
+            return original(labels, drawn_ellipses)
+
+        monkeypatch.setattr(to_svg_mod, "_nudge_labels_from_ellipses", spy)
+
+        d = DiagramIR(
+            define=[
+                PointFixed(id="O1", x=-1.5, y=0),
+                PointFixed(id="S1", x=-0.5, y=0),
+                PointFixed(id="E1", x=-1.5, y=0.8),
+                EllipticalArcCenterStartEnd(id="Ea", center="O1", hradius=1.0, vradius=0.8, start="S1", end="E1"),
+                PointFixed(id="O2", x=4.0, y=0),
+                PointFixed(id="S2", x=5.0, y=0),
+                PointFixed(id="E2", x=4.0, y=0.6),
+                EllipticalArcCenterStartEnd(id="Es", center="O2", hradius=1.0, vradius=0.6, start="S2", end="E2"),
+            ],
+            render=[Draw(obj="Ea"), Draw(obj="Es")],
+        )
+        sym = compile_defs(d)
+        to_svg_mod.ir_to_svg(d, sym)
+
+        assert len(captured) == 2
+        for cx_s, cy_s, hr_s, vr_s in captured:
+            assert hr_s > 0 and vr_s > 0
+
+    def test_plain_ellipse_registers_for_nudging(self, monkeypatch):
+        """And a plain (non-arc) Ellipse -- the same sibling gap Sector had,
+        caught while fixing this (a standalone Ellipse never registered into
+        any nudge-obstacle list either)."""
+        import geometry_diagrams.ir.to_svg as to_svg_mod
+
+        captured: list[tuple[float, float, float, float]] = []
+        original = to_svg_mod._nudge_labels_from_ellipses
+
+        def spy(labels, drawn_ellipses):
+            # Same reasoning as the circle spy above: only the first call is
+            # needed to confirm registration happened at all.
+            if not captured:
+                captured.extend(drawn_ellipses)
+            return original(labels, drawn_ellipses)
+
+        monkeypatch.setattr(to_svg_mod, "_nudge_labels_from_ellipses", spy)
+
+        d = DiagramIR(
+            define=[
+                PointFixed(id="O", x=0, y=0),
+                EllipseCenterAxes(id="El", center="O", hradius=3.0, vradius=1.5),
+            ],
+            render=[Draw(obj="El")],
+        )
+        sym = compile_defs(d)
+        to_svg_mod.ir_to_svg(d, sym)
+
+        assert len(captured) == 1
