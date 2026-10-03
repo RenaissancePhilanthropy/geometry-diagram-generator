@@ -19,7 +19,7 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import sympy.geometry as spg
 
@@ -86,6 +86,8 @@ _LABEL_OFFSET = 12         # px — label distance from geometry
 _ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc
 _TICK_PX = 5               # px — tick mark half-length
 _TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
+_NUDGE_MARGIN = _FONT_SIZE * 0.35  # px — shared clearance margin for every obstacle-nudge pass
+_NUDGE_EPS = 0.5           # px — small overshoot so a nudge's re-check passes without float jitter
 
 
 def px_per_construction_unit(geo_w: float, geo_h: float) -> float:
@@ -293,6 +295,10 @@ def ir_to_svg(
     # Populated by the grid/axes below (if enabled) and by geometry ops during
     # the main render loop.
     drawn_segments: list[tuple[float, float, float, float]] = []
+    # Likewise for drawn circles/arcs (SVG pixel coords: cx, cy, r) -- an arc
+    # contributes its FULL circle here, not just its drawn sweep (see
+    # _nudge_labels_from_circles's own docstring for why that's deliberate).
+    drawn_circles: list[tuple[float, float, float]] = []
     # Axis tick label bounding boxes — fixed obstacles other labels must avoid
     # (tick labels are drawn immediately below, not through pending_labels).
     tick_label_boxes: list[tuple[float, float, float, float]] = []
@@ -386,6 +392,7 @@ def ir_to_svg(
             seen_ra_triples=_seen_ra_triples,
             seen_angle_triples=_seen_angle_triples,
             drawn_segments=drawn_segments,
+            drawn_circles=drawn_circles,
             font_family=font_config.family,
         )
 
@@ -403,14 +410,16 @@ def ir_to_svg(
     # Deduplicate coincident point labels (keep first occurrence at each position)
     _dedup_coincident_labels(pending_labels)
 
-    # Nudge labels away from drawn lines/segments and fixed tick-label boxes,
-    # then resolve label-label collisions, then nudge again — collision
-    # resolution can push labels back into segments/tick labels, so the
-    # second pass re-establishes clearance.
+    # Nudge labels away from drawn lines/segments/circles and fixed tick-label
+    # boxes, then resolve label-label collisions, then nudge again —
+    # collision resolution can push labels back into segments/circles/tick
+    # labels, so the second pass re-establishes clearance.
     _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
     _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     for lp in pending_labels:
         # Stamp the final (post-nudge, post-collision-resolution) bbox and
@@ -546,6 +555,7 @@ def _emit_svg_op(
     seen_ra_triples: set[tuple[str, str, str]] | None = None,
     seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
+    drawn_circles: list[tuple[float, float, float]] | None = None,
     font_family: str = "serif",
 ) -> None:
     match op:
@@ -673,6 +683,8 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_circles is not None:
+                    drawn_circles.append((cx_s, cy_s, r_s))
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
@@ -715,6 +727,11 @@ def _emit_svg_op(
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_circles is not None:
+                    # The arc's FULL circle, not just its drawn sweep -- see
+                    # _nudge_labels_from_circles's own docstring for why.
+                    cx_s, cy_s = gxy(cx_g, cy_g)
+                    drawn_circles.append((cx_s, cy_s, r_s))
 
             elif isinstance(sym_obj, Sector):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
@@ -2842,61 +2859,170 @@ def _point_to_segment_distance(
     return math.hypot(px - nx, py - ny), nx, ny
 
 
+def _bbox_center(lp: _LabelPlacement) -> tuple[float, float]:
+    """The label bbox's true center -- NOT (lp.x, lp.y) for start/end-anchored
+    labels, where the anchor sits at an edge of the bbox, not its middle.
+    Every obstacle-clearance check measures from here, not the anchor,
+    so a start-anchored label sitting just right of a vertical line isn't
+    spuriously pushed half its width further away (the origin-label bug)."""
+    bx0, by0, bx1, by1 = _label_bbox(lp)
+    return (bx0 + bx1) / 2, (by0 + by1) / 2
+
+
+def _iteratively_nudge_from_obstacles(
+    labels: list[_LabelPlacement],
+    obstacles: list,
+    clearance: Callable[[float, float, _LabelPlacement, object], tuple[float, float, float] | None],
+    max_rounds: int = 4,
+) -> None:
+    """Shared driver for every "push labels off a drawn obstacle" pass
+    (straight lines/segments, circles' rings, ...).
+
+    ``clearance(cx, cy, lp, obstacle)`` is this one obstacle kind's own
+    distance/direction math: given the label's current bbox center, return
+    None if already clear, else ``(dx, dy, deficit)`` -- ``dx, dy`` the unit
+    push direction, ``deficit`` the additional distance still needed along
+    it (the support-function/margin computation is the caller's job; this
+    driver applies the actual move, including the shared overshoot so the
+    re-check passes without float jitter).
+
+    Two obstacles that pull a label in conflicting directions (e.g. a label
+    pinched between two overlapping circles, a case ``_nudge_labels_from_circles``'s
+    own motivating scenario can produce) can make a naive "apply every nudge
+    found, every round" loop bounce between two positions forever without
+    ever fully clearing either one. Guarded against generally here, not just
+    for this one obstacle kind: every round, record each label's total
+    deficit (summed over every still-violated obstacle) and its position;
+    once the round budget is spent (by convergence or by exhausting
+    ``max_rounds``), snap every label back to the best (lowest-total-deficit)
+    position it visited at any point. Output is then never worse than the
+    best state the loop actually reached, whether it converged cleanly,
+    cycled between two bad compromises, or was cut off mid-wobble -- without
+    needing to detect a repeated position exactly, which float jitter from
+    the overshoot term would make unreliable anyway.
+    """
+    def _total_deficit(lp: _LabelPlacement) -> float:
+        cx, cy = _bbox_center(lp)
+        total = 0.0
+        for obstacle in obstacles:
+            result = clearance(cx, cy, lp, obstacle)
+            if result is not None:
+                total += result[2]
+        return total
+
+    best: dict[int, tuple[float, tuple[float, float]]] = {
+        id(lp): (_total_deficit(lp), (lp.x, lp.y)) for lp in labels
+    }
+
+    for _ in range(max_rounds):
+        moved = False
+        for lp in labels:
+            for obstacle in obstacles:
+                cx, cy = _bbox_center(lp)
+                result = clearance(cx, cy, lp, obstacle)
+                if result is None:
+                    continue
+                dx, dy, deficit = result
+                lp.x += dx * (deficit + _NUDGE_EPS)
+                lp.y += dy * (deficit + _NUDGE_EPS)
+                moved = True
+            score = _total_deficit(lp)
+            if score < best[id(lp)][0]:
+                best[id(lp)] = (score, (lp.x, lp.y))
+        if not moved:
+            break
+
+    for lp in labels:
+        _, (bx, by) = best[id(lp)]
+        lp.x, lp.y = bx, by
+
+
+def _segment_clearance(
+    cx: float, cy: float, lp: _LabelPlacement, segment: tuple[float, float, float, float],
+) -> tuple[float, float, float] | None:
+    """One straight line/segment's clearance verdict for a label currently
+    centered at (cx, cy). None if already clear of it."""
+    x1, y1, x2, y2 = segment
+    dist, near_x, near_y = _point_to_segment_distance(cx, cy, x1, y1, x2, y2)
+
+    # Compute the nudge direction first — needed for the support function.
+    if dist < 1e-6:
+        # Label center is on the segment; push 90° CCW from it.
+        sdx, sdy = x2 - x1, y2 - y1
+        smag = math.hypot(sdx, sdy) or 1.0
+        dx, dy = -sdy / smag, sdx / smag
+    else:
+        # Push away from the nearest point on the segment.
+        dx, dy = (cx - near_x) / dist, (cy - near_y) / dist
+
+    # Support function: extent of the label bbox in the nudge direction.
+    # This is the minimum center-to-segment distance for the bbox to clear.
+    half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+    min_dist = half_extent + _NUDGE_MARGIN
+
+    if dist >= min_dist:
+        return None
+    return dx, dy, min_dist - dist
+
+
+def _circle_clearance(
+    cx: float, cy: float, lp: _LabelPlacement, circle: tuple[float, float, float],
+) -> tuple[float, float, float] | None:
+    """One drawn circle's clearance verdict for a label currently centered
+    at (cx, cy): measures from the circle's drawn boundary
+    (``|dist_to_center - radius|``) rather than from a straight segment, and
+    nudges radially -- outward (away from the center) if the label sits
+    outside the circle, inward if it sits inside -- whichever direction
+    actually increases distance from the ring itself. None if already clear."""
+    ring_cx, ring_cy, r = circle
+    dx_c, dy_c = cx - ring_cx, cy - ring_cy
+    dist_to_center = math.hypot(dx_c, dy_c)
+    if dist_to_center < 1e-6:
+        # Label center exactly on the circle's own center -- push in an
+        # arbitrary but stable direction.
+        dx_c, dy_c, dist_to_center = 0.0, -1.0, 1.0
+    else:
+        dx_c, dy_c = dx_c / dist_to_center, dy_c / dist_to_center
+    outside = dist_to_center >= r
+    # Direction that increases distance from the ring:
+    dx, dy = (dx_c, dy_c) if outside else (-dx_c, -dy_c)
+
+    half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+    min_dist = half_extent + _NUDGE_MARGIN
+    dist_to_ring = abs(dist_to_center - r)
+
+    if dist_to_ring >= min_dist:
+        return None
+    return dx, dy, min_dist - dist_to_ring
+
+
 def _nudge_labels_from_lines(
     labels: list[_LabelPlacement],
     drawn_segments: list[tuple[float, float, float, float]],
 ) -> None:
-    """Nudge labels whose bbox overlaps or is too close to a drawn line or segment.
+    """Nudge labels whose bbox overlaps or is too close to a drawn line or segment."""
+    _iteratively_nudge_from_obstacles(labels, drawn_segments, _segment_clearance)
 
-    Uses up to 4 iterations so a label nudged away from one line doesn't land
-    on another.  The required clearance uses the support function of the label
-    bbox in the nudge direction: half_extent = |W/2·|dx|| + |H/2·|dy||.
-    This correctly handles wide math labels on diagonal/vertical segments where
-    a height-only threshold would leave the bbox corners crossing the segment.
+
+def _nudge_labels_from_circles(
+    labels: list[_LabelPlacement],
+    drawn_circles: list[tuple[float, float, float]],
+) -> None:
+    """Nudge labels whose bbox overlaps or is too close to a drawn circle's ring.
+
+    ``drawn_circles`` includes an arc's FULL circle, not just its drawn
+    sweep (see the call site in ``ir_to_svg``) -- real bug: the incident-
+    angle auto-placement in ``_auto_label_direction`` only knows about
+    edges/circles a point is itself ON, so a point surrounded by several
+    OTHER overlapping circles/arcs (e.g. two compass-construction circles
+    sharing a center region) had nothing to stop its label from landing
+    right on top of one of their rings. Treating an arc as its full circle
+    here is a deliberate over-approximation: a label in the angular gap
+    where the arc isn't actually drawn still gets pushed clear, which costs
+    little against the much more common case of a real ring sitting right
+    where the label would otherwise land.
     """
-    _MARGIN = _FONT_SIZE * 0.35
-    _EPS = 0.5  # small overshoot so the re-check passes without float jitter
-    for _ in range(4):
-        moved = False
-        for lp in labels:
-            # The anchor point (lp.x, lp.y) is NOT the bbox centre for
-            # start/end-anchored labels — _label_bbox is anchor-aware.  Measure
-            # clearance from the true bbox centre so a start-anchored label
-            # sitting just right of a vertical line isn't spuriously pushed
-            # w/2 further away (the origin-label bug).  The centre offset is
-            # constant per label, so nudging lp moves the bbox identically.
-            bx0, by0, bx1, by1 = _label_bbox(lp)
-            off_x = (bx0 + bx1) / 2 - lp.x
-            off_y = (by0 + by1) / 2 - lp.y
-            for x1, y1, x2, y2 in drawn_segments:
-                cx, cy = lp.x + off_x, lp.y + off_y
-                dist, near_x, near_y = _point_to_segment_distance(cx, cy, x1, y1, x2, y2)
-
-                # Compute the nudge direction first — needed for the support function.
-                if dist < 1e-6:
-                    # Label center is on the segment; push 90° CCW from it.
-                    sdx, sdy = x2 - x1, y2 - y1
-                    smag = math.hypot(sdx, sdy) or 1.0
-                    dx, dy = -sdy / smag, sdx / smag
-                else:
-                    # Push away from the nearest point on the segment.
-                    dx = (cx - near_x) / dist
-                    dy = (cy - near_y) / dist
-
-                # Support function: extent of the label bbox in the nudge direction.
-                # This is the minimum center-to-segment distance for the bbox to clear.
-                half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
-                min_dist = half_extent + _MARGIN
-
-                if dist >= min_dist:
-                    continue
-
-                nudge = min_dist - dist + _EPS
-                lp.x += dx * nudge
-                lp.y += dy * nudge
-                moved = True
-        if not moved:
-            break
+    _iteratively_nudge_from_obstacles(labels, drawn_circles, _circle_clearance)
 
 
 def _nudge_labels_from_fixed_boxes(

@@ -16,6 +16,7 @@ import pytest
 
 from geometry_diagrams.ir.ir import (
     Canvas,
+    CircleCenterRadius,
     DiagramIR,
     Draw,
     LabelPoint,
@@ -28,6 +29,7 @@ from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.ir.to_svg import (
     _LabelPlacement,
     _label_bbox,
+    _nudge_labels_from_circles,
     _nudge_labels_from_lines,
     _resolve_label_collisions,
     _segment_label_side,
@@ -356,3 +358,121 @@ class TestE2EMathLabelPlacement:
         # Just verify it renders without error and is valid XML
         root = ET.fromstring(svg)
         assert root is not None
+
+
+# ---------------------------------------------------------------------------
+# 5. Nudge: labels must also clear drawn circles/arcs, not just straight lines
+#
+# Real bug: a point surrounded by several circles it does NOT itself sit on
+# (e.g. two compass-construction circles sharing a center region) had no
+# mechanism stopping its auto-placed label from landing right on top of one
+# of those circles' rings -- _auto_label_direction only knows about edges/
+# circles the point is itself incident to, and the pre-existing nudge pass
+# only ever checked straight segments.
+# ---------------------------------------------------------------------------
+
+class TestNudgeFromCircle:
+    def test_label_outside_near_ring_is_pushed_further_out(self):
+        """Label just outside a circle's ring must be pushed further outside."""
+        circles = [(0.0, 0.0, 100.0)]
+        lp = _make_lp(102.0, 0.0)  # 2px outside the ring
+        _nudge_labels_from_circles([lp], circles)
+        dist_to_center = math.hypot(lp.x, lp.y)
+        assert dist_to_center > 102.0, (
+            f"Label at distance {dist_to_center:.2f} from center was not pushed "
+            f"further outside the ring at r=100"
+        )
+
+    def test_label_inside_near_ring_is_pushed_further_in(self):
+        """Label just inside a circle's ring must be pushed toward the center."""
+        circles = [(0.0, 0.0, 100.0)]
+        lp = _make_lp(98.0, 0.0)  # 2px inside the ring
+        _nudge_labels_from_circles([lp], circles)
+        dist_to_center = math.hypot(lp.x, lp.y)
+        assert dist_to_center < 98.0, (
+            f"Label at distance {dist_to_center:.2f} from center was not pushed "
+            f"further inside the ring at r=100"
+        )
+
+    def test_label_on_ring_is_nudged(self):
+        """A label whose center sits exactly on the ring (dist ≈ 0) must move."""
+        circles = [(0.0, 0.0, 100.0)]
+        lp = _make_lp(100.0, 0.0)  # exactly on the ring
+        _nudge_labels_from_circles([lp], circles)
+        dist_to_ring = abs(math.hypot(lp.x, lp.y) - 100.0)
+        assert dist_to_ring >= 7.0, f"Label moved only {dist_to_ring:.1f}px clear of the ring"
+
+    def test_pinched_between_two_overlapping_circles_lands_at_the_best_compromise(self):
+        """Two overlapping rings of equal radius, centered symmetrically about
+        the label's starting position, each pull it toward the other's ring in
+        turn -- a naive "apply every nudge, every round" loop bounces between
+        two one-sided positions forever (verified directly: this exact setup
+        oscillates between x=+2.4 and x=-2.4 pre-fix, exiting the round cap
+        still short of full clearance on whichever ring it last moved toward).
+        The symmetric starting point is actually the best achievable
+        compromise (equal, non-zero clearance deficit on both sides beats a
+        one-sided "fully clear one ring, worse on the other" outcome), so the
+        label must end up back there, not at either oscillation endpoint."""
+        circles = [(-10.0, 0.0, 20.0), (10.0, 0.0, 20.0)]
+        lp = _make_lp(0.0, 0.0)
+        _nudge_labels_from_circles([lp], circles)
+        assert lp.x == pytest.approx(0.0, abs=0.1)
+        assert lp.y == pytest.approx(0.0, abs=0.1)
+        # Confirm it's actually a genuine (if incomplete) compromise, not a
+        # no-op that never engaged with either ring.
+        left_dist = abs(math.hypot(lp.x - circles[0][0], lp.y - circles[0][1]) - circles[0][2])
+        right_dist = abs(math.hypot(lp.x - circles[1][0], lp.y - circles[1][1]) - circles[1][2])
+        assert left_dist == pytest.approx(right_dist, abs=0.1)
+
+    def test_label_far_from_circle_not_moved(self):
+        """A label well clear of any circle stays put."""
+        circles = [(0.0, 0.0, 100.0)]
+        lp = _make_lp(300.0, 300.0)
+        x_before, y_before = lp.x, lp.y
+        _nudge_labels_from_circles([lp], circles)
+        assert (lp.x, lp.y) == pytest.approx((x_before, y_before), abs=0.5)
+
+    def test_e2e_point_label_avoids_an_unrelated_nearby_circle(self):
+        """Full-pipeline repro: point M's only incident edge is segment M-N, so
+        auto-placement puts its label on the opposite side (west of M). An
+        unrelated circle (M is neither its center nor on it) has a ring that
+        bulges through exactly that spot (radius calibrated so the ring sits
+        right at the label's own auto-placed bbox, pre-fix) -- the rendered
+        label must not overlap it.
+        """
+        d = DiagramIR(
+            canvas=Canvas(xmin=-80, xmax=20, ymin=-40, ymax=40),
+            define=[
+                PointFixed(id="M", x=0, y=0),
+                PointFixed(id="N", x=10, y=0),
+                PointFixed(id="O", x=-1.3, y=0),
+                Segment(id="MN", a="M", b="N"),
+                CircleCenterRadius(id="C", center="O", radius=1.3),
+            ],
+            render=[
+                Draw(obj="MN"),
+                Draw(obj="C"),
+                LabelPoint(p="M", text="M"),
+            ],
+        )
+        svg = _compile_svg(d)
+        root = _parse(svg)
+
+        circle_el = next(el for el in root.iter() if el.get("data-ir-id") == "C")
+        cx, cy, r = float(circle_el.get("cx")), float(circle_el.get("cy")), float(circle_el.get("r"))
+
+        label_el = next(
+            el for el in root.iter()
+            if el.get("data-role") == "label-point" and el.get("data-for") == "M"
+        )
+        bx0, by0, bx1, by1 = (float(v) for v in label_el.get("data-bbox").split(","))
+
+        # Nearest point of the label's bbox to the circle's center, clamped
+        # to the bbox -- then check that point isn't within the ring band.
+        nearest_x = max(bx0, min(cx, bx1))
+        nearest_y = max(by0, min(cy, by1))
+        dist = math.hypot(nearest_x - cx, nearest_y - cy)
+        assert abs(dist - r) > 2.0, (
+            f"Label bbox ({bx0:.1f},{by0:.1f})-({bx1:.1f},{by1:.1f}) still sits "
+            f"on circle C's ring (center=({cx:.1f},{cy:.1f}), r={r:.1f})"
+        )
