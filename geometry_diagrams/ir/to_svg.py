@@ -83,7 +83,11 @@ _RA_SIZE = 8               # px — size of right-angle square leg
 _ANGLE_ARC_R = 20          # px — radius of angle arc marks
 _FONT_SIZE = 14            # px
 _LABEL_OFFSET = 12         # px — label distance from geometry
-_ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc
+_ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc (ceiling)
+_ANGLE_LABEL_R_MIN = _ANGLE_ARC_R + 4  # px — floor, just clear of the arc mark
+_ANGLE_LABEL_FRAC = 0.35  # fraction of the shorter ray's length the label may stand off
+_RING_PIN_TOLERANCE = 1.5  # px — treat a pin_point this close to a ring as "on" it
+_WEAK_RING_CLEARANCE_FACTOR = 0.4  # how much less clearance an un-drawn (arc/sector) full circle demands vs. a real drawn ring
 _TICK_PX = 5               # px — tick mark half-length
 _TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
 _NUDGE_MARGIN = _FONT_SIZE * 0.35  # px — shared clearance margin for every obstacle-nudge pass
@@ -117,6 +121,19 @@ class _LabelPlacement:
     # When non-None, this label should be emitted as an SVG <path> (mathtext
     # vector glyph) rather than as a <text>/<tspan> element.
     math_glyph: MathGlyph | None = None
+    # When non-None, the SVG-px point this label is anchored to (e.g. an
+    # angle's vertex) -- a drawn circle whose ring this point already sits on
+    # is exempt from _circle_clearance's push, since the point (and thus any
+    # small stand-off from it) is *supposed* to be right at that ring; see
+    # _circle_clearance's docstring for why "too close to the ring" would
+    # otherwise push such a label toward the circle's center instead.
+    pin_point: tuple[float, float] | None = None
+    # When non-None alongside pin_point, the unit direction (SVG px space) of
+    # this label's "aesthetically ideal" axis from pin_point -- e.g. an
+    # angle's bisector. _gravitate_to_ideal_axis uses this to pull a label
+    # that obstacle-avoidance pushed off-axis back toward it, whenever doing
+    # so doesn't reintroduce a violation.
+    ideal_dir: tuple[float, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -295,11 +312,12 @@ def ir_to_svg(
     # Populated by the grid/axes below (if enabled) and by geometry ops during
     # the main render loop.
     drawn_segments: list[tuple[float, float, float, float]] = []
-    # Likewise for drawn circles/arcs/sectors (SVG pixel coords: cx, cy, r) --
-    # an arc or sector contributes its FULL circle here, not just its drawn
-    # sweep (see _nudge_labels_from_circles's own docstring for why that's
-    # deliberate).
-    drawn_circles: list[tuple[float, float, float]] = []
+    # Likewise for drawn circles/arcs/sectors (SVG pixel coords: cx, cy, r,
+    # full) -- an arc or sector contributes its FULL circle here, not just its
+    # drawn sweep (see _nudge_labels_from_circles's own docstring for why
+    # that's deliberate), flagged full=False so _circle_clearance can demand
+    # less clearance from it than from an actually fully-drawn ring.
+    drawn_circles: list[tuple[float, float, float, bool]] = []
     # Likewise for drawn ellipses/elliptical arcs/sectors (SVG pixel coords:
     # cx, cy, rx, ry) -- same full-shape-not-just-sweep convention as
     # drawn_circles above.
@@ -429,6 +447,10 @@ def ir_to_svg(
     _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
+    # Aesthetic-only: pull labels with a known ideal axis (currently
+    # LabelAngle's bisector) back toward it, never past what the obstacle
+    # passes above already established as clear.
+    _gravitate_to_ideal_axis(pending_labels, drawn_segments, drawn_circles, drawn_ellipses, tick_label_boxes)
     for lp in pending_labels:
         # Stamp the final (post-nudge, post-collision-resolution) bbox and
         # source text onto the emitted element itself, as data-* attributes.
@@ -563,7 +585,7 @@ def _emit_svg_op(
     seen_ra_triples: set[tuple[str, str, str]] | None = None,
     seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
-    drawn_circles: list[tuple[float, float, float]] | None = None,
+    drawn_circles: list[tuple[float, float, float, bool]] | None = None,
     drawn_ellipses: list[tuple[float, float, float, float]] | None = None,
     font_family: str = "serif",
 ) -> None:
@@ -693,7 +715,7 @@ def _emit_svg_op(
                     **attrs,
                 })
                 if drawn_circles is not None:
-                    drawn_circles.append((cx_s, cy_s, r_s))
+                    drawn_circles.append((cx_s, cy_s, r_s, True))
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
@@ -741,8 +763,10 @@ def _emit_svg_op(
                 if drawn_circles is not None:
                     # The arc's FULL circle, not just its drawn sweep -- see
                     # _nudge_labels_from_circles's own docstring for why.
+                    # full=False: only the sweep is actually visible, so this
+                    # shouldn't demand as much clearance as a real drawn ring.
                     cx_s, cy_s = gxy(cx_g, cy_g)
-                    drawn_circles.append((cx_s, cy_s, r_s))
+                    drawn_circles.append((cx_s, cy_s, r_s, False))
 
             elif isinstance(sym_obj, Sector):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
@@ -771,7 +795,8 @@ def _emit_svg_op(
                 if drawn_circles is not None:
                     # The sector's FULL circle, not just its drawn sweep --
                     # see _nudge_labels_from_circles's own docstring for why.
-                    drawn_circles.append((cx_s, cy_s, r_s))
+                    # full=False: only the wedge is actually visible.
+                    drawn_circles.append((cx_s, cy_s, r_s, False))
 
             elif isinstance(sym_obj, EllipticalArc):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
@@ -1040,6 +1065,20 @@ def _emit_svg_op(
                 if group:
                     arc_attrs["data-group"] = str(group)
                 _append_angle_arc(svg, a, o, b, pt, stroke, n_arcs, extra_attrs=arc_attrs)
+                if drawn_circles is not None:
+                    # The arc mark's own extent -- not previously registered,
+                    # so a LabelAngle's placement (or any other label) had
+                    # nothing stopping it from landing on top of the drawn
+                    # arc stroke. full=True despite this being a narrow sweep
+                    # (like MarkArcs/Sector, not a full ring): unlike an
+                    # incidental decorative arc elsewhere in a dense diagram,
+                    # this is the one obstacle a LabelAngle is *guaranteed* to
+                    # sit near -- it's the arc marking the very angle being
+                    # labeled -- so it should never get the reduced-clearance
+                    # discount meant for arcs a label merely happens to pass.
+                    ox, oy = pt(o)
+                    outer_r = _ANGLE_ARC_R + (n_arcs - 1) * 5
+                    drawn_circles.append((ox, oy, outer_r, True))
 
         case ir.MarkSegments(segs=segs, group=group, style=style, ticks=ticks):
             stroke = _color_from_style(style or group, styles) or "black"
@@ -1134,15 +1173,29 @@ def _emit_svg_op(
             da = math.atan2(ay_g - oy_g, ax_g - ox_g)
             db = math.atan2(by_g - oy_g, bx_g - ox_g)
             bisector = _bisector_angle(da, db)
-            lx, ly = gxy(ox_g, oy_g)
-            lx += math.cos(bisector) * _ANGLE_LABEL_R
-            # In SVG space y is flipped, so negate sin component
-            ly -= math.sin(bisector) * _ANGLE_LABEL_R
+            # Scale the stand-off to the angle's own rays so a short ray (a tight
+            # construction, a small polygon) can't push the label past its
+            # vertex's neighborhood and into unrelated geometry -- cap it at the
+            # usual fixed offset so normal-sized angles render as before.
+            ray_a_px = math.hypot(ax_g - ox_g, ay_g - oy_g) * scale
+            ray_b_px = math.hypot(bx_g - ox_g, by_g - oy_g) * scale
+            label_r = min(_ANGLE_LABEL_R, _ANGLE_LABEL_FRAC * min(ray_a_px, ray_b_px))
+            label_r = max(label_r, _ANGLE_LABEL_R_MIN)
+            vertex_px = gxy(ox_g, oy_g)
+            # SVG-space unit direction of the bisector -- same sign convention
+            # as the lx/ly offset below (y negated for SVG's flipped axis) --
+            # recorded as this label's ideal axis for _gravitate_to_ideal_axis.
+            bisector_dir = (math.cos(bisector), -math.sin(bisector))
+            lx, ly = vertex_px
+            lx += bisector_dir[0] * label_r
+            ly += bisector_dir[1] * label_r
             label_text = text or ""
             color = _color_from_style(style, styles) or "black"
             lp = _make_label_placement(
                 x=lx, y=ly, text=label_text, color=color, anchor="middle",
                 attrs={"data-role": "label-angle", "data-for": f"{angle.a},{angle.o},{angle.b}"},
+                pin_point=vertex_px,
+                ideal_dir=bisector_dir,
             )
             if pending_labels is not None:
                 pending_labels.append(lp)
@@ -2990,15 +3043,34 @@ def _segment_clearance(
 
 
 def _circle_clearance(
-    cx: float, cy: float, lp: _LabelPlacement, circle: tuple[float, float, float],
+    cx: float, cy: float, lp: _LabelPlacement, circle: tuple[float, float, float, bool],
 ) -> tuple[float, float, float] | None:
     """One drawn circle's clearance verdict for a label currently centered
     at (cx, cy): measures from the circle's drawn boundary
     (``|dist_to_center - radius|``) rather than from a straight segment, and
     nudges radially -- outward (away from the center) if the label sits
     outside the circle, inward if it sits inside -- whichever direction
-    actually increases distance from the ring itself. None if already clear."""
-    ring_cx, ring_cy, r = circle
+    actually increases distance from the ring itself. None if already clear.
+
+    Exempt when lp.pin_point itself already sits on this ring: a label
+    pinned to a point that's genuinely on the circle (e.g. an angle's
+    vertex) will always start "too close to the ring" from the inside, and
+    "increases distance from the ring" for an inside point means push
+    toward the center -- exactly backwards for a label that belongs at that
+    vertex, not deep in the shape's interior.
+
+    ``circle``'s ``full`` flag (see ``_nudge_labels_from_circles``) scales
+    down how much clearance a circle that's only an arc/sector's
+    over-approximated full extent gets to demand: nothing is actually drawn
+    along most of that ring, so demanding the same clearance as a real
+    stroke lets a dense cluster of decorative arcs around one construction
+    point collectively out-muscle a label that has better reasons for
+    sitting where it does."""
+    ring_cx, ring_cy, r, full = circle
+    if lp.pin_point is not None:
+        pin_dist = math.hypot(lp.pin_point[0] - ring_cx, lp.pin_point[1] - ring_cy)
+        if abs(pin_dist - r) < _RING_PIN_TOLERANCE:
+            return None
     dx_c, dy_c = cx - ring_cx, cy - ring_cy
     dist_to_center = math.hypot(dx_c, dy_c)
     if dist_to_center < 1e-6:
@@ -3013,6 +3085,8 @@ def _circle_clearance(
 
     half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
     min_dist = half_extent + _NUDGE_MARGIN
+    if not full:
+        min_dist *= _WEAK_RING_CLEARANCE_FACTOR
     dist_to_ring = abs(dist_to_center - r)
 
     if dist_to_ring >= min_dist:
@@ -3030,21 +3104,27 @@ def _nudge_labels_from_lines(
 
 def _nudge_labels_from_circles(
     labels: list[_LabelPlacement],
-    drawn_circles: list[tuple[float, float, float]],
+    drawn_circles: list[tuple[float, float, float, bool]],
 ) -> None:
     """Nudge labels whose bbox overlaps or is too close to a drawn circle's ring.
 
-    ``drawn_circles`` includes an arc's FULL circle, not just its drawn
-    sweep (see the call site in ``ir_to_svg``) -- real bug: the incident-
-    angle auto-placement in ``_auto_label_direction`` only knows about
-    edges/circles a point is itself ON, so a point surrounded by several
-    OTHER overlapping circles/arcs (e.g. two compass-construction circles
-    sharing a center region) had nothing to stop its label from landing
-    right on top of one of their rings. Treating an arc as its full circle
-    here is a deliberate over-approximation: a label in the angular gap
-    where the arc isn't actually drawn still gets pushed clear, which costs
-    little against the much more common case of a real ring sitting right
-    where the label would otherwise land.
+    ``drawn_circles`` includes an arc's or sector's FULL circle, not just its
+    drawn sweep (see the call site in ``ir_to_svg``), flagged ``full=False``
+    -- real bug: the incident-angle auto-placement in
+    ``_auto_label_direction`` only knows about edges/circles a point is
+    itself ON, so a point surrounded by several OTHER overlapping
+    circles/arcs (e.g. two compass-construction circles sharing a center
+    region) had nothing to stop its label from landing right on top of one
+    of their rings. Treating an arc as its full circle here is a deliberate
+    over-approximation: a label in the angular gap where the arc isn't
+    actually drawn still gets pushed clear, which costs little against the
+    much more common case of a real ring sitting right where the label would
+    otherwise land. The ``full`` flag tempers that over-approximation --
+    see ``_circle_clearance``'s own docstring -- so a dense cluster of
+    unfilled arcs/sectors (e.g. decorative ticks around a construction
+    circle, never drawn as full rings) doesn't out-muscle a label's own,
+    better-justified placement the way an equally dense cluster of real
+    drawn circles legitimately would.
     """
     _iteratively_nudge_from_obstacles(labels, drawn_circles, _circle_clearance)
 
@@ -3269,6 +3349,8 @@ def _make_label_placement(
     color: str,
     anchor: str,
     attrs: dict[str, str],
+    pin_point: tuple[float, float] | None = None,
+    ideal_dir: tuple[float, float] | None = None,
 ) -> _LabelPlacement:
     """Build a ``_LabelPlacement``, using mathtext metrics when appropriate.
 
@@ -3293,12 +3375,16 @@ def _make_label_placement(
                 width_est=glyph.width,
                 height_est=glyph.height,
                 math_glyph=glyph,
+                pin_point=pin_point,
+                ideal_dir=ideal_dir,
             )
     # Fallback: plain text path with approximate sizing
     return _LabelPlacement(
         x=x, y=y, text=text, color=color, anchor=anchor, attrs=attrs,
         width_est=_estimate_text_width(text, font_size),
         height_est=font_size,
+        pin_point=pin_point,
+        ideal_dir=ideal_dir,
     )
 
 
@@ -3377,6 +3463,105 @@ def _resolve_label_collisions(labels: list[_LabelPlacement], svg_w: float, svg_h
                 break  # recompute bboxes after each move
         if not moved:
             break
+
+
+def _project_onto_ray(
+    px: float, py: float, ox: float, oy: float, dx: float, dy: float,
+) -> tuple[float, float]:
+    """Project (px, py) onto the ray from (ox, oy) in unit direction (dx, dy),
+    clamped to the ray itself (t >= 0) rather than the full line -- a label
+    should never be pulled "ideal-ward" past its own anchor point."""
+    t = max((px - ox) * dx + (py - oy) * dy, 0.0)
+    return ox + t * dx, oy + t * dy
+
+
+def _label_clear_of_obstacles(
+    lp: _LabelPlacement,
+    drawn_segments: list[tuple[float, float, float, float]],
+    drawn_circles: list[tuple[float, float, float, bool]],
+    drawn_ellipses: list[tuple[float, float, float, float]],
+    fixed_boxes: list[tuple[float, float, float, float]],
+    other_labels: list[_LabelPlacement],
+) -> bool:
+    """True if lp's current position violates none of the obstacle-avoidance
+    checks the nudge passes above already enforce -- reusing their own
+    clearance functions rather than re-deriving the thresholds, so this can
+    never disagree with what those passes consider "clear"."""
+    cx, cy = _bbox_center(lp)
+    for segment in drawn_segments:
+        if _segment_clearance(cx, cy, lp, segment) is not None:
+            return False
+    for circle in drawn_circles:
+        if _circle_clearance(cx, cy, lp, circle) is not None:
+            return False
+    for ellipse in drawn_ellipses:
+        if _ellipse_clearance(cx, cy, lp, ellipse) is not None:
+            return False
+    bb = _label_bbox(lp)
+    padding = 2.0
+    for bx0, by0, bx1, by1 in fixed_boxes:
+        box_pad = (bx0 - padding, by0 - padding, bx1 + padding, by1 + padding)
+        if _bboxes_overlap(bb, box_pad):
+            return False
+    for other in other_labels:
+        if other is lp:
+            continue
+        other_pad_bb = _label_bbox(other)
+        other_pad = (
+            other_pad_bb[0] - padding, other_pad_bb[1] - padding,
+            other_pad_bb[2] + padding, other_pad_bb[3] + padding,
+        )
+        if _bboxes_overlap(bb, other_pad):
+            return False
+    return True
+
+
+def _gravitate_to_ideal_axis(
+    labels: list[_LabelPlacement],
+    drawn_segments: list[tuple[float, float, float, float]],
+    drawn_circles: list[tuple[float, float, float, bool]],
+    drawn_ellipses: list[tuple[float, float, float, float]],
+    fixed_boxes: list[tuple[float, float, float, float]],
+    steps: int = 6,
+) -> None:
+    """Purely aesthetic final pass: pull a label with a known "ideal axis"
+    (currently just LabelAngle's bisector, via pin_point + ideal_dir) back
+    toward that axis, as far as it can go without reintroducing a violation
+    the obstacle-nudge passes above just resolved.
+
+    A ratchet, not a spring: binary-search the largest safe step from the
+    label's current (already-clear) position toward its projection onto the
+    ideal ray, keeping only candidates that stay clear of everything. This
+    can only ever move a label closer to its ideal axis, never fight with
+    the obstacle-avoidance passes or reopen a violation -- so, unlike a
+    literal spring force, it can't introduce oscillation between this pass
+    and the ones before it.
+    """
+    for lp in labels:
+        if lp.pin_point is None or lp.ideal_dir is None:
+            continue
+        ox, oy = lp.pin_point
+        dx, dy = lp.ideal_dir
+        start_x, start_y = lp.x, lp.y
+        target_x, target_y = _project_onto_ray(start_x, start_y, ox, oy, dx, dy)
+        if math.hypot(target_x - start_x, target_y - start_y) < 1e-6:
+            continue  # already on the axis
+        if not _label_clear_of_obstacles(lp, drawn_segments, drawn_circles, drawn_ellipses, fixed_boxes, labels):
+            # Shouldn't happen this late, but don't move a label whose
+            # current position we can't confirm is actually safe.
+            continue
+        lo, hi = 0.0, 1.0
+        best_x, best_y = start_x, start_y
+        for _ in range(steps):
+            mid = (lo + hi) / 2
+            lp.x = start_x + (target_x - start_x) * mid
+            lp.y = start_y + (target_y - start_y) * mid
+            if _label_clear_of_obstacles(lp, drawn_segments, drawn_circles, drawn_ellipses, fixed_boxes, labels):
+                best_x, best_y = lp.x, lp.y
+                lo = mid
+            else:
+                hi = mid
+        lp.x, lp.y = best_x, best_y
 
 
 # ---------------------------------------------------------------------------

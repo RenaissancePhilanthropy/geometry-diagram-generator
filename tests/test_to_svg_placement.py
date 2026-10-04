@@ -380,7 +380,7 @@ class TestE2EMathLabelPlacement:
 class TestNudgeFromCircle:
     def test_label_outside_near_ring_is_pushed_further_out(self):
         """Label just outside a circle's ring must be pushed further outside."""
-        circles = [(0.0, 0.0, 100.0)]
+        circles = [(0.0, 0.0, 100.0, True)]
         lp = _make_lp(102.0, 0.0)  # 2px outside the ring
         _nudge_labels_from_circles([lp], circles)
         dist_to_center = math.hypot(lp.x, lp.y)
@@ -391,7 +391,7 @@ class TestNudgeFromCircle:
 
     def test_label_inside_near_ring_is_pushed_further_in(self):
         """Label just inside a circle's ring must be pushed toward the center."""
-        circles = [(0.0, 0.0, 100.0)]
+        circles = [(0.0, 0.0, 100.0, True)]
         lp = _make_lp(98.0, 0.0)  # 2px inside the ring
         _nudge_labels_from_circles([lp], circles)
         dist_to_center = math.hypot(lp.x, lp.y)
@@ -402,7 +402,7 @@ class TestNudgeFromCircle:
 
     def test_label_on_ring_is_nudged(self):
         """A label whose center sits exactly on the ring (dist ≈ 0) must move."""
-        circles = [(0.0, 0.0, 100.0)]
+        circles = [(0.0, 0.0, 100.0, True)]
         lp = _make_lp(100.0, 0.0)  # exactly on the ring
         _nudge_labels_from_circles([lp], circles)
         dist_to_ring = abs(math.hypot(lp.x, lp.y) - 100.0)
@@ -419,7 +419,7 @@ class TestNudgeFromCircle:
         compromise (equal, non-zero clearance deficit on both sides beats a
         one-sided "fully clear one ring, worse on the other" outcome), so the
         label must end up back there, not at either oscillation endpoint."""
-        circles = [(-10.0, 0.0, 20.0), (10.0, 0.0, 20.0)]
+        circles = [(-10.0, 0.0, 20.0, True), (10.0, 0.0, 20.0, True)]
         lp = _make_lp(0.0, 0.0)
         _nudge_labels_from_circles([lp], circles)
         assert lp.x == pytest.approx(0.0, abs=0.1)
@@ -432,7 +432,7 @@ class TestNudgeFromCircle:
 
     def test_label_far_from_circle_not_moved(self):
         """A label well clear of any circle stays put."""
-        circles = [(0.0, 0.0, 100.0)]
+        circles = [(0.0, 0.0, 100.0, True)]
         lp = _make_lp(300.0, 300.0)
         x_before, y_before = lp.x, lp.y
         _nudge_labels_from_circles([lp], circles)
@@ -593,10 +593,12 @@ class TestNudgeFromEllipse:
         Circle/Arc already do -- confirmed missing entirely before this fix
         (Sector's render branch never appended to drawn_circles at all). The
         nudge math itself is already covered by the unit tests above; this
-        checks the data actually gets there during a real ir_to_svg call."""
+        checks the data actually gets there during a real ir_to_svg call.
+        Also confirms it's registered as full=False (only the wedge is
+        actually drawn), so it demands less clearance than a real ring."""
         import geometry_diagrams.ir.to_svg as to_svg_mod
 
-        captured: list[tuple[float, float, float]] = []
+        captured: list[tuple[float, float, float, bool]] = []
         original = to_svg_mod._nudge_labels_from_circles
 
         def spy(labels, drawn_circles):
@@ -622,8 +624,9 @@ class TestNudgeFromEllipse:
         to_svg_mod.ir_to_svg(d, sym)
 
         assert len(captured) == 1
-        cx_s, cy_s, r_s = captured[0]
+        cx_s, cy_s, r_s, full = captured[0]
         assert r_s > 0  # a real, positive radius reached the nudge pass
+        assert full is False  # only the wedge is drawn, not the full ring
 
     def test_elliptical_arc_and_sector_register_their_full_ellipse_for_nudging(self, monkeypatch):
         """Same wiring check as above, for EllipticalArc/EllipticalSector
