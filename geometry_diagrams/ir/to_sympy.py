@@ -36,6 +36,18 @@ SWEEP_TOL_DEG = 1e-6
 # checks.py deliberately uses its own (looser) check tolerance instead.
 PICK_ON_ARC_TOL = 1e-9
 
+# Near-tangency handling for circle x circle and line x circle intersections.
+# SymPy rounds float coordinates/radii to fractions when it builds an object, so
+# objects that are tangent by construction land on either side of exact tangency
+# at random: no points, or two points ~1e-8 apart. Gaps are relative to
+# L = max(radii, centre distance, largest coordinate); the perturbation scales
+# with coordinate magnitude, not just object size.
+INTERSECT_TANGENT_TOL = 1e-9   # gap (a length) at or below which "disjoint" means tangent
+INTERSECT_MERGE_TOL = 1e-7     # two candidates closer than this are one point
+# Tolerance for "is this candidate on that object" in pick rules and for a side
+# pick accepting a lone candidate lying on its line.
+PICK_CONTAINS_TOL = 1e-7
+
 
 class Arc:
     """Marker type for a circular arc in the symbol table.
@@ -231,6 +243,139 @@ def _underlying_circle(obj: Any) -> Any:
     if isinstance(obj, (Arc, Sector)):
         return spg.Circle(obj.center, obj.radius)
     return obj
+
+
+def _f(v: Any) -> float:
+    return float(sp.N(v, 17))
+
+
+def _lift(x: float, y: float) -> spg.Point:
+    return spg.Point(sp.Float(x, 17), sp.Float(y, 17))
+
+
+def _tangent_candidates(
+    obj1: Any, obj2: Any, points: list[spg.Point], def_id: str, id1: str, id2: str
+) -> list[spg.Point]:
+    """Reconcile SymPy's circle x circle / line x circle candidates with float noise.
+
+    Well-separated results (1 point, or 2 distinct points) pass through unchanged.
+    Two candidates closer than INTERSECT_MERGE_TOL collapse to one; no candidates
+    within INTERSECT_TANGENT_TOL of tangency snap to the tangent point. Any other
+    empty result raises an IntersectionError naming the case and the gap. Other
+    object pairs, and empty results this cannot explain, return `points` unchanged.
+    """
+    circle1, circle2 = isinstance(obj1, spg.Circle), isinstance(obj2, spg.Circle)
+    if circle1 and circle2:
+        c1x, c1y, r1 = _f(obj1.center.x), _f(obj1.center.y), _f(obj1.radius)
+        c2x, c2y, r2 = _f(obj2.center.x), _f(obj2.center.y), _f(obj2.radius)
+        d = math.hypot(c2x - c1x, c2y - c1y)
+        scale = max(r1, r2, d, abs(c1x), abs(c1y), abs(c2x), abs(c2y))
+    elif circle1 != circle2 and isinstance(obj1 if not circle1 else obj2, (spg.Line, spg.Segment, spg.Ray)):
+        line, circ = (obj1, obj2) if circle2 else (obj2, obj1)
+        cx, cy, r = _f(circ.center.x), _f(circ.center.y), _f(circ.radius)
+        ax, ay = _f(line.p1.x), _f(line.p1.y)
+        bx, by = _f(line.p2.x), _f(line.p2.y)
+        scale = max(r, abs(cx), abs(cy), abs(ax), abs(ay), abs(bx), abs(by))
+    else:
+        return points
+    scale = scale or 1.0
+    tol = INTERSECT_TANGENT_TOL * scale
+
+    if len(points) == 2:
+        (x0, y0), (x1, y1) = ((_f(p.x), _f(p.y)) for p in points)
+        if math.hypot(x1 - x0, y1 - y0) <= INTERSECT_MERGE_TOL * scale:
+            return [_lift((x0 + x1) / 2, (y0 + y1) / 2)]
+        return points
+    if points:
+        return points
+
+    def miss(why: str, gap: float) -> IntersectionError:
+        return IntersectionError(
+            def_id, f"no intersection points between {id1!r} and {id2!r}: {why} (gap {gap:.3g})"
+        )
+
+    if circle1 and circle2:
+        if d <= tol:
+            if abs(r1 - r2) <= tol:
+                raise IntersectionError(
+                    def_id, f"no intersection points between {id1!r} and {id2!r}: the circles are identical"
+                )
+            raise IntersectionError(
+                def_id, f"no intersection points between {id1!r} and {id2!r}: the circles are concentric"
+            )
+        outer_gap = d - (r1 + r2)
+        inner_gap = abs(r1 - r2) - d
+        if abs(outer_gap) <= tol:
+            return [_lift(c1x + (c2x - c1x) / d * r1, c1y + (c2y - c1y) / d * r1)]
+        if outer_gap > tol:
+            raise miss("the circles are disjoint", outer_gap)
+        if abs(inner_gap) <= tol:
+            (bx_, by_, br), (sx, sy) = ((c1x, c1y, r1), (c2x, c2y)) if r1 >= r2 else ((c2x, c2y, r2), (c1x, c1y))
+            return [_lift(bx_ + (sx - bx_) / d * br, by_ + (sy - by_) / d * br)]
+        if inner_gap > tol:
+            raise miss("one circle is contained in the other", inner_gap)
+        return points
+
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return points
+    t = ((cx - ax) * dx + (cy - ay) * dy) / (length * length)
+    fx, fy = ax + t * dx, ay + t * dy
+    dist = math.hypot(cx - fx, cy - fy)
+    if abs(dist - r) <= tol:
+        slack = tol / length
+        if isinstance(line, spg.Segment) and not (-slack <= t <= 1 + slack):
+            return points
+        if isinstance(line, spg.Ray) and t < -slack:
+            return points
+        return [_lift(fx, fy)]
+    if dist - r > tol:
+        raise miss("the line misses the circle (disjoint)", dist - r)
+    return points
+
+
+def _on_object(obj: Any, p: spg.Point) -> bool:
+    """`obj.contains(p)`, plus a float-tolerant fallback for circles, lines, segments and
+    rays: SymPy's exact containment rejects points computed in floating point."""
+    if obj.contains(p):
+        return True
+    px, py = _f(p.x), _f(p.y)
+    if isinstance(obj, spg.Circle):
+        cx, cy, r = _f(obj.center.x), _f(obj.center.y), _f(obj.radius)
+        scale = max(r, abs(cx), abs(cy), abs(px), abs(py)) or 1.0
+        return abs(math.hypot(px - cx, py - cy) - r) <= PICK_CONTAINS_TOL * scale
+    if isinstance(obj, (spg.Line, spg.Segment, spg.Ray)):
+        ax, ay, bx, by = _f(obj.p1.x), _f(obj.p1.y), _f(obj.p2.x), _f(obj.p2.y)
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return False
+        scale = max(length, abs(ax), abs(ay), abs(px), abs(py))
+        t = ((px - ax) * dx + (py - ay) * dy) / (length * length)
+        slack = PICK_CONTAINS_TOL * scale / length
+        if isinstance(obj, spg.Segment) and not (-slack <= t <= 1 + slack):
+            return False
+        if isinstance(obj, spg.Ray) and t < -slack:
+            return False
+        off_line = abs(dx * (py - ay) - dy * (px - ax)) / length
+        return off_line <= PICK_CONTAINS_TOL * scale
+    return False
+
+
+def _lone_candidate_on_line(points: list[spg.Point], a: spg.Point, b: spg.Point) -> list[spg.Point]:
+    """A side pick has nothing to choose when the only candidate (e.g. a snapped tangent
+    point) lies on the line itself; accept it when it is within tolerance of that line."""
+    if len(points) != 1:
+        return []
+    ax, ay, bx, by = _f(a.x), _f(a.y), _f(b.x), _f(b.y)
+    px, py = _f(points[0].x), _f(points[0].y)
+    length = math.hypot(bx - ax, by - ay)
+    if length == 0:
+        return []
+    scale = max(length, abs(ax), abs(ay), abs(px), abs(py))
+    off_line = abs((bx - ax) * (py - ay) - (by - ay) * (px - ax)) / length
+    return list(points) if off_line <= PICK_CONTAINS_TOL * scale else []
 
 
 # ---------------------------------------------------------------------------
@@ -472,21 +617,26 @@ def _compile_one(
             # circle does; the candidates are narrowed to its sweep below.
             swept = [(oid, o) for oid, o in operands if isinstance(o, (Arc, Sector))]
             obj1, obj2 = _underlying_circle(obj1), _underlying_circle(obj2)
-            try:
-                raw = obj1.intersection(obj2)
-            except ValueError as exc:
-                if "LinearEntity" in str(exc):
-                    raise IRCompileError(
-                        did,
-                        f"intersection failed: line/circle intersection received invalid arguments — "
-                        f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
-                        f"(underlying error: {exc})"
-                    ) from exc
-                raise
-            # SymPy may return the geometry object itself (not a list) when objects
-            # are identical (e.g. two equal circles → Circle, not []).
-            candidates = raw if isinstance(raw, list) else []
-            points = [c for c in candidates if isinstance(c, spg.Point)]
+            # Float gap check first: it is cheap, snaps near-tangent pairs, and names
+            # disjoint/contained/concentric/identical cases without a SymPy solve.
+            points = _tangent_candidates(obj1, obj2, [], did, obj1_id, obj2_id)
+            if not points:
+                try:
+                    raw = obj1.intersection(obj2)
+                except ValueError as exc:
+                    if "LinearEntity" in str(exc):
+                        raise IRCompileError(
+                            did,
+                            f"intersection failed: line/circle intersection received invalid arguments — "
+                            f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
+                            f"(underlying error: {exc})"
+                        ) from exc
+                    raise
+                # SymPy may return the geometry object itself (not a list) when objects
+                # are identical (e.g. two equal circles → Circle, not []).
+                candidates = raw if isinstance(raw, list) else []
+                points = [c for c in candidates if isinstance(c, spg.Point)]
+                points = _tangent_candidates(obj1, obj2, points, did, obj1_id, obj2_id)
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
             if swept:
@@ -504,7 +654,8 @@ def _compile_one(
                         f"intersect the full circle instead"
                     )
                 points = within
-            return _apply_pick(points, pick, sym, did, canvas=canvas)
+            tangent_point = len(points) == 1 and any(isinstance(o, spg.Circle) for o in (obj1, obj2))
+            return _apply_pick(points, pick, sym, did, canvas=canvas, lone_on_line_ok=tangent_point)
 
         case ir.PointAlias(ref=ref_id):
             return ref(ref_id)
@@ -1151,8 +1302,13 @@ def _apply_pick(
     sym: SymTable,
     def_id: str,
     canvas: ir.Canvas | None = None,
+    lone_on_line_ok: bool = False,
 ) -> spg.Point2D:
-    """Select one point from candidates using the pick rule."""
+    """Select one point from candidates using the pick rule.
+
+    `lone_on_line_ok`: a side pick (upper/lower/same/opposite) accepts a single
+    candidate lying on its line within tolerance. Set only for a tangent point from
+    a circle intersection, which is on the line by definition."""
     if pick is None:
         if len(points) == 1:
             return points[0]
@@ -1206,7 +1362,7 @@ def _apply_pick(
                 # its curved edge, i.e. at its radius and within its sweep.
                 on = [p for p in points if point_on_arc(p, obj, PICK_ON_ARC_TOL)]
             else:
-                on = [p for p in points if obj.contains(p)]
+                on = [p for p in points if _on_object(obj, p)]
             if not on:
                 raise PickError(def_id, f"no candidate lies on {obj_id!r}")
             return on[0]
@@ -1216,7 +1372,7 @@ def _apply_pick(
             b = _resolve(sym, b_id, def_id=def_id)
             ref_pt = _resolve(sym, ref_id, def_id=def_id)
             ref_sign = _cross_sign(a, b, ref_pt)
-            same = [p for p in points if (_cross_sign(a, b, p) * ref_sign) > 0]
+            same = [p for p in points if (_cross_sign(a, b, p) * ref_sign) > 0] or (_lone_candidate_on_line(points, a, b) if lone_on_line_ok else [])
             if not same:
                 raise PickError(def_id, f"no candidate on same side of ({a_id},{b_id}) as {ref_id!r}")
             return same[0]
@@ -1234,7 +1390,7 @@ def _apply_pick(
             if a_pt == b_pt:
                 raise PickError(def_id, f"pick_between: '{a_id}' and '{b_id}' resolved to the same point")
             seg = spg.Segment(a_pt, b_pt)
-            between = [p for p in points if seg.contains(p)]
+            between = [p for p in points if _on_object(seg, p)]
             if not between:
                 direction = b_pt - a_pt
                 seg_len_sq = float((direction.x**2 + direction.y**2).evalf())
@@ -1291,7 +1447,7 @@ def _apply_pick(
             b_pt = _resolve(sym, b_id, def_id=def_id)
             ref_pt = _resolve(sym, ref_id, def_id=def_id)
             ref_sign = float(_cross_sign(a_pt, b_pt, ref_pt).evalf())
-            opposite = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) * ref_sign < 0]
+            opposite = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) * ref_sign < 0] or (_lone_candidate_on_line(points, a_pt, b_pt) if lone_on_line_ok else [])
             if not opposite:
                 raise PickError(def_id, f"no candidate on opposite side of ({a_id},{b_id}) from {ref_id!r}")
             return opposite[0]
@@ -1299,7 +1455,7 @@ def _apply_pick(
         case ir.PickUpperOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0]  # type: ignore[union-attr]
+            upper = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) > 0] or (_lone_candidate_on_line(points, a_pt, b_pt) if lone_on_line_ok else [])  # type: ignore[union-attr]
             if not upper:
                 _dx: Any = b_pt.x - a_pt.x
                 _dy: Any = b_pt.y - a_pt.y
@@ -1320,7 +1476,7 @@ def _apply_pick(
         case ir.PickLowerOfLine(a=a_id, b=b_id):
             a_pt = _resolve(sym, a_id, def_id=def_id)
             b_pt = _resolve(sym, b_id, def_id=def_id)
-            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0]  # type: ignore[union-attr]
+            lower = [p for p in points if float(_cross_sign(a_pt, b_pt, p).evalf()) < 0] or (_lone_candidate_on_line(points, a_pt, b_pt) if lone_on_line_ok else [])  # type: ignore[union-attr]
             if not lower:
                 _dx: Any = b_pt.x - a_pt.x
                 _dy: Any = b_pt.y - a_pt.y
@@ -1350,7 +1506,7 @@ def _apply_pick(
                     survivors = []
                     for p in pts:
                         try:
-                            _apply_pick([p], rule, sym, def_id, canvas=canvas)
+                            _apply_pick([p], rule, sym, def_id, canvas=canvas, lone_on_line_ok=lone_on_line_ok)
                             survivors.append(p)
                         except PickError:
                             pass
