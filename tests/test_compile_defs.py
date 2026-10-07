@@ -2487,3 +2487,48 @@ def test_radians_degrees_convert_angle_function_for_point_rotate():
     assert approx(sym["R"].x, 0.0)
     assert approx(sym["R"].y, 1.0)
     assert approx(_compile(PointFixed(id="D", x="degrees(pi)", y=0))["D"].x, 180.0)
+
+
+# ---------------------------------------------------------------------------
+# length()/radius() stay exact so tangent-by-construction intersects cleanly
+# ---------------------------------------------------------------------------
+
+def _one_decimal_cases(n, seed):
+    rng = Random(seed)
+    for _ in range(n):
+        x, y = round(rng.uniform(1, 9), 1), round(rng.uniform(1, 9), 1)
+        r1 = round(rng.uniform(0.5, 2.5), 1)
+        yield x, y, r1
+
+
+def test_circle_circle_tangent_via_length_expression_intersects():
+    from geometry_diagrams.ir.ir import PointIntersection
+    for x, y, r1 in _one_decimal_cases(40, seed=7):
+        sym = _compile(
+            PointFixed(id="A", x=0, y=0),
+            PointFixed(id="B", x=x, y=y),
+            CircleCenterRadius(id="c1", center="A", radius=r1),
+            CircleCenterRadius(id="c2", center="B", radius=f"length(A, B) - {r1}"),
+            PointIntersection(id="T", obj1="c1", obj2="c2"),
+        )
+        assert approx(sym["T"].distance(sym["A"]), r1, 1e-9)
+
+
+def test_line_circle_tangent_via_radius_expression_intersects():
+    from geometry_diagrams.ir.ir import PointFoot, PointIntersection, LineThrough
+    for x, y, _ in _one_decimal_cases(40, seed=11):
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x=x, y=y),
+            PointFixed(id="Q", x=y, y=-x),
+            LineThrough(id="l", p="P", q="Q"),
+            PointFoot(id="F", source="O", onto="l"),
+            CircleCenterRadius(id="c", center="O", radius="length(O, F)"),
+            PointIntersection(id="T", obj1="l", obj2="c"),
+        )
+        assert approx(sym["T"].distance(sym["F"]), 0.0, 1e-9)
+
+
+def test_exact_non_algebraic_expression_result_is_numeric():
+    sym = _compile(PointFixed(id="A", x="5*sin(pi/7)", y="asin(3/10)"))
+    assert not sym["A"].x.has(sp.sin) and not sym["A"].y.has(sp.asin)

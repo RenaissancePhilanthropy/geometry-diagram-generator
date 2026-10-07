@@ -940,7 +940,9 @@ def _eval_expr(
 
     Supports geometric functions length(A,B), radius(c), angle(A,B,C)
     when sym is provided. Raises ExprEvalError if a geometric function
-    is called but sym is None. Also supports sin/cos/tan/asin/acos/atan
+    is called but sym is None. length()/radius() return exact values so
+    distance-derived tangency stays exact; trig results that stay symbolic
+    are converted to floats. Also supports sin/cos/tan/asin/acos/atan
     (radians in and out, no sym needed) alongside pi/sqrt/E. Note angle()
     returns DEGREES while PointRotate.angle and the trig functions use
     radians; convert with radians(...)/degrees(...).
@@ -977,7 +979,7 @@ def _eval_expr(
             raise ExprEvalError(def_id, "length() requires sym table (not available here)")
         a_pt = _resolve_geo(a_arg, "length")
         b_pt = _resolve_geo(b_arg, "length")
-        return sp.Float(float(a_pt.distance(b_pt).evalf()))
+        return a_pt.distance(b_pt)
 
     def _radius(c_arg: Any) -> sp.Basic:
         if sym is None:
@@ -985,7 +987,7 @@ def _eval_expr(
         c_obj = _resolve_geo(c_arg, "radius")
         if not hasattr(c_obj, "radius"):
             raise ExprEvalError(def_id, f"radius(): {c_arg!r} is not a circle")
-        return sp.Float(float(c_obj.radius.evalf()))
+        return c_obj.radius
 
     def _angle(a_arg: Any, vertex_arg: Any, b_arg: Any) -> sp.Basic:
         """Non-reflex angle at vertex (degrees)."""
@@ -1033,12 +1035,22 @@ def _eval_expr(
     except SyntaxError as exc:
         raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
     try:
-        return sp.S(_safe_eval_node(tree.body, locals_map, def_id=def_id, raw=raw))
+        result = sp.S(_safe_eval_node(tree.body, locals_map, def_id=def_id, raw=raw))
+        # Non-algebraic results (sin(pi/7), asin(3/10)) would reach sympy's
+        # intersection symbolically and can hang it, so make them numeric.
+        if result.has(_TrigFunction, _InverseTrigFunction):
+            result = sp.Float(result.evalf(17), 17)
+        return result
     except ExprEvalError:
         raise
     except Exception as exc:
         raise ExprEvalError(def_id, f"could not evaluate {raw!r}: {exc}") from exc
 
+
+from sympy.functions.elementary.trigonometric import (  # noqa: E402
+    InverseTrigonometricFunction as _InverseTrigFunction,
+    TrigonometricFunction as _TrigFunction,
+)
 
 # Expression-string evaluation is deliberately NOT done via sp.sympify(raw,
 # locals=...): sympify compiles the string into a Python expression and
