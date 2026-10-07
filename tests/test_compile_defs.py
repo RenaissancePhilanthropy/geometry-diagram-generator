@@ -235,6 +235,26 @@ def test_point_rotate_str_angle():
     assert sym["R"].y.simplify() == sp.Integer(1)
 
 
+def test_point_rotate_angle_expr_can_reference_sym_via_radius():
+    # angle expressions resolve against already-compiled defs (not just
+    # params), e.g. a constant-chord tick: half_angle = asin(chord / (2*r)).
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        CircleCenterRadius(id="c", center="O", radius=2),
+        PointFixed(id="P", x=2, y=0),
+        PointRotate(id="R", center="O", source="P", angle="asin(1/radius(c))"),
+    )
+    # chord/2 = 1, radius = 2 -> half_angle = asin(0.5) = pi/6
+    assert approx(sym["R"].x, 2 * math.cos(math.pi / 6))
+    assert approx(sym["R"].y, 2 * math.sin(math.pi / 6))
+
+
+def test_point_fixed_trig_functions():
+    sym = _compile(PointFixed(id="A", x="asin(1)", y="cos(0)"))
+    assert approx(sym["A"].x, math.pi / 2)
+    assert approx(sym["A"].y, 1.0)
+
+
 def test_point_dilate_numeric():
     sym = _compile(
         PointFixed(id="O", x=1, y=1),

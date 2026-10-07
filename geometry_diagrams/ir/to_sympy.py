@@ -353,7 +353,7 @@ def _compile_one(
     did = stmt.id  # for error messages
 
     def ev(raw: int | float | str) -> sp.Basic:
-        return _eval_expr(raw, params, def_id=did)
+        return _eval_expr(raw, params, def_id=did, sym=sym)
 
     def ref(obj_id: str) -> Any:
         return _resolve(sym, obj_id, def_id=did, all_def_ids=all_def_ids)
@@ -940,7 +940,8 @@ def _eval_expr(
 
     Supports geometric functions length(A,B), radius(c), angle(A,B,C)
     when sym is provided. Raises ExprEvalError if a geometric function
-    is called but sym is None.
+    is called but sym is None. Also supports sin/cos/tan/asin/acos/atan
+    (radians in and out, no sym needed) alongside pi/sqrt/E.
     """
     if isinstance(raw, (int, float)):
         return sp.S(raw)
@@ -1007,6 +1008,12 @@ def _eval_expr(
         "pi": sp.pi,
         "sqrt": sp.sqrt,
         "E": sp.E,
+        "sin": sp.sin,
+        "cos": sp.cos,
+        "tan": sp.tan,
+        "asin": sp.asin,
+        "acos": sp.acos,
+        "atan": sp.atan,
         "length": _length,
         "radius": _radius,
         "angle": _angle,
@@ -1036,8 +1043,8 @@ def _eval_expr(
 # "__import__('os').popen('...').read()" executes arbitrary code. Instead we
 # walk a restricted AST ourselves, allowing only arithmetic, numeric
 # literals, name lookups against locals_map, and calls to functions already
-# present in locals_map (length/radius/angle/sqrt) — no attribute access,
-# subscripting, or import machinery is reachable.
+# present in locals_map (length/radius/angle/sqrt/sin/cos/tan/asin/acos/atan)
+# — no attribute access, subscripting, or import machinery is reachable.
 _SAFE_BINOPS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
