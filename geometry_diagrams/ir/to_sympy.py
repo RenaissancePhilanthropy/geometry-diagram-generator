@@ -941,7 +941,9 @@ def _eval_expr(
     Supports geometric functions length(A,B), radius(c), angle(A,B,C)
     when sym is provided. Raises ExprEvalError if a geometric function
     is called but sym is None. Also supports sin/cos/tan/asin/acos/atan
-    (radians in and out, no sym needed) alongside pi/sqrt/E.
+    (radians in and out, no sym needed) alongside pi/sqrt/E. Note angle()
+    returns DEGREES while PointRotate.angle and the trig functions use
+    radians; convert with radians(...)/degrees(...).
     """
     if isinstance(raw, (int, float)):
         return sp.S(raw)
@@ -1014,6 +1016,8 @@ def _eval_expr(
         "asin": sp.asin,
         "acos": sp.acos,
         "atan": sp.atan,
+        "radians": lambda x: sp.Float(_math.radians(float(sp.S(x).evalf()))),
+        "degrees": lambda x: sp.Float(_math.degrees(float(sp.S(x).evalf()))),
         "length": _length,
         "radius": _radius,
         "angle": _angle,
@@ -1043,7 +1047,7 @@ def _eval_expr(
 # "__import__('os').popen('...').read()" executes arbitrary code. Instead we
 # walk a restricted AST ourselves, allowing only arithmetic, numeric
 # literals, name lookups against locals_map, and calls to functions already
-# present in locals_map (length/radius/angle/sqrt/sin/cos/tan/asin/acos/atan)
+# present in locals_map (length/radius/angle/sqrt/trig/radians/degrees)
 # — no attribute access, subscripting, or import machinery is reachable.
 _SAFE_BINOPS = {
     ast.Add: operator.add,

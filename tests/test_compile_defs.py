@@ -2475,3 +2475,15 @@ def test_def_references_expression_names_exclude_functions():
     from geometry_diagrams.ir.refs import def_references
     refs = def_references(PointFixed(id="A", x="radius(c) + r * pi", y=0))
     assert refs == {"c", "r", "pi"}
+
+
+def test_radians_degrees_convert_angle_function_for_point_rotate():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=1, y=0),
+        PointFixed(id="B", x=0, y=1),
+        PointRotate(id="R", center="O", source="A", angle="radians(angle(A, O, B))"),
+    )
+    assert approx(sym["R"].x, 0.0)
+    assert approx(sym["R"].y, 1.0)
+    assert approx(_compile(PointFixed(id="D", x="degrees(pi)", y=0))["D"].x, 180.0)

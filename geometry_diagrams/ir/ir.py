@@ -613,7 +613,8 @@ class LineTangent(DefBase):
 
 
 class PointRotate(DefBase):
-    """Point obtained by rotating source around center by angle (radians). Maps to Point.rotate()."""
+    """Point obtained by rotating source around center by angle (radians). Maps to Point.rotate().
+    An expression using the angle() function (which returns degrees) must wrap it: radians(angle(A, O, B))."""
     kind: Literal["point_rotate"] = "point_rotate"
     center: PointId
     source: PointId
