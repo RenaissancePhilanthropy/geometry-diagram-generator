@@ -270,12 +270,16 @@ def _tangent_candidates(
         c2x, c2y, r2 = _f(obj2.center.x), _f(obj2.center.y), _f(obj2.radius)
         d = math.hypot(c2x - c1x, c2y - c1y)
         scale = max(r1, r2, d, abs(c1x), abs(c1y), abs(c2x), abs(c2y))
-    elif circle1 != circle2 and isinstance(obj1 if not circle1 else obj2, (spg.Line, spg.Segment, spg.Ray)):
-        line, circ = (obj1, obj2) if circle2 else (obj2, obj1)
-        cx, cy, r = _f(circ.center.x), _f(circ.center.y), _f(circ.radius)
+    elif (
+        isinstance(obj1, (spg.Line, spg.Segment, spg.Ray)) != isinstance(obj2, (spg.Line, spg.Segment, spg.Ray))
+        and isinstance(obj1 if isinstance(obj2, (spg.Line, spg.Segment, spg.Ray)) else obj2, spg.Ellipse)
+    ):
+        line, ell = (obj1, obj2) if isinstance(obj2, spg.Ellipse) else (obj2, obj1)
+        cx, cy = _f(ell.center.x), _f(ell.center.y)
+        ha, va = _f(ell.hradius), _f(ell.vradius)
         ax, ay = _f(line.p1.x), _f(line.p1.y)
         bx, by = _f(line.p2.x), _f(line.p2.y)
-        scale = max(r, abs(cx), abs(cy), abs(ax), abs(ay), abs(bx), abs(by))
+        scale = max(ha, va, abs(cx), abs(cy), abs(ax), abs(ay), abs(bx), abs(by))
     else:
         return points
     scale = scale or 1.0
@@ -316,22 +320,28 @@ def _tangent_candidates(
             raise miss("one circle is contained in the other", inner_gap)
         return points
 
+    # Work in the ellipse's unit-circle frame: the line is tangent exactly when its
+    # distance from the centre there is 1. For a circle (ha == va == r) the length
+    # gap is dist - r; for an ellipse the length gap is between gap*min and gap*max
+    # of the semi-axes, so the tolerance uses the larger one (never over-snaps).
     dx, dy = bx - ax, by - ay
     length = math.hypot(dx, dy)
-    if length == 0:
+    du, dv = dx / ha, dy / va
+    q = du * du + dv * dv
+    if length == 0 or q == 0:
         return points
-    t = ((cx - ax) * dx + (cy - ay) * dy) / (length * length)
-    fx, fy = ax + t * dx, ay + t * dy
-    dist = math.hypot(cx - fx, cy - fy)
-    if abs(dist - r) <= tol:
+    u0, v0 = (ax - cx) / ha, (ay - cy) / va
+    t = -(u0 * du + v0 * dv) / q
+    gap = math.hypot(u0 + t * du, v0 + t * dv) - 1.0
+    if abs(gap) <= tol / max(ha, va):
         slack = tol / length
         if isinstance(line, spg.Segment) and not (-slack <= t <= 1 + slack):
             return points
         if isinstance(line, spg.Ray) and t < -slack:
             return points
-        return [_lift(fx, fy)]
-    if dist - r > tol:
-        raise miss("the line misses the circle (disjoint)", dist - r)
+        return [_lift(ax + t * dx, ay + t * dy)]
+    if gap > tol / max(ha, va):
+        raise miss(f"the line misses the {'circle' if isinstance(ell, spg.Circle) else 'ellipse'} (disjoint)", gap * min(ha, va))
     return points
 
 

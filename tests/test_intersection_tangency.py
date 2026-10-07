@@ -18,7 +18,9 @@ from geometry_diagrams.ir.ir import (
     ArcCenterStartEnd,
     CircleCenterRadius,
     DiagramIR,
+    EllipseCenterAxes,
     LineThrough,
+    PickBeyond,
     PickLowerOfLine,
     PickOnObject,
     PickUpperOfLine,
@@ -185,3 +187,72 @@ def test_arc_whose_end_is_the_tangent_point_still_intersects():
             PointIntersection(id="T", obj1="arc", obj2="c2"),
         )
         assert math.dist(_xy(sym["T"]), (tx, ty)) < 1e-6 * r1
+
+
+# ---------------------------------------------------------------------------
+# Ellipse x line
+# ---------------------------------------------------------------------------
+
+def _ellipse_tangent_case(rng, a_range=(1, 8), b_range=(1, 8), offset_range=5.0):
+    a, b = rng.uniform(*a_range), rng.uniform(*b_range)
+    phi = rng.uniform(0, 2 * math.pi)
+    cx, cy = rng.uniform(-offset_range, offset_range), rng.uniform(-offset_range, offset_range)
+    px, py = cx + a * math.cos(phi), cy + b * math.sin(phi)
+    tx, ty = -a * math.sin(phi), b * math.cos(phi)
+    defs = [
+        PointFixed(id="C", x=cx, y=cy),
+        PointFixed(id="P", x=px, y=py),
+        PointFixed(id="Q", x=px + tx, y=py + ty),
+        LineThrough(id="l", p="P", q="Q"),
+        EllipseCenterAxes(id="e", center="C", hradius=a, vradius=b),
+        PointIntersection(id="T", obj1="l", obj2="e"),
+    ]
+    return defs, (px, py), max(a, b)
+
+
+def test_float_tangent_line_and_ellipse_give_one_point():
+    rng = Random(31)
+    for _ in range(60):
+        defs, expected, size = _ellipse_tangent_case(rng)
+        assert math.dist(_xy(_compile(*defs)["T"]), expected) < 1e-6 * size
+
+
+def test_float_tangent_line_and_eccentric_ellipse():
+    rng = Random(32)
+    for _ in range(40):
+        defs, expected, size = _ellipse_tangent_case(rng, a_range=(10, 30), b_range=(0.3, 1.0))
+        assert math.dist(_xy(_compile(*defs)["T"]), expected) < 1e-6 * size
+
+
+def test_float_tangent_line_and_ellipse_far_from_origin():
+    rng = Random(33)
+    for _ in range(40):
+        defs, expected, size = _ellipse_tangent_case(
+            rng, a_range=(0.01, 0.05), b_range=(0.01, 0.05), offset_range=800.0
+        )
+        assert math.dist(_xy(_compile(*defs)["T"]), expected) < 1e-6 * 800
+
+
+def test_line_missing_an_ellipse_reports_the_gap():
+    with pytest.raises(IntersectionError, match=r"disjoint.*gap"):
+        _compile(
+            PointFixed(id="C", x=0, y=0),
+            EllipseCenterAxes(id="e", center="C", hradius=3.0, vradius=2.0),
+            PointFixed(id="P", x=0, y=2.001),
+            PointFixed(id="Q", x=1, y=2.001),
+            LineThrough(id="l", p="P", q="Q"),
+            PointIntersection(id="T", obj1="l", obj2="e"),
+        )
+
+
+def test_line_crossing_an_ellipse_is_unchanged():
+    base = [
+        PointFixed(id="C", x=0, y=0),
+        EllipseCenterAxes(id="e", center="C", hradius=3.0, vradius=2.0),
+        PointFixed(id="P", x=0, y=1.0),
+        PointFixed(id="Q", x=1, y=1.0),
+        LineThrough(id="l", p="P", q="Q"),
+    ]
+    x = 3.0 * math.sqrt(1 - 0.25)
+    right = _compile(*base, PointIntersection(id="T", obj1="l", obj2="e", pick=PickBeyond(from_point="C", past_point="Q")))
+    assert _xy(right["T"]) == pytest.approx((x, 1.0), abs=1e-6)
