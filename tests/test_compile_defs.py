@@ -2443,3 +2443,35 @@ def test_sweep_membership_treats_both_endpoints_as_inside():
     # A sweep unwrapped past 360 deg (e.g. a reflex arc from 300 deg to 420 deg)
     assert angle_within_sweep(30.0, 300.0, 420.0)
     assert not angle_within_sweep(90.0, 300.0, 420.0)
+
+
+# ---------------------------------------------------------------------------
+# Expression fields contribute dependency edges
+# ---------------------------------------------------------------------------
+
+def test_expression_reference_to_later_generation_def_compiles():
+    from geometry_diagrams.ir.ir import PointMidpoint
+    sym = _compile(
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=8, y=0),
+        PointFixed(id="C", x=1, y=1),
+        PointMidpoint(id="M1", p="A", q="B"),
+        CircleCenterRadius(id="c1", center="C", radius="length(A, M2)"),
+        PointMidpoint(id="M2", p="A", q="M1"),
+    )
+    assert approx(sym["c1"].radius, 2.0)
+
+
+def test_expression_reference_cycle_is_reported():
+    with pytest.raises(IRCompileError, match="Circular"):
+        _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="P", x="radius(c)", y=0),
+            CircleCenterRadius(id="c", center="P", radius=1),
+        )
+
+
+def test_def_references_expression_names_exclude_functions():
+    from geometry_diagrams.ir.refs import def_references
+    refs = def_references(PointFixed(id="A", x="radius(c) + r * pi", y=0))
+    assert refs == {"c", "r", "pi"}
