@@ -254,7 +254,8 @@ def _lift(x: float, y: float) -> spg.Point:
 
 
 def _tangent_candidates(
-    obj1: Any, obj2: Any, points: list[spg.Point], def_id: str, id1: str, id2: str
+    obj1: Any, obj2: Any, points: list[spg.Point], def_id: str, id1: str, id2: str,
+    solved: bool = False,
 ) -> list[spg.Point]:
     """Reconcile SymPy's circle x circle / line x circle candidates with float noise.
 
@@ -263,6 +264,8 @@ def _tangent_candidates(
     within INTERSECT_TANGENT_TOL of tangency snap to the tangent point. Any other
     empty result raises an IntersectionError naming the case and the gap. Other
     object pairs, and empty results this cannot explain, return `points` unchanged.
+    `solved` marks `points` as SymPy's result (not the pre-solve probe); only then can
+    an empty ellipse x ellipse/circle result be diagnosed.
     """
     circle1, circle2 = isinstance(obj1, spg.Circle), isinstance(obj2, spg.Circle)
     if circle1 and circle2:
@@ -280,6 +283,17 @@ def _tangent_candidates(
         ax, ay = _f(line.p1.x), _f(line.p1.y)
         bx, by = _f(line.p2.x), _f(line.p2.y)
         scale = max(ha, va, abs(cx), abs(cy), abs(ax), abs(ay), abs(bx), abs(by))
+    elif solved and not points and isinstance(obj1, spg.Ellipse) and isinstance(obj2, spg.Ellipse):
+        crossings = _count_ellipse_crossings(obj1, obj2)
+        if crossings:
+            raise IntersectionError(
+                def_id,
+                f"no intersection points between {id1!r} and {id2!r}: the curves cross at "
+                f"{crossings} points, but SymPy could not solve the intersection for these "
+                f"float-valued ellipses — use exact (integer or sqrt) radii, or construct the "
+                f"point another way",
+            )
+        return points
     else:
         return points
     scale = scale or 1.0
@@ -343,6 +357,19 @@ def _tangent_candidates(
     if gap > tol / max(ha, va):
         raise miss(f"the line misses the {'circle' if isinstance(ell, spg.Circle) else 'ellipse'} (disjoint)", gap * min(ha, va))
     return points
+
+
+def _count_ellipse_crossings(e1: Any, e2: Any, samples: int = 4096) -> int:
+    """How many times e1's boundary crosses e2's (sign changes of e2's implicit form
+    along e1), by sampling; tangencies and chords below sampling resolution are missed."""
+    c1x, c1y, a1, b1 = _f(e1.center.x), _f(e1.center.y), _f(e1.hradius), _f(e1.vradius)
+    c2x, c2y, a2, b2 = _f(e2.center.x), _f(e2.center.y), _f(e2.hradius), _f(e2.vradius)
+    signs = []
+    for i in range(samples):
+        t = 2 * math.pi * i / samples
+        x, y = c1x + a1 * math.cos(t), c1y + b1 * math.sin(t)
+        signs.append(((x - c2x) / a2) ** 2 + ((y - c2y) / b2) ** 2 - 1.0 > 0)
+    return sum(signs[i] != signs[i - 1] for i in range(samples))
 
 
 def _on_object(obj: Any, p: spg.Point) -> bool:
@@ -646,7 +673,7 @@ def _compile_one(
                 # are identical (e.g. two equal circles → Circle, not []).
                 candidates = raw if isinstance(raw, list) else []
                 points = [c for c in candidates if isinstance(c, spg.Point)]
-                points = _tangent_candidates(obj1, obj2, points, did, obj1_id, obj2_id)
+                points = _tangent_candidates(obj1, obj2, points, did, obj1_id, obj2_id, solved=True)
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
             if swept:

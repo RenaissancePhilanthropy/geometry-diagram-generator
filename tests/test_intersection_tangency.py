@@ -256,3 +256,28 @@ def test_line_crossing_an_ellipse_is_unchanged():
     x = 3.0 * math.sqrt(1 - 0.25)
     right = _compile(*base, PointIntersection(id="T", obj1="l", obj2="e", pick=PickBeyond(from_point="C", past_point="Q")))
     assert _xy(right["T"]) == pytest.approx((x, 1.0), abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Ellipse x ellipse/circle: SymPy returns nothing for float-valued four-point crossings
+# ---------------------------------------------------------------------------
+
+def _two_ellipses(h1, v1, c2, h2, v2):
+    return [
+        PointFixed(id="C1", x=0, y=0),
+        PointFixed(id="C2", x=c2[0], y=c2[1]),
+        EllipseCenterAxes(id="e1", center="C1", hradius=h1, vradius=v1),
+        EllipseCenterAxes(id="e2", center="C2", hradius=h2, vradius=v2),
+        PointIntersection(id="T", obj1="e1", obj2="e2"),
+    ]
+
+
+def test_ellipses_that_cross_but_sympy_cannot_solve_say_so():
+    with pytest.raises(IntersectionError, match=r"cross at 4 points.*could not solve"):
+        _compile(*_two_ellipses(5.0, 2.0, (1.3, 0.7), 2.1, 4.7))
+
+
+def test_disjoint_ellipses_keep_the_generic_message():
+    with pytest.raises(IntersectionError) as exc:
+        _compile(*_two_ellipses(2.0, 1.0, (20.0, 0.0), 2.0, 1.0))
+    assert "could not solve" not in str(exc.value)
