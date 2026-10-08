@@ -1160,12 +1160,12 @@ def _emit_svg_op(
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
                       font_family=font_family, math_glyph=lp.math_glyph)
 
-        case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
+        case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style, which=label_which):
             missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
             if missing:
                 _warn(warnings, f"Skipping LabelAngle for undefined {missing!r}")
                 return
-            a_id, o_id, b_id = orient_angle(angle.a, angle.o, angle.b, sym, "interior")
+            a_id, o_id, b_id = orient_angle(angle.a, angle.o, angle.b, sym, label_which)
             ox_g, oy_g = coords.get(o_id, helpers.get(o_id, (0, 0)))
             ax_g, ay_g = coords.get(a_id, helpers.get(a_id, (0, 0)))
             bx_g, by_g = coords.get(b_id, helpers.get(b_id, (0, 0)))

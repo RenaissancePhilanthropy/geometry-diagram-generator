@@ -1056,6 +1056,9 @@ class LabelAngle(RenderBase):
     angle: AngleSpec
     text: str
     pos: Optional[float] = None  # tkz label pos fraction if you want
+    # Which side of the vertex the label sits on. "reflex" puts it on the major
+    # side, to go with MarkAngles(which="reflex"); a/b order does not matter.
+    which: Literal["interior", "reflex"] = "interior"
 
 
 class LabelSegment(RenderBase):

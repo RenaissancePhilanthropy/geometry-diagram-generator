@@ -549,7 +549,7 @@ def _emit_op(
             pos_str = f"[{pos}]" if pos and pos != "auto" else ""
             out.append(f"\\tkzLabelPoint{pos_str}({p}){{${_to_latex(label)}$}}")
 
-        case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style):
+        case ir.LabelAngle(angle=angle, text=text, pos=pos, style=style, which=label_which):
             if any(pid not in sym for pid in (angle.a, angle.o, angle.b)):
                 missing = [pid for pid in (angle.a, angle.o, angle.b) if pid not in sym]
                 msg = f"Skipping render op LabelAngle for undefined object(s) {missing!r}"
@@ -564,7 +564,7 @@ def _emit_op(
             if color_opts:
                 opts_parts.append(color_opts.strip("[]"))
             sopts = f"[{','.join(opts_parts)}]" if opts_parts else ""
-            a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, "interior")
+            a, o, b = _orient_angle(angle.a, angle.o, angle.b, sym, label_which)
             out.append(f"\\tkzLabelAngle{sopts}({a},{o},{b}){{${_to_latex(text)}$}}")
 
         case ir.LabelSegment(seg=seg_id, text=text, pos=pos, style=style):
