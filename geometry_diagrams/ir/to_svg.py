@@ -226,10 +226,10 @@ def ir_to_svg(
     # rather than assuming a fixed margin covers every tick label.
     extra_left = 0.0
     if canvas is not None and canvas.axes and canvas.show_tick_labels and xmin <= 0 <= xmax:
-        tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+        _, y_tick_step = canvas.tick_steps()
         widths = [
             max(len(fmt_label_num(y)), 1) * _TICK_LABEL_FONT_SIZE * 0.65
-            for y in tick_values(ymin, ymax, tick_step)
+            for y in tick_values(ymin, ymax, y_tick_step)
         ]
         if widths:
             extra_left = max(widths) - _MARGIN + _TICK_PX + 3
@@ -2075,11 +2075,11 @@ def _append_grid(
     ymax: float,
     gxy,
 ) -> None:
-    step = canvas.grid_step if canvas.grid_step > 0 else 1.0
-    gxmin = round_down_to_step(xmin, step)
-    gxmax = round_up_to_step(xmax, step)
-    gymin = round_down_to_step(ymin, step)
-    gymax = round_up_to_step(ymax, step)
+    x_step, y_step = canvas.grid_steps()
+    gxmin = round_down_to_step(xmin, x_step)
+    gxmax = round_up_to_step(xmax, x_step)
+    gymin = round_down_to_step(ymin, y_step)
+    gymax = round_up_to_step(ymax, y_step)
 
     x = gxmin
     while x <= gxmax + 1e-9:
@@ -2090,7 +2090,7 @@ def _append_grid(
             "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
             "stroke": "#ccc", "stroke-width": "0.5",
         })
-        x += step
+        x += x_step
 
     y = gymin
     while y <= gymax + 1e-9:
@@ -2101,7 +2101,7 @@ def _append_grid(
             "x2": f"{px2:.2f}", "y2": f"{py2:.2f}",
             "stroke": "#ccc", "stroke-width": "0.5",
         })
-        y += step
+        y += y_step
 
 
 def _append_axes(
@@ -2155,11 +2155,11 @@ def _append_axes(
                 "font-style": "italic", "text-anchor": "middle",
             }).text = "y"
 
-    tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+    x_tick_step, y_tick_step = canvas.tick_steps()
     TICK_PX = _TICK_PX
 
     if (canvas.show_ticks or canvas.show_tick_labels) and has_x:
-        for x in tick_values(xmin, xmax, tick_step):
+        for x in tick_values(xmin, xmax, x_tick_step):
             px, py = gxy(x, 0)
             if canvas.show_ticks:
                 ET.SubElement(svg, "line", {
@@ -2180,7 +2180,7 @@ def _append_axes(
                     tick_label_boxes.append((tx - w / 2, ty, tx + w / 2, ty + _TICK_LABEL_FONT_SIZE))
 
     if (canvas.show_ticks or canvas.show_tick_labels) and has_y:
-        for y in tick_values(ymin, ymax, tick_step):
+        for y in tick_values(ymin, ymax, y_tick_step):
             px, py = gxy(0, y)
             if canvas.show_ticks:
                 ET.SubElement(svg, "line", {

@@ -773,14 +773,15 @@ def _emit_grid(
     ymin: float,
     ymax: float,
 ) -> list[str]:
-    step = canvas.grid_step if canvas.grid_step > 0 else 1.0
-    grid_xmin = _round_down_to_step(xmin, step)
-    grid_xmax = _round_up_to_step(xmax, step)
-    grid_ymin = _round_down_to_step(ymin, step)
-    grid_ymax = _round_up_to_step(ymax, step)
+    x_step, y_step = canvas.grid_steps()
+    grid_xmin = _round_down_to_step(xmin, x_step)
+    grid_xmax = _round_up_to_step(xmax, x_step)
+    grid_ymin = _round_down_to_step(ymin, y_step)
+    grid_ymax = _round_up_to_step(ymax, y_step)
+    step = _fmt_num(x_step) if x_step == y_step else f"{{({_fmt_num(x_step)},{_fmt_num(y_step)})}}"
     return [
         (
-            f"\\draw[gray!35,thin,step={_fmt_num(step)}] "
+            f"\\draw[gray!35,thin,step={step}] "
             f"({_fmt_num(grid_xmin)},{_fmt_num(grid_ymin)}) grid "
             f"({_fmt_num(grid_xmax)},{_fmt_num(grid_ymax)});"
         )
@@ -811,9 +812,9 @@ def _emit_axes(
         lines.append(y_axis + ";")
 
     if canvas.show_ticks or canvas.show_tick_labels:
-        tick_step = canvas.tick_step if canvas.tick_step > 0 else 1.0
+        x_tick_step, y_tick_step = canvas.tick_steps()
         if has_x_axis:
-            for x in _tick_values(xmin, xmax, tick_step):
+            for x in _tick_values(xmin, xmax, x_tick_step):
                 if canvas.show_ticks:
                     lines.append(
                         f"\\draw ({_fmt_num(x)},{_fmt_num(_TICK_HALF_LENGTH)}) -- "
@@ -825,7 +826,7 @@ def _emit_axes(
                         f"{{{_fmt_label_num(x)}}};"
                     )
         if has_y_axis:
-            for y in _tick_values(ymin, ymax, tick_step):
+            for y in _tick_values(ymin, ymax, y_tick_step):
                 if canvas.show_ticks:
                     lines.append(
                         f"\\draw ({_fmt_num(_TICK_HALF_LENGTH)},{_fmt_num(y)}) -- "

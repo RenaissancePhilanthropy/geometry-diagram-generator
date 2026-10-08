@@ -43,6 +43,22 @@ class Canvas(BaseModel):
     show_tick_labels: bool = False
     show_axis_labels: bool = False
     clip: bool = True
+    # Optional per-axis overrides of grid_step/tick_step, for axes labeled in
+    # different units (e.g. x by 5, y by 50). None means "use the shared field".
+    x_tick_step: Optional[float] = Field(default=None, gt=0)
+    y_tick_step: Optional[float] = Field(default=None, gt=0)
+    x_grid_step: Optional[float] = Field(default=None, gt=0)
+    y_grid_step: Optional[float] = Field(default=None, gt=0)
+
+    def tick_steps(self) -> tuple[float, float]:
+        """(x, y) tick spacing, each axis falling back to the shared tick_step."""
+        shared = self.tick_step if self.tick_step > 0 else 1.0
+        return (self.x_tick_step or shared, self.y_tick_step or shared)
+
+    def grid_steps(self) -> tuple[float, float]:
+        """(x, y) grid spacing, each axis falling back to the shared grid_step."""
+        shared = self.grid_step if self.grid_step > 0 else 1.0
+        return (self.x_grid_step or shared, self.y_grid_step or shared)
 
 
 class PointOnMethod(BaseModel):
