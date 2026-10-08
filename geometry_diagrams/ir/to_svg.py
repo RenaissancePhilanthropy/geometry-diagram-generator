@@ -85,6 +85,7 @@ _FONT_SIZE = 14            # px
 _LABEL_OFFSET = 12         # px — label distance from geometry
 _ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc (ceiling)
 _ANGLE_LABEL_R_MIN = _ANGLE_ARC_R + 4  # px — floor, just clear of the arc mark
+_ANGLE_RAY_MARGIN = 2.0  # px — min gap between an angle label's box and its own bounding rays
 _ANGLE_LABEL_FRAC = 0.35  # fraction of the shorter ray's length the label may stand off
 _RING_PIN_TOLERANCE = 1.5  # px — treat a pin_point this close to a ring as "on" it
 _WEAK_RING_CLEARANCE_FACTOR = 0.4  # how much less clearance an un-drawn (arc/sector) full circle demands vs. a real drawn ring
@@ -134,6 +135,12 @@ class _LabelPlacement:
     # that obstacle-avoidance pushed off-axis back toward it, whenever doing
     # so doesn't reintroduce a violation.
     ideal_dir: tuple[float, float] | None = None
+    # For a LabelAngle: the two bounding rays' unit directions (SVG px space)
+    # from pin_point, and the wedge's half-sweep in radians. The label must stay
+    # inside this wedge, so its own rays never push it (_segment_clearance skips
+    # them) and _clamp_angle_labels_to_wedge undoes any later push across one.
+    wedge_rays: tuple[tuple[float, float], tuple[float, float]] | None = None
+    wedge_half: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +458,7 @@ def ir_to_svg(
     # LabelAngle's bisector) back toward it, never past what the obstacle
     # passes above already established as clear.
     _gravitate_to_ideal_axis(pending_labels, drawn_segments, drawn_circles, drawn_ellipses, tick_label_boxes)
+    _clamp_angle_labels_to_wedge(pending_labels)
     for lp in pending_labels:
         # Stamp the final (post-nudge, post-collision-resolution) bbox and
         # source text onto the emitted element itself, as data-* attributes.
@@ -1197,6 +1205,16 @@ def _emit_svg_op(
                 pin_point=vertex_px,
                 ideal_dir=bisector_dir,
             )
+            a_px, b_px = gxy(ax_g, ay_g), gxy(bx_g, by_g)
+            len_a = math.hypot(a_px[0] - vertex_px[0], a_px[1] - vertex_px[1]) or 1.0
+            len_b = math.hypot(b_px[0] - vertex_px[0], b_px[1] - vertex_px[1]) or 1.0
+            lp.wedge_rays = (
+                ((a_px[0] - vertex_px[0]) / len_a, (a_px[1] - vertex_px[1]) / len_a),
+                ((b_px[0] - vertex_px[0]) / len_b, (b_px[1] - vertex_px[1]) / len_b),
+            )
+            lp.wedge_half = ((db - da) % (2 * math.pi)) / 2
+            fit_r = _fit_angle_label_radius(lp, label_r, max(label_r, 0.9 * min(len_a, len_b)))
+            lp.x, lp.y = vertex_px[0] + bisector_dir[0] * fit_r, vertex_px[1] + bisector_dir[1] * fit_r
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
@@ -3014,11 +3032,76 @@ def _iteratively_nudge_from_obstacles(
         lp.x, lp.y = bx, by
 
 
+def _is_bounding_ray(lp: _LabelPlacement, segment: tuple[float, float, float, float]) -> bool:
+    """Is `segment` drawn along one of this angle label's own bounding rays (through its
+    vertex, parallel to the ray)? Those rays must not push the label: in a thin wedge
+    pushing away from one ray drives the label across the other."""
+    if lp.wedge_rays is None or lp.pin_point is None:
+        return False
+    x1, y1, x2, y2 = segment
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length < 1e-9:
+        return False
+    sx, sy = (x2 - x1) / length, (y2 - y1) / length
+    vx, vy = lp.pin_point
+    off_line = abs((vx - x1) * sy - (vy - y1) * sx)
+    if off_line > 1.0:
+        return False
+    return any(abs(sx * uy - sy * ux) < 0.02 for ux, uy in lp.wedge_rays)
+
+
+def _fit_angle_label_radius(lp: _LabelPlacement, r0: float, r_max: float) -> float:
+    """Distance from the vertex, along the bisector, at which an angle label's box clears
+    both bounding rays by _ANGLE_RAY_MARGIN. Keeps r0 if it already does; otherwise the
+    nearest larger radius that does (up to r_max); if none fits, a stand-off just past
+    the arc rather than a position outside the wedge."""
+    assert lp.wedge_rays is not None and lp.wedge_half is not None
+    sin_half = math.sin(lp.wedge_half)
+
+    def clears(r: float) -> bool:
+        for ux, uy in lp.wedge_rays:
+            nx, ny = -uy, ux
+            need = abs(lp.width_est / 2 * nx) + abs(lp.height_est / 2 * ny) + _ANGLE_RAY_MARGIN
+            if r * sin_half < need:
+                return False
+        return True
+
+    if clears(r0):
+        return r0
+    r = r0
+    while r < r_max:
+        r += 1.0
+        if clears(r):
+            return r
+    return _ANGLE_LABEL_R_MIN
+
+
+def _clamp_angle_labels_to_wedge(labels: list[_LabelPlacement]) -> None:
+    """Last pass: an angle label whose center ended up outside its wedge (pushed there by
+    label-collision or another obstacle) moves back onto the bisector at its current distance."""
+    for lp in labels:
+        if lp.wedge_half is None or lp.pin_point is None or lp.ideal_dir is None:
+            continue
+        vx, vy = lp.pin_point
+        cx, cy = _bbox_center(lp)
+        rx, ry = cx - vx, cy - vy
+        dist = math.hypot(rx, ry)
+        dx, dy = lp.ideal_dir
+        off = abs(math.atan2(rx * dy - ry * dx, rx * dx + ry * dy))
+        if dist > 1e-9 and off <= lp.wedge_half:
+            continue
+        r = max(dist, _ANGLE_LABEL_R_MIN)
+        lp.x += (vx + dx * r) - cx
+        lp.y += (vy + dy * r) - cy
+
+
 def _segment_clearance(
     cx: float, cy: float, lp: _LabelPlacement, segment: tuple[float, float, float, float],
 ) -> tuple[float, float, float] | None:
     """One straight line/segment's clearance verdict for a label currently
     centered at (cx, cy). None if already clear of it."""
+    if _is_bounding_ray(lp, segment):
+        return None
     x1, y1, x2, y2 = segment
     dist, near_x, near_y = _point_to_segment_distance(cx, cy, x1, y1, x2, y2)
 

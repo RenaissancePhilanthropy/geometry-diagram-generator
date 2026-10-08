@@ -70,3 +70,50 @@ def test_tikz_reflex_label_uses_the_large_arc_orientation():
     assert "\\tkzLabelAngle(G,T,F)" in ir_to_tikz(d, compile_defs(d))
     d = _diagram()
     assert "\\tkzLabelAngle(F,T,G)" in ir_to_tikz(d, compile_defs(d))
+
+
+# ---------------------------------------------------------------------------
+# A LabelAngle stays inside its wedge, however thin
+# ---------------------------------------------------------------------------
+
+from geometry_diagrams.ir.ir import DrawPoints, LabelPoint, PointFixed as _PF  # noqa: E402
+
+
+def _wedge_diagram(theta_deg, far, below, size=2.0):
+    s = -1 if below else 1
+    t = math.tan(math.radians(theta_deg))
+    defs = [
+        _PF(id="N", x=0, y=0), _PF(id="E", x=size, y=0), _PF(id="J", x=size, y=s * size * t),
+        Segment(id="NE", a="N", b="E"), Segment(id="EJ", a="E", b="J"), Segment(id="NJ", a="N", b="J"),
+    ]
+    rend = [
+        Draw(obj="NE"), Draw(obj="EJ"), Draw(obj="NJ"),
+        MarkAngles(angles=[AnglePoints(a="E", o="N", b="J")]),
+        LabelAngle(angle=AnglePoints(a="E", o="N", b="J"), text="x"),
+        LabelPoint(p="N", text="N"), LabelPoint(p="E", text="E"), LabelPoint(p="J", text="J"),
+    ]
+    if far:
+        defs.append(_PF(id="Z", x=far, y=0))
+        rend.append(DrawPoints(points=["Z"]))
+    return DiagramIR(define=defs, render=rend)
+
+
+def _angle_off_bisector_deg(svg, theta_deg, below):
+    nx, ny = (float(v) for v in re.search(r'data-endpoints="N,E" x1="([\d.]+)" y1="([\d.]+)"', svg).groups())
+    lx, ly = (float(v) for v in re.search(r'data-role="label-angle"[^>]* x="([\d.]+)" y="([\d.]+)"', svg).groups())
+    ang = math.degrees(math.atan2(-(ly - ny), lx - nx))
+    return ang - (-theta_deg / 2 if below else theta_deg / 2)
+
+
+def test_angle_label_never_leaves_its_wedge():
+    for theta in (10, 20, 30, 45, 60, 90):
+        for below in (False, True):
+            for far in (0, 5, 10, 15, 25, 40):
+                svg = _svg(_wedge_diagram(theta, far, below))
+                off = _angle_off_bisector_deg(svg, theta, below)
+                assert abs(off) < theta / 2, f"theta={theta} far={far} below={below}: {off:.1f}deg off bisector"
+
+
+def test_angle_label_that_fits_stays_on_the_bisector():
+    svg = _svg(_wedge_diagram(30, 0, False))
+    assert abs(_angle_off_bisector_deg(svg, 30, False)) < 1.0
