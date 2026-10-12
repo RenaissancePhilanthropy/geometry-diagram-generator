@@ -49,6 +49,23 @@ class Canvas(BaseModel):
     y_tick_step: Optional[float] = Field(default=None, gt=0)
     x_grid_step: Optional[float] = Field(default=None, gt=0)
     y_grid_step: Optional[float] = Field(default=None, gt=0)
+    # Visual length of one y unit relative to one x unit (matplotlib's set_aspect
+    # convention). None draws equal units. Use it when the axes are labeled in
+    # different units (x by 5, y by 50): for a plane x 0..40, y 0..450 drawn roughly
+    # square, aspect ~ 40/450 ~ 0.09. Circles and arcs then draw as ellipses.
+    aspect: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _check_aspect_box_ratio(self) -> "Canvas":
+        if self.aspect is not None and self.xmax > self.xmin and self.ymax > self.ymin:
+            ratio = (self.ymax - self.ymin) * self.aspect / (self.xmax - self.xmin)
+            if not (1 / 20 <= ratio <= 20):
+                raise ValueError(
+                    f"canvas aspect={self.aspect} draws the plot box {ratio:.3g}:1 (height:width); "
+                    f"keep it between 1:20 and 20:1 -- aspect is (visual y-unit length)/(visual x-unit length), "
+                    f"so for a roughly square plot use about (xmax-xmin)/(ymax-ymin)"
+                )
+        return self
 
     def tick_steps(self) -> tuple[float, float]:
         """(x, y) tick spacing, each axis falling back to the shared tick_step."""

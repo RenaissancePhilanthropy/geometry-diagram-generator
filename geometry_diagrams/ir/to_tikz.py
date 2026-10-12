@@ -79,6 +79,11 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     The returned string is intended to be placed inside a tikzpicture environment
     (the renderer wraps it automatically).
     """
+    if diagram.canvas is not None and diagram.canvas.aspect is not None:
+        raise ValueError(
+            "canvas aspect is only supported by the SVG renderer; the TikZ renderer draws equal "
+            "units on both axes -- use renderer='svg' or leave canvas.aspect unset"
+        )
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
     coords = extract_coords(sym)
 

@@ -19,7 +19,7 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import sympy.geometry as spg
 
@@ -103,6 +103,33 @@ def px_per_construction_unit(geo_w: float, geo_h: float) -> float:
     rather than re-deriving it, and pydsl/api.py's _px_per_construction_unit()
     calls it too, so the two never independently drift out of sync."""
     return (_SVG_SIZE - 2 * _CANVAS_MARGIN_PX) / max(geo_w, geo_h)
+
+
+class _Scale(NamedTuple):
+    """Construction-unit -> SVG-pixel scale, per axis. Deliberately not a number:
+    multiplying or dividing by one raises, so every use must pick sx or sy."""
+    sx: float
+    sy: float
+
+    @property
+    def iso(self) -> bool:
+        return self.sx == self.sy
+
+
+def _visual_angle(angle: float, scale: _Scale) -> float:
+    """The direction `angle` (radians, y-up construction space) points on the page
+    once x is scaled by sx and y by sy."""
+    return math.atan2(scale.sy * math.sin(angle), scale.sx * math.cos(angle))
+
+
+def _px_scales(geo_w: float, geo_h: float, aspect: float | None) -> _Scale:
+    """Per-axis scale for a geometry box geo_w x geo_h. aspect is Canvas.aspect: the
+    visual length of one y unit relative to one x unit (None draws equal units)."""
+    if aspect is None:
+        s = px_per_construction_unit(geo_w, geo_h)
+        return _Scale(s, s)
+    s = (_SVG_SIZE - 2 * _CANVAS_MARGIN_PX) / max(geo_w, geo_h * aspect)
+    return _Scale(s, s * aspect)
 
 
 # ---------------------------------------------------------------------------
@@ -195,15 +222,18 @@ def ir_to_svg(
     canvas = diagram.canvas
     if canvas is not None:
         xmin, xmax, ymin, ymax = effective_canvas_bounds(canvas)
+        # The padding is a margin on the page: a y unit drawn `aspect` times as long
+        # as an x unit needs 1/aspect times as many units to give the same pixels.
+        y_pad = BOUNDS_PADDING / canvas.aspect if canvas.aspect else BOUNDS_PADDING
         for px, py in list(coords.values()) + list(helpers.values()):
             if px < xmin:
                 xmin = px - BOUNDS_PADDING
             if px > xmax:
                 xmax = px + BOUNDS_PADDING
             if py < ymin:
-                ymin = py - BOUNDS_PADDING
+                ymin = py - y_pad
             if py > ymax:
-                ymax = py + BOUNDS_PADDING
+                ymax = py + y_pad
         xmin, xmax, ymin, ymax = expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
     else:
         xmin, xmax, ymin, ymax = compute_bounds(coords, helpers, sym)
@@ -218,7 +248,7 @@ def ir_to_svg(
     # Scale: map geometry units → SVG pixels
     # Keep aspect ratio; add a small pixel margin
     _MARGIN = _CANVAS_MARGIN_PX
-    scale = px_per_construction_unit(geo_w, geo_h)
+    scale = _px_scales(geo_w, geo_h, canvas.aspect if canvas is not None else None)
 
     # Wide y-axis tick labels (e.g. multi-digit numbers on a large canvas) can
     # be wider than the default margin reserves, clipping off the left edge —
@@ -235,16 +265,16 @@ def ir_to_svg(
             extra_left = max(widths) - _MARGIN + _TICK_PX + 3
             extra_left = max(extra_left, 0.0)
 
-    svg_w = geo_w * scale + 2 * _MARGIN + extra_left
-    svg_h = geo_h * scale + 2 * _MARGIN
+    svg_w = geo_w * scale.sx + 2 * _MARGIN + extra_left
+    svg_h = geo_h * scale.sy + 2 * _MARGIN
 
     def gx(x: float) -> float:
         """Geometry x → SVG x."""
-        return (x - xmin) * scale + _MARGIN + extra_left
+        return (x - xmin) * scale.sx + _MARGIN + extra_left
 
     def gy(y: float) -> float:
         """Geometry y → SVG y (flipped: high y = low pixel row)."""
-        return svg_h - ((y - ymin) * scale + _MARGIN)
+        return svg_h - ((y - ymin) * scale.sy + _MARGIN)
 
     def gxy(x: float, y: float) -> tuple[float, float]:
         return gx(x), gy(y)
@@ -401,6 +431,19 @@ def ir_to_svg(
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
     angle_mark_wedges = _build_angle_mark_wedges(diagram, sym, coords, helpers)
+    if not scale.iso:
+        # These are construction-space directions; label placement works on the page.
+        incident_angles = {
+            pid: [_visual_angle(a, scale) for a in angs] for pid, angs in incident_angles.items()
+        }
+        angle_mark_wedges = {
+            pid: [
+                (_visual_angle(start, scale),
+                 _visual_angle(start, scale) + ((_visual_angle(end, scale) - _visual_angle(start, scale)) % (2 * math.pi)))
+                for start, end in spans
+            ]
+            for pid, spans in angle_mark_wedges.items()
+        }
 
     # Deduplicate angle marks globally to avoid duplicate paths
     _seen_ra_triples: set[tuple[str, str, str]] = set()
@@ -494,7 +537,7 @@ def _emit_implicit_shape(
     stmt_by_id: dict,
     pt,
     gxy,
-    scale: float,
+    scale: _Scale,
     warnings: list[str] | None = None,
 ) -> None:
     """Emit obj_id's geometry as a hidden, hoverable SVG element (used only
@@ -525,7 +568,7 @@ def _emit_implicit_shape(
         })
     elif isinstance(sym_obj, Arc):
         cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-        r_s = r_g * scale
+        rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
         end_rad = math.radians(end_deg)
         ex_g = cx_g + r_g * math.cos(end_rad)
         ey_g = cy_g + r_g * math.sin(end_rad)
@@ -534,7 +577,7 @@ def _emit_implicit_shape(
         large_arc = 1 if (end_deg - start_deg) > 180.0 else 0
         d = (
             f"M {sx_s:.2f} {sy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f}"
+            f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f}"
         )
         ET.SubElement(svg, "path", {
             "data-type": "arc", "d": d, "fill": "none",
@@ -542,7 +585,7 @@ def _emit_implicit_shape(
         })
     elif isinstance(sym_obj, Sector):
         cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-        r_s = r_g * scale
+        rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
         end_rad = math.radians(end_deg)
         ex_g = cx_g + r_g * math.cos(end_rad)
         ey_g = cy_g + r_g * math.sin(end_rad)
@@ -553,7 +596,7 @@ def _emit_implicit_shape(
         d = (
             f"M {cx_s:.2f} {cy_s:.2f} "
             f"L {sx_s:.2f} {sy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
             f"L {cx_s:.2f} {cy_s:.2f}"
         )
         ET.SubElement(svg, "path", {
@@ -579,7 +622,7 @@ def _emit_svg_op(
     group_mark_symbols: dict[str, str],
     pt,
     gxy,
-    scale: float,
+    scale: _Scale,
     xmin: float,
     xmax: float,
     ymin: float,
@@ -711,25 +754,39 @@ def _emit_svg_op(
                 cy_g = sympy_to_float(sym_obj.center.y)
                 r_g = sympy_to_float(sym_obj.radius)
                 cx_s, cy_s = gxy(cx_g, cy_g)
-                r_s = r_g * scale
+                rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
                 # Recover center point id from the DefStmt
                 center_id = _circle_center_id(obj_id, stmt_by_id)
-                ET.SubElement(svg, "circle", {
-                    "data-ir-id": obj_id,
-                    "data-type": "circle",
-                    **({"data-center": center_id} if center_id else {}),
-                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
-                    "fill": "none",
-                    **attrs,
-                })
-                if drawn_circles is not None:
-                    drawn_circles.append((cx_s, cy_s, r_s, True))
+                if scale.iso:
+                    ET.SubElement(svg, "circle", {
+                        "data-ir-id": obj_id,
+                        "data-type": "circle",
+                        **({"data-center": center_id} if center_id else {}),
+                        "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{rx_s:.2f}",
+                        "fill": "none",
+                        **attrs,
+                    })
+                    if drawn_circles is not None:
+                        drawn_circles.append((cx_s, cy_s, rx_s, True))
+                else:
+                    # Unequal axis scales turn a circle into an axis-aligned ellipse.
+                    ET.SubElement(svg, "ellipse", {
+                        "data-ir-id": obj_id,
+                        "data-type": "circle",
+                        **({"data-center": center_id} if center_id else {}),
+                        "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                        "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                        "fill": "none",
+                        **attrs,
+                    })
+                    if drawn_ellipses is not None:
+                        drawn_ellipses.append((cx_s, cy_s, rx_s, ry_s))
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
                 cx_s, cy_s = gxy(cx_g, cy_g)
-                rx_s = a_g * scale
-                ry_s = b_g * scale
+                rx_s = a_g * scale.sx
+                ry_s = b_g * scale.sy
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-type": "ellipse",
@@ -743,7 +800,7 @@ def _emit_svg_op(
 
             elif isinstance(sym_obj, Arc):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-                r_s = r_g * scale
+                rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
                 # Compute arc endpoint on the circle in geometry space, then map
                 # to pixel space.  The SymPy-space sweep is CCW from start_deg
                 # to end_deg.
@@ -758,7 +815,7 @@ def _emit_svg_op(
                 sweep_flag = 0
                 d = (
                     f"M {sx_s:.2f} {sy_s:.2f} "
-                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} {sweep_flag} "
+                    f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} {sweep_flag} "
                     f"{ex_s:.2f} {ey_s:.2f}"
                 )
                 ET.SubElement(svg, "path", {
@@ -774,11 +831,11 @@ def _emit_svg_op(
                     # full=False: only the sweep is actually visible, so this
                     # shouldn't demand as much clearance as a real drawn ring.
                     cx_s, cy_s = gxy(cx_g, cy_g)
-                    drawn_circles.append((cx_s, cy_s, r_s, False))
+                    drawn_circles.append((cx_s, cy_s, rx_s, False))
 
             elif isinstance(sym_obj, Sector):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-                r_s = r_g * scale
+                rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
                 end_rad = math.radians(end_deg)
                 ex_g = cx_g + r_g * math.cos(end_rad)
                 ey_g = cy_g + r_g * math.sin(end_rad)
@@ -790,7 +847,7 @@ def _emit_svg_op(
                 d = (
                     f"M {cx_s:.2f} {cy_s:.2f} "
                     f"L {sx_s:.2f} {sy_s:.2f} "
-                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
+                    f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} "
                     f"L {cx_s:.2f} {cy_s:.2f}"
                 )
                 ET.SubElement(svg, "path", {
@@ -804,12 +861,12 @@ def _emit_svg_op(
                     # The sector's FULL circle, not just its drawn sweep --
                     # see _nudge_labels_from_circles's own docstring for why.
                     # full=False: only the wedge is actually visible.
-                    drawn_circles.append((cx_s, cy_s, r_s, False))
+                    drawn_circles.append((cx_s, cy_s, rx_s, False))
 
             elif isinstance(sym_obj, EllipticalArc):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
-                hr_s = hr_g * scale
-                vr_s = vr_g * scale
+                hr_s = hr_g * scale.sx
+                vr_s = vr_g * scale.sy
                 end_rad = math.radians(end_deg)
                 ex_g = cx_g + hr_g * math.cos(end_rad)
                 ey_g = cy_g + vr_g * math.sin(end_rad)
@@ -839,8 +896,8 @@ def _emit_svg_op(
 
             elif isinstance(sym_obj, EllipticalSector):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
-                hr_s = hr_g * scale
-                vr_s = vr_g * scale
+                hr_s = hr_g * scale.sx
+                vr_s = vr_g * scale.sy
                 end_rad = math.radians(end_deg)
                 ex_g = cx_g + hr_g * math.cos(end_rad)
                 ey_g = cy_g + vr_g * math.sin(end_rad)
@@ -938,21 +995,32 @@ def _emit_svg_op(
                 cy_g = sympy_to_float(sym_obj.center.y)
                 r_g = sympy_to_float(sym_obj.radius)
                 cx_s, cy_s = gxy(cx_g, cy_g)
-                r_s = r_g * scale
-                ET.SubElement(svg, "circle", {
-                    "data-ir-id": obj_id,
-                    "data-role": "fill",
-                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{r_s:.2f}",
-                    "fill": fill_color,
-                    "fill-opacity": str(fill_opacity),
-                    "stroke": "none",
-                })
+                rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
+                if scale.iso:
+                    ET.SubElement(svg, "circle", {
+                        "data-ir-id": obj_id,
+                        "data-role": "fill",
+                        "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}", "r": f"{rx_s:.2f}",
+                        "fill": fill_color,
+                        "fill-opacity": str(fill_opacity),
+                        "stroke": "none",
+                    })
+                else:
+                    ET.SubElement(svg, "ellipse", {
+                        "data-ir-id": obj_id,
+                        "data-role": "fill",
+                        "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                        "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                        "fill": fill_color,
+                        "fill-opacity": str(fill_opacity),
+                        "stroke": "none",
+                    })
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
                 cx_s, cy_s = gxy(cx_g, cy_g)
-                rx_s = a_g * scale
-                ry_s = b_g * scale
+                rx_s = a_g * scale.sx
+                ry_s = b_g * scale.sy
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-role": "fill",
@@ -965,7 +1033,7 @@ def _emit_svg_op(
 
             elif isinstance(sym_obj, Sector):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-                r_s = r_g * scale
+                rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
                 end_rad = math.radians(end_deg)
                 ex_g = cx_g + r_g * math.cos(end_rad)
                 ey_g = cy_g + r_g * math.sin(end_rad)
@@ -977,7 +1045,7 @@ def _emit_svg_op(
                 d = (
                     f"M {cx_s:.2f} {cy_s:.2f} "
                     f"L {sx_s:.2f} {sy_s:.2f} "
-                    f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+                    f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
                 )
                 ET.SubElement(svg, "path", {
                     "data-ir-id": obj_id,
@@ -990,8 +1058,8 @@ def _emit_svg_op(
 
             elif isinstance(sym_obj, EllipticalSector):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
-                hr_s = hr_g * scale
-                vr_s = vr_g * scale
+                hr_s = hr_g * scale.sx
+                vr_s = vr_g * scale.sy
                 end_rad = math.radians(end_deg)
                 ex_g = cx_g + hr_g * math.cos(end_rad)
                 ey_g = cy_g + vr_g * math.sin(end_rad)
@@ -1137,6 +1205,9 @@ def _emit_svg_op(
                     mark_attrs["data-group"] = str(group)
                 if ticks is not None:
                     mark_attrs["data-ticks"] = str(ticks)
+                if not scale.iso:
+                    _warn(warnings, f"Skipping MarkArcs ticks for '{arc_id}': not yet supported with Canvas.aspect")
+                    continue
                 _append_arc_ticks(svg, arc_id, sym, gxy, scale, stroke, n, extra_attrs=mark_attrs)
 
         case ir.LabelPoint(p=p, text=text, pos=pos, style=style, show_coords=show_coords):
@@ -1178,15 +1249,23 @@ def _emit_svg_op(
             ax_g, ay_g = coords.get(a_id, helpers.get(a_id, (0, 0)))
             bx_g, by_g = coords.get(b_id, helpers.get(b_id, (0, 0)))
             # Place label along bisector direction, beyond the arc marker
-            da = math.atan2(ay_g - oy_g, ax_g - ox_g)
-            db = math.atan2(by_g - oy_g, bx_g - ox_g)
+            # Directions are measured as they appear on the page: with unequal
+            # axis scales a construction-space angle is not the visual one.
+            if scale.iso:
+                vax, vay, vbx, vby, ray_unit = ax_g - ox_g, ay_g - oy_g, bx_g - ox_g, by_g - oy_g, scale.sx
+            else:
+                vax, vay = (ax_g - ox_g) * scale.sx, (ay_g - oy_g) * scale.sy
+                vbx, vby = (bx_g - ox_g) * scale.sx, (by_g - oy_g) * scale.sy
+                ray_unit = 1.0
+            da = math.atan2(vay, vax)
+            db = math.atan2(vby, vbx)
             bisector = _bisector_angle(da, db)
             # Scale the stand-off to the angle's own rays so a short ray (a tight
             # construction, a small polygon) can't push the label past its
             # vertex's neighborhood and into unrelated geometry -- cap it at the
             # usual fixed offset so normal-sized angles render as before.
-            ray_a_px = math.hypot(ax_g - ox_g, ay_g - oy_g) * scale
-            ray_b_px = math.hypot(bx_g - ox_g, by_g - oy_g) * scale
+            ray_a_px = math.hypot(vax, vay) * ray_unit
+            ray_b_px = math.hypot(vbx, vby) * ray_unit
             label_r = min(_ANGLE_LABEL_R, _ANGLE_LABEL_FRAC * min(ray_a_px, ray_b_px))
             label_r = max(label_r, _ANGLE_LABEL_R_MIN)
             vertex_px = gxy(ox_g, oy_g)
@@ -1229,6 +1308,10 @@ def _emit_svg_op(
             if arc_anchor is not None:
                 cx_g, cy_g, px_g, py_g, _r_g = arc_anchor
                 dx, dy = px_g - cx_g, py_g - cy_g
+                if not scale.iso:
+                    # The outward normal of the stretched circle (an ellipse) is
+                    # (dx/sx, dy/sy), not the construction-space radial direction.
+                    dx, dy = dx / scale.sx, dy / scale.sy
                 mag = math.hypot(dx, dy) or 1
                 lx, ly = gxy(px_g, py_g)
                 lx += (dx / mag) * _LABEL_OFFSET
@@ -1313,7 +1396,7 @@ def _emit_svg_op(
                 _warn(warnings, f"Skipping LabelAlongArc: '{arc_id}' is not a circular arc/sector")
                 return
             color = _color_from_style(style, styles) or "black"
-            if not arc_text_is_layoutable(text):
+            if not arc_text_is_layoutable(text) or not scale.iso:
                 # No per-glyph advances exist for this string (mathtext or a
                 # sub/superscript) -- fall back to the same single-label
                 # placement LabelSegment's arc branch uses. Unlike the
@@ -1321,11 +1404,16 @@ def _emit_svg_op(
                 # it gets the usual nudge/collision pass.
                 _warn(
                     warnings,
-                    f"LabelAlongArc: {text!r} cannot be laid out per glyph; "
-                    "placing a single label at the arc anchor",
+                    f"LabelAlongArc: {text!r} cannot be laid out per glyph"
+                    + ("" if scale.iso else " (curved text is not yet supported with Canvas.aspect)")
+                    + "; placing a single label at the arc anchor",
                 )
                 cx_g, cy_g, px_g, py_g, _r_g = arc_label_anchor(arc_id, sym, pos=pos)
                 dx, dy = px_g - cx_g, py_g - cy_g
+                if not scale.iso:
+                    # The outward normal of the stretched circle (an ellipse) is
+                    # (dx/sx, dy/sy), not the construction-space radial direction.
+                    dx, dy = dx / scale.sx, dy / scale.sy
                 mag = math.hypot(dx, dy) or 1
                 sgn = 1.0 if side == "outside" else -1.0
                 lx, ly = gxy(px_g, py_g)
@@ -1553,7 +1641,7 @@ def _append_arc_ticks(
     arc_id: str,
     sym: SymTable,
     gxy,
-    scale: float,
+    scale: _Scale,
     stroke: str,
     n_ticks: int,
     extra_attrs: dict[str, str] | None = None,
@@ -1569,7 +1657,7 @@ def _append_arc_ticks(
     """
     cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
     for (x1, y1), (x2, y2) in tick_mark_arcs(
-        cx, cy, r, s_deg, e_deg, n_ticks, _TICK_LEN / scale, 4.0 / scale
+        cx, cy, r, s_deg, e_deg, n_ticks, _TICK_LEN / scale.sx, 4.0 / scale.sx
     ):
         px1, py1 = gxy(x1, y1)
         px2, py2 = gxy(x2, y2)
@@ -1718,7 +1806,7 @@ def _append_arc_text(
     arc_id: str,
     sym: SymTable,
     gxy,
-    scale: float,
+    scale: _Scale,
     text: str,
     color: str,
     *,
@@ -1740,17 +1828,17 @@ def _append_arc_text(
     text is set directly rather than routed through _build_tspans.
     """
     cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
-    glyphs = arc_text_glyphs(text, _FONT_SIZE / scale)  # advances in geometry units
+    glyphs = arc_text_glyphs(text, _FONT_SIZE / scale.sx)  # advances in geometry units
     layout = arc_text_glyph_layout(
         cx, cy, r, s_deg, e_deg, [adv for _, adv in glyphs],
-        pos=pos, offset=_ARC_TEXT_OFFSET / scale, side=side, flip=flip,
+        pos=pos, offset=_ARC_TEXT_OFFSET / scale.sx, side=side, flip=flip,
     )
     g = ET.SubElement(svg, "g", {"data-role": "label-along-arc", "data-for": arc_id})
     boxes: list[tuple[float, float, float, float]] = []
     for (ch, adv), (gx_g, gy_g, rot_geo) in zip(glyphs, layout):
         px, py = gxy(gx_g, gy_g)
         rot_svg = -rot_geo  # gy() is y-flipped: screen-CCW == SVG rotate(-)
-        w = adv * scale     # advance back in px
+        w = adv * scale.sx  # advance back in px
         h = float(_FONT_SIZE)
         # AABB of a w x h box rotated about its own center.
         c, s = abs(math.cos(math.radians(rot_svg))), abs(math.sin(math.radians(rot_svg)))
@@ -2112,7 +2200,7 @@ def _append_axes(
     ymin: float,
     ymax: float,
     gxy,
-    scale: float,
+    scale: _Scale,
     font_family: str = "serif",
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
     tick_label_boxes: list[tuple[float, float, float, float]] | None = None,
@@ -2495,7 +2583,7 @@ def _obj_to_svg_subpath(
     sym: dict,
     stmt_by_id: dict,
     gxy,
-    scale: float,
+    scale: _Scale,
     poly_verts_fn,
     ellipse_params_fn,
 ) -> str | None:
@@ -2523,19 +2611,19 @@ def _obj_to_svg_subpath(
         cy_g = sympy_to_float(sym_obj.center.y)
         r_g = sympy_to_float(sym_obj.radius)
         cx_s, cy_s = gxy(cx_g, cy_g)
-        r_s = r_g * scale
+        rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
         # Circle as two semicircular arcs (SVG arc cannot do a full 360° in one command)
         return (
-            f"M {cx_s - r_s:.2f} {cy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 1 0 {cx_s + r_s:.2f} {cy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 1 0 {cx_s - r_s:.2f} {cy_s:.2f} Z"
+            f"M {cx_s - rx_s:.2f} {cy_s:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s + rx_s:.2f} {cy_s:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s - rx_s:.2f} {cy_s:.2f} Z"
         )
 
     if isinstance(sym_obj, spg.Ellipse):
         cx_g, cy_g, a_g, b_g = ellipse_params_fn(obj_id, sym)
         cx_s, cy_s = gxy(cx_g, cy_g)
-        rx_s = a_g * scale
-        ry_s = b_g * scale
+        rx_s = a_g * scale.sx
+        ry_s = b_g * scale.sy
         return (
             f"M {cx_s - rx_s:.2f} {cy_s:.2f} "
             f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s + rx_s:.2f} {cy_s:.2f} "
@@ -2544,7 +2632,7 @@ def _obj_to_svg_subpath(
 
     if isinstance(sym_obj, Sector):
         cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
-        r_s = r_g * scale
+        rx_s, ry_s = r_g * scale.sx, r_g * scale.sy
         end_rad = math.radians(end_deg)
         ex_g = cx_g + r_g * math.cos(end_rad)
         ey_g = cy_g + r_g * math.sin(end_rad)
@@ -2556,13 +2644,13 @@ def _obj_to_svg_subpath(
         return (
             f"M {cx_s:.2f} {cy_s:.2f} "
             f"L {sx_s:.2f} {sy_s:.2f} "
-            f"A {r_s:.2f} {r_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
+            f"A {rx_s:.2f} {ry_s:.2f} 0 {large_arc} 0 {ex_s:.2f} {ey_s:.2f} Z"
         )
 
     if isinstance(sym_obj, EllipticalSector):
         cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
-        hr_s = hr_g * scale
-        vr_s = vr_g * scale
+        hr_s = hr_g * scale.sx
+        vr_s = vr_g * scale.sy
         end_rad = math.radians(end_deg)
         ex_g = cx_g + hr_g * math.cos(end_rad)
         ey_g = cy_g + vr_g * math.sin(end_rad)
