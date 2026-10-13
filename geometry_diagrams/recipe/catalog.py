@@ -560,6 +560,12 @@ For problems that require displaying x/y coordinates on a grid:
   canvas: {op:"canvas", id:"canvas", x_range:[-1,8], y_range:[-1,6],
            axes:true, show_tick_labels:true, show_axis_labels:true}
   Then use show_coords:true on label_point entries for each labeled point.
+  Optional canvas styling (all default off / automatic): show_ticks (tick marks),
+  show_tick_labels (numbers), show_axis_labels ("x"/"y" at the arrow tips),
+  grid_step / tick_step (spacing, default 1), x_tick_step / y_tick_step /
+  x_grid_step / y_grid_step (per-axis overrides), aspect (visual y-unit length
+  relative to x-unit, for axes labeled in very different units).
+  Keep step small enough that the range holds at most a few dozen ticks.
 
   {"kind":"label_angle", "a":"B", "vertex":"A", "b":"C"}
       Text inside the angle at vertex A formed by rays AB and AC. Shorthand

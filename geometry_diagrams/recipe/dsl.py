@@ -303,6 +303,17 @@ class CanvasOp(DSLOpBase):
     y_range: list[float]  # [ymin, ymax]
     grid: bool = False
     axes: bool = False
+    # Styling passthroughs to ir.Canvas. None means "use the IR default".
+    show_ticks: bool = False
+    show_tick_labels: bool = False
+    show_axis_labels: bool = False
+    grid_step: Optional[float] = Field(default=None, gt=0)
+    tick_step: Optional[float] = Field(default=None, gt=0)
+    x_tick_step: Optional[float] = Field(default=None, gt=0)
+    y_tick_step: Optional[float] = Field(default=None, gt=0)
+    x_grid_step: Optional[float] = Field(default=None, gt=0)
+    y_grid_step: Optional[float] = Field(default=None, gt=0)
+    aspect: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 # ---------------------------------------------------------------------------

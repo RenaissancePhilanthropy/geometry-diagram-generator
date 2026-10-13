@@ -188,11 +188,24 @@ class _Lowerer:
                 self._point_ids.append(op.id)
                 self._coord_floats[op.id] = (op.coords[0], op.coords[1])
             case CanvasOp():
-                self._canvas = Canvas(
-                    xmin=op.x_range[0], xmax=op.x_range[1],
-                    ymin=op.y_range[0], ymax=op.y_range[1],
-                    grid=op.grid, axes=op.axes,
-                )
+                optional = {
+                    k: v for k in (
+                        "grid_step", "tick_step", "x_tick_step", "y_tick_step",
+                        "x_grid_step", "y_grid_step", "aspect",
+                    ) if (v := getattr(op, k)) is not None
+                }
+                try:
+                    self._canvas = Canvas(
+                        xmin=op.x_range[0], xmax=op.x_range[1],
+                        ymin=op.y_range[0], ymax=op.y_range[1],
+                        grid=op.grid, axes=op.axes,
+                        show_ticks=op.show_ticks,
+                        show_tick_labels=op.show_tick_labels,
+                        show_axis_labels=op.show_axis_labels,
+                        **optional,
+                    )
+                except ValueError as e:
+                    raise LoweringError(f"canvas '{op.id}': {e}") from e
             case RegularPolygonOp():
                 self._lower_regular_polygon(op)
             case PointExternalOp():

@@ -221,3 +221,23 @@ notes: []
     assert alpha_catalog[0].id == "dummy_alpha"
     assert len(beta_catalog) == 1
     assert beta_catalog[0].id == "dummy_beta"
+
+
+def test_dsl_docs_coordinate_canvas_example_validates_and_renders_tick_labels():
+    """The canvas example the prompt shows the model must parse, and its tick
+    numbers must reach the rendered SVG."""
+    import json, re
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+    from geometry_diagrams.recipe.dsl import CanvasOp
+
+    m = re.search(r"canvas: (\{op:\"canvas\".*?\})\n  Then", DSL_DOCS, re.S)
+    assert m, "coordinate canvas example missing from DSL_DOCS"
+    example = re.sub(r"(\w+):", r'"\1":', re.sub(r"\s+", " ", m.group(1)))
+    op = CanvasOp(**json.loads(example))
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[op, {"op": "point", "id": "A", "coords": [2, 3]}],
+    )
+    ir = lower_to_ir(dsl)
+    svg = ir_to_svg(ir, compile_defs(ir))
+    assert ">7<" in svg and ">5<" in svg  # x ticks up to 7, y ticks up to 5

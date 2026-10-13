@@ -1814,12 +1814,22 @@ def canvas(
     show_ticks: bool = False,
     show_tick_labels: bool = False,
     show_axis_labels: bool = False,
+    x_tick_step: "float | None" = None,
+    y_tick_step: "float | None" = None,
+    x_grid_step: "float | None" = None,
+    y_grid_step: "float | None" = None,
+    aspect: "float | None" = None,
 ) -> None:
     """Set canvas bounds and optional grid/axes styling for the diagram.
     Call at most once per script. grid_step/tick_step default to an
     automatically chosen 'nice' number (1, 2, 5, 10, ...) based on the
-    canvas size if not given. Note: if axes=True, the displayed bounds
-    expand to include the origin even if x_range/y_range don't."""
+    canvas size if not given. x_/y_tick_step and x_/y_grid_step override
+    the shared step for one axis, for axes labeled in different units
+    (e.g. x by 5, y by 50). aspect is the visual length of one y unit
+    relative to one x unit (default: equal units); for x 0..40, y 0..450
+    drawn roughly square, aspect ~ 40/450 ~ 0.09 — circles then draw as
+    ellipses. Note: if axes=True, the displayed bounds expand to include
+    the origin even if x_range/y_range don't."""
     from geometry_diagrams.ir.ir import Canvas as CanvasDef
 
     builder = get_builder()
@@ -1838,19 +1848,31 @@ def canvas(
     if tick_step is not None and tick_step <= 0:
         raise ValueError(f"canvas(): tick_step must be > 0, got {tick_step!r}")
 
+    for name, value in (
+        ("x_tick_step", x_tick_step), ("y_tick_step", y_tick_step),
+        ("x_grid_step", x_grid_step), ("y_grid_step", y_grid_step),
+        ("aspect", aspect),
+    ):
+        if value is not None and not (value > 0 and math.isfinite(value)):
+            raise ValueError(f"canvas(): {name} must be a positive finite number, got {value!r}")
+
     span = max(xmax - xmin, ymax - ymin)
     effective_grid_step = grid_step if grid_step is not None else _nice_step(span)
     effective_tick_step = tick_step if tick_step is not None else _nice_step(span)
 
     if grid:
-        n_grid_lines = (xmax - xmin) / effective_grid_step + (ymax - ymin) / effective_grid_step
+        n_grid_lines = (xmax - xmin) / (x_grid_step or effective_grid_step) + (
+            ymax - ymin
+        ) / (y_grid_step or effective_grid_step)
         if n_grid_lines > _MAX_GRID_LINES:
             raise ValueError(
                 f"canvas(): grid_step={effective_grid_step!r} over this range would draw "
                 f"~{int(n_grid_lines)} grid lines (limit {_MAX_GRID_LINES}) — use a larger grid_step"
             )
     if show_ticks or show_tick_labels:
-        n_tick_lines = (xmax - xmin) / effective_tick_step + (ymax - ymin) / effective_tick_step
+        n_tick_lines = (xmax - xmin) / (x_tick_step or effective_tick_step) + (
+            ymax - ymin
+        ) / (y_tick_step or effective_tick_step)
         if n_tick_lines > _MAX_GRID_LINES:
             raise ValueError(
                 f"canvas(): tick_step={effective_tick_step!r} over this range would draw "
@@ -1862,6 +1884,9 @@ def canvas(
         axes=axes, tick_step=effective_tick_step,
         show_ticks=show_ticks, show_tick_labels=show_tick_labels,
         show_axis_labels=show_axis_labels,
+        x_tick_step=x_tick_step, y_tick_step=y_tick_step,
+        x_grid_step=x_grid_step, y_grid_step=y_grid_step,
+        aspect=aspect,
     )
 
 

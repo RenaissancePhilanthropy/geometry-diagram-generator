@@ -2604,3 +2604,43 @@ def test_chained_extend_segment_validates_angle_across_the_whole_chain():
     ir = lower_to_ir(dsl)
     sym = compile_defs(ir)
     assert check_render_angles(ir, sym) == []
+
+
+def test_canvas_op_passes_styling_fields_to_ir_canvas():
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[
+            CanvasOp(
+                id="canvas", x_range=[0, 40], y_range=[0, 450], axes=True,
+                show_ticks=True, show_tick_labels=True, show_axis_labels=True,
+                x_tick_step=5, y_tick_step=50, grid=True, grid_step=5, aspect=0.1,
+            ),
+            PointOp(id="A", coords=[10.0, 100.0]),
+        ],
+        annotations=DSLAnnotations(auto_draw_all=False, auto_label_points=False),
+    )
+    c = lower_to_ir(dsl).canvas
+    assert (c.show_ticks, c.show_tick_labels, c.show_axis_labels) == (True, True, True)
+    assert (c.x_tick_step, c.y_tick_step, c.grid_step, c.aspect) == (5, 50, 5, 0.1)
+
+
+def test_canvas_op_defaults_match_ir_canvas_defaults():
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[CanvasOp(id="canvas", x_range=[-1, 9], y_range=[-1, 9], axes=True)],
+        annotations=DSLAnnotations(auto_draw_all=False, auto_label_points=False),
+    )
+    c = lower_to_ir(dsl).canvas
+    assert c.tick_step == 1.0 and c.grid_step == 1.0
+    assert c.x_tick_step is None and c.aspect is None
+    assert not (c.show_ticks or c.show_tick_labels or c.show_axis_labels)
+
+
+def test_canvas_op_bad_aspect_is_a_lowering_error():
+    dsl = RecipeDSL(
+        mode="grid",
+        construction=[CanvasOp(id="canvas", x_range=[0, 1], y_range=[0, 100], aspect=1.0)],
+        annotations=DSLAnnotations(auto_draw_all=False, auto_label_points=False),
+    )
+    with pytest.raises(LoweringError, match="canvas 'canvas'"):
+        lower_to_ir(dsl)

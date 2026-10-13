@@ -93,7 +93,8 @@ works if you prefer to write it explicitly, but it isn't required.
   individual `segment()`/`line_through()` calls, since those would render in
   the same stroke as your actual geometry and be indistinguishable from it.
   `grid_step`/`tick_step` are optional and auto-sized to the canvas if
-  omitted. Note: with `axes=True`, the displayed bounds expand to include
+  omitted; for axes labeled in different units use `x_tick_step`/`y_tick_step`
+  (and `aspect` to rescale the y unit). Note: with `axes=True`, the displayed bounds expand to include
   the origin even if `x_range`/`y_range` don't. `canvas()` may be called AT
   MOST ONCE per script — a second call raises an error. If asked for
   multiple diagrams/panels side by side (or in sequence), do NOT call

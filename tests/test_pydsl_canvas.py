@@ -181,3 +181,41 @@ def test_canvas_double_call_through_the_real_sandbox():
     assert result.error is not None
     assert "already called once" in result.error
     assert result.diagram_ir is None
+
+
+def test_canvas_per_axis_steps_and_aspect_reach_ir_canvas():
+    with new_builder_context() as builder:
+        canvas(x_range=(0, 40), y_range=(0, 450), axes=True, grid=True,
+               show_tick_labels=True, x_tick_step=5, y_tick_step=50,
+               x_grid_step=5, y_grid_step=50, aspect=0.09)
+        c = builder.build().canvas
+    assert c.tick_steps() == (5, 50)
+    assert c.grid_steps() == (5, 50)
+    assert c.aspect == 0.09
+
+
+def test_canvas_per_axis_fields_default_to_none():
+    with new_builder_context() as builder:
+        canvas(x_range=(0, 8), y_range=(0, 6))
+        c = builder.build().canvas
+    assert c.x_tick_step is None and c.y_grid_step is None and c.aspect is None
+
+
+@pytest.mark.parametrize("field", ["x_tick_step", "y_tick_step", "x_grid_step", "y_grid_step", "aspect"])
+@pytest.mark.parametrize("bad", [0, -1, float("inf"), float("nan")])
+def test_canvas_bad_per_axis_value_raises(field, bad):
+    with new_builder_context():
+        with pytest.raises(ValueError, match=field):
+            canvas(x_range=(0, 8), y_range=(0, 6), **{field: bad})
+
+
+def test_canvas_density_guard_applies_to_per_axis_steps():
+    with new_builder_context():
+        with pytest.raises(ValueError, match="ticks"):
+            canvas(x_range=(0, 8), y_range=(0, 6), show_tick_labels=True, x_tick_step=0.001)
+
+
+def test_canvas_extreme_aspect_raises():
+    with new_builder_context():
+        with pytest.raises(ValueError, match="aspect"):
+            canvas(x_range=(0, 1), y_range=(0, 100), aspect=1.0)
