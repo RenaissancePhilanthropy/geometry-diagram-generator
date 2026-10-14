@@ -287,3 +287,26 @@ async def test_recipe_retry_prompt_includes_warnings_and_warnings_alone_never_re
     second = second if isinstance(second, str) else str(second)
     assert "Skipping Draw for undefined object 'Q'" in second
     assert result.warnings == ["still warning"]
+
+
+@pytest.mark.asyncio
+async def test_stale_warnings_not_in_prompt_after_generation_failure_recipe():
+    from geometry_diagrams.strategies.ir_pipeline import PipelineError
+
+    valid = _wrap_dsl(_make_valid_dsl())
+    mock_llm = _make_mock_llm([valid, OutputParserException("bad"), valid])
+    calls = {"n": 0}
+
+    async def pipeline(diagram_ir, renderer=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PipelineError("Geometric checks failed: x", ["STALE-WARNING"])
+        return _make_fake_result()
+
+    p1, p2, p3, p4, p5, p6 = _common_patches(mock_llm, pipeline_mock=pipeline)
+    with p1, p2, p3, p4, p5, p6:
+        await RecipeStrategy().run("Draw a triangle.")
+
+    prompts = [str(c.args[0][-1].content) for c in mock_llm.with_structured_output.return_value.ainvoke.call_args_list]
+    assert "STALE-WARNING" in prompts[1]
+    assert "STALE-WARNING" not in prompts[2]

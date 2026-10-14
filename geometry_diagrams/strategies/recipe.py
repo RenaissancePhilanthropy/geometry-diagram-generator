@@ -386,6 +386,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         return {
             "dsl": None,
             "last_error": error_msg,
+            "warnings": [],  # stale warnings belong to the previous pipeline error
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
@@ -403,6 +404,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         return {
             "dsl": None,
             "last_error": error_msg,
+            "warnings": [],  # stale warnings belong to the previous pipeline error
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,

@@ -39,8 +39,11 @@ class StructuredRunResult:
     script: str = ""
     variable_ids: dict = field(default_factory=dict)
     entity_manifest: dict = field(default_factory=dict)
-    # Non-fatal notes from the check and render stages (failed `prefer`
-    # checks, renderer "Skipping Draw ..." messages). Never fails a run.
+    # Non-fatal notes; never fails a run. Fed today by the renderer and by
+    # failed `prefer`-level checks. Extension point: compile-stage and
+    # check-stage producers should add an optional `warnings: list[str] | None
+    # = None` argument to compile_defs / run_checks and have run_ir_pipeline
+    # pass its collector.
     warnings: list[str] = field(default_factory=list)
 
 
@@ -69,7 +72,12 @@ async def run_ir_pipeline(
     diagram_ir: DiagramIR,
     renderer: Renderer | None = None,
 ) -> StructuredRunResult:
-    """Compile DiagramIR -> SymPy -> checks -> TikZ/SVG. Raises RuntimeError on failure."""
+    """Compile DiagramIR -> SymPy -> checks -> TikZ/SVG. Raises RuntimeError on failure.
+
+    Collects a single `warnings` list (see StructuredRunResult.warnings for
+    the stages that feed it and how to extend it); a PipelineError carries
+    the warnings gathered before the failure.
+    """
     if renderer is None:
         renderer = TikZRenderer()
 

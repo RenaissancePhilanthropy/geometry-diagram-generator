@@ -156,6 +156,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
             return {
                 "diagram_ir": None,
                 "last_error": str(parsing_error),
+                "warnings": [],  # stale warnings belong to the previous pipeline error
                 "attempt": attempt + 1,
                 "input_tokens": state["input_tokens"] + in_tok,
                 "output_tokens": state["output_tokens"] + out_tok,
@@ -172,6 +173,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
         return {
             "diagram_ir": None,
             "last_error": str(exc),
+            "warnings": [],  # stale warnings belong to the previous pipeline error
             "attempt": attempt + 1,
         }
 
