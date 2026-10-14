@@ -21,6 +21,9 @@ source .venv/bin/activate
 
 # Run evals
 uv run python -m evals.run --scenarios evals/scenarios.yaml --strategies structured --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
+
+# Run feature-gated evals (e.g. the rectangular-prism "solids" scenarios; they are skipped unless the group is enabled)
+uv run python -m evals.run --scenarios evals/scenarios_solids.yaml --strategies recipe --features solids --model anthropic:claude-sonnet-4-6 --repeats 3 --output evals/results
 ```
 
 **Note:** The TikZ renderer container (`docker run -p 8001:8001 tikz-renderer`), the main server (`uv run python -m uvicorn main:app`), the UI dev server (`cd demo-ui && pnpm dev`), and the eval viewer (see below) are typically managed by the user, not started by Claude Code.
@@ -51,6 +54,8 @@ User Request (for "structured" / "recipe" strategy)
 
 Other strategies may skip the IR and go straight to TikZ.
 
+Compile and both renderers read an **effective definition view** (`ir/derived.py`): the authored definitions plus the extra definitions that registered "derived" constructions synthesize (a regular polygon's vertices, a tangent circle's center, a rectangular prism's 12 edges and 6 faces). The authored `DiagramIR` is never rewritten; consumers that must see only what was authored (edit diagnostics, eval IR diagnostics, auto-checks) keep reading `diagram.define`.
+
 ### Package (`geometry_diagrams/`)
 
 All core code lives under `geometry_diagrams/`, which is also the unit that gets copied into other projects. The public facade is:
@@ -67,12 +72,14 @@ The Intermediate Representation is the central abstraction:
 - **`ir.py`**: Pydantic models for `DiagramIR` — contains `Canvas`, `DefStmt` (20+ geometric definition types: points, segments, circles, triangles, polygons, intersections, etc.), `Check` (geometric invariants), and `RenderOp` (drawing commands).
 - **`to_sympy.py`**: Compiles `DiagramIR` definitions into SymPy geometry objects by resolving the definition DAG. Handles forward references and intersection disambiguation via `pick` rules.
 - **`to_tikz.py`**: Converts compiled SymPy objects to TikZ code (`\tkzDefPoint`, `\tkzDrawSegment`, etc.). Computes canvas bounds and helper points automatically.
-- **`to_svg.py`**: Direct SVG rendering path — converts compiled SymPy objects to SVG without going through TikZ/LaTeX.
-- **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison.
+- **`to_svg.py`**: Direct SVG rendering path — converts compiled SymPy objects to SVG without going through TikZ/LaTeX. When a label would overflow the SVG it grows the `viewBox` (scale preserved, capped at 200 px per side) instead of clipping it.
+- **`checks.py`**: Validates geometric properties (distance, collinearity, parallelism, perpendicularity, angle equality, tangency, etc.) against compiled SymPy objects with tolerance-based floating-point comparison (default relative tolerance 5e-3). The prism checks `VolumeEquals`/`TrueLengthEquals` default to a near-exact 1e-9. `run_checks` takes an optional `warnings` list (e.g. a 2D length check on a prism edge warns that a projection was measured).
 - **`label_bounds.py`**: Black-box post-render check that parses an already-rendered SVG's `data-bbox` label attributes (stamped by `to_svg.py`) and reports any label extending past the SVG's declared `viewBox`.
 - **`pre_assert_filter.py`**: Pure 4-stage pre-filter (API-name validation, generic-instance grounding, structural lints, request-relevance) for the pre-assert pre-step's proposed checks, with no model/network dependency of its own.
-- **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects.
-- **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`.
+- **`queries.py`**: Query interface for extracting geometric facts from compiled SymPy objects (including `query_prism`, and a true 3D `true_length` next to the projected 2D `length` for a segment joining two corners of one prism).
+- **`render_util.py`**: Shared rendering utilities used by both `to_tikz.py` and `to_svg.py`, including the backend-neutral **color layer**: `parse_color` accepts named colors, `#rrggbb`/`#rgb`, `rgb(r,g,b)`, `hsv(h,s,v)` and xcolor mixes (`blue!30`); `svg_color`/`tikz_color` emit each backend's native form (TikZ gets a `\definecolor` for hex/rgb/hsv). Unrecognized strings pass through unchanged with a renderer warning.
+- **`derived.py`**: Derived-entity registry. A registered definition kind (regular-polygon/polygon-on-edge vertices, tangent-circle center, `rectangular_prism`) declares the entities it owns, how they are registered into the symbol table, the extra definitions it synthesizes (`effective_defs` / `effective_diagram`), how drawing it lowers to ordinary draw ops (`lower_render`, called by both renderers), a position hook (label centroids, entity manifest) and an optional feature group. Adding a new construction means registering one entry here instead of special-casing the compiler. Raises `IRCompileError` when an authored id collides with a derived id.
+- **`prism.py`**: Rectangular prism (`rectangular_prism` definition): a projection is a linear map of the three axes plus a viewer direction (isometric or oblique, `side` right/left), from which the visible faces and the hidden corner are derived. Compiles to a non-SymPy `Prism` object (true dimensions, volume, 8 projected corner points, corner-pair index of segments for true 3D length), synthesizes derived edges `{id}_e_{abc}_{abc}` and faces `{id}_front/_back/_left/_right/_top/_bottom`, draws wireframe/solid/unit-cube gridlines, places edge labels outside the silhouette, and raises typed errors for render ops that would silently do nothing on a prism id. Opt-in via the `solids` feature group, but compile and render always accept it.
 - **`renderer.py`**: Dispatch layer — `TikZRenderer` (HTTP to Docker container) and `SVGRenderer` (in-process, no Docker needed).
 - **`errors.py`**: `IRCompileError`, raised with the failing `def_id` during IR compilation.
 - **`refs.py`**: Extracts ID references from IR definition statements; used by `compile_defs` (`to_sympy.py`) for topological sorting.
@@ -97,13 +104,15 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 - **`pre_assert_step.py`**: Optional pre-step LLM call (before construction) that proposes geometric invariants, parses them, and runs each through `pre_assert_filter.py`'s 4-stage pre-filter to build advisory context for the script-writer.
 - **`python_full.py`**: LLM writes a plain Python construction script against the `geometry_diagrams/pydsl/` builder-shim API (rather than emitting DSL/IR JSON), executed via `pydsl/sandbox.py`, with a retry loop over `pydsl/retry.py`/`retry_loop.py` on failure.
 
-**`ir_pipeline.py`**: Shared deterministic pipeline — compile a `DiagramIR`, resolve pending angle pairs, run geometric checks, then render. Used by every strategy that produces a `DiagramIR` (`structured.py`, `recipe.py`, `python_full.py`), regardless of how that IR was produced.
+**`ir_pipeline.py`**: Shared deterministic pipeline — compile a `DiagramIR`, resolve pending angle pairs, run geometric checks, then render. Used by every strategy that produces a `DiagramIR` (`structured.py`, `recipe.py`, `python_full.py`), regardless of how that IR was produced. The result carries a `warnings` list (renderer warnings, failed `prefer`-level checks, prism projection/canvas-skew warnings, unrecognized colors) that strategies append to their next retry prompt; warnings never fail a run or trigger a retry by themselves. A failed run raises `PipelineError`, which carries the warnings gathered so far.
 
 **`llm.py`**: Model factory — maps `"anthropic:MODEL"` / `"openai:MODEL"` / `"google:MODEL"` IDs to LangChain chat models (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`). Provides `get_chat_model()`, `extract_usage()`, `make_system_message()`, and `is_gemini_model()`.
 
 **`stages.py`**: Shared rendering tool helpers used by raw strategies.
 
 Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, `instructions_python_full.py` (the `python_full.py` prompt, embedding the live pydsl API stub text), `instructions.py` (shared fragments reused across templates), and related files.
+
+**Feature-gated prompt text:** guidance for an opt-in feature group (today only `solids`) is appended through `features.tagged_fragment`/`tagged_insertions` (structured, python_full, recipe docs, query-tool descriptions), so with the group disabled every prompt is byte-identical to the ungated one. That identity is pinned by fixture-equality tests against `tests/*_pre_solids.json`; if you intentionally change default prompt text, regenerate the fixture in the same commit and say why. Each strategy that produces IR must call `features.require_features` before the shared pipeline (the structured and recipe schemas are static and cannot hide a kind, so rejection plus prompt text is the gate).
 
 ### Renderer (`renderer/`)
 
@@ -125,14 +134,14 @@ A Docker container running a FastAPI server (port 8001) that compiles LaTeX to S
 
 ### Evals (`evals/`)
 
-Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored). `scenarios.py` provides programmatic scenario loading; `scenarios_query.yaml` defines query-style eval scenarios.
+Benchmark harness comparing strategies across tiered geometry scenarios (Basic/Intermediate/Advanced defined in `evals/scenarios.yaml`). `evals/run.py` runs scenarios with multiple repeats, collecting success rates, token usage, latency, and LLM judge scores. Results are written as JSONL to `evals/results/` (gitignored). `scenarios.py` provides programmatic scenario loading; `scenarios_query.yaml` defines query-style eval scenarios. Scenarios may declare `requires_features: [group]` (skipped visibly unless `--features group` enables it; naming a gated scenario in `--scenario-ids` without the flag is an error); `scenarios_solids.yaml` holds the rectangular-prism scenarios. Structural checks include `polygon_count` (authored 2D plane polygons only; a prism never counts) and `solid_count` (kind, minimum, literal dimensions); prism property types `prism_volume`/`prism_dimensions` are evaluated through queries on the full compiled symbol table, not on 2D projections. Note: `required_labels` is only evaluated against TikZ output, so it is skipped under `--renderer svg`.
 
 ### Recipe (`geometry_diagrams/recipe/`)
 
 A DSL for declaratively specifying geometry constructions:
 
-- **`dsl.py`**: Defines the recipe DSL syntax and parsing.
-- **`catalog.py`**: Library of named geometry construction recipes.
+- **`dsl.py`**: Defines the recipe DSL syntax and parsing, including the `prism` op and the `volume`/`true_length` checks (feature-gated: `reject_disabled_ops` rejects them before lowering when `solids` is off).
+- **`catalog.py`**: Library of named geometry construction recipes, and the DSL docs shown to the model (`dsl_docs_for(features)` appends the gated prism guidance; its examples live in `PRISM_EXAMPLES` and are executed by tests so the docs cannot drift).
 - **`lower.py`**: Lowers recipe DSL constructions down to `DiagramIR` for compilation and rendering.
 - **`expressions.py`**: Expression evaluation for recipe DSL parameters.
 - **`solve.py`**: Constraint solver used during recipe lowering.
@@ -147,7 +156,8 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 - **`cookbook.py`**: Experimental, opt-in helper functions layered on top of the core `api.py` surface, only exposed to the sandbox when explicitly enabled.
 - **`handles.py`**: Thin typed handles (`Point`, `Line`, `Circle`, `Triangle`, `Polygon`, ...) returned by pydsl API functions, wrapping internal ids so the model never re-derives geometric parts from raw point references.
 - **`builder.py`**: Ambient builder context -- a contextvar-scoped `Builder` that every `api.py` function records its op against, set fresh per script execution.
-- **`asserts.py`**: `assert_*` geometric-invariant predicates for the Python DSL surface, wrapping `ir.Check` kinds (plus canvas-membership checks with no backing `Check` kind).
+- **`asserts.py`**: `assert_*` geometric-invariant predicates for the Python DSL surface, wrapping `ir.Check` kinds (plus canvas-membership checks with no backing `Check` kind). `assert_volume`/`assert_true_length` belong to the gated `solids` group.
+- **Feature-gated names:** `pydsl.GROUPED_NAMES` maps a feature group to the API names (e.g. `prism`, the `Prism` handle in `handles.py`, `assert_volume`, `assert_true_length`) that join the sandbox namespace and the prompt stub only when the group is enabled; the enabled set is passed explicitly into the sandbox subprocess request.
 - **`_sandbox_child.py`**: Entrypoint for the sandboxed script's own child process, invoked via `subprocess.Popen` from `sandbox.py` — deliberately not `multiprocessing`, which would re-execute host init code in the child.
 - **`hashline.py`**: Content-hash line-anchored script editing ("hashline") — each line is tagged `{line_number}:{hash}`; a stale tag means the line changed since the model last saw it.
 - **`line_number.py`**: Plain line-number-anchored script editing ("line_number") — same op model as `hashline.py`, but references a line by its plain 1-indexed position instead of a content hash.
@@ -158,7 +168,7 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 
 ### Docs (`docs/`)
 
-- **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema.
+- **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema, including the rectangular prism, the color-forms contract, SVG label `viewBox` growth, and the pipeline warnings list.
 - **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
 - **`examples/`**: Pre-rendered SVG examples used for documentation, including `diagram_kinds/attempts/` and `diagram_kinds/attempt_scripts/`, which hold per-attempt generation artifacts (SVGs/scripts) for `assemble_diagram_kinds_manifest.py`'s fresh-generation kinds.
 - **`retrospective-template.md`**: Optional post-ticket step for `subagent-execution`-style work in this repo — after an implementer subagent closes a ticket (especially one that struggled or hit a known gap), resume it and ask what tooling/information would have made the task easier. See `docs/specs/2026-09-04-diagram-kinds-retrospective-findings.md` for a worked example where this surfaced a convergent, actionable finding across unrelated tickets.
@@ -171,3 +181,5 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 - **The renderer container must be running** for any code path that uses `TikZRenderer`. The `SVGRenderer` path needs no container — it renders in-process from SymPy.
 - The project uses **LangGraph** and **LangChain** (`langchain-anthropic`, `langchain-openai`, `langchain-google-genai`) for LLM orchestration. Inner retry loops use `StateGraph`; conversational agents use `create_react_agent`.
 - API keys go in `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+- **Opt-in feature groups gate generation, never compilation.** A feature group (`features.FEATURE_GROUPS`, enabled with `GeometryConfig.features`, the `GEOMETRY_FEATURES` env var, or `--features` in evals) controls what the model is told and what strategies accept; stored IR using a gated kind still compiles and renders when the group is off.
+- **Byte-identity checks need a fixed hash seed.** Recipe renders can differ between processes because the dependency sort (`TopologicalSorter` in `to_sympy.py`) iterates string-keyed sets. Fix `PYTHONHASHSEED=0` when comparing rendered output before and after a change.
