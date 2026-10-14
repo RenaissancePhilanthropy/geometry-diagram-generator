@@ -61,7 +61,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.pre_assert_filter import (
-    REAL_ASSERT_NAMES,
+    assert_names_for,
     build_name_correction_message,
     check_request_relevance,
     direct_ids_referenced,
@@ -78,7 +78,7 @@ from .llm import get_chat_model, make_system_message
 # ---------------------------------------------------------------------------
 
 
-def build_assert_vocabulary_block() -> str:
+def build_assert_vocabulary_block(features: "frozenset[str] | set[str]" = frozenset()) -> str:
     """The real assert_* signatures + docstrings, generated from the live
     pydsl API -- mirrors instructions_python_full.py's build_python_full_instructions()
     approach (call the stub generator at prompt-build time) rather than hand-copying a
@@ -86,11 +86,12 @@ def build_assert_vocabulary_block() -> str:
     already iterates `pydsl.__all__` in declaration order (functions, then handle
     classes, then assert_* functions last); filtering to lines starting with "def
     assert_" is sufficient to isolate just the assert_* vocabulary without needing to
-    special-case handle classes here.
+    special-case handle classes here. `features` (the enabled feature groups) adds
+    each enabled group's assert_* names, matching the script-writer's namespace.
     """
     from geometry_diagrams.pydsl.stub import generate_stub
 
-    lines = [line for line in generate_stub().splitlines() if line.startswith("def assert_")]
+    lines = [line for line in generate_stub(features).splitlines() if line.startswith("def assert_")]
     return "\n".join(lines)
 
 
@@ -133,7 +134,7 @@ grouping wrappers (not full derivations, just groupings -- use ids you already h
 """
 
 
-def build_pre_step_system_prompt() -> str:
+def build_pre_step_system_prompt(features: "frozenset[str] | set[str]" = frozenset()) -> str:
     """The pre-step's system prompt: proposes 3-5 checks as point-definitions (see
     `_POINT_DEF_GRAMMAR`) + assert_*(...) calls, with the real assert_* vocabulary always
     included (see module docstring for why -- validated in the prototype as the difference
@@ -143,7 +144,7 @@ You are reviewing a geometry construction request BEFORE it gets built. Propose 
 invariants a CORRECT construction of this request must satisfy -- properties a grader could \
 check against the final coordinates to catch a construction bug.
 
-{build_assert_vocabulary_block()}
+{build_assert_vocabulary_block(features)}
 
 {_POINT_DEF_GRAMMAR}
 
@@ -170,13 +171,15 @@ def _content_to_text(content) -> str:
     return content if isinstance(content, str) else str(content)
 
 
-async def call_pre_step_model(request: str, model_id: str) -> str:
+async def call_pre_step_model(
+    request: str, model_id: str, features: "frozenset[str] | set[str]" = frozenset(),
+) -> str:
     """The pre-step's primary call: propose checks for `request`. A separate call from
     script generation (per spec.md's Implementation Decisions), never folded into the
     same request as the construction script itself."""
     llm = get_chat_model(model_id)
     messages = [
-        make_system_message(build_pre_step_system_prompt(), model_id=model_id),
+        make_system_message(build_pre_step_system_prompt(features), model_id=model_id),
         HumanMessage(content=f"Construction request:\n{request}"),
     ]
     response = await llm.ainvoke(messages)
@@ -185,6 +188,7 @@ async def call_pre_step_model(request: str, model_id: str) -> str:
 
 async def call_pre_step_retry_model(
     request: str, model_id: str, original_response: str, correction_message: str,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> str:
     """The one mechanical retry validated in the prototype: replay the original exchange,
     then hand the model `correction_message` (from
@@ -193,7 +197,7 @@ async def call_pre_step_retry_model(
     `find_unknown_assert_names_after_retry`'s docstring for why there's no further loop."""
     llm = get_chat_model(model_id)
     messages = [
-        make_system_message(build_pre_step_system_prompt(), model_id=model_id),
+        make_system_message(build_pre_step_system_prompt(features), model_id=model_id),
         HumanMessage(content=f"Construction request:\n{request}"),
         AIMessage(content=original_response),
         HumanMessage(content=correction_message),
@@ -521,13 +525,14 @@ def _build_point_definition(
     return None
 
 
-def parse_proposal_text(text: str) -> ParsedProposal:
+def parse_proposal_text(text: str, features: "frozenset[str] | set[str]" = frozenset()) -> ParsedProposal:
     """Parse a raw pre-step response into structured checks. Pure: no model/network
     call, no compile_defs/checks.py dependency -- just AST-level parsing per the
     grammar `build_pre_step_system_prompt` teaches. Tolerant of the model's own
     prose/comments/code fences: any line that isn't a recognized point-definition
     or assert_*(...) call is recorded in `.unparsed_lines`, not treated as an
-    error."""
+    error. `features` widens the accepted assert_* names to the enabled groups'."""
+    real_assert_names = assert_names_for(features)
     point_defs: dict[str, ir.DefStmt] = {}
     checks: list[ParsedCheck] = []
     unparsed_lines: list[str] = []
@@ -570,7 +575,7 @@ def parse_proposal_text(text: str) -> ParsedProposal:
         if fn is None or not fn.startswith("assert_"):
             unparsed_lines.append(raw_line)
             continue
-        if fn not in REAL_ASSERT_NAMES:
+        if fn not in real_assert_names:
             checks.append(
                 ParsedCheck(
                     raw_text=code.strip(), comment=comment, check=None,
@@ -806,6 +811,7 @@ class PreAssertProposalResult:
 
 async def propose_and_filter_checks(
     request: str, model_id: str, rng: Random | None = None,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> PreAssertProposalResult:
     """The full pre-step, end to end: call the model, run stage 1 (API-name
     validation) on the raw response text with its one mechanical retry if
@@ -815,18 +821,21 @@ async def propose_and_filter_checks(
     This is the one function in this module that both calls the model and
     calls the pure pre-filter functions -- everything it delegates to
     (`parse_proposal_text`, `filter_parsed_check`, `assemble_advisory_text`)
-    remains independently testable without a live model call.
+    remains independently testable without a live model call. `features` (the
+    enabled feature groups) selects the assert_* vocabulary shown and accepted.
     """
-    raw_text = await call_pre_step_model(request, model_id)
-    unknown = find_unknown_assert_names(raw_text)
+    raw_text = await call_pre_step_model(request, model_id, features=features)
+    unknown = find_unknown_assert_names(raw_text, features)
     retried = False
     if unknown:
-        correction_message = build_name_correction_message(unknown)
-        raw_text = await call_pre_step_retry_model(request, model_id, raw_text, correction_message)
+        correction_message = build_name_correction_message(unknown, features)
+        raw_text = await call_pre_step_retry_model(
+            request, model_id, raw_text, correction_message, features=features,
+        )
         retried = True
-        find_unknown_assert_names_after_retry(raw_text)  # surfaced per-check via stage "api_name"
+        find_unknown_assert_names_after_retry(raw_text, features)  # surfaced per-check via stage "api_name"
 
-    proposal = parse_proposal_text(raw_text)
+    proposal = parse_proposal_text(raw_text, features)
     filtered = [filter_parsed_check(parsed, request, rng=rng) for parsed in proposal.checks]
     advisory_text = assemble_advisory_text(filtered)
     return PreAssertProposalResult(

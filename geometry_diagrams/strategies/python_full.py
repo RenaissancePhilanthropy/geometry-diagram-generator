@@ -832,7 +832,9 @@ async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
     `metadata.attempt_traces` rather than returning it as a state update)."""
     request = state["prompt"]
     model_id = state["model_id"]
-    result = await propose_and_filter_checks(request, model_id)
+    result = await propose_and_filter_checks(
+        request, model_id, features=state.get("features") or frozenset(),
+    )
     advisory_text = _advisory_text_for_model(result.filtered_checks, model_id)
 
     metadata = state["metadata"]

@@ -52,6 +52,20 @@ REAL_ASSERT_NAMES: frozenset[str] = frozenset(
     if name.startswith("assert_") and inspect.isfunction(getattr(pydsl_module, name))
 )
 
+
+def assert_names_for(features: "frozenset[str] | set[str]" = frozenset()) -> frozenset[str]:
+    """REAL_ASSERT_NAMES plus the assert_* names of each ENABLED feature
+    group's ``pydsl.GROUPED_NAMES`` (e.g. assert_volume with "solids"), so the
+    accepted vocabulary matches the sandbox namespace and the stub the model
+    sees. No groups enabled -> exactly REAL_ASSERT_NAMES."""
+    extra = {
+        name
+        for group in features
+        for name in pydsl_module.GROUPED_NAMES.get(group, [])
+        if name.startswith("assert_") and inspect.isfunction(getattr(pydsl_module, name))
+    }
+    return REAL_ASSERT_NAMES | extra
+
 _ASSERT_TOKEN_PATTERN = re.compile(r"assert_[a-zA-Z_]+")
 
 
@@ -65,20 +79,25 @@ def extract_assert_tokens(text: str) -> list[str]:
     return list(seen)
 
 
-def find_unknown_assert_names(text: str) -> list[str]:
+def find_unknown_assert_names(
+    text: str, features: "frozenset[str] | set[str]" = frozenset(),
+) -> list[str]:
     """assert_*-shaped tokens in `text` that are not real pydsl assert_*
-    function names. Exact-match diff against REAL_ASSERT_NAMES, not judgment
-    -- validated in the prototype with zero false positives/negatives."""
-    return [tok for tok in extract_assert_tokens(text) if tok not in REAL_ASSERT_NAMES]
+    function names. Exact-match diff against `assert_names_for(features)`, not
+    judgment -- validated in the prototype with zero false positives/negatives."""
+    real = assert_names_for(features)
+    return [tok for tok in extract_assert_tokens(text) if tok not in real]
 
 
-def build_name_correction_message(unknown_names: list[str]) -> str:
+def build_name_correction_message(
+    unknown_names: list[str], features: "frozenset[str] | set[str]" = frozenset(),
+) -> str:
     """The one mechanical retry prompt validated in the prototype: 'these
     don't exist, here are the real ones, fix only these lines'. This message
     only needs to be produced once -- see find_unknown_assert_names_after_retry
     for checking the result, since the design is exactly one retry, not a loop."""
     unknown_list = ", ".join(sorted(unknown_names))
-    real_list = ", ".join(sorted(REAL_ASSERT_NAMES))
+    real_list = ", ".join(sorted(assert_names_for(features)))
     return (
         f"These function name(s) do not exist in the pydsl API: {unknown_list}. "
         f"The real assert_* functions are: {real_list}. "
@@ -87,13 +106,15 @@ def build_name_correction_message(unknown_names: list[str]) -> str:
     )
 
 
-def find_unknown_assert_names_after_retry(corrected_text: str) -> list[str]:
+def find_unknown_assert_names_after_retry(
+    corrected_text: str, features: "frozenset[str] | set[str]" = frozenset(),
+) -> list[str]:
     """Apply the one mechanical retry: re-run the same API-name validation
     against the model's corrected response. There is deliberately no further
     retry loop here -- the validated design is exactly one mechanical fix
     attempt (see issues/05-validation-pass.md); any names still unknown after
     this call are reported as-is, not retried again."""
-    return find_unknown_assert_names(corrected_text)
+    return find_unknown_assert_names(corrected_text, features)
 
 
 # ---------------------------------------------------------------------------

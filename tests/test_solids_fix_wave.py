@@ -126,3 +126,71 @@ def test_diagonal_and_non_prism_segment_ops_are_unchanged():
     assert segs == {"diag": ("P_v000", "P_v111"), "ab": ("A", "B")}
     draws = [r.obj for r in d.render if isinstance(r, ir.Draw)]
     assert "diag" in draws and "ab" in draws
+
+
+# --- C: the python_full pre-assert step sees the enabled feature groups -----
+
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
+
+from geometry_diagrams.ir import pre_assert_filter as paf  # noqa: E402
+from geometry_diagrams.strategies import pre_assert_step as pas  # noqa: E402
+
+SOLIDS = frozenset({"solids"})
+_SOLID_ASSERTS = ("assert_volume", "assert_true_length")
+
+
+def test_pre_assert_vocabulary_includes_solid_asserts_only_with_solids_on():
+    on = pas.build_assert_vocabulary_block(features=SOLIDS)
+    for name in _SOLID_ASSERTS:
+        assert f"def {name}(" in on
+        assert f"def {name}(" not in pas.build_assert_vocabulary_block()
+    assert pas.build_pre_step_system_prompt(features=SOLIDS) != pas.build_pre_step_system_prompt()
+    assert "def assert_volume(" in pas.build_pre_step_system_prompt(features=SOLIDS)
+
+
+def test_pre_assert_solids_off_vocabulary_and_prompt_are_unchanged():
+    from geometry_diagrams.pydsl.stub import generate_stub
+
+    expected = "\n".join(l for l in generate_stub().splitlines() if l.startswith("def assert_"))
+    assert pas.build_assert_vocabulary_block() == expected
+    assert pas.build_assert_vocabulary_block(features=frozenset()) == expected
+    assert pas.build_pre_step_system_prompt(features=frozenset()) == pas.build_pre_step_system_prompt()
+
+
+def test_pre_filter_api_name_validation_accepts_solid_asserts_only_with_solids_on():
+    text = "assert_volume(P, 24)\nassert_true_length(A, B, 5)\n"
+    assert paf.find_unknown_assert_names(text) == list(_SOLID_ASSERTS)
+    assert paf.find_unknown_assert_names(text, features=SOLIDS) == []
+    assert "assert_volume" in paf.build_name_correction_message(["assert_x"], features=SOLIDS)
+    assert "assert_volume" not in paf.build_name_correction_message(["assert_x"])
+    parsed = pas.parse_proposal_text("assert_volume(P, 24)\n", features=SOLIDS)
+    assert parsed.checks[0].unresolved_name is None
+    assert pas.parse_proposal_text("assert_volume(P, 24)\n").checks[0].unresolved_name == "assert_volume"
+
+
+@pytest.mark.asyncio
+async def test_propose_and_filter_checks_uses_the_enabled_features_end_to_end():
+    llm = MagicMock()
+    llm.ainvoke = AsyncMock(return_value=MagicMock(content="assert_volume(P, 24)\n"))
+    with patch("geometry_diagrams.strategies.pre_assert_step.get_chat_model", return_value=llm):
+        result = await pas.propose_and_filter_checks(
+            "a 2 by 3 by 4 box", "anthropic:claude-sonnet-4-6", features=SOLIDS,
+        )
+    assert result.retried is False  # assert_volume is a real name with solids on
+    system_prompt = llm.ainvoke.call_args.args[0][0].content
+    assert "def assert_volume(" in str(system_prompt)
+
+
+@pytest.mark.asyncio
+async def test_python_full_pre_assert_node_passes_the_strategy_features():
+    from geometry_diagrams.strategies import python_full
+
+    fake = pas.PreAssertProposalResult(
+        raw_response="", retried=False, filtered_checks=[], unparsed_lines=[], advisory_text="",
+    )
+    with patch.object(python_full, "propose_and_filter_checks", new=AsyncMock(return_value=fake)) as m:
+        await python_full._pre_assert_step_node({
+            "prompt": "a box", "model_id": "anthropic:claude-sonnet-4-6",
+            "metadata": MagicMock(), "features": SOLIDS,
+        })
+    assert m.await_args.kwargs.get("features") == SOLIDS
