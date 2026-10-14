@@ -25,7 +25,10 @@ from geometry_diagrams.strategies.structured import dispatch_query
 BITS = list(itertools.product((0, 1), repeat=3))  # (length, height, width)
 DEFAULT_IDS = [f"P_v{a}{b}{c}" for a, b, c in BITS]
 R3 = math.sqrt(3) / 2
-OBLIQUE_DEFAULT = (math.cos(math.radians(45)) * 0.45, math.sin(math.radians(45)) * 0.45)
+# Measured oblique default (solids ticket 08; was the provisional 45 deg x 0.45):
+# depth recedes at 45 deg at half scale (cabinet projection), measured on the
+# reference art at 44.7-45.1 deg and a 0.50 depth scale.
+OBLIQUE_DEFAULT = (math.sqrt(2) / 4, math.sqrt(2) / 4)
 
 
 def _diagram(*prism_defs, extra=(), params=None, render=None) -> ir.DiagramIR:
@@ -163,6 +166,16 @@ def test_visible_planes_and_hidden_corner_derive_from_the_map(view, side, visibl
     proj = projection_for(view=view, side=side)
     assert proj.visible_planes == frozenset(visible)
     assert proj.hidden_corner == hidden
+
+
+def test_oblique_default_depth_vector_is_exact_cabinet_half_scale_at_45_degrees():
+    # Solids ticket 08 measured the reference art: 45 deg, depth scale 1/2.
+    proj = projection_for(view="oblique", side="right")
+    assert proj.width == (sp.sqrt(2) / 4, sp.sqrt(2) / 4)
+    sym = compile_defs(_diagram(_prism()))
+    corner = sym["P_v001"]  # origin + width (3) * depth vector
+    assert sp.simplify(corner.x - (1 + 3 * sp.sqrt(2) / 4)) == 0
+    assert sp.simplify(corner.y - (2 + 3 * sp.sqrt(2) / 4)) == 0
 
 
 def test_view_rules_hold_for_overridden_oblique_constants():

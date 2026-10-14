@@ -29,10 +29,13 @@ from .errors import IRCompileError
 AXES = ("length", "height", "width")
 CORNER_BITS: tuple[tuple[int, int, int], ...] = tuple(itertools.product((0, 1), repeat=3))
 
-# Provisional oblique defaults (eyeballed against the reference art; solids
-# ticket 08 measures the real values). The single place they are defined.
+# Oblique defaults, measured on the reference art (solids ticket 08): the
+# receding depth edge runs at 45 degrees (fitted 44.2-45.1 across the four
+# oblique figures) at half scale (0.50 on the one oblique figure with a stated
+# depth, which the art draws proportionally), i.e. cabinet projection. Both
+# are exact: cos 45 = sin 45 = sqrt(2)/2. The single place they are defined.
 OBLIQUE_DEFAULT_ANGLE_DEG = 45
-OBLIQUE_DEFAULT_SCALE = sp.Rational(9, 20)
+OBLIQUE_DEFAULT_SCALE = sp.Rational(1, 2)
 
 _COS30 = sp.sqrt(3) / 2
 _SIN30 = sp.Rational(1, 2)
