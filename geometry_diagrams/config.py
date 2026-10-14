@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+from .features import parse_features
+
 # Matches the default in geometry_diagrams/strategies/base.py and recipe.py
 _DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 _DEFAULT_SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
@@ -46,6 +48,9 @@ class GeometryConfig:
     # bounding the CPU cost of an adversarial script. Override per-deployment if the host
     # is slower/faster than the machine that value was tuned on.
     sandbox_timeout_seconds: float = 2.5
+    # Enabled feature groups (see geometry_diagrams/features.py); empty = every
+    # opt-in group off. Env: GEOMETRY_FEATURES, comma-separated (e.g. "solids").
+    features: frozenset[str] = frozenset()
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -62,6 +67,7 @@ class GeometryConfig:
             edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"),  # type: ignore[arg-type]
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
             sandbox_timeout_seconds=float(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5")),
+            features=parse_features(os.environ.get("GEOMETRY_FEATURES", "")),
         )
 
 
@@ -77,6 +83,7 @@ def resolve_config(
     edit_generation_mode: Optional[str] = None,
     hash_algorithm: Optional[str] = None,
     sandbox_timeout_seconds: Optional[float] = None,
+    features: "Optional[frozenset[str] | set[str] | str]" = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -94,4 +101,6 @@ def resolve_config(
         sandbox_timeout_seconds=(
             sandbox_timeout_seconds if sandbox_timeout_seconds is not None else cfg.sandbox_timeout_seconds
         ),
+        features=frozenset(features) if features is not None and not isinstance(features, str)
+        else (parse_features(features) if features is not None else cfg.features),
     )

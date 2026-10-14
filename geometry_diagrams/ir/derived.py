@@ -20,7 +20,7 @@ only what was authored (auto-checks, edit and eval IR diagnostics, dependents
 tracking) keep reading ``diagram.define``; dependents tracking still reaches
 synthesized ids through ``owner_map``, which attributes them to their owner.
 
-Extension points for later hooks (render lowering, feature group) are further
+Extension points for later hooks (render lowering) are further
 fields on ``DerivedConstruction``.
 """
 from __future__ import annotations
@@ -75,6 +75,11 @@ class DerivedConstruction:
     #     is a compile error (see check_exclusive_ids) instead of the default
     #     "the real definition wins" -- a silent merge would misplace points.
     exclusive: bool = False
+    # feature: the feature group (see geometry_diagrams/features.py) this kind
+    #     belongs to, or None for an always-available kind. Consulted only by
+    #     the generation-surface gate ``require_features``; compile and render
+    #     accept every registered kind whatever the enabled set.
+    feature: str | None = None
 
 
 class DerivedRegistry:
@@ -272,6 +277,7 @@ def _build_default_registry() -> DerivedRegistry:
         _prism.register_corners,
         position=_prism.prism_position,
         exclusive=True,
+        feature="solids",
     ))
     return reg
 

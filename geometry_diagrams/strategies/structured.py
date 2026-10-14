@@ -20,6 +20,7 @@ from .ir_pipeline import (
 from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
+from ..features import require_features
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
     query_length, query_radius, query_area, query_perimeter, query_prism, list_objects,
@@ -121,6 +122,7 @@ class StructuredPipelineState(TypedDict):
     input_tokens: int
     output_tokens: int
     renderer: Optional[Any]
+    features: frozenset  # enabled feature groups; absent/empty = none enabled
 
 
 async def _generate_ir_node(state: StructuredPipelineState) -> dict:
@@ -192,6 +194,9 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
         }
 
     try:
+        # Generation-surface gate: DiagramIR's static schema cannot hide a
+        # kind from the model, so this rejection is the gate for disabled groups.
+        require_features(diagram_ir, state.get("features") or frozenset())
         result = await _run_ir_pipeline(diagram_ir, renderer)
         result.retries = state["attempt"]
         return {"result": result}
@@ -232,6 +237,7 @@ class StructureStrategy(SubstanceStrategy):
         prompt: str,
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
+        features: "frozenset[str] | None" = None,
     ) -> StructuredRunResult:
         graph = _build_structured_graph()
         initial_state: StructuredPipelineState = {
@@ -246,6 +252,7 @@ class StructureStrategy(SubstanceStrategy):
             "input_tokens": 0,
             "output_tokens": 0,
             "renderer": renderer,
+            "features": self.features if features is None else frozenset(features),
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
         if final_state.get("result") is None:

@@ -47,9 +47,9 @@ def _make_renderer(cfg: GeometryConfig) -> Renderer:
 
 def _make_strategy(cfg: GeometryConfig) -> SubstanceStrategy:
     if cfg.strategy == "python_full":
-        return PythonFullStrategy(enable_cache=True)
+        return PythonFullStrategy(enable_cache=True, features=cfg.features)
     if cfg.strategy == "recipe":
-        return RecipeStrategy(enable_cache=True, selector_model=cfg.selector_model)
+        return RecipeStrategy(enable_cache=True, selector_model=cfg.selector_model, features=cfg.features)
     raise ValueError(f"Unknown strategy: {cfg.strategy!r} (expected 'recipe' or 'python_full')")
 
 

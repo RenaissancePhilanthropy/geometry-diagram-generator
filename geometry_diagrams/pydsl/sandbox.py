@@ -184,6 +184,7 @@ def run_script(
     timeout_seconds: float = 5.0,
     _child_argv: "list[str] | None" = None,
     enable_cookbook: bool = False,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> ScriptResult:
     # enable_cookbook: defense-in-depth gate (ticket 08, diagram-kinds-poc's
     # experimental gating infrastructure) for the experimental diagram
@@ -193,6 +194,10 @@ def run_script(
     # _sandbox_child.py's _build_tool_names only adds
     # pydsl_module.COOKBOOK_NAMES to the script's tool namespace when this
     # is True.
+    # features: the enabled feature groups (geometry_diagrams/features.py),
+    # sent to the child in the JSON payload; _sandbox_child.py's
+    # _build_tool_names adds pydsl_module.GROUPED_NAMES[group] for each enabled
+    # group and nothing for a disabled one.
     # _child_argv is a testing-only seam for substituting a fake child
     # command (e.g. `[sys.executable, "-c", "<script that sleeps before
     # printing ready>"]`) to exercise the bootstrap-wait/deadline protocol
@@ -225,6 +230,7 @@ def run_script(
             "script": script,
             "timeout_seconds": timeout_seconds,
             "enable_cookbook": enable_cookbook,
+            "features": sorted(features),
         }) + "\n"
     )
     proc.stdin.flush()

@@ -48,13 +48,13 @@ def _make_strategy():
             return RawCodeWithReviseStrategy(enable_cache=True)
     elif strategy_name == "structured":
         from geometry_diagrams.strategies.structured import StructureStrategy
-        return StructureStrategy(enable_cache=True)
+        return StructureStrategy(enable_cache=True, features=GeometryConfig.from_env().features)
     elif strategy_name == "recipe":
         from geometry_diagrams.strategies.recipe import RecipeStrategy
-        return RecipeStrategy(enable_cache=True)
+        return RecipeStrategy(enable_cache=True, features=GeometryConfig.from_env().features)
     elif strategy_name == "python_full":
         from geometry_diagrams.strategies.python_full import PythonFullStrategy
-        return PythonFullStrategy(enable_cache=True)
+        return PythonFullStrategy(enable_cache=True, features=GeometryConfig.from_env().features)
     else:
         raise ValueError(
             f"Unknown STRATEGY: {strategy_name!r}. "

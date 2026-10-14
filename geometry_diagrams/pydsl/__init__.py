@@ -117,6 +117,14 @@ __all__ = [
 # _sandbox_child.py's _build_tool_names does getattr(pydsl_module, name) for
 # each of these, so a name added here without a matching import above
 # raises AttributeError the moment enable_cookbook=True.
+# Names added to the sandboxed scripting namespace only when their feature
+# group (geometry_diagrams/features.py) is enabled. Empty groups are
+# registered here so the surface tickets just append names; like
+# COOKBOOK_NAMES, each name must be an attribute of this package.
+GROUPED_NAMES: dict[str, list[str]] = {
+    "solids": [],
+}
+
 COOKBOOK_NAMES: list[str] = [
     "unit_grid", "array_of", "tick_marks", "bar", "bars", "table_grid", "oblique_point", "chart_axes",
 ]

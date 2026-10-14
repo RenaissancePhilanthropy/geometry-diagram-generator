@@ -28,6 +28,7 @@ from .ir_pipeline import (
 )
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
+from ..features import require_features
 from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
 from ..ir.label_bounds import find_out_of_bounds_labels
@@ -806,6 +807,10 @@ class PythonFullPipelineState(TypedDict):
     # PythonFullStrategy.run()'s own verify_labels_in_canvas parameter.
     # Read by _run_script_node only, right after run_ir_pipeline() returns.
     verify_labels_in_canvas: bool
+    # Enabled feature groups (geometry_diagrams/features.py). Absent/empty
+    # means none enabled. Read by _generate_script_node (tagged prompt
+    # fragments), _run_script_node (sandbox request + require_features gate).
+    features: frozenset
 
 
 async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
@@ -859,7 +864,10 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             prompt = f"{prompt}\n\n{warn_text}"
 
     from langchain_core.messages import HumanMessage
-    instructions = build_python_full_instructions(include_cookbook=experimental_diagram_cookbook)
+    instructions = build_python_full_instructions(
+        include_cookbook=experimental_diagram_cookbook,
+        features=state.get("features") or frozenset(),
+    )
     messages = [
         make_system_message(instructions, enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=prompt),
@@ -1005,8 +1013,10 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
 
     timeout_seconds = state.get("sandbox_timeout_seconds") or SANDBOX_TIMEOUT_SECONDS
     enable_cookbook = state.get("experimental_diagram_cookbook", False)
+    features = state.get("features") or frozenset()
     result = await asyncio.to_thread(
         run_script, script, timeout_seconds=timeout_seconds, enable_cookbook=enable_cookbook,
+        features=features,
     )
 
     if result.error is not None:
@@ -1039,6 +1049,9 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         }
 
     try:
+        # Generation-surface gate (defense in depth: the sandbox namespace
+        # already withholds a disabled group's names from the script).
+        require_features(diagram_ir, features)
         pipeline_result = await run_ir_pipeline(diagram_ir, renderer)
 
         # Ticket 02 (pydsl-authoring-quality): verify_labels_in_canvas gate.
@@ -1110,6 +1123,7 @@ async def _run_from_script(
     output_tokens: int = 0,
     cost_usd: "float | None" = None,
     sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
+    features: "frozenset[str]" = frozenset(),
 ) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
@@ -1137,6 +1151,7 @@ async def _run_from_script(
             PythonFullAttemptTrace(attempt=0, script=script, error=None, stage="generation"),
         ]),
         "sandbox_timeout_seconds": sandbox_timeout_seconds,
+        "features": frozenset(features),
     }
     update = await _run_script_node(state)
     result = update.get("result")
@@ -1221,6 +1236,7 @@ class PythonFullStrategy(SubstanceStrategy):
         precomputed_advisory_context: "str | None" = None,
         experimental_diagram_cookbook: bool = False,
         verify_labels_in_canvas: bool = False,
+        features: "frozenset[str] | None" = None,
     ) -> StructuredRunResult:
         """verify_labels_in_canvas (ticket 02, pydsl-authoring-quality):
         False by default -- leaving it unset reproduces today's shipped
@@ -1340,6 +1356,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "sandbox_timeout_seconds": sandbox_timeout_seconds,
             "experimental_diagram_cookbook": experimental_diagram_cookbook,
             "verify_labels_in_canvas": verify_labels_in_canvas,
+            "features": self.features if features is None else frozenset(features),
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
 
@@ -1453,7 +1470,8 @@ class PythonFullStrategy(SubstanceStrategy):
                         patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
                         patched_script = apply_script_patch(top["script"], patch_text)
                         return await _run_from_script(
-                            patched_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                            patched_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                            features=self.features,
                         )
 
                     async def _edit_search_replace(req: str) -> StructuredRunResult:
@@ -1461,7 +1479,8 @@ class PythonFullStrategy(SubstanceStrategy):
                         blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
                         new_script = apply_search_replace(top["script"], blocks)
                         return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                            features=self.features,
                         )
 
                     async def _edit_hashline(req: str) -> StructuredRunResult:
@@ -1470,7 +1489,8 @@ class PythonFullStrategy(SubstanceStrategy):
                         ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
                         new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
                         return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                            features=self.features,
                         )
 
                     async def _edit_line_number(req: str) -> StructuredRunResult:
@@ -1489,7 +1509,8 @@ class PythonFullStrategy(SubstanceStrategy):
                         }
                         new_script = apply_line_number_ops(top["script"], ops)
                         return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds
+                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                            features=self.features,
                         )
 
                     _edit_handlers = {

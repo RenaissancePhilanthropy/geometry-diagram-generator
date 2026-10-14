@@ -46,6 +46,7 @@ from ..recipe.catalog import (
 from ..recipe.dsl import RecipeDSL
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
+from ..features import require_features
 from ..ir.renderer import TikZRenderer, Renderer
 
 logger = logging.getLogger(__name__)
@@ -219,6 +220,7 @@ class RecipePipelineState(TypedDict):
     recipe_metadata: RecipeMetadata
     renderer: Optional[Any]
     selection_done: bool
+    features: frozenset  # enabled feature groups; absent/empty = none enabled
 
 
 async def _select_recipes_node(state: RecipePipelineState) -> dict:
@@ -436,6 +438,9 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
 
     # Run IR pipeline
     try:
+        # Generation-surface gate: the recipe DSL's static schema cannot hide
+        # a kind from the model, so this rejection is the gate for disabled groups.
+        require_features(diagram_ir, state.get("features") or frozenset())
         result = await _run_ir_pipeline(diagram_ir, renderer)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
@@ -585,8 +590,13 @@ class RecipeStrategy(SubstanceStrategy):
     _partial_input_tokens: int = 0
     _partial_output_tokens: int = 0
 
-    def __init__(self, enable_cache: bool = False, selector_model: str = _SELECTOR_MODEL):
-        super().__init__(enable_cache)
+    def __init__(
+        self,
+        enable_cache: bool = False,
+        selector_model: str = _SELECTOR_MODEL,
+        features: "frozenset[str] | set[str] | None" = None,
+    ):
+        super().__init__(enable_cache, features)
         self.selector_model = selector_model
 
     async def run(
@@ -597,6 +607,7 @@ class RecipeStrategy(SubstanceStrategy):
         config: "Optional[RunnableConfig]" = None,
         callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
         previous_dsl: Optional[dict] = None,
+        features: "frozenset[str] | None" = None,
     ) -> StructuredRunResult:
         graph = _build_recipe_graph()
         effective_prompt = prompt
@@ -623,6 +634,7 @@ class RecipeStrategy(SubstanceStrategy):
             "recipe_metadata": RecipeMetadata(),
             "renderer": renderer,
             "selection_done": False,
+            "features": self.features if features is None else frozenset(features),
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 

@@ -2,7 +2,21 @@
 from __future__ import annotations
 
 
-def build_python_full_instructions(include_cookbook: bool = False) -> str:
+# group -> prompt fragment appended only when that group is enabled. Surface
+# tickets for a group add its fragment here.
+GROUPED_FRAGMENTS: "dict[str, str]" = {}
+
+
+def _grouped_fragments(features: "frozenset[str] | set[str]") -> str:
+    from ..features import tagged_fragment
+
+    return "".join(tagged_fragment(group, text, features) for group, text in GROUPED_FRAGMENTS.items())
+
+
+def build_python_full_instructions(
+    include_cookbook: bool = False,
+    features: "frozenset[str] | set[str]" = frozenset(),
+) -> str:
     """Assemble the system prompt, embedding the live pydsl API stub text.
 
     The base '## Available API' section is dynamic by design: calls
@@ -22,6 +36,11 @@ def build_python_full_instructions(include_cookbook: bool = False) -> str:
     reachable in the sandbox when PythonFullStrategy.run() is called with
     experimental_diagram_cookbook=True): unit_grid, array_of, tick_marks,
     bar, bars, table_grid, oblique_point, and chart_axes.
+
+    features: the enabled feature groups (geometry_diagrams/features.py).
+    Fragments tagged with a group (see GROUPED_FRAGMENTS and
+    features.tagged_fragment) are appended only when their group is enabled;
+    with no groups enabled the prompt is byte-identical to before.
     """
     from ..pydsl.stub import generate_stub
 
@@ -170,6 +189,7 @@ works if you prefer to write it explicitly, but it isn't required.
   of silently producing a wrong-looking diagram.
 - The script is plain top-level statements — no function defs required, no return value.
 """
+    base += _grouped_fragments(features)
     if not include_cookbook:
         return base
     return base + """

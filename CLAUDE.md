@@ -57,6 +57,7 @@ All core code lives under `geometry_diagrams/`, which is also the unit that gets
 
 - **`__init__.py`**: Re-exports `render_diagram` (LangChain `@tool`), `render_geometry_diagram` (async), `render_geometry_diagram_sync`, `DiagramResult`, `GeometryConfig`.
 - **`facade.py`**: Single entry point — wraps `RecipeStrategy` + renderer selection behind one callable. Use `render_diagram` as a drop-in LangGraph tool; use `render_geometry_diagram` for async node wiring.
+- **`features.py`**: Feature-group gating (`solids`, off by default; `GeometryConfig.features` / `GEOMETRY_FEATURES`). `require_features` rejects generated IR using a disabled group's kind at generation surfaces only; compile and render always accept every kind.
 - **`config.py`**: `GeometryConfig` dataclass consolidating renderer, model, selector_model, renderer_url, font_family. `GeometryConfig.from_env()` reads env vars; individual fields can be overridden per-call.
 
 ### IR Layer (`geometry_diagrams/ir/`)

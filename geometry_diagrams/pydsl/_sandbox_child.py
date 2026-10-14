@@ -47,7 +47,7 @@ def _send(kind: str, payload) -> None:
     sys.stdout.flush()
 
 
-def _build_tool_names(pydsl_module, enable_cookbook: bool) -> list:
+def _build_tool_names(pydsl_module, enable_cookbook: bool, features=()) -> list:
     """The names exposed to the sandboxed script as tools: the stable
     public API (`pydsl_module.__all__`) always, plus the experimental
     cookbook (`pydsl_module.COOKBOOK_NAMES`) only when `enable_cookbook` is
@@ -55,8 +55,15 @@ def _build_tool_names(pydsl_module, enable_cookbook: bool) -> list:
     infrastructure). `COOKBOOK_NAMES` now lists `cookbook.py`'s 8 real
     helper functions (`unit_grid`, `array_of`, `tick_marks`, `bar`, `bars`,
     `table_grid`, `oblique_point`, `chart_axes`), so `enable_cookbook=True`
-    makes all of them callable from the sandboxed script."""
+    makes all of them callable from the sandboxed script.
+
+    `features` is the enabled feature-group set from the request; each
+    enabled group's names (`pydsl_module.GROUPED_NAMES[group]`) are added,
+    and a disabled group's names never reach the namespace."""
     names = list(pydsl_module.__all__)
+    grouped = getattr(pydsl_module, "GROUPED_NAMES", {})
+    for group in sorted(features):
+        names += list(grouped.get(group, []))
     if enable_cookbook:
         names += list(pydsl_module.COOKBOOK_NAMES)
     return names
@@ -78,6 +85,7 @@ def main() -> None:
     script = request["script"]
     timeout_seconds = request["timeout_seconds"]
     enable_cookbook = request.get("enable_cookbook", False)
+    features = frozenset(request.get("features", []))
 
     # Imported before the RLIMIT_CPU setrlimit call below: smolagents and
     # geometry_diagrams.pydsl transitively pull in sympy/numpy/matplotlib,
@@ -166,7 +174,7 @@ def main() -> None:
     builder = Builder()
     tools = {
         name: _bind_to_builder(getattr(pydsl_module, name), builder)
-        for name in _build_tool_names(pydsl_module, enable_cookbook)
+        for name in _build_tool_names(pydsl_module, enable_cookbook, features)
         if callable(getattr(pydsl_module, name)) and not isinstance(getattr(pydsl_module, name), type)
     }
 

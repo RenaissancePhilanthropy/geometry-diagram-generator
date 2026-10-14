@@ -19,9 +19,12 @@ class SubstanceStrategy(ABC):
 
     logger = getLogger(__name__)
 
-    def __init__(self, enable_cache: bool = False):
+    def __init__(self, enable_cache: bool = False, features: "frozenset[str] | set[str] | None" = None):
         super().__init__()
         self.enable_cache = enable_cache
+        # Enabled feature groups (geometry_diagrams/features.py); every
+        # strategy gates generated IR against this set.
+        self.features: frozenset[str] = frozenset(features or ())
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 
     def _build_run_config(
