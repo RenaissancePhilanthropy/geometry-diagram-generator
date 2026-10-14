@@ -11,7 +11,7 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
-from .derived import REGISTRY as DERIVED_REGISTRY
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -426,9 +426,10 @@ def compile_defs(
     rng: Random | None = None,
 ) -> SymTable:
     """
-    Walk diagram.define in topological order, compiling each DefStmt to a
-    SymPy geometry object. Returns a symbol table mapping each definition's
-    id to its resolved object.
+    Walk the effective definitions (diagram.define plus registry-synthesized
+    ones, see derived.effective_defs) in topological order, compiling each
+    DefStmt to a SymPy geometry object. Returns a symbol table mapping each
+    definition's id to its resolved object. diagram itself is not modified.
 
     Args:
         diagram: The full DiagramIR.
@@ -449,19 +450,22 @@ def compile_defs(
         for name, raw in diagram.params.assign.items():
             params[name] = _eval_expr(raw, {}, def_id="<params>")
 
-    all_ids = {stmt.id for stmt in diagram.define}
-    stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
+    # Compile the effective view: authored definitions plus those registered
+    # kinds synthesize (never written back into the authored IR).
+    defs = effective_defs(diagram)
+    all_ids = {stmt.id for stmt in defs}
+    stmts_by_id = {stmt.id: stmt for stmt in defs}
 
     # Derived entities (polygon vertices, tangent-circle centers) are registered
     # in sym as a side effect of their owner, so any DefStmt that references one
     # needs to depend on the owner. The registry declares who owns what.
-    derived_point_owner = DERIVED_REGISTRY.owner_map(diagram.define)
+    derived_point_owner = DERIVED_REGISTRY.owner_map(defs)
 
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
     # correctly places that statement before any statement that uses them.
     graph: dict[str, set[str]] = {}
-    for stmt in diagram.define:
+    for stmt in defs:
         raw_refs = def_references(stmt)
         resolved = {derived_point_owner.get(r, r) for r in raw_refs}
         graph[stmt.id] = resolved & all_ids

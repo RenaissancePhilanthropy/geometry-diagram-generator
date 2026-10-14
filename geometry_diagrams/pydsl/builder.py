@@ -152,21 +152,31 @@ class Builder:
         # must not be picked up by this iteration (they're compiled and
         # cached inline below instead, and self._sym_watermark accounts
         # for them afterward via len(self._defs)).
-        for stmt in self._defs[self._sym_watermark:]:
+        def compile_into_sym(stmt):
             obj = _compile_one(stmt, self._sym, {}, canvas, rng, all_def_ids=None)
             self._sym[stmt.id] = obj
-            if isinstance(obj, spg.Point):
-                self._coord_floats[stmt.id] = (float(obj.x), float(obj.y))
             # Mirror compile_defs()'s post-compile registration of derived
             # entities, via the same registry: without it the incremental
             # table disagrees with the whole-diagram one and defs carrying a
             # derived id fail with UndefinedRefError on a mid-script resolve.
             known = len(self._sym)
             DERIVED_REGISTRY.register_derived(stmt, obj, self._sym)
-            for derived_id in list(self._sym)[known:]:
-                derived = self._sym[derived_id]
-                if isinstance(derived, spg.Point):
-                    self._coord_floats[derived_id] = (float(derived.x), float(derived.y))
+            for new_id in [stmt.id, *list(self._sym)[known:]]:
+                new_obj = self._sym[new_id]
+                if isinstance(new_obj, spg.Point):
+                    self._coord_floats[new_id] = (float(new_obj.x), float(new_obj.y))
+            return obj
+
+        for stmt in self._defs[self._sym_watermark:]:
+            obj = compile_into_sym(stmt)
+            # Likewise mirror compile_defs()'s effective view: definitions the
+            # kind synthesizes (never added to self._defs, so never to the
+            # authored IR) are compiled right after their owner, whose
+            # derived entities they may reference. A name already in the
+            # table wins, as in effective_defs().
+            for synth in DERIVED_REGISTRY.synthesized(stmt):
+                if synth.id not in self._sym:
+                    compile_into_sym(synth)
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
             if isinstance(stmt, ir_mod.PointOn) and isinstance(stmt.how, ir_mod.PointOnIntent):

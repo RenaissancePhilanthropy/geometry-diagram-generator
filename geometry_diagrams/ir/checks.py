@@ -7,6 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
+from .derived import effective_defs
 from .to_sympy import (
     Arc,
     EllipticalArc,
@@ -481,10 +482,12 @@ def _build_linear_pairs(
     diagram: ir.DiagramIR,
     sym: SymTable | None = None,
 ) -> set[frozenset]:
-    """Return the set of {p, q} pairs that share a linear object in the diagram."""
+    """Return the set of {p, q} pairs that share a linear object in the diagram
+    (effective view: synthesized segments/polygons count, see derived.py)."""
+    defs = effective_defs(diagram)
     pts_on: dict[str, set[str]] = {}  # obj_id -> set of point ids on that obj
 
-    for stmt in diagram.define:
+    for stmt in defs:
         match stmt:
             case ir.LineThrough(id=oid, p=p, q=q):
                 pts_on.setdefault(oid, set()).update([p, q])
@@ -568,7 +571,7 @@ def _build_linear_pairs(
         # otherwise raise constructing spg.Line — lower.py already rejects
         # these for the recipe DSL's own ops, but this path is shared with
         # strategies that build the IR directly and may not pre-validate it.
-        for stmt in diagram.define:
+        for stmt in defs:
             match stmt:
                 case ir.PointReflect(id=oid, source=source_id, across=across_id):
                     across_obj = sym.get(across_id)

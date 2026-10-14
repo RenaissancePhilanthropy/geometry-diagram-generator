@@ -24,7 +24,7 @@ from typing import Any, Callable, NamedTuple
 import sympy.geometry as spg
 
 from . import ir
-from .derived import REGISTRY as DERIVED_REGISTRY
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
@@ -213,6 +213,10 @@ def ir_to_svg(
     strategies/evals should depend on."""
     if font_config is None:
         font_config = default_font_config()
+
+    # Everything below reads the effective view (authored + synthesized
+    # definitions); the caller's authored IR is left as it was.
+    diagram = effective_diagram(diagram)
 
     # --- Extract coordinates and helper points ---
     coords = extract_coords(sym)

@@ -10,8 +10,18 @@ symbol table after compile. The compiler's dependency ordering, post-compile
 registration and dependents tracking all consult this registry instead of
 per-kind branches.
 
-Extension points for later hooks (position, synthesized definitions, render
-lowering, feature group) are further fields on ``DerivedConstruction``.
+A kind may also *synthesize* ordinary definitions (e.g. a solid's edge
+segments and face polygons). Those are never written into the authored IR:
+``effective_defs`` computes the view "authored definitions plus synthesized
+ones" as a pure function of the authored definitions, and only the consumers
+that need the derived geometry read it (compile, both renderers, bounds and
+helpers, linear-pair resolution, the entity manifest). Consumers that must see
+only what was authored (auto-checks, edit and eval IR diagnostics, dependents
+tracking) keep reading ``diagram.define``; dependents tracking still reaches
+synthesized ids through ``owner_map``, which attributes them to their owner.
+
+Extension points for later hooks (render lowering, feature group) are further
+fields on ``DerivedConstruction``.
 """
 from __future__ import annotations
 
@@ -51,6 +61,13 @@ class DerivedConstruction:
     vertex_ids: Callable[[Any], list[str]] | None = None
     # center_id: id of the named center point of the circle the statement makes.
     center_id: Callable[[Any], str] | None = None
+    # synthesize: statement -> the ordinary definitions it contributes to the
+    #     effective definition set (never to the authored IR). Must be a pure
+    #     function of the statement alone: compile and render each recompute
+    #     the view independently and must agree. Synthesized ids count as
+    #     owned (see owner_map); a synthesized definition is not itself
+    #     expanded further (one level).
+    synthesize: Callable[[Any], list[Any]] | None = None
 
 
 class DerivedRegistry:
@@ -75,8 +92,10 @@ class DerivedRegistry:
         return self._by_kind.get(getattr(stmt, "kind", None))
 
     def owner_map(self, stmts: list[Any]) -> dict[str, str]:
-        """derived id -> id of the owning statement. Derived names that are
-        also real definitions are skipped (the real definition wins)."""
+        """derived id -> id of the owning statement, covering both owned ids
+        and the ids of synthesized definitions. Derived names that are also
+        real definitions in ``stmts`` are skipped (the real definition wins),
+        so over the effective view synthesized ids resolve to themselves."""
         real_ids = {s.id for s in stmts}
         owners: dict[str, str] = {}
         for stmt in stmts:
@@ -86,7 +105,33 @@ class DerivedRegistry:
             for did in entry.owned_ids(stmt):
                 if did not in real_ids:
                     owners[did] = stmt.id
+            for synth in self.synthesized(stmt):
+                if synth.id not in real_ids:
+                    owners[synth.id] = stmt.id
         return owners
+
+    def synthesized(self, stmt: Any) -> list[Any]:
+        """The definitions ``stmt``'s kind synthesizes (empty for most kinds)."""
+        entry = self.get(stmt)
+        if entry is None or entry.synthesize is None:
+            return []
+        return list(entry.synthesize(stmt))
+
+    def effective_defs(self, stmts: list[Any]) -> list[Any]:
+        """Authored statements, each followed by the definitions its kind
+        synthesizes. A synthesized definition whose id is already taken (by
+        an authored definition or an earlier synthesized one) is dropped:
+        the authored definition wins, as in ``owner_map`` and ``register``.
+        Always a new list; ``stmts`` is never modified. Idempotent."""
+        taken = {s.id for s in stmts}
+        view: list[Any] = []
+        for stmt in stmts:
+            view.append(stmt)
+            for synth in self.synthesized(stmt):
+                if synth.id not in taken:
+                    taken.add(synth.id)
+                    view.append(synth)
+        return view
 
     def position_of(self, obj: Any) -> "tuple[float, float] | None":
         """Position supplied by the first registered kind that recognizes
@@ -189,3 +234,20 @@ def _build_default_registry() -> DerivedRegistry:
 
 
 REGISTRY = _build_default_registry()
+
+
+def effective_defs(diagram: Any) -> list[Any]:
+    """The effective definition set of ``diagram``: its authored definitions
+    plus every definition a registered kind synthesizes. A pure function of
+    ``diagram.define`` alone (never of a symbol table or a random stream)."""
+    return REGISTRY.effective_defs(diagram.define)
+
+
+def effective_diagram(diagram: Any) -> Any:
+    """``diagram`` itself when nothing is synthesized, else a shallow copy
+    whose ``define`` is the effective view. The copy is local to the caller
+    (a renderer's entry function); the authored IR is never rewritten."""
+    view = effective_defs(diagram)
+    if len(view) == len(diagram.define):
+        return diagram
+    return diagram.model_copy(update={"define": view})

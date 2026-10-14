@@ -9,6 +9,7 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
+from .derived import effective_diagram
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     BOUNDS_PADDING,
@@ -84,6 +85,10 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
             "canvas aspect is only supported by the SVG renderer; the TikZ renderer draws equal "
             "units on both axes -- use renderer='svg' or leave canvas.aspect unset"
         )
+    # Everything below reads the effective view (authored + synthesized
+    # definitions); the caller's authored IR is left as it was.
+    diagram = effective_diagram(diagram)
+
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
     coords = extract_coords(sym)
 

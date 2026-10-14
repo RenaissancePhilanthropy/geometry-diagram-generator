@@ -16,7 +16,7 @@ import sympy.geometry as spg
 from sympy.geometry.line import LinearEntity
 
 from . import ir
-from .derived import REGISTRY as DERIVED_REGISTRY
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ def synthesize_helpers(
     - ``_cc_{id}`` — center for CircleThrough3 / CircleTangentAt
     """
     helpers: dict[str, tuple[float, float]] = {}
-    for stmt in diagram.define:
+    for stmt in effective_defs(diagram):
         line_obj = sym.get(stmt.id)
         if isinstance(stmt, ir.LineParallelThrough):
             helpers[f"_lp_{stmt.id}"] = second_line_point(line_obj, sym[stmt.through])
@@ -994,7 +994,9 @@ def build_entity_manifest(
     marks, fills — which never bind to a variable) with a synthetic id.
     Named entities are grounded by name; anonymous ones only by
     type/position/text (see design doc, Component 2)."""
-    stmts_by_id = {stmt.id: stmt for stmt in diagram_ir.define}
+    # Effective view: a script variable may be bound to a synthesized id
+    # (e.g. a solid's face), and a fill may target one.
+    stmts_by_id = {stmt.id: stmt for stmt in effective_defs(diagram_ir)}
 
     named = []
     for name, obj_id in variable_ids.items():
