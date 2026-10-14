@@ -143,9 +143,15 @@ def test_python_full_instructions_include_tagged_fragment_only_when_enabled(monk
     assert "TEST-ONLY-SOLIDS-FRAGMENT" in ipf.build_python_full_instructions(features=frozenset({"solids"}))
 
 
-def test_default_instructions_unchanged_by_features_machinery():
+def test_default_instructions_unchanged_by_features_machinery(monkeypatch):
+    # Ticket 15 gave `solids` real names/fragment, so empty them here: the point
+    # is that the machinery itself adds nothing for an enabled but empty group.
+    import geometry_diagrams.pydsl as pydsl
+    from geometry_diagrams.strategies import instructions_python_full as ipf
     from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
 
+    monkeypatch.setitem(ipf.GROUPED_FRAGMENTS, "solids", "")
+    monkeypatch.setitem(pydsl.GROUPED_NAMES, "solids", [])
     assert build_python_full_instructions(features=frozenset({"solids"})) == build_python_full_instructions()
 
 

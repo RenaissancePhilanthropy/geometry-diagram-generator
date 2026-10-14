@@ -2,9 +2,64 @@
 from __future__ import annotations
 
 
+# The example embedded in the solids guidance. tests/test_pydsl_prism.py runs
+# it through the real sandbox and pipeline, so the prompt text cannot drift
+# from the API (a shaded box with dimension labels and checks).
+PRISM_EXAMPLE_SCRIPT = """\
+o = point(0, 0)
+box = prism(o, 4, 3, 2)
+assert_volume(box, 24)
+front, right, top = box.face("front"), box.face("right"), box.face("top")
+fill(front, color="#bcd6ee")
+fill(right, color="rgb(150, 190, 230)")
+fill(top, color="#dbe9f6")
+for f in (front, right, top):
+    draw(f)
+box.edge(box.corner(0, 0, 0), box.corner(1, 0, 0)).label("4")
+segment(box.corner(1, 0, 0), box.corner(1, 0, 1)).label("3")
+segment(box.corner(0, 0, 0), box.corner(0, 1, 0)).label("2")
+assert_true_length(segment(box.corner(0, 0, 0), box.corner(1, 0, 1)), 5)
+label_text("V = 24", centroid_of=box)
+"""
+
+_SOLIDS_FRAGMENT = """
+## Rectangular prisms (boxes)
+- `prism(origin, length, width, height, unit_cubes=False, vertex_names=None, view="oblique",
+  depth_angle=None, depth_scale=None, side="right")` returns a Prism (never name a variable `prism`). `origin` is a Point at the
+  front-bottom-left corner; length runs along the front bottom edge, width along the right bottom
+  edge (the depth), height is vertical (positive literal numbers). side="right" (default) shows
+  the front, right and top faces; side="left" shows front, left and top. The back, left (right
+  for side="left") and bottom faces and three edges are hidden (drawn dashed).
+- Accessors return ordinary handles: `box.corner(a, b, c)` is a Point (bits 0/1 = length-max,
+  height-max, width-max; `corner(0, 0, 0)` is the origin), `box.edge(p, q)` a Segment between two
+  corners of one edge, `box.face("front"|"back"|"left"|"right"|"top"|"bottom")` a Polygon
+  (`"base"` is the bottom face). `box.volume` and `box.base_area` are the true numbers.
+  `segment(p, q)` between two corners of one edge is that same edge (never a second stroke);
+  between other corners it is an ordinary segment (face or space diagonal).
+- Wireframe look: `draw(box)` (strokes the visible outlines and dashed hidden edges); pass
+  depth_scale=2/3 for wireframe-like figures. Solid-shaded look: `fill(...)` and `draw(...)` the
+  three visible FACES (front/right/top; front/left/top for side="left") and do NOT `draw(box)`,
+  which would stroke dashed hidden edges over the fills. Colors: named, "rgb(r, g, b)",
+  "hsv(h, s, v)" or "#rrggbb".
+- view="isometric" suits unit-cube figures (no depth_angle/depth_scale); unit_cubes=True needs
+  literal integer dimensions, at most 100 each. The default view is oblique at 45 degrees with
+  depth scale 1/2.
+- Dimension labels: `.label(text)` on an edge (or on any two-corner `segment`); segment labels
+  render in math mode, so put words and units in free text: `label_text(text, centroid_of=box)`
+  or `box.label(text)`.
+- Schematic case: when only a base area and a height are given (no length or width), choose
+  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label and
+  queried volume are what the item asserts; add `assert_volume(box, expected)`.
+- `assert_volume(box, expected)` checks the true volume; `assert_true_length(seg, expected)` the
+  TRUE 3D length of a segment joining two corners of one prism (an edge, face diagonal or space
+  diagonal). `assert_distance` on such a segment measures the DRAWN 2D length instead, which is
+  not the real length.
+- Example:
+""" + "".join("      " + line + "\n" if line else "\n" for line in PRISM_EXAMPLE_SCRIPT.splitlines()) + """"""
+
 # group -> prompt fragment appended only when that group is enabled. Surface
 # tickets for a group add its fragment here.
-GROUPED_FRAGMENTS: "dict[str, str]" = {}
+GROUPED_FRAGMENTS: "dict[str, str]" = {"solids": _SOLIDS_FRAGMENT}
 
 
 def _grouped_fragments(features: "frozenset[str] | set[str]") -> str:
@@ -54,7 +109,7 @@ works if you prefer to write it explicitly, but it isn't required.
 
 ## Available API
 
-{generate_stub()}
+{generate_stub(features)}
 
 ## Rules
 

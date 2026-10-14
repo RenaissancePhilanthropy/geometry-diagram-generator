@@ -12,7 +12,7 @@ import geometry_diagrams.pydsl as pydsl_module
 
 _HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Arc", "Sector", "Segment", "Triangle", "Polygon",
                         "Polyline", "Circle", "Ellipse", "Altitude", "Median", "AngleRef",
-                        "PerpendicularBisectorLine"}
+                        "PerpendicularBisectorLine", "Prism"}
 
 
 def _format_callable(name: str, obj) -> str:
@@ -26,11 +26,19 @@ def _format_callable(name: str, obj) -> str:
     return f"{line}  # {first_line}" if first_line else line
 
 
-def generate_stub() -> str:
+def generate_stub(features: "frozenset[str] | set[str]" = frozenset()) -> str:
+    """The stub text for ``pydsl.__all__`` plus, for each ENABLED feature
+    group (geometry_diagrams/features.py), that group's
+    ``pydsl.GROUPED_NAMES`` entries appended after it. A disabled group's
+    names (and so, with no groups enabled, the whole text) never appear,
+    keeping the default stub byte-identical to before the group existed."""
     import dataclasses
 
+    names = list(pydsl_module.__all__)
+    for group in sorted(features):
+        names += pydsl_module.GROUPED_NAMES.get(group, [])
     lines: list[str] = []
-    for name in pydsl_module.__all__:
+    for name in names:
         obj = getattr(pydsl_module, name)
         if inspect.isfunction(obj):
             lines.append(_format_callable(name, obj))

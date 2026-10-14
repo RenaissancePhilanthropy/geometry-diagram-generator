@@ -12,7 +12,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Ray, Sector, Segment, Triangle, _record_literal_point, _sanitize_label_text
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Prism, Ray, Sector, Segment, Triangle, _record_literal_point, _sanitize_label_text
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -215,6 +215,50 @@ def rectangle(
         ry = cy + (x - cx) * sin_r + (y - cy) * cos_r
         pts.append(_record_literal_point(builder, rx, ry))
     return polygon(*pts)
+
+
+def prism(
+    origin: Point,
+    length: float,
+    width: float,
+    height: float,
+    unit_cubes: bool = False,
+    vertex_names: "list[str] | None" = None,
+    view: str = "oblique",
+    depth_angle: "float | None" = None,
+    depth_scale: "float | None" = None,
+    side: str = "right",
+) -> Prism:
+    """A rectangular prism (box) drawn as a parallel projection; `origin` is the front-bottom-left corner. length runs along the front bottom edge, width along the right bottom edge (the depth), height is vertical (positive numbers). view is "oblique" (default; depth_angle in degrees / depth_scale override the receding axis) or "isometric"; side "right" shows the front/right/top faces, "left" the front/left/top. unit_cubes=True needs literal integer dimensions, at most 100 each. vertex_names renames the eight corners (order of corner(a, b, c) with c varying fastest). Returns a Prism handle: .corner(a,b,c), .edge(p,q), .face(name), .volume, .base_area."""
+    import pydantic
+
+    from geometry_diagrams.ir.ir import RectangularPrism
+
+    if not isinstance(origin, Point):
+        raise ValueError(f"prism(): origin must be a Point (from point(...)), got {type(origin).__name__}")
+    for name, value in (("length", length), ("width", width), ("height", height)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+            raise ValueError(f"prism(): {name} must be a positive number, got {value!r}")
+    if view not in ("oblique", "isometric"):
+        raise ValueError(f"prism(): view must be 'oblique' or 'isometric', got {view!r}")
+    if side not in ("right", "left"):
+        raise ValueError(f"prism(): side must be 'right' or 'left', got {side!r}")
+    builder = get_builder()
+    pid = builder._fresh_hidden_id("prism")
+    try:
+        stmt = RectangularPrism(
+            id=pid, origin=origin.id, length=length, width=width, height=height,
+            unit_cubes=unit_cubes, vertex_names=list(vertex_names) if vertex_names is not None else None,
+            view=view, depth_angle=depth_angle, depth_scale=depth_scale, side=side,
+        )
+    except pydantic.ValidationError as exc:
+        raise ValueError(f"prism(): invalid arguments: {exc}") from None
+    builder._add(stmt)
+    # Compile now so a misuse (bad dimensions, vertex_names of the wrong length,
+    # a unit_cubes violation, ...) is the script's own error with the IR's
+    # message, not a failure after the script finished.
+    builder._advance_sym()
+    return builder._register_prism(stmt)
 
 
 def walk(from_point: Point, heading: float, distance: float) -> Point:
@@ -1745,7 +1789,7 @@ def label_text(
     # composite handles (Median/Altitude/PerpendicularBisectorLine), whose
     # `.id` is their underlying segment/line def, so the label would land on
     # that sub-object's own midpoint rather than raising.
-    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline)):
+    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline, Prism)):
         type_name = type(centroid_of).__name__
         article = "an" if type_name[0] in "AEIOU" else "a"
         if isinstance(centroid_of, (Point, AngleRef)):

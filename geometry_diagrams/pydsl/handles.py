@@ -499,3 +499,87 @@ class PerpendicularBisectorLine:
     id: str
     midpoint: Point
     line: Line
+
+
+def _corner_bits(value, what: str) -> "tuple[int, int, int]":
+    """Normalize a corner given as a (length, height, width) bit triple."""
+    try:
+        bits = tuple(value)
+    except TypeError:
+        bits = ()
+    if len(bits) != 3 or any(b not in (0, 1) or isinstance(b, bool) for b in bits):
+        raise ValueError(
+            f"{what}: expected three 0/1 bits (length-max, height-max, width-max), got {value!r}"
+        )
+    return (int(bits[0]), int(bits[1]), int(bits[2]))
+
+
+@dataclass(frozen=True)
+class Prism:
+    """A rectangular prism (box) drawn as a parallel projection. Its `id` is
+    the prism's own id: `draw(prism)` draws the visible face outlines plus
+    dashed hidden edges. `corner`/`edge`/`face` return ORDINARY Point/Segment/
+    Polygon handles over the prism's derived ids."""
+    id: str
+    length: float
+    width: float
+    height: float
+    _builder: "object" = field(repr=False, compare=False)
+    # corner bits (length-max, height-max, width-max) -> corner point id
+    _corner_ids: "dict" = field(repr=False, compare=False, default_factory=dict)
+
+    @property
+    def volume(self) -> float:
+        """The true volume: length * width * height."""
+        return self.length * self.width * self.height
+
+    @property
+    def base_area(self) -> float:
+        """The true area of the base (bottom) face: length * width."""
+        return self.length * self.width
+
+    def corner(self, a: int, b: int, c: int) -> Point:
+        """The corner Point at bits (a, b, c), each 0 or 1: a = length-max, b = height-max, c = width-max. corner(0, 0, 0) is the origin."""
+        bits = _corner_bits((a, b, c), "Prism.corner()")
+        return Point(id=self._corner_ids[bits], _builder=self._builder)
+
+    def _bits_of(self, corner, what: str) -> "tuple[int, int, int]":
+        if isinstance(corner, Point):
+            for bits, cid in self._corner_ids.items():
+                if cid == corner.id:
+                    return bits
+            raise ValueError(f"{what}: point {corner.id!r} is not a corner of prism {self.id!r}")
+        return _corner_bits(corner, what)
+
+    def edge(self, corner_a, corner_b) -> Segment:
+        """The prism's own edge Segment between two corners that differ in exactly one bit. Each corner is a corner Point or a (a, b, c) bit triple."""
+        from geometry_diagrams.ir.prism import edge_id
+
+        p = self._bits_of(corner_a, "Prism.edge()")
+        q = self._bits_of(corner_b, "Prism.edge()")
+        if sum(x != y for x, y in zip(p, q)) != 1:
+            raise ValueError(
+                f"Prism.edge(): corners {p} and {q} are not the ends of one edge (they must "
+                "differ in exactly one bit); use segment(a, b) for a face or space diagonal"
+            )
+        return Segment(id=edge_id(self.id, p, q), _builder=self._builder)
+
+    def face(self, name: str) -> Polygon:
+        """The face Polygon: 'front', 'back', 'left', 'right', 'top' or 'bottom' ('base' is the bottom face)."""
+        from geometry_diagrams.ir.prism import FACE_NAMES, face_corners, face_id
+
+        key = "bottom" if name == "base" else name
+        if key not in FACE_NAMES:
+            raise ValueError(
+                f"Prism.face(): unknown face {name!r}; use one of "
+                "'front', 'back', 'left', 'right', 'top', 'bottom' ('base' is the bottom face)"
+            )
+        verts = tuple(Point(id=self._corner_ids[b], _builder=self._builder) for b in face_corners(key))
+        return Polygon(id=face_id(self.id, key), vertices=verts, _builder=self._builder)
+
+    def label(self, text: str) -> None:
+        """Place a floating label at this prism's centroid, e.g. box.label("V = 24")."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))

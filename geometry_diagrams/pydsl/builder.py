@@ -125,6 +125,23 @@ class Builder:
         self._segment_cache[key] = sid
         return Segment(id=sid, _builder=self)
 
+    def _register_prism(self, stmt) -> "Prism":
+        """Build the Prism handle for a just-recorded (and compiled)
+        RectangularPrism, and pre-seed the segment cache with the prism's own
+        twelve edges so segment(a, b) between two corners of one edge returns
+        the prism's derived edge (never a second, duplicate stroke). Diagonals
+        and non-edges miss the cache and get an ordinary segment."""
+        from geometry_diagrams.ir import prism as prism_mod
+        from geometry_diagrams.pydsl.handles import Prism
+
+        names = prism_mod.corner_names(stmt)
+        for p, q in prism_mod.edges():
+            self._segment_cache[frozenset((names[p], names[q]))] = prism_mod.edge_id(stmt.id, p, q)
+        return Prism(
+            id=stmt.id, length=stmt.length, width=stmt.width, height=stmt.height,
+            _builder=self, _corner_ids=dict(names),
+        )
+
     def _resolve_point(self, pid: str) -> "tuple[float, float]":
         """Return (x, y) for any point id already recorded in self._defs,
         compiling as many new defs as needed via to_sympy.py's real

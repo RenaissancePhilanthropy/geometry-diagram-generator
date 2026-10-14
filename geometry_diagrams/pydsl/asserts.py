@@ -438,3 +438,21 @@ def assert_labels_in_canvas() -> None:
             f"Label {v.text!r} extends outside the canvas by {v.overflow:.2f}px "
             f"(bbox {v.bbox}){more}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Solids group (names added to the namespace only when `solids` is enabled)
+# ---------------------------------------------------------------------------
+
+def assert_volume(prism, expected: float, *, tol: float | None = None) -> None:
+    """Assert that a prism's true volume (length x width x height) equals expected (near-exact tolerance)."""
+    builder = get_builder()
+    check = ir.VolumeEquals(prism=prism.id, expected=expected, tol=tol)
+    _run_assertion(builder, check, [])
+
+
+def assert_true_length(seg, expected: float, *, tol: float | None = None) -> None:
+    """Assert the TRUE 3D length of a segment joining two corners of one prism (edge, face diagonal or space diagonal) equals expected; assert_distance would measure the drawn 2D length instead."""
+    builder = get_builder()
+    check = ir.TrueLengthEquals(seg=seg.id, expected=expected, tol=tol)
+    _run_assertion(builder, check, [])
