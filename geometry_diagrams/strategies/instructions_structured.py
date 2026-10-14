@@ -334,7 +334,10 @@ gridlines (and no dashed hidden edges); drawing the faces separately shows no gr
 the face ids still shade it. The fill-and-draw-the-face-ids advice above is for non-unit-cube \
 solid-shaded looks only.
 - **Labels:** fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
-`text` and exactly one of `at` ([x, y]) or `centroid_of` (an object id). Put a dimension on an edge with `label_segment` on an edge id (or on a segment \
+`text` and exactly one of `at` ([x, y]) or `centroid_of` (an object id). Put each dimension on the edge of its own dimension (the bit that differs between an edge's two \
+corners: first = length, e.g. `P_e_000_100`; second = height, e.g. `P_e_000_010`; third = width, \
+e.g. `P_e_000_001`; a numeric label that differs from the edge's true length gives a warning). \
+Put a dimension on an edge with `label_segment` on an edge id (or on a segment \
 between two corners of one edge). Segment-label text renders in math mode in TikZ, so words and \
 units belong in `label_free_text` instead: `centroid_of` a face id labels that face, `centroid_of` \
 the prism id centers a label on the prism.

@@ -526,7 +526,7 @@ def test_valid_prism_ops_raise_nothing():
     d = _diagram(render=[
         ir.Fill(obj="P_bottom"), ir.Draw(obj="P"),
         ir.LabelFreeText(text="c", centroid_of="P"),
-        ir.LabelSegment(seg="P_e_000_100", text="6"),
+        ir.LabelSegment(seg="P_e_000_100", text="3"),
         ir.MarkSegments(segs=["P_e_000_100", "P_e_010_110"]),
         ir.LabelPoint(p="P_v000", text="A"),
         ir.MarkRightAngles(angles=[A(a="P_v100", o="P_v000", b="P_v010")]),

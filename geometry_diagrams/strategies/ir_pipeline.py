@@ -18,6 +18,7 @@ from ..ir.ir import DiagramIR
 from ..ir.to_sympy import compile_defs
 from ..ir.checks import run_checks, check_render_angles
 from ..ir.angle_pairs import resolve_angle_pairs
+from ..ir.prism import label_dimension_warnings
 from ..ir.renderer import Renderer, TikZRenderer
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ async def run_ir_pipeline(
 
     warnings: list[str] = []
     results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym, warnings=warnings)
+    warnings.extend(label_dimension_warnings(diagram_ir, sym))
     for r in results:
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)

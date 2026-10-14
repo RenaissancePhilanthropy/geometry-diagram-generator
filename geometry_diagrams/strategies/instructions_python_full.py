@@ -48,7 +48,10 @@ _SOLIDS_FRAGMENT = """
 - view="isometric" suits unit-cube figures (no depth_angle/depth_scale); unit_cubes=True needs
   literal integer dimensions, at most 100 each. The default view is oblique at 45 degrees with
   depth scale 1/2.
-- Dimension labels: `.label(text)` on an edge (or on any two-corner `segment`); segment labels
+- Dimension labels: `.label(text)` on an edge (or on any two-corner `segment`); put each number on the
+  edge of its own dimension: `box.edge(box.corner(0, 0, 0), box.corner(1, 0, 0))` is a length edge,
+  `corner(0, 1, 0)` a height edge, `corner(0, 0, 1)` a width edge (a numeric label that differs from
+  the edge's true length gives a warning); segment labels
   render in math mode, so put words and units in free text: `label_text(text, centroid_of=box)`
   or `box.label(text)`.
 - Schematic case: when only a base area and a height are given (no length or width), choose

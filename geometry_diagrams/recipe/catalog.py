@@ -706,7 +706,10 @@ _PRISM_GUIDANCE_DOC = """\
   shows no gridlines. Fills on the face ids still shade it. The fill-and-draw-the-face-ids advice
   above is for non-unit-cube solid-shaded looks only.
   Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
-- Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100).
+- Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100). Put each number on
+  the edge of its own dimension: the bit that differs between an edge's two corners says which
+  (first = length, e.g. P_e_000_100; second = height, e.g. P_e_000_010; third = width, e.g.
+  P_e_000_001). A numeric label that differs from the edge's true length gives a warning.
   Words and units go in free-text labels (label_free_text, text or centroid_of:"P"); segment
   labels render in math mode.
 - The schematic case: when only a base area and a height are given (no length or width), choose

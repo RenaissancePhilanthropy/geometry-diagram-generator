@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
@@ -476,6 +477,39 @@ def render_warnings(stmt: ir.RectangularPrism, diagram: Any) -> list[str]:
             f"prism {stmt.id!r} has unit_cubes=true but is never drawn: its cube gridlines "
             f"appear only when you draw the prism id (draw {stmt.id}); drawing its faces "
             f"separately shows no gridlines"
+        )
+    return out
+
+
+_LABEL_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?|\.\d+")
+_EDGE_AXIS_NAMES = ("length", "height", "width")
+
+
+def label_dimension_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
+    """Warnings for numeric ``label_segment`` texts on a segment joining two
+    corners of one prism whose first number differs from the segment's true
+    3D length. A label with no number is schematic and never warns. For an
+    edge the message names the dimension (first differing corner bit = length,
+    second = height, third = width)."""
+    out: list[str] = []
+    for op in diagram.render:
+        if not isinstance(op, ir.LabelSegment):
+            continue
+        m = _LABEL_NUMBER_RE.search(op.text)
+        hit = corner_segment(sym, op.seg)
+        if m is None or hit is None:
+            continue
+        prism, p, q = hit
+        true = float(prism.true_distance(p, q).evalf())
+        if math.isclose(float(m.group()), true, rel_tol=1e-6, abs_tol=1e-9):
+            continue
+        differing = [i for i in range(3) if p[i] != q[i]]
+        axis = f" ({_EDGE_AXIS_NAMES[differing[0]]} edge)" if len(differing) == 1 else ""
+        out.append(
+            f"Label {op.text!r} on prism segment {op.seg!r}{axis} does not match its true "
+            f"length {true:.10g}: a prism edge's true length is its length edge "
+            f"(first corner bit differs), height edge (second) or width edge (third); "
+            f"check the label is on the edge of that dimension."
         )
     return out
 
