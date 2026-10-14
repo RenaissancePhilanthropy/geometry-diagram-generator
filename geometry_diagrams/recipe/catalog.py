@@ -657,6 +657,19 @@ don't require a separate segment op at all). Likewise there is no implicit "xaxi
 # Solids feature group: DSL documentation inserted only when "solids" is on
 # ---------------------------------------------------------------------------
 
+# Every concrete JSON shape the prism guidance shows. The guidance text below is
+# built from these with json.dumps, and tests/test_recipe_prism.py validates,
+# lowers and renders each one, so the docs cannot drift from the schema.
+PRISM_EXAMPLES: dict[str, dict[str, Any]] = {
+    "op": {"op": "prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2},
+    "volume": {"check": "volume", "prism": "P", "expected": 24},
+    "true_length": {"check": "true_length", "points": ["P_v000", "P_v101"], "expected": 5},
+    "draws": {"draws": [{"obj": "P"}]},
+    "hide_prism": {"visible": False},
+    "no_auto_draw": {"auto_draw_all": False},
+}
+_EX = {k: json.dumps(v) for k, v in PRISM_EXAMPLES.items()}
+
 _PRISM_OP_DOC = """\
 - prism: {op, id, origin, length, width, height, unit_cubes?, vertex_names?, view?, depth_angle?, depth_scale?, side?}
   Rectangular box drawn as a parallel projection. origin = an EXISTING point id (a point op)
@@ -665,11 +678,12 @@ _PRISM_OP_DOC = """\
   {id}_v000 is the origin), or exactly eight vertex_names in that same order (000,001,010,011,
   100,101,110,111) -- named corners get point labels; edges {id}_e_{abc}_{abc} (smaller bit string
   first, e.g. P_e_000_100); faces {id}_front/_back/_left/_right/_top/_bottom (bottom = base).
-  A segment, label_segment or check between two corners of ONE edge reuses that edge."""
+  A segment, label_segment or check between two corners of ONE edge reuses that edge.
+  Example: """ + _EX["op"]
 
 _PRISM_CHECKS_DOC = """\
-  {"check": "volume", "prism": "P", "expected": 24}  (true volume length x width x height)
-  {"check": "true_length", "points": ["P_v000", "P_v111"], "expected": 5.39}  (true 3D length of an
+  """ + _EX["volume"] + """  (true volume length x width x height)
+  """ + _EX["true_length"] + """  (true 3D length of an
   edge, face diagonal or space diagonal between two corners of one prism; not the drawn length)"""
 
 _PRISM_GUIDANCE_DOC = """\
@@ -683,9 +697,9 @@ _PRISM_GUIDANCE_DOC = """\
   depth_scale 2/3 (0.67). For unit-cube / isometric-looking figures use view:"isometric"
   (no depth_angle/depth_scale). To count cubes use unit_cubes:true with literal integer
   length/width/height, at most 100 each.
-- Wireframe look: draw the prism id (auto_draw_all does this, or draws:[{"obj":"P"}]).
+- Wireframe look: draw the prism id (auto_draw_all does this, or annotations """ + _EX["draws"] + """).
 - Solid-shaded look: fill and draw the three visible FACE ids (P_front, P_right, P_top; P_left
-  instead of P_right for side:"left") and set the prism op visible:false or auto_draw_all:false.
+  instead of P_right for side:"left") and either set the prism op """ + _EX["hide_prism"] + """ or annotations """ + _EX["no_auto_draw"] + """.
   Do NOT draw the prism id for a shaded solid: it strokes dashed hidden edges over the fills.
   Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
 - Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100).

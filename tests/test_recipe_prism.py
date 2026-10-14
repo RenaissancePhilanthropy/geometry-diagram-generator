@@ -185,7 +185,7 @@ def test_solid_shaded_look_fills_and_draws_visible_face_ids():
     fills = [r for r in d.render if isinstance(r, ir.Fill)]
     assert [f.obj for f in fills] == ["P_front", "P_right", "P_top"]
     sym = compile_defs(d)
-    assert "\\fill" in ir_to_tikz(d, sym) or "fill" in ir_to_tikz(d, sym)
+    assert ir_to_tikz(d, sym).count("\\tkzFillPolygon") == 3
 
 
 def test_free_text_label_centered_on_the_prism_and_draw_of_the_prism_id():
@@ -337,3 +337,74 @@ async def test_pipeline_fails_a_wrong_volume_check_like_any_recipe_check():
     dsl = _dsl(checks=[{"check": "volume", "prism": "P", "expected": 99}])
     with pytest.raises(RuntimeError):
         await run_ir_pipeline(lower_to_ir(dsl), SVGRenderer())
+
+
+# --- the guidance examples are executable (derived from catalog.PRISM_EXAMPLES) -----------
+#
+# catalog.PRISM_EXAMPLES holds every concrete JSON shape the solids-on guidance
+# shows; the guidance text is built from it with json.dumps. The test asserts
+# each snippet appears verbatim in the guidance, then validates/lowers/renders
+# it, so docs drift from the schema fails here. Prose-only advice (do NOT draw
+# the prism id for a shaded solid) is covered by the behavior tests below.
+
+def _examples():
+    from geometry_diagrams.recipe.catalog import PRISM_EXAMPLES
+    return PRISM_EXAMPLES
+
+
+def test_every_guidance_example_appears_verbatim_in_the_solids_on_docs():
+    on = dsl_docs_for(SOLIDS)
+    for name, snippet in _examples().items():
+        assert json.dumps(snippet) in on, name
+        assert json.dumps(snippet) not in DSL_DOCS, name
+
+
+def _recipe_around(example_name: str) -> RecipeDSL:
+    ex = _examples()
+    op = dict(ex["op"])
+    construction = [{"op": "point", "id": "O", "coords": [0, 0]}, op]
+    annotations, checks = {}, []
+    if example_name in ("volume", "true_length"):
+        checks = [ex[example_name]]
+    elif example_name == "draws":
+        annotations = dict(ex["draws"])
+    elif example_name == "hide_prism":
+        construction[1] = {**op, **ex["hide_prism"]}
+    elif example_name == "no_auto_draw":
+        annotations = dict(ex["no_auto_draw"])
+    return RecipeDSL.model_validate(
+        {"construction": construction, "annotations": annotations, "checks": checks})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["op", "volume", "true_length", "draws", "hide_prism", "no_auto_draw"])
+async def test_guidance_example_validates_lowers_and_renders(name):
+    from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
+
+    assert name in _examples()
+    result = await run_ir_pipeline(lower_to_ir(_recipe_around(name)), SVGRenderer())
+    assert "<svg" in result.svg
+
+
+def test_guidance_check_examples_are_correct_for_the_example_prism():
+    for name in ("volume", "true_length"):
+        d = lower_to_ir(_recipe_around(name))
+        assert all(r.passed for r in run_checks(d.checks, compile_defs(d))), name
+
+
+def _dashed_count(svg: str) -> int:
+    return svg.count("stroke-dasharray")
+
+
+@pytest.mark.asyncio
+async def test_wireframe_draws_hidden_edges_dashed_and_shaded_solid_has_none():
+    from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
+
+    wire = await run_ir_pipeline(lower_to_ir(_dsl()), SVGRenderer())
+    faces = [{"op": "fill", "id": f"f_{f}", "obj": f"P_{f}", "opacity": 0.5} for f in ("front", "right", "top")]
+    solid = await run_ir_pipeline(lower_to_ir(_dsl(
+        extra_ops=faces, prism={"visible": False},
+        annotations={"auto_draw_all": False,
+                     "draws": [{"obj": f"P_{f}"} for f in ("front", "right", "top")]})), SVGRenderer())
+    assert _dashed_count(wire.svg) >= 3
+    assert _dashed_count(solid.svg) == 0
