@@ -12,7 +12,7 @@ from .instructions_tikz import (  # noqa: F401
     REVISION_FORCE_INSTRUCTIONS,
     STRUCTURED_REFINE_INSTRUCTIONS,
 )
-from .instructions_structured import STRUCTURED_STRATEGY_IR_INSTRUCTIONS  # noqa: F401
+from .instructions_structured import STRUCTURED_STRATEGY_IR_INSTRUCTIONS, build_structured_instructions  # noqa: F401
 from .instructions_recipe import (  # noqa: F401
     RECIPE_SELECTION_SYSTEM,
     RECIPE_GENERATION_SYSTEM,

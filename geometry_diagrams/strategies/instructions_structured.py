@@ -1,4 +1,5 @@
 """Prompt template for the structured IR strategy."""
+import json
 
 STRUCTURED_STRATEGY_IR_INSTRUCTIONS = """\
 You are a geometry diagram assistant. Given a user request, produce a DiagramIR \
@@ -269,3 +270,97 @@ for the initial anchor points of a construction. Derive everything else.
 13. **Use a line object when the diagram semantically requires an infinite line.**
 14. **Point names must match the names required by the prompt** — do not rename required points.
 """
+
+
+# The example embedded in the solids guidance. tests/test_structured_prism.py
+# validates it as a DiagramIR and runs it through the shared pipeline, so the
+# prompt text cannot drift from the schema (a shaded box with an edge label,
+# a face label and volume / true-length checks). Colors are hex so they work
+# in both the SVG and TikZ renderers.
+PRISM_EXAMPLE_IR: dict = {
+    "canvas": {"xmin": -1, "xmax": 6, "ymin": -1, "ymax": 4},
+    "define": [
+        {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
+        {"kind": "rectangular_prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2},
+        {"kind": "segment", "id": "s_diag", "a": "P_v000", "b": "P_v101"},
+    ],
+    "checks": [
+        {"kind": "volume_equals", "prism": "P", "expected": 24},
+        {"kind": "true_length_equals", "seg": "s_diag", "expected": 5},
+    ],
+    "render": [
+        {"kind": "fill", "obj": "P_front", "style": "#bcd6ee"},
+        {"kind": "fill", "obj": "P_right", "style": "rgb(150, 190, 230)"},
+        {"kind": "fill", "obj": "P_top", "style": "#dbe9f6"},
+        {"kind": "draw", "obj": "P_front"},
+        {"kind": "draw", "obj": "P_right"},
+        {"kind": "draw", "obj": "P_top"},
+        {"kind": "label_segment", "seg": "P_e_000_100", "text": "4"},
+        {"kind": "label_free_text", "text": "front face", "centroid_of": "P_front"},
+    ],
+}
+
+_SOLIDS_FRAGMENT = """
+
+---
+
+## Rectangular prisms (boxes)
+
+Definition `rectangular_prism`: fields `id`, `origin` (an existing point id, the front-bottom-left \
+corner), `length`, `width`, `height` (positive numbers or expressions), optional `unit_cubes` \
+(bool; needs literal integer dimensions, at most 100 each), `vertex_names` (exactly eight names in \
+corner order 000, 001, 010, 011, 100, 101, 110, 111), `view` (`"oblique"` default or \
+`"isometric"`), `depth_angle` / `depth_scale` (oblique only; default 45 degrees, scale 1/2) and \
+`side` (`"right"` default or `"left"`).
+
+- **Vocabulary:** length runs along the front bottom edge, width along the right bottom edge (the \
+depth), height is vertical. `side: "right"` shows the front, right and top faces; `side: "left"` \
+shows front, left and top. The back, left (right for `side: "left"`) and bottom faces and three \
+edges are hidden (drawn dashed).
+- **Public ids:** corners `{id}_v{abc}` where the bits are (length-max, height-max, width-max), so \
+`P_v000` is the origin and `P_v111` the opposite corner (or the `vertex_names`, in that order); \
+edges `{id}_e_{abc}_{abc}` (smaller bit string first, e.g. `P_e_000_100` is the front bottom edge); \
+faces `{id}_front`, `{id}_back`, `{id}_left`, `{id}_right`, `{id}_top`, `{id}_bottom` (bottom = the \
+base). Do not define anything with one of these ids yourself. A `segment` between two corners of \
+one edge is that same edge.
+- **Wireframe look:** `draw` the prism id; pass `depth_scale` 2/3 (0.67) for wireframe-like \
+figures. **Solid-shaded look:** `fill` and `draw` the three visible FACE ids (front/right/top; \
+front/left/top for `side: "left"`) and do NOT `draw` the prism id, which strokes dashed hidden \
+edges over the fills. A fill's `style` is a color: `"#rrggbb"`, `"rgb(r, g, b)"` or `"hsv(h, s, v)"` \
+(avoid CSS color names). For unit-cube figures use `view: "isometric"` with `unit_cubes: true`.
+- **Labels:** put a dimension on an edge with `label_segment` on an edge id (or on a segment \
+between two corners of one edge). Segment-label text renders in math mode in TikZ, so words and \
+units belong in `label_free_text` instead: `centroid_of` a face id labels that face, `centroid_of` \
+the prism id centers a label on the prism.
+- **Schematic case:** when only a base area and a height are given (no length or width), choose \
+plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label and \
+queried volume are what the item asserts; add a `volume_equals` check for the stated volume.
+- **Checks:** `volume_equals` (`prism`, `expected`: the true volume) and `true_length_equals` \
+(`seg`, `expected`: the TRUE 3D length of a segment joining two corners of one prism: an edge, \
+face diagonal or space diagonal). `distance_equals` on such a segment measures the drawn 2D \
+projection instead, which is not the real length.
+- **Errors:** a bad dimension (non-positive), `unit_cubes` with a non-integer or over-100 \
+dimension, `depth_angle`/`depth_scale` with `view: "isometric"`, a wrong number of `vertex_names`, \
+or a definition reusing a derived id is a compile error naming the definition; fix it and \
+regenerate.
+
+Example (a shaded 4 x 3 x 2 box with an edge label, a face label and checks):
+
+```json
+""" + json.dumps(PRISM_EXAMPLE_IR, indent=2) + """
+```
+"""
+
+# group -> prompt fragment appended only when that group is enabled.
+GROUPED_FRAGMENTS: "dict[str, str]" = {"solids": _SOLIDS_FRAGMENT}
+
+
+def build_structured_instructions(features: "frozenset[str] | set[str]" = frozenset()) -> str:
+    """The structured system prompt for the enabled feature groups: the base
+    text unchanged (byte-identical) with no groups enabled, each enabled
+    group's fragment appended (features.tagged_fragment)."""
+    from ..features import tagged_fragment
+
+    return STRUCTURED_STRATEGY_IR_INSTRUCTIONS + "".join(
+        tagged_fragment(group, text, features) for group, text in GROUPED_FRAGMENTS.items()
+    )

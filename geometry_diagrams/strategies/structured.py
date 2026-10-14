@@ -10,7 +10,7 @@ from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import get_chat_model, bind_structured_output_for_model, extract_usage, make_system_message
-from .instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
+from .instructions import build_structured_instructions
 from .ir_pipeline import (
     StructuredRunResult,
     format_warnings_for_retry,
@@ -160,7 +160,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
 
     from langchain_core.messages import HumanMessage
     messages = [
-        make_system_message(STRUCTURED_STRATEGY_IR_INSTRUCTIONS, enable_cache=enable_cache, model_id=model_id),
+        make_system_message(build_structured_instructions(state.get("features") or frozenset()), enable_cache=enable_cache, model_id=model_id),
         HumanMessage(content=prompt),
     ]
 
