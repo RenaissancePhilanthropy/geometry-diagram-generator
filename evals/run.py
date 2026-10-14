@@ -849,6 +849,28 @@ def _finalize_gate_status(record: dict) -> None:
         record["gate_status"] = "fail"
 
 
+def _check_requested_scenario_ids(
+    scenario_ids: str, all_scenarios: list[dict], enabled: "frozenset[str] | set[str]"
+) -> None:
+    """Validate --scenario-ids against the FULL scenario list (before the
+    feature split). An unknown id raises; an id that exists but requires a
+    feature group that is not enabled is an error too -- an explicit request
+    for a scenario that cannot run is never a silent skip."""
+    by_id = {s["id"]: s for s in all_scenarios}
+    wanted = [s.strip() for s in scenario_ids.split(",") if s.strip()]
+    unknown = [s for s in wanted if s not in by_id]
+    if unknown:
+        raise ValueError(f"Unknown scenario id(s) in --scenario-ids: {unknown}")
+    for sid in wanted:
+        missing = [g for g in by_id[sid].get("requires_features", []) if g not in enabled]
+        if missing:
+            groups = ", ".join(missing)
+            raise ValueError(
+                f"scenario {sid!r} requires feature group(s) {groups}; "
+                f"pass --features {','.join(missing)}"
+            )
+
+
 def _features_arg(value: str) -> frozenset[str]:
     """argparse type for --features: comma-separated feature group names,
     validated by the same parser GeometryConfig uses."""
@@ -880,7 +902,8 @@ def _load_retry_timeout_counts(results_path: Path) -> dict[str, int]:
 # Main
 # ---------------------------------------------------------------------------
 
-async def main() -> None:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """The eval CLI argument parser (extracted from main() so it is testable)."""
     parser = argparse.ArgumentParser(description="Run geometry diagram evals")
     parser.add_argument(
         "--scenarios",
@@ -1035,6 +1058,11 @@ async def main() -> None:
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
     )
+    return parser
+
+
+async def main() -> None:
+    parser = _build_arg_parser()
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -1048,6 +1076,8 @@ async def main() -> None:
         raw_scenarios = yaml.safe_load(f)
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
+    if args.scenario_ids:
+        _check_requested_scenario_ids(args.scenario_ids, scenarios, args.features)
     scenarios, skipped_scenarios = split_by_required_features(scenarios, args.features)
     if args.features:
         print(f"Features enabled: {', '.join(sorted(args.features))}")

@@ -147,12 +147,50 @@ def test_features_cli_type_parses_and_validates():
         _features_arg("bogus")
 
 
-def test_features_cli_flag_is_registered():
-    import subprocess
-    import sys
-    out = subprocess.run([sys.executable, "-m", "evals.run", "--help"],
-                         capture_output=True, text=True, timeout=60).stdout
-    assert "--features" in out
+def test_features_cli_flag_parses_through_the_real_parser(capsys):
+    from evals.run import _build_arg_parser
+    parser = _build_arg_parser()
+    assert parser.parse_args([]).features == frozenset()
+    assert parser.parse_args(["--features", "solids"]).features == frozenset({"solids"})
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--features", "bogus"])
+    assert "bogus" in capsys.readouterr().err
+
+
+def test_requested_gated_scenario_id_errors_with_group_and_flag():
+    from evals.run import _check_requested_scenario_ids
+    scs = _validate_scenarios([
+        {"id": "plain", "prompt": "p"},
+        {"id": "needs", "prompt": "p", "requires_features": ["solids"]},
+    ])
+    with pytest.raises(ValueError) as ei:
+        _check_requested_scenario_ids("needs", scs, frozenset())
+    msg = str(ei.value)
+    assert "'needs'" in msg and "solids" in msg and "--features solids" in msg
+    assert "Unknown" not in msg
+
+
+def test_requested_unknown_scenario_id_still_errors_as_unknown():
+    from evals.run import _check_requested_scenario_ids
+    scs = _validate_scenarios([{"id": "plain", "prompt": "p"}])
+    with pytest.raises(ValueError, match="Unknown scenario id"):
+        _check_requested_scenario_ids("plain,nope", scs, frozenset())
+
+
+def test_requested_gated_scenario_id_passes_when_enabled_and_then_runs():
+    from evals.run import _check_requested_scenario_ids
+    scs = _validate_scenarios([{"id": "needs", "prompt": "p", "requires_features": ["solids"]}])
+    enabled = frozenset({"solids"})
+    _check_requested_scenario_ids("needs", scs, enabled)  # no error
+    run, skipped = split_by_required_features(scs, enabled)
+    assert [s["id"] for s in run] == ["needs"] and skipped == []
+
+
+@pytest.mark.parametrize("name", sorted(_STRATEGY_MAP))
+def test_every_real_strategy_accepts_and_exposes_features(name):
+    strategy = _STRATEGY_MAP[name](features=frozenset({"solids"}))
+    assert strategy.features == frozenset({"solids"})
+    assert _STRATEGY_MAP[name]().features == frozenset()
 
 
 class _Capturing:
