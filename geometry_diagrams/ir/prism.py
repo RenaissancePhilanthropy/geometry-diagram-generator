@@ -425,9 +425,94 @@ def edges() -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
     return out  # type: ignore[return-value]
 
 
+def gridline_point_id(prism_id: str, n: int) -> str:
+    return f"__{prism_id}_gp{n}"
+
+
+def gridline_id(prism_id: str, n: int) -> str:
+    return f"__{prism_id}_g{n}"
+
+
+def _unit_cube_dims(stmt: ir.RectangularPrism) -> dict[str, int] | None:
+    """The literal integer dimensions of a unit-cubes prism, or None when they
+    are not (compile reports that; nothing is synthesized meanwhile)."""
+    dims = {}
+    for field in ("length", "width", "height"):
+        try:
+            dims[field] = int(_unit_cube_dim(stmt, field))
+        except IRCompileError:
+            return None
+        if dims[field] <= 0:
+            return None
+    return dims
+
+
+def gridline_defs(stmt: ir.RectangularPrism) -> tuple[list[Any], list[Any]]:
+    """Derived (points, segments) for the unit-cube gridlines, with hidden ids
+    ``__{id}_gp{n}`` (points) and ``__{id}_g{n}`` (segments).
+
+    Each visible face (the planes of the projection's viewer direction, never a
+    per-view table) with axes (u, v) of sizes (nu, nv) gets, for every integer
+    cut k in 1..nu-1, a line parallel to v spanning the face, and for every cut
+    j in 1..nv-1 a line parallel to u. A line's ends are PointBetween points on
+    the face's boundary edges; a boundary point shared by two faces (a visible
+    edge) is made once. Pure function of the statement. Empty unless
+    ``unit_cubes`` with valid dimensions and view."""
+    if not stmt.unit_cubes:
+        return [], []
+    names = corner_names(stmt)
+    dims = _unit_cube_dims(stmt)
+    if len(names) != 8 or dims is None:
+        return [], []
+    try:
+        visible = projection_for(stmt.view, stmt.side, stmt.depth_angle, stmt.depth_scale).visible_planes
+    except ValueError:
+        return [], []
+    size = (dims["length"], dims["height"], dims["width"])
+    points: list[Any] = []
+    segments: list[Any] = []
+    made: dict[tuple[Bits, Bits, int], str] = {}
+
+    def cut_point(lo: Bits, hi: Bits, k: int) -> str:
+        """The point k/n of the way from corner ``lo`` to its edge neighbour ``hi``."""
+        key = (lo, hi, k)
+        if key not in made:
+            axis = next(i for i in range(3) if lo[i] != hi[i])
+            pid = gridline_point_id(stmt.id, len(made))
+            made[key] = pid
+            points.append(ir.PointBetween(
+                id=pid, a=names[lo], b=names[hi], ratio=f"{k}:{size[axis] - k}"
+            ))
+        return made[key]
+
+    for face in FACE_NAMES:
+        if FACE_PLANES[face] not in visible:
+            continue
+        axis, side = FACE_PLANES[face]
+        fixed = AXES.index(axis)
+        u, v = [i for i in range(3) if i != fixed]
+
+        def corner(a: int, b: int) -> Bits:
+            bits = [0, 0, 0]
+            bits[fixed] = 1 if side == "max" else 0
+            bits[u], bits[v] = a, b
+            return tuple(bits)  # type: ignore[return-value]
+
+        # lines parallel to v at u = k (ends on the v=0 and v=1 boundary edges)
+        for k in range(1, size[u]):
+            p, q = (cut_point(corner(0, e), corner(1, e), k) for e in (0, 1))
+            segments.append(ir.Segment(id=gridline_id(stmt.id, len(segments)), a=p, b=q))
+        # lines parallel to u at v = j (ends on the u=0 and u=1 boundary edges)
+        for j in range(1, size[v]):
+            p, q = (cut_point(corner(e, 0), corner(e, 1), j) for e in (0, 1))
+            segments.append(ir.Segment(id=gridline_id(stmt.id, len(segments)), a=p, b=q))
+    return points, segments
+
+
 def synthesize_edges_and_faces(stmt: ir.RectangularPrism) -> list[Any]:
-    """The twelve edge segments and six face polygons over the corner ids
-    (registry ``synthesize`` hook; never written into the authored IR). A
+    """The twelve edge segments and six face polygons over the corner ids,
+    plus (``unit_cubes``) the gridline points and segments (registry
+    ``synthesize`` hook; never written into the authored IR). A
     wrong-length ``vertex_names`` synthesizes nothing (compile reports it)."""
     names = corner_names(stmt)
     if len(names) != 8:
@@ -439,7 +524,13 @@ def synthesize_edges_and_faces(stmt: ir.RectangularPrism) -> list[Any]:
         ir.Polygon(id=face_id(stmt.id, face), points=[names[b] for b in face_corners(face)])
         for face in FACE_NAMES
     ]
-    return out
+    points, segments = gridline_defs(stmt)
+    return out + points + segments
+
+
+# Gridlines are thin gray whatever the author's style: the author's style
+# stays on the face outlines. ``gray`` is a named color both renderers know.
+GRIDLINE_STYLE: dict[str, Any] = {"color": "gray", "thin": True}
 
 
 def _hidden_style(style_key: str | None, styles: dict[str, Any]) -> dict[str, Any]:
@@ -461,7 +552,8 @@ def _hidden_style(style_key: str | None, styles: dict[str, Any]) -> dict[str, An
 def lower_draw(stmt: ir.RectangularPrism, op: Any, styles: dict[str, Any]) -> Any:
     """Registry ``lower_draw`` hook: a draw of the prism becomes draws of its
     visible face outlines (author's style) and, unless ``unit_cubes``, of the
-    three edges meeting at the hidden corner (author's style plus dashed).
+    three edges meeting at the hidden corner (author's style plus dashed); with
+    ``unit_cubes`` instead of the gridline segments (thin gray).
     Visible faces and the hidden corner come from the projection's viewer
     direction, never from a per-view table."""
     from .derived import Lowering
@@ -485,4 +577,8 @@ def lower_draw(stmt: ir.RectangularPrism, op: Any, styles: dict[str, Any]) -> An
             other = list(h)
             other[axis] = 1 - other[axis]
             ops.append(ir.Draw(obj=edge_id(stmt.id, h, tuple(other)), style=hidden_key))  # type: ignore[arg-type]
+    else:
+        grid_key = f"__{stmt.id}_grid"
+        extra_styles[grid_key] = dict(GRIDLINE_STYLE)
+        ops += [ir.Draw(obj=seg.id, style=grid_key) for seg in gridline_defs(stmt)[1]]
     return Lowering(ops=ops, styles=extra_styles)

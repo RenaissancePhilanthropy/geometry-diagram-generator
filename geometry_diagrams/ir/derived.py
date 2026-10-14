@@ -372,7 +372,9 @@ def _build_default_registry() -> DerivedRegistry:
         center_id=_tangent_owned_center,
     ))
     reg.register(DerivedConstruction(
-        "rectangular_prism", ("{id}_v{abc}", "{id}_e_{abc}_{abc}", "{id}_{face}"),
+        "rectangular_prism", (
+            "{id}_v{abc}", "{id}_e_{abc}_{abc}", "{id}_{face}", "__{id}_gp{n}", "__{id}_g{n}",
+        ),
         lambda stmt: list(_prism.corner_names(stmt).values()),
         _prism.register_corners,
         position=_prism.prism_position,
