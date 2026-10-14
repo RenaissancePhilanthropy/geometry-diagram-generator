@@ -84,6 +84,7 @@ from geometry_diagrams.util.tikz_analysis import (
     validate_required_entities,
 )
 from geometry_diagrams.util.svg_checks import run_svg_checks
+from geometry_diagrams.util.tikz_extraction import point_names_match
 from geometry_diagrams.util.message_helpers import extract_tool_return, extract_tool_call_args, count_tool_calls
 
 _STRATEGY_MAP: dict[str, type[SubstanceStrategy]] = {
@@ -603,6 +604,13 @@ async def run_scenario(
                 tolerance=scenario.get("coordinate_tolerance", _DEFAULT_POINT_TOLERANCE),
             )
 
+    elif scenario.get("required_labels"):
+        # No TikZ source (svg renderer): evaluate required_labels on the SVG's
+        # label text instead.
+        record["tikz_checks"] = {
+            "required_labels": _svg_required_label_checks(svg, scenario["required_labels"])
+        }
+
     # LLM judge (code review)
     if llm_judge and tikz_code:
         if strategy_name not in ("structured", "python_full"):
@@ -756,6 +764,37 @@ def _run_structural_checks(
         except Exception as exc:
             results[name] = {"passed": False, "message": f"Error: {exc}"}
     return results
+
+
+def _svg_label_texts(svg: str) -> list[str]:
+    """The source text of every label element in a rendered SVG: the
+    ``data-label-text`` attribute ``to_svg.py`` stamps on each one."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError:
+        return []
+    return [el.get("data-label-text") for el in root.iter() if el.get("data-label-text") is not None]
+
+
+def _svg_required_label_checks(svg: str, required: list[str]) -> dict[str, Any]:
+    """``required_labels`` evaluated on a rendered SVG's label text (used when
+    there is no TikZ source, i.e. the svg renderer). A required label is met by
+    a label equal to it (prime variants allowed for point names) or containing
+    it as a whole token run: ``6 units`` is not met by a label ``6``, and ``6``
+    is not met by ``60``. Returns ``{"passed": bool, "missing": [...]}``."""
+    def norm(t: str) -> str:
+        return " ".join(t.replace("$", " ").split())
+
+    texts = [norm(t) for t in _svg_label_texts(svg)]
+    missing = []
+    for req in required:
+        nreq = norm(req)
+        pattern = re.compile(r"(?<![\w.])" + re.escape(nreq) + r"(?![\w.])")
+        if not any(point_names_match(nreq, t) or pattern.search(t) for t in texts):
+            missing.append(req)
+    return {"passed": not missing, "missing": missing}
 
 
 def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
