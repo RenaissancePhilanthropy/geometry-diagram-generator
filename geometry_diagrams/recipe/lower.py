@@ -31,11 +31,14 @@ from ..ir.ir import (
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
     LabelAlongArc as IRLabelAlongArc,
     RenderOp, DefStmt, PickRule,
+    RectangularPrism, VolumeEquals, TrueLengthEquals,
 )
+from ..ir import prism as _prism
 from .dsl import (
     RecipeDSL, DSLAnnotations,
     CheckDistance, CheckParallel, CheckPerpendicular, CheckAngleEquals,
-    CheckCollinear, CheckPointOnCircle, CheckTangent,
+    CheckCollinear, CheckPointOnCircle, CheckTangent, CheckVolume, CheckTrueLength,
+    PrismOp,
     TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
@@ -108,6 +111,10 @@ class _Lowerer:
         self._inline_style_counter: int = 0
         # Unresolved mark_angle_pair annotations — resolved post-compile
         self._pending_angle_pairs: list[PendingAnglePair] = []
+        # Prism DSL id -> RectangularPrism def (for segment reuse of its edges)
+        self._prisms: dict[str, RectangularPrism] = {}
+        # Projected prism corners (x, y) the auto canvas must contain
+        self._prism_extent: list[tuple[float, float]] = []
 
     # ------------------------------------------------------------------
     # Entry point
@@ -122,6 +129,7 @@ class _Lowerer:
         CircleThrough3Op: ["through"],
         PolygonOp: ["vertices"],
         PolygonExteriorOp: ["base", "ref_point"],
+        PrismOp: ["origin"],
     }
 
     def _inject_implicit_points(self, construction: list[Any]) -> None:
@@ -354,6 +362,8 @@ class _Lowerer:
                 self._lower_regular_sectors(op)
             case FillOp():
                 self._lower_fill(op)
+            case PrismOp():
+                self._lower_prism(op)
             case _:
                 raise LoweringError(f"Unhandled DSL op type: {type(op).__name__}")
 
@@ -486,6 +496,42 @@ class _Lowerer:
             opacity=op.opacity,
             style=style_key,
         ))
+
+    def _lower_prism(self, op: PrismOp) -> None:
+        stmt = RectangularPrism(
+            id=op.id, origin=op.origin, length=op.length, width=op.width, height=op.height,
+            unit_cubes=op.unit_cubes, vertex_names=op.vertex_names, view=op.view,
+            depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
+        )
+        try:
+            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
+        except ValueError as exc:
+            raise LoweringError(f"prism {op.id!r}: {exc}") from exc
+        self._add(stmt)
+        self._drawable.add(op.id)
+        self._prisms[op.id] = stmt
+        names = _prism.corner_names(stmt)
+        if op.vertex_names is not None and len(names) == 8:
+            # Named corners join the labelled points; default ids stay unlabeled.
+            self._point_ids.extend(names[bits] for bits in _prism.CORNER_BITS)
+        origin = self._origin_xy(op.origin)
+        try:
+            dims = [float(v) for v in (op.length, op.height, op.width)]
+        except (TypeError, ValueError):
+            return  # expression dimensions: extent unknown, canvas falls back
+        if origin is None:
+            return
+        for bits in _prism.CORNER_BITS:
+            dx, dy = proj.offset(*(b * d for b, d in zip(bits, dims)))
+            self._prism_extent.append((origin[0] + float(dx), origin[1] + float(dy)))
+
+    def _origin_xy(self, pid: str) -> tuple[float, float] | None:
+        if pid in self._coord_floats:
+            return self._coord_floats[pid]
+        for d in self._defs:
+            if isinstance(d, PointFixed) and d.id == pid:
+                return (float(d.x), float(d.y))
+        return None
 
     def _lower_regular_sectors(self, op: RegularSectorsOp) -> None:
         import math as _math
@@ -1287,12 +1333,25 @@ class _Lowerer:
 
     def _ensure_segment(self, p: str, q: str) -> str:
         """Return the id of a Segment def for endpoints (p, q), creating one if needed."""
+        edge = self._prism_edge(p, q)
+        if edge is not None:
+            return edge
         for d in self._defs:
             if isinstance(d, Segment) and {d.a, d.b} == {p, q}:
                 return d.id
         seg_id = f"__mark_seg_{p}_{q}"
         self._defs.append(Segment(id=seg_id, a=p, b=q))
         return seg_id
+
+    def _prism_edge(self, p: str, q: str) -> str | None:
+        """The prism's own derived edge id when p, q are the two ends of one
+        edge of the same prism (corner bits differ on exactly one axis); None
+        for diagonals, non-edges and corners of different prisms."""
+        for stmt in self._prisms.values():
+            bits = {name: b for b, name in _prism.corner_names(stmt).items()}
+            if p in bits and q in bits and sum(x != y for x, y in zip(bits[p], bits[q])) == 1:
+                return _prism.edge_id(stmt.id, bits[p], bits[q])
+        return None
 
     # ------------------------------------------------------------------
     # Explicit checks (the document's `checks:` field)
@@ -1344,6 +1403,19 @@ class _Lowerer:
                 ))
             elif isinstance(check, CheckTangent):
                 self._checks.append(self._build_tangent_check(check.obj1, check.obj2))
+            elif isinstance(check, CheckVolume):
+                self._checks.append(VolumeEquals(
+                    prism=check.prism, expected=check.expected,
+                    source=f"explicit check: volume({check.prism})",
+                ))
+            elif isinstance(check, CheckTrueLength):
+                if len(check.points) != 2:
+                    raise LoweringError("check 'true_length': 'points' must be exactly two corner ids")
+                seg_id = self._ensure_segment(check.points[0], check.points[1])
+                self._checks.append(TrueLengthEquals(
+                    seg=seg_id, expected=check.expected,
+                    source=f"explicit check: true_length({check.points[0]},{check.points[1]})",
+                ))
 
     def _build_tangent_check(self, obj1: str, obj2: str) -> Check:
         """CheckTangent's obj1/obj2 carry no type tag, so disambiguate by
@@ -1378,10 +1450,10 @@ class _Lowerer:
         large circle whose center is the only point in coord_floats doesn't
         produce a tiny canvas that clips most of the circle.
         """
-        if not self._coord_floats:
+        if not self._coord_floats and not self._prism_extent:
             return Canvas()  # default
-        xs = [c[0] for c in self._coord_floats.values()]
-        ys = [c[1] for c in self._coord_floats.values()]
+        xs = [c[0] for c in self._coord_floats.values()] + [c[0] for c in self._prism_extent]
+        ys = [c[1] for c in self._coord_floats.values()] + [c[1] for c in self._prism_extent]
         for d in self._defs:
             if d.kind == "circle_center_radius":
                 center = self._coord_floats.get(d.center)

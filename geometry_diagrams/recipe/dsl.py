@@ -887,6 +887,28 @@ class FillOp(DSLOpBase):
     style: Optional[Union[str, dict[str, Any]]] = None
 
 
+class PrismOp(DSLOpBase):
+    """Rectangular prism (box) drawn as a parallel projection; lowers to the IR
+    ``rectangular_prism`` definition (solids feature group).
+
+    ``origin`` is the front-bottom-left corner (an existing point id);
+    ``length`` runs along the front bottom edge, ``width`` along the right
+    bottom edge, ``height`` is vertical. See the IR definition for the derived
+    corner/edge/face ids.
+    """
+    op: Literal["prism"] = "prism"
+    origin: str
+    length: Union[int, float, str]
+    width: Union[int, float, str]
+    height: Union[int, float, str]
+    unit_cubes: bool = False
+    vertex_names: Optional[list[str]] = None
+    view: Literal["isometric", "oblique"] = "oblique"
+    depth_angle: Optional[Union[int, float]] = None
+    depth_scale: Optional[Union[int, float]] = None
+    side: Literal["right", "left"] = "right"
+
+
 # ---------------------------------------------------------------------------
 # DSLOp discriminated union
 # ---------------------------------------------------------------------------
@@ -906,6 +928,8 @@ DSLOp = Annotated[
         RegularPolygonOp, RectangleOp, PolygonFromSidesOp, PolygonFromAnglesAndSidesOp, ArcOp, SectorOp, RegularSectorsOp,
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
+        # Solids (feature group "solids")
+        PrismOp,
         # Render-only
         FillOp,
     ],
@@ -1187,11 +1211,28 @@ class CheckTangent(BaseModel):
     obj2: str
 
 
+class CheckVolume(BaseModel):
+    """Assert a prism's true volume (length x width x height) equals expected."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["volume"] = "volume"
+    prism: str
+    expected: float
+
+
+class CheckTrueLength(BaseModel):
+    """Assert the true 3D length of the segment joining two corners of one
+    prism (edge, face diagonal or space diagonal) equals expected."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["true_length"] = "true_length"
+    points: list[str]   # [corner, corner] of the same prism
+    expected: float
+
+
 DSLCheck = Annotated[
     Union[
         CheckDistance, CheckParallel, CheckPerpendicular,
         CheckAngleEquals, CheckCollinear, CheckPointOnCircle,
-        CheckTangent,
+        CheckTangent, CheckVolume, CheckTrueLength,
     ],
     Field(discriminator="check"),
 ]
@@ -1339,3 +1380,38 @@ class RecipeDSL(BaseModel):
                             "which is reserved. Use the actual op id (without '__')."
                         )
         return data
+
+
+# ---------------------------------------------------------------------------
+# Feature gating (recipe level)
+# ---------------------------------------------------------------------------
+
+# DSL op / check discriminator -> feature group. The recipe strategy binds its
+# schema statically, so these stay visible to the model with the group off; the
+# rejection below (run before lowering) is the gate, with the IR-level
+# ``require_features`` on the lowered diagram as the backstop.
+OP_FEATURES: dict[str, str] = {"prism": "solids"}
+CHECK_FEATURES: dict[str, str] = {"volume": "solids", "true_length": "solids"}
+
+
+def reject_disabled_ops(dsl: "RecipeDSL", enabled: "frozenset[str] | set[str]") -> None:
+    """Raise FeatureNotEnabledError naming the first op or check whose feature
+    group is not in ``enabled``. Pure; call before lowering."""
+    from ..features import FeatureNotEnabledError
+
+    def _fail(what: str, name: str, ident: str, group: str) -> None:
+        raise FeatureNotEnabledError(
+            f"Recipe {what} {name!r} ({ident}) belongs to the {group!r} feature group; that "
+            f"group is not enabled. Do not use the {name!r} {what}: build the diagram without "
+            f"it. (To allow it, enable the group with GEOMETRY_FEATURES={group} or "
+            f"GeometryConfig(features=frozenset({{{group!r}}})).)"
+        )
+
+    for op in dsl.construction:
+        group = OP_FEATURES.get(getattr(op, "op", ""))
+        if group and group not in enabled:
+            _fail("op", op.op, f"id {op.id!r}", group)
+    for check in dsl.checks:
+        group = CHECK_FEATURES.get(getattr(check, "check", ""))
+        if group and group not in enabled:
+            _fail("check", check.check, "in 'checks'", group)

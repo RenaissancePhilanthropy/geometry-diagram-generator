@@ -651,3 +651,63 @@ don't require a separate segment op at all). Likewise there is no implicit "xaxi
 "yaxis" — construct an axis as an explicit line, e.g. two point ops at (0,-k) and
 (0,k) plus a line_through op, if you need to reference one.
 """
+
+
+# ---------------------------------------------------------------------------
+# Solids feature group: DSL documentation inserted only when "solids" is on
+# ---------------------------------------------------------------------------
+
+_PRISM_OP_DOC = """\
+- prism: {op, id, origin, length, width, height, unit_cubes?, vertex_names?, view?, depth_angle?, depth_scale?, side?}
+  Rectangular box drawn as a parallel projection. origin = an EXISTING point id (a point op)
+  at the front-bottom-left corner. length/width/height: positive numbers (or expressions).
+  Public ids it creates: corners {id}_v{abc} (bits = length-max, height-max, width-max;
+  {id}_v000 is the origin), or exactly eight vertex_names in that same order (000,001,010,011,
+  100,101,110,111) -- named corners get point labels; edges {id}_e_{abc}_{abc} (smaller bit string
+  first, e.g. P_e_000_100); faces {id}_front/_back/_left/_right/_top/_bottom (bottom = base).
+  A segment, label_segment or check between two corners of ONE edge reuses that edge."""
+
+_PRISM_CHECKS_DOC = """\
+  {"check": "volume", "prism": "P", "expected": 24}  (true volume length x width x height)
+  {"check": "true_length", "points": ["P_v000", "P_v111"], "expected": 5.39}  (true 3D length of an
+  edge, face diagonal or space diagonal between two corners of one prism; not the drawn length)"""
+
+_PRISM_GUIDANCE_DOC = """\
+
+## prism guidance
+- Vocabulary: length runs along the front bottom edge, width along the right bottom edge
+  (the depth), height is vertical. side:"right" (default) shows the front, right and top faces;
+  side:"left" shows front, left and top. The back, left (right for side:"left") and bottom
+  faces and three edges are hidden (drawn dashed).
+- Default view is oblique at 45 degrees, depth_scale 1/2. For wireframe-like figures pass
+  depth_scale 2/3 (0.67). For unit-cube / isometric-looking figures use view:"isometric"
+  (no depth_angle/depth_scale). To count cubes use unit_cubes:true with literal integer
+  length/width/height, at most 100 each.
+- Wireframe look: draw the prism id (auto_draw_all does this, or draws:[{"obj":"P"}]).
+- Solid-shaded look: fill and draw the three visible FACE ids (P_front, P_right, P_top; P_left
+  instead of P_right for side:"left") and set the prism op visible:false or auto_draw_all:false.
+  Do NOT draw the prism id for a shaded solid: it strokes dashed hidden edges over the fills.
+  Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
+- Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100).
+  Words and units go in free-text labels (label_free_text, text or centroid_of:"P"); segment
+  labels render in math mode.
+- The schematic case: when only a base area and a height are given (no length or width), choose
+  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label
+  and queried volume are what the item asserts; add a volume check for the stated volume.
+- Fill/label/draw accept the prism id, face ids and edge ids anywhere an object id is allowed."""
+
+# (anchor line substring, text inserted after the first line containing it)
+DSL_SOLIDS_INSERTIONS: list[tuple[str, str]] = [
+    ("requires odd N \u2265 5.", _PRISM_OP_DOC),
+    ("or two circles \u2014 order doesn't matter)", _PRISM_CHECKS_DOC),
+    ("additional, explicit assertions on top of those.", _PRISM_GUIDANCE_DOC),
+]
+
+
+def dsl_docs_for(features: "frozenset[str] | set[str] | None" = None) -> str:
+    """The DSL reference for the enabled feature groups: ``DSL_DOCS`` unchanged
+    (byte-identical) when ``solids`` is off, with the prism operation, its
+    checks and the prism guidance inserted when it is on."""
+    from ..features import tagged_insertions
+
+    return tagged_insertions("solids", DSL_DOCS, DSL_SOLIDS_INSERTIONS, features or frozenset())

@@ -40,10 +40,10 @@ from ..recipe.catalog import (
     build_selection_prompt,
     build_generation_prompt,
     build_generation_prompt_static_block,
-    DSL_DOCS,
+    dsl_docs_for,
     Recipe,
 )
-from ..recipe.dsl import RecipeDSL
+from ..recipe.dsl import RecipeDSL, reject_disabled_ops
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
 from ..features import require_features, tagged_insertions
@@ -104,7 +104,7 @@ class RecipeAttemptTrace:
     attempt: int
     dsl_json: dict | None
     error: str | None
-    stage: str  # "output_validation" | "lowering" | "ir_pipeline" | "success"
+    stage: str  # "output_validation" | "feature_gate" | "lowering" | "ir_pipeline" | "success"
     raw_output: str | None = None
 
 
@@ -269,7 +269,9 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
         except Exception:
             pass
 
-    generation_prompt = build_generation_prompt(state["prompt"], recipes, DSL_DOCS)
+    generation_prompt = build_generation_prompt(
+        state["prompt"], recipes, dsl_docs_for(state.get("features") or frozenset())
+    )
 
     metadata = RecipeMetadata(
         selected_recipes=valid_recipe_ids,
@@ -314,7 +316,9 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     # The DSL reference block is identical on every call (it's always built
     # from the DSL_DOCS constant), so when caching is on, split it into its
     # own cached content block instead of resending it uncached every attempt.
-    static_block = build_generation_prompt_static_block(DSL_DOCS)
+    static_block = build_generation_prompt_static_block(
+        dsl_docs_for(state.get("features") or frozenset())
+    )
     if enable_cache and user_message.startswith(static_block):
         dynamic_part = user_message[len(static_block):].lstrip("\n")
         human_content = [
@@ -418,6 +422,19 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
     dsl = state["dsl"]
     assert dsl is not None  # router only sends here when dsl is set
     renderer = state.get("renderer")
+
+    # Generation-surface gate on the DSL itself: the schema is static, so a
+    # disabled op is rejected here, before lowering, naming the op. (The
+    # lowered-IR gate below stays as the backstop.)
+    try:
+        reject_disabled_ops(dsl, state.get("features") or frozenset())
+    except RuntimeError as e:
+        error_msg = str(e)
+        metadata = state["recipe_metadata"]
+        if metadata.attempt_traces:
+            metadata.attempt_traces[-1].stage = "feature_gate"
+            metadata.attempt_traces[-1].error = error_msg
+        return {"last_error": error_msg, "warnings": [], "result": None, "dsl": None}
 
     # Lower DSL -> DiagramIR
     try:
