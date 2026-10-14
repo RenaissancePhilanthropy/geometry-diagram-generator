@@ -662,6 +662,8 @@ don't require a separate segment op at all). Likewise there is no implicit "xaxi
 # lowers and renders each one, so the docs cannot drift from the schema.
 PRISM_EXAMPLES: dict[str, dict[str, Any]] = {
     "op": {"op": "prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2},
+    "isometric_op": {"op": "prism", "id": "P", "origin": "O", "length": 3, "width": 3, "height": 3,
+                     "unit_cubes": True, "view": "isometric"},
     "volume": {"check": "volume", "prism": "P", "expected": 24},
     "true_length": {"check": "true_length", "points": ["P_v000", "P_v101"], "expected": 5},
     "draws": {"draws": [{"obj": "P"}]},
@@ -697,6 +699,9 @@ _PRISM_GUIDANCE_DOC = """\
   depth_scale 2/3 (0.67). For unit-cube / isometric-looking figures use view:"isometric"
   (no depth_angle/depth_scale). To count cubes use unit_cubes:true with literal integer
   length/width/height, at most 100 each.
+- When the request says "isometric" (isometric view, isometric drawing, isometric look), use view:"isometric"
+  on the prism op; do not leave the default oblique view. Never add depth_angle/depth_scale to it.
+  Example (isometric unit cube figure): """ + _EX["isometric_op"] + """
 - Wireframe look: draw the prism id (auto_draw_all does this, or annotations """ + _EX["draws"] + """).
 - Solid-shaded look (non-unit-cube prisms only): fill and draw the three visible FACE ids (P_front, P_right, P_top; P_left
   instead of P_right for side:"left") and either set the prism op """ + _EX["hide_prism"] + """ or annotations """ + _EX["no_auto_draw"] + """.

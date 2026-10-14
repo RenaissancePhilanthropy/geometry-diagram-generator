@@ -372,12 +372,14 @@ def _recipe_around(example_name: str) -> RecipeDSL:
         construction[1] = {**op, **ex["hide_prism"]}
     elif example_name == "no_auto_draw":
         annotations = dict(ex["no_auto_draw"])
+    elif example_name == "isometric_op":
+        construction[1] = dict(ex["isometric_op"])
     return RecipeDSL.model_validate(
         {"construction": construction, "annotations": annotations, "checks": checks})
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["op", "volume", "true_length", "draws", "hide_prism", "no_auto_draw"])
+@pytest.mark.parametrize("name", ["op", "volume", "true_length", "draws", "hide_prism", "no_auto_draw", "isometric_op"])
 async def test_guidance_example_validates_lowers_and_renders(name):
     from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
 
@@ -408,3 +410,19 @@ async def test_wireframe_draws_hidden_edges_dashed_and_shaded_solid_has_none():
                      "draws": [{"obj": f"P_{f}"} for f in ("front", "right", "top")]})), SVGRenderer())
     assert _dashed_count(wire.svg) >= 3
     assert _dashed_count(solid.svg) == 0
+
+
+def test_solids_on_docs_say_to_keep_view_isometric_when_the_request_says_isometric():
+    on = dsl_docs_for(SOLIDS)
+    assert "isometric" in on
+    # The instruction: a request that says isometric means view:"isometric" on the op,
+    # with a worked op example, and never the default oblique view.
+    assert 'request says "isometric"' in on
+    assert 'use view:"isometric"' in on
+    assert json.dumps(_examples()["isometric_op"]) in on
+    assert _examples()["isometric_op"]["view"] == "isometric"
+
+
+def test_solids_off_docs_unchanged_by_isometric_guidance():
+    assert dsl_docs_for(frozenset()) == DSL_DOCS
+    assert 'request says "isometric"' not in DSL_DOCS
