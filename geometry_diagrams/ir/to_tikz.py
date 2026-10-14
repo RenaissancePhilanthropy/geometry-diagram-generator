@@ -9,9 +9,10 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
-from .derived import effective_diagram
+from .derived import effective_diagram, lower_render
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
+    NAMED_STYLE_COLORS,
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
@@ -86,8 +87,9 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
             "units on both axes -- use renderer='svg' or leave canvas.aspect unset"
         )
     # Everything below reads the effective view (authored + synthesized
-    # definitions); the caller's authored IR is left as it was.
-    diagram = effective_diagram(diagram)
+    # definitions) with draws of lowering kinds (e.g. a prism) replaced by
+    # ordinary operations; the caller's authored IR is left as it was.
+    diagram = lower_render(effective_diagram(diagram))
 
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
     coords = extract_coords(sym)
@@ -704,11 +706,7 @@ def _emit_op(
 # Style helpers (TikZ-specific)
 # ---------------------------------------------------------------------------
 
-_TIKZ_COLOR_NAMES = {
-    "red", "blue", "green", "orange", "purple", "cyan", "magenta",
-    "yellow", "black", "white", "brown", "gray", "grey",
-    "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
-}
+_TIKZ_COLOR_NAMES = NAMED_STYLE_COLORS
 
 
 def _tikz_fmt_coord_val(v: float) -> str:

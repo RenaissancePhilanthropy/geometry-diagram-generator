@@ -24,11 +24,12 @@ from typing import Any, Callable, NamedTuple
 import sympy.geometry as spg
 
 from . import ir
-from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
+    NAMED_STYLE_COLORS,
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
@@ -215,8 +216,9 @@ def ir_to_svg(
         font_config = default_font_config()
 
     # Everything below reads the effective view (authored + synthesized
-    # definitions); the caller's authored IR is left as it was.
-    diagram = effective_diagram(diagram)
+    # definitions) with draws of lowering kinds (e.g. a prism) replaced by
+    # ordinary operations; the caller's authored IR is left as it was.
+    diagram = lower_render(effective_diagram(diagram))
 
     # --- Extract coordinates and helper points ---
     coords = extract_coords(sym)
@@ -2459,11 +2461,7 @@ def _clip_ray_to_bounds(
 # Style helpers
 # ---------------------------------------------------------------------------
 
-_CSS_COLOR_NAMES = {
-    "red", "blue", "green", "orange", "purple", "cyan", "magenta",
-    "yellow", "black", "white", "brown", "gray", "grey",
-    "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
-}
+_CSS_COLOR_NAMES = NAMED_STYLE_COLORS
 
 # Map TikZ thickness keywords to stroke-width values
 _STROKE_WIDTHS = {"thin": "0.75", "thick": "2.5", "very thick": "3.5", "ultra thick": "5"}

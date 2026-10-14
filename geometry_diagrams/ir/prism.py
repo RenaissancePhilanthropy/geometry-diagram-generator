@@ -284,3 +284,128 @@ def prism_position(obj: Any) -> tuple[float, float] | None:
         return None
     c = obj.center
     return (float(c.x), float(c.y))
+
+
+# --- derived edges and faces (public ids) --------------------------------------
+#
+# Faces: ``{id}_front``, ``{id}_back``, ``{id}_left``, ``{id}_right``,
+# ``{id}_top`` and ``{id}_bottom`` (the bottom face is also called the base;
+# there is no separate base id). Edges: ``{id}_e_{abc}_{abc}``, the two corner
+# bit strings of its endpoints with the smaller one first (e.g. ``P_e_000_100``
+# is the front bottom edge, along the length). Edge and face ids are always
+# built from the prism id and corner bits, also when ``vertex_names`` renames
+# the corners (their endpoints are then the renamed corners).
+
+# Face name -> the plane it lies in, as (axis, "min" | "max"), matching
+# Projection.visible_planes.
+FACE_PLANES: dict[str, tuple[str, str]] = {
+    "front": ("width", "min"),
+    "back": ("width", "max"),
+    "left": ("length", "min"),
+    "right": ("length", "max"),
+    "bottom": ("height", "min"),
+    "top": ("height", "max"),
+}
+FACE_NAMES: tuple[str, ...] = ("front", "back", "left", "right", "top", "bottom")
+
+
+def _bits_str(bits: tuple[int, int, int]) -> str:
+    return "".join(map(str, bits))
+
+
+def face_id(prism_id: str, face: str) -> str:
+    return f"{prism_id}_{face}"
+
+
+def edge_id(prism_id: str, p: tuple[int, int, int], q: tuple[int, int, int]) -> str:
+    lo, hi = sorted((_bits_str(p), _bits_str(q)))
+    return f"{prism_id}_e_{lo}_{hi}"
+
+
+def face_corners(face: str) -> list[tuple[int, int, int]]:
+    """The face's four corner bits in boundary order."""
+    axis, side = FACE_PLANES[face]
+    fixed = AXES.index(axis)
+    j, k = [i for i in range(3) if i != fixed]
+    out = []
+    for u, v in ((0, 0), (1, 0), (1, 1), (0, 1)):
+        bits = [0, 0, 0]
+        bits[fixed] = 1 if side == "max" else 0
+        bits[j], bits[k] = u, v
+        out.append(tuple(bits))
+    return out  # type: ignore[return-value]
+
+
+def edges() -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
+    """The twelve edges as corner-bit pairs (low end first), in a fixed order."""
+    out = []
+    for bits in CORNER_BITS:
+        for axis in range(3):
+            if bits[axis] == 0:
+                other = list(bits)
+                other[axis] = 1
+                out.append((bits, tuple(other)))
+    return out  # type: ignore[return-value]
+
+
+def synthesize_edges_and_faces(stmt: ir.RectangularPrism) -> list[Any]:
+    """The twelve edge segments and six face polygons over the corner ids
+    (registry ``synthesize`` hook; never written into the authored IR). A
+    wrong-length ``vertex_names`` synthesizes nothing (compile reports it)."""
+    names = corner_names(stmt)
+    if len(names) != 8:
+        return []
+    out: list[Any] = [
+        ir.Segment(id=edge_id(stmt.id, p, q), a=names[p], b=names[q]) for p, q in edges()
+    ]
+    out += [
+        ir.Polygon(id=face_id(stmt.id, face), points=[names[b] for b in face_corners(face)])
+        for face in FACE_NAMES
+    ]
+    return out
+
+
+def _hidden_style(style_key: str | None, styles: dict[str, Any]) -> dict[str, Any]:
+    """The author's draw style with ``dashed`` merged in (a dotted pattern is
+    dropped: hidden edges are always dashed)."""
+    from .render_util import NAMED_STYLE_COLORS
+
+    if style_key is not None and style_key in styles:
+        merged = dict(styles[style_key])
+    elif style_key in NAMED_STYLE_COLORS:
+        merged = {"color": style_key}
+    else:
+        merged = {}
+    merged.pop("dotted", None)
+    merged["dashed"] = True
+    return merged
+
+
+def lower_draw(stmt: ir.RectangularPrism, op: Any, styles: dict[str, Any]) -> Any:
+    """Registry ``lower_draw`` hook: a draw of the prism becomes draws of its
+    visible face outlines (author's style) and, unless ``unit_cubes``, of the
+    three edges meeting at the hidden corner (author's style plus dashed).
+    Visible faces and the hidden corner come from the projection's viewer
+    direction, never from a per-view table."""
+    from .derived import Lowering
+
+    try:
+        projection = projection_for(stmt.view, stmt.side, stmt.depth_angle, stmt.depth_scale)
+    except ValueError as e:
+        raise IRCompileError(stmt.id, f"rectangular_prism: {e}") from e
+    visible = projection.visible_planes
+    ops: list[Any] = [
+        ir.Draw(obj=face_id(stmt.id, face), style=op.style)
+        for face in FACE_NAMES
+        if FACE_PLANES[face] in visible
+    ]
+    extra_styles: dict[str, dict[str, Any]] = {}
+    if not stmt.unit_cubes:
+        hidden_key = f"__{stmt.id}_hidden" + (f"_{op.style}" if op.style else "")
+        extra_styles[hidden_key] = _hidden_style(op.style, styles)
+        h = projection.hidden_corner
+        for axis in range(3):
+            other = list(h)
+            other[axis] = 1 - other[axis]
+            ops.append(ir.Draw(obj=edge_id(stmt.id, h, tuple(other)), style=hidden_key))  # type: ignore[arg-type]
+    return Lowering(ops=ops, styles=extra_styles)

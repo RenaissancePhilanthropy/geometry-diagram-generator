@@ -26,6 +26,7 @@ from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.auto_checks import generate_auto_checks
 from geometry_diagrams.ir.derived import REGISTRY, DerivedConstruction, effective_defs
 from geometry_diagrams.ir.edit_diagnostics import check_edit_locality
+from geometry_diagrams.ir.errors import IRCompileError
 from geometry_diagrams.ir.render_util import build_entity_manifest
 from geometry_diagrams.ir.renderer import SVGRenderer, TikZRenderer
 from geometry_diagrams.ir.to_sympy import compile_defs
@@ -120,12 +121,13 @@ def test_view_is_idempotent(test_kind):
     assert once == twice
 
 
-def test_authored_definition_wins_over_a_synthesized_one(test_kind):
+def test_authored_definition_named_like_a_synthesized_one_is_a_typed_error(test_kind):
+    # Was "the authored definition wins" (a silent shadow); solids ticket 09
+    # makes the collision a typed compile error at this single choke point.
     diagram = _diagram()
     diagram.define.append(ir.Segment(id="T_tkside", a="A", b="B"))
-    view = effective_defs(diagram)
-    sides = [d for d in view if d.id == "T_tkside"]
-    assert sides == [ir.Segment(id="T_tkside", a="A", b="B")]
+    with pytest.raises(IRCompileError, match="T_tkside"):
+        effective_defs(diagram)
 
 
 def test_kinds_without_synthesis_contribute_nothing():

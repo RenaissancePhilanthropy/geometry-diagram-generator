@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, model_validator
 
 # -----------------------
 # IDs
@@ -282,6 +282,12 @@ class DefBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
     kind: str
+    # Id of the statement whose kind synthesized this definition (see
+    # derived.DerivedRegistry.synthesized), or None for an authored one. A
+    # private attribute: never serialized, never in the schema, so a model
+    # cannot claim it; it only lets the effective view recognize its own
+    # output when it is handed an already-effective definition list.
+    _synthesized_by: Optional[str] = PrivateAttr(default=None)
 
 
 class PointFixed(DefBase):
@@ -614,6 +620,14 @@ class RectangularPrism(DefBase):
     ``depth_scale`` override the receding depth axis) or ``isometric`` (no
     overrides). ``side`` ``right`` shows the front, right and top faces;
     ``left`` shows the front, left and top faces.
+
+    Derived ids (public; any authored definition with one of these ids is a
+    compile error): faces ``{id}_front``, ``{id}_back``, ``{id}_left``,
+    ``{id}_right``, ``{id}_top``, ``{id}_bottom`` (the bottom face is the
+    base) and twelve edges ``{id}_e_{abc}_{abc}`` named by their endpoint
+    corner bits, smaller first (``P_e_000_100`` is the front bottom edge).
+    Drawing the prism id draws the visible face outlines and, unless
+    ``unit_cubes``, the three hidden edges dashed.
     """
     kind: Literal["rectangular_prism"] = "rectangular_prism"
     origin: PointId

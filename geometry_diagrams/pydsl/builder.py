@@ -38,6 +38,9 @@ class Builder:
         self._mark_group_counter = 0
         self._sym: dict = {}
         self._sym_watermark: int = 0
+        # synthesized id -> owning statement id, for the collision check in
+        # _advance_sym (synthesized definitions never enter self._defs).
+        self._synthesized_ids: dict[str, str] = {}
         # ONE rng for the whole script, mirroring how compile_defs() threads a
         # single Random(42) through a whole diagram. _advance_sym() compiles
         # the script incrementally, in as many slices as there are mid-script
@@ -167,16 +170,33 @@ class Builder:
                     self._coord_floats[new_id] = (float(new_obj.x), float(new_obj.y))
             return obj
 
+        from geometry_diagrams.ir.errors import IRCompileError
+
         for stmt in self._defs[self._sym_watermark:]:
+            # An authored id equal to an already-synthesized one is the same
+            # typed error effective_defs() raises for the whole diagram (never
+            # a silent overwrite of the synthesized definition).
+            if stmt.id in self._synthesized_ids:
+                raise IRCompileError(
+                    stmt.id,
+                    f"definition {stmt.id!r} has the same id as a definition derived from "
+                    f"{self._synthesized_ids[stmt.id]!r}; derived ids are reserved, rename {stmt.id!r}",
+                )
             obj = compile_into_sym(stmt)
             # Likewise mirror compile_defs()'s effective view: definitions the
             # kind synthesizes (never added to self._defs, so never to the
             # authored IR) are compiled right after their owner, whose
             # derived entities they may reference. A name already in the
-            # table wins, as in effective_defs().
+            # table is a collision, as in effective_defs().
             for synth in DERIVED_REGISTRY.synthesized(stmt):
-                if synth.id not in self._sym:
-                    compile_into_sym(synth)
+                if synth.id in self._sym:
+                    raise IRCompileError(
+                        synth.id,
+                        f"definition {synth.id!r} has the same id as the {synth.kind} derived "
+                        f"from {stmt.id!r}; derived ids are reserved, rename {synth.id!r}",
+                    )
+                self._synthesized_ids[synth.id] = stmt.id
+                compile_into_sym(synth)
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
             if isinstance(stmt, ir_mod.PointOn) and isinstance(stmt.how, ir_mod.PointOnIntent):

@@ -20,12 +20,14 @@ only what was authored (auto-checks, edit and eval IR diagnostics, dependents
 tracking) keep reading ``diagram.define``; dependents tracking still reaches
 synthesized ids through ``owner_map``, which attributes them to their owner.
 
-Extension points for later hooks (render lowering) are further
-fields on ``DerivedConstruction``.
+A kind may also *lower* a draw of its id (``lower_draw``): ``lower_render``
+is the lowering point both renderers' entry functions (``ir_to_svg``,
+``ir_to_tikz``) call right after computing the effective view. It replaces
+each such draw, in place, by the ordered render operations the hook returns.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import sympy.geometry as spg
@@ -33,6 +35,29 @@ import sympy.geometry as spg
 from . import ir
 from . import prism as _prism
 from .errors import IRCompileError
+
+
+@dataclass(frozen=True)
+class Lowering:
+    """What a ``lower_draw`` hook returns for one draw of its kind's id.
+
+    ops: render operations, IN ORDER, that replace the draw at its position
+        in the render list. Any render-operation object is allowed, not only
+        today's ``ir.RenderOp`` union: the contract is written so a kind can
+        later emit an ordered sequence of filled-and-stroked polygons (block
+        stacks, solids ticket 19) as a new operation type. The lowering point
+        passes the sequence through unchanged and in order. NOTE: the
+        renderers still sort operations by kind (all fills, then all strokes;
+        a stable sort, so same-kind order is kept), so strict ordering ACROSS
+        kinds is not yet honored when drawing -- ticket 19 changes that.
+    styles: extra named styles the ops reference (merged into the diagram's
+        ``styles`` for the renderer only). Names should be reserved
+        (double-underscore); reusing an existing name with a different value
+        is an error.
+    """
+
+    ops: list[Any]
+    styles: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -68,8 +93,14 @@ class DerivedConstruction:
     #     function of the statement alone: compile and render each recompute
     #     the view independently and must agree. Synthesized ids count as
     #     owned (see owner_map); a synthesized definition is not itself
-    #     expanded further (one level).
+    #     expanded further (one level). Must stay cheap: the view is
+    #     recomputed several times per pipeline run (compile, owner map, each
+    #     renderer entry, helper synthesis, angle checks, entity manifest).
     synthesize: Callable[[Any], list[Any]] | None = None
+    # lower_draw: (statement, the ir.Draw of its id, the diagram's styles) ->
+    #     Lowering. Called by lower_render from both renderers' entry
+    #     functions. Must be a pure function of its arguments.
+    lower_draw: Callable[[Any, Any, dict[str, Any]], Lowering] | None = None
     # exclusive: the kind's owned ids must be unique names. An owned id equal
     #     to an authored definition id, or to an id another construction owns,
     #     is a compile error (see check_exclusive_ids) instead of the default
@@ -126,7 +157,8 @@ class DerivedRegistry:
         """Raise IRCompileError (naming the later statement) when an owned id
         of an ``exclusive`` kind is also an authored definition id in
         ``stmts``, or is owned by another statement. Pairs where neither kind
-        is exclusive keep their existing behavior. A kind's own invariants
+        is exclusive keep their existing behavior. Synthesized ids count as
+        owned here (as in ``owner_map``). A kind's own invariants
         about its derived names (e.g. not reusing its own id) are its
         compile step's job."""
         real_ids = {s.id for s in stmts}
@@ -135,7 +167,8 @@ class DerivedRegistry:
             entry = self.get(stmt)
             if entry is None:
                 continue
-            for did in dict.fromkeys(entry.owned_ids(stmt)):
+            synth_ids = [s.id for s in self.synthesized(stmt)]
+            for did in dict.fromkeys([*entry.owned_ids(stmt), *synth_ids]):
                 if entry.exclusive and did != stmt.id and did in real_ids:
                     raise IRCompileError(
                         stmt.id,
@@ -152,27 +185,79 @@ class DerivedRegistry:
                 claimed.setdefault(did, (stmt.id, entry.exclusive))
 
     def synthesized(self, stmt: Any) -> list[Any]:
-        """The definitions ``stmt``'s kind synthesizes (empty for most kinds)."""
+        """The definitions ``stmt``'s kind synthesizes (empty for most kinds),
+        each marked as synthesized by ``stmt`` (see ``is_synthesized``)."""
         entry = self.get(stmt)
-        if entry is None or entry.synthesize is None:
+        if entry is None or entry.synthesize is None or is_synthesized(stmt):
             return []
-        return list(entry.synthesize(stmt))
+        out = list(entry.synthesize(stmt))
+        for synth in out:
+            synth._synthesized_by = stmt.id
+        return out
 
     def effective_defs(self, stmts: list[Any]) -> list[Any]:
         """Authored statements, each followed by the definitions its kind
-        synthesizes. A synthesized definition whose id is already taken (by
-        an authored definition or an earlier synthesized one) is dropped:
-        the authored definition wins, as in ``owner_map`` and ``register``.
-        Always a new list; ``stmts`` is never modified. Idempotent."""
-        taken = {s.id for s in stmts}
+        synthesizes. Always a new list; ``stmts`` is never modified.
+
+        The single place authored and synthesized ids meet: a synthesized id
+        equal to an authored definition id, or to another synthesized id, is
+        an IRCompileError (naming the definition to rename), never a silent
+        shadow. Statements that are themselves synthesized (the input is an
+        already-effective view, e.g. a renderer's helper pass) are skipped
+        and recomputed from their owners, so the view is idempotent whatever
+        kinds are registered."""
+        authored = [s for s in stmts if not is_synthesized(s)]
+        taken: dict[str, str | None] = {s.id: None for s in authored}
         view: list[Any] = []
-        for stmt in stmts:
+        for stmt in authored:
             view.append(stmt)
             for synth in self.synthesized(stmt):
-                if synth.id not in taken:
-                    taken.add(synth.id)
-                    view.append(synth)
+                if synth.id in taken:
+                    other = taken[synth.id]
+                    if other is None:
+                        raise IRCompileError(
+                            synth.id,
+                            f"definition {synth.id!r} has the same id as the {synth.kind} "
+                            f"derived from {stmt.kind} {stmt.id!r}; derived ids are reserved, "
+                            f"rename {synth.id!r}",
+                        )
+                    raise IRCompileError(
+                        stmt.id,
+                        f"derived id {synth.id!r} is produced by both {other!r} and "
+                        f"{stmt.id!r}; rename one of them",
+                    )
+                taken[synth.id] = stmt.id
+                view.append(synth)
         return view
+
+    def lower_render(self, diagram: Any) -> Any:
+        """``diagram`` with every draw of a lowering kind's id replaced, in
+        place, by the hook's ordered operations (see ``Lowering``), and the
+        hook's styles merged into ``styles``. ``diagram`` itself when nothing
+        lowers; otherwise a shallow copy local to the caller."""
+        stmts = {s.id: s for s in diagram.define}
+        ops: list[Any] = []
+        styles = dict(diagram.styles)
+        lowered = False
+        for op in diagram.render:
+            stmt = stmts.get(getattr(op, "obj", None)) if getattr(op, "kind", None) == "draw" else None
+            entry = self.get(stmt) if stmt is not None else None
+            if entry is None or entry.lower_draw is None:
+                ops.append(op)
+                continue
+            result = entry.lower_draw(stmt, op, diagram.styles)
+            for name, style in result.styles.items():
+                if name in styles and styles[name] != style:
+                    raise ValueError(
+                        f"lowering {stmt.id!r} defines style {name!r}, which already exists "
+                        f"with a different value"
+                    )
+                styles[name] = style
+            ops.extend(result.ops)
+            lowered = True
+        if not lowered:
+            return diagram
+        return diagram.model_copy(update={"render": ops, "styles": styles})
 
     def position_of(self, obj: Any) -> "tuple[float, float] | None":
         """Position supplied by the first registered kind that recognizes
@@ -272,10 +357,12 @@ def _build_default_registry() -> DerivedRegistry:
         center_id=_tangent_owned_center,
     ))
     reg.register(DerivedConstruction(
-        "rectangular_prism", ("{id}_v{abc}",),
+        "rectangular_prism", ("{id}_v{abc}", "{id}_e_{abc}_{abc}", "{id}_{face}"),
         lambda stmt: list(_prism.corner_names(stmt).values()),
         _prism.register_corners,
         position=_prism.prism_position,
+        synthesize=_prism.synthesize_edges_and_faces,
+        lower_draw=_prism.lower_draw,
         exclusive=True,
         feature="solids",
     ))
@@ -283,6 +370,17 @@ def _build_default_registry() -> DerivedRegistry:
 
 
 REGISTRY = _build_default_registry()
+
+
+def is_synthesized(stmt: Any) -> bool:
+    """True for a definition the registry synthesized (never authored)."""
+    return getattr(stmt, "_synthesized_by", None) is not None
+
+
+def lower_render(diagram: Any) -> Any:
+    """The render lowering point: see ``DerivedRegistry.lower_render``. Both
+    renderers' entry functions call it right after ``effective_diagram``."""
+    return REGISTRY.lower_render(diagram)
 
 
 def effective_defs(diagram: Any) -> list[Any]:

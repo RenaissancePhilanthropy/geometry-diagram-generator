@@ -387,6 +387,70 @@ Extend a segment beyond one of its endpoints.
 | `beyond`  | string        | Which endpoint to extend beyond      |
 | `distance`| number or expr| Distance beyond the endpoint         |
 
+### Solid Operations
+
+Solids belong to the `solids` feature group (off by default for generation;
+see `geometry_diagrams/features.py`). A stored diagram containing a solid
+always compiles and renders, whatever the feature setting.
+
+#### `rectangular_prism`
+A right rectangular prism (box) drawn as a parallel projection. The
+IR-level definition is `ir.RectangularPrism`.
+
+| Field          | Type            | Description |
+|----------------|-----------------|-------------|
+| `id`           | string          | Name for the prism |
+| `origin`       | string          | Point id of the front-bottom-left corner (may be a derived point) |
+| `length`       | number or expr  | Along the front bottom edge (positive) |
+| `width`        | number or expr  | Along the right bottom edge, i.e. the depth (positive) |
+| `height`       | number or expr  | Vertical (positive) |
+| `unit_cubes`   | bool            | Unit-cube prism (default false); the three dimensions must then be literal positive integers |
+| `vertex_names` | list of 8 strings | Optional corner names, in corner-bit order `000, 001, 010, 011, 100, 101, 110, 111` |
+| `view`         | string          | `"oblique"` (default) or `"isometric"` |
+| `depth_angle`  | number          | Oblique only: angle of the receding depth edge in degrees, in (0, 90); default 45 |
+| `depth_scale`  | number          | Oblique only: drawn depth per unit of width, positive; default 1/2 |
+| `side`         | string          | `"right"` (default) or `"left"` (mirrored); applies to both views |
+
+Giving `depth_angle` or `depth_scale` with `view: "isometric"` is a compile
+error. Oblique maps length to (1, 0), height to (0, 1) and width to
+`depth_scale * (cos a, sin a)` (side left negates the x part). Isometric
+maps length to (cos 30, -sin 30), height to (0, 1), width to (cos 30, sin 30);
+side left maps length to (cos 30, sin 30) and width to (-cos 30, sin 30).
+
+The vocabulary is the same in every view. With `side: "right"` the visible
+faces are front, right and top and the hidden corner (the one farthest from
+the viewer) is back-bottom-left, bits `001`; with `side: "left"` the visible
+faces are front, left and top and the hidden corner is back-bottom-right,
+bits `101`. Both are derived from the projection's viewer direction.
+
+**Public derived ids.** A corner's bits are `(length, height, width)`, each
+0 or 1 (`000` is the origin, `111` the opposite corner).
+
+| Entity  | Id | Notes |
+|---------|----|-------|
+| Corners (8 points) | `{id}_v{abc}`, e.g. `P_v000`, `P_v111` | Replaced by `vertex_names` when given |
+| Edges (12 segments) | `{id}_e_{abc}_{abc}`, the two endpoint bit strings with the smaller first, e.g. `P_e_000_100` (front bottom edge, the length), `P_e_000_001` (left bottom edge, the width), `P_e_000_010` (front left edge, the height) | Always named by bits, even with `vertex_names`; the endpoints are then the renamed corners |
+| Faces (6 polygons) | `{id}_front`, `{id}_back`, `{id}_left`, `{id}_right`, `{id}_top`, `{id}_bottom` | The bottom face is also called the base; there is no separate base id |
+
+Edges and faces are ordinary segment and polygon definitions: fill a face
+(`fill` on `P_bottom`), label an edge (`label_segment` on `P_e_000_100`), or
+draw individual faces and edges by id. They are derived, never part of the
+authored IR, and do not count in authored-IR metrics such as
+`polygon_count`. An authored definition whose id equals any corner, edge or
+face id of a prism (or any other derived id) is a compile error, never a
+silent shadow.
+
+**Drawing.** A draw whose `obj` is the prism id draws:
+
+- the three visible face outlines, with the draw's style; and
+- unless `unit_cubes`, the three edges meeting at the hidden corner, dashed,
+  with the draw's style merged with `dashed` (a `dotted` pattern in the style
+  is replaced by dashed).
+
+For a unit-cube prism only the three visible face outlines are drawn (no
+hidden edges). For a solid look (no hidden edges), draw and fill the visible
+face ids instead of the prism id.
+
 ---
 
 ## Selectors

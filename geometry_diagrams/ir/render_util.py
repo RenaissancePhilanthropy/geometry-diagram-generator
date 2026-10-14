@@ -29,6 +29,14 @@ logger = logging.getLogger(__name__)
 BOUNDS_PADDING = 0.8
 _TICK_HALF_LENGTH = 0.05
 
+# Bare color names a render op's ``style`` may give instead of a key into
+# ``DiagramIR.styles``; both renderers recognize exactly this set.
+NAMED_STYLE_COLORS = frozenset({
+    "red", "blue", "green", "orange", "purple", "cyan", "magenta",
+    "yellow", "black", "white", "brown", "gray", "grey",
+    "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
+})
+
 
 # ---------------------------------------------------------------------------
 # Coordinate extraction and helper-point synthesis
