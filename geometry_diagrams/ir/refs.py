@@ -25,16 +25,20 @@ _REF_FIELDS = {
     "vertex",                               # line_angle_bisector
     "corner1", "corner2",                   # ellipse_bbox
     "focus1", "focus2",                     # ellipse_foci
+    "origin",                               # rectangular_prism
 }
 # Fields that are never IDs
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
                    "radius", "sides", "level", "tol", "which", "how", "k", "opacity",
                    "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation",
-                   "reflex", "vertex_names", "tangency"}
+                   "reflex", "vertex_names", "tangency",
+                   "unit_cubes", "view", "side",
+                   "depth_angle", "depth_scale"}
 # Fields compiled via to_sympy's ev(); a string value is an expression whose
 # bare names (e.g. the "c" in "radius(c)") may reference other defs.
 _EXPR_FIELDS = {"x", "y", "angle", "ratio", "radius", "hradius", "vradius",
-                "major_axis", "semi_major", "eccentricity"}
+                "major_axis", "semi_major", "eccentricity",
+                "length", "width", "height"}  # rectangular_prism dimensions
 
 
 def _expr_names(raw: str) -> set[str]:

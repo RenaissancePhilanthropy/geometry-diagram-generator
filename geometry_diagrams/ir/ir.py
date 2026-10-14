@@ -595,6 +595,39 @@ class PolygonOnEdge(DefBase):
     claimed_base_length: Optional[float] = None
 
 
+class RectangularPrism(DefBase):
+    """A rectangular prism (box) drawn as a parallel projection.
+
+    ``origin`` is the front-bottom-left corner; ``length`` runs along the
+    front bottom edge, ``width`` along the right bottom edge (the depth) and
+    ``height`` is vertical. Each dimension is a positive number or an
+    expression over params and other definitions; with ``unit_cubes`` the
+    three must be literal positive integers.
+
+    The eight corners are registered as points ``{id}_v{a}{b}{c}`` where the
+    bits are (length-max, height-max, width-max), e.g. ``P_v000`` is the
+    origin and ``P_v111`` the opposite corner; ``vertex_names`` (exactly
+    eight) renames them in that same order (``itertools.product((0, 1),
+    repeat=3)``).
+
+    View: ``view`` is ``oblique`` (default; ``depth_angle`` in degrees and
+    ``depth_scale`` override the receding depth axis) or ``isometric`` (no
+    overrides). ``side`` ``right`` shows the front, right and top faces;
+    ``left`` shows the front, left and top faces.
+    """
+    kind: Literal["rectangular_prism"] = "rectangular_prism"
+    origin: PointId
+    length: Union[int, float, str]
+    width: Union[int, float, str]
+    height: Union[int, float, str]
+    unit_cubes: bool = False
+    vertex_names: Optional[List[str]] = None
+    view: Literal["isometric", "oblique"] = "oblique"
+    depth_angle: Optional[Union[int, float]] = None  # degrees; oblique only
+    depth_scale: Optional[Union[int, float]] = None  # oblique only
+    side: Literal["right", "left"] = "right"
+
+
 class PointMidpoint(DefBase):
     """Midpoint of segment PQ. Semantic sugar over PointOn(param=0.5)."""
     kind: Literal["point_midpoint"] = "point_midpoint"
@@ -705,6 +738,7 @@ DefStmt = Annotated[
         EllipticalSectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior, PolygonOnEdge, PolylineOpen,
+        RectangularPrism,
     ],
     Field(discriminator="kind")
 ]

@@ -31,6 +31,8 @@ from typing import Any, Callable
 import sympy.geometry as spg
 
 from . import ir
+from . import prism as _prism
+from .errors import IRCompileError
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,11 @@ class DerivedConstruction:
     #     owned (see owner_map); a synthesized definition is not itself
     #     expanded further (one level).
     synthesize: Callable[[Any], list[Any]] | None = None
+    # exclusive: the kind's owned ids must be unique names. An owned id equal
+    #     to an authored definition id, or to an id another construction owns,
+    #     is a compile error (see check_exclusive_ids) instead of the default
+    #     "the real definition wins" -- a silent merge would misplace points.
+    exclusive: bool = False
 
 
 class DerivedRegistry:
@@ -109,6 +116,35 @@ class DerivedRegistry:
                 if synth.id not in real_ids:
                     owners[synth.id] = stmt.id
         return owners
+
+    def check_exclusive_ids(self, stmts: list[Any]) -> None:
+        """Raise IRCompileError (naming the later statement) when an owned id
+        of an ``exclusive`` kind is also an authored definition id in
+        ``stmts``, or is owned by another statement. Pairs where neither kind
+        is exclusive keep their existing behavior. A kind's own invariants
+        about its derived names (e.g. not reusing its own id) are its
+        compile step's job."""
+        real_ids = {s.id for s in stmts}
+        claimed: dict[str, tuple[str, bool]] = {}
+        for stmt in stmts:
+            entry = self.get(stmt)
+            if entry is None:
+                continue
+            for did in dict.fromkeys(entry.owned_ids(stmt)):
+                if entry.exclusive and did != stmt.id and did in real_ids:
+                    raise IRCompileError(
+                        stmt.id,
+                        f"derived name {did!r} collides with the definition {did!r}; "
+                        f"rename one of them",
+                    )
+                prev = claimed.get(did)
+                if prev is not None and prev[0] != stmt.id and (entry.exclusive or prev[1]):
+                    raise IRCompileError(
+                        stmt.id,
+                        f"derived name {did!r} is already derived from {prev[0]!r}; "
+                        f"derived names must be unique",
+                    )
+                claimed.setdefault(did, (stmt.id, entry.exclusive))
 
     def synthesized(self, stmt: Any) -> list[Any]:
         """The definitions ``stmt``'s kind synthesizes (empty for most kinds)."""
@@ -161,7 +197,7 @@ class DerivedRegistry:
             entry.register(stmt, obj, sym)
 
 
-# --- the three existing constructions --------------------------------------
+# --- registered constructions ------------------------------------------------
 
 def _exterior_names(stmt: ir.PolygonExterior) -> list[str]:
     return stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
@@ -229,6 +265,13 @@ def _build_default_registry() -> DerivedRegistry:
     reg.register(DerivedConstruction(
         "circle_tangent_at", ("{id}_center",), _tangent_owned, _tangent_register,
         center_id=_tangent_owned_center,
+    ))
+    reg.register(DerivedConstruction(
+        "rectangular_prism", ("{id}_v{abc}",),
+        lambda stmt: list(_prism.corner_names(stmt).values()),
+        _prism.register_corners,
+        position=_prism.prism_position,
+        exclusive=True,
     ))
     return reg
 

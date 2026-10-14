@@ -12,6 +12,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
+from .prism import compile_prism
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -460,6 +461,10 @@ def compile_defs(
     # in sym as a side effect of their owner, so any DefStmt that references one
     # needs to depend on the owner. The registry declares who owns what.
     derived_point_owner = DERIVED_REGISTRY.owner_map(defs)
+    # Kinds whose derived names must be unique (prism corners) reject
+    # collisions with authored ids or other constructions' derived ids here,
+    # before any of them could silently shadow the other.
+    DERIVED_REGISTRY.check_exclusive_ids(diagram.define)
 
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
@@ -521,6 +526,9 @@ def _compile_one(
         case ir.PointOn(on=on_id, how=how):
             obj = ref(on_id)
             return _point_on_object(obj, how, sym, rng, did)
+
+        case ir.RectangularPrism(origin=origin_id):
+            return compile_prism(stmt, ref(origin_id), ev)
 
         case ir.PointMidpoint(p=p_id, q=q_id):
             p, q = ref(p_id), ref(q_id)

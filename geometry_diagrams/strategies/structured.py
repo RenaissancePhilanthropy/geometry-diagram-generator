@@ -22,7 +22,7 @@ from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
-    query_length, query_radius, query_area, query_perimeter, list_objects,
+    query_length, query_radius, query_area, query_perimeter, query_prism, list_objects,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,8 @@ def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
             return json.dumps(query_area(sym, _get(args, "object", "id")))
         elif query_type == "perimeter":
             return json.dumps(query_perimeter(sym, _get(args, "object", "id")))
+        elif query_type == "prism":
+            return json.dumps(query_prism(sym, _get(args, "prism", "id", "object")))
         else:
             return json.dumps({"error": f"Unknown query_type: {query_type}"})
     except Exception as e:

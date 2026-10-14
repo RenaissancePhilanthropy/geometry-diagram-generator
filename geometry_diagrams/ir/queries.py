@@ -13,6 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
+from .prism import Prism
 from .to_sympy import SymTable
 
 
@@ -74,6 +75,28 @@ def query_perimeter(sym: SymTable, obj_id: str) -> dict:
     if not isinstance(obj, spg.Polygon):
         raise TypeError(f"{obj_id!r} is not a Polygon (got {type(obj).__name__})")
     return {"perimeter": float(obj.perimeter.evalf())}
+
+
+def query_prism(sym: SymTable, prism_id: str) -> dict:
+    """True dimensions and derived measures of a rectangular prism, plus its
+    corner ids keyed by corner bits (length, height, width), e.g. "100" is
+    the corner one length along from the origin."""
+    obj = _get(sym, prism_id)
+    if not isinstance(obj, Prism):
+        raise TypeError(f"{prism_id!r} is not a Prism (got {type(obj).__name__})")
+
+    def num(v: Any) -> float:
+        return float(v.evalf())
+
+    return {
+        "length": num(obj.length),
+        "width": num(obj.width),
+        "height": num(obj.height),
+        "volume": num(obj.volume),
+        "base_area": num(obj.base_area),
+        "surface_area": num(obj.surface_area),
+        "corner_ids": {"".join(map(str, bits)): cid for bits, cid in obj.corner_ids.items()},
+    }
 
 
 def list_objects(sym: SymTable) -> dict[str, str]:
