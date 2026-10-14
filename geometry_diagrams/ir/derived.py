@@ -158,10 +158,12 @@ class DerivedRegistry:
         of an ``exclusive`` kind is also an authored definition id in
         ``stmts``, or is owned by another statement. Pairs where neither kind
         is exclusive keep their existing behavior. Synthesized ids count as
-        owned here (as in ``owner_map``). A kind's own invariants
-        about its derived names (e.g. not reusing its own id) are its
-        compile step's job."""
-        real_ids = {s.id for s in stmts}
+        owned here (as in ``owner_map``). Only authored statements form the
+        set of real ids, so the check is idempotent on an already-effective
+        list (a statement's own synthesized definitions are not collisions),
+        as in ``effective_defs``. A kind's own invariants about its derived
+        names (e.g. not reusing its own id) are its compile step's job."""
+        real_ids = {s.id for s in stmts if not is_synthesized(s)}
         claimed: dict[str, tuple[str, bool]] = {}
         for stmt in stmts:
             entry = self.get(stmt)

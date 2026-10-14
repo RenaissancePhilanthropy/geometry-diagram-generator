@@ -431,3 +431,29 @@ def test_pipeline_keeps_authored_ir_and_eval_metrics_free_of_derived_defs():
         None,
     )
     assert checks["poly"]["passed"] is False
+
+
+# --- fix round 1: exclusivity check idempotent on an effective list ----------
+
+def test_compile_of_an_already_effective_diagram_matches_the_authored_compile():
+    d = _diagram()
+    again, once = compile_defs(effective_diagram(d)), compile_defs(d)
+    assert set(again) == set(once)
+    for key, obj in once.items():
+        if key == "P":  # the Prism object has identity equality
+            assert (again[key].length, again[key].width, again[key].height) == (obj.length, obj.width, obj.height)
+            assert again[key].corners == obj.corners
+        else:
+            assert again[key] == obj, key
+
+
+def test_exclusivity_check_on_an_effective_list_raises_only_for_genuine_collisions():
+    d = _diagram()
+    REGISTRY.check_exclusive_ids(effective_defs(d))  # no false collision
+    clash = ir.PointFixed(id="P_v011", x=0, y=0)
+    authored = [*d.define, clash]
+    with pytest.raises(IRCompileError, match="P_v011"):
+        REGISTRY.check_exclusive_ids(authored)
+    effective_with_clash = [*effective_defs(d), clash]
+    with pytest.raises(IRCompileError, match="P_v011"):
+        REGISTRY.check_exclusive_ids(effective_with_clash)
