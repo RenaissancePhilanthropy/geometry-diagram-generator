@@ -41,6 +41,16 @@ class DerivedConstruction:
     id_forms: tuple[str, ...]
     owned_ids: Callable[[Any], list[str]]
     register: Callable[[Any, Any, dict[str, Any]], None]
+    # Optional hooks (None = the kind does not participate):
+    # position: compiled object -> (x, y), or None when the object is not one
+    #     this kind produced. Used for label centroids, the entity manifest
+    #     and edit diagnostics; lets a registered object that is not a SymPy
+    #     shape (so has no .vertices) supply its own representative point.
+    position: Callable[[Any], "tuple[float, float] | None"] | None = None
+    # vertex_ids: ordered vertex point ids of the polygon the statement makes.
+    vertex_ids: Callable[[Any], list[str]] | None = None
+    # center_id: id of the named center point of the circle the statement makes.
+    center_id: Callable[[Any], str] | None = None
 
 
 class DerivedRegistry:
@@ -78,6 +88,28 @@ class DerivedRegistry:
                     owners[did] = stmt.id
         return owners
 
+    def position_of(self, obj: Any) -> "tuple[float, float] | None":
+        """Position supplied by the first registered kind that recognizes
+        ``obj``; None when no kind claims it."""
+        for entry in self._by_kind.values():
+            if entry.position is not None:
+                pos = entry.position(obj)
+                if pos is not None:
+                    return pos
+        return None
+
+    def vertex_ids(self, stmt: Any) -> list[str] | None:
+        entry = self.get(stmt)
+        if entry is None or entry.vertex_ids is None:
+            return None
+        return entry.vertex_ids(stmt)
+
+    def center_id(self, stmt: Any) -> str | None:
+        entry = self.get(stmt)
+        if entry is None or entry.center_id is None:
+            return None
+        return entry.center_id(stmt)
+
     def register_derived(self, stmt: Any, obj: Any, sym: dict[str, Any]) -> None:
         entry = self.get(stmt)
         if entry is not None:
@@ -106,6 +138,14 @@ def _exterior_register(stmt: ir.PolygonExterior, obj: Any, sym: dict[str, Any]) 
             sym[sub_id] = vertex
 
 
+def _exterior_vertex_ids(stmt: ir.PolygonExterior) -> list[str]:
+    # Drawing addresses the base vertices by their input ids (a, b), not by
+    # the aliases registered for them.
+    if stmt.vertex_names:
+        return list(stmt.vertex_names)
+    return [stmt.a, stmt.b, *_exterior_names(stmt)[2:]]
+
+
 def _on_edge_owned(stmt: ir.PolygonOnEdge) -> list[str]:
     return list(stmt.vertex_names[2:])
 
@@ -122,6 +162,10 @@ def _tangent_owned(stmt: ir.CircleTangentAt) -> list[str]:
     return [ir.tangent_circle_center_id(stmt.id)]
 
 
+def _tangent_owned_center(stmt: ir.CircleTangentAt) -> str:
+    return ir.tangent_circle_center_id(stmt.id)
+
+
 def _tangent_register(stmt: ir.CircleTangentAt, obj: Any, sym: dict[str, Any]) -> None:
     if not isinstance(obj, spg.Circle):
         return
@@ -132,9 +176,15 @@ def _tangent_register(stmt: ir.CircleTangentAt, obj: Any, sym: dict[str, Any]) -
 
 def _build_default_registry() -> DerivedRegistry:
     reg = DerivedRegistry()
-    reg.register(DerivedConstruction("polygon_exterior", ("{id}_v{i}",), _exterior_owned, _exterior_register))
+    reg.register(DerivedConstruction(
+        "polygon_exterior", ("{id}_v{i}",), _exterior_owned, _exterior_register,
+        vertex_ids=_exterior_vertex_ids,
+    ))
     reg.register(DerivedConstruction("polygon_on_edge", (), _on_edge_owned, _on_edge_register))
-    reg.register(DerivedConstruction("circle_tangent_at", ("{id}_center",), _tangent_owned, _tangent_register))
+    reg.register(DerivedConstruction(
+        "circle_tangent_at", ("{id}_center",), _tangent_owned, _tangent_register,
+        center_id=_tangent_owned_center,
+    ))
     return reg
 
 

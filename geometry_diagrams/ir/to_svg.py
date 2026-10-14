@@ -24,6 +24,7 @@ from typing import Any, Callable, NamedTuple
 import sympy.geometry as spg
 
 from . import ir
+from .derived import REGISTRY as DERIVED_REGISTRY
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
@@ -3748,13 +3749,10 @@ def _circle_center_id(circle_id: str, stmt_by_id: dict) -> str | None:
         return stmt.center
     if isinstance(stmt, ir.CircleCenterRadius):
         return stmt.center
-    if isinstance(stmt, ir.CircleTangentAt):
-        # The computed centre is registered in the symbol table under a
-        # derived id, so it is just as addressable as an explicitly named
-        # one. Ask ir.py for the name rather than rebuilding the convention.
-        return ir.tangent_circle_center_id(circle_id)
-    # CircleThrough3 has no named center point
-    return None
+    # A construction whose computed centre is registered under a derived id
+    # (e.g. CircleTangentAt) declares it in the registry; CircleThrough3 has
+    # no named center point.
+    return DERIVED_REGISTRY.center_id(stmt)
 
 
 def _geo_coord(

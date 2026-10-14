@@ -1000,20 +1000,22 @@ def tangent_circle(circle: Circle, point: Point, radius: float, internal: bool =
 
     The new circle's center is reachable as `.center` on the returned
     handle, an ordinary lazily-resolving Point addressable under its own
-    derived id (see geometry_diagrams.ir.ir.tangent_circle_center_id) —
+    derived id (declared in geometry_diagrams.ir.derived) —
     same convention as circumcircle()/incircle()'s derived centers."""
-    from geometry_diagrams.ir.ir import CircleTangentAt, tangent_circle_center_id
+    from geometry_diagrams.ir.derived import REGISTRY
+    from geometry_diagrams.ir.ir import CircleTangentAt
 
     builder = get_builder()
     cid = builder._fresh_hidden_id("tangent_circle")
-    builder._add(CircleTangentAt(
+    stmt = CircleTangentAt(
         id=cid,
         circle=circle.id,
         point=point.id,
         radius=radius,
         tangency="internal" if internal else "external",
-    ))
-    center_id = tangent_circle_center_id(cid)
+    )
+    builder._add(stmt)
+    center_id = REGISTRY.center_id(stmt)
     return Circle(
         id=cid,
         center=Point(id=center_id, _builder=builder),

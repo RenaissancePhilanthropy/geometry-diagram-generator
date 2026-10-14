@@ -140,6 +140,7 @@ class Builder:
         import sympy.geometry as spg
 
         from geometry_diagrams.ir import ir as ir_mod
+        from geometry_diagrams.ir.derived import REGISTRY as DERIVED_REGISTRY
         from geometry_diagrams.ir.to_sympy import _compile_one
 
         canvas = self._canvas or ir_mod.Canvas()
@@ -156,19 +157,16 @@ class Builder:
             self._sym[stmt.id] = obj
             if isinstance(obj, spg.Point):
                 self._coord_floats[stmt.id] = (float(obj.x), float(obj.y))
-            if isinstance(stmt, ir_mod.CircleTangentAt) and isinstance(obj, spg.Circle):
-                # Mirror compile_defs()'s own post-compile registration of
-                # this construction's derived centre as an addressable point.
-                # Without it, the incremental table disagrees with the
-                # whole-diagram one: `.center.x` reads "no known coordinates"
-                # and any def carrying the derived centre id (an arc/sector
-                # built on the new circle, a segment to it) fails with
-                # UndefinedRefError the moment anything forces a mid-script
-                # resolve -- even though the final compile_defs() succeeds.
-                center_id = ir_mod.tangent_circle_center_id(stmt.id)
-                if center_id not in self._sym:
-                    self._sym[center_id] = obj.center
-                    self._coord_floats[center_id] = (float(obj.center.x), float(obj.center.y))
+            # Mirror compile_defs()'s post-compile registration of derived
+            # entities, via the same registry: without it the incremental
+            # table disagrees with the whole-diagram one and defs carrying a
+            # derived id fail with UndefinedRefError on a mid-script resolve.
+            known = len(self._sym)
+            DERIVED_REGISTRY.register_derived(stmt, obj, self._sym)
+            for derived_id in list(self._sym)[known:]:
+                derived = self._sym[derived_id]
+                if isinstance(derived, spg.Point):
+                    self._coord_floats[derived_id] = (float(derived.x), float(derived.y))
             if isinstance(stmt, ir_mod.PointIntersection) and stmt.pick is None:
                 self._pin_intersection(stmt, obj)
             if isinstance(stmt, ir_mod.PointOn) and isinstance(stmt.how, ir_mod.PointOnIntent):

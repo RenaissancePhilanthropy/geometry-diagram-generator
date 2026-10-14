@@ -12,13 +12,14 @@ import math
 import re
 from typing import Any
 
+from ..ir.derived import REGISTRY as DERIVED_REGISTRY
 from ..ir.ir import (
     DiagramIR, Canvas, Params,
     PointFixed, PointOn, PointOnParam, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
     PointReflect, PointRotate, PointIntersection, PointAlias,
     LineThrough, LineParallelThrough, LinePerpendicularThrough, LineAngleBisector,
     LineTangent, Segment, Ray,
-    CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt, tangent_circle_center_id,
+    CircleCenterPoint, CircleCenterRadius, CircleThrough3, CircleTangentAt,
     ArcCenterStartEnd, SectorCenterStartEnd,
     EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
     Triangle, Polygon, PolygonExterior, PolygonOnEdge,
@@ -644,18 +645,19 @@ class _Lowerer:
                 f"CircleTangentAtOp '{op.id}': circle '{op.circle}' not found. "
                 "Define the circle before the tangent circle."
             )
-        self._add(CircleTangentAt(
+        stmt = CircleTangentAt(
             id=op.id,
             circle=op.circle,
             point=op.point,
             radius=op.radius,
             tangency=op.tangency,
-        ))
+        )
+        self._add(stmt)
         self._drawable.add(op.id)
         # Register the new circle's derived center so a later tangent
         # construction referencing this circle by id can find its center,
         # same as any other circle-producing op.
-        self._circle_centers[op.id] = tangent_circle_center_id(op.id)
+        self._circle_centers[op.id] = DERIVED_REGISTRY.center_id(stmt)
         # Auto-generate the tangency check as a safety net, consistent with
         # other constructions' own auto-generated verification checks.
         self._checks.append(CirclesTangent(c1=op.circle, c2=op.id))

@@ -16,6 +16,7 @@ import sympy.geometry as spg
 from sympy.geometry.line import LinearEntity
 
 from . import ir
+from .derived import REGISTRY as DERIVED_REGISTRY
 from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,9 @@ def centroid_of_obj(obj: Any) -> tuple[float, float]:
     midpoint of its two defining points (.p1/.p2, shared by the whole
     LinearEntity family) is the equivalent stand-in for an object with no
     natural "center" at all."""
+    registered = DERIVED_REGISTRY.position_of(obj)
+    if registered is not None:
+        return registered
     if isinstance(obj, (Arc, Sector, EllipticalArc, EllipticalSector)):
         pts = [obj.center, obj.start, obj.end]
     elif isinstance(obj, (spg.Circle, spg.Ellipse)):
@@ -151,14 +155,10 @@ def poly_verts(obj_id: str, stmt_by_id: dict) -> list[str]:
             return list(pts)
         case ir.PolylineOpen(points=pts):
             return list(pts)
-        case ir.PolygonExterior(a=a, b=b, sides=sides, vertex_names=vnames):
-            if vnames:
-                return list(vnames)
-            verts = [a, b]
-            for i in range(2, sides):
-                verts.append(f"{obj_id}_v{i}")
-            return verts
         case _:
+            registered = DERIVED_REGISTRY.vertex_ids(stmt)
+            if registered is not None:
+                return registered
             raise ValueError(f"Cannot get polygon vertices for {stmt.kind!r}")
 
 
