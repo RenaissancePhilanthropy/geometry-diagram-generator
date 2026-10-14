@@ -176,20 +176,31 @@ def test_model_specific_kwargs_applies_reasoning_effort_none_to_gpt_6_luna_only(
     tool_choice (what RecipeStrategy's DSL generation sends) 400s on
     /v1/chat/completions with the model's default reasoning_effort ("Function
     tools with reasoning_effort are not supported ... set reasoning_effort to
-    'none'."). This is a hard requirement, unlike gpt-5.6-luna's latency-only
-    "low" tuning below."""
+    'none'."). gpt-5.6-luna has the same requirement (next test)."""
     with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
         get_chat_model("openai:gpt-6-luna")
         _, kwargs = mock_chat_openai.call_args
     assert kwargs["reasoning_effort"] == "none"
 
 
-def test_model_specific_kwargs_gpt_6_luna_override_does_not_leak_to_sibling_model():
-    """gpt-5.6-luna must keep its own "low" override, not gpt-6-luna's "none"."""
+def test_model_specific_kwargs_gpt_5_6_luna_uses_reasoning_effort_none():
+    """gpt-5.6-luna's /v1/chat/completions now rejects function tools with any
+    reasoning_effort ("Function tools with reasoning_effort are not supported
+    ... set reasoning_effort to 'none'."), same as gpt-6-luna; its old "low"
+    latency tuning 400'd RecipeStrategy's forced tool call."""
     with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
         get_chat_model("openai:gpt-5.6-luna")
         _, kwargs = mock_chat_openai.call_args
-    assert kwargs["reasoning_effort"] == "low"
+    assert kwargs["reasoning_effort"] == "none"
+
+
+def test_claude_sonnet_5_5_requires_auto_tool_choice():
+    """claude-sonnet-5-5 400s on a forced tool_choice ('type "tool" and "any"
+    are not supported for this model'), like claude-opus-5-5."""
+    from geometry_diagrams.strategies.llm import requires_auto_tool_choice
+    assert requires_auto_tool_choice("anthropic:claude-sonnet-5-5")
+    assert requires_auto_tool_choice("anthropic:claude-opus-5-5")
+    assert not requires_auto_tool_choice("anthropic:claude-haiku-5-5")
 
 
 # ---------------------------------------------------------------------------

@@ -205,13 +205,14 @@ _MODEL_SPECIFIC_KWARGS: dict[str, dict] = {
     # default of 4096 isn't enough headroom for that.
     "mantle:openai.gpt-oss-20b": {"max_tokens": 16000},
     "mantle:zai.glm-4.7-flash": {"max_tokens": 16000},
-    # reasoning_effort="low" confirmed (2026-08-07) to match "high" on pass
-    # rate (43/45 both) on a 45-scenario stratified curriculum subset, at
-    # roughly half the per-scenario latency (18.2s vs 35.5s avg) and
-    # presumably lower reasoning-token cost — no accuracy tradeoff observed.
-    # Pending: comparison against the model's own (unset) default effort
-    # from its concurrent full-curriculum run.
-    "openai:gpt-5.6-luna": {"reasoning_effort": "low"},
+    # reasoning_effort="low" was confirmed (2026-08-07) to match "high" on pass
+    # rate (43/45 both) at roughly half the latency, but the API has since
+    # started rejecting function tools combined with ANY reasoning_effort on
+    # /v1/chat/completions ("Function tools with reasoning_effort are not
+    # supported for gpt-5.6-luna ... set reasoning_effort to 'none'."), which
+    # 400'd RecipeStrategy's forced tool call. "none" is now a hard requirement
+    # here, same as gpt-6-luna below.
+    "openai:gpt-5.6-luna": {"reasoning_effort": "none"},
     # Hard requirement, not a latency tuning like gpt-5.6-luna above: gpt-6-luna's
     # default reasoning_effort rejects forced tool calls on /v1/chat/completions
     # outright — "Function tools with reasoning_effort are not supported for
@@ -402,6 +403,9 @@ _AUTO_TOOL_CHOICE_MODELS: set[str] = {
     # model." Confirmed via a direct API call that tool_choice="auto" with
     # the same tool works fine (clean tool_use block on the first call).
     "anthropic:claude-opus-5-5",
+    # anthropic:claude-sonnet-5-5: the same 400 as claude-opus-5-5 above
+    # (reported against RecipeStrategy; claude-haiku-5-5 is unaffected).
+    "anthropic:claude-sonnet-5-5",
 }
 
 
