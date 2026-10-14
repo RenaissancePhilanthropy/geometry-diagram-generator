@@ -173,8 +173,13 @@ def unrecognized_color_warning(text: str) -> str:
 
 def bare_color_key(style_key: str | None) -> bool:
     """True if a render op's bare ``style`` (not a key of ``DiagramIR.styles``)
-    is itself a recognized color specification."""
-    return style_key is not None and style_key != "" and parse_color(style_key).recognized
+    is itself a recognized color specification. ``none`` is excluded: it is
+    accepted only as a value inside a style dict (``fill: none``), never as a
+    bare style, which both renderers have always ignored."""
+    return (
+        style_key is not None and style_key not in ("", "none")
+        and parse_color(style_key).recognized
+    )
 
 
 def translate_style_colors(

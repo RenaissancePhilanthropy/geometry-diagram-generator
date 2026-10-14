@@ -357,3 +357,95 @@ def test_tikz_compiles_each_form_with_equivalent_fill(spec, expected):
     assert any(
         all(abs(int(f[i:i + 2], 16) - w) <= 1 for i, w in zip((1, 3, 5), want)) for f in found
     ), (expected, found)
+
+
+# ---------------------------------------------------------------------------
+# Bare color style keys (a render op's ``style`` that is not a styles key)
+# ---------------------------------------------------------------------------
+#
+# Pinned against the pre-ticket output (base 8658674) where unchanged:
+# a bare named draw was already honored by both backends; a bare ``none`` and
+# a bare non-color string were ignored (default stroke / no options). New in
+# this ticket (deliberate): bare mix/hex/rgb/hsv styles are honored, and a
+# bare color Fill is honored by BOTH backends (both used to ignore it and
+# fall back to their default fill: SVG ``blue``, TikZ ``blue!20``).
+
+def _bare(style: str) -> ir.DiagramIR:
+    return _diagram({}, [ir.Fill(obj="T", style=style, opacity=0.5), ir.Draw(obj="s", style=style)])
+
+
+def _tikz_lines(tikz: str, needle: str) -> list[str]:
+    return [ln for ln in tikz.splitlines() if needle in ln]
+
+
+def test_bare_named_draw_unchanged_from_pre_ticket():
+    d = _bare("red")
+    assert {e.get("stroke") for e in _drawn(_svg(d), "s")} == {"red"}
+    assert _tikz_lines(_tikz(d), "Segment") == ["\\tkzDrawSegment[color=red](A,B)"]
+
+
+@pytest.mark.parametrize("spec,svg_fill,tikz_fill,definition", [
+    ("red", "red", "red", None),
+    ("#ff8800", "#ff8800", "gdrgbff8800", "\\definecolor{gdrgbff8800}{RGB}{255,136,0}"),
+    ("cyan!40", "#99ffff", "cyan!40", None),
+    ("hsv(30, 1, 1)", "#ff8000", "gdrgbff8000", "\\definecolor{gdrgbff8000}{RGB}{255,128,0}"),
+])
+def test_bare_color_fill_honored_by_both_backends(spec, svg_fill, tikz_fill, definition):
+    d = _bare(spec)
+    fill = _fill_el(_svg(d))
+    assert fill.get("fill") == svg_fill
+    assert fill.get("fill-opacity") == "0.5"
+    tikz = _tikz(d)
+    assert _tikz_lines(tikz, "Fill") == [f"\\tkzFillPolygon[fill={tikz_fill},opacity=0.5](A,B,C)"]
+    defs = _tikz_lines(tikz, "\\definecolor")
+    assert defs == ([definition] if definition else [])
+    if definition:
+        _assert_defined_before_use(tikz, tikz_fill)
+
+
+@pytest.mark.parametrize("spec", ["cyan!40", "red!30!blue", "#9ec5ea", "rgb(10, 20, 30)", "hsv(210, 0.5, 0.8)"])
+def test_bare_color_fill_and_draw_agree_across_backends(spec):
+    """The SVG hex and the TikZ color (definition, or xcolor's mix computed
+    from xcolor's base colors) are the same RGB value."""
+    d = _bare(spec)
+    root = _svg(d)
+    svg_rgb = {_fill_el(root).get("fill")} | {e.get("stroke") for e in _drawn(root, "s")}
+    tikz = _tikz(d)
+    (fill_line,) = _tikz_lines(tikz, "Fill")
+    (draw_line,) = _tikz_lines(tikz, "Segment")
+    tikz_fill = re.search(r"fill=([^,\]]+)", fill_line).group(1)
+    tikz_draw = re.search(r"color=([^,\]]+)", draw_line).group(1)
+    assert tikz_fill == tikz_draw
+    defined = dict(_definitions(tikz))
+    rgb = defined[tikz_fill] if tikz_fill in defined else parse_color(tikz_fill).rgb
+    assert svg_rgb == {_hex(rgb)}
+
+
+def test_bare_none_unchanged_from_pre_ticket():
+    d = _bare("none")
+    root = _svg(d)
+    assert _fill_el(root).get("fill") == "blue"
+    assert {e.get("stroke") for e in _drawn(root, "s")} == {"black"}
+    tikz = _tikz(d)
+    assert _tikz_lines(tikz, "Fill") == ["\\tkzFillPolygon[fill=blue!20,opacity=0.5](A,B,C)"]
+    assert _tikz_lines(tikz, "Segment") == ["\\tkzDrawSegment(A,B)"]
+
+
+def test_none_still_accepted_inside_a_style_dict():
+    warnings: list[str] = []
+    d = _diagram({"n": {"fill": "none", "color": "red"}}, [ir.Fill(obj="T", style="n")])
+    assert _fill_el(_svg(d, warnings)).get("fill") == "none"
+    assert "fill=none" in _tikz(d, warnings)
+    assert warnings == []
+
+
+def test_bare_non_color_string_unchanged_from_pre_ticket():
+    warnings: list[str] = []
+    d = _bare("notacolor")
+    root = _svg(d, warnings)
+    assert _fill_el(root).get("fill") == "blue"
+    assert {e.get("stroke") for e in _drawn(root, "s")} == {"black"}
+    tikz = _tikz(d, warnings)
+    assert _tikz_lines(tikz, "Fill") == ["\\tkzFillPolygon[fill=blue!20,opacity=0.5](A,B,C)"]
+    assert _tikz_lines(tikz, "Segment") == ["\\tkzDrawSegment(A,B)"]
+    assert warnings == []

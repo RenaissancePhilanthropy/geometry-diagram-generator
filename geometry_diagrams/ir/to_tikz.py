@@ -403,6 +403,10 @@ def _emit_op(
             if style and style in styles:
                 fill_opts = _style_str(style, styles)
                 style_inner = fill_opts[1:-1] if fill_opts else f"fill=blue!20,opacity={opacity}"
+            elif bare_color_key(style):
+                # A bare color as the fill's style, honored as SVG honors it.
+                style_inner = f"fill={tikz_color(style)[0]},opacity={opacity}"  # type: ignore[arg-type]
+                fill_opts = f"[{style_inner}]"
             else:
                 style_inner = f"fill=blue!20,opacity={opacity}"
                 fill_opts = f"[{style_inner}]"
