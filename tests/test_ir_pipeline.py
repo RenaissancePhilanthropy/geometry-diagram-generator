@@ -70,8 +70,9 @@ async def test_failed_prefer_check_becomes_warning_not_failure():
     # A, B, C are not collinear; level "prefer" must warn only.
     diagram = _triangle_ir(checks=[ir.Collinear(points=["A", "B", "C"], level="prefer")])
     result = await run_ir_pipeline(diagram, SVGRenderer())
-    assert len(result.warnings) == 1
-    assert "collinear" in result.warnings[0].lower() or "Collinear" in result.warnings[0]
+    assert result.warnings == [
+        "Preferred check not satisfied: Points 'A', 'B', 'C' are not collinear"
+    ]
 
 
 @pytest.mark.asyncio

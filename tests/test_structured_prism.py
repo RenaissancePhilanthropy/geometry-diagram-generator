@@ -104,7 +104,10 @@ def test_example_runs_through_the_shared_pipeline_with_no_warnings():
 def test_example_colors_work_in_tikz_too():
     d = _example()
     tikz = ir_to_tikz(d, compile_defs(d))
-    assert "bcd6ee" in tikz.lower() or "rgb" in tikz.lower()
+    for name, rgb in (("gdrgbbcd6ee", "188,214,238"), ("gdrgb96bee6", "150,190,230"),
+                      ("gdrgbdbe9f6", "219,233,246")):
+        assert f"\\definecolor{{{name}}}{{RGB}}{{{rgb}}}" in tikz
+    assert "\\tkzFillPolygon[fill=gdrgbbcd6ee,opacity=1.0](P_v000,P_v100,P_v110,P_v010)" in tikz
 
 
 # --- end to end through the structured strategy -----------------------------------

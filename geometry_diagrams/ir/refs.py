@@ -1,8 +1,12 @@
 """
-Utilities for extracting ID references from IR definition statements.
+Utilities for extracting ID references from IR definition statements:
+reference fields (a prism's ``origin`` among them) plus the bare names inside
+expression fields (a prism's ``length``/``width``/``height`` too).
 
-Used by compile_defs (to_sympy.py) for topological sorting, and by
-progressive_tools (state.py) for dependency tracking.
+Used by compile_defs (to_sympy.py) for topological sorting, by the
+edit-locality diagnostic (``compute_dependents``, which also makes each
+derived id a dependent of its owning definition via the derived registry's
+owner map) and by the recipe lowerer.
 """
 from __future__ import annotations
 

@@ -287,6 +287,9 @@ class DefBase(BaseModel):
     # private attribute: never serialized, never in the schema, so a model
     # cannot claim it; it only lets the effective view recognize its own
     # output when it is handed an already-effective definition list.
+    # Never serialize an effective diagram and re-feed it: model_dump /
+    # model_validate drops this marker, so the re-fed synthesized definitions
+    # look authored and collide with the ones synthesized again.
     _synthesized_by: Optional[str] = PrivateAttr(default=None)
 
 

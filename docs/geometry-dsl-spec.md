@@ -451,12 +451,15 @@ For a unit-cube prism the three visible face outlines are drawn (no hidden
 edges) plus thin gray gridlines on those faces, built from derived points and
 segments with hidden `__{id}_gp{n}` / `__{id}_g{n}` ids. Unit-cube dimensions
 are limited to 100 per dimension (a larger value is a compile error telling
-the author to use wireframe mode, `unit_cubes=false`). For a solid look (no hidden edges), draw and fill the visible
-face ids instead of the prism id.
+the author to use wireframe mode, `unit_cubes=false`). The gridlines come only
+from a draw of the prism id, so a unit-cube prism must be drawn by its id (fills
+on its face ids still shade it); a unit-cube prism whose id is never drawn
+renders with a pipeline warning saying its gridlines are missing. For a solid
+look on a non-unit-cube prism (no hidden edges), draw and fill the visible face
+ids instead of the prism id.
 
 **Shading and labels.** Shade a face with `fill` on its face id; colors go
-through the shared color forms (a name, `#rrggbb`, `rgb(r,g,b)`,
-`hsv(h,s,v)`), so an opaque tint such as `rgb(230,159,0)` paints the same
+through the shared color forms (see [Color forms](#color-forms)), so an opaque tint such as `rgb(230,159,0)` paints the same
 color in SVG and TikZ. Label an edge with `label_segment` on its edge id (or
 on any segment joining two corners); label a face with `label_free_text` and
 `centroid_of` the face id (e.g. "60 square units" on `P_bottom`); and
@@ -465,10 +468,13 @@ the prism's projected center (the middle of the drawn silhouette).
 
 A `label_segment` on a segment joining two corners of one prism (a dimension
 label) is placed on the side of the segment away from the prism's projected
-center, with the whole label clear of the segment's line: on an outline
-(silhouette) edge it sits outside the figure, e.g. left of the front-left
-vertical edge, below the front bottom edge, right of the right-hand edges.
-When the center lies on the segment's line (a space diagonal) the ordinary
+center, with the whole label clear of the segment's line. On an outline
+(silhouette) edge it sits outside the figure; which edges are outline edges
+depends on `side` (for `side: "right"`, e.g. left of the front-left vertical
+edge, below the front bottom edge, right of the right-hand edges; `side:
+"left"` mirrors the right-hand cases to the left). On a hidden or interior edge
+or a face diagonal the label still goes on the side away from the box center,
+which may put it on top of a face. When the center lies on the segment's line (a space diagonal) the ordinary
 segment-label placement applies. In TikZ the same side is given as a node
 placement (`left`, `below right`, ...). Labels on other segments are
 unaffected. In TikZ, words in a `label_segment` render in math mode
@@ -944,6 +950,61 @@ The system auto-computes range if not specified, with padding.
 
 After foundation points are placed, all derived operations work
 identically to abstract mode.
+
+---
+
+## Rendering
+
+These contracts hold for every diagram, in both renderers (SVG and TikZ).
+
+### Color forms
+
+Every color value (a `color`, `fill` or other color key of a style, a bare
+color used as a render op's `style`, a pydsl `color=` argument) accepts:
+
+| Form | Example | Notes |
+|------|---------|-------|
+| named color | `red`, `gray`, `lightgray` | the shared set both renderers know |
+| hex | `#9ec5ea`, `#9ce` | `#rrggbb` or `#rgb` |
+| `rgb(r,g,b)` | `rgb(158, 197, 234)` | integers 0-255; spaces allowed |
+| `hsv(h,s,v)` | `hsv(210, 0.5, 0.8)` | h 0-360, s and v 0-1 |
+| xcolor mix | `blue!30`, `red!40!blue` | `name!pct[!name2]`, pct 0-100, second color defaults to white |
+
+Hex, `rgb()` and `hsv()` become `#rrggbb` in SVG and a `\definecolor` (xcolor
+`RGB` model) in TikZ, so the same value paints the same color in both; a mix
+is converted to `#rrggbb` in SVG and passed to xcolor as-is in TikZ. An
+unrecognized string is passed through unchanged with a renderer warning (the
+two renderers may disagree on it). A render op's bare `style` that is not a
+key of `styles` but is itself a recognized color is honored as that color for
+both draw and fill in both renderers; bare `none` is not a color (it is
+accepted only as a value inside a style, e.g. `fill: none`).
+
+### SVG viewBox growth for labels
+
+When a label's bounding box would extend past the SVG canvas, the SVG
+renderer grows the `viewBox` (and the width/height) on that side to contain
+it, preserving the scale: nothing moves in user coordinates, overflow on the
+left or top is absorbed by a negative `viewBox` origin. Growth happens only
+when a label overflows (a diagram without overflow is unchanged) and is capped
+at 200 px per side, independently; a label further out than that is left
+outside and reported by the label-bounds check.
+
+### Pipeline warnings
+
+A run collects a list of non-fatal `warnings` (on the result, and on a
+pipeline error for the warnings gathered before it). Warnings never fail a
+run; a strategy shows the previous attempt's warnings in its retry prompt.
+Sources:
+
+- renderer warnings (e.g. a draw of an undefined id, an unsupported elliptical
+  variant);
+- failed `prefer`-level checks;
+- `distance_equals` / `equal_length` / `ratio_equal` measuring a segment that
+  joins two prism corners (a projection was measured; use
+  `true_length_equals`);
+- a prism on a canvas with unequal axis scales (the projection is skewed);
+- an unrecognized color string (see [Color forms](#color-forms));
+- a `unit_cubes` prism whose id is never drawn (no gridlines).
 
 ---
 

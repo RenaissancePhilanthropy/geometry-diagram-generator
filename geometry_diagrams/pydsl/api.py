@@ -1083,9 +1083,9 @@ def draw(
 ) -> None:
     """Draw a constructed object (triangle, polygon, circle, arc, sector,
     line, or segment), with optional stroke styling:
-    - color: any string the renderer understands (not validated by pydsl
-      itself — passed straight through, matching the recipe DSL's own
-      permissiveness).
+    - color: a named color, '#rrggbb', 'rgb(r,g,b)', 'hsv(h,s,v)' or an
+      xcolor mix like 'blue!30' (an unrecognized string passes through
+      with a renderer warning).
     - thick/thin: preset stroke widths. Give at most one, and not
       together with width.
     - width: an explicit numeric stroke width, given instead of
