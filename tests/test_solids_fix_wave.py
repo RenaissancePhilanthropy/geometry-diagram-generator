@@ -248,3 +248,48 @@ def test_solids_guidance_says_unit_cubes_prisms_draw_the_prism_id(surface):
     assert "For unit_cubes prisms, draw the prism id" in text
     assert "gridlines" in text
     assert "non-unit-cube" in text
+
+
+# --- E: non-finite prism dimensions and projection overrides are typed errors --
+
+_NAN, _INF = float("nan"), float("inf")
+
+
+@pytest.mark.parametrize("field", ["length", "width", "height"])
+@pytest.mark.parametrize("value", [_NAN, _INF, -_INF])
+def test_non_finite_dimension_is_a_typed_compile_error(field, value):
+    with pytest.raises(IRCompileError) as exc:
+        compile_defs(_diagram(prism=_prism(**{field: value})))
+    assert exc.value.def_id == "P" and field in str(exc.value)
+
+
+@pytest.mark.parametrize("field", ["depth_angle", "depth_scale"])
+@pytest.mark.parametrize("value", [_NAN, _INF])
+def test_non_finite_depth_override_is_a_typed_compile_error(field, value):
+    with pytest.raises(IRCompileError) as exc:
+        compile_defs(_diagram(prism=_prism(**{field: value})))
+    assert exc.value.def_id == "P" and field in str(exc.value)
+
+
+@pytest.mark.parametrize("field", ["length", "width", "height"])
+@pytest.mark.parametrize("value", [_NAN, _INF])
+def test_pydsl_prism_rejects_non_finite_dimensions(field, value):
+    from geometry_diagrams.pydsl import api
+    from geometry_diagrams.pydsl.builder import new_builder_context
+
+    with new_builder_context():
+        o = api.point(0, 0)
+        dims = {"length": 4, "width": 3, "height": 2, field: value}
+        with pytest.raises(ValueError, match=field):
+            api.prism(o, **dims)
+
+
+@pytest.mark.parametrize("field", ["depth_angle", "depth_scale"])
+def test_pydsl_prism_rejects_non_finite_depth_overrides_with_a_typed_error(field):
+    from geometry_diagrams.pydsl import api
+    from geometry_diagrams.pydsl.builder import new_builder_context
+
+    with new_builder_context():
+        o = api.point(0, 0)
+        with pytest.raises((ValueError, IRCompileError), match=field):
+            api.prism(o, 4, 3, 2, **{field: _NAN})

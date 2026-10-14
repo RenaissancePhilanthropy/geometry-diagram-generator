@@ -133,6 +133,9 @@ def projection_for(
         return Projection((_COS30, _SIN30), (sp.S(0), sp.S(1)), (-_COS30, _SIN30))
     if view != "oblique":
         raise ValueError(f"view must be 'oblique' or 'isometric', got {view!r}")
+    for name, value in (("depth_angle", depth_angle), ("depth_scale", depth_scale)):
+        if value is not None and not math.isfinite(float(value)):
+            raise ValueError(f"{name} must be a finite number, got {value}")
     angle = sp.Rational(str(OBLIQUE_DEFAULT_ANGLE_DEG if depth_angle is None else depth_angle))
     scale = OBLIQUE_DEFAULT_SCALE if depth_scale is None else sp.Rational(str(depth_scale))
     if not 0 < angle < 90:
@@ -304,6 +307,8 @@ def compile_prism(
         value = _unit_cube_dim(stmt, field) if stmt.unit_cubes else ev(getattr(stmt, field))
         if not (getattr(value, "is_number", False) and value.is_real is not False):
             raise IRCompileError(did, f"rectangular_prism {field} must be a number, got {value}")
+        if not math.isfinite(float(sp.N(value))):
+            raise IRCompileError(did, f"rectangular_prism {field} must be a finite number, got {value}")
         if float(sp.N(value)) <= 0:
             raise IRCompileError(did, f"rectangular_prism {field} must be positive, got {value}")
         dims[field] = value

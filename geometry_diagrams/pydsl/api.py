@@ -237,8 +237,9 @@ def prism(
     if not isinstance(origin, Point):
         raise ValueError(f"prism(): origin must be a Point (from point(...)), got {type(origin).__name__}")
     for name, value in (("length", length), ("width", width), ("height", height)):
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
-            raise ValueError(f"prism(): {name} must be a positive number, got {value!r}")
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or not value > 0):
+            raise ValueError(f"prism(): {name} must be a positive finite number, got {value!r}")
     if view not in ("oblique", "isometric"):
         raise ValueError(f"prism(): view must be 'oblique' or 'isometric', got {view!r}")
     if side not in ("right", "left"):
