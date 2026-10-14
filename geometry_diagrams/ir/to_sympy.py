@@ -11,6 +11,7 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
+from .derived import REGISTRY as DERIVED_REGISTRY
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -451,29 +452,10 @@ def compile_defs(
     all_ids = {stmt.id for stmt in diagram.define}
     stmts_by_id = {stmt.id: stmt for stmt in diagram.define}
 
-    # Build a mapping from derived point names → the id of the statement that
-    # produces them. PolygonExterior/PolygonOnEdge register sub-vertices and
-    # CircleTangentAt registers its computed center in sym as a side effect, so
-    # any DefStmt that references one of those derived names needs to depend on
-    # the statement that owns it.
-    derived_point_owner: dict[str, str] = {}
-    for stmt in diagram.define:
-        if isinstance(stmt, ir.PolygonExterior):
-            names = stmt.vertex_names or [f"{stmt.id}_v{i}" for i in range(stmt.sides)]
-            # Only register NEW vertices (skip base vertices a=names[0], b=names[1]).
-            # Base vertices are inputs from a prior statement; registering them here
-            # would overwrite the parent polygon's ownership and create a self-loop.
-            for vname in names[2:]:
-                if vname not in all_ids:  # only synthesized names, not real DefStmts
-                    derived_point_owner[vname] = stmt.id
-        if isinstance(stmt, ir.PolygonOnEdge):
-            for vname in stmt.vertex_names[2:]:   # only new vertices
-                if vname not in all_ids:
-                    derived_point_owner[vname] = stmt.id
-        if isinstance(stmt, ir.CircleTangentAt):
-            cname = ir.tangent_circle_center_id(stmt.id)
-            if cname not in all_ids:
-                derived_point_owner[cname] = stmt.id
+    # Derived entities (polygon vertices, tangent-circle centers) are registered
+    # in sym as a side effect of their owner, so any DefStmt that references one
+    # needs to depend on the owner. The registry declares who owns what.
+    derived_point_owner = DERIVED_REGISTRY.owner_map(diagram.define)
 
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
@@ -494,28 +476,7 @@ def compile_defs(
         stmt = stmts_by_id[sid]
         obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
         sym[stmt.id] = obj
-        # PolygonExterior: also register its computed vertices as sub-points.
-        # Use explicit vertex_names if provided (lowerer fills these); otherwise
-        # fall back to the auto-generated {id}_v{i} pattern.
-        if isinstance(stmt, ir.PolygonExterior) and isinstance(obj, spg.Polygon):
-            for i, vertex in enumerate(obj.vertices):
-                if stmt.vertex_names and i < len(stmt.vertex_names):
-                    sub_id = stmt.vertex_names[i]
-                else:
-                    sub_id = f"{stmt.id}_v{i}"
-                if sub_id not in sym:
-                    sym[sub_id] = vertex
-        # PolygonOnEdge: register vertices[2..N-1] in sym
-        if isinstance(stmt, ir.PolygonOnEdge) and isinstance(obj, spg.Polygon):
-            for i, vname in enumerate(stmt.vertex_names):
-                if vname not in sym:
-                    sym[vname] = obj.vertices[i]
-        # CircleTangentAt: also register its computed center as an addressable
-        # point, so later definitions can reference it by its derived id.
-        if isinstance(stmt, ir.CircleTangentAt) and isinstance(obj, spg.Circle):
-            center_id = ir.tangent_circle_center_id(stmt.id)
-            if center_id not in sym:
-                sym[center_id] = obj.center
+        DERIVED_REGISTRY.register_derived(stmt, obj, sym)
 
     return sym
 

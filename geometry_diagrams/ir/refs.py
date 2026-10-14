@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 
 from . import ir
+from .derived import REGISTRY as DERIVED_REGISTRY
 
 # Fields that hold point/object reference IDs in DefStmt models
 _REF_FIELDS = {
@@ -109,8 +110,15 @@ def compute_dependents(diagram: "ir.DiagramIR") -> dict[str, set[str]]:
     """Invert def_references(): id -> the set of ids that directly reference
     it. Same dependency edges compile_defs (to_sympy.py) uses for
     topological sorting, just inverted — used by the edit-locality
-    diagnostic to compute which entities are downstream of an edit."""
+    diagnostic to compute which entities are downstream of an edit.
+
+    Derived ids (polygon vertices, a tangent circle's center) are keys too:
+    each is a dependent of its owning definition, so an edit reaching the
+    owner reaches the derived entity and anything built on it."""
     dependents: dict[str, set[str]] = {stmt.id: set() for stmt in diagram.define}
+    for derived_id, owner_id in DERIVED_REGISTRY.owner_map(diagram.define).items():
+        dependents.setdefault(derived_id, set())
+        dependents[owner_id].add(derived_id)
     for stmt in diagram.define:
         for ref_id in def_references(stmt):
             if ref_id in dependents:
