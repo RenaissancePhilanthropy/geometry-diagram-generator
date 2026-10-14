@@ -329,9 +329,11 @@ class DerivedRegistry:
             result = entry.lower_draw(stmt, op, diagram.styles)
             for name, style in result.styles.items():
                 if name in styles and styles[name] != style:
-                    raise ValueError(
-                        f"lowering {stmt.id!r} defines style {name!r}, which already exists "
-                        f"with a different value"
+                    raise IRCompileError(
+                        stmt.id,
+                        f"drawing {stmt.id!r} needs the reserved style {name!r}, but the "
+                        f"diagram already defines a style with that name and a different "
+                        f"value; rename that style",
                     )
                 styles[name] = style
             ops.extend(result.ops)

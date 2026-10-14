@@ -906,7 +906,6 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
                 "script": None,
                 "last_error": error_text,
                 "warnings": [],  # stale warnings belong to the previous pipeline error
-            "warnings": [],
                 "attempt": attempt + 1,
                 "input_tokens": state["input_tokens"] + in_tok,
                 "output_tokens": state["output_tokens"] + out_tok,
