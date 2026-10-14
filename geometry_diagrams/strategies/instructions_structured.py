@@ -129,6 +129,8 @@ List drawing commands in logical order (draw objects first, then points, then la
 | `label_angle` | `angle: {a,o,b}, text: str, style?: color` | Label an angle (see angle notation below) |
 | `label_segment` | `seg: SegId, text: str` | Label a segment length |
 
+**Colors** (a `style` given as a bare color, or `color`/`fill` values in `styles`): a named color (e.g. "red", "blue", "teal", "lightgray"), hex "#9ec5ea", "rgb(158, 197, 234)" (0-255), "hsv(210, 0.5, 0.8)" (h in degrees, s and v 0-1), or an xcolor mix "blue!30" (30% blue, rest white) / "red!40!blue".
+
 **Angle notation `{a, o, b}`:** The angle at vertex `o` between rays `o→a` and `o→b`. Both `a` and `b` must be points that lie on a line, segment, or ray passing through `o` in the diagram. Do not use points from unrelated lines — if `o` is an intersection of line CD and the transversal, `a` and `b` must come from those two lines, not from some other line like AB.
 
 ---

@@ -12,7 +12,10 @@ from . import ir
 from .derived import effective_diagram, lower_render
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
-    NAMED_STYLE_COLORS,
+    COLOR_STYLE_KEYS,
+    bare_color_key,
+    tikz_color,
+    translate_style_colors,
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
@@ -165,6 +168,11 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
     _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
+    # Color values are parsed once here: hex/rgb/hsv forms become names
+    # \definecolor'd at the top of the body (before any use), named colors and
+    # xcolor mixes pass through; unrecognized ones warn and pass through.
+    tikz_styles = translate_style_colors(_styles, lambda v: tikz_color(v)[0], warnings)
+    color_definitions = _tikz_color_definitions(_styles, diagram.render)
     seg_groups: list[str] = []
     for op in sorted_ops:
         if not isinstance(op, (ir.MarkSegments, ir.MarkArcs)):
@@ -190,12 +198,33 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
 
     for op in sorted_ops:
         chunk = _emit_op(
-            op, sym, stmt_by_id, helpers, diagram.styles, group_marks,
+            op, sym, stmt_by_id, helpers, tikz_styles, group_marks,
             group_tick_counts=group_tick_counts, warnings=warnings,
         )
         lines.extend(chunk)
 
-    return "\n".join(lines)
+    return "\n".join(color_definitions + lines)
+
+
+def _tikz_color_definitions(styles: dict, render_ops: list) -> list[str]:
+    """The ``\\definecolor`` lines for every hex/rgb/hsv color the picture
+    uses -- in a style's color keys or as a render op's bare style -- each
+    once, in first-appearance order. Names derive from the RGB value, so two
+    spellings of one color share one definition."""
+    specs: list[str] = [
+        v for style in styles.values() for k in COLOR_STYLE_KEYS
+        if isinstance(v := style.get(k), str)
+    ]
+    for op in render_ops:
+        for key in (getattr(op, "style", None), getattr(op, "group", None)):
+            if isinstance(key, str) and key not in styles and bare_color_key(key):
+                specs.append(key)
+    out: list[str] = []
+    for spec in specs:
+        definition = tikz_color(spec)[1]
+        if definition is not None and definition not in out:
+            out.append(definition)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -706,9 +735,6 @@ def _emit_op(
 # Style helpers (TikZ-specific)
 # ---------------------------------------------------------------------------
 
-_TIKZ_COLOR_NAMES = NAMED_STYLE_COLORS
-
-
 def _tikz_fmt_coord_val(v: float) -> str:
     """Format a coordinate value: 1 decimal place when close to .0 or .5, else 2."""
     rounded1 = round(v, 1)
@@ -745,8 +771,8 @@ def _style_str(style_key: str | None, styles: dict) -> str:
             else:
                 parts.append(f"{k}={v}")
         return f"[{','.join(parts)}]" if parts else ""
-    if style_key in _TIKZ_COLOR_NAMES:
-        return f"[color={style_key}]"
+    if bare_color_key(style_key):
+        return f"[color={tikz_color(style_key)[0]}]"
     return ""
 
 

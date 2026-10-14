@@ -29,7 +29,9 @@ from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
-    NAMED_STYLE_COLORS,
+    bare_color_key,
+    svg_color,
+    translate_style_colors,
     BOUNDS_PADDING,
     arc_label_anchor,
     arc_params,
@@ -409,7 +411,9 @@ def ir_to_svg(
     # entirely — it is resolved per-op at emission time in _emit_svg_op
     # instead.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
-    _styles = diagram.styles or {}
+    # Color values are parsed once here and emitted as SVG paints (hex for
+    # hex/rgb/hsv/xcolor-mix forms); unrecognized ones warn and pass through.
+    _styles = translate_style_colors(diagram.styles or {}, svg_color, warnings)
     seg_groups: list[str] = []
     for op in sorted_ops:
         if not isinstance(op, (ir.MarkSegments, ir.MarkArcs)):
@@ -2461,8 +2465,6 @@ def _clip_ray_to_bounds(
 # Style helpers
 # ---------------------------------------------------------------------------
 
-_CSS_COLOR_NAMES = NAMED_STYLE_COLORS
-
 # Map TikZ thickness keywords to stroke-width values
 _STROKE_WIDTHS = {"thin": "0.75", "thick": "2.5", "very thick": "3.5", "ultra thick": "5"}
 
@@ -2474,8 +2476,8 @@ def _color_from_style(style_key: str | None, styles: dict) -> str | None:
     if style_key in styles:
         d = styles[style_key]
         return d.get("color") or d.get("fill") or None
-    if style_key in _CSS_COLOR_NAMES:
-        return style_key
+    if bare_color_key(style_key):
+        return svg_color(style_key)
     return None
 
 
@@ -2580,8 +2582,8 @@ def _stroke_attrs(style_key: str | None, styles: dict, svg: ET.Element | None = 
             start_id = _ensure_colored_arrow_marker(svg, attrs["stroke"], start=True)
             attrs["marker-start"] = f"url(#{start_id})"
         return attrs
-    if style_key in _CSS_COLOR_NAMES:
-        attrs["stroke"] = style_key
+    if bare_color_key(style_key):
+        attrs["stroke"] = svg_color(style_key)
     return attrs
 
 
@@ -2636,6 +2638,9 @@ def _fill_attrs(
         color = d.get("fill") or d.get("color") or "blue"
         op = d.get("opacity", opacity)
         return str(color), float(op)
+    if bare_color_key(style_key):
+        # A bare color as the fill's style, as TikZ already honors it.
+        return svg_color(style_key), opacity  # type: ignore[arg-type]
     return "blue", opacity
 
 

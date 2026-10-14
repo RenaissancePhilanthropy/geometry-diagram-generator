@@ -836,7 +836,7 @@ class SectorOp(DSLOpBase):
 
     Example:
       {op: "sector", id: "sec1", center: "O", start: "A", end: "B"}
-      {op: "fill", id: "shade", obj: "sec1", style: {"fill": "lightblue"}, opacity: 0.4}
+      {op: "fill", id: "shade", obj: "sec1", style: {"fill": "cyan!20"}, opacity: 0.4}
     """
     op: Literal["sector"] = "sector"
     center: str
@@ -1264,8 +1264,9 @@ class DrawObj(BaseModel):
     segment def via ``_ensure_segment``.
 
     ``style`` accepts:
-    - a string: a named key into ``annotations.styles``, or a bare TikZ color
-      name like ``"red"`` that ``_style_str`` in ``to_tikz.py`` recognises.
+    - a string: a named key into ``annotations.styles``, or a bare color such as
+      ``"red"``, ``"#9ec5ea"``, ``"rgb(158, 197, 234)"``, ``"hsv(210, 0.5, 0.8)"``
+      or ``"blue!30"`` (see ``render_util.parse_color``).
     - a dict: inline TikZ style properties, e.g. ``{"color": "red", "thick": True}``.
       The lowerer registers these in ``DiagramIR.styles`` under an auto-generated key.
     """

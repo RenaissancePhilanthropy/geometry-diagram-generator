@@ -77,7 +77,7 @@ works if you prefer to write it explicitly, but it isn't required.
   adds optional stroke styling — give at most one of thick/thin/width (width is a positive number,
   overriding the thick/thin presets), and at most one of dashed/dotted. `fill(obj, color=..., opacity=0.0-1.0)`
   fills a closed shape's interior (triangle, polygon, circle, sector) — opacity defaults to fully opaque.
-  Color values are passed straight through unvalidated; use recognizable color names (e.g. "red", "blue").
+  Color values: a named color (e.g. "red", "blue", "teal", "lightgray"), hex "#9ec5ea", "rgb(158, 197, 234)" (0-255), "hsv(210, 0.5, 0.8)" (h in degrees, s and v 0-1), or an xcolor mix "blue!30" (30% blue, rest white) / "red!40!blue".
 - `mark_equal(seg1, seg2, ...)` marks segments as equal in length with matching tick marks;
   `mark_parallel(seg1, seg2, ...)` marks them as parallel with matching chevrons;
   `mark_proportional(seg1, seg2, ...)` marks them as proportional (renders identically to

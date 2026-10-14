@@ -7,10 +7,12 @@ to_svg.py import from here.
 """
 from __future__ import annotations
 
+import colorsys
 import logging
 import math
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
 import sympy.geometry as spg
 from sympy.geometry.line import LinearEntity
@@ -36,6 +38,168 @@ NAMED_STYLE_COLORS = frozenset({
     "yellow", "black", "white", "brown", "gray", "grey",
     "darkgray", "darkgrey", "lightgray", "lightgrey", "olive", "teal", "violet",
 })
+
+
+# ---------------------------------------------------------------------------
+# Color translation layer
+# ---------------------------------------------------------------------------
+#
+# A color specification string is parsed ONCE into a backend-neutral value
+# (``ParsedColor``) and each renderer emits it natively:
+#
+#   form                  SVG                 TikZ
+#   named / "none"        unchanged           unchanged
+#   #rrggbb, #rgb         #rrggbb             \definecolor'd name
+#   rgb(r, g, b) 0-255    #rrggbb             \definecolor'd name
+#   hsv(h, s, v)          #rrggbb             \definecolor'd name
+#   name!pct[!name2]      #rrggbb             unchanged (xcolor mixes natively)
+#   anything else         unchanged + warn    unchanged + warn
+#
+# Mixes are computed from xcolor's own definitions of the named colors (not
+# CSS's -- CSS "green" is #008000, xcolor's is #00ff00) so the SVG agrees with
+# what TikZ draws for the same mix string.
+
+# The style-dict keys whose string values are colors.
+COLOR_STYLE_KEYS = ("color", "fill", "draw", "text")
+
+# xcolor's base definitions (0-1 per channel) of NAMED_STYLE_COLORS; the
+# "grey" spellings, which xcolor itself does not define, map to the gray ones.
+_XCOLOR_RGB: dict[str, tuple[float, float, float]] = {
+    "red": (1, 0, 0), "green": (0, 1, 0), "blue": (0, 0, 1),
+    "cyan": (0, 1, 1), "magenta": (1, 0, 1), "yellow": (1, 1, 0),
+    "black": (0, 0, 0), "white": (1, 1, 1),
+    "gray": (0.5, 0.5, 0.5), "grey": (0.5, 0.5, 0.5),
+    "darkgray": (0.25, 0.25, 0.25), "darkgrey": (0.25, 0.25, 0.25),
+    "lightgray": (0.75, 0.75, 0.75), "lightgrey": (0.75, 0.75, 0.75),
+    "brown": (0.75, 0.5, 0.25), "olive": (0.5, 0.5, 0), "orange": (1, 0.5, 0),
+    "purple": (0.75, 0, 0.25), "teal": (0, 0.5, 0.5), "violet": (0.5, 0, 0.5),
+}
+
+_HEX6_RE = re.compile(r"#([0-9a-fA-F]{6})")
+_HEX3_RE = re.compile(r"#([0-9a-fA-F]{3})")
+_RGB_RE = re.compile(r"rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)")
+_NUM = r"(\d+(?:\.\d*)?|\.\d+)"
+_HSV_RE = re.compile(rf"hsv\(\s*{_NUM}\s*,\s*{_NUM}\s*,\s*{_NUM}\s*\)")
+_MIX_RE = re.compile(r"([a-z]+)!(\d+(?:\.\d+)?)(?:!([a-z]+))?")
+
+# Prefix of the generated TikZ color names (letters and hex digits only, so
+# nothing TeX or the TikZ option parser could misread).
+_TIKZ_COLOR_PREFIX = "gdrgb"
+
+
+@dataclass(frozen=True)
+class ParsedColor:
+    """A color specification parsed once, independent of any backend.
+
+    ``form`` is "named", "hex", "rgb", "hsv", "mix" or "unrecognized";
+    ``rgb`` (0-255 integers) is set for every form except "named" and
+    "unrecognized", whose ``text`` every backend passes through unchanged.
+    """
+    text: str
+    form: str
+    rgb: tuple[int, int, int] | None = None
+
+    @property
+    def recognized(self) -> bool:
+        return self.form != "unrecognized"
+
+
+def _to_255(channels: tuple[float, float, float]) -> tuple[int, int, int]:
+    r, g, b = (int(c * 255 + 0.5) for c in channels)
+    return r, g, b
+
+
+def parse_color(text: str) -> ParsedColor:
+    """Parse a color specification string (see the table above)."""
+    if text in NAMED_STYLE_COLORS or text == "none":
+        return ParsedColor(text, "named")
+    if m := _HEX6_RE.fullmatch(text):
+        h = m.group(1)
+        return ParsedColor(text, "hex", (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)))
+    if m := _HEX3_RE.fullmatch(text):
+        r, g, b = (int(c * 2, 16) for c in m.group(1))
+        return ParsedColor(text, "hex", (r, g, b))
+    if m := _RGB_RE.fullmatch(text):
+        r, g, b = (int(v) for v in m.groups())
+        if max(r, g, b) <= 255:
+            return ParsedColor(text, "rgb", (r, g, b))
+    elif m := _HSV_RE.fullmatch(text):
+        h, s, v = (float(x) for x in m.groups())
+        if h <= 360 and s <= 1 and v <= 1:
+            return ParsedColor(text, "hsv", _to_255(colorsys.hsv_to_rgb((h % 360) / 360, s, v)))
+    elif m := _MIX_RE.fullmatch(text):
+        first, pct, second = m.group(1), float(m.group(2)), m.group(3) or "white"
+        if first in _XCOLOR_RGB and second in _XCOLOR_RGB and pct <= 100:
+            p = pct / 100
+            c1, c2 = _XCOLOR_RGB[first], _XCOLOR_RGB[second]
+            mixed = tuple(p * a + (1 - p) * b for a, b in zip(c1, c2))
+            return ParsedColor(text, "mix", _to_255(mixed))  # type: ignore[arg-type]
+    return ParsedColor(text, "unrecognized")
+
+
+def svg_color(text: str) -> str:
+    """The SVG paint for a color spec: ``#rrggbb`` for every converted form,
+    the string unchanged for named and unrecognized ones."""
+    parsed = parse_color(text)
+    if parsed.rgb is None:
+        return text
+    return "#{:02x}{:02x}{:02x}".format(*parsed.rgb)
+
+
+def tikz_color(text: str) -> tuple[str, str | None]:
+    """The TikZ color for a color spec, as ``(name, definition)``.
+
+    Hex, rgb(...) and hsv(...) forms get a name derived from the RGB value
+    (the same value always gets the same name) and the ``\\definecolor`` line
+    (xcolor's ``RGB`` model: integers 0-255) that must precede its first use.
+    Named colors, xcolor mixes and unrecognized strings are returned
+    unchanged with no definition."""
+    parsed = parse_color(text)
+    if parsed.form not in ("hex", "rgb", "hsv"):
+        return text, None
+    r, g, b = parsed.rgb  # type: ignore[misc]
+    name = f"{_TIKZ_COLOR_PREFIX}{r:02x}{g:02x}{b:02x}"
+    return name, f"\\definecolor{{{name}}}{{RGB}}{{{r},{g},{b}}}"
+
+
+def unrecognized_color_warning(text: str) -> str:
+    return (
+        f"Unrecognized color {text!r}: passed through unchanged, so the two renderers "
+        f"may disagree on it. Use a named color ({', '.join(sorted(NAMED_STYLE_COLORS))}), "
+        f"hex '#rrggbb', 'rgb(r, g, b)' (0-255), 'hsv(h, s, v)' (h 0-360, s and v 0-1) "
+        f"or an xcolor mix such as 'blue!30' or 'red!40!blue'."
+    )
+
+
+def bare_color_key(style_key: str | None) -> bool:
+    """True if a render op's bare ``style`` (not a key of ``DiagramIR.styles``)
+    is itself a recognized color specification."""
+    return style_key is not None and style_key != "" and parse_color(style_key).recognized
+
+
+def translate_style_colors(
+    styles: dict[str, dict[str, Any]],
+    emit: Callable[[str], str],
+    warnings: list[str] | None,
+) -> dict[str, dict[str, Any]]:
+    """A copy of ``styles`` with every string value under a color key
+    (``COLOR_STYLE_KEYS``) replaced by ``emit(value)`` -- the backend's
+    native form. Each distinct unrecognized string adds one warning."""
+    warned: set[str] = set()
+    out: dict[str, dict[str, Any]] = {}
+    for key, style in styles.items():
+        new_style = dict(style)
+        for ck in COLOR_STYLE_KEYS:
+            value = style.get(ck)
+            if not isinstance(value, str):
+                continue
+            if not parse_color(value).recognized and value not in warned:
+                warned.add(value)
+                if warnings is not None:
+                    warnings.append(unrecognized_color_warning(value))
+            new_style[ck] = emit(value)
+        out[key] = new_style
+    return out
 
 
 # ---------------------------------------------------------------------------

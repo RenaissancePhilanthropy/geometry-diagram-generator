@@ -601,7 +601,7 @@ For problems that require displaying x/y coordinates on a grid:
   Arrow styles add arrowheads: {"->": true} for end arrow, {"<->": true} for both ends.
 
 ## Render ops (in construction list)
-- fill: {op:"fill", id, obj:"poly1", opacity:0.3, style:{"color":"blue","fill":"lightblue"}}
+- fill: {op:"fill", id, obj:"poly1", opacity:0.3, style:{"color":"blue","fill":"cyan!20"}}
     Fills a closed shape (polygon, circle, triangle). Optional holes:[...] for cutouts.
 - arc: {op:"arc", id, center:"O", start:"A", end:"B", reflex:false}
     Arc from A to B around center O. reflex:true for major arc (>180°).

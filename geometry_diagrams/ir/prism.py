@@ -548,11 +548,11 @@ GRIDLINE_STYLE: dict[str, Any] = {"color": "gray", "thin": True}
 def _hidden_style(style_key: str | None, styles: dict[str, Any]) -> dict[str, Any]:
     """The author's draw style with ``dashed`` merged in (a dotted pattern is
     dropped: hidden edges are always dashed)."""
-    from .render_util import NAMED_STYLE_COLORS
+    from .render_util import bare_color_key
 
     if style_key is not None and style_key in styles:
         merged = dict(styles[style_key])
-    elif style_key in NAMED_STYLE_COLORS:
+    elif bare_color_key(style_key):
         merged = {"color": style_key}
     else:
         merged = {}
