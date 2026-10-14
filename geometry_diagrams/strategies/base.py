@@ -22,8 +22,9 @@ class SubstanceStrategy(ABC):
     def __init__(self, enable_cache: bool = False, features: "frozenset[str] | set[str] | None" = None):
         super().__init__()
         self.enable_cache = enable_cache
-        # Enabled feature groups (geometry_diagrams/features.py); every
-        # strategy gates generated IR against this set.
+        # Enabled feature groups (geometry_diagrams/features.py). Contract: any
+        # strategy that produces a DiagramIR must call
+        # require_features(diagram, features) before the shared pipeline.
         self.features: frozenset[str] = frozenset(features or ())
         self.logger.info(f"Initialized strategy: {self.__class__.__name__}")
 

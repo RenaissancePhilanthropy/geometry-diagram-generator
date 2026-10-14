@@ -116,15 +116,13 @@ def test_prism_compiles_and_renders_with_solids_off():
 
 
 @pytest.mark.asyncio
-async def test_shared_pipeline_seam_gate_then_pipeline():
+async def test_shared_pipeline_itself_never_gates_a_prism():
     diagram = _prism_diagram()
-    with pytest.raises(FeatureNotEnabledError):
-        require_features(diagram, frozenset())
-    require_features(diagram, frozenset({"solids"}))
+    # run_ir_pipeline takes no enabled set: a prism compiles and renders
+    # through it with solids off. The gate lives in the strategies' post-parse
+    # path (see the strategy tests below).
     result = await run_ir_pipeline(diagram, SVGRenderer())
     assert "<svg" in result.svg
-    # the pipeline itself never consults the enabled set: it renders the same
-    # diagram with no features anywhere in sight
     assert "P_v111" in result.sym_table
 
 
@@ -319,3 +317,74 @@ async def test_python_full_prompt_gets_features_from_state(monkeypatch):
             })
     assert "TEST-ONLY-SOLIDS-FRAGMENT" not in prompts[0]
     assert "TEST-ONLY-SOLIDS-FRAGMENT" in prompts[1]
+
+
+# --- real child process: main() forwards the request's features --------------
+
+_CHILD_WITH_TEST_GROUP = (
+    "import geometry_diagrams.pydsl as p\n"
+    "p.test_only_gated = lambda: 42\n"
+    "p.GROUPED_NAMES['test_group'] = ['test_only_gated']\n"
+    "from geometry_diagrams.pydsl import _sandbox_child\n"
+    "_sandbox_child.main()\n"
+)
+
+
+def test_child_main_exposes_grouped_name_only_when_request_enables_group():
+    """Real child process: the request's `features` must reach the namespace
+    builder inside _sandbox_child.main (dropping either the read or the
+    forwarding turns this red)."""
+    from geometry_diagrams.pydsl.sandbox import run_script
+
+    argv = [sys.executable, "-c", _CHILD_WITH_TEST_GROUP]
+    script = "x = test_only_gated()\npoint(0, 0)\n"
+    on = run_script(script, timeout_seconds=10.0, _child_argv=argv, features=frozenset({"test_group"}))
+    off = run_script(script, timeout_seconds=10.0, _child_argv=argv)
+    assert on.error is None, on.error
+    assert off.error is not None and "test_only_gated" in off.error
+
+
+# --- every IR-producing strategy gates through its real post-parse path ------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strategy_name", ["structured", "recipe", "python_full"])
+async def test_each_ir_strategy_rejects_disabled_prism_before_the_pipeline(strategy_name):
+    """Regression guard for the forgettable gate: whatever the strategy, a
+    disabled-group IR must never reach the shared pipeline, and the same IR
+    must reach it when the group is enabled."""
+    from geometry_diagrams.pydsl.sandbox import ScriptResult
+    from geometry_diagrams.strategies import python_full as pf
+    from geometry_diagrams.strategies import recipe as rc
+    from geometry_diagrams.strategies import structured as st
+
+    async def run(features):
+        reached = []
+
+        async def fake_pipeline(diagram_ir, renderer=None):
+            reached.append(diagram_ir)
+            return StructuredRunResult(diagram_ir=diagram_ir, tikz="", svg="<svg/>", sym_table={}, sym_full={})
+
+        if strategy_name == "structured":
+            with patch.object(st, "_run_ir_pipeline", new=fake_pipeline):
+                out = await st._run_pipeline_node(
+                    {"diagram_ir": _prism_diagram(), "renderer": None, "attempt": 0, "features": features})
+        elif strategy_name == "recipe":
+            with patch.object(rc, "lower_to_ir", return_value=_prism_diagram()), \
+                 patch.object(rc, "_run_ir_pipeline", new=fake_pipeline):
+                out = await rc._run_recipe_pipeline_node(
+                    {"dsl": MagicMock(), "renderer": None, "recipe_metadata": rc.RecipeMetadata(),
+                     "attempt": 1, "features": features})
+        else:
+            fake = ScriptResult(diagram_ir=_prism_diagram(), error=None, error_type=None)
+            state = {"script": "x", "renderer": None, "attempt": 0, "features": features,
+                     "metadata": pf.PythonFullMetadata(attempt_traces=[pf.PythonFullAttemptTrace(
+                         attempt=0, script="x", error=None, stage="generation")])}
+            with patch.object(pf, "run_script", return_value=fake), \
+                 patch.object(pf, "run_ir_pipeline", new=fake_pipeline):
+                out = await pf._run_script_node(state)
+        return out, reached
+
+    out, reached = await run(frozenset())
+    assert reached == [] and out["result"] is None and "solids" in out["last_error"]
+    out, reached = await run(frozenset({"solids"}))
+    assert len(reached) == 1 and out["result"] is not None

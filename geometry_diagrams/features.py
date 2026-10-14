@@ -11,7 +11,11 @@ only -- what a model is told about and allowed to produce:
   after parsing (``require_features``), with an error the retry loops feed
   back to the model.
 
-It never gates compilation or rendering: every registered kind always
+CONTRACT: any strategy that produces a DiagramIR must call
+``require_features(diagram, self.features)`` after parsing/lowering and before
+the shared pipeline (``run_ir_pipeline``), reusing its existing retry-error
+path; ``tests/test_feature_gating.py`` has a parametrized regression test over
+the IR-producing strategies. It never gates compilation or rendering: every registered kind always
 compiles and renders, so stored diagrams stay portable regardless of the
 setting. The structured and recipe strategies expose static schemas
 (``DiagramIR`` / the recipe DSL) that cannot be filtered per request, so the
