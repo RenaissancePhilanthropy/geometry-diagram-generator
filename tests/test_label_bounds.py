@@ -196,3 +196,115 @@ def test_hopeless_overflow_is_not_fixed_and_still_flagged():
     assert len(find_out_of_bounds_labels(svg)) == 1
     _, vb, _, _ = _root_geometry(svg)
     assert vb[2] < 2000
+
+
+def _arc_text_diagram(canvas_kwargs=None):
+    from geometry_diagrams.ir.ir import (
+        ArcCenterStartEnd, Canvas, DiagramIR, LabelAlongArc, PointFixed,
+    )
+
+    return DiagramIR(
+        canvas=Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3),
+        define=[
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=3, y=0),
+            PointFixed(id="E", x=0, y=3),
+            ArcCenterStartEnd(id="a", center="O", start="S", end="E"),
+        ],
+        render=[LabelAlongArc(arc="a", text="arc text", pos=0.5)],
+    )
+
+
+def _render_ir(diagram) -> str:
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+
+    return ir_to_svg(diagram, compile_defs(diagram))
+
+
+def test_clean_arc_text_diagram_keeps_exact_viewbox():
+    svg = _render_ir(_arc_text_diagram())
+    assert 'data-role="label-along-arc"' in svg
+    assert ET.fromstring(svg).get("viewBox") == "0 0 500 500"
+    assert find_out_of_bounds_labels(svg) == []
+
+
+def test_overflowing_arc_text_is_contained_after_growth(monkeypatch):
+    # Normal arc text sits well inside the canvas margin; push the glyph run
+    # radially outward so its stamped bbox leaves the viewBox.
+    monkeypatch.setattr("geometry_diagrams.ir.to_svg._ARC_TEXT_OFFSET", 150)
+    svg = _render_ir(_arc_text_diagram())
+    assert 'data-role="label-along-arc"' in svg
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, h = _root_geometry(svg)
+    assert (vb[2], vb[3]) == (w, h) and (vb[2] > 500 or vb[3] > 500 or vb[0] < 0 or vb[1] < 0)
+
+
+# --- growth cap boundary (_MAX_LABEL_GROWTH_PX = 200 per side) --------------
+# A free-text label centred at x = 5 + k units sits k*~45 px past the right
+# edge; its bbox right edge overflows by about that plus half its width.
+
+def _right_overflow(svg: str) -> float:
+    root = ET.fromstring(svg)
+    vb = [float(v) for v in root.get("viewBox").split()]
+    right = vb[0] + vb[2]
+    return max(
+        float(el.get("data-bbox").split(",")[2]) - right
+        for el in root.iter() if el.get("data-bbox")
+    )
+
+
+def _label_right_edge_at_overflow(target: float) -> float:
+    """x (user units) at which the label's right edge overflows the clean
+    500px viewBox by exactly ``target`` px, found from the clean render."""
+    clean = _render(_overflowing((0, 0)))
+    # bbox width of the label, and px per user unit (500px / (10 units + margins)).
+    bbox = next(
+        [float(v) for v in el.get("data-bbox").split(",")]
+        for el in ET.fromstring(clean).iter() if el.get("data-bbox")
+    )
+    half_w = (bbox[2] - bbox[0]) / 2
+    at0 = _render(_overflowing((4.9, 0)))
+    # label x-centre in px at x=4.9 vs 0 gives the px-per-unit scale
+    c0 = (bbox[0] + bbox[2]) / 2
+    b1 = next(
+        [float(v) for v in el.get("data-bbox").split(",")]
+        for el in ET.fromstring(at0).iter() if el.get("data-bbox")
+    )
+    c1 = (b1[0] + b1[2]) / 2
+    px_per_unit = (c1 - c0) / 4.9
+    return (500 + target - half_w - c0) / px_per_unit
+
+
+def test_overflow_just_under_cap_grows_and_is_contained():
+    x = _label_right_edge_at_overflow(190.0)
+    svg = _render(_overflowing((x, 0)))
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, _ = _root_geometry(svg)
+    assert 500 + 189 < w <= 500 + 200
+
+
+def test_overflow_just_over_cap_is_not_grown_and_still_flagged():
+    x = _label_right_edge_at_overflow(210.0)
+    svg = _render(_overflowing((x, 0)))
+    violations = find_out_of_bounds_labels(svg)
+    assert len(violations) == 1
+    # Growth stops at the cap: the viewBox did not follow the label out.
+    _, vb, _, _ = _root_geometry(svg)
+    assert vb[2] <= 500 + 200
+
+
+def test_one_side_capped_while_another_side_grows():
+    """Each side is capped independently: a hopeless right overflow does not
+    stop an in-range left overflow from being fixed (the hopeless label stays
+    flagged, the left one is contained)."""
+    def build():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        label_text("5 units wide", at=(-4.9, 0))
+        label_text("way off canvas", at=(500, 0))
+
+    svg = _render(build)
+    _, vb, _, _ = _root_geometry(svg)
+    assert vb[0] < 0 and vb[2] <= 500 + 30.01 + 200
+    flagged = [v.text for v in find_out_of_bounds_labels(svg)]
+    assert flagged == ["way off canvas"]

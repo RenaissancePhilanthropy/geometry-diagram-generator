@@ -527,23 +527,25 @@ def ir_to_svg(
             math_glyph=lp.math_glyph,
         )
 
-    _grow_viewbox_to_fit_labels(svg, background, pending_labels, svg_w, svg_h)
+    _grow_viewbox_to_fit_labels(svg, background, svg_w, svg_h)
 
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
 
 
-# Largest growth (SVG px) applied to any one side to fit a label. Outer-edge
-# labels overflow by tens of pixels; a label placed hundreds of pixels off
-# canvas is a mistake, and is left unfixed so the label-bounds retry check
-# still reports it instead of the diagram ballooning.
+# Largest growth (SVG px) applied to any ONE side to fit a label. Outer-edge
+# labels overflow by tens of pixels; a label more than this far off canvas is
+# almost always a generation mistake, so growth stops at the cap and the
+# remaining overflow is left for find_out_of_bounds_labels (python_full's
+# retry) to report. Sides are capped independently: if one side hits the cap,
+# the other sides still grow to fit their labels. Deliberate deviation from the
+# ticket's unconditional wording; recorded in the ticket and spec.
 _MAX_LABEL_GROWTH_PX = 200.0
 
 
 def _grow_viewbox_to_fit_labels(
     svg: ET.Element,
     background: ET.Element,
-    labels: list[_LabelPlacement],
     svg_w: float,
     svg_h: float,
 ) -> None:
@@ -556,9 +558,15 @@ def _grow_viewbox_to_fit_labels(
     byte-identical to before. Growth per side is capped at
     ``_MAX_LABEL_GROWTH_PX``; overflow beyond that is left for the
     label-bounds check to report."""
-    if not labels:
+    # Read the stamped data-bbox of every emitted label element: this is
+    # exactly what find_out_of_bounds_labels checks, and it also covers labels
+    # emitted outside pending_labels (arc text's per-glyph wrapper <g>).
+    boxes = [
+        tuple(float(v) for v in el.get("data-bbox").split(","))
+        for el in svg.iter() if el.get("data-bbox") is not None
+    ]
+    if not boxes:
         return
-    boxes = [_label_bbox(lp) for lp in labels]
     left = max(0.0, -min(b[0] for b in boxes))
     top = max(0.0, -min(b[1] for b in boxes))
     right = max(0.0, max(b[2] for b in boxes) - svg_w)
