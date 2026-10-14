@@ -12,7 +12,8 @@ import math
 import re
 from typing import Any
 
-from ..ir.derived import REGISTRY as DERIVED_REGISTRY
+from ..ir.derived import REGISTRY as DERIVED_REGISTRY, render_refs
+from ..ir.refs import def_references
 from ..ir.ir import (
     DiagramIR, Canvas, Params,
     PointFixed, PointOn, PointOnParam, PointMidpoint, PointFoot, PointBetween, PointTriangleCenter,
@@ -84,6 +85,17 @@ _POS_TO_ANGLE: dict[str, float | None] = {
 _NUMERIC_DEGREE_RE = re.compile(r"^\s*\d+(\.\d+)?\s*°\s*$")
 
 
+def _string_values(value: Any) -> set[str]:
+    """Every string nested anywhere in a model_dump() value."""
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return set().union(*(_string_values(v) for v in value.values()))
+    if isinstance(value, (list, tuple)):
+        return set().union(*(_string_values(v) for v in value))
+    return set()
+
+
 class _Lowerer:
     """Stateful lowering context for a single RecipeDSL."""
 
@@ -113,6 +125,13 @@ class _Lowerer:
         self._pending_angle_pairs: list[PendingAnglePair] = []
         # Prism DSL id -> RectangularPrism def (for segment reuse of its edges)
         self._prisms: dict[str, RectangularPrism] = {}
+        # Segment op id -> (prism edge id, prism id) for a `segment` op joining
+        # two corners of one prism edge. The op's id is an alias of that edge:
+        # never auto-drawn while its prism is drawn (the edge already is), an
+        # explicit draw of it draws the edge (like the `endpoints` shorthand),
+        # and its own Segment def is kept only when another definition, check
+        # or render op still names the id (so such references resolve).
+        self._edge_aliases: dict[str, tuple[str, str]] = {}
         # Projected prism corners (x, y) the auto canvas must contain
         self._prism_extent: list[tuple[float, float]] = []
 
@@ -165,6 +184,7 @@ class _Lowerer:
             self._lower_op(op)
         self._apply_annotations(dsl.annotations, dsl.construction)
         self._lower_checks(dsl.checks)
+        self._prune_unreferenced_edge_aliases()
         canvas = self._canvas or self._auto_canvas()
         return DiagramIR(
             define=self._defs,
@@ -236,7 +256,14 @@ class _Lowerer:
                 self._drawable.add(op.id)
             case SegmentOp():
                 self._add(Segment(id=op.id, a=op.endpoints[0], b=op.endpoints[1]))
-                self._drawable.add(op.id)
+                owner = self._prism_edge_owner(op.endpoints[0], op.endpoints[1])
+                if owner is None:
+                    self._drawable.add(op.id)
+                else:
+                    # Along one prism edge: the op's id becomes an alias of the
+                    # prism's own edge (see _edge_aliases) instead of a second
+                    # stroke over the face outline.
+                    self._edge_aliases[op.id] = owner
             case RayOp():
                 self._add(Ray(id=op.id, a=op.from_, b=op.through))
                 self._drawable.add(op.id)
@@ -1172,6 +1199,15 @@ class _Lowerer:
                     if obj_id in explicit_draw_obj_ids:
                         continue  # explicit draw takes precedence (preserves style)
                     self._renders.append(Draw(obj=obj_id))
+            # An edge-alias segment op shows as its prism edge only when the
+            # prism itself is not drawn (otherwise the edge already is).
+            for alias, (edge, prism_id) in self._edge_aliases.items():
+                prism_drawn = prism_id in explicit_draw_obj_ids or (
+                    prism_id in self._drawable and prism_id not in hidden_ids
+                )
+                if alias in hidden_ids or alias in explicit_draw_obj_ids or prism_drawn:
+                    continue
+                self._renders.append(Draw(obj=edge))
             # Emit a single DrawPoints for all non-implicit, non-hidden points
             non_implicit = [
                 pid for pid in self._point_ids
@@ -1329,7 +1365,9 @@ class _Lowerer:
                 seg_id = self._ensure_segment(draw_obj.endpoints[0], draw_obj.endpoints[1])
                 self._renders.append(Draw(obj=seg_id, style=style_key))
             else:
-                self._renders.append(Draw(obj=draw_obj.obj, style=style_key))
+                alias = self._edge_aliases.get(draw_obj.obj)
+                obj = alias[0] if alias is not None else draw_obj.obj
+                self._renders.append(Draw(obj=obj, style=style_key))
 
     def _ensure_segment(self, p: str, q: str) -> str:
         """Return the id of a Segment def for endpoints (p, q), creating one if needed."""
@@ -1347,11 +1385,34 @@ class _Lowerer:
         """The prism's own derived edge id when p, q are the two ends of one
         edge of the same prism (corner bits differ on exactly one axis); None
         for diagonals, non-edges and corners of different prisms."""
+        owner = self._prism_edge_owner(p, q)
+        return owner[0] if owner is not None else None
+
+    def _prism_edge_owner(self, p: str, q: str) -> tuple[str, str] | None:
+        """(edge id, prism id) for ``_prism_edge``; None when it has none."""
         for stmt in self._prisms.values():
             bits = {name: b for b, name in _prism.corner_names(stmt).items()}
             if p in bits and q in bits and sum(x != y for x, y in zip(bits[p], bits[q])) == 1:
-                return _prism.edge_id(stmt.id, bits[p], bits[q])
+                return _prism.edge_id(stmt.id, bits[p], bits[q]), stmt.id
         return None
+
+    def _prune_unreferenced_edge_aliases(self) -> None:
+        """Drop the Segment def of each edge-alias segment op (see
+        ``_edge_aliases``) that no other definition, check or render op names:
+        the prism's own edge stands for it."""
+        if not self._edge_aliases:
+            return
+        named: set[str] = set()
+        for d in self._defs:
+            named |= {r for r in def_references(d) if r != d.id}
+        for r in self._renders:
+            named |= {oid for _, oid in render_refs(r)}
+        for c in self._checks:
+            named |= _string_values(c.model_dump(exclude={"kind", "level", "source"}))
+        self._defs = [
+            d for d in self._defs
+            if not (isinstance(d, Segment) and d.id in self._edge_aliases and d.id not in named)
+        ]
 
     # ------------------------------------------------------------------
     # Explicit checks (the document's `checks:` field)
