@@ -70,12 +70,46 @@ def test_parse_converts_accepted_forms_to_rgb(spec, rgb):
     assert parsed.rgb == rgb
 
 
-@pytest.mark.parametrize("name", ["red", "blue", "teal", "lightgray", "grey", "none"])
+@pytest.mark.parametrize("name", ["red", "blue", "teal", "lightgray", "orange", "none"])
 def test_named_colors_pass_through_both_backends(name):
     parsed = parse_color(name)
     assert parsed.recognized
     assert svg_color(name) == name
     assert tikz_color(name) == (name, None)
+
+
+# CSS names xcolor does not define (and the "grey" spellings, which it also lacks)
+# get a TikZ \\definecolor with their CSS (or gray) value; SVG keeps the name.
+CSS_NOT_IN_XCOLOR = [
+    ("lightblue", (173, 216, 230)), ("gold", (255, 215, 0)), ("skyblue", (135, 206, 235)),
+    ("grey", (128, 128, 128)), ("darkgrey", (64, 64, 64)), ("lightgrey", (191, 191, 191)),
+]
+
+
+@pytest.mark.parametrize("name,rgb", CSS_NOT_IN_XCOLOR)
+def test_css_names_xcolor_lacks_are_defined_for_tikz(name, rgb):
+    parsed = parse_color(name)
+    assert parsed.recognized and parsed.form == "css"
+    assert svg_color(name) == name
+    tname, definition = tikz_color(name)
+    assert definition == "\\definecolor{%s}{RGB}{%d,%d,%d}" % (tname, *rgb)
+    assert tname == tikz_color(_hex(rgb))[0]  # same value, same name as the hex form
+
+
+@pytest.mark.parametrize("name", ["red", "orange", "lime", "pink", "darkgray", "violet"])
+def test_xcolor_known_names_stay_unchanged_for_tikz(name):
+    assert tikz_color(name)[1] is None
+    assert tikz_color(name)[0] == name
+
+
+def test_tikz_output_defines_css_fill_color_before_use():
+    d = _diagram({"f": {"fill": "lightblue", "draw": "gold"}}, [ir.Fill(obj="T", style="f")])
+    tikz = _tikz(d)
+    names = {n: rgb for n, rgb in _definitions(tikz)}
+    assert set(names.values()) == {(173, 216, 230), (255, 215, 0)}
+    for n in names:
+        _assert_defined_before_use(tikz, n)
+    assert "lightblue" not in tikz.split("\\begin{tikzpicture}")[-1].replace("\\definecolor", "")
 
 
 @pytest.mark.parametrize("spec", UNRECOGNIZED)
@@ -366,6 +400,15 @@ def test_tikz_compiles_each_form_with_equivalent_fill(spec, expected):
     assert any(
         all(abs(int(f[i:i + 2], 16) - w) <= 1 for i, w in zip((1, 3, 5), want)) for f in found
     ), (expected, found)
+
+
+@pytest.mark.skipif(not renderer_available(), reason="TikZ renderer container not running")
+def test_tikz_compiles_css_name_xcolor_lacks():
+    from geometry_diagrams.util.tikz_renderer import render_tikz
+
+    diagram = _diagram({"f": {"fill": "lightblue", "draw": "grey"}}, [ir.Fill(obj="T", style="f")])
+    svg = render_tikz(_tikz(diagram))
+    assert re.search(r"fill=['\"]#(?:add8e6|ADD8E6)['\"]", svg), svg[:500]
 
 
 # ---------------------------------------------------------------------------

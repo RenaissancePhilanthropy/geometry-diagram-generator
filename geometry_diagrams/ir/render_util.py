@@ -48,7 +48,9 @@ NAMED_STYLE_COLORS = frozenset({
 # (``ParsedColor``) and each renderer emits it natively:
 #
 #   form                  SVG                 TikZ
-#   named / "none"        unchanged           unchanged
+#   named / "none"        unchanged           unchanged (xcolor knows them)
+#   CSS name xcolor lacks unchanged           \definecolor'd name (e.g. lightblue, gold;
+#   (and grey spellings)                      CSS values, from matplotlib's CSS4 table)
 #   #rrggbb, #rgb         #rrggbb             \definecolor'd name
 #   rgb(r, g, b) 0-255    #rrggbb             \definecolor'd name
 #   hsv(h, s, v)          #rrggbb             \definecolor'd name
@@ -75,6 +77,30 @@ _XCOLOR_RGB: dict[str, tuple[float, float, float]] = {
     "purple": (0.75, 0, 0.25), "teal": (0, 0.5, 0.5), "violet": (0.5, 0, 0.5),
 }
 
+# Color names xcolor itself defines (its base set, always available). Any other
+# CSS4 name, and the "grey" spellings, must be defined for TikZ.
+_XCOLOR_BASE_NAMES = frozenset({
+    "black", "blue", "brown", "cyan", "darkgray", "gray", "green", "lightgray", "lime",
+    "magenta", "olive", "orange", "pink", "purple", "red", "teal", "violet", "white", "yellow",
+})
+
+
+def _css_rgb(name: str) -> tuple[int, int, int] | None:
+    """RGB (0-255) of a color name TikZ cannot resolve on its own, else None.
+
+    The "grey" spellings take the gray values (xcolor has no "grey"); any other
+    CSS4 name xcolor does not define takes its CSS value."""
+    if name in _XCOLOR_BASE_NAMES:
+        return None
+    if name in _XCOLOR_RGB:
+        return _to_255(_XCOLOR_RGB[name])
+    from matplotlib.colors import CSS4_COLORS, to_rgb
+
+    if name in CSS4_COLORS:
+        return _to_255(to_rgb(CSS4_COLORS[name]))
+    return None
+
+
 _HEX6_RE = re.compile(r"#([0-9a-fA-F]{6})")
 _HEX3_RE = re.compile(r"#([0-9a-fA-F]{3})")
 _RGB_RE = re.compile(r"rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)")
@@ -91,9 +117,11 @@ _TIKZ_COLOR_PREFIX = "gdrgb"
 class ParsedColor:
     """A color specification parsed once, independent of any backend.
 
-    ``form`` is "named", "hex", "rgb", "hsv", "mix" or "unrecognized";
+    ``form`` is "named", "css", "hex", "rgb", "hsv", "mix" or "unrecognized";
     ``rgb`` (0-255 integers) is set for every form except "named" and
     "unrecognized", whose ``text`` every backend passes through unchanged.
+    A "css" name is passed through by SVG (valid CSS) but defined for TikZ,
+    because xcolor lacks it.
     """
     text: str
     form: str
@@ -112,7 +140,12 @@ def _to_255(channels: tuple[float, float, float]) -> tuple[int, int, int]:
 def parse_color(text: str) -> ParsedColor:
     """Parse a color specification string (see the table above)."""
     if text in NAMED_STYLE_COLORS or text == "none":
-        return ParsedColor(text, "named")
+        # Named for SVG; TikZ additionally defines the names xcolor lacks (see
+        # ``tikz_color``), so the parsed form says "css" for those.
+        rgb = _css_rgb(text) if text != "none" else None
+        return ParsedColor(text, "css", rgb) if rgb is not None else ParsedColor(text, "named")
+    if (rgb := _css_rgb(text)) is not None:
+        return ParsedColor(text, "css", rgb)
     if m := _HEX6_RE.fullmatch(text):
         h = m.group(1)
         return ParsedColor(text, "hex", (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)))
@@ -141,7 +174,7 @@ def svg_color(text: str) -> str:
     """The SVG paint for a color spec: ``#rrggbb`` for every converted form,
     the string unchanged for named and unrecognized ones."""
     parsed = parse_color(text)
-    if parsed.rgb is None:
+    if parsed.rgb is None or parsed.form == "css":
         return text
     return "#{:02x}{:02x}{:02x}".format(*parsed.rgb)
 
@@ -149,13 +182,13 @@ def svg_color(text: str) -> str:
 def tikz_color(text: str) -> tuple[str, str | None]:
     """The TikZ color for a color spec, as ``(name, definition)``.
 
-    Hex, rgb(...) and hsv(...) forms get a name derived from the RGB value
+    Hex, rgb(...) and hsv(...) forms, and the CSS names xcolor lacks, get a name derived from the RGB value
     (the same value always gets the same name) and the ``\\definecolor`` line
     (xcolor's ``RGB`` model: integers 0-255) that must precede its first use.
     Named colors, xcolor mixes and unrecognized strings are returned
     unchanged with no definition."""
     parsed = parse_color(text)
-    if parsed.form not in ("hex", "rgb", "hsv"):
+    if parsed.form not in ("hex", "rgb", "hsv", "css"):
         return text, None
     r, g, b = parsed.rgb  # type: ignore[misc]
     name = f"{_TIKZ_COLOR_PREFIX}{r:02x}{g:02x}{b:02x}"
