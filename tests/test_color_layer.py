@@ -350,9 +350,18 @@ def test_tikz_compiles_each_form_with_equivalent_fill(spec, expected):
         [ir.Fill(obj="T", style="f"), ir.Draw(obj="s", style=spec)],
     )
     svg = render_tikz(_tikz(diagram))
-    # dvisvgm writes colors as #rrggbb; allow +-1 per channel for xcolor's
+    # dvisvgm writes colors as #rrggbb, abbreviated to #rgb when every channel
+    # has a doubled digit pair; expand those. Allow +-1 per channel for xcolor's
     # own fixed-point mixing arithmetic.
-    found = {m.lower() for m in re.findall(r"(?:fill|stroke)=['\"](#[0-9a-fA-F]{6})['\"]", svg)}
+    def _expand(m):
+        return "#" + "".join(c * 2 for c in m[1:]) if len(m) == 4 else m
+
+    found = {
+        _expand(m.lower())
+        for m in re.findall(
+            r"(?:fill|stroke)=['\"](#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))['\"]", svg
+        )
+    }
     want = tuple(int(expected[i:i + 2], 16) for i in (1, 3, 5))
     assert any(
         all(abs(int(f[i:i + 2], 16) - w) <= 1 for i, w in zip((1, 3, 5), want)) for f in found
