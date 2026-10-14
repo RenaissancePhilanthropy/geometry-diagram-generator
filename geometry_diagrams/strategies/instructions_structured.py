@@ -326,9 +326,11 @@ one edge is that same edge.
 - **Wireframe look:** `draw` the prism id; pass `depth_scale` 2/3 (0.67) for wireframe-like \
 figures. **Solid-shaded look:** `fill` and `draw` the three visible FACE ids (front/right/top; \
 front/left/top for `side: "left"`) and do NOT `draw` the prism id, which strokes dashed hidden \
-edges over the fills. A fill's `style` is a color: `"#rrggbb"`, `"rgb(r, g, b)"` or `"hsv(h, s, v)"` \
-(avoid CSS color names). For unit-cube figures use `view: "isometric"` with `unit_cubes: true`.
-- **Labels:** put a dimension on an edge with `label_segment` on an edge id (or on a segment \
+edges over the fills. A `fill` takes its color from its `style` (a color string: `"#rrggbb"`, \
+`"rgb(r, g, b)"`, `"hsv(h, s, v)"` or an xcolor mix, avoiding CSS color names) or from a \
+`styles` entry of the diagram that the `style` names (`{"fill": ...}`); `opacity` is separate. For unit-cube figures use `view: "isometric"` with `unit_cubes: true`.
+- **Labels:** fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
+`text` and exactly one of `at` ([x, y]) or `centroid_of` (an object id). Put a dimension on an edge with `label_segment` on an edge id (or on a segment \
 between two corners of one edge). Segment-label text renders in math mode in TikZ, so words and \
 units belong in `label_free_text` instead: `centroid_of` a face id labels that face, `centroid_of` \
 the prism id centers a label on the prism.

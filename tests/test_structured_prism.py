@@ -45,6 +45,18 @@ def test_solids_on_prompt_extends_the_base_with_the_guidance():
         assert needle in on, needle
 
 
+def test_prompt_states_fill_style_and_label_field_lists():
+    on = ins.build_structured_instructions(SOLIDS)
+    assert "`fill` takes its color from its `style`" in on
+    assert "`styles`" in on
+    assert "`label_free_text`: `text` and exactly one of `at` ([x, y]) or `centroid_of`" in on
+    assert "`label_segment`: `seg`, `text`, optional `pos`" in on
+    # the field names it documents are real IR fields
+    assert {"text", "at", "centroid_of"} <= set(ir.LabelFreeText.model_fields)
+    assert {"seg", "text", "pos"} <= set(ir.LabelSegment.model_fields)
+    assert "style" in ir.Fill.model_fields
+
+
 def test_prompt_example_is_embedded_verbatim():
     on = ins.build_structured_instructions(SOLIDS)
     assert json.dumps(ins.PRISM_EXAMPLE_IR, indent=2) in on
@@ -56,10 +68,12 @@ def test_generate_node_sends_the_gated_prompt():
         structured.ainvoke.reset_mock()
         structured.ainvoke.side_effect = [_raw(_example())]
         with patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=llm):
-            try:
-                asyncio.run(StructureStrategy(features=feats).run("a box", renderer=SVGRenderer()))
-            except RuntimeError:
-                pass  # disabled prism is rejected; only the prompt matters here
+            coro = StructureStrategy(features=feats).run("a box", renderer=SVGRenderer())
+            if feats:
+                asyncio.run(coro)  # solids on: any error must fail the test
+            else:
+                with pytest.raises(RuntimeError):  # disabled prism is rejected
+                    asyncio.run(coro)
         system = structured.ainvoke.call_args_list[0].args[0][0]
         text = system.content if isinstance(system.content, str) else "".join(
             b.get("text", "") for b in system.content)
