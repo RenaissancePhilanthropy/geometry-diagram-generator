@@ -344,7 +344,7 @@ def ir_to_svg(
     style_el.text = "\n    " + "\n    ".join(font_rules) + "\n"
 
     # White background
-    ET.SubElement(svg, "rect", {
+    background = ET.SubElement(svg, "rect", {
         "x": "0", "y": "0",
         "width": fmt_num(svg_w), "height": fmt_num(svg_h),
         "fill": "white",
@@ -527,8 +527,58 @@ def ir_to_svg(
             math_glyph=lp.math_glyph,
         )
 
+    _grow_viewbox_to_fit_labels(svg, background, pending_labels, svg_w, svg_h)
+
     # --- Serialise ---
     return ET.tostring(svg, encoding="unicode", xml_declaration=False)
+
+
+# Largest growth (SVG px) applied to any one side to fit a label. Outer-edge
+# labels overflow by tens of pixels; a label placed hundreds of pixels off
+# canvas is a mistake, and is left unfixed so the label-bounds retry check
+# still reports it instead of the diagram ballooning.
+_MAX_LABEL_GROWTH_PX = 200.0
+
+
+def _grow_viewbox_to_fit_labels(
+    svg: ET.Element,
+    background: ET.Element,
+    labels: list[_LabelPlacement],
+    svg_w: float,
+    svg_h: float,
+) -> None:
+    """Extend the viewBox/size so every label's bbox is contained.
+
+    Scale is preserved (viewBox size == pixel size, as before) and no content
+    moves in user coordinates: left/top overflow is absorbed by a negative
+    viewBox origin rather than by shifting elements. A no-op (nothing about
+    the SVG changes) when no label overflows, so such diagrams are
+    byte-identical to before. Growth per side is capped at
+    ``_MAX_LABEL_GROWTH_PX``; overflow beyond that is left for the
+    label-bounds check to report."""
+    if not labels:
+        return
+    boxes = [_label_bbox(lp) for lp in labels]
+    left = max(0.0, -min(b[0] for b in boxes))
+    top = max(0.0, -min(b[1] for b in boxes))
+    right = max(0.0, max(b[2] for b in boxes) - svg_w)
+    bottom = max(0.0, max(b[3] for b in boxes) - svg_h)
+    if not (left or top or right or bottom):
+        return
+    # data-bbox is stamped at 2 decimals, so round up to the same grid.
+    left, top, right, bottom = (
+        min(math.ceil(v * 100) / 100, _MAX_LABEL_GROWTH_PX) if v else 0.0
+        for v in (left, top, right, bottom)
+    )
+    new_w = svg_w + left + right
+    new_h = svg_h + top + bottom
+    svg.set("width", fmt_num(new_w))
+    svg.set("height", fmt_num(new_h))
+    svg.set("viewBox", f"{fmt_num(-left)} {fmt_num(-top)} {fmt_num(new_w)} {fmt_num(new_h)}")
+    background.set("x", fmt_num(-left))
+    background.set("y", fmt_num(-top))
+    background.set("width", fmt_num(new_w))
+    background.set("height", fmt_num(new_h))
 
 
 # ---------------------------------------------------------------------------

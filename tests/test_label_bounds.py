@@ -107,3 +107,92 @@ def test_rotated_arc_text_wrapper_bbox_is_reported():
     assert len(violations) == 1
     assert violations[0].text == "off canvas"
     assert violations[0].overflow > 0
+
+
+# ---------------------------------------------------------------------------
+# Grow-to-fit: the renderer extends viewBox/size to contain overflowing labels
+# ---------------------------------------------------------------------------
+
+import xml.etree.ElementTree as ET
+
+
+def _root_geometry(svg: str):
+    root = ET.fromstring(svg)
+    vx, vy, vw, vh = (float(v) for v in root.get("viewBox").split())
+    return root, (vx, vy, vw, vh), float(root.get("width")), float(root.get("height"))
+
+
+def _overflowing(at):
+    def build():
+        canvas(x_range=(-5, 5), y_range=(-5, 5))
+        point(0, 0)
+        label_text("5 units wide", at=at)
+
+    return build
+
+
+def test_clean_diagram_keeps_exact_viewbox_and_size():
+    svg = _render(_overflowing((0, 0)))
+    root, vb, w, h = _root_geometry(svg)
+    assert vb == (0.0, 0.0, 500.0, 500.0)
+    assert (w, h) == (500.0, 500.0)
+    assert root.get("viewBox") == "0 0 500 500"
+    bg = root.find("{http://www.w3.org/2000/svg}rect")
+    assert (bg.get("x"), bg.get("y"), bg.get("width"), bg.get("height")) == ("0", "0", "500", "500")
+
+
+def test_right_overflowing_label_grows_viewbox_to_contain_it():
+    svg = _render(_overflowing((4.9, 0)))
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, h = _root_geometry(svg)
+    assert vb[0] == 0.0 and vb[2] > 500.0
+    assert (w, h) == (vb[2], vb[3])
+
+
+def test_left_overflowing_label_grows_viewbox_to_contain_it():
+    svg = _render(_overflowing((-4.9, 0)))
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, h = _root_geometry(svg)
+    assert vb[0] < 0.0
+    assert (w, h) == (vb[2], vb[3])
+
+
+def test_top_overflowing_label_grows_viewbox_to_contain_it():
+    svg = _render(_overflowing((0, 5.5)))
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, h = _root_geometry(svg)
+    assert vb[1] < 0.0 and (w, h) == (vb[2], vb[3])
+
+
+def test_bottom_overflowing_label_grows_viewbox_to_contain_it():
+    svg = _render(_overflowing((0, -5.5)))
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, w, h = _root_geometry(svg)
+    assert vb[3] > 500.0 and (w, h) == (vb[2], vb[3])
+
+
+def test_growth_preserves_scale_and_content_coordinates():
+    clean = ET.fromstring(_render(_overflowing((0, 0))))
+    grown_svg = _render(_overflowing((-4.9, 5.5)))
+    grown_root, vb, w, h = _root_geometry(grown_svg)
+    # user units per pixel unchanged
+    assert (vb[2] / w, vb[3] / h) == (1.0, 1.0)
+    # the figure's own point is drawn at identical user coordinates
+    def origin_point(root):
+        for c in root.iter("{http://www.w3.org/2000/svg}circle"):
+            if c.get("data-type") == "point":
+                return c.get("cx"), c.get("cy")
+    assert origin_point(grown_root) == origin_point(clean)
+    # background still covers the whole grown viewBox
+    bg = grown_root.find("{http://www.w3.org/2000/svg}rect")
+    assert (float(bg.get("x")), float(bg.get("y"))) == (vb[0], vb[1])
+    assert (float(bg.get("width")), float(bg.get("height"))) == (vb[2], vb[3])
+
+
+def test_hopeless_overflow_is_not_fixed_and_still_flagged():
+    """A label placed absurdly far off canvas is a mistake, not an outer-edge
+    label: growth is capped, so the retry-path check still sees it."""
+    svg = _render(_overflowing((500, 0)))
+    assert len(find_out_of_bounds_labels(svg)) == 1
+    _, vb, _, _ = _root_geometry(svg)
+    assert vb[2] < 2000
