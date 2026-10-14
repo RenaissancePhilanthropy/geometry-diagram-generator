@@ -404,7 +404,7 @@ IR-level definition is `ir.RectangularPrism`.
 | `length`       | number or expr  | Along the front bottom edge (positive) |
 | `width`        | number or expr  | Along the right bottom edge, i.e. the depth (positive) |
 | `height`       | number or expr  | Vertical (positive) |
-| `unit_cubes`   | bool            | Unit-cube prism (default false); the three dimensions must then be literal positive integers |
+| `unit_cubes`   | bool            | Unit-cube prism (default false); the three dimensions must then be literal positive integers, each at most 100 |
 | `vertex_names` | list of 8 strings | Optional corner names, in corner-bit order `000, 001, 010, 011, 100, 101, 110, 111` |
 | `view`         | string          | `"oblique"` (default) or `"isometric"` |
 | `depth_angle`  | number          | Oblique only: angle of the receding depth edge in degrees, in (0, 90); default 45 |
@@ -447,8 +447,11 @@ silent shadow.
   with the draw's style merged with `dashed` (a `dotted` pattern in the style
   is replaced by dashed).
 
-For a unit-cube prism only the three visible face outlines are drawn (no
-hidden edges). For a solid look (no hidden edges), draw and fill the visible
+For a unit-cube prism the three visible face outlines are drawn (no hidden
+edges) plus thin gray gridlines on those faces, built from derived points and
+segments with hidden `__{id}_gp{n}` / `__{id}_g{n}` ids. Unit-cube dimensions
+are limited to 100 per dimension (a larger value is a compile error telling
+the author to use wireframe mode, `unit_cubes=false`). For a solid look (no hidden edges), draw and fill the visible
 face ids instead of the prism id.
 
 **Measures, queries and checks.** The `prism` query returns the true

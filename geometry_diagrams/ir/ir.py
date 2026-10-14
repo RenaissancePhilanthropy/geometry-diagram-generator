@@ -608,7 +608,8 @@ class RectangularPrism(DefBase):
     front bottom edge, ``width`` along the right bottom edge (the depth) and
     ``height`` is vertical. Each dimension is a positive number or an
     expression over params and other definitions; with ``unit_cubes`` the
-    three must be literal positive integers.
+    three must be literal positive integers, each at most 100 (use wireframe
+    mode for larger prisms).
 
     The eight corners are registered as points ``{id}_v{a}{b}{c}`` where the
     bits are (length-max, height-max, width-max), e.g. ``P_v000`` is the

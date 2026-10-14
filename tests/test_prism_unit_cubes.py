@@ -240,18 +240,31 @@ def test_authored_definition_with_a_gridline_id_is_a_typed_error(hidden, kind):
         ir_to_svg(d, {})
 
 
-def test_large_prism_renders_within_a_few_seconds_and_under_the_op_cap():
-    from geometry_diagrams.pydsl.builder import DEFAULT_OP_CAP
-
+def test_8x3x7_effective_defs_and_time_are_small():
     d = _diagram(8, 3, 7, view="isometric")
     start = time.perf_counter()
     sym = compile_defs(d)
     svg = ir_to_svg(d, sym)
     elapsed = time.perf_counter() - start
-    n_defs = len(effective_defs(d))
-    assert n_defs < DEFAULT_OP_CAP
+    assert len(effective_defs(d)) < 200
     assert elapsed < 10
     assert svg.count("data-ir-id=\"__P_g") >= (7 + 6) + (2 + 6) + (7 + 2)
+
+
+@pytest.mark.parametrize("axis", ["length", "width", "height"])
+def test_unit_cubes_limit_is_100_per_dimension(axis):
+    from geometry_diagrams.ir.prism import UNIT_CUBE_MAX_DIM
+
+    assert UNIT_CUBE_MAX_DIM == 100
+    ok = {"length": 1, "width": 1, "height": 1, axis: 100}
+    d = _diagram(ok["length"], ok["width"], ok["height"])
+    assert len([i for i in _grid_ids(d) if "_gp" not in i]) == 99 + 99  # two faces, 99 cuts each
+    assert "data-ir-id=\"__P_g" in ir_to_svg(d, compile_defs(d))
+    bad = dict(ok, **{axis: 101})
+    d = _diagram(bad["length"], bad["width"], bad["height"])
+    with pytest.raises(IRCompileError, match=r"100.*unit_cubes=false|unit_cubes=false.*100"):
+        compile_defs(d)
+    assert _grid_ids(d) == []  # nothing is synthesized for an invalid prism
 
 
 @pytest.mark.skipif(not renderer_available(), reason="TikZ renderer container not running")

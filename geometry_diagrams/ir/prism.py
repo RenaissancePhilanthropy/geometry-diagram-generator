@@ -244,6 +244,11 @@ def corner_names(stmt: ir.RectangularPrism) -> dict[tuple[int, int, int], str]:
     return {bits: f"{stmt.id}_v{''.join(map(str, bits))}" for bits in CORNER_BITS}
 
 
+# Per-dimension limit of unit_cubes mode: gridline definitions grow linearly
+# (about 4 * (L + W + H)), so this bounds the synthesized view.
+UNIT_CUBE_MAX_DIM = 100
+
+
 def _unit_cube_dim(stmt: ir.RectangularPrism, field: str) -> sp.Integer:
     raw = getattr(stmt, field)
     literal = isinstance(raw, (int, float)) and not isinstance(raw, bool)
@@ -252,6 +257,13 @@ def _unit_cube_dim(stmt: ir.RectangularPrism, field: str) -> sp.Integer:
             stmt.id,
             f"rectangular_prism with unit_cubes needs literal positive integer "
             f"dimensions; {field} is {raw!r}",
+        )
+    if int(raw) > UNIT_CUBE_MAX_DIM:
+        raise IRCompileError(
+            stmt.id,
+            f"rectangular_prism with unit_cubes allows at most {UNIT_CUBE_MAX_DIM} unit cubes "
+            f"per dimension; {field} is {raw!r}. Use wireframe mode (unit_cubes=false) "
+            f"for larger prisms",
         )
     return sp.Integer(int(raw))
 
