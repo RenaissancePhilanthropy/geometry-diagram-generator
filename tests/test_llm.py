@@ -287,8 +287,8 @@ def test_bind_structured_output_openai_flag_forces_function_calling(monkeypatch)
 def test_bind_structured_output_openai_flag_off_does_not_force_method(monkeypatch):
     """The flag is opt-in per schema — a caller that doesn't pass it must get
     the plain default for an OpenAI-backend model, same as before this
-    helper existed (this is python_full.py's/structured.py's case: none of
-    their schemas have RecipeDSL's free-form-dict incompatibility)."""
+    helper existed (python_full.py's case; structured.py opts in because
+    DiagramIR's `oneOf` also fails OpenAI's strict mode)."""
     monkeypatch.setenv("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v1")
     monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
     mock_llm = MagicMock()

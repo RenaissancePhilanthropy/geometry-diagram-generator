@@ -382,3 +382,22 @@ async def test_stale_warnings_not_in_prompt_after_generation_failure_structured(
     prompts = [c.args[0][1].content for c in mock_llm.with_structured_output.return_value.ainvoke.call_args_list]
     assert "STALE-WARNING" in prompts[1]
     assert "STALE-WARNING" not in prompts[2]
+
+
+@pytest.mark.asyncio
+async def test_structured_forces_function_calling_for_openai_backend():
+    """DiagramIR's schema contains `oneOf` (under `pick`), which OpenAI's strict
+    json_schema mode rejects with a 400, so an OpenAI-backend model must be bound
+    via function_calling (the schema-specific opt-in, as RecipeStrategy does)."""
+    from geometry_diagrams.strategies import structured as structured_mod
+
+    structured_mock = MagicMock()
+    structured_mock.ainvoke = AsyncMock(side_effect=[_make_raw_ir_fail_response()])
+    with patch.object(structured_mod, "get_chat_model", return_value=MagicMock()), \
+         patch.object(structured_mod, "bind_structured_output_for_model", return_value=structured_mock) as bind:
+        state = {"prompt": "x", "attempt": 0, "model_id": "openai:gpt-6-luna"}
+        try:
+            await structured_mod._generate_ir_node(state)
+        except Exception:
+            pass
+    assert bind.call_args.kwargs.get("force_function_calling_for_openai") is True
