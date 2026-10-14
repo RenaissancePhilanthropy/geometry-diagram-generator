@@ -19,7 +19,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .structured import dispatch_query
+from .structured import QUERY_TOOL_SOLIDS_INSERTIONS, dispatch_query
 from .ir_pipeline import (
     StructuredRunResult,
     format_warnings_for_retry,
@@ -46,7 +46,7 @@ from ..recipe.catalog import (
 from ..recipe.dsl import RecipeDSL
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
-from ..features import require_features
+from ..features import require_features, tagged_insertions
 from ..ir.renderer import TikZRenderer, Renderer
 
 logger = logging.getLogger(__name__)
@@ -682,7 +682,6 @@ class RecipeStrategy(SubstanceStrategy):
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
-        @tool
         def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
             """Query geometric properties of the most recently rendered diagram.
 
@@ -692,15 +691,10 @@ class RecipeStrategy(SubstanceStrategy):
                     - "coordinate": point coordinates. params={"point": "A"}
                     - "distance": distance between two points. params={"a": "A", "b": "B"}
                     - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
-                    - "length": drawn (2D) segment length. params={"segment": "seg_AB"}
-                      For a segment joining two corners of a prism (an edge, a face
-                      diagonal or the space diagonal) it also returns "true_length",
-                      the true 3D length.
+                    - "length": segment length. params={"segment": "seg_AB"}
                     - "radius": circle radius. params={"circle": "circ"}
                     - "area": polygon area. params={"object": "tri_ABC"}
                     - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
-                    - "prism": rectangular prism dimensions (length, width, height),
-                      volume, base area, surface area and corner ids. params={"prism": "P"}
                 params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.
@@ -708,6 +702,11 @@ class RecipeStrategy(SubstanceStrategy):
             if _last_sym is None:
                 return json.dumps({"error": "No diagram rendered yet"})
             return dispatch_query(_last_sym, query_type, params or {})
+
+        query_diagram.__doc__ = tagged_insertions(
+            "solids", query_diagram.__doc__, QUERY_TOOL_SOLIDS_INSERTIONS, self.features
+        )
+        query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
         return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)

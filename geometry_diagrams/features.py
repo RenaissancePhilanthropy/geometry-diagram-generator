@@ -58,6 +58,28 @@ def tagged_fragment(group: str, text: str, enabled: "frozenset[str] | set[str]")
     return text if group in enabled else ""
 
 
+def tagged_insertions(
+    group: str,
+    text: str,
+    insertions: "Iterable[tuple[str, str]]",
+    enabled: "frozenset[str] | set[str]",
+) -> str:
+    """``text`` unchanged when ``group`` is off; when on, each ``(anchor,
+    lines)`` inserts ``lines`` right after the first line of ``text``
+    containing ``anchor``, in order. For gating parts of an existing text
+    (e.g. a tool description) so it stays byte-identical with the group off.
+    A missing anchor raises ValueError whether or not the group is on, so an
+    edit to the base text cannot silently drop a gated insertion."""
+    out = text.split("\n")
+    for anchor, lines in insertions:
+        at = next((i for i, line in enumerate(out) if anchor in line), None)
+        if at is None:
+            raise ValueError(f"tagged_insertions: anchor {anchor!r} not found")
+        if group in enabled:
+            out[at + 1:at + 1] = lines.split("\n")
+    return "\n".join(out)
+
+
 def require_features(diagram: Any, enabled: "frozenset[str] | set[str]") -> None:
     """Reject ``diagram`` if it uses a kind from a feature group that is not
     in ``enabled``. The one post-parse gate, run at generation surfaces only

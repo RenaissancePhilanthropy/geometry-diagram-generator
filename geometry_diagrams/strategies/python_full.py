@@ -28,7 +28,7 @@ from .ir_pipeline import (
 )
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
-from ..features import require_features
+from ..features import require_features, tagged_insertions
 from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
 from ..ir.label_bounds import find_out_of_bounds_labels
@@ -1598,19 +1598,12 @@ class PythonFullStrategy(SubstanceStrategy):
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
-        @tool
         def query_diagram(query_type: str, params: "dict[str, Any] | None" = None) -> str:
             """Query geometric properties of the most recently rendered diagram.
 
             Args:
                 query_type: One of "list_objects", "coordinate", "distance",
-                    "angle", "length", "radius", "area", "perimeter", "prism".
-                    "length" ({"segment": id}) is the drawn (2D) length; for a
-                    segment joining two corners of a prism (an edge, a face
-                    diagonal or the space diagonal) it also returns
-                    "true_length", the true 3D length. "prism" ({"prism": id})
-                    returns its dimensions (length, width, height), volume,
-                    base area, surface area and corner ids.
+                    "angle", "length", "radius", "area", "perimeter".
                 params: Query arguments — call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.
@@ -1618,6 +1611,21 @@ class PythonFullStrategy(SubstanceStrategy):
             if not _stack:
                 return json.dumps({"error": "No diagram rendered yet"})
             return dispatch_query(_stack[-1]["result"].sym_full, query_type, params or {})
+
+        # The prism lines are advertised only with the solids group enabled
+        # (the description is unchanged otherwise); queries answer either way.
+        query_diagram.__doc__ = tagged_insertions("solids", query_diagram.__doc__, (
+            (
+                '"angle", "length", "radius", "area", "perimeter".',
+                '                    "prism" ({"prism": id}) returns the dimensions\n'
+                '                    (length, width, height), volume, base area, surface area and\n'
+                '                    corner ids; "length" ({"segment": id}) on a segment joining two\n'
+                '                    corners of a prism (an edge, a face diagonal or the space\n'
+                '                    diagonal) also returns "true_length", the true 3D length\n'
+                '                    ("length" is the drawn 2D length).',
+            ),
+        ), self.features)
+        query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
         return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)

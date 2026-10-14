@@ -388,3 +388,14 @@ async def test_each_ir_strategy_rejects_disabled_prism_before_the_pipeline(strat
     assert reached == [] and out["result"] is None and "solids" in out["last_error"]
     out, reached = await run(frozenset({"solids"}))
     assert len(reached) == 1 and out["result"] is not None
+
+
+def test_tagged_insertions_leave_text_unchanged_when_off_and_insert_when_on():
+    from geometry_diagrams.features import tagged_insertions
+
+    text = "a\n  b anchor\nc"
+    ins = (("anchor", "  x\n  y"),)
+    assert tagged_insertions("solids", text, ins, frozenset()) == text
+    assert tagged_insertions("solids", text, ins, frozenset({"solids"})) == "a\n  b anchor\n  x\n  y\nc"
+    with pytest.raises(ValueError):
+        tagged_insertions("solids", text, (("missing", "z"),), frozenset())

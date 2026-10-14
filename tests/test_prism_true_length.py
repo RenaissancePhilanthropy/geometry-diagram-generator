@@ -10,10 +10,10 @@ projection warning naming ``true_length_equals``.
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import math
 import re
+from pathlib import Path
 
 import pytest
 
@@ -295,10 +295,21 @@ def test_no_warning_for_length_checks_on_ordinary_segments_or_without_a_collecto
     assert not r.passed
 
 
-# --- query tool descriptions ----------------------------------------------------
+# --- query tool descriptions (gated on the solids feature group) ----------------
+#
+# With solids OFF (the default) every query-tool description is byte-identical
+# to its pre-ticket-11 text (pinned in query_tool_descriptions_pre_solids.json,
+# captured from commit 1aa49ab); with solids ON it lists the prism query and
+# the true_length note. Queries answer either way: only the advertising is gated.
 
-def _agent_query_tool_description(strategy_cls) -> str:
-    graph = strategy_cls().build_agent(model="anthropic:claude-haiku-4-5-20251001")
+_PRE_SOLIDS = json.loads(
+    (Path(__file__).parent / "query_tool_descriptions_pre_solids.json").read_text()
+)
+SOLIDS = frozenset({"solids"})
+
+
+def _agent_query_tool_description(strategy_cls, features) -> str:
+    graph = strategy_cls(features=features).build_agent(model="anthropic:claude-haiku-4-5-20251001")
     return graph.nodes["tools"].bound.tools_by_name["query_diagram"].description
 
 
@@ -309,25 +320,46 @@ def _assert_mentions_new_behavior(text: str) -> None:
         assert word in text, word
 
 
-def test_structured_recipe_and_python_query_tools_describe_the_new_behavior():
+def _strategy_classes():
     from geometry_diagrams.strategies.python_full import PythonFullStrategy
     from geometry_diagrams.strategies.recipe import RecipeStrategy
     from geometry_diagrams.strategies.structured import StructureStrategy
 
-    for cls in (StructureStrategy, RecipeStrategy, PythonFullStrategy):
-        _assert_mentions_new_behavior(_agent_query_tool_description(cls))
+    return (StructureStrategy, RecipeStrategy, PythonFullStrategy)
 
 
-def test_facade_query_tool_describes_the_new_behavior():
-    from geometry_diagrams.facade import query_diagram, query_geometry_diagram
-
-    _assert_mentions_new_behavior(query_diagram.description)
-    _assert_mentions_new_behavior(inspect.getdoc(query_geometry_diagram))
+def test_strategy_query_tools_are_unchanged_with_solids_off():
+    for cls in _strategy_classes():
+        assert _agent_query_tool_description(cls, frozenset()) == _PRE_SOLIDS[cls.__name__], cls
 
 
-def test_eval_harness_query_tool_describes_the_new_behavior():
-    from evals.run import _run_query_phase
+def test_strategy_query_tools_describe_the_new_behavior_with_solids_on():
+    for cls in _strategy_classes():
+        _assert_mentions_new_behavior(_agent_query_tool_description(cls, SOLIDS))
 
-    # The eval tool is built inside the coroutine (it closes over each run's
-    # symbol table), so its docstring is only reachable through the source.
-    _assert_mentions_new_behavior(inspect.getsource(_run_query_phase))
+
+def test_facade_query_tool_description_is_gated():
+    from geometry_diagrams import facade
+
+    assert facade.query_diagram_description(frozenset()).strip() == _PRE_SOLIDS["facade"]
+    _assert_mentions_new_behavior(facade.query_diagram_description(SOLIDS))
+    # The module-level tool is built at import from the environment's set
+    # (GEOMETRY_FEATURES), unset in the test environment.
+    assert facade.query_diagram.description == _PRE_SOLIDS["facade"]
+
+
+def test_eval_harness_query_tool_description_is_gated():
+    from evals.run import _make_query_tool
+
+    assert _make_query_tool({}, frozenset()).description == _PRE_SOLIDS["eval"]
+    on = _make_query_tool({}, SOLIDS)
+    _assert_mentions_new_behavior(on.description)
+
+
+def test_gated_query_tool_still_answers_prism_queries_with_solids_off():
+    from evals.run import _make_query_tool
+
+    sym = compile_defs(_diagram())
+    tool = _make_query_tool(sym, frozenset())
+    out = json.loads(tool.invoke({"query_type": "length", "params": {"id": "P_e_000_001"}}))
+    assert out["true_length"] == pytest.approx(W)

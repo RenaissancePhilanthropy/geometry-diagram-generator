@@ -106,10 +106,55 @@ _DEFAULT_POINT_TOLERANCE = 1e-4
 # Per-scenario runner
 # ---------------------------------------------------------------------------
 
+_QUERY_TOOL_DOC = """Query a geometric property of the current diagram.
+
+                query_type and params:
+                  coordinate  {"id": "A"}              -> x, y coords
+                  distance    {"id1": "A", "id2": "B"} -> distance between points
+                  angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
+                  length      {"id": "seg_AB"}          -> segment length
+                  radius      {"id": "c1"}              -> circle radius
+                  area        {"id": "tri_ABC"}         -> area
+                  perimeter   {"id": "tri_ABC"}         -> perimeter
+                  list_objects {}                       -> all objects and their types
+                """
+
+
+def _make_query_tool(sym: dict, features: "frozenset[str] | set[str]" = frozenset()):
+    """The query phase's query_diagram tool over ``sym``. The prism lines of
+    its description are advertised only with the solids feature group
+    enabled (unchanged otherwise); queries answer either way."""
+    from langchain_core.tools import tool
+    from geometry_diagrams.features import tagged_insertions
+    from geometry_diagrams.strategies.structured import dispatch_query
+
+    def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
+        return dispatch_query(sym, query_type, params or {})
+
+    # _QUERY_TOOL_DOC is kept byte-identical to the description this tool had
+    # when it was defined inside _run_query_phase (deeper indentation included).
+    query_diagram.__doc__ = tagged_insertions("solids", _QUERY_TOOL_DOC, (
+        (
+            'length      {"id": "seg_AB"}',
+            '                                                           (drawn 2D length; a segment joining two\n'
+            '                                                           corners of a prism - edge, face diagonal\n'
+            '                                                           or space diagonal - also returns\n'
+            '                                                           "true_length", the true 3D length)',
+        ),
+        (
+            'perimeter   {"id": "tri_ABC"}',
+            '                  prism       {"id": "P"}               -> rectangular prism: length, width, height,\n'
+            '                                                           volume, base area, surface area, corner ids',
+        ),
+    ), features)
+    return tool(query_diagram)
+
+
 async def _run_query_phase(
     queries: list[dict],
     sym: dict,
     model: str,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> list[dict[str, Any]]:
     """Run follow-up query eval against a pre-computed SymPy symbol table.
 
@@ -118,10 +163,8 @@ async def _run_query_phase(
     Checks the LAST query_diagram tool call (one agent per query, so this
     is the relevant call even if the LLM also calls list_objects first).
     """
-    from langchain_core.tools import tool
     from langgraph.prebuilt import create_react_agent
     from geometry_diagrams.strategies.llm import get_chat_model
-    from geometry_diagrams.strategies.structured import dispatch_query
     from geometry_diagrams.ir.queries import list_objects as _list_objects
 
     _QUERY_EVAL_INSTRUCTIONS = (
@@ -155,28 +198,7 @@ async def _run_query_phase(
         }
 
         try:
-            _sym = sym  # capture for closure
-
-            @tool
-            def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
-                """Query a geometric property of the current diagram.
-
-                query_type and params:
-                  coordinate  {"id": "A"}              -> x, y coords
-                  distance    {"id1": "A", "id2": "B"} -> distance between points
-                  angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
-                  length      {"id": "seg_AB"}          -> drawn (2D) segment length; a segment
-                                                           joining two corners of a prism (edge, face
-                                                           diagonal or space diagonal) also returns
-                                                           "true_length", the true 3D length
-                  radius      {"id": "c1"}              -> circle radius
-                  area        {"id": "tri_ABC"}         -> area
-                  perimeter   {"id": "tri_ABC"}         -> perimeter
-                  prism       {"id": "P"}               -> rectangular prism: length, width, height,
-                                                           volume, base area, surface area, corner ids
-                  list_objects {}                       -> all objects and their types
-                """
-                return dispatch_query(_sym, query_type, params or {})
+            query_diagram = _make_query_tool(sym, features)
 
             llm = get_chat_model(model)
             graph = create_react_agent(llm, tools=[query_diagram], prompt=_QUERY_EVAL_INSTRUCTIONS)
@@ -422,7 +444,7 @@ async def run_scenario(
         if queries:
             if result.sym_full is not None:
                 record["query_results"] = await _run_query_phase(
-                    queries, result.sym_full, model
+                    queries, result.sym_full, model, strategy.features
                 )
             else:
                 logger.warning(

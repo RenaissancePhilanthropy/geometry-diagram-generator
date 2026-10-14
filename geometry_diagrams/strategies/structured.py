@@ -20,7 +20,7 @@ from .ir_pipeline import (
 from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
-from ..features import require_features
+from ..features import require_features, tagged_insertions
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
     query_length, query_radius, query_area, query_perimeter, query_prism, list_objects,
@@ -48,6 +48,25 @@ with query_type="list_objects" and params={}.
 
 
 # ── query dispatch ────────────────────────────────────────────────────────────
+
+# Lines the agent query tools (this strategy's and the recipe strategy's,
+# which share the docstring layout) add to their description only when the
+# ``solids`` feature group is enabled (features.tagged_insertions); with it
+# off the description is unchanged. The queries themselves answer either way.
+QUERY_TOOL_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
+    (
+        '- "length": segment length.',
+        '                      For a segment joining two corners of a prism (an edge, a face\n'
+        '                      diagonal or the space diagonal) it also returns "true_length",\n'
+        '                      the true 3D length; "length" is the drawn (2D) length.',
+    ),
+    (
+        '- "perimeter": polygon perimeter.',
+        '                    - "prism": rectangular prism dimensions (length, width, height),\n'
+        '                      volume, base area, surface area and corner ids. params={"prism": "P"}',
+    ),
+)
+
 
 def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
     """Dispatch a query about the compiled geometry."""
@@ -287,7 +306,6 @@ class StructureStrategy(SubstanceStrategy):
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
-        @tool
         def query_diagram(query_type: str, params: Optional[dict[str, Any]] = None) -> str:
             """Query geometric properties of the most recently rendered diagram.
 
@@ -297,15 +315,10 @@ class StructureStrategy(SubstanceStrategy):
                     - "coordinate": point coordinates. params={"point": "A"}
                     - "distance": distance between two points. params={"a": "A", "b": "B"}
                     - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
-                    - "length": drawn (2D) segment length. params={"segment": "seg_AB"}
-                      For a segment joining two corners of a prism (an edge, a face
-                      diagonal or the space diagonal) it also returns "true_length",
-                      the true 3D length.
+                    - "length": segment length. params={"segment": "seg_AB"}
                     - "radius": circle radius. params={"circle": "circ"}
                     - "area": polygon area. params={"object": "tri_ABC"}
                     - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
-                    - "prism": rectangular prism dimensions (length, width, height),
-                      volume, base area, surface area and corner ids. params={"prism": "P"}
                 params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.
@@ -313,6 +326,11 @@ class StructureStrategy(SubstanceStrategy):
             if _last_sym is None:
                 return json.dumps({"error": "No diagram rendered yet"})
             return dispatch_query(_last_sym, query_type, params or {})
+
+        query_diagram.__doc__ = tagged_insertions(
+            "solids", query_diagram.__doc__, QUERY_TOOL_SOLIDS_INSERTIONS, self.features
+        )
+        query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
         return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)

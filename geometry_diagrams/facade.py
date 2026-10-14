@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackManager
 
 from .config import GeometryConfig, resolve_config
+from .features import parse_features, tagged_insertions
 from .ir.font import FontConfig
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from .strategies.base import SubstanceStrategy
@@ -189,32 +191,67 @@ async def render_diagram(prompt: str) -> str:
         return json.dumps({"error": str(exc)})
 
 
-@tool
 def query_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:
     """Query geometric properties of a diagram from its DSL (no LLM call).
 
     Args:
         dsl: A dsl dict from a prior render_diagram/DiagramResult.dsl.
         query_type: One of "list_objects", "coordinate", "distance", "angle",
-            "length", "radius", "area", "perimeter", "prism".
+            "length", "radius", "area", "perimeter".
         params: Query arguments:
             - "list_objects": {}
             - "coordinate": {"point": "A"}
             - "distance": {"a": "A", "b": "B"}
             - "angle": {"a": "A", "vertex": "B", "b": "C"}
-            - "length": {"segment": "seg_AB"} -> drawn (2D) length; a segment
-              joining two corners of a prism (edge, face diagonal or space
-              diagonal) also returns "true_length", the true 3D length
+            - "length": {"segment": "seg_AB"}
             - "radius": {"circle": "circ"}
             - "area": {"object": "tri_ABC"}
             - "perimeter": {"object": "tri_ABC"}
-            - "prism": {"prism": "P"} -> dimensions (length, width, height),
-              volume, base area, surface area and corner ids
             Call list_objects first to see valid IDs.
     Returns:
         JSON string with the query result, or {"error": "..."} on failure.
     """
     return query_geometry_diagram(dsl, query_type, params)
+
+
+# The prism lines of the description are advertised only with the solids
+# feature group enabled; with it off the description is unchanged. Queries
+# answer either way.
+_QUERY_DIAGRAM_DOC: str = query_diagram.__doc__ or ""
+_QUERY_DIAGRAM_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
+    (
+        '- "length": {"segment": "seg_AB"}',
+        '              -> drawn (2D) length; a segment joining two corners of a prism\n'
+        '              (edge, face diagonal or space diagonal) also returns\n'
+        '              "true_length", the true 3D length',
+    ),
+    (
+        '- "perimeter": {"object": "tri_ABC"}',
+        '            - "prism": {"prism": "P"} -> dimensions (length, width, height),\n'
+        '              volume, base area, surface area and corner ids',
+    ),
+)
+
+
+def query_diagram_description(features: "frozenset[str] | set[str]") -> str:
+    """The ``query_diagram`` tool's docstring for an enabled feature set."""
+    return tagged_insertions("solids", _QUERY_DIAGRAM_DOC, _QUERY_DIAGRAM_SOLIDS_INSERTIONS, features)
+
+
+def _import_time_features() -> frozenset[str]:
+    try:
+        return parse_features(os.environ.get("GEOMETRY_FEATURES", ""))
+    except ValueError:  # reported where the config is resolved, not at import
+        return frozenset()
+
+
+# LIMITATION: this is a module-level tool, so its description is fixed at
+# import from the environment (GEOMETRY_FEATURES). A per-call feature override
+# (resolve_config(features=...)) cannot change it; callers that enable solids
+# per call and want the prism lines advertised should build their own tool
+# with query_diagram_description(features).
+query_diagram.__doc__ = query_diagram_description(_import_time_features())
+query_diagram = tool(query_diagram)
 
 
 async def edit_geometry_diagram(
@@ -277,11 +314,8 @@ def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = 
     Args:
         dsl: A dsl dict from a prior DiagramResult.dsl.
         query_type: One of "list_objects", "coordinate", "distance", "angle",
-            "length", "radius", "area", "perimeter", "prism" (same vocabulary
-            as RecipeStrategy.build_agent()'s query_diagram tool). "length" on
-            a segment joining two corners of a prism also returns
-            "true_length" (the true 3D length); "prism" returns dimensions,
-            volume, base area, surface area and corner ids.
+            "length", "radius", "area", "perimeter" (same vocabulary as
+            RecipeStrategy.build_agent()'s query_diagram tool).
         params: Query arguments; see dispatch_query() for the shape per query_type.
 
     Returns:
