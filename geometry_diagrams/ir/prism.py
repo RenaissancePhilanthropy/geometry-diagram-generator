@@ -375,6 +375,95 @@ def prism_position(obj: Any) -> tuple[float, float] | None:
     return (float(c.x), float(c.y))
 
 
+# --- labels on corner segments ---------------------------------------------------
+
+def corner_segment_center(sym: dict[str, Any], segment_id: str) -> tuple[float, float] | None:
+    """Projected center of the prism whose two corners ``segment_id`` joins
+    (from the compile-time corner-segment index); None for any other id."""
+    hit = corner_segment(sym, segment_id)
+    if hit is None:
+        return None
+    return prism_position(hit[0])
+
+
+def away_normal(
+    a: tuple[float, float], b: tuple[float, float], center: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Unit normal of segment a-b pointing to the side AWAY from ``center``
+    (all three in one coordinate frame). None when ``center`` lies on the
+    segment's line (to within 1e-6 of the segment's length), e.g. a space
+    diagonal, which passes through the box center: there is no away side.
+
+    This is the dimension-label placement rule for segments joining two
+    corners of one prism: on a silhouette edge (every corner on one side of
+    its line) the away side is outside the drawn silhouette."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return None
+    nx, ny = -dy / length, dx / length
+    side = (center[0] - a[0]) * nx + (center[1] - a[1]) * ny
+    if abs(side) <= 1e-6 * length:
+        return None
+    return (-nx, -ny) if side > 0 else (nx, ny)
+
+
+# --- render operations on the prism id ------------------------------------------
+#
+# Slots are the render-operation fields that name an object (see
+# derived.render_refs). Only ``draw`` (lowered to the visible faces and hidden
+# edges) and ``centroid`` (a free-text label at the projected center) accept
+# the prism id; every other slot would silently do nothing, warn and skip, or
+# crash on the non-SymPy Prism object, so it is a typed error naming the
+# derived ids to use instead.
+
+_VALID_SLOTS = frozenset({"draw", "centroid"})
+
+
+def render_ref_error(stmt: ir.RectangularPrism, op_kind: str, slot: str) -> str | None:
+    """Registry ``render_ref_error`` hook: the error message for the prism
+    id used in ``slot`` of a ``op_kind`` render operation; None when valid."""
+    if slot in _VALID_SLOTS:
+        return None
+    pid = stmt.id
+    corners = list(corner_names(stmt).values())
+    faces = ", ".join(repr(face_id(pid, f)) for f in FACE_NAMES)
+    edge = edge_id(pid, (0, 0, 0), (1, 0, 0))
+    if slot in ("fill", "fill_hole"):
+        why = "a prism has no single outline to fill"
+        alt = f"fill a face id such as {face_id(pid, 'bottom')!r} (faces: {faces})"
+    elif slot == "point":
+        why = "a prism is not a point"
+        alt = f"use a corner id such as {corners[0]!r} (corners: {', '.join(map(repr, corners))})"
+    elif slot == "segment":
+        why = "a prism is not a segment"
+        alt = (
+            f"use an edge id such as {edge!r} (edges are named {pid}_e_<bits>_<bits> "
+            f"by their corner bits, smaller first)"
+        )
+    else:  # arc
+        why = "a prism has no arcs"
+        alt = (
+            f"to mark an edge use mark_segments on an edge id such as {edge!r}; to place "
+            f"text use label_free_text with centroid_of={pid!r} or a face id"
+        )
+    return f"{op_kind} cannot use the rectangular_prism {pid!r}: {why}; {alt}"
+
+
+def render_warnings(stmt: ir.RectangularPrism, diagram: Any) -> list[str]:
+    """Registry ``render_warnings`` hook: a prism on a canvas with unequal
+    axis scales is drawn skewed (the projection assumes equal units)."""
+    canvas = diagram.canvas
+    aspect = canvas.aspect if canvas is not None else None
+    if aspect is None or aspect == 1:
+        return []
+    return [
+        f"rectangular_prism {stmt.id!r} is drawn on a canvas with unequal axis scales "
+        f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
+        f"shapes are distorted); remove canvas.aspect for an undistorted prism"
+    ]
+
+
 # --- derived edges and faces (public ids) --------------------------------------
 #
 # Faces: ``{id}_front``, ``{id}_back``, ``{id}_left``, ``{id}_right``,

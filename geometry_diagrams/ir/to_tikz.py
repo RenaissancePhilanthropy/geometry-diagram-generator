@@ -10,6 +10,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import effective_diagram, lower_render
+from .prism import away_normal, corner_segment_center
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     COLOR_STYLE_KEYS,
@@ -92,7 +93,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     # Everything below reads the effective view (authored + synthesized
     # definitions) with draws of lowering kinds (e.g. a prism) replaced by
     # ordinary operations; the caller's authored IR is left as it was.
-    diagram = lower_render(effective_diagram(diagram))
+    diagram = lower_render(effective_diagram(diagram), warnings)
 
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
     coords = extract_coords(sym)
@@ -645,7 +646,11 @@ def _emit_op(
                     warnings.append(msg)
                 return out
             a, b = endpoints
-            sopts = f"[pos={pos}]" if pos is not None else ""
+            opts = [f"pos={pos}"] if pos is not None else []
+            anchor = _prism_label_anchor(seg_id, a, b, sym)
+            if anchor is not None:
+                opts.append(anchor)
+            sopts = f"[{','.join(opts)}]" if opts else ""
             out.append(f"\\tkzLabelSegment{sopts}({a},{b}){{${_to_latex(text)}$}}")
 
         case ir.LabelFreeText(text=text, at=at, centroid_of=cof):
@@ -738,6 +743,30 @@ def _emit_op(
 # ---------------------------------------------------------------------------
 # Style helpers (TikZ-specific)
 # ---------------------------------------------------------------------------
+
+def _prism_label_anchor(seg_id: str, a: str, b: str, sym: SymTable) -> str | None:
+    """TikZ placement option (``left``, ``below right``, ...) for a label on a
+    segment joining two corners of one prism: the dimension-label rule of the
+    SVG renderer (the side away from the prism's projected center), as a
+    node anchor. A diagonal option puts the whole node in the quadrant of the
+    away normal, a straight one is used only for an axis-aligned normal; in
+    both cases the node lies wholly on the away side of the segment's line.
+    None for any other segment (unchanged output) and when the center is on
+    the segment's line."""
+    center = corner_segment_center(sym, seg_id)
+    if center is None:
+        return None
+    pa = (_f(sym[a].x), _f(sym[a].y))
+    pb = (_f(sym[b].x), _f(sym[b].y))
+    away = away_normal(pa, pb, center)
+    if away is None:
+        return None
+    ux, uy = away
+    eps = 1e-9
+    vertical = "above" if uy > eps else "below" if uy < -eps else ""
+    horizontal = "right" if ux > eps else "left" if ux < -eps else ""
+    return " ".join(part for part in (vertical, horizontal) if part)
+
 
 def _tikz_fmt_coord_val(v: float) -> str:
     """Format a coordinate value: 1 decimal place when close to .0 or .5, else 2."""

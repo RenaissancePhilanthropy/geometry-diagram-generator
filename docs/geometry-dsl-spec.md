@@ -454,6 +454,35 @@ are limited to 100 per dimension (a larger value is a compile error telling
 the author to use wireframe mode, `unit_cubes=false`). For a solid look (no hidden edges), draw and fill the visible
 face ids instead of the prism id.
 
+**Shading and labels.** Shade a face with `fill` on its face id; colors go
+through the shared color forms (a name, `#rrggbb`, `rgb(r,g,b)`,
+`hsv(h,s,v)`), so an opaque tint such as `rgb(230,159,0)` paints the same
+color in SVG and TikZ. Label an edge with `label_segment` on its edge id (or
+on any segment joining two corners); label a face with `label_free_text` and
+`centroid_of` the face id (e.g. "60 square units" on `P_bottom`); and
+`label_free_text` with `centroid_of` the prism id itself centers the text on
+the prism's projected center (the middle of the drawn silhouette).
+
+A `label_segment` on a segment joining two corners of one prism (a dimension
+label) is placed on the side of the segment away from the prism's projected
+center, with the whole label clear of the segment's line: on an outline
+(silhouette) edge it sits outside the figure, e.g. left of the front-left
+vertical edge, below the front bottom edge, right of the right-hand edges.
+When the center lies on the segment's line (a space diagonal) the ordinary
+segment-label placement applies. In TikZ the same side is given as a node
+placement (`left`, `below right`, ...). Labels on other segments are
+unaffected. In TikZ, words in a `label_segment` render in math mode
+("6units"); use `label_free_text` for worded labels there.
+
+Render operations that cannot work on the prism id are compile errors naming
+the alternative: `fill` (or a `fill` hole) on the prism id ("fill a face id
+such as `P_bottom`"), a point slot (`draw_points`, `label_point`, any angle
+point) ("use a corner id such as `P_v000`"), `mark_segments` /
+`label_segment` ("use an edge id such as `P_e_000_100`"), and `mark_arcs` /
+`label_along_arc`. `draw` and `label_free_text` with `centroid_of` the prism
+id are valid. A prism on a canvas with unequal axis scales (`canvas.aspect`)
+renders with a warning: the projection is skewed.
+
 **Measures, queries and checks.** The `prism` query returns the true
 length, width and height, the volume, base area, surface area and corner
 ids. Any segment definition whose two endpoints are corners of the same

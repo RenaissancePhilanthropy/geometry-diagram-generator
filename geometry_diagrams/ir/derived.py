@@ -24,6 +24,9 @@ A kind may also *lower* a draw of its id (``lower_draw``): ``lower_render``
 is the lowering point both renderers' entry functions (``ir_to_svg``,
 ``ir_to_tikz``) call right after computing the effective view. It replaces
 each such draw, in place, by the ordered render operations the hook returns.
+Before lowering it rejects render operations that name a kind's id where it
+cannot work (``render_ref_error``; compile_defs runs the same check) and
+collects the kinds' non-fatal ``render_warnings``.
 """
 from __future__ import annotations
 
@@ -119,6 +122,47 @@ class DerivedConstruction:
     #     joining two of its corners. Must only add to objects already in the
     #     table; never adds or overwrites table entries.
     index: Callable[[Any, Any, dict[str, Any]], None] | None = None
+    # render_ref_error: (statement, render op kind, slot) -> error message, or
+    #     None when the statement's id is valid in that slot of a render
+    #     operation (slots: see ``render_refs``). Lets a kind whose compiled
+    #     object is not a SymPy shape reject uses the renderers would silently
+    #     skip or crash on (check_render_refs raises the message).
+    render_ref_error: Callable[[Any, str, str], "str | None"] | None = None
+    # render_warnings: (statement, diagram) -> non-fatal render warnings,
+    #     appended to the renderer's ``warnings`` list by lower_render.
+    render_warnings: Callable[[Any, Any], list[str]] | None = None
+
+
+def render_refs(op: Any) -> list[tuple[str, str]]:
+    """(slot, object id) for every object a render operation names. Slots:
+    ``draw`` (Draw.obj), ``fill`` / ``fill_hole`` (Fill.obj / Fill.holes),
+    ``point`` (DrawPoints, LabelPoint and the three points of every angle),
+    ``segment`` (MarkSegments, LabelSegment), ``arc`` (MarkArcs,
+    LabelAlongArc) and ``centroid`` (LabelFreeText.centroid_of)."""
+    match op:
+        case ir.Draw(obj=obj):
+            return [("draw", obj)]
+        case ir.Fill(obj=obj, holes=holes):
+            return [("fill", obj), *(("fill_hole", h) for h in holes)]
+        case ir.DrawPoints(points=points):
+            return [("point", p) for p in points]
+        case ir.LabelPoint(p=p):
+            return [("point", p)]
+        case ir.MarkAngles(angles=angles) | ir.MarkRightAngles(angles=angles):
+            return [("point", pid) for a in angles for pid in (a.a, a.o, a.b)]
+        case ir.LabelAngle(angle=a):
+            return [("point", pid) for pid in (a.a, a.o, a.b)]
+        case ir.MarkSegments(segs=segs):
+            return [("segment", s) for s in segs]
+        case ir.LabelSegment(seg=seg):
+            return [("segment", seg)]
+        case ir.MarkArcs(arcs=arcs):
+            return [("arc", a) for a in arcs]
+        case ir.LabelAlongArc(arc=arc):
+            return [("arc", arc)]
+        case ir.LabelFreeText(centroid_of=cof) if cof is not None:
+            return [("centroid", cof)]
+    return []
 
 
 class DerivedRegistry:
@@ -240,11 +284,38 @@ class DerivedRegistry:
                 view.append(synth)
         return view
 
-    def lower_render(self, diagram: Any) -> Any:
+    def check_render_refs(self, diagram: Any) -> None:
+        """Raise IRCompileError (naming the statement) for the first render
+        operation that names a registered kind's id in a slot its
+        ``render_ref_error`` hook rejects. Called by compile_defs and by
+        lower_render, so the error reaches the retry loops from compile and
+        from either renderer's entry function."""
+        stmts = {s.id: s for s in diagram.define}
+        for op in diagram.render:
+            for slot, oid in render_refs(op):
+                stmt = stmts.get(oid)
+                entry = self.get(stmt) if stmt is not None else None
+                if entry is None or entry.render_ref_error is None:
+                    continue
+                message = entry.render_ref_error(stmt, op.kind, slot)
+                if message is not None:
+                    raise IRCompileError(stmt.id, message)
+
+    def lower_render(self, diagram: Any, warnings: list[str] | None = None) -> Any:
         """``diagram`` with every draw of a lowering kind's id replaced, in
         place, by the hook's ordered operations (see ``Lowering``), and the
         hook's styles merged into ``styles``. ``diagram`` itself when nothing
-        lowers; otherwise a shallow copy local to the caller."""
+        lowers; otherwise a shallow copy local to the caller.
+
+        First rejects render operations misusing a registered kind's id
+        (``check_render_refs``) and appends each kind's ``render_warnings``
+        to ``warnings`` (when given)."""
+        self.check_render_refs(diagram)
+        if warnings is not None:
+            for stmt in diagram.define:
+                entry = self.get(stmt)
+                if entry is not None and entry.render_warnings is not None and not is_synthesized(stmt):
+                    warnings.extend(entry.render_warnings(stmt, diagram))
         stmts = {s.id: s for s in diagram.define}
         ops: list[Any] = []
         styles = dict(diagram.styles)
@@ -383,6 +454,8 @@ def _build_default_registry() -> DerivedRegistry:
         exclusive=True,
         feature="solids",
         index=_prism.index_corner_segment,
+        render_ref_error=_prism.render_ref_error,
+        render_warnings=_prism.render_warnings,
     ))
     return reg
 
@@ -395,10 +468,10 @@ def is_synthesized(stmt: Any) -> bool:
     return getattr(stmt, "_synthesized_by", None) is not None
 
 
-def lower_render(diagram: Any) -> Any:
+def lower_render(diagram: Any, warnings: list[str] | None = None) -> Any:
     """The render lowering point: see ``DerivedRegistry.lower_render``. Both
     renderers' entry functions call it right after ``effective_diagram``."""
-    return REGISTRY.lower_render(diagram)
+    return REGISTRY.lower_render(diagram, warnings)
 
 
 def effective_defs(diagram: Any) -> list[Any]:

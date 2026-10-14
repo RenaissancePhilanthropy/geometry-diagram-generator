@@ -465,6 +465,9 @@ def compile_defs(
     # collisions with authored ids or other constructions' derived ids here,
     # before any of them could silently shadow the other.
     DERIVED_REGISTRY.check_exclusive_ids(diagram.define)
+    # Render operations that name such a kind's id where it cannot work (e.g.
+    # filling a prism id) are rejected here too, before anything compiles.
+    DERIVED_REGISTRY.check_render_refs(diagram)
 
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
