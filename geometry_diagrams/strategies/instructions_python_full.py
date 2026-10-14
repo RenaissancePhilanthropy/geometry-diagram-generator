@@ -37,10 +37,14 @@ _SOLIDS_FRAGMENT = """
   `segment(p, q)` between two corners of one edge is that same edge (never a second stroke);
   between other corners it is an ordinary segment (face or space diagonal).
 - Wireframe look: `draw(box)` (strokes the visible outlines and dashed hidden edges); pass
-  depth_scale=2/3 for wireframe-like figures. Solid-shaded look: `fill(...)` and `draw(...)` the
-  three visible FACES (front/right/top; front/left/top for side="left") and do NOT `draw(box)`,
-  which would stroke dashed hidden edges over the fills. Colors: named, "rgb(r, g, b)",
-  "hsv(h, s, v)" or "#rrggbb".
+  depth_scale=2/3 for wireframe-like figures. Solid-shaded look (non-unit-cube prisms only):
+  `fill(...)` and `draw(...)` the three visible FACES (front/right/top; front/left/top for
+  side="left") and do NOT `draw(box)`, which would stroke dashed hidden edges over the fills.
+  Colors: named, "rgb(r, g, b)", "hsv(h, s, v)" or "#rrggbb".
+- For unit_cubes prisms, draw the prism id (`draw(box)`): that draw produces the cube gridlines
+  (and no dashed hidden edges); drawing the faces separately shows no gridlines. Fills on the
+  faces still shade it. The fill-and-draw-the-faces advice above is for non-unit-cube
+  solid-shaded looks only.
 - view="isometric" suits unit-cube figures (no depth_angle/depth_scale); unit_cubes=True needs
   literal integer dimensions, at most 100 each. The default view is oblique at 45 degrees with
   depth scale 1/2.

@@ -698,9 +698,13 @@ _PRISM_GUIDANCE_DOC = """\
   (no depth_angle/depth_scale). To count cubes use unit_cubes:true with literal integer
   length/width/height, at most 100 each.
 - Wireframe look: draw the prism id (auto_draw_all does this, or annotations """ + _EX["draws"] + """).
-- Solid-shaded look: fill and draw the three visible FACE ids (P_front, P_right, P_top; P_left
+- Solid-shaded look (non-unit-cube prisms only): fill and draw the three visible FACE ids (P_front, P_right, P_top; P_left
   instead of P_right for side:"left") and either set the prism op """ + _EX["hide_prism"] + """ or annotations """ + _EX["no_auto_draw"] + """.
   Do NOT draw the prism id for a shaded solid: it strokes dashed hidden edges over the fills.
+- For unit_cubes prisms, draw the prism id (auto_draw_all does this, or annotations """ + _EX["draws"] + """):
+  that draw produces the cube gridlines (and no dashed hidden edges); drawing the faces separately
+  shows no gridlines. Fills on the face ids still shade it. The fill-and-draw-the-face-ids advice
+  above is for non-unit-cube solid-shaded looks only.
   Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
 - Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100).
   Words and units go in free-text labels (label_free_text, text or centroid_of:"P"); segment

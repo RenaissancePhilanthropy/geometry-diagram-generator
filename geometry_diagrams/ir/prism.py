@@ -452,16 +452,27 @@ def render_ref_error(stmt: ir.RectangularPrism, op_kind: str, slot: str) -> str 
 
 def render_warnings(stmt: ir.RectangularPrism, diagram: Any) -> list[str]:
     """Registry ``render_warnings`` hook: a prism on a canvas with unequal
-    axis scales is drawn skewed (the projection assumes equal units)."""
+    axis scales is drawn skewed (the projection assumes equal units), and a
+    ``unit_cubes`` prism whose id no draw targets shows no cube gridlines
+    (they come only from the prism-id draw lowering, never from its faces)."""
+    out: list[str] = []
     canvas = diagram.canvas
     aspect = canvas.aspect if canvas is not None else None
-    if aspect is None or aspect == 1:
-        return []
-    return [
-        f"rectangular_prism {stmt.id!r} is drawn on a canvas with unequal axis scales "
-        f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
-        f"shapes are distorted); remove canvas.aspect for an undistorted prism"
-    ]
+    if aspect is not None and aspect != 1:
+        out.append(
+            f"rectangular_prism {stmt.id!r} is drawn on a canvas with unequal axis scales "
+            f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
+            f"shapes are distorted); remove canvas.aspect for an undistorted prism"
+        )
+    if stmt.unit_cubes and not any(
+        isinstance(op, ir.Draw) and op.obj == stmt.id for op in diagram.render
+    ):
+        out.append(
+            f"prism {stmt.id!r} has unit_cubes=true but is never drawn: its cube gridlines "
+            f"appear only when you draw the prism id (draw {stmt.id}); drawing its faces "
+            f"separately shows no gridlines"
+        )
+    return out
 
 
 # --- derived edges and faces (public ids) --------------------------------------

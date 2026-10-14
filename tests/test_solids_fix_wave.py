@@ -194,3 +194,57 @@ async def test_python_full_pre_assert_node_passes_the_strategy_features():
             "metadata": MagicMock(), "features": SOLIDS,
         })
     assert m.await_args.kwargs.get("features") == SOLIDS
+
+
+# --- D: unit_cubes prisms: guidance says draw the prism id; warn when not -----
+
+_FACES = [ir.Draw(obj=f"P_{f}") for f in ("front", "right", "top")]
+
+
+def _unit_cubes_warnings(render, **prism_overrides) -> list[str]:
+    warnings: list[str] = []
+    diagram = _diagram(prism=_prism(**prism_overrides), render=render)
+    lower_render(effective_diagram(diagram), warnings)
+    return [w for w in warnings if "unit_cubes" in w]
+
+
+@pytest.mark.asyncio
+async def test_unit_cubes_prism_drawn_face_by_face_warns_through_the_pipeline():
+    diagram = _diagram(prism=_prism(unit_cubes=True), render=list(_FACES))
+    result = await run_ir_pipeline(diagram, SVGRenderer())
+    matching = [w for w in result.warnings if "unit_cubes" in w]
+    assert len(matching) == 1
+    assert "'P'" in matching[0] and "draw the prism id" in matching[0]
+    assert "gridlines" in matching[0]
+
+
+def test_unit_cubes_never_drawn_warns_in_lower_render():
+    assert len(_unit_cubes_warnings(list(_FACES), unit_cubes=True)) == 1
+    assert len(_unit_cubes_warnings([], unit_cubes=True)) == 1
+
+
+def test_no_unit_cubes_warning_when_the_prism_id_is_drawn_or_not_unit_cubes():
+    assert _unit_cubes_warnings([ir.Draw(obj="P")], unit_cubes=True) == []
+    assert _unit_cubes_warnings([ir.Draw(obj="P"), *_FACES], unit_cubes=True) == []
+    assert _unit_cubes_warnings(list(_FACES)) == []
+    assert _unit_cubes_warnings([]) == []
+
+
+def _solids_prompts() -> dict[str, str]:
+    from geometry_diagrams.recipe.catalog import dsl_docs_for
+    from geometry_diagrams.strategies.instructions_python_full import build_python_full_instructions
+    from geometry_diagrams.strategies.instructions_structured import build_structured_instructions
+
+    return {
+        "recipe": dsl_docs_for(SOLIDS),
+        "python_full": build_python_full_instructions(features=SOLIDS),
+        "structured": build_structured_instructions(SOLIDS),
+    }
+
+
+@pytest.mark.parametrize("surface", ["recipe", "python_full", "structured"])
+def test_solids_guidance_says_unit_cubes_prisms_draw_the_prism_id(surface):
+    text = " ".join(_solids_prompts()[surface].replace("`", "").split())  # unwrap lines
+    assert "For unit_cubes prisms, draw the prism id" in text
+    assert "gridlines" in text
+    assert "non-unit-cube" in text

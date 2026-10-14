@@ -324,11 +324,15 @@ faces `{id}_front`, `{id}_back`, `{id}_left`, `{id}_right`, `{id}_top`, `{id}_bo
 base). Do not define anything with one of these ids yourself. A `segment` between two corners of \
 one edge is that same edge.
 - **Wireframe look:** `draw` the prism id; pass `depth_scale` 2/3 (0.67) for wireframe-like \
-figures. **Solid-shaded look:** `fill` and `draw` the three visible FACE ids (front/right/top; \
-front/left/top for `side: "left"`) and do NOT `draw` the prism id, which strokes dashed hidden \
-edges over the fills. A `fill` takes its color from its `style` (a color string: `"#rrggbb"`, \
+figures. **Solid-shaded look (non-unit-cube prisms only):** `fill` and `draw` the three visible \
+FACE ids (front/right/top; front/left/top for `side: "left"`) and do NOT `draw` the prism id, \
+which strokes dashed hidden edges over the fills. A `fill` takes its color from its `style` (a color string: `"#rrggbb"`, \
 `"rgb(r, g, b)"`, `"hsv(h, s, v)"` or an xcolor mix, avoiding CSS color names) or from a \
 `styles` entry of the diagram that the `style` names (`{"fill": ...}`); `opacity` is separate. For unit-cube figures use `view: "isometric"` with `unit_cubes: true`.
+- **Unit cubes:** For `unit_cubes` prisms, `draw` the prism id: that draw produces the cube \
+gridlines (and no dashed hidden edges); drawing the faces separately shows no gridlines. Fills on \
+the face ids still shade it. The fill-and-draw-the-face-ids advice above is for non-unit-cube \
+solid-shaded looks only.
 - **Labels:** fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
 `text` and exactly one of `at` ([x, y]) or `centroid_of` (an object id). Put a dimension on an edge with `label_segment` on an edge id (or on a segment \
 between two corners of one edge). Segment-label text renders in math mode in TikZ, so words and \
