@@ -196,16 +196,20 @@ def query_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> 
     Args:
         dsl: A dsl dict from a prior render_diagram/DiagramResult.dsl.
         query_type: One of "list_objects", "coordinate", "distance", "angle",
-            "length", "radius", "area", "perimeter".
+            "length", "radius", "area", "perimeter", "prism".
         params: Query arguments:
             - "list_objects": {}
             - "coordinate": {"point": "A"}
             - "distance": {"a": "A", "b": "B"}
             - "angle": {"a": "A", "vertex": "B", "b": "C"}
-            - "length": {"segment": "seg_AB"}
+            - "length": {"segment": "seg_AB"} -> drawn (2D) length; a segment
+              joining two corners of a prism (edge, face diagonal or space
+              diagonal) also returns "true_length", the true 3D length
             - "radius": {"circle": "circ"}
             - "area": {"object": "tri_ABC"}
             - "perimeter": {"object": "tri_ABC"}
+            - "prism": {"prism": "P"} -> dimensions (length, width, height),
+              volume, base area, surface area and corner ids
             Call list_objects first to see valid IDs.
     Returns:
         JSON string with the query result, or {"error": "..."} on failure.
@@ -273,8 +277,11 @@ def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = 
     Args:
         dsl: A dsl dict from a prior DiagramResult.dsl.
         query_type: One of "list_objects", "coordinate", "distance", "angle",
-            "length", "radius", "area", "perimeter" (same vocabulary as
-            RecipeStrategy.build_agent()'s query_diagram tool).
+            "length", "radius", "area", "perimeter", "prism" (same vocabulary
+            as RecipeStrategy.build_agent()'s query_diagram tool). "length" on
+            a segment joining two corners of a prism also returns
+            "true_length" (the true 3D length); "prism" returns dimensions,
+            volume, base area, surface area and corner ids.
         params: Query arguments; see dispatch_query() for the shape per query_type.
 
     Returns:

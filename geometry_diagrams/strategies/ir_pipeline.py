@@ -39,11 +39,12 @@ class StructuredRunResult:
     script: str = ""
     variable_ids: dict = field(default_factory=dict)
     entity_manifest: dict = field(default_factory=dict)
-    # Non-fatal notes; never fails a run. Fed today by the renderer and by
-    # failed `prefer`-level checks. Extension point: compile-stage and
-    # check-stage producers should add an optional `warnings: list[str] | None
-    # = None` argument to compile_defs / run_checks and have run_ir_pipeline
-    # pass its collector.
+    # Non-fatal notes; never fails a run. Fed today by the renderer, by
+    # failed `prefer`-level checks and by run_checks' optional `warnings`
+    # collector (check-stage notes such as the prism projection warning),
+    # which run_ir_pipeline passes. Extension point: a compile-stage producer
+    # should add the same optional `warnings: list[str] | None = None`
+    # argument to compile_defs and have run_ir_pipeline pass its collector.
     warnings: list[str] = field(default_factory=list)
 
 
@@ -87,8 +88,8 @@ async def run_ir_pipeline(
 
     diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
-    results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym)
     warnings: list[str] = []
+    results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym, warnings=warnings)
     for r in results:
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)

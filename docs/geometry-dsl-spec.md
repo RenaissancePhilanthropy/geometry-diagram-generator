@@ -451,6 +451,29 @@ For a unit-cube prism only the three visible face outlines are drawn (no
 hidden edges). For a solid look (no hidden edges), draw and fill the visible
 face ids instead of the prism id.
 
+**Measures, queries and checks.** The `prism` query returns the true
+length, width and height, the volume, base area, surface area and corner
+ids. Any segment definition whose two endpoints are corners of the same
+prism (the prism's own edges, or a segment authored or made by a builder
+under any id) is recorded at compile by its endpoint ids, never by
+coordinates; the `length` query on it returns the drawn (projected 2D)
+`length` plus `true_length`, the 3D distance between the two corners (an
+edge gives one dimension, a face diagonal or the space diagonal the
+Euclidean combination).
+
+| Check | Fields | Meaning |
+|-------|--------|---------|
+| `volume_equals` | `prism`, `expected` | The prism's true volume equals `expected` |
+| `true_length_equals` | `seg`, `expected` | The true 3D length of a segment joining two corners of one prism equals `expected` (any other segment fails, naming `distance_equals`) |
+
+Both are near-exact: `|actual - expected| <= tol * max(|expected|, 1)` with a
+default `tol` of 1e-9 (an off-by-one volume fails); an explicit `tol` on the
+check overrides it. Every other check keeps the default tolerance (5e-3).
+`distance_equals`, `equal_length` and `ratio_equal` on a segment joining two
+prism corners keep their 2D meaning (they measure the drawing) and add a
+pipeline warning saying a projection was measured and naming
+`true_length_equals`.
+
 ---
 
 ## Selectors

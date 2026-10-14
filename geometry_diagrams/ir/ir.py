@@ -977,6 +977,26 @@ class RadiusEquals(CheckBase):
     expected: float
 
 
+class VolumeEquals(CheckBase):
+    """A rectangular prism's true volume (length x width x height) equals an
+    expected value. Prism dimensions are exact, so the default tolerance is
+    near-exact: |actual - expected| <= tol * max(|expected|, 1.0) with tol
+    1e-9 unless ``tol`` is given (an off-by-one volume fails)."""
+    kind: Literal["volume_equals"] = "volume_equals"
+    prism: ObjId
+    expected: float
+
+
+class TrueLengthEquals(CheckBase):
+    """The true 3D length of a segment joining two corners of one prism (an
+    edge, a face diagonal or the space diagonal) equals an expected value --
+    unlike distance_equals, which measures the drawn (projected) 2D length.
+    Same near-exact default tolerance as volume_equals."""
+    kind: Literal["true_length_equals"] = "true_length_equals"
+    seg: SegmentId
+    expected: float
+
+
 class CongruentArcs(CheckBase):
     """Two or more circular arcs/sectors are congruent: equal radius AND equal
     central-angle sweep. The sweep comparison is reflex-aware — a minor arc
@@ -1026,6 +1046,7 @@ Check = Annotated[
         RightAngle, AngleEqual, AngleValue,
         EqualLength, DistanceEquals, RatioEqual,
         EqualRadius, RadiusEquals,
+        VolumeEquals, TrueLengthEquals,
         SimilarTriangles, CongruentTriangles, CongruentArcs,
         Tangent, CirclesTangent,
         OppositeSide, SameSide,

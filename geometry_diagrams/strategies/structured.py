@@ -297,10 +297,15 @@ class StructureStrategy(SubstanceStrategy):
                     - "coordinate": point coordinates. params={"point": "A"}
                     - "distance": distance between two points. params={"a": "A", "b": "B"}
                     - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
-                    - "length": segment length. params={"segment": "seg_AB"}
+                    - "length": drawn (2D) segment length. params={"segment": "seg_AB"}
+                      For a segment joining two corners of a prism (an edge, a face
+                      diagonal or the space diagonal) it also returns "true_length",
+                      the true 3D length.
                     - "radius": circle radius. params={"circle": "circ"}
                     - "area": polygon area. params={"object": "tri_ABC"}
                     - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
+                    - "prism": rectangular prism dimensions (length, width, height),
+                      volume, base area, surface area and corner ids. params={"prism": "P"}
                 params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.

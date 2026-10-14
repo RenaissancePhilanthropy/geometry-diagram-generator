@@ -146,12 +146,27 @@ def projection_for(
     return Projection((sp.S(1), sp.S(0)), (sp.S(0), sp.S(1)), (dx, dy))
 
 
+Bits = tuple[int, int, int]
+CornerPair = tuple[Bits, Bits]
+
+
 class Prism:
     """Marker type for a rectangular prism in the symbol table (not a SymPy
     shape, like Arc/Sector). Holds the true dimensions, the projection and the
-    eight projected corners keyed by (length, height, width) bits."""
+    eight projected corners keyed by (length, height, width) bits.
 
-    __slots__ = ("length", "width", "height", "projection", "corners", "corner_ids")
+    It also holds the corner-segment index: every segment DEFINITION whose
+    endpoints are two of this prism's corners, keyed by corner pair (low bits
+    first), whoever created it (an authored segment with any id, the prism's
+    own derived edges, a builder's helper segment). It is filled at compile
+    from the definitions' endpoint ids (see ``index_corner_segment``), never by
+    matching coordinates: two corners can project to the same 2D point. Queries
+    and checks receive only the symbol table, so the index lives here."""
+
+    __slots__ = (
+        "length", "width", "height", "projection", "corners", "corner_ids",
+        "corner_segments", "_segment_pairs", "_bits_by_name",
+    )
 
     def __init__(
         self,
@@ -168,6 +183,31 @@ class Prism:
         self.projection = projection
         self.corners = corners
         self.corner_ids = corner_ids
+        # corner pair (low bits first) -> ids of the segments joining them
+        self.corner_segments: dict[CornerPair, list[str]] = {}
+        self._segment_pairs: dict[str, CornerPair] = {}
+        self._bits_by_name = {name: bits for bits, name in corner_ids.items()}
+
+    def corner_bits(self, point_id: str) -> Bits | None:
+        """Bits of the corner named ``point_id``; None when it is not one."""
+        return self._bits_by_name.get(point_id)
+
+    def record_segment(self, segment_id: str, p: Bits, q: Bits) -> None:
+        pair = (p, q) if p <= q else (q, p)
+        self.corner_segments.setdefault(pair, []).append(segment_id)
+        self._segment_pairs[segment_id] = pair
+
+    def segment_pair(self, segment_id: str) -> CornerPair | None:
+        """Corner pair the indexed segment joins; None when not indexed."""
+        return self._segment_pairs.get(segment_id)
+
+    def true_distance(self, p: Bits, q: Bits) -> sp.Expr:
+        """Exact 3D distance between two corners: an edge gives one
+        dimension, a face diagonal or the space diagonal the Euclidean
+        combination."""
+        steps = [abs(a - b) for a, b in zip(p, q)]  # (length, height, width)
+        dims = (self.length, self.height, self.width)
+        return sp.sqrt(sum((s * d) ** 2 for s, d in zip(steps, dims)))
 
     @property
     def volume(self) -> sp.Expr:
@@ -277,6 +317,43 @@ def register_corners(stmt: ir.RectangularPrism, obj: Any, sym: dict[str, Any]) -
                 stmt.id, f"corner name {name!r} collides with an existing definition; rename the corner"
             )
         sym[name] = obj.corners[bits]
+
+
+def index_corner_segment(stmt: Any, obj: Any, sym: dict[str, Any]) -> None:
+    """Registry ``index`` hook, run after EVERY statement compiles: a segment
+    definition whose endpoint ids are two distinct corners of the same prism
+    is recorded in that prism's corner-segment index. Type-exact on
+    ``ir.Segment``; endpoint ids only, never coordinates."""
+    if type(stmt) is not ir.Segment:
+        return
+    for prism in sym.values():
+        if type(prism) is not Prism:
+            continue
+        p, q = prism.corner_bits(stmt.a), prism.corner_bits(stmt.b)
+        if p is not None and q is not None and p != q:
+            prism.record_segment(stmt.id, p, q)
+            return
+
+
+def corner_segment(sym: dict[str, Any], segment_id: str) -> tuple[Prism, Bits, Bits] | None:
+    """(prism, corner bits, corner bits) for a segment joining two corners of
+    one prism, from the compile-time index; None for any other id."""
+    for prism in sym.values():
+        if type(prism) is Prism:
+            pair = prism.segment_pair(segment_id)
+            if pair is not None:
+                return prism, pair[0], pair[1]
+    return None
+
+
+def true_length(sym: dict[str, Any], segment_id: str) -> sp.Expr | None:
+    """Exact true 3D length of a segment joining two corners of one prism;
+    None for any other segment."""
+    hit = corner_segment(sym, segment_id)
+    if hit is None:
+        return None
+    prism, p, q = hit
+    return prism.true_distance(p, q)
 
 
 def prism_position(obj: Any) -> tuple[float, float] | None:

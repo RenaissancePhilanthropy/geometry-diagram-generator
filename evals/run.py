@@ -165,10 +165,15 @@ async def _run_query_phase(
                   coordinate  {"id": "A"}              -> x, y coords
                   distance    {"id1": "A", "id2": "B"} -> distance between points
                   angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
-                  length      {"id": "seg_AB"}          -> segment length
+                  length      {"id": "seg_AB"}          -> drawn (2D) segment length; a segment
+                                                           joining two corners of a prism (edge, face
+                                                           diagonal or space diagonal) also returns
+                                                           "true_length", the true 3D length
                   radius      {"id": "c1"}              -> circle radius
                   area        {"id": "tri_ABC"}         -> area
                   perimeter   {"id": "tri_ABC"}         -> perimeter
+                  prism       {"id": "P"}               -> rectangular prism: length, width, height,
+                                                           volume, base area, surface area, corner ids
                   list_objects {}                       -> all objects and their types
                 """
                 return dispatch_query(_sym, query_type, params or {})

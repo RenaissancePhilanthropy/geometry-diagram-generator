@@ -1604,7 +1604,13 @@ class PythonFullStrategy(SubstanceStrategy):
 
             Args:
                 query_type: One of "list_objects", "coordinate", "distance",
-                    "angle", "length", "radius", "area", "perimeter".
+                    "angle", "length", "radius", "area", "perimeter", "prism".
+                    "length" ({"segment": id}) is the drawn (2D) length; for a
+                    segment joining two corners of a prism (an edge, a face
+                    diagonal or the space diagonal) it also returns
+                    "true_length", the true 3D length. "prism" ({"prism": id})
+                    returns its dimensions (length, width, height), volume,
+                    base area, surface area and corner ids.
                 params: Query arguments — call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.

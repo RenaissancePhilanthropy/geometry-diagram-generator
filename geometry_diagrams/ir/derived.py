@@ -111,6 +111,14 @@ class DerivedConstruction:
     #     the generation-surface gate ``require_features``; compile and render
     #     accept every registered kind whatever the enabled set.
     feature: str | None = None
+    # index: (any compiled statement, its object, the symbol table) -> None.
+    #     Called after EVERY statement compiles, whatever its kind (via
+    #     register_derived, so the whole-diagram compile and the incremental
+    #     builder both run it), so a kind can index other definitions that
+    #     refer to its derived entities -- e.g. a prism records each segment
+    #     joining two of its corners. Must only add to objects already in the
+    #     table; never adds or overwrites table entries.
+    index: Callable[[Any, Any, dict[str, Any]], None] | None = None
 
 
 class DerivedRegistry:
@@ -284,9 +292,14 @@ class DerivedRegistry:
         return entry.center_id(stmt)
 
     def register_derived(self, stmt: Any, obj: Any, sym: dict[str, Any]) -> None:
+        """Post-compile step for one statement: its own kind registers its
+        derived entities, then every kind with an ``index`` hook sees it."""
         entry = self.get(stmt)
         if entry is not None:
             entry.register(stmt, obj, sym)
+        for kind_entry in self._by_kind.values():
+            if kind_entry.index is not None:
+                kind_entry.index(stmt, obj, sym)
 
 
 # --- registered constructions ------------------------------------------------
@@ -367,6 +380,7 @@ def _build_default_registry() -> DerivedRegistry:
         lower_draw=_prism.lower_draw,
         exclusive=True,
         feature="solids",
+        index=_prism.index_corner_segment,
     ))
     return reg
 

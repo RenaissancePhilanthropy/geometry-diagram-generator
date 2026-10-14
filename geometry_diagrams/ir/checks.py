@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from . import ir
 from .derived import effective_defs
+from .prism import Prism, true_length as prism_true_length
 from .to_sympy import (
     Arc,
     EllipticalArc,
@@ -20,6 +21,12 @@ from .to_sympy import (
 
 
 DEFAULT_TOL = 5e-3
+# Default relative tolerance of the prism measure checks (volume_equals,
+# true_length_equals). Prism dimensions are exact, so an off-by-one answer
+# must fail (DEFAULT_TOL would pass 299 against 300). A check's own ``tol``
+# overrides it; the run-wide default passed to run_checks does not apply to
+# these two kinds, and every other kind keeps DEFAULT_TOL.
+EXACT_MEASURE_TOL = 1e-9
 
 
 class UnsupportedOperand(TypeError):
@@ -44,9 +51,56 @@ def run_checks(
     checks: list[ir.Check],
     sym: SymTable,
     tol: float = DEFAULT_TOL,
+    warnings: list[str] | None = None,
 ) -> list[CheckResult]:
-    """Evaluate each Check against the compiled symbol table."""
-    return [_check_one(c, sym, tol) for c in checks]
+    """Evaluate each Check against the compiled symbol table.
+
+    ``warnings``: optional collector (the pipeline passes its warnings list).
+    Check-stage warnings are appended to it; they never change a result. Today
+    the only one is the projection warning (see ``_projection_warning``).
+    """
+    results = [_check_one(c, sym, tol) for c in checks]
+    if warnings is not None:
+        for check in checks:
+            note = _projection_warning(check, sym)
+            if note:
+                warnings.append(note)
+    return results
+
+
+# Generic 2D checks that measure segment lengths, and the segment fields they
+# measure. On a segment joining two prism corners they measure the drawn
+# projection, so they warn (their result is unchanged).
+def _length_check_segments(check: Any) -> list[str]:
+    match check:
+        case ir.DistanceEquals(seg=seg):
+            return [seg]
+        case ir.EqualLength(segs=segs):
+            return list(segs)
+        case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
+            return [s1, s2, s3, s4]
+    return []
+
+
+def _projection_warning(check: Any, sym: SymTable) -> str | None:
+    """A warning when a generic 2D length check measures a segment joining two
+    corners of one prism: it measured the projection, not the true length."""
+    parts = []
+    for seg in dict.fromkeys(_length_check_segments(check)):
+        true = prism_true_length(sym, seg)
+        obj = sym.get(seg)
+        if true is None or not isinstance(obj, spg.Segment):
+            continue
+        parts.append(
+            f"{seg!r} (drawn {float(obj.length.evalf()):.4g}, true {float(true.evalf()):.10g})"
+        )
+    if not parts:
+        return None
+    return (
+        f"Check {check.kind!r} measured the projected 2D length of prism segment(s) "
+        f"{', '.join(parts)}, not the true 3D length; use true_length_equals to check "
+        f"a prism's true length."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +321,34 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
                 )
 
+            case ir.VolumeEquals(prism=prism_id, expected=expected):
+                obj = sym[prism_id]
+                if type(obj) is not Prism:
+                    raise UnsupportedOperand(
+                        f"volume_equals: {prism_id!r} is not a prism "
+                        f"(got {type(obj).__name__})"
+                    )
+                volume = float(obj.volume.evalf())
+                ok = _near_exact(volume, expected, check.tol)
+                msg = "" if ok else (
+                    f"Prism {prism_id!r} volume {volume:.10g} != expected {expected:.10g}"
+                )
+
+            case ir.TrueLengthEquals(seg=seg, expected=expected):
+                sym[seg]  # unknown id: the usual KeyError failure
+                true = prism_true_length(sym, seg)
+                if true is None:
+                    raise UnsupportedOperand(
+                        f"true_length_equals: segment {seg!r} does not join two corners "
+                        f"of one prism; true length is defined only for those (use "
+                        f"distance_equals for a 2D length)"
+                    )
+                length = float(true.evalf())
+                ok = _near_exact(length, expected, check.tol)
+                msg = "" if ok else (
+                    f"Segment {seg!r} true length {length:.10g} != expected {expected:.10g}"
+                )
+
             case ir.CongruentArcs(arcs=arcs):
                 ok, msg = _check_congruent_arcs(arcs, sym, t)
 
@@ -323,6 +405,13 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
+    """Relative comparison for the prism measure checks: ``tol`` (the check's
+    own) or EXACT_MEASURE_TOL, scaled by max(|expected|, 1)."""
+    t = EXACT_MEASURE_TOL if tol is None else tol
+    return abs(actual - expected) <= t * max(abs(expected), 1.0)
+
 
 def _is_parallel(obj1, obj2, tol: float = 1e-9) -> bool:
     """Check parallelism symbolically, falling back to numerical cross-product for float coords."""

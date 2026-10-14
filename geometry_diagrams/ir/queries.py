@@ -13,7 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
-from .prism import Prism
+from .prism import Prism, true_length as prism_true_length
 from .to_sympy import SymTable
 
 
@@ -50,10 +50,18 @@ def query_angle(sym: SymTable, a: str, vertex: str, b: str) -> dict:
 
 
 def query_length(sym: SymTable, segment_id: str) -> dict:
+    """``length`` is the drawn (projected 2D) length. A segment joining two
+    corners of one prism also gets ``true_length``, its 3D length (an edge
+    gives one dimension; a face diagonal or the space diagonal the Euclidean
+    combination)."""
     obj = _get(sym, segment_id)
     if not isinstance(obj, spg.Segment):
         raise TypeError(f"{segment_id!r} is not a Segment (got {type(obj).__name__})")
-    return {"length": float(obj.length.evalf())}
+    out = {"length": float(obj.length.evalf())}
+    true = prism_true_length(sym, segment_id)
+    if true is not None:
+        out["true_length"] = float(true.evalf())
+    return out
 
 
 def query_radius(sym: SymTable, circle_id: str) -> dict:
