@@ -553,16 +553,17 @@ class Prism:
 
     def edge(self, corner_a, corner_b) -> Segment:
         """The prism's own edge Segment between two corners that differ in exactly one bit. Each corner is a corner Point or a (a, b, c) bit triple."""
-        from geometry_diagrams.ir.prism import edge_id
+        from geometry_diagrams.ir.prism import edge_between
 
         p = self._bits_of(corner_a, "Prism.edge()")
         q = self._bits_of(corner_b, "Prism.edge()")
-        if sum(x != y for x, y in zip(p, q)) != 1:
+        edge = edge_between(self.id, self._corner_ids, self._corner_ids[p], self._corner_ids[q])
+        if edge is None:
             raise ValueError(
                 f"Prism.edge(): corners {p} and {q} are not the ends of one edge (they must "
                 "differ in exactly one bit); use segment(a, b) for a face or space diagonal"
             )
-        return Segment(id=edge_id(self.id, p, q), _builder=self._builder)
+        return Segment(id=edge, _builder=self._builder)
 
     def face(self, name: str) -> Polygon:
         """The face Polygon: 'front', 'back', 'left', 'right', 'top' or 'bottom' ('base' is the bottom face)."""

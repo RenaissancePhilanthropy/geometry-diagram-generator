@@ -31,6 +31,8 @@ class Builder:
         self._render: list = []
         self._coord_floats: dict[str, tuple[float, float]] = {}
         self._segment_cache: dict[frozenset, str] = {}
+        # Prism id -> its bits -> corner id map, for segment edge reuse.
+        self._prism_corners: dict[str, dict] = {}
         self._op_cap = op_cap
         self._hidden_id_counter = 0
         self._canvas = None  # set at most once, by canvas(); type is ir.Canvas | None
@@ -115,8 +117,13 @@ class Builder:
 
     def _get_or_create_segment(self, p_id: str, q_id: str) -> "Segment":
         from geometry_diagrams.ir.ir import Segment as SegmentDef
+        from geometry_diagrams.ir.prism import edge_between
         from geometry_diagrams.pydsl.handles import Segment
 
+        for prism_id, corners in self._prism_corners.items():
+            edge = edge_between(prism_id, corners, p_id, q_id)
+            if edge is not None:
+                return Segment(id=edge, _builder=self)
         key = frozenset((p_id, q_id))
         if key in self._segment_cache:
             return Segment(id=self._segment_cache[key], _builder=self)
@@ -127,16 +134,15 @@ class Builder:
 
     def _register_prism(self, stmt) -> "Prism":
         """Build the Prism handle for a just-recorded (and compiled)
-        RectangularPrism, and pre-seed the segment cache with the prism's own
-        twelve edges so segment(a, b) between two corners of one edge returns
-        the prism's derived edge (never a second, duplicate stroke). Diagonals
-        and non-edges miss the cache and get an ordinary segment."""
+        RectangularPrism, and record its corners so segment(a, b) between two
+        corners of one edge returns the prism's derived edge (never a second,
+        duplicate stroke; see _get_or_create_segment). Diagonals and non-edges
+        get an ordinary segment."""
         from geometry_diagrams.ir import prism as prism_mod
         from geometry_diagrams.pydsl.handles import Prism
 
         names = prism_mod.corner_names(stmt)
-        for p, q in prism_mod.edges():
-            self._segment_cache[frozenset((names[p], names[q]))] = prism_mod.edge_id(stmt.id, p, q)
+        self._prism_corners[stmt.id] = dict(names)
         return Prism(
             id=stmt.id, length=stmt.length, width=stmt.width, height=stmt.height,
             _builder=self, _corner_ids=dict(names),

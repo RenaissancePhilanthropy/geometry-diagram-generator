@@ -1391,9 +1391,9 @@ class _Lowerer:
     def _prism_edge_owner(self, p: str, q: str) -> tuple[str, str] | None:
         """(edge id, prism id) for ``_prism_edge``; None when it has none."""
         for stmt in self._prisms.values():
-            bits = {name: b for b, name in _prism.corner_names(stmt).items()}
-            if p in bits and q in bits and sum(x != y for x, y in zip(bits[p], bits[q])) == 1:
-                return _prism.edge_id(stmt.id, bits[p], bits[q]), stmt.id
+            edge = _prism.edge_between(stmt.id, _prism.corner_names(stmt), p, q)
+            if edge is not None:
+                return edge, stmt.id
         return None
 
     def _prune_unreferenced_edge_aliases(self) -> None:

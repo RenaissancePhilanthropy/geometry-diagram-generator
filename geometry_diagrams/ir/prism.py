@@ -18,7 +18,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import sympy as sp
 import sympy.geometry as spg
@@ -540,6 +540,20 @@ def edges() -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
                 other[axis] = 1
                 out.append((bits, tuple(other)))
     return out  # type: ignore[return-value]
+
+
+def edge_between(
+    prism_id: str, corners: Mapping[tuple[int, int, int], str], p: str, q: str,
+) -> str | None:
+    """The prism's own edge id when corner ids ``p`` and ``q`` (either order)
+    are the two ends of one of its edges (their corner bits differ on exactly
+    one axis); None for a diagonal, the same corner twice or a non-corner.
+    ``corners`` is the prism's bits -> corner id map (``corner_names``)."""
+    bits = {name: b for b, name in corners.items()}
+    a, b = bits.get(p), bits.get(q)
+    if a is None or b is None or sum(x != y for x, y in zip(a, b)) != 1:
+        return None
+    return edge_id(prism_id, a, b)
 
 
 def gridline_point_id(prism_id: str, n: int) -> str:
