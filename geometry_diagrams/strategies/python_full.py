@@ -20,7 +20,12 @@ from .llm import (
     extract_usage, extract_cost, extract_text, make_system_message,
 )
 from .instructions_python_full import build_python_full_instructions
-from .ir_pipeline import StructuredRunResult, run_ir_pipeline
+from .ir_pipeline import (
+    StructuredRunResult,
+    format_warnings_for_retry,
+    run_ir_pipeline,
+    warnings_from_error,
+)
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
 from ..ir.edit_diagnostics import check_edit_locality
@@ -777,6 +782,7 @@ class PythonFullPipelineState(TypedDict):
     enable_cache: bool
     attempt: int
     last_error: str
+    warnings: list[str]  # from the last failed pipeline attempt
     script: Optional[str]
     result: Optional[StructuredRunResult]
     input_tokens: int
@@ -848,6 +854,9 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
     prompt = state["prompt"]
     if attempt > 0 and last_error:
         prompt = f"{prompt}\n\nPrevious attempt failed: {last_error}\nPlease produce a corrected script."
+        warn_text = format_warnings_for_retry(state.get("warnings") or [])
+        if warn_text:
+            prompt = f"{prompt}\n\n{warn_text}"
 
     from langchain_core.messages import HumanMessage
     instructions = build_python_full_instructions(include_cookbook=experimental_diagram_cookbook)
@@ -888,6 +897,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             return {
                 "script": None,
                 "last_error": error_text,
+            "warnings": [],
                 "attempt": attempt + 1,
                 "input_tokens": state["input_tokens"] + in_tok,
                 "output_tokens": state["output_tokens"] + out_tok,
@@ -1005,6 +1015,7 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
             metadata.attempt_traces[-1].error = error_text
         return {
             "last_error": error_text,
+            "warnings": [],
             "attempt": state["attempt"] + 1,
             "result": None,
         }
@@ -1054,6 +1065,7 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
                     metadata.attempt_traces[-1].error = error_text
                 return {
                     "last_error": error_text,
+                    "warnings": list(pipeline_result.warnings),
                     "attempt": state["attempt"] + 1,
                     "result": None,
                 }
@@ -1082,6 +1094,7 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
             metadata.attempt_traces[-1].error = str(e)
         return {
             "last_error": str(e),
+            "warnings": warnings_from_error(e),
             "attempt": state["attempt"] + 1,
             "result": None,
         }
@@ -1313,6 +1326,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "enable_cache": self.enable_cache,
             "attempt": 0,
             "last_error": "",
+            "warnings": [],
             "script": None,
             "result": None,
             "input_tokens": 0,

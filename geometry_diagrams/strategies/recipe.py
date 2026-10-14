@@ -20,7 +20,12 @@ from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .structured import dispatch_query
-from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipeline
+from .ir_pipeline import (
+    StructuredRunResult,
+    format_warnings_for_retry,
+    run_ir_pipeline as _run_ir_pipeline,
+    warnings_from_error,
+)
 from .llm import (
     get_chat_model,
     extract_usage,
@@ -205,6 +210,7 @@ class RecipePipelineState(TypedDict):
     generation_prompt: str
     attempt: int
     last_error: str
+    warnings: list[str]  # from the last failed pipeline attempt
     dsl: Optional[RecipeDSL]
     diagram_ir: Optional[Any]
     result: Optional[StructuredRunResult]
@@ -297,6 +303,9 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             f"Please correct the issue and try again.\n"
             f"{hints}"
         )
+        warn_text = format_warnings_for_retry(state.get("warnings") or [])
+        if warn_text:
+            user_message = f"{user_message}\n{warn_text}\n"
 
     from langchain_core.messages import HumanMessage
 
@@ -418,6 +427,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
         # attempt already incremented by _generate_dsl_node on success
         return {
             "last_error": error_msg,
+            "warnings": [],
             "result": None,
             "dsl": None,  # Reset DSL so generate_dsl re-runs
         }
@@ -441,6 +451,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
         # attempt already incremented by _generate_dsl_node on success
         return {
             "last_error": error_msg,
+            "warnings": warnings_from_error(e),
             "result": None,
             "dsl": None,  # Reset so generate_dsl re-runs
         }
@@ -601,6 +612,7 @@ class RecipeStrategy(SubstanceStrategy):
             "generation_prompt": "",
             "attempt": 0,
             "last_error": "",
+            "warnings": [],
             "dsl": None,
             "diagram_ir": None,
             "result": None,

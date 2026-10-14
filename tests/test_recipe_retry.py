@@ -255,3 +255,35 @@ async def test_angle_hint_appended_on_retry():
     assert "three distinct points" in human_content, (
         f"Expected hint text 'three distinct points' in retry human message, got: {human_content[:300]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Warnings in retry prompts (solids ticket 04)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_recipe_retry_prompt_includes_warnings_and_warnings_alone_never_retry():
+    from geometry_diagrams.strategies.ir_pipeline import PipelineError
+
+    valid = _wrap_dsl(_make_valid_dsl())
+    mock_llm = _make_mock_llm([valid, valid])
+    calls = {"n": 0}
+
+    async def pipeline(diagram_ir, renderer=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
+        res = _make_fake_result()
+        res.warnings = ["still warning"]
+        return res
+
+    p1, p2, p3, p4, p5, p6 = _common_patches(mock_llm, pipeline_mock=pipeline)
+    with p1, p2, p3, p4, p5, p6:
+        result = await RecipeStrategy().run("Draw a triangle.")
+
+    structured = mock_llm.with_structured_output.return_value
+    assert structured.ainvoke.call_count == 2  # the warned success did not retry again
+    second = structured.ainvoke.call_args_list[1].args[0][-1].content
+    second = second if isinstance(second, str) else str(second)
+    assert "Skipping Draw for undefined object 'Q'" in second
+    assert result.warnings == ["still warning"]

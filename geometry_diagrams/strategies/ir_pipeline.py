@@ -39,6 +39,30 @@ class StructuredRunResult:
     script: str = ""
     variable_ids: dict = field(default_factory=dict)
     entity_manifest: dict = field(default_factory=dict)
+    # Non-fatal notes from the check and render stages (failed `prefer`
+    # checks, renderer "Skipping Draw ..." messages). Never fails a run.
+    warnings: list[str] = field(default_factory=list)
+
+
+class PipelineError(RuntimeError):
+    """A pipeline failure that also carries the warnings collected before it."""
+
+    def __init__(self, message: str, warnings: list[str] | None = None):
+        super().__init__(message)
+        self.warnings: list[str] = list(warnings or [])
+
+
+def warnings_from_error(exc: BaseException) -> list[str]:
+    """Warnings attached to a pipeline failure ([] for any other exception)."""
+    return list(getattr(exc, "warnings", None) or [])
+
+
+def format_warnings_for_retry(warnings: list[str]) -> str:
+    """Prompt text listing warnings for a retry; "" when there are none."""
+    if not warnings:
+        return ""
+    bullets = "\n".join(f"- {w}" for w in warnings)
+    return f"Warnings from the previous attempt (not errors, but worth fixing):\n{bullets}"
 
 
 async def run_ir_pipeline(
@@ -56,21 +80,27 @@ async def run_ir_pipeline(
     diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
     results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym)
-    must_failures = [r for r in results if not r.passed and r.check.level == "must"]
-    if must_failures:
-        msgs = "; ".join(r.message for r in must_failures)
-        raise RuntimeError(f"Geometric checks failed: {msgs}")
-
+    warnings: list[str] = []
     for r in results:
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)
+            warnings.append(f"Preferred check not satisfied: {r.message}")
+
+    must_failures = [r for r in results if not r.passed and r.check.level == "must"]
+    if must_failures:
+        msgs = "; ".join(r.message for r in must_failures)
+        raise PipelineError(f"Geometric checks failed: {msgs}", warnings)
 
     angle_failures = await asyncio.to_thread(check_render_angles, diagram_ir, sym)
     if angle_failures:
         triples = ", ".join(str(t) for t in angle_failures)
-        raise RuntimeError(f"Invalid angle triples (not three distinct points): {triples}")
+        raise PipelineError(
+            f"Invalid angle triples (not three distinct points): {triples}", warnings
+        )
 
-    render_result = await asyncio.to_thread(renderer.render, diagram_ir, sym)
+    render_result = await asyncio.to_thread(
+        renderer.render, diagram_ir, sym, warnings=warnings
+    )
 
     sym_table = {k: (float(v.x), float(v.y)) for k, v in sym.items() if isinstance(v, spg.Point)}
 
@@ -80,4 +110,5 @@ async def run_ir_pipeline(
         svg=render_result.output,
         sym_table=sym_table,
         sym_full=sym,
+        warnings=warnings,
     )

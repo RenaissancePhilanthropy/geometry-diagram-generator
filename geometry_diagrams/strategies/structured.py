@@ -11,7 +11,12 @@ from langgraph.prebuilt import create_react_agent
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import get_chat_model, bind_structured_output_for_model, extract_usage, make_system_message
 from .instructions import STRUCTURED_STRATEGY_IR_INSTRUCTIONS
-from .ir_pipeline import StructuredRunResult, run_ir_pipeline as _run_ir_pipeline
+from .ir_pipeline import (
+    StructuredRunResult,
+    format_warnings_for_retry,
+    run_ir_pipeline as _run_ir_pipeline,
+    warnings_from_error,
+)
 from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
@@ -108,6 +113,7 @@ class StructuredPipelineState(TypedDict):
     enable_cache: bool
     attempt: int
     last_error: str
+    warnings: list[str]  # from the last failed pipeline attempt
     diagram_ir: Optional[DiagramIR]
     result: Optional[StructuredRunResult]
     input_tokens: int
@@ -125,6 +131,9 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
     prompt = state["prompt"]
     if attempt > 0 and last_error:
         prompt = f"{prompt}\n\nPrevious attempt failed: {last_error}\nPlease produce a corrected DiagramIR."
+        warn_text = format_warnings_for_retry(state.get("warnings") or [])
+        if warn_text:
+            prompt = f"{prompt}\n\n{warn_text}"
 
     from langchain_core.messages import HumanMessage
     messages = [
@@ -185,6 +194,7 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
     except (IRCompileError, RuntimeError) as e:
         return {
             "last_error": str(e),
+            "warnings": warnings_from_error(e),
             "attempt": state["attempt"] + 1,
             "result": None,
         }
@@ -226,6 +236,7 @@ class StructureStrategy(SubstanceStrategy):
             "enable_cache": self.enable_cache,
             "attempt": 0,
             "last_error": "",
+            "warnings": [],
             "diagram_ir": None,
             "result": None,
             "input_tokens": 0,

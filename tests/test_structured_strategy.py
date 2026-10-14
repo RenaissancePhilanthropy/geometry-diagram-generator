@@ -300,3 +300,56 @@ async def test_run_ir_pipeline_resolves_angle_pairs_corresponding():
     resolved = [r for r in result.diagram_ir.render if isinstance(r, MarkAngles)]
     assert len(resolved) == 2
     assert result.diagram_ir.pending_angle_pairs == []
+
+
+# ---------------------------------------------------------------------------
+# Warnings in retry prompts (solids ticket 04)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_warnings_from_failed_pipeline_attempt():
+    from geometry_diagrams.strategies.ir_pipeline import PipelineError
+
+    fake_ir = DiagramIR(define=[], checks=[], render=[])
+    mock_llm = _make_mock_llm([_make_raw_ir_response(fake_ir), _make_raw_ir_response(fake_ir)])
+    calls = {"n": 0}
+
+    async def mock_pipeline(diagram_ir, renderer=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
+        return _make_fake_result()
+
+    with (
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=mock_pipeline),
+    ):
+        await StructureStrategy().run("draw", model="anthropic:claude-sonnet-4-6")
+
+    structured = mock_llm.with_structured_output.return_value
+    first = structured.ainvoke.call_args_list[0].args[0][1].content
+    second = structured.ainvoke.call_args_list[1].args[0][1].content
+    assert "Skipping Draw for undefined object 'Q'" not in first
+    assert "Previous attempt failed: Geometric checks failed: x" in second
+    assert "Skipping Draw for undefined object 'Q'" in second
+
+
+@pytest.mark.asyncio
+async def test_warnings_alone_do_not_retry_structured():
+    fake_ir = DiagramIR(define=[], checks=[], render=[])
+    mock_llm = _make_mock_llm([_make_raw_ir_response(fake_ir)])
+    warned = _make_fake_result()
+    warned.warnings = ["a warning"]
+
+    async def mock_pipeline(diagram_ir, renderer=None):
+        return warned
+
+    with (
+        patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=mock_llm),
+        patch("geometry_diagrams.strategies.structured._run_ir_pipeline", new=mock_pipeline),
+    ):
+        result = await StructureStrategy().run("draw", model="anthropic:claude-sonnet-4-6")
+
+    assert result.retries == 0
+    assert result.warnings == ["a warning"]
+    assert mock_llm.with_structured_output.return_value.ainvoke.call_count == 1

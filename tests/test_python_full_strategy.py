@@ -2155,3 +2155,39 @@ async def test_verify_labels_in_canvas_is_noop_under_tikz_renderer():
         )
     assert isinstance(result, StructuredRunResult)
     assert result.retries == 0
+
+
+@pytest.mark.asyncio
+async def test_retry_prompt_includes_warnings_and_warnings_alone_never_retry():
+    from geometry_diagrams.strategies import python_full as pf
+    from geometry_diagrams.strategies.ir_pipeline import PipelineError, run_ir_pipeline
+
+    calls = {"n": 0}
+
+    async def flaky_pipeline(diagram_ir, renderer=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
+        res = await run_ir_pipeline(diagram_ir, renderer)
+        res.warnings = ["still warning"]
+        return res
+
+    mock_llm = _make_mock_llm([
+        _make_script_response(VALID_SCRIPT),
+        _make_script_response(VALID_SCRIPT),
+    ])
+    with (
+        patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=mock_llm),
+        patch.object(pf, "run_ir_pipeline", new=flaky_pipeline),
+    ):
+        result = await PythonFullStrategy().run(
+            "a right triangle", model="anthropic:claude-sonnet-4-6", renderer=SVGRenderer()
+        )
+
+    structured = mock_llm.with_structured_output.return_value
+    assert structured.ainvoke.call_count == 2  # the warned success did not retry again
+    first = structured.ainvoke.call_args_list[0].args[0][1].content
+    second = structured.ainvoke.call_args_list[1].args[0][1].content
+    assert "Skipping Draw" not in first
+    assert "Skipping Draw for undefined object 'Q'" in second
+    assert result.warnings == ["still warning"]
