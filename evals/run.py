@@ -53,8 +53,13 @@ _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 from evals.ir_diagnostics import classify_ir
-from evals.scenarios import _validate_scenarios
-from evals.sympy_checks import _validate_properties_sympy
+from evals.scenarios import _validate_scenarios, split_by_required_features
+from evals.sympy_checks import (
+    PRISM_PROPERTY_TYPES,
+    _validate_prism_properties,
+    _validate_properties_sympy,
+)
+from geometry_diagrams.features import parse_features
 from evals.reporting import (
     _externalize_traces,
     _append_jsonl,
@@ -334,6 +339,7 @@ async def run_scenario(
     use_pre_assert_step: bool = False,
     experimental_diagram_cookbook: bool = False,
     verify_labels_in_canvas: bool = False,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict.
 
@@ -350,6 +356,10 @@ async def run_scenario(
     verify_labels_in_canvas is the same story again (ticket 02,
     pydsl-authoring-quality's label-bounds checker) — only
     PythonFullStrategy.run() accepts it.
+
+    features is the set of enabled feature groups (geometry_diagrams/features.py,
+    the --features flag). Every strategy is built with it (python_full carries
+    it into its sandbox payload) and the query tool receives strategy.features.
     """
     record: dict[str, Any] = {
         "scenario_id": scenario["id"],
@@ -381,6 +391,7 @@ async def run_scenario(
         "error": None,
         "ir_diagnostics": None,
         "sympy_property_checks": [],
+        "prism_property_checks": [],
         "structural_checks": None,
         "query_results": [],
         "llm_judge_score": None,
@@ -390,7 +401,13 @@ async def run_scenario(
     }
 
     strategy_cls = _STRATEGY_MAP[strategy_name]
-    strategy = strategy_cls(enable_cache=enable_cache)
+    # features is passed only when non-empty so strategy classes (and test
+    # doubles) constructed with enable_cache alone keep working unchanged.
+    strategy = (
+        strategy_cls(enable_cache=enable_cache, features=frozenset(features))
+        if features
+        else strategy_cls(enable_cache=enable_cache)
+    )
 
     start = time.monotonic()
     try:
@@ -436,6 +453,13 @@ async def run_scenario(
                 result.sym_table,
             )
         record["sympy_property_checks"] = sympy_property_checks
+
+        # Prism properties resolve through query_prism on the FULL compiled
+        # symbol table (never on the 2D projected float table above).
+        if result.sym_full is not None and scenario.get("expected_properties"):
+            record["prism_property_checks"] = _validate_prism_properties(
+                scenario["expected_properties"], result.sym_full
+            )
 
         _populate_strategy_metadata(record, result)
 
@@ -528,6 +552,8 @@ async def run_scenario(
         tikz_check_results: dict[str, Any] = {}
 
         for prop in scenario.get("expected_properties", []):
+            if prop["type"] in PRISM_PROPERTY_TYPES:
+                continue  # 3D property: not a 2D projection check
             try:
                 prop_result = validate_geometric_property(
                     coords,
@@ -632,6 +658,10 @@ async def run_scenario(
 # Gate helpers
 # ---------------------------------------------------------------------------
 
+# IR def kinds that are solids (counted by solid_count, never by polygon_count).
+_SOLID_KINDS = frozenset({"rectangular_prism"})
+
+
 def _run_structural_checks(
     structural_checks: list[dict],
     diagram_ir: dict | None,
@@ -639,7 +669,15 @@ def _run_structural_checks(
 ) -> dict[str, dict]:
     """Run structural checks against the IR (preferred) or TikZ code.
 
-    Currently supports: polygon_count — assert at least N polygons with a given side count.
+    Supports:
+      polygon_count — at least N authored 2D plane polygons (polygon,
+        polygon_exterior, triangle defs) with a given side count. Prisms never
+        count: a prism is one rectangular_prism def, its derived faces never
+        appear in the authored IR.
+      solid_count — at least ``min`` (default 1) authored solids, optionally
+        only those of ``kind`` (e.g. rectangular_prism) and whose literal
+        length/width/height equal the given values (an expression-valued
+        dimension never matches). Needs the authored IR.
     Returns a dict mapping check name -> {"passed": bool, "message": str}.
     """
     results: dict[str, dict] = {}
@@ -683,6 +721,36 @@ def _run_structural_checks(
                     f"{'any' if sides is None else sides} sides, found {count}"
                 )
                 results[name] = {"passed": ok, "message": msg}
+            elif ctype == "solid_count":
+                min_count = int(args.get("min", 1))
+                kind = args.get("kind")
+                dims = {d: args[d] for d in ("length", "width", "height") if d in args}
+                if diagram_ir is None:
+                    results[name] = {
+                        "passed": False,
+                        "message": "solid_count needs the authored IR (none available)",
+                    }
+                    continue
+                count = 0
+                for defn in diagram_ir.get("define", []):
+                    dkind = defn.get("kind")
+                    if dkind not in _SOLID_KINDS or (kind is not None and dkind != kind):
+                        continue
+                    if all(
+                        isinstance(defn.get(d), (int, float))
+                        and not isinstance(defn.get(d), bool)
+                        and defn[d] == v
+                        for d, v in dims.items()
+                    ):
+                        count += 1
+                ok = count >= min_count
+                desc = (kind or "any kind") + (f" {dims}" if dims else "")
+                results[name] = {
+                    "passed": ok,
+                    "message": "" if ok else (
+                        f"expected at least {min_count} solid(s) ({desc}), found {count}"
+                    ),
+                }
             else:
                 results[name] = {"passed": True, "message": f"(skipped: unknown type {ctype!r})"}
         except Exception as exc:
@@ -729,6 +797,11 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
             if isinstance(result, dict) and result.get("passed") is False:
                 failures.append(f"structural:{name}")
 
+    prism_checks = record.get("prism_property_checks")
+    if prism_checks:
+        had_checks = True
+        failures.extend(f"prism:{r['name']}" for r in prism_checks if r.get("passed") is False)
+
     query_results = record.get("query_results", [])
     if query_results:
         had_checks = True
@@ -774,6 +847,15 @@ def _finalize_gate_status(record: dict) -> None:
         record["gate_status"] = "pass"
     else:
         record["gate_status"] = "fail"
+
+
+def _features_arg(value: str) -> frozenset[str]:
+    """argparse type for --features: comma-separated feature group names,
+    validated by the same parser GeometryConfig uses."""
+    try:
+        return parse_features(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _load_retry_timeout_counts(results_path: Path) -> dict[str, int]:
@@ -938,6 +1020,17 @@ async def main() -> None:
         "by default (matches PythonFullStrategy.run()'s own default).",
     )
     parser.add_argument(
+        "--features",
+        type=_features_arg,
+        default=frozenset(),
+        metavar="GROUPS",
+        help="Comma-separated feature groups to enable (e.g. 'solids'); same names "
+        "and parser as GEOMETRY_FEATURES. Applied to every strategy the runner "
+        "builds (including python_full's sandbox and the query tool). Scenarios "
+        "that list a group in requires_features are skipped (reported, not "
+        "failed) unless it is enabled. Default: none.",
+    )
+    parser.add_argument(
         "--benchmark-name",
         default=None,
         help="Override the benchmark label written to JSONL records (default: scenarios YAML stem). Use this when running a filtered subset of an existing benchmark so records aggregate with the parent run.",
@@ -955,6 +1048,13 @@ async def main() -> None:
         raw_scenarios = yaml.safe_load(f)
     scenarios = _validate_scenarios(raw_scenarios)
     print(f"Loaded {len(scenarios)} scenarios from {scenarios_path}")
+    scenarios, skipped_scenarios = split_by_required_features(scenarios, args.features)
+    if args.features:
+        print(f"Features enabled: {', '.join(sorted(args.features))}")
+    for skipped_id, reason in skipped_scenarios:
+        print(f"SKIPPED {skipped_id}: {reason}")
+    if skipped_scenarios:
+        print(f"Skipped {len(skipped_scenarios)} scenario(s) (not counted as failures)")
     benchmark = args.benchmark_name or scenarios_path.stem
 
     repeats_by_scenario: dict[str, int] = {}
@@ -1063,6 +1163,7 @@ async def main() -> None:
                         use_pre_assert_step=args.use_pre_assert_step,
                         experimental_diagram_cookbook=args.experimental_diagram_cookbook,
                         verify_labels_in_canvas=args.verify_labels_in_canvas,
+                        features=args.features,
                     ),
                     timeout=args.scenario_timeout,
                 )

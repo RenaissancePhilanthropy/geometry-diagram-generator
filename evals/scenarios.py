@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from geometry_diagrams.features import parse_features
+
 # Kept in sync with the `match ptype` cases in evals/sympy_checks.py's
 # _check_sympy_property BY HAND — the two are not derived from a single
 # source of truth. A type listed as "supported" here but unhandled there
@@ -34,12 +36,61 @@ _SUPPORTED_PROPERTY_TYPES = {
     "opposite_side",
     "same_side",
     "not_between",
+    # Prism properties: evaluated on the full compiled symbol table through
+    # query_prism (evals/sympy_checks.py _validate_prism_properties), never on
+    # the 2D float coordinates.
+    "prism_volume",
+    "prism_dimensions",
 }
+
+# Structural check types and what each one counts. polygon_count counts
+# authored 2D plane polygons only (prisms never count); solid_count counts
+# authored solids (e.g. rectangular_prism).
+_SUPPORTED_STRUCTURAL_TYPES = ("polygon_count", "solid_count")
 
 _CANVAS_FEATURES = {"grid", "axes"}
 
 # Default tolerance for expected_points coordinate matching
 _DEFAULT_POINT_TOLERANCE = 1e-4
+
+
+def _validate_solid_count_args(args: dict[str, Any], where: str) -> None:
+    """solid_count args: optional kind (str), min (int >= 0), and optional
+    literal dimensions length/width/height (numbers)."""
+    unknown = sorted(set(args) - {"kind", "min", "length", "width", "height"})
+    if unknown:
+        raise ValueError(f"{where}: unknown solid_count arg(s) {unknown}")
+    if "kind" in args and not (isinstance(args["kind"], str) and args["kind"].strip()):
+        raise ValueError(f"{where}: solid_count 'kind' must be a non-empty string")
+    if "min" in args and (
+        isinstance(args["min"], bool) or not isinstance(args["min"], int) or args["min"] < 0
+    ):
+        raise ValueError(f"{where}: solid_count 'min' must be a non-negative integer")
+    for dim in ("length", "width", "height"):
+        if dim in args and (
+            isinstance(args[dim], bool) or not isinstance(args[dim], (int, float))
+        ):
+            raise ValueError(f"{where}: solid_count {dim!r} must be a literal number")
+
+
+def split_by_required_features(
+    scenarios: list[dict[str, Any]], enabled: "frozenset[str] | set[str]"
+) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+    """Partition scenarios into (runnable, skipped). A scenario runs only when
+    every group in its ``requires_features`` is enabled; otherwise it is
+    skipped, reported as ``(scenario_id, reason)`` -- never a failure."""
+    runnable: list[dict[str, Any]] = []
+    skipped: list[tuple[str, str]] = []
+    for sc in scenarios:
+        missing = [g for g in sc.get("requires_features", []) if g not in enabled]
+        if missing:
+            skipped.append((
+                sc["id"],
+                "requires feature group(s) not enabled: " + ", ".join(missing),
+            ))
+        else:
+            runnable.append(sc)
+    return runnable, skipped
 
 
 def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
@@ -215,12 +266,16 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
             sc_args = sc.get("args", {})
             if not isinstance(sc_name, str) or not sc_name.strip():
                 raise ValueError(f"{sc_where}: 'name' must be a non-empty string")
-            if sc_type not in ("polygon_count",):
+            if sc_type not in _SUPPORTED_STRUCTURAL_TYPES:
                 raise ValueError(
-                    f"{sc_where}: unsupported 'type'={sc_type!r}; supported: polygon_count"
+                    f"{sc_where}: unsupported 'type'={sc_type!r}; supported: "
+                    "polygon_count (authored 2D plane polygons only; prisms never "
+                    "count), solid_count"
                 )
             if not isinstance(sc_args, dict):
                 raise ValueError(f"{sc_where}: 'args' must be an object")
+            if sc_type == "solid_count":
+                _validate_solid_count_args(sc_args, sc_where)
             normalized_structural.append({"name": sc_name, "type": sc_type, "args": sc_args})
 
         # queries: optional list of follow-up questions for query_diagram eval
@@ -247,6 +302,21 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 "expected_answer": q.get("expected_answer"),
             })
 
+        requires_features = raw.get("requires_features", [])
+        if requires_features is None:
+            requires_features = []
+        if not isinstance(requires_features, list) or not all(
+            isinstance(g, str) for g in requires_features
+        ):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'requires_features' must be a list of "
+                "feature group names when provided"
+            )
+        try:
+            parse_features(requires_features)
+        except ValueError as exc:
+            raise ValueError(f"{where} ({scenario_id}) requires_features: {exc}") from exc
+
         tier = raw.get("tier")
         if tier is not None and (not isinstance(tier, int) or tier < 1):
             raise ValueError(f"{where} ({scenario_id}): 'tier' must be a positive integer")
@@ -264,6 +334,7 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 "expected_points": normalized_points,
                 "coordinate_tolerance": float(coordinate_tolerance),
                 "queries": normalized_queries,
+                "requires_features": list(requires_features),
             }
         )
 

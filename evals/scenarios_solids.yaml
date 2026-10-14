@@ -1,0 +1,61 @@
+# Solids (rectangular prism) scenarios. Every scenario requires the "solids"
+# feature group: run with `--features solids` (skipped, not failed, otherwise).
+# Prism properties use the prism_volume / prism_dimensions property types
+# (evaluated on the compiled Prism via query_prism, args: [prism_id, ...];
+# "*" matches any prism). One authored rectangular_prism def per figure, so
+# solid_count (not polygon_count) is the structural check.
+# Prompts are original wordings of block-counting figures.
+
+# Isometric look, unit cubes.
+- id: prism-unit-cubes-isometric
+  tier: 2
+  tags: [solids, prism, unit-cubes, isometric, volume]
+  requires_features: [solids]
+  prompt: "Draw a box built from unit cubes, stacked 5 layers high. Count 2 cubes along its front bottom edge and 4 cubes along its right bottom edge."
+  expected_properties:
+    - name: prism_volume_40
+      type: prism_volume
+      args: ["*", 40]
+    - name: prism_dimensions_2_4_5
+      type: prism_dimensions
+      args: ["*", 2, 4, 5]
+  structural_checks:
+    - name: one_unit_cube_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1, length: 2, width: 4, height: 5}
+
+# Oblique look, solid.
+- id: prism-oblique-solid
+  tier: 2
+  tags: [solids, prism, oblique, volume, labels]
+  requires_features: [solids]
+  prompt: "Draw a solid box that is 11 units long, 3 units wide and 6 units tall. Label its height 6 units, its width 3 units and its length 11 units."
+  required_labels: ["6 units", "3 units", "11 units"]
+  expected_properties:
+    - name: prism_volume_198
+      type: prism_volume
+      args: ["*", 198]
+    - name: prism_dimensions_11_3_6
+      type: prism_dimensions
+      args: ["*", 11, 3, 6]
+  structural_checks:
+    - name: one_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1, length: 11, width: 3, height: 6}
+
+# Oblique wireframe with a shaded base. Length and width are not
+# given (only the base area), so volume is asserted, not dimensions.
+- id: prism-oblique-wireframe-base-area
+  tier: 3
+  tags: [solids, prism, oblique, wireframe, base-area, volume, labels]
+  requires_features: [solids]
+  prompt: "Draw a wireframe box with its base shaded. The box is 5 units tall and its base has an area of 60 square units. Label the height 5 units and the base area 60 square units."
+  required_labels: ["5 units", "60 square units"]
+  expected_properties:
+    - name: prism_volume_300
+      type: prism_volume
+      args: ["*", 300]
+  structural_checks:
+    - name: one_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1}

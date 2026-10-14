@@ -6,6 +6,58 @@ float-coordinate symbol table produced by the structured strategy.
 from __future__ import annotations
 
 
+# Prism property types resolve through query_prism on the FULL compiled symbol
+# table (the Prism object), never on the 2D projected float coordinates.
+PRISM_PROPERTY_TYPES = frozenset({"prism_volume", "prism_dimensions"})
+
+
+def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) -> list[dict]:
+    """Evaluate the prism-typed expected_properties against the full compiled
+    symbol table. Returns list of {name, type, passed, message} dicts.
+
+    prism_volume:     args [prism_id, expected_volume]
+    prism_dimensions: args [prism_id, length, width, height]
+    prism_id "*" means any prism in the diagram (the model picks the id).
+    Comparison is near-exact (the volume_equals check's tolerance): prism
+    dimensions are exact, so an off-by-one dimension fails.
+    """
+    from geometry_diagrams.ir.checks import _near_exact
+    from geometry_diagrams.ir.queries import query_prism
+    from geometry_diagrams.ir.prism import Prism
+
+    def measures(prop_type: str, q: dict, args: list) -> tuple[bool, str]:
+        if prop_type == "prism_volume":
+            expected = args[1]
+            ok = _near_exact(q["volume"], expected, None)
+            return ok, "" if ok else f"volume {q['volume']:.10g} != expected {expected:.10g}"
+        got = (q["length"], q["width"], q["height"])
+        want = tuple(args[1:4])
+        ok = len(want) == 3 and all(_near_exact(g, w, None) for g, w in zip(got, want))
+        return ok, "" if ok else f"(length, width, height) {got} != expected {want}"
+
+    results = []
+    for prop in expected_properties:
+        ptype = prop.get("type", "")
+        if ptype not in PRISM_PROPERTY_TYPES:
+            continue
+        args = prop.get("args", [])
+        try:
+            prism_id = args[0]
+            if prism_id == "*":
+                ids = [k for k, v in sym_full.items() if type(v) is Prism]
+                if not ids:
+                    raise KeyError("no prism in the diagram")
+            else:
+                ids = [prism_id]
+            outcomes = [measures(ptype, query_prism(sym_full, i), args) for i in ids]
+            passed = any(ok for ok, _ in outcomes)
+            msg = "" if passed else "; ".join(m for _, m in outcomes)
+        except Exception as exc:
+            passed, msg = False, f"Error: {exc}"
+        results.append({"name": prop.get("name", ""), "type": ptype, "passed": passed, "message": msg})
+    return results
+
+
 def _validate_properties_sympy(
     expected_properties: list[dict],
     sym_float: dict,
@@ -17,6 +69,8 @@ def _validate_properties_sympy(
     """
     results = []
     for prop in expected_properties:
+        if prop.get("type") in PRISM_PROPERTY_TYPES:
+            continue  # evaluated on the full symbol table by _validate_prism_properties
         name = prop.get("name", "")
         ptype = prop.get("type", "")
         args = prop.get("args", [])
