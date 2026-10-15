@@ -646,6 +646,41 @@ class RectangularPrism(DefBase):
     side: Literal["right", "left"] = "right"
 
 
+class BlockStack(DefBase):
+    """An irregular stack of unit cubes drawn as a parallel projection.
+
+    ``origin`` is the front-bottom-left corner of the bounding box. ``heights``
+    is a list of rows of non-negative integers: ``heights[z][x]`` is the number
+    of cubes stacked at column ``x`` (left to right) of row ``z`` (rows run from
+    the front row to the back row). Axes are the prism's: x = length, y =
+    height, z = width (depth). All values are literal integers; at most 400
+    cubes and at most 20 cells along any axis. ``cubes`` (a list of ``[x, y, z]``
+    integer triples) is reserved for shapes a height map cannot express and is
+    not supported yet; give exactly one of ``heights`` and ``cubes``.
+
+    View fields are the prism's: ``view`` ``oblique`` (default; ``depth_angle``
+    degrees and ``depth_scale``) or ``isometric`` (no overrides); ``side``
+    ``right`` shows the front, right and top faces, ``left`` the front, left and
+    top. ``front_color``, ``side_color`` (the visible lateral face) and
+    ``top_color`` set the face colors.
+
+    Derived ids (public; an authored definition with one of these ids is a
+    compile error): ``{id}_top_{x}_{z}``, the top face of the column at (x, z)
+    (columns of height 0 have none). The lattice points are hidden.
+    """
+    kind: Literal["block_stack"] = "block_stack"
+    origin: PointId
+    heights: Optional[List[List[Union[int, float]]]] = None
+    cubes: Optional[List[List[int]]] = None
+    view: Literal["isometric", "oblique"] = "oblique"
+    depth_angle: Optional[Union[int, float]] = None  # degrees; oblique only
+    depth_scale: Optional[Union[int, float]] = None  # oblique only
+    side: Literal["right", "left"] = "right"
+    front_color: Optional[str] = None
+    side_color: Optional[str] = None
+    top_color: Optional[str] = None
+
+
 class PointMidpoint(DefBase):
     """Midpoint of segment PQ. Semantic sugar over PointOn(param=0.5)."""
     kind: Literal["point_midpoint"] = "point_midpoint"
@@ -756,7 +791,7 @@ DefStmt = Annotated[
         EllipticalSectorCenterStartEnd,
         EllipseCenterAxes, EllipseBBox, EllipseFoci, EllipseCenterEccentricity,
         Triangle, Polygon, PolygonExterior, PolygonOnEdge, PolylineOpen,
-        RectangularPrism,
+        RectangularPrism, BlockStack,
     ],
     Field(discriminator="kind")
 ]

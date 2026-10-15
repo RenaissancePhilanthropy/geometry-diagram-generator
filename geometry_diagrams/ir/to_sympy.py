@@ -13,6 +13,7 @@ import sympy.geometry as spg
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .prism import compile_prism
+from .stack import compile_stack
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -532,6 +533,9 @@ def _compile_one(
 
         case ir.RectangularPrism(origin=origin_id):
             return compile_prism(stmt, ref(origin_id), ev)
+
+        case ir.BlockStack(origin=origin_id):
+            return compile_stack(stmt, ref(origin_id))
 
         case ir.PointMidpoint(p=p_id, q=q_id):
             p, q = ref(p_id), ref(q_id)

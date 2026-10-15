@@ -13,6 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
+from .stack import Stack
 from .prism import Prism, true_length as prism_true_length
 from .to_sympy import SymTable
 
@@ -104,6 +105,23 @@ def query_prism(sym: SymTable, prism_id: str) -> dict:
         "base_area": num(obj.base_area),
         "surface_area": num(obj.surface_area),
         "corner_ids": {"".join(map(str, bits)): cid for bits, cid in obj.corner_ids.items()},
+    }
+
+
+def query_stack(sym: SymTable, stack_id: str) -> dict:
+    """Cube count, volume (cubes are unit cubes), bounding extents (length =
+    columns, width = rows, height = tallest column) and whether the cube set is
+    a height map."""
+    obj = _get(sym, stack_id)
+    if not isinstance(obj, Stack):
+        raise TypeError(f"{stack_id!r} is not a Stack (got {type(obj).__name__})")
+    return {
+        "cube_count": obj.cube_count,
+        "volume": obj.volume,
+        "length": obj.length,
+        "width": obj.width,
+        "height": obj.height,
+        "is_height_map": obj.is_height_map,
     }
 
 

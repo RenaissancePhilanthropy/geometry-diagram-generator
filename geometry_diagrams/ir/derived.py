@@ -37,6 +37,7 @@ import sympy.geometry as spg
 
 from . import ir
 from . import prism as _prism
+from . import stack as _stack
 from .errors import IRCompileError
 
 
@@ -457,6 +458,18 @@ def _build_default_registry() -> DerivedRegistry:
         index=_prism.index_corner_segment,
         render_ref_error=_prism.render_ref_error,
         render_warnings=_prism.render_warnings,
+    ))
+    reg.register(DerivedConstruction(
+        "block_stack", ("{id}_top_{x}_{z}", "__{id}_l{x}_{y}_{z}"),
+        lambda stmt: list(_stack.lattice_names(stmt).values()),
+        _stack.register_lattice,
+        position=_stack.stack_position,
+        synthesize=_stack.synthesize_top_faces,
+        lower_draw=_stack.lower_draw,
+        exclusive=True,
+        feature="solids",
+        render_ref_error=_stack.render_ref_error,
+        render_warnings=_stack.render_warnings,
     ))
     return reg
 

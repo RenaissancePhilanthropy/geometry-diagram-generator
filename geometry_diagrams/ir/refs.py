@@ -29,7 +29,7 @@ _REF_FIELDS = {
     "vertex",                               # line_angle_bisector
     "corner1", "corner2",                   # ellipse_bbox
     "focus1", "focus2",                     # ellipse_foci
-    "origin",                               # rectangular_prism
+    "origin",                               # rectangular_prism, block_stack
 }
 # Fields that are never IDs
 _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
@@ -37,7 +37,9 @@ _NON_REF_FIELDS = {"kind", "id", "x", "y", "hint_xy", "ratio", "angle",
                    "hradius", "vradius", "major_axis", "semi_major", "eccentricity", "orientation",
                    "reflex", "vertex_names", "tangency",
                    "unit_cubes", "view", "side",
-                   "depth_angle", "depth_scale"}
+                   "depth_angle", "depth_scale",
+                   "heights", "cubes",                   # block_stack
+                   "front_color", "side_color", "top_color"}
 # Fields compiled via to_sympy's ev(); a string value is an expression whose
 # bare names (e.g. the "c" in "radius(c)") may reference other defs.
 _EXPR_FIELDS = {"x", "y", "angle", "ratio", "radius", "hradius", "vradius",
