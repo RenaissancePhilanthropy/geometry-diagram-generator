@@ -159,7 +159,11 @@ def test_entity_manifest_keeps_the_stack_variable_at_its_centre(kw):
     manifest = build_entity_manifest(d, sym, {"tower": "S", "top": "S_top_0_0"})
     by_name = {e["name"]: e for e in manifest["named"]}
     assert by_name["tower"]["type"] == "block_stack"
-    assert by_name["tower"]["approx_position"] == pytest.approx(list(centroid_of_obj(sym["S"])))
+    # independent of the position hook: the bbox centre of the lattice corners
+    lat = [(float(p.x), float(p.y)) for k, p in sym.items() if k.startswith("__S_l")]
+    bbox_centre = [(min(x for x, _ in lat) + max(x for x, _ in lat)) / 2,
+                   (min(y for _, y in lat) + max(y for _, y in lat)) / 2]
+    assert by_name["tower"]["approx_position"] == pytest.approx(bbox_centre)
     assert by_name["top"]["approx_position"] == pytest.approx(list(centroid_of_obj(sym["S_top_0_0"])))
 
 
