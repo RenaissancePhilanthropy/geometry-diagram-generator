@@ -1029,6 +1029,15 @@ class VolumeEquals(CheckBase):
     expected: float
 
 
+class CubeCountEquals(CheckBase):
+    """A block stack's total cube count equals an expected integer (exact; any
+    ``tol`` is ignored). ``expected`` is coerced to int, so 12 and 12.0 are
+    accepted and 12.5 is rejected at validation."""
+    kind: Literal["cube_count_equals"] = "cube_count_equals"
+    stack: ObjId
+    expected: int
+
+
 class TrueLengthEquals(CheckBase):
     """The true 3D length of a segment joining two corners of one prism (an
     edge, a face diagonal or the space diagonal) equals an expected value --
@@ -1088,7 +1097,7 @@ Check = Annotated[
         RightAngle, AngleEqual, AngleValue,
         EqualLength, DistanceEquals, RatioEqual,
         EqualRadius, RadiusEquals,
-        VolumeEquals, TrueLengthEquals,
+        VolumeEquals, TrueLengthEquals, CubeCountEquals,
         SimilarTriangles, CongruentTriangles, CongruentArcs,
         Tangent, CirclesTangent,
         OppositeSide, SameSide,

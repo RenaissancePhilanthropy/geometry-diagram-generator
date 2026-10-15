@@ -150,7 +150,9 @@ def _make_query_tool(sym: dict, features: "frozenset[str] | set[str]" = frozense
         (
             'perimeter   {"id": "tri_ABC"}',
             '                  prism       {"id": "P"}               -> rectangular prism: length, width, height,\n'
-            '                                                           volume, base area, surface area, corner ids',
+            '                                                           volume, base area, surface area, corner ids\n'
+            '                  stack       {"id": "S"}               -> block stack: cube_count, volume, extents,\n'
+            '                                                           length, width, height, is_height_map',
         ),
     ), features)
     return tool(query_diagram)

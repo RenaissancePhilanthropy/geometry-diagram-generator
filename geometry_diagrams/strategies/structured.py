@@ -23,7 +23,7 @@ from ..ir.errors import IRCompileError
 from ..features import require_features, tagged_insertions
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
-    query_length, query_radius, query_area, query_perimeter, query_prism, list_objects,
+    query_length, query_radius, query_area, query_perimeter, query_prism, query_stack, list_objects,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,9 @@ QUERY_TOOL_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
     (
         '- "perimeter": polygon perimeter.',
         '                    - "prism": rectangular prism dimensions (length, width, height),\n'
-        '                      volume, base area, surface area and corner ids. params={"prism": "P"}',
+        '                      volume, base area, surface area and corner ids. params={"prism": "P"}\n'
+        '                    - "stack": block stack cube_count, volume, extents (length, width,\n'
+        '                      height) and is_height_map. params={"stack": "S"}',
     ),
 )
 
@@ -100,6 +102,8 @@ def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
             return json.dumps(query_perimeter(sym, _get(args, "object", "id")))
         elif query_type == "prism":
             return json.dumps(query_prism(sym, _get(args, "prism", "id", "object")))
+        elif query_type == "stack":
+            return json.dumps(query_stack(sym, _get(args, "stack", "id", "object")))
         else:
             return json.dumps({"error": f"Unknown query_type: {query_type}"})
     except Exception as e:

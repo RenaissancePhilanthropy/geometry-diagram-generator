@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from . import ir
 from .derived import effective_defs
 from .prism import Prism, true_length as prism_true_length
-from .stack import is_top_face
+from .stack import Stack, is_top_face
 from .to_sympy import (
     Arc,
     EllipticalArc,
@@ -333,6 +333,19 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 ok = _near_exact(volume, expected, check.tol)
                 msg = "" if ok else (
                     f"Prism {prism_id!r} volume {volume:.10g} != expected {expected:.10g}"
+                )
+
+            case ir.CubeCountEquals(stack=stack_id, expected=expected):
+                obj = sym.get(stack_id)
+                if type(obj) is not Stack:
+                    found = "no such id" if obj is None else type(obj).__name__
+                    raise UnsupportedOperand(
+                        f"cube_count_equals: {stack_id!r} is not a block stack ({found})"
+                    )
+                count = obj.cube_count
+                ok = count == expected
+                msg = "" if ok else (
+                    f"Stack {stack_id!r} has {count} cubes != expected {expected}"
                 )
 
             case ir.TrueLengthEquals(seg=seg, expected=expected):
