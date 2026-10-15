@@ -97,17 +97,19 @@ def test_label_text_centroid_of_stack_and_top_record_ops():
 
 def test_stack_and_column_ids_are_hidden_from_list_objects():
     from geometry_diagrams.ir.derived import effective_diagram
+    from geometry_diagrams.ir.queries import list_objects
     from geometry_diagrams.ir.to_sympy import compile_defs
 
-    with new_builder_context() as b:
-        s = _stack()
-        api.draw(s)
-        d = b.build()
-        listed = b.list_objects() if hasattr(b, "list_objects") else None
-    # every id the stack introduces (stack, columns, lattice) carries the hidden prefix
-    stack_ids = [x.id for x in effective_diagram(d).define if x.id.startswith(s.id) or "_l" in x.id]
-    assert stack_ids and all(i.startswith("__") for i in stack_ids)
-    assert listed is None or not any("stack" in str(o) for o in listed)
+    res = run_script("o = point(0, 0)\ns = stack(o, heights=[[1, 2], [3, 0]])\ndraw(s)\n",
+                     timeout_seconds=60, features=SOLIDS)
+    assert res.error is None, res.error
+    d = res.diagram_ir
+    sid = res.variable_ids["s"]
+    assert sid.startswith("__pydsl_stack_")
+    sym = compile_defs(d)
+    assert any(k.startswith(f"{sid}_top_") for k in sym)  # the columns exist in the table, yet are not listed
+    listed = list_objects(sym)
+    assert not any("stack" in k or "_top_" in k for k in listed), listed
 
 
 # --- assert_cube_count ---------------------------------------------------------------------
@@ -124,8 +126,11 @@ def test_assert_cube_count_passes_and_fails_with_actual_and_expected():
 
 def test_grouped_names_are_real_attributes_and_include_the_stack_names():
     import geometry_diagrams.pydsl as pydsl
-    for name in ("stack", "Stack", "assert_cube_count"):
-        assert name in GROUPED_NAMES["solids"] and hasattr(pydsl, name)
+    assert set(GROUPED_NAMES["solids"]) == {
+        "prism", "Prism", "assert_volume", "assert_true_length", "stack", "Stack", "assert_cube_count",
+    }
+    for name in GROUPED_NAMES["solids"]:
+        assert hasattr(pydsl, name) and name not in pydsl.__all__
 
 
 def test_build_tool_names_gates_the_stack_names():

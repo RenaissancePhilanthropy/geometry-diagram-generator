@@ -176,7 +176,7 @@ def test_assert_true_length_is_3d_not_the_drawn_length():
 def test_grouped_names_are_real_attributes_of_the_package():
     import geometry_diagrams.pydsl as pydsl
 
-    assert {"prism", "Prism", "assert_volume", "assert_true_length"} <= set(GROUPED_NAMES["solids"])
+    assert {"prism", "Prism", "assert_volume", "assert_true_length"} <= set(GROUPED_NAMES["solids"])  # exact set pinned in test_pydsl_stack.py
     for n in GROUPED_NAMES["solids"]:
         assert hasattr(pydsl, n)
         assert n not in pydsl.__all__          # never in the ungated surface
