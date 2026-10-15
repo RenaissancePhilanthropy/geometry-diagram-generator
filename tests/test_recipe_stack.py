@@ -72,9 +72,8 @@ def test_heights_xor_cubes_is_a_typed_compile_error(fields):
 
 
 def test_invalid_view_combination_surfaces_as_an_error():
-    from geometry_diagrams.ir.errors import IRCompileError
-    with pytest.raises((LoweringError, IRCompileError), match="depth_angle"):
-        compile_defs(lower_to_ir(_dsl({"view": "isometric", "depth_angle": 30})))
+    with pytest.raises(LoweringError, match=r"stack 'S'.*depth_angle"):
+        lower_to_ir(_dsl({"view": "isometric", "depth_angle": 30}))
 
 
 def test_stack_op_rejects_unknown_fields():

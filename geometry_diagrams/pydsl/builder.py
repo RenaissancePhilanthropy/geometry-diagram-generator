@@ -152,19 +152,13 @@ class Builder:
         """Build the Stack handle for a just-recorded (and compiled) BlockStack,
         reading the cube count and column top-face corner ids from the compiled
         Stack object in the incremental symbol table."""
-        from geometry_diagrams.ir.stack import lattice_id
+        from geometry_diagrams.ir.stack import column_tops, lattice_id, top_face_corners
         from geometry_diagrams.pydsl.handles import Stack
 
         obj = self._sym[stmt.id]
-        top: dict[tuple[int, int], int] = {}
-        for x, y, z in obj.cubes:
-            top[(x, z)] = max(top.get((x, z), 0), y + 1)
         tops = {
-            (x, z): tuple(
-                lattice_id(stmt.id, c)
-                for c in ((x, y, z), (x + 1, y, z), (x + 1, y, z + 1), (x, y, z + 1))
-            )
-            for (x, z), y in top.items()
+            (x, z): tuple(lattice_id(stmt.id, c) for c in top_face_corners(x, y, z))
+            for (x, z), y in column_tops(obj.cubes).items()
         }
         return Stack(id=stmt.id, cube_count=obj.cube_count, _builder=self, _tops=tops)
 

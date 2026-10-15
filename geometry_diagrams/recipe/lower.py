@@ -545,11 +545,15 @@ class _Lowerer:
         if op.vertex_names is not None and len(names) == 8:
             # Named corners join the labelled points; default ids stay unlabeled.
             self._point_ids.extend(names[bits] for bits in _prism.CORNER_BITS)
-        origin = self._origin_xy(op.origin)
         try:
             dims = [float(v) for v in (op.length, op.height, op.width)]
         except (TypeError, ValueError):
             return  # expression dimensions: extent unknown, canvas falls back
+        self._add_box_extent(op.origin, proj, dims)
+
+    def _add_box_extent(self, origin_id: str, proj: Any, dims: list[float] | tuple[float, ...]) -> None:
+        """Record the projected corners of a box at ``origin_id`` for the canvas fit."""
+        origin = self._origin_xy(origin_id)
         if origin is None:
             return
         for bits in _prism.CORNER_BITS:
@@ -562,21 +566,17 @@ class _Lowerer:
             depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
             front_color=op.front_color, side_color=op.side_color, top_color=op.top_color,
         )
+        try:
+            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
+        except ValueError as exc:
+            raise LoweringError(f"stack {op.id!r}: {exc}") from exc
         self._add(stmt)
         self._drawable.add(op.id)
         # Canvas fit: the bounding box's projected corners contain every lattice
-        # point. An invalid statement or view is reported by compile, not here.
+        # point. An invalid statement is reported by compile, not here.
         extents = _stack.bounding_extents(stmt)
-        origin = self._origin_xy(op.origin)
-        if extents is None or origin is None:
-            return
-        try:
-            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
-        except ValueError:
-            return
-        for bits in _prism.CORNER_BITS:
-            dx, dy = proj.offset(*(b * d for b, d in zip(bits, extents)))
-            self._prism_extent.append((origin[0] + float(dx), origin[1] + float(dy)))
+        if extents is not None:
+            self._add_box_extent(op.origin, proj, extents)
 
     def _origin_xy(self, pid: str) -> tuple[float, float] | None:
         if pid in self._coord_floats:

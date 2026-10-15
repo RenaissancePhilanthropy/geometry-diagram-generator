@@ -226,3 +226,25 @@ def test_wrong_cube_count_fails_with_a_retryable_message():
                      timeout_seconds=60, features=SOLIDS)
     assert res.error and "3 cubes" in res.error and "expected 5" in res.error
     assert res.retry_message and "3 cubes" in res.retry_message
+
+
+@pytest.mark.parametrize("kw", [
+    {"heights": [[1, 2], [3, 0]]},
+    {"heights": None, "cubes": [[0, 0, 0], [0, 1, 0], [2, 0, 0], [1, 2, 0], [1, 0, 1]]},  # floating cube
+])
+def test_top_handle_vertices_equal_the_compiled_top_face_vertices_in_order(kw):
+    from geometry_diagrams.ir.stack import synthesize_top_faces
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    with new_builder_context() as b:
+        s = api.stack(api.point(0, 0), **kw)
+        handles = {(x, z): s.top(x, z) for x, z in s._tops}
+        d = b.build()
+    stmt = next(x for x in d.define if isinstance(x, ir.BlockStack))
+    sym = compile_defs(d)
+    polys = {p.id: p for p in synthesize_top_faces(stmt)}
+    assert set(polys) == {h.id for h in handles.values()}
+    for h in handles.values():
+        assert [v.id for v in h.vertices] == list(polys[h.id].points)
+        compiled = [(float(p.x), float(p.y)) for p in sym[h.id].vertices]
+        assert [(v.x, v.y) for v in h.vertices] == pytest.approx(compiled)

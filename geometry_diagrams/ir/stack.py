@@ -283,6 +283,19 @@ def register_lattice(stmt: ir.BlockStack, obj: Any, sym: dict[str, Any]) -> None
         sym[name] = obj.lattice[p]
 
 
+def column_tops(cubes: Any) -> dict[tuple[int, int], int]:
+    """Top plane height per occupied (x, z) column: the topmost cube's y + 1."""
+    top: dict[tuple[int, int], int] = {}
+    for x, y, z in cubes:
+        top[(x, z)] = max(top.get((x, z), 0), y + 1)
+    return top
+
+
+def top_face_corners(x: int, y: int, z: int) -> list[Cube]:
+    """Lattice corners of the column top face at plane ``y``, in polygon order."""
+    return [(x, y, z), (x + 1, y, z), (x + 1, y, z + 1), (x, y, z + 1)]
+
+
 def synthesize_top_faces(stmt: ir.BlockStack) -> list[Any]:
     """Registry ``synthesize`` hook: one polygon per occupied column, at the
     plane of its topmost cube's top, over the lattice ids. Empty for an invalid
@@ -290,14 +303,11 @@ def synthesize_top_faces(stmt: ir.BlockStack) -> list[Any]:
     cubes = _valid_cubes(stmt)
     if cubes is None:
         return []
-    top: dict[tuple[int, int], int] = {}
-    for x, y, z in cubes:
-        top[(x, z)] = max(top.get((x, z), 0), y + 1)
     out = []
-    for (x, z), y in sorted(top.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-        corners = [(x, y, z), (x + 1, y, z), (x + 1, y, z + 1), (x, y, z + 1)]
+    for (x, z), y in sorted(column_tops(cubes).items(), key=lambda kv: (kv[0][1], kv[0][0])):
         out.append(ir.Polygon(
-            id=top_face_id(stmt.id, x, z), points=[lattice_id(stmt.id, c) for c in corners]
+            id=top_face_id(stmt.id, x, z),
+            points=[lattice_id(stmt.id, c) for c in top_face_corners(x, y, z)],
         ))
     return out
 
