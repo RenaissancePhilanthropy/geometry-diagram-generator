@@ -512,6 +512,231 @@ prism corners keep their 2D meaning (they measure the drawing) and add a
 pipeline warning saying a projection was measured and naming
 `true_length_equals`.
 
+#### `block_stack`
+An irregular stack of unit cubes drawn as a parallel projection: the
+building-plan "how many cubes?" figure. The IR-level definition is
+`ir.BlockStack` (compiled by `geometry_diagrams/ir/stack.py`). Like the prism
+it belongs to the `solids` group.
+
+| Field          | Type            | Description |
+|----------------|-----------------|-------------|
+| `id`           | string          | Name for the stack |
+| `origin`       | string          | Point id of the front-bottom-left corner of the bounding box (may be a derived point) |
+| `heights`      | list of rows of integers | `heights[z][x]` is the number of cubes in the column at column `x` (left to right) of row `z` (rows run front to back) |
+| `cubes`        | list of `[x, y, z]` | The unit cubes of a shape a height map cannot express; each triple is the unit cube from (x, y, z) to (x+1, y+1, z+1) |
+| `view`         | string          | `"oblique"` (default) or `"isometric"` |
+| `depth_angle`  | number          | Oblique only: degrees in (0, 90); default 45 |
+| `depth_scale`  | number          | Oblique only: drawn depth per unit of depth, positive; default 1/2 |
+| `side`         | string          | `"right"` (default) or `"left"`; as for the prism |
+| `front_color`  | string          | Fill of the front faces (default `#c3d6ef`) |
+| `side_color`   | string          | Fill of the visible lateral faces, right or left per `side` (default `#97b5dc`) |
+| `top_color`    | string          | Fill of the top faces (default `#e6eefa`) |
+
+Give exactly one of `heights` and `cubes`. Every entry is a literal
+non-negative integer (an integral float such as `2.0` is accepted); cubes are
+one drawing unit on a side, so the stack is placed by its `origin` only.
+The view fields and the three face colors take the same values and forms as
+elsewhere (see [Color forms](#color-forms)); the projection comes from the
+same code as the prism's, so every view and `side` behaves identically.
+
+**Axis convention.** The axes are the prism's: x runs along the front edge
+left to right (the prism's length), y is the height (up; the layer number, 0
+is the bottom layer) and z is the depth (front to back, 0 is the front row;
+the prism's width). In a `cubes` triple `[x, y, z]`, y is HEIGHT and z is
+DEPTH; swapping them draws the stack lying flat instead of standing up. The
+cube `(x, y, z)` occupies the unit cube from (x, y, z) to (x+1, y+1, z+1).
+A `heights` entry `heights[z][x] = h` is the cubes `(x, 0, z) ... (x, h-1, z)`.
+
+**Caps.** At most 400 cubes and at most 20 cells along any axis (for
+`heights`: at most 20 rows, 20 columns and a tallest column of at most 20;
+for `cubes`: each of x, y and z spans at most 20, measured as the largest
+coordinate plus 1). Heights are validated against the caps before any cube is
+built.
+
+**Validation errors.** Each is an `IRCompileError` carrying the stack's id:
+
+| Condition | Message names |
+|-----------|---------------|
+| both or neither of `heights` and `cubes` | "exactly one of heights ... and cubes ...", and which was given |
+| `heights` has no rows or an empty row | "heights is empty" |
+| `heights` rows of different lengths | "ragged rows", with the row lengths |
+| an entry that is not a number, is not integral, or is negative | the entry, e.g. `heights[1][0]` or `cubes[2][y]`, and "integer" / "non-negative" |
+| every height is 0 | "block_stack is empty" |
+| more than 400 cubes | "at most 400 cubes", with the count |
+| more than 20 cells along an axis | "at most 20 cells along any axis", with the size and which axis |
+| `cubes` is empty | "cubes is empty" |
+| a cube that is not exactly three integers | `cubes[i]` "must be an [x, y, z] triple" |
+| a duplicate cube | "duplicate cube", with the index |
+| `depth_angle` / `depth_scale` with `view: "isometric"`, or a value out of range | the prism's projection message, prefixed `block_stack:` |
+| `origin` is not a point | "origin ... must be a point" |
+| an authored id equal to a derived id of the stack (a column top id or a lattice id) | "collides ...", never a silent shadow |
+
+A non-string entry (e.g. `"a"`) is rejected earlier, by the schema.
+
+**Derived and public ids.** Every corner of every cube is a lattice point
+with a hidden id `__{id}_l{x}_{y}_{z}` (plain points in the symbol table,
+absent from object listings; they are what the faces are built on). The only
+public derived ids are the column top faces:
+
+| Entity  | Id | Notes |
+|---------|----|-------|
+| Column top face (polygon) | `{id}_top_{x}_{z}`, e.g. `S_top_1_0` | One per occupied column, at the plane of the column's topmost cube's top (for a cube set, the highest cube in that column, even one floating over a gap). A column with no cube has no id. |
+
+A top face is an ordinary polygon definition: label it (`label_free_text`
+with `centroid_of` its id), fill it, or draw it. It is derived, never part of
+the authored IR, and does not count in authored-IR metrics. It is built
+without SymPy's polygon validation (a lattice unit square under a
+non-degenerate projection cannot be degenerate), which is what keeps a 20 x 20
+stack at a fraction of a second to compile; the object is an ordinary SymPy
+`Polygon`. The stack id itself is the stack and its center, not a polygon.
+
+**Drawing.** A draw whose `obj` is the stack id draws every visible cube
+face, farthest cubes first (painter's algorithm), each face an
+[`OrderedPolygon`](#ordered-polygons): an opaque fill (the plane's color) and
+an outline. Cubes are sorted by the dot product of their center with the
+projection's viewer direction (ties by coordinates), which is correct for any
+cube set under a parallel projection; each cube contributes its faces on the
+three visible planes (front, right and top for `side: "right"`; front, left
+and top for `side: "left"`) except a face covered by a neighbouring cube,
+which is never emitted, so a 3 x 3 x 3 box paints 27 faces rather than 81.
+The outline takes the draw's style: its `color` (black when no style, a bare
+color style key is used as the color) and its width (`line_width`, else `thin`,
+else `thick`, else each backend's ordinary draw width); dash patterns and
+arrows do not carry. Drawing is by the stack id only: there are no per-cube
+or per-edge ids.
+
+**Position, shading and labels.** The stack's position (for
+`label_free_text` with `centroid_of` the stack id, and its entry in the entity
+manifest) is the center of the bounding box of the projected lattice, the
+middle of the drawn silhouette. For a full box it equals the prism's center;
+for a concave stack (an L shape, an arch) it can lie in a notch and so over no
+cube: to put text on the stack itself, use a column top face id. Face colors
+are set on the definition. A `fill` on a column top id goes through the
+ordinary fill layer, which is hoisted behind the ordered polygons, so under a
+drawn stack's opaque faces it is hidden (visible only when the stack is not
+drawn or its `top_color` is transparent).
+
+Render operations that cannot work on the stack id are compile errors naming
+the alternative: `fill` (or a `fill` hole) ("set `front_color`, `side_color`
+and `top_color` ... or fill a column top face id such as `S_top_0_0`"), a
+point slot (`draw_points`, `label_point`, any angle point) ("use a column top
+face id"), a segment slot (`mark_segments`, `label_segment`; "stacks have no
+addressable edges") and an arc slot (`mark_arcs`, `label_along_arc`). `draw`
+and `label_free_text` with `centroid_of` the stack id are valid.
+
+**Warnings.** Both go through the pipeline warnings (see
+[Pipeline warnings](#pipeline-warnings)) and never fail a run:
+
+- *not a height map*: a cube set with a cube that has an empty cell directly
+  beneath it (some cube with y > 0 and no cube at (x, y-1, z)), e.g. an
+  arch's bridge. The stack is drawn as given. The message is
+  `block_stack 'S': cube set is not a height map: cubes float above empty cells`.
+  A gap at y = 0 (columns 0 and 2 occupied, 1 empty) is still a height map and
+  does not warn; neither does any `heights` stack. The warning appears whether
+  or not the stack is drawn.
+- *skewed projection*: a stack on a canvas with unequal axis scales
+  (`canvas.aspect` not 1), as for the prism.
+
+**Queries and checks.** The `stack` query (the query tool's `query_type:
+"stack"` with `params: {"stack": "S"}`; `ir.queries.query_stack`) returns:
+
+| Key | Meaning |
+|-----|---------|
+| `cube_count` | Number of cubes |
+| `volume` | Volume in unit cubes (equal to `cube_count`) |
+| `length`, `width`, `height` | Bounding-box extents along x, z and y: a height map's columns, rows and tallest column; a cube set's largest coordinate plus 1 on each axis (trailing empty cells do not extend a cube set) |
+| `is_height_map` | No cube has an empty cell directly beneath it |
+
+| Check | Fields | Meaning |
+|-------|--------|---------|
+| `cube_count_equals` | `stack`, `expected` | The stack's cube count equals `expected` (an integer; `12.0` is accepted, `12.5` is rejected at validation) |
+
+The comparison is exact and `tol` is ignored. A `stack` that is not a block
+stack, or does not exist, is a plain failed check ("... is not a block
+stack"), not an evaluation error. The query's description is shown to the
+model only with `solids` enabled.
+
+*Example: a heights stack.* Rows run front to back: the front row has columns
+of 1 and 2 cubes, the back row 3 and 0.
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
+    {"kind": "block_stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]], "top_color": "#e6eefa"}
+  ],
+  "checks": [{"kind": "cube_count_equals", "stack": "S", "expected": 6}],
+  "render": [
+    {"kind": "draw", "obj": "S"},
+    {"kind": "label_free_text", "text": "6 cubes", "centroid_of": "S_top_1_0"}
+  ]
+}
+```
+
+<!-- stack-example-result: heights -->
+```json
+{"cube_count": 6, "volume": 6, "length": 2, "width": 2, "height": 3, "is_height_map": true}
+```
+
+The public ids are `S_top_0_0`, `S_top_1_0` and `S_top_0_1` (the empty
+column at x = 1, z = 1 has none) and the run has no warnings.
+
+*Example: an arch.* Two pillars two cubes high at x = 0 and x = 2, a bridge
+cube at height y = 1 over the empty cell between them (all at depth z = 0).
+
+```json
+{
+  "define": [
+    {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
+    {"kind": "block_stack", "id": "A", "origin": "O", "view": "isometric",
+     "cubes": [[0, 0, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0]]}
+  ],
+  "checks": [{"kind": "cube_count_equals", "stack": "A", "expected": 5}],
+  "render": [{"kind": "draw", "obj": "A"}]
+}
+```
+
+<!-- stack-example-result: arch -->
+```json
+{"cube_count": 5, "volume": 5, "length": 3, "width": 1, "height": 2, "is_height_map": false}
+```
+
+The run carries the not-a-height-map warning (the bridge floats over the
+empty cell `[1, 0, 0]`); the column top ids are `A_top_0_0`, `A_top_1_0` (at
+plane y = 2, the bridge's top) and `A_top_2_0`.
+
+**Other surfaces.** Each is gated by the `solids` group and wraps the same
+definition and check:
+
+- *Recipe DSL.* The `stack` op takes `id`, `origin` (an existing point id, as
+  for the prism), `heights` or `cubes`, the view fields and the three colors,
+  and lowers to `block_stack`; the auto-canvas contains the stack's projected
+  bounding box. The `cube_count` check (`{"check": "cube_count", "stack":
+  "S", "expected": 6}`) lowers to `cube_count_equals`. With `solids` off both
+  are rejected before lowering.
+- *Python (pydsl).* `stack(origin, heights=None, cubes=None, view="oblique",
+  depth_angle=None, depth_scale=None, side="right", front_color=None,
+  side_color=None, top_color=None)` returns a `Stack` handle (hidden id
+  `__pydsl_stack_N`). The stack is compiled at the call, so a misuse is the
+  script's own error with the IR's message. `Stack` has `.cube_count`,
+  `.volume`, `.top(x, z)` (the column's top face as a `Polygon`, for
+  placing a label; a `ValueError` listing the occupied columns for any other
+  `(x, z)`) and `.label(text)` (a floating label at the stack's position).
+  `draw(stack)` draws it, `label_text(..., centroid_of=stack)` places text at
+  its position, and `assert_cube_count(stack, expected)` wires
+  `cube_count_equals`. The names `stack`, `Stack` and `assert_cube_count` are in
+  `pydsl.GROUPED_NAMES["solids"]`, so they exist in the sandbox and prompt
+  stub only with `solids` enabled.
+- *Evals.* `solid_count` takes `kind: block_stack` and a literal `cube_count`
+  (read from the authored `heights` sum or `cubes` length, with no compile).
+  Three property types are evaluated on the compiled stack through
+  `query_stack`: `stack_cube_count` (`[stack id, expected]`), `stack_extents`
+  (`[stack id, length, width, height]`) and `stack_is_height_map` (`[stack
+  id, true|false]`). A stack id of `"*"` matches any stack in the diagram, and
+  a gate failure message is prefixed `stack:`. Scenarios cannot assert pipeline
+  warnings; `stack_is_height_map: false` is how an overhang scenario expects
+  the warning's condition. The scenarios are in `evals/scenarios_solids.yaml`.
+
 ---
 
 ## Selectors
@@ -989,6 +1214,36 @@ when a label overflows (a diagram without overflow is unchanged) and is capped
 at 200 px per side, independently; a label further out than that is left
 outside and reported by the label-bounds check.
 
+### Ordered polygons
+
+`ir.OrderedPolygon` is an opaque filled polygon that carries its own stroke
+and is painted in strict list order, so a painter's-algorithm figure (a block
+stack) hides what is behind a face. An ordinary `fill` plus `draw` cannot do
+this: every fill is hoisted before every stroke, so the outlines of far faces
+show through near fills.
+
+| Field          | Type            | Description |
+|----------------|-----------------|-------------|
+| `kind`         | `"ordered_polygon"` | |
+| `points`       | list of point ids, at least 3 | Boundary order; ids of defined points |
+| `fill`         | string          | Opaque fill, any [color form](#color-forms) |
+| `stroke`       | string          | Outline color (default `black`) |
+| `stroke_width` | number, `"thin"`, `"thick"` or omitted | Omitted (`None`, the default) is each backend's ordinary draw width: 1.5 px in SVG, tkz-euclide's own `line style` in TikZ (measured 0.2 pt, not TikZ's bare 0.4 pt `\draw` default); the units differ, so no one number matches both. `"thin"` / `"thick"` are the backends' ordinary thin / thick widths; a number is used as-is (px in SVG, pt in TikZ, like a style's `line_width`) |
+
+It is **not** a member of the validated `RenderOp` union and cannot be
+authored in JSON (the LLM-facing schemas and prompts do not mention it): it is
+emitted only by a registered definition kind's `lower_draw` hook (as
+`derived.Lowering` ops), in place of the draw it lowers. Both renderers keep
+it at its list position because it shares the draw z-layer with draws and
+marks (a stable sort); it carries its own fill, so it is never hoisted into
+the fill layer, and the ordinary `Fill` operations are hoisted behind it: an
+ordinary fill under an opaque ordered polygon is hidden. An ordered polygon
+naming an undefined point is skipped with a renderer warning. An
+unrecognized color string passes through with the usual renderer warning. In
+SVG it is a `<polygon data-role="ordered-polygon" stroke-linejoin="round">`
+and its edges are obstacles for label nudging, like drawn segments; in TikZ a
+`\filldraw[line style,fill=...,draw=...,line join=round] ... -- cycle;`.
+
 ### Pipeline warnings
 
 A run collects a list of non-fatal `warnings` (on the result, and on a
@@ -1005,6 +1260,9 @@ Sources:
 - a prism on a canvas with unequal axis scales (the projection is skewed);
 - an unrecognized color string (see [Color forms](#color-forms));
 - a `unit_cubes` prism whose id is never drawn (no gridlines).
+- a `block_stack` cube set with a cube above an empty cell (not a height map);
+- a `block_stack` on a canvas with unequal axis scales (the projection is
+  skewed).
 
 ---
 
