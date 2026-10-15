@@ -402,3 +402,26 @@ def test_tikz_color_forms_compile_in_container():
     svg = render_tikz(_tikz(_two_overlapping("#336699", "lightblue"))).lower()
     # dvisvgm abbreviates #336699 to #369
     assert "#369" in svg and "#add8e6" in svg
+
+
+def test_svg_ordered_polygon_edges_register_for_label_nudging(monkeypatch):
+    """Label nudging pushes text off every drawn line; an OrderedPolygon's
+    outline must be registered as obstacles too (one segment per edge, closing
+    edge included), the same way an ordinary drawn polygon's edges are."""
+    import geometry_diagrams.ir.to_svg as to_svg_mod
+
+    captured: list[tuple[float, float, float, float]] = []
+    original = to_svg_mod._nudge_labels_from_lines
+
+    def spy(labels, drawn_segments):
+        if not captured:
+            captured.extend(drawn_segments)
+        return original(labels, drawn_segments)
+
+    monkeypatch.setattr(to_svg_mod, "_nudge_labels_from_lines", spy)
+    d = _diagram(
+        _square_defs(),
+        [ir.OrderedPolygon(points=["A", "B", "C", "D"], fill="#112233")],
+    )
+    _svg(d)
+    assert len(captured) == 4

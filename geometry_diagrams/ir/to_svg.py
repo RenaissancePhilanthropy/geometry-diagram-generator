@@ -1030,6 +1030,12 @@ def _emit_svg_op(
                 "stroke-width": fmt_num(stroke_width),
                 "stroke-linejoin": "round",
             })
+            if drawn_segments is not None:
+                sv = [pt(v) for v in point_ids]
+                for i in range(len(sv)):
+                    ax, ay = sv[i]
+                    bx, by = sv[(i + 1) % len(sv)]
+                    drawn_segments.append((ax, ay, bx, by))
 
         case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
