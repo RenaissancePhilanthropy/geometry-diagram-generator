@@ -360,8 +360,63 @@ Example (a shaded 4 x 3 x 2 box with an edge label, a face label and checks):
 ```
 """
 
+# The example embedded in the block-stack guidance (tests/test_structured_stack.py
+# validates it, checks its cube_count_equals against the real count and runs it
+# through the shared pipeline, so the text cannot drift from the schema).
+STACK_EXAMPLE_IR: dict = {
+    "canvas": {"xmin": -1, "xmax": 6, "ymin": -1, "ymax": 5},
+    "define": [
+        {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
+        {"kind": "block_stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]],
+         "top_color": "#e6eefa"},
+    ],
+    "checks": [
+        {"kind": "cube_count_equals", "stack": "S", "expected": 6},
+    ],
+    "render": [
+        {"kind": "draw", "obj": "S"},
+        {"kind": "label_free_text", "text": "2", "centroid_of": "S_top_1_0"},
+    ],
+}
+
+_STACK_FRAGMENT = """
+
+---
+
+## Stacks of unit cubes
+
+Definition `block_stack`: fields `id`, `origin` (an existing point id, the front-bottom-left \
+corner) and EXACTLY ONE of `heights` and `cubes`, plus optional `view` (`"oblique"` default or \
+`"isometric"`), `depth_angle` / `depth_scale` (oblique only), `side` (`"right"` default or \
+`"left"`) and the face colors `front_color`, `side_color`, `top_color`.
+
+- Use `heights` (rows front to back, columns left to right; heights[z][x]) when the item gives \
+column heights (a "building plan", a top view with numbers, a list of stack heights).
+- Use `cubes` ([x, y, z] triples; x length, y height, z depth) only for shapes a height map cannot \
+express (an overhang such as the arch below: two pillars with a bridge cube over the empty cell \
+between them); a cube set that floats gives a warning that it is not a height map. Example \
+definition: `{"kind": "block_stack", "id": "A", "origin": "O", \
+"cubes": [[0,0,0],[0,1,0],[2,0,0],[2,1,0],[1,1,0]]}`.
+- Never draw individual cubes by hand (no per-cube polygons or segments): one `block_stack` draws \
+them all with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
+- For isometric requests use `"view": "isometric"` (no depth_angle/depth_scale).
+- Draw the stack with `{"kind": "draw", "obj": "<stack id>"}`. Set colors on the definition \
+(`front_color`, `side_color`, `top_color`): a `fill` of the stack id is an error.
+- Column top faces `{id}_top_{x}_{z}` (columns of height 0 have none) are the way to label a \
+column: `label_free_text` with `centroid_of` that id. `centroid_of` the stack id lands at the \
+middle of the bounding box, which can fall in a notch. Do not define anything with a derived id.
+- When the prompt states the number of cubes, assert it with a `cube_count_equals` check \
+(`stack`, `expected`: the integer total).
+
+Example (a 2 x 2 plan with heights 1, 2 / 3, 0, six cubes, a column label and a count check):
+
+```json
+""" + json.dumps(STACK_EXAMPLE_IR, indent=2) + """
+```
+"""
+
 # group -> prompt fragment appended only when that group is enabled.
-GROUPED_FRAGMENTS: "dict[str, str]" = {"solids": _SOLIDS_FRAGMENT}
+GROUPED_FRAGMENTS: "dict[str, str]" = {"solids": _SOLIDS_FRAGMENT + _STACK_FRAGMENT}
 
 
 def build_structured_instructions(features: "frozenset[str] | set[str]" = frozenset()) -> str:
