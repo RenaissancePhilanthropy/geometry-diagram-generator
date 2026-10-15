@@ -232,3 +232,12 @@ def test_reject_disabled_ops_covers_the_cube_count_check():
     with pytest.raises(FeatureNotEnabledError, match="cube_count"):
         reject_disabled_ops(dsl, frozenset())
     reject_disabled_ops(dsl, SOLIDS)
+
+
+@pytest.mark.asyncio
+async def test_cubes_example_is_a_real_overhang_not_a_height_map():
+    from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
+    d = lower_to_ir(_recipe_around("cubes_op"))
+    assert compile_defs(d)["S"].is_height_map is False
+    result = await run_ir_pipeline(d, SVGRenderer())
+    assert any("height map" in w for w in result.warnings)

@@ -728,7 +728,7 @@ STACK_EXAMPLES: dict[str, dict[str, Any]] = {
     "op": {"op": "stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]]},
     "isometric_op": {"op": "stack", "id": "S", "origin": "O", "heights": [[2, 1, 3]],
                      "view": "isometric", "top_color": "#e6eefa"},
-    "cubes_op": {"op": "stack", "id": "S", "origin": "O", "cubes": [[0, 0, 0], [1, 0, 0], [1, 1, 0]]},
+    "cubes_op": {"op": "stack", "id": "S", "origin": "O", "cubes": [[0, 0, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0]]},
     "cube_count": {"check": "cube_count", "stack": "S", "expected": 6},
     "column_label": {"kind": "label_free_text", "text": "3", "centroid_of": "S_top_0_1"},
 }
@@ -754,8 +754,8 @@ _STACK_GUIDANCE_DOC = """\
 ## stack guidance
 - Use heights (rows front to back, columns left to right; heights[z][x]) when the item gives column heights
   (a "building plan", a top view with numbers, a list of stack heights).
-- Use cubes ([x, y, z] triples) only for shapes a height map cannot express (an overhang: a cube with an
-  empty cell beneath it); a cube set that floats gives a warning that it is not a height map.
+- Use cubes ([x, y, z] triples) only for shapes a height map cannot express (an overhang such as the arch below: two pillars
+  with a bridge cube over the empty cell between them); a cube set that floats gives a warning that it is not a height map.
   Example: """ + _SX["cubes_op"] + """
 - Never draw individual cubes by hand (no per-cube polygons or segments): one stack op draws them all with
   correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
