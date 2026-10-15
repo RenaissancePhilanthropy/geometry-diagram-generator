@@ -41,6 +41,9 @@ _SUPPORTED_PROPERTY_TYPES = {
     # the 2D float coordinates.
     "prism_volume",
     "prism_dimensions",
+    # Stack property: evaluated through query_stack on the full symbol table
+    # (evals/sympy_checks.py _validate_stack_properties); args [stack_id|"*", count].
+    "stack_cube_count",
 }
 
 # Structural check types and what each one counts. polygon_count counts
@@ -55,9 +58,10 @@ _DEFAULT_POINT_TOLERANCE = 1e-4
 
 
 def _validate_solid_count_args(args: dict[str, Any], where: str) -> None:
-    """solid_count args: optional kind (str), min (int >= 0), and optional
-    literal dimensions length/width/height (numbers)."""
-    unknown = sorted(set(args) - {"kind", "min", "length", "width", "height"})
+    """solid_count args: optional kind (str), min (int >= 0), optional
+    literal dimensions length/width/height (numbers) and, for block_stack,
+    a literal cube_count (int >= 0)."""
+    unknown = sorted(set(args) - {"kind", "min", "length", "width", "height", "cube_count"})
     if unknown:
         raise ValueError(f"{where}: unknown solid_count arg(s) {unknown}")
     if "kind" in args and not (isinstance(args["kind"], str) and args["kind"].strip()):
@@ -71,6 +75,28 @@ def _validate_solid_count_args(args: dict[str, Any], where: str) -> None:
             isinstance(args[dim], bool) or not isinstance(args[dim], (int, float))
         ):
             raise ValueError(f"{where}: solid_count {dim!r} must be a literal number")
+
+
+    if "cube_count" in args and (
+        isinstance(args["cube_count"], bool)
+        or not isinstance(args["cube_count"], int)
+        or args["cube_count"] < 0
+    ):
+        raise ValueError(f"{where}: solid_count 'cube_count' must be a non-negative integer")
+
+
+def _validate_stack_cube_count_args(args: list, where: str) -> None:
+    """stack_cube_count args: [stack id or "*", expected count (int >= 0)]."""
+    ok = (
+        len(args) == 2
+        and isinstance(args[0], str) and args[0].strip()
+        and isinstance(args[1], int) and not isinstance(args[1], bool) and args[1] >= 0
+    )
+    if not ok:
+        raise ValueError(
+            f"{where}: stack_cube_count args must be [stack id or \"*\", "
+            "non-negative integer count]"
+        )
 
 
 def split_by_required_features(
@@ -145,6 +171,8 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 )
             if not isinstance(args, list):
                 raise ValueError(f"{prop_where}: 'args' must be a list")
+            if prop_type == "stack_cube_count":
+                _validate_stack_cube_count_args(args, prop_where)
 
             normalized_props.append(
                 {

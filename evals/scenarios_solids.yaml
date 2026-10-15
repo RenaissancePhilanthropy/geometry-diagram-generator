@@ -96,3 +96,59 @@
     - name: one_prism
       type: solid_count
       args: {kind: rectangular_prism, min: 1}
+
+# --- Block stacks (irregular stacks of unit cubes) ---------------------------
+# Each stack scenario has a solid_count (kind block_stack, literal cube_count
+# read from the authored heights/cubes) and a stack_cube_count property
+# (query_stack on the compiled Stack, "*" = any stack). Scenarios cannot assert
+# pipeline warnings, so the overhang scenario is checked structurally on its
+# cube count only; whether the not-a-height-map warning fired is read from the
+# run's warnings by hand.
+
+# Isometric height map: front row [1, 2, 3], back row [3, 1, 2] = 12 cubes.
+- id: stack-isometric-heightmap
+  tier: 3
+  tags: [solids, stack, isometric, height-map, cube-count]
+  requires_features: [solids]
+  prompt: "Draw a stack of unit cubes, isometric view. The stack is 3 cubes wide and 2 cubes deep. From left to right the front row has 1, 2 and 3 cubes, and the back row has 3, 1 and 2 cubes."
+  expected_properties:
+    - name: stack_cube_count_12
+      type: stack_cube_count
+      args: ["*", 12]
+  structural_checks:
+    - name: one_stack_of_12
+      type: solid_count
+      args: {kind: block_stack, min: 1, cube_count: 12}
+
+# Oblique height map, 4 wide and 2 deep: front row [1, 3, 2, 4] (10), back row
+# [1, 2, 1, 2] (6) = 16 cubes; asks for the total as a label.
+- id: stack-oblique-labeled-total
+  tier: 3
+  tags: [solids, stack, oblique, height-map, cube-count, labels]
+  requires_features: [solids]
+  prompt: "Draw a stack of unit cubes, oblique view. The stack is 4 cubes wide and 2 cubes deep. From left to right the front row has 1, 3, 2 and 4 cubes, and the back row has 1, 2, 1 and 2 cubes. How many cubes are in the stack? Label the stack with the number of cubes."
+  required_labels: ["16"]
+  expected_properties:
+    - name: stack_cube_count_16
+      type: stack_cube_count
+      args: ["*", 16]
+  structural_checks:
+    - name: one_stack_of_16
+      type: solid_count
+      args: {kind: block_stack, min: 1, cube_count: 16}
+
+# Overhang (not a height map): an arch of 5 unit cubes. The not-a-height-map
+# warning is expected but cannot be asserted by a scenario (see header).
+- id: stack-overhang-arch
+  tier: 3
+  tags: [solids, stack, overhang, cube-set, cube-count]
+  requires_features: [solids]
+  prompt: "Draw an arch made of unit cubes, isometric view. The arch is 3 cubes wide and 1 cube deep. The left and right pillars are each 2 cubes tall. There is an empty space between the pillars, and one cube sits across the top of the pillars, bridging the empty space."
+  expected_properties:
+    - name: stack_cube_count_5
+      type: stack_cube_count
+      args: ["*", 5]
+  structural_checks:
+    - name: one_stack_of_5
+      type: solid_count
+      args: {kind: block_stack, min: 1, cube_count: 5}

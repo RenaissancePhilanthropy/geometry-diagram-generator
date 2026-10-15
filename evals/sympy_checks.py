@@ -10,6 +10,10 @@ from __future__ import annotations
 # table (the Prism object), never on the 2D projected float coordinates.
 PRISM_PROPERTY_TYPES = frozenset({"prism_volume", "prism_dimensions"})
 
+# Stack property types resolve through query_stack on the full symbol table,
+# on their own path (never the prism validator).
+STACK_PROPERTY_TYPES = frozenset({"stack_cube_count"})
+
 
 def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) -> list[dict]:
     """Evaluate the prism-typed expected_properties against the full compiled
@@ -58,6 +62,41 @@ def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) 
     return results
 
 
+def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) -> list[dict]:
+    """Evaluate the stack-typed expected_properties against the full compiled
+    symbol table. Returns list of {name, type, passed, message} dicts.
+
+    stack_cube_count: args [stack_id, expected_count]; stack_id "*" means any
+    stack in the diagram. Integer equality (the cube_count_equals semantics).
+    """
+    from geometry_diagrams.ir.queries import query_stack
+    from geometry_diagrams.ir.stack import Stack
+
+    results = []
+    for prop in expected_properties:
+        ptype = prop.get("type", "")
+        if ptype not in STACK_PROPERTY_TYPES:
+            continue
+        args = prop.get("args", [])
+        try:
+            stack_id, expected = args[0], args[1]
+            if stack_id == "*":
+                ids = [k for k, v in sym_full.items() if type(v) is Stack]
+                if not ids:
+                    raise KeyError("no stack in the diagram")
+            else:
+                ids = [stack_id]
+            counts = [query_stack(sym_full, i)["cube_count"] for i in ids]
+            passed = any(c == expected for c in counts)
+            msg = "" if passed else (
+                f"cube count {', '.join(str(c) for c in counts)} != expected {expected}"
+            )
+        except Exception as exc:
+            passed, msg = False, f"Error: {exc}"
+        results.append({"name": prop.get("name", ""), "type": ptype, "passed": passed, "message": msg})
+    return results
+
+
 def _validate_properties_sympy(
     expected_properties: list[dict],
     sym_float: dict,
@@ -69,8 +108,8 @@ def _validate_properties_sympy(
     """
     results = []
     for prop in expected_properties:
-        if prop.get("type") in PRISM_PROPERTY_TYPES:
-            continue  # evaluated on the full symbol table by _validate_prism_properties
+        if prop.get("type") in PRISM_PROPERTY_TYPES | STACK_PROPERTY_TYPES:
+            continue  # evaluated on the full symbol table by the prism/stack validators
         name = prop.get("name", "")
         ptype = prop.get("type", "")
         args = prop.get("args", [])

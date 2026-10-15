@@ -58,6 +58,7 @@ from evals.sympy_checks import (
     PRISM_PROPERTY_TYPES,
     _validate_prism_properties,
     _validate_properties_sympy,
+    _validate_stack_properties,
 )
 from geometry_diagrams.features import parse_features
 from evals.reporting import (
@@ -395,6 +396,7 @@ async def run_scenario(
         "ir_diagnostics": None,
         "sympy_property_checks": [],
         "prism_property_checks": [],
+        "stack_property_checks": [],
         "structural_checks": None,
         "query_results": [],
         "llm_judge_score": None,
@@ -461,6 +463,9 @@ async def run_scenario(
         # symbol table (never on the 2D projected float table above).
         if result.sym_full is not None and scenario.get("expected_properties"):
             record["prism_property_checks"] = _validate_prism_properties(
+                scenario["expected_properties"], result.sym_full
+            )
+            record["stack_property_checks"] = _validate_stack_properties(
                 scenario["expected_properties"], result.sym_full
             )
 
@@ -669,7 +674,28 @@ async def run_scenario(
 # ---------------------------------------------------------------------------
 
 # IR def kinds that are solids (counted by solid_count, never by polygon_count).
-_SOLID_KINDS = frozenset({"rectangular_prism"})
+_SOLID_KINDS = frozenset({"rectangular_prism", "block_stack"})
+
+
+def _authored_cube_count(defn: dict) -> int | None:
+    """Cube count of an authored block_stack def, from its literal heights
+    (sum of non-negative integers) or cubes (number of triples). Literal-only,
+    like the solid_count dimensions: it reads the authored IR, so the check
+    needs no compile, and an expression/ragged/non-integer value is None
+    (never matches). The compiled Stack's count is checked separately by the
+    stack_cube_count property."""
+    heights, cubes = defn.get("heights"), defn.get("cubes")
+    def is_int(v):
+        return isinstance(v, int) and not isinstance(v, bool)
+    if defn.get("kind") != "block_stack":
+        return None
+    if isinstance(heights, list) and cubes is None:
+        if all(isinstance(r, list) and all(is_int(v) and v >= 0 for v in r) for r in heights):
+            return sum(sum(r) for r in heights)
+        return None
+    if isinstance(cubes, list) and heights is None:
+        return len(cubes)
+    return None
 
 
 def _run_structural_checks(
@@ -687,7 +713,9 @@ def _run_structural_checks(
       solid_count — at least ``min`` (default 1) authored solids, optionally
         only those of ``kind`` (e.g. rectangular_prism) and whose literal
         length/width/height equal the given values (an expression-valued
-        dimension never matches). Needs the authored IR.
+        dimension never matches) and, for block_stack, whose literal cube
+        count (sum of heights or number of cubes) equals ``cube_count``.
+        Needs the authored IR.
     Returns a dict mapping check name -> {"passed": bool, "message": str}.
     """
     results: dict[str, dict] = {}
@@ -735,6 +763,7 @@ def _run_structural_checks(
                 min_count = int(args.get("min", 1))
                 kind = args.get("kind")
                 dims = {d: args[d] for d in ("length", "width", "height") if d in args}
+                want_cubes = args.get("cube_count")
                 if diagram_ir is None:
                     results[name] = {
                         "passed": False,
@@ -746,6 +775,8 @@ def _run_structural_checks(
                     dkind = defn.get("kind")
                     if dkind not in _SOLID_KINDS or (kind is not None and dkind != kind):
                         continue
+                    if want_cubes is not None and _authored_cube_count(defn) != want_cubes:
+                        continue
                     if all(
                         isinstance(defn.get(d), (int, float))
                         and not isinstance(defn.get(d), bool)
@@ -754,7 +785,9 @@ def _run_structural_checks(
                     ):
                         count += 1
                 ok = count >= min_count
-                desc = (kind or "any kind") + (f" {dims}" if dims else "")
+                desc = (kind or "any kind") + (f" {dims}" if dims else "") + (
+                    f" cube_count={want_cubes}" if want_cubes is not None else ""
+                )
                 results[name] = {
                     "passed": ok,
                     "message": "" if ok else (
@@ -842,6 +875,11 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
     if prism_checks:
         had_checks = True
         failures.extend(f"prism:{r['name']}" for r in prism_checks if r.get("passed") is False)
+
+    stack_checks = record.get("stack_property_checks")
+    if stack_checks:
+        had_checks = True
+        failures.extend(f"stack:{r['name']}" for r in stack_checks if r.get("passed") is False)
 
     query_results = record.get("query_results", [])
     if query_results:
