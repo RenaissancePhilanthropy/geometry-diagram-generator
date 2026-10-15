@@ -1327,6 +1327,13 @@ class OrderedPolygon(BaseModel):
     ``hsv(...)``, xcolor mixes); the fill is always opaque. ``points`` are ids
     of defined points, in boundary order.
 
+    ``stroke_width``: ``None`` (the default) is each backend's ordinary draw
+    width, the width a plain ``Draw`` gets (SVG 1.5 px; TikZ tkz-euclide's
+    ``line style``); the units differ, so no one number can match both.
+    ``"thin"`` / ``"thick"`` are the backends' ordinary thin / thick widths
+    (what a ``thin`` / ``thick`` draw style gives); a number is used as-is
+    (px in SVG, pt in TikZ, like a style's ``line_width``).
+
     Deliberately NOT a member of ``RenderOp``: it is emitted by registry
     ``lower_draw`` hooks (``derived.Lowering``), never authored in JSON, so
     the LLM-facing schemas and prompts are unchanged.
@@ -1336,7 +1343,7 @@ class OrderedPolygon(BaseModel):
     points: List[PointId] = Field(min_length=3)
     fill: str
     stroke: str = "black"
-    stroke_width: float = 1.0
+    stroke_width: Optional[Union[float, Literal["thin", "thick"]]] = None
 
 
 RenderOp = Annotated[

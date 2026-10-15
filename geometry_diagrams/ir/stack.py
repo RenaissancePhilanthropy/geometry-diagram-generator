@@ -16,8 +16,9 @@ The only public derived ids are the column top faces ``{id}_top_{x}_{z}``
 (synthesized polygons at each column's top plane). Cube size is one drawing
 unit; all values are literal integers.
 
-Rendering the faces is not implemented here: drawing the stack id lowers to
-no operations for now.
+Drawing the stack id lowers to painter-ordered ``ir.OrderedPolygon`` faces
+(``painter_faces``): cubes farthest from the viewer first, each emitting its
+faces on the three visible planes except those covered by a neighbouring cube.
 """
 from __future__ import annotations
 
@@ -36,6 +37,13 @@ Cube = tuple[int, int, int]  # (x, y, z)
 
 MAX_CUBES = 400
 MAX_CELLS_PER_AXIS = 20
+
+# Opaque face fills by plane when the definition leaves a color unset: three
+# light-blue tints (top lightest, side darkest) so the faces read as a solid.
+DEFAULT_COLORS: dict[str, str] = {"front": "#c3d6ef", "side": "#97b5dc", "top": "#e6eefa"}
+
+# Face (plane) name by lattice axis: length (x), height (y), width (z).
+_PLANE_BY_AXIS = ("side", "top", "front")
 
 
 class Stack:
@@ -253,6 +261,29 @@ def synthesize_top_faces(stmt: ir.BlockStack) -> list[Any]:
     return out
 
 
+def is_top_face(stmt: Any, sym: dict[str, Any]) -> bool:
+    """True for a column top-face polygon this module synthesized (its owner
+    in ``sym`` is a compiled Stack). Lets the compiler build it with
+    ``top_face_polygon`` instead of SymPy's validating constructor."""
+    owner = getattr(stmt, "_synthesized_by", None)
+    return owner is not None and isinstance(sym.get(owner), Stack)
+
+
+def top_face_polygon(vertices: list[spg.Point]) -> spg.Polygon:
+    """A column top face as a SymPy Polygon WITHOUT ``Polygon.__new__``'s
+    duplicate and collinearity pruning: on exact radical coordinates that
+    pruning simplifies every vertex triple, which dominated compile time
+    (seconds for a few hundred columns). A top face is a lattice unit square
+    under a non-degenerate projection (``projection_for`` rejects degenerate
+    views), so its four vertices are distinct and no three are collinear: the
+    validating constructor would return the same four vertices in the same
+    order. The object is an ordinary ``Polygon`` (area, centroid, sides,
+    containment all work)."""
+    from sympy.geometry.entity import GeometryEntity
+
+    return GeometryEntity.__new__(spg.Polygon, *vertices)
+
+
 def stack_position(obj: Any) -> tuple[float, float] | None:
     return obj.center if isinstance(obj, Stack) else None
 
@@ -300,9 +331,96 @@ def render_warnings(stmt: ir.BlockStack, diagram: Any) -> list[str]:
     return []
 
 
+def painter_faces(
+    cubes: frozenset[Cube], viewer: tuple[float, float, float], cull: bool = True
+) -> list[tuple[str, list[Cube]]]:
+    """``(plane name, 4 lattice corners in boundary order)`` for every face to
+    paint, farthest first.
+
+    Cubes are sorted by the dot product of their center with ``viewer`` (the
+    projection's viewer direction, pointing toward the viewer), ties broken by
+    coordinates. Correct for any lattice cube set under a parallel projection:
+    if cube A can hide cube B, every nonzero component of A - B has the sign
+    of the matching component of ``viewer``, so A's dot product is larger.
+    Each cube contributes its faces on the visible planes (the side of each
+    axis that ``viewer`` points to: front/right/top or front/left/top); with
+    ``cull`` a face is skipped when the neighbouring cube across it exists
+    (it is interior, never seen)."""
+    def depth(c: Cube) -> tuple[float, Cube]:
+        return (sum((c[i] + 0.5) * viewer[i] for i in range(3)), c)
+
+    signs = [(1 if k > 0 else -1) if k else 0 for k in viewer]
+    out: list[tuple[str, list[Cube]]] = []
+    for cube in sorted(cubes, key=depth):
+        for axis in (2, 0, 1):  # front, side, top
+            step = signs[axis]
+            if not step:
+                continue  # planes of this axis are seen edge-on
+            if cull:
+                neighbour = list(cube)
+                neighbour[axis] += step
+                if tuple(neighbour) in cubes:
+                    continue
+            out.append((_PLANE_BY_AXIS[axis], _face_corners(cube, axis, step)))
+    return out
+
+
+def _face_corners(cube: Cube, axis: int, step: int) -> list[Cube]:
+    u, v = (a for a in range(3) if a != axis)
+    corners = []
+    for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+        p = list(cube)
+        p[axis] += 1 if step > 0 else 0
+        p[u] += du
+        p[v] += dv
+        corners.append(tuple(p))
+    return corners  # type: ignore[return-value]
+
+
+def _draw_stroke(style_key: str | None, styles: dict[str, Any]) -> tuple[str, Any]:
+    """``(stroke color, stroke width)`` from the author's draw style. Only the
+    color and the width carry (``line_width`` over ``thin`` over ``thick``,
+    the precedence of an ordinary draw); dash patterns and arrows do not."""
+    from .render_util import bare_color_key
+
+    if style_key is not None and style_key in styles:
+        d = styles[style_key]
+        color = str(d["color"]) if d.get("color") else "black"
+        if "line_width" in d:
+            return color, float(d["line_width"])
+        if d.get("thin") is True:
+            return color, "thin"
+        return color, ("thick" if d.get("thick") is True else None)
+    if bare_color_key(style_key):
+        return str(style_key), None
+    return "black", None
+
+
 def lower_draw(stmt: ir.BlockStack, op: Any, styles: dict[str, Any]) -> Any:
-    """Registry ``lower_draw`` hook. Face rendering is a later ticket: for now
-    drawing the stack id lowers to no operations (it draws nothing)."""
+    """Registry ``lower_draw`` hook: a draw of the stack becomes its faces as
+    ``ir.OrderedPolygon`` over the hidden lattice ids, in painter order
+    (``painter_faces``), each with an opaque plane color and the draw style's
+    stroke."""
     from .derived import Lowering
 
-    return Lowering(ops=[])
+    cubes = _valid_cubes(stmt)
+    if cubes is None:
+        return Lowering(ops=[])  # compile reports the invalid statement
+    try:
+        projection = projection_for(stmt.view, stmt.side, stmt.depth_angle, stmt.depth_scale)
+    except ValueError as e:
+        raise IRCompileError(stmt.id, f"block_stack: {e}") from e
+    viewer = tuple(float(k) for k in projection.viewer)
+    fills = {
+        "front": stmt.front_color or DEFAULT_COLORS["front"],
+        "side": stmt.side_color or DEFAULT_COLORS["side"],
+        "top": stmt.top_color or DEFAULT_COLORS["top"],
+    }
+    stroke, width = _draw_stroke(op.style, styles)
+    return Lowering(ops=[
+        ir.OrderedPolygon(
+            points=[lattice_id(stmt.id, c) for c in corners],
+            fill=fills[plane], stroke=stroke, stroke_width=width,
+        )
+        for plane, corners in painter_faces(cubes, viewer)  # type: ignore[arg-type]
+    ])

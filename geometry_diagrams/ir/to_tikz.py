@@ -415,10 +415,7 @@ def _emit_op(
                 else f"({fmt_num(helpers[v][0])},{fmt_num(helpers[v][1])})"
                 for v in point_ids
             )
-            out.append(
-                f"\\filldraw[fill={fill_paint},draw={stroke_paint},"
-                f"line width={fmt_num(stroke_width)}pt,line join=round] {coords} -- cycle;"
-            )
+            out.append(f"\\filldraw[{_ordered_polygon_options(fill_paint, stroke_paint, stroke_width)}] {coords} -- cycle;")
 
         case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
@@ -806,6 +803,17 @@ def _tikz_fmt_coord_val(v: float) -> str:
 def _tikz_fmt_coord_pair(x: float, y: float) -> str:
     """Return a '(x, y)' string with appropriate precision."""
     return f"({_tikz_fmt_coord_val(x)}, {_tikz_fmt_coord_val(y)})"
+
+
+def _ordered_polygon_options(fill: str, stroke: str, width: float | str | None) -> str:
+    """The ``\\filldraw`` options of an ``ir.OrderedPolygon``. A width of
+    ``None`` (or a ``thin`` / ``thick`` keyword) starts from tkz-euclide's own
+    ``line style``, the style its draw macros use, so the outline has exactly
+    an ordinary draw's width; a number is an explicit ``line width`` in pt."""
+    if width is None or isinstance(width, str):
+        keyword = f"{width}," if width else ""
+        return f"line style,fill={fill},draw={stroke},{keyword}line join=round"
+    return f"fill={fill},draw={stroke},line width={fmt_num(width)}pt,line join=round"
 
 
 def _style_str(style_key: str | None, styles: dict) -> str:

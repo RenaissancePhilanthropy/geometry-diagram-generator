@@ -13,7 +13,7 @@ import sympy.geometry as spg
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .prism import compile_prism
-from .stack import compile_stack
+from .stack import compile_stack, is_top_face, top_face_polygon
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -979,6 +979,9 @@ def _compile_one(
                     f"triangle: '{a_id}', '{b_id}', '{c_id}' are collinear or coincident — degenerate triangle"
                 )
             return result
+
+        case ir.Polygon(points=point_ids) if is_top_face(stmt, sym):
+            return top_face_polygon([ref(pid) for pid in point_ids])
 
         case ir.Polygon(points=point_ids):
             pts = [ref(pid) for pid in point_ids]

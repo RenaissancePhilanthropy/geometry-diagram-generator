@@ -425,3 +425,33 @@ def test_svg_ordered_polygon_edges_register_for_label_nudging(monkeypatch):
     )
     _svg(d)
     assert len(captured) == 4
+
+
+# ---------------------------------------------------------------------------
+# stroke_width default: each backend's ordinary draw width
+# ---------------------------------------------------------------------------
+
+def test_default_stroke_width_is_each_backends_ordinary_draw_width():
+    """None (the default) means the width an ordinary Draw gets: 1.5 px in
+    SVG; in TikZ tkz-euclide's own ``line style`` (the style its draw macros
+    use), never a hard-coded number that could drift from it."""
+    assert ir.OrderedPolygon(points=["A", "B", "C"], fill="red").stroke_width is None
+    d = _diagram(_square_defs() + [ir.Segment(id="s", a="A", b="C")],
+                 [ir.OrderedPolygon(points=["A", "B", "C", "D"], fill="red"), ir.Draw(obj="s")])
+    svg = _svg(d)
+    (poly,) = SVG_POLY.findall(svg)
+    assert 'stroke-width="1.5"' in poly
+    assert re.search(r'data-ir-id="s"[^>]*stroke-width="1.5"', svg)
+    (line,) = _ordered_lines(_tikz(d))
+    assert line.startswith("\\filldraw[line style,") and "line width" not in line
+
+
+@pytest.mark.parametrize("width,svg_w,tikz_opt", [
+    (2.5, "2.5", "line width=2.5pt"), ("thick", "2.5", "thick"), ("thin", "0.75", "thin"),
+])
+def test_explicit_stroke_width_is_honored(width, svg_w, tikz_opt):
+    d = _diagram(_square_defs(), [ir.OrderedPolygon(points=["A", "B", "C", "D"], fill="red", stroke_width=width)])
+    (poly,) = SVG_POLY.findall(_svg(d))
+    assert f'stroke-width="{svg_w}"' in poly
+    (line,) = _ordered_lines(_tikz(d))
+    assert tikz_opt in line.split("]")[0]

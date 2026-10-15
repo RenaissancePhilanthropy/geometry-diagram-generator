@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from . import ir
 from .derived import effective_defs
 from .prism import Prism, true_length as prism_true_length
+from .stack import is_top_face
 from .to_sympy import (
     Arc,
     EllipticalArc,
@@ -555,6 +556,11 @@ def check_render_angles(
     on a drawn line/segment/ray (e.g. a point placed on a parallel line without
     being a structural defining point).
     """
+    if not any(isinstance(op, (ir.MarkAngles, ir.MarkRightAngles, ir.LabelAngle)) for op in diagram.render):
+        # Nothing to validate. Building the pairs tests every point against
+        # every linear object (exact SymPy containment), which is costly for
+        # diagrams with many polygons (a block stack's column top faces).
+        return []
     pairs = _build_linear_pairs(diagram, sym)
     errors: list[str] = []
     for op in diagram.render:
@@ -630,8 +636,13 @@ def _build_linear_pairs(
         # be on that side structurally, so it needs its own synthetic ids —
         # reusing the polygon's oid would silently merge into (and be
         # shadowed by) the structural entry already keyed on that oid.
+        # A block stack's column top faces are skipped: up to 400 of them,
+        # each side an exact radical segment, would make this pass test every
+        # point against 1600 segments (about a minute); they are faces of a
+        # drawn solid, not lines a point is placed on.
+        stack_faces = {stmt.id for stmt in defs if is_top_face(stmt, sym)}
         for oid, obj in sym.items():
-            if isinstance(obj, spg.Polygon):
+            if isinstance(obj, spg.Polygon) and oid not in stack_faces:
                 for i, side in enumerate(obj.sides):
                     linear_objs[f"{oid}__contains_side{i}"] = side
         # A Sector/EllipticalSector's two straight radii (center-start and

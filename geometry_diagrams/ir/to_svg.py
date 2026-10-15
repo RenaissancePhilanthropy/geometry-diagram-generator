@@ -1027,7 +1027,7 @@ def _emit_svg_op(
                 "points": " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in point_ids),
                 "fill": fill_paint,
                 "stroke": stroke_paint,
-                "stroke-width": fmt_num(stroke_width),
+                "stroke-width": _ordered_stroke_width(stroke_width),
                 "stroke-linejoin": "round",
             })
             if drawn_segments is not None:
@@ -2521,6 +2521,17 @@ def _clip_ray_to_bounds(
 
 # Map TikZ thickness keywords to stroke-width values
 _STROKE_WIDTHS = {"thin": "0.75", "thick": "2.5", "very thick": "3.5", "ultra thick": "5"}
+
+
+def _ordered_stroke_width(width: float | str | None) -> str:
+    """An ``ir.OrderedPolygon``'s stroke width as an SVG attribute: ``None``
+    is the ordinary draw width (``_stroke_attrs``'s default), a keyword maps
+    as a draw style's ``thin`` / ``thick`` does."""
+    if width is None:
+        return "1.5"
+    if isinstance(width, str):
+        return _STROKE_WIDTHS[width]
+    return fmt_num(width)
 
 
 def _color_from_style(style_key: str | None, styles: dict) -> str | None:
