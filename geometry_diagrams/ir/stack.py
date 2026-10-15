@@ -84,8 +84,11 @@ class Stack:
 
     @property
     def center(self) -> tuple[float, float]:
-        """Center of the bounding box of the projected lattice: the center of
-        the drawn silhouette's extent (for a full box it equals the prism's)."""
+        """Center of the BOUNDING BOX of the projected lattice, i.e. of the
+        drawn silhouette (for a full box it equals the prism's center). For a
+        concave stack (an L shape) this point can lie in a notch of the
+        silhouette, not on a cube: to put a label on the stack itself, address
+        a column top face (``{id}_top_{x}_{z}``) instead."""
         xs = [float(p.x) for p in self.lattice.values()]
         ys = [float(p.y) for p in self.lattice.values()]
         return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
@@ -182,13 +185,19 @@ def _corners(cubes: frozenset[Cube]) -> list[Cube]:
     return sorted(pts)
 
 
+@lru_cache(maxsize=64)
+def _lattice_names(stack_id: str, cubes: frozenset[Cube]) -> dict[Cube, str]:
+    return {p: lattice_id(stack_id, p) for p in _corners(cubes)}
+
+
 def lattice_names(stmt: ir.BlockStack) -> dict[Cube, str]:
     """Lattice coordinates -> hidden point id, for every cube corner; empty
-    for an invalid statement."""
+    for an invalid statement. Cached per (id, cube set); callers must not
+    mutate the result."""
     cubes = _valid_cubes(stmt)
     if cubes is None:
         return {}
-    return {p: lattice_id(stmt.id, p) for p in _corners(cubes)}
+    return _lattice_names(stmt.id, cubes)
 
 
 # --- compile ------------------------------------------------------------------------

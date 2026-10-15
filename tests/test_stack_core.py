@@ -204,6 +204,18 @@ def test_centroid_of_stack_is_the_silhouette_bbox_center():
     assert cx == pytest.approx(1 + (1 + d) / 2) and cy == pytest.approx(2 + (1 + d) / 2)
 
 
+@pytest.mark.parametrize("view, side", [("oblique", "right"), ("isometric", "left")])
+def test_concave_stack_center_is_the_bounding_box_center_even_in_a_notch(view, side):
+    # L shape: the back-left column (x=0, z=1) is empty, so the bbox center can
+    # sit in the notch. The position is pinned to the bbox-center definition.
+    sym = _compile(_stack(heights=[[3, 0], [3, 3]], view=view, side=side))
+    xs = [float(p.x) for k, p in sym.items() if k.startswith("__S_l")]
+    ys = [float(p.y) for k, p in sym.items() if k.startswith("__S_l")]
+    cx, cy = centroid_of_obj(sym["S"])
+    assert cx == pytest.approx((min(xs) + max(xs)) / 2)
+    assert cy == pytest.approx((min(ys) + max(ys)) / 2)
+
+
 @pytest.mark.asyncio
 async def test_label_centered_on_stack_and_drawing_it_do_not_crash():
     diagram = _diagram(
