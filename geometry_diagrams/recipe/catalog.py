@@ -722,11 +722,55 @@ _PRISM_GUIDANCE_DOC = """\
   and queried volume are what the item asserts; add a volume check for the stated volume.
 - Fill/label/draw accept the prism id, face ids and edge ids anywhere an object id is allowed."""
 
+# Every concrete JSON shape the stack guidance shows (built into the text with
+# json.dumps; tests/test_recipe_stack.py validates, lowers and renders each).
+STACK_EXAMPLES: dict[str, dict[str, Any]] = {
+    "op": {"op": "stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]]},
+    "isometric_op": {"op": "stack", "id": "S", "origin": "O", "heights": [[2, 1, 3]],
+                     "view": "isometric", "top_color": "#e6eefa"},
+    "cubes_op": {"op": "stack", "id": "S", "origin": "O", "cubes": [[0, 0, 0], [1, 0, 0], [1, 1, 0]]},
+    "cube_count": {"check": "cube_count", "stack": "S", "expected": 6},
+    "column_label": {"kind": "label_free_text", "text": "3", "centroid_of": "S_top_0_1"},
+}
+_SX = {k: json.dumps(v) for k, v in STACK_EXAMPLES.items()}
+
+_STACK_OP_DOC = """\
+- stack: {op, id, origin, heights?, cubes?, view?, depth_angle?, depth_scale?, side?, front_color?, side_color?, top_color?}
+  Irregular stack of unit cubes (one drawing unit each) drawn as a parallel projection. origin = an
+  EXISTING point id (a point op) at the front-bottom-left corner. Give EXACTLY ONE of heights and cubes.
+  heights[z][x] = number of cubes in the column at column x (left to right) of row z (rows run front
+  to back), non-negative integers. cubes = [[x, y, z], ...] unit cubes (non-negative integers, no duplicates).
+  At most 400 cubes and at most 20 cells along any axis. view/depth_angle/depth_scale/side are the prism's.
+  front_color, side_color (the visible lateral face) and top_color are optional face colors.
+  Public ids it creates: the stack id, and {id}_top_{x}_{z}, the top face of the column at (x, z)
+  (no id for a column of height 0). The stack id and column top ids work anywhere an object id is allowed.
+  Example: """ + _SX["op"]
+
+_STACK_CHECKS_DOC = """\
+  """ + _SX["cube_count"] + """  (total number of cubes in a stack)"""
+
+_STACK_GUIDANCE_DOC = """\
+
+## stack guidance
+- Use heights (rows front to back, columns left to right; heights[z][x]) when the item gives column heights
+  (a "building plan", a top view with numbers, a list of stack heights).
+- Use cubes ([x, y, z] triples) only for shapes a height map cannot express (an overhang: a cube with an
+  empty cell beneath it); a cube set that floats gives a warning that it is not a height map.
+  Example: """ + _SX["cubes_op"] + """
+- Never draw individual cubes by hand (no per-cube polygons or segments): one stack op draws them all with
+  correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
+- Draw the stack id (auto_draw_all does this). Color faces with front_color/side_color/top_color on the op.
+- For isometric requests set view:"isometric" on the stack op (no depth_angle/depth_scale).
+  Example: """ + _SX["isometric_op"] + """
+- Label a column with a free-text label centered on its top face. Example: """ + _SX["column_label"] + """
+  A label centered on the stack id itself lands at the middle of the bounding box, which can fall in a notch.
+- When the prompt states the number of cubes, assert it: """ + _SX["cube_count"] + """"""
+
 # (anchor line substring, text inserted after the first line containing it)
 DSL_SOLIDS_INSERTIONS: list[tuple[str, str]] = [
-    ("requires odd N \u2265 5.", _PRISM_OP_DOC),
-    ("or two circles \u2014 order doesn't matter)", _PRISM_CHECKS_DOC),
-    ("additional, explicit assertions on top of those.", _PRISM_GUIDANCE_DOC),
+    ("requires odd N \u2265 5.", _PRISM_OP_DOC + "\n" + _STACK_OP_DOC),
+    ("or two circles \u2014 order doesn't matter)", _PRISM_CHECKS_DOC + "\n" + _STACK_CHECKS_DOC),
+    ("additional, explicit assertions on top of those.", _PRISM_GUIDANCE_DOC + "\n" + _STACK_GUIDANCE_DOC),
 ]
 
 

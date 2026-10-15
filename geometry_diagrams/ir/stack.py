@@ -208,6 +208,16 @@ def _resolve(stmt: ir.BlockStack) -> tuple[frozenset[Cube], tuple[int, int, int]
     return _cubes_of(grid), _extents(grid)
 
 
+def bounding_extents(stmt: ir.BlockStack) -> tuple[int, int, int] | None:
+    """(length, height, width) of the statement's bounding box, or None when it
+    is invalid (compile reports that). For callers that only need the extent,
+    e.g. a canvas fit."""
+    try:
+        return _resolve(stmt)[1]
+    except IRCompileError:
+        return None
+
+
 def _valid_cubes(stmt: ir.BlockStack) -> frozenset[Cube] | None:
     """The cube set, or None when the statement is invalid (compile reports
     that; the registry hooks synthesize and own nothing meanwhile)."""

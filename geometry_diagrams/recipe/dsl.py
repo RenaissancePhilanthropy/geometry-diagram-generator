@@ -909,6 +909,28 @@ class PrismOp(DSLOpBase):
     side: Literal["right", "left"] = "right"
 
 
+class StackOp(DSLOpBase):
+    """Irregular stack of unit cubes drawn as a parallel projection; lowers to
+    the IR ``block_stack`` definition (solids feature group).
+
+    ``origin`` is the front-bottom-left corner (an existing point id), like the
+    prism's. Give exactly one of ``heights`` (``heights[z][x]``: rows front to
+    back, columns left to right) and ``cubes`` (``[x, y, z]`` triples, only for
+    shapes a height map cannot express). View fields are the prism's.
+    """
+    op: Literal["stack"] = "stack"
+    origin: str
+    heights: Optional[list[list[Union[int, float]]]] = None
+    cubes: Optional[list[list[Union[int, float]]]] = None
+    view: Literal["isometric", "oblique"] = "oblique"
+    depth_angle: Optional[Union[int, float]] = None
+    depth_scale: Optional[Union[int, float]] = None
+    side: Literal["right", "left"] = "right"
+    front_color: Optional[str] = None
+    side_color: Optional[str] = None
+    top_color: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # DSLOp discriminated union
 # ---------------------------------------------------------------------------
@@ -929,7 +951,7 @@ DSLOp = Annotated[
         # Derived (continued)
         PointAlongOp, ExtendSegmentOp,
         # Solids (feature group "solids")
-        PrismOp,
+        PrismOp, StackOp,
         # Render-only
         FillOp,
     ],
@@ -1228,11 +1250,19 @@ class CheckTrueLength(BaseModel):
     expected: float
 
 
+class CheckCubeCount(BaseModel):
+    """Assert a block stack's total cube count equals expected."""
+    model_config = ConfigDict(extra="forbid")
+    check: Literal["cube_count"] = "cube_count"
+    stack: str
+    expected: int
+
+
 DSLCheck = Annotated[
     Union[
         CheckDistance, CheckParallel, CheckPerpendicular,
         CheckAngleEquals, CheckCollinear, CheckPointOnCircle,
-        CheckTangent, CheckVolume, CheckTrueLength,
+        CheckTangent, CheckVolume, CheckTrueLength, CheckCubeCount,
     ],
     Field(discriminator="check"),
 ]
@@ -1390,8 +1420,10 @@ class RecipeDSL(BaseModel):
 # schema statically, so these stay visible to the model with the group off; the
 # rejection below (run before lowering) is the gate, with the IR-level
 # ``require_features`` on the lowered diagram as the backstop.
-OP_FEATURES: dict[str, str] = {"prism": "solids"}
-CHECK_FEATURES: dict[str, str] = {"volume": "solids", "true_length": "solids"}
+OP_FEATURES: dict[str, str] = {"prism": "solids", "stack": "solids"}
+CHECK_FEATURES: dict[str, str] = {
+    "volume": "solids", "true_length": "solids", "cube_count": "solids",
+}
 
 
 def reject_disabled_ops(dsl: "RecipeDSL", enabled: "frozenset[str] | set[str]") -> None:

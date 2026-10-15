@@ -32,14 +32,15 @@ from ..ir.ir import (
     LabelAngle as IRLabelAngle, LabelFreeText as IRLabelFreeText,
     LabelAlongArc as IRLabelAlongArc,
     RenderOp, DefStmt, PickRule,
-    RectangularPrism, VolumeEquals, TrueLengthEquals,
+    RectangularPrism, VolumeEquals, TrueLengthEquals, BlockStack, CubeCountEquals,
 )
 from ..ir import prism as _prism
+from ..ir import stack as _stack
 from .dsl import (
     RecipeDSL, DSLAnnotations,
     CheckDistance, CheckParallel, CheckPerpendicular, CheckAngleEquals,
-    CheckCollinear, CheckPointOnCircle, CheckTangent, CheckVolume, CheckTrueLength,
-    PrismOp,
+    CheckCollinear, CheckPointOnCircle, CheckTangent, CheckVolume, CheckTrueLength, CheckCubeCount,
+    PrismOp, StackOp,
     TriangleOp, CircleOp, EllipseOp, PolygonOp, PointOp, PointExternalOp, CanvasOp,
     RegularPolygonOp, PointAlongOp, ExtendSegmentOp,
     MidpointOp, IntersectionOp, PerpendicularOp, ParallelOp,
@@ -149,6 +150,7 @@ class _Lowerer:
         PolygonOp: ["vertices"],
         PolygonExteriorOp: ["base", "ref_point"],
         PrismOp: ["origin"],
+        StackOp: ["origin"],
     }
 
     def _inject_implicit_points(self, construction: list[Any]) -> None:
@@ -391,6 +393,8 @@ class _Lowerer:
                 self._lower_fill(op)
             case PrismOp():
                 self._lower_prism(op)
+            case StackOp():
+                self._lower_stack(op)
             case _:
                 raise LoweringError(f"Unhandled DSL op type: {type(op).__name__}")
 
@@ -550,6 +554,28 @@ class _Lowerer:
             return
         for bits in _prism.CORNER_BITS:
             dx, dy = proj.offset(*(b * d for b, d in zip(bits, dims)))
+            self._prism_extent.append((origin[0] + float(dx), origin[1] + float(dy)))
+
+    def _lower_stack(self, op: StackOp) -> None:
+        stmt = BlockStack(
+            id=op.id, origin=op.origin, heights=op.heights, cubes=op.cubes, view=op.view,
+            depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
+            front_color=op.front_color, side_color=op.side_color, top_color=op.top_color,
+        )
+        self._add(stmt)
+        self._drawable.add(op.id)
+        # Canvas fit: the bounding box's projected corners contain every lattice
+        # point. An invalid statement or view is reported by compile, not here.
+        extents = _stack.bounding_extents(stmt)
+        origin = self._origin_xy(op.origin)
+        if extents is None or origin is None:
+            return
+        try:
+            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
+        except ValueError:
+            return
+        for bits in _prism.CORNER_BITS:
+            dx, dy = proj.offset(*(b * d for b, d in zip(bits, extents)))
             self._prism_extent.append((origin[0] + float(dx), origin[1] + float(dy)))
 
     def _origin_xy(self, pid: str) -> tuple[float, float] | None:
@@ -1468,6 +1494,11 @@ class _Lowerer:
                 self._checks.append(VolumeEquals(
                     prism=check.prism, expected=check.expected,
                     source=f"explicit check: volume({check.prism})",
+                ))
+            elif isinstance(check, CheckCubeCount):
+                self._checks.append(CubeCountEquals(
+                    stack=check.stack, expected=check.expected,
+                    source=f"explicit check: cube_count({check.stack})",
                 ))
             elif isinstance(check, CheckTrueLength):
                 if len(check.points) != 2:
