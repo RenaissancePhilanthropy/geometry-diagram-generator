@@ -148,6 +148,14 @@
     - name: stack_cube_count_5
       type: stack_cube_count
       args: ["*", 5]
+    # A y/z swap (the stack lying flat) keeps the count at 5 but changes the
+    # extents to 3 x 2 x 1 and makes it a height map.
+    - name: stack_extents_3_1_2
+      type: stack_extents
+      args: ["*", 3, 1, 2]
+    - name: stack_not_a_height_map
+      type: stack_is_height_map
+      args: ["*", false]
   structural_checks:
     - name: one_stack_of_5
       type: solid_count

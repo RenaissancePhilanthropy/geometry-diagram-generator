@@ -34,7 +34,7 @@ def test_solids_on_prompt_describes_block_stack():
     assert on.startswith(_PRE["system"])
     for needle in (
         "block_stack", "heights[z][x]", "rows front to back, columns left to right",
-        "`cubes`", "[x, y, z]", "x length, y height, z depth", "not a height map",
+        "`cubes`", "[x, y, z]", "y = HEIGHT", "z = DEPTH", "not a height map",
         "[[0,0,0],[0,1,0],[2,0,0],[2,1,0],[1,1,0]]", "bridge cube",
         "Never draw individual cubes by hand", "at most 400 cubes", "at most 20 cells",
         "cube_count_equals", '"view": "isometric"', '{"kind": "draw", "obj": "<stack id>"}',

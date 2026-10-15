@@ -12,7 +12,7 @@ PRISM_PROPERTY_TYPES = frozenset({"prism_volume", "prism_dimensions"})
 
 # Stack property types resolve through query_stack on the full symbol table,
 # on their own path (never the prism validator).
-STACK_PROPERTY_TYPES = frozenset({"stack_cube_count"})
+STACK_PROPERTY_TYPES = frozenset({"stack_cube_count", "stack_extents", "stack_is_height_map"})
 
 
 def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) -> list[dict]:
@@ -68,6 +68,9 @@ def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) 
 
     stack_cube_count: args [stack_id, expected_count]; stack_id "*" means any
     stack in the diagram. Integer equality (the cube_count_equals semantics).
+    stack_extents: args [stack_id, length, width, height] (integer equality on
+    the stack's x/z/y extents). stack_is_height_map: args [stack_id, bool].
+    "*" is any-match for all three.
     """
     from geometry_diagrams.ir.queries import query_stack
     from geometry_diagrams.ir.stack import Stack
@@ -79,17 +82,26 @@ def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) 
             continue
         args = prop.get("args", [])
         try:
-            stack_id, expected = args[0], args[1]
+            stack_id = args[0]
             if stack_id == "*":
                 ids = [k for k, v in sym_full.items() if type(v) is Stack]
                 if not ids:
                     raise KeyError("no stack in the diagram")
             else:
                 ids = [stack_id]
-            counts = [query_stack(sym_full, i)["cube_count"] for i in ids]
-            passed = any(c == expected for c in counts)
+            queries = [query_stack(sym_full, i) for i in ids]
+            if ptype == "stack_cube_count":
+                actual = [q["cube_count"] for q in queries]
+                want, label = args[1], "cube count"
+            elif ptype == "stack_extents":
+                actual = [(q["length"], q["width"], q["height"]) for q in queries]
+                want, label = tuple(args[1:4]), "(length, width, height)"
+            else:
+                actual = [q["is_height_map"] for q in queries]
+                want, label = args[1], "is_height_map"
+            passed = any(a == want for a in actual)
             msg = "" if passed else (
-                f"cube count {', '.join(str(c) for c in counts)} != expected {expected}"
+                f"{label} {', '.join(str(a) for a in actual)} != expected {want}"
             )
         except Exception as exc:
             passed, msg = False, f"Error: {exc}"

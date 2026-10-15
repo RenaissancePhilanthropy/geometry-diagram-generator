@@ -218,3 +218,107 @@ def test_stack_scenarios_skip_without_solids_and_run_with_it():
     assert runnable == [] and len(skipped) == 3
     runnable, skipped = split_by_required_features(stack, frozenset({"solids"}))
     assert len(runnable) == 3 and skipped == []
+
+
+# --- stack_extents / stack_is_height_map (ticket 11) -------------------------------
+
+def _ext(*args):
+    return [{"name": "e", "type": "stack_extents", "args": list(args)}]
+
+
+def _hm(*args):
+    return [{"name": "h", "type": "stack_is_height_map", "args": list(args)}]
+
+
+def test_stack_extents_correct_wrong_star_and_messages():
+    sym = _sym()  # HEIGHTS [[1,2,3],[3,1,2]] -> length 3, width 2, height 3
+    assert _validate_stack_properties(_ext("S", 3, 2, 3), sym)[0]["passed"] is True
+    assert _validate_stack_properties(_ext("*", 3, 2, 3), sym)[0]["passed"] is True
+    bad = _validate_stack_properties(_ext("S", 3, 3, 2), sym)[0]
+    assert bad["passed"] is False
+    assert "(3, 2, 3)" in bad["message"] and "(3, 3, 2)" in bad["message"]
+    assert _validate_stack_properties(_ext("*", 3, 3, 2), sym)[0]["passed"] is False
+
+
+def test_stack_extents_and_height_map_star_matches_any_of_several_stacks():
+    d = ir.DiagramIR.model_validate({
+        "define": _stack_ir()["define"] + [
+            {"kind": "block_stack", "id": "T", "origin": "O", "cubes": [[0, 0, 0], [2, 0, 0], [1, 1, 0]]}],
+        "render": [{"kind": "draw", "obj": "S"}, {"kind": "draw", "obj": "T"}], "checks": []})
+    sym = compile_defs(d)
+    assert _validate_stack_properties(_ext("*", 3, 1, 2), sym)[0]["passed"] is True
+    assert _validate_stack_properties(_ext("S", 3, 1, 2), sym)[0]["passed"] is False
+    assert _validate_stack_properties(_hm("*", False), sym)[0]["passed"] is True
+    assert _validate_stack_properties(_hm("S", False), sym)[0]["passed"] is False
+
+
+def test_stack_is_height_map_correct_wrong_and_message():
+    sym = _sym()
+    assert _validate_stack_properties(_hm("S", True), sym)[0]["passed"] is True
+    bad = _validate_stack_properties(_hm("*", False), sym)[0]
+    assert bad["passed"] is False and "True" in bad["message"] and "False" in bad["message"]
+
+
+def test_stack_extents_height_map_missing_stack_and_no_stack():
+    sym = _sym()
+    for mk, rest in ((_ext, (1, 1, 1)), (_hm, (True,))):
+        r = _validate_stack_properties(mk("Z", *rest), sym)[0]
+        assert r["passed"] is False and r["message"].startswith("Error")
+        r = _validate_stack_properties(mk("*", *rest), {})[0]
+        assert r["passed"] is False and "no stack" in r["message"]
+    prism_ir = {"define": [
+        {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
+        {"kind": "rectangular_prism", "id": "P", "origin": "O",
+         "length": 1, "width": 1, "height": 1}],
+        "render": [{"kind": "draw", "obj": "P"}], "checks": []}
+    psym = compile_defs(ir.DiagramIR.model_validate(prism_ir))
+    assert _validate_stack_properties(_ext("*", 1, 1, 1), psym)[0]["passed"] is False
+    assert _validate_stack_properties(_hm("*", True), psym)[0]["passed"] is False
+
+
+def test_new_stack_properties_not_evaluated_by_other_evaluators():
+    sym = _sym()
+    for props in (_ext("S", 3, 2, 3), _hm("S", True)):
+        assert _validate_properties_sympy(props, {"O": (0.0, 0.0)}) == []
+        assert _validate_prism_properties(props, sym) == []
+
+
+def test_validator_accepts_and_rejects_bad_extents_and_height_map_args():
+    out = _validate_scenarios(_scenario(expected_properties=_ext("*", 3, 1, 2) + _hm("*", False)))
+    assert [p["type"] for p in out[0]["expected_properties"]] == ["stack_extents", "stack_is_height_map"]
+    for bad in (["*"], ["*", 3, 1], ["*", 3, 1, 2, 4], [3, 3, 1, 2], ["", 3, 1, 2],
+                ["*", "3", 1, 2], ["*", 3.5, 1, 2], ["*", -1, 1, 2], ["*", True, 1, 2]):
+        with pytest.raises(ValueError, match="stack_extents"):
+            _validate_scenarios(_scenario(expected_properties=[
+                {"name": "n", "type": "stack_extents", "args": bad}]))
+    for bad in (["*"], ["*", 1], ["*", "true"], [3, True], ["", True], ["*", True, 1]):
+        with pytest.raises(ValueError, match="stack_is_height_map"):
+            _validate_scenarios(_scenario(expected_properties=[
+                {"name": "n", "type": "stack_is_height_map", "args": bad}]))
+
+
+ARCH_OK = [[0, 0, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0]]
+ARCH_YZ_SWAPPED = [[0, 0, 0], [0, 0, 1], [2, 0, 0], [2, 0, 1], [1, 0, 1]]
+
+
+def _arch_verdicts(cubes):
+    sc = {s["id"]: s for s in load_scenarios(str(SOLIDS_YAML))}["stack-overhang-arch"]
+    sym = _sym(cubes=cubes)
+    props = {r["type"]: r for r in _validate_stack_properties(sc["expected_properties"], sym)}
+    structural = _run_structural_checks(sc["structural_checks"], _stack_ir(cubes=cubes), None)
+    return props, structural
+
+
+def test_arch_scenario_accepts_correct_arch():
+    props, structural = _arch_verdicts(ARCH_OK)
+    assert set(props) == {"stack_cube_count", "stack_extents", "stack_is_height_map"}
+    assert all(r["passed"] for r in props.values()), props
+    assert all(r["passed"] for r in structural.values())
+
+
+def test_arch_scenario_rejects_yz_swapped_arch_but_count_still_passes():
+    props, structural = _arch_verdicts(ARCH_YZ_SWAPPED)
+    assert props["stack_cube_count"]["passed"] is True
+    assert all(r["passed"] for r in structural.values())  # count 5 still matches
+    assert props["stack_extents"]["passed"] is False
+    assert props["stack_is_height_map"]["passed"] is False

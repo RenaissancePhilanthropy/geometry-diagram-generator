@@ -44,6 +44,9 @@ _SUPPORTED_PROPERTY_TYPES = {
     # Stack property: evaluated through query_stack on the full symbol table
     # (evals/sympy_checks.py _validate_stack_properties); args [stack_id|"*", count].
     "stack_cube_count",
+    # args [stack_id|"*", length, width, height] (ints) / [stack_id|"*", bool].
+    "stack_extents",
+    "stack_is_height_map",
 }
 
 # Structural check types and what each one counts. polygon_count counts
@@ -96,6 +99,32 @@ def _validate_stack_cube_count_args(args: list, where: str) -> None:
         raise ValueError(
             f"{where}: stack_cube_count args must be [stack id or \"*\", "
             "non-negative integer count]"
+        )
+
+
+def _is_stack_id(v: Any) -> bool:
+    return isinstance(v, str) and bool(v.strip())
+
+
+def _validate_stack_extents_args(args: list, where: str) -> None:
+    """stack_extents args: [stack id or "*", length, width, height] (ints >= 0)."""
+    ok = (
+        len(args) == 4
+        and _is_stack_id(args[0])
+        and all(isinstance(a, int) and not isinstance(a, bool) and a >= 0 for a in args[1:])
+    )
+    if not ok:
+        raise ValueError(
+            f"{where}: stack_extents args must be [stack id or \"*\", "
+            "length, width, height] (non-negative integers)"
+        )
+
+
+def _validate_stack_is_height_map_args(args: list, where: str) -> None:
+    """stack_is_height_map args: [stack id or "*", true/false]."""
+    if not (len(args) == 2 and _is_stack_id(args[0]) and isinstance(args[1], bool)):
+        raise ValueError(
+            f"{where}: stack_is_height_map args must be [stack id or \"*\", true/false]"
         )
 
 
@@ -173,6 +202,10 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 raise ValueError(f"{prop_where}: 'args' must be a list")
             if prop_type == "stack_cube_count":
                 _validate_stack_cube_count_args(args, prop_where)
+            elif prop_type == "stack_extents":
+                _validate_stack_extents_args(args, prop_where)
+            elif prop_type == "stack_is_height_map":
+                _validate_stack_is_height_map_args(args, prop_where)
 
             normalized_props.append(
                 {

@@ -101,7 +101,12 @@ _SOLIDS_FRAGMENT = """
   the arch below: two pillars with a bridge cube over the empty cell between them); a cube set
   that floats gives a warning that it is not a height map.
   Example:
-""" + _indent(STACK_CUBES_EXAMPLE_SCRIPT) + """- Never draw individual cubes by hand (no per-cube polygons or segments): one `stack` draws them all
+""" + _indent(STACK_CUBES_EXAMPLE_SCRIPT) + """- A cube triple is [x, y, z]: x along the front (left to right), y = HEIGHT (up; the layer number, 0
+  is the bottom layer), z = DEPTH (front to back, 0 = front row). The arch cube by cube: [0,0,0] and
+  [0,1,0]: left pillar, two cubes high; [2,0,0] and [2,1,0]: right pillar; [1,1,0]: the bridge, at
+  height y=1 above the empty cell [1,0,0]. Never swap y and z: swapping y and z draws the stack lying
+  flat instead of standing up.
+- Never draw individual cubes by hand (no per-cube polygons or segments): one `stack` draws them all
   with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
 - Draw the stack handle (`draw(s)`). Color faces with front_color/side_color/top_color on `stack`.
 - For isometric requests use view="isometric" (no depth_angle/depth_scale).

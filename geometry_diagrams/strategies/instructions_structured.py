@@ -392,11 +392,16 @@ corner) and EXACTLY ONE of `heights` and `cubes`, plus optional `view` (`"obliqu
 
 - Use `heights` (rows front to back, columns left to right; heights[z][x]) when the item gives \
 column heights (a "building plan", a top view with numbers, a list of stack heights).
-- Use `cubes` ([x, y, z] triples; x length, y height, z depth) only for shapes a height map cannot \
+- Use `cubes` (`[x, y, z]` triples) only for shapes a height map cannot \
 express (an overhang such as the arch below: two pillars with a bridge cube over the empty cell \
 between them); a cube set that floats gives a warning that it is not a height map. Example \
 definition: `{"kind": "block_stack", "id": "A", "origin": "O", \
 "cubes": [[0,0,0],[0,1,0],[2,0,0],[2,1,0],[1,1,0]]}`.
+- A cube triple is [x, y, z]: x along the front (left to right), y = HEIGHT (up; the layer \
+number, 0 is the bottom layer), z = DEPTH (front to back, 0 = front row). The arch cube by \
+cube: [0,0,0] and [0,1,0]: left pillar, two cubes high; [2,0,0] and [2,1,0]: right pillar; \
+[1,1,0]: the bridge, at height y=1 above the empty cell [1,0,0]. Never swap y and z: swapping y \
+and z draws the stack lying flat instead of standing up.
 - Never draw individual cubes by hand (no per-cube polygons or segments): one `block_stack` draws \
 them all with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
 - For isometric requests use `"view": "isometric"` (no depth_angle/depth_scale).
