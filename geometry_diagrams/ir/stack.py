@@ -133,14 +133,6 @@ def _integer_entry(did: str, value: Any, where: str) -> int:
 def _height_grid(stmt: ir.BlockStack) -> tuple[tuple[int, ...], ...]:
     """The validated height map as rows of ints. Raises IRCompileError."""
     did = stmt.id
-    if (stmt.heights is None) == (stmt.cubes is None):
-        raise IRCompileError(
-            did,
-            "block_stack needs exactly one of heights (rows of column heights) and cubes "
-            "(a list of [x, y, z] cubes); got " + ("both" if stmt.heights is not None else "neither"),
-        )
-    if stmt.cubes is not None:
-        raise IRCompileError(did, "block_stack cubes is not yet supported; use heights")
     rows = stmt.heights
     if not rows or not all(rows):
         raise IRCompileError(did, "block_stack heights is empty: give at least one row with at least one column")
@@ -176,11 +168,51 @@ def _extents(grid: tuple[tuple[int, ...], ...]) -> tuple[int, int, int]:
     return (len(grid[0]), max(map(max, grid)), len(grid))
 
 
+def _cube_set(stmt: ir.BlockStack) -> tuple[frozenset[Cube], tuple[int, int, int]]:
+    """The validated cube set and its bounding extents. Raises IRCompileError."""
+    did, raw = stmt.id, stmt.cubes
+    if not raw:
+        raise IRCompileError(did, "block_stack cubes is empty: give at least one [x, y, z] cube")
+    if len(raw) > MAX_CUBES:
+        raise IRCompileError(did, f"block_stack allows at most {MAX_CUBES} cubes; cubes gives {len(raw)}")
+    cubes: set[Cube] = set()
+    for i, triple in enumerate(raw):
+        if len(triple) != 3:
+            raise IRCompileError(
+                did, f"block_stack cubes[{i}] must be an [x, y, z] triple (exactly 3 integers), got {triple!r}"
+            )
+        cube = tuple(_integer_entry(did, v, f"cubes[{i}][{'xyz'[a]}]") for a, v in enumerate(triple))
+        if cube in cubes:
+            raise IRCompileError(did, f"block_stack cubes has a duplicate cube {list(cube)} (cubes[{i}])")
+        cubes.add(cube)  # type: ignore[arg-type]
+    extents = tuple(max(c[a] for c in cubes) + 1 for a in range(3))
+    for name, size in zip(("length (x)", "height (y)", "width (z)"), extents):
+        if size > MAX_CELLS_PER_AXIS:
+            raise IRCompileError(
+                did, f"block_stack allows at most {MAX_CELLS_PER_AXIS} cells along any axis; cubes spans {size} along {name}"
+            )
+    return frozenset(cubes), extents  # type: ignore[return-value]
+
+
+def _resolve(stmt: ir.BlockStack) -> tuple[frozenset[Cube], tuple[int, int, int]]:
+    """The validated cube set and extents of either input form. Raises IRCompileError."""
+    if (stmt.heights is None) == (stmt.cubes is None):
+        raise IRCompileError(
+            stmt.id,
+            "block_stack needs exactly one of heights (rows of column heights) and cubes "
+            "(a list of [x, y, z] cubes); got " + ("both" if stmt.heights is not None else "neither"),
+        )
+    if stmt.cubes is not None:
+        return _cube_set(stmt)
+    grid = _height_grid(stmt)
+    return _cubes_of(grid), _extents(grid)
+
+
 def _valid_cubes(stmt: ir.BlockStack) -> frozenset[Cube] | None:
     """The cube set, or None when the statement is invalid (compile reports
     that; the registry hooks synthesize and own nothing meanwhile)."""
     try:
-        return _cubes_of(_height_grid(stmt))
+        return _resolve(stmt)[0]
     except IRCompileError:
         return None
 
@@ -214,7 +246,7 @@ def compile_stack(stmt: ir.BlockStack, origin: Any) -> Stack:
     """Validate ``stmt`` and build its Stack from the resolved origin point.
     Raises IRCompileError."""
     did = stmt.id
-    grid = _height_grid(stmt)
+    cubes, extents = _resolve(stmt)
     try:
         projection = projection_for(stmt.view, stmt.side, stmt.depth_angle, stmt.depth_scale)
     except ValueError as e:
@@ -223,12 +255,11 @@ def compile_stack(stmt: ir.BlockStack, origin: Any) -> Stack:
         raise IRCompileError(
             did, f"block_stack origin {stmt.origin!r} must be a point, got {type(origin).__name__}"
         )
-    cubes = _cubes_of(grid)
     lattice: dict[Cube, spg.Point] = {}
     for p in _corners(cubes):
         dx, dy = projection.offset(sp.Integer(p[0]), sp.Integer(p[1]), sp.Integer(p[2]))
         lattice[p] = spg.Point(origin.x + dx, origin.y + dy)
-    return Stack(cubes, _extents(grid), projection, lattice, lattice_names(stmt))
+    return Stack(cubes, extents, projection, lattice, lattice_names(stmt))
 
 
 def register_lattice(stmt: ir.BlockStack, obj: Any, sym: dict[str, Any]) -> None:
@@ -320,15 +351,21 @@ def render_ref_error(stmt: ir.BlockStack, op_kind: str, slot: str) -> str | None
 def render_warnings(stmt: ir.BlockStack, diagram: Any) -> list[str]:
     """Registry ``render_warnings`` hook: a stack on a canvas with unequal axis
     scales is drawn skewed (the projection assumes equal units)."""
+    out: list[str] = []
+    cubes = _valid_cubes(stmt)
+    if cubes is not None and not _is_height_map(cubes):
+        out.append(
+            f"block_stack {stmt.id!r}: cube set is not a height map: cubes float above empty cells"
+        )
     canvas = diagram.canvas
     aspect = canvas.aspect if canvas is not None else None
     if aspect is not None and aspect != 1:
-        return [
+        out.append(
             f"block_stack {stmt.id!r} is drawn on a canvas with unequal axis scales "
             f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
             f"shapes are distorted); remove canvas.aspect for an undistorted stack"
-        ]
-    return []
+        )
+    return out
 
 
 def painter_faces(

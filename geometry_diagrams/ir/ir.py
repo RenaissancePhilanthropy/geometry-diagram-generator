@@ -655,8 +655,11 @@ class BlockStack(DefBase):
     the front row to the back row). Axes are the prism's: x = length, y =
     height, z = width (depth). All values are literal integers; at most 400
     cubes and at most 20 cells along any axis. ``cubes`` (a list of ``[x, y, z]``
-    integer triples) is reserved for shapes a height map cannot express and is
-    not supported yet; give exactly one of ``heights`` and ``cubes``.
+    non-negative integer triples, each the unit cube from (x, y, z) to
+    (x+1, y+1, z+1), no duplicates) is for shapes a height map cannot express
+    (an overhang: a cube with an empty cell beneath it); such a cube set is
+    drawn but warns that it is not a height map. Give exactly one of
+    ``heights`` and ``cubes``.
 
     View fields are the prism's: ``view`` ``oblique`` (default; ``depth_angle``
     degrees and ``depth_scale``) or ``isometric`` (no overrides); ``side``
@@ -671,7 +674,7 @@ class BlockStack(DefBase):
     kind: Literal["block_stack"] = "block_stack"
     origin: PointId
     heights: Optional[List[List[Union[int, float]]]] = None
-    cubes: Optional[List[List[int]]] = None
+    cubes: Optional[List[List[Union[int, float]]]] = None
     view: Literal["isometric", "oblique"] = "oblique"
     depth_angle: Optional[Union[int, float]] = None  # degrees; oblique only
     depth_scale: Optional[Union[int, float]] = None  # oblique only

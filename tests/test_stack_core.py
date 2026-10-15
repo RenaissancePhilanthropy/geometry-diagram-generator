@@ -80,7 +80,6 @@ def test_query_on_a_non_stack_fails_clearly():
 @pytest.mark.parametrize("overrides, fragment", [
     (dict(heights=None), "exactly one of"),
     (dict(cubes=[[0, 0, 0]]), "exactly one of"),
-    (dict(heights=None, cubes=[[0, 0, 0]]), "not yet supported"),
     (dict(heights=[[1, 2], [1]]), "ragged"),
     (dict(heights=[[1, 2.5]]), "integer"),
     (dict(heights=[[1, -1]]), "non-negative"),
