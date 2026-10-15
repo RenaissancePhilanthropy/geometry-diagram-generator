@@ -204,6 +204,21 @@ def unrecognized_color_warning(text: str) -> str:
     )
 
 
+def ordered_polygon_paints(
+    op: Any, emit: Callable[[str], str], warnings: list[str] | None
+) -> tuple[str, str]:
+    """``(fill, stroke)`` of an ``ir.OrderedPolygon`` in the backend's native
+    form (``emit`` is ``svg_color`` or the name half of ``tikz_color``). An
+    unrecognized string passes through and warns once per distinct message, the
+    same message ``translate_style_colors`` uses."""
+    for spec in (op.fill, op.stroke):
+        if not parse_color(spec).recognized and warnings is not None:
+            message = unrecognized_color_warning(spec)
+            if message not in warnings:
+                warnings.append(message)
+    return emit(op.fill), emit(op.stroke)
+
+
 def bare_color_key(style_key: str | None) -> bool:
     """True if a render op's bare ``style`` (not a key of ``DiagramIR.styles``)
     is itself a recognized color specification. ``none`` is excluded: it is

@@ -1281,6 +1281,29 @@ class DrawBrace(RenderBase):
                              # owns the real default for any caller that skips this field.
 
 
+class OrderedPolygon(BaseModel):
+    """An opaque filled polygon that carries its own stroke and is painted in
+    strict list order, so painter's-algorithm stacks hide what is behind a face.
+
+    Unlike ``Fill`` + ``Draw`` (every fill is hoisted before every stroke),
+    each OrderedPolygon paints its fill and its outline together, at its own
+    position among the draw-layer operations. ``fill`` and ``stroke`` are
+    color-layer strings (named, ``#rrggbb``/``#rgb``, ``rgb(...)``,
+    ``hsv(...)``, xcolor mixes); the fill is always opaque. ``points`` are ids
+    of defined points, in boundary order.
+
+    Deliberately NOT a member of ``RenderOp``: it is emitted by registry
+    ``lower_draw`` hooks (``derived.Lowering``), never authored in JSON, so
+    the LLM-facing schemas and prompts are unchanged.
+    """
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["ordered_polygon"] = "ordered_polygon"
+    points: List[PointId] = Field(min_length=3)
+    fill: str
+    stroke: str = "black"
+    stroke_width: float = 1.0
+
+
 RenderOp = Annotated[
     Union[
         Draw, DrawPoints, Fill, DrawBrace,

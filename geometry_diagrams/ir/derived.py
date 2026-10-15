@@ -46,13 +46,12 @@ class Lowering:
 
     ops: render operations, IN ORDER, that replace the draw at its position
         in the render list. Any render-operation object is allowed, not only
-        today's ``ir.RenderOp`` union: the contract is written so a kind can
-        later emit an ordered sequence of filled-and-stroked polygons (block
-        stacks, solids ticket 19) as a new operation type. The lowering point
-        passes the sequence through unchanged and in order. NOTE: the
-        renderers still sort operations by kind (all fills, then all strokes;
-        a stable sort, so same-kind order is kept), so strict ordering ACROSS
-        kinds is not yet honored when drawing -- ticket 19 changes that.
+        today's ``ir.RenderOp`` union; in particular a kind may emit an ordered
+        sequence of ``ir.OrderedPolygon`` (opaque fill + own stroke) for block
+        stacks. The lowering point passes the sequence through unchanged and in
+        order. Both renderers sort operations by kind (all fills, then all
+        strokes; a stable sort), but ``ordered_polygon`` shares the draw layer,
+        so it keeps its list position among draws and marks.
     styles: extra named styles the ops reference (merged into the diagram's
         ``styles`` for the renderer only). Names should be reserved
         (double-underscore); reusing an existing name with a different value

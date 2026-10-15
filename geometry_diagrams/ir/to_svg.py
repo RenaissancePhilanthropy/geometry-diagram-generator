@@ -31,6 +31,7 @@ from .prism import away_normal, corner_segment_center
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     bare_color_key,
+    ordered_polygon_paints,
     svg_color,
     translate_style_colors,
     BOUNDS_PADDING,
@@ -390,6 +391,10 @@ def ir_to_svg(
     # --- Render ops (z-sorted) ---
     _Z_ORDER = {
         "fill": 0,
+        # ordered_polygon shares the draw layer so a stable sort keeps it at its
+        # list position among draws/marks (strict painter order); it carries its
+        # own fill, so it is never hoisted into the fill layer.
+        "ordered_polygon": 1,
         "draw": 1, "mark_angles": 1, "mark_right_angles": 1, "mark_segments": 1,
         # mark_arcs MUST share mark_segments' z-value: sorted_ops is a STABLE
         # sort and the group precompute below derives first-encounter order
@@ -1010,6 +1015,21 @@ def _emit_svg_op(
                     "r": str(_POINT_RADIUS),
                     "fill": fill,
                 })
+
+        case ir.OrderedPolygon(points=point_ids, stroke_width=stroke_width):
+            missing = [v for v in point_ids if v not in coords and v not in helpers]
+            if missing:
+                _warn(warnings, f"Skipping OrderedPolygon: undefined point '{missing[0]}'")
+                return
+            fill_paint, stroke_paint = ordered_polygon_paints(op, svg_color, warnings)
+            ET.SubElement(svg, "polygon", {
+                "data-role": "ordered-polygon",
+                "points": " ".join(f"{pt(v)[0]:.2f},{pt(v)[1]:.2f}" for v in point_ids),
+                "fill": fill_paint,
+                "stroke": stroke_paint,
+                "stroke-width": fmt_num(stroke_width),
+                "stroke-linejoin": "round",
+            })
 
         case ir.Fill(obj=obj_id, holes=holes, opacity=opacity, style=style):
             if obj_id not in sym:
