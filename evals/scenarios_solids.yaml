@@ -143,7 +143,7 @@
   tier: 3
   tags: [solids, stack, overhang, cube-set, cube-count]
   requires_features: [solids]
-  prompt: "Draw an arch made of unit cubes, isometric view. The arch is 3 cubes wide and 1 cube deep. The left and right pillars are each 2 cubes tall. There is an empty space between the pillars, and one cube sits across the top of the pillars, bridging the empty space."
+  prompt: "Draw an arch made of unit cubes, isometric view. The arch is 3 cubes wide and 1 cube deep. The left and right pillars are each 2 cubes tall. There is a 1-cube empty space between the pillars, and one cube bridges the gap, level with the top cube of each pillar, so the arch is 2 cubes tall."
   expected_properties:
     - name: stack_cube_count_5
       type: stack_cube_count
