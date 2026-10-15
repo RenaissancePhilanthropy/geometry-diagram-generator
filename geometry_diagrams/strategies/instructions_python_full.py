@@ -22,6 +22,33 @@ assert_true_length(segment(box.corner(0, 0, 0), box.corner(1, 0, 1)), 5)
 label_text("V = 24", centroid_of=box)
 """
 
+# The examples embedded in the stack guidance (tests/test_pydsl_stack.py runs
+# each through the real sandbox and pipeline).
+STACK_EXAMPLE_SCRIPT = """\
+o = point(0, 0)
+s = stack(o, heights=[[1, 2], [3, 0]], top_color="#e6eefa")
+assert_cube_count(s, 6)
+label_text("3", centroid_of=s.top(0, 1))
+draw(s)
+"""
+
+STACK_CUBES_EXAMPLE_SCRIPT = """\
+o = point(0, 0)
+arch = stack(o, cubes=[[0, 0, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0]])
+draw(arch)
+"""
+
+STACK_ISOMETRIC_EXAMPLE_SCRIPT = """\
+o = point(0, 0)
+s = stack(o, heights=[[2, 1, 3]], view="isometric")
+draw(s)
+"""
+
+
+def _indent(script: str) -> str:
+    return "".join("      " + line + "\n" if line else "\n" for line in script.splitlines())
+
+
 _SOLIDS_FRAGMENT = """
 ## Rectangular prisms (boxes)
 - `prism(origin, length, width, height, unit_cubes=False, vertex_names=None, view="oblique",
@@ -62,7 +89,29 @@ _SOLIDS_FRAGMENT = """
   diagonal). `assert_distance` on such a segment measures the DRAWN 2D length instead, which is
   not the real length.
 - Example:
-""" + "".join("      " + line + "\n" if line else "\n" for line in PRISM_EXAMPLE_SCRIPT.splitlines()) + """"""
+""" + "".join("      " + line + "\n" if line else "\n" for line in PRISM_EXAMPLE_SCRIPT.splitlines()) + """
+## Stacks of unit cubes
+- `stack(origin, heights=None, cubes=None, view="oblique", depth_angle=None, depth_scale=None,
+  side="right", front_color=None, side_color=None, top_color=None)` returns a Stack (never name a
+  variable `stack`). `origin` is a Point at the front-bottom-left corner. Give EXACTLY ONE of
+  `heights` and `cubes`.
+- Use `heights` (rows front to back, columns left to right; heights[z][x]) when the item gives
+  column heights (a "building plan", a top view with numbers, a list of stack heights).
+- Use `cubes` ([x, y, z] triples) only for shapes a height map cannot express (an overhang such as
+  the arch below: two pillars with a bridge cube over the empty cell between them); a cube set
+  that floats gives a warning that it is not a height map.
+  Example:
+""" + _indent(STACK_CUBES_EXAMPLE_SCRIPT) + """- Never draw individual cubes by hand (no per-cube polygons or segments): one `stack` draws them all
+  with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
+- Draw the stack handle (`draw(s)`). Color faces with front_color/side_color/top_color on `stack`.
+- For isometric requests use view="isometric" (no depth_angle/depth_scale).
+  Example:
+""" + _indent(STACK_ISOMETRIC_EXAMPLE_SCRIPT) + """- `s.cube_count` and `s.volume` (the same number) are readable in the script; `s.top(x, z)` is the
+  Polygon of the column's top face: label a column with `label_text(text, centroid_of=s.top(x, z))`.
+  `label_text(text, centroid_of=s)` lands at the middle of the bounding box, which can fall in a notch.
+- When the prompt states the number of cubes, assert it: `assert_cube_count(s, expected)`.
+- Example:
+""" + _indent(STACK_EXAMPLE_SCRIPT)
 
 # group -> prompt fragment appended only when that group is enabled. Surface
 # tickets for a group add its fragment here.

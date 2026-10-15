@@ -12,7 +12,7 @@ import geometry_diagrams.pydsl as pydsl_module
 
 _HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Arc", "Sector", "Segment", "Triangle", "Polygon",
                         "Polyline", "Circle", "Ellipse", "Altitude", "Median", "AngleRef",
-                        "PerpendicularBisectorLine", "Prism"}
+                        "PerpendicularBisectorLine", "Prism", "Stack"}
 
 
 def _format_callable(name: str, obj) -> str:

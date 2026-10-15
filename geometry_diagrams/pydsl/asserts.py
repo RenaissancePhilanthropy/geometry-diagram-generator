@@ -456,3 +456,10 @@ def assert_true_length(seg, expected: float, *, tol: float | None = None) -> Non
     builder = get_builder()
     check = ir.TrueLengthEquals(seg=seg.id, expected=expected, tol=tol)
     _run_assertion(builder, check, [])
+
+
+def assert_cube_count(stack, expected: int) -> None:
+    """Assert that a stack's total number of unit cubes equals expected (exact)."""
+    builder = get_builder()
+    check = ir.CubeCountEquals(stack=stack.id, expected=expected)
+    _run_assertion(builder, check, [])

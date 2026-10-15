@@ -12,7 +12,7 @@ from geometry_diagrams.ir.ir import Polygon as PolygonDef
 from geometry_diagrams.ir.ir import Segment as SegmentDef
 from geometry_diagrams.ir.ir import Triangle as TriangleDef
 from geometry_diagrams.pydsl.builder import get_builder
-from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Prism, Ray, Sector, Segment, Triangle, _record_literal_point, _sanitize_label_text
+from geometry_diagrams.pydsl.handles import AngleRef, Altitude, Arc, Circle, Ellipse, Line, Median, PerpendicularBisectorLine, Point, Polygon, Polyline, Prism, Ray, Sector, Segment, Stack, Triangle, _record_literal_point, _sanitize_label_text
 
 _TARGET_LINES = 10        # nice-step heuristic aims for roughly this many grid/tick lines
 _MAX_GRID_LINES = 500     # backstop for an explicit override, not the common path
@@ -260,6 +260,48 @@ def prism(
     # message, not a failure after the script finished.
     builder._advance_sym()
     return builder._register_prism(stmt)
+
+
+def stack(
+    origin: Point,
+    heights: "list[list[int]] | None" = None,
+    cubes: "list[list[int]] | None" = None,
+    view: str = "oblique",
+    depth_angle: "float | None" = None,
+    depth_scale: "float | None" = None,
+    side: str = "right",
+    front_color: "str | None" = None,
+    side_color: "str | None" = None,
+    top_color: "str | None" = None,
+) -> Stack:
+    """An irregular stack of unit cubes drawn as a parallel projection; `origin` is the front-bottom-left corner. Give EXACTLY ONE of heights (heights[z][x] = cubes in the column at column x, left to right, of row z, rows front to back) and cubes (a list of [x, y, z] unit cubes, only for shapes a height map cannot express; at most 400 cubes, at most 20 cells along any axis). view is "oblique" (default; depth_angle / depth_scale override the receding axis) or "isometric"; side "right" or "left" as for prism(). front_color/side_color/top_color color the faces. Returns a Stack handle: .cube_count, .volume, .top(x, z)."""
+    import pydantic
+
+    from geometry_diagrams.ir.ir import BlockStack
+
+    if not isinstance(origin, Point):
+        raise ValueError(f"stack(): origin must be a Point (from point(...)), got {type(origin).__name__}")
+    if view not in ("oblique", "isometric"):
+        raise ValueError(f"stack(): view must be 'oblique' or 'isometric', got {view!r}")
+    if side not in ("right", "left"):
+        raise ValueError(f"stack(): side must be 'right' or 'left', got {side!r}")
+    builder = get_builder()
+    sid = builder._fresh_hidden_id("stack")
+    try:
+        stmt = BlockStack(
+            id=sid, origin=origin.id,
+            heights=[list(r) for r in heights] if heights is not None else None,
+            cubes=[list(c) for c in cubes] if cubes is not None else None,
+            view=view, depth_angle=depth_angle, depth_scale=depth_scale, side=side,
+            front_color=front_color, side_color=side_color, top_color=top_color,
+        )
+    except (pydantic.ValidationError, TypeError) as exc:
+        raise ValueError(f"stack(): invalid arguments: {exc}") from None
+    builder._add(stmt)
+    # Compile now so a misuse (both/neither of heights and cubes, a bad cell,
+    # over the caps, ...) is the script's own error with the IR's message.
+    builder._advance_sym()
+    return builder._register_stack(stmt)
 
 
 def walk(from_point: Point, heading: float, distance: float) -> Point:
@@ -1790,7 +1832,7 @@ def label_text(
     # composite handles (Median/Altitude/PerpendicularBisectorLine), whose
     # `.id` is their underlying segment/line def, so the label would land on
     # that sub-object's own midpoint rather than raising.
-    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline, Prism)):
+    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline, Prism, Stack)):
         type_name = type(centroid_of).__name__
         article = "an" if type_name[0] in "AEIOU" else "a"
         if isinstance(centroid_of, (Point, AngleRef)):

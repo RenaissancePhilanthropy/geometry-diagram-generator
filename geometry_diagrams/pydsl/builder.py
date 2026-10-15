@@ -148,6 +148,26 @@ class Builder:
             _builder=self, _corner_ids=dict(names),
         )
 
+    def _register_stack(self, stmt) -> "Stack":
+        """Build the Stack handle for a just-recorded (and compiled) BlockStack,
+        reading the cube count and column top-face corner ids from the compiled
+        Stack object in the incremental symbol table."""
+        from geometry_diagrams.ir.stack import lattice_id
+        from geometry_diagrams.pydsl.handles import Stack
+
+        obj = self._sym[stmt.id]
+        top: dict[tuple[int, int], int] = {}
+        for x, y, z in obj.cubes:
+            top[(x, z)] = max(top.get((x, z), 0), y + 1)
+        tops = {
+            (x, z): tuple(
+                lattice_id(stmt.id, c)
+                for c in ((x, y, z), (x + 1, y, z), (x + 1, y, z + 1), (x, y, z + 1))
+            )
+            for (x, z), y in top.items()
+        }
+        return Stack(id=stmt.id, cube_count=obj.cube_count, _builder=self, _tops=tops)
+
     def _resolve_point(self, pid: str) -> "tuple[float, float]":
         """Return (x, y) for any point id already recorded in self._defs,
         compiling as many new defs as needed via to_sympy.py's real

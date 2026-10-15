@@ -584,3 +584,40 @@ class Prism:
 
         text = _sanitize_label_text(text, "label")
         self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
+
+
+@dataclass(frozen=True)
+class Stack:
+    """A stack of unit cubes drawn as a parallel projection. Its `id` is the
+    stack's own id: `draw(stack)` draws all visible cube faces. `top(x, z)`
+    returns an ORDINARY Polygon handle over the column's derived top face."""
+    id: str
+    cube_count: int
+    _builder: "object" = field(repr=False, compare=False)
+    # column (x, z) -> its top face's four lattice point ids (face order)
+    _tops: "dict" = field(repr=False, compare=False, default_factory=dict)
+
+    @property
+    def volume(self) -> int:
+        """The volume in unit cubes (equal to cube_count)."""
+        return self.cube_count
+
+    def top(self, x: int, z: int) -> Polygon:
+        """The top face Polygon of the column at column x (left to right) of row z (front to back); use it to place a label on that column."""
+        key = (x, z)
+        if key not in self._tops:
+            cols = ", ".join(f"({cx}, {cz})" for cx, cz in sorted(self._tops, key=lambda k: (k[1], k[0])))
+            raise ValueError(
+                f"Stack.top(): no occupied column at (x={x}, z={z}); valid (x, z) columns are: {cols}"
+            )
+        from geometry_diagrams.ir.stack import top_face_id
+
+        verts = tuple(Point(id=pid, _builder=self._builder) for pid in self._tops[key])
+        return Polygon(id=top_face_id(self.id, x, z), vertices=verts, _builder=self._builder)
+
+    def label(self, text: str) -> None:
+        """Place a floating label at the middle of this stack's bounding box (can fall in a notch of a concave stack; use top(x, z) to label a column)."""
+        from geometry_diagrams.ir.ir import LabelFreeText
+
+        text = _sanitize_label_text(text, "label")
+        self._builder._add_render(LabelFreeText(centroid_of=self.id, text=text))
