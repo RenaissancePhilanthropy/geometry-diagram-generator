@@ -743,7 +743,8 @@ _STACK_OP_DOC = """\
   At most 400 cubes and at most 20 cells along any axis. view/depth_angle/depth_scale/side are the prism's.
   front_color, side_color (the visible lateral face) and top_color are optional face colors.
   Public ids it creates: the stack id, and {id}_top_{x}_{z}, the top face of the column at (x, z)
-  (no id for a column of height 0). The stack id and column top ids work anywhere an object id is allowed.
+  (no id for a column of height 0). The stack id works in draw and centroid (label) slots;
+  fill a column top id (the stack id cannot be filled; set front_color/side_color/top_color on the stack).
   Example: """ + _SX["op"]
 
 _STACK_CHECKS_DOC = """\

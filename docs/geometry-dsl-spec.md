@@ -634,8 +634,9 @@ and `label_free_text` with `centroid_of` the stack id are valid.
   A gap at y = 0 (columns 0 and 2 occupied, 1 empty) is still a height map and
   does not warn; neither does any `heights` stack. The warning appears whether
   or not the stack is drawn.
-- *skewed projection*: a stack on a canvas with unequal axis scales
-  (`canvas.aspect` not 1), as for the prism.
+- *skewed projection*: any authored stack when the canvas has unequal axis
+  scales (`canvas.aspect` not 1), as for the prism. Like the height-map
+  warning, it fires whether or not the stack is drawn.
 
 **Queries and checks.** The `stack` query (the query tool's `query_type:
 "stack"` with `params: {"stack": "S"}`; `ir.queries.query_stack`) returns:
@@ -1261,8 +1262,8 @@ Sources:
 - an unrecognized color string (see [Color forms](#color-forms));
 - a `unit_cubes` prism whose id is never drawn (no gridlines).
 - a `block_stack` cube set with a cube above an empty cell (not a height map);
-- a `block_stack` on a canvas with unequal axis scales (the projection is
-  skewed).
+- an authored `block_stack` when the canvas has unequal axis scales (the
+  projection is skewed; drawn or not).
 
 ---
 

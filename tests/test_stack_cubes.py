@@ -79,7 +79,7 @@ def test_arch_renders_is_not_a_height_map_and_warns_through_the_pipeline():
     assert q["is_height_map"] is False and q["cube_count"] == 7
     result = _pipeline(d)
     assert _structure(result.svg)
-    assert any("S" in w and "not a height map" in w and "float above empty cells" in w
+    assert any("'S'" in w and "not a height map" in w and "float above empty cells" in w
                for w in result.warnings)
     assert "not a height map" in format_warnings_for_retry(result.warnings)
 

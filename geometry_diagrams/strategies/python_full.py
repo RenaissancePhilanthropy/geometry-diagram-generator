@@ -1624,8 +1624,8 @@ class PythonFullStrategy(SubstanceStrategy):
                 '                    corners of a prism (an edge, a face diagonal or the space\n'
                 '                    diagonal) also returns "true_length", the true 3D length\n'
                 '                    ("length" is the drawn 2D length). "stack" ({"stack": id})\n'
-                '                    returns a block stack\'s cube_count, volume, extents and\n'
-                '                    is_height_map.',
+                '                    returns a block stack\'s cube_count, volume, length, width,\n'
+                '                    height and is_height_map.',
             ),
         ), self.features)
         query_diagram = tool(query_diagram)

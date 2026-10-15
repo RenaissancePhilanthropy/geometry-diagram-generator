@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -152,7 +153,7 @@ def _make_query_tool(sym: dict, features: "frozenset[str] | set[str]" = frozense
             'perimeter   {"id": "tri_ABC"}',
             '                  prism       {"id": "P"}               -> rectangular prism: length, width, height,\n'
             '                                                           volume, base area, surface area, corner ids\n'
-            '                  stack       {"id": "S"}               -> block stack: cube_count, volume, extents,\n'
+            '                  stack       {"id": "S"}               -> block stack: cube_count, volume,\n'
             '                                                           length, width, height, is_height_map',
         ),
     ), features)
@@ -686,12 +687,16 @@ def _authored_cube_count(defn: dict) -> int | None:
     stack_cube_count property."""
     heights, cubes = defn.get("heights"), defn.get("cubes")
     def is_int(v):
-        return isinstance(v, int) and not isinstance(v, bool)
+        # Same integer-entry rule as ir.stack._integer_entry: ints and integral
+        # finite floats (2.0) are accepted; bools and non-integral values are not.
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return False
+        return math.isfinite(v) and float(v) == int(v)
     if defn.get("kind") != "block_stack":
         return None
     if isinstance(heights, list) and cubes is None:
         if all(isinstance(r, list) and all(is_int(v) and v >= 0 for v in r) for r in heights):
-            return sum(sum(r) for r in heights)
+            return sum(int(v) for r in heights for v in r)
         return None
     if isinstance(cubes, list) and heights is None:
         return len(cubes)

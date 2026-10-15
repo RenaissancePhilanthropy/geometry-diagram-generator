@@ -91,7 +91,7 @@ def _agent_description(cls, features) -> str:
 
 def _assert_lists_stack_query(text: str) -> None:
     assert "stack" in text
-    for word in ("cube_count", "volume", "is_height_map"):
+    for word in ("cube_count", "volume", "length", "width", "height", "is_height_map"):
         assert word in text, word
 
 

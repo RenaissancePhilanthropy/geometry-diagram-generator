@@ -70,6 +70,15 @@ def test_solid_count_cube_count_heights_and_cubes():
         _sc(kind="block_stack", cube_count=5), _stack_ir(cubes=arch), None)["c"]["passed"]
 
 
+def test_solid_count_cube_count_accepts_integral_floats_like_compile():
+    r = _run_structural_checks(_sc(kind="block_stack", cube_count=3),
+                               _stack_ir(heights=[[2.0, 1]]), None)
+    assert r["c"]["passed"] is True
+    for h in ([[1.5]], [[True, 1]], [[-1, 2]], [[float("nan")]], [[float("inf")]]):
+        r = _run_structural_checks(_sc(kind="block_stack", cube_count=1), _stack_ir(heights=h), None)
+        assert r["c"]["passed"] is False, h
+
+
 def test_solid_count_cube_count_malformed_or_non_stack_never_matches():
     # an expression/ragged/non-integer heights never matches a literal count
     for h in ([[1, "a"]], [[1.5]], "x"):
