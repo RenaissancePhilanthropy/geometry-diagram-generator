@@ -720,7 +720,8 @@ _PRISM_GUIDANCE_DOC = """\
 - The schematic case: when only a base area and a height are given (no length or width), choose
   plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label
   and queried volume are what the item asserts; add a volume check for the stated volume.
-- Fill/label/draw accept the prism id, face ids and edge ids anywhere an object id is allowed."""
+- Draw and label accept the prism id, face ids and edge ids; fill accepts face ids but not the
+  prism id (a typed error: fill the three visible face ids instead)."""
 
 # Every concrete JSON shape the stack guidance shows (built into the text with
 # json.dumps; tests/test_recipe_stack.py validates, lowers and renders each).

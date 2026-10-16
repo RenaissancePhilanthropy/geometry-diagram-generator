@@ -408,7 +408,7 @@ IR-level definition is `ir.RectangularPrism`.
 | `vertex_names` | list of 8 strings | Optional corner names, in corner-bit order `000, 001, 010, 011, 100, 101, 110, 111` |
 | `view`         | string          | `"oblique"` (default) or `"isometric"` |
 | `depth_angle`  | number          | Oblique only: angle of the receding depth edge in degrees, in (0, 90); default 45 |
-| `depth_scale`  | number          | Oblique only: drawn depth per unit of width, positive; default 1/2 |
+| `depth_scale`  | number          | Oblique only: scales the depth axis (the prism's width): the drawn length of the receding edge per unit of width, positive; default 1/2 |
 | `side`         | string          | `"right"` (default) or `"left"` (mirrored); applies to both views |
 
 Giving `depth_angle` or `depth_scale` with `view: "isometric"` is a compile
@@ -526,7 +526,7 @@ it belongs to the `solids` group.
 | `cubes`        | list of `[x, y, z]` | The unit cubes of a shape a height map cannot express; each triple is the unit cube from (x, y, z) to (x+1, y+1, z+1) |
 | `view`         | string          | `"oblique"` (default) or `"isometric"` |
 | `depth_angle`  | number          | Oblique only: degrees in (0, 90); default 45 |
-| `depth_scale`  | number          | Oblique only: drawn depth per unit of depth, positive; default 1/2 |
+| `depth_scale`  | number          | Oblique only: scales the depth axis (the stack's z, rows front to back): the drawn length of the receding edge per unit of depth, positive; default 1/2 |
 | `side`         | string          | `"right"` (default) or `"left"`; as for the prism |
 | `front_color`  | string          | Fill of the front faces (default `#c3d6ef`) |
 | `side_color`   | string          | Fill of the visible lateral faces, right or left per `side` (default `#97b5dc`) |

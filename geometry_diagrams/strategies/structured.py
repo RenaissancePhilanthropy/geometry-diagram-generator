@@ -64,8 +64,8 @@ QUERY_TOOL_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
         '- "perimeter": polygon perimeter.',
         '                    - "prism": rectangular prism dimensions (length, width, height),\n'
         '                      volume, base area, surface area and corner ids. params={"prism": "P"}\n'
-        '                    - "stack": block stack cube_count, volume, extents (length, width,\n'
-        '                      height) and is_height_map. params={"stack": "S"}',
+        '                    - "stack": block stack cube_count, volume, length, width,\n'
+        '                      height and is_height_map. params={"stack": "S"}',
     ),
 )
 

@@ -229,8 +229,8 @@ _QUERY_DIAGRAM_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
         '- "perimeter": {"object": "tri_ABC"}',
         '            - "prism": {"prism": "P"} -> dimensions (length, width, height),\n'
         '              volume, base area, surface area and corner ids\n'
-        '            - "stack": {"stack": "S"} -> block stack cube_count, volume, extents\n'
-        '              (length, width, height) and is_height_map',
+        '            - "stack": {"stack": "S"} -> block stack cube_count, volume, length,\n'
+        '              width, height and is_height_map',
     ),
 )
 

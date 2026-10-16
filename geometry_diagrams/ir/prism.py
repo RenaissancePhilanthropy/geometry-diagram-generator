@@ -147,7 +147,16 @@ def projection_for(
     dx, dy = scale * sp.cos(rad), scale * sp.sin(rad)
     if side == "left":
         dx = -dx
-    return Projection((sp.S(1), sp.S(0)), (sp.S(0), sp.S(1)), (dx, dy))
+    projection = Projection((sp.S(1), sp.S(0)), (sp.S(0), sp.S(1)), (dx, dy))
+    try:
+        projection.viewer  # evaluate eagerly: a degenerate view fails here, at compile
+    except ValueError as e:
+        raise ValueError(
+            f"{e} (depth_scale={depth_scale}, depth_angle={depth_angle} make the depth axis "
+            "vanish on screen); use a depth_scale of at least about 0.01 and a depth_angle "
+            "of at least about 1 degree, or omit both for the defaults"
+        ) from e
+    return projection
 
 
 Bits = tuple[int, int, int]
@@ -466,7 +475,7 @@ def render_warnings(stmt: ir.RectangularPrism, diagram: Any) -> list[str]:
     aspect = canvas.aspect if canvas is not None else None
     if aspect is not None and aspect != 1:
         out.append(
-            f"rectangular_prism {stmt.id!r} is drawn on a canvas with unequal axis scales "
+            f"rectangular_prism {stmt.id!r} is on a canvas with unequal axis scales "
             f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
             f"shapes are distorted); remove canvas.aspect for an undistorted prism"
         )

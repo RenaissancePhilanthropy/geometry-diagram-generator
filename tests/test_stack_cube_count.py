@@ -111,6 +111,8 @@ def _all_descriptions(features):
 def test_every_query_tool_site_lists_the_stack_query_only_with_solids():
     for name, text in _all_descriptions(SOLIDS).items():
         _assert_lists_stack_query(text)
+        stack_sentence = text[text.index("cube_count"):text.index("is_height_map")]
+        assert "extents" not in stack_sentence, name
     for name, text in _all_descriptions(frozenset()).items():
         assert "cube_count" not in text and "is_height_map" not in text, name
 

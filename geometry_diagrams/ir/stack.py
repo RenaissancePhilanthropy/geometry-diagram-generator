@@ -381,7 +381,7 @@ def render_warnings(stmt: ir.BlockStack, diagram: Any) -> list[str]:
     aspect = canvas.aspect if canvas is not None else None
     if aspect is not None and aspect != 1:
         out.append(
-            f"block_stack {stmt.id!r} is drawn on a canvas with unequal axis scales "
+            f"block_stack {stmt.id!r} is on a canvas with unequal axis scales "
             f"(canvas.aspect={aspect}): the projection is skewed (the depth angle and face "
             f"shapes are distorted); remove canvas.aspect for an undistorted stack"
         )

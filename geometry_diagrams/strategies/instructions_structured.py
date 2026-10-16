@@ -327,7 +327,7 @@ one edge is that same edge.
 figures. **Solid-shaded look (non-unit-cube prisms only):** `fill` and `draw` the three visible \
 FACE ids (front/right/top; front/left/top for `side: "left"`) and do NOT `draw` the prism id, \
 which strokes dashed hidden edges over the fills. A `fill` takes its color from its `style` (a color string: `"#rrggbb"`, \
-`"rgb(r, g, b)"`, `"hsv(h, s, v)"` or an xcolor mix, avoiding CSS color names) or from a \
+`"rgb(r, g, b)"`, `"hsv(h, s, v)"` or an xcolor mix; named colors, CSS color names included, also work) or from a \
 `styles` entry of the diagram that the `style` names (`{"fill": ...}`); `opacity` is separate. For unit-cube figures use `view: "isometric"` with `unit_cubes: true`.
 - **Unit cubes:** For `unit_cubes` prisms, `draw` the prism id: that draw produces the cube \
 gridlines (and no dashed hidden edges); drawing the faces separately shows no gridlines. Fills on \

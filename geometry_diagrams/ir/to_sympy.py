@@ -487,7 +487,19 @@ def compile_defs(
     sym: SymTable = {}
     for sid in order:
         stmt = stmts_by_id[sid]
-        obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
+        try:
+            obj = _compile_one(stmt, sym, params, canvas, rng, all_def_ids=all_ids)
+        except IRCompileError as e:
+            owner = getattr(stmt, "_synthesized_by", None)
+            if owner is None or e.def_id == owner:
+                raise
+            # A synthesized definition failed: the author never wrote this id,
+            # so report the owning authored statement and keep the detail.
+            detail = str(e)
+            prefix = f"[{e.def_id}] "
+            if detail.startswith(prefix):
+                detail = detail[len(prefix):]
+            raise type(e)(owner, f"derived '{stmt.id}' of '{owner}': {detail}") from e
         sym[stmt.id] = obj
         DERIVED_REGISTRY.register_derived(stmt, obj, sym)
 
