@@ -123,3 +123,111 @@ def test_warning_reaches_pipeline_result_and_retry_prompt():
 def test_no_warning_without_overlap_in_pipeline():
     d = _diagram([_stack("S1", "O"), _prism("P", "Q")], FAR, ["S1", "P"])
     assert not any(PHRASE in w for w in _run(d).warnings)
+
+
+# --- "drawn" through any of the solid's own ids (faces, edges, top faces) --------
+
+from geometry_diagrams.pydsl.sandbox import run_script  # noqa: E402
+from geometry_diagrams.recipe.dsl import RecipeDSL  # noqa: E402
+from geometry_diagrams.recipe.lower import lower_to_ir  # noqa: E402
+
+
+def _custom(render: list, solids: list, origins=NEAR) -> ir.DiagramIR:
+    points = [ir.PointFixed(id=k, x=x, y=y) for k, (x, y) in origins.items()]
+    return ir.DiagramIR(define=[*points, *solids], render=render)
+
+
+def _shaded_faces() -> list:
+    """How every solids guidance surface builds a shaded prism: fill and draw
+    the three visible face ids, never the prism id."""
+    out: list = []
+    for face in ("P_front", "P_right", "P_top"):
+        out += [ir.Fill(obj=face, style="lightgray"), ir.Draw(obj=face)]
+    return out
+
+
+def test_face_filled_and_drawn_prism_overlapping_a_stack_warns_once():
+    d = _custom([*_shaded_faces(), ir.Draw(obj="S1")], [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == [_msg("P", "S1")]
+
+
+def test_single_face_fill_alone_counts_as_drawn():
+    # A fill paints pixels (hoisted behind later ordered polygons), so a solid
+    # whose only render op is a Fill of one of its face ids is on screen.
+    d = _custom([ir.Fill(obj="P_front", style="lightgray"), ir.Draw(obj="S1")],
+                [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == [_msg("P", "S1")]
+
+
+def test_edge_only_draw_counts_as_drawn():
+    d = _custom([ir.Draw(obj="P_e_000_100"), ir.Draw(obj="S1")], [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == [_msg("P", "S1")]
+
+
+def test_stack_drawn_through_a_top_face_counts():
+    d = _custom([ir.Draw(obj="P"), ir.Fill(obj="S1_top_0_0", style="red")],
+                [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == [_msg("P", "S1")]
+
+
+def test_labelled_or_centroid_targeted_solid_does_not_participate():
+    labels = [
+        ir.LabelFreeText(text="x", centroid_of="P"),
+        ir.LabelSegment(seg="P_e_000_100", text="3"),
+        ir.LabelPoint(p="P_v000", text="A") if hasattr(ir, "LabelPoint") else ir.LabelFreeText(text="y", centroid_of="P"),
+    ]
+    d = _custom([*labels, ir.Draw(obj="S1")], [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == []
+
+
+def test_pair_reported_once_when_drawn_through_several_ids_and_its_own():
+    d = _custom([ir.Draw(obj="P"), *_shaded_faces(), ir.Draw(obj="S1"), ir.Fill(obj="S1_top_0_0", style="red")],
+                [_prism("P", "O"), _stack("S1", "Q")])
+    assert _overlap(d) == [_msg("P", "S1")]
+
+
+def test_pydsl_script_following_the_python_full_guidance_warns():
+    script = (
+        "o = point(0, 0)\n"
+        "q = point(1, 1)\n"
+        "box = prism(o, 3, 2, 2)\n"
+        "for name in ('front', 'right', 'top'):\n"
+        "    fill(box.face(name), 'lightgray')\n"
+        "    draw(box.face(name))\n"
+        "blocks = stack(q, heights=[[2, 1], [1, 3]])\n"
+        "draw(blocks)\n"
+    )
+    res = run_script(script, timeout_seconds=60, features={"solids"})
+    assert res.error is None, res.error
+    sym = compile_defs(res.diagram_ir)
+    warnings = REGISTRY.overlap_warnings(res.diagram_ir, sym)
+    assert len(warnings) == 1 and PHRASE in warnings[0]
+    ids = [s.id for s in res.diagram_ir.define if REGISTRY.screen_bounds(sym[s.id]) is not None]
+    assert all(f"'{i}'" in warnings[0] for i in ids) and len(ids) == 2
+
+
+def test_recipe_following_the_catalog_guidance_warns():
+    dsl = RecipeDSL.model_validate({
+        "construction": [
+            {"op": "point", "id": "O", "coords": [0, 0]},
+            {"op": "point", "id": "Q", "coords": [1, 1]},
+            {"op": "prism", "id": "P", "origin": "O", "length": 3, "width": 2, "height": 2, "visible": False},
+            {"op": "stack", "id": "S", "origin": "Q", "heights": [[2, 1], [1, 3]]},
+        ],
+        "annotations": {"auto_draw_all": False, "draws": [
+            {"obj": "P_front"}, {"obj": "P_right"}, {"obj": "P_top"}, {"obj": "S"}]},
+    })
+    d = lower_to_ir(dsl)
+    assert _overlap(d) == [_msg("P", "S")]
+
+
+def test_render_view_rejects_a_non_diagram():
+    import pytest
+    from geometry_diagrams.ir.derived import render_view
+
+    class Fake:
+        def model_copy(self, update):  # the old duck-typed fallback would call this
+            return self
+
+    with pytest.raises(TypeError, match="render_view needs a DiagramIR"):
+        render_view(Fake(), {"render": []})

@@ -66,7 +66,8 @@ Solid hooks, for a kind whose compiled object is not a SymPy shape (today
 - ``screen_bounds``: a compiled solid's axis-aligned screen box, from its
   projected corners / lattice. ``DerivedRegistry.overlap_warnings`` (the one
   kind-agnostic place, called from ``pipeline_warnings``) compares the boxes
-  of every pair of DRAWN authored solids (a ``draw`` render op names the id)
+  of every pair of DRAWN authored solids (a ``draw``/``fill`` render op names
+  the id or one of its faces/edges/top faces)
   and warns once per positively-overlapping pair: solids are not depth
   sorted, so overlapping ones paint in draw order. Touching boxes do not warn.
 - ``trusted_faces``: compile builds the kind's synthesized polygons without
@@ -125,10 +126,11 @@ class RenderTimeDiagram(ir.DiagramIR):
 
 def render_view(diagram: Any, update: dict[str, Any]) -> Any:
     """A shallow ``RenderTimeDiagram`` copy of ``diagram`` with ``update``
-    applied (no validation, like ``model_copy``). A duck-typed ``diagram``
-    that is not a ``DiagramIR`` falls back to its own ``model_copy``."""
+    applied (no validation, like ``model_copy``). A ``diagram``
+    that is not a ``DiagramIR`` is rejected: a view of anything else would
+    be unguarded."""
     if not isinstance(diagram, ir.DiagramIR):
-        return diagram.model_copy(update=update)
+        raise TypeError(f"render_view needs a DiagramIR, got {type(diagram).__name__}")
     fields = {name: getattr(diagram, name) for name in ir.DiagramIR.model_fields}
     fields.update(update)
     return RenderTimeDiagram.model_construct(
@@ -430,10 +432,18 @@ class DerivedRegistry:
         sorted against each other, so two AUTHORED solids (any kinds with a
         ``screen_bounds`` hook) whose screen boxes overlap paint in draw order.
         One warning per overlapping pair, in authored definition order
-        (``a`` is the earlier-defined). A solid is DRAWN when a ``draw`` render
-        operation names its id; an undrawn solid does not participate. Boxes
+        (``a`` is the earlier-defined). A solid is DRAWN when a ``draw`` or
+        ``fill`` render operation names its own id or any id it owns (its
+        faces, edges, column top faces: ``owner_map``), since a shaded solid
+        is drawn through its face ids, never its own; labels and centroid
+        targets do not count. An undrawn solid does not participate. Boxes
         that only touch (zero-area intersection, within 1e-9) do not overlap."""
-        drawn = {op.obj for op in diagram.render if isinstance(op, ir.Draw)}
+        owners = self.owner_map(diagram.define)
+        drawn: set[str] = set()
+        for op in diagram.render:
+            for slot, rid in render_refs(op):
+                if slot in ("draw", "fill"):
+                    drawn.add(owners.get(rid, rid))
         boxes: list[tuple[str, tuple[float, float, float, float]]] = []
         for stmt in diagram.define:
             if stmt.id not in drawn or stmt.id not in sym:

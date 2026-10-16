@@ -1281,8 +1281,11 @@ Sources:
   '<a>' and '<b>' overlap on screen`. Solids are not depth-sorted against each
   other, so they paint in draw order. One warning per overlapping pair, `a`
   being the earlier-defined solid, pairs in definition order. A solid is
-  "drawn" when a `draw` render operation names its id; an undrawn solid never
-  participates. A box is the axis-aligned box of the solid's projected corners
+  "drawn" when a `draw` or `fill` render operation names its own id or any id
+  it owns (its faces, edges, or a stack's column top faces), because a shaded
+  prism is drawn through its face ids, never its own; labels and centroid
+  targets do not count, and an undrawn solid never participates. A solid drawn
+  through several of its ids still yields one warning per pair. A box is the axis-aligned box of the solid's projected corners
   (a stack's lattice); boxes that merely touch do not overlap (positive-area
   overlap only), and a lone or side-by-side solid never warns.
 
