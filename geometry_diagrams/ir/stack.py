@@ -377,6 +377,20 @@ def screen_bounds(obj: Stack) -> tuple[float, float, float, float]:
     return points_bounds(obj.lattice.values())
 
 
+COUNT_LABEL_MARGIN = 0.5  # construction units above the silhouette's top edge
+
+
+def lower_labels(stmt: ir.BlockStack, obj: Any) -> list[Any]:
+    """Registry ``lower_labels`` hook: one middle-anchored ``label_free_text``
+    for ``count_label``, at the horizontal center of the projected lattice's
+    screen box and ``COUNT_LABEL_MARGIN`` construction units above its top
+    edge, so it never sits on cubes. Empty when the field is unset."""
+    if stmt.count_label is None or not isinstance(obj, Stack):
+        return []
+    x0, _, x1, y1 = screen_bounds(obj)
+    return [ir.LabelFreeText(text=stmt.count_label, at=[(x0 + x1) / 2, y1 + COUNT_LABEL_MARGIN])]
+
+
 def stack_position(obj: Any) -> tuple[float, float] | None:
     return obj.center if isinstance(obj, Stack) else None
 

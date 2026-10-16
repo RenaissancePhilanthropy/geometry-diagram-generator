@@ -829,6 +829,7 @@ def _build_default_registry() -> DerivedRegistry:
         position=_stack.stack_position,
         synthesize=_stack.synthesize_top_faces,
         lower_draw=_stack.lower_draw,
+        lower_labels=_stack.lower_labels,
         exclusive=True,
         feature="solids",
         render_ref_error=_stack.render_ref_error,

@@ -681,6 +681,10 @@ class BlockStack(DefBase):
     top. ``front_color``, ``side_color`` (the visible lateral face) and
     ``top_color`` set the face colors.
 
+    ``count_label`` (optional, non-empty text, used verbatim) labels the whole
+    stack, e.g. its cube total: one label, centered above the stack's
+    silhouette, emitted once when the stack is drawn.
+
     Derived ids (public; an authored definition with one of these ids is a
     compile error): ``{id}_top_{x}_{z}``, the top face of the column at (x, z)
     (columns of height 0 have none). The lattice points are hidden.
@@ -696,6 +700,7 @@ class BlockStack(DefBase):
     front_color: Optional[str] = None
     side_color: Optional[str] = None
     top_color: Optional[str] = None
+    count_label: Optional[str] = Field(default=None, min_length=1)
 
 
 class PointMidpoint(DefBase):
