@@ -564,16 +564,19 @@ def test_slide_is_along_the_edge_only():
     assert (cx, cy) != pytest.approx((ox, oy))
 
 
-def test_45_degree_value_matches_the_rule_by_hand():
-    # edge from (0,0) to (40,-40): upper endpoint is (40,-40), d = (s, -s), s = sqrt(.5).
+def test_45_degree_value_matches_the_geometry_by_hand():
+    # Edge (0,0)-(40,-40), midpoint m = (20,-20); the away normal is
+    # (s, s), s = sqrt(.5), i.e. down-right on the page. For a 20x14 box with
+    # gap 4 the box's nearest corner is its top-left corner. That corner must
+    # sit 4 px from the line, on the line's normal through m:
+    #   corner = m + 4*(s, s) = (22.8284, -17.1716)
+    # and the center is the corner plus half the box: (+10, +7):
+    #   center = (32.8284, -10.1716)
     a, b = (0.0, 0.0), (40.0, -40.0)
-    n = away_normal(a, b, (-500.0, -300.0)) 
-    s = math.sqrt(0.5)
-    ux, uy = n
-    clear = abs(ux) * _W / 2 + abs(uy) * _H / 2 + _GAP
-    t = math.copysign(1, ux) * _W / 2 * s + math.copysign(1, uy) * _H / 2 * (-s)
-    expected = (20 + ux * clear + s * t, -20 + uy * clear - s * t)
-    assert away_label_center(a, b, n, _W, _H, _GAP) == pytest.approx(expected)
+    n = away_normal(a, b, (-500.0, -300.0))
+    assert n == pytest.approx((math.sqrt(0.5), math.sqrt(0.5)))
+    assert away_label_center(a, b, n, _W, _H, _GAP) == pytest.approx(
+        (32.8284, -10.1716), abs=1e-4)
 
 
 @pytest.mark.parametrize("a,b", [

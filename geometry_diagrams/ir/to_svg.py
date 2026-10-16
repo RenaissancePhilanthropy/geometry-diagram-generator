@@ -14,6 +14,7 @@ counter-flip transform to each text element) so labels appear upright.
 """
 from __future__ import annotations
 
+import contextvars
 import functools
 import logging
 import math
@@ -206,6 +207,27 @@ def _fmt_coord_pair(x: float, y: float) -> str:
 # ---------------------------------------------------------------------------
 
 def ir_to_svg(
+    diagram: ir.DiagramIR,
+    sym: SymTable,
+    warnings: list[str] | None = None,
+    font_config: FontConfig | None = None,
+    embed_fonts: bool = False,
+    debug_show_implicit: bool = False,
+) -> str:
+    """Compile a DiagramIR + resolved SymTable to an SVG string (see
+    ``_ir_to_svg_impl``). Label widths are measured with ``font_config``'s
+    family (``default_font_config()`` when none is given)."""
+    if font_config is None:
+        font_config = default_font_config()
+    token = _MEASURE_FAMILY.set(font_config.family)
+    try:
+        return _ir_to_svg_impl(
+            diagram, sym, warnings, font_config, embed_fonts, debug_show_implicit)
+    finally:
+        _MEASURE_FAMILY.reset(token)
+
+
+def _ir_to_svg_impl(
     diagram: ir.DiagramIR,
     sym: SymTable,
     warnings: list[str] | None = None,
@@ -3668,6 +3690,13 @@ def _load_font(family: str):
 
 
 _MEASURE_PT = 140
+# Font family of the render in progress (set by ir_to_svg for its duration);
+# None means "use default_font_config()". A contextvar rather than a parameter
+# because _estimate_text_width is reached through many nested placement
+# helpers; it is per-thread/task, so concurrent renders do not leak into each
+# other.
+_MEASURE_FAMILY: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_MEASURE_FAMILY", default=None)
 _FALLBACK_FAMILY = "NunitoSans"
 # FT2Font is not thread-safe (concurrent set_text aborts the process); the
 # renderer is called from worker threads, so every use of the shared font
@@ -3683,11 +3712,17 @@ def _measure_text_em(family: str, text: str) -> float | None:
     try:
         from matplotlib.ft2font import LoadFlags
 
-        with _MEASURE_LOCK, warnings.catch_warnings():
-            # A glyph missing from the font is measured as .notdef; the
-            # "missing glyph" UserWarning is noise for an estimate.
-            warnings.simplefilter("ignore")
-            font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
+        with _MEASURE_LOCK:
+            if all(font.get_char_index(ord(c)) for c in text):
+                font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
+            else:
+                # A glyph missing from the font is measured as .notdef and
+                # ft2font emits a "missing glyph" UserWarning, noise for an
+                # estimate. Filters are only touched on this rare path, and
+                # inside the lock so one thread at a time mutates them.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
             return font.get_width_height()[0] / 64 / _MEASURE_PT
     except Exception:
         return None
@@ -3711,7 +3746,8 @@ def _estimate_text_width(text: str, font_size: float = _FONT_SIZE) -> float:
     t = re.sub(r"\\[a-zA-Z]+", "X", t)
     # Drop grouping chars
     t = re.sub(r"[{}_^]", "", t)
-    em = _measure_text_em(default_font_config().family, t)
+    family = _MEASURE_FAMILY.get() or default_font_config().family
+    em = _measure_text_em(family, t)
     if em is None:
         return max(len(t), 1) * font_size * 0.65
     return max(em * font_size, 0.6 * font_size)

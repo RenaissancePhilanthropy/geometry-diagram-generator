@@ -76,3 +76,74 @@ def test_concurrent_measurement_is_thread_safe_and_stable():
     """)
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0 and "ok" in r.stdout, (r.returncode, r.stderr[-500:])
+
+
+def _svg_with(family, monkeypatch, env=None):
+    from geometry_diagrams.ir.font import FontConfig
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.recipe.catalog import load_recipe
+    from geometry_diagrams.recipe.dsl import RecipeDSL
+    from geometry_diagrams.recipe.lower import lower_to_ir
+
+    if env:
+        monkeypatch.setenv("DIAGRAM_FONT_FAMILY", env)
+    d = lower_to_ir(RecipeDSL.model_validate(load_recipe("altitude").example))
+    cfg = FontConfig(family=family) if family else None
+    return to_svg.ir_to_svg(d, compile_defs(d), [], font_config=cfg)
+
+
+def test_render_measures_with_the_passed_font_config(monkeypatch):
+    seen = []
+    real = to_svg._measure_text_em
+    monkeypatch.setattr(to_svg, "_measure_text_em",
+                        lambda family, text: (seen.append(family), real(family, text))[1])
+    _svg_with("NunitoSans", monkeypatch, env="NoSuchFont")
+    assert seen and set(seen) == {"NunitoSans"}
+    seen.clear()
+    _svg_with("OtherFamily", monkeypatch, env="NunitoSans")
+    assert seen and set(seen) == {"OtherFamily"}
+
+
+def test_unbundled_passed_family_measures_like_nunito(monkeypatch):
+    # OtherFamily is not bundled -> NunitoSans metrics; the font-face data
+    # lookup is not exercised (embed_fonts is off).
+    a = _svg_with("OtherFamily", monkeypatch)
+    b = _svg_with("NunitoSans", monkeypatch)
+    import re
+    assert re.findall(r'data-bbox="[^"]*"', a) == re.findall(r'data-bbox="[^"]*"', b)
+
+
+def test_no_config_still_uses_env_default(monkeypatch):
+    seen = []
+    real = to_svg._measure_text_em
+    monkeypatch.setattr(to_svg, "_measure_text_em",
+                        lambda family, text: (seen.append(family), real(family, text))[1])
+    _svg_with(None, monkeypatch, env="EnvFamily")
+    assert set(seen) == {"EnvFamily"}
+
+
+def test_plain_measurement_does_not_touch_global_warning_filters(monkeypatch):
+    import warnings
+
+    real = warnings.catch_warnings
+    calls = []
+
+    def spy(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+
+    monkeypatch.setattr(warnings, "catch_warnings", spy)
+    try:
+        assert _estimate_text_width("3 units", 14) == pytest.approx(42.7, rel=0.02)
+        n = len(calls)
+    finally:
+        monkeypatch.undo()
+    assert n == 0
+
+
+def test_missing_glyph_does_not_warn_or_raise():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert _estimate_text_width("\u03b1\u03b2", 14) > 0
