@@ -29,6 +29,7 @@ from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
+    away_label_center,
     away_normal,
     bare_color_key,
     ordered_polygon_paints,
@@ -1454,8 +1455,9 @@ def _emit_svg_op(
                     x=mx, y=my, text=text or "", color=_color_from_style(style, styles) or "black",
                     anchor="middle", attrs={"data-role": "label-segment", "data-for": seg_id},
                 )
-                clear = abs(ux) * lp.width_est / 2 + abs(uy) * lp.height_est / 2 + _AWAY_LABEL_GAP
-                lp.x, lp.y = mx + ux * clear, my + uy * clear
+                lp.x, lp.y = away_label_center(
+                    (ax, ay), (bx, by), (ux, uy), lp.width_est, lp.height_est, _AWAY_LABEL_GAP,
+                )
                 if pending_labels is not None:
                     pending_labels.append(lp)
                 else:

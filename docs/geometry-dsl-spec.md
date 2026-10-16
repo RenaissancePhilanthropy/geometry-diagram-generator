@@ -470,7 +470,13 @@ the prism's projected center (the middle of the drawn silhouette).
 
 A `label_segment` on a segment joining two corners of one prism (a dimension
 label) is placed on the side of the segment away from the prism's projected
-center, with the whole label clear of the segment's line. On an outline
+center, with the whole label clear of the segment's line. On a slanted
+edge in the SVG renderer (the away normal's horizontal component strictly
+between 0.3 and 0.95 in magnitude: the depth edge, and the length edge in
+isometric views) the label box also slides along the edge so its nearest
+corner touches the edge's line at the edge midpoint, with the same
+perpendicular clearance (near-horizontal and near-vertical edges are placed
+without sliding; TikZ does not slide, since that needs the text size). On an outline
 (silhouette) edge it sits outside the figure; which edges are outline edges
 depends on `side` (for `side: "right"`, e.g. left of the front-left vertical
 edge, below the front bottom edge, right of the right-hand edges; `side:

@@ -492,3 +492,98 @@ def test_centroid_of_obj_handles_compiled_open_polyline():
         PolylineOpen(id="poly", points=["A", "B", "C"]),
     ]))
     assert centroid_of_obj(sym["poly"]) == (8.0 / 3, 4.0 / 3)
+
+
+# --- slanted-edge dimension label placement (away_label_center) ---------------------
+
+from geometry_diagrams.ir.render_util import (
+    AWAY_SLIDE_MAX_NORMAL_X,
+    AWAY_SLIDE_MIN_NORMAL_X,
+    away_label_center,
+    away_normal,
+)
+
+_W, _H, _GAP = 20.0, 14.0, 4.0
+
+
+def _old_center(a, b, n, w=_W, h=_H, gap=_GAP):
+    mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+    clear = abs(n[0]) * w / 2 + abs(n[1]) * h / 2 + gap
+    return (mx + n[0] * clear, my + n[1] * clear)
+
+
+def _nearest_corner_offset(a, b, n, center, w=_W, h=_H):
+    """Position of the box corner nearest the edge's line, relative to the
+    edge midpoint, as (along-edge, perpendicular-toward-n)."""
+    mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+    corner = (
+        center[0] - math.copysign(1, n[0]) * w / 2,
+        center[1] - math.copysign(1, n[1]) * h / 2,
+    )
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = math.hypot(dx, dy)
+    ex, ey = dx / length, dy / length
+    rx, ry = corner[0] - mx, corner[1] - my
+    return (rx * ex + ry * ey, rx * n[0] + ry * n[1])
+
+
+def test_slide_bounds_are_the_documented_constants():
+    assert (AWAY_SLIDE_MIN_NORMAL_X, AWAY_SLIDE_MAX_NORMAL_X) == (0.3, 0.95)
+
+
+@pytest.mark.parametrize("a,b", [
+    ((0, 0), (40, -40)),      # exactly 45 degrees, rising right (screen y down)
+    ((0, 0), (40, 40)),       # 45 degrees, falling right
+    ((0, 0), (60, -34.64)),   # ~30 degrees rising
+    ((0, 0), (60, 34.64)),    # ~30 degrees falling
+    ((0, 0), (20, -50)),      # steeper than 45
+    ((10, 80), (-30, 40)),    # reversed endpoint order
+])
+@pytest.mark.parametrize("flip", [1, -1])
+def test_slanted_edge_corner_touches_the_line_at_the_midpoint(a, b, flip):
+    center = (
+        (a[0] + b[0]) / 2 - flip * 500, (a[1] + b[1]) / 2 - flip * 300,
+    )  # a point on one side, far away
+    n = away_normal(a, b, center)
+    assert n is not None
+    assert AWAY_SLIDE_MIN_NORMAL_X < abs(n[0]) < AWAY_SLIDE_MAX_NORMAL_X
+    cx, cy = away_label_center(a, b, n, _W, _H, _GAP)
+    along, perp = _nearest_corner_offset(a, b, n, (cx, cy))
+    assert along == pytest.approx(0, abs=1e-9)
+    assert perp == pytest.approx(_GAP, abs=1e-9)  # the existing perpendicular gap
+
+
+def test_slide_is_along_the_edge_only():
+    a, b = (0.0, 0.0), (40.0, -40.0)
+    n = away_normal(a, b, (-500.0, -300.0))
+    cx, cy = away_label_center(a, b, n, _W, _H, _GAP)
+    ox, oy = _old_center(a, b, n)
+    # the displacement from the old center is parallel to the edge
+    assert (cx - ox) * n[0] + (cy - oy) * n[1] == pytest.approx(0, abs=1e-9)
+    assert (cx, cy) != pytest.approx((ox, oy))
+
+
+def test_45_degree_value_matches_the_rule_by_hand():
+    # edge from (0,0) to (40,-40): upper endpoint is (40,-40), d = (s, -s), s = sqrt(.5).
+    a, b = (0.0, 0.0), (40.0, -40.0)
+    n = away_normal(a, b, (-500.0, -300.0)) 
+    s = math.sqrt(0.5)
+    ux, uy = n
+    clear = abs(ux) * _W / 2 + abs(uy) * _H / 2 + _GAP
+    t = math.copysign(1, ux) * _W / 2 * s + math.copysign(1, uy) * _H / 2 * (-s)
+    expected = (20 + ux * clear + s * t, -20 + uy * clear - s * t)
+    assert away_label_center(a, b, n, _W, _H, _GAP) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("a,b", [
+    ((0, 0), (80, 0)),        # horizontal: |ux| = 0
+    ((0, 0), (80, -4)),       # near-horizontal
+    ((0, 0), (0, 60)),        # vertical: |ux| = 1
+    ((0, 0), (4, 60)),        # near-vertical, |ux| > 0.95
+])
+@pytest.mark.parametrize("flip", [1, -1])
+def test_near_horizontal_and_near_vertical_edges_are_unchanged(a, b, flip):
+    center = ((a[0] + b[0]) / 2 - flip * 300, (a[1] + b[1]) / 2 - flip * 300)
+    n = away_normal(a, b, center)
+    assert not (AWAY_SLIDE_MIN_NORMAL_X < abs(n[0]) < AWAY_SLIDE_MAX_NORMAL_X)
+    assert away_label_center(a, b, n, _W, _H, _GAP) == _old_center(a, b, n)

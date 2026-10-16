@@ -316,6 +316,12 @@ box center, straddling cube edges.
   "record pipeline warnings in eval records" step proposed above for the
   warn-only classes, for this one class.
 
+- Slanted-edge placement (ticket 07): in SVG a dimension label on a slanted
+  edge (the depth edge; the length edge in isometric views) slides along the
+  edge so its nearest corner touches the line at the edge midpoint
+  (`render_util.away_label_center`); TikZ is unchanged because an equivalent
+  slide needs the text size, which TeX does not give us.
+
 **Open limits (accepted).**
 
 - TikZ renders a dimension label (a `label_segment`) in math mode (italic,

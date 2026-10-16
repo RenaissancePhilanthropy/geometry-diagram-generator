@@ -1301,3 +1301,45 @@ def away_normal(
     if abs(side) <= 1e-6 * length:
         return None
     return (-nx, -ny) if side > 0 else (nx, ny)
+
+
+# An away-placed label on an edge whose away normal has |ux| strictly between
+# these bounds (the edge is neither near-horizontal nor near-vertical on the
+# page) slides along the edge, see ``away_label_center``. Outside the bounds
+# the box centered on the normal through the midpoint already touches the
+# line near the midpoint, so the placement is left as it was.
+AWAY_SLIDE_MIN_NORMAL_X = 0.3
+AWAY_SLIDE_MAX_NORMAL_X = 0.95
+
+
+def away_label_center(
+    a: tuple[float, float], b: tuple[float, float], away: tuple[float, float],
+    w: float, h: float, gap: float,
+) -> tuple[float, float]:
+    """Center of a ``w`` x ``h`` label box placed on the ``away`` side of the
+    segment a-b (page coordinates, y down; ``away`` is ``away_normal``'s unit
+    normal) with perpendicular clearance ``gap`` between box and line.
+
+    Base placement: the center sits on the normal through the edge midpoint m,
+    at ``clear = |ux|*w/2 + |uy|*h/2 + gap``. For a slanted edge (``AWAY_SLIDE_*``
+    bounds on ``|ux|``) that leaves the box's nearest corner off the midpoint
+    (a diagonal normal hangs a short steep edge's label past its lower end), so
+    the center also slides along the edge, toward its upper endpoint (smaller
+    y) d, by ``t = sgn(ux)*(w/2)*dx + sgn(uy)*(h/2)*dy`` (sgn(0) = +1). The
+    nearest corner, center - (sgn(ux)*w/2, sgn(uy)*h/2), then lies on the line
+    at m (n.d = 0, so the perpendicular clearance is unchanged)."""
+    ux, uy = away
+    mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+    clear = abs(ux) * w / 2 + abs(uy) * h / 2 + gap
+    cx, cy = mx + ux * clear, my + uy * clear
+    if not AWAY_SLIDE_MIN_NORMAL_X < abs(ux) < AWAY_SLIDE_MAX_NORMAL_X:
+        return cx, cy
+    top, low = (a, b) if a[1] < b[1] else (b, a)
+    length = math.hypot(top[0] - low[0], top[1] - low[1])
+    if length == 0:
+        return cx, cy
+    dx, dy = (top[0] - low[0]) / length, (top[1] - low[1]) / length
+    sgn_x = 1.0 if ux >= 0 else -1.0
+    sgn_y = 1.0 if uy >= 0 else -1.0
+    t = sgn_x * w / 2 * dx + sgn_y * h / 2 * dy
+    return cx + dx * t, cy + dy * t
