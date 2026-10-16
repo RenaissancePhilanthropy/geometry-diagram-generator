@@ -19,7 +19,7 @@ Result fields:
   generation_success, svg_rendered, svg_checks,
   tikz_checks, canvas_checks, expected_point_checks,
   deterministic_pass, gate_status, gate_failures,
-  tool_calls, retries, input_tokens,
+  tool_calls, retries, warnings, input_tokens,
   output_tokens, duration_s, error,
   query_results,
   llm_judge_score, llm_judge_reasoning,
@@ -393,6 +393,7 @@ async def run_scenario(
         "gate_failures": [],
         "tool_calls": 0,
         "retries": 0,
+        "warnings": [],
         "input_tokens": None,
         "output_tokens": None,
         "cost_usd": None,
@@ -444,6 +445,7 @@ async def run_scenario(
         record["tikz_code"] = result.tikz
         record["diagram_ir"] = result.diagram_ir.model_dump(mode="json")
         record["retries"] = result.retries
+        record["warnings"] = list(result.warnings)
         svg = result.svg
 
         ir_diagnostics_data = None
@@ -670,7 +672,7 @@ async def run_scenario(
             record.get("tikz_code"),
         )
 
-    _finalize_gate_status(record)
+    _finalize_gate_status(record, scenario.get("fail_on_warnings") or [])
     return record
 
 
@@ -904,8 +906,12 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
     return failures, skipped, had_checks
 
 
-def _finalize_gate_status(record: dict) -> None:
-    """Populate deterministic_pass, gate_status, and gate_failures."""
+def _finalize_gate_status(record: dict, fail_on_warnings: list[str] | None = None) -> None:
+    """Populate deterministic_pass, gate_status, and gate_failures.
+
+    ``fail_on_warnings``: scenario substrings; each one found (case-sensitive)
+    in any recorded warning adds one ``warning:<substring>`` gate failure.
+    """
     failures, skipped, had_checks = _collect_check_outcomes(record)
 
     if failures:
@@ -925,6 +931,10 @@ def _finalize_gate_status(record: dict) -> None:
         for failure in svg_checks.get("failures", []):
             gate_failures.append(f"svg:{failure}")
     gate_failures.extend(failures)
+    recorded = record.get("warnings") or []
+    for sub in fail_on_warnings or []:
+        if any(sub in w for w in recorded):
+            gate_failures.append(f"warning:{sub}")
     record["gate_failures"] = gate_failures
 
     if gate_failures:
@@ -1299,6 +1309,7 @@ async def main() -> None:
                     "error": f"scenario timed out after {args.scenario_timeout}s",
                     "gate_status": "fail",
                     "gate_failures": ["timeout"],
+                    "warnings": [],
                     "generation_success": False,
                     "svg_rendered": False,
                     "input_tokens": 0,
@@ -1332,6 +1343,7 @@ async def main() -> None:
                     "error": f"runner exception: {type(e).__name__}: {e}",
                     "gate_status": "fail",
                     "gate_failures": ["runner_exception"],
+                    "warnings": [],
                     "generation_success": False,
                     "svg_rendered": False,
                     "input_tokens": 0,

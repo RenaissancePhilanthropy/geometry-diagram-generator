@@ -229,6 +229,20 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                     f"{where} ({scenario_id}) required_labels[{i}]: must be a non-empty string"
                 )
 
+        # fail_on_warnings
+        fail_on_warnings = raw.get("fail_on_warnings", [])
+        if fail_on_warnings is None:
+            fail_on_warnings = []
+        if not isinstance(fail_on_warnings, list):
+            raise ValueError(
+                f"{where} ({scenario_id}): 'fail_on_warnings' must be a list when provided"
+            )
+        for i, sub in enumerate(fail_on_warnings, start=1):
+            if not isinstance(sub, str) or not sub:
+                raise ValueError(
+                    f"{where} ({scenario_id}) fail_on_warnings[{i}]: must be a non-empty string"
+                )
+
         # required_entities
         required_entities = raw.get("required_entities", [])
         if required_entities is None:
@@ -390,6 +404,7 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
                 "expected_properties": normalized_props,
                 "structural_checks": normalized_structural,
                 "required_labels": list(required_labels),
+                "fail_on_warnings": list(fail_on_warnings),
                 "required_entities": list(required_entities),
                 "required_canvas": normalized_canvas,
                 "expected_points": normalized_points,

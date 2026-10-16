@@ -12,6 +12,7 @@
   tier: 2
   tags: [solids, prism, unit-cubes, isometric, volume]
   requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
   prompt: "Draw a box built from unit cubes, stacked 5 layers high. Count 2 cubes along its front bottom edge and 4 cubes along its right bottom edge."
   expected_properties:
     - name: prism_volume_40
@@ -30,6 +31,7 @@
   tier: 2
   tags: [solids, prism, oblique, volume, labels]
   requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
   prompt: "Draw a solid box that is 11 units long, 3 units wide and 6 units tall. Label its height 6 units, its width 3 units and its length 11 units."
   required_labels: ["6", "3", "11"]
   expected_properties:
@@ -50,6 +52,7 @@
   tier: 3
   tags: [solids, prism, oblique, wireframe, base-area, volume, labels]
   requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
   prompt: "Draw a wireframe box with its base shaded. The box is 5 units tall and its base has an area of 60 square units. Label the height 5 units and the base area 60 square units."
   required_labels: ["5", "60"]
   expected_properties:
@@ -68,6 +71,7 @@
   tier: 2
   tags: [solids, prism, oblique, volume, labels, units]
   requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
   prompt: "Draw a solid box that is 11 feet long, 3 feet wide and 6 feet tall. Label its height 6 feet, its width 3 feet and its length 11 feet."
   required_labels: ["6", "3", "11"]
   expected_properties:
@@ -86,6 +90,7 @@
   tier: 3
   tags: [solids, prism, oblique, wireframe, base-area, volume, labels, units]
   requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
   prompt: "Draw a wireframe box with its base shaded. The box is 5 feet tall and its base has an area of 60 square feet. Label the height 5 feet and the base area 60 square feet."
   required_labels: ["5", "60"]
   expected_properties:
