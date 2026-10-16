@@ -314,6 +314,10 @@ def _populate_partial_metadata_on_failure(record: dict, strategy: SubstanceStrat
                 ],
             }
             record["retries"] = max(0, len(partial_meta.attempt_traces) - 1)
+    elif isinstance(strategy, StructureStrategy):
+        record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
+        record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)
+        record["cost_usd"] = getattr(strategy, "_partial_cost_usd", None)
     elif isinstance(strategy, PythonFullStrategy):
         record["input_tokens"] = getattr(strategy, "_partial_input_tokens", 0)
         record["output_tokens"] = getattr(strategy, "_partial_output_tokens", 0)

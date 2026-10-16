@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .llm import get_chat_model, bind_structured_output_for_model, extract_usage, make_system_message
+from .llm import get_chat_model, bind_structured_output_for_model, extract_cost, extract_usage, make_system_message
 from .instructions import build_structured_instructions
 from .ir_pipeline import (
     StructuredRunResult,
@@ -146,6 +146,7 @@ class StructuredPipelineState(TypedDict):
     result: Optional[StructuredRunResult]
     input_tokens: int
     output_tokens: int
+    cost_usd: float  # provider-reported cost summed over attempts; 0.0 = none reported
     renderer: Optional[Any]
     features: frozenset  # enabled feature groups; absent/empty = none enabled
 
@@ -183,6 +184,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
         raw_msg = response.get("raw")
         diagram_ir = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+        cost_usd = state.get("cost_usd", 0.0) + ((extract_cost(raw_msg) if raw_msg else None) or 0.0)
 
         if diagram_ir is None:
             parsing_error = response.get("parsing_error") or "Failed to parse DiagramIR"
@@ -193,6 +195,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
                 "attempt": attempt + 1,
                 "input_tokens": state["input_tokens"] + in_tok,
                 "output_tokens": state["output_tokens"] + out_tok,
+                "cost_usd": cost_usd,
             }
 
         return {
@@ -200,6 +203,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
             "last_error": "",
             "input_tokens": state["input_tokens"] + in_tok,
             "output_tokens": state["output_tokens"] + out_tok,
+            "cost_usd": cost_usd,
         }
     except Exception as exc:
         logger.warning(f"_generate_ir_node attempt {attempt} failed: {exc}")
@@ -261,6 +265,12 @@ def _build_structured_graph() -> StateGraph:
 class StructureStrategy(SubstanceStrategy):
     """IR-based strategy: LLM generates DiagramIR, compiled + rendered deterministically."""
 
+    # Usage of the last run, exposed for the eval harness even when the run
+    # raises after exhausting its retries (same convention as the other strategies).
+    _partial_input_tokens: int = 0
+    _partial_output_tokens: int = 0
+    _partial_cost_usd: "float | None" = None
+
     async def run(
         self,
         prompt: str,
@@ -280,16 +290,28 @@ class StructureStrategy(SubstanceStrategy):
             "result": None,
             "input_tokens": 0,
             "output_tokens": 0,
+            "cost_usd": 0.0,
             "renderer": renderer,
             "features": self.features if features is None else frozenset(features),
         }
         final_state = await graph.ainvoke(initial_state, config=self._run_config)
+
+        # Expose usage before the possible raise below. cost stays None (not 0.0)
+        # when the provider never reported a cost: 0.0 would read as "confirmed free".
+        self._partial_input_tokens = final_state.get("input_tokens", 0)
+        self._partial_output_tokens = final_state.get("output_tokens", 0)
+        self._partial_cost_usd = final_state.get("cost_usd") or None
+
         if final_state.get("result") is None:
             raise RuntimeError(
                 f"StructureStrategy failed after {MAX_RETRIES} attempts. "
                 f"Last error: {final_state.get('last_error', 'unknown')}"
             )
-        return final_state["result"]
+        result = final_state["result"]
+        result.input_tokens = self._partial_input_tokens
+        result.output_tokens = self._partial_output_tokens
+        result.cost_usd = self._partial_cost_usd
+        return result
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Return a conversational ReAct agent with render_diagram + query_diagram tools."""
