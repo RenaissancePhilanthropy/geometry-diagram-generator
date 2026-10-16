@@ -1304,7 +1304,10 @@ it, preserving the scale: nothing moves in user coordinates, overflow on the
 left or top is absorbed by a negative `viewBox` origin. Growth happens only
 when a label overflows (a diagram without overflow is unchanged) and is capped
 at 200 px per side, independently; a label further out than that is left
-outside and reported by the label-bounds check.
+outside and reported by the label-bounds check. The width used for that
+check, and for label collision avoidance, is estimated from the bundled
+font's real glyph advances (with a floor of 0.6 em, and a flat 0.65 em per
+character if the font cannot be loaded).
 
 ### Ordered polygons
 

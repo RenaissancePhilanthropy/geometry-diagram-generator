@@ -289,14 +289,15 @@ def test_tick_mark_arcs_clamps_the_inner_endpoint_at_the_center():
 # arc_text_glyphs — per-character advances
 # ---------------------------------------------------------------------------
 
-def test_arc_text_glyphs_advances_sum_matches_estimate_text_width():
+def test_arc_text_glyphs_advances_use_the_flat_uniform_advance():
+    """Arc text lays glyphs out with a uniform per-character advance (also
+    used by TikZ, which has no font metrics); it deliberately does not follow
+    to_svg's measured _estimate_text_width."""
     from geometry_diagrams.ir.render_util import arc_text_glyphs
-    from geometry_diagrams.ir.to_svg import _estimate_text_width
 
-    for t in ["ABC", "x^2", r"\alpha b"]:
+    for t, n in [("ABC", 3), ("x^2", 2), (r"\alpha b", 3)]:
         glyphs = arc_text_glyphs(t, 14)
-        total = sum(adv for _, adv in glyphs)
-        assert total == pytest.approx(_estimate_text_width(t, 14))
+        assert sum(adv for _, adv in glyphs) == pytest.approx(n * 14 * 0.65)
 
 
 def test_arc_text_glyphs_collapses_a_latex_command_to_one_glyph():

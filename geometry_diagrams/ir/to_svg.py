@@ -14,9 +14,11 @@ counter-flip transform to each text element) so labels appear upright.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import math
 import re
+import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any, Callable, NamedTuple
@@ -3642,14 +3644,54 @@ def _segment_label_side(
     return -1.0 if pos_weight > neg_weight else 1.0
 
 
+@functools.cache
+def _load_font(family: str):
+    """Load the bundled ``family`` Regular TTF for measuring, or None if the
+    file or the library is unavailable (callers then use the flat rule)."""
+    try:
+        from matplotlib.ft2font import FT2Font
+
+        path = FontConfig(family=family).file_path("Regular")
+        if not path.is_file():
+            return None
+        font = FT2Font(str(path))
+        font.set_size(_MEASURE_PT, 72)
+        return font
+    except Exception:
+        return None
+
+
+_MEASURE_PT = 140
+
+
+def _measure_text_em(family: str, text: str) -> float | None:
+    """Advance width of ``text`` in em units from the bundled font, or None."""
+    font = _load_font(family)
+    if font is None:
+        return None
+    try:
+        from matplotlib.ft2font import LoadFlags
+
+        with warnings.catch_warnings():
+            # A glyph missing from the font is measured as .notdef; the
+            # "missing glyph" UserWarning is noise for an estimate.
+            warnings.simplefilter("ignore")
+            font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
+        return font.get_width_height()[0] / 64 / _MEASURE_PT
+    except Exception:
+        return None
+
+
 def _estimate_text_width(text: str, font_size: float = _FONT_SIZE) -> float:
-    """Approximate rendered text width in SVG pixels for collision detection.
+    """Rendered text width in SVG pixels for collision detection.
+
+    Measured from the bundled font's real glyph advances (family from
+    ``default_font_config()``), with a floor of 0.6 * font_size; falls back
+    to a flat 0.65 * font_size per character if the font cannot be loaded.
 
     ``font_size`` defaults to ``_FONT_SIZE`` so every pre-existing caller
-    (tick labels, mathtext-fallback comparisons, etc.) keeps its exact prior
-    behavior; a caller that knows the label will actually render at a
-    different size (e.g. a style-supplied font-size override) can pass it
-    explicitly so the estimate scales correctly."""
+    keeps its prior behavior; a caller that knows the label will render at a
+    different size can pass it explicitly."""
     # Strip dollar signs and LaTeX commands (each becomes ~1 char wide)
     t = text.strip()
     if t.startswith("$") and t.endswith("$"):
@@ -3658,7 +3700,10 @@ def _estimate_text_width(text: str, font_size: float = _FONT_SIZE) -> float:
     t = re.sub(r"\\[a-zA-Z]+", "X", t)
     # Drop grouping chars
     t = re.sub(r"[{}_^]", "", t)
-    return max(len(t), 1) * font_size * 0.65
+    em = _measure_text_em(default_font_config().family, t)
+    if em is None:
+        return max(len(t), 1) * font_size * 0.65
+    return max(em * font_size, 0.6 * font_size)
 
 
 def _make_label_placement(

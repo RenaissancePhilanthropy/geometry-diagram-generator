@@ -865,11 +865,11 @@ def tick_mark_arcs(
 
 
 # Uniform per-character text-advance fraction of the em size, used by
-# arc_text_glyphs() below. Deliberately the same factor to_svg.py's
-# _estimate_text_width() uses (0.65): that function produces the width
-# estimate every label's data-bbox and collision box is built from, so an
-# arc-text glyph splitter using a different factor would lay glyphs out
-# somewhere its own bbox didn't cover.
+# arc_text_glyphs() below. It is the flat rule to_svg.py's
+# _estimate_text_width() falls back to when the bundled font cannot be
+# loaded; the SVG estimate is otherwise measured from the font, while arc
+# text keeps this uniform advance (TikZ shares it and has no font metrics),
+# and its per-glyph boxes are built from these same advances.
 TEXT_ADVANCE_EM = 0.65
 
 # Nominal em size in construction units for to_tikz.py's arc text. TikZ has
@@ -885,13 +885,11 @@ def arc_text_glyphs(text: str, em: float) -> "list[tuple[str, float]]":
     """Split *text* into per-glyph (character, advance) pairs, advances in
     whatever length unit *em* is given in (SVG px, or construction units).
 
-    Uses the same uniform TEXT_ADVANCE_EM heuristic as to_svg.py's
-    _estimate_text_width(), and the same normalization (strip an outer
-    $...$, collapse a \\command to one glyph, drop {}_^), so the returned
-    advances sum to exactly _estimate_text_width(text, em). Neither backend
-    has real per-character font metrics: TikZ has none at all, and the SVG
-    backend only gets whole-string metrics — from matplotlib, and only for
-    mathtext labels.
+    Uses a uniform TEXT_ADVANCE_EM advance per character after the same
+    normalization as to_svg.py's _estimate_text_width() (strip an outer
+    $...$, collapse a \\command to one glyph, drop {}_^). The SVG label
+    estimate is measured from the bundled font, so the sum here equals it
+    only on the estimator's flat fallback path.
 
     The \\command rule is defensive only: arc_text_is_layoutable() already
     routes every string containing one to the single-label fallback, so this

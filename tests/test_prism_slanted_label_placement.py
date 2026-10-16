@@ -32,21 +32,21 @@ from tests.test_prism_shading_labels import (
 LABELS = {"length_label": "L", "width_label": "W", "height_label": "H"}
 DIMS = {"a": (3, 11, 6), "tall": (2, 2, 8), "cube": (2, 4, 5)}  # length, width, height
 
-# Label boxes recorded at the base commit for edges the slide rule must leave
+# Label boxes recorded (measured-font text widths) for edges the slide rule must leave
 # alone: oblique views' near-horizontal length edge and vertical height edge.
 UNCHANGED_BOXES = {
-    "oblique/left/a/H": "333.76,320.86,342.86,334.86",
-    "oblique/left/a/L": "263.25,453.87,272.35,467.87",
-    "oblique/left/cube/H": "267.79,283.59,276.89,297.59",
-    "oblique/left/cube/L": "199.94,439.98,209.04,453.98",
-    "oblique/left/tall/H": "182.42,258.78,191.52,272.78",
-    "oblique/left/tall/L": "127.34,450.20,136.44,464.20",
-    "oblique/right/a/H": "37.03,320.86,46.13,334.86",
-    "oblique/right/a/L": "107.54,453.87,116.64,467.87",
-    "oblique/right/cube/H": "50.92,283.59,60.02,297.59",
-    "oblique/right/cube/L": "118.77,439.98,127.87,453.98",
-    "oblique/right/tall/H": "40.70,258.78,49.80,272.78",
-    "oblique/right/tall/L": "95.78,450.20,104.88,464.20",
+    "oblique/left/a/H": "333.76,320.86,344.41,334.86",
+    "oblique/left/a/L": "263.60,453.87,272.00,467.87",
+    "oblique/left/cube/H": "267.79,283.59,278.44,297.59",
+    "oblique/left/cube/L": "200.29,439.98,208.69,453.98",
+    "oblique/left/tall/H": "182.42,258.78,193.07,272.78",
+    "oblique/left/tall/L": "127.69,450.20,136.09,464.20",
+    "oblique/right/a/H": "35.48,320.86,46.13,334.86",
+    "oblique/right/a/L": "107.89,453.87,116.29,467.87",
+    "oblique/right/cube/H": "49.36,283.59,60.02,297.59",
+    "oblique/right/cube/L": "119.12,439.98,127.52,453.98",
+    "oblique/right/tall/H": "39.15,258.78,49.80,272.78",
+    "oblique/right/tall/L": "96.13,450.20,104.53,464.20",
 }
 
 

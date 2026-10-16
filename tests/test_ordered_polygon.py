@@ -250,7 +250,7 @@ def test_existing_recipe_render_is_pinned():
 
 
 PINNED_ALTITUDE = (
-    "282572ca16dc0d6fc5dba5238456dc8077e2710948146fc6717d4f08500945da",
+    "4149bbef07e45324acb6f5bc6b6f7b0156a238f39e72f56a62860c0c5fc7305d",
     "2483fcf317f204f26fe4101ec5808ad2732e5c7483edbbf9558412f248282df1",
 )
 

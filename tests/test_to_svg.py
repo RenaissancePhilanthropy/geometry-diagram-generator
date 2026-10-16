@@ -1612,17 +1612,17 @@ class TestSegmentLabelSide:
 class TestEstimateTextWidth:
     def test_single_char(self):
         w = _estimate_text_width("A")
-        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+        assert w == pytest.approx(10.2, rel=0.02)  # real NunitoSans "A" at 14 px
 
     def test_greek_command(self):
         """\\alpha is one command → width ~ 1 char."""
         w = _estimate_text_width(r"\alpha")
-        assert w == pytest.approx(_FONT_SIZE * 0.65, rel=0.01)
+        assert w == pytest.approx(_estimate_text_width("X"), rel=0.01)
 
     def test_longer_text(self):
         w5 = _estimate_text_width("ABCDE")
-        w1 = _estimate_text_width("A")
-        assert w5 == pytest.approx(5 * w1, rel=0.01)
+        assert w5 == pytest.approx(47.6, rel=0.02)  # real NunitoSans "ABCDE" at 14 px
+        assert w5 > _estimate_text_width("A")
 
     def test_dollar_stripped(self):
         w = _estimate_text_width("$A$")
