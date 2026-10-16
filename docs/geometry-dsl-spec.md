@@ -1245,6 +1245,18 @@ SVG it is a `<polygon data-role="ordered-polygon" stroke-linejoin="round">`
 and its edges are obstacles for label nudging, like drawn segments; in TikZ a
 `\filldraw[line style,fill=...,draw=...,line join=round] ... -- cycle;`.
 
+**Do not serialize a lowered diagram.** Because `OrderedPolygon` is outside the
+`RenderOp` union, the lowered diagram (`derived.lower_render`'s output) and the
+effective diagram (`derived.effective_diagram`'s output) are *internal
+render-time views*: they are built without validation, exist only in memory
+inside the two renderers, and must never be dumped, persisted or re-validated
+(a dump of a lowered one emits serialization warnings, `ordered_polygon` fails
+`DiagramIR` validation, and the effective view loses the private
+`_synthesized_by` marker, so recompiling it reports the synthesized ids as
+reserved). Both are `derived.RenderTimeDiagram` instances whose `model_dump`
+and `model_dump_json` raise `TypeError` ("dump the authored DiagramIR
+instead"); the authored `DiagramIR` serializes exactly as before.
+
 ### Pipeline warnings
 
 A run collects a list of non-fatal `warnings` (on the result, and on a

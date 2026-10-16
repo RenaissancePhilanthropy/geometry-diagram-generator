@@ -101,6 +101,41 @@ from . import stack as _stack
 from .errors import IRCompileError
 
 
+_VIEW_DUMP_MESSAGE = (
+    "lowered and effective diagrams are internal render-time views and cannot "
+    "be serialized: dump the authored DiagramIR instead"
+)
+
+
+class RenderTimeDiagram(ir.DiagramIR):
+    """A ``DiagramIR`` that is an internal render-time view (the effective
+    diagram, or a lowered one that may hold ``ir.OrderedPolygon``), never an
+    authored diagram. It exists only to refuse serialization: the view is not
+    a valid ``DiagramIR`` document (``OrderedPolygon`` is outside the
+    ``RenderOp`` union, and the effective view's ``_synthesized_by`` markers do
+    not survive a round-trip). Everything else (attribute access, ``model_copy``)
+    behaves like ``DiagramIR``. Built by ``render_view``."""
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> Any:
+        raise TypeError(_VIEW_DUMP_MESSAGE)
+
+    def model_dump_json(self, *args: Any, **kwargs: Any) -> Any:
+        raise TypeError(_VIEW_DUMP_MESSAGE)
+
+
+def render_view(diagram: Any, update: dict[str, Any]) -> Any:
+    """A shallow ``RenderTimeDiagram`` copy of ``diagram`` with ``update``
+    applied (no validation, like ``model_copy``). A duck-typed ``diagram``
+    that is not a ``DiagramIR`` falls back to its own ``model_copy``."""
+    if not isinstance(diagram, ir.DiagramIR):
+        return diagram.model_copy(update=update)
+    fields = {name: getattr(diagram, name) for name in ir.DiagramIR.model_fields}
+    fields.update(update)
+    return RenderTimeDiagram.model_construct(
+        _fields_set=set(diagram.model_fields_set) | set(update), **fields
+    )
+
+
 @dataclass(frozen=True)
 class Lowering:
     """What a ``lower_draw`` hook returns for one draw of its kind's id.
@@ -110,7 +145,18 @@ class Lowering:
         today's ``ir.RenderOp`` union; in particular a kind may emit an ordered
         sequence of ``ir.OrderedPolygon`` (opaque fill + own stroke) for block
         stacks. The lowering point passes the sequence through unchanged and in
-        order. Both renderers sort operations by kind (all fills, then all
+        order.
+
+        WARNING: ``OrderedPolygon`` is deliberately outside the validated
+        ``RenderOp`` union, so a lowered diagram is one of the **internal
+        render-time views**: it is built without validation, cannot be
+        re-validated (``ordered_polygon`` is not a ``RenderOp`` kind), and
+        dumping it emits serialization warnings. Never dump, persist or
+        re-validate one: ``lower_render`` returns a ``RenderTimeDiagram`` whose
+        ``model_dump`` / ``model_dump_json`` raise ``TypeError``. Dump the
+        authored ``DiagramIR`` instead.
+
+        Both renderers sort operations by kind (all fills, then all
         strokes; a stable sort), but ``ordered_polygon`` shares the draw layer,
         so it keeps its list position among draws and marks.
     styles: extra named styles the ops reference (merged into the diagram's
@@ -552,7 +598,9 @@ class DerivedRegistry:
         """``diagram`` with every draw of a lowering kind's id replaced, in
         place, by the hook's ordered operations (see ``Lowering``), and the
         hook's styles merged into ``styles``. ``diagram`` itself when nothing
-        lowers; otherwise a shallow copy local to the caller.
+        lowers; otherwise a shallow ``RenderTimeDiagram`` copy local to the
+        caller: an internal render-time view that refuses ``model_dump`` /
+        ``model_dump_json`` (never dump, persist or re-validate it).
 
         First rejects render operations misusing a registered kind's id
         (``check_render_refs``) and appends each kind's ``render_warnings``
@@ -587,7 +635,7 @@ class DerivedRegistry:
             lowered = True
         if not lowered:
             return diagram
-        return diagram.model_copy(update={"render": ops, "styles": styles})
+        return render_view(diagram, {"render": ops, "styles": styles})
 
     def position_of(self, obj: Any) -> "tuple[float, float] | None":
         """Position supplied by the first registered kind that recognizes
@@ -750,7 +798,11 @@ def is_synthesized(stmt: Any) -> bool:
 
 def lower_render(diagram: Any, warnings: list[str] | None = None) -> Any:
     """The render lowering point: see ``DerivedRegistry.lower_render``. Both
-    renderers' entry functions call it right after ``effective_diagram``."""
+    renderers' entry functions call it right after ``effective_diagram``.
+
+    Its result is one of the internal render-time views: never dump, persist
+    or re-validate it (``OrderedPolygon`` is outside the ``RenderOp`` union);
+    it raises ``TypeError`` if you try."""
     return REGISTRY.lower_render(diagram, warnings)
 
 
@@ -763,9 +815,12 @@ def effective_defs(diagram: Any) -> list[Any]:
 
 def effective_diagram(diagram: Any) -> Any:
     """``diagram`` itself when nothing is synthesized, else a shallow copy
-    whose ``define`` is the effective view. The copy is local to the caller
-    (a renderer's entry function); the authored IR is never rewritten."""
+    whose ``define`` is the effective view (a ``RenderTimeDiagram``: an
+    internal render-time view that refuses serialization, because its
+    synthesized definitions lose their ``_synthesized_by`` marker on a
+    round-trip). The copy is local to the caller (a renderer's entry
+    function); the authored IR is never rewritten."""
     view = effective_defs(diagram)
     if len(view) == len(diagram.define):
         return diagram
-    return diagram.model_copy(update={"define": view})
+    return render_view(diagram, {"define": view})
