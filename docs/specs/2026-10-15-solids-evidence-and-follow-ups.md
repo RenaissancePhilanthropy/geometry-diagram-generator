@@ -339,8 +339,15 @@ box center, straddling cube edges.
 
 **Limits of the verification evidence.** The post-change luna run is n=1 per
 cell, one model (gpt-6-luna), judge off, and every prism cell is oblique `side:
-right`: side-left and isometric label placement was exercised by tests and a
-216-case placement sweep, not by model runs. The gate has no
+right`: side-left and isometric label placement was exercised by tests, not by
+model runs: `tests/test_prism_label_fields.py` runs the four view/side
+combinations (oblique and isometric, right and left) over two dimension sets
+and asserts each dimension field labels its documented silhouette edge with one
+label outside the silhouette, checks the base-area label per view/side, and
+checks one label per field for five draw modes (own id, faces only, both, drawn
+twice, a single edge); `tests/test_stack_count_label.py` runs the four view/side
+combinations over four stack shapes (height map, cube set, flat 20x20, tall
+thin) and asserts the label lies above the silhouette, plus six draw modes. The gate has no
 outside-the-silhouette placement check; placement was verified by eyeballing
 and tests. The 23/24 gate pass of this run against the earlier 14/15 is not a
 before/after comparison: the one failing cell (structured drawing a block stack
