@@ -114,6 +114,9 @@ class _Lowerer:
         self._point_ids: list[str] = []
         # All non-implicit drawable object IDs (set for O(1) membership, order via _defs)
         self._drawable: set[str] = set()
+        # Points that only anchor a prism/stack (its origin): the solid's own
+        # corner is that point, so it gets no auto dot or label.
+        self._solid_origins: set[str] = set()
         # Right-angle triples from triangle specs and altitude ops
         self._right_angle_triples: list[tuple[str, str, str]] = []  # (a, vertex, b)
         # Resolved coordinate floats for auto-canvas computation (keyed by point id)
@@ -181,10 +184,35 @@ class _Lowerer:
                 else:
                     _inject(value)
 
+    def _anchor_only_origins(self, construction: list[Any]) -> set[str]:
+        """Solid origins that no other construction op mentions: a point that is
+        only where a prism/stack sits is not a point of the figure, so it gets no
+        auto dot or label (an op that uses it keeps both)."""
+        def mentions(value: Any, pid: str) -> bool:
+            if isinstance(value, str):
+                return value == pid
+            if isinstance(value, dict):
+                return any(mentions(v, pid) for v in value.values())
+            if isinstance(value, (list, tuple)):
+                return any(mentions(v, pid) for v in value)
+            return False
+
+        anchors = set()
+        for pid in self._solid_origins:
+            others = [
+                op.model_dump() for op in construction
+                if getattr(op, "id", None) != pid
+                and not (isinstance(op, (PrismOp, StackOp)) and op.origin == pid)
+            ]
+            if not any(mentions(o, pid) for o in others):
+                anchors.add(pid)
+        return anchors
+
     def lower(self, dsl: RecipeDSL) -> DiagramIR:
         self._inject_implicit_points(dsl.construction)
         for op in dsl.construction:
             self._lower_op(op)
+        self._solid_origins = self._anchor_only_origins(dsl.construction)
         self._apply_annotations(dsl.annotations, dsl.construction)
         self._lower_checks(dsl.checks)
         self._prune_unreferenced_edge_aliases()
@@ -542,6 +570,7 @@ class _Lowerer:
         except ValueError as exc:
             raise LoweringError(f"prism {op.id!r}: {exc}") from exc
         self._add(stmt)  # canvas fit: the prism's registry canvas_extent hook
+        self._solid_origins.add(op.origin)
         self._drawable.add(op.id)
         self._prisms[op.id] = stmt
         names = _prism.corner_names(stmt)
@@ -561,6 +590,7 @@ class _Lowerer:
         except ValueError as exc:
             raise LoweringError(f"stack {op.id!r}: {exc}") from exc
         self._add(stmt)  # canvas fit: the stack's registry canvas_extent hook
+        self._solid_origins.add(op.origin)
         self._drawable.add(op.id)
 
     def _origin_xy(self, pid: str) -> tuple[float, float] | None:
@@ -1223,6 +1253,7 @@ class _Lowerer:
             non_implicit = [
                 pid for pid in self._point_ids
                 if not pid.startswith("__") and pid not in hidden_ids
+                and pid not in self._solid_origins
             ]
             if non_implicit:
                 self._renders.append(DrawPoints(points=non_implicit))
@@ -1237,6 +1268,8 @@ class _Lowerer:
             for pid in self._point_ids:
                 if not pid.startswith("__") and pid not in hidden_ids:
                     if pid in explicit_label_points:
+                        continue
+                    if pid in self._solid_origins:
                         continue
                     self._renders.append(IRLabelPoint(p=pid))
 

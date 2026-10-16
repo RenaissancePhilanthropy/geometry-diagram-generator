@@ -143,7 +143,7 @@ A DSL for declaratively specifying geometry constructions:
 
 - **`dsl.py`**: Defines the recipe DSL syntax and parsing, including the `prism` and `stack` ops (with the label fields `length_label`/`width_label`/`height_label`/`base_area_label` and `count_label`) and the `volume`/`true_length`/`cube_count` checks (feature-gated: `reject_disabled_ops` rejects them before lowering when `solids` is off).
 - **`catalog.py`**: Library of named geometry construction recipes, and the DSL docs shown to the model (`dsl_docs_for(features)` appends the gated prism guidance; its examples live in `PRISM_EXAMPLES` and `STACK_EXAMPLES` and are executed by tests so the docs cannot drift).
-- **`lower.py`**: Lowers recipe DSL constructions down to `DiagramIR` for compilation and rendering.
+- **`lower.py`**: Lowers recipe DSL constructions down to `DiagramIR` for compilation and rendering. A prism/stack origin point that no other construction op mentions is only an anchor, so auto-draw and auto-label skip it (an explicit `label_point` still labels it).
 - **`expressions.py`**: Expression evaluation for recipe DSL parameters.
 - **`solve.py`**: Constraint solver used during recipe lowering.
 
