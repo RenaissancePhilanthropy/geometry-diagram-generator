@@ -10,9 +10,14 @@ import inspect
 
 import geometry_diagrams.pydsl as pydsl_module
 
+# Core handle classes, plus every feature group's handle classes (the
+# capitalized names in pydsl.GROUPED_NAMES, e.g. Prism and Stack); whether a
+# grouped one is listed is decided by the enabled groups, like its functions.
 _HANDLE_CLASS_NAMES = {"Point", "Line", "Ray", "Arc", "Sector", "Segment", "Triangle", "Polygon",
-                        "Polyline", "Circle", "Ellipse", "Altitude", "Median", "AngleRef",
-                        "PerpendicularBisectorLine", "Prism", "Stack"}
+                       "Polyline", "Circle", "Ellipse", "Altitude", "Median", "AngleRef",
+                       "PerpendicularBisectorLine"} | {
+    name for names in pydsl_module.GROUPED_NAMES.values() for name in names if name[:1].isupper()
+}
 
 
 def _format_callable(name: str, obj) -> str:

@@ -15,6 +15,19 @@ PRISM_PROPERTY_TYPES = frozenset({"prism_volume", "prism_dimensions"})
 STACK_PROPERTY_TYPES = frozenset({"stack_cube_count", "stack_extents", "stack_is_height_map"})
 
 
+def _ids_answering(sym_full: dict, query_type: str) -> list[str]:
+    """Ids of the objects the registered kind answering ``query_type``
+    ("prism", "stack") compiled (the derived registry's object_type)."""
+    from geometry_diagrams.ir.derived import REGISTRY
+
+    out = []
+    for k, v in sym_full.items():
+        entry = REGISTRY.entry_for_object(v)
+        if entry is not None and entry.query_type == query_type:
+            out.append(k)
+    return out
+
+
 def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) -> list[dict]:
     """Evaluate the prism-typed expected_properties against the full compiled
     symbol table. Returns list of {name, type, passed, message} dicts.
@@ -27,7 +40,6 @@ def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) 
     """
     from geometry_diagrams.ir.checks import _near_exact
     from geometry_diagrams.ir.queries import query_prism
-    from geometry_diagrams.ir.prism import Prism
 
     def measures(prop_type: str, q: dict, args: list) -> tuple[bool, str]:
         if prop_type == "prism_volume":
@@ -48,7 +60,7 @@ def _validate_prism_properties(expected_properties: list[dict], sym_full: dict) 
         try:
             prism_id = args[0]
             if prism_id == "*":
-                ids = [k for k, v in sym_full.items() if type(v) is Prism]
+                ids = _ids_answering(sym_full, "prism")
                 if not ids:
                     raise KeyError("no prism in the diagram")
             else:
@@ -73,7 +85,6 @@ def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) 
     "*" is any-match for all three.
     """
     from geometry_diagrams.ir.queries import query_stack
-    from geometry_diagrams.ir.stack import Stack
 
     results = []
     for prop in expected_properties:
@@ -84,7 +95,7 @@ def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) 
         try:
             stack_id = args[0]
             if stack_id == "*":
-                ids = [k for k, v in sym_full.items() if type(v) is Stack]
+                ids = _ids_answering(sym_full, "stack")
                 if not ids:
                     raise KeyError("no stack in the diagram")
             else:

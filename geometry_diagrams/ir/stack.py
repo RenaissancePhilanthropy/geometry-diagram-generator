@@ -31,7 +31,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .errors import IRCompileError
-from .prism import Projection, projection_for
+from .prism import Projection, box_extent, projection_for
 
 Cube = tuple[int, int, int]  # (x, y, z)
 
@@ -312,27 +312,63 @@ def synthesize_top_faces(stmt: ir.BlockStack) -> list[Any]:
     return out
 
 
-def is_top_face(stmt: Any, sym: dict[str, Any]) -> bool:
-    """True for a column top-face polygon this module synthesized (its owner
-    in ``sym`` is a compiled Stack). Lets the compiler build it with
-    ``top_face_polygon`` instead of SymPy's validating constructor."""
-    owner = getattr(stmt, "_synthesized_by", None)
-    return owner is not None and isinstance(sym.get(owner), Stack)
+# --- registry hooks: compile, query, checks, canvas extent ------------------------
+
+def compile_statement(stmt: ir.BlockStack, ref: Any, ev: Any) -> Stack:
+    """Registry ``compile`` hook. Its top faces are ``trusted_faces``: a top
+    face is a lattice unit square under a non-degenerate projection
+    (``projection_for`` rejects degenerate views), so its four vertices are
+    distinct and no three are collinear, and the compiler may skip SymPy's
+    validating constructor for it (which dominated compile time on exact
+    radical coordinates: seconds for a few hundred columns)."""
+    return compile_stack(stmt, ref(stmt.origin))
 
 
-def top_face_polygon(vertices: list[spg.Point]) -> spg.Polygon:
-    """A column top face as a SymPy Polygon WITHOUT ``Polygon.__new__``'s
-    duplicate and collinearity pruning: on exact radical coordinates that
-    pruning simplifies every vertex triple, which dominated compile time
-    (seconds for a few hundred columns). A top face is a lattice unit square
-    under a non-degenerate projection (``projection_for`` rejects degenerate
-    views), so its four vertices are distinct and no three are collinear: the
-    validating constructor would return the same four vertices in the same
-    order. The object is an ordinary ``Polygon`` (area, centroid, sides,
-    containment all work)."""
-    from sympy.geometry.entity import GeometryEntity
+def query(obj: Stack) -> dict:
+    """Registry ``query`` hook (query type ``stack``): cube count, volume
+    (cubes are unit cubes), bounding extents (length = columns, width = rows,
+    height = tallest column) and whether the cube set is a height map."""
+    return {
+        "cube_count": obj.cube_count,
+        "volume": obj.volume,
+        "length": obj.length,
+        "width": obj.width,
+        "height": obj.height,
+        "is_height_map": obj.is_height_map,
+    }
 
-    return GeometryEntity.__new__(spg.Polygon, *vertices)
+
+def _evaluate_cube_count(check: ir.CubeCountEquals, sym: dict[str, Any], default_tol: float) -> tuple[bool, str]:
+    """Registry ``evaluate_checks`` hook for ``cube_count_equals`` (integer
+    equality)."""
+    from .checks import UnsupportedOperand
+
+    stack_id, expected = check.stack, check.expected
+    obj = sym.get(stack_id)
+    if type(obj) is not Stack:
+        found = "no such id" if obj is None else type(obj).__name__
+        raise UnsupportedOperand(
+            f"cube_count_equals: {stack_id!r} is not a block stack ({found})"
+        )
+    count = obj.cube_count
+    ok = count == expected
+    msg = "" if ok else (
+        f"Stack {stack_id!r} has {count} cubes != expected {expected}"
+    )
+    return ok, msg
+
+
+EVALUATE_CHECKS = {"cube_count_equals": _evaluate_cube_count}
+
+
+def canvas_extent(stmt: ir.BlockStack, point_xy: Any) -> list[tuple[float, float]]:
+    """Registry ``canvas_extent`` hook: the bounding box's projected corners,
+    which contain every lattice point. Empty for an invalid statement
+    (compile reports it)."""
+    extents = bounding_extents(stmt)
+    if extents is None:
+        return []
+    return box_extent(stmt, point_xy, extents)
 
 
 def stack_position(obj: Any) -> tuple[float, float] | None:

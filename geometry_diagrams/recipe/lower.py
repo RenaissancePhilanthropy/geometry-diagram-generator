@@ -35,7 +35,6 @@ from ..ir.ir import (
     RectangularPrism, VolumeEquals, TrueLengthEquals, BlockStack, CubeCountEquals,
 )
 from ..ir import prism as _prism
-from ..ir import stack as _stack
 from .dsl import (
     RecipeDSL, DSLAnnotations,
     CheckDistance, CheckParallel, CheckPerpendicular, CheckAngleEquals,
@@ -133,8 +132,10 @@ class _Lowerer:
         # and its own Segment def is kept only when another definition, check
         # or render op still names the id (so such references resolve).
         self._edge_aliases: dict[str, tuple[str, str]] = {}
-        # Projected prism corners (x, y) the auto canvas must contain
-        self._prism_extent: list[tuple[float, float]] = []
+        # Points (x, y) the auto canvas must contain beyond the solved points:
+        # each added definition's registry ``canvas_extent`` (a prism's or a
+        # block stack's projected bounding-box corners), see ``_add``.
+        self._extent_points: list[tuple[float, float]] = []
 
     # ------------------------------------------------------------------
     # Entry point
@@ -535,30 +536,16 @@ class _Lowerer:
             depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
         )
         try:
-            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
+            _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
         except ValueError as exc:
             raise LoweringError(f"prism {op.id!r}: {exc}") from exc
-        self._add(stmt)
+        self._add(stmt)  # canvas fit: the prism's registry canvas_extent hook
         self._drawable.add(op.id)
         self._prisms[op.id] = stmt
         names = _prism.corner_names(stmt)
         if op.vertex_names is not None and len(names) == 8:
             # Named corners join the labelled points; default ids stay unlabeled.
             self._point_ids.extend(names[bits] for bits in _prism.CORNER_BITS)
-        try:
-            dims = [float(v) for v in (op.length, op.height, op.width)]
-        except (TypeError, ValueError):
-            return  # expression dimensions: extent unknown, canvas falls back
-        self._add_box_extent(op.origin, proj, dims)
-
-    def _add_box_extent(self, origin_id: str, proj: Any, dims: list[float] | tuple[float, ...]) -> None:
-        """Record the projected corners of a box at ``origin_id`` for the canvas fit."""
-        origin = self._origin_xy(origin_id)
-        if origin is None:
-            return
-        for bits in _prism.CORNER_BITS:
-            dx, dy = proj.offset(*(b * d for b, d in zip(bits, dims)))
-            self._prism_extent.append((origin[0] + float(dx), origin[1] + float(dy)))
 
     def _lower_stack(self, op: StackOp) -> None:
         stmt = BlockStack(
@@ -567,16 +554,11 @@ class _Lowerer:
             front_color=op.front_color, side_color=op.side_color, top_color=op.top_color,
         )
         try:
-            proj = _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
+            _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
         except ValueError as exc:
             raise LoweringError(f"stack {op.id!r}: {exc}") from exc
-        self._add(stmt)
+        self._add(stmt)  # canvas fit: the stack's registry canvas_extent hook
         self._drawable.add(op.id)
-        # Canvas fit: the bounding box's projected corners contain every lattice
-        # point. An invalid statement is reported by compile, not here.
-        extents = _stack.bounding_extents(stmt)
-        if extents is not None:
-            self._add_box_extent(op.origin, proj, extents)
 
     def _origin_xy(self, pid: str) -> tuple[float, float] | None:
         if pid in self._coord_floats:
@@ -1542,10 +1524,10 @@ class _Lowerer:
         large circle whose center is the only point in coord_floats doesn't
         produce a tiny canvas that clips most of the circle.
         """
-        if not self._coord_floats and not self._prism_extent:
+        if not self._coord_floats and not self._extent_points:
             return Canvas()  # default
-        xs = [c[0] for c in self._coord_floats.values()] + [c[0] for c in self._prism_extent]
-        ys = [c[1] for c in self._coord_floats.values()] + [c[1] for c in self._prism_extent]
+        xs = [c[0] for c in self._coord_floats.values()] + [c[0] for c in self._extent_points]
+        ys = [c[1] for c in self._coord_floats.values()] + [c[1] for c in self._extent_points]
         for d in self._defs:
             if d.kind == "circle_center_radius":
                 center = self._coord_floats.get(d.center)
@@ -1587,6 +1569,9 @@ class _Lowerer:
 
     def _add(self, stmt: DefStmt) -> None:
         self._defs.append(stmt)
+        # A registered kind that spans more than its points (a solid) records
+        # the points the auto canvas must contain (registry canvas_extent).
+        self._extent_points.extend(DERIVED_REGISTRY.canvas_extent(stmt, self._origin_xy))
 
 
 # ---------------------------------------------------------------------------

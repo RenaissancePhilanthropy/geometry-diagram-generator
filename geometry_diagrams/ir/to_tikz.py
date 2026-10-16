@@ -9,11 +9,11 @@ import sympy as sp
 import sympy.geometry as spg
 
 from . import ir
-from .derived import effective_diagram, lower_render
-from .prism import away_normal, corner_segment_center
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
     COLOR_STYLE_KEYS,
+    away_normal,
     bare_color_key,
     ordered_polygon_paints,
     tikz_color,
@@ -671,7 +671,7 @@ def _emit_op(
                 return out
             a, b = endpoints
             opts = [f"pos={pos}"] if pos is not None else []
-            anchor = _prism_label_anchor(seg_id, a, b, sym)
+            anchor = _away_label_anchor(seg_id, a, b, sym)
             if anchor is not None:
                 opts.append(anchor)
             sopts = f"[{','.join(opts)}]" if opts else ""
@@ -768,16 +768,17 @@ def _emit_op(
 # Style helpers (TikZ-specific)
 # ---------------------------------------------------------------------------
 
-def _prism_label_anchor(seg_id: str, a: str, b: str, sym: SymTable) -> str | None:
+def _away_label_anchor(seg_id: str, a: str, b: str, sym: SymTable) -> str | None:
     """TikZ placement option (``left``, ``below right``, ...) for a label on a
-    segment joining two corners of one prism: the dimension-label rule of the
-    SVG renderer (the side away from the prism's projected center), as a
-    node anchor. A diagonal option puts the whole node in the quadrant of the
-    away normal, a straight one is used only for an axis-aligned normal; in
-    both cases the node lies wholly on the away side of the segment's line.
-    None for any other segment (unchanged output) and when the center is on
-    the segment's line."""
-    center = corner_segment_center(sym, seg_id)
+    segment a registered kind names a point to avoid for (the registry's
+    ``label_away_from`` hook; e.g. a segment joining two corners of one
+    prism): the label rule of the SVG renderer (the side away from that
+    point, e.g. the prism's projected center), as a node anchor. A diagonal
+    option puts the whole node in the quadrant of the away normal, a straight
+    one is used only for an axis-aligned normal; in both cases the node lies
+    wholly on the away side of the segment's line. None for any other segment
+    (unchanged output) and when the point is on the segment's line."""
+    center = DERIVED_REGISTRY.label_away_from(sym, seg_id)
     if center is None:
         return None
     pa = (_f(sym[a].x), _f(sym[a].y))

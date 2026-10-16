@@ -1788,6 +1788,22 @@ def label_in_polygon(
     label_text(text, at=(x, y), font_size=target_font_size)
 
 
+def _has_registered_position(handle: object) -> bool:
+    """True when ``handle``'s id names a recorded definition whose kind the
+    derived-entity registry gives a ``position`` hook (a solid's handle:
+    Prism, Stack), i.e. a free-text centroid anchor the renderers can place."""
+    from geometry_diagrams.ir.derived import REGISTRY as DERIVED_REGISTRY
+
+    handle_id = getattr(handle, "id", None)
+    if not isinstance(handle_id, str):
+        return False
+    try:
+        defs = get_builder()._defs
+    except RuntimeError:
+        return False
+    return any(d.id == handle_id and DERIVED_REGISTRY.has_position(d) for d in defs)
+
+
 def label_text(
     text: str,
     at: "tuple[float, float] | None" = None,
@@ -1826,13 +1842,18 @@ def label_text(
     has_centroid = centroid_of is not None
     if has_at == has_centroid:
         raise ValueError("label_text() requires exactly one of 'at' or 'centroid_of'")
-    # Allowlist, not a blocklist: only these six shapes have a centroid the
+    # Allowlist, not a blocklist: only these six shapes, plus a handle whose
+    # definition's registered kind supplies a position (a solid: Prism,
+    # Stack; see _has_registered_position), have a centroid the
     # LabelFreeText renderer can compute. Naming the *bad* types instead
     # would silently let anything else with an `.id` through -- notably the
     # composite handles (Median/Altitude/PerpendicularBisectorLine), whose
     # `.id` is their underlying segment/line def, so the label would land on
     # that sub-object's own midpoint rather than raising.
-    if has_centroid and not isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline, Prism, Stack)):
+    if has_centroid and not (
+        isinstance(centroid_of, (Triangle, Polygon, Circle, Ellipse, Sector, Polyline))
+        or _has_registered_position(centroid_of)
+    ):
         type_name = type(centroid_of).__name__
         article = "an" if type_name[0] in "AEIOU" else "a"
         if isinstance(centroid_of, (Point, AngleRef)):

@@ -13,8 +13,7 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
-from .stack import Stack
-from .prism import Prism, true_length as prism_true_length
+from .derived import REGISTRY as DERIVED_REGISTRY
 from .to_sympy import SymTable
 
 
@@ -51,15 +50,16 @@ def query_angle(sym: SymTable, a: str, vertex: str, b: str) -> dict:
 
 
 def query_length(sym: SymTable, segment_id: str) -> dict:
-    """``length`` is the drawn (projected 2D) length. A segment joining two
-    corners of one prism also gets ``true_length``, its 3D length (an edge
-    gives one dimension; a face diagonal or the space diagonal the Euclidean
-    combination)."""
+    """``length`` is the drawn (projected 2D) length. A segment a registered
+    kind gives a true length (the registry's ``true_length`` hook: a segment
+    joining two corners of one prism) also gets ``true_length``, its 3D
+    length (an edge gives one dimension; a face diagonal or the space
+    diagonal the Euclidean combination)."""
     obj = _get(sym, segment_id)
     if not isinstance(obj, spg.Segment):
         raise TypeError(f"{segment_id!r} is not a Segment (got {type(obj).__name__})")
     out = {"length": float(obj.length.evalf())}
-    true = prism_true_length(sym, segment_id)
+    true = DERIVED_REGISTRY.true_length(sym, segment_id)
     if true is not None:
         out["true_length"] = float(true.evalf())
     return out
@@ -86,43 +86,34 @@ def query_perimeter(sym: SymTable, obj_id: str) -> dict:
     return {"perimeter": float(obj.perimeter.evalf())}
 
 
+def query_registered(sym: SymTable, query_type: str, obj_id: str) -> dict:
+    """The ``query_type`` query a registered kind answers (the registry's
+    ``query_type``/``query`` hooks: ``prism``, ``stack``) on ``obj_id``.
+    Raises KeyError for an unknown id or query type and TypeError for an
+    object of another type."""
+    entry = DERIVED_REGISTRY.query_entry(query_type)
+    if entry is None:
+        raise KeyError(f"Unknown query type: {query_type!r}")
+    obj = _get(sym, obj_id)
+    if type(obj) is not entry.object_type:
+        raise TypeError(
+            f"{obj_id!r} is not a {entry.object_type.__name__} (got {type(obj).__name__})"
+        )
+    return entry.query(obj)
+
+
 def query_prism(sym: SymTable, prism_id: str) -> dict:
     """True dimensions and derived measures of a rectangular prism, plus its
     corner ids keyed by corner bits (length, height, width), e.g. "100" is
     the corner one length along from the origin."""
-    obj = _get(sym, prism_id)
-    if not isinstance(obj, Prism):
-        raise TypeError(f"{prism_id!r} is not a Prism (got {type(obj).__name__})")
-
-    def num(v: Any) -> float:
-        return float(v.evalf())
-
-    return {
-        "length": num(obj.length),
-        "width": num(obj.width),
-        "height": num(obj.height),
-        "volume": num(obj.volume),
-        "base_area": num(obj.base_area),
-        "surface_area": num(obj.surface_area),
-        "corner_ids": {"".join(map(str, bits)): cid for bits, cid in obj.corner_ids.items()},
-    }
+    return query_registered(sym, "prism", prism_id)
 
 
 def query_stack(sym: SymTable, stack_id: str) -> dict:
     """Cube count, volume (cubes are unit cubes), bounding extents (length =
     columns, width = rows, height = tallest column) and whether the cube set is
     a height map."""
-    obj = _get(sym, stack_id)
-    if not isinstance(obj, Stack):
-        raise TypeError(f"{stack_id!r} is not a Stack (got {type(obj).__name__})")
-    return {
-        "cube_count": obj.cube_count,
-        "volume": obj.volume,
-        "length": obj.length,
-        "width": obj.width,
-        "height": obj.height,
-        "is_height_map": obj.is_height_map,
-    }
+    return query_registered(sym, "stack", stack_id)
 
 
 def list_objects(sym: SymTable) -> dict[str, str]:

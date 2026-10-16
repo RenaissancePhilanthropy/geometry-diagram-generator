@@ -12,8 +12,6 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
-from .prism import compile_prism
-from .stack import compile_stack, is_top_face, top_face_polygon
 from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
 from .refs import def_references
 
@@ -520,6 +518,19 @@ def compile_one_attributed(
         raise type(e)(owner, f"derived '{stmt.id}' of '{owner}': {detail}") from e
 
 
+def _trusted_polygon(vertices: list[spg.Point]) -> spg.Polygon:
+    """A face of a ``trusted_faces`` kind (derived registry) as a SymPy
+    Polygon WITHOUT ``Polygon.__new__``'s duplicate and collinearity pruning:
+    on exact radical coordinates that pruning simplifies every vertex triple
+    (seconds for a block stack's few hundred column tops). The kind
+    guarantees its faces need no pruning, so the validating constructor would
+    return the same vertices in the same order. The object is an ordinary
+    ``Polygon`` (area, centroid, sides, containment all work)."""
+    from sympy.geometry.entity import GeometryEntity
+
+    return GeometryEntity.__new__(spg.Polygon, *vertices)
+
+
 # ---------------------------------------------------------------------------
 # Single-statement compiler
 # ---------------------------------------------------------------------------
@@ -540,6 +551,12 @@ def _compile_one(
     def ref(obj_id: str) -> Any:
         return _resolve(sym, obj_id, def_id=did, all_def_ids=all_def_ids)
 
+    entry = DERIVED_REGISTRY.get(stmt)
+    if entry is not None and entry.compile is not None:
+        # A registered kind that compiles itself (a solid: rectangular_prism,
+        # block_stack), see derived.DerivedConstruction.compile.
+        return entry.compile(stmt, ref, ev)
+
     match stmt:
         # --- Points ---
         case ir.PointFixed(x=x, y=y):
@@ -556,12 +573,6 @@ def _compile_one(
         case ir.PointOn(on=on_id, how=how):
             obj = ref(on_id)
             return _point_on_object(obj, how, sym, rng, did)
-
-        case ir.RectangularPrism(origin=origin_id):
-            return compile_prism(stmt, ref(origin_id), ev)
-
-        case ir.BlockStack(origin=origin_id):
-            return compile_stack(stmt, ref(origin_id))
 
         case ir.PointMidpoint(p=p_id, q=q_id):
             p, q = ref(p_id), ref(q_id)
@@ -1006,8 +1017,8 @@ def _compile_one(
                 )
             return result
 
-        case ir.Polygon(points=point_ids) if is_top_face(stmt, sym):
-            return top_face_polygon([ref(pid) for pid in point_ids])
+        case ir.Polygon(points=point_ids) if DERIVED_REGISTRY.is_trusted_face(stmt, sym):
+            return _trusted_polygon([ref(pid) for pid in point_ids])
 
         case ir.Polygon(points=point_ids):
             pts = [ref(pid) for pid in point_ids]

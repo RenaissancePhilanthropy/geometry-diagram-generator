@@ -23,8 +23,9 @@ from ..ir.errors import IRCompileError
 from ..features import require_features, tagged_insertions
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
-    query_length, query_radius, query_area, query_perimeter, query_prism, query_stack, list_objects,
+    query_length, query_radius, query_area, query_perimeter, query_registered, list_objects,
 )
+from ..ir.derived import REGISTRY as DERIVED_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +101,11 @@ def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
             return json.dumps(query_area(sym, _get(args, "object", "id")))
         elif query_type == "perimeter":
             return json.dumps(query_perimeter(sym, _get(args, "object", "id")))
-        elif query_type == "prism":
-            return json.dumps(query_prism(sym, _get(args, "prism", "id", "object")))
-        elif query_type == "stack":
-            return json.dumps(query_stack(sym, _get(args, "stack", "id", "object")))
+        elif DERIVED_REGISTRY.query_entry(query_type) is not None:
+            # A query a registered kind answers ("prism", "stack"): the id is
+            # params[query_type], "id" or "object".
+            obj_id = _get(args, query_type, "id", "object")
+            return json.dumps(query_registered(sym, query_type, obj_id))
         else:
             return json.dumps({"error": f"Unknown query_type: {query_type}"})
     except Exception as e:

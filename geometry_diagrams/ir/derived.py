@@ -27,11 +27,65 @@ each such draw, in place, by the ordered render operations the hook returns.
 Before lowering it rejects render operations that name a kind's id where it
 cannot work (``render_ref_error``; compile_defs runs the same check) and
 collects the kinds' non-fatal ``render_warnings``.
+
+The full hook set (fields of ``DerivedConstruction``; all but the first four
+optional) and who consumes each:
+
+- ``kind``, ``id_forms``, ``owned_ids``, ``register``: dependency ordering,
+  dependents tracking and post-compile registration (to_sympy, refs).
+- ``position``: label centroids, the entity manifest, edit diagnostics
+  (render_util); also derives pydsl's ``label_text(centroid_of=...)``
+  acceptance of a handle (``has_position``).
+- ``vertex_ids``, ``center_id``: drawing a constructed polygon / naming a
+  tangent circle's center (renderers, recipe lowering).
+- ``synthesize``: the effective definition view (compile, renderers).
+- ``lower_draw``, ``render_ref_error``, ``render_warnings``: the render
+  lowering point (``lower_render``) and compile's render-ref check.
+- ``exclusive``: owned-id uniqueness (``check_exclusive_ids``).
+- ``feature``: the generation-surface gate (features.require_features).
+- ``index``: every compiled statement, e.g. a prism's corner-segment index.
+
+Solid hooks, for a kind whose compiled object is not a SymPy shape (today
+``rectangular_prism`` and ``block_stack``):
+
+- ``compile``: to_sympy's single-statement compiler, before its own dispatch.
+- ``object_type``: recognizes the compiled object (``entry_for_object``):
+  the query type check, ``trusted_faces``, evals' "any solid" ids.
+- ``query_type`` + ``query``: the agent query tools' dispatch
+  (``structured.dispatch_query`` via ``queries.query_registered``).
+- ``true_length``: the extra ``true_length`` of the ``length`` query.
+- ``evaluate_checks``: check kinds the kind owns (``volume_equals``,
+  ``true_length_equals``, ``cube_count_equals``), evaluated by run_checks.
+- ``check_warnings``: run_checks' warnings collector (a prism's projection
+  warning on a generic 2D length check).
+- ``label_away_from``: both renderers' segment-label placement (a prism
+  dimension label goes on the side away from the prism's center).
+- ``pipeline_warnings``: run_ir_pipeline's warnings (a prism dimension label
+  contradicting the true length).
+- ``canvas_extent``: the recipe lowerer's auto canvas fit (``_Lowerer._add``).
+- ``trusted_faces``: compile builds the kind's synthesized polygons without
+  SymPy's validating constructor, and the angle-mark check skips their sides
+  (a block stack's hundreds of top faces).
+
+Deliberately left OUT of the registry (each a kind's own authoring surface,
+not a consumer of compiled geometry): the IR schema classes and their union
+(ir.py: ``RectangularPrism``, ``BlockStack`` and the solid check kinds), the
+recipe DSL ops and their lowering (recipe/dsl.py, ``_Lowerer._lower_prism`` /
+``_lower_stack``, including a ``segment`` op reusing a prism edge), the pydsl
+``prism()``/``stack()`` functions, their handles and the builder's prism-edge
+reuse for ``segment()``, the per-kind prompt and DSL documentation text and
+the hand-written solids lines of the query-tool descriptions (each strategy
+words them in its own layout; they stay byte-identical, see
+``structured.QUERY_TOOL_SOLIDS_INSERTIONS``), the eval vocabulary
+(``prism_*``/``stack_*`` property types, ``solid_count``) and the pydsl
+``assert_volume``/``assert_cube_count``/``assert_true_length`` wrappers.
+Adding a new solid kind still means adding those surfaces; the consumers of
+compiled geometry above need no edit.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import sympy.geometry as spg
 
@@ -131,6 +185,57 @@ class DerivedConstruction:
     # render_warnings: (statement, diagram) -> non-fatal render warnings,
     #     appended to the renderer's ``warnings`` list by lower_render.
     render_warnings: Callable[[Any, Any], list[str]] | None = None
+    # --- solid hooks: a kind whose compiled object is not a SymPy shape ---
+    # compile: (statement, ref, ev) -> the compiled object. ``ref`` resolves a
+    #     referenced id in the symbol table, ``ev`` evaluates an expression
+    #     field. compile_one calls it before its own per-kind dispatch.
+    compile: Callable[[Any, Callable[[str], Any], Callable[[Any], Any]], Any] | None = None
+    # object_type: the exact class of the compiled object (``entry_for_object``
+    #     recognizes a symbol-table object by it; its name appears in the
+    #     query's wrong-type error). Unique across kinds.
+    object_type: type | None = None
+    # query_type / query: the agent query tools' ``query_type`` name (unique
+    #     across kinds) and compiled object -> JSON-able result dict. The
+    #     dispatch takes the id from params[query_type], "id" or "object" and
+    #     raises a TypeError for an object of another type (needs object_type).
+    query_type: str | None = None
+    query: Callable[[Any], dict] | None = None
+    # true_length: (symbol table, segment id) -> exact true (3D) length of a
+    #     segment that belongs to one of this kind's objects, or None. The
+    #     ``length`` query adds it as ``true_length``.
+    true_length: Callable[[dict[str, Any], str], Any] | None = None
+    # evaluate_checks: check kind -> (check, symbol table, default tolerance)
+    #     -> (passed, failure message). For check kinds that only make sense
+    #     on this kind's objects (a check kind is owned by one kind). May raise
+    #     checks.UnsupportedOperand for a deliberate operand rejection.
+    evaluate_checks: Mapping[str, Callable[[Any, dict[str, Any], float], "tuple[bool, str]"]] = field(
+        default_factory=dict
+    )
+    # check_warnings: (any check, symbol table) -> non-fatal warnings about
+    #     how a generic check measured this kind's geometry (run_checks
+    #     appends them to its ``warnings`` collector; results never change).
+    check_warnings: Callable[[Any, dict[str, Any]], list[str]] | None = None
+    # label_away_from: (symbol table, segment id) -> a point (x, y) the
+    #     segment's label must be placed AWAY from (both renderers put the
+    #     label on the far side of the segment's line), or None for a segment
+    #     the kind has no rule for.
+    label_away_from: Callable[[dict[str, Any], str], "tuple[float, float] | None"] | None = None
+    # pipeline_warnings: (diagram, symbol table) -> non-fatal warnings that
+    #     need both the render operations and the compiled geometry (e.g. a
+    #     label text contradicting a measure). Called once per kind by
+    #     run_ir_pipeline after the checks.
+    pipeline_warnings: Callable[[Any, dict[str, Any]], list[str]] | None = None
+    # canvas_extent: (statement, point_xy) -> points (x, y) the recipe
+    #     lowerer's auto canvas must contain for this statement; ``point_xy``
+    #     maps a point id to its lowering-time (x, y) or None. Empty when the
+    #     extent is unknown (e.g. expression dimensions).
+    canvas_extent: Callable[[Any, Callable[[str], Any]], list[tuple[float, float]]] | None = None
+    # trusted_faces: the polygons this kind synthesizes are valid by
+    #     construction and are faces of a solid, not 2D figures: compile
+    #     builds them without SymPy's validating (vertex-pruning) constructor,
+    #     and the angle-mark check does not treat their sides as lines a
+    #     point lies on. Both are speed-ups for kinds with many faces.
+    trusted_faces: bool = False
 
 
 def render_refs(op: Any) -> list[tuple[str, str]]:
@@ -179,12 +284,112 @@ class DerivedRegistry:
                 raise ValueError(
                     f"derived id form {form!r} claimed by both {other!r} and {construction.kind!r}"
                 )
+        for entry in self._by_kind.values():
+            claims = (
+                ("object type", construction.object_type, entry.object_type),
+                ("query type", construction.query_type, entry.query_type),
+            )
+            for what, mine, theirs in claims:
+                if mine is not None and mine == theirs:
+                    raise ValueError(
+                        f"{what} {mine!r} claimed by both {entry.kind!r} and {construction.kind!r}"
+                    )
+            for check_kind in construction.evaluate_checks:
+                if check_kind in entry.evaluate_checks:
+                    raise ValueError(
+                        f"check kind {check_kind!r} claimed by both {entry.kind!r} and "
+                        f"{construction.kind!r}"
+                    )
+        if construction.query is not None and construction.object_type is None:
+            raise ValueError(f"{construction.kind!r}: a query hook needs object_type")
         self._by_kind[construction.kind] = construction
         for form in construction.id_forms:
             self._form_owner[form] = construction.kind
 
+    def unregister(self, kind: str) -> None:
+        """Remove a registered kind and free its id forms (for tests that
+        register a temporary kind; the default kinds stay registered)."""
+        self._by_kind.pop(kind)
+        self._form_owner = {f: k for f, k in self._form_owner.items() if k != kind}
+
     def get(self, stmt: Any) -> DerivedConstruction | None:
         return self._by_kind.get(getattr(stmt, "kind", None))
+
+    # --- solid-hook lookups (see the hook fields on DerivedConstruction) ---
+
+    def entry_for_object(self, obj: Any) -> DerivedConstruction | None:
+        """The kind whose compiled objects have exactly ``obj``'s type."""
+        for entry in self._by_kind.values():
+            if entry.object_type is not None and type(obj) is entry.object_type:
+                return entry
+        return None
+
+    def query_entry(self, query_type: str) -> DerivedConstruction | None:
+        """The kind that answers the ``query_type`` agent query, if any."""
+        for entry in self._by_kind.values():
+            if entry.query is not None and entry.query_type == query_type:
+                return entry
+        return None
+
+    def true_length(self, sym: dict[str, Any], segment_id: str) -> Any:
+        """The first true length a kind gives for the segment; None if none does."""
+        for entry in self._by_kind.values():
+            if entry.true_length is not None:
+                true = entry.true_length(sym, segment_id)
+                if true is not None:
+                    return true
+        return None
+
+    def check_evaluator(self, check_kind: str) -> Callable[..., "tuple[bool, str]"] | None:
+        for entry in self._by_kind.values():
+            evaluate = entry.evaluate_checks.get(check_kind)
+            if evaluate is not None:
+                return evaluate
+        return None
+
+    def check_warnings(self, check: Any, sym: dict[str, Any]) -> list[str]:
+        out: list[str] = []
+        for entry in self._by_kind.values():
+            if entry.check_warnings is not None:
+                out.extend(entry.check_warnings(check, sym))
+        return out
+
+    def label_away_from(self, sym: dict[str, Any], segment_id: str) -> "tuple[float, float] | None":
+        for entry in self._by_kind.values():
+            if entry.label_away_from is not None:
+                point = entry.label_away_from(sym, segment_id)
+                if point is not None:
+                    return point
+        return None
+
+    def pipeline_warnings(self, diagram: Any, sym: dict[str, Any]) -> list[str]:
+        out: list[str] = []
+        for entry in self._by_kind.values():
+            if entry.pipeline_warnings is not None:
+                out.extend(entry.pipeline_warnings(diagram, sym))
+        return out
+
+    def canvas_extent(self, stmt: Any, point_xy: Callable[[str], Any]) -> list[tuple[float, float]]:
+        entry = self.get(stmt)
+        if entry is None or entry.canvas_extent is None:
+            return []
+        return entry.canvas_extent(stmt, point_xy)
+
+    def is_trusted_face(self, stmt: Any, sym: dict[str, Any]) -> bool:
+        """True for a polygon synthesized by a ``trusted_faces`` kind whose
+        owner has compiled (its owner's object is in ``sym``)."""
+        owner = getattr(stmt, "_synthesized_by", None)
+        if owner is None or getattr(stmt, "kind", None) != "polygon":
+            return False
+        entry = self.entry_for_object(sym.get(owner))
+        return entry is not None and entry.trusted_faces
+
+    def has_position(self, stmt: Any) -> bool:
+        """True when ``stmt``'s kind supplies a position for its compiled
+        object (a centroid anchor for free text, e.g. pydsl's
+        ``label_text(centroid_of=...)``)."""
+        entry = self.get(stmt)
+        return entry is not None and entry.position is not None
 
     def owner_map(self, stmts: list[Any]) -> dict[str, str]:
         """derived id -> id of the owning statement, covering both owned ids
@@ -458,6 +663,16 @@ def _build_default_registry() -> DerivedRegistry:
         index=_prism.index_corner_segment,
         render_ref_error=_prism.render_ref_error,
         render_warnings=_prism.render_warnings,
+        compile=_prism.compile_statement,
+        object_type=_prism.Prism,
+        query_type="prism",
+        query=_prism.query,
+        true_length=_prism.true_length,
+        evaluate_checks=_prism.EVALUATE_CHECKS,
+        check_warnings=_prism.projection_check_warnings,
+        label_away_from=_prism.corner_segment_center,
+        pipeline_warnings=_prism.label_dimension_warnings,
+        canvas_extent=_prism.canvas_extent,
     ))
     reg.register(DerivedConstruction(
         "block_stack", ("{id}_top_{x}_{z}", "__{id}_l{x}_{y}_{z}"),
@@ -470,6 +685,13 @@ def _build_default_registry() -> DerivedRegistry:
         feature="solids",
         render_ref_error=_stack.render_ref_error,
         render_warnings=_stack.render_warnings,
+        compile=_stack.compile_statement,
+        object_type=_stack.Stack,
+        query_type="stack",
+        query=_stack.query,
+        evaluate_checks=_stack.EVALUATE_CHECKS,
+        canvas_extent=_stack.canvas_extent,
+        trusted_faces=True,
     ))
     return reg
 

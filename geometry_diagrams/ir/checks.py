@@ -7,9 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .derived import effective_defs
-from .prism import Prism, true_length as prism_true_length
-from .stack import Stack, is_top_face
+from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
     EllipticalArc,
@@ -22,11 +20,12 @@ from .to_sympy import (
 
 
 DEFAULT_TOL = 5e-3
-# Default relative tolerance of the prism measure checks (volume_equals,
-# true_length_equals). Prism dimensions are exact, so an off-by-one answer
-# must fail (DEFAULT_TOL would pass 299 against 300). A check's own ``tol``
-# overrides it; the run-wide default passed to run_checks does not apply to
-# these two kinds, and every other kind keeps DEFAULT_TOL.
+# Default relative tolerance of the solid measure checks (prism volume_equals
+# and true_length_equals, evaluated by the prism's registry hooks through
+# _near_exact). Prism dimensions are exact, so an off-by-one answer must fail
+# (DEFAULT_TOL would pass 299 against 300). A check's own ``tol`` overrides
+# it; the run-wide default passed to run_checks does not apply to these two
+# kinds, and every other kind keeps DEFAULT_TOL.
 EXACT_MEASURE_TOL = 1e-9
 
 
@@ -57,51 +56,16 @@ def run_checks(
     """Evaluate each Check against the compiled symbol table.
 
     ``warnings``: optional collector (the pipeline passes its warnings list).
-    Check-stage warnings are appended to it; they never change a result. Today
-    the only one is the projection warning (see ``_projection_warning``).
+    Check-stage warnings are appended to it; they never change a result. They
+    come from the registered kinds' ``check_warnings`` hooks (today the
+    prism's projection warning: a generic 2D length check measured a prism
+    segment's drawn projection, not its true length).
     """
     results = [_check_one(c, sym, tol) for c in checks]
     if warnings is not None:
         for check in checks:
-            note = _projection_warning(check, sym)
-            if note:
-                warnings.append(note)
+            warnings.extend(DERIVED_REGISTRY.check_warnings(check, sym))
     return results
-
-
-# Generic 2D checks that measure segment lengths, and the segment fields they
-# measure. On a segment joining two prism corners they measure the drawn
-# projection, so they warn (their result is unchanged).
-def _length_check_segments(check: Any) -> list[str]:
-    match check:
-        case ir.DistanceEquals(seg=seg):
-            return [seg]
-        case ir.EqualLength(segs=segs):
-            return list(segs)
-        case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
-            return [s1, s2, s3, s4]
-    return []
-
-
-def _projection_warning(check: Any, sym: SymTable) -> str | None:
-    """A warning when a generic 2D length check measures a segment joining two
-    corners of one prism: it measured the projection, not the true length."""
-    parts = []
-    for seg in dict.fromkeys(_length_check_segments(check)):
-        true = prism_true_length(sym, seg)
-        obj = sym.get(seg)
-        if true is None or not isinstance(obj, spg.Segment):
-            continue
-        parts.append(
-            f"{seg!r} (drawn {float(obj.length.evalf()):.4g}, true {float(true.evalf()):.10g})"
-        )
-    if not parts:
-        return None
-    return (
-        f"Check {check.kind!r} measured the projected 2D length of prism segment(s) "
-        f"{', '.join(parts)}, not the true 3D length; use true_length_equals to check "
-        f"a prism's true length."
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -322,47 +286,6 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
                 )
 
-            case ir.VolumeEquals(prism=prism_id, expected=expected):
-                obj = sym[prism_id]
-                if type(obj) is not Prism:
-                    raise UnsupportedOperand(
-                        f"volume_equals: {prism_id!r} is not a prism "
-                        f"(got {type(obj).__name__})"
-                    )
-                volume = float(obj.volume.evalf())
-                ok = _near_exact(volume, expected, check.tol)
-                msg = "" if ok else (
-                    f"Prism {prism_id!r} volume {volume:.10g} != expected {expected:.10g}"
-                )
-
-            case ir.CubeCountEquals(stack=stack_id, expected=expected):
-                obj = sym.get(stack_id)
-                if type(obj) is not Stack:
-                    found = "no such id" if obj is None else type(obj).__name__
-                    raise UnsupportedOperand(
-                        f"cube_count_equals: {stack_id!r} is not a block stack ({found})"
-                    )
-                count = obj.cube_count
-                ok = count == expected
-                msg = "" if ok else (
-                    f"Stack {stack_id!r} has {count} cubes != expected {expected}"
-                )
-
-            case ir.TrueLengthEquals(seg=seg, expected=expected):
-                sym[seg]  # unknown id: the usual KeyError failure
-                true = prism_true_length(sym, seg)
-                if true is None:
-                    raise UnsupportedOperand(
-                        f"true_length_equals: segment {seg!r} does not join two corners "
-                        f"of one prism; true length is defined only for those (use "
-                        f"distance_equals for a 2D length)"
-                    )
-                length = float(true.evalf())
-                ok = _near_exact(length, expected, check.tol)
-                msg = "" if ok else (
-                    f"Segment {seg!r} true length {length:.10g} != expected {expected:.10g}"
-                )
-
             case ir.CongruentArcs(arcs=arcs):
                 ok, msg = _check_congruent_arcs(arcs, sym, t)
 
@@ -394,6 +317,12 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                     f"Circles {c1!r} and {c2!r} are not tangent: "
                     f"center distance={d:.4f}, r1={r1:.4f}, r2={r2:.4f}"
                 )
+
+            case _ if (evaluate := DERIVED_REGISTRY.check_evaluator(check.kind)) is not None:
+                # A check kind owned by a registered kind (volume_equals,
+                # true_length_equals, cube_count_equals: see the registry's
+                # ``evaluate_checks`` hook).
+                ok, msg = evaluate(check, sym, default_tol)
 
             case _:
                 # Unknown check kind — pass through (forward-compatible)
@@ -649,13 +578,14 @@ def _build_linear_pairs(
         # be on that side structurally, so it needs its own synthetic ids —
         # reusing the polygon's oid would silently merge into (and be
         # shadowed by) the structural entry already keyed on that oid.
-        # A block stack's column top faces are skipped: up to 400 of them,
-        # each side an exact radical segment, would make this pass test every
-        # point against 1600 segments (about a minute); they are faces of a
-        # drawn solid, not lines a point is placed on.
-        stack_faces = {stmt.id for stmt in defs if is_top_face(stmt, sym)}
+        # The faces of a ``trusted_faces`` kind (derived registry) are
+        # skipped: a block stack's up to 400 column top faces, each side an
+        # exact radical segment, would make this pass test every point
+        # against 1600 segments (about a minute); they are faces of a drawn
+        # solid, not lines a point is placed on.
+        solid_faces = {stmt.id for stmt in defs if DERIVED_REGISTRY.is_trusted_face(stmt, sym)}
         for oid, obj in sym.items():
-            if isinstance(obj, spg.Polygon) and oid not in stack_faces:
+            if isinstance(obj, spg.Polygon) and oid not in solid_faces:
                 for i, side in enumerate(obj.sides):
                     linear_objs[f"{oid}__contains_side{i}"] = side
         # A Sector/EllipticalSector's two straight radii (center-start and

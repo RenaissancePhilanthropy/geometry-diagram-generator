@@ -1274,3 +1274,30 @@ def build_entity_manifest(
         anonymous.append(entry)
 
     return {"named": named, "anonymous": anonymous}
+
+
+# ---------------------------------------------------------------------------
+# Segment labels placed away from a point (registry ``label_away_from`` hook)
+# ---------------------------------------------------------------------------
+
+def away_normal(
+    a: tuple[float, float], b: tuple[float, float], center: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Unit normal of segment a-b pointing to the side AWAY from ``center``
+    (all three in one coordinate frame). None when ``center`` lies on the
+    segment's line (to within 1e-6 of the segment's length), e.g. a prism's
+    space diagonal, which passes through the box center: there is no away side.
+
+    The placement rule both renderers apply to a segment label when a
+    registered kind's ``label_away_from`` hook names a point for the segment
+    (a prism's center for a segment joining two of its corners: on a
+    silhouette edge the away side is outside the drawn silhouette)."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return None
+    nx, ny = -dy / length, dx / length
+    side = (center[0] - a[0]) * nx + (center[1] - a[1]) * ny
+    if abs(side) <= 1e-6 * length:
+        return None
+    return (-nx, -ny) if side > 0 else (nx, ny)

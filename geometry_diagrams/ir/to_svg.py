@@ -27,9 +27,9 @@ from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
-from .prism import away_normal, corner_segment_center
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
 from .render_util import (
+    away_normal,
     bare_color_key,
     ordered_polygon_paints,
     svg_color,
@@ -99,9 +99,10 @@ _TICK_PX = 5               # px — tick mark half-length
 _TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
 _NUDGE_MARGIN = _FONT_SIZE * 0.35  # px — shared clearance margin for every obstacle-nudge pass
 _NUDGE_EPS = 0.5           # px — small overshoot so a nudge's re-check passes without float jitter
-# px — gap between a prism dimension label's box and its edge: just past the
+# px — gap between an away-placed segment label's box (e.g. a prism dimension
+# label, see the registry's label_away_from hook) and its edge: just past the
 # line-nudge margin, so the obstacle passes leave the label where it is.
-_PRISM_LABEL_GAP = _NUDGE_MARGIN + 2 * _NUDGE_EPS
+_AWAY_LABEL_GAP = _NUDGE_MARGIN + 2 * _NUDGE_EPS
 
 
 def px_per_construction_unit(geo_w: float, geo_h: float) -> float:
@@ -1436,23 +1437,24 @@ def _emit_svg_op(
             bx, by = pt(b)
             # Midpoint, offset perpendicular
             mx, my = (ax + bx) / 2, (ay + by) / 2
-            prism_center = corner_segment_center(sym, seg_id)
+            away_from = DERIVED_REGISTRY.label_away_from(sym, seg_id)
             away = (
-                away_normal((ax, ay), (bx, by), gxy(*prism_center))
-                if prism_center is not None else None
+                away_normal((ax, ay), (bx, by), gxy(*away_from))
+                if away_from is not None else None
             )
             if away is not None:
-                # A segment joining two corners of one prism (a dimension
-                # label): on the side away from the prism's projected center,
-                # the whole label box clear of the segment's line -- wholly
-                # outside the silhouette for a silhouette edge. Measured on
-                # the page, so unequal axis scales are accounted for.
+                # A registered kind names a point this segment's label must
+                # avoid (the registry's ``label_away_from`` hook; e.g. a
+                # prism dimension label avoids the prism's projected center):
+                # the whole label box on the far side of the segment's line --
+                # wholly outside the silhouette for a prism silhouette edge.
+                # Measured on the page, so unequal axis scales are accounted for.
                 ux, uy = away
                 lp = _make_label_placement(
                     x=mx, y=my, text=text or "", color=_color_from_style(style, styles) or "black",
                     anchor="middle", attrs={"data-role": "label-segment", "data-for": seg_id},
                 )
-                clear = abs(ux) * lp.width_est / 2 + abs(uy) * lp.height_est / 2 + _PRISM_LABEL_GAP
+                clear = abs(ux) * lp.width_est / 2 + abs(uy) * lp.height_est / 2 + _AWAY_LABEL_GAP
                 lp.x, lp.y = mx + ux * clear, my + uy * clear
                 if pending_labels is not None:
                     pending_labels.append(lp)

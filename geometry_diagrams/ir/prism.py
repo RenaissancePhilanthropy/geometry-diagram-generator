@@ -393,34 +393,15 @@ def prism_position(obj: Any) -> tuple[float, float] | None:
 # --- labels on corner segments ---------------------------------------------------
 
 def corner_segment_center(sym: dict[str, Any], segment_id: str) -> tuple[float, float] | None:
-    """Projected center of the prism whose two corners ``segment_id`` joins
-    (from the compile-time corner-segment index); None for any other id."""
+    """Registry ``label_away_from`` hook: the projected center of the prism
+    whose two corners ``segment_id`` joins (from the compile-time
+    corner-segment index); None for any other id. Both renderers place the
+    segment's label on the side of its line away from this point (see
+    ``render_util.away_normal``): a dimension label outside the silhouette."""
     hit = corner_segment(sym, segment_id)
     if hit is None:
         return None
     return prism_position(hit[0])
-
-
-def away_normal(
-    a: tuple[float, float], b: tuple[float, float], center: tuple[float, float],
-) -> tuple[float, float] | None:
-    """Unit normal of segment a-b pointing to the side AWAY from ``center``
-    (all three in one coordinate frame). None when ``center`` lies on the
-    segment's line (to within 1e-6 of the segment's length), e.g. a space
-    diagonal, which passes through the box center: there is no away side.
-
-    This is the dimension-label placement rule for segments joining two
-    corners of one prism: on a silhouette edge (every corner on one side of
-    its line) the away side is outside the drawn silhouette."""
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    length = math.hypot(dx, dy)
-    if length == 0:
-        return None
-    nx, ny = -dy / length, dx / length
-    side = (center[0] - a[0]) * nx + (center[1] - a[1]) * ny
-    if abs(side) <= 1e-6 * length:
-        return None
-    return (-nx, -ny) if side > 0 else (nx, ny)
 
 
 # --- render operations on the prism id ------------------------------------------
@@ -495,7 +476,9 @@ _EDGE_AXIS_NAMES = ("length", "height", "width")
 
 
 def label_dimension_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
-    """Warnings for numeric ``label_segment`` texts on a segment joining two
+    """Registry ``pipeline_warnings`` hook.
+
+    Warnings for numeric ``label_segment`` texts on a segment joining two
     corners of one prism whose first number differs from the segment's true
     3D length. A label with no number is schematic and never warns. For an
     edge the message names the dimension (first differing corner bit = length,
@@ -521,6 +504,142 @@ def label_dimension_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
             f"check the label is on the edge of that dimension."
         )
     return out
+
+
+# --- registry hooks: compile, query, checks, canvas extent ---------------------
+
+def compile_statement(stmt: ir.RectangularPrism, ref: Callable[[str], Any], ev: Callable[[Any], sp.Expr]) -> Prism:
+    """Registry ``compile`` hook."""
+    return compile_prism(stmt, ref(stmt.origin), ev)
+
+
+def query(obj: Prism) -> dict:
+    """Registry ``query`` hook (query type ``prism``): true dimensions and
+    derived measures of a rectangular prism, plus its corner ids keyed by
+    corner bits (length, height, width), e.g. "100" is the corner one length
+    along from the origin."""
+    def num(v: Any) -> float:
+        return float(v.evalf())
+
+    return {
+        "length": num(obj.length),
+        "width": num(obj.width),
+        "height": num(obj.height),
+        "volume": num(obj.volume),
+        "base_area": num(obj.base_area),
+        "surface_area": num(obj.surface_area),
+        "corner_ids": {"".join(map(str, bits)): cid for bits, cid in obj.corner_ids.items()},
+    }
+
+
+def _evaluate_volume(check: ir.VolumeEquals, sym: dict[str, Any], default_tol: float) -> tuple[bool, str]:
+    """Registry ``evaluate_checks`` hook for ``volume_equals`` (near-exact by
+    default: the run-wide default tolerance does not apply)."""
+    from .checks import UnsupportedOperand, _near_exact
+
+    prism_id, expected = check.prism, check.expected
+    obj = sym[prism_id]
+    if type(obj) is not Prism:
+        raise UnsupportedOperand(
+            f"volume_equals: {prism_id!r} is not a prism "
+            f"(got {type(obj).__name__})"
+        )
+    volume = float(obj.volume.evalf())
+    ok = _near_exact(volume, expected, check.tol)
+    msg = "" if ok else (
+        f"Prism {prism_id!r} volume {volume:.10g} != expected {expected:.10g}"
+    )
+    return ok, msg
+
+
+def _evaluate_true_length(check: ir.TrueLengthEquals, sym: dict[str, Any], default_tol: float) -> tuple[bool, str]:
+    """Registry ``evaluate_checks`` hook for ``true_length_equals``."""
+    from .checks import UnsupportedOperand, _near_exact
+
+    seg, expected = check.seg, check.expected
+    sym[seg]  # unknown id: the usual KeyError failure
+    true = true_length(sym, seg)
+    if true is None:
+        raise UnsupportedOperand(
+            f"true_length_equals: segment {seg!r} does not join two corners "
+            f"of one prism; true length is defined only for those (use "
+            f"distance_equals for a 2D length)"
+        )
+    length = float(true.evalf())
+    ok = _near_exact(length, expected, check.tol)
+    msg = "" if ok else (
+        f"Segment {seg!r} true length {length:.10g} != expected {expected:.10g}"
+    )
+    return ok, msg
+
+
+EVALUATE_CHECKS = {"volume_equals": _evaluate_volume, "true_length_equals": _evaluate_true_length}
+
+
+# Generic 2D checks that measure segment lengths, and the segment fields they
+# measure. On a segment joining two prism corners they measure the drawn
+# projection, so they warn (their result is unchanged).
+def _length_check_segments(check: Any) -> list[str]:
+    match check:
+        case ir.DistanceEquals(seg=seg):
+            return [seg]
+        case ir.EqualLength(segs=segs):
+            return list(segs)
+        case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
+            return [s1, s2, s3, s4]
+    return []
+
+
+def projection_check_warnings(check: Any, sym: dict[str, Any]) -> list[str]:
+    """Registry ``check_warnings`` hook: a warning when a generic 2D length
+    check measures a segment joining two corners of one prism (it measured
+    the projection, not the true length)."""
+    parts = []
+    for seg in dict.fromkeys(_length_check_segments(check)):
+        true = true_length(sym, seg)
+        obj = sym.get(seg)
+        if true is None or not isinstance(obj, spg.Segment):
+            continue
+        parts.append(
+            f"{seg!r} (drawn {float(obj.length.evalf()):.4g}, true {float(true.evalf()):.10g})"
+        )
+    if not parts:
+        return []
+    return [
+        f"Check {check.kind!r} measured the projected 2D length of prism segment(s) "
+        f"{', '.join(parts)}, not the true 3D length; use true_length_equals to check "
+        f"a prism's true length."
+    ]
+
+
+def box_extent(stmt: Any, point_xy: Callable[[str], Any], dims: Any) -> list[tuple[float, float]]:
+    """The projected corners of a box of (length, height, width) ``dims`` at
+    ``stmt.origin`` under ``stmt``'s view fields (a prism's or a block
+    stack's), for the recipe lowerer's canvas fit. Empty when the origin has
+    no lowering-time coordinates or the view is invalid (reported elsewhere)."""
+    try:
+        proj = projection_for(stmt.view, stmt.side, stmt.depth_angle, stmt.depth_scale)
+    except ValueError:
+        return []
+    origin = point_xy(stmt.origin)
+    if origin is None:
+        return []
+    out: list[tuple[float, float]] = []
+    for bits in CORNER_BITS:
+        dx, dy = proj.offset(*(b * d for b, d in zip(bits, dims)))
+        out.append((origin[0] + float(dx), origin[1] + float(dy)))
+    return out
+
+
+def canvas_extent(stmt: ir.RectangularPrism, point_xy: Callable[[str], Any]) -> list[tuple[float, float]]:
+    """Registry ``canvas_extent`` hook: the eight projected corners, when all
+    three dimensions are literal numbers (expression dimensions: unknown
+    extent, the canvas falls back to the other points)."""
+    try:
+        dims = [float(v) for v in (stmt.length, stmt.height, stmt.width)]
+    except (TypeError, ValueError):
+        return []
+    return box_extent(stmt, point_xy, dims)
 
 
 # --- derived edges and faces (public ids) --------------------------------------
