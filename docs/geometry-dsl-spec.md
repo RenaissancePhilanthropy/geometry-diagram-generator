@@ -410,6 +410,8 @@ IR-level definition is `ir.RectangularPrism`.
 | `depth_angle`  | number          | Oblique only: angle of the receding depth edge in degrees, in (0, 90); default 45 |
 | `depth_scale`  | number          | Oblique only: scales the depth axis (the prism's width): the drawn length of the receding edge per unit of width, positive; default 1/2 |
 | `side`         | string          | `"right"` (default) or `"left"` (mirrored); applies to both views |
+| `length_label`, `width_label`, `height_label` | string | Optional dimension labels, text used verbatim (see [Label fields](#prism-label-fields)); omitted for no label, an empty string is rejected by the schema (`min_length=1`) |
+| `base_area_label` | string       | Optional free text centered on the bottom face (see [Label fields](#prism-label-fields)); same rules |
 
 Giving `depth_angle` or `depth_scale` with `view: "isometric"` is a compile
 error. Oblique maps length to (1, 0), height to (0, 1) and width to
@@ -480,6 +482,55 @@ placement (`left`, `below right`, ...). Labels on other segments are
 unaffected. In TikZ, words in a `label_segment` render in math mode
 ("6units"); use `label_free_text` for worded labels there.
 
+<a id="prism-label-fields"></a>
+**Label fields.** `length_label`, `width_label`, `height_label` and
+`base_area_label` let the prism own its standard labels, so an author never
+reasons about edge ids or coordinates. Each is optional text used **verbatim**
+(no unit is added: write `"6 ft"` or `"11"` as it should read) and, when set,
+non-empty. A dimension field labels the one **silhouette** edge of that
+dimension, derived from the projection's hidden corner `h` (bits `h0 h1 h2`,
+`h0` is 0 for `side: "right"` and 1 for `side: "left"`), so the label lands
+outside the drawn figure in every view and side:
+
+| Field | Edge (corner bits, length-height-width) | `side: "right"` | `side: "left"` |
+|-------|-----------------------------------------|-----------------|----------------|
+| `length_label` | `(0,0,0)-(1,0,0)`, the front bottom edge | `P_e_000_100` | `P_e_000_100` |
+| `height_label` | `(h0,0,0)-(h0,1,0)`, the vertical edge on the near side of the visible lateral face | `P_e_000_010` | `P_e_100_110` |
+| `width_label` | `(1-h0,0,0)-(1-h0,0,1)`, the bottom depth edge not touching the hidden corner | `P_e_100_101` | `P_e_000_001` |
+
+(`P_e_000_001`, the width edge many authors reach for first, is **hidden** for
+`side: "right"`; every edge touching the hidden corner is hidden.) Each dimension label is an ordinary `label_segment` op on
+the prism's own edge id, with the field's text, so it is placed by the
+dimension-label rule above (away from the prism's center, outside the
+silhouette). `base_area_label` is a `label_free_text` centered on the bottom
+face's centroid; for a solid prism the base is hidden, so the text then reads
+over the front face: use it with a wireframe or shaded-base prism.
+
+The labels are lowered by the registry hook `lower_labels` (see
+`ir/derived.py`): **once per drawn prism**, appended after the other render
+operations, however the prism is drawn. A prism is drawn when a `draw` or
+`fill` operation names its id or an id it owns (a face or an edge, for a
+shaded prism drawn through its face ids only); drawing it twice, or through
+several faces, still emits each label once. An undrawn prism emits no labels
+(a `fill` of the prism id itself is an error, see below, so it never triggers
+them). Setting a field and also labelling the same edge by hand gives two
+labels; there is no de-duplication.
+
+The label-dimension warning (see [Pipeline warnings](#pipeline-warnings))
+also checks the three dimension fields: the first number in the text against
+the true dimension. The message reads `length_label '<text>' on prism 'P' does
+not match its true length N (its length): ...` (field name and dimension vary;
+the manual-label form reads `Label ... does not match its true length N: ...`),
+so the stable substring is `does not match its true length`. It takes the first number
+only, so fraction text such as `"7/2"` or `"3 1/2 in"` falsely warns; and it
+fires whether or not the prism is drawn. `base_area_label` is not checked.
+
+*Known limits.* In TikZ a dimension label (a `label_segment`) renders in math
+mode (italic, spaces collapse: `"6 units"` reads `6units`), while
+`base_area_label` is plain `\node` text, where `^` (e.g. `"cm^2"`) is a LaTeX
+error; the SVG renderer has neither problem. The base-area text can graze
+drawn edges when the base is narrow on screen.
+
 Render operations that cannot work on the prism id are compile errors naming
 the alternative: `fill` (or a `fill` hole) on the prism id ("fill a face id
 such as `P_bottom`"), a point slot (`draw_points`, `label_point`, any angle
@@ -531,6 +582,7 @@ it belongs to the `solids` group.
 | `front_color`  | string          | Fill of the front faces (default `#c3d6ef`) |
 | `side_color`   | string          | Fill of the visible lateral faces, right or left per `side` (default `#97b5dc`) |
 | `top_color`    | string          | Fill of the top faces (default `#e6eefa`) |
+| `count_label`  | string          | Optional label for the whole stack, e.g. its cube total; text used verbatim (no unit added), non-empty (`min_length=1`); see below |
 
 Give exactly one of `heights` and `cubes`. Every entry is a literal
 non-negative integer (an integral float such as `2.0` is accepted); cubes are
@@ -615,6 +667,22 @@ are set on the definition. A `fill` on a column top id goes through the
 ordinary fill layer, which is hoisted behind the ordered polygons, so under a
 drawn stack's opaque faces it is hidden (visible only when the stack is not
 drawn or its `top_color` is transparent).
+
+**Count label.** `count_label` is one `label_free_text` with an explicit `at`
+position, centered horizontally on the screen bounding box of the projected
+lattice and 0.5 construction units above its top edge (`stack.COUNT_LABEL_MARGIN`),
+so it never sits on cubes. It comes from the registry hook `lower_labels` (see
+`ir/derived.py`): emitted **once** when the stack is drawn, i.e. a `draw` of the
+stack id or a `draw` / `fill` of one of its column top faces (however many such
+operations there are); an undrawn stack emits none, and a `fill` of the stack id
+is an error. Because a column-top `fill` counts as drawing, a top-face-only fill
+labels the whole stack. Limits: the label sits above the lattice's
+bounding box, not the silhouette, so over an uneven stack it floats about as
+far above the shorter columns as they fall short of the tallest; the margin is
+in construction units, so its pixel gap shrinks on a wide canvas; in TikZ the
+free text is plain `\node` text, where `^` is a LaTeX error. The count is not
+checked against the cube count: text such as `"7 cubes"` on a six-cube stack
+passes silently (use a `cube_count_equals` check).
 
 Render operations that cannot work on the stack id are compile errors naming
 the alternative: `fill` (or a `fill` hole) ("set `front_color`, `side_color`
@@ -711,13 +779,17 @@ definition and check:
 
 - *Recipe DSL.* The `stack` op takes `id`, `origin` (an existing point id, as
   for the prism), `heights` or `cubes`, the view fields and the three colors,
-  and lowers to `block_stack`; the auto-canvas contains the stack's projected
-  bounding box. The `cube_count` check (`{"check": "cube_count", "stack":
+  and lowers to `block_stack` (it also takes `count_label`); the auto-canvas
+  contains the stack's projected bounding box. (The recipe `prism` op and the
+  pydsl `prism(...)` take the same fields as `rectangular_prism`, including
+  `length_label`, `width_label`, `height_label` and `base_area_label`, each
+  `None` / omitted by default; pydsl rejects an empty string with a `ValueError`
+  naming the field.) The `cube_count` check (`{"check": "cube_count", "stack":
   "S", "expected": 6}`) lowers to `cube_count_equals`. With `solids` off both
   are rejected before lowering.
 - *Python (pydsl).* `stack(origin, heights=None, cubes=None, view="oblique",
   depth_angle=None, depth_scale=None, side="right", front_color=None,
-  side_color=None, top_color=None)` returns a `Stack` handle (hidden id
+  side_color=None, top_color=None, count_label=None)` returns a `Stack` handle (hidden id
   `__pydsl_stack_N`). The stack is compiled at the call, so a misuse is the
   script's own error with the IR's message. `Stack` has `.cube_count`,
   `.volume`, `.top(x, z)` (the column's top face as a `Polygon`, for
@@ -734,9 +806,20 @@ definition and check:
   `query_stack`: `stack_cube_count` (`[stack id, expected]`), `stack_extents`
   (`[stack id, length, width, height]`) and `stack_is_height_map` (`[stack
   id, true|false]`). A stack id of `"*"` matches any stack in the diagram, and
-  a gate failure message is prefixed `stack:`. Scenarios cannot assert pipeline
-  warnings; `stack_is_height_map: false` is how an overhang scenario expects
-  the warning's condition. The scenarios are in `evals/scenarios_solids.yaml`.
+  a gate failure message is prefixed `stack:`. `stack_is_height_map: false` is
+  how an overhang scenario expects the not-a-height-map condition. The
+  scenarios are in `evals/scenarios_solids.yaml`.
+- *Eval warnings.* Every eval record carries `warnings`: the pipeline's
+  warning list for that run (an empty list for failed, timed-out and raw-code
+  cells). A scenario may declare `fail_on_warnings: [substring, ...]` (a list
+  of non-empty strings): each substring found, case-sensitively, in any
+  recorded warning adds one gate failure `warning:<substring>`, so the cell's
+  `gate_status` is `fail`. `deterministic_pass` is unaffected (it covers check
+  failures only). The five prism label scenarios use
+  `fail_on_warnings: ["does not match its true length"]`, which catches a
+  dimension label on the wrong edge, whether set by hand or by field. A
+  whitespace-only entry is accepted and would match almost any warning; do not
+  use one.
 
 ---
 
@@ -1271,6 +1354,7 @@ Sources:
   joins two prism corners (a projection was measured; use
   `true_length_equals`);
 - a prism on a canvas with unequal axis scales (the projection is skewed);
+- a prism dimension label whose first number does not match the true length of the edge it labels: a `label_segment` on a prism edge, or a `length_label` / `width_label` / `height_label` field (substring `does not match its true length`; see [Label fields](#prism-label-fields));
 - an unrecognized color string (see [Color forms](#color-forms));
 - a `unit_cubes` prism whose id is never drawn (no gridlines).
 - a `block_stack` cube set with a cube above an empty cell (not a height map);

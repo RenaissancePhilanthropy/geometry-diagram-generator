@@ -123,13 +123,13 @@ in eval results.
 
 | Class | Seen in | What exists now |
 |---|---|---|
-| Numeric label on the wrong prism edge | run 1 | Pipeline warning (`prism.label_dimension_warnings`); never fails; not in eval records |
+| Numeric label on the wrong prism edge | run 1 | Pipeline warning (`prism.label_dimension_warnings`); never fails; not in eval records. Addressed 2026-10-16: warnings are recorded and a scenario can gate on them (see the 2026-10-16 section) |
 | Unit-cube grid lost (faces drawn, not the prism id) | run 1 | Guidance plus a pipeline warning; not in eval records |
 | `required_labels` skipped under SVG | run 1 | Fixed (db1a299) |
 | Isometric expected, oblique drawn | runs 1, 2 | Recipe guidance only; no scenario check of `view` |
 | Stray origin dot and label (recipe) | runs 1, 4 | Nothing |
 | Unit word dropped ("6" for "6 units") | runs 2, 3 | Nothing; required labels are bare numbers by design |
-| Label placement (free text over edges, bbox-center label on a stack) | runs 1, 4 | Nothing |
+| Label placement (free text over edges, bbox-center label on a stack) | runs 1, 4 | Nothing. Addressed 2026-10-16: label fields on the solids (see the 2026-10-16 section) |
 | Stack y/z swap | run 4 | Arch scenario only: `stack_extents` + `stack_is_height_map` |
 | Stack per-column heights wrong, same count and extents | not observed | Nothing (no per-column property) |
 | CSS color names breaking TikZ | prompt examples | Fixed (3f0eae9) |
@@ -269,3 +269,68 @@ the points it found undocumented.
 | `scenarios_solids.yaml` stack header says the arch checks cube count only | `evals/scenarios_solids.yaml` | Comment predates the extents properties |
 | Remedy text in the degenerate-view error is conservative, not the exact threshold | `ir/prism.py` | Advice, not a contract |
 | Fill of a column top id is hidden under the opaque drawn stack | `ir/stack.py` lowering | Fills hoist behind ordered polygons by design |
+
+## 2026-10-16: label placement follow-up (branch feat/solid-label-placement)
+
+**Diagnosis.** In the latest luna rerun every strategy drew correct prisms
+but the dimension labels were wrong or messy, and nothing caught it. Cause
+found by running the code: our own guidance named a HIDDEN edge. It told
+models the width (depth) edge is `P_e_000_001`, but for the default `side:
+"right"` views the hidden corner is `001` (back-bottom-left) and every edge
+touching it is hidden, so structured and recipe put the depth label on an edge
+that is not on the silhouette (left of the figure or inside the face).
+Silhouette edges, per `side` (the hidden corner `h` comes from the projection;
+the same in oblique and isometric views):
+
+| Dimension | `side: "right"` (hidden corner `001`) | `side: "left"` (hidden corner `101`) |
+|---|---|---|
+| length (front bottom) | `e_000_100` | `e_000_100` |
+| height | `e_000_010` | `e_100_110` |
+| width (depth) | `e_100_101` (`e_000_001` is hidden) | `e_000_001` (`e_100_101` is hidden) |
+
+python_full named the visible width edge but duplicated every label (a bare
+number on the edge plus a detached free text); recipe free-text labels were
+placed by guessed coordinates and drifted; the stack total sat at the bounding
+box center, straddling cube edges.
+
+**What changed.**
+
+- Guidance fix: all three surfaces now name the silhouette edge per side
+  (pinned by `tests/test_solid_guidance_edges.py`).
+- Label fields: `length_label`, `width_label`, `height_label`,
+  `base_area_label` on the prism and `count_label` on the stack, on the IR
+  definition, the recipe ops and pydsl `prism()` / `stack()`; text verbatim.
+  The solid places them itself on the silhouette edge (or the base centroid, or
+  above the stack), once, when drawn.
+- Registry hook `lower_labels` in `ir/derived.py`: called once per drawn
+  authored solid by `lower_render`, which now takes the compiled symbol table
+  (`lower_render(diagram, sym, warnings=None)`); "drawn" uses the overlap
+  advisory's rule (`DerivedRegistry.drawn_ids`).
+- The label-dimension warning also checks the three dimension fields; the
+  spec's pipeline-warnings list now lists it (this closes the omission noted
+  under Known limitations).
+- Evals: every record stores `warnings`; a scenario's `fail_on_warnings`
+  adds a `warning:<substring>` gate failure per matching substring; the five
+  prism label scenarios gate on `does not match its true length`. This is the
+  "record pipeline warnings in eval records" step proposed above for the
+  warn-only classes, for this one class.
+
+**Open limits (accepted).**
+
+- TikZ renders a dimension label (a `label_segment`) in math mode (italic,
+  spaces collapse); `^` in the plain-text `base_area_label` / `count_label`
+  (e.g. "cm^2") is a LaTeX error in TikZ. SVG is unaffected.
+- The warning reads the first number in the text, so "7/2" or "3 1/2 in"
+  falsely warns (fraction text must be avoided in gated scenarios); a
+  wrong-number field warns even if the solid is never drawn.
+- A top-face-only `fill` (or a draw/fill of any owned id) counts as drawing
+  the solid and so emits all of its labels.
+- The stack label sits above the lattice's bounding box, not the silhouette
+  (it floats higher over short columns of an uneven stack), and its 0.5-unit
+  margin is a construction-unit gap whose pixel size shrinks on wide canvases.
+- `base_area_label` on a solid prism reads over the front face (the base is
+  hidden) and can graze drawn edges when the base is narrow on screen.
+- Setting a field and also labelling the same edge by hand gives two labels
+  (no de-duplication).
+- Whitespace-only `fail_on_warnings` entries are accepted and match almost any
+  warning.
