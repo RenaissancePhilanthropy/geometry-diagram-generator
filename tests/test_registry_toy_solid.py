@@ -23,6 +23,7 @@ always unregisters it, and asserts nothing of it is left behind.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import re
 from typing import Any, Literal
@@ -87,6 +88,7 @@ def _synthesize(stmt: ToyBoxDef) -> list[Any]:
     c = _corner_ids(stmt)
     return [
         ir.Segment(id=f"{stmt.id}_base", a=stmt.origin, b=c["c1"]),
+        ir.Segment(id=f"{stmt.id}_top", a=c["c3"], b=c["c2"]),
         ir.Segment(id=f"{stmt.id}_diag", a=stmt.origin, b=c["c2"]),
         # ``mid`` is collinear with its neighbours: SymPy's validating
         # Polygon constructor would drop it (a compile error); a trusted face
@@ -121,7 +123,7 @@ def _check_warnings(check: Any, sym: dict[str, Any]) -> list[str]:
 
 
 def _label_away_from(sym: dict[str, Any], seg_id: str) -> tuple[float, float] | None:
-    box = _toy_of_segment(sym, seg_id, "_base")
+    box = _toy_of_segment(sym, seg_id, "_top")
     return None if box is None else box.center
 
 
@@ -138,7 +140,7 @@ def _canvas_extent(stmt: ToyBoxDef, point_xy: Any) -> list[tuple[float, float]]:
 
 
 TOY_ENTRY = DerivedConstruction(
-    "toy_box", ("{id}_c{i}", "{id}_mid", "{id}_base", "{id}_diag", "{id}_face"),
+    "toy_box", ("{id}_c{i}", "{id}_mid", "{id}_base", "{id}_top", "{id}_diag", "{id}_face"),
     lambda stmt: list(_corner_ids(stmt).values()),
     _register,
     compile=lambda stmt, ref, ev: ToyBox(ref(stmt.origin), sp.S(stmt.size)),
@@ -244,29 +246,50 @@ def test_pipeline_warnings_reach_run_ir_pipeline(toy):
     assert "toy check warning: 'T_diag' measured flat" in result.warnings
 
 
-def _label_y_svg(svg: str, seg_id: str) -> float:
-    m = re.search(rf'<text[^>]*data-for="{seg_id}"[^>]*>', svg)
-    assert m is not None, svg
-    return float(re.search(r' y="([-0-9.]+)"', m.group()).group(1))
+def _top_label(entry: DerivedConstruction) -> tuple[tuple[float, float], float, str]:
+    """Render a label on the toy's top edge with ``entry`` registered (and
+    always unregistered again): (SVG label bbox top and bottom y, SVG line
+    y, the TikZ line drawing the label)."""
+    REGISTRY.register(entry)
+    try:
+        # Five points above the top edge (the box contributes three below
+        # it), so the default fewer-points rule picks the side BELOW.
+        crowd = [ir.PointFixed(id=f"X{i}", x=1.2 + 0.4 * i, y=4) for i in range(5)]
+        diagram = _diagram(
+            render=[ir.Draw(obj="T_top"), ir.LabelSegment(seg="T_top", text="t")], extra=crowd,
+        )
+        sym = compile_defs(diagram)
+        svg = ir_to_svg(diagram, sym, [])
+        tikz = ir_to_tikz(diagram, sym, warnings=[])
+    finally:
+        REGISTRY.unregister("toy_box")
+    text = re.search(r'<text[^>]*data-for="T_top"[^>]*>', svg)
+    assert text is not None, svg
+    _, top, _, bottom = map(float, re.search(r'data-bbox="([^"]+)"', text.group()).group(1).split(","))
+    line = re.search(r'<line[^>]*data-ir-id="T_top"[^>]*>', svg)
+    assert line is not None, svg
+    line_y = float(re.search(r' y1="([-0-9.]+)"', line.group()).group(1))
+    tikz_line = next(row for row in tikz.splitlines() if "{t}" in row or "$t$" in row)
+    return (top, bottom), line_y, tikz_line
 
 
-def test_edge_label_is_placed_by_the_toy_hook(toy):
-    # The base runs along y = 1; the box lies above it, so the hook puts the
-    # label below (a larger SVG y than the identical non-toy segment's label,
-    # which the default rule places above).
-    diagram = _diagram(
-        render=[ir.Draw(obj="T_base"), ir.LabelSegment(seg="T_base", text="b"),
-                ir.Draw(obj="plain"), ir.LabelSegment(seg="plain", text="p")],
-        extra=[ir.PointFixed(id="P1", x=1, y=1), ir.PointFixed(id="P2", x=3, y=1),
-               ir.Segment(id="plain", a="P1", b="P2")],
-    )
-    sym = compile_defs(diagram)
-    svg = ir_to_svg(diagram, sym, [])
-    assert _label_y_svg(svg, "T_base") > _label_y_svg(svg, "plain")
-    tikz = ir_to_tikz(diagram, sym, warnings=[])
-    base_line = next(line for line in tikz.splitlines() if "{b}" in line or "$b$" in line)
-    plain_line = next(line for line in tikz.splitlines() if "{p}" in line or "$p$" in line)
-    assert "below" in base_line and "below" not in plain_line
+def test_edge_label_is_placed_by_the_toy_hook():
+    # The top edge runs along y = 3 with the box below it and a crowd of
+    # points above it. The default rule (the side with fewer points) puts the
+    # label below the line, inside the box; the toy's label_away_from hook
+    # names the box center, so the label goes above the line instead. Compared against the same toy with
+    # only that hook removed, each label box lies wholly on its own side of
+    # the line (SVG y grows downward), so no overlap nudge can fake it.
+    with_hook = _top_label(TOY_ENTRY)
+    without_hook = _top_label(dataclasses.replace(TOY_ENTRY, label_away_from=None))
+    (top, bottom), line_y, tikz_with = with_hook
+    assert bottom < line_y, with_hook
+    (top_default, _), line_y_default, tikz_without = without_hook
+    assert line_y_default == line_y and top_default > line_y, without_hook
+    # Label centers are more than 1.5 label heights apart (measured: about
+    # 25 px for a 14 px label), far beyond a sub-pixel nudge.
+    assert top_default - top > 1.5 * (bottom - top)
+    assert "above" in tikz_with and "above" not in tikz_without
 
 
 def _angle_diagram(face: Any) -> ir.DiagramIR:
