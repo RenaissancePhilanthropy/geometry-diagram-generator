@@ -35,7 +35,7 @@ _CONFLICT = {"__P_hidden": {"color": "red"}}
 def test_lowering_style_conflict_is_an_ir_compile_error_naming_the_style():
     diagram = _diagram(styles=_CONFLICT)
     with pytest.raises(IRCompileError) as exc:
-        lower_render(effective_diagram(diagram))
+        lower_render(effective_diagram(diagram), compile_defs(diagram))
     assert exc.value.def_id == "P"
     assert "__P_hidden" in str(exc.value)
 
@@ -204,7 +204,7 @@ _FACES = [ir.Draw(obj=f"P_{f}") for f in ("front", "right", "top")]
 def _unit_cubes_warnings(render, **prism_overrides) -> list[str]:
     warnings: list[str] = []
     diagram = _diagram(prism=_prism(**prism_overrides), render=render)
-    lower_render(effective_diagram(diagram), warnings)
+    lower_render(effective_diagram(diagram), compile_defs(diagram), warnings)
     return [w for w in warnings if "unit_cubes" in w]
 
 

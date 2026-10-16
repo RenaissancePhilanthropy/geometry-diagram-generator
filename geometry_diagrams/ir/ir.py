@@ -632,6 +632,16 @@ class RectangularPrism(DefBase):
     corner bits, smaller first (``P_e_000_100`` is the front bottom edge).
     Drawing the prism id draws the visible face outlines and, unless
     ``unit_cubes``, the three hidden edges dashed.
+
+    Label fields (optional text, used verbatim; None for no label, an empty
+    string is rejected): ``length_label``, ``width_label`` and
+    ``height_label`` label one silhouette edge of that dimension, placed
+    outside the silhouette (length: the front bottom edge; height: the
+    vertical edge on the near side of the visible lateral face; width: the
+    bottom depth edge on the visible side); ``base_area_label`` is centered
+    on the bottom face (meant for wireframe prisms, where the base is seen).
+    They are drawn once, only when the prism is drawn (its id or any of its
+    faces or edges).
     """
     kind: Literal["rectangular_prism"] = "rectangular_prism"
     origin: PointId
@@ -644,6 +654,10 @@ class RectangularPrism(DefBase):
     depth_angle: Optional[Union[int, float]] = None  # degrees; oblique only
     depth_scale: Optional[Union[int, float]] = None  # oblique only
     side: Literal["right", "left"] = "right"
+    length_label: Optional[str] = Field(default=None, min_length=1)
+    width_label: Optional[str] = Field(default=None, min_length=1)
+    height_label: Optional[str] = Field(default=None, min_length=1)
+    base_area_label: Optional[str] = Field(default=None, min_length=1)
 
 
 class BlockStack(DefBase):

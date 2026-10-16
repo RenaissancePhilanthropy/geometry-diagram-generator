@@ -56,8 +56,8 @@ def _recipe_stack() -> ir.DiagramIR:
 # --- the views refuse serialization ------------------------------------------------
 
 @pytest.mark.parametrize("build", [_stack, _prism])
-@pytest.mark.parametrize("view", [lower_render, effective_diagram,
-                                  lambda d: lower_render(effective_diagram(d))])
+@pytest.mark.parametrize("view", [lambda d: lower_render(d, compile_defs(d)), effective_diagram,
+                                  lambda d: lower_render(effective_diagram(d), compile_defs(d))])
 @pytest.mark.parametrize("method", ["model_dump", "model_dump_json"])
 def test_render_views_refuse_serialization(build, view, method):
     v = view(build())
@@ -69,7 +69,8 @@ def test_render_views_refuse_serialization(build, view, method):
 
 
 def test_lowered_stack_has_ordered_polygons_and_still_copies():
-    v = lower_render(effective_diagram(_stack()))
+    d = _stack()
+    v = lower_render(effective_diagram(d), compile_defs(d))
     assert any(isinstance(op, ir.OrderedPolygon) for op in v.render)
     c = v.model_copy(update={"styles": {}})
     assert c.render == v.render

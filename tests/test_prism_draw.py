@@ -378,7 +378,7 @@ def ordered_lowering(monkeypatch):
 
 def test_lowering_hook_passes_an_ordered_mixed_sequence_through_in_place(ordered_lowering):
     d = _diagram(render=[ir.DrawPoints(points=["O"]), ir.Draw(obj="P"), ir.DrawPoints(points=["P_v111"])])
-    lowered = lower_render(effective_diagram(d))
+    lowered = lower_render(effective_diagram(d), compile_defs(d))
     kinds = [(op.kind, getattr(op, "obj", None)) for op in lowered.render]
     assert kinds == [
         ("draw_points", None),

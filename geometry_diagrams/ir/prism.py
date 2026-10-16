@@ -482,8 +482,11 @@ def label_dimension_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
     corners of one prism whose first number differs from the segment's true
     3D length. A label with no number is schematic and never warns. For an
     edge the message names the dimension (first differing corner bit = length,
-    second = height, third = width)."""
-    out: list[str] = []
+    second = height, third = width). The prisms' ``length_label`` /
+    ``width_label`` / ``height_label`` fields get the same check against that
+    true dimension (they are lowered at render time, so the authored render
+    operations never show them); ``base_area_label`` is not checked."""
+    out: list[str] = _label_field_warnings(diagram, sym)
     for op in diagram.render:
         if not isinstance(op, ir.LabelSegment):
             continue
@@ -504,6 +507,76 @@ def label_dimension_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
             f"check the label is on the edge of that dimension."
         )
     return out
+
+
+def _label_field_warnings(diagram: Any, sym: dict[str, Any]) -> list[str]:
+    """The label-dimension check for the authored prisms' dimension label
+    fields: the first number in the text against the true dimension."""
+    out: list[str] = []
+    for stmt in diagram.define:
+        prism = sym.get(stmt.id) if isinstance(stmt, ir.RectangularPrism) else None
+        if type(prism) is not Prism:
+            continue
+        for field, dim in LABEL_FIELD_DIMENSIONS.items():
+            text = getattr(stmt, field)
+            m = _LABEL_NUMBER_RE.search(text) if text is not None else None
+            if m is None:
+                continue
+            true = float(getattr(prism, dim).evalf())
+            if math.isclose(float(m.group()), true, rel_tol=1e-6, abs_tol=1e-9):
+                continue
+            out.append(
+                f"{field} {text!r} on prism {stmt.id!r} does not match its true length "
+                f"{true:.10g} (its {dim}): check the field names the dimension the number "
+                f"belongs to."
+            )
+    return out
+
+
+# --- label fields: the dimension edges and the base label ----------------------
+#
+# Each dimension field labels a SILHOUETTE edge, derived from the projection's
+# hidden corner h (never a per-view table), so the ``label_away_from`` hook's
+# outward placement clears the drawn silhouette: length the front bottom edge
+# (0,0,0)-(1,0,0); height the vertical edge (h0,0,0)-(h0,1,0) on the near side
+# of the visible lateral face; width the bottom depth edge (1-h0,0,0)-(1-h0,0,1)
+# not incident to the hidden corner. Other visible edges (e.g. the front-left
+# vertical edge for side left) are interior lines of the silhouette: a label
+# pushed away from the box center would land inside it.
+
+LABEL_FIELD_DIMENSIONS: dict[str, str] = {
+    "length_label": "length", "width_label": "width", "height_label": "height",
+}
+
+
+def label_edges(projection: Projection) -> dict[str, CornerPair]:
+    """Dimension label field -> the corner pair of the silhouette edge it labels."""
+    h0 = projection.hidden_corner[0]
+    return {
+        "length_label": ((0, 0, 0), (1, 0, 0)),
+        "width_label": ((1 - h0, 0, 0), (1 - h0, 0, 1)),
+        "height_label": ((h0, 0, 0), (h0, 1, 0)),
+    }
+
+
+def lower_labels(stmt: ir.RectangularPrism, obj: Any) -> list[Any]:
+    """Registry ``lower_labels`` hook: a ``label_segment`` on the prism's own
+    edge id for each dimension label field (``label_edges``) and a
+    ``label_free_text`` centered on the bottom face for ``base_area_label``,
+    texts verbatim. Empty when no field is set."""
+    ops: list[Any] = []
+    if type(obj) is not Prism:
+        return ops
+    if any(getattr(stmt, f) is not None for f in LABEL_FIELD_DIMENSIONS):
+        edges_by_field = label_edges(obj.projection)
+        for field in LABEL_FIELD_DIMENSIONS:
+            text = getattr(stmt, field)
+            if text is not None:
+                p, q = edges_by_field[field]
+                ops.append(ir.LabelSegment(seg=edge_id(stmt.id, p, q), text=text))
+    if stmt.base_area_label is not None:
+        ops.append(ir.LabelFreeText(text=stmt.base_area_label, centroid_of=face_id(stmt.id, "bottom")))
+    return ops
 
 
 # --- registry hooks: compile, query, checks, canvas extent ---------------------

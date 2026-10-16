@@ -41,6 +41,14 @@ optional) and who consumes each:
 - ``synthesize``: the effective definition view (compile, renderers).
 - ``lower_draw``, ``render_ref_error``, ``render_warnings``: the render
   lowering point (``lower_render``) and compile's render-ref check.
+- ``lower_labels``: the render lowering point too: once per DRAWN authored
+  statement of the kind (``drawn_ids``: the overlap advisory's rule),
+  ``lower_render`` appends the label operations the hook returns (a prism's
+  dimension and base-area label fields). It does not replace ``lower_draw``,
+  which still lowers each draw of the kind's own id; it exists because a
+  kind's own labels must appear exactly once however the solid is drawn
+  (through its id, only through its faces, or drawn twice), and need the
+  compiled object, which ``lower_draw`` never sees.
 - ``exclusive``: owned-id uniqueness (``check_exclusive_ids``).
 - ``feature``: the generation-surface gate (features.require_features).
 - ``index``: every compiled statement, e.g. a prism's corner-segment index.
@@ -66,10 +74,10 @@ Solid hooks, for a kind whose compiled object is not a SymPy shape (today
 - ``screen_bounds``: a compiled solid's axis-aligned screen box, from its
   projected corners / lattice. ``DerivedRegistry.overlap_warnings`` (the one
   kind-agnostic place, called from ``pipeline_warnings``) compares the boxes
-  of every pair of DRAWN authored solids (a ``draw``/``fill`` render op names
-  the id or one of its faces/edges/top faces)
-  and warns once per positively-overlapping pair: solids are not depth
-  sorted, so overlapping ones paint in draw order. Touching boxes do not warn.
+  of every pair of DRAWN authored solids (``drawn_ids``: a ``draw``/``fill``
+  render op names the id or one of its faces/edges/top faces) and warns
+  once per positively-overlapping pair: solids are not depth sorted, so
+  overlapping ones paint in draw order. Touching boxes do not warn.
 - ``trusted_faces``: compile builds the kind's synthesized polygons without
   SymPy's validating constructor, and the angle-mark check skips their sides
   (a block stack's hundreds of top faces).
@@ -212,6 +220,12 @@ class DerivedConstruction:
     #     Lowering. Called by lower_render from both renderers' entry
     #     functions. Must be a pure function of its arguments.
     lower_draw: Callable[[Any, Any, dict[str, Any]], Lowering] | None = None
+    # lower_labels: (authored statement, its compiled object) -> render
+    #     operations (labels) appended once, after every other operation, by
+    #     lower_render when the statement is drawn (``drawn_ids``). Must be a
+    #     pure function of its arguments; empty when the statement has no
+    #     labels to add.
+    lower_labels: Callable[[Any, Any], list[Any]] | None = None
     # exclusive: the kind's owned ids must be unique names. An owned id equal
     #     to an authored definition id, or to an id another construction owns,
     #     is a compile error (see check_exclusive_ids) instead of the default
@@ -427,6 +441,25 @@ class DerivedRegistry:
             return None
         return entry.screen_bounds(obj)
 
+    def drawn_ids(self, diagram: Any) -> set[str]:
+        """Ids of the statements a ``draw`` or ``fill`` render operation
+        draws: the named id itself, or its owner when the id is owned by an
+        authored statement (a solid's faces, edges or column top faces;
+        ``owner_map``), so a shaded solid drawn only through its face ids
+        counts as drawn. Labels and centroid targets do not count. Works on
+        the authored diagram and on the effective view alike: ownership is
+        computed from the authored statements only (over the effective view
+        ``owner_map`` would resolve synthesized ids to themselves). The one
+        "drawn" rule of ``overlap_warnings`` and ``lower_render``'s
+        ``lower_labels`` pass."""
+        owners = self.owner_map([s for s in diagram.define if not is_synthesized(s)])
+        drawn: set[str] = set()
+        for op in diagram.render:
+            for slot, rid in render_refs(op):
+                if slot in ("draw", "fill"):
+                    drawn.add(owners.get(rid, rid))
+        return drawn
+
     def overlap_warnings(self, diagram: Any, sym: dict[str, Any]) -> list[str]:
         """The kind-agnostic solid-overlap advisory: solids are not depth
         sorted against each other, so two AUTHORED solids (any kinds with a
@@ -436,14 +469,10 @@ class DerivedRegistry:
         ``fill`` render operation names its own id or any id it owns (its
         faces, edges, column top faces: ``owner_map``), since a shaded solid
         is drawn through its face ids, never its own; labels and centroid
-        targets do not count. An undrawn solid does not participate. Boxes
-        that only touch (zero-area intersection, within 1e-9) do not overlap."""
-        owners = self.owner_map(diagram.define)
-        drawn: set[str] = set()
-        for op in diagram.render:
-            for slot, rid in render_refs(op):
-                if slot in ("draw", "fill"):
-                    drawn.add(owners.get(rid, rid))
+        targets do not count (``drawn_ids``). An undrawn solid does not
+        participate. Boxes that only touch (zero-area intersection, within
+        1e-9) do not overlap."""
+        drawn = self.drawn_ids(diagram)
         boxes: list[tuple[str, tuple[float, float, float, float]]] = []
         for stmt in diagram.define:
             if stmt.id not in drawn or stmt.id not in sym:
@@ -604,13 +633,17 @@ class DerivedRegistry:
                 if message is not None:
                     raise IRCompileError(stmt.id, message)
 
-    def lower_render(self, diagram: Any, warnings: list[str] | None = None) -> Any:
+    def lower_render(self, diagram: Any, sym: dict[str, Any], warnings: list[str] | None = None) -> Any:
         """``diagram`` with every draw of a lowering kind's id replaced, in
         place, by the hook's ordered operations (see ``Lowering``), and the
-        hook's styles merged into ``styles``. ``diagram`` itself when nothing
-        lowers; otherwise a shallow ``RenderTimeDiagram`` copy local to the
-        caller: an internal render-time view that refuses ``model_dump`` /
-        ``model_dump_json`` (never dump, persist or re-validate it).
+        hook's styles merged into ``styles``; then, once per drawn authored
+        statement of a kind with a ``lower_labels`` hook (``drawn_ids``), the
+        hook's label operations for ``sym[stmt.id]`` (``sym`` is the compiled
+        symbol table) appended after all other operations. ``diagram`` itself
+        when nothing lowers; otherwise a shallow ``RenderTimeDiagram`` copy
+        local to the caller: an internal render-time view that refuses
+        ``model_dump`` / ``model_dump_json`` (never dump, persist or
+        re-validate it).
 
         First rejects render operations misusing a registered kind's id
         (``check_render_refs``) and appends each kind's ``render_warnings``
@@ -643,6 +676,19 @@ class DerivedRegistry:
                 styles[name] = style
             ops.extend(result.ops)
             lowered = True
+        drawn: set[str] | None = None
+        for stmt in diagram.define:
+            entry = self.get(stmt)
+            if entry is None or entry.lower_labels is None or is_synthesized(stmt):
+                continue
+            if drawn is None:
+                drawn = self.drawn_ids(diagram)
+            if stmt.id not in drawn or stmt.id not in sym:
+                continue
+            labels = entry.lower_labels(stmt, sym[stmt.id])
+            if labels:
+                ops.extend(labels)
+                lowered = True
         if not lowered:
             return diagram
         return render_view(diagram, {"render": ops, "styles": styles})
@@ -771,6 +817,7 @@ def _build_default_registry() -> DerivedRegistry:
         evaluate_checks=_prism.EVALUATE_CHECKS,
         check_warnings=_prism.projection_check_warnings,
         label_away_from=_prism.corner_segment_center,
+        lower_labels=_prism.lower_labels,
         pipeline_warnings=_prism.label_dimension_warnings,
         canvas_extent=_prism.canvas_extent,
         screen_bounds=_prism.screen_bounds,
@@ -806,14 +853,15 @@ def is_synthesized(stmt: Any) -> bool:
     return getattr(stmt, "_synthesized_by", None) is not None
 
 
-def lower_render(diagram: Any, warnings: list[str] | None = None) -> Any:
+def lower_render(diagram: Any, sym: dict[str, Any], warnings: list[str] | None = None) -> Any:
     """The render lowering point: see ``DerivedRegistry.lower_render``. Both
-    renderers' entry functions call it right after ``effective_diagram``.
+    renderers' entry functions call it right after ``effective_diagram``,
+    with the compiled symbol table ``sym``.
 
     Its result is one of the internal render-time views: never dump, persist
     or re-validate it (``OrderedPolygon`` is outside the ``RenderOp`` union);
     it raises ``TypeError`` if you try."""
-    return REGISTRY.lower_render(diagram, warnings)
+    return REGISTRY.lower_render(diagram, sym, warnings)
 
 
 def effective_defs(diagram: Any) -> list[Any]:

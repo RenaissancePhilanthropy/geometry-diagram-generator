@@ -226,7 +226,7 @@ def ir_to_svg(
     # Everything below reads the effective view (authored + synthesized
     # definitions) with draws of lowering kinds (e.g. a prism) replaced by
     # ordinary operations; the caller's authored IR is left as it was.
-    diagram = lower_render(effective_diagram(diagram), warnings)
+    diagram = lower_render(effective_diagram(diagram), sym, warnings)
 
     # --- Extract coordinates and helper points ---
     coords = extract_coords(sym)

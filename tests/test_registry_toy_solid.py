@@ -16,7 +16,8 @@ consumer reaching the toy through its hook:
   (``trusted_faces``),
 - pydsl ``label_text(centroid_of=...)`` (derived from ``position``),
 - the recipe lowerer's auto canvas fit (``canvas_extent``),
-- the cross-kind solid-overlap advisory (``screen_bounds``).
+- the cross-kind solid-overlap advisory (``screen_bounds``),
+- the render lowering point's once-per-drawn-solid labels (``lower_labels``).
 
 The registry is global state: the ``toy`` fixture registers the toy and
 always unregisters it, and asserts nothing of it is left behind.
@@ -35,7 +36,7 @@ import sympy.geometry as spg
 
 from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.checks import check_render_angles, run_checks
-from geometry_diagrams.ir.derived import REGISTRY, DerivedConstruction
+from geometry_diagrams.ir.derived import REGISTRY, DerivedConstruction, effective_diagram, lower_render
 from geometry_diagrams.ir.queries import query_length
 from geometry_diagrams.ir.renderer import SVGRenderer
 from geometry_diagrams.ir.to_svg import ir_to_svg
@@ -375,3 +376,60 @@ def test_screen_bounds_drives_the_overlap_warning_for_a_third_kind(toy):
     # Undrawn toy: no pair.
     undrawn = _diagram(render=[ir.Draw(obj="P")], extra=[prism])
     assert REGISTRY.overlap_warnings(undrawn, compile_defs(undrawn)) == []
+
+
+def _toy_labels(stmt: ToyBoxDef, obj: ToyBox) -> list[Any]:
+    return [ir.LabelFreeText(text=f"toy size {float(obj.size):g}", centroid_of=stmt.id)]
+
+
+def _lowered_with(entry: DerivedConstruction, render: list[Any]) -> tuple[list[Any], str]:
+    """Lower and render the toy diagram with ``entry`` registered (and always
+    unregistered again): (the lowered render operations, the SVG)."""
+    REGISTRY.register(entry)
+    try:
+        diagram = _diagram(render=render)
+        sym = compile_defs(diagram)
+        lowered = lower_render(effective_diagram(diagram), sym)
+        svg = ir_to_svg(diagram, sym, [])
+    finally:
+        REGISTRY.unregister("toy_box")
+    return list(lowered.render), svg
+
+
+LABELS_ONLY = dataclasses.replace(TOY_ENTRY, lower_labels=_toy_labels)
+
+
+@pytest.mark.parametrize("render", [
+    [ir.Draw(obj="T_face")],
+    [ir.Draw(obj="T_face"), ir.Draw(obj="T_face")],
+    [ir.Fill(obj="T_face", style="lightgray"), ir.Draw(obj="T_base"), ir.Draw(obj="T_top")],
+])
+def test_a_kind_with_only_lower_labels_gets_its_labels_once(render):
+    ops, svg = _lowered_with(LABELS_ONLY, render)
+    assert ops == [*render, ir.LabelFreeText(text="toy size 2", centroid_of="T")]
+    assert svg.count('data-label-text="toy size 2"') == 1
+
+
+def test_lower_labels_skips_an_undrawn_kind():
+    ops, svg = _lowered_with(LABELS_ONLY, [ir.LabelFreeText(text="x", centroid_of="T")])
+    assert ops == [ir.LabelFreeText(text="x", centroid_of="T")]
+    assert "toy size" not in svg
+
+
+def test_a_kind_without_lower_labels_is_unaffected():
+    render = [ir.Draw(obj="T_face"), ir.Draw(obj="T_base")]
+    REGISTRY.register(TOY_ENTRY)
+    try:
+        diagram = _diagram(render=render)
+        effective = effective_diagram(diagram)
+        assert lower_render(effective, compile_defs(diagram)) is effective
+    finally:
+        REGISTRY.unregister("toy_box")
+
+
+def test_module_docstring_lists_every_hook():
+    """The registry module's hook list names every DerivedConstruction field."""
+    from geometry_diagrams.ir import derived
+
+    for f in dataclasses.fields(DerivedConstruction):
+        assert f"``{f.name}``" in derived.__doc__, f.name

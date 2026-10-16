@@ -94,7 +94,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     # Everything below reads the effective view (authored + synthesized
     # definitions) with draws of lowering kinds (e.g. a prism) replaced by
     # ordinary operations; the caller's authored IR is left as it was.
-    diagram = lower_render(effective_diagram(diagram), warnings)
+    diagram = lower_render(effective_diagram(diagram), sym, warnings)
 
     # --- Phase 1: extract float coordinates for every Point in the symbol table ---
     coords = extract_coords(sym)

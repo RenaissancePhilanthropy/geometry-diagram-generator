@@ -48,7 +48,7 @@ def _pipeline(d: ir.DiagramIR):
 
 
 def _faces(d: ir.DiagramIR) -> list[ir.OrderedPolygon]:
-    return [op for op in lower_render(d).render if isinstance(op, ir.OrderedPolygon)]
+    return [op for op in lower_render(d, compile_defs(d)).render if isinstance(op, ir.OrderedPolygon)]
 
 
 def _corners3d(face: ir.OrderedPolygon) -> list[tuple[int, int, int]]:

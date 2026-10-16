@@ -238,7 +238,7 @@ def test_unequal_canvas_scale_warns():
 
     d = _diagram(_stack(), canvas=ir.Canvas(aspect=2))
     warnings: list[str] = []
-    lower_render(d, warnings)
+    lower_render(d, compile_defs(d), warnings)
     assert any("'S'" in w and "unequal" in w for w in warnings)
 
 
