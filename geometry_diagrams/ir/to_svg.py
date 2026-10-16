@@ -2333,13 +2333,16 @@ def _append_axes(
     has_x = ymin <= 0 <= ymax
     has_y = xmin <= 0 <= xmax
 
-    def arrow_line(x1, y1, x2, y2):
-        ET.SubElement(svg, "line", {
+    def arrow_line(x1, y1, x2, y2, both_ends=False):
+        attrs = {
             "x1": f"{x1:.2f}", "y1": f"{y1:.2f}",
             "x2": f"{x2:.2f}", "y2": f"{y2:.2f}",
             "stroke": "black", "stroke-width": "1.5",
             "marker-end": "url(#arrow)",
-        })
+        }
+        if both_ends:
+            attrs["marker-start"] = "url(#arrow-start)"
+        ET.SubElement(svg, "line", attrs)
         if drawn_segments is not None:
             drawn_segments.append((x1, y1, x2, y2))
 
@@ -2349,7 +2352,7 @@ def _append_axes(
     if has_x:
         px1, py1 = gxy(xmin, 0)
         px2, py2 = gxy(xmax, 0)
-        arrow_line(px1, py1, px2, py2)
+        arrow_line(px1, py1, px2, py2, both_ends=xmin < 0)
         if canvas.show_axis_labels:
             ET.SubElement(svg, "text", {
                 "x": f"{px2 + 8:.2f}", "y": f"{py2:.2f}",
@@ -2360,7 +2363,7 @@ def _append_axes(
     if has_y:
         px1, py1 = gxy(0, ymin)
         px2, py2 = gxy(0, ymax)
-        arrow_line(px1, py1, px2, py2)
+        arrow_line(px1, py1, px2, py2, both_ends=ymin < 0)
         if canvas.show_axis_labels:
             ET.SubElement(svg, "text", {
                 "x": f"{px2:.2f}", "y": f"{py2 - 8:.2f}",
@@ -2428,6 +2431,16 @@ def _ensure_arrow_marker(svg: ET.Element) -> None:
     for child in defs:
         if child.get("id") == "arrow":
             return
+    start_marker = ET.SubElement(defs, "marker", {
+        "id": "arrow-start",
+        "markerWidth": "8", "markerHeight": "8",
+        "refX": "6", "refY": "3",
+        "orient": "auto-start-reverse",
+    })
+    ET.SubElement(start_marker, "path", {
+        "d": "M0,0 L0,6 L8,3 z",
+        "fill": "black",
+    })
     marker = ET.SubElement(defs, "marker", {
         "id": "arrow",
         "markerWidth": "8", "markerHeight": "8",

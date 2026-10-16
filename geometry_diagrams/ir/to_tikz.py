@@ -903,13 +903,15 @@ def _emit_axes(
     has_y_axis = xmin <= 0 <= xmax
 
     if has_x_axis:
-        x_axis = f"\\draw[->,thick] ({_fmt_num(xmin)},0) -- ({_fmt_num(xmax)},0)"
+        x_style = "<->" if xmin < 0 else "->"
+        x_axis = f"\\draw[{x_style},thick] ({_fmt_num(xmin)},0) -- ({_fmt_num(xmax)},0)"
         if canvas.show_axis_labels:
             x_axis += " node[right] {$x$}"
         lines.append(x_axis + ";")
 
     if has_y_axis:
-        y_axis = f"\\draw[->,thick] (0,{_fmt_num(ymin)}) -- (0,{_fmt_num(ymax)})"
+        y_style = "<->" if ymin < 0 else "->"
+        y_axis = f"\\draw[{y_style},thick] (0,{_fmt_num(ymin)}) -- (0,{_fmt_num(ymax)})"
         if canvas.show_axis_labels:
             y_axis += " node[above] {$y$}"
         lines.append(y_axis + ";")

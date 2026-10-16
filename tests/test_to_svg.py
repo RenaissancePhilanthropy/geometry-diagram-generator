@@ -577,6 +577,20 @@ def test_axes_present():
     assert len(lines) == 2  # x-axis and y-axis
 
 
+def test_axes_have_arrowheads_at_negative_ends_only_when_axis_goes_negative():
+    def axis_lines(canvas):
+        diagram = DiagramIR(canvas=canvas, define=[], render=[])
+        root = _parse(ir_to_svg(diagram, compile_defs(diagram)))
+        return _findall(root, "line")
+
+    both = axis_lines(Canvas(xmin=-3, xmax=3, ymin=-3, ymax=3, axes=True))
+    assert all(l.get("marker-start") == "url(#arrow-start)" for l in both)
+    assert all(l.get("marker-end") == "url(#arrow)" for l in both)
+
+    first_quadrant = axis_lines(Canvas(xmin=0, xmax=3, ymin=0, ymax=3, axes=True))
+    assert all(l.get("marker-start") is None for l in first_quadrant)
+
+
 # ---------------------------------------------------------------------------
 # Styling
 # ---------------------------------------------------------------------------

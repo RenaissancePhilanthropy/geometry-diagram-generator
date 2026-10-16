@@ -73,8 +73,8 @@ def test_ir_to_tikz_emits_raw_coordinate_plane():
     assert "\\tkzGrid" not in tikz
     assert "\\tkzAxeXY" not in tikz
     assert "\\draw[gray!35,thin,step=1] (-1,-1) grid (5,4);" in tikz
-    assert "\\draw[->,thick] (-0.5,0) -- (4.2,0) node[right] {$x$};" in tikz
-    assert "\\draw[->,thick] (0,-0.5) -- (0,3.6) node[above] {$y$};" in tikz
+    assert "\\draw[<->,thick] (-0.5,0) -- (4.2,0) node[right] {$x$};" in tikz
+    assert "\\draw[<->,thick] (0,-0.5) -- (0,3.6) node[above] {$y$};" in tikz
     assert "\\node[below, font=\\small] at (1,0) {1};" in tikz
     assert "\\node[left, font=\\small] at (0,1) {1};" in tikz
 
