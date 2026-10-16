@@ -631,6 +631,18 @@ def box_extent(stmt: Any, point_xy: Callable[[str], Any], dims: Any) -> list[tup
     return out
 
 
+def points_bounds(points: Any) -> tuple[float, float, float, float]:
+    """Axis-aligned (xmin, ymin, xmax, ymax) of projected SymPy points."""
+    xs = [float(p.x) for p in points]
+    ys = [float(p.y) for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def screen_bounds(obj: Prism) -> tuple[float, float, float, float]:
+    """Registry ``screen_bounds`` hook: the box of the eight projected corners."""
+    return points_bounds(obj.corners.values())
+
+
 def canvas_extent(stmt: ir.RectangularPrism, point_xy: Callable[[str], Any]) -> list[tuple[float, float]]:
     """Registry ``canvas_extent`` hook: the eight projected corners, when all
     three dimensions are literal numbers (expression dimensions: unknown

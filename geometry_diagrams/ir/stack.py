@@ -31,7 +31,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .errors import IRCompileError
-from .prism import Projection, box_extent, projection_for
+from .prism import Projection, box_extent, points_bounds, projection_for
 
 Cube = tuple[int, int, int]  # (x, y, z)
 
@@ -369,6 +369,12 @@ def canvas_extent(stmt: ir.BlockStack, point_xy: Any) -> list[tuple[float, float
     if extents is None:
         return []
     return box_extent(stmt, point_xy, extents)
+
+
+def screen_bounds(obj: Stack) -> tuple[float, float, float, float]:
+    """Registry ``screen_bounds`` hook: the box of the projected lattice (every
+    cube corner)."""
+    return points_bounds(obj.lattice.values())
 
 
 def stack_position(obj: Any) -> tuple[float, float] | None:

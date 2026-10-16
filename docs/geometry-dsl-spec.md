@@ -1264,6 +1264,15 @@ Sources:
 - a `block_stack` cube set with a cube above an empty cell (not a height map);
 - an authored `block_stack` when the canvas has unequal axis scales (the
   projection is skewed; drawn or not).
+- two authored solids (prisms and/or block stacks) that are both drawn and
+  whose screen bounding boxes overlap: `draw order is not depth order; solids
+  '<a>' and '<b>' overlap on screen`. Solids are not depth-sorted against each
+  other, so they paint in draw order. One warning per overlapping pair, `a`
+  being the earlier-defined solid, pairs in definition order. A solid is
+  "drawn" when a `draw` render operation names its id; an undrawn solid never
+  participates. A box is the axis-aligned box of the solid's projected corners
+  (a stack's lattice); boxes that merely touch do not overlap (positive-area
+  overlap only), and a lone or side-by-side solid never warns.
 
 ---
 

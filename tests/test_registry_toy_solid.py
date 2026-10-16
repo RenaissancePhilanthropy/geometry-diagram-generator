@@ -15,7 +15,8 @@ consumer reaching the toy through its hook:
 - the SymPy-validation bypass and the angle-mark pass skip for its faces
   (``trusted_faces``),
 - pydsl ``label_text(centroid_of=...)`` (derived from ``position``),
-- the recipe lowerer's auto canvas fit (``canvas_extent``).
+- the recipe lowerer's auto canvas fit (``canvas_extent``),
+- the cross-kind solid-overlap advisory (``screen_bounds``).
 
 The registry is global state: the ``toy`` fixture registers the toy and
 always unregisters it, and asserts nothing of it is left behind.
@@ -139,6 +140,11 @@ def _canvas_extent(stmt: ToyBoxDef, point_xy: Any) -> list[tuple[float, float]]:
     return [(origin[0] + 10 * stmt.size, origin[1] + 10 * stmt.size)]
 
 
+def _screen_bounds(obj: ToyBox) -> tuple[float, float, float, float]:
+    x, y, s = float(obj.origin.x), float(obj.origin.y), float(obj.size)
+    return (x, y, x + s, y + s)
+
+
 TOY_ENTRY = DerivedConstruction(
     "toy_box", ("{id}_c{i}", "{id}_mid", "{id}_base", "{id}_top", "{id}_diag", "{id}_face"),
     lambda stmt: list(_corner_ids(stmt).values()),
@@ -156,6 +162,7 @@ TOY_ENTRY = DerivedConstruction(
     pipeline_warnings=_pipeline_warnings,
     canvas_extent=_canvas_extent,
     trusted_faces=True,
+    screen_bounds=_screen_bounds,
 )
 
 
@@ -352,3 +359,19 @@ def test_canvas_extent_feeds_the_recipe_canvas_fit(toy):
     assert canvas(False).xmax == 2.0
     fitted = canvas(True)
     assert (fitted.xmax, fitted.ymax) == (22.0, 22.0)
+
+
+def test_screen_bounds_drives_the_overlap_warning_for_a_third_kind(toy):
+    """The toy overlaps a prism (a different kind) on screen: the kind-agnostic
+    comparison warns for the pair through the toy's ``screen_bounds`` alone."""
+    prism = ir.RectangularPrism(id="P", origin="O", length=3, width=2, height=2)
+    diagram = _diagram(render=[ir.Draw(obj="T"), ir.Draw(obj="P")], extra=[prism])
+    sym = compile_defs(diagram)
+    assert REGISTRY.screen_bounds(sym["T"]) == (1.0, 1.0, 3.0, 3.0)
+    expected = "draw order is not depth order; solids 'T' and 'P' overlap on screen"
+    assert REGISTRY.overlap_warnings(diagram, sym) == [expected]
+    result = asyncio.run(run_ir_pipeline(diagram, SVGRenderer()))
+    assert expected in result.warnings
+    # Undrawn toy: no pair.
+    undrawn = _diagram(render=[ir.Draw(obj="P")], extra=[prism])
+    assert REGISTRY.overlap_warnings(undrawn, compile_defs(undrawn)) == []

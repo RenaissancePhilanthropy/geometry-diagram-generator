@@ -63,6 +63,12 @@ Solid hooks, for a kind whose compiled object is not a SymPy shape (today
 - ``pipeline_warnings``: run_ir_pipeline's warnings (a prism dimension label
   contradicting the true length).
 - ``canvas_extent``: the recipe lowerer's auto canvas fit (``_Lowerer._add``).
+- ``screen_bounds``: a compiled solid's axis-aligned screen box, from its
+  projected corners / lattice. ``DerivedRegistry.overlap_warnings`` (the one
+  kind-agnostic place, called from ``pipeline_warnings``) compares the boxes
+  of every pair of DRAWN authored solids (a ``draw`` render op names the id)
+  and warns once per positively-overlapping pair: solids are not depth
+  sorted, so overlapping ones paint in draw order. Touching boxes do not warn.
 - ``trusted_faces``: compile builds the kind's synthesized polygons without
   SymPy's validating constructor, and the angle-mark check skips their sides
   (a block stack's hundreds of top faces).
@@ -236,6 +242,10 @@ class DerivedConstruction:
     #     and the angle-mark check does not treat their sides as lines a
     #     point lies on. Both are speed-ups for kinds with many faces.
     trusted_faces: bool = False
+    # screen_bounds: compiled object -> (xmin, ymin, xmax, ymax), the
+    #     axis-aligned box of its projected geometry in drawing coordinates.
+    #     Used only by ``overlap_warnings`` (needs ``object_type``).
+    screen_bounds: Callable[[Any], "tuple[float, float, float, float]"] | None = None
 
 
 def render_refs(op: Any) -> list[tuple[str, str]]:
@@ -362,11 +372,43 @@ class DerivedRegistry:
                     return point
         return None
 
+    def screen_bounds(self, obj: Any) -> "tuple[float, float, float, float] | None":
+        """The screen box of a compiled solid; None for any other object."""
+        entry = self.entry_for_object(obj)
+        if entry is None or entry.screen_bounds is None:
+            return None
+        return entry.screen_bounds(obj)
+
+    def overlap_warnings(self, diagram: Any, sym: dict[str, Any]) -> list[str]:
+        """The kind-agnostic solid-overlap advisory: solids are not depth
+        sorted against each other, so two AUTHORED solids (any kinds with a
+        ``screen_bounds`` hook) whose screen boxes overlap paint in draw order.
+        One warning per overlapping pair, in authored definition order
+        (``a`` is the earlier-defined). A solid is DRAWN when a ``draw`` render
+        operation names its id; an undrawn solid does not participate. Boxes
+        that only touch (zero-area intersection, within 1e-9) do not overlap."""
+        drawn = {op.obj for op in diagram.render if isinstance(op, ir.Draw)}
+        boxes: list[tuple[str, tuple[float, float, float, float]]] = []
+        for stmt in diagram.define:
+            if stmt.id not in drawn or stmt.id not in sym:
+                continue
+            box = self.screen_bounds(sym[stmt.id])
+            if box is not None:
+                boxes.append((stmt.id, box))
+        eps = 1e-9
+        out: list[str] = []
+        for i, (a, (ax0, ay0, ax1, ay1)) in enumerate(boxes):
+            for b, (bx0, by0, bx1, by1) in boxes[i + 1:]:
+                if ax0 < bx1 - eps and bx0 < ax1 - eps and ay0 < by1 - eps and by0 < ay1 - eps:
+                    out.append(f"draw order is not depth order; solids '{a}' and '{b}' overlap on screen")
+        return out
+
     def pipeline_warnings(self, diagram: Any, sym: dict[str, Any]) -> list[str]:
         out: list[str] = []
         for entry in self._by_kind.values():
             if entry.pipeline_warnings is not None:
                 out.extend(entry.pipeline_warnings(diagram, sym))
+        out.extend(self.overlap_warnings(diagram, sym))
         return out
 
     def canvas_extent(self, stmt: Any, point_xy: Callable[[str], Any]) -> list[tuple[float, float]]:
@@ -673,6 +715,7 @@ def _build_default_registry() -> DerivedRegistry:
         label_away_from=_prism.corner_segment_center,
         pipeline_warnings=_prism.label_dimension_warnings,
         canvas_extent=_prism.canvas_extent,
+        screen_bounds=_prism.screen_bounds,
     ))
     reg.register(DerivedConstruction(
         "block_stack", ("{id}_top_{x}_{z}", "__{id}_l{x}_{y}_{z}"),
@@ -691,6 +734,7 @@ def _build_default_registry() -> DerivedRegistry:
         query=_stack.query,
         evaluate_checks=_stack.EVALUATE_CHECKS,
         canvas_extent=_stack.canvas_extent,
+        screen_bounds=_stack.screen_bounds,
         trusted_faces=True,
     ))
     return reg
