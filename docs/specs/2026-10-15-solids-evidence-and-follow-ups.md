@@ -119,12 +119,13 @@ mode and style was done.
 "Silent" means the run passes the gate while the figure is wrong. Pipeline
 warnings reach the retry prompt but never fail a run, and eval records do not
 store them (`evals/run.py` has no warnings field), so a warning is invisible
-in eval results.
+in eval results. (Superseded 2026-10-16: records now carry `warnings` and
+scenarios can gate on them, see the 2026-10-16 section.)
 
 | Class | Seen in | What exists now |
 |---|---|---|
 | Numeric label on the wrong prism edge | run 1 | Pipeline warning (`prism.label_dimension_warnings`); never fails; not in eval records. Addressed 2026-10-16: warnings are recorded and a scenario can gate on them (see the 2026-10-16 section) |
-| Unit-cube grid lost (faces drawn, not the prism id) | run 1 | Guidance plus a pipeline warning; not in eval records |
+| Unit-cube grid lost (faces drawn, not the prism id) | run 1 | Guidance plus a pipeline warning; not in eval records (superseded 2026-10-16: records now carry `warnings` and scenarios can gate on them, see the 2026-10-16 section) |
 | `required_labels` skipped under SVG | run 1 | Fixed (db1a299) |
 | Isometric expected, oblique drawn | runs 1, 2 | Recipe guidance only; no scenario check of `view` |
 | Stray origin dot and label (recipe) | runs 1, 4 | Nothing |
@@ -179,7 +180,7 @@ in eval results.
 - **The pre-assert step cannot ground solid asserts.** With solids on it
   advertises `assert_volume` / `assert_true_length`, but its grammar cannot
   define a prism, so those proposals are always filtered.
-- **The spec's pipeline-warnings list omits the label-dimension warning**
+- **(Fixed 2026-10-16.) The spec's pipeline-warnings list omits the label-dimension warning**
   (`docs/geometry-dsl-spec.md#pipeline-warnings`), although CLAUDE.md lists
   it.
 - **Structured token usage is recorded as 0** in eval records, so cost
@@ -311,7 +312,7 @@ box center, straddling cube edges.
   under Known limitations).
 - Evals: every record stores `warnings`; a scenario's `fail_on_warnings`
   adds a `warning:<substring>` gate failure per matching substring; the five
-  prism label scenarios gate on `does not match its true length`. This is the
+  prism scenarios gate on `does not match its true length`. This is the
   "record pipeline warnings in eval records" step proposed above for the
   warn-only classes, for this one class.
 
@@ -329,8 +330,18 @@ box center, straddling cube edges.
   (it floats higher over short columns of an uneven stack), and its 0.5-unit
   margin is a construction-unit gap whose pixel size shrinks on wide canvases.
 - `base_area_label` on a solid prism reads over the front face (the base is
-  hidden) and can graze drawn edges when the base is narrow on screen.
+  hidden) and can cross edges or another label on extreme shapes (20x1x1 at `depth_angle`
+  80, 1x1x20 at `depth_scale` 1.5) or sit partly outside a narrow base.
 - Setting a field and also labelling the same edge by hand gives two labels
   (no de-duplication).
 - Whitespace-only `fail_on_warnings` entries are accepted and match almost any
   warning.
+
+**Limits of the verification evidence.** The post-change luna run is n=1 per
+cell, one model (gpt-6-luna), judge off, and every prism cell is oblique `side:
+right`: side-left and isometric label placement was exercised by tests and a
+216-case placement sweep, not by model runs. The gate has no
+outside-the-silhouette placement check; placement was verified by eyeballing
+and tests. The 23/24 gate pass of this run against the earlier 14/15 is not a
+before/after comparison: the one failing cell (structured drawing a block stack
+for the unit-cubes prompt) predates this change.

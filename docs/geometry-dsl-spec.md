@@ -510,7 +510,8 @@ The labels are lowered by the registry hook `lower_labels` (see
 `ir/derived.py`): **once per drawn prism**, appended after the other render
 operations, however the prism is drawn. A prism is drawn when a `draw` or
 `fill` operation names its id or an id it owns (a face or an edge, for a
-shaded prism drawn through its face ids only); drawing it twice, or through
+shaded prism drawn through its face ids only; a `draw` of one edge alone
+emits all four labels); drawing it twice, or through
 several faces, still emits each label once. An undrawn prism emits no labels
 (a `fill` of the prism id itself is an error, see below, so it never triggers
 them). Setting a field and also labelling the same edge by hand gives two
@@ -528,8 +529,9 @@ fires whether or not the prism is drawn. `base_area_label` is not checked.
 *Known limits.* In TikZ a dimension label (a `label_segment`) renders in math
 mode (italic, spaces collapse: `"6 units"` reads `6units`), while
 `base_area_label` is plain `\node` text, where `^` (e.g. `"cm^2"`) is a LaTeX
-error; the SVG renderer has neither problem. The base-area text can graze
-drawn edges when the base is narrow on screen.
+error; the SVG renderer has neither problem. The base-area text can cross edges or
+another label on extreme shapes (e.g. a 20x1x1 box at `depth_angle` 80, or a
+1x1x20 box at `depth_scale` 1.5) or sit partly outside a narrow base.
 
 Render operations that cannot work on the prism id are compile errors naming
 the alternative: `fill` (or a `fill` hole) on the prism id ("fill a face id
@@ -815,7 +817,7 @@ definition and check:
   of non-empty strings): each substring found, case-sensitively, in any
   recorded warning adds one gate failure `warning:<substring>`, so the cell's
   `gate_status` is `fail`. `deterministic_pass` is unaffected (it covers check
-  failures only). The five prism label scenarios use
+  failures only). The five prism scenarios use
   `fail_on_warnings: ["does not match its true length"]`, which catches a
   dimension label on the wrong edge, whether set by hand or by field. A
   whitespace-only entry is accepted and would match almost any warning; do not

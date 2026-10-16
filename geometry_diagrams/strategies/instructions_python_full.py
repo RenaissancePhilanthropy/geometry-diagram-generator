@@ -80,7 +80,7 @@ _SOLIDS_FRAGMENT = """
   also add `.label(...)`/`label_text` for the same dimension. `base_area_label=` sits on the base face,
   so use it with a wireframe or shaded-base box, not a solid-shaded one (its base is hidden).
   `prism(...)` does not draw by itself: the labels are emitted when the box is drawn, and any
-  `draw(box)`, or `draw(...)`/`fill(...)` of one of its faces, triggers all of them, so draw the solid once.
+  `draw(box)`, or `draw(...)`/`fill(...)` of one of its faces or edges, triggers all of them, so draw the solid once.
 - Manual dimension labels (`.label(text)` on an edge or on any two-corner `segment`) are only for labels
   the fields cannot express. Put each number on the edge of its own dimension, using the silhouette
   edges, the edges on the drawn outline: `box.edge(box.corner(0, 0, 0),

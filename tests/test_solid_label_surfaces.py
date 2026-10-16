@@ -265,7 +265,7 @@ def test_guidance_never_says_a_fill_of_the_solid_id_triggers_labels(surface):
     assert "draw or fill of the prism id" not in text and "`fill` of the prism id" not in text
     assert "fill(...)` of `box`" not in text
     # the accurate claim is present
-    assert "faces" in text and "triggers all of them" in text
+    assert "faces or edges" in text and "triggers all of them" in text
 
 
 def test_fill_of_a_face_id_does_trigger_the_labels_and_the_docstrings_agree():
@@ -276,7 +276,7 @@ def test_fill_of_a_face_id_does_trigger_the_labels_and_the_docstrings_agree():
     d.render.append(ir.Fill(obj="P_front"))
     assert _count(_run(d).svg, "4 ft") == 1
     from geometry_diagrams.pydsl import api
-    assert "fill the prism" not in api.prism.__doc__ and "draw/fill of one of its faces" in api.prism.__doc__
+    assert "fill the prism" not in api.prism.__doc__ and "draw/fill of one of its faces or edges" in api.prism.__doc__
     assert "draw/fill of one of its column top faces" in api.stack.__doc__
 
 

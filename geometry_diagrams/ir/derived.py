@@ -48,7 +48,11 @@ optional) and who consumes each:
   which still lowers each draw of the kind's own id; it exists because a
   kind's own labels must appear exactly once however the solid is drawn
   (through its id, only through its faces, or drawn twice), and need the
-  compiled object, which ``lower_draw`` never sees.
+  compiled object, which ``lower_draw`` never sees. The hook receives only
+  ``(stmt, obj)``, no symbol table (a label that needs another object is not
+  expressible), and "drawn" is decided from the ids the kind owns
+  (``owned_ids`` / ``synthesize``), so a kind must own every id a model would
+  draw.
 - ``exclusive``: owned-id uniqueness (``check_exclusive_ids``).
 - ``feature``: the generation-surface gate (features.require_features).
 - ``index``: every compiled statement, e.g. a prism's corner-segment index.
@@ -224,7 +228,10 @@ class DerivedConstruction:
     #     operations (labels) appended once, after every other operation, by
     #     lower_render when the statement is drawn (``drawn_ids``). Must be a
     #     pure function of its arguments; empty when the statement has no
-    #     labels to add.
+    #     labels to add. It receives only (stmt, obj), no symbol table, so a
+    #     label that needs another object is not expressible. "Drawn" is
+    #     decided from the ids the kind owns (owned_ids / synthesize), so a
+    #     kind must own every id a model would draw.
     lower_labels: Callable[[Any, Any], list[Any]] | None = None
     # exclusive: the kind's owned ids must be unique names. An owned id equal
     #     to an authored definition id, or to an id another construction owns,

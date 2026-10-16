@@ -721,8 +721,8 @@ _PRISM_GUIDANCE_DOC = """\
   when the prism is drawn through its faces. One label per dimension: do not also add label_segment or
   label_free_text for the same dimension. base_area_label sits on the base face: use it with a
   wireframe or shaded-base prism, not a solid-shaded one (its base is hidden). Example: """ + _EX["labels_op"] + """
-  The labels are emitted when the solid is drawn: a draw of the prism id, or a draw or fill of
-  its faces, triggers all of them, so draw the solid once (the prism id itself cannot be filled).
+  The labels are emitted when the solid is drawn: a draw of the solid id, or a draw/fill of one
+  of its faces or edges (column top faces for a stack), triggers all of them, so draw the solid once (the prism id itself cannot be filled).
 - Manual dimension labels (label_segment on two corners of an edge, e.g. P_v000, P_v100) are only for
   labels the fields cannot express. Put each number on the edge of its own dimension: the bit that
   differs between an edge's two corners says which (first = length, second = height, third = width).
