@@ -713,8 +713,11 @@ _PRISM_GUIDANCE_DOC = """\
   Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
 - Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100). Put each number on
   the edge of its own dimension: the bit that differs between an edge's two corners says which
-  (first = length, e.g. P_e_000_100; second = height, e.g. P_e_000_010; third = width, e.g.
-  P_e_000_001). A numeric label that differs from the edge's true length gives a warning.
+  (first = length, second = height, third = width). Use the edges on the drawn outline, which
+  depend on `side`: length P_e_000_100 always; side right (default): height P_e_000_010, width
+  P_e_100_101; side left: height P_e_100_110, width P_e_000_001. (The other edges of a dimension
+  may be hidden or inside the figure, so their labels land badly.) A numeric label that differs
+  from the edge's true length gives a warning.
   Words and units go in free-text labels (label_free_text, text or centroid_of:"P"); segment
   labels render in math mode.
 - The schematic case: when only a base area and a height are given (no length or width), choose
