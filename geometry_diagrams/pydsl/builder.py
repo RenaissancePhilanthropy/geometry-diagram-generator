@@ -181,7 +181,7 @@ class Builder:
 
         from geometry_diagrams.ir import ir as ir_mod
         from geometry_diagrams.ir.derived import REGISTRY as DERIVED_REGISTRY
-        from geometry_diagrams.ir.to_sympy import _compile_one
+        from geometry_diagrams.ir.to_sympy import compile_one_attributed
 
         canvas = self._canvas or ir_mod.Canvas()
         # self._rng, NOT a fresh Random(42): see __init__ for why the stream
@@ -193,7 +193,7 @@ class Builder:
         # cached inline below instead, and self._sym_watermark accounts
         # for them afterward via len(self._defs)).
         def compile_into_sym(stmt):
-            obj = _compile_one(stmt, self._sym, {}, canvas, rng, all_def_ids=None)
+            obj = compile_one_attributed(stmt, self._sym, {}, canvas, rng, all_def_ids=None)
             self._sym[stmt.id] = obj
             # Mirror compile_defs()'s post-compile registration of derived
             # entities, via the same registry: without it the incremental

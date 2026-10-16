@@ -140,3 +140,31 @@ def test_skew_warnings_do_not_claim_the_solid_is_drawn():
         res = asyncio.run(run_ir_pipeline(diagram, SVGRenderer()))
         skew = [w for w in res.warnings if "unequal axis scales" in w]
         assert skew and all("is drawn on a canvas" not in w for w in skew)
+
+
+# --- owner attribution through the pydsl builder's incremental compile ----------
+
+def _builder_error_for_tiny_prism():
+    with new_builder_context():
+        with pytest.raises(IRCompileError) as exc:
+            api.prism(api.point(0, 0), length=1e-300, width=2, height=2)
+    return exc.value
+
+
+def test_pydsl_builder_tiny_prism_error_names_the_owning_prism_id():
+    err = _builder_error_for_tiny_prism()
+    assert err.def_id.startswith("__pydsl_prism_")
+    assert not err.def_id.endswith(("_front", "_back", "_left", "_right", "_top", "_bottom"))
+    assert f"derived '{err.def_id}_" in str(err) and f"of '{err.def_id}'" in str(err)
+
+
+def test_compile_defs_and_builder_report_the_same_error_shape():
+    whole = None
+    with pytest.raises(IRCompileError) as exc:
+        compile_defs(_prism_diagram(length=1e-300))
+    whole = exc.value
+    inc = _builder_error_for_tiny_prism()
+    shape = lambda e, owner: str(e).replace(owner, "<OWNER>").split("derived '")[1].split("':")[0].split("_", 1)[1:]
+    assert shape(whole, "P") == shape(inc, inc.def_id)
+    assert str(whole).startswith("[P] derived 'P_") and str(inc).startswith(f"[{inc.def_id}] derived '")
+    assert type(whole) is type(inc)
