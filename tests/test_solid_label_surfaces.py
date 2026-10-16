@@ -251,3 +251,43 @@ def test_prism_examples_render_each_label_once():
             assert _count(res.svg, ex[f]) == 1, f
     s = lower_to_ir(_recipe(STACK_EXAMPLES["count_label_op"]))
     assert _count(_run(s).svg, STACK_EXAMPLES["count_label_op"]["count_label"]) == 1
+
+
+# --- review fixes: the trigger claim and the fragment-level pin ----------------------------
+
+import re  # noqa: E402
+
+
+@pytest.mark.parametrize("surface", ["recipe", "structured", "python_full"])
+def test_guidance_never_says_a_fill_of_the_solid_id_triggers_labels(surface):
+    text = " ".join(_gated()[surface].split())
+    assert not re.search(r"(any|or) [`]?(draw|fill)[`]?(\(\.\.\.\)[`]?)?( or [`]?fill[`]?(\(\.\.\.\)[`]?)?)? of (the )?(prism id|[`]box[`])", text)
+    assert "draw or fill of the prism id" not in text and "`fill` of the prism id" not in text
+    assert "fill(...)` of `box`" not in text
+    # the accurate claim is present
+    assert "faces" in text and "triggers all of them" in text
+
+
+def test_fill_of_a_face_id_does_trigger_the_labels_and_the_docstrings_agree():
+    d = lower_to_ir(RecipeDSL.model_validate({
+        "construction": [{"op": "point", "id": "O", "coords": [0, 0]},
+                         {**PRISM_OP, "length_label": "4 ft", "visible": False}],
+        "annotations": {"auto_draw_all": False, "draws": []}, "checks": []}))
+    d.render.append(ir.Fill(obj="P_front"))
+    assert _count(_run(d).svg, "4 ft") == 1
+    from geometry_diagrams.pydsl import api
+    assert "fill the prism" not in api.prism.__doc__ and "draw/fill of one of its faces" in api.prism.__doc__
+    assert "draw/fill of one of its column top faces" in api.stack.__doc__
+
+
+def test_structured_example_description_matches_the_example():
+    text = ins.build_structured_instructions(SOLIDS)
+    assert "with dimension label fields, a face label and checks" in text
+    assert "with an edge label" not in text
+
+
+def test_python_full_fragment_itself_carries_the_one_label_rule():
+    frag = " ".join(ipf._SOLIDS_FRAGMENT.split())
+    assert "One label per dimension" in frag
+    assert "`length_label=`" in frag and "draw the solid once" in frag
+    assert "does not draw by itself" in frag

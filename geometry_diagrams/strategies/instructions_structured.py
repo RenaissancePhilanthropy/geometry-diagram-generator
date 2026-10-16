@@ -340,7 +340,7 @@ for the base area). Each is used verbatim, so write the number with its unit and
 when the prism is drawn through its faces. One label per dimension: do not also add `label_segment` or \
 `label_free_text` for the same dimension. `base_area_label` sits on the base face, so use it with a \
 wireframe or shaded-base prism, not a solid-shaded one (its base is hidden). The labels are emitted when \
-the solid is drawn: any `draw` or `fill` of the prism id or of its faces triggers all of them, so draw the \
+the solid is drawn: a `draw` of the prism id, or a `draw` or `fill` of its faces, triggers all of them, so draw the \
 solid once. Example definition: `{"kind": "rectangular_prism", "id": "P", "origin": "O", "length": 4, \
 "width": 3, "height": 2, "length_label": "4 ft", "width_label": "3 ft", "height_label": "2 ft"}`. \
 The manual route is only for labels the fields cannot express. Its fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
@@ -366,7 +366,7 @@ dimension, `depth_angle`/`depth_scale` with `view: "isometric"`, a wrong number 
 or a definition reusing a derived id is a compile error naming the definition; fix it and \
 regenerate.
 
-Example (a shaded 4 x 3 x 2 box with an edge label, a face label and checks):
+Example (a shaded 4 x 3 x 2 box with dimension label fields, a face label and checks):
 
 ```json
 """ + json.dumps(PRISM_EXAMPLE_IR, indent=2) + """
