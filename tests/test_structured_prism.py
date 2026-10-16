@@ -90,7 +90,9 @@ def test_example_uses_a_prism_fill_edge_label_and_volume_check():
     d = _example()
     assert any(isinstance(s, ir.RectangularPrism) for s in d.define)
     assert any(isinstance(r, ir.Fill) for r in d.render)
-    assert any(isinstance(r, ir.LabelSegment) for r in d.render)
+    prism = next(s for s in d.define if isinstance(s, ir.RectangularPrism))
+    assert (prism.length_label, prism.width_label, prism.height_label) == ("4 ft", "3 ft", "2 ft")
+    assert not any(isinstance(r, ir.LabelSegment) for r in d.render)  # fields, not manual labels
     assert any(isinstance(c, ir.VolumeEquals) for c in d.checks)
     assert any(isinstance(c, ir.TrueLengthEquals) for c in d.checks)
 

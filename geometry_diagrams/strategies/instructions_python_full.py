@@ -7,7 +7,7 @@ from __future__ import annotations
 # from the API (a shaded box with dimension labels and checks).
 PRISM_EXAMPLE_SCRIPT = """\
 o = point(0, 0)
-box = prism(o, 4, 3, 2)
+box = prism(o, 4, 3, 2, length_label="4 ft", width_label="3 ft", height_label="2 ft")
 assert_volume(box, 24)
 front, right, top = box.face("front"), box.face("right"), box.face("top")
 fill(front, color="#bcd6ee")
@@ -15,9 +15,6 @@ fill(right, color="rgb(150, 190, 230)")
 fill(top, color="#dbe9f6")
 for f in (front, right, top):
     draw(f)
-box.edge(box.corner(0, 0, 0), box.corner(1, 0, 0)).label("4")
-segment(box.corner(1, 0, 0), box.corner(1, 0, 1)).label("3")
-segment(box.corner(0, 0, 0), box.corner(0, 1, 0)).label("2")
 assert_true_length(segment(box.corner(0, 0, 0), box.corner(1, 0, 1)), 5)
 label_text("V = 24", centroid_of=box)
 """
@@ -26,7 +23,7 @@ label_text("V = 24", centroid_of=box)
 # each through the real sandbox and pipeline).
 STACK_EXAMPLE_SCRIPT = """\
 o = point(0, 0)
-s = stack(o, heights=[[1, 2], [3, 0]], top_color="#e6eefa")
+s = stack(o, heights=[[1, 2], [3, 0]], top_color="#e6eefa", count_label="6 cubes")
 assert_cube_count(s, 6)
 label_text("3", centroid_of=s.top(0, 1))
 draw(s)
@@ -52,7 +49,8 @@ def _indent(script: str) -> str:
 _SOLIDS_FRAGMENT = """
 ## Rectangular prisms (boxes)
 - `prism(origin, length, width, height, unit_cubes=False, vertex_names=None, view="oblique",
-  depth_angle=None, depth_scale=None, side="right")` returns a Prism (never name a variable `prism`). `origin` is a Point at the
+  depth_angle=None, depth_scale=None, side="right", length_label=None, width_label=None,
+  height_label=None, base_area_label=None)` returns a Prism (never name a variable `prism`). `origin` is a Point at the
   front-bottom-left corner; length runs along the front bottom edge, width along the right bottom
   edge (the depth), height is vertical (positive literal numbers). side="right" (default) shows
   the front, right and top faces; side="left" shows front, left and top. The back, left (right
@@ -75,8 +73,17 @@ _SOLIDS_FRAGMENT = """
 - view="isometric" suits unit-cube figures (no depth_angle/depth_scale); unit_cubes=True needs
   literal integer dimensions, at most 100 each. The default view is oblique at 45 degrees with
   depth scale 1/2.
-- Dimension labels: `.label(text)` on an edge (or on any two-corner `segment`); put each number on the
-  edge of its own dimension, using the edges on the drawn outline: `box.edge(box.corner(0, 0, 0),
+- Dimension labels: pass `length_label=`, `width_label=` and `height_label=` to `prism(...)`
+  (`base_area_label=` for the base area). Each is used verbatim, so write the number with its unit
+  and keep it short ("6 units", "6 ft"). The label lands on the correct visible edge outside the figure
+  for any view and side, even when the box is drawn through its faces. One label per dimension: do not
+  also add `.label(...)`/`label_text` for the same dimension. `base_area_label=` sits on the base face,
+  so use it with a wireframe or shaded-base box, not a solid-shaded one (its base is hidden).
+  `prism(...)` does not draw by itself: the labels are emitted when the box is drawn, and any
+  `draw(...)` or `fill(...)` of `box` or of its faces triggers all of them, so draw the solid once.
+- Manual dimension labels (`.label(text)` on an edge or on any two-corner `segment`) are only for labels
+  the fields cannot express. Put each number on the edge of its own dimension, using the silhouette
+  edges, the edges on the drawn outline: `box.edge(box.corner(0, 0, 0),
   box.corner(1, 0, 0))` is the length edge (every view). By `side`: side right (default): height
   corner(0, 0, 0)-corner(0, 1, 0), width corner(1, 0, 0)-corner(1, 0, 1); side left: height
   corner(1, 0, 0)-corner(1, 1, 0), width corner(0, 0, 0)-corner(0, 0, 1). (The other edges of a
@@ -95,7 +102,7 @@ _SOLIDS_FRAGMENT = """
 """ + "".join("      " + line + "\n" if line else "\n" for line in PRISM_EXAMPLE_SCRIPT.splitlines()) + """
 ## Stacks of unit cubes
 - `stack(origin, heights=None, cubes=None, view="oblique", depth_angle=None, depth_scale=None,
-  side="right", front_color=None, side_color=None, top_color=None)` returns a Stack (never name a
+  side="right", front_color=None, side_color=None, top_color=None, count_label=None)` returns a Stack (never name a
   variable `stack`). `origin` is a Point at the front-bottom-left corner. Give EXACTLY ONE of
   `heights` and `cubes`.
 - Use `heights` (rows front to back, columns left to right; heights[z][x]) when the item gives
@@ -111,6 +118,9 @@ _SOLIDS_FRAGMENT = """
   flat instead of standing up.
 - Never draw individual cubes by hand (no per-cube polygons or segments): one `stack` draws them all
   with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
+- For a stack's total use `count_label=` (verbatim text, the number with its unit, e.g. "6 cubes"): it lands
+  above the stack, once, when the stack is drawn. `stack(...)` does not draw by itself: `draw(s)` once.
+  `count_label=` is preferred over `s.label(text)`, which lands at the middle of the bounding box.
 - Draw the stack handle (`draw(s)`). Color faces with front_color/side_color/top_color on `stack`.
 - For isometric requests use view="isometric" (no depth_angle/depth_scale).
   Example:

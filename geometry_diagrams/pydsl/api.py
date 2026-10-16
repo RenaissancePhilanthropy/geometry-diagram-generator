@@ -228,8 +228,12 @@ def prism(
     depth_angle: "float | None" = None,
     depth_scale: "float | None" = None,
     side: str = "right",
+    length_label: "str | None" = None,
+    width_label: "str | None" = None,
+    height_label: "str | None" = None,
+    base_area_label: "str | None" = None,
 ) -> Prism:
-    """A rectangular prism (box) drawn as a parallel projection; `origin` is the front-bottom-left corner. length runs along the front bottom edge, width along the right bottom edge (the depth), height is vertical (positive numbers). view is "oblique" (default; depth_angle in degrees / depth_scale override the receding axis) or "isometric"; side "right" shows the front/right/top faces, "left" the front/left/top. unit_cubes=True needs literal integer dimensions, at most 100 each. vertex_names renames the eight corners (order of corner(a, b, c) with c varying fastest). Returns a Prism handle: .corner(a,b,c), .edge(p,q), .face(name), .volume, .base_area."""
+    """A rectangular prism (box) drawn as a parallel projection; `origin` is the front-bottom-left corner. length runs along the front bottom edge, width along the right bottom edge (the depth), height is vertical (positive numbers). view is "oblique" (default; depth_angle in degrees / depth_scale override the receding axis) or "isometric"; side "right" shows the front/right/top faces, "left" the front/left/top. unit_cubes=True needs literal integer dimensions, at most 100 each. vertex_names renames the eight corners (order of corner(a, b, c) with c varying fastest). length_label / width_label / height_label label the three dimensions: each is verbatim text (write the number with its unit, e.g. "6 ft"; non-empty) placed on the right visible edge outside the figure, once the box is drawn (draw(box) or any of its faces; prism() does not draw by itself). One label per dimension: do not also label the same edge by hand. base_area_label labels the base face (use it with a wireframe or shaded-base box; a solid box hides its base). Returns a Prism handle: .corner(a,b,c), .edge(p,q), .face(name), .volume, .base_area."""
     import pydantic
 
     from geometry_diagrams.ir.ir import RectangularPrism
@@ -251,6 +255,8 @@ def prism(
             id=pid, origin=origin.id, length=length, width=width, height=height,
             unit_cubes=unit_cubes, vertex_names=list(vertex_names) if vertex_names is not None else None,
             view=view, depth_angle=depth_angle, depth_scale=depth_scale, side=side,
+            length_label=length_label, width_label=width_label, height_label=height_label,
+            base_area_label=base_area_label,
         )
     except pydantic.ValidationError as exc:
         raise ValueError(f"prism(): invalid arguments: {exc}") from None
@@ -273,8 +279,9 @@ def stack(
     front_color: "str | None" = None,
     side_color: "str | None" = None,
     top_color: "str | None" = None,
+    count_label: "str | None" = None,
 ) -> Stack:
-    """An irregular stack of unit cubes drawn as a parallel projection; `origin` is the front-bottom-left corner. Give EXACTLY ONE of heights (heights[z][x] = cubes in the column at column x, left to right, of row z, rows front to back) and cubes (a list of [x, y, z] unit cubes, only for shapes a height map cannot express; at most 400 cubes, at most 20 cells along any axis). view is "oblique" (default; depth_angle / depth_scale override the receding axis) or "isometric"; side "right" or "left" as for prism(). front_color/side_color/top_color color the faces. Returns a Stack handle: .cube_count, .volume, .top(x, z)."""
+    """An irregular stack of unit cubes drawn as a parallel projection; `origin` is the front-bottom-left corner. Give EXACTLY ONE of heights (heights[z][x] = cubes in the column at column x, left to right, of row z, rows front to back) and cubes (a list of [x, y, z] unit cubes, only for shapes a height map cannot express; at most 400 cubes, at most 20 cells along any axis). view is "oblique" (default; depth_angle / depth_scale override the receding axis) or "isometric"; side "right" or "left" as for prism(). front_color/side_color/top_color color the faces. count_label is verbatim text (non-empty; write the number with its unit) placed above the stack, once it is drawn (stack() does not draw by itself; draw(s) or a column top): preferred for a stack total over s.label(text). Returns a Stack handle: .cube_count, .volume, .top(x, z)."""
     import pydantic
 
     from geometry_diagrams.ir.ir import BlockStack
@@ -294,6 +301,7 @@ def stack(
             cubes=[list(c) for c in cubes] if cubes is not None else None,
             view=view, depth_angle=depth_angle, depth_scale=depth_scale, side=side,
             front_color=front_color, side_color=side_color, top_color=top_color,
+            count_label=count_label,
         )
     except (pydantic.ValidationError, TypeError) as exc:
         raise ValueError(f"stack(): invalid arguments: {exc}") from None

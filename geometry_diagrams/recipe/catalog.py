@@ -664,6 +664,9 @@ PRISM_EXAMPLES: dict[str, dict[str, Any]] = {
     "op": {"op": "prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2},
     "isometric_op": {"op": "prism", "id": "P", "origin": "O", "length": 3, "width": 3, "height": 3,
                      "unit_cubes": True, "view": "isometric"},
+    "labels_op": {"op": "prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2,
+                  "length_label": "4 ft", "width_label": "3 ft", "height_label": "2 ft",
+                  "base_area_label": "12 sq ft"},
     "volume": {"check": "volume", "prism": "P", "expected": 24},
     "true_length": {"check": "true_length", "points": ["P_v000", "P_v101"], "expected": 5},
     "draws": {"draws": [{"obj": "P"}]},
@@ -673,7 +676,8 @@ PRISM_EXAMPLES: dict[str, dict[str, Any]] = {
 _EX = {k: json.dumps(v) for k, v in PRISM_EXAMPLES.items()}
 
 _PRISM_OP_DOC = """\
-- prism: {op, id, origin, length, width, height, unit_cubes?, vertex_names?, view?, depth_angle?, depth_scale?, side?}
+- prism: {op, id, origin, length, width, height, unit_cubes?, vertex_names?, view?, depth_angle?, depth_scale?, side?,
+  length_label?, width_label?, height_label?, base_area_label?}
   Rectangular box drawn as a parallel projection. origin = an EXISTING point id (a point op)
   at the front-bottom-left corner. length/width/height: positive numbers (or expressions).
   Public ids it creates: corners {id}_v{abc} (bits = length-max, height-max, width-max;
@@ -711,10 +715,18 @@ _PRISM_GUIDANCE_DOC = """\
   shows no gridlines. Fills on the face ids still shade it. The fill-and-draw-the-face-ids advice
   above is for non-unit-cube solid-shaded looks only.
   Colors may be named, "rgb(r,g,b)", "hsv(h,s,v)" or "#rrggbb".
-- Dimension labels: label_segment on two corners of an edge (e.g. P_v000, P_v100). Put each number on
-  the edge of its own dimension: the bit that differs between an edge's two corners says which
-  (first = length, second = height, third = width). Use the edges on the drawn outline, which
-  depend on `side`: length P_e_000_100 always; side right (default): height P_e_000_010, width
+- Dimension labels: set length_label, width_label and height_label on the prism op (base_area_label for
+  the base area). Each is used verbatim, so write the number with its unit and keep it short ("6 units",
+  "6 ft"). The label lands on the correct visible edge outside the figure for any view and side, even
+  when the prism is drawn through its faces. One label per dimension: do not also add label_segment or
+  label_free_text for the same dimension. base_area_label sits on the base face: use it with a
+  wireframe or shaded-base prism, not a solid-shaded one (its base is hidden). Example: """ + _EX["labels_op"] + """
+  The labels are emitted when the solid is drawn: any draw or fill of the prism id or of its faces
+  triggers all of them, so draw the solid once.
+- Manual dimension labels (label_segment on two corners of an edge, e.g. P_v000, P_v100) are only for
+  labels the fields cannot express. Put each number on the edge of its own dimension: the bit that
+  differs between an edge's two corners says which (first = length, second = height, third = width).
+  Use the silhouette edges, the edges on the drawn outline, which depend on `side`: length P_e_000_100 always; side right (default): height P_e_000_010, width
   P_e_100_101; side left: height P_e_100_110, width P_e_000_001. (The other edges of a dimension
   may be hidden or inside the figure, so their labels land badly.) A numeric label that differs
   from the edge's true length gives a warning.
@@ -733,13 +745,15 @@ STACK_EXAMPLES: dict[str, dict[str, Any]] = {
     "isometric_op": {"op": "stack", "id": "S", "origin": "O", "heights": [[2, 1, 3]],
                      "view": "isometric", "top_color": "#e6eefa"},
     "cubes_op": {"op": "stack", "id": "S", "origin": "O", "cubes": [[0, 0, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0], [1, 1, 0]]},
+    "count_label_op": {"op": "stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]],
+                       "count_label": "6 cubes"},
     "cube_count": {"check": "cube_count", "stack": "S", "expected": 6},
     "column_label": {"kind": "label_free_text", "text": "3", "centroid_of": "S_top_0_1"},
 }
 _SX = {k: json.dumps(v) for k, v in STACK_EXAMPLES.items()}
 
 _STACK_OP_DOC = """\
-- stack: {op, id, origin, heights?, cubes?, view?, depth_angle?, depth_scale?, side?, front_color?, side_color?, top_color?}
+- stack: {op, id, origin, heights?, cubes?, view?, depth_angle?, depth_scale?, side?, front_color?, side_color?, top_color?, count_label?}
   Irregular stack of unit cubes (one drawing unit each) drawn as a parallel projection. origin = an
   EXISTING point id (a point op) at the front-bottom-left corner. Give EXACTLY ONE of heights and cubes.
   heights[z][x] = number of cubes in the column at column x (left to right) of row z (rows run front
@@ -771,6 +785,8 @@ _STACK_GUIDANCE_DOC = """\
 - Draw the stack id (auto_draw_all does this). Color faces with front_color/side_color/top_color on the op.
 - For isometric requests set view:"isometric" on the stack op (no depth_angle/depth_scale).
   Example: """ + _SX["isometric_op"] + """
+- For a stack's total use count_label on the stack op (verbatim text, number with its unit, e.g. "6 cubes"): it
+  lands above the stack, once, when the stack is drawn (draw it once). Example: """ + _SX["count_label_op"] + """
 - Label a column with a free-text label centered on its top face. Example: """ + _SX["column_label"] + """
   A label centered on the stack id itself lands at the middle of the bounding box, which can fall in a notch.
 - When the prompt states the number of cubes, assert it: """ + _SX["cube_count"] + """"""

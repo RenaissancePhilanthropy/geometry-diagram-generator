@@ -534,6 +534,8 @@ class _Lowerer:
             id=op.id, origin=op.origin, length=op.length, width=op.width, height=op.height,
             unit_cubes=op.unit_cubes, vertex_names=op.vertex_names, view=op.view,
             depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
+            length_label=op.length_label, width_label=op.width_label,
+            height_label=op.height_label, base_area_label=op.base_area_label,
         )
         try:
             _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)
@@ -552,6 +554,7 @@ class _Lowerer:
             id=op.id, origin=op.origin, heights=op.heights, cubes=op.cubes, view=op.view,
             depth_angle=op.depth_angle, depth_scale=op.depth_scale, side=op.side,
             front_color=op.front_color, side_color=op.side_color, top_color=op.top_color,
+            count_label=op.count_label,
         )
         try:
             _prism.projection_for(op.view, op.side, op.depth_angle, op.depth_scale)

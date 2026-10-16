@@ -189,7 +189,7 @@ def test_every_stack_example_appears_verbatim_in_the_solids_on_docs_only():
 def _recipe_around(name: str) -> RecipeDSL:
     ex = STACK_EXAMPLES
     stack = ex["isometric_op"] if name == "isometric_op" else ex[name] if name in (
-        "op", "cubes_op") else ex["op"]
+        "op", "cubes_op", "count_label_op") else ex["op"]
     construction = [{"op": "point", "id": "O", "coords": [0, 0]}, dict(stack)]
     checks = [ex[name]] if name == "cube_count" else []
     annotations = {}
@@ -200,7 +200,7 @@ def _recipe_around(name: str) -> RecipeDSL:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["op", "isometric_op", "cubes_op", "cube_count", "column_label"])
+@pytest.mark.parametrize("name", ["op", "isometric_op", "cubes_op", "count_label_op", "cube_count", "column_label"])
 async def test_guidance_example_validates_lowers_and_renders(name):
     from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
     assert name in STACK_EXAMPLES

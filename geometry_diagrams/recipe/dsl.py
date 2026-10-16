@@ -907,6 +907,12 @@ class PrismOp(DSLOpBase):
     depth_angle: Optional[Union[int, float]] = None
     depth_scale: Optional[Union[int, float]] = None
     side: Literal["right", "left"] = "right"
+    # Verbatim label text for each dimension / the base area; lowered to the
+    # IR fields of the same name (an empty string is rejected).
+    length_label: Optional[str] = Field(default=None, min_length=1)
+    width_label: Optional[str] = Field(default=None, min_length=1)
+    height_label: Optional[str] = Field(default=None, min_length=1)
+    base_area_label: Optional[str] = Field(default=None, min_length=1)
 
 
 class StackOp(DSLOpBase):
@@ -929,6 +935,8 @@ class StackOp(DSLOpBase):
     front_color: Optional[str] = None
     side_color: Optional[str] = None
     top_color: Optional[str] = None
+    # Verbatim label for the total, lowered to the IR field (empty is rejected).
+    count_label: Optional[str] = Field(default=None, min_length=1)
 
 
 # ---------------------------------------------------------------------------

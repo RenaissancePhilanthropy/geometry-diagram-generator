@@ -281,7 +281,8 @@ PRISM_EXAMPLE_IR: dict = {
     "canvas": {"xmin": -1, "xmax": 6, "ymin": -1, "ymax": 4},
     "define": [
         {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
-        {"kind": "rectangular_prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2},
+        {"kind": "rectangular_prism", "id": "P", "origin": "O", "length": 4, "width": 3, "height": 2,
+         "length_label": "4 ft", "width_label": "3 ft", "height_label": "2 ft"},
         {"kind": "segment", "id": "s_diag", "a": "P_v000", "b": "P_v101"},
     ],
     "checks": [
@@ -295,7 +296,6 @@ PRISM_EXAMPLE_IR: dict = {
         {"kind": "draw", "obj": "P_front"},
         {"kind": "draw", "obj": "P_right"},
         {"kind": "draw", "obj": "P_top"},
-        {"kind": "label_segment", "seg": "P_e_000_100", "text": "4"},
         {"kind": "label_free_text", "text": "front face", "centroid_of": "P_front"},
     ],
 }
@@ -311,7 +311,8 @@ corner), `length`, `width`, `height` (positive numbers or expressions), optional
 (bool; needs literal integer dimensions, at most 100 each), `vertex_names` (exactly eight names in \
 corner order 000, 001, 010, 011, 100, 101, 110, 111), `view` (`"oblique"` default or \
 `"isometric"`), `depth_angle` / `depth_scale` (oblique only; default 45 degrees, scale 1/2) and \
-`side` (`"right"` default or `"left"`).
+`side` (`"right"` default or `"left"`) and the label fields `length_label`, `width_label`, \
+`height_label`, `base_area_label` (see Labels).
 
 - **Vocabulary:** length runs along the front bottom edge, width along the right bottom edge (the \
 depth), height is vertical. `side: "right"` shows the front, right and top faces; `side: "left"` \
@@ -333,9 +334,18 @@ which strokes dashed hidden edges over the fills. A `fill` takes its color from 
 gridlines (and no dashed hidden edges); drawing the faces separately shows no gridlines. Fills on \
 the face ids still shade it. The fill-and-draw-the-face-ids advice above is for non-unit-cube \
 solid-shaded looks only.
-- **Labels:** fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
+- **Labels:** set `length_label`, `width_label` and `height_label` on the definition (`base_area_label` \
+for the base area). Each is used verbatim, so write the number with its unit and keep it short (`"6 units"`, \
+`"6 ft"`). The label lands on the correct visible edge outside the figure for any view and side, even \
+when the prism is drawn through its faces. One label per dimension: do not also add `label_segment` or \
+`label_free_text` for the same dimension. `base_area_label` sits on the base face, so use it with a \
+wireframe or shaded-base prism, not a solid-shaded one (its base is hidden). The labels are emitted when \
+the solid is drawn: any `draw` or `fill` of the prism id or of its faces triggers all of them, so draw the \
+solid once. Example definition: `{"kind": "rectangular_prism", "id": "P", "origin": "O", "length": 4, \
+"width": 3, "height": 2, "length_label": "4 ft", "width_label": "3 ft", "height_label": "2 ft"}`. \
+The manual route is only for labels the fields cannot express. Its fields are `label_segment`: `seg`, `text`, optional `pos`; `label_free_text`: \
 `text` and exactly one of `at` ([x, y]) or `centroid_of` (an object id). Put each dimension on the edge of its own dimension (the bit that differs between an edge's two \
-corners: first = length, second = height, third = width). Use the edges on the drawn outline, \
+corners: first = length, second = height, third = width). Use the silhouette edges, the edges on the drawn outline, \
 which depend on `side`: length `P_e_000_100` always; side right (default): height `P_e_000_010`, \
 width `P_e_100_101`; side left: height `P_e_100_110`, width `P_e_000_001` (the other edges of a \
 dimension may be hidden or inside the figure, so their labels land badly). A numeric label that \
@@ -371,7 +381,7 @@ STACK_EXAMPLE_IR: dict = {
     "define": [
         {"kind": "point_fixed", "id": "O", "x": 0, "y": 0},
         {"kind": "block_stack", "id": "S", "origin": "O", "heights": [[1, 2], [3, 0]],
-         "top_color": "#e6eefa"},
+         "top_color": "#e6eefa", "count_label": "6 cubes"},
     ],
     "checks": [
         {"kind": "cube_count_equals", "stack": "S", "expected": 6},
@@ -391,7 +401,7 @@ _STACK_FRAGMENT = """
 Definition `block_stack`: fields `id`, `origin` (an existing point id, the front-bottom-left \
 corner) and EXACTLY ONE of `heights` and `cubes`, plus optional `view` (`"oblique"` default or \
 `"isometric"`), `depth_angle` / `depth_scale` (oblique only), `side` (`"right"` default or \
-`"left"`) and the face colors `front_color`, `side_color`, `top_color`.
+`"left"`), the face colors `front_color`, `side_color`, `top_color` and `count_label`.
 
 - Use `heights` (rows front to back, columns left to right; heights[z][x]) when the item gives \
 column heights (a "building plan", a top view with numbers, a list of stack heights).
@@ -410,13 +420,16 @@ them all with correct hidden faces. Limit: at most 400 cubes and at most 20 cell
 - For isometric requests use `"view": "isometric"` (no depth_angle/depth_scale).
 - Draw the stack with `{"kind": "draw", "obj": "<stack id>"}`. Set colors on the definition \
 (`front_color`, `side_color`, `top_color`): a `fill` of the stack id is an error.
+- For a stack's total set `count_label` on the definition (verbatim text, the number with its unit, \
+e.g. `"6 cubes"`): it lands above the stack, once, when the stack is drawn (draw it once). Do not add a \
+free-text label for the total.
 - Column top faces `{id}_top_{x}_{z}` (columns of height 0 have none) are the way to label a \
 column: `label_free_text` with `centroid_of` that id. `centroid_of` the stack id lands at the \
 middle of the bounding box, which can fall in a notch. Do not define anything with a derived id.
 - When the prompt states the number of cubes, assert it with a `cube_count_equals` check \
 (`stack`, `expected`: the integer total).
 
-Example (a 2 x 2 plan with heights 1, 2 / 3, 0, six cubes, a column label and a count check):
+Example (a 2 x 2 plan with heights 1, 2 / 3, 0, six cubes, a total label, a column label and a count check):
 
 ```json
 """ + json.dumps(STACK_EXAMPLE_IR, indent=2) + """

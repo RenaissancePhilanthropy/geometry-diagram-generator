@@ -374,12 +374,14 @@ def _recipe_around(example_name: str) -> RecipeDSL:
         annotations = dict(ex["no_auto_draw"])
     elif example_name == "isometric_op":
         construction[1] = dict(ex["isometric_op"])
+    elif example_name == "labels_op":
+        construction[1] = dict(ex["labels_op"])
     return RecipeDSL.model_validate(
         {"construction": construction, "annotations": annotations, "checks": checks})
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["op", "volume", "true_length", "draws", "hide_prism", "no_auto_draw", "isometric_op"])
+@pytest.mark.parametrize("name", ["op", "labels_op", "volume", "true_length", "draws", "hide_prism", "no_auto_draw", "isometric_op"])
 async def test_guidance_example_validates_lowers_and_renders(name):
     from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
 
