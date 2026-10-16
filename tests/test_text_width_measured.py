@@ -40,10 +40,39 @@ def test_missing_font_falls_back_to_flat_rule(monkeypatch):
     assert _estimate_text_width("3 units", 14) == pytest.approx(7 * 14 * 0.65)
 
 
-def test_unknown_family_falls_back_without_raising(monkeypatch):
+def test_unbundled_family_falls_back_to_nunito_metrics(monkeypatch):
+    expected = _estimate_text_width("3 units", 14)
     monkeypatch.setenv("DIAGRAM_FONT_FAMILY", "NoSuchFont")
-    to_svg._load_font.cache_clear()
-    try:
-        assert _estimate_text_width("abc", 14) == pytest.approx(3 * 14 * 0.65)
-    finally:
-        to_svg._load_font.cache_clear()
+    assert _estimate_text_width("3 units", 14) == pytest.approx(expected)
+
+
+def test_flat_rule_only_when_nunito_itself_is_unavailable(monkeypatch):
+    monkeypatch.setattr(to_svg, "_load_font", lambda family: None)
+    assert _estimate_text_width("abc", 14) == pytest.approx(3 * 14 * 0.65)
+
+
+def test_concurrent_measurement_is_thread_safe_and_stable():
+    """Shared FT2Font use from several threads used to abort the process;
+    run in a subprocess so a crash fails this test rather than pytest."""
+    import subprocess
+    import sys
+    import textwrap
+
+    code = textwrap.dedent("""
+        import threading
+        from geometry_diagrams.ir.to_svg import _estimate_text_width as e
+        texts = ["3 units", "H", "ABCDE", "Hello world", "x^2", "11 units"]
+        want = {t: e(t, 14) for t in texts}
+        bad = []
+        def w():
+            for _ in range(3000):
+                for t in texts:
+                    if e(t, 14) != want[t]:
+                        bad.append(t)
+        ts = [threading.Thread(target=w) for _ in range(8)]
+        [x.start() for x in ts]; [x.join() for x in ts]
+        assert not bad, bad[:3]
+        print("ok")
+    """)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.returncode == 0 and "ok" in r.stdout, (r.returncode, r.stderr[-500:])

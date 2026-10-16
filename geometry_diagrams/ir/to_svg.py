@@ -18,6 +18,7 @@ import functools
 import logging
 import math
 import re
+import threading
 import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -3646,8 +3647,13 @@ def _segment_label_side(
 
 @functools.cache
 def _load_font(family: str):
-    """Load the bundled ``family`` Regular TTF for measuring, or None if the
-    file or the library is unavailable (callers then use the flat rule)."""
+    """Load the bundled ``family`` Regular TTF for measuring. A family whose
+    file is not bundled falls back to NunitoSans; None only if NunitoSans (or
+    the library) is unavailable, and callers then use the flat rule."""
+    if not FontConfig(family=family).file_path("Regular").is_file():
+        if family == _FALLBACK_FAMILY:
+            return None
+        return _load_font(_FALLBACK_FAMILY)
     try:
         from matplotlib.ft2font import FT2Font
 
@@ -3662,6 +3668,11 @@ def _load_font(family: str):
 
 
 _MEASURE_PT = 140
+_FALLBACK_FAMILY = "NunitoSans"
+# FT2Font is not thread-safe (concurrent set_text aborts the process); the
+# renderer is called from worker threads, so every use of the shared font
+# object is serialized.
+_MEASURE_LOCK = threading.Lock()
 
 
 def _measure_text_em(family: str, text: str) -> float | None:
@@ -3672,12 +3683,12 @@ def _measure_text_em(family: str, text: str) -> float | None:
     try:
         from matplotlib.ft2font import LoadFlags
 
-        with warnings.catch_warnings():
+        with _MEASURE_LOCK, warnings.catch_warnings():
             # A glyph missing from the font is measured as .notdef; the
             # "missing glyph" UserWarning is noise for an estimate.
             warnings.simplefilter("ignore")
             font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
-        return font.get_width_height()[0] / 64 / _MEASURE_PT
+            return font.get_width_height()[0] / 64 / _MEASURE_PT
     except Exception:
         return None
 
