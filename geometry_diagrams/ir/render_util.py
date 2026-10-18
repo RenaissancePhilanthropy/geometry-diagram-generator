@@ -400,6 +400,44 @@ def seg_endpoints(seg_id: str, stmt_by_id: dict) -> tuple[str, str]:
     return stmt.a, stmt.b
 
 
+def parallel_chevron_flips(
+    ops: list,
+    stmt_by_id: dict,
+    xy,
+) -> set[tuple[str, str]]:
+    """Return the ``(group, seg_id)`` pairs whose parallel chevron must point
+    B->A instead of A->B so every chevron in a ``parallelN`` group points the
+    same way.
+
+    The first marked segment of each group (in op order) fixes the group's
+    direction; any later segment whose direction has a negative dot product
+    with it is flipped. A perpendicular segment (zero dot) is left as
+    authored. ``xy(point_id)`` returns the point's coordinates in any frame
+    that preserves the sign of the dot product (both renderers use theirs).
+    Only ops that actually draw chevrons count: a ``ticks`` override or a
+    non-parallel group is ignored. Undefined segments are skipped here; each
+    renderer already warns about them.
+    """
+    ref: dict[str, tuple[float, float]] = {}
+    flips: set[tuple[str, str]] = set()
+    for op in ops:
+        if not isinstance(op, ir.MarkSegments):
+            continue
+        if op.ticks is not None or not (op.group and op.group.startswith("parallel")):
+            continue
+        for seg_id in op.segs:
+            if seg_id not in stmt_by_id:
+                continue
+            a, b = seg_endpoints(seg_id, stmt_by_id)
+            (ax, ay), (bx, by) = xy(a), xy(b)
+            d = (bx - ax, by - ay)
+            if op.group not in ref:
+                ref[op.group] = d
+            elif d[0] * ref[op.group][0] + d[1] * ref[op.group][1] < 0:
+                flips.add((op.group, seg_id))
+    return flips
+
+
 def line_endpoints(
     line_id: str,
     stmt_by_id: dict,
@@ -758,6 +796,12 @@ _PARALLEL_COUNT_RE = re.compile(r"^parallel(\d+)$")
 # post-projection (see _TICK_LEN/spacing in to_svg.py).
 SEG_TICK_HALF_LENGTH = 0.12
 SEG_TICK_SPACING = 0.09
+# Parallel chevron (TikZ, construction units); the SVG renderer's _CHEVRON_*
+# pixel constants are these x50, like SEG_TICK_HALF_LENGTH vs _TICK_LEN.
+SEG_CHEVRON_TIP = 0.10
+SEG_CHEVRON_BACK = 0.12
+SEG_CHEVRON_WING = 0.08
+SEG_CHEVRON_SPACING = 0.08
 
 
 def resolve_mark_group_indices(seg_groups: list[str], name_re: "re.Pattern[str]") -> dict[str, int]:
@@ -812,6 +856,42 @@ def tick_mark_segments(
             (tx - nx * half_length, ty - ny * half_length),
             (tx + nx * half_length, ty + ny * half_length),
         ))
+    return strokes
+
+
+def chevron_mark_strokes(
+    a: "tuple[float, float]",
+    b: "tuple[float, float]",
+    n_chevrons: int,
+    tip: float,
+    back: float,
+    wing: float,
+    spacing: float,
+) -> "list[tuple[tuple[float, float], tuple[float, float]]]":
+    """Return the strokes of n_chevrons ``>`` marks at segment a-b's midpoint,
+    pointing a -> b, as ((wing_x, wing_y), (tip_x, tip_y)) pairs (two per
+    chevron), in whatever coordinate space a/b are given in. ``tip`` is how
+    far the tip sits ahead of the chevron's center, ``back`` how far the wings
+    sit behind the tip, ``wing`` their half-width, ``spacing`` the gap between
+    chevrons. Swap a and b to reverse the direction."""
+    ax, ay = a
+    bx, by = b
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    dx, dy = bx - ax, by - ay
+    mag = math.hypot(dx, dy) or 1.0
+    along_x, along_y = dx / mag, dy / mag
+    perp_x, perp_y = -dy / mag, dx / mag
+    strokes: "list[tuple[tuple[float, float], tuple[float, float]]]" = []
+    for i in range(n_chevrons):
+        offset = (i - (n_chevrons - 1) / 2) * spacing
+        tip_x = mx + along_x * (offset + tip)
+        tip_y = my + along_y * (offset + tip)
+        for sign in (1, -1):
+            strokes.append((
+                (tip_x - along_x * back + sign * perp_x * wing,
+                 tip_y - along_y * back + sign * perp_y * wing),
+                (tip_x, tip_y),
+            ))
     return strokes
 
 

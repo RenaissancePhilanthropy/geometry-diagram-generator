@@ -36,7 +36,9 @@ from .render_util import (
     away_label_center,
     away_normal,
     bare_color_key,
+    chevron_mark_strokes,
     ordered_polygon_paints,
+    parallel_chevron_flips,
     svg_color,
     translate_style_colors,
     BOUNDS_PADDING,
@@ -475,6 +477,10 @@ def _ir_to_svg_impl(
     # raw, UNCAPPED index per group — what MarkArcs reads.
     group_tick_counts: dict[str, int] = {**tick_group_indices, **parallel_group_indices}
 
+    # Parallel chevrons in one group all point the same way (see
+    # parallel_chevron_flips); the renderer swaps a flipped segment's endpoints.
+    chevron_flips = parallel_chevron_flips(sorted_ops, stmt_by_id, pt)
+
     # Pre-compute incident angles for smart auto label placement
     incident_angles = _build_incident_angles(diagram, sym, stmt_by_id, coords, helpers)
     angle_mark_wedges = _build_angle_mark_wedges(diagram, sym, coords, helpers)
@@ -505,6 +511,7 @@ def _ir_to_svg_impl(
             group_mark_symbols, pt, gxy, scale, xmin, xmax, ymin, ymax,
             group_chevron_counts=group_chevron_counts,
             group_tick_counts=group_tick_counts,
+            chevron_flips=chevron_flips,
             incident_angles=incident_angles,
             angle_mark_wedges=angle_mark_wedges,
             warnings=warnings,
@@ -733,6 +740,7 @@ def _emit_svg_op(
     ymin: float,
     ymax: float,
     group_chevron_counts: dict[str, int] = None,
+    chevron_flips: set[tuple[str, str]] | None = None,
     group_tick_counts: dict[str, int] | None = None,
     incident_angles: dict[str, list[float]] | None = None,
     angle_mark_wedges: dict[str, list[tuple[float, float]]] | None = None,
@@ -1302,6 +1310,8 @@ def _emit_svg_op(
                 elif group and group.startswith("parallel"):
                     # Parallel segments: use chevron marks (incrementing count per group)
                     n_chevrons = group_chevron_counts.get(group, 1)
+                    if chevron_flips and (group, seg_id) in chevron_flips:
+                        a, b = b, a
                     _append_seg_chevrons(svg, a, b, pt, stroke, n_chevrons, extra_attrs=mark_attrs)
                 else:
                     # Equal-length segments: dispatch on mark symbol
@@ -1834,39 +1844,19 @@ def _append_seg_chevrons(
     extra_attrs: dict[str, str] | None = None,
 ) -> None:
     """Draw n_chevrons directional chevron marks at the midpoint of segment AB."""
-    ax, ay = pt(a_id)
-    bx, by = pt(b_id)
-    mx, my = (ax + bx) / 2, (ay + by) / 2
-    dx, dy = bx - ax, by - ay
-    mag = math.hypot(dx, dy) or 1
-    # Direction (A→B) and perpendicular
-    along_x, along_y = dx / mag, dy / mag
-    perp_x, perp_y = -dy / mag, dx / mag
     spacing = 4  # px between multiple chevrons
-
-    for i in range(n_chevrons):
-        offset = (i - (n_chevrons - 1) / 2) * spacing
-        cx = mx + along_x * offset
-        cy = my + along_y * offset
-        # Tip point ahead in the segment direction
-        tip_x = cx + along_x * _CHEVRON_TIP
-        tip_y = cy + along_y * _CHEVRON_TIP
-        # Wing base points: back from tip, offset perpendicular
-        wing1_x = tip_x - along_x * _CHEVRON_BACK + perp_x * _CHEVRON_WING
-        wing1_y = tip_y - along_y * _CHEVRON_BACK + perp_y * _CHEVRON_WING
-        wing2_x = tip_x - along_x * _CHEVRON_BACK - perp_x * _CHEVRON_WING
-        wing2_y = tip_y - along_y * _CHEVRON_BACK - perp_y * _CHEVRON_WING
-        # Two arms of the chevron
-        for wx, wy in [(wing1_x, wing1_y), (wing2_x, wing2_y)]:
-            ET.SubElement(svg, "line", {
-                **(extra_attrs or {}),
-                "x1": f"{wx:.2f}",
-                "y1": f"{wy:.2f}",
-                "x2": f"{tip_x:.2f}",
-                "y2": f"{tip_y:.2f}",
-                "stroke": stroke,
-                "stroke-width": "1.5",
-            })
+    for (x1, y1), (x2, y2) in chevron_mark_strokes(
+        pt(a_id), pt(b_id), n_chevrons, _CHEVRON_TIP, _CHEVRON_BACK, _CHEVRON_WING, spacing
+    ):
+        ET.SubElement(svg, "line", {
+            **(extra_attrs or {}),
+            "x1": f"{x1:.2f}",
+            "y1": f"{y1:.2f}",
+            "x2": f"{x2:.2f}",
+            "y2": f"{y2:.2f}",
+            "stroke": stroke,
+            "stroke-width": "1.5",
+        })
 
 
 # ---------------------------------------------------------------------------

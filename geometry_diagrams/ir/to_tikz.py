@@ -16,6 +16,7 @@ from .render_util import (
     away_normal,
     bare_color_key,
     ordered_polygon_paints,
+    parallel_chevron_flips,
     tikz_color,
     translate_style_colors,
     BOUNDS_PADDING,
@@ -47,9 +48,14 @@ from .render_util import (
     synthesize_helpers,
     sympy_to_float,
     tick_mark_arcs,
+    chevron_mark_strokes,
     tick_mark_segments,
     tick_values,
     resolve_mark_group_indices,
+    SEG_CHEVRON_BACK,
+    SEG_CHEVRON_SPACING,
+    SEG_CHEVRON_TIP,
+    SEG_CHEVRON_WING,
     SEG_TICK_HALF_LENGTH,
     SEG_TICK_SPACING,
     TIKZ_TEXT_EM,
@@ -172,7 +178,6 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     # MarkSegments.ticks / MarkArcs.ticks (an explicit count) bypasses this entirely —
     # resolved per-op in _emit_op.
     _MARK_SYMBOLS = ["|", "||", "|||", "s", "s|", "s||"]
-    _PARALLEL_MARKS = [">", ">>", ">>>"]
     _styles = diagram.styles or {}
     # Color values are parsed once here: hex/rgb/hsv forms become names
     # \definecolor'd at the top of the body (before any use), named colors and
@@ -196,16 +201,20 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     group_marks: dict[str, str] = {
         g: _MARK_SYMBOLS[min(idx, len(_MARK_SYMBOLS)) - 1] for g, idx in tick_group_indices.items()
     }
-    group_marks.update({
-        g: _PARALLEL_MARKS[min(idx, len(_PARALLEL_MARKS)) - 1] for g, idx in parallel_group_indices.items()
-    })
     # raw, UNCAPPED index per group — what MarkArcs reads.
     group_tick_counts: dict[str, int] = {**tick_group_indices, **parallel_group_indices}
+
+    # Parallel chevrons in one group all point the same way (see
+    # parallel_chevron_flips); the flipped segment's endpoints are swapped when drawn.
+    chevron_flips = parallel_chevron_flips(
+        sorted_ops, stmt_by_id, lambda pid: (_f(sym[pid].x), _f(sym[pid].y))
+    )
 
     for op in sorted_ops:
         chunk = _emit_op(
             op, sym, stmt_by_id, helpers, tikz_styles, group_marks,
             group_tick_counts=group_tick_counts, warnings=warnings,
+            chevron_flips=chevron_flips,
         )
         lines.extend(chunk)
 
@@ -305,6 +314,7 @@ def _emit_op(
     group_marks: dict[str, str] | None = None,
     group_tick_counts: dict[str, int] | None = None,
     warnings: list[str] | None = None,
+    chevron_flips: set[tuple[str, str]] | None = None,
 ) -> list[str]:
     out: list[str] = []
     match op:
@@ -546,6 +556,10 @@ def _emit_op(
                 # tkz-euclide's `\tkzMarkSegment` mark= option only has fixed
                 # entries up to 3 ticks, so it can't express an arbitrary count.
                 draw_opts = _style_str(mark_key, styles)
+            elif group and group.startswith("parallel"):
+                # tkz-euclide has no chevron mark (`>` silently draws nothing),
+                # so chevrons are raw strokes like the explicit-ticks path.
+                draw_opts = _style_str(mark_key, styles)
             elif mark_key and mark_key in styles:
                 sopts = _style_str(mark_key, styles)
             elif group and group_marks and group in group_marks:
@@ -565,6 +579,21 @@ def _emit_op(
                     b_xy = (_f(sym[b].x), _f(sym[b].y))
                     for (x1, y1), (x2, y2) in tick_mark_segments(
                         a_xy, b_xy, ticks, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
+                    ):
+                        out.append(
+                            f"\\draw{draw_opts} ({_fmt_num(x1)},{_fmt_num(y1)}) -- "
+                            f"({_fmt_num(x2)},{_fmt_num(y2)});"
+                        )
+                elif group and group.startswith("parallel"):
+                    if chevron_flips and (group, seg_id) in chevron_flips:
+                        a, b = b, a
+                    a_xy = (_f(sym[a].x), _f(sym[a].y))
+                    b_xy = (_f(sym[b].x), _f(sym[b].y))
+                    # Same 3-chevron cap as the SVG renderer.
+                    n = min((group_tick_counts or {}).get(group, 1), 3)
+                    for (x1, y1), (x2, y2) in chevron_mark_strokes(
+                        a_xy, b_xy, n, SEG_CHEVRON_TIP, SEG_CHEVRON_BACK,
+                        SEG_CHEVRON_WING, SEG_CHEVRON_SPACING,
                     ):
                         out.append(
                             f"\\draw{draw_opts} ({_fmt_num(x1)},{_fmt_num(y1)}) -- "

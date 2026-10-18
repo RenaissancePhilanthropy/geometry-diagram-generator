@@ -299,7 +299,7 @@ def test_mark_segments_style_overrides_group_mark():
     assert "mark=|]" in tikz    # beta gets first auto-assigned symbol
 
 
-def test_mark_segments_parallel_group_uses_arrow():
+def test_mark_segments_parallel_group_draws_chevron_strokes():
     diagram = DiagramIR(
         define=[
             PointFixed(id="A", x=0, y=0),
@@ -309,8 +309,9 @@ def test_mark_segments_parallel_group_uses_arrow():
         render=[MarkSegments(segs=["s1"], group="parallel_1")],
     )
     tikz = _compile_tikz(diagram)
-    assert "mark=>" in tikz
-    assert "mark=|" not in tikz
+    # tkz-euclide has no chevron mark, so a chevron is two raw strokes.
+    assert tikz.count("\\draw") == 2
+    assert r"\tkzMarkSegment" not in tikz
 
 
 def test_mark_segments_two_parallel_groups_escalate():
@@ -329,8 +330,7 @@ def test_mark_segments_two_parallel_groups_escalate():
         ],
     )
     tikz = _compile_tikz(diagram)
-    assert "mark=>" in tikz
-    assert "mark=>>" in tikz
+    assert tikz.count("\\draw") == 2 + 4   # 1 chevron + 2 chevrons, 2 strokes each
 
 
 def test_mark_segments_mixed_parallel_and_equal():
@@ -350,7 +350,7 @@ def test_mark_segments_mixed_parallel_and_equal():
     )
     tikz = _compile_tikz(diagram)
     assert "mark=|" in tikz
-    assert "mark=>" in tikz
+    assert tikz.count("\\draw") == 2   # the parallel group's one chevron
 
 
 def test_mark_segments_group_name_derives_count_not_encounter_order():
@@ -401,7 +401,6 @@ def test_mark_segments_explicit_ticks_overrides_parallel_group():
         render=[MarkSegments(segs=["s1"], group="parallel1", ticks=4)],
     )
     tikz = _compile_tikz(diagram)
-    assert "mark=>" not in tikz
     assert tikz.count("\\draw") == 4
 
 
