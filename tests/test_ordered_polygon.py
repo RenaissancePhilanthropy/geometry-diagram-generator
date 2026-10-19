@@ -413,10 +413,10 @@ def test_svg_ordered_polygon_edges_register_for_label_nudging(monkeypatch):
     captured: list[tuple[float, float, float, float]] = []
     original = to_svg_mod._nudge_labels_from_lines
 
-    def spy(labels, drawn_segments):
+    def spy(labels, drawn_segments, *args):
         if not captured:
             captured.extend(drawn_segments)
-        return original(labels, drawn_segments)
+        return original(labels, drawn_segments, *args)
 
     monkeypatch.setattr(to_svg_mod, "_nudge_labels_from_lines", spy)
     d = _diagram(

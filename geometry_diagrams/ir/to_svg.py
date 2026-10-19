@@ -105,6 +105,8 @@ _WEAK_RING_CLEARANCE_FACTOR = 0.4  # how much less clearance an un-drawn (arc/se
 _TICK_PX = 5               # px — tick mark half-length
 _TICK_LABEL_FONT_SIZE = 11 # px — matches the font-size used for tick labels in _append_axes
 _NUDGE_MARGIN = _FONT_SIZE * 0.35  # px — shared clearance margin for every obstacle-nudge pass
+_OWNER_SIDE_MIN_DIST = 1.0  # px — a label's point closer than this to a line has no "side" of it
+_AXIS_FLIP_MIN_POKE = 3.0  # px — how far a label must poke across an axis before it is redirected to its point's side
 _NUDGE_EPS = 0.5           # px — small overshoot so a nudge's re-check passes without float jitter
 # px — gap between an away-placed segment label's box (e.g. a prism dimension
 # label, see the registry's label_away_from hook) and its edge: just past the
@@ -185,6 +187,13 @@ class _LabelPlacement:
     # them) and _clamp_angle_labels_to_wedge undoes any later push across one.
     wedge_rays: tuple[tuple[float, float], tuple[float, float]] | None = None
     wedge_half: float | None = None
+    # For a LabelPoint: the SVG-px position of the point it labels. Unlike
+    # pin_point (which exempts rings the point sits on from circle pushes and
+    # drives angle-label gravitation), this only tells _segment_clearance which
+    # side of a line the label belongs on, so a label whose bbox center is a
+    # hair across an axis from its point is pushed back to the point's side
+    # rather than all the way across the line.
+    owner_point: tuple[float, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +401,9 @@ def _ir_to_svg_impl(
     # Populated by the grid/axes below (if enabled) and by geometry ops during
     # the main render loop.
     drawn_segments: list[tuple[float, float, float, float]] = []
+    # The canvas axes' lines (also in drawn_segments): the only lines a point
+    # label is kept on its own point's side of (see _segment_clearance).
+    axis_segments: list[tuple[float, float, float, float]] = []
     # Likewise for drawn circles/arcs/sectors (SVG pixel coords: cx, cy, r,
     # full) -- an arc or sector contributes its FULL circle here, not just its
     # drawn sweep (see _nudge_labels_from_circles's own docstring for why
@@ -415,6 +427,7 @@ def _ir_to_svg_impl(
         _append_axes(svg, canvas, xmin, xmax, ymin, ymax, gxy, scale,
                      font_family=font_config.family,
                      drawn_segments=drawn_segments,
+                     axis_segments=axis_segments,
                      tick_label_boxes=tick_label_boxes)
 
     # --- Render ops (z-sorted) ---
@@ -542,12 +555,12 @@ def _ir_to_svg_impl(
     # tick-label boxes, then resolve label-label collisions, then nudge again
     # — collision resolution can push labels back into segments/circles/
     # ellipses/tick labels, so the second pass re-establishes clearance.
-    _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_lines(pending_labels, drawn_segments, axis_segments)
     _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
     _resolve_label_collisions(pending_labels, svg_w, svg_h)
-    _nudge_labels_from_lines(pending_labels, drawn_segments)
+    _nudge_labels_from_lines(pending_labels, drawn_segments, axis_segments)
     _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
@@ -1369,6 +1382,7 @@ def _emit_svg_op(
                 x=px + ox, y=py + oy, text=label, color=color, anchor=anchor,
                 attrs={"data-role": "label-point", "data-for": p},
             )
+            lp.owner_point = (px, py)
             if pending_labels is not None:
                 pending_labels.append(lp)
             else:
@@ -2345,6 +2359,7 @@ def _append_axes(
     scale: _Scale,
     font_family: str = "serif",
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
+    axis_segments: list[tuple[float, float, float, float]] | None = None,
     tick_label_boxes: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     has_x = ymin <= 0 <= ymax
@@ -2362,6 +2377,8 @@ def _append_axes(
         ET.SubElement(svg, "line", attrs)
         if drawn_segments is not None:
             drawn_segments.append((x1, y1, x2, y2))
+        if axis_segments is not None:
+            axis_segments.append((x1, y1, x2, y2))
 
     # Ensure arrow marker is defined
     _ensure_arrow_marker(svg)
@@ -3348,6 +3365,7 @@ def _clamp_angle_labels_to_wedge(labels: list[_LabelPlacement]) -> None:
 
 def _segment_clearance(
     cx: float, cy: float, lp: _LabelPlacement, segment: tuple[float, float, float, float],
+    is_axis: bool = False,
 ) -> tuple[float, float, float] | None:
     """One straight line/segment's clearance verdict for a label currently
     centered at (cx, cy). None if already clear of it."""
@@ -3366,11 +3384,38 @@ def _segment_clearance(
         # Push away from the nearest point on the segment.
         dx, dy = (cx - near_x) / dist, (cy - near_y) / dist
 
+    # A point label belongs on its own point's side of a canvas axis. If the
+    # bbox center is on the other side (typically a few px past an axis the
+    # ideal placement straddles) and the nearest-side push would shunt it a
+    # decent distance across, push toward the owner's side instead. An owner
+    # on the axis itself (e.g. the origin) has no side, so the nearest-side
+    # rule above stands, as it does for small pokes across and for ordinary
+    # drawn segments (where the requested ``pos`` wins over staying on side).
+    flipped = False
+    if is_axis and lp.owner_point is not None:
+        ox, oy = lp.owner_point
+        o_dist, o_near_x, o_near_y = _point_to_segment_distance(ox, oy, x1, y1, x2, y2)
+        if o_dist > _OWNER_SIDE_MIN_DIST:
+            ux, uy = (ox - o_near_x) / o_dist, (oy - o_near_y) / o_dist
+            if dist >= 1e-6 and dx * ux + dy * uy < 0:
+                half = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
+                # "A decent distance": the label pokes at least
+                # _AXIS_FLIP_MIN_POKE across the axis, so the nearest-side
+                # push would carry it clean across. A smaller poke is moved
+                # the short way as before.
+                if half - dist >= _AXIS_FLIP_MIN_POKE:
+                    dx, dy = ux, uy
+                    flipped = True
+
     # Support function: extent of the label bbox in the nudge direction.
     # This is the minimum center-to-segment distance for the bbox to clear.
     half_extent = abs(lp.width_est / 2 * dx) + abs(lp.height_est / 2 * dy)
     min_dist = half_extent + _NUDGE_MARGIN
 
+    if flipped:
+        # The center is `dist` on the wrong side, so it must travel that far
+        # to reach the line before clearing it by min_dist on the owner's side.
+        return dx, dy, min_dist + dist
     if dist >= min_dist:
         return None
     return dx, dy, min_dist - dist
@@ -3431,9 +3476,18 @@ def _circle_clearance(
 def _nudge_labels_from_lines(
     labels: list[_LabelPlacement],
     drawn_segments: list[tuple[float, float, float, float]],
+    axis_segments: list[tuple[float, float, float, float]] = (),
 ) -> None:
-    """Nudge labels whose bbox overlaps or is too close to a drawn line or segment."""
-    _iteratively_nudge_from_obstacles(labels, drawn_segments, _segment_clearance)
+    """Nudge labels whose bbox overlaps or is too close to a drawn line or segment.
+
+    ``axis_segments`` (the subset of ``drawn_segments`` that are canvas axes)
+    additionally keep a point label on its own point's side; see
+    ``_segment_clearance``."""
+    axes = frozenset(axis_segments)
+    _iteratively_nudge_from_obstacles(
+        labels, drawn_segments,
+        lambda cx, cy, lp, seg: _segment_clearance(cx, cy, lp, seg, is_axis=seg in axes),
+    )
 
 
 def _nudge_labels_from_circles(

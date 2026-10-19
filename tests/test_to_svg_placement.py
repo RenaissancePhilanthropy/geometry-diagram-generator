@@ -220,6 +220,76 @@ class TestNudgeAnchorAware:
         )
 
 
+class TestNudgeKeepsLabelOnItsPointsSide:
+    """A point label whose ideal bbox straddles an axis, with its bbox center a
+    hair on the far side from its point, must be pushed to the point's side of
+    the line, not across the whole axis to the far side."""
+
+    AXES = [(20.0, 250.0, 480.0, 250.0), (250.0, 480.0, 250.0, 20.0)]
+
+    def test_straddling_label_pushed_to_owner_side(self):
+        # Owner point at x=290 (right of the y-axis); end-anchored label with
+        # bbox 219..275 -> center 247 sits 3px left of the axis.
+        lp = _LabelPlacement(
+            x=275.0, y=201.0, text="(0.8, 0.8)", color="black", anchor="end",
+            width_est=56.0, height_est=14.0, owner_point=(290.0, 210.0),
+        )
+        _nudge_labels_from_lines([lp], self.AXES, self.AXES)
+        x0, _, x1, _ = _label_bbox(lp)
+        assert x0 >= 250.0, f"Label crossed the y-axis away from its point: bbox x {x0:.1f}..{x1:.1f}"
+
+    def test_without_owner_point_behavior_unchanged(self):
+        lp = _LabelPlacement(
+            x=275.0, y=201.0, text="(0.8, 0.8)", color="black", anchor="end",
+            width_est=56.0, height_est=14.0,
+        )
+        _nudge_labels_from_lines([lp], self.AXES)
+        _, _, x1, _ = _label_bbox(lp)
+        assert x1 <= 250.0
+
+    def test_owner_on_the_line_keeps_nearest_side(self):
+        lp = _LabelPlacement(
+            x=238.0, y=238.0, text="(0, 0)", color="black", anchor="end",
+            width_est=54.6, height_est=14.0, owner_point=(250.0, 250.0),
+        )
+        _nudge_labels_from_lines([lp], self.AXES, self.AXES)
+        assert (lp.x, lp.y) == pytest.approx((238.0, 238.0), abs=0.01)
+
+    def test_ordinary_segment_keeps_nearest_side(self):
+        """Only canvas axes get the owner-side rule; for any other drawn line
+        the label is pushed to the nearest side as before."""
+        lp = _LabelPlacement(
+            x=275.0, y=201.0, text="(0.8, 0.8)", color="black", anchor="end",
+            width_est=56.0, height_est=14.0, owner_point=(290.0, 210.0),
+        )
+        _nudge_labels_from_lines([lp], self.AXES)  # no axis_segments given
+        _, _, x1, _ = _label_bbox(lp)
+        assert x1 <= 250.0
+
+    def test_small_poke_across_axis_not_redirected(self):
+        """A label poking only ~2px across the axis is moved the short way
+        (away from the line), not back across to the owner's side."""
+        # End-anchored, width 56: bbox [196, 252], center 224 (26px left of the
+        # y-axis), so it pokes 2px across it; the push needed is under 10px.
+        lp = _LabelPlacement(
+            x=252.0, y=201.0, text="(0.8, 0.8)", color="black", anchor="end",
+            width_est=56.0, height_est=14.0, owner_point=(290.0, 210.0),
+        )
+        _nudge_labels_from_lines([lp], self.AXES, self.AXES)
+        _, _, x1, _ = _label_bbox(lp)
+        assert x1 <= 250.0
+
+    def test_pipeline_label_stays_on_points_side_of_axis(self):
+        d = DiagramIR(
+            canvas=Canvas(xmin=-5, xmax=5, ymin=-5, ymax=5, axes=True),
+            define=[PointFixed(id="P", x=0.8, y=0.8)],
+            render=[LabelPoint(kind="label_point", p="P", text="(0.8, 0.8)", pos="above left")],
+        )
+        (el,) = _labels(_parse(_compile_svg(d)))
+        x0, _, _, _ = [float(v) for v in el.get("data-bbox").split(",")]
+        assert x0 >= 250.0
+
+
 # ---------------------------------------------------------------------------
 # 3. Collision resolver: both labels must move, not just the later one
 # ---------------------------------------------------------------------------
