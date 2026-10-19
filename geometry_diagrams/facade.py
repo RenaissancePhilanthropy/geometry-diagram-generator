@@ -18,6 +18,7 @@ from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from .strategies.base import SubstanceStrategy
 from .strategies.python_full import PythonFullStrategy
 from .strategies.recipe import RecipeStrategy
+from .strategies.structured import StructureStrategy
 
 
 @dataclass
@@ -32,6 +33,9 @@ class DiagramResult:
     recipes: Optional[list[str]] = None # selected recipe IDs; recipe strategy only
     retry_count: int = 0 # number of generation attempts (len of attempt_traces)
     script: Optional[str] = None        # pydsl script source; python_full strategy only
+    # Each strategy's stateless edit input is the matching field of its own prior result:
+    # recipe -> dsl (previous_dsl), python_full -> script (previous_script),
+    # structured -> diagram_ir (previous_ir).
 
 
 def _make_renderer(cfg: GeometryConfig) -> Renderer:
@@ -52,7 +56,34 @@ def _make_strategy(cfg: GeometryConfig) -> SubstanceStrategy:
         return PythonFullStrategy(enable_cache=True, features=cfg.features)
     if cfg.strategy == "recipe":
         return RecipeStrategy(enable_cache=True, selector_model=cfg.selector_model, features=cfg.features)
-    raise ValueError(f"Unknown strategy: {cfg.strategy!r} (expected 'recipe' or 'python_full')")
+    if cfg.strategy == "structured":
+        return StructureStrategy(enable_cache=True, features=cfg.features)
+    raise ValueError(
+        f"Unknown strategy: {cfg.strategy!r} (expected 'recipe', 'python_full' or 'structured')"
+    )
+
+
+# The prior-state argument each strategy accepts for a stateless edit.
+_PREVIOUS_ARG_BY_STRATEGY = {
+    "recipe": "previous_dsl",
+    "python_full": "previous_script",
+    "structured": "previous_ir",
+}
+
+
+def _check_previous_state(strategy: str, **previous: object) -> None:
+    """Reject prior state the chosen strategy cannot edit from, or more than one."""
+    given = [name for name, value in previous.items() if value is not None]
+    if len(given) > 1:
+        raise ValueError(f"pass at most one of {', '.join(previous)} (got {', '.join(given)})")
+    expected = _PREVIOUS_ARG_BY_STRATEGY[strategy]
+    for name in given:
+        if name != expected:
+            owner = next(k for k, v in _PREVIOUS_ARG_BY_STRATEGY.items() if v == name)
+            raise ValueError(
+                f"{name} is only supported by the {owner} strategy; "
+                f"strategy={strategy!r} edits from {expected}"
+            )
 
 
 async def render_geometry_diagram(
@@ -66,6 +97,8 @@ async def render_geometry_diagram(
     renderer_url: Optional[str] = None,
     font_family: Optional[str] = None,
     previous_dsl: Optional[dict] = None,
+    previous_script: Optional[str] = None,
+    previous_ir: Optional[dict] = None,
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
 ) -> DiagramResult:
@@ -80,24 +113,30 @@ async def render_geometry_diagram(
         prompt: Natural-language description of the diagram to render.
         config: Optional base GeometryConfig. Falls back to GeometryConfig.from_env().
         renderer: Override renderer choice ("tikz" or "svg").
-        strategy: Override strategy choice ("recipe" or "python_full").
+        strategy: Override strategy choice ("recipe", "python_full" or "structured").
         model: Override generation model id (e.g. "anthropic:claude-sonnet-4-6").
         selector_model: Override recipe selector model id (recipe strategy only).
         renderer_url: Override TikZ renderer URL (only used when renderer="tikz").
         font_family: Override font family name.
         previous_dsl: Prior DSL dict (from DiagramResult.dsl) to anchor an edit.
-            Only supported by the recipe strategy — passing this with
-            strategy="python_full" raises ValueError, since PythonFullStrategy has
-            no stateless edit entry point (its only edit path is the stateful
-            build_agent() ReAct agent, not exposed through this facade).
+            Recipe strategy only.
+        previous_script: Prior pydsl script (from DiagramResult.script) to edit.
+            python_full strategy only. The script is rerun first (no LLM call) to
+            rebuild its entity manifest, then edited in config.edit_generation_mode
+            (default search_replace).
+        previous_ir: Prior DiagramIR dict (from DiagramResult.diagram_ir) to edit.
+            structured strategy only; the model regenerates the whole IR anchored
+            on it (no targeted-patch mode).
+        At most one previous_* may be given, and it must match the strategy;
+        otherwise ValueError.
         run_config: LangChain RunnableConfig dict to thread into LLM calls (e.g. for
             LangFuse tracing or get_anthropic_callback cost tracking). Its "callbacks"
             list is merged with the package's env-driven handler and any `callbacks` arg.
-            Only honored by the recipe strategy — PythonFullStrategy.run() takes no
-            config/callbacks parameter, so both are silently ignored under
-            strategy="python_full" (its own env-driven tracing handler still applies).
+            Only honored by the recipe strategy — the python_full and structured
+            strategies take no config/callbacks parameter, so both are silently
+            ignored there (their own env-driven tracing handler still applies).
         callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
-            Same python_full caveat as run_config above.
+            Same python_full/structured caveat as run_config above.
     """
     cfg = resolve_config(
         config,
@@ -110,18 +149,35 @@ async def render_geometry_diagram(
     )
     strategy_obj = _make_strategy(cfg)
 
+    _check_previous_state(
+        cfg.strategy,
+        previous_dsl=previous_dsl, previous_script=previous_script, previous_ir=previous_ir,
+    )
+
     if cfg.strategy == "python_full":
-        if previous_dsl is not None:
-            raise ValueError(
-                "previous_dsl is not supported with strategy='python_full' — "
-                "PythonFullStrategy has no stateless edit entry point (its only "
-                "edit path is the stateful build_agent() ReAct agent)."
+        if previous_script is not None:
+            result = await strategy_obj.edit(
+                prompt,
+                previous_script,
+                model=cfg.model,
+                renderer=_make_renderer(cfg),
+                edit_generation_mode=cfg.edit_generation_mode,
+                hash_algorithm=cfg.hash_algorithm,
+                sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
             )
+        else:
+            result = await strategy_obj.run(
+                prompt,
+                model=cfg.model,
+                renderer=_make_renderer(cfg),
+                sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+            )
+    elif cfg.strategy == "structured":
         result = await strategy_obj.run(
             prompt,
             model=cfg.model,
             renderer=_make_renderer(cfg),
-            sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+            previous_ir=previous_ir,
         )
     else:
         result = await strategy_obj.run(
@@ -258,8 +314,10 @@ query_diagram = tool(query_diagram)
 
 async def edit_geometry_diagram(
     prompt: str,
-    previous_dsl: dict,
+    previous_dsl: Optional[dict] = None,
     *,
+    previous_script: Optional[str] = None,
+    previous_ir: Optional[dict] = None,
     config: Optional[GeometryConfig] = None,
     renderer: Optional[str] = None,
     model: Optional[str] = None,
@@ -271,21 +329,24 @@ async def edit_geometry_diagram(
 ) -> DiagramResult:
     """Edit an existing geometry diagram by applying the described changes.
 
-    Convenience wrapper around render_geometry_diagram with previous_dsl pre-filled.
-    The prior DSL (from DiagramResult.dsl) anchors the edit — only the properties
-    you describe in prompt will be changed.
+    Convenience wrapper around render_geometry_diagram that requires exactly one
+    prior-state argument, matching the strategy (config / GEOMETRY_STRATEGY):
+    previous_dsl (recipe; DiagramResult.dsl), previous_script (python_full;
+    DiagramResult.script) or previous_ir (structured; DiagramResult.diagram_ir).
+    The prior state anchors the edit — only the properties you describe in prompt
+    should change. Passing the wrong one for the strategy raises ValueError.
 
-    Args:
-        prompt: Natural-language description of the change to apply.
-        previous_dsl: The dsl dict from a prior DiagramResult.
-        Remaining kwargs: same as render_geometry_diagram. Note strategy="python_full"
-        (via config or GEOMETRY_STRATEGY) always raises ValueError here, since
-        previous_dsl is never None on this path and PythonFullStrategy has no
-        stateless edit entry point.
+    Remaining kwargs: same as render_geometry_diagram.
     """
+    if sum(x is not None for x in (previous_dsl, previous_script, previous_ir)) != 1:
+        raise ValueError(
+            "edit_geometry_diagram needs exactly one of previous_dsl, previous_script, previous_ir"
+        )
     return await render_geometry_diagram(
         prompt,
         previous_dsl=previous_dsl,
+        previous_script=previous_script,
+        previous_ir=previous_ir,
         config=config,
         renderer=renderer,
         model=model,
@@ -297,7 +358,7 @@ async def edit_geometry_diagram(
     )
 
 
-def edit_geometry_diagram_sync(prompt: str, previous_dsl: dict, **kwargs) -> DiagramResult:
+def edit_geometry_diagram_sync(prompt: str, previous_dsl: Optional[dict] = None, **kwargs) -> DiagramResult:
     """Synchronous wrapper around edit_geometry_diagram.
 
     Note: Will raise RuntimeError if called from within a running event loop.

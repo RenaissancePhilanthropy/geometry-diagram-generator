@@ -21,7 +21,7 @@ class GeometryConfig:
     """
 
     renderer: Literal["tikz", "svg"] = "tikz"
-    strategy: Literal["recipe", "python_full"] = "recipe"
+    strategy: Literal["recipe", "python_full", "structured"] = "recipe"
     model: str = _DEFAULT_MODEL
     selector_model: str = _DEFAULT_SELECTOR_MODEL
     renderer_url: Optional[str] = None  # None → TikZRenderer reads TIKZ_RENDERER_URL / localhost:8001

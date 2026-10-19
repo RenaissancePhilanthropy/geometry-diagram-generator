@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any, Optional, TypedDict
 
+import pydantic
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
@@ -277,10 +278,21 @@ class StructureStrategy(SubstanceStrategy):
         model: str = DEFAULT_AGENT_MODEL,
         renderer: Renderer | None = None,
         features: "frozenset[str] | None" = None,
+        previous_ir: "DiagramIR | dict | None" = None,
     ) -> StructuredRunResult:
+        """previous_ir: a prior DiagramIR (or its model_dump dict, e.g. from
+        DiagramResult.diagram_ir) to edit. Stateless: it is embedded in the
+        prompt, so every retry attempt also sees it. The edit is a full
+        regeneration of the IR anchored on the previous one; unlike
+        PythonFullStrategy.edit there is no targeted-patch mode."""
+        if previous_ir is not None and not isinstance(previous_ir, DiagramIR):
+            try:
+                previous_ir = DiagramIR.model_validate(previous_ir)
+            except pydantic.ValidationError as exc:
+                raise ValueError(f"previous_ir is not a valid DiagramIR: {exc}") from exc
         graph = _build_structured_graph()
         initial_state: StructuredPipelineState = {
-            "prompt": prompt,
+            "prompt": _prepare_modification_prompt(prompt, previous_ir),
             "model_id": model,
             "enable_cache": self.enable_cache,
             "attempt": 0,

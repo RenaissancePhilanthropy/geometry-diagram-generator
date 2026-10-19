@@ -61,7 +61,7 @@ Compile and both renderers read an **effective definition view** (`ir/derived.py
 All core code lives under `geometry_diagrams/`, which is also the unit that gets copied into other projects. The public facade is:
 
 - **`__init__.py`**: Re-exports `render_diagram` (LangChain `@tool`), `render_geometry_diagram` (async), `render_geometry_diagram_sync`, `DiagramResult`, `GeometryConfig`.
-- **`facade.py`**: Single entry point — wraps `RecipeStrategy` + renderer selection behind one callable. Use `render_diagram` as a drop-in LangGraph tool; use `render_geometry_diagram` for async node wiring.
+- **`facade.py`**: Single entry point — wraps `RecipeStrategy`, `PythonFullStrategy` or `StructureStrategy` (`GeometryConfig.strategy`) + renderer selection behind one callable. Stateless edits take the prior result's matching field: `previous_dsl` (recipe), `previous_script` (python_full, via `PythonFullStrategy.edit`, which reruns the script to rebuild its manifest, then edits in `edit_generation_mode`), `previous_ir` (structured, whole-IR regeneration anchored on the prior `diagram_ir`); the wrong one for the strategy raises `ValueError`. Use `render_diagram` as a drop-in LangGraph tool; use `render_geometry_diagram` for async node wiring.
 - **`features.py`**: Feature-group gating (`solids`, off by default; `GeometryConfig.features` / `GEOMETRY_FEATURES`). `require_features` rejects generated IR using a disabled group's kind at generation surfaces only; compile and render always accept every kind.
 - **`config.py`**: `GeometryConfig` dataclass consolidating renderer, model, selector_model, renderer_url, font_family. `GeometryConfig.from_env()` reads env vars; individual fields can be overridden per-call.
 

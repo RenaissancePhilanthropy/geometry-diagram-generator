@@ -1382,6 +1382,210 @@ class PythonFullStrategy(SubstanceStrategy):
         result.cost_usd = self._partial_cost_usd
         return result
 
+    async def _apply_edit(
+        self,
+        request: str,
+        top: dict,
+        *,
+        model: str,
+        renderer,
+        edit_generation_mode: str,
+        hash_algorithm: str,
+        retry_on_apply_failure: bool,
+        retry_on_locality_violation: bool,
+        sandbox_timeout_seconds: float,
+        ops_meta: "dict | None" = None,
+        retry_fired: "dict | None" = None,
+    ) -> "tuple[StructuredRunResult, Any]":
+        """One edit turn against `top` (a dict with the previous turn's
+        "script", "manifest" and "result"): generate the edit in
+        `edit_generation_mode`, rerun it, and compute the locality
+        diagnostic. Returns (result, locality_diagnostic); the diagnostic
+        is None if the check itself crashed.
+
+        Shared by build_agent's render_diagram tool and the stateless
+        `edit`. ops_meta / retry_fired are optional mutable boxes the caller
+        can read afterwards, even when this raises (build_agent exposes them
+        through its closure for evals/run_edit_chains.py)."""
+        ops_meta = ops_meta if ops_meta is not None else {"value": None}
+        retry_fired = retry_fired if retry_fired is not None else {"value": False}
+        async def _edit_full_rewrite(req: str) -> StructuredRunResult:
+            full_request = build_edit_prompt(req, top["script"], top["manifest"])
+            return await self.run(
+                full_request, model=model, renderer=renderer,
+                sandbox_timeout_seconds=sandbox_timeout_seconds,
+            )
+
+        async def _edit_patch(req: str) -> StructuredRunResult:
+            patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
+            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
+            patched_script = apply_script_patch(top["script"], patch_text)
+            return await _run_from_script(
+                patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                features=self.features,
+            )
+
+        async def _edit_search_replace(req: str) -> StructuredRunResult:
+            prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
+            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
+            new_script = apply_search_replace(top["script"], blocks)
+            return await _run_from_script(
+                new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                features=self.features,
+            )
+
+        async def _edit_hashline(req: str) -> StructuredRunResult:
+            hashline_view = render_hashline_view(top["script"], hash_algorithm)
+            prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
+            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
+            new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
+            return await _run_from_script(
+                new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                features=self.features,
+            )
+
+        async def _edit_line_number(req: str) -> StructuredRunResult:
+            view = render_line_number_view(top["script"])
+            prompt = build_line_number_request_prompt(req, view, top["manifest"])
+            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model)
+            delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
+            # Written before apply_line_number_ops runs, so a
+            # failed apply still leaves this readable (see
+            # _last_edit_ops_meta's declaration above).
+            ops_meta["value"] = {
+                "delete_replace_ops": len(delete_replace_ops),
+                "with_expected_content": sum(
+                    1 for op in delete_replace_ops if op.get("expected_content")
+                ),
+            }
+            new_script = apply_line_number_ops(top["script"], ops)
+            return await _run_from_script(
+                new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
+                features=self.features,
+            )
+
+        _edit_handlers = {
+            "patch": _edit_patch,
+            "search_replace": _edit_search_replace,
+            "hashline": _edit_hashline,
+            "line_number": _edit_line_number,
+        }
+        handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
+        try:
+            result = await handler(request)
+        except ValueError as e:
+            # Opt-in, off by default (Global Constraints) — only
+            # fires on the apply step's own error (a stale tag,
+            # a not-found/ambiguous search_replace block, or
+            # apply_script_patch's context mismatch), never a
+            # generation/API/sandbox error, and only once.
+            if not retry_on_apply_failure or edit_generation_mode == "full_rewrite":
+                raise
+            retry_request = (
+                f"{request}\n\n---\nYour previous attempt at this edit "
+                f"failed: {e}\nPlease produce a corrected edit that fixes "
+                "exactly this problem.\n---"
+            )
+            result = await handler(retry_request)
+
+        try:
+            locality_diagnostic = check_edit_locality(
+                top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
+                result.entity_manifest, result.diagram_ir, result.sym_full,
+            )  # diagnostic only, per Global Constraints — never gates the turn
+        except Exception:
+            locality_diagnostic = None
+
+        if (
+            retry_on_locality_violation
+            and edit_generation_mode != "full_rewrite"
+            and locality_diagnostic is not None
+            and (locality_diagnostic.unmatched_old_names or locality_diagnostic.violations)
+        ):
+            concerns = []
+            if locality_diagnostic.unmatched_old_names:
+                concerns.append(
+                    "these entities disappeared: "
+                    f"{sorted(locality_diagnostic.unmatched_old_names)}"
+                )
+            if locality_diagnostic.violations:
+                moved = [v["name"] for v in locality_diagnostic.violations]
+                concerns.append(f"these entities moved unexpectedly: {moved}")
+            retry_request = (
+                f"{request}\n\n---\nYour previous edit also changed things this "
+                f"request never mentioned — {'; '.join(concerns)}. If that was "
+                "intentional, resubmit the exact same result; otherwise redo the "
+                "edit so it preserves everything except what was actually asked "
+                "for.\n---"
+            )
+            retry_fired["value"] = True
+            try:
+                retried_result = await handler(retry_request)
+                retried_diagnostic = check_edit_locality(
+                    top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
+                    retried_result.entity_manifest, retried_result.diagram_ir,
+                    retried_result.sym_full,
+                )
+                result, locality_diagnostic = retried_result, retried_diagnostic
+            except Exception:
+                pass  # keep the original result — a retry that itself fails
+                      # shouldn't turn a silent-corruption success into a loud one
+        return result, locality_diagnostic
+
+    async def edit(
+        self,
+        request: str,
+        previous_script: str,
+        model: str = DEFAULT_AGENT_MODEL,
+        renderer: Renderer | None = None,
+        edit_generation_mode: str = "search_replace",
+        hash_algorithm: str = "blake2s",
+        retry_on_apply_failure: bool = False,
+        retry_on_locality_violation: bool = False,
+        sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
+    ) -> StructuredRunResult:
+        """Stateless edit of a previously generated pydsl script.
+
+        The caller supplies only `previous_script` (e.g. DiagramResult.script
+        persisted from an earlier turn). It is rerun through the sandbox
+        pipeline first (no LLM call, deterministic) to rebuild the entity
+        manifest and compiled geometry the edit prompts and the locality
+        diagnostic need, then the edit is generated and applied exactly as
+        build_agent's render_diagram does for a later turn, in
+        `edit_generation_mode`. Raises ValueError if previous_script is blank
+        or does not run, and propagates apply/generation/sandbox errors of
+        the edit itself (no state exists to roll back).
+
+        The baseline rerun always uses the in-process SVGRenderer, whatever
+        `renderer` is: only its manifest and compiled geometry are consumed,
+        so a TikZ round trip (or a renderer outage) would be wasted or
+        misreported as a bad script. Scripts that call cookbook helpers
+        cannot be edited here: like the other edit-mode reruns, this path
+        never enables the experimental cookbook, so such a script fails the
+        baseline."""
+        if not previous_script or not previous_script.strip():
+            raise ValueError("previous_script must be a non-empty pydsl script")
+        _renderer = renderer if renderer is not None else SVGRenderer()
+        try:
+            baseline = await _run_from_script(
+                previous_script, SVGRenderer(), sandbox_timeout_seconds=sandbox_timeout_seconds,
+                features=self.features,
+            )
+        except RuntimeError as exc:
+            reason = str(exc).removeprefix("patch-mode script failed: ")
+            raise ValueError(f"previous_script did not run: {reason}") from exc
+        top = {"script": previous_script, "manifest": baseline.entity_manifest, "result": baseline}
+        result, _ = await self._apply_edit(
+            request, top,
+            model=model, renderer=_renderer,
+            edit_generation_mode=edit_generation_mode,
+            hash_algorithm=hash_algorithm,
+            retry_on_apply_failure=retry_on_apply_failure,
+            retry_on_locality_violation=retry_on_locality_violation,
+            sandbox_timeout_seconds=sandbox_timeout_seconds,
+        )
+        return result
+
     def build_agent(
         self,
         model: str = DEFAULT_AGENT_MODEL,
@@ -1459,127 +1663,17 @@ class PythonFullStrategy(SubstanceStrategy):
                 if _stack:
                     top = _stack[-1]
 
-                    async def _edit_full_rewrite(req: str) -> StructuredRunResult:
-                        full_request = build_edit_prompt(req, top["script"], top["manifest"])
-                        return await self.run(
-                            full_request, model=model, renderer=_renderer,
-                            sandbox_timeout_seconds=sandbox_timeout_seconds,
-                        )
-
-                    async def _edit_patch(req: str) -> StructuredRunResult:
-                        patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
-                        patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
-                        patched_script = apply_script_patch(top["script"], patch_text)
-                        return await _run_from_script(
-                            patched_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                            features=self.features,
-                        )
-
-                    async def _edit_search_replace(req: str) -> StructuredRunResult:
-                        prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-                        blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
-                        new_script = apply_search_replace(top["script"], blocks)
-                        return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                            features=self.features,
-                        )
-
-                    async def _edit_hashline(req: str) -> StructuredRunResult:
-                        hashline_view = render_hashline_view(top["script"], hash_algorithm)
-                        prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
-                        ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
-                        new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
-                        return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                            features=self.features,
-                        )
-
-                    async def _edit_line_number(req: str) -> StructuredRunResult:
-                        view = render_line_number_view(top["script"])
-                        prompt = build_line_number_request_prompt(req, view, top["manifest"])
-                        ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model)
-                        delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
-                        # Written before apply_line_number_ops runs, so a
-                        # failed apply still leaves this readable (see
-                        # _last_edit_ops_meta's declaration above).
-                        _last_edit_ops_meta["value"] = {
-                            "delete_replace_ops": len(delete_replace_ops),
-                            "with_expected_content": sum(
-                                1 for op in delete_replace_ops if op.get("expected_content")
-                            ),
-                        }
-                        new_script = apply_line_number_ops(top["script"], ops)
-                        return await _run_from_script(
-                            new_script, _renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                            features=self.features,
-                        )
-
-                    _edit_handlers = {
-                        "patch": _edit_patch,
-                        "search_replace": _edit_search_replace,
-                        "hashline": _edit_hashline,
-                        "line_number": _edit_line_number,
-                    }
-                    handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
-                    try:
-                        result = await handler(request)
-                    except ValueError as e:
-                        # Opt-in, off by default (Global Constraints) — only
-                        # fires on the apply step's own error (a stale tag,
-                        # a not-found/ambiguous search_replace block, or
-                        # apply_script_patch's context mismatch), never a
-                        # generation/API/sandbox error, and only once.
-                        if not retry_on_apply_failure or edit_generation_mode == "full_rewrite":
-                            raise
-                        retry_request = (
-                            f"{request}\n\n---\nYour previous attempt at this edit "
-                            f"failed: {e}\nPlease produce a corrected edit that fixes "
-                            "exactly this problem.\n---"
-                        )
-                        result = await handler(retry_request)
-
-                    try:
-                        locality_diagnostic = check_edit_locality(
-                            top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
-                            result.entity_manifest, result.diagram_ir, result.sym_full,
-                        )  # diagnostic only, per Global Constraints — never gates the turn
-                    except Exception:
-                        locality_diagnostic = None
-
-                    if (
-                        retry_on_locality_violation
-                        and edit_generation_mode != "full_rewrite"
-                        and locality_diagnostic is not None
-                        and (locality_diagnostic.unmatched_old_names or locality_diagnostic.violations)
-                    ):
-                        concerns = []
-                        if locality_diagnostic.unmatched_old_names:
-                            concerns.append(
-                                "these entities disappeared: "
-                                f"{sorted(locality_diagnostic.unmatched_old_names)}"
-                            )
-                        if locality_diagnostic.violations:
-                            moved = [v["name"] for v in locality_diagnostic.violations]
-                            concerns.append(f"these entities moved unexpectedly: {moved}")
-                        retry_request = (
-                            f"{request}\n\n---\nYour previous edit also changed things this "
-                            f"request never mentioned — {'; '.join(concerns)}. If that was "
-                            "intentional, resubmit the exact same result; otherwise redo the "
-                            "edit so it preserves everything except what was actually asked "
-                            "for.\n---"
-                        )
-                        _last_locality_retry_fired["value"] = True
-                        try:
-                            retried_result = await handler(retry_request)
-                            retried_diagnostic = check_edit_locality(
-                                top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
-                                retried_result.entity_manifest, retried_result.diagram_ir,
-                                retried_result.sym_full,
-                            )
-                            result, locality_diagnostic = retried_result, retried_diagnostic
-                        except Exception:
-                            pass  # keep the original result — a retry that itself fails
-                                  # shouldn't turn a silent-corruption success into a loud one
+                    result, locality_diagnostic = await self._apply_edit(
+                        request, top,
+                        model=model, renderer=_renderer,
+                        edit_generation_mode=edit_generation_mode,
+                        hash_algorithm=hash_algorithm,
+                        retry_on_apply_failure=retry_on_apply_failure,
+                        retry_on_locality_violation=retry_on_locality_violation,
+                        sandbox_timeout_seconds=sandbox_timeout_seconds,
+                        ops_meta=_last_edit_ops_meta,
+                        retry_fired=_last_locality_retry_fired,
+                    )
                 else:
                     result = await self.run(
                         request, model=model, renderer=_renderer,

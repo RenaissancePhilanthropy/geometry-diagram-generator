@@ -516,8 +516,8 @@ async def test_render_geometry_diagram_python_full_populates_script(monkeypatch)
 @pytest.mark.asyncio
 async def test_render_geometry_diagram_python_full_rejects_previous_dsl():
     """previous_dsl + strategy='python_full' raises before any strategy.run call —
-    PythonFullStrategy has no stateless edit entry point."""
-    with pytest.raises(ValueError, match="previous_dsl is not supported"):
+    python_full edits from previous_script, not a recipe DSL."""
+    with pytest.raises(ValueError, match="previous_dsl is only supported"):
         await render_geometry_diagram(
             "edit it",
             strategy="python_full",
