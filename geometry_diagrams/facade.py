@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Union
 
 from langchain_core.tools import tool
@@ -33,6 +33,13 @@ class DiagramResult:
     recipes: Optional[list[str]] = None # selected recipe IDs; recipe strategy only
     retry_count: int = 0 # number of generation attempts (len of attempt_traces)
     script: Optional[str] = None        # pydsl script source; python_full strategy only
+    # Provider-reported USD cost of this call's LLM usage, summed over attempts (and, for a
+    # python_full edit, the edit-generation call; a retry_on_apply_failure redo does not count
+    # the failed first call). None = not reported (e.g. recipe, some providers): unknown, not free.
+    cost_usd: Optional[float] = None
+    # Non-fatal pipeline notes from the final successful run (renderer warnings, failed
+    # `prefer` checks, solid projection/label/overlap warnings, ...). Never fails a run.
+    warnings: list[str] = field(default_factory=list)
     # Each strategy's stateless edit input is the matching field of its own prior result:
     # recipe -> dsl (previous_dsl), python_full -> script (previous_script),
     # structured -> diagram_ir (previous_ir).
@@ -123,7 +130,10 @@ async def render_geometry_diagram(
         previous_script: Prior pydsl script (from DiagramResult.script) to edit.
             python_full strategy only. The script is rerun first (no LLM call) to
             rebuild its entity manifest, then edited in config.edit_generation_mode
-            (default search_replace).
+            (default search_replace). The rerun costs one sandbox start plus an
+            in-process render, no LLM call. Feature groups the script uses (e.g.
+            solids for prism()/stack()) must be enabled in config.features, or the
+            edit raises ValueError naming the group.
         previous_ir: Prior DiagramIR dict (from DiagramResult.diagram_ir) to edit.
             structured strategy only; the model regenerates the whole IR anchored
             on it (no targeted-patch mode).
@@ -132,11 +142,10 @@ async def render_geometry_diagram(
         run_config: LangChain RunnableConfig dict to thread into LLM calls (e.g. for
             LangFuse tracing or get_anthropic_callback cost tracking). Its "callbacks"
             list is merged with the package's env-driven handler and any `callbacks` arg.
-            Only honored by the recipe strategy — the python_full and structured
-            strategies take no config/callbacks parameter, so both are silently
-            ignored there (their own env-driven tracing handler still applies).
+            Honored by every strategy, including the edit-generation LLM call of a
+            python_full previous_script edit.
         callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
-            Same python_full/structured caveat as run_config above.
+            Same scope as run_config above.
     """
     cfg = resolve_config(
         config,
@@ -164,6 +173,8 @@ async def render_geometry_diagram(
                 edit_generation_mode=cfg.edit_generation_mode,
                 hash_algorithm=cfg.hash_algorithm,
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                config=run_config,
+                callbacks=callbacks,
             )
         else:
             result = await strategy_obj.run(
@@ -171,6 +182,8 @@ async def render_geometry_diagram(
                 model=cfg.model,
                 renderer=_make_renderer(cfg),
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                config=run_config,
+                callbacks=callbacks,
             )
     elif cfg.strategy == "structured":
         result = await strategy_obj.run(
@@ -178,6 +191,8 @@ async def render_geometry_diagram(
             model=cfg.model,
             renderer=_make_renderer(cfg),
             previous_ir=previous_ir,
+            config=run_config,
+            callbacks=callbacks,
         )
     else:
         result = await strategy_obj.run(
@@ -212,6 +227,8 @@ async def render_geometry_diagram(
         recipes=_recipes,
         retry_count=len(traces),
         script=getattr(result, "script", "") or None,
+        cost_usd=getattr(result, "cost_usd", None),
+        warnings=list(getattr(result, "warnings", None) or []),
     )
 
 

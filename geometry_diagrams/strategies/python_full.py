@@ -63,11 +63,18 @@ areas, perimeters) about the most recently rendered diagram. Briefly \
 explain what you did after each render_diagram call."""
 
 
+def _config_kwargs(config: "dict | None") -> dict:
+    """`config=` kwarg for a direct LLM call, only when there is a config to pass."""
+    return {"config": config} if config else {}
+
+
 class PydslScriptPatchOutput(BaseModel):
     patch: str = Field(description="A unified diff patch to apply to the previous script.")
 
 
-async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -> "tuple[str, int, int, float | None]":
+async def _generate_patch(
+    prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None
+) -> "tuple[str, int, int, float | None]":
     """Single direct LLM call requesting a unified-diff patch (patch mode's
     generation step) — deliberately NOT the multi-attempt generate_script
     retry loop full_rewrite mode uses; a patch that doesn't apply is
@@ -92,7 +99,7 @@ async def _generate_patch(prompt: str, model: str, enable_cache: bool = False) -
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
-    response = await structured.ainvoke(messages)
+    response = await structured.ainvoke(messages, **_config_kwargs(config))
     raw_msg = response.get("raw")
     in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
     cost = extract_cost(raw_msg) if raw_msg else None
@@ -167,7 +174,7 @@ def _parse_search_replace_blocks(text: str) -> list[dict]:
 
 
 async def generate_search_replace(
-    prompt: str, model: str, enable_cache: bool = False
+    prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting SEARCH/REPLACE marker blocks as
     plain text (search_replace mode's generation step) — no structured
@@ -190,7 +197,7 @@ async def generate_search_replace(
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
-    response = await llm.ainvoke(messages)
+    response = await llm.ainvoke(messages, **_config_kwargs(config))
     text = extract_text(response.content)
     in_tok, out_tok = extract_usage(response)
     cost = extract_cost(response)
@@ -239,7 +246,7 @@ class PydslHashlineOutput(BaseModel):
 
 
 async def _generate_hashline_ops(
-    prompt: str, model: str, enable_cache: bool = False
+    prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting hashline ops (hashline mode's
     generation step) — mirrors _generate_patch/generate_search_replace's
@@ -253,7 +260,7 @@ async def _generate_hashline_ops(
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
-    response = await structured.ainvoke(messages)
+    response = await structured.ainvoke(messages, **_config_kwargs(config))
     raw_msg = response.get("raw")
     in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
     cost = extract_cost(raw_msg) if raw_msg else None
@@ -309,7 +316,7 @@ class PydslLineNumberOutput(BaseModel):
 
 
 async def _generate_line_number_ops(
-    prompt: str, model: str, enable_cache: bool = False
+    prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting line_number ops (line_number
     mode's generation step) — mirrors _generate_hashline_ops's shape,
@@ -323,7 +330,7 @@ async def _generate_line_number_ops(
         make_system_message(build_python_full_instructions(), enable_cache=enable_cache, model_id=model),
         HumanMessage(content=prompt),
     ]
-    response = await structured.ainvoke(messages)
+    response = await structured.ainvoke(messages, **_config_kwargs(config))
     raw_msg = response.get("raw")
     in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
     cost = extract_cost(raw_msg) if raw_msg else None
@@ -1219,6 +1226,43 @@ def build_edit_prompt(request: str, previous_script: str, manifest: dict) -> str
     )
 
 
+def _add_usage(first: StructuredRunResult, second: StructuredRunResult) -> StructuredRunResult:
+    """`second` with `first`'s token usage and cost added: a retried edit
+    turn bills both generation calls. Cost stays None only when neither
+    call reported one (unknown, not free)."""
+    second.input_tokens += first.input_tokens
+    second.output_tokens += first.output_tokens
+    if first.cost_usd is not None or second.cost_usd is not None:
+        second.cost_usd = (first.cost_usd or 0.0) + (second.cost_usd or 0.0)
+    return second
+
+
+def _disabled_feature_hint(script: str, enabled: "frozenset[str]", reason: str) -> str:
+    """Suffix for a baseline failure: names the disabled feature groups whose
+    gated API names the script mentions AND the failure text names (the
+    sandbox reports them as "'prism' is not among the explicitly allowed
+    tools"), so a stray word like "stack" in a comment on an unrelated
+    failure gets no hint."""
+    from ..pydsl import GROUPED_NAMES
+
+    parts = []
+    for group, names in GROUPED_NAMES.items():
+        if group in enabled:
+            continue
+        used = [
+            n for n in names
+            if re.search(rf"\b{re.escape(n)}\b", script) and f"'{n}'" in reason
+        ]
+        if used:
+            parts.append(f"{', '.join(used)} (feature group {group!r})")
+    if not parts:
+        return ""
+    return (
+        f". The script uses {'; '.join(parts)}, which is not enabled: "
+        "set GeometryConfig.features / GEOMETRY_FEATURES to include it to edit this script"
+    )
+
+
 class PythonFullStrategy(SubstanceStrategy):
     """pydsl-based strategy: LLM writes a sandboxed Python script, compiled + rendered deterministically."""
 
@@ -1238,8 +1282,15 @@ class PythonFullStrategy(SubstanceStrategy):
         experimental_diagram_cookbook: bool = False,
         verify_labels_in_canvas: bool = False,
         features: "frozenset[str] | None" = None,
+        config: "dict | None" = None,
+        callbacks: "list | None" = None,
     ) -> StructuredRunResult:
-        """verify_labels_in_canvas (ticket 02, pydsl-authoring-quality):
+        """config / callbacks: a LangChain RunnableConfig and extra callback
+        handlers for the generation graph's LLM calls, merged with the
+        package's env-driven tracing handler (same contract as
+        RecipeStrategy.run).
+
+        verify_labels_in_canvas (ticket 02, pydsl-authoring-quality):
         False by default -- leaving it unset reproduces today's shipped
         pipeline exactly. When True, right after the IR pipeline renders
         each attempt, `_run_script_node` runs
@@ -1359,7 +1410,9 @@ class PythonFullStrategy(SubstanceStrategy):
             "verify_labels_in_canvas": verify_labels_in_canvas,
             "features": self.features if features is None else frozenset(features),
         }
-        final_state = await graph.ainvoke(initial_state, config=self._run_config)
+        final_state = await graph.ainvoke(
+            initial_state, config=self._build_run_config(config, callbacks),
+        )
 
         # Expose partial metadata for the eval harness, before the possible raise below.
         self._partial_python_full_metadata = final_state.get("metadata")
@@ -1396,6 +1449,7 @@ class PythonFullStrategy(SubstanceStrategy):
         sandbox_timeout_seconds: float,
         ops_meta: "dict | None" = None,
         retry_fired: "dict | None" = None,
+        config: "dict | None" = None,
     ) -> "tuple[StructuredRunResult, Any]":
         """One edit turn against `top` (a dict with the previous turn's
         "script", "manifest" and "result"): generate the edit in
@@ -1414,11 +1468,12 @@ class PythonFullStrategy(SubstanceStrategy):
             return await self.run(
                 full_request, model=model, renderer=renderer,
                 sandbox_timeout_seconds=sandbox_timeout_seconds,
+                **_config_kwargs(config),
             )
 
         async def _edit_patch(req: str) -> StructuredRunResult:
             patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
-            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model)
+            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model, **_config_kwargs(config))
             patched_script = apply_script_patch(top["script"], patch_text)
             return await _run_from_script(
                 patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1427,7 +1482,7 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_search_replace(req: str) -> StructuredRunResult:
             prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model)
+            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model, **_config_kwargs(config))
             new_script = apply_search_replace(top["script"], blocks)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1437,7 +1492,7 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_hashline(req: str) -> StructuredRunResult:
             hashline_view = render_hashline_view(top["script"], hash_algorithm)
             prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model)
+            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model, **_config_kwargs(config))
             new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1447,7 +1502,7 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_line_number(req: str) -> StructuredRunResult:
             view = render_line_number_view(top["script"])
             prompt = build_line_number_request_prompt(req, view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model)
+            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model, **_config_kwargs(config))
             delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
             # Written before apply_line_number_ops runs, so a
             # failed apply still leaves this readable (see
@@ -1526,7 +1581,7 @@ class PythonFullStrategy(SubstanceStrategy):
                     retried_result.entity_manifest, retried_result.diagram_ir,
                     retried_result.sym_full,
                 )
-                result, locality_diagnostic = retried_result, retried_diagnostic
+                result, locality_diagnostic = _add_usage(result, retried_result), retried_diagnostic
             except Exception:
                 pass  # keep the original result — a retry that itself fails
                       # shouldn't turn a silent-corruption success into a loud one
@@ -1543,6 +1598,8 @@ class PythonFullStrategy(SubstanceStrategy):
         retry_on_apply_failure: bool = False,
         retry_on_locality_violation: bool = False,
         sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
+        config: "dict | None" = None,
+        callbacks: "list | None" = None,
     ) -> StructuredRunResult:
         """Stateless edit of a previously generated pydsl script.
 
@@ -1562,7 +1619,28 @@ class PythonFullStrategy(SubstanceStrategy):
         misreported as a bad script. Scripts that call cookbook helpers
         cannot be edited here: like the other edit-mode reruns, this path
         never enables the experimental cookbook, so such a script fails the
-        baseline."""
+        baseline.
+
+        The enabled feature groups (self.features) must include every group
+        the script uses: the sandbox namespace is gated, so a script calling
+        prism()/stack() cannot be edited with `solids` off. That fails the
+        baseline with a ValueError naming the group.
+
+        Cost: the baseline rerun makes no LLM call; it is one sandbox
+        process start plus an in-process render on top of the edit itself.
+        The result's tokens/cost cover the edit-generation call, summed with
+        the retry's when retry_on_locality_violation re-generates; a failed
+        first attempt that retry_on_apply_failure then redoes is not counted
+        (its usage dies with the exception).
+
+        Error types: bad input (blank or non-running previous_script) is a
+        ValueError; a generated edit that fails to apply or whose script
+        fails to run propagates as the underlying error (ValueError from the
+        apply step, RuntimeError "patch-mode script failed: ..." from the run).
+
+        config / callbacks: a LangChain RunnableConfig and extra callback
+        handlers, merged with the env tracing handler and applied to the
+        edit-generation LLM call(s)."""
         if not previous_script or not previous_script.strip():
             raise ValueError("previous_script must be a non-empty pydsl script")
         _renderer = renderer if renderer is not None else SVGRenderer()
@@ -1573,7 +1651,10 @@ class PythonFullStrategy(SubstanceStrategy):
             )
         except RuntimeError as exc:
             reason = str(exc).removeprefix("patch-mode script failed: ")
-            raise ValueError(f"previous_script did not run: {reason}") from exc
+            raise ValueError(
+                f"previous_script did not run: {reason}{_disabled_feature_hint(previous_script, self.features, reason)}"
+            ) from exc
+        run_config = self._build_run_config(config, callbacks) or None
         top = {"script": previous_script, "manifest": baseline.entity_manifest, "result": baseline}
         result, _ = await self._apply_edit(
             request, top,
@@ -1583,6 +1664,7 @@ class PythonFullStrategy(SubstanceStrategy):
             retry_on_apply_failure=retry_on_apply_failure,
             retry_on_locality_violation=retry_on_locality_violation,
             sandbox_timeout_seconds=sandbox_timeout_seconds,
+            config=run_config,
         )
         return result
 

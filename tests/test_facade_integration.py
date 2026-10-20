@@ -491,7 +491,7 @@ async def test_render_geometry_diagram_python_full_populates_script(monkeypatch)
 
     captured = {}
 
-    async def fake_run(self, prompt, *, model=None, renderer=None, sandbox_timeout_seconds=None):
+    async def fake_run(self, prompt, *, model=None, renderer=None, sandbox_timeout_seconds=None, **kw):
         captured["model"] = model
         captured["sandbox_timeout_seconds"] = sandbox_timeout_seconds
         return fake_result

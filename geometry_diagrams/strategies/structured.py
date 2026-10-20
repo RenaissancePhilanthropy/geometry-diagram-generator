@@ -279,8 +279,14 @@ class StructureStrategy(SubstanceStrategy):
         renderer: Renderer | None = None,
         features: "frozenset[str] | None" = None,
         previous_ir: "DiagramIR | dict | None" = None,
+        config: "dict | None" = None,
+        callbacks: "list | None" = None,
     ) -> StructuredRunResult:
-        """previous_ir: a prior DiagramIR (or its model_dump dict, e.g. from
+        """config / callbacks: a LangChain RunnableConfig and extra callback
+        handlers for the graph's LLM calls, merged with the package's
+        env-driven tracing handler (same contract as RecipeStrategy.run).
+
+        previous_ir: a prior DiagramIR (or its model_dump dict, e.g. from
         DiagramResult.diagram_ir) to edit. Stateless: it is embedded in the
         prompt, so every retry attempt also sees it. The edit is a full
         regeneration of the IR anchored on the previous one; unlike
@@ -306,7 +312,9 @@ class StructureStrategy(SubstanceStrategy):
             "renderer": renderer,
             "features": self.features if features is None else frozenset(features),
         }
-        final_state = await graph.ainvoke(initial_state, config=self._run_config)
+        final_state = await graph.ainvoke(
+            initial_state, config=self._build_run_config(config, callbacks),
+        )
 
         # Expose usage before the possible raise below. cost stays None (not 0.0)
         # when the provider never reported a cost: 0.0 would read as "confirmed free".

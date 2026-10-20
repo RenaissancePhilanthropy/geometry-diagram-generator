@@ -183,8 +183,8 @@ scenarios can gate on them, see the 2026-10-16 section.)
 - **(Fixed 2026-10-16.) The spec's pipeline-warnings list omits the label-dimension warning**
   (`docs/geometry-dsl-spec.md#pipeline-warnings`), although CLAUDE.md lists
   it.
-- **Structured token usage is recorded as 0** in eval records, so cost
-  comparisons across strategies are incomplete.
+- **(Fixed in 7344ee8.) Structured token usage was recorded as 0** in eval
+  records, so cost comparisons across strategies were incomplete.
 
 ## Proposed path to enabling `solids` by default
 
