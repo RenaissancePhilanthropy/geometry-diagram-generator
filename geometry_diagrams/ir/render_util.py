@@ -12,7 +12,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import sympy.geometry as spg
 from sympy.geometry.line import LinearEntity
@@ -680,54 +680,91 @@ def elliptical_arc_params(
 # Bounds computation
 # ---------------------------------------------------------------------------
 
+def drawn_object_ids(diagram: ir.DiagramIR) -> set[str]:
+    """Ids of the objects a render op draws, fills or marks."""
+    ids: set[str] = set()
+    for op in diagram.render:
+        if isinstance(op, ir.Draw):
+            ids.add(op.obj)
+        elif isinstance(op, ir.Fill):
+            ids.add(op.obj)
+            ids.update(op.holes)
+        elif isinstance(op, ir.MarkArcs):
+            ids.update(op.arcs)
+        elif isinstance(op, ir.LabelAlongArc):
+            ids.add(op.arc)
+    return ids
+
+
+def helpers_for_bounds(
+    helpers: dict[str, tuple[float, float]], drawn: Optional[set[str]],
+) -> dict[str, tuple[float, float]]:
+    """Drop a circle's synthesized ``_rt_``/``_cc_`` helper points when nothing
+    draws that circle, so an anchor-only circle does not move the canvas."""
+    if drawn is None:
+        return helpers
+    return {
+        k: v for k, v in helpers.items()
+        if not (k.startswith(("_rt_", "_cc_")) and k[4:] not in drawn)
+    }
+
+
+def _arc_extent(
+    cx: float, cy: float, hr: float, vr: float,
+    start_deg: float, end_deg: float,
+) -> tuple[float, float, float, float]:
+    """Bounding box of the CCW sweep start_deg..end_deg (end > start) of an
+    axis-aligned ellipse given in parametric angles: both endpoints plus each
+    axis extreme (0/90/180/270) inside the sweep."""
+    angles = [start_deg, end_deg]
+    k = math.ceil(start_deg / 90.0)
+    while k * 90.0 <= end_deg:
+        angles.append(k * 90.0)
+        k += 1
+    xs = [cx + hr * math.cos(math.radians(t)) for t in angles]
+    ys = [cy + vr * math.sin(math.radians(t)) for t in angles]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
 def expand_bounds_for_geometry(
     xmin: float, xmax: float, ymin: float, ymax: float,
     sym: SymTable,
+    drawn: Optional[set[str]] = None,
 ) -> tuple[float, float, float, float]:
     """Expand (xmin, xmax, ymin, ymax) to include circles, ellipses, and arcs.
 
     Used when a Canvas is already established and we need to ensure geometry
     that extends outside the point-based bounds (e.g. a large circle) is not
-    clipped.
+    clipped. An arc or sector contributes only its own swept extent, not its
+    full circle. When ``drawn`` (ids a render op references) is given, a circle
+    or ellipse nobody draws (e.g. one that only anchors a point) is ignored;
+    ``None`` counts every object as drawn.
     """
-    for obj in sym.values():
+    def grow(x0: float, x1: float, y0: float, y1: float) -> None:
+        nonlocal xmin, xmax, ymin, ymax
+        if x0 < xmin:
+            xmin = x0 - BOUNDS_PADDING
+        if x1 > xmax:
+            xmax = x1 + BOUNDS_PADDING
+        if y0 < ymin:
+            ymin = y0 - BOUNDS_PADDING
+        if y1 > ymax:
+            ymax = y1 + BOUNDS_PADDING
+
+    for oid, obj in sym.items():
+        if drawn is not None and oid not in drawn:
+            continue
         if isinstance(obj, spg.Ellipse):  # covers Circle
             cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
             a = sympy_to_float(obj.hradius)
             b = sympy_to_float(obj.vradius)
-            if cx - a < xmin:
-                xmin = cx - a - BOUNDS_PADDING
-            if cx + a > xmax:
-                xmax = cx + a + BOUNDS_PADDING
-            if cy - b < ymin:
-                ymin = cy - b - BOUNDS_PADDING
-            if cy + b > ymax:
-                ymax = cy + b + BOUNDS_PADDING
-        elif isinstance(obj, Arc):
-            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            r = sympy_to_float(obj.radius)
-            # Conservatively use full enclosing circle.
-            if cx - r < xmin:
-                xmin = cx - r - BOUNDS_PADDING
-            if cx + r > xmax:
-                xmax = cx + r + BOUNDS_PADDING
-            if cy - r < ymin:
-                ymin = cy - r - BOUNDS_PADDING
-            if cy + r > ymax:
-                ymax = cy + r + BOUNDS_PADDING
-        elif isinstance(obj, EllipticalArc):
-            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
-            hr = sympy_to_float(obj.hradius)
-            vr = sympy_to_float(obj.vradius)
-            # Conservatively use the full enclosing ellipse.
-            if cx - hr < xmin:
-                xmin = cx - hr - BOUNDS_PADDING
-            if cx + hr > xmax:
-                xmax = cx + hr + BOUNDS_PADDING
-            if cy - vr < ymin:
-                ymin = cy - vr - BOUNDS_PADDING
-            if cy + vr > ymax:
-                ymax = cy + vr + BOUNDS_PADDING
+            grow(cx - a, cx + a, cy - b, cy + b)
+        elif isinstance(obj, (Arc, Sector)):
+            cx, cy, r, s_deg, e_deg, _, _ = arc_params(oid, sym)
+            grow(*_arc_extent(cx, cy, r, r, s_deg, e_deg))
+        elif isinstance(obj, (EllipticalArc, EllipticalSector)):
+            cx, cy, hr, vr, s_deg, e_deg, _, _ = elliptical_arc_params(oid, sym)
+            grow(*_arc_extent(cx, cy, hr, vr, s_deg, e_deg))
     return xmin, xmax, ymin, ymax
 
 
@@ -735,17 +772,18 @@ def compute_bounds(
     coords: dict[str, tuple[float, float]],
     helpers: dict[str, tuple[float, float]],
     sym: SymTable,
+    drawn: Optional[set[str]] = None,
 ) -> tuple[float, float, float, float]:
     """Compute tight (xmin, xmax, ymin, ymax) from geometry, with padding."""
-    all_pts = list(coords.values()) + list(helpers.values())
+    all_pts = list(coords.values()) + list(helpers_for_bounds(helpers, drawn).values())
     if not all_pts:
-        return expand_bounds_for_geometry(-5.0, 5.0, -5.0, 5.0, sym)
+        return expand_bounds_for_geometry(-5.0, 5.0, -5.0, 5.0, sym, drawn)
     xs, ys = zip(*all_pts)
     xmin = min(xs) - BOUNDS_PADDING
     xmax = max(xs) + BOUNDS_PADDING
     ymin = min(ys) - BOUNDS_PADDING
     ymax = max(ys) + BOUNDS_PADDING
-    return expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
+    return expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym, drawn)
 
 
 def effective_canvas_bounds(canvas: ir.Canvas) -> tuple[float, float, float, float]:

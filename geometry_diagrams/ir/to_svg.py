@@ -51,6 +51,8 @@ from .render_util import (
     centroid_of_obj,
     circle_center_through,
     compute_bounds,
+    drawn_object_ids,
+    helpers_for_bounds,
     effective_canvas_bounds,
     expand_bounds_for_geometry,
     ellipse_params,
@@ -277,7 +279,9 @@ def _ir_to_svg_impl(
         # The padding is a margin on the page: a y unit drawn `aspect` times as long
         # as an x unit needs 1/aspect times as many units to give the same pixels.
         y_pad = BOUNDS_PADDING / canvas.aspect if canvas.aspect else BOUNDS_PADDING
-        for px, py in list(coords.values()) + list(helpers.values()):
+        for px, py in list(coords.values()) + list(
+            helpers_for_bounds(helpers, drawn_object_ids(diagram)).values()
+        ):
             if px < xmin:
                 xmin = px - BOUNDS_PADDING
             if px > xmax:
@@ -286,9 +290,13 @@ def _ir_to_svg_impl(
                 ymin = py - y_pad
             if py > ymax:
                 ymax = py + y_pad
-        xmin, xmax, ymin, ymax = expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
+        xmin, xmax, ymin, ymax = expand_bounds_for_geometry(
+            xmin, xmax, ymin, ymax, sym, drawn_object_ids(diagram)
+        )
     else:
-        xmin, xmax, ymin, ymax = compute_bounds(coords, helpers, sym)
+        xmin, xmax, ymin, ymax = compute_bounds(
+            coords, helpers, sym, drawn_object_ids(diagram)
+        )
 
     geo_w = xmin if xmin == xmax else xmax - xmin
     geo_h = ymin if ymin == ymax else ymax - ymin

@@ -163,7 +163,7 @@ def test_elliptical_arc_params_recovers_correct_angle_not_plain_atan2():
     assert abs(s_deg - wrong_deg) == pytest.approx(36.587, abs=0.01)
 
 
-def test_expand_bounds_for_geometry_includes_elliptical_arc():
+def test_expand_bounds_for_geometry_uses_elliptical_arc_extent_only():
     from geometry_diagrams.ir.ir import DiagramIR, EllipticalArcCenterStartEnd, PointFixed
     from geometry_diagrams.ir.render_util import BOUNDS_PADDING, expand_bounds_for_geometry
     from geometry_diagrams.ir.to_sympy import compile_defs
@@ -175,9 +175,10 @@ def test_expand_bounds_for_geometry_includes_elliptical_arc():
         EllipticalArcCenterStartEnd(id="ea1", center="c", hradius=4, vradius=1, start="s", end="e"),
     ]))
     xmin, xmax, ymin, ymax = expand_bounds_for_geometry(0.0, 0.0, 0.0, 0.0, sym)
-    assert xmin == pytest.approx(-4.0 - BOUNDS_PADDING)
+    # Quarter arc (0..90 degrees): only its own extent, not the full ellipse.
+    assert xmin == pytest.approx(0.0)
     assert xmax == pytest.approx(4.0 + BOUNDS_PADDING)
-    assert ymin == pytest.approx(-1.0 - BOUNDS_PADDING)
+    assert ymin == pytest.approx(0.0)
     assert ymax == pytest.approx(1.0 + BOUNDS_PADDING)
 
 

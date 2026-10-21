@@ -29,6 +29,8 @@ from .render_util import (
     centroid_of_obj,
     circle_center_through,
     compute_bounds,
+    drawn_object_ids,
+    helpers_for_bounds,
     effective_canvas_bounds,
     elliptical_arc_params,
     expand_bounds_for_geometry,
@@ -118,7 +120,9 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
         xmin, xmax, ymin, ymax = _effective_canvas_bounds(canvas)
         # Expand only when computed points fall outside the LLM's canvas bounds,
         # so derived geometry (e.g. polygon_exterior vertices) isn't clipped.
-        for px, py in list(coords.values()) + list(helpers.values()):
+        for px, py in list(coords.values()) + list(
+            helpers_for_bounds(helpers, drawn_object_ids(diagram)).values()
+        ):
             if px < xmin:
                 xmin = px - _BOUNDS_PADDING
             if px > xmax:
@@ -127,9 +131,13 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
                 ymin = py - _BOUNDS_PADDING
             if py > ymax:
                 ymax = py + _BOUNDS_PADDING
-        xmin, xmax, ymin, ymax = _expand_bounds_for_geometry(xmin, xmax, ymin, ymax, sym)
+        xmin, xmax, ymin, ymax = _expand_bounds_for_geometry(
+            xmin, xmax, ymin, ymax, sym, drawn_object_ids(diagram)
+        )
     else:
-        xmin, xmax, ymin, ymax = _compute_bounds(coords, helpers, sym)
+        xmin, xmax, ymin, ymax = _compute_bounds(
+            coords, helpers, sym, drawn_object_ids(diagram)
+        )
     lines.append(
         f"\\tkzInit[xmin={_fmt_num(xmin)},xmax={_fmt_num(xmax)},"
         f"ymin={_fmt_num(ymin)},ymax={_fmt_num(ymax)}]"
