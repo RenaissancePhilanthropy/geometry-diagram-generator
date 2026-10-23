@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import contextvars
 import functools
+import itertools
 import logging
 import math
 import re
 import threading
-import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any, Callable, NamedTuple
@@ -3742,6 +3742,9 @@ def _load_font(family: str):
 
 
 _MEASURE_PT = 140
+# Em width charged per character the bundled font lacks (browser fallback
+# glyphs for arrows/Greek measure ~0.7-1.0 em).
+_MISSING_GLYPH_EM = 1.0
 # Font family of the render in progress (set by ir_to_svg for its duration);
 # None means "use default_font_config()". A contextvar rather than a parameter
 # because _estimate_text_width is reached through many nested placement
@@ -3765,17 +3768,20 @@ def _measure_text_em(family: str, text: str) -> float | None:
         from matplotlib.ft2font import LoadFlags
 
         with _MEASURE_LOCK:
-            if all(font.get_char_index(ord(c)) for c in text):
-                font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
-            else:
-                # A glyph missing from the font is measured as .notdef and
-                # ft2font emits a "missing glyph" UserWarning, noise for an
-                # estimate. Filters are only touched on this rare path, and
-                # inside the lock so one thread at a time mutates them.
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    font.set_text(text, 0, flags=LoadFlags.NO_HINTING)
-            return font.get_width_height()[0] / 64 / _MEASURE_PT
+            # A glyph missing from the font is drawn by the browser in a
+            # fallback font that is wider than .notdef, so measure each run
+            # of covered characters and charge each missing one a
+            # conservative _MISSING_GLYPH_EM.
+            em = 0.0
+            for covered, run in itertools.groupby(
+                    text, key=lambda c: bool(font.get_char_index(ord(c)))):
+                chars = "".join(run)
+                if not covered:
+                    em += len(chars) * _MISSING_GLYPH_EM
+                    continue
+                font.set_text(chars, 0, flags=LoadFlags.NO_HINTING)
+                em += font.get_width_height()[0] / 64 / _MEASURE_PT
+            return em
     except Exception:
         return None
 
