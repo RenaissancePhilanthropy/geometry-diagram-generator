@@ -556,3 +556,76 @@ def test_elliptical_arc_and_polyline_work_through_the_real_sandbox():
     result = run_script(script, timeout_seconds=10.0)
     assert result.error is None, result.error
     assert result.diagram_ir is not None
+
+
+# ---------------------------------------------------------------------------
+# tangent_line onto arcs / sectors / elliptical arcs
+# ---------------------------------------------------------------------------
+
+def _tangent_from_x(make_shape):
+    """Build `make_shape()` plus an external point X=(6, 0) and return the IR
+    and the resulting tangent handle."""
+    from geometry_diagrams.pydsl.api import tangent_line
+
+    with new_builder_context() as builder:
+        shape = make_shape()
+        x = point(6.0, 0.0)
+        line = tangent_line(shape, from_point=x)
+        return builder.build(), line, shape
+
+
+def _quarter(kind):
+    from geometry_diagrams.pydsl.api import arc, sector
+
+    def make():
+        c = circle(point(0.0, 0.0), 3.0)
+        from geometry_diagrams.pydsl.api import point_on
+        a, b = point_on(c, 0.0), point_on(c, math.pi / 2)
+        return arc(c, a, b) if kind == "arc" else sector(c, a, b)
+    return make
+
+
+@pytest.mark.parametrize("kind", ["arc", "sector"])
+def test_tangent_line_from_point_to_an_arc_or_sector(kind):
+    from geometry_diagrams.ir.ir import LineTangent
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    ir, line, shape = _tangent_from_x(_quarter(kind))
+    stmts = [d for d in ir.define if isinstance(d, LineTangent) and d.id == line.id]
+    assert len(stmts) == 1 and stmts[0].circle == shape.id
+    sym = compile_defs(ir)  # only the +60 degree touch point is on the arc: no pick needed
+    assert sym[line.id].contains(sym[stmts[0].point])
+
+
+def test_tangent_line_from_point_to_an_elliptical_arc():
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.pydsl.api import arc, ellipse, point_on, tangent_line
+
+    with new_builder_context() as builder:
+        e = ellipse(center=point(0.0, 0.0), hradius=4.0, vradius=2.0)
+        a = arc(e, point_on(e, 0.0), point_on(e, math.pi / 2))
+        line = tangent_line(a, from_point=point(8.0, 0.0))
+        ir = builder.build()
+    assert compile_defs(ir)[line.id] is not None
+
+
+@pytest.mark.parametrize("kind", ["arc", "sector"])
+def test_tangent_line_at_on_an_arc_or_sector_points_to_the_underlying_circle(kind):
+    from geometry_diagrams.pydsl.api import point_on, tangent_line
+
+    with new_builder_context():
+        c = circle(point(0.0, 0.0), 3.0)
+        shape = _quarter(kind)()
+        with pytest.raises(ValueError, match="circle"):
+            tangent_line(shape, at=point_on(c, 0.5))
+
+
+def test_tangent_line_at_on_an_ellipse_is_rejected_not_silently_wrong():
+    # The at= construction is "perpendicular to the radius", which is only a
+    # tangent for a circle.
+    from geometry_diagrams.pydsl.api import ellipse, point_on, tangent_line
+
+    with new_builder_context():
+        e = ellipse(center=point(0.0, 0.0), hradius=4.0, vradius=2.0)
+        with pytest.raises(ValueError, match="ellipse"):
+            tangent_line(e, at=point_on(e, 0.7))

@@ -1024,20 +1024,25 @@ def intersection(
 
 
 def tangent_line(
-    circle: Circle,
+    circle: "Circle | Ellipse | Arc | Sector",
     at: "Point | None" = None,
     from_point: "Point | None" = None,
     near: "Point | None" = None,
     side_of: "tuple[Point, Point] | None" = None,
     side: "str | None" = None,
 ) -> Line:
-    """The tangent line to `circle`. Exactly one of:
+    """The tangent line to `circle` (a circle(); from_point= also accepts an
+    ellipse(), arc() or sector()). Exactly one of:
     - at=P — P is a point already ON the circle; the tangent there (always
       unambiguous — near/side_of/side are silently ignored if also given,
       matching the DSL lowerer's own at= branch, which has no equivalent
-      validation either).
-    - from_point=P — P is external to the circle; there are 0, 1, or 2
-      tangent lines from an external point. Disambiguate a 2-tangent case
+      validation either). Needs a circle(): for an arc/sector pass the circle
+      it was built from, and an ellipse is rejected (the tangent to an ellipse
+      is not perpendicular to its radius) — use from_point= instead.
+    - from_point=P — P is external to the curve; there are 0, 1, or 2
+      tangent lines from an external point. For an arc/sector only a tangent
+      whose touch point lies on the drawn sweep counts (none is a compile
+      error), so a point often has just one. Disambiguate a 2-tangent case
       with near=Q (closest touch point to Q) or side_of=(A,B), side=
       "left"|"right" (same convention as intersection()). With neither,
       and 2 tangent lines exist, unlike intersection() there is no
@@ -1050,6 +1055,16 @@ def tangent_line(
 
     builder = get_builder()
     if at is not None:
+        if isinstance(circle, Ellipse):
+            raise ValueError(
+                "tangent_line(at=) needs a circle(): the tangent at a point of an "
+                "ellipse is not perpendicular to its radius. Use from_point= instead."
+            )
+        if not isinstance(circle, Circle):
+            raise ValueError(
+                f"tangent_line(at=) needs the circle() itself, not a {type(circle).__name__.lower()}: "
+                "pass the circle the arc/sector was built from."
+            )
         radius_id = builder._fresh_hidden_id("tangent_radius")
         builder._add(LineThrough(id=radius_id, p=circle.center.id, q=at.id))
         line_id = builder._fresh_hidden_id("tangent")
