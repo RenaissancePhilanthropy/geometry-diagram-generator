@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import math
 import operator
 from graphlib import CycleError, TopologicalSorter
@@ -556,6 +557,15 @@ def _compile_one(
         # A registered kind that compiles itself (a solid: rectangular_prism,
         # block_stack), see derived.DerivedConstruction.compile.
         return entry.compile(stmt, ref, ev)
+
+    for fname in _point_fields(type(stmt)):
+        rid = getattr(stmt, fname)
+        # An undefined id is left to the construction's own UndefinedRefError.
+        if rid is not None and rid in sym and not isinstance(sym[rid], spg.Point):
+            raise IRCompileError(
+                did,
+                f"{stmt.kind}: '{fname}' must be a point, got {type(sym[rid]).__name__} ({rid!r})",
+            )
 
     match stmt:
         # --- Points ---
@@ -1350,6 +1360,20 @@ def _parse_between_ratio(ratio: float | str | None) -> float:
         except (ValueError, ZeroDivisionError):
             pass
     raise IRCompileError("<parse_ratio>", f"Cannot parse ratio {ratio!r}; expected float, 'M:N', or 'a/b'")
+
+
+@functools.lru_cache(maxsize=None)
+def _point_fields(stmt_cls: type) -> tuple[str, ...]:
+    """Names of a definition class's fields declared as a bare ``PointId`` (or
+    ``Optional[PointId]``): the slots that must resolve to a point. Read from
+    the raw annotations, because ``PointId`` is a plain ``str`` alias and
+    carries no type information once pydantic has resolved it."""
+    names: list[str] = []
+    for klass in reversed(stmt_cls.__mro__):
+        for fname, ann in vars(klass).get("__annotations__", {}).items():
+            if ann in ("PointId", "Optional[PointId]") and fname not in names:
+                names.append(fname)
+    return tuple(names)
 
 
 def _resolve(sym: SymTable, ref_id: str, *, def_id: str, all_def_ids: set[str] | None = None) -> Any:

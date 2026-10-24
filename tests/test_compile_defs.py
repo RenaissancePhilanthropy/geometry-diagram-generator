@@ -2785,3 +2785,60 @@ def test_line_tangent_pick_closest_to_works_on_a_float_radius_ellipse():
     # slope of the tangent through (8,0) and (2, +sqrt3) is negative
     a, b, _ = (float(v) for v in line.coefficients)
     assert a * b > 0  # a*x + b*y + c = 0 with slope -a/b < 0
+
+
+# ---------------------------------------------------------------------------
+# A PointId-typed field that names a non-point is a clean IRCompileError
+# ---------------------------------------------------------------------------
+
+def _non_point_base():
+    return [
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="B", x=0, y=3),
+        LineThrough(id="L", p="O", q="A"),
+        CircleCenterRadius(id="c", center="O", radius=2),
+        ArcCenterStartEnd(id="arc", center="O", start="A", end="B"),
+    ]
+
+
+@pytest.mark.parametrize("stmt,field", [
+    (PointRotate(id="Z", center="O", source="arc", angle=1), "source"),
+    (PointRotate(id="Z", center="O", source="L", angle=1), "source"),  # used to return a rotated Line
+    (PointRotate(id="Z", center="arc", source="A", angle=1), "center"),
+    (PointDilate(id="Z", center="O", source="arc", ratio=2), "source"),
+    (PointDilate(id="Z", center="O", source="c", ratio=2), "source"),
+    (PointReflect(id="Z", source="arc", across="L"), "source"),
+    (PointReflect(id="Z", source="L", across="O"), "source"),
+    (PointMidpoint(id="Z", p="arc", q="A"), "p"),
+    (PointMidpoint(id="Z", p="A", q="L"), "q"),
+    (PointBetween(id="Z", a="arc", b="A"), "a"),
+    (PointFoot(id="Z", source="c", onto="L"), "source"),
+    (LineThrough(id="Z", p="arc", q="A"), "p"),
+    (Segment(id="Z", a="arc", b="A"), "a"),
+    (CircleCenterPoint(id="Z", center="arc", through="A"), "center"),
+    (CircleCenterRadius(id="Z", center="arc", radius=1), "center"),
+    (ArcCenterStartEnd(id="Z", center="arc", start="A", end="B"), "center"),
+    (ArcCenterStartEnd(id="Z", center="O", start="L", end="B"), "start"),
+])
+def test_point_field_naming_a_non_point_is_a_clean_compile_error(stmt, field):
+    with pytest.raises(IRCompileError, match=rf"{stmt.kind}: '{field}' must be a point, got"):
+        _compile(*_non_point_base(), stmt)
+
+
+def test_non_point_error_names_the_offending_id_and_type():
+    with pytest.raises(IRCompileError, match=r"'arc'.*Arc|Arc.*'arc'"):
+        _compile(*_non_point_base(), PointDilate(id="Z", center="O", source="arc", ratio=2))
+
+
+def test_point_field_check_leaves_undefined_refs_to_the_usual_error():
+    with pytest.raises(UndefinedRefError):
+        _compile(PointFixed(id="O", x=0, y=0), PointDilate(id="Z", center="O", source="nope", ratio=2))
+
+
+def test_optional_point_field_may_be_absent_or_a_point():
+    # ArcCenterStartEnd.bulge_toward is Optional[PointId]
+    base = _non_point_base() + [PointFixed(id="P", x=2, y=2)]
+    _compile(*base, ArcCenterStartEnd(id="Z", center="O", start="A", end="B", bulge_toward="P"))
+    with pytest.raises(IRCompileError, match="bulge_toward"):
+        _compile(*base, ArcCenterStartEnd(id="Z", center="O", start="A", end="B", bulge_toward="L"))
