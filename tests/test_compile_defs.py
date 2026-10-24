@@ -2532,3 +2532,154 @@ def test_line_circle_tangent_via_radius_expression_intersects():
 def test_exact_non_algebraic_expression_result_is_numeric():
     sym = _compile(PointFixed(id="A", x="5*sin(pi/7)", y="asin(3/10)"))
     assert not sym["A"].x.has(sp.sin) and not sym["A"].y.has(sp.asin)
+
+
+# ---------------------------------------------------------------------------
+# point_on over arcs / sectors / elliptical arcs, and expression-valued t
+# ---------------------------------------------------------------------------
+# On an arc-like object t is the FRACTION of the sweep: 0 = start, 1 = end
+# (like a segment), not a radian angle (as on a full circle).
+
+def _quarter_arc_base():
+    return [
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=3, y=0),
+        PointFixed(id="B", x=0, y=3),
+    ]
+
+
+@pytest.mark.parametrize("kind", [ArcCenterStartEnd, SectorCenterStartEnd])
+@pytest.mark.parametrize("t,expected", [
+    (0.0, (3.0, 0.0)),
+    (1.0, (0.0, 3.0)),
+    (0.5, (3 * math.cos(math.pi / 4), 3 * math.sin(math.pi / 4))),
+])
+def test_point_on_arc_param_is_sweep_fraction(kind, t, expected):
+    sym = _compile(
+        *_quarter_arc_base(),
+        kind(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnParam(t=t)),
+    )
+    assert approx(sym["P"].x, expected[0], 1e-6)
+    assert approx(sym["P"].y, expected[1], 1e-6)
+
+
+def test_point_on_reflex_arc_follows_the_drawn_sweep():
+    # reflex A->B around O is the 270 degree arc running from B (90 deg) ccw
+    # to A (360 deg), so its midpoint is at 225 degrees.
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B", reflex=True),
+        PointOn(id="P", on="a", how=PointOnParam(t=0.5)),
+    )
+    # sweep is 90 -> 360 deg, midpoint 225 deg
+    assert approx(sym["P"].x, 3 * math.cos(math.radians(225)), 1e-6)
+    assert approx(sym["P"].y, 3 * math.sin(math.radians(225)), 1e-6)
+
+
+def test_point_on_arc_lies_on_its_circle_and_sweep():
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnParam(t=0.3)),
+    )
+    assert approx(sym["P"].distance(sym["O"]), 3.0, 1e-9)
+
+
+@pytest.mark.parametrize("t", [-0.1, 1.1])
+def test_point_on_arc_param_outside_sweep_is_rejected(t):
+    with pytest.raises(IRCompileError, match="sweep"):
+        _compile(
+            *_quarter_arc_base(),
+            ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+            PointOn(id="P", on="a", how=PointOnParam(t=t)),
+        )
+
+
+@pytest.mark.parametrize("kind", [EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd])
+def test_point_on_elliptical_arc_param(kind):
+    base = [
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=4, y=0),
+        PointFixed(id="B", x=0, y=2),
+    ]
+    stmt = kind(id="a", center="O", hradius=4, vradius=2, start="A", end="B")
+    s0 = _compile(*base, stmt, PointOn(id="P", on="a", how=PointOnParam(t=0.0)))
+    s1 = _compile(*base, stmt, PointOn(id="P", on="a", how=PointOnParam(t=1.0)))
+    sh = _compile(*base, stmt, PointOn(id="P", on="a", how=PointOnParam(t=0.5)))
+    assert (approx(s0["P"].x, 4) and approx(s0["P"].y, 0))
+    assert (approx(s1["P"].x, 0, 1e-9) and approx(s1["P"].y, 2))
+    # parametric-angle midpoint: (4 cos 45, 2 sin 45), on the ellipse
+    x, y = float(sh["P"].x), float(sh["P"].y)
+    assert approx((x / 4) ** 2 + (y / 2) ** 2, 1.0, 1e-9)
+    assert x > 0 and y > 0
+
+
+def test_point_on_arc_random_is_deterministic_and_in_sweep():
+    stmts = [
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnRandom()),
+    ]
+    p1 = compile_defs(DiagramIR(define=list(stmts)), rng=Random(7))["P"]
+    p2 = compile_defs(DiagramIR(define=list(stmts)), rng=Random(7))["P"]
+    assert p1 == p2
+    assert float(p1.x) >= -1e-9 and float(p1.y) >= -1e-9  # first quadrant
+
+
+def test_point_on_arc_intent_stays_in_sweep():
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnIntent(constraints=[
+            NotNearConstraint(point="A", min_dist=1.0),
+        ])),
+    )
+    assert float(sym["P"].x) >= -1e-9 and float(sym["P"].y) >= -1e-9
+    assert float(sym["P"].distance(sym["A"])) >= 1.0
+
+
+def test_invert_param_round_trips_on_arcs():
+    from geometry_diagrams.ir.to_sympy import _eval_param, _invert_param
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B", reflex=True),
+        EllipticalArcCenterStartEnd(id="e", center="O", hradius=4, vradius=2, start="A", end="B"),
+    )
+    for oid in ("a", "e"):
+        for t in (0.0, 0.25, 0.7, 1.0):
+            pt = _eval_param(sym[oid], t, "P")
+            back = _invert_param(sym[oid], float(pt.x), float(pt.y), "P")
+            assert approx(back, t, 1e-9), (oid, t, back)
+
+
+def test_point_on_param_accepts_expression_string():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        CircleCenterRadius(id="c", center="O", radius=3),
+        PointOn(id="P", on="c", how=PointOnParam(t="pi/2")),
+    )
+    assert approx(sym["P"].x, 0.0, 1e-9)
+    assert approx(sym["P"].y, 3.0, 1e-9)
+
+
+def test_point_on_param_expression_can_reference_geometry_and_orders_deps():
+    # t reads length(A, B): the dependency must be sorted before the point_on
+    # even though P is listed first.
+    diag = DiagramIR(define=[
+        PointOn(id="P", on="s", how=PointOnParam(t="length(A, B) / 8")),
+        PointFixed(id="A", x=0, y=0),
+        PointFixed(id="B", x=4, y=0),
+        Segment(id="s", a="A", b="B"),
+    ])
+    sym = compile_defs(diag)
+    assert approx(sym["P"].x, 2.0, 1e-9)
+
+
+def test_point_on_param_expression_on_arc():
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnParam(t="1/2")),
+    )
+    assert approx(sym["P"].x, 3 * math.cos(math.pi / 4), 1e-6)

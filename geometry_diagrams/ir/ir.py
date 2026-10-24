@@ -90,8 +90,12 @@ class PointOnRandom(PointOnMethod):
 class PointOnParam(PointOnMethod):
     kind: Literal["param"] = "param"
     # For lines/segments/rays: parameter along object; compiler decides mapping
-    # For circles: parameter interpreted as angle in radians by convention
-    t: float
+    # For circles/ellipses: parameter interpreted as angle in radians by convention
+    # For arcs/sectors (circular or elliptical): fraction of the drawn sweep,
+    #   0 = start, 1 = end; outside [0, 1] is a compile error
+    # A string is an expression evaluated like other numeric fields (pi, sqrt,
+    # params, length()/radius()/angle() of earlier definitions).
+    t: Union[float, str]
 
 
 

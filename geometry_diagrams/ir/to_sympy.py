@@ -5,7 +5,7 @@ import math
 import operator
 from graphlib import CycleError, TopologicalSorter
 from random import Random
-from typing import Any
+from typing import Any, Callable
 
 import sympy as sp
 import sympy.geometry as spg
@@ -572,7 +572,7 @@ def _compile_one(
 
         case ir.PointOn(on=on_id, how=how):
             obj = ref(on_id)
-            return _point_on_object(obj, how, sym, rng, did)
+            return _point_on_object(obj, how, sym, rng, did, ev)
 
         case ir.PointMidpoint(p=p_id, q=q_id):
             p, q = ref(p_id), ref(q_id)
@@ -1592,11 +1592,12 @@ def _point_on_object(
     sym: SymTable,
     rng: Random,
     def_id: str,
+    ev: Callable[[int | float | str], sp.Basic] = lambda raw: sp.S(raw),
 ) -> spg.Point:
     """Compute a concrete point on obj using the PointOnHow method."""
     match how:
         case ir.PointOnParam(t=t):
-            return _eval_param(obj, t, def_id)
+            return _eval_param(obj, float(ev(t)), def_id)
         case ir.PointOnRandom():
             t = _sample_param(obj, rng)
             return _eval_param(obj, t, def_id)
@@ -1614,8 +1615,49 @@ def _sample_param(obj: Any, rng: Random) -> float:
     return rng.random()
 
 
+_ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
+# Slack on a point_on `t` at the ends of an arc's sweep, so t = 0 / 1 survive
+# float noise (e.g. a t recovered by _invert_param).
+ARC_PARAM_TOL = 1e-9
+
+
+def _arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]:
+    """(cx, cy, hr, vr, start_rad, end_rad) of an arc-like object's CCW sweep,
+    in parametric angles (``end_rad > start_rad``).
+
+    Uses the parametric angle atan2((y-cy)/vr, (x-cx)/hr) throughout, which is
+    plain polar angle for a circular arc (hr == vr) and the correct angle for
+    an elliptical one; the endpoint swap for `reflex` mirrors
+    ``arc_sweep_degrees`` / ``render_util.elliptical_arc_params``.
+    """
+    cx, cy = float(obj.center.x.evalf()), float(obj.center.y.evalf())
+    if isinstance(obj, (Arc, Sector)):
+        hr = vr = float(obj.radius.evalf())
+    else:
+        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
+    s = math.atan2((float(obj.start.y.evalf()) - cy) / vr, (float(obj.start.x.evalf()) - cx) / hr)
+    e = math.atan2((float(obj.end.y.evalf()) - cy) / vr, (float(obj.end.x.evalf()) - cx) / hr)
+    s, e = s % (2 * math.pi), e % (2 * math.pi)
+    ccw = (e - s) % (2 * math.pi) or 2 * math.pi
+    if (ccw <= math.pi) == bool(obj.reflex):
+        s, e = e, s
+    if e <= s:
+        e += 2 * math.pi
+    return cx, cy, hr, vr, s, e
+
+
 def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     """Evaluate the parametric point on obj at parameter t."""
+    if isinstance(obj, _ARC_LIKE):
+        if not -ARC_PARAM_TOL <= t <= 1 + ARC_PARAM_TOL:
+            raise IRCompileError(
+                def_id,
+                f"point_on an arc/sector: t={t} is outside the sweep; t is the "
+                "fraction of the sweep from start (0) to end (1)",
+            )
+        cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+        theta = s + min(max(t, 0.0), 1.0) * (e - s)
+        return _lift(cx + hr * math.cos(theta), cy + vr * math.sin(theta))
     if isinstance(obj, spg.Segment):
         a, b = obj.p1, obj.p2
         return spg.Point(a.x + sp.S(t) * (b.x - a.x), a.y + sp.S(t) * (b.y - a.y))
@@ -1637,6 +1679,13 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
     branch per type it supports. Used to pin an already-sampled
     PointOnIntent result to a dependency-pure PointOnParam (see
     Builder._pin_point_on)."""
+    if isinstance(obj, _ARC_LIKE):
+        cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+        theta = math.atan2((y - cy) / vr, (x - cx) / hr)
+        offset = (theta - s) % (2 * math.pi)
+        if offset >= 2 * math.pi - ARC_PARAM_TOL:
+            offset = 0.0  # a point a hair before the start wraps to ~2*pi
+        return offset / (e - s)
     if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
         cx, cy = float(obj.center.x), float(obj.center.y)
         a, b = float(obj.hradius), float(obj.vradius)

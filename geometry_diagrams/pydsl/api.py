@@ -841,14 +841,16 @@ def mark_right_angle(ref: AngleRef) -> None:
     )
 
 
-def point_on(obj, t: float) -> Point:
+def point_on(obj, t: float | str) -> Point:
     """A point at parameter t along a line or segment (t=0/1 are the object's
     defining points; for a line, t outside [0, 1] extends past them in either
-    direction), or at angle t (radians) on a circle or ellipse — use this
-    instead of hand-computing coordinates to place a point on an existing
-    line/segment/circle/ellipse, or to extend a line's visible extent. This
-    is the correct way to build arc()/sector()'s start/end points, guaranteed
-    to land exactly on the shape's boundary."""
+    direction), at angle t (radians) on a circle or ellipse, or at fraction t
+    of the drawn sweep on an arc or sector (t=0 is its start, t=1 its end;
+    outside [0, 1] is an error) — use this instead of hand-computing
+    coordinates to place a point on an existing line/segment/circle/ellipse/
+    arc, or to extend a line's visible extent. This is the correct way to
+    build arc()/sector()'s start/end points, guaranteed to land exactly on the
+    shape's boundary. t may also be an expression string such as "pi/4"."""
     builder = get_builder()
     pid = builder._fresh_hidden_id("pt_on")
     builder._add(PointOn(id=pid, on=obj.id, how=PointOnParam(t=t)))

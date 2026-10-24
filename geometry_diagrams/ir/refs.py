@@ -83,6 +83,9 @@ def def_references(stmt: ir.DefStmt) -> set[str]:
                 refs |= _expr_names(value)
             continue
         if key == "how" and isinstance(value, dict):
+            # A PointOnParam whose t is an expression string reads names too.
+            if isinstance(value.get("t"), str):
+                refs |= _expr_names(value["t"])
             # PointOnIntent's spatial constraints reference other points
             # (ArcBetweenConstraint's from_point/to_point, NotNear's point,
             # SameSide's line/ref, ...). Those are genuine dependency edges:

@@ -36,7 +36,7 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 |---|---|---|
 | `point_fixed` | `x, y` (number or string expr) | Explicit coordinate |
 | `point_free` | `hint_xy: [x, y]` (optional) | Unconstrained; use for free parameters |
-| `point_on` | `on: ObjId, how: {kind:"param",t:float}` or `{kind:"random"}` | Point on a curve at parameter t |
+| `point_on` | `on: ObjId, how: {kind:"param",t:float or str}` or `{kind:"random"}` | Point on a curve at parameter t. t is a number or expression string. Segment/line/ray: position along it (0 = first point, 1 = second). Circle/ellipse: angle in radians. Arc or sector (circular or elliptical): fraction of the drawn sweep, 0 = start, 1 = end (outside [0, 1] is an error) |
 | `point_midpoint` | `p, q: PointId` | Midpoint of segment PQ |
 | `point_rotate` | `center, source: PointId, angle: float or str` | Rotate source around center by angle (radians, positive = counter-clockwise) |
 | `point_triangle_center` | `tri: TriangleId, which: "circumcenter"/"incenter"/"centroid"/"orthocenter"` | Named triangle center |
@@ -158,7 +158,7 @@ Choose primitives by **what you need to accomplish**, not by the diagram name.
 | An intersection of two objects | `point_intersection`; add a `pick` rule whenever 2+ candidates are possible |
 | A reflection | `point_reflect` (works for point symmetry or mirror across a line) |
 | A rotation | `point_rotate` (angle in radians, positive = CCW) |
-| A point on a circle or line at a specific position | `point_on` with `{kind:"param", t:float}` |
+| A point on a circle, line or arc at a specific position | `point_on` with `{kind:"param", t:float}` |
 
 **Coordinate-grid diagrams:** set `canvas.grid=true, axes=true, grid_step=1, tick_step=1, show_ticks=true, show_tick_labels=true, show_axis_labels=true`. Use `point_fixed` for all prompted coordinates. Include the origin in canvas bounds.
 
