@@ -14,6 +14,9 @@ from .to_sympy import (
     EllipticalSector,
     Sector,
     SymTable,
+    _point_in_arc_sweep,
+    _tangent_touch_point,
+    _underlying_conic,
     arc_sweep_degrees,
     point_on_arc,
 )
@@ -185,14 +188,30 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Triangles not similar: {deg1} vs {deg2}"
 
             case ir.Tangent(line=line, circle=circle):
-                circ = sym[circle]
+                obj = sym[circle]
                 lin = _as_line(sym[line])
-                d = float(lin.distance(circ.center).evalf())
-                r = float(circ.radius.evalf())
+                cx, cy, hr, vr = _conic_frame(obj, "tangent", circle)
+                a, b, c0 = (float(v.evalf()) for v in lin.coefficients)
+                norm = math.hypot(a, b)
+                # Distance from the center at which a line of this direction is
+                # tangent: the conic's support function along the line's normal
+                # (the radius, for a circle).
+                d = abs(a * cx + b * cy + c0) / norm
+                r = math.hypot(hr * a, vr * b) / norm
                 ok = abs(d - r) < t
                 msg = "" if ok else (
                     f"Line {line!r} not tangent to {circle!r}: dist={d:.4f}, r={r:.4f}"
                 )
+                if ok and isinstance(obj, _ARC_LIKE):
+                    # Tangent to the full curve is not enough: the touch point
+                    # must be on the drawn sweep.
+                    touch = _tangent_touch_point(lin, _underlying_conic(obj))
+                    if touch is None or not _point_in_arc_sweep(touch, obj):
+                        ok = False
+                        msg = (
+                            f"Line {line!r} is tangent to the full curve of {circle!r} but "
+                            "touches it outside the arc's sweep"
+                        )
 
             case ir.OppositeSide(p=p, q=q, line_a=line_a, line_b=line_b):
                 pa = sym[p]
@@ -271,16 +290,24 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Triangles not congruent: {len1} vs {len2}"
 
             case ir.EqualRadius(circles=circles):
-                radii = [float(sym[c].radius.evalf()) for c in circles]
-                ok = all(abs(r - radii[0]) < t for r in radii[1:])
+                # A circle's radius, or an ellipse's (hradius, vradius) pair; a
+                # circle and a genuine ellipse are simply unequal.
+                radii = [_conic_frame(sym[c], "equal_radius", c)[2:] for c in circles]
+                ok = all(
+                    abs(hr - radii[0][0]) < t and abs(vr - radii[0][1]) < t
+                    for hr, vr in radii[1:]
+                )
                 if ok:
                     msg = ""
                 else:
-                    pairs = ", ".join(f"{c}={r:.4f}" for c, r in zip(circles, radii))
+                    pairs = ", ".join(
+                        f"{c}={hr:.4f}" if abs(hr - vr) < 1e-12 else f"{c}={hr:.4f}x{vr:.4f}"
+                        for c, (hr, vr) in zip(circles, radii)
+                    )
                     msg = f"Circle radii not equal: {pairs}"
 
             case ir.RadiusEquals(circle=circle, expected=expected):
-                radius = float(sym[circle].radius.evalf())
+                radius = _circular_radius(sym[circle], "radius_equals", circle)
                 ok = abs(radius - expected) < t * max(expected, 1.0)
                 msg = "" if ok else (
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
@@ -307,8 +334,8 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             case ir.CirclesTangent(c1=c1, c2=c2):
                 circ1, circ2 = sym[c1], sym[c2]
                 d = float(circ1.center.distance(circ2.center).evalf())
-                r1 = float(circ1.radius.evalf())
-                r2 = float(circ2.radius.evalf())
+                r1 = _circular_radius(circ1, "circles_tangent", c1)
+                r2 = _circular_radius(circ2, "circles_tangent", c2)
                 identical = d < t and abs(r1 - r2) < t
                 externally_tangent = abs(d - (r1 + r2)) < t
                 internally_tangent = abs(d - abs(r1 - r2)) < t
@@ -427,6 +454,37 @@ def _as_line(obj: Any) -> spg.Line:
     if isinstance(obj, (spg.Segment, spg.Ray)):
         return spg.Line(obj.p1, obj.p2)
     raise TypeError(f"Cannot convert {type(obj).__name__} to Line")
+
+
+_ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
+
+
+def _conic_frame(obj: Any, kind: str, obj_id: str) -> tuple[float, float, float, float]:
+    """(cx, cy, hradius, vradius) of a circle, ellipse, arc, sector, elliptical
+    arc or elliptical sector; a circular object has hradius == vradius.
+    Anything else is an UnsupportedOperand naming `kind` and `obj_id`."""
+    if isinstance(obj, (Arc, Sector)):
+        r = float(obj.radius.evalf())
+        hr = vr = r
+    elif isinstance(obj, (EllipticalArc, EllipticalSector, spg.Ellipse)):
+        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
+    else:
+        raise UnsupportedOperand(
+            f"{kind}: {obj_id!r} must be a circle, ellipse, arc or sector, got {type(obj).__name__}"
+        )
+    return float(obj.center.x.evalf()), float(obj.center.y.evalf()), hr, vr
+
+
+def _circular_radius(obj: Any, kind: str, obj_id: str) -> float:
+    """The single radius of a circular object. An ellipse has two radii, so a
+    check that compares one radius cannot evaluate it: UnsupportedOperand."""
+    _cx, _cy, hr, vr = _conic_frame(obj, kind, obj_id)
+    if abs(hr - vr) > 1e-9 * max(hr, vr, 1.0):
+        raise UnsupportedOperand(
+            f"{kind}: {obj_id!r} is an ellipse with two radii (hradius={hr:.4f}, "
+            f"vradius={vr:.4f}), not a circle"
+        )
+    return hr
 
 
 def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[bool, str]:

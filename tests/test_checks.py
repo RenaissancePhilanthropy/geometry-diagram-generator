@@ -1,5 +1,6 @@
 # tests/test_checks.py
 """Tests for ir/checks.py."""
+import sympy as sp
 import sympy.geometry as spg
 
 from geometry_diagrams.ir.ir import AngleEqual, AnglePoints
@@ -666,3 +667,117 @@ class TestContainsArcOrSector:
         assert not result.passed
         assert not result.message.startswith("Error in ")
         assert "EllipticalArc" in result.message
+
+
+# ---------------------------------------------------------------------------
+# tangent / equal_radius / radius_equals / circles_tangent on ellipses and arcs
+# ---------------------------------------------------------------------------
+
+import math
+
+import pytest
+
+from geometry_diagrams.ir.to_sympy import Arc, EllipticalArc, EllipticalSector, Sector
+
+
+def _o():
+    return spg.Point2D(0, 0)
+
+
+def _quarter_arc(cls=Arc):
+    # first-quadrant arc of the r=3 circle around the origin
+    return cls(center=_o(), start=spg.Point2D(3, 0), end=spg.Point2D(0, 3), radius=sp.Integer(3))
+
+
+def _quarter_elliptical(cls=EllipticalArc):
+    return cls(center=_o(), start=spg.Point2D(4, 0), end=spg.Point2D(0, 2),
+               hradius=sp.Integer(4), vradius=sp.Integer(2))
+
+
+def _tangent(sym, line="L", curve="c"):
+    from geometry_diagrams.ir.ir import Tangent
+    return _check_one(Tangent(line=line, circle=curve), sym, DEFAULT_TOL)
+
+
+def test_tangent_passes_for_a_line_tangent_to_an_ellipse():
+    # y = 2 touches x^2/16 + y^2/4 = 1 at (0, 2)
+    sym = {"c": spg.Ellipse(_o(), 4, 2), "L": spg.Line(spg.Point2D(-1, 2), spg.Point2D(1, 2))}
+    assert _tangent(sym).passed
+
+
+def test_tangent_fails_for_a_line_crossing_an_ellipse():
+    sym = {"c": spg.Ellipse(_o(), 4, 2), "L": spg.Line(spg.Point2D(-1, 1), spg.Point2D(1, 1))}
+    result = _tangent(sym)
+    assert not result.passed and "not tangent" in result.message
+
+
+def test_tangent_to_a_float_radius_ellipse_passes():
+    sym = {"c": spg.Ellipse(_o(), 4.0, 2.0), "L": spg.Line(spg.Point2D(-1, 2), spg.Point2D(1, 2))}
+    assert _tangent(sym).passed
+
+
+@pytest.mark.parametrize("cls", [Arc, Sector])
+def test_tangent_to_an_arc_passes_when_the_touch_point_is_on_the_sweep(cls):
+    # x = 3 touches the circle at (3, 0), the arc's start point
+    sym = {"c": _quarter_arc(cls), "L": spg.Line(spg.Point2D(3, -1), spg.Point2D(3, 1))}
+    assert _tangent(sym).passed
+
+
+@pytest.mark.parametrize("cls", [Arc, Sector])
+def test_tangent_to_an_arc_fails_when_the_touch_point_is_outside_the_sweep(cls):
+    # x = -3 is tangent to the full circle at (-3, 0), which is not on the arc
+    sym = {"c": _quarter_arc(cls), "L": spg.Line(spg.Point2D(-3, -1), spg.Point2D(-3, 1))}
+    result = _tangent(sym)
+    assert not result.passed
+    assert "sweep" in result.message
+
+
+@pytest.mark.parametrize("cls", [EllipticalArc, EllipticalSector])
+def test_tangent_to_an_elliptical_arc_respects_the_sweep(cls):
+    on = {"c": _quarter_elliptical(cls), "L": spg.Line(spg.Point2D(-1, 2), spg.Point2D(1, 2))}
+    off = {"c": _quarter_elliptical(cls), "L": spg.Line(spg.Point2D(-1, -2), spg.Point2D(1, -2))}
+    assert _tangent(on).passed
+    result = _tangent(off)
+    assert not result.passed and "sweep" in result.message
+
+
+def test_equal_radius_compares_both_radii_of_ellipses():
+    from geometry_diagrams.ir.ir import EqualRadius
+    same = {"e1": spg.Ellipse(_o(), 4, 2), "e2": spg.Ellipse(spg.Point2D(9, 9), 4, 2)}
+    diff = {"e1": spg.Ellipse(_o(), 4, 2), "e2": spg.Ellipse(_o(), 4, 3)}
+    assert _check_one(EqualRadius(circles=["e1", "e2"]), same, DEFAULT_TOL).passed
+    result = _check_one(EqualRadius(circles=["e1", "e2"]), diff, DEFAULT_TOL)
+    assert not result.passed and "e1" in result.message and "e2" in result.message
+
+
+def test_equal_radius_treats_a_circle_and_a_genuine_ellipse_as_unequal():
+    from geometry_diagrams.ir.ir import EqualRadius
+    sym = {"c": spg.Circle(_o(), 3), "e": spg.Ellipse(_o(), 4, 2)}
+    result = _check_one(EqualRadius(circles=["c", "e"]), sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "Error in" not in result.message and "c=3.0000" in result.message and "e=4.0000x2.0000" in result.message
+
+
+def test_equal_radius_accepts_elliptical_arcs_as_their_ellipse():
+    from geometry_diagrams.ir.ir import EqualRadius
+    sym = {"a": _quarter_elliptical(), "e": spg.Ellipse(spg.Point2D(5, 5), 4, 2)}
+    assert _check_one(EqualRadius(circles=["a", "e"]), sym, DEFAULT_TOL).passed
+
+
+@pytest.mark.parametrize("make", [
+    lambda: spg.Ellipse(_o(), 4, 2),
+    _quarter_elliptical,
+])
+def test_radius_equals_on_an_ellipse_is_a_clean_unsupported_failure(make):
+    from geometry_diagrams.ir.ir import RadiusEquals
+    result = _check_one(RadiusEquals(circle="e", expected=4.0), {"e": make()}, DEFAULT_TOL)
+    assert not result.passed
+    assert "Error in" not in result.message and "two radii" in result.message
+
+
+def test_circles_tangent_on_an_ellipse_is_a_clean_unsupported_failure():
+    from geometry_diagrams.ir.ir import CirclesTangent
+    sym = {"c": spg.Circle(spg.Point2D(7, 0), 3), "e": spg.Ellipse(_o(), 4, 2)}
+    result = _check_one(CirclesTangent(c1="c", c2="e"), sym, DEFAULT_TOL)
+    assert not result.passed
+    assert "Error in" not in result.message and "ellipse" in result.message.lower()
