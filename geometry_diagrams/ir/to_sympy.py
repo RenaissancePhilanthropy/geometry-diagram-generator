@@ -748,15 +748,30 @@ def _compile_one(
             return _angle_bisector_line(ref(a_id), ref(vertex_id), ref(b_id), did)
 
         case ir.LineTangent(point=point_id, circle=circle_id, pick=pick):
-            circle = ref(circle_id)
+            target = ref(circle_id)
+            circle = _underlying_conic(target)
             if not isinstance(circle, spg.Ellipse):
                 raise IRCompileError(
-                    did, f"line_tangent: 'circle' must be a circle/ellipse, got {type(circle).__name__}"
+                    did, f"line_tangent: 'circle' must be a circle/ellipse/arc/sector, got {type(target).__name__}"
                 )
             point = ref(point_id)
             tangents = circle.tangent_lines(point)
             if not tangents:
                 raise IntersectionError(did, f"no tangent lines from {point_id!r} to {circle_id!r}")
+            if isinstance(target, _ARC_LIKE):
+                # Tangent to the arc itself: its touch point must be on the
+                # drawn sweep, not merely on the full circle/ellipse.
+                tangents = [
+                    t_line for t_line in tangents
+                    if (tp := _tangent_touch_point(t_line, circle)) is not None
+                    and _point_in_arc_sweep(tp, target)
+                ]
+                if not tangents:
+                    raise IntersectionError(
+                        did,
+                        f"no tangent line from {point_id!r} touches {circle_id!r} within its sweep "
+                        "(the tangents to the full curve touch outside the arc)",
+                    )
             # Tangent lines are Line objects; apply pick treating them as Line candidates
             if pick is None:
                 if len(tangents) == 1:
@@ -774,8 +789,7 @@ def _compile_one(
                     sign_target = 1 if isinstance(pick, ir.PickUpperOfLine) else -1
 
                     def _touch_point(t_line):
-                        pts = t_line.intersection(circle)
-                        return pts[0] if pts else None
+                        return _tangent_touch_point(t_line, circle)
 
                     candidates = [
                         t for t in tangents
@@ -790,8 +804,7 @@ def _compile_one(
                     ref_pt = _resolve(sym, p_id, def_id=did)
 
                     def _touch_point_2(t_line):
-                        pts = t_line.intersection(circle)
-                        return pts[0] if pts else None
+                        return _tangent_touch_point(t_line, circle)
 
                     scored = [
                         (tp.distance(ref_pt), t)
@@ -1644,6 +1657,47 @@ def _arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float
     if e <= s:
         e += 2 * math.pi
     return cx, cy, hr, vr, s, e
+
+
+def _tangent_touch_point(t_line: Any, conic: spg.Ellipse) -> spg.Point | None:
+    """Where a tangent line touches an axis-aligned circle/ellipse.
+
+    Computed from the line's normal rather than ``t_line.intersection(conic)``:
+    with float radii SymPy sees a tangent line as just missing (or just
+    crossing) its curve and returns no point or two. The touch point is the
+    extreme point of the conic along the line's normal, taken on whichever
+    side the line actually is.
+    """
+    a, b, c = (float(v.evalf()) for v in t_line.coefficients)
+    if a == 0 and b == 0:
+        return None
+    cx, cy = float(conic.center.x.evalf()), float(conic.center.y.evalf())
+    hr, vr = float(conic.hradius.evalf()), float(conic.vradius.evalf())
+    theta0 = math.atan2(vr * b, hr * a)
+    best = None
+    for theta in (theta0, theta0 + math.pi):
+        x, y = cx + hr * math.cos(theta), cy + vr * math.sin(theta)
+        miss = abs(a * x + b * y + c)
+        if best is None or miss < best[0]:
+            best = (miss, x, y)
+    return _lift(best[1], best[2])
+
+
+def _underlying_conic(obj: Any) -> Any:
+    """The full circle/ellipse carrying a circular or elliptical arc/sector;
+    any other object is returned unchanged."""
+    if isinstance(obj, (EllipticalArc, EllipticalSector)):
+        return spg.Ellipse(obj.center, obj.hradius, obj.vradius)
+    return _underlying_circle(obj)
+
+
+def _point_in_arc_sweep(point: spg.Point, obj: Any) -> bool:
+    """Is `point` (assumed on the underlying conic) within the arc-like
+    object's sweep? Measured in parametric angle, so it is right for elliptical
+    arcs and reduces to the polar angle for circular ones."""
+    cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+    theta = math.atan2((float(point.y.evalf()) - cy) / vr, (float(point.x.evalf()) - cx) / hr)
+    return angle_within_sweep(math.degrees(theta) % 360.0, math.degrees(s), math.degrees(e))
 
 
 def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:

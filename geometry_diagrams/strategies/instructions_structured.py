@@ -60,7 +60,7 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 | `line_parallel_through` | `through: PointId, to_line: LineId` | Parallel to to_line through through |
 | `line_perp_through` | `through: PointId, to_line: LineId` | Perpendicular to to_line through through |
 | `line_angle_bisector` | `a, vertex, b: PointId` | Bisector of angle a-vertex-b |
-| `line_tangent` | `point: PointId, circle: CircleId, pick: PickRule?` | Tangent from external point to circle |
+| `line_tangent` | `point: PointId, circle: CircleId, pick: PickRule?` | Tangent from external point to a circle, ellipse, arc or sector (`circle` may name any of these). For an arc/sector only tangents whose touch point lies on the drawn sweep are candidates; none is an error |
 
 ### Segment / Ray kinds
 
@@ -153,7 +153,7 @@ Choose primitives by **what you need to accomplish**, not by the diagram name.
 | A circumscribed circle | `circle_through3` — one step, no center needed; or `point_triangle_center(which="circumcenter")` + `circle_center_point` if you need to label the center |
 | An inscribed circle | `point_triangle_center(which="incenter")` to get center I; `point_foot` from I onto a side to get a tangent point T; `circle_center_point(center=I, through=T)` |
 | A circle of given radius | `circle_center_radius` |
-| A tangent line from external point to circle | `line_tangent` (add `pick` if 2 tangents exist) |
+| A tangent line from external point to a circle or arc | `line_tangent` (add `pick` if 2 tangents exist) |
 | A regular polygon on an edge (square, equilateral triangle, …) | `polygon_exterior` — set `ref` to any point inside the main figure; the polygon is placed on the **opposite** side |
 | An intersection of two objects | `point_intersection`; add a `pick` rule whenever 2+ candidates are possible |
 | A reflection | `point_reflect` (works for point symmetry or mirror across a line) |

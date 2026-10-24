@@ -2683,3 +2683,105 @@ def test_point_on_param_expression_on_arc():
         PointOn(id="P", on="a", how=PointOnParam(t="1/2")),
     )
     assert approx(sym["P"].x, 3 * math.cos(math.pi / 4), 1e-6)
+
+
+# ---------------------------------------------------------------------------
+# line_tangent onto arcs / sectors / elliptical arcs
+# ---------------------------------------------------------------------------
+# The tangent touches the arc's own curve: tangent lines whose touch point lies
+# outside the drawn sweep are dropped before the pick rule runs.
+
+def _touch(sym, line_id, curve):
+    """The single point where a tangent line meets the full underlying curve."""
+    pts = sym[line_id].intersection(curve)
+    assert len(pts) == 1
+    return pts[0]
+
+
+@pytest.mark.parametrize("kind", [ArcCenterStartEnd, SectorCenterStartEnd])
+def test_line_tangent_to_arc_keeps_only_the_touch_point_inside_the_sweep(kind):
+    # Tangents from (6, 0) to the r=3 circle touch at polar angles +-60 degrees;
+    # only the +60 one is on the first-quadrant arc, so no pick is needed.
+    sym = _compile(
+        *_quarter_arc_base(),
+        PointFixed(id="X", x=6, y=0),
+        kind(id="a", center="O", start="A", end="B"),
+        LineTangent(id="t", point="X", circle="a"),
+    )
+    assert isinstance(sym["t"], spg.Line)
+    assert sym["t"].contains(spg.Point(6, 0))
+    tp = _touch(sym, "t", spg.Circle(spg.Point(0, 0), 3))
+    assert approx(tp.x, 1.5, 1e-9) and approx(tp.y, 3 * math.sqrt(3) / 2, 1e-9)
+
+
+def test_line_tangent_to_reflex_arc_with_two_touch_points_needs_a_pick():
+    base = [
+        *_quarter_arc_base(),
+        PointFixed(id="X", x=6, y=0),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B", reflex=True),
+    ]
+    # reflex A->B runs 90 -> 360 degrees: the +60 touch point is in the missing
+    # quarter, the -60 (= 300) one is on the arc.
+    sym = _compile(*base, LineTangent(id="t", point="X", circle="a"))
+    tp = _touch(sym, "t", spg.Circle(spg.Point(0, 0), 3))
+    assert approx(tp.y, -3 * math.sqrt(3) / 2, 1e-9)
+
+
+def test_line_tangent_to_arc_with_several_candidates_still_applies_the_pick():
+    # Start the arc at 270 so that both +-60 degree touch points are inside it.
+    base = [
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=0, y=-3),
+        PointFixed(id="B", x=-3, y=0),
+        PointFixed(id="X", x=6, y=0),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B", reflex=True),
+    ]
+    with pytest.raises(PickError, match="ambiguous"):
+        _compile(*base, LineTangent(id="t", point="X", circle="a"))
+    sym = _compile(*base, LineTangent(id="t", point="X", circle="a", pick=PickIndex(k=1)))
+    assert sym["t"].contains(spg.Point(6, 0))
+
+
+def test_line_tangent_to_arc_with_no_touch_point_in_the_sweep_raises():
+    with pytest.raises(IntersectionError, match="sweep"):
+        _compile(
+            *_quarter_arc_base(),
+            PointFixed(id="X", x=-6, y=0),  # touch points at 120 and 240 degrees
+            ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+            LineTangent(id="t", point="X", circle="a"),
+        )
+
+
+@pytest.mark.parametrize("kind", [EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd])
+def test_line_tangent_to_elliptical_arc(kind):
+    # Tangents from (8, 0) to x^2/16 + y^2/4 = 1 touch at (2, +-sqrt(3)); only the
+    # upper one is on the first-quadrant arc.
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="A", x=4, y=0),
+        PointFixed(id="B", x=0, y=2),
+        PointFixed(id="X", x=8, y=0),
+        kind(id="a", center="O", hradius=4, vradius=2, start="A", end="B"),
+        LineTangent(id="t", point="X", circle="a"),
+    )
+    assert sym["t"].contains(spg.Point(8, 0))
+    tp = _touch(sym, "t", spg.Ellipse(spg.Point(0, 0), 4, 2))
+    assert approx(tp.x, 2.0, 1e-9) and approx(tp.y, math.sqrt(3), 1e-9)
+
+
+def test_line_tangent_pick_closest_to_works_on_a_float_radius_ellipse():
+    # With float radii SymPy's tangent_line.intersection(ellipse) returns no
+    # point, which used to make every touch-point pick fail on such an ellipse.
+    from geometry_diagrams.ir.ir import PickClosestTo
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0),
+        EllipseCenterAxes(id="e", center="O", hradius=4.0, vradius=2.0),
+        PointFixed(id="X", x=8, y=0),
+        PointFixed(id="Q", x=0, y=9),  # nearer the upper touch point (2, sqrt 3)
+        LineTangent(id="t", point="X", circle="e", pick=PickClosestTo(p="Q")),
+    )
+    line = sym["t"]
+    assert line.contains(spg.Point(8, 0)) or float(line.distance(spg.Point(8, 0))) < 1e-9
+    # slope of the tangent through (8,0) and (2, +sqrt3) is negative
+    a, b, _ = (float(v) for v in line.coefficients)
+    assert a * b > 0  # a*x + b*y + c = 0 with slope -a/b < 0
