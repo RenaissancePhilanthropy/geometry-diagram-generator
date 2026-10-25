@@ -37,13 +37,14 @@ that gap, but closing it is not a goal here.
    degrees counter-clockwise from the +x axis to the `hradius` axis. It goes
    on `ellipse_center_axes`, `ellipse_center_eccentricity`,
    `elliptical_arc_center_start_end` and `elliptical_sector_center_start_end`.
-   `ellipse_foci` gets no field: it derives its rotation from the direction of
-   the foci, and the axis-aligned restriction is removed in stage 4 (see
-   Feature gate). `ellipse_bbox` stays axis-aligned, because a bounding box is
+   `ellipse_foci` gets no field: its tilted-foci lift derives the rotation from
+   the direction of the foci and arrives in stage 4 with the gate removal (see
+   Feature gate); until then it keeps today's axis-aligned error. `ellipse_bbox` stays axis-aligned, because a bounding box is
    axis-aligned by definition. With the default of 0, stored IR is unchanged
    and compiles exactly as before.
-2. **Compiled form:** a rotation that is exactly 0 (mod 360) compiles to the
-   same `spg.Ellipse` as today, so existing output stays byte-identical. Any
+2. **Compiled form:** a rotation whose evaluated value is exactly 0 after
+   `% 360` (a literal 0, or an expression that evaluates to exactly 0.0)
+   compiles to the same `spg.Ellipse` as today, so existing output stays byte-identical. Any
    other rotation compiles to a new non-SymPy marker type, `RotatedEllipse`
    (center, hradius, vradius, rotation in float radians), next to the existing
    `EllipticalArc` marker. The elliptical arc markers gain a `rotation` slot
@@ -170,7 +171,9 @@ non-simplifying angles stall the solver. Double precision is far tighter than
 the tolerances involved (`PICK_CONTAINS_TOL`, `INTERSECT_TANGENT_TOL`, the 5e-3
 check default).
 
-Only exact 0 is normalized. A 180 degree rotation gives the same curve but
+Only an evaluated rotation of exactly 0 (after `% 360`) is normalized. An
+expression-valued rotation that evaluates to about 1e-15 is not snapped to 0:
+it builds a marker. A 180 degree rotation gives the same curve but
 moves the start of the parametric angle by pi, and 90 degrees swaps the
 `hradius` direction, so normalizing either one would change
 `point_on(ellipse, t)`. A marker with equal radii and a nonzero rotation stays
@@ -186,7 +189,7 @@ from the `hradius` axis. The inverse is `atan2(v / vr, u / hr)` of the local
 coordinates. This is the only definition that keeps `point_on(e, t)` the same
 curve-relative position at every tilt.
 
-**`_arc_param_frame` survives.** It returns `(cx, cy, hr, vr, start, end)`
+**`arc_param_frame` survives.** It returns `(cx, cy, hr, vr, start, end)`
 with start and end as parametric angles. If it computes start and end from
 the local coordinates of the arc's start and end points, the 6-tuple keeps its
 meaning. Its consumers that only use `hr, vr, start, end` (`curve_length`,
@@ -196,14 +199,14 @@ at all. The consumers that map back to world space (`_eval_param`,
 The same goes for `render_util.elliptical_arc_params` (the renderer's copy of
 that frame) and `to_sympy._reflex_for_bulge_toward`, which recomputes
 parametric angles with plain `atan2((y - cy) / vr, (x - cx) / hr)`.
-The ledger has already deferred promoting `_arc_param_frame` to a public name.
-This change is a good time to do that, and to give it a `rotation` companion,
+`arc_param_frame` is already a public name.
+This change is a good time to give it a `rotation` companion,
 for example a small frame object with `to_local`/`to_world`.
 
 **Reflex and CCW survive.** A rotation is a rigid motion that keeps
 orientation, so counter-clockwise in the local frame is counter-clockwise in
 the world, and the parametric span is the same. The swap rule shared by
-`_arc_param_frame`, `arc_sweep_degrees` and `elliptical_arc_params`
+`arc_param_frame`, `arc_sweep_degrees` and `elliptical_arc_params`
 (`(ccw <= pi) == reflex`) is valid unchanged once the angles are local.
 
 **`ArcBetweenConstraint`** (`_check_spatial_constraint`) measures polar angle
@@ -252,7 +255,7 @@ no change. Only the comment needs updating.
   axis-aligned pairs, which is the existing documented limit, but that would
   be a separate decision.
 - **Sweep filter:** `_point_in_arc_sweep` comes along automatically once
-  `_arc_param_frame` is local. The filter itself (`within = [...]` in
+  `arc_param_frame` is local. The filter itself (`within = [...]` in
   `PointIntersection`) does not change.
 - **`_on_object`** (pick_on_object on a non-arc object) needs a
   `RotatedEllipse` branch: the local implicit equation within
@@ -267,7 +270,7 @@ rigid motion. It enumerates the symmetries of an axis-aligned ellipse (the
 half turn, reflection across either axis, and the swapped-axes quarter turn).
 A rotated arc is the image of an axis-aligned arc under a rotation, which is
 itself a rigid motion. Two rotated arcs are congruent exactly when their
-local-frame descriptions are congruent. So once `_arc_param_frame` reports
+local-frame descriptions are congruent. So once `arc_param_frame` reports
 local angles, the existing test is correct for any pair of tilts, and no code
 in `checks.py` changes.
 
@@ -282,7 +285,7 @@ spans at different positions on tilted ellipses are not.
 ## Curve measures and queries
 
 Length, area and perimeter are rotation-invariant. `curve_measures.curve_length`
-reads `hr, vr, start, end` from `_arc_param_frame` for arcs and `hradius`/`vradius`
+reads `hr, vr, start, end` from `arc_param_frame` for arcs and `hradius`/`vradius`
 for full ellipses. Its only change is accepting `RotatedEllipse` next to
 `spg.Ellipse` in the type dispatch. In `queries.py`, `query_length`
 (which rejects a full ellipse), `query_radius`, `query_area` and
@@ -493,13 +496,13 @@ algorithm.
 | # | Area | Module: function(s) assuming axis alignment | What changes | Size | Stage |
 |---|------|---------------------------------------------|--------------|------|-------|
 | 1 | IR schema | `ir.py`: `EllipseCenterAxes`, `EllipseCenterEccentricity`, `EllipticalArcCenterStartEnd`, `EllipticalSectorCenterStartEnd` (docstrings say "Axis-aligned"); `refs.py`: `_EXPR_FIELDS`, `_NON_REF_FIELDS` | `rotation_deg` field, docstrings, ref extraction | S | 1 (arcs 3) |
-| 2 | Compile, full ellipse | `to_sympy._compile_one`: `EllipseCenterAxes`, `EllipseFoci` (raises on tilted foci), `EllipseCenterEccentricity` cases | `RotatedEllipse` marker; exact-0 path kept; foci derive rotation | M | 1 |
+| 2 | Compile, full ellipse | `to_sympy._compile_one`: `EllipseCenterAxes`, `EllipseFoci` (raises on tilted foci), `EllipseCenterEccentricity` cases | `RotatedEllipse` marker; exact-0 path kept; tilted-foci lift deferred to stage 4 (with the gate removal) | M | 1 |
 | 3 | Compile, arcs | `to_sympy._compile_one` elliptical arc/sector cases; `EllipticalArc`/`EllipticalSector` markers; `_reflex_for_bulge_toward` | `rotation` slot; local parametric angles in bulge test | S | 3 |
-| 4 | Parametric placement and inverse | `to_sympy._eval_param`, `_invert_param` (inverse used by pydsl `Builder._pin_point_on`), `_sample_param`, `_arc_param_frame`, `_underlying_conic` | local frame in, `to_world` out; marker branch in sampler | S | 1 (arcs 3) |
+| 4 | Parametric placement and inverse | `to_sympy._eval_param`, `_invert_param` (inverse used by pydsl `Builder._pin_point_on`), `_sample_param`, `arc_param_frame`, `_underlying_conic` | local frame in, `to_world` out; marker branch in sampler | S | 1 (arcs 3) |
 | 5 | Point-on and pick | `to_sympy.point_on_arc`, `_on_object`, `_apply_pick` (`PickOnObject`); `checks._contains` | local implicit equation | S | 1 (arcs 3) |
 | 6 | Tangent lines | `to_sympy` `LineTangent` case (`spg.Ellipse.tangent_lines`), `_tangent_touch_point`; `checks` `Tangent` case via `_conic_frame` | local-frame point/line, rotate back | M | 2 |
 | 7 | Intersections | `to_sympy` `PointIntersection` case, `_underlying_conic`, `_tangent_candidates` (unit-circle frame from `ha, va`), `_count_ellipse_crossings` | local transform for line/circle; new numeric quartic for ellipse x ellipse | L | 2 |
-| 8 | Sweep filter | `to_sympy._point_in_arc_sweep` (via `_arc_param_frame`) | none beyond row 4 | S | 3 |
+| 8 | Sweep filter | `to_sympy._point_in_arc_sweep` (via `arc_param_frame`) | none beyond row 4 | S | 3 |
 | 9 | Radius checks | `checks._conic_frame`, `_circular_radius`, `EqualRadius`, `RadiusEquals` | accept marker; values rotation-invariant | S | 1 |
 | 10 | Congruent arcs | `checks._ellipse_arcs_congruent`, `_check_congruent_arcs` | no logic change (rigid-motion argument); tests only | S | 3 |
 | 11 | Curve measures | `curve_measures.curve_length`, `_radii` | accept marker in dispatch | S | 1 |
@@ -507,7 +510,6 @@ algorithm.
 | 13 | Bounds and canvas | `render_util.expand_bounds_for_geometry`, `_arc_extent`; `recipe/lower.py` `_auto_canvas` | rotated half-widths; rotated extreme parameters | S | 1 (arcs 3, recipe 4) |
 | 14 | SVG draw and fill | `to_svg` Draw/Fill `spg.Ellipse`, `EllipticalArc`, `EllipticalSector` branches; fill-subpath builder | equal units: `transform`/x-axis-rotation (S); non-unit aspect: `screen_ellipse` helper (M) | S + M | 1 equal units, 1b aspect (arcs 3) |
 | 15 | SVG label nudging | `to_svg`: `drawn_ellipses`, `_ellipse_clearance`, `_nearest_point_on_ellipse`, `_newton_refine_ellipse_param`, `_label_clear_of_obstacles`, `_gravitate_to_ideal_axis` | `phi` in tuple; rotate into screen frame | M | 1b |
-| 24 | Feature gate | `features.py`: `FEATURE_GROUPS`, `require_features` (kind-based only); `instructions_structured.GROUPED_FRAGMENTS`; `tests/test_feature_gating.py` | `tilted_ellipses` group; field-level rejection rule; gated fragment; removed in stage 4 | S | 1 (removal 4) |
 | 16 | TikZ draw and fill | `to_tikz` Draw `spg.Ellipse` / elliptical arc / sector branches; fill-path builder (`... ellipse[x radius, y radius]`) | `rotate around` / inline `rotate`; unrotated local start point for arcs | S | 1 (arcs 3) |
 | 17 | Ticks and text along curve | `render_util.tick_mark_elliptical_arcs`, `elliptical_arc_text_glyph_layout` (`up_sign` from local normal), `_ellipse_normal`; callers in `to_svg`/`to_tikz` | rotate outputs; world-normal upright test | M | 3 |
 | 18 | Label anchors | `render_util.elliptical_arc_label_anchor`, `elliptical_arc_params`, `label_segment_arc_anchor` | `to_world` on anchor; local angles in params | S | 3 |
@@ -516,6 +518,7 @@ algorithm.
 | 21 | Prompts | `instructions_python_full.py` ellipse/arc lines; `catalog.py`; structured schema field description; `tests/*_pre_solids.json` | wording; fixture regeneration | S | 4 |
 | 22 | Evals | `evals/scenarios*.yaml` | 2-3 original tilted-ellipse scenarios | S | 4 |
 | 23 | Docs | `docs/geometry-dsl-spec.md` ellipse and elliptical arc sections; CLAUDE.md IR bullets | describe `rotation_deg` and semantics | S | each stage |
+| 24 | Feature gate | `features.py`: `FEATURE_GROUPS`, `require_features` (kind-based only); `instructions_structured.GROUPED_FRAGMENTS`; `tests/test_feature_gating.py` | `tilted_ellipses` group; field-level rejection rule; gated fragment; removed in stage 4 | S | 1 (removal 4) |
 
 Not affected (checked): `checks._build_linear_pairs` (sector radii are ordinary
 segments), `render_util.centroid_of_obj` and `synthesize_helpers` (center
@@ -527,7 +530,7 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
 ## Staged rollout
 
 1. **Stage 1, tilted full ellipse end to end behind the gate (draft ticket
-   06).** Rows 1 (full kinds, without the foci lift), 2, 4, 5, 9, 11, 12, 13
+   06).** Rows 1 (full kinds), 2 (without the foci lift), 4, 5, 9, 11, 12, 13
    (renderer bounds), 14 (equal units), 16 for full ellipses, and 24 (the
    gate). It also adds typed errors for everything later stages own:
    `line_tangent`, intersection and the `tangent` check on a rotated ellipse
@@ -555,7 +558,9 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
 
 Stage 4 could move ahead of stage 3 for full ellipses only, if the human
 wants recipe and pydsl authors to have tilted full ellipses early. In that
-case, the gate would have to stay on until stage 3 lands.
+case, the gate would stay on until stage 3 lands, and the tilted-foci lift
+stays with the gate removal (it cannot be gated, since whether foci are
+tilted is known only after compile), so it would wait for stage 3 too.
 
 ## Test plan for stage 1
 
@@ -633,8 +638,8 @@ only when they simplify to surds (pi/6), and they are unusable otherwise.
    when rotated 90 degrees) as equal? Today it does not, even for axis-aligned
    ellipses.
 3. Gate name and scope: `tilted_ellipses` covering stages 1 to 3
-   (recommended). Should stage 4 remove it, or keep it for one release with
-   the group on by default?
+   (recommended). Should stage 4 remove it entirely, or leave the group defined but enabled
+   by default for one release before deleting it?
 4. `list_objects` / query output: report a tilted ellipse as `Ellipse`, or as
    `RotatedEllipse`?
 5. Order of stages 3 and 4: arcs first (recommended), or authoring for full
