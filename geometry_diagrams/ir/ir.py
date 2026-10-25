@@ -1173,8 +1173,8 @@ class MarkSegments(RenderBase):
 
 
 class MarkArcs(RenderBase):
-    """Congruence tick marks across an arc: short radial strokes straddling
-    the curve, centered on the arc's own midpoint angle.
+    """Congruence tick marks across an arc: short strokes across the curve
+    (radial on a circular arc), centered on the arc's own midpoint.
 
     Mirrors MarkSegments field-for-field and SHARES ITS `group` NAMESPACE:
     a group name used by both a MarkSegments op and a MarkArcs op resolves
@@ -1182,14 +1182,14 @@ class MarkArcs(RenderBase):
     arc" reads correctly. Caveat: shared INDEX, not glyph. Indices 1-3
     render identically on both (1/2/3 strokes); from index 4 on, a segment
     switches to the renderers' slash-mark palette ("s", "s|", "s||"), while
-    an arc, which has no slash form, just draws N plain radial ticks.
+    an arc, which has no slash form, just draws N plain ticks.
 
     `arcs` may name an `arc_center_start_end` or a `sector_center_start_end`.
     For a SECTOR the ticks go on its CURVED EDGE ONLY — never on either of
     its two straight radii. Elliptical variants
     (`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
-    are out of scope and are skipped with a warning by both backends:
-    constant-arc-length tick spacing has no closed form on an ellipse.
+    are supported too: the ticks follow the ellipse's own normal at the
+    parametric midpoint, spaced evenly by arc length.
 
     A "parallelN" group name is meaningless here (parallelism is not an arc
     property) — it still resolves to N, rendered as N plain ticks, never as
@@ -1258,7 +1258,7 @@ class LabelFreeText(RenderBase):
 
 
 class LabelAlongArc(RenderBase):
-    """Text laid out along a circular arc, one rotated glyph at a time.
+    """Text laid out along an arc, one rotated glyph at a time.
 
     Distinct from LabelSegment's existing arc handling, which places a
     single upright label near the arc's midpoint: this one follows the
@@ -1267,7 +1267,7 @@ class LabelAlongArc(RenderBase):
     `arc` may name an `arc_center_start_end` or a `sector_center_start_end`;
     for a sector the text follows its CURVED EDGE ONLY. Elliptical variants
     (`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
-    are out of scope and are skipped with a warning by both backends.
+    are supported too: glyph spacing is arc length along the offset curve.
 
     Fallback: a `text` that cannot be split into glyphs — anything the
     mathtext engine owns (LaTeX commands, $...$, fractions, Greek letters)

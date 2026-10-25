@@ -42,7 +42,7 @@ from .render_util import (
     svg_color,
     translate_style_colors,
     BOUNDS_PADDING,
-    arc_label_anchor,
+    ARC_STMT_TYPES,
     arc_params,
     arc_text_glyph_layout,
     arc_text_glyphs,
@@ -57,6 +57,7 @@ from .render_util import (
     expand_bounds_for_geometry,
     ellipse_params,
     elliptical_arc_params,
+    elliptical_arc_text_glyph_layout,
     extract_coords,
     fmt_label_num,
     fmt_num,
@@ -72,6 +73,7 @@ from .render_util import (
     synthesize_helpers,
     sympy_to_float,
     tick_mark_arcs,
+    tick_mark_elliptical_arcs,
     tick_mark_segments,
     tick_values,
     resolve_mark_group_indices,
@@ -1350,8 +1352,8 @@ def _emit_svg_op(
                 if arc_id not in stmt_by_id:
                     _warn(warnings, f"Skipping MarkArcs for undefined '{arc_id}'")
                     continue
-                if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
-                    _warn(warnings, f"Skipping MarkArcs: '{arc_id}' is not a circular arc/sector")
+                if not isinstance(stmt_by_id[arc_id], ARC_STMT_TYPES):
+                    _warn(warnings, f"Skipping MarkArcs: '{arc_id}' is not an arc/sector")
                     continue
                 n = ticks if ticks is not None else (group_tick_counts or {}).get(group, 1)
                 mark_attrs: dict[str, str] = {
@@ -1576,8 +1578,8 @@ def _emit_svg_op(
             if arc_id not in stmt_by_id:
                 _warn(warnings, f"Skipping LabelAlongArc for undefined '{arc_id}'")
                 return
-            if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
-                _warn(warnings, f"Skipping LabelAlongArc: '{arc_id}' is not a circular arc/sector")
+            if not isinstance(stmt_by_id[arc_id], ARC_STMT_TYPES):
+                _warn(warnings, f"Skipping LabelAlongArc: '{arc_id}' is not an arc/sector")
                 return
             color = _color_from_style(style, styles) or "black"
             if not arc_text_is_layoutable(text) or not scale.iso:
@@ -1592,7 +1594,7 @@ def _emit_svg_op(
                     + ("" if scale.iso else " (curved text is not yet supported with Canvas.aspect)")
                     + "; placing a single label at the arc anchor",
                 )
-                cx_g, cy_g, px_g, py_g, _r_g = arc_label_anchor(arc_id, sym, pos=pos)
+                cx_g, cy_g, px_g, py_g, _r_g = label_segment_arc_anchor(arc_id, stmt_by_id, sym, pos)
                 dx, dy = px_g - cx_g, py_g - cy_g
                 if not scale.iso:
                     # The outward normal of the stretched circle (an ellipse) is
@@ -1830,7 +1832,8 @@ def _append_arc_ticks(
     n_ticks: int,
     extra_attrs: dict[str, str] | None = None,
 ) -> None:
-    """Draw n_ticks radial tick marks straddling the arc's midpoint.
+    """Draw n_ticks tick marks straddling the arc's midpoint (radial on a
+    circular arc, along the ellipse's own normal on an elliptical one).
 
     Unlike _append_seg_ticks, this takes the arc id and the raw gxy/scale
     projection rather than two point ids and pt(): arcs are drawn from raw
@@ -1839,10 +1842,17 @@ def _append_arc_ticks(
     a uniform scale + y-flip, so the projected strokes come out the same
     visual size as _append_seg_ticks' (_TICK_LEN px half-length, 4px apart).
     """
-    cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
-    for (x1, y1), (x2, y2) in tick_mark_arcs(
-        cx, cy, r, s_deg, e_deg, n_ticks, _TICK_LEN / scale.sx, 4.0 / scale.sx
-    ):
+    if isinstance(sym[arc_id], (EllipticalArc, EllipticalSector)):
+        ecx, ecy, hr, vr, s_deg, e_deg, _sx, _sy = elliptical_arc_params(arc_id, sym)
+        strokes = tick_mark_elliptical_arcs(
+            ecx, ecy, hr, vr, s_deg, e_deg, n_ticks, _TICK_LEN / scale.sx, 4.0 / scale.sx
+        )
+    else:
+        cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+        strokes = tick_mark_arcs(
+            cx, cy, r, s_deg, e_deg, n_ticks, _TICK_LEN / scale.sx, 4.0 / scale.sx
+        )
+    for (x1, y1), (x2, y2) in strokes:
         px1, py1 = gxy(x1, y1)
         px2, py2 = gxy(x2, y2)
         ET.SubElement(svg, "line", {
@@ -1991,12 +2001,21 @@ def _append_arc_text(
     arc_text_is_layoutable() gate the caller already applied, so a glyph's
     text is set directly rather than routed through _build_tspans.
     """
-    cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
     glyphs = arc_text_glyphs(text, _FONT_SIZE / scale.sx)  # advances in geometry units
-    layout = arc_text_glyph_layout(
-        cx, cy, r, s_deg, e_deg, [adv for _, adv in glyphs],
-        pos=pos, offset=_ARC_TEXT_OFFSET / scale.sx, side=side, flip=flip,
-    )
+    advances = [adv for _, adv in glyphs]
+    offset = _ARC_TEXT_OFFSET / scale.sx
+    if isinstance(sym[arc_id], (EllipticalArc, EllipticalSector)):
+        ecx, ecy, hr, vr, s_deg, e_deg, _sx, _sy = elliptical_arc_params(arc_id, sym)
+        layout = elliptical_arc_text_glyph_layout(
+            ecx, ecy, hr, vr, s_deg, e_deg, advances,
+            pos=pos, offset=offset, side=side, flip=flip,
+        )
+    else:
+        cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+        layout = arc_text_glyph_layout(
+            cx, cy, r, s_deg, e_deg, advances,
+            pos=pos, offset=offset, side=side, flip=flip,
+        )
     g = ET.SubElement(svg, "g", {"data-role": "label-along-arc", "data-for": arc_id})
     boxes: list[tuple[float, float, float, float]] = []
     for (ch, adv), (gx_g, gy_g, rot_geo) in zip(glyphs, layout):

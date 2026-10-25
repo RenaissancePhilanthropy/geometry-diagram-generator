@@ -982,6 +982,110 @@ def tick_mark_arcs(
     return strokes
 
 
+# Definition kinds MarkArcs / LabelAlongArc accept (circular and elliptical
+# arcs and sectors), shared so both backends agree on what is an arc.
+ARC_STMT_TYPES = (
+    ir.ArcCenterStartEnd,
+    ir.SectorCenterStartEnd,
+    ir.EllipticalArcCenterStartEnd,
+    ir.EllipticalSectorCenterStartEnd,
+)
+
+
+# ---------------------------------------------------------------------------
+# Elliptical-arc curve walking (tick marks and text along the curve)
+# ---------------------------------------------------------------------------
+# An axis-aligned ellipse is (cx + hr cos t, cy + vr sin t) in PARAMETRIC angle
+# t. Its outward normal at t is (vr cos t, hr sin t) normalized -- not the
+# radial direction, which only matches at the four axis vertices -- and arc
+# length is not proportional to t. These helpers walk the curve (or its
+# parallel offset curve) by true arc length, so tick spacing and glyph spacing
+# stay even however unevenly the curve bends.
+
+def _ellipse_normal(hr: float, vr: float, t: float) -> "tuple[float, float]":
+    nx, ny = vr * math.cos(t), hr * math.sin(t)
+    mag = math.hypot(nx, ny)
+    return nx / mag, ny / mag
+
+
+def _offset_curve_velocity(hr: float, vr: float, t: float, offset: float) -> "tuple[float, float]":
+    """d/dt of P(t) + offset * n(t), where P is the ellipse point and n its
+    unit outward normal (offset > 0 outside, < 0 inside)."""
+    ux, uy = vr * math.cos(t), hr * math.sin(t)
+    dux, duy = -vr * math.sin(t), hr * math.cos(t)
+    length = math.hypot(ux, uy)
+    dot = ux * dux + uy * duy
+    dnx = dux / length - ux * dot / length ** 3
+    dny = duy / length - uy * dot / length ** 3
+    return (-hr * math.sin(t) + offset * dnx, vr * math.cos(t) + offset * dny)
+
+
+def _offset_curve_length(hr: float, vr: float, offset: float, t0: float, t1: float) -> float:
+    """Signed arc length of the offset curve from parameter t0 to t1
+    (composite Simpson; the integrand is smooth and periodic-analytic)."""
+    if t0 == t1:
+        return 0.0
+    n = 2 * (32 + int(abs(t1 - t0) * 48))
+    h = (t1 - t0) / n
+    total = 0.0
+    for i in range(n + 1):
+        vx, vy = _offset_curve_velocity(hr, vr, t0 + i * h, offset)
+        w = 1 if i in (0, n) else (4 if i % 2 else 2)
+        total += w * math.hypot(vx, vy)
+    return total * abs(h) / 3.0 * (1.0 if t1 > t0 else -1.0)
+
+
+def _offset_curve_param_at(hr: float, vr: float, offset: float, t0: float, dist: float) -> float:
+    """Parameter t whose offset-curve arc length from t0 equals the signed
+    distance `dist` (positive = toward increasing t). Newton iteration on the
+    monotone arc-length function."""
+    if dist == 0.0:
+        return t0
+    vx, vy = _offset_curve_velocity(hr, vr, t0, offset)
+    t = t0 + dist / (math.hypot(vx, vy) or 1.0)
+    for _ in range(60):
+        err = _offset_curve_length(hr, vr, offset, t0, t) - dist
+        vx, vy = _offset_curve_velocity(hr, vr, t, offset)
+        speed = math.hypot(vx, vy) or 1e-12
+        t -= err / speed
+        if abs(err) < 1e-12 * max(1.0, abs(dist)):
+            break
+    return t
+
+
+def tick_mark_elliptical_arcs(
+    cx: float,
+    cy: float,
+    hr: float,
+    vr: float,
+    start_deg: float,
+    end_deg: float,
+    n_ticks: int,
+    half_length: float,
+    spacing: float,
+) -> "list[tuple[tuple[float, float], tuple[float, float]]]":
+    """The elliptical counterpart of tick_mark_arcs(): n_ticks short strokes
+    straddling an axis-aligned elliptical arc, centered on its parametric
+    midpoint and evenly spaced along it by ARC LENGTH (``spacing``, as for a
+    circular arc), each oriented along the ellipse's own normal at its
+    placement point. ``start_deg``/``end_deg`` are parametric angles as
+    returned by elliptical_arc_params(). Same coordinate-space contract as
+    tick_mark_arcs()."""
+    if n_ticks < 1 or hr <= 0 or vr <= 0:
+        return []
+    mid = math.radians((start_deg + end_deg) / 2.0)
+    strokes: "list[tuple[tuple[float, float], tuple[float, float]]]" = []
+    for i in range(n_ticks):
+        t = _offset_curve_param_at(hr, vr, 0.0, mid, (i - (n_ticks - 1) / 2) * spacing)
+        nx, ny = _ellipse_normal(hr, vr, t)
+        px, py = cx + hr * math.cos(t), cy + vr * math.sin(t)
+        strokes.append((
+            (px - nx * half_length, py - ny * half_length),
+            (px + nx * half_length, py + ny * half_length),
+        ))
+    return strokes
+
+
 # Uniform per-character text-advance fraction of the em size, used by
 # arc_text_glyphs() below. It is the flat rule to_svg.py's
 # _estimate_text_width() falls back to when the bundled font cannot be
@@ -1121,6 +1225,62 @@ def arc_text_glyph_layout(
             rot,
         ))
         cursor += step * dt
+    return out
+
+
+def elliptical_arc_text_glyph_layout(
+    cx: float,
+    cy: float,
+    hr: float,
+    vr: float,
+    start_deg: float,
+    end_deg: float,
+    advances: "list[float]",
+    pos: float = 0.5,
+    offset: float = 0.0,
+    side: str = "outside",
+    flip: "bool | None" = None,
+) -> "list[tuple[float, float, float]]":
+    """arc_text_glyph_layout() for an axis-aligned elliptical arc.
+
+    Same contract and conventions (returned (x, y, rotation_deg) per advance in
+    geometry space, ``pos``, ``side``, ``flip`` and the upright rule), with
+    ``start_deg``/``end_deg`` parametric angles. The glyph centers lie on the
+    parallel curve ``offset`` away from the ellipse along its own normal, and
+    each advance is measured as arc length along THAT curve, so uneven
+    curvature never squeezes or stretches the glyph spacing. Rotation is the
+    reading direction of the curve's local tangent. An inside offset is
+    clamped to the local radius of curvature at the anchor (the analogue of
+    the circular clamp at the center).
+    """
+    if not advances:
+        return []
+    anchor = math.radians(start_deg + pos * (end_deg - start_deg))
+    if side == "outside":
+        signed = offset
+    else:
+        speed = math.hypot(-hr * math.sin(anchor), vr * math.cos(anchor))
+        signed = -min(offset, speed ** 3 / (hr * vr))
+    if flip is None:
+        up_sign = 1.0 if _ellipse_normal(hr, vr, anchor)[1] >= 0.0 else -1.0
+    else:
+        up_sign = -1.0 if flip else 1.0
+    step = -up_sign
+    total = sum(advances)
+    cursor = -total / 2.0
+    out: "list[tuple[float, float, float]]" = []
+    for adv in advances:
+        dist = step * (cursor + adv / 2.0)
+        t = _offset_curve_param_at(hr, vr, signed, anchor, dist)
+        nx, ny = _ellipse_normal(hr, vr, t)
+        vx, vy = _offset_curve_velocity(hr, vr, t, signed)
+        rot = math.degrees(math.atan2(step * vy, step * vx))
+        out.append((
+            cx + hr * math.cos(t) + signed * nx,
+            cy + vr * math.sin(t) + signed * ny,
+            rot,
+        ))
+        cursor += adv
     return out
 
 

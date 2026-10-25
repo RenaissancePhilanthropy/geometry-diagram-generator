@@ -20,7 +20,7 @@ from .render_util import (
     tikz_color,
     translate_style_colors,
     BOUNDS_PADDING,
-    arc_label_anchor,
+    ARC_STMT_TYPES,
     arc_params,
     arc_text_glyph_layout,
     arc_text_glyphs,
@@ -33,6 +33,7 @@ from .render_util import (
     helpers_for_bounds,
     effective_canvas_bounds,
     elliptical_arc_params,
+    elliptical_arc_text_glyph_layout,
     expand_bounds_for_geometry,
     ellipse_params,
     extract_coords,
@@ -50,6 +51,7 @@ from .render_util import (
     synthesize_helpers,
     sympy_to_float,
     tick_mark_arcs,
+    tick_mark_elliptical_arcs,
     chevron_mark_strokes,
     tick_mark_segments,
     tick_values,
@@ -624,17 +626,24 @@ def _emit_op(
                     if warnings is not None:
                         warnings.append(msg)
                     continue
-                if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
-                    msg = f"Skipping render op MarkArcs: '{arc_id}' is not a circular arc/sector"
+                if not isinstance(stmt_by_id[arc_id], ARC_STMT_TYPES):
+                    msg = f"Skipping render op MarkArcs: '{arc_id}' is not an arc/sector"
                     logger.warning(msg)
                     if warnings is not None:
                         warnings.append(msg)
                     continue
                 n = ticks if ticks is not None else (group_tick_counts or {}).get(group, 1)
-                cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
-                for (x1, y1), (x2, y2) in tick_mark_arcs(
-                    cx, cy, r, s_deg, e_deg, n, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
-                ):
+                if isinstance(sym[arc_id], (EllipticalArc, EllipticalSector)):
+                    ecx, ecy, hr, vr, s_deg, e_deg, _sx, _sy = elliptical_arc_params(arc_id, sym)
+                    strokes = tick_mark_elliptical_arcs(
+                        ecx, ecy, hr, vr, s_deg, e_deg, n, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
+                    )
+                else:
+                    cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+                    strokes = tick_mark_arcs(
+                        cx, cy, r, s_deg, e_deg, n, SEG_TICK_HALF_LENGTH, SEG_TICK_SPACING
+                    )
+                for (x1, y1), (x2, y2) in strokes:
                     out.append(
                         f"\\draw{draw_opts} ({_fmt_num(x1)},{_fmt_num(y1)}) -- "
                         f"({_fmt_num(x2)},{_fmt_num(y2)});"
@@ -735,14 +744,13 @@ def _emit_op(
                 if warnings is not None:
                     warnings.append(msg)
                 return out
-            if not isinstance(stmt_by_id[arc_id], (ir.ArcCenterStartEnd, ir.SectorCenterStartEnd)):
-                msg = f"Skipping render op LabelAlongArc: '{arc_id}' is not a circular arc/sector"
+            if not isinstance(stmt_by_id[arc_id], ARC_STMT_TYPES):
+                msg = f"Skipping render op LabelAlongArc: '{arc_id}' is not an arc/sector"
                 logger.warning(msg)
                 if warnings is not None:
                     warnings.append(msg)
                 return out
             color_opt = _style_str(style, styles).strip("[]")
-            cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
             if not arc_text_is_layoutable(text):
                 # Same gate as to_svg.py, so the two backends curve exactly
                 # the same set of strings. Falls back to LabelSegment's arc-
@@ -756,7 +764,7 @@ def _emit_op(
                 logger.warning(msg)
                 if warnings is not None:
                     warnings.append(msg)
-                acx, acy, apx, apy, ar = arc_label_anchor(arc_id, sym, pos=pos)
+                acx, acy, apx, apy, ar = label_segment_arc_anchor(arc_id, stmt_by_id, sym, pos)
                 dx, dy = apx - acx, apy - acy
                 mag = math.hypot(dx, dy) or 1
                 sgn = 1.0 if side == "outside" else -1.0
@@ -766,10 +774,19 @@ def _emit_op(
                 out.append(f"\\node at ({fmt_num(lx)},{fmt_num(ly)}) {{${_to_latex(text)}$}};")
                 return out
             glyphs = arc_text_glyphs(text, TIKZ_TEXT_EM)
-            layout = arc_text_glyph_layout(
-                cx, cy, r, s_deg, e_deg, [adv for _, adv in glyphs],
-                pos=pos, offset=max(0.18, r * 0.09), side=side, flip=flip,
-            )
+            advances = [adv for _, adv in glyphs]
+            if isinstance(sym[arc_id], (EllipticalArc, EllipticalSector)):
+                ecx, ecy, hr, vr, s_deg, e_deg, _sx, _sy = elliptical_arc_params(arc_id, sym)
+                layout = elliptical_arc_text_glyph_layout(
+                    ecx, ecy, hr, vr, s_deg, e_deg, advances,
+                    pos=pos, offset=max(0.18, min(hr, vr) * 0.09), side=side, flip=flip,
+                )
+            else:
+                cx, cy, r, s_deg, e_deg, _sx, _sy = arc_params(arc_id, sym)
+                layout = arc_text_glyph_layout(
+                    cx, cy, r, s_deg, e_deg, advances,
+                    pos=pos, offset=max(0.18, r * 0.09), side=side, flip=flip,
+                )
             for (ch, _adv), (x, y, rot) in zip(glyphs, layout):
                 if not ch.strip():
                     continue

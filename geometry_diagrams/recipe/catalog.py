@@ -527,7 +527,7 @@ distance from segment[0].
   other, e.g. a chord's endpoints subtending a marked arc.
     {"kind":"mark_equal_lengths", "segments":[["A","B"]], "group":1}
     {"kind":"mark_arcs", "arcs":["arc1"], "group":1}
-  Elliptical arcs/sectors are not supported (skipped with a warning).
+  Elliptical arcs/sectors work too (ticks follow the ellipse's own normal).
 
 ### annotations.labels — explicit text callouts
   {"kind":"label_segment", "endpoints":["A","B"], "text":"c"}

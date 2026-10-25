@@ -1037,7 +1037,7 @@ Same grouping logic as equal lengths.
 
 #### `mark_arcs`
 
-Mark a circular arc (or a sector's curved edge) with radial tick marks, the
+Mark an arc (or a sector's curved edge) with tick marks across the curve, the
 arc-space counterpart of `mark_equal_lengths`.
 
 The IR-level render op is `ir.MarkArcs` (see `geometry_diagrams/ir/ir.py`),
@@ -1050,15 +1050,18 @@ op automatically when passed a curved handle.
 
 | Field   | Type          | Description                                    |
 |---------|---------------|-------------------------------------------------|
-| `arcs`  | array         | Already-defined `arc_center_start_end` or `sector_center_start_end` ids |
+| `arcs`  | array         | Already-defined `arc_center_start_end`, `sector_center_start_end` or elliptical variant ids |
 | `group` | string        | Shared with `ir.MarkSegments`'s `group` namespace — see note above |
 | `ticks` | integer       | Explicit tick count, no upper bound (IR/renderer-only) |
 
 For a `sector_center_start_end`, ticks go on its curved edge only, never on
 either of its two straight radii. Elliptical variants
-(`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`)
-are unsupported — both renderers skip them with a warning, since
-constant-arc-length tick spacing has no closed form on an ellipse.
+(`elliptical_arc_center_start_end`, `elliptical_sector_center_start_end`,
+axis-aligned) are supported in both renderers: the ticks straddle the curve at
+its parametric midpoint, oriented along the ellipse's own normal there (not the
+radial direction), and for several ticks are spaced evenly by arc length about
+that midpoint — the same convention as a circular arc. Any other id (a segment,
+a circle, an undefined or non-arc id) is skipped with a warning.
 
 A shared `group` gives a segment and an arc the same tick *index*, not
 necessarily the same *glyph*: indices 1–3 render identically on both (1/2/3
@@ -1101,21 +1104,26 @@ Add a text label to a circle.
 > (`{"kind": "label_along_arc", ...}` in `annotations.labels`), a close-to-
 > pure field passthrough — the fields below are identical to `ir.LabelAlongArc`'s.
 
-Text laid out along a circular arc (or a sector's curved edge), one rotated
+Text laid out along an arc (or a sector's curved edge), one rotated
 glyph at a time — distinct from `label_segment`'s existing arc handling,
 which places a single upright label near the arc's midpoint.
 
 | Field   | Type                    | Description                          |
 |---------|-------------------------|---------------------------------------|
-| `arc`   | string                  | Already-defined `arc_center_start_end` or `sector_center_start_end` id |
+| `arc`   | string                  | Already-defined `arc_center_start_end`, `sector_center_start_end` or elliptical variant id |
 | `text`  | string                  | Label text                            |
 | `side`  | "outside" \| "inside"   | Which radial side of the curve the glyphs sit on (default "outside") |
 | `pos`   | number, 0–1             | Fraction along the arc's sweep the string is centered on (default 0.5, the midpoint) |
 | `flip`  | bool \| null            | `null` (default) auto-orients glyphs upright regardless of which half of the circle the arc sits on; `true`/`false` forces the orientation |
 
 For a `sector_center_start_end`, the text follows its curved edge only.
-Elliptical variants are unsupported and skipped with a warning, same as
-`mark_arcs`.
+Elliptical variants are supported in both renderers: the glyph baseline is the
+curve offset by the usual clearance along the ellipse's own normal, and each
+glyph advance is measured as arc length along that offset curve (local tangent
+for rotation), so uneven curvature never squeezes or stretches the spacing.
+`pos` is a fraction of the parametric sweep; an `inside` clearance is capped at
+the local radius of curvature at the anchor. Any other id is skipped with a
+warning.
 
 A `text` that can't be split into glyphs — anything the mathtext engine
 owns (LaTeX commands, `$...$`, fractions, Greek letters) or anything
@@ -1358,8 +1366,8 @@ pipeline error for the warnings gathered before it). Warnings never fail a
 run; a strategy shows the previous attempt's warnings in its retry prompt.
 Sources:
 
-- renderer warnings (e.g. a draw of an undefined id, an unsupported elliptical
-  variant);
+- renderer warnings (e.g. a draw of an undefined id, a `mark_arcs` /
+  `label_along_arc` naming something that is not an arc or sector);
 - failed `prefer`-level checks;
 - `distance_equals` / `equal_length` / `ratio_equal` measuring a segment that
   joins two prism corners (a projection was measured; use

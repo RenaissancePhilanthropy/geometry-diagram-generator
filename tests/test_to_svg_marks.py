@@ -18,7 +18,6 @@ from geometry_diagrams.ir.ir import (
     Canvas,
     DiagramIR,
     Draw,
-    EllipticalArcCenterStartEnd,
     LabelAlongArc,
     MarkArcs,
     MarkSegments,
@@ -546,24 +545,6 @@ class TestMarkArcs:
         # beta is encountered second -> index 2 -> "||" -> 2 segment ticks.
         assert len(_mark_elements(root)) == 2
 
-    def test_elliptical_arc_is_skipped_with_a_warning(self):
-        diagram = DiagramIR(
-            canvas=Canvas(xmin=-5, xmax=5, ymin=-2, ymax=2),
-            define=[
-                PointFixed(id="O", x=0, y=0),
-                PointFixed(id="S", x=4, y=0),
-                PointFixed(id="E", x=0, y=1),
-                EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
-            ],
-            render=[MarkArcs(arcs=["ea1"], ticks=2)],
-        )
-        sym = compile_defs(diagram)
-        warnings: list[str] = []
-        svg = ir_to_svg(diagram, sym, warnings=warnings)
-        root = _parse(svg)
-        assert any("is not a circular arc/sector" in w for w in warnings)
-        assert len(_arc_mark_elements(root)) == 0
-
     def test_undefined_arc_is_skipped_with_a_warning(self):
         diagram = DiagramIR(define=[], render=[MarkArcs(arcs=["missing"])])
         sym = compile_defs(diagram)
@@ -740,25 +721,6 @@ class TestLabelAlongArc:
         root = _parse(svg)
         assert _arc_text_wrappers(root) == []
         assert len(_arc_text_fallback_labels(root)) == 1
-
-    def test_elliptical_arc_is_skipped_with_a_warning(self):
-        diagram = DiagramIR(
-            canvas=Canvas(xmin=-5, xmax=5, ymin=-2, ymax=2),
-            define=[
-                PointFixed(id="O", x=0, y=0),
-                PointFixed(id="S", x=4, y=0),
-                PointFixed(id="E", x=0, y=1),
-                EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
-            ],
-            render=[LabelAlongArc(arc="ea1", text="abc")],
-        )
-        sym = compile_defs(diagram)
-        warnings: list[str] = []
-        svg = ir_to_svg(diagram, sym, warnings=warnings)
-        assert any("is not a circular arc/sector" in w for w in warnings)
-        root = _parse(svg)
-        assert _arc_text_wrappers(root) == []
-
 
 class TestDebugShowImplicit:
     """A segment auto-anchoring a tick mark on an already-drawn triangle side

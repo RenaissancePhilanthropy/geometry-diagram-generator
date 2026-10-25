@@ -547,25 +547,6 @@ def test_mark_arcs_honors_style_color():
     assert tikz.count("\\draw[color=red]") == 3
 
 
-def test_mark_arcs_skips_elliptical_arc_with_warning():
-    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd, MarkArcs
-
-    diagram = DiagramIR(
-        define=[
-            PointFixed(id="O", x=0, y=0),
-            PointFixed(id="S", x=4, y=0),
-            PointFixed(id="E", x=0, y=1),
-            EllipticalArcCenterStartEnd(id="ea1", center="O", hradius=4, vradius=1, start="S", end="E"),
-        ],
-        render=[MarkArcs(arcs=["ea1"], ticks=2)],
-    )
-    sym = compile_defs(diagram)
-    warnings: list[str] = []
-    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
-    assert any("is not a circular arc/sector" in w for w in warnings)
-    assert "\\draw" not in tikz
-
-
 # ---------------------------------------------------------------------------
 # LabelAlongArc tests
 # ---------------------------------------------------------------------------
@@ -635,25 +616,6 @@ def test_label_along_arc_subscript_falls_back_to_a_single_node():
     assert any("cannot be laid out per glyph" in w for w in warnings)
     assert "rotate=" not in tikz
     assert tikz.count("\\node") == 1
-
-
-def test_label_along_arc_skips_elliptical_sector_with_warning():
-    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd, LabelAlongArc
-
-    diagram = DiagramIR(
-        define=[
-            PointFixed(id="O", x=0, y=0),
-            PointFixed(id="S", x=4, y=0),
-            PointFixed(id="E", x=0, y=1),
-            EllipticalSectorCenterStartEnd(id="es1", center="O", hradius=4, vradius=1, start="S", end="E"),
-        ],
-        render=[LabelAlongArc(arc="es1", text="abc")],
-    )
-    sym = compile_defs(diagram)
-    warnings: list[str] = []
-    tikz = ir_to_tikz(diagram, sym, warnings=warnings)
-    assert any("is not a circular arc/sector" in w for w in warnings)
-    assert "\\node" not in tikz
 
 
 # ---------------------------------------------------------------------------
