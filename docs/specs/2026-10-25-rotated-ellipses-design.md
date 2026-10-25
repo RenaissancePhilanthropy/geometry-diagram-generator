@@ -4,9 +4,9 @@ Design for letting the IR represent an ellipse whose axes are not horizontal
 and vertical. Written for ticket 05 of the `curve-measures-and-gaps` effort
 (branch `curve-measures-and-gaps`, after commit c6a32f1). This document
 changes no code. It recommends a representation, inventories every place the
-code assumes axis alignment, and proposes a staged rollout. The first two
-stages are drafted as tickets for the human to approve; nothing is to be
-implemented before that.
+code assumes axis alignment, and proposes a staged rollout behind a feature gate. The first three
+tickets are drafted for the human to approve; nothing is to be implemented
+before that.
 
 Function names below are the ones in the tree at c6a32f1. Line numbers are
 left out on purpose because they drift.
@@ -38,9 +38,10 @@ that gap, but closing it is not a goal here.
    on `ellipse_center_axes`, `ellipse_center_eccentricity`,
    `elliptical_arc_center_start_end` and `elliptical_sector_center_start_end`.
    `ellipse_foci` gets no field: it derives its rotation from the direction of
-   the foci, and the axis-aligned restriction is removed. `ellipse_bbox` stays
-   axis-aligned, because a bounding box is axis-aligned by definition. With the
-   default of 0, stored IR is unchanged and compiles exactly as before.
+   the foci, and the axis-aligned restriction is removed in stage 4 (see
+   Feature gate). `ellipse_bbox` stays axis-aligned, because a bounding box is
+   axis-aligned by definition. With the default of 0, stored IR is unchanged
+   and compiles exactly as before.
 2. **Compiled form:** a rotation that is exactly 0 (mod 360) compiles to the
    same `spg.Ellipse` as today, so existing output stays byte-identical. Any
    other rotation compiles to a new non-SymPy marker type, `RotatedEllipse`
@@ -50,11 +51,20 @@ that gap, but closing it is not a goal here.
    points and lines into the frame with a float rotation, use the existing
    axis-aligned code or SymPy there, and map results back as `sp.Float`
    points.
-3. **Rollout:** four stages. Stage 1 makes a tilted full ellipse compile, draw
-   in both renderers and pass the basic checks and queries. Stage 2 adds
-   tangent lines and intersections on it. Stage 3 adds tilted elliptical arcs
-   and sectors. Stage 4 adds the recipe and pydsl authoring surfaces, the
-   prompts and the evals. Stages 1 and 2 are drafted as tickets 06 and 07.
+3. **Gate:** a new feature group, `tilted_ellipses`, off by default, guards
+   every generation surface through stages 1 to 3. With the group off,
+   `require_features` rejects a generated diagram that uses a nonzero
+   `rotation_deg`, and every default prompt stays byte-identical. Compile and
+   render accept tilted ellipses either way. Stage 4 removes the group after
+   an eval run (see Feature gate).
+4. **Rollout:** stages 1, 1b, 2, 3 and 4. Stage 1 makes a tilted full ellipse
+   compile, draw in both renderers at equal axis units and pass the basic
+   checks and queries. Stage 1b adds SVG drawing under a non-unit canvas
+   aspect and label nudging against the tilted outline. Stage 2 adds tangent
+   lines and intersections. Stage 3 adds tilted elliptical arcs and sectors.
+   Stage 4 adds the recipe and pydsl authoring surfaces, lifts the tilted-foci
+   restriction, adds the prompts and evals, and removes the gate. Stages 1, 2
+   and 1b are drafted as tickets 06, 07 and 08.
 
 ### Rejected alternatives
 
@@ -73,7 +83,7 @@ that gap, but closing it is not a goal here.
   tangent solving take more than 30 s (see Measured facts).
 - **Foci-and-point as the only way to tilt.** That is a construction, not a
   representation, and it still needs the rotated compiled form. It is kept as
-  a construction: `ellipse_foci` simply stops rejecting tilted foci.
+  a construction: `ellipse_foci` stops rejecting tilted foci in stage 4.
 - **A transform wrapper (`transformed: {of, rotate, about}`).** It is a wider
   feature: rotated polygons are already expressible with `point_rotate`, and
   points are the only other thing that could be wrapped. It adds an extra id
@@ -106,6 +116,12 @@ say this.
   focus2. When dx == 0 or dy == 0 the compiler keeps today's exact
   axis-aligned path, so existing foci IR is byte-identical. For tilted foci it
   builds `RotatedEllipse(center, a, b, rotation)`, with `a` on the focal axis.
+  This lift waits for stage 4, when the gate is removed. Whether foci are
+  tilted is known only after the points compile, so `require_features`, which
+  runs on the uncompiled diagram, could not gate it. Keeping today's
+  axis-aligned error until then avoids a post-compile gate. It also keeps the
+  recipe, the main strategy, from producing tilted ellipses through its
+  existing foci form before the feature is complete.
 - `ellipse_bbox`: no field.
 - `elliptical_arc_center_start_end` / `elliptical_sector_center_start_end`: get
   the field. An elliptical arc does not reference a parent ellipse id; it
@@ -329,8 +345,10 @@ SVG label nudging: `drawn_ellipses` holds axis-aligned screen tuples
 `_nearest_point_on_ellipse` (a Newton search in the centered frame), and by
 `_label_clear_of_obstacles` and `_gravitate_to_ideal_axis`. Add `phi` to the
 tuple and rotate the label center into the ellipse's screen frame before the
-nearest-point search, then rotate the result back. This is needed in stage 1,
-because a tilted ellipse is otherwise nudged against the wrong outline.
+nearest-point search, then rotate the result back. This is stage 1b. Until
+then, stage 1 does not register a tilted ellipse in `drawn_ellipses` at all,
+because nudging labels against the axis-aligned outline would be wrong.
+Labels are simply not nudged by it, and the feature is gated meanwhile.
 
 **TikZ** (`to_tikz.py`). TikZ draws equal units only, and `canvas.aspect` is
 rejected up front, so a plain rotation is enough. Verified with local
@@ -371,8 +389,10 @@ only the center (or the center, start and end), so it does not change.
 `Lowerer._lower_ellipse`): add `rotation: float = 0` (degrees CCW, which is
 already the recipe convention on its polygon ops) and lower it to
 `rotation_deg` for the center_axes and eccentricity forms. A nonzero rotation
-on the bbox form is a validation error. The foci form needs nothing: tilted
-foci just work once the compiler accepts them. The recipe has no elliptical
+on the bbox form is a validation error. The foci form needs no new field:
+tilted foci work once the compiler accepts them in stage 4, which is also when
+the gate goes, so the recipe never produces a tilted ellipse while the
+feature is half built. The recipe has no elliptical
 arc or sector op at all (`ArcOp`/`SectorOp` lower only to the circular kinds),
 so there is nothing to extend for arcs. The catalog's `oval` doc entry
 (`catalog.py`, currently "axis-aligned non-circular oval") and
@@ -396,11 +416,12 @@ fixture (`tests/python_full_prompt_pre_solids.json`) changes.
 ## Prompts and evals
 
 - **Structured:** the prompt text does not list the ellipse kinds; the model
-  sees them through the bound `DiagramIR` schema. Adding `rotation_deg` with a
-  clear field description exposes it from stage 1 without any prompt-text
-  fixture changing. That is the reason stage 1 must make every unsupported
-  operation on a tilted ellipse a typed error: a model can author one before
-  tangents and intersections are supported.
+  sees them through the bound `DiagramIR` schema. That schema is static, so
+  `rotation_deg` is visible from stage 1 whatever the feature setting, as the
+  solids kinds are. The gate below is what stops it from being used by
+  default. Stage 1 still makes every operation that a later stage owns a
+  typed error on a tilted ellipse, so a run with the group on fails cleanly
+  and retries instead of crashing.
 - **What a model must be told** (stage 4, in all three surfaces): the unit and
   direction ("degrees counter-clockwise from +x to the hradius axis"); that
   `hradius` is the semi-axis along the rotation, not "horizontal"; that
@@ -408,17 +429,61 @@ fixture (`tests/python_full_prompt_pre_solids.json`) changes.
   or sector must repeat the parent's rotation (pydsl does this for you);
   that `ellipse_foci` accepts tilted foci; and that bbox ellipses cannot be
   tilted.
-- **Feature gating:** recommended against. Gating exists for whole new kinds
-  with uncertain model behavior (solids). This is an additive optional field
-  on existing kinds, and gating it would need schema hiding that the static
-  structured schema cannot do anyway (see CLAUDE.md, feature-gated prompt
-  text). Listed as an open question.
+- **Feature gate:** see the next section.
 - **Evals:** add a few scenarios with original prompts (not derived from the
   Geometry Evals Data dataset) to an existing scenarios file. Candidates: a
   tilted ellipse with labeled axes; a tangent from an external point to a
   tilted ellipse; a tilted ellipse's foci. The existing structural checks
   (labels, draw entities) and the queries are enough. A new eval property
   (for example `ellipse_rotation`) is not needed for a first measurement.
+
+## Feature gate
+
+Stages 1 to 3 build tilted support in pieces. Until stage 2 a tilted ellipse
+cannot take a tangent or an intersection, and until stage 3 a tilted arc
+cannot be expressed. The structured schema exposes `rotation_deg` from stage
+1. So, like `solids`, tilted ellipses are gated at the generation surfaces and
+are never gated in compile or render.
+
+- **Group:** add `tilted_ellipses` to `features.FEATURE_GROUPS`. It is off by
+  default and enabled the existing ways (`GeometryConfig.features`,
+  `GEOMETRY_FEATURES`, evals `--features`).
+- **What it rejects:** any authored definition of a kind that has the field
+  (`ellipse_center_axes`, `ellipse_center_eccentricity`, and from stage 3 the
+  two elliptical arc kinds) whose `rotation_deg` is not a literal 0. A string
+  expression counts as tilted unless it is literally `"0"`, because
+  `require_features` runs before compile and cannot evaluate an expression.
+  Tilted foci are not gated: they stay a compile error until stage 4 (see
+  Representation in the IR).
+- **Where it is checked:** `features.require_features` is kind-based today. It
+  walks `diagram.define` and asks the derived registry for each statement's
+  group, and ellipses are not registry kinds. It needs a second, field-level
+  rule, for example a small table that maps a kind to a predicate and a group,
+  consulted in the same loop and raising the same `FeatureNotEnabledError`
+  with a message that names the definition id and the field. The structured,
+  recipe and python_full strategies already call `require_features` before
+  `run_ir_pipeline` and feed its error back through their retry paths. The
+  recipe has no rotation field until stage 4, so `recipe/dsl.py`
+  `reject_disabled_ops` needs no entry, and the IR-level check stays the
+  backstop. pydsl has no `rotation` parameter until stage 4, so
+  `pydsl.GROUPED_NAMES` needs nothing. The parametrized regression test in
+  `tests/test_feature_gating.py` gets a tilted-ellipse case.
+- **Gated prompt text:** stages 1 to 3 add no prompt text by default. Any
+  guidance written for the group on (a short structured fragment explaining
+  `rotation_deg`, the hradius-axis meaning and the parametric angle, and a
+  query-tool line if one is needed) goes through the existing
+  `tagged_fragment` / `tagged_insertions` machinery. For example, the
+  structured fragment is a `GROUPED_FRAGMENTS["tilted_ellipses"]` entry in
+  `instructions_structured.py`. With the group off, every prompt is
+  byte-identical, and the `tests/*_pre_solids.json` fixture tests pass
+  unchanged.
+- **Evals while gated:** tilted-ellipse scenarios declare
+  `requires_features: [tilted_ellipses]`, so they are skipped unless the group
+  is enabled.
+- **Removal (stage 4):** after an eval run with the group on, the stage-4
+  ticket removes the group and its rejection rule, turns the tagged guidance
+  into default prompt text, and regenerates the pinned fixtures in the same
+  commit, saying why (CLAUDE.md rule).
 
 ## Blast-radius inventory
 
@@ -440,8 +505,9 @@ algorithm.
 | 11 | Curve measures | `curve_measures.curve_length`, `_radii` | accept marker in dispatch | S | 1 |
 | 12 | Queries | `queries.query_length`, `query_radius`, `query_area`, `query_perimeter`, `_radii`, `list_objects` | accept marker; arithmetic unchanged | S | 1 |
 | 13 | Bounds and canvas | `render_util.expand_bounds_for_geometry`, `_arc_extent`; `recipe/lower.py` `_auto_canvas` | rotated half-widths; rotated extreme parameters | S | 1 (arcs 3, recipe 4) |
-| 14 | SVG draw and fill | `to_svg` Draw/Fill `spg.Ellipse`, `EllipticalArc`, `EllipticalSector` branches; fill-subpath builder | `screen_ellipse` helper; `transform`/x-axis-rotation; handle anisotropic aspect | M | 1 (arcs 3) |
-| 15 | SVG label nudging | `to_svg`: `drawn_ellipses`, `_ellipse_clearance`, `_nearest_point_on_ellipse`, `_newton_refine_ellipse_param`, `_label_clear_of_obstacles`, `_gravitate_to_ideal_axis` | `phi` in tuple; rotate into screen frame | M | 1 |
+| 14 | SVG draw and fill | `to_svg` Draw/Fill `spg.Ellipse`, `EllipticalArc`, `EllipticalSector` branches; fill-subpath builder | equal units: `transform`/x-axis-rotation (S); non-unit aspect: `screen_ellipse` helper (M) | S + M | 1 equal units, 1b aspect (arcs 3) |
+| 15 | SVG label nudging | `to_svg`: `drawn_ellipses`, `_ellipse_clearance`, `_nearest_point_on_ellipse`, `_newton_refine_ellipse_param`, `_label_clear_of_obstacles`, `_gravitate_to_ideal_axis` | `phi` in tuple; rotate into screen frame | M | 1b |
+| 24 | Feature gate | `features.py`: `FEATURE_GROUPS`, `require_features` (kind-based only); `instructions_structured.GROUPED_FRAGMENTS`; `tests/test_feature_gating.py` | `tilted_ellipses` group; field-level rejection rule; gated fragment; removed in stage 4 | S | 1 (removal 4) |
 | 16 | TikZ draw and fill | `to_tikz` Draw `spg.Ellipse` / elliptical arc / sector branches; fill-path builder (`... ellipse[x radius, y radius]`) | `rotate around` / inline `rotate`; unrotated local start point for arcs | S | 1 (arcs 3) |
 | 17 | Ticks and text along curve | `render_util.tick_mark_elliptical_arcs`, `elliptical_arc_text_glyph_layout` (`up_sign` from local normal), `_ellipse_normal`; callers in `to_svg`/`to_tikz` | rotate outputs; world-normal upright test | M | 3 |
 | 18 | Label anchors | `render_util.elliptical_arc_label_anchor`, `elliptical_arc_params`, `label_segment_arc_anchor` | `to_world` on anchor; local angles in params | S | 3 |
@@ -460,24 +526,36 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
 
 ## Staged rollout
 
-1. **Stage 1, tilted full ellipse end to end (draft ticket 06).** Rows 1
-   (full kinds), 2, 4, 5, 9, 11, 12, 13 (renderer bounds), 14, 15, 16 for
-   full ellipses, plus typed errors for everything later stages own:
+1. **Stage 1, tilted full ellipse end to end behind the gate (draft ticket
+   06).** Rows 1 (full kinds, without the foci lift), 2, 4, 5, 9, 11, 12, 13
+   (renderer bounds), 14 (equal units), 16 for full ellipses, and 24 (the
+   gate). It also adds typed errors for everything later stages own:
    `line_tangent`, intersection and the `tangent` check on a rotated ellipse
    fail with a message naming the id and saying tilted ellipses do not
-   support it yet. The structured strategy can use the field from here on.
+   support it yet. The SVG renderer raises a typed error for a tilted ellipse
+   on a canvas with a non-unit `aspect`; TikZ already rejects `aspect`. Label
+   nudging does not yet treat a tilted ellipse as an obstacle. From here on,
+   only a run with `tilted_ellipses` enabled can generate the field.
+1b. **Stage 1b, SVG under a non-unit aspect, and label nudging (draft ticket
+   08, blocked by 06).** Rows 14 (`screen_ellipse`) and 15. This lifts the
+   stage-1 aspect error and registers tilted ellipses as nudging obstacles.
+   It is independent of stage 2.
 2. **Stage 2, tangents and intersections on a tilted full ellipse (draft
-   ticket 07).** Rows 6 and 7. This lifts the stage-1 typed errors.
+   ticket 07, blocked by 06).** Rows 6 and 7. This lifts the stage-1 typed
+   errors.
 3. **Stage 3, tilted elliptical arcs and sectors.** Rows 1 (arc kinds), 3, 4,
    5, 8, 10, 13 (`_arc_extent`), 14, 16, 17 and 18 for arcs, plus pydsl's
-   rotation copy in `_arc_or_sector`. Not drafted yet: its shape depends on
-   how stages 1 and 2 land the frame helper.
-4. **Stage 4, authoring and prompts.** Rows 19 to 22: recipe and pydsl
-   surfaces, prompt text, fixture regeneration, eval scenarios, then an eval
-   run before calling the feature done.
+   rotation copy in `_arc_or_sector`. The gate's rejection rule extends to the
+   two arc kinds. Not drafted yet: its shape depends on how stages 1 and 2
+   land the frame helper.
+4. **Stage 4, authoring, prompts and removing the gate.** Rows 19 to 22: recipe
+   and pydsl surfaces, the tilted-foci lift (row 2), prompt text, eval
+   scenarios, an eval run with the group on, then removal of the gate (row
+   24) and fixture regeneration in the same commit.
 
 Stage 4 could move ahead of stage 3 for full ellipses only, if the human
-wants recipe and pydsl authors to have tilted full ellipses early.
+wants recipe and pydsl authors to have tilted full ellipses early. In that
+case, the gate would have to stay on until stage 3 lands.
 
 ## Test plan for stage 1
 
@@ -486,8 +564,13 @@ wants recipe and pydsl authors to have tilted full ellipses early.
   orders after its referenced points (refs test).
 - Compile: `rotation_deg: 0` (and 360) produces an `spg.Ellipse` equal to
   today's. `rotation_deg: 30` produces a `RotatedEllipse` whose float rotation
-  is pi/6. `ellipse_foci` with foci (0,0) and (4,3) compiles, with semi-major
-  a on the focal direction. Axis-aligned foci are unchanged.
+  is pi/6. `ellipse_foci` with tilted foci still raises today's error (the
+  lift is stage 4).
+- Gate: with `tilted_ellipses` off, `require_features` rejects a diagram
+  whose ellipse has `rotation_deg: 30` or `"pi"`, naming the definition id
+  and the group, and accepts `rotation_deg: 0` and an omitted field. With the
+  group on, it accepts them. Compiling and rendering the same IR succeed with
+  the group off. All `*_pre_solids.json` prompt fixtures pass unchanged.
 - point_on: on `hr 3, vr 1, rotation 30`, `t = 0` lands at the center plus
   3·(cos 30°, sin 30°), and `t = pi/2` lands at the center plus 1·(-sin 30°,
   cos 30°). `_invert_param` round-trips a sampled point (pinning path).
@@ -506,15 +589,11 @@ wants recipe and pydsl authors to have tilted full ellipses early.
   filled, with a labeled center and one labeled `point_on` point) renders
   - in SVG: an `<ellipse>` with `transform="rotate(-30 cx cy)"` (the sign is
     flipped for y-down) and `rx`/`ry` equal to `hr`/`vr` times the scale.
-    Under a `canvas.aspect` != 1, the `screen_ellipse` axes and angle match an
-    independent computation, and sampled world points map onto the emitted
-    screen ellipse within 0.01 px.
+    With a `canvas.aspect` set to anything other than 1, rendering fails
+    with a typed error naming the ellipse (stage 1b lifts this).
   - in TikZ: a `\draw[rotate around={30:(cx,cy)}] ... ellipse (3 and 1);` and
     the matching fill. The TikZ code compiles with the renderer container, or
     with local lualatex when the container is down.
-  - and a label placed near the ellipse clears the tilted outline (nudging
-    test with a label whose clearance against the axis-aligned outline would
-    differ).
 - Typed errors: `line_tangent`, `point_intersection` and the `tangent` check
   on a rotated ellipse each fail with a typed error naming the id, not an
   `AttributeError` and not a silent skip.
@@ -553,7 +632,9 @@ only when they simplify to surds (pi/6), and they are unusable otherwise.
 2. Should `equal_radius` treat swapped axes (`3x2` versus `2x3`, the same curve
    when rotated 90 degrees) as equal? Today it does not, even for axis-aligned
    ellipses.
-3. Ship ungated (recommended), or behind a feature group until an eval run?
+3. Gate name and scope: `tilted_ellipses` covering stages 1 to 3
+   (recommended). Should stage 4 remove it, or keep it for one release with
+   the group on by default?
 4. `list_objects` / query output: report a tilted ellipse as `Ellipse`, or as
    `RotatedEllipse`?
 5. Order of stages 3 and 4: arcs first (recommended), or authoring for full
