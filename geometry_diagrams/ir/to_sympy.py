@@ -13,7 +13,9 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
-from .errors import ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError
+from .errors import (
+    ExprEvalError, IntersectionError, IRCompileError, PickError, TiltedEllipseUnsupported, UndefinedRefError,
+)
 from .refs import def_references
 
 # Symbol table: maps definition id -> SymPy geometry object
@@ -157,6 +159,103 @@ class EllipticalSector:
             f"EllipticalSector(center={self.center}, start={self.start}, end={self.end}, "
             f"hradius={self.hradius}, vradius={self.vradius}, reflex={self.reflex})"
         )
+
+
+class RotatedEllipse:
+    """Marker type for a tilted full ellipse in the symbol table.
+
+    Deliberately NOT an ``spg.Ellipse``: SymPy's ellipse is axis-aligned by
+    construction, so a subclass would make every ``isinstance(obj,
+    spg.Ellipse)`` site (and SymPy's own ``intersection``/``tangent_lines``/
+    ``contains``) silently answer for the untilted ellipse. A site that has
+    not been taught about this type falls through to its unsupported-type
+    branch instead.
+
+    ``center`` is an ``spg.Point``; ``hradius`` / ``vradius`` are SymPy
+    numbers (the semi-axis along the rotation and the one perpendicular to
+    it); ``rotation`` is a Python float in radians, counter-clockwise from +x
+    to the ``hradius`` axis, never an exact SymPy angle (exact angles that do
+    not simplify stall SymPy). A rotation of exactly 0 never builds this
+    type: it compiles to today's ``spg.Ellipse``.
+
+    The frame methods below are the one place the rotation math lives:
+    ``to_local`` / ``to_world`` map between world coordinates and the
+    ellipse's own frame (origin at the center, u along ``hradius``), and the
+    parametric angle t is measured in that frame from the ``hradius`` axis,
+    ``point_at(t) = center + R(rotation) (hr cos t, vr sin t)``.
+    """
+
+    __slots__ = ("center", "hradius", "vradius", "rotation", "_cx", "_cy", "_hr", "_vr", "_cos", "_sin")
+
+    def __init__(self, center: spg.Point, hradius: Any, vradius: Any, rotation: float):
+        self.center = center
+        self.hradius = hradius
+        self.vradius = vradius
+        self.rotation = float(rotation)
+        self._cx, self._cy = float(center.x.evalf()), float(center.y.evalf())
+        self._hr, self._vr = float(sp.N(hradius)), float(sp.N(vradius))
+        self._cos, self._sin = math.cos(self.rotation), math.sin(self.rotation)
+
+    @property
+    def rotation_deg(self) -> float:
+        return math.degrees(self.rotation)
+
+    def to_local(self, x: float, y: float) -> tuple[float, float]:
+        dx, dy = x - self._cx, y - self._cy
+        return dx * self._cos + dy * self._sin, -dx * self._sin + dy * self._cos
+
+    def to_world(self, u: float, v: float) -> tuple[float, float]:
+        return self._cx + u * self._cos - v * self._sin, self._cy + u * self._sin + v * self._cos
+
+    def point_at(self, t: float) -> tuple[float, float]:
+        """World point at parametric angle t (measured from the hradius axis)."""
+        return self.to_world(self._hr * math.cos(t), self._vr * math.sin(t))
+
+    def param_of(self, x: float, y: float) -> float:
+        """Parametric angle of a world point (the inverse of ``point_at`` on the curve)."""
+        u, v = self.to_local(x, y)
+        return math.atan2(v / self._vr, u / self._hr)
+
+    def boundary_gap(self, x: float, y: float) -> float:
+        """Signed distance-like gap of a world point from the curve: the
+        implicit value over its gradient length, ``f / |grad f|`` with
+        ``f = (u/hr)^2 + (v/vr)^2 - 1`` (positive outside). A length, so a
+        tolerance on it means the same for a long thin ellipse as for a round
+        one; inf at the center, where the gradient vanishes."""
+        u, v = self.to_local(x, y)
+        a2, b2 = self._hr * self._hr, self._vr * self._vr
+        f = u * u / a2 + v * v / b2 - 1.0
+        grad = 2.0 * math.hypot(u / a2, v / b2)
+        return f / grad if grad else math.inf
+
+    def half_widths(self) -> tuple[float, float]:
+        """Half-width and half-height of the axis-aligned box around the curve."""
+        hr, vr, c, s = self._hr, self._vr, self._cos, self._sin
+        return math.hypot(hr * c, vr * s), math.hypot(hr * s, vr * c)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"RotatedEllipse(center={self.center}, hradius={self.hradius}, "
+            f"vradius={self.vradius}, rotation={self.rotation!r})"
+        )
+
+
+# Full ellipses of either compiled form, for sites whose answer does not
+# depend on the tilt (radii, area, perimeter, center).
+FULL_ELLIPSE_TYPES = (spg.Ellipse, RotatedEllipse)  # spg.Ellipse covers Circle
+
+
+def reject_tilted_ellipses(def_id: str, what: str, operands: "tuple[tuple[str, Any], ...]") -> None:
+    """Raise TiltedEllipseUnsupported if any (id, object) operand is a tilted
+    ellipse: ``what`` (e.g. "point_intersection") does not support one yet."""
+    for oid, obj in operands:
+        if isinstance(obj, RotatedEllipse):
+            raise TiltedEllipseUnsupported(
+                def_id,
+                f"{what}: {oid!r} is a tilted ellipse (rotation_deg={obj.rotation_deg:g}); "
+                f"{what} does not support tilted ellipses yet. Use an axis-aligned ellipse "
+                f"(rotation_deg 0) or construct the point/line another way",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -385,10 +484,15 @@ def _count_ellipse_crossings(e1: Any, e2: Any, samples: int = 4096) -> int:
 
 def _on_object(obj: Any, p: spg.Point) -> bool:
     """`obj.contains(p)`, plus a float-tolerant fallback for circles, lines, segments and
-    rays: SymPy's exact containment rejects points computed in floating point."""
+    rays: SymPy's exact containment rejects points computed in floating point. A tilted
+    ellipse (no SymPy form) uses its length-based boundary gap."""
+    px, py = _f(p.x), _f(p.y)
+    if isinstance(obj, RotatedEllipse):
+        cx, cy = _f(obj.center.x), _f(obj.center.y)
+        scale = max(_f(obj.hradius), _f(obj.vradius), abs(cx), abs(cy), abs(px), abs(py)) or 1.0
+        return abs(obj.boundary_gap(px, py)) <= PICK_CONTAINS_TOL * scale
     if obj.contains(p):
         return True
-    px, py = _f(p.x), _f(p.y)
     if isinstance(obj, spg.Circle):
         cx, cy, r = _f(obj.center.x), _f(obj.center.y), _f(obj.radius)
         scale = max(r, abs(cx), abs(cy), abs(px), abs(py)) or 1.0
@@ -678,6 +782,7 @@ def _compile_one(
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
             operands = ((obj1_id, obj1), (obj2_id, obj2))
+            reject_tilted_ellipses(did, "point_intersection", operands)
             # An arc/sector (circular or elliptical) intersects exactly where
             # its underlying full circle/ellipse does; the candidates are
             # narrowed to its sweep below.
@@ -761,6 +866,7 @@ def _compile_one(
 
         case ir.LineTangent(point=point_id, circle=circle_id, pick=pick):
             target = ref(circle_id)
+            reject_tilted_ellipses(did, "line_tangent", ((circle_id, target),))
             circle = _underlying_conic(target)
             if not isinstance(circle, spg.Ellipse):
                 raise IRCompileError(
@@ -972,13 +1078,13 @@ def _compile_one(
             return EllipticalSector(center=c, start=s, end=e, hradius=hr, vradius=vr, reflex=reflex)
 
         # --- Ellipses ---
-        case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius):
+        case ir.EllipseCenterAxes(center=center_id, hradius=hradius, vradius=vradius, rotation_deg=rotation_deg):
             hr, vr = ev(hradius), ev(vradius)
             if float(hr.evalf()) <= 0 or float(vr.evalf()) <= 0:
                 raise IRCompileError(
                     did, f"ellipse_center_axes: hradius and vradius must be positive, got {hr}, {vr}"
                 )
-            return spg.Ellipse(ref(center_id), hr, vr)
+            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev))
 
         case ir.EllipseBBox(corner1=c1_id, corner2=c2_id):
             p1, p2 = ref(c1_id), ref(c2_id)
@@ -1017,7 +1123,8 @@ def _compile_one(
                 return spg.Ellipse(center, sp.S(b), sp.S(a))
 
         case ir.EllipseCenterEccentricity(
-            center=center_id, semi_major=semi_major, eccentricity=eccentricity, orientation=orientation
+            center=center_id, semi_major=semi_major, eccentricity=eccentricity, orientation=orientation,
+            rotation_deg=rotation_deg,
         ):
             a = float(ev(semi_major).evalf())
             e = float(ev(eccentricity).evalf())
@@ -1026,10 +1133,9 @@ def _compile_one(
             if not (0 <= e < 1):
                 raise IRCompileError(did, f"EllipseCenterEccentricity: eccentricity must be in [0,1), got {e}")
             b = a * (1 - e ** 2) ** 0.5
-            if orientation == "horizontal":
-                return spg.Ellipse(ref(center_id), sp.S(a), sp.S(b))
-            else:
-                return spg.Ellipse(ref(center_id), sp.S(b), sp.S(a))
+            # A rotation turns today's figure (vertical keeps hradius = b).
+            hr, vr = (sp.S(a), sp.S(b)) if orientation == "horizontal" else (sp.S(b), sp.S(a))
+            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev))
 
         # --- Higher-order shapes ---
         case ir.Triangle(a=a_id, b=b_id, c=c_id):
@@ -1161,6 +1267,24 @@ def _compile_one(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _rotation_rad(raw: int | float | str, ev: Callable[[int | float | str], sp.Basic]) -> float:
+    """An ellipse's ``rotation_deg`` as float radians in [0, 2 pi). 0.0 (a
+    literal 0, or a value that is exactly 0 after ``% 360``) selects the
+    exact axis-aligned path; nothing else is snapped to 0."""
+    if isinstance(raw, (int, float)) and raw == 0:
+        return 0.0
+    return math.radians(float(sp.N(ev(raw))) % 360.0)
+
+
+def _ellipse_or_tilted(center: spg.Point, hr: Any, vr: Any, rotation: float) -> Any:
+    """Today's ``spg.Ellipse`` for rotation 0 (byte-identical output), else the
+    tilted marker (which stays a marker for equal radii, keeping the start of
+    its parametric angle)."""
+    if rotation == 0.0:
+        return spg.Ellipse(center, hr, vr)
+    return RotatedEllipse(center, hr, vr, rotation)
+
 
 def _eval_expr(
     raw: int | float | str,
@@ -1641,7 +1765,7 @@ def _point_on_object(
 
 def _sample_param(obj: Any, rng: Random) -> float:
     """Sample a parameter t appropriate for the object type."""
-    if isinstance(obj, spg.Ellipse):  # covers Circle too (Circle subclasses Ellipse)
+    if isinstance(obj, FULL_ELLIPSE_TYPES):  # covers Circle too (Circle subclasses Ellipse)
         return rng.uniform(0, 2 * math.pi)
     # Segment, Ray, Line: [0, 1) for segment; [0, 1) maps intuitively
     return rng.random()
@@ -1727,6 +1851,8 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     if isinstance(obj, spg.Segment):
         a, b = obj.p1, obj.p2
         return spg.Point(a.x + sp.S(t) * (b.x - a.x), a.y + sp.S(t) * (b.y - a.y))
+    if isinstance(obj, RotatedEllipse):
+        return _lift(*obj.point_at(t))
     if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
         cx, cy = obj.center.x, obj.center.y
         a, b = obj.hradius, obj.vradius
@@ -1755,6 +1881,8 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
         if offset > span + (2 * math.pi - span) / 2:
             offset -= 2 * math.pi
         return offset / (e - s)
+    if isinstance(obj, RotatedEllipse):
+        return obj.param_of(x, y)
     if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
         cx, cy = float(obj.center.x), float(obj.center.y)
         a, b = float(obj.hradius), float(obj.vradius)
@@ -1825,8 +1953,9 @@ def _check_spatial_constraint(
             if center is None:
                 # On a line/segment/ray there is no center to measure angles
                 # from, so the constraint restricts nothing. Any center-based
-                # conic is accepted: for an axis-aligned ellipse the polar angle
-                # is a strictly increasing function of the parametric angle, so
+                # conic is accepted: for an ellipse the polar angle is a
+                # strictly increasing function of the parametric angle (a tilt
+                # only shifts it by a constant), so
                 # "inside the CCW sweep from `from_point` to `to_point`" gives
                 # the same answer measured either way.
                 return True

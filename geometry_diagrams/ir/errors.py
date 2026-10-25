@@ -21,3 +21,11 @@ class ExprEvalError(IRCompileError):
 
 class PickError(IRCompileError):
     """A pick rule could not select a unique candidate."""
+
+
+class TiltedEllipseUnsupported(IRCompileError):
+    """An operation does not support a tilted (rotated) ellipse yet.
+
+    ``def_id`` is the failing definition (or, from a renderer, the ellipse
+    itself); the message names the tilted ellipse. Later stages of the
+    rotated-ellipses design lift these one by one."""

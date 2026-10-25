@@ -13,6 +13,8 @@ from .to_sympy import (
     Arc,
     EllipticalArc,
     EllipticalSector,
+    FULL_ELLIPSE_TYPES,
+    RotatedEllipse,
     Sector,
     SymTable,
     arc_param_frame,
@@ -191,6 +193,12 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.Tangent(line=line, circle=circle):
                 obj = sym[circle]
+                if isinstance(obj, RotatedEllipse):
+                    raise UnsupportedOperand(
+                        f"tangent: {circle!r} is a tilted ellipse (rotation_deg="
+                        f"{obj.rotation_deg:g}); the tangent check does not support tilted "
+                        f"ellipses yet"
+                    )
                 lin = _as_line(sym[line])
                 cx, cy, hr, vr = _conic_frame(obj, "tangent", circle)
                 a, b, c0 = (float(v.evalf()) for v in lin.coefficients)
@@ -423,6 +431,9 @@ def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())
         return abs(d - r) < tol
+    if isinstance(obj, RotatedEllipse):
+        # A length-based gap (the tilted marker has no SymPy containment).
+        return abs(obj.boundary_gap(float(point.x.evalf()), float(point.y.evalf()))) < tol
     if isinstance(obj, spg.Ellipse):
         cx = float(obj.center.x.evalf())
         cy = float(obj.center.y.evalf())
@@ -457,13 +468,15 @@ _ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
 
 
 def _conic_frame(obj: Any, kind: str, obj_id: str) -> tuple[float, float, float, float]:
-    """(cx, cy, hradius, vradius) of a circle, ellipse, arc, sector, elliptical
-    arc or elliptical sector; a circular object has hradius == vradius.
+    """(cx, cy, hradius, vradius) of a circle, ellipse (tilted or not), arc,
+    sector, elliptical arc or elliptical sector; a circular object has
+    hradius == vradius. The tilt is not part of the return: callers that need
+    the curve's direction (the tangent check) reject a tilted ellipse first.
     Anything else is an UnsupportedOperand naming `kind` and `obj_id`."""
     if isinstance(obj, (Arc, Sector)):
         r = float(obj.radius.evalf())
         hr = vr = r
-    elif isinstance(obj, (EllipticalArc, EllipticalSector, spg.Ellipse)):
+    elif isinstance(obj, (EllipticalArc, EllipticalSector) + FULL_ELLIPSE_TYPES):
         hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
     else:
         raise UnsupportedOperand(
@@ -586,7 +599,7 @@ def _length_of(obj: Any, obj_id: str) -> float:
             f"length: {obj_id!r} is a full circle, which has no single length here; "
             f"use a radius check (radius_equals / equal_radius)"
         )
-    if isinstance(obj, spg.Ellipse):
+    if isinstance(obj, FULL_ELLIPSE_TYPES):
         raise UnsupportedOperand(
             f"length: {obj_id!r} is a full ellipse, which has no single length here "
             f"(its two radii differ); compare it with equal_radius (it compares both radii)"

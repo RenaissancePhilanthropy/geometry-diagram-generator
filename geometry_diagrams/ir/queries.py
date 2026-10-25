@@ -15,7 +15,7 @@ import sympy.geometry as spg
 from .checks import _angle_at
 from .curve_measures import CurveMeasureError, curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, arc_param_frame
+from .to_sympy import FULL_ELLIPSE_TYPES, Arc, EllipticalArc, EllipticalSector, Sector, SymTable, arc_param_frame
 
 
 def _get(sym: SymTable, obj_id: str) -> Any:
@@ -88,7 +88,7 @@ def query_length(sym: SymTable, segment_id: str) -> dict:
     obj = _get(sym, segment_id)
     if isinstance(obj, _CURVED):
         return {"length": curve_length(obj)}
-    if isinstance(obj, spg.Ellipse):
+    if isinstance(obj, FULL_ELLIPSE_TYPES):
         raise TypeError(
             f"{_kind(segment_id, obj)} is a full {'circle' if isinstance(obj, spg.Circle) else 'ellipse'}, "
             "which has no length; use perimeter"
@@ -107,7 +107,7 @@ def query_radius(sym: SymTable, circle_id: str) -> dict:
     elliptical arc/sector has two radii, returned as ``hradius`` and
     ``vradius``."""
     obj = _get(sym, circle_id)
-    if not isinstance(obj, (spg.Ellipse,) + _CURVED):
+    if not isinstance(obj, FULL_ELLIPSE_TYPES + _CURVED):
         raise TypeError(
             f"{circle_id!r} is not a Circle, Ellipse, arc or sector (got {type(obj).__name__})"
         )
@@ -123,7 +123,7 @@ def query_area(sym: SymTable, obj_id: str) -> dict:
     obj = _get(sym, obj_id)
     if isinstance(obj, spg.Polygon):
         return {"area": float(abs(obj.area.evalf()))}
-    if isinstance(obj, spg.Ellipse):
+    if isinstance(obj, FULL_ELLIPSE_TYPES):
         hr, vr = _radii(obj)
         return {"area": math.pi * hr * vr}
     if isinstance(obj, _SECTORS):
@@ -142,7 +142,7 @@ def query_perimeter(sym: SymTable, obj_id: str) -> dict:
     obj = _get(sym, obj_id)
     if isinstance(obj, spg.Polygon):
         return {"perimeter": float(obj.perimeter.evalf())}
-    if isinstance(obj, spg.Ellipse):
+    if isinstance(obj, FULL_ELLIPSE_TYPES):
         return {"perimeter": curve_length(obj)}
     if isinstance(obj, _SECTORS):
         _, _, hr, vr, start, end = _sector_frame(obj_id, obj)

@@ -18,12 +18,12 @@ import math
 from typing import Any
 
 import mpmath
-import sympy.geometry as spg
 
 from geometry_diagrams.ir.to_sympy import (
     Arc,
     EllipticalArc,
     EllipticalSector,
+    FULL_ELLIPSE_TYPES,
     Sector,
     arc_param_frame,
 )
@@ -53,7 +53,7 @@ def curve_length(obj: Any) -> float:
         _require_positive(obj, *_radii(obj))
         _, _, hr, vr, s, e = arc_param_frame(obj)
         return _ellipse_arc_length(hr, vr, s, e)
-    if isinstance(obj, spg.Ellipse):  # Circle subclasses Ellipse
+    if isinstance(obj, FULL_ELLIPSE_TYPES):  # Circle subclasses Ellipse; length is tilt-invariant
         hr, vr = _radii(obj)
         _require_positive(obj, hr, vr)
         return _ellipse_arc_length(hr, vr, 0.0, 2 * math.pi)
