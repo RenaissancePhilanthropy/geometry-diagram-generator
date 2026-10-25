@@ -411,10 +411,19 @@ group. Stored diagrams always compile and render. Supported on a tilted
 ellipse: draw and fill (also with holes) in both renderers, canvas bounds,
 `point_on` (param and random), `pick_on_object`, `contains`, the radius
 checks and the length/radius/area/perimeter queries (all as for the untilted
-ellipse). Not yet supported, each an error naming the ellipse: `line_tangent`,
-`point_intersection`, the `tangent` check, and SVG drawing on a canvas with
-an `aspect` other than 1. Labels are not yet nudged away from a tilted
-outline.
+ellipse). Also supported, through one numeric conic kernel (`conic_kernel.py`,
+numpy only): `point_intersection` of a tilted ellipse with a line, segment,
+ray, circle, axis-aligned ellipse or another tilted ellipse (an arc or sector
+of the other operand is filtered by its sweep after near-tangent pairs snap to
+their touch point; two copies of one curve are an error naming both ids),
+`line_tangent` from an external point (two tangent lines, `pick` chooses by
+the touch point; a point inside is "no tangent lines"; a point on the curve
+has exactly one tangent) and the `tangent` check. The kernel also solves
+ellipse x ellipse and circle x ellipse pairs with float radii, which SymPy
+cannot, so those no longer fail; pairs with exact radii and no tilt keep the
+exact SymPy result. Not yet supported, an error naming the ellipse: SVG
+drawing on a canvas with an `aspect` other than 1. Labels are not yet nudged
+away from a tilted outline.
 
 ### Solid Operations
 

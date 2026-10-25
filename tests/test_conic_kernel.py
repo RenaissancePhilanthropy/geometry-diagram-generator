@@ -166,7 +166,7 @@ def test_intersection_points_lie_on_both_curves():
 
 # --- batteries vs the brute-force oracle ---------------------------------------
 
-def _near_tangent_cases(seed, n, offsets, internal):
+def _near_tangent_cases(seed, n, internal):
     rng = random.Random(seed)
     cases = []
     while len(cases) < n:
@@ -196,7 +196,7 @@ def test_near_tangent_offsets_follow_the_tolerance_policy(internal):
     n = 150
     offsets = (0.0, 5e-10, -5e-10, 1e-7, -1e-7, 1e-5, -1e-5)
     wrong = []
-    for e1, px, py, nx, ny, r, sgn in _near_tangent_cases(13 if internal else 11, n, offsets, internal):
+    for e1, px, py, nx, ny, r, sgn in _near_tangent_cases(13 if internal else 11, n, internal):
         for off in offsets:
             c = E(px + sgn * nx * (r + off), py + sgn * ny * (r + off), r, r)
             scale = scale_of(e1, c)

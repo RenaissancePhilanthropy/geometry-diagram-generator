@@ -182,10 +182,11 @@ class RotatedEllipse:
     not simplify stall SymPy). A rotation of exactly 0 never builds this
     type: it compiles to today's ``spg.Ellipse``.
 
-    The frame methods below are the one place the rotation math lives:
-    ``to_local`` / ``to_world`` map between world coordinates and the
-    ellipse's own frame (origin at the center, u along ``hradius``), and the
-    parametric angle t is measured in that frame from the ``hradius`` axis,
+    The rotation math lives in ``frame`` (a ``conic_kernel.EllipseFrame``, the
+    one home of it); the methods below delegate. ``to_local`` / ``to_world`` map
+    between world coordinates and the ellipse's own frame (origin at the center,
+    u along ``hradius``), and the parametric angle t is measured in that frame
+    from the ``hradius`` axis,
     ``point_at(t) = center + R(rotation) (hr cos t, vr sin t)``.
     """
 
