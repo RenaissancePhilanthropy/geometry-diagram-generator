@@ -28,8 +28,9 @@ In scope: the representation, how compiled geometry carries it, every consumer
 of an ellipse, and the rollout. Out of scope: general affine transforms of
 arbitrary objects, conics other than ellipses, and the open
 elliptical-arc-and-sector intersection gap with float radii (already noted in
-the ledger as an existing limit). The stage-2 solver happens to close part of
-that gap, but closing it is not a goal here.
+the ledger as an existing limit). The stage-2 kernel happens to close the
+float-radius part for full ellipses (and for arcs through the sweep filter),
+but closing it is not a goal here.
 
 ## Recommendation
 
@@ -49,9 +50,12 @@ that gap, but closing it is not a goal here.
    (center, hradius, vradius, rotation in float radians), next to the existing
    `EllipticalArc` marker. The elliptical arc markers gain a `rotation` slot
    that defaults to 0. Every operation works in the ellipse's local frame: map
-   points and lines into the frame with a float rotation, use the existing
-   axis-aligned code or SymPy there, and map results back as `sp.Float`
-   points.
+   points and lines into the frame with a float rotation, compute there, and
+   map results back as `sp.Float` points. Stage 1 needs only the frame
+   itself. From stage 2, intersections and tangents of every circle/ellipse
+   pair go through one numeric kernel (see Tangent lines, intersections and
+   the sweep filter); SymPy stays only for the exact rotation-0 path and for
+   the Float lift.
 3. **Gate:** a new feature group, `tilted_ellipses`, off by default, guards
    every generation surface through stages 1 to 3. With the group off,
    `require_features` rejects a generated diagram that uses a nonzero
@@ -78,6 +82,28 @@ that gap, but closing it is not a goal here.
 - **Always use the marker, even when rotation is 0.** This breaks byte
   identity for every existing ellipse and gives up the exact SymPy path for
   the common case, for no benefit.
+- **Fork or PR SymPy.** Adding an angle attribute means rewriting
+  `equation`, `intersection`, `tangent_lines`, `contains`, `arbitrary_point`,
+  `rotate`, `reflect`, `scale`, `normal_lines` and `encloses_point`: about
+  400 to 800 upstream lines, plus a wait for a release. It would not be
+  faster, because exact arithmetic is the slow part and even an upstream
+  general ellipse would need a float angle to stay usable.
+- **Use `Ellipse.equation(x, y, _slope=...)` from SymPy PR #15286.** That PR
+  (merged 2018-10-01) closed issue #2815, "allow arbitrary ellipses", by
+  merge, but added only a private implicit-equation helper. Its authors made
+  the parameter private so it could be removed once SymPy implements full
+  rotated-ellipse support, which has not happened (1.14.0 is the latest
+  release). It gives no intersections, tangents or containment, and feeding
+  its equation to `sp.solve` is the slow, failing path (2.5 to 3.5 s). It is
+  not a foundation.
+- **Rational tan-half-angle snapping of the rotation.** Replacing the angle by
+  a rational rotation makes line and tangent solves exact and fast, but it
+  needs denominators around 1e6 to beat the 1e-9 tolerance, and it does not
+  fix conic x conic: those still fail or take 1.5 to 2.6 s (or return
+  `CRootOf` points).
+- **Monkeypatch or subclass `spg.Ellipse`.** SymPy then answers as if the
+  ellipse were axis-aligned, silently: a 40-degree "tilted" ellipse
+  intersected with y = 0 returned (+-3, 0).
 - **Rotation as an exact SymPy angle (`pi * deg / 180`).** SymPy cannot
   rotate an `Ellipse` by anything other than a multiple of pi/2, and exact
   angles that do not simplify (37 degrees, for example) make intersection and
@@ -144,7 +170,8 @@ helpers that every consumer uses instead of re-deriving the math:
 `to_world(u, v) -> (x, y)`. Elliptical arc markers gain `rotation` (default
 0.0) and the same two helpers. A shared helper in `to_sympy.py` (for example
 `local_axis_ellipse(obj) -> spg.Ellipse` centered at the origin) gives
-consumers an axis-aligned SymPy ellipse to work with in the local frame.
+consumers an axis-aligned SymPy ellipse for simple local-frame uses (not for
+intersections or tangents, which go through the numeric kernel from stage 2).
 
 Because the marker is not an `spg.Ellipse`, any site that has not been taught
 about it falls through to that site's "unsupported type" branch instead of
@@ -217,12 +244,65 @@ no change. Only the comment needs updating.
 
 ## Tangent lines, intersections and the sweep filter
 
-- **`line_tangent`** (the `ir.LineTangent` case) calls
-  `_underlying_conic(target).tangent_lines(point)`. For a rotated ellipse:
-  move the point into the local frame (in floats), call `tangent_lines` on the
-  local axis-aligned SymPy ellipse, and rotate the lines back.
-  Measured: 0.04 s with a float angle, versus a timeout with an exact
-  37-degree angle.
+**One numeric kernel.** SymPy cannot carry a tilted ellipse, and routing the
+local frame through SymPy does not work for conic pairs either. With a float
+angle, circle x ellipse raised `ValueError: Imaginary coordinates are not
+permitted` (also at 37 degrees and with rational snapping), circle x ellipse
+with a float radius took 1.5 to 1.8 s, and float ellipse x ellipse took 1.2 to
+1.3 s. With an exact angle every operation timed out past 25 s. So every
+circle/ellipse pair, tilted or not, including float-radius axis-aligned pairs,
+goes through one numeric kernel (a new module next to `to_sympy.py`, numpy
+only, about 200 to 250 lines). Line x tilted ellipse and tangents from a point
+use the kernel's closed forms, so there is one code path. SymPy stays only for
+the exact rotation-0 path (unchanged, including its exact-radius results) and
+for the Float lift of results.
+
+- **Ellipse x ellipse (and circle x ellipse, either operand order):** the
+  half-angle quartic. In outline:
+  1. Test for coincidence on normalized implicit coefficients and raise a
+     typed error (two coincident ellipses have infinitely many common
+     points).
+  2. Substitute t = tan(theta/2) into the second conic's implicit equation
+     along the first ellipse's parametric curve. This gives a quartic in t.
+     Build it with `np.convolve`, not `np.polymul`: `polymul` strips leading
+     zeros, which broke a circle operand. Solve with `np.roots`.
+  3. Take every root with `|imag| <= 1e-2 * (1 + |re|)` as a candidate, plus
+     theta = pi always (the substitution cannot reach it).
+  4. Newton-polish each candidate on f(theta), the second conic's implicit
+     value along the curve. Classify by the measured gap, not by the
+     imaginary part: the gap is f / |grad f|, a length on the second conic.
+     A candidate whose gap is at most 1e-12 times the scale is a crossing.
+     Otherwise polish to the extremum of f and call it a touch point if its
+     gap is at most 1e-9 times the scale. `np.roots`' imaginary parts near a
+     double root are only accurate to about 1e-8, and trusting them was wrong
+     on 102 of 150 near-tangent cases.
+  5. Merge clusters of real roots within 0.05 rad whose in-between extremum
+     has a gap within tolerance, repeat until stable, then dedupe by the
+     existing merge tolerance.
+- **Sampling was prototyped and rejected.** Sampling the parametric curve
+  against the other conic's implicit equation passed 300 random tilted pairs
+  (median 0.4 ms) but is wrong near tangency, when two crossings fall inside
+  one sample step: 136 of 150 wrong at an offset of -1e-7, 76 of 150 at
+  +5e-10, and 105 to 127 of 137 wrong for internal near-tangency. It also
+  misses an osculating contact (a circle of radius b^2/a at a tip) and returns
+  about 200 spurious points for two coincident ellipses. It may stay in the
+  tests as a diagnostic, never in production. The quartic kernel had 0 wrong
+  in every battery: 25 designed cases, 1350 external near-tangent, 959
+  internal near-tangent, 300 tilted pairs, 600 circle x tilted ellipse in both
+  operand orders and 300 axis-aligned float pairs, with a median of 0.13 ms.
+  The stage-2 ticket reuses those batteries as its test cases.
+- **Line, segment or ray x ellipse** (`PointIntersection`): transform the
+  line into the local frame, solve the quadratic in closed form, and map the
+  points back. The kernel feeds the existing tangency snap
+  (`_tangent_candidates` machinery) local-frame endpoints, so an exactly
+  tangent line, which has a slightly negative discriminant, still snaps to
+  one point and a miss still raises its named reason.
+- **`line_tangent`** (the `ir.LineTangent` case): tangents from a point are
+  the closed-form angle solve of `(u/a) cos t + (v/b) sin t = 1` in the local
+  frame (residuals around 1e-15), with the lines mapped back. A point inside
+  keeps the existing "no tangent lines" error. A point on the curve returns
+  the touch point twice, so it is deduplicated to one tangent (or raises a
+  typed error; the ticket picks one and pins it).
 - **`_tangent_touch_point`** (used by line_tangent's picks and by the
   `Tangent` check) finds the extreme point along the line normal for an
   axis-aligned ellipse. Rotate the line coefficients into the local frame
@@ -233,33 +313,44 @@ no change. Only the comment needs updating.
   `_conic_frame` helper returns `(cx, cy, hr, vr)` and has to return or expose
   the rotation as well. `_conic_frame` is shared with the radius checks, which
   are rotation-invariant (see below).
-- **Line, segment or ray x rotated ellipse** (`PointIntersection`): transform
-  the line into the local frame, intersect it with the local SymPy ellipse,
-  and map the points back. `_tangent_candidates` already solves line x
-  ellipse in the ellipse's unit-circle frame from `ha, va` and the line
-  endpoints. Feeding it local-frame endpoints is the whole change there.
-- **Circle x rotated ellipse:** a circle stays a circle in the local frame,
-  so rotate its center (as a float) and use SymPy's ellipse x circle (1.45 s
-  measured with a float angle; it timed out with an exact rotation of the
-  center).
-- **Ellipse x ellipse where either one is rotated:** neither can be expressed
-  as an `spg.Ellipse` in the other's frame. Use a numeric solver: put one
-  ellipse's half-angle parametrization into the other's implicit quadratic,
-  which gives a quartic. Solve it with `mpmath.polyroots` (which ships with
-  SymPy, so no new dependency), check t = pi separately because the half-angle
-  substitution misses it, polish with Newton if needed, and lift the points.
-  Measured: 0.02 s, the same root count as `sp.solve` (3.5 s).
-  `_count_ellipse_crossings` (the "could not solve" diagnostic) samples an
-  axis-aligned parametrization against an axis-aligned implicit form, and both
-  need the transforms. This solver could also replace SymPy for float-radius
-  axis-aligned pairs, which is the existing documented limit, but that would
-  be a separate decision.
+- **Retire `_count_ellipse_crossings`.** It samples an axis-aligned
+  parametrization against an axis-aligned implicit form and backs the "could
+  not solve ... use exact radii" `IntersectionError`, which
+  `tests/test_intersection_tangency.py` pins. Once the kernel handles float
+  axis-aligned pairs, the helper and that error are unnecessary. They are
+  removed in the same ticket as the kernel, and the pinned test is changed
+  deliberately (it now expects the intersection points), so there are not two
+  solvers with two tolerance policies.
 - **Sweep filter:** `_point_in_arc_sweep` comes along automatically once
   `arc_param_frame` is local. The filter itself (`within = [...]` in
-  `PointIntersection`) does not change.
+  `PointIntersection`) does not change, and it runs after the tangency snap
+  (see Tolerance policy).
 - **`_on_object`** (pick_on_object on a non-arc object) needs a
-  `RotatedEllipse` branch: the local implicit equation within
-  `PICK_CONTAINS_TOL`.
+  `RotatedEllipse` branch with a length-based test (see Tolerance policy).
+
+### Tolerance policy
+
+Written up front, because three solvers would otherwise carry three policies.
+
+- The gap is a length: `f / |grad f|` of the implicit form, not the
+  dimensionless implicit value. The existing `|implicit - 1| < tol` check is
+  wrong by about 1e5 for a 1000 x 0.01 ellipse, so the tilted marker's
+  `_on_object` and `_contains` branches use the length-based gap, and the
+  dimensionless check is not copied.
+- Reuse the existing constants: `INTERSECT_TANGENT_TOL` (1e-9),
+  `INTERSECT_MERGE_TOL` (1e-7) and `PICK_CONTAINS_TOL` (1e-7), with the same
+  `scale` definition the circle/line code uses. No new tolerance constants.
+- Snap before the sweep filter: a near-tangent pair is reduced to its touch
+  point first, and only then is the arc's sweep applied, so a touch point at
+  an arc's end is not lost to a filter that sees two almost-equal points.
+- Kernel results are lifted with the existing `_lift` (`sp.Float`, 17
+  digits), which `PickClosestTo`, auto-pick and the containment check
+  already handle.
+- The frame object is the only place rotation math lives. The
+  `atan2((y - cy) / vr, (x - cx) / hr)` computation and its inverses are
+  currently recomputed in `_invert_param`, `_point_in_arc_sweep`,
+  `_eval_param`, `_reflex_for_bulge_toward` and
+  `render_util.elliptical_arc_params`; all of them move onto the frame.
 
 ## Congruent arcs under rotation
 
@@ -500,8 +591,8 @@ algorithm.
 | 3 | Compile, arcs | `to_sympy._compile_one` elliptical arc/sector cases; `EllipticalArc`/`EllipticalSector` markers; `_reflex_for_bulge_toward` | `rotation` slot; local parametric angles in bulge test | S | 3 |
 | 4 | Parametric placement and inverse | `to_sympy._eval_param`, `_invert_param` (inverse used by pydsl `Builder._pin_point_on`), `_sample_param`, `arc_param_frame`, `_underlying_conic` | local frame in, `to_world` out; marker branch in sampler | S | 1 (arcs 3) |
 | 5 | Point-on and pick | `to_sympy.point_on_arc`, `_on_object`, `_apply_pick` (`PickOnObject`); `checks._contains` | local implicit equation | S | 1 (arcs 3) |
-| 6 | Tangent lines | `to_sympy` `LineTangent` case (`spg.Ellipse.tangent_lines`), `_tangent_touch_point`; `checks` `Tangent` case via `_conic_frame` | local-frame point/line, rotate back | M | 2 |
-| 7 | Intersections | `to_sympy` `PointIntersection` case, `_underlying_conic`, `_tangent_candidates` (unit-circle frame from `ha, va`), `_count_ellipse_crossings` | local transform for line/circle; new numeric quartic for ellipse x ellipse | L | 2 |
+| 6 | Tangent lines | `to_sympy` `LineTangent` case (`spg.Ellipse.tangent_lines`), `_tangent_touch_point`; `checks` `Tangent` case via `_conic_frame` | kernel closed form for tangents from a point in the local frame, rotate back; local-frame normal in the check | M | 2 |
+| 7 | Intersections | `to_sympy` `PointIntersection` case, `_underlying_conic`, `_tangent_candidates` (unit-circle frame from `ha, va`), `_count_ellipse_crossings` | new numeric kernel (half-angle quartic for every circle/ellipse pair, closed forms for line x ellipse) with the tolerance policy; local-frame endpoints into the tangency snap; `_count_ellipse_crossings` and its "use exact radii" error retired, so the float axis-aligned ellipse x ellipse limit goes away. Size: about 200-250 lines of kernel, 150-250 lines of tests (the reviewer's batteries), 100-150 lines in the compiler | L | 2 |
 | 8 | Sweep filter | `to_sympy._point_in_arc_sweep` (via `arc_param_frame`) | none beyond row 4 | S | 3 |
 | 9 | Radius checks | `checks._conic_frame`, `_circular_radius`, `EqualRadius`, `RadiusEquals` | accept marker; values rotation-invariant | S | 1 |
 | 10 | Congruent arcs | `checks._ellipse_arcs_congruent`, `_check_congruent_arcs` | no logic change (rigid-motion argument); tests only | S | 3 |
@@ -544,8 +635,11 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
    stage-1 aspect error and registers tilted ellipses as nudging obstacles.
    It is independent of stage 2.
 2. **Stage 2, tangents and intersections on a tilted full ellipse (draft
-   ticket 07, blocked by 06).** Rows 6 and 7. This lifts the stage-1 typed
-   errors.
+   ticket 07, blocked by 06).** Rows 6 and 7. This builds the numeric kernel
+   and the tolerance policy, routes every circle/ellipse intersection and
+   every ellipse tangent through it, retires `_count_ellipse_crossings` (and
+   with it the float-radius axis-aligned ellipse x ellipse limit), and lifts
+   the stage-1 typed errors.
 3. **Stage 3, tilted elliptical arcs and sectors.** Rows 1 (arc kinds), 3, 4,
    5, 8, 10, 13 (`_arc_extent`), 14, 16, 17 and 18 for arcs, plus pydsl's
    rotation copy in `_arc_or_sector`. The gate's rejection rule extends to the
@@ -621,13 +715,23 @@ timed separately with a 30 s alarm.
 | local-frame circle x ellipse, circle center rotated exactly by pi/6 / by float 0.5 | timeout > 30 s / 1.45 s |
 | `sp.solve` of implicit tilted (pi/6) ellipse x circle | 0.1 s, 4 solutions |
 | `sp.solve` of implicit tilted (float 0.5) ellipse x axis-aligned ellipse | 3.5 s, 2 solutions |
-| half-angle quartic + `mpmath.polyroots`, same pair | 0.02 s, 2 points |
+| half-angle quartic, same pair (the original measurement used `mpmath.polyroots`) | 0.02 s, 2 points |
+| local-frame circle x ellipse, float 37 degrees (also rational snapping to denominators 100, 1e3, 1e6) | `ValueError: Imaginary coordinates are not permitted` |
+| local-frame circle (r = 3/2) x ellipse, rational snapping | 1.46 to 1.76 s |
+| axis-aligned ellipse x ellipse with float radii, SymPy | 1.23 s |
+| `Ellipse.rotate` and constructor in SymPy 1.14.0 (latest) | no tilt support; a naive subclass with a 40-degree tilt intersected with y = 0 returned (+-3, 0) |
+| rational tan-half-angle snapping: `sp.solve` of the tilted implicit pair | 2.5 s; `resultant` + `Poly.real_roots` 5 ms but returns `CRootOf` points |
+| sampling kernel vs quartic kernel, 300 random tilted pairs | both 0 mismatches; median 0.37 ms vs 0.13 ms |
+| sampling kernel, near-tangent circles (external, offset -1e-7) | 136 of 150 wrong; quartic kernel 0 wrong |
+| tangent lines and line x ellipse, closed forms in the local frame | residuals about 1e-15 |
 | TikZ `rotate around` + unrotated local start + parametric `arc[...]`, lualatex 2024 | endpoints match the world computation to 1e-5 |
 | TikZ inline `ellipse[..., rotate=30]` vs braced `{[rotate around=...] ...}` | identical geometry |
 | `screen_ellipse` closed form, 4 cases incl. sx=40, sy=10 | implicit residual <= 1.3e-15 |
 
 Conclusion: carry the rotation as a float. Exact symbolic angles are fast
 only when they simplify to surds (pi/6), and they are unusable otherwise.
+Even with a float angle, SymPy fails or is slow for conic pairs, so those go
+through the numeric kernel.
 
 ## Open questions for the human
 
@@ -644,3 +748,6 @@ only when they simplify to surds (pi/6), and they are unusable otherwise.
    `RotatedEllipse`?
 5. Order of stages 3 and 4: arcs first (recommended), or authoring for full
    ellipses first?
+6. Kernel root finder: `numpy.roots` (what the 0-wrong batteries used) or
+   `mpmath.polyroots`? The mpmath variant was not measured against those
+   batteries. Recommended: keep numpy unless the stage-2 tests show a miss.
