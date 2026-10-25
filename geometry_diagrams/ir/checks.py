@@ -7,7 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .curve_measures import curve_length
+from .curve_measures import CurveMeasureError, curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
@@ -15,7 +15,7 @@ from .to_sympy import (
     EllipticalSector,
     Sector,
     SymTable,
-    _arc_param_frame,
+    arc_param_frame,
     _point_in_arc_sweep,
     _tangent_touch_point,
     _underlying_conic,
@@ -525,7 +525,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
     never congruent, and an elliptical arc whose two radii are equal is just a
     circular arc.
 
-    Sweep math comes from `to_sympy._arc_param_frame()` (parametric angle,
+    Sweep math comes from `to_sympy.arc_param_frame()` (parametric angle,
     which is the polar angle for a circular arc) — not from `render_util`,
     which owns arc math for *rendering* only.
     """
@@ -534,7 +534,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
         obj = sym[arc_id]
         if not isinstance(obj, _ARC_LIKE):
             return False, f"Object {arc_id!r} is not an arc or sector (got {type(obj).__name__})"
-        _cx, _cy, hr, vr, start, end = _arc_param_frame(obj)
+        _cx, _cy, hr, vr, start, end = arc_param_frame(obj)
         frames.append((hr, vr, start, end))
 
     def circular(f: tuple[float, float, float, float]) -> bool:
@@ -567,21 +567,31 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
 def _length_of(obj: Any, obj_id: str) -> float:
     """Length of a segment-like object or of an arc/sector's curved edge.
 
-    A sector counts its curved edge only. A full circle or ellipse has no
-    single "length" for these checks: UnsupportedOperand pointing at the
-    radius checks."""
+    A sector counts its curved edge only. A full circle has no single
+    "length" for these checks: UnsupportedOperand pointing at the radius
+    checks (an ellipse at equal_radius, which compares both radii). A
+    degenerate arc or an object of another type is also an UnsupportedOperand
+    naming the id."""
     if isinstance(obj, spg.Segment):
         return float(obj.length.evalf())
     if isinstance(obj, _LINEAR_TYPES):
         return float(obj.p1.distance(obj.p2).evalf())
     if isinstance(obj, _ARC_LIKE):
-        return curve_length(obj)
-    if isinstance(obj, spg.Ellipse):  # Circle subclasses Ellipse
+        try:
+            return curve_length(obj)
+        except CurveMeasureError as exc:
+            raise UnsupportedOperand(f"length: {obj_id!r}: {exc}") from exc
+    if isinstance(obj, spg.Circle):
         raise UnsupportedOperand(
-            f"length: {obj_id!r} is a full {type(obj).__name__.lower()}, which has no "
-            f"single length here; use a radius check (radius_equals / equal_radius)"
+            f"length: {obj_id!r} is a full circle, which has no single length here; "
+            f"use a radius check (radius_equals / equal_radius)"
         )
-    raise TypeError(f"Cannot compute length of {type(obj).__name__}")
+    if isinstance(obj, spg.Ellipse):
+        raise UnsupportedOperand(
+            f"length: {obj_id!r} is a full ellipse, which has no single length here "
+            f"(its two radii differ); compare it with equal_radius (it compares both radii)"
+        )
+    raise UnsupportedOperand(f"length: {obj_id!r} is a {type(obj).__name__}, which has no length")
 
 
 # ---------------------------------------------------------------------------

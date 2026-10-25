@@ -105,8 +105,8 @@ optional `tol: float`. Only add checks that are definitionally required.
 | `perpendicular` | `l1, l2` | Two linear objects are perpendicular |
 | `right_angle` | `angle: {a,o,b}` | Angle a-o-b is 90° |
 | `angle_equal` | `a1, a2: {a,o,b}` | Two angles are equal |
-| `equal_length` | `segs: [SegId,...]` | All listed segments have equal length |
-| `ratio_equal` | `s1,s2,s3,s4` | |s1|/|s2| = |s3|/|s4| |
+| `equal_length` | `segs: [SegId,...]` | All listed segments have equal length. An arc or sector id is accepted too (it measures its curved edge); a full circle or ellipse is not |
+| `ratio_equal` | `s1,s2,s3,s4` | |s1|/|s2| = |s3|/|s4| (each may also be an arc or sector, measured by its curved edge) |
 | `similar_triangles` | `t1, t2` | Two triangles are similar |
 | `tangent` | `line, circle` | Line is tangent to circle |
 | `opposite_side` | `p, q, line_a, line_b` | Points `p` and `q` are on opposite sides of the line through `line_a`→`line_b` |

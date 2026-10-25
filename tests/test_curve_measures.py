@@ -25,12 +25,12 @@ def _on_ellipse(cx, cy, a, b, t):
 
 
 def _ref_length(a, b, t0, t1):
-    mpmath.mp.dps = 30
-    f = lambda t: mpmath.sqrt((a * mpmath.sin(t)) ** 2 + (b * mpmath.cos(t)) ** 2)
-    # split at quarter turns so quadrature stays accurate over long sweeps
-    n = max(1, int(math.ceil((t1 - t0) / (math.pi / 2))))
-    pts = [t0 + (t1 - t0) * i / n for i in range(n + 1)]
-    return float(mpmath.quad(f, pts))
+    with mpmath.workdps(30):
+        f = lambda t: mpmath.sqrt((a * mpmath.sin(t)) ** 2 + (b * mpmath.cos(t)) ** 2)
+        # split at quarter turns so quadrature stays accurate over long sweeps
+        n = max(1, int(math.ceil((t1 - t0) / (math.pi / 2))))
+        pts = [t0 + (t1 - t0) * i / n for i in range(n + 1)]
+        return float(mpmath.quad(f, pts))
 
 
 def _close(actual, expected, rel=1e-9):

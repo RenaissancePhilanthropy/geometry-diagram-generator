@@ -1009,19 +1009,32 @@ def test_ratio_equal_with_arcs():
 def test_length_checks_reject_full_circle_and_ellipse_cleanly():
     from geometry_diagrams.ir.ir import DistanceEquals, EqualLength, RatioEqual
     cases = [
-        (EqualLength(segs=["a1", "circ"]), "circ"),
-        (DistanceEquals(seg="ell", expected=1.0), "ell"),
-        (RatioEqual(s1="a1", s2="a1", s3="a1", s4="circ"), "circ"),
+        (EqualLength(segs=["a1", "circ"]), "circ", "radius_equals / equal_radius"),
+        (DistanceEquals(seg="ell", expected=1.0), "ell", "equal_radius (it compares both radii)"),
+        (RatioEqual(s1="a1", s2="a1", s3="a1", s4="circ"), "circ", "radius_equals / equal_radius"),
     ]
-    for check, oid in cases:
+    for check, oid, redirect in cases:
         res = _len_check(check)
         assert not res.passed
-        assert oid in res.message
-        assert "radius" in res.message
+        assert repr(oid) in res.message
+        assert redirect in res.message
         assert not res.message.startswith("Error in")
+
+
+def test_length_check_on_zero_radius_arc_is_a_clean_failure():
+    from geometry_diagrams.ir.ir import EqualLength
+    from geometry_diagrams.ir.to_sympy import Arc
+    sym = _curve_sym()
+    sym["zero"] = Arc(sym["a1"].center, sym["a1"].center, spg.Point(1, 0), sp.Integer(0), False)
+    res = _check_one(EqualLength(segs=["zero", "a1"]), sym, DEFAULT_TOL)
+    assert not res.passed
+    assert "'zero'" in res.message and "degenerate radius" in res.message
+    assert not res.message.startswith("Error in")
 
 
 def test_length_check_on_unsupported_type_still_fails_cleanly():
     from geometry_diagrams.ir.ir import DistanceEquals
     res = _len_check(DistanceEquals(seg="O", expected=1.0))
     assert not res.passed
+    assert "'O'" in res.message and "Point2D" in res.message
+    assert not res.message.startswith("Error in")

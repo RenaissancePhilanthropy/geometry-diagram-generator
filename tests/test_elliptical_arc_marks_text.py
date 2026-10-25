@@ -306,6 +306,7 @@ def test_svg_a_non_arc_still_warns(op):
     root, _, warnings = _render_svg(d)
     assert any("'cal' is not an arc/sector" in w for w in warnings)
     assert _svg_ticks(root) == []
+    assert not [el for el in root.iter() if el.get("data-role") == "label-along-arc"]
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +361,9 @@ def test_tikz_a_non_arc_still_warns(op):
     d = _diagram(EllipticalArcCenterStartEnd, 4, 3, 100, 200, False, op, calibrate=False)
     tikz, warnings = _render_tikz(d)
     assert any("'cal' is not an arc/sector" in w for w in warnings)
+    # nothing is emitted for the non-arc: no tick strokes, no per-glyph nodes
+    assert _DRAW_RE.findall(tikz) == []
+    assert _NODE_RE.findall(tikz) == []
 
 
 # ---------------------------------------------------------------------------

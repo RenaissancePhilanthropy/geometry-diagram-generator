@@ -13,9 +13,9 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
-from .curve_measures import curve_length
+from .curve_measures import CurveMeasureError, curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, _arc_param_frame
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, arc_param_frame
 
 
 def _get(sym: SymTable, obj_id: str) -> Any:
@@ -65,6 +65,16 @@ def _radii(obj: Any) -> tuple[float, float]:
         r = float(obj.radius.evalf())
         return r, r
     return float(obj.hradius.evalf()), float(obj.vradius.evalf())
+
+
+def _sector_frame(obj_id: str, obj: Any) -> tuple[float, float, float, float, float, float]:
+    """``arc_param_frame`` of a sector, with a zero-radius sector reported as a
+    degenerate radius (like ``curve_length`` does) instead of a bare
+    ZeroDivisionError."""
+    try:
+        return arc_param_frame(obj)
+    except ZeroDivisionError:
+        raise CurveMeasureError(f"{_kind(obj_id, obj)} has a degenerate radius") from None
 
 
 def query_length(sym: SymTable, segment_id: str) -> dict:
@@ -117,7 +127,7 @@ def query_area(sym: SymTable, obj_id: str) -> dict:
         hr, vr = _radii(obj)
         return {"area": math.pi * hr * vr}
     if isinstance(obj, _SECTORS):
-        _, _, hr, vr, start, end = _arc_param_frame(obj)
+        _, _, hr, vr, start, end = _sector_frame(obj_id, obj)
         # the region swept from the centre is hr*vr/2 per radian of parametric angle
         return {"area": hr * vr / 2 * (end - start)}
     if isinstance(obj, _ARCS):
@@ -135,7 +145,7 @@ def query_perimeter(sym: SymTable, obj_id: str) -> dict:
     if isinstance(obj, spg.Ellipse):
         return {"perimeter": curve_length(obj)}
     if isinstance(obj, _SECTORS):
-        _, _, hr, vr, start, end = _arc_param_frame(obj)
+        _, _, hr, vr, start, end = _sector_frame(obj_id, obj)
         # straight edges run to the curve's endpoints (for an ellipse, not the axes)
         edges = sum(math.hypot(hr * math.cos(t), vr * math.sin(t)) for t in (start, end))
         return {"perimeter": edges + curve_length(obj)}

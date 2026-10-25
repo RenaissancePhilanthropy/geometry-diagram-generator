@@ -25,7 +25,7 @@ from geometry_diagrams.ir.to_sympy import (
     EllipticalArc,
     EllipticalSector,
     Sector,
-    _arc_param_frame,
+    arc_param_frame,
 )
 
 _DPS = 30
@@ -44,12 +44,14 @@ def curve_length(obj: Any) -> float:
     """Curved-edge length of an arc/sector, or the circumference/perimeter of a
     full circle/ellipse.
 
-    Arcs follow the same sweep as the rest of the code: counter-clockwise from
-    start to end, flipped by ``reflex``, in parametric angle for elliptical arcs.
+    Arcs follow the same sweep as the rest of the code: the minor arc between
+    the two endpoints, or the major arc when ``reflex`` is set, whichever order
+    start and end are given in (the endpoints are swapped so the traversal is
+    counter-clockwise); measured in parametric angle for elliptical arcs.
     """
     if isinstance(obj, (Arc, Sector, EllipticalArc, EllipticalSector)):
         _require_positive(obj, *_radii(obj))
-        _, _, hr, vr, s, e = _arc_param_frame(obj)
+        _, _, hr, vr, s, e = arc_param_frame(obj)
         return _ellipse_arc_length(hr, vr, s, e)
     if isinstance(obj, spg.Ellipse):  # Circle subclasses Ellipse
         hr, vr = _radii(obj)

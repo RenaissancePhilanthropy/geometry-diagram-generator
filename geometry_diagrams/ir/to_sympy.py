@@ -1650,7 +1650,7 @@ def _sample_param(obj: Any, rng: Random) -> float:
 _ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
 
 
-def _arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]:
+def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]:
     """(cx, cy, hr, vr, start_rad, end_rad) of an arc-like object's CCW sweep,
     in parametric angles (``end_rad > start_rad``).
 
@@ -1711,7 +1711,7 @@ def _point_in_arc_sweep(point: spg.Point, obj: Any) -> bool:
     """Is `point` (assumed on the underlying conic) within the arc-like
     object's sweep? Measured in parametric angle, so it is right for elliptical
     arcs and reduces to the polar angle for circular ones."""
-    cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+    cx, cy, hr, vr, s, e = arc_param_frame(obj)
     theta = math.atan2((float(point.y.evalf()) - cy) / vr, (float(point.x.evalf()) - cx) / hr)
     return angle_within_sweep(math.degrees(theta) % 360.0, math.degrees(s), math.degrees(e))
 
@@ -1721,7 +1721,7 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     if isinstance(obj, _ARC_LIKE):
         # t is a fraction of the sweep; outside [0, 1] it runs on past the end
         # points along the full circle/ellipse, as a segment's t > 1 does.
-        cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+        cx, cy, hr, vr, s, e = arc_param_frame(obj)
         theta = s + t * (e - s)
         return _lift(cx + hr * math.cos(theta), cy + vr * math.sin(theta))
     if isinstance(obj, spg.Segment):
@@ -1746,7 +1746,7 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
     PointOnIntent result to a dependency-pure PointOnParam (see
     Builder._pin_point_on)."""
     if isinstance(obj, _ARC_LIKE):
-        cx, cy, hr, vr, s, e = _arc_param_frame(obj)
+        cx, cy, hr, vr, s, e = arc_param_frame(obj)
         theta = math.atan2((y - cy) / vr, (x - cx) / hr)
         span = e - s
         offset = (theta - s) % (2 * math.pi)

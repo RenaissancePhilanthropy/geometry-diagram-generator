@@ -30,10 +30,10 @@ def _ask(sym, query_type, obj_id, key="object"):
 
 
 def _quad_length(a, b, t0, t1):
-    mpmath.mp.dps = 30
-    f = lambda t: mpmath.sqrt((a * mpmath.sin(t)) ** 2 + (b * mpmath.cos(t)) ** 2)
-    n = max(1, int(math.ceil((t1 - t0) / (math.pi / 2))))
-    return float(mpmath.quad(f, [t0 + (t1 - t0) * i / n for i in range(n + 1)]))
+    with mpmath.workdps(30):
+        f = lambda t: mpmath.sqrt((a * mpmath.sin(t)) ** 2 + (b * mpmath.cos(t)) ** 2)
+        n = max(1, int(math.ceil((t1 - t0) / (math.pi / 2))))
+        return float(mpmath.quad(f, [t0 + (t1 - t0) * i / n for i in range(n + 1)]))
 
 
 def _pt(cx, cy, a, b, t):
@@ -115,7 +115,12 @@ class TestLength:
         assert "perimeter" in err and obj in err
 
     def test_polygon_rejected(self, sym):
-        assert "error" in _ask(sym, "length", "tri", "segment")
+        err = _ask(sym, "length", "tri", "segment")["error"]
+        assert "'tri' is not a Segment, arc or sector" in err and "got Triangle" in err
+
+    def test_object_key_accepted(self, sym):
+        assert _ask(sym, "length", "arc", "object")["length"] == pytest.approx(math.pi)
+        assert _ask(sym, "length", "arc", "object") == query_length(sym, "arc")
 
 
 # --- radius ------------------------------------------------------------------
@@ -137,7 +142,8 @@ class TestRadius:
         assert query_radius(sym, f"{kind}_eccentric_tall") == {"hradius": 1.0, "vradius": 10.0}
 
     def test_segment_rejected(self, sym):
-        assert "error" in _ask(sym, "radius", "seg", "circle")
+        err = _ask(sym, "radius", "seg", "circle")["error"]
+        assert "'seg' is not a Circle, Ellipse, arc or sector" in err
 
     def test_object_key_accepted(self, sym):
         assert _ask(sym, "radius", "circ", "object")["radius"] == pytest.approx(2.0)
@@ -176,7 +182,8 @@ class TestArea:
         assert obj in err
 
     def test_segment_rejected(self, sym):
-        assert "error" in _ask(sym, "area", "seg")
+        err = _ask(sym, "area", "seg")["error"]
+        assert "'seg' is not a Polygon, circle, ellipse or sector" in err
 
 
 # --- perimeter ---------------------------------------------------------------
@@ -214,7 +221,26 @@ class TestPerimeter:
         assert "use length" in err and obj in err
 
     def test_segment_rejected(self, sym):
-        assert "error" in _ask(sym, "perimeter", "seg")
+        err = _ask(sym, "perimeter", "seg")["error"]
+        assert "'seg' is not a Polygon, circle, ellipse or sector" in err
+
+
+# --- degenerate (zero-radius) curves -------------------------------------------
+
+
+class TestDegenerateSector:
+    """A zero-radius sector gets a clean, named error from every curve query
+    (never a bare ZeroDivisionError message)."""
+
+    @pytest.fixture
+    def zero(self):
+        return {"z": Sector(O, O, spg.Point(1, 0), sympy.Integer(0), False)}
+
+    @pytest.mark.parametrize("qt", ["length", "area", "perimeter"])
+    def test_clean_degenerate_message(self, zero, qt):
+        err = _ask(zero, qt, "z")["error"]
+        assert "degenerate radius" in err
+        assert "division" not in err
 
 
 # --- the description models see ------------------------------------------------

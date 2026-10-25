@@ -722,6 +722,7 @@ class TestLabelAlongArc:
         assert _arc_text_wrappers(root) == []
         assert len(_arc_text_fallback_labels(root)) == 1
 
+
 class TestDebugShowImplicit:
     """A segment auto-anchoring a tick mark on an already-drawn triangle side
     is never given its own Draw op (see recipe/lower.py's _ensure_segment) --
