@@ -387,6 +387,35 @@ Extend a segment beyond one of its endpoints.
 | `beyond`  | string        | Which endpoint to extend beyond      |
 | `distance`| number or expr| Distance beyond the endpoint         |
 
+### Tilted ellipses (`rotation_deg`)
+
+The IR ellipse kinds `ellipse_center_axes` and `ellipse_center_eccentricity`
+take an optional `rotation_deg` (number or expression string, default 0):
+degrees counter-clockwise from +x to the `hradius` axis, about the center.
+`hradius` is the semi-axis along that direction and `vradius` the one
+perpendicular to it; for the eccentricity form the figure given by
+`orientation` is turned as a whole. `point_on` with a parameter t measures the
+parametric angle in the ellipse's own frame, from the `hradius` axis: the
+point is `center + R(rotation) (hradius cos t, vradius sin t)`, so t = 0 is
+the end of the tilted `hradius` axis. A rotation that is exactly 0 after
+`% 360` compiles to the usual axis-aligned ellipse (byte-identical output);
+any other value compiles to a tilted ellipse carrying a float rotation.
+`ellipse_bbox`, `ellipse_foci` (tilted foci are still an error) and the
+elliptical arc/sector kinds stay axis-aligned.
+
+Tilted ellipses belong to the `tilted_ellipses` feature group (off by
+default): with it off, a generated diagram whose ellipse has a `rotation_deg`
+that is not a literal 0 (an expression string counts as tilted unless it is
+`"0"`) is rejected at the generation surfaces, naming the definition and the
+group. Stored diagrams always compile and render. Supported on a tilted
+ellipse: draw and fill (also with holes) in both renderers, canvas bounds,
+`point_on` (param and random), `pick_on_object`, `contains`, the radius
+checks and the length/radius/area/perimeter queries (all as for the untilted
+ellipse). Not yet supported, each an error naming the ellipse: `line_tangent`,
+`point_intersection`, the `tangent` check, and SVG drawing on a canvas with
+an `aspect` other than 1. Labels are not yet nudged away from a tilted
+outline.
+
 ### Solid Operations
 
 Solids belong to the `solids` feature group (off by default for generation;
