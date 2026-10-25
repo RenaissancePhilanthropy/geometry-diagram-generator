@@ -1400,6 +1400,7 @@ After execution, the system checks:
    - `point_on_line(P, A, B)`: P lies on line AB
    - `point_on_circle(P, center, radius_point)`: P is on the circle
    - `equal_lengths([[A,B], [C,D]])`: segments have equal length
+   - `equal_length` / `distance_equals` / `ratio_equal` (IR check kinds) measure segments and also circular and elliptical arcs and sectors, mixed freely. An arc's length is its curved length (counter-clockwise from start to end, flipped by `reflex`); a sector's length is its curved edge only, not its two straight radii. A full circle or ellipse has no single length here: such an operand fails with a message naming its id and pointing at `radius_equals` / `equal_radius`. Tolerances are unchanged (absolute for `equal_length`, relative for `distance_equals`); elliptical lengths are computed numerically to about 1e-9, far inside the default tolerance.
    - `collinear(P, Q, R)`: points are collinear
    - `angle_bisector(D, A, B, C)`: AD bisects angle BAC
    - `perpendicular([A,B], [C,D])`: lines are perpendicular

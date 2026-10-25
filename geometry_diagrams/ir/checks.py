@@ -7,6 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
+from .curve_measures import curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
@@ -154,24 +155,24 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                         msg += " | " + "; ".join(hints)
 
             case ir.EqualLength(segs=segs):
-                lengths = [float(_seg_length(sym[s]).evalf()) for s in segs]
+                lengths = [_length_of(sym[s], s) for s in segs]
                 ok = all(abs(l - lengths[0]) < t for l in lengths[1:])
                 if ok:
                     msg = ""
                 else:
                     pairs = ", ".join(f"{s}={l:.4f}" for s, l in zip(segs, lengths))
-                    msg = f"Segment lengths not equal: {pairs}"
+                    msg = f"Lengths not equal: {pairs}"
 
             case ir.DistanceEquals(seg=seg, expected=expected):
-                length = float(_seg_length(sym[seg]).evalf())
+                length = _length_of(sym[seg], seg)
                 ok = abs(length - expected) < t * max(expected, 1.0)
-                msg = "" if ok else f"Segment {seg!r} length {length:.4f} ≠ expected {expected:.4f}"
+                msg = "" if ok else f"{seg!r} length {length:.4f} ≠ expected {expected:.4f}"
 
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
-                l1 = float(_seg_length(sym[s1]).evalf())
-                l2 = float(_seg_length(sym[s2]).evalf())
-                l3 = float(_seg_length(sym[s3]).evalf())
-                l4 = float(_seg_length(sym[s4]).evalf())
+                l1 = _length_of(sym[s1], s1)
+                l2 = _length_of(sym[s2], s2)
+                l3 = _length_of(sym[s3], s3)
+                l4 = _length_of(sym[s4], s4)
                 # Cross-multiply to avoid division: l1*l4 == l2*l3
                 lhs, rhs = l1 * l4, l2 * l3
                 ok = abs(lhs - rhs) < t * max(abs(lhs), abs(rhs), 1.0)
@@ -563,13 +564,23 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
     return False, msg
 
 
+def _length_of(obj: Any, obj_id: str) -> float:
+    """Length of a segment-like object or of an arc/sector's curved edge.
 
-def _seg_length(obj: Any):
-    """Return the length of a Segment-like object as a SymPy expression."""
+    A sector counts its curved edge only. A full circle or ellipse has no
+    single "length" for these checks: UnsupportedOperand pointing at the
+    radius checks."""
     if isinstance(obj, spg.Segment):
-        return obj.length
+        return float(obj.length.evalf())
     if isinstance(obj, _LINEAR_TYPES):
-        return obj.p1.distance(obj.p2)
+        return float(obj.p1.distance(obj.p2).evalf())
+    if isinstance(obj, _ARC_LIKE):
+        return curve_length(obj)
+    if isinstance(obj, spg.Ellipse):  # Circle subclasses Ellipse
+        raise UnsupportedOperand(
+            f"length: {obj_id!r} is a full {type(obj).__name__.lower()}, which has no "
+            f"single length here; use a radius check (radius_equals / equal_radius)"
+        )
     raise TypeError(f"Cannot compute length of {type(obj).__name__}")
 
 

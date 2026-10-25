@@ -882,3 +882,121 @@ def test_circles_tangent_on_an_ellipse_is_a_clean_unsupported_failure():
     result = _check_one(CirclesTangent(c1="c", c2="e"), sym, DEFAULT_TOL)
     assert not result.passed
     assert "Error in" not in result.message and "ellipse" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Length checks on arcs and sectors (equal_length / distance_equals / ratio_equal)
+# ---------------------------------------------------------------------------
+
+def _curve_sym():
+    """Quarter arcs/sectors (circular r=2, elliptical 4x2) plus segments and
+    full conics. Circular quarter length = pi; elliptical quarter ~ 4.8442."""
+    from geometry_diagrams.ir.ir import (
+        ArcCenterStartEnd, SectorCenterStartEnd, EllipticalArcCenterStartEnd,
+        EllipticalSectorCenterStartEnd, EllipseCenterAxes, CircleCenterRadius,
+        PointFixed, Segment as SegmentDef, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    return compile_defs(DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=2, y=0),
+        PointFixed(id="E", x=0, y=2),
+        PointFixed(id="O2", x=10, y=0),
+        PointFixed(id="S2", x=12, y=0),
+        PointFixed(id="E2", x=10, y=2),
+        PointFixed(id="ES", x=4, y=0),
+        PointFixed(id="EE", x=0, y=2),
+        PointFixed(id="P", x=0, y=5),
+        PointFixed(id="Q", x=math.pi, y=5),
+        PointFixed(id="R", x=0, y=7),
+        PointFixed(id="T", x=2 * math.pi, y=7),
+        ArcCenterStartEnd(id="a1", center="O", start="S", end="E"),
+        ArcCenterStartEnd(id="a2", center="O2", start="S2", end="E2"),
+        SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
+        EllipticalArcCenterStartEnd(id="ea", center="O", hradius=4, vradius=2, start="ES", end="EE"),
+        EllipticalSectorCenterStartEnd(id="esec", center="O", hradius=4, vradius=2, start="ES", end="EE"),
+        SegmentDef(id="seg_pi", a="P", b="Q"),
+        SegmentDef(id="seg_2pi", a="R", b="T"),
+        CircleCenterRadius(id="circ", center="O", radius=2),
+        EllipseCenterAxes(id="ell", center="O", hradius=4, vradius=2),
+    ]))
+
+
+_ELL_QUARTER = 4.844224110273856  # E(m=3/4)*4: quarter of the 4x2 ellipse
+
+
+def _len_check(check):
+    return _check_one(check, _curve_sym(), DEFAULT_TOL)
+
+
+def test_equal_length_two_circular_arcs_pass():
+    from geometry_diagrams.ir.ir import EqualLength
+    assert _len_check(EqualLength(segs=["a1", "a2"])).passed
+
+
+def test_equal_length_arc_and_sector_use_curved_edge_only():
+    from geometry_diagrams.ir.ir import EqualLength
+    assert _len_check(EqualLength(segs=["a1", "sec"])).passed
+
+
+def test_equal_length_segment_and_arc_mixed():
+    from geometry_diagrams.ir.ir import EqualLength
+    assert _len_check(EqualLength(segs=["seg_pi", "a1"])).passed
+    res = _len_check(EqualLength(segs=["seg_2pi", "a1"]))
+    assert not res.passed
+    assert "a1" in res.message
+
+
+def test_equal_length_elliptical_arc_and_sector_pass():
+    from geometry_diagrams.ir.ir import EqualLength
+    assert _len_check(EqualLength(segs=["ea", "esec"])).passed
+
+
+def test_equal_length_different_arcs_fail():
+    from geometry_diagrams.ir.ir import EqualLength
+    res = _len_check(EqualLength(segs=["a1", "ea"]))
+    assert not res.passed
+    assert "ea" in res.message
+
+
+def test_distance_equals_circular_arc_and_sector():
+    from geometry_diagrams.ir.ir import DistanceEquals
+    assert _len_check(DistanceEquals(seg="a1", expected=math.pi)).passed
+    assert _len_check(DistanceEquals(seg="sec", expected=math.pi)).passed
+    assert not _len_check(DistanceEquals(seg="a1", expected=2 * math.pi)).passed
+
+
+def test_distance_equals_elliptical_default_tolerance_boundary():
+    from geometry_diagrams.ir.ir import DistanceEquals
+    for kid in ("ea", "esec"):
+        assert _len_check(DistanceEquals(seg=kid, expected=_ELL_QUARTER)).passed
+        assert not _len_check(DistanceEquals(seg=kid, expected=_ELL_QUARTER * 1.01)).passed
+
+
+def test_ratio_equal_with_arcs():
+    from geometry_diagrams.ir.ir import RatioEqual
+    # arc(pi) : seg(2pi) == seg(pi) : seg(2pi)*... use pi/2pi == pi/2pi
+    assert _len_check(RatioEqual(s1="a1", s2="seg_2pi", s3="seg_pi", s4="seg_2pi")).passed
+    assert not _len_check(RatioEqual(s1="ea", s2="seg_2pi", s3="seg_pi", s4="seg_2pi")).passed
+
+
+def test_length_checks_reject_full_circle_and_ellipse_cleanly():
+    from geometry_diagrams.ir.ir import DistanceEquals, EqualLength, RatioEqual
+    cases = [
+        (EqualLength(segs=["a1", "circ"]), "circ"),
+        (DistanceEquals(seg="ell", expected=1.0), "ell"),
+        (RatioEqual(s1="a1", s2="a1", s3="a1", s4="circ"), "circ"),
+    ]
+    for check, oid in cases:
+        res = _len_check(check)
+        assert not res.passed
+        assert oid in res.message
+        assert "radius" in res.message
+        assert not res.message.startswith("Error in")
+
+
+def test_length_check_on_unsupported_type_still_fails_cleanly():
+    from geometry_diagrams.ir.ir import DistanceEquals
+    res = _len_check(DistanceEquals(seg="O", expected=1.0))
+    assert not res.passed

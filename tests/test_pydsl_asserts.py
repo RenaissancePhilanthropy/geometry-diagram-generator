@@ -10,7 +10,7 @@ import math
 import pytest
 
 from geometry_diagrams.pydsl.api import (
-    angle, arc, canvas, circle, intersection, label_text, line_through, point,
+    angle, arc, canvas, circle, ellipse, intersection, label_text, line_through, point,
     point_on, polygon, ray, rotate_point, sector, segment, tangent_circle,
     tangent_line, triangle,
 )
@@ -846,3 +846,37 @@ assert_labels_in_canvas()
     result = run_script(script, timeout_seconds=10.0)
     assert result.error is None, result.error
     assert result.diagram_ir is not None
+
+
+# ---------------------------------------------------------------------------
+# length assertions accept arcs and sectors
+# ---------------------------------------------------------------------------
+
+def test_assert_length_assertions_on_arcs_and_sectors():
+    with new_builder_context():
+        c = circle(point(0, 0), 2)
+        a = arc(c, point(2, 0), point(0, 2))
+        sec = sector(c, point(2, 0), point(0, 2))
+        seg = segment(point(5, 0), point(5 + math.pi, 0))
+        assert_equal_length(a, sec, seg)
+        assert_distance(a, math.pi)
+        assert_distance(sec, math.pi)
+        assert_ratio_equal(a, seg, seg, a)
+        with pytest.raises(GeometricAssertionError):
+            assert_distance(a, 2 * math.pi)
+
+
+def test_assert_equal_length_on_elliptical_arc():
+    with new_builder_context():
+        e = ellipse(point(0, 0), 4, 2)
+        a = arc(e, point(4, 0), point(0, 2))
+        assert_distance(a, 4.844224110273856)
+        with pytest.raises(GeometricAssertionError):
+            assert_distance(a, 4.844224110273856 * 1.01)
+
+
+def test_assert_distance_on_full_circle_fails_naming_radius():
+    with new_builder_context():
+        c = circle(point(0, 0), 2)
+        with pytest.raises(GeometricAssertionError, match="radius"):
+            assert_distance(c, 12.0)

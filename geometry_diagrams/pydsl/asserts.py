@@ -205,7 +205,10 @@ def assert_angle_equal(ref1: AngleRef, ref2: AngleRef, *, tol: float | None = No
 
 
 def assert_equal_length(*segs, tol: float | None = None) -> None:
-    """Assert that two or more segments all have equal length."""
+    """Assert that two or more segments, arcs or sectors all have equal length.
+    An arc's length is its curved length; a sector's is its curved edge only
+    (not its two straight radii). Segments and arcs may be mixed. A full
+    circle() or ellipse() has no single length here: use assert_equal_radius."""
     builder = get_builder()
     ids = [s.id for s in segs]
     check = ir.EqualLength(segs=ids, tol=tol)
@@ -213,14 +216,18 @@ def assert_equal_length(*segs, tol: float | None = None) -> None:
 
 
 def assert_distance(seg, expected: float, *, tol: float | None = None) -> None:
-    """Assert that a segment has a specific expected length."""
+    """Assert that a segment, arc or sector has a specific expected length.
+    An arc's length is its curved length; a sector's is its curved edge only
+    (not its two straight radii). A full circle() or ellipse() has no single
+    length here: use assert_radius."""
     builder = get_builder()
     check = ir.DistanceEquals(seg=seg.id, expected=expected, tol=tol)
     _run_assertion(builder, check, [])
 
 
 def assert_ratio_equal(s1, s2, s3, s4, *, tol: float | None = None) -> None:
-    """Assert the ratio equality |s1|/|s2| == |s3|/|s4| between four segments."""
+    """Assert the ratio equality |s1|/|s2| == |s3|/|s4| between four segments, arcs
+    or sectors (an arc's length is its curved length; a sector's is its curved edge only)."""
     builder = get_builder()
     check = ir.RatioEqual(s1=s1.id, s2=s2.id, s3=s3.id, s4=s4.id, tol=tol)
     _run_assertion(builder, check, [])
