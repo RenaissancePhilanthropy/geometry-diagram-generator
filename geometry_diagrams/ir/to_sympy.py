@@ -1653,9 +1653,6 @@ def _sample_param(obj: Any, rng: Random) -> float:
 
 
 _ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
-# Slack on a point_on `t` at the ends of an arc's sweep, so t = 0 / 1 survive
-# float noise (e.g. a t recovered by _invert_param).
-ARC_PARAM_TOL = 1e-9
 
 
 def _arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]:
@@ -1727,14 +1724,10 @@ def _point_in_arc_sweep(point: spg.Point, obj: Any) -> bool:
 def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     """Evaluate the parametric point on obj at parameter t."""
     if isinstance(obj, _ARC_LIKE):
-        if not -ARC_PARAM_TOL <= t <= 1 + ARC_PARAM_TOL:
-            raise IRCompileError(
-                def_id,
-                f"point_on an arc/sector: t={t} is outside the sweep; t is the "
-                "fraction of the sweep from start (0) to end (1)",
-            )
+        # t is a fraction of the sweep; outside [0, 1] it runs on past the end
+        # points along the full circle/ellipse, as a segment's t > 1 does.
         cx, cy, hr, vr, s, e = _arc_param_frame(obj)
-        theta = s + min(max(t, 0.0), 1.0) * (e - s)
+        theta = s + t * (e - s)
         return _lift(cx + hr * math.cos(theta), cy + vr * math.sin(theta))
     if isinstance(obj, spg.Segment):
         a, b = obj.p1, obj.p2
@@ -1760,9 +1753,12 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
     if isinstance(obj, _ARC_LIKE):
         cx, cy, hr, vr, s, e = _arc_param_frame(obj)
         theta = math.atan2((y - cy) / vr, (x - cx) / hr)
+        span = e - s
         offset = (theta - s) % (2 * math.pi)
-        if offset >= 2 * math.pi - ARC_PARAM_TOL:
-            offset = 0.0  # a point a hair before the start wraps to ~2*pi
+        # A point off the sweep is nearer one end than the other: express it
+        # as t < 0 (past the start) or t > 1 (past the end).
+        if offset > span + (2 * math.pi - span) / 2:
+            offset -= 2 * math.pi
         return offset / (e - s)
     if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
         cx, cy = float(obj.center.x), float(obj.center.y)
@@ -1845,9 +1841,6 @@ def _check_spatial_constraint(
             if end_deg <= start_deg:
                 end_deg += 360.0  # unwrap to a CCW sweep, as arc_sweep_degrees does
             return angle_within_sweep(angle_about_deg(candidate, cx, cy), start_deg, end_deg)
-
-        case ir.BeyondConstraint():
-            return True  # TODO: implement for segment parameterization
 
         case _:
             return True

@@ -92,7 +92,8 @@ class PointOnParam(PointOnMethod):
     # For lines/segments/rays: parameter along object; compiler decides mapping
     # For circles/ellipses: parameter interpreted as angle in radians by convention
     # For arcs/sectors (circular or elliptical): fraction of the drawn sweep,
-    #   0 = start, 1 = end; outside [0, 1] is a compile error
+    #   0 = start, 1 = end; outside [0, 1] continues along the full circle/
+    #   ellipse past the end points (like a segment's t > 1)
     # A string is an expression evaluated like other numeric fields (pi, sqrt,
     # params, length()/radius()/angle() of earlier definitions).
     t: Union[float, str]
@@ -133,16 +134,8 @@ class ArcBetweenConstraint(SpatialConstraintBase):
     to_point: PointId
 
 
-class BeyondConstraint(SpatialConstraintBase):
-    """Point must be beyond ref_point along the object's natural parameterization.
-    NOTE: enforcement is not yet implemented — accepted in schema but currently no-ops.
-    Do NOT document this constraint to the LLM until it is implemented."""
-    kind: Literal["beyond"] = "beyond"
-    ref: PointId
-
-
 SpatialConstraint = Annotated[
-    Union[SameSideConstraint, NotNearConstraint, ArcBetweenConstraint, BeyondConstraint],
+    Union[SameSideConstraint, NotNearConstraint, ArcBetweenConstraint],
     Field(discriminator="kind")
 ]
 

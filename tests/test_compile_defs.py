@@ -2586,14 +2586,28 @@ def test_point_on_arc_lies_on_its_circle_and_sweep():
     assert approx(sym["P"].distance(sym["O"]), 3.0, 1e-9)
 
 
-@pytest.mark.parametrize("t", [-0.1, 1.1])
-def test_point_on_arc_param_outside_sweep_is_rejected(t):
-    with pytest.raises(IRCompileError, match="sweep"):
-        _compile(
-            *_quarter_arc_base(),
-            ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
-            PointOn(id="P", on="a", how=PointOnParam(t=t)),
-        )
+@pytest.mark.parametrize("t,deg", [(-0.5, -45.0), (1.5, 135.0), (-1.0, -90.0), (5.0, 450.0)])
+def test_point_on_arc_param_outside_the_sweep_continues_along_the_circle(t, deg):
+    # Like a segment's t > 1, t outside [0, 1] runs on past the end points: the
+    # point is on the arc's circle but no longer on the drawn arc.
+    sym = _compile(
+        *_quarter_arc_base(),
+        ArcCenterStartEnd(id="a", center="O", start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnParam(t=t)),
+    )
+    assert approx(sym["P"].x, 3 * math.cos(math.radians(deg)), 1e-6)
+    assert approx(sym["P"].y, 3 * math.sin(math.radians(deg)), 1e-6)
+
+
+def test_point_on_elliptical_arc_param_outside_the_sweep_stays_on_the_ellipse():
+    sym = _compile(
+        PointFixed(id="O", x=0, y=0), PointFixed(id="A", x=4, y=0), PointFixed(id="B", x=0, y=2),
+        EllipticalArcCenterStartEnd(id="a", center="O", hradius=4, vradius=2, start="A", end="B"),
+        PointOn(id="P", on="a", how=PointOnParam(t=1.5)),
+    )
+    x, y = float(sym["P"].x), float(sym["P"].y)
+    assert approx((x / 4) ** 2 + (y / 2) ** 2, 1.0, 1e-9)
+    assert x < 0 < y  # 135 degrees of parametric angle: second quadrant
 
 
 @pytest.mark.parametrize("kind", [EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd])
@@ -2647,7 +2661,7 @@ def test_invert_param_round_trips_on_arcs():
         EllipticalArcCenterStartEnd(id="e", center="O", hradius=4, vradius=2, start="A", end="B"),
     )
     for oid in ("a", "e"):
-        for t in (0.0, 0.25, 0.7, 1.0):
+        for t in (-0.1, 0.0, 0.25, 0.7, 1.0, 1.1):  # beyond-the-ends values stay within the gap's half-width
             pt = _eval_param(sym[oid], t, "P")
             back = _invert_param(sym[oid], float(pt.x), float(pt.y), "P")
             assert approx(back, t, 1e-9), (oid, t, back)
