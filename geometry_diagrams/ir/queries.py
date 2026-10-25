@@ -13,8 +13,9 @@ from typing import Any
 import sympy.geometry as spg
 
 from .checks import _angle_at
+from .curve_measures import curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY
-from .to_sympy import SymTable
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable, _arc_param_frame
 
 
 def _get(sym: SymTable, obj_id: str) -> Any:
@@ -49,15 +50,41 @@ def query_angle(sym: SymTable, a: str, vertex: str, b: str) -> dict:
     return {"angle_degrees": math.degrees(radians)}
 
 
+_ARCS = (Arc, EllipticalArc)
+_SECTORS = (Sector, EllipticalSector)
+_CURVED = _ARCS + _SECTORS
+
+
+def _kind(obj_id: str, obj: Any) -> str:
+    return f"{obj_id!r} (a {type(obj).__name__})"
+
+
+def _radii(obj: Any) -> tuple[float, float]:
+    """(hradius, vradius) of a circle/ellipse or an arc/sector of one."""
+    if isinstance(obj, (Arc, Sector, spg.Circle)):
+        r = float(obj.radius.evalf())
+        return r, r
+    return float(obj.hradius.evalf()), float(obj.vradius.evalf())
+
+
 def query_length(sym: SymTable, segment_id: str) -> dict:
     """``length`` is the drawn (projected 2D) length. A segment a registered
     kind gives a true length (the registry's ``true_length`` hook: a segment
     joining two corners of one prism) also gets ``true_length``, its 3D
     length (an edge gives one dimension; a face diagonal or the space
-    diagonal the Euclidean combination)."""
+    diagonal the Euclidean combination). An arc or sector (circular or
+    elliptical) gives its curved edge's length; a full circle or ellipse is
+    a ``perimeter``, not a length."""
     obj = _get(sym, segment_id)
+    if isinstance(obj, _CURVED):
+        return {"length": curve_length(obj)}
+    if isinstance(obj, spg.Ellipse):
+        raise TypeError(
+            f"{_kind(segment_id, obj)} is a full {'circle' if isinstance(obj, spg.Circle) else 'ellipse'}, "
+            "which has no length; use perimeter"
+        )
     if not isinstance(obj, spg.Segment):
-        raise TypeError(f"{segment_id!r} is not a Segment (got {type(obj).__name__})")
+        raise TypeError(f"{segment_id!r} is not a Segment, arc or sector (got {type(obj).__name__})")
     out = {"length": float(obj.length.evalf())}
     true = DERIVED_REGISTRY.true_length(sym, segment_id)
     if true is not None:
@@ -66,24 +93,55 @@ def query_length(sym: SymTable, segment_id: str) -> dict:
 
 
 def query_radius(sym: SymTable, circle_id: str) -> dict:
+    """``radius`` of a circle or a circular arc/sector; an ellipse or an
+    elliptical arc/sector has two radii, returned as ``hradius`` and
+    ``vradius``."""
     obj = _get(sym, circle_id)
-    if not isinstance(obj, spg.Circle):
-        raise TypeError(f"{circle_id!r} is not a Circle (got {type(obj).__name__})")
-    return {"radius": float(obj.radius.evalf())}
+    if not isinstance(obj, (spg.Ellipse,) + _CURVED):
+        raise TypeError(
+            f"{circle_id!r} is not a Circle, Ellipse, arc or sector (got {type(obj).__name__})"
+        )
+    hr, vr = _radii(obj)
+    if isinstance(obj, (spg.Circle, Arc, Sector)):
+        return {"radius": hr}
+    return {"hradius": hr, "vradius": vr}
 
 
 def query_area(sym: SymTable, obj_id: str) -> dict:
+    """Area of a polygon, circle, ellipse or sector (the enclosed region). An
+    open arc encloses nothing."""
     obj = _get(sym, obj_id)
-    if not isinstance(obj, spg.Polygon):
-        raise TypeError(f"{obj_id!r} is not a Polygon (got {type(obj).__name__})")
-    return {"area": float(abs(obj.area.evalf()))}
+    if isinstance(obj, spg.Polygon):
+        return {"area": float(abs(obj.area.evalf()))}
+    if isinstance(obj, spg.Ellipse):
+        hr, vr = _radii(obj)
+        return {"area": math.pi * hr * vr}
+    if isinstance(obj, _SECTORS):
+        _, _, hr, vr, start, end = _arc_param_frame(obj)
+        # the region swept from the centre is hr*vr/2 per radian of parametric angle
+        return {"area": hr * vr / 2 * (end - start)}
+    if isinstance(obj, _ARCS):
+        raise TypeError(f"{_kind(obj_id, obj)} is open: an open arc has no area; use a sector")
+    raise TypeError(f"{obj_id!r} is not a Polygon, circle, ellipse or sector (got {type(obj).__name__})")
 
 
 def query_perimeter(sym: SymTable, obj_id: str) -> dict:
+    """Perimeter of a polygon, circumference of a circle/ellipse, or a sector's
+    boundary (its two straight edges from the centre plus the curved edge).
+    An open arc's only measure is its length."""
     obj = _get(sym, obj_id)
-    if not isinstance(obj, spg.Polygon):
-        raise TypeError(f"{obj_id!r} is not a Polygon (got {type(obj).__name__})")
-    return {"perimeter": float(obj.perimeter.evalf())}
+    if isinstance(obj, spg.Polygon):
+        return {"perimeter": float(obj.perimeter.evalf())}
+    if isinstance(obj, spg.Ellipse):
+        return {"perimeter": curve_length(obj)}
+    if isinstance(obj, _SECTORS):
+        _, _, hr, vr, start, end = _arc_param_frame(obj)
+        # straight edges run to the curve's endpoints (for an ellipse, not the axes)
+        edges = sum(math.hypot(hr * math.cos(t), vr * math.sin(t)) for t in (start, end))
+        return {"perimeter": edges + curve_length(obj)}
+    if isinstance(obj, _ARCS):
+        raise TypeError(f"{_kind(obj_id, obj)} is open, so it has no perimeter distinct from its length; use length")
+    raise TypeError(f"{obj_id!r} is not a Polygon, circle, ellipse or sector (got {type(obj).__name__})")
 
 
 def query_registered(sym: SymTable, query_type: str, obj_id: str) -> dict:

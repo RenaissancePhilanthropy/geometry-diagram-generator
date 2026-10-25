@@ -120,10 +120,10 @@ _QUERY_TOOL_DOC = """Query a geometric property of the current diagram.
                   coordinate  {"id": "A"}              -> x, y coords
                   distance    {"id1": "A", "id2": "B"} -> distance between points
                   angle       {"ray1": "A", "vertex": "B", "ray2": "C"} -> angle in degrees
-                  length      {"id": "seg_AB"}          -> segment length
-                  radius      {"id": "c1"}              -> circle radius
-                  area        {"id": "tri_ABC"}         -> area
-                  perimeter   {"id": "tri_ABC"}         -> perimeter
+                  length      {"id": "seg_AB"}          -> segment length, or an arc/sector's curved edge
+                  radius      {"id": "c1"}              -> circle/arc/sector radius (ellipse: hradius, vradius)
+                  area        {"id": "tri_ABC"}         -> polygon, circle, ellipse or sector area
+                  perimeter   {"id": "tri_ABC"}         -> polygon, circle/ellipse or sector perimeter
                   list_objects {}                       -> all objects and their types
                 """
 

@@ -57,13 +57,13 @@ with query_type="list_objects" and params={}.
 # off the description is unchanged. The queries themselves answer either way.
 QUERY_TOOL_SOLIDS_INSERTIONS: tuple[tuple[str, str], ...] = (
     (
-        '- "length": segment length.',
+        '- "length": segment length',
         '                      For a segment joining two corners of a prism (an edge, a face\n'
         '                      diagonal or the space diagonal) it also returns "true_length",\n'
         '                      the true 3D length; "length" is the drawn (2D) length.',
     ),
     (
-        '- "perimeter": polygon perimeter.',
+        '- "perimeter": polygon perimeter',
         '                    - "prism": rectangular prism dimensions (length, width, height),\n'
         '                      volume, base area, surface area and corner ids. params={"prism": "P"}\n'
         '                    - "stack": block stack cube_count, volume, length, width,\n'
@@ -95,9 +95,9 @@ def dispatch_query(sym: dict, query_type: str, args: dict) -> str:
             b = _get(args, "b", "ray2", "point2")
             return json.dumps(query_angle(sym, a, vertex, b))
         elif query_type == "length":
-            return json.dumps(query_length(sym, _get(args, "segment", "id")))
+            return json.dumps(query_length(sym, _get(args, "segment", "id", "object")))
         elif query_type == "radius":
-            return json.dumps(query_radius(sym, _get(args, "circle", "id")))
+            return json.dumps(query_radius(sym, _get(args, "circle", "id", "object")))
         elif query_type == "area":
             return json.dumps(query_area(sym, _get(args, "object", "id")))
         elif query_type == "perimeter":
@@ -367,10 +367,10 @@ class StructureStrategy(SubstanceStrategy):
                     - "coordinate": point coordinates. params={"point": "A"}
                     - "distance": distance between two points. params={"a": "A", "b": "B"}
                     - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
-                    - "length": segment length. params={"segment": "seg_AB"}
-                    - "radius": circle radius. params={"circle": "circ"}
-                    - "area": polygon area. params={"object": "tri_ABC"}
-                    - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
+                    - "length": segment length, or an arc/sector's curved edge (not a full circle/ellipse: use perimeter). params={"segment": "seg_AB"}
+                    - "radius": circle, circular arc or sector radius; an ellipse or elliptical arc/sector returns hradius and vradius. params={"circle": "circ"}
+                    - "area": polygon, circle, ellipse or sector area (an open arc has none). params={"object": "tri_ABC"}
+                    - "perimeter": polygon perimeter, circle/ellipse circumference, or sector boundary (two radii plus the arc). params={"object": "tri_ABC"}
                 params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.

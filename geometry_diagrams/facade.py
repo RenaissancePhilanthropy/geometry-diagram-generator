@@ -280,6 +280,12 @@ def query_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> 
             - "radius": {"circle": "circ"}
             - "area": {"object": "tri_ABC"}
             - "perimeter": {"object": "tri_ABC"}
+            "length" also takes an arc/sector (its curved edge; a full circle or
+            ellipse has a perimeter, not a length). "radius" takes a circle, arc or
+            sector (an ellipse or elliptical arc/sector returns hradius and vradius).
+            "area" takes a polygon, circle, ellipse or sector (an open arc has none).
+            "perimeter" takes a polygon, circle, ellipse or sector (two radii plus
+            the arc).
             Call list_objects first to see valid IDs.
     Returns:
         JSON string with the query result, or {"error": "..."} on failure.

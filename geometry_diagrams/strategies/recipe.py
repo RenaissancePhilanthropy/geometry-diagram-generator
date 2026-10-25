@@ -708,10 +708,10 @@ class RecipeStrategy(SubstanceStrategy):
                     - "coordinate": point coordinates. params={"point": "A"}
                     - "distance": distance between two points. params={"a": "A", "b": "B"}
                     - "angle": angle in degrees at vertex. params={"a": "A", "vertex": "B", "b": "C"}
-                    - "length": segment length. params={"segment": "seg_AB"}
-                    - "radius": circle radius. params={"circle": "circ"}
-                    - "area": polygon area. params={"object": "tri_ABC"}
-                    - "perimeter": polygon perimeter. params={"object": "tri_ABC"}
+                    - "length": segment length, or an arc/sector's curved edge (not a full circle/ellipse: use perimeter). params={"segment": "seg_AB"}
+                    - "radius": circle, circular arc or sector radius; an ellipse or elliptical arc/sector returns hradius and vradius. params={"circle": "circ"}
+                    - "area": polygon, circle, ellipse or sector area (an open arc has none). params={"object": "tri_ABC"}
+                    - "perimeter": polygon perimeter, circle/ellipse circumference, or sector boundary (two radii plus the arc). params={"object": "tri_ABC"}
                 params: Query arguments as shown above. Call list_objects first to see valid IDs.
             Returns:
                 JSON with query result or error.

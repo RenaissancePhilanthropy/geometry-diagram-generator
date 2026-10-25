@@ -1782,6 +1782,11 @@ class PythonFullStrategy(SubstanceStrategy):
                 query_type: One of "list_objects", "coordinate", "distance",
                     "angle", "length", "radius", "area", "perimeter".
                 params: Query arguments — call list_objects first to see valid IDs.
+                    "length" takes a segment or an arc/sector (its curved edge);
+                    "radius" a circle, arc or sector (an ellipse or elliptical
+                    arc/sector returns hradius and vradius); "area" a polygon,
+                    circle, ellipse or sector (an open arc has none); "perimeter"
+                    a polygon, circle, ellipse or sector (two radii plus the arc).
             Returns:
                 JSON with query result or error.
             """

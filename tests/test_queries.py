@@ -130,7 +130,7 @@ class TestQueryPerimeter:
 
     def test_non_polygon_raises(self, right_triangle_sym):
         with pytest.raises(TypeError, match="not a Polygon"):
-            query_perimeter(right_triangle_sym, "circ")
+            query_perimeter(right_triangle_sym, "seg_AB")
 
     def test_polygon_perimeter(self, right_triangle_sym):
         # A unit square has perimeter 4.0
