@@ -14,6 +14,7 @@ from .to_sympy import (
     EllipticalSector,
     Sector,
     SymTable,
+    _arc_param_frame,
     _point_in_arc_sweep,
     _tangent_touch_point,
     _underlying_conic,
@@ -482,45 +483,85 @@ def _circular_radius(obj: Any, kind: str, obj_id: str) -> float:
     return hr
 
 
-def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[bool, str]:
-    """Compare a list of circular arcs/sectors for equal radius and equal
-    (reflex-aware) central-angle sweep.
+def _wrap_pi(x: float) -> float:
+    """`x` (radians) wrapped to [-pi, pi)."""
+    return (x + math.pi) % (2 * math.pi) - math.pi
 
-    Rejects elliptical arcs/sectors up front with a clear, named-type message
-    instead of letting an AttributeError (no `.radius`) fall through to the
-    generic exception handler in `_check_one`.
 
-    Sweep math comes from `to_sympy.arc_sweep_degrees()` — the same canonical
-    source `_contains()`/`point_on_arc()` use — not from `render_util`, which
-    owns arc math for *rendering* only.
+def _ellipse_arcs_congruent(a: tuple, b: tuple, tol: float) -> bool:
+    """Are two elliptical arcs congruent, i.e. is one a rigid motion of the
+    other? Each is (hradius, vradius, start, end) in parametric angle, CCW.
+
+    An ellipse's curvature varies along it, so equal span is not enough: the
+    arcs must have equal axes (or axes swapped, a 90-degree turn) and their
+    positions must be related by a symmetry of the ellipse. For an
+    axis-aligned ellipse those are the reflections across either axis, the
+    half turn and arc reversal: parametric angle t -> t + k*pi (k = 0, 1) or
+    t -> -t + k*pi, the arc reversing under the reflections so it stays CCW.
+    With swapped axes the same set is shifted by a quarter turn (pi/2).
     """
-    radii: list[float] = []
-    sweeps_rad: list[float] = []
+    a_hr, a_vr, a_s, a_e = a
+    b_hr, b_vr, b_s, b_e = b
+    same = abs(a_hr - b_hr) < tol and abs(a_vr - b_vr) < tol
+    swapped = abs(a_hr - b_vr) < tol and abs(a_vr - b_hr) < tol
+    if not (same or swapped) or abs((a_e - a_s) - (b_e - b_s)) >= tol:
+        return False
+    base = 0.0 if same else math.pi / 2
+    for k in (0, 1):
+        shift = base + k * math.pi
+        for image_start in (a_s + shift, -a_e + shift):
+            if abs(_wrap_pi(b_s - image_start)) < tol:
+                return True
+    return False
+
+
+def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[bool, str]:
+    """Compare a list of arcs/sectors for congruence.
+
+    Circular ones are congruent when they have equal radius and equal
+    (reflex-aware) central-angle sweep. Elliptical ones need the symmetry
+    condition in `_ellipse_arcs_congruent`; a circle and a genuine ellipse are
+    never congruent, and an elliptical arc whose two radii are equal is just a
+    circular arc.
+
+    Sweep math comes from `to_sympy._arc_param_frame()` (parametric angle,
+    which is the polar angle for a circular arc) — not from `render_util`,
+    which owns arc math for *rendering* only.
+    """
+    frames: list[tuple[float, float, float, float]] = []
     for arc_id in arcs:
         obj = sym[arc_id]
-        if isinstance(obj, (EllipticalArc, EllipticalSector)):
-            return False, (
-                f"Arc {arc_id!r} is an elliptical arc/sector "
-                f"({type(obj).__name__}); congruent_arcs only supports "
-                f"circular arcs/sectors"
-            )
-        if not isinstance(obj, (Arc, Sector)):
+        if not isinstance(obj, _ARC_LIKE):
             return False, f"Object {arc_id!r} is not an arc or sector (got {type(obj).__name__})"
-        _cx, _cy, start_deg, end_deg = arc_sweep_degrees(obj)
-        radii.append(float(obj.radius.evalf()))
-        sweeps_rad.append(math.radians(end_deg - start_deg))
+        _cx, _cy, hr, vr, start, end = _arc_param_frame(obj)
+        frames.append((hr, vr, start, end))
 
-    ok = (
-        all(abs(r - radii[0]) < tol for r in radii[1:])
-        and all(abs(s - sweeps_rad[0]) < tol for s in sweeps_rad[1:])
-    )
-    if ok:
+    def circular(f: tuple[float, float, float, float]) -> bool:
+        return abs(f[0] - f[1]) <= 1e-9 * max(f[0], f[1], 1.0)
+
+    def congruent(f: tuple[float, float, float, float], g: tuple[float, float, float, float]) -> bool:
+        if circular(f) != circular(g):
+            return False
+        if circular(f):
+            return abs(f[0] - g[0]) < tol and abs((f[3] - f[2]) - (g[3] - g[2])) < tol
+        return _ellipse_arcs_congruent(f, g, tol)
+
+    if all(congruent(frames[0], f) for f in frames[1:]):
         return True, ""
-    pairs = ", ".join(
-        f"{arc_id}=(r={r:.4f}, sweep={math.degrees(s):.2f}°)"
-        for arc_id, r, s in zip(arcs, radii, sweeps_rad)
-    )
-    return False, f"Arcs not congruent: {pairs}"
+
+    def describe(arc_id: str, f: tuple[float, float, float, float]) -> str:
+        if circular(f):
+            return f"{arc_id}=(r={f[0]:.4f}, sweep={math.degrees(f[3] - f[2]):.2f}°)"
+        return (
+            f"{arc_id}=(hradius={f[0]:.4f}, vradius={f[1]:.4f}, "
+            f"t={math.degrees(f[2]):.1f}°→{math.degrees(f[3]):.1f}°)"
+        )
+
+    msg = "Arcs not congruent: " + ", ".join(describe(i, f) for i, f in zip(arcs, frames))
+    if len({circular(f) for f in frames}) > 1:
+        msg += " (a circle and an ellipse are never congruent)"
+    return False, msg
+
 
 
 def _seg_length(obj: Any):

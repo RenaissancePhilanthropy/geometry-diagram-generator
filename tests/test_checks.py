@@ -453,35 +453,122 @@ def test_congruent_arcs_is_reflex_aware():
     assert not result.passed
 
 
-def test_congruent_arcs_rejects_elliptical_arc_with_clear_message():
-    """An elliptical arc/sector in the list is rejected with a clear, named-type
-    error rather than an opaque AttributeError bubbling up through the generic
-    exception handler."""
+def _elliptical_arcs_congruent(*arcs, extra=()):
+    """Compile elliptical arcs given as (id, cx, cy, hr, vr, start_xy, end_xy[, cls])
+    and run congruent_arcs over them."""
     from geometry_diagrams.ir.ir import (
-        CongruentArcs, ArcCenterStartEnd, EllipticalArcCenterStartEnd,
+        CongruentArcs, EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd,
         PointFixed, DiagramIR,
     )
     from geometry_diagrams.ir.to_sympy import compile_defs
 
-    sym = compile_defs(DiagramIR(define=[
-        PointFixed(id="O1", x=0, y=0),
-        PointFixed(id="S1", x=5, y=0),
-        PointFixed(id="E1", x=2.5, y=4.330127018922194),
-        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+    defs = list(extra)
+    for aid, cx, cy, hr, vr, (sx, sy), (ex, ey), *rest in arcs:
+        cls = rest[0] if rest else EllipticalArcCenterStartEnd
+        reflex = rest[1] if len(rest) > 1 else False
+        defs += [
+            PointFixed(id=f"{aid}_o", x=cx, y=cy),
+            PointFixed(id=f"{aid}_s", x=cx + sx, y=cy + sy),
+            PointFixed(id=f"{aid}_e", x=cx + ex, y=cy + ey),
+            cls(id=aid, center=f"{aid}_o", hradius=hr, vradius=vr,
+                start=f"{aid}_s", end=f"{aid}_e", reflex=reflex),
+        ]
+    sym = compile_defs(DiagramIR(define=defs))
+    return _check_one(CongruentArcs(arcs=[a[0] for a in arcs]), sym, DEFAULT_TOL)
 
-        PointFixed(id="O2", x=10, y=0),
-        PointFixed(id="S2", x=14, y=0),
-        PointFixed(id="E2", x=10, y=2),
+
+# Quarter arc of the 4x2 ellipse from (4, 0) to (0, 2): parametric 0 -> 90 deg.
+_Q = ((4, 0), (0, 2))
+
+
+def test_congruent_arcs_elliptical_arcs_related_by_an_axis_reflection():
+    # (0, 2) -> (-4, 0) is the same arc reflected across the y axis (90 -> 180 deg).
+    result = _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q), ("b", 10, 5, 4, 2, (0, 2), (-4, 0)),
+    )
+    assert result.passed and result.message == ""
+
+
+def test_congruent_arcs_elliptical_arcs_related_by_a_half_turn():
+    # (-4, 0) -> (0, -2) is the 180-degree rotation of the quarter arc.
+    assert _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q), ("b", 3, 3, 4, 2, (-4, 0), (0, -2)),
+    ).passed
+
+
+def test_congruent_arcs_elliptical_arcs_with_equal_span_but_different_position_differ():
+    # 45 -> 135 degrees of parametric angle has the same span as 0 -> 90 but is
+    # a different shape (curvature varies along an ellipse).
+    c = 2 ** 0.5 / 2
+    result = _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q), ("b", 0, 0, 4, 2, (4 * c, 2 * c), (-4 * c, 2 * c)),
+    )
+    assert not result.passed
+    assert "not congruent" in result.message and "a=" in result.message and "b=" in result.message
+
+
+def test_congruent_arcs_elliptical_arcs_on_an_ellipse_with_swapped_axes():
+    # The 2x4 ellipse is the 4x2 one turned 90 degrees; the quarter arc turned
+    # with it runs (0, 4) -> (-2, 0).
+    assert _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q), ("b", 7, 7, 2, 4, (0, 4), (-2, 0)),
+    ).passed
+
+
+def test_congruent_arcs_elliptical_arcs_on_different_ellipses_differ():
+    result = _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q), ("b", 0, 0, 4, 3, (4, 0), (0, 3)),
+    )
+    assert not result.passed
+
+
+def test_congruent_arcs_elliptical_minor_and_reflex_arcs_differ():
+    from geometry_diagrams.ir.ir import EllipticalArcCenterStartEnd
+    result = _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q, EllipticalArcCenterStartEnd, False),
+        ("b", 0, 0, 4, 2, *_Q, EllipticalArcCenterStartEnd, True),
+    )
+    assert not result.passed
+
+
+def test_congruent_arcs_accepts_elliptical_sectors_like_arcs():
+    from geometry_diagrams.ir.ir import EllipticalSectorCenterStartEnd as ES
+    assert _elliptical_arcs_congruent(
+        ("a", 0, 0, 4, 2, *_Q, ES), ("b", 5, 5, 4, 2, (0, 2), (-4, 0), ES),
+    ).passed
+
+
+def test_congruent_arcs_circle_and_genuine_ellipse_are_never_congruent():
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, EllipticalArcCenterStartEnd, PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O1", x=0, y=0), PointFixed(id="S1", x=3, y=0), PointFixed(id="E1", x=0, y=3),
+        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+        PointFixed(id="O2", x=10, y=0), PointFixed(id="S2", x=14, y=0), PointFixed(id="E2", x=10, y=2),
         EllipticalArcCenterStartEnd(id="ea1", center="O2", hradius=4, vradius=2, start="S2", end="E2"),
     ]))
-    check = CongruentArcs(arcs=["a1", "ea1"])
-    result = _check_one(check, sym, DEFAULT_TOL)
+    result = _check_one(CongruentArcs(arcs=["a1", "ea1"]), sym, DEFAULT_TOL)
     assert not result.passed
-    assert "ea1" in result.message
-    assert "elliptical" in result.message.lower()
-    # Must not be the opaque generic-exception wrapper message.
+    assert "ea1" in result.message and "ellipse" in result.message.lower()
     assert not result.message.startswith("Error in ")
-    assert "has no attribute" not in result.message
+
+
+def test_congruent_arcs_elliptical_arc_with_equal_radii_is_a_circular_arc():
+    from geometry_diagrams.ir.ir import (
+        CongruentArcs, ArcCenterStartEnd, EllipticalArcCenterStartEnd, PointFixed, DiagramIR,
+    )
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    sym = compile_defs(DiagramIR(define=[
+        PointFixed(id="O1", x=0, y=0), PointFixed(id="S1", x=3, y=0), PointFixed(id="E1", x=0, y=3),
+        ArcCenterStartEnd(id="a1", center="O1", start="S1", end="E1"),
+        PointFixed(id="O2", x=10, y=0), PointFixed(id="S2", x=10, y=3), PointFixed(id="E2", x=7, y=0),
+        EllipticalArcCenterStartEnd(id="ea1", center="O2", hradius=3, vradius=3, start="S2", end="E2"),
+    ]))
+    assert _check_one(CongruentArcs(arcs=["a1", "ea1"]), sym, DEFAULT_TOL).passed
 
 
 # ---------------------------------------------------------------------------

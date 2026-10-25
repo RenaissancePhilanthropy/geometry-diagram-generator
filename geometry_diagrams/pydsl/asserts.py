@@ -327,12 +327,15 @@ def assert_radius(circle, expected: float, *, tol: float | None = None) -> None:
 
 
 def assert_congruent_arcs(*arcs, tol: float | None = None) -> None:
-    """Assert that two or more circular arcs/sectors are congruent (equal
-    radius AND equal central-angle sweep).
+    """Assert that two or more arcs/sectors are congruent. Circular ones need
+    equal radius AND equal central-angle sweep.
 
     Reflex-aware: a minor arc and a reflex arc sharing the same two endpoints
-    are never congruent. Circular arcs/sectors only — an elliptical arc or
-    sector is rejected with a clear message naming its type.
+    are never congruent. Elliptical arcs/sectors are congruent only when their
+    axes match (or are swapped) and one arc is a symmetry image of the other
+    (a reflection across an axis or a half turn, possibly reversed): equal
+    span alone is not enough, since an ellipse's curvature varies. A circle
+    and a genuine ellipse are never congruent.
     """
     builder = get_builder()
     ids = [a.id for a in arcs]
