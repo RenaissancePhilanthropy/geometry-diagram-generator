@@ -888,6 +888,9 @@ def test_circles_tangent_on_an_ellipse_is_a_clean_unsupported_failure():
 # Length checks on arcs and sectors (equal_length / distance_equals / ratio_equal)
 # ---------------------------------------------------------------------------
 
+_ELL_QUARTER = 4.844224110273856  # E(m=3/4)*4: quarter of the 4x2 ellipse
+
+
 def _curve_sym():
     """Quarter arcs/sectors (circular r=2, elliptical 4x2) plus segments and
     full conics. Circular quarter length = pi; elliptical quarter ~ 4.8442."""
@@ -911,6 +914,9 @@ def _curve_sym():
         PointFixed(id="Q", x=math.pi, y=5),
         PointFixed(id="R", x=0, y=7),
         PointFixed(id="T", x=2 * math.pi, y=7),
+        PointFixed(id="U", x=0, y=20),
+        PointFixed(id="V", x=_ELL_QUARTER, y=20),
+        PointFixed(id="W", x=_ELL_QUARTER * 1.01, y=20),
         ArcCenterStartEnd(id="a1", center="O", start="S", end="E"),
         ArcCenterStartEnd(id="a2", center="O2", start="S2", end="E2"),
         SectorCenterStartEnd(id="sec", center="O", start="S", end="E"),
@@ -918,12 +924,11 @@ def _curve_sym():
         EllipticalSectorCenterStartEnd(id="esec", center="O", hradius=4, vradius=2, start="ES", end="EE"),
         SegmentDef(id="seg_pi", a="P", b="Q"),
         SegmentDef(id="seg_2pi", a="R", b="T"),
+        SegmentDef(id="seg_ell_exact", a="U", b="V"),
+        SegmentDef(id="seg_ell_1pct", a="U", b="W"),
         CircleCenterRadius(id="circ", center="O", radius=2),
         EllipseCenterAxes(id="ell", center="O", hradius=4, vradius=2),
     ]))
-
-
-_ELL_QUARTER = 4.844224110273856  # E(m=3/4)*4: quarter of the 4x2 ellipse
 
 
 def _len_check(check):
@@ -974,9 +979,29 @@ def test_distance_equals_elliptical_default_tolerance_boundary():
         assert not _len_check(DistanceEquals(seg=kid, expected=_ELL_QUARTER * 1.01)).passed
 
 
+def test_elliptical_quarter_constant_matches_independent_quadrature():
+    import mpmath
+    f = lambda t: mpmath.sqrt((4 * mpmath.sin(t)) ** 2 + (2 * mpmath.cos(t)) ** 2)
+    assert float(mpmath.quad(f, [0, mpmath.pi / 2])) == pytest.approx(_ELL_QUARTER, rel=1e-12)
+
+
+def test_equal_length_elliptical_arc_absolute_tolerance_boundary():
+    from geometry_diagrams.ir.ir import EqualLength
+    for kid in ("ea", "esec"):
+        assert _len_check(EqualLength(segs=[kid, "seg_ell_exact"])).passed
+        assert not _len_check(EqualLength(segs=[kid, "seg_ell_1pct"])).passed
+
+
+def test_ratio_equal_elliptical_arc_one_percent_boundary():
+    from geometry_diagrams.ir.ir import RatioEqual
+    # arc : seg_pi == (segment as long as the arc) : seg_pi
+    assert _len_check(RatioEqual(s1="ea", s2="seg_pi", s3="seg_ell_exact", s4="seg_pi")).passed
+    assert not _len_check(RatioEqual(s1="ea", s2="seg_pi", s3="seg_ell_1pct", s4="seg_pi")).passed
+
+
 def test_ratio_equal_with_arcs():
     from geometry_diagrams.ir.ir import RatioEqual
-    # arc(pi) : seg(2pi) == seg(pi) : seg(2pi)*... use pi/2pi == pi/2pi
+    # quarter arc (pi) : seg(2pi) == seg(pi) : seg(2pi), i.e. 1:2 on both sides
     assert _len_check(RatioEqual(s1="a1", s2="seg_2pi", s3="seg_pi", s4="seg_2pi")).passed
     assert not _len_check(RatioEqual(s1="ea", s2="seg_2pi", s3="seg_pi", s4="seg_2pi")).passed
 
