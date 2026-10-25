@@ -13,7 +13,7 @@ from random import Random
 
 import pytest
 
-from geometry_diagrams.ir.errors import IntersectionError
+from geometry_diagrams.ir.errors import IntersectionError, PickError
 from geometry_diagrams.ir.ir import (
     ArcCenterStartEnd,
     CircleCenterRadius,
@@ -21,6 +21,7 @@ from geometry_diagrams.ir.ir import (
     EllipseCenterAxes,
     LineThrough,
     PickBeyond,
+    PickIndex,
     PickLowerOfLine,
     PickOnObject,
     PickUpperOfLine,
@@ -259,7 +260,7 @@ def test_line_crossing_an_ellipse_is_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# Ellipse x ellipse/circle: SymPy returns nothing for float-valued four-point crossings
+# Ellipse x ellipse/circle with float radii go through the numeric conic kernel
 # ---------------------------------------------------------------------------
 
 def _two_ellipses(h1, v1, c2, h2, v2):
@@ -272,9 +273,21 @@ def _two_ellipses(h1, v1, c2, h2, v2):
     ]
 
 
-def test_ellipses_that_cross_but_sympy_cannot_solve_say_so():
-    with pytest.raises(IntersectionError, match=r"cross at 4 points.*could not solve"):
-        _compile(*_two_ellipses(5.0, 2.0, (1.3, 0.7), 2.1, 4.7))
+def test_float_ellipses_that_cross_four_times_now_return_their_points():
+    # This pair used to raise "could not solve ... use exact radii" (SymPy returns
+    # nothing for float-valued four-point crossings); the kernel solves it.
+    stmts = _two_ellipses(5.0, 2.0, (1.3, 0.7), 2.1, 4.7)[:-1]
+    points = []
+    for k in range(5):
+        try:
+            sym = _compile(*stmts, PointIntersection(id="T", obj1="e1", obj2="e2", pick=PickIndex(k=k)))
+        except PickError:
+            break
+        points.append(_xy(sym["T"]))
+    assert len(points) == 4
+    for x, y in points:
+        assert (x / 5.0) ** 2 + (y / 2.0) ** 2 == pytest.approx(1.0, abs=1e-9)
+        assert ((x - 1.3) / 2.1) ** 2 + ((y - 0.7) / 4.7) ** 2 == pytest.approx(1.0, abs=1e-9)
 
 
 def test_disjoint_ellipses_keep_the_generic_message():

@@ -85,6 +85,11 @@ class EllipseFrame:
         grad = 2.0 * math.hypot(u / a2, v / b2)
         return f / grad if grad else math.inf
 
+    def tangent_direction(self, t: float) -> Point:
+        """World direction vector of the tangent at parametric angle t (not unit length)."""
+        u, v = -self.a * math.sin(t), self.b * math.cos(t)
+        return u * self._cos - v * self._sin, u * self._sin + v * self._cos
+
     def half_widths(self) -> Point:
         """Half-width and half-height of the axis-aligned box around the curve."""
         return math.hypot(self.a * self._cos, self.b * self._sin), math.hypot(self.a * self._sin, self.b * self._cos)

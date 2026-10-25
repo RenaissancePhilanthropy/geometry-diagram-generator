@@ -27,5 +27,5 @@ class TiltedEllipseUnsupported(IRCompileError):
     """An operation does not support a tilted (rotated) ellipse yet.
 
     ``def_id`` is the failing definition (or, from a renderer, the ellipse
-    itself); the message names the tilted ellipse. Later stages of the
-    rotated-ellipses design lift these one by one."""
+    itself); the message names the tilted ellipse. Tangents and intersections
+    are supported; what is left is SVG under a non-unit canvas aspect."""

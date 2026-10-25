@@ -13,8 +13,12 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
+from .conic_kernel import (
+    CoincidentConicsError, EllipseFrame, intersect_conics, line_ellipse_crossings, tangent_touch_points,
+    touch_point_for_line,
+)
 from .errors import (
-    ExprEvalError, IntersectionError, IRCompileError, PickError, TiltedEllipseUnsupported, UndefinedRefError,
+    ExprEvalError, IntersectionError, IRCompileError, PickError, UndefinedRefError,
 )
 from .refs import def_references
 
@@ -185,53 +189,44 @@ class RotatedEllipse:
     ``point_at(t) = center + R(rotation) (hr cos t, vr sin t)``.
     """
 
-    __slots__ = ("center", "hradius", "vradius", "rotation", "_cx", "_cy", "_hr", "_vr", "_cos", "_sin")
+    __slots__ = ("center", "hradius", "vradius", "rotation", "frame")
 
     def __init__(self, center: spg.Point, hradius: Any, vradius: Any, rotation: float):
         self.center = center
         self.hradius = hradius
         self.vradius = vradius
         self.rotation = float(rotation)
-        self._cx, self._cy = float(center.x.evalf()), float(center.y.evalf())
-        self._hr, self._vr = float(sp.N(hradius)), float(sp.N(vradius))
-        self._cos, self._sin = math.cos(self.rotation), math.sin(self.rotation)
+        self.frame = EllipseFrame(
+            float(center.x.evalf()), float(center.y.evalf()),
+            float(sp.N(hradius)), float(sp.N(vradius)), self.rotation,
+        )
 
     @property
     def rotation_deg(self) -> float:
         return math.degrees(self.rotation)
 
     def to_local(self, x: float, y: float) -> tuple[float, float]:
-        dx, dy = x - self._cx, y - self._cy
-        return dx * self._cos + dy * self._sin, -dx * self._sin + dy * self._cos
+        return self.frame.to_local(x, y)
 
     def to_world(self, u: float, v: float) -> tuple[float, float]:
-        return self._cx + u * self._cos - v * self._sin, self._cy + u * self._sin + v * self._cos
+        return self.frame.to_world(u, v)
 
     def point_at(self, t: float) -> tuple[float, float]:
         """World point at parametric angle t (measured from the hradius axis)."""
-        return self.to_world(self._hr * math.cos(t), self._vr * math.sin(t))
+        return self.frame.point_at(t)
 
     def param_of(self, x: float, y: float) -> float:
         """Parametric angle of a world point (the inverse of ``point_at`` on the curve)."""
-        u, v = self.to_local(x, y)
-        return math.atan2(v / self._vr, u / self._hr)
+        return self.frame.param_of(x, y)
 
     def boundary_gap(self, x: float, y: float) -> float:
-        """Signed distance-like gap of a world point from the curve: the
-        implicit value over its gradient length, ``f / |grad f|`` with
-        ``f = (u/hr)^2 + (v/vr)^2 - 1`` (positive outside). A length, so a
-        tolerance on it means the same for a long thin ellipse as for a round
-        one; inf at the center, where the gradient vanishes."""
-        u, v = self.to_local(x, y)
-        a2, b2 = self._hr * self._hr, self._vr * self._vr
-        f = u * u / a2 + v * v / b2 - 1.0
-        grad = 2.0 * math.hypot(u / a2, v / b2)
-        return f / grad if grad else math.inf
+        """Signed length-based gap of a world point from the curve (``f / |grad f|``,
+        positive outside; see ``EllipseFrame.boundary_gap``)."""
+        return self.frame.boundary_gap(x, y)
 
     def half_widths(self) -> tuple[float, float]:
         """Half-width and half-height of the axis-aligned box around the curve."""
-        hr, vr, c, s = self._hr, self._vr, self._cos, self._sin
-        return math.hypot(hr * c, vr * s), math.hypot(hr * s, vr * c)
+        return self.frame.half_widths()
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (
@@ -243,19 +238,6 @@ class RotatedEllipse:
 # Full ellipses of either compiled form, for sites whose answer does not
 # depend on the tilt (radii, area, perimeter, center).
 FULL_ELLIPSE_TYPES = (spg.Ellipse, RotatedEllipse)  # spg.Ellipse covers Circle
-
-
-def reject_tilted_ellipses(def_id: str, what: str, operands: "tuple[tuple[str, Any], ...]") -> None:
-    """Raise TiltedEllipseUnsupported if any (id, object) operand is a tilted
-    ellipse: ``what`` (e.g. "point_intersection") does not support one yet."""
-    for oid, obj in operands:
-        if isinstance(obj, RotatedEllipse):
-            raise TiltedEllipseUnsupported(
-                def_id,
-                f"{what}: {oid!r} is a tilted ellipse (rotation_deg={obj.rotation_deg:g}); "
-                f"{what} does not support tilted ellipses yet. Use an axis-aligned ellipse "
-                f"(rotation_deg 0) or construct the point/line another way",
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -363,19 +345,67 @@ def _lift(x: float, y: float) -> spg.Point:
     return spg.Point(sp.Float(x, 17), sp.Float(y, 17))
 
 
+def _identity(x: float, y: float) -> tuple[float, float]:
+    return x, y
+
+
+def _frame_of(obj: Any) -> EllipseFrame:
+    """The float frame of a circle, ellipse or tilted ellipse (rotation 0 for the SymPy kinds)."""
+    if isinstance(obj, RotatedEllipse):
+        return obj.frame
+    return EllipseFrame(_f(obj.center.x), _f(obj.center.y), _f(obj.hradius), _f(obj.vradius))
+
+
+def _is_conic(obj: Any) -> bool:
+    return isinstance(obj, FULL_ELLIPSE_TYPES)
+
+
+def _kernel_conic_pair(obj1: Any, obj2: Any) -> bool:
+    """Does this circle/ellipse pair go through the numeric kernel? A tilted
+    ellipse always does (SymPy cannot carry it), and so does a float-valued pair
+    (SymPy rounds floats to fractions and either fails or takes seconds). An
+    exact axis-aligned pair keeps SymPy's exact result, and circle x circle
+    keeps its closed form."""
+    if not (_is_conic(obj1) and _is_conic(obj2)):
+        return False
+    if isinstance(obj1, spg.Circle) and isinstance(obj2, spg.Circle):
+        return False
+    return any(isinstance(o, RotatedEllipse) or o.has(sp.Float) for o in (obj1, obj2))
+
+
+def _kernel_intersection(obj1: Any, obj2: Any, did: str, id1: str, id2: str) -> list[spg.Point]:
+    """Circle/ellipse intersection through the numeric kernel, lifted to Float points."""
+    try:
+        found = intersect_conics(
+            _frame_of(obj1), _frame_of(obj2),
+            tangent_tol=INTERSECT_TANGENT_TOL, merge_tol=INTERSECT_MERGE_TOL, ids=(id1, id2),
+        )
+    except CoincidentConicsError as exc:
+        raise IntersectionError(did, f"no intersection points: {exc}") from exc
+    return [_lift(x, y) for x, y in found]
+
+
+def _line_tilted_ellipse_crossings(line: Any, ell: RotatedEllipse) -> list[spg.Point]:
+    """Crossings of a line/segment/ray with a tilted ellipse (closed form in its frame)."""
+    kind = "segment" if isinstance(line, spg.Segment) else "ray" if isinstance(line, spg.Ray) else "line"
+    p, q = (_f(line.p1.x), _f(line.p1.y)), (_f(line.p2.x), _f(line.p2.y))
+    scale = max(ell.frame.a, ell.frame.b, abs(ell.frame.cx), abs(ell.frame.cy), *map(abs, p), *map(abs, q))
+    found = line_ellipse_crossings(ell.frame, p, q, kind=kind, slack=INTERSECT_TANGENT_TOL * scale)
+    return [_lift(x, y) for x, y in found]
+
+
 def _tangent_candidates(
     obj1: Any, obj2: Any, points: list[spg.Point], def_id: str, id1: str, id2: str,
-    solved: bool = False,
 ) -> list[spg.Point]:
-    """Reconcile SymPy's circle x circle / line x circle candidates with float noise.
+    """Reconcile circle x circle / line x circle/ellipse candidates with float noise.
 
     Well-separated results (1 point, or 2 distinct points) pass through unchanged.
     Two candidates closer than INTERSECT_MERGE_TOL collapse to one; no candidates
     within INTERSECT_TANGENT_TOL of tangency snap to the tangent point. Any other
     empty result raises an IntersectionError naming the case and the gap. Other
     object pairs, and empty results this cannot explain, return `points` unchanged.
-    `solved` marks `points` as SymPy's result (not the pre-solve probe); only then can
-    an empty ellipse x ellipse/circle result be diagnosed.
+    A line against a tilted ellipse is judged in the ellipse's own frame (the line's
+    endpoints mapped in, the snapped point mapped back).
     """
     circle1, circle2 = isinstance(obj1, spg.Circle), isinstance(obj2, spg.Circle)
     if circle1 and circle2:
@@ -385,25 +415,20 @@ def _tangent_candidates(
         scale = max(r1, r2, d, abs(c1x), abs(c1y), abs(c2x), abs(c2y))
     elif (
         isinstance(obj1, (spg.Line, spg.Segment, spg.Ray)) != isinstance(obj2, (spg.Line, spg.Segment, spg.Ray))
-        and isinstance(obj1 if isinstance(obj2, (spg.Line, spg.Segment, spg.Ray)) else obj2, spg.Ellipse)
+        and isinstance(obj1 if isinstance(obj2, (spg.Line, spg.Segment, spg.Ray)) else obj2, FULL_ELLIPSE_TYPES)
     ):
-        line, ell = (obj1, obj2) if isinstance(obj2, spg.Ellipse) else (obj2, obj1)
+        line, ell = (obj1, obj2) if isinstance(obj2, FULL_ELLIPSE_TYPES) else (obj2, obj1)
         cx, cy = _f(ell.center.x), _f(ell.center.y)
         ha, va = _f(ell.hradius), _f(ell.vradius)
         ax, ay = _f(line.p1.x), _f(line.p1.y)
         bx, by = _f(line.p2.x), _f(line.p2.y)
         scale = max(ha, va, abs(cx), abs(cy), abs(ax), abs(ay), abs(bx), abs(by))
-    elif solved and not points and isinstance(obj1, spg.Ellipse) and isinstance(obj2, spg.Ellipse):
-        crossings = _count_ellipse_crossings(obj1, obj2)
-        if crossings:
-            raise IntersectionError(
-                def_id,
-                f"no intersection points between {id1!r} and {id2!r}: the curves cross at "
-                f"{crossings} points, but SymPy could not solve the intersection for these "
-                f"float-valued ellipses — use exact (integer or sqrt) radii, or construct the "
-                f"point another way",
-            )
-        return points
+        back = _identity
+        if isinstance(ell, RotatedEllipse):
+            ax, ay = ell.to_local(ax, ay)
+            bx, by = ell.to_local(bx, by)
+            cx = cy = 0.0
+            back = ell.to_world
     else:
         return points
     scale = scale or 1.0
@@ -463,23 +488,10 @@ def _tangent_candidates(
             return points
         if isinstance(line, spg.Ray) and t < -slack:
             return points
-        return [_lift(ax + t * dx, ay + t * dy)]
+        return [_lift(*back(ax + t * dx, ay + t * dy))]
     if gap > tol / max(ha, va):
         raise miss(f"the line misses the {'circle' if isinstance(ell, spg.Circle) else 'ellipse'} (disjoint)", gap * min(ha, va))
     return points
-
-
-def _count_ellipse_crossings(e1: Any, e2: Any, samples: int = 4096) -> int:
-    """How many times e1's boundary crosses e2's (sign changes of e2's implicit form
-    along e1), by sampling; tangencies and chords below sampling resolution are missed."""
-    c1x, c1y, a1, b1 = _f(e1.center.x), _f(e1.center.y), _f(e1.hradius), _f(e1.vradius)
-    c2x, c2y, a2, b2 = _f(e2.center.x), _f(e2.center.y), _f(e2.hradius), _f(e2.vradius)
-    signs = []
-    for i in range(samples):
-        t = 2 * math.pi * i / samples
-        x, y = c1x + a1 * math.cos(t), c1y + b1 * math.sin(t)
-        signs.append(((x - c2x) / a2) ** 2 + ((y - c2y) / b2) ** 2 - 1.0 > 0)
-    return sum(signs[i] != signs[i - 1] for i in range(samples))
 
 
 def _on_object(obj: Any, p: spg.Point) -> bool:
@@ -528,6 +540,33 @@ def _lone_candidate_on_line(points: list[spg.Point], a: spg.Point, b: spg.Point)
     scale = max(length, abs(ax), abs(ay), abs(px), abs(py))
     off_line = abs((bx - ax) * (py - ay) - (by - ay) * (px - ax)) / length
     return list(points) if off_line <= PICK_CONTAINS_TOL * scale else []
+
+
+def _intersection_points(obj1: Any, obj2: Any, did: str, id1: str, id2: str) -> list[spg.Point]:
+    """Candidates for a pair the float probe could not settle: the numeric kernel
+    for a circle/ellipse pair it owns and for a line against a tilted ellipse,
+    SymPy's exact intersection for everything else."""
+    if _kernel_conic_pair(obj1, obj2):
+        return _kernel_intersection(obj1, obj2, did, id1, id2)
+    for ell, other in ((obj1, obj2), (obj2, obj1)):
+        if isinstance(ell, RotatedEllipse) and isinstance(other, (spg.Line, spg.Segment, spg.Ray)):
+            return _tangent_candidates(obj1, obj2, _line_tilted_ellipse_crossings(other, ell), did, id1, id2)
+    try:
+        raw = obj1.intersection(obj2)
+    except ValueError as exc:
+        if "LinearEntity" in str(exc):
+            raise IRCompileError(
+                did,
+                f"intersection failed: line/circle intersection received invalid arguments — "
+                f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
+                f"(underlying error: {exc})"
+            ) from exc
+        raise
+    # SymPy may return the geometry object itself (not a list) when objects
+    # are identical (e.g. two equal circles → Circle, not []).
+    candidates = raw if isinstance(raw, list) else []
+    points = [c for c in candidates if isinstance(c, spg.Point)]
+    return _tangent_candidates(obj1, obj2, points, did, id1, id2)
 
 
 # ---------------------------------------------------------------------------
@@ -782,7 +821,6 @@ def _compile_one(
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
             operands = ((obj1_id, obj1), (obj2_id, obj2))
-            reject_tilted_ellipses(did, "point_intersection", operands)
             # An arc/sector (circular or elliptical) intersects exactly where
             # its underlying full circle/ellipse does; the candidates are
             # narrowed to its sweep below.
@@ -792,22 +830,7 @@ def _compile_one(
             # disjoint/contained/concentric/identical cases without a SymPy solve.
             points = _tangent_candidates(obj1, obj2, [], did, obj1_id, obj2_id)
             if not points:
-                try:
-                    raw = obj1.intersection(obj2)
-                except ValueError as exc:
-                    if "LinearEntity" in str(exc):
-                        raise IRCompileError(
-                            did,
-                            f"intersection failed: line/circle intersection received invalid arguments — "
-                            f"ensure the line is defined as a LineThrough, Ray, or Segment, not as two separate points "
-                            f"(underlying error: {exc})"
-                        ) from exc
-                    raise
-                # SymPy may return the geometry object itself (not a list) when objects
-                # are identical (e.g. two equal circles → Circle, not []).
-                candidates = raw if isinstance(raw, list) else []
-                points = [c for c in candidates if isinstance(c, spg.Point)]
-                points = _tangent_candidates(obj1, obj2, points, did, obj1_id, obj2_id, solved=True)
+                points = _intersection_points(obj1, obj2, did, obj1_id, obj2_id)
             if not points:
                 raise IntersectionError(did, f"no intersection points between {obj1_id!r} and {obj2_id!r}")
             if swept:
@@ -866,14 +889,16 @@ def _compile_one(
 
         case ir.LineTangent(point=point_id, circle=circle_id, pick=pick):
             target = ref(circle_id)
-            reject_tilted_ellipses(did, "line_tangent", ((circle_id, target),))
             circle = _underlying_conic(target)
-            if not isinstance(circle, spg.Ellipse):
+            if not isinstance(circle, FULL_ELLIPSE_TYPES):
                 raise IRCompileError(
                     did, f"line_tangent: 'circle' must be a circle/ellipse/arc/sector, got {type(target).__name__}"
                 )
             point = ref(point_id)
-            tangents = circle.tangent_lines(point)
+            if isinstance(circle, RotatedEllipse):
+                tangents = _tilted_tangent_lines(circle, point)
+            else:
+                tangents = circle.tangent_lines(point)
             if not tangents:
                 raise IntersectionError(did, f"no tangent lines from {point_id!r} to {circle_id!r}")
             if isinstance(target, _ARC_LIKE):
@@ -1774,6 +1799,18 @@ def _sample_param(obj: Any, rng: Random) -> float:
 _ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
 
 
+def arc_frame(obj: Any) -> EllipseFrame:
+    """The float frame of an arc-like object's ellipse (its circle for a circular
+    one): the one place its parametric angle is read or placed. Arcs carry no
+    tilt yet, so the rotation is 0."""
+    cx, cy = float(obj.center.x.evalf()), float(obj.center.y.evalf())
+    if isinstance(obj, (Arc, Sector)):
+        hr = vr = float(obj.radius.evalf())
+    else:
+        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
+    return EllipseFrame(cx, cy, hr, vr)
+
+
 def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]:
     """(cx, cy, hr, vr, start_rad, end_rad) of an arc-like object's CCW sweep,
     in parametric angles (``end_rad > start_rad``).
@@ -1783,13 +1820,10 @@ def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]
     an elliptical one; the endpoint swap for `reflex` mirrors
     ``arc_sweep_degrees`` / ``render_util.elliptical_arc_params``.
     """
-    cx, cy = float(obj.center.x.evalf()), float(obj.center.y.evalf())
-    if isinstance(obj, (Arc, Sector)):
-        hr = vr = float(obj.radius.evalf())
-    else:
-        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
-    s = math.atan2((float(obj.start.y.evalf()) - cy) / vr, (float(obj.start.x.evalf()) - cx) / hr)
-    e = math.atan2((float(obj.end.y.evalf()) - cy) / vr, (float(obj.end.x.evalf()) - cx) / hr)
+    frame = arc_frame(obj)
+    cx, cy, hr, vr = frame.cx, frame.cy, frame.a, frame.b
+    s = frame.param_of(float(obj.start.x.evalf()), float(obj.start.y.evalf()))
+    e = frame.param_of(float(obj.end.x.evalf()), float(obj.end.y.evalf()))
     s, e = s % (2 * math.pi), e % (2 * math.pi)
     ccw = (e - s) % (2 * math.pi) or 2 * math.pi
     if (ccw <= math.pi) == bool(obj.reflex):
@@ -1799,8 +1833,23 @@ def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]
     return cx, cy, hr, vr, s, e
 
 
-def _tangent_touch_point(t_line: Any, conic: spg.Ellipse) -> spg.Point | None:
-    """Where a tangent line touches an axis-aligned circle/ellipse.
+def _tilted_tangent_lines(ell: RotatedEllipse, point: spg.Point) -> list[spg.Line]:
+    """Tangent lines from ``point`` to a tilted ellipse, in the kernel's order (the
+    touch point at the larger parametric angle of the pair first); none for a point
+    inside. A point on the curve (within INTERSECT_TANGENT_TOL times the scale) has
+    exactly one tangent, the line through it along the curve."""
+    px, py = _f(point.x), _f(point.y)
+    fr = ell.frame
+    scale = max(fr.a, fr.b, abs(fr.cx), abs(fr.cy), abs(px), abs(py))
+    touches = tangent_touch_points(fr, px, py, tol=INTERSECT_TANGENT_TOL * scale)
+    if len(touches) == 1:  # on the curve: the tangent runs along it
+        (tx, ty), (dx, dy) = touches[0], fr.tangent_direction(fr.param_of(*touches[0]))
+        return [spg.Line(_lift(tx, ty), _lift(tx + dx, ty + dy))]
+    return [spg.Line(point, _lift(tx, ty)) for tx, ty in touches]
+
+
+def _tangent_touch_point(t_line: Any, conic: Any) -> spg.Point | None:
+    """Where a tangent line touches a circle/ellipse (tilted ones through the kernel).
 
     Computed from the line's normal rather than ``t_line.intersection(conic)``:
     with float radii SymPy sees a tangent line as just missing (or just
@@ -1811,6 +1860,8 @@ def _tangent_touch_point(t_line: Any, conic: spg.Ellipse) -> spg.Point | None:
     a, b, c = (float(v.evalf()) for v in t_line.coefficients)
     if a == 0 and b == 0:
         return None
+    if isinstance(conic, RotatedEllipse):
+        return _lift(*touch_point_for_line(conic.frame, a, b, c))
     cx, cy = float(conic.center.x.evalf()), float(conic.center.y.evalf())
     hr, vr = float(conic.hradius.evalf()), float(conic.vradius.evalf())
     theta0 = math.atan2(vr * b, hr * a)
@@ -1835,8 +1886,8 @@ def _point_in_arc_sweep(point: spg.Point, obj: Any) -> bool:
     """Is `point` (assumed on the underlying conic) within the arc-like
     object's sweep? Measured in parametric angle, so it is right for elliptical
     arcs and reduces to the polar angle for circular ones."""
-    cx, cy, hr, vr, s, e = arc_param_frame(obj)
-    theta = math.atan2((float(point.y.evalf()) - cy) / vr, (float(point.x.evalf()) - cx) / hr)
+    _cx, _cy, _hr, _vr, s, e = arc_param_frame(obj)
+    theta = arc_frame(obj).param_of(float(point.x.evalf()), float(point.y.evalf()))
     return angle_within_sweep(math.degrees(theta) % 360.0, math.degrees(s), math.degrees(e))
 
 
@@ -1845,9 +1896,8 @@ def _eval_param(obj: Any, t: float, def_id: str) -> spg.Point:
     if isinstance(obj, _ARC_LIKE):
         # t is a fraction of the sweep; outside [0, 1] it runs on past the end
         # points along the full circle/ellipse, as a segment's t > 1 does.
-        cx, cy, hr, vr, s, e = arc_param_frame(obj)
-        theta = s + t * (e - s)
-        return _lift(cx + hr * math.cos(theta), cy + vr * math.sin(theta))
+        _cx, _cy, _hr, _vr, s, e = arc_param_frame(obj)
+        return _lift(*arc_frame(obj).point_at(s + t * (e - s)))
     if isinstance(obj, spg.Segment):
         a, b = obj.p1, obj.p2
         return spg.Point(a.x + sp.S(t) * (b.x - a.x), a.y + sp.S(t) * (b.y - a.y))
@@ -1872,8 +1922,8 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
     PointOnIntent result to a dependency-pure PointOnParam (see
     Builder._pin_point_on)."""
     if isinstance(obj, _ARC_LIKE):
-        cx, cy, hr, vr, s, e = arc_param_frame(obj)
-        theta = math.atan2((y - cy) / vr, (x - cx) / hr)
+        _cx, _cy, _hr, _vr, s, e = arc_param_frame(obj)
+        theta = arc_frame(obj).param_of(x, y)
         span = e - s
         offset = (theta - s) % (2 * math.pi)
         # A point off the sweep is nearer one end than the other: express it
@@ -1884,9 +1934,8 @@ def _invert_param(obj: Any, x: float, y: float, def_id: str) -> float:
     if isinstance(obj, RotatedEllipse):
         return obj.param_of(x, y)
     if isinstance(obj, spg.Ellipse):  # covers Circle (Circle subclasses Ellipse)
-        cx, cy = float(obj.center.x), float(obj.center.y)
-        a, b = float(obj.hradius), float(obj.vradius)
-        return math.atan2((y - cy) / b, (x - cx) / a)
+        frame = EllipseFrame(float(obj.center.x), float(obj.center.y), float(obj.hradius), float(obj.vradius))
+        return frame.param_of(x, y)
     if isinstance(obj, (spg.Segment, spg.Line, spg.Ray)):
         # Segment/Line/Ray are all affine in t, so two reference evaluations
         # are enough to invert regardless of arbitrary_point's exact
@@ -2033,8 +2082,9 @@ def _reflex_for_bulge_toward(
 
     # Same parametric-angle recovery as elliptical_arc_params() in
     # render_util.py (reduces to plain atan2 when hr == vr).
-    theta_s = math.atan2((sy - cy) / vr, (sx - cx) / hr)
-    theta_e = math.atan2((ey - cy) / vr, (ex - cx) / hr)
+    frame = EllipseFrame(cx, cy, hr, vr)
+    theta_s = frame.param_of(sx, sy)
+    theta_e = frame.param_of(ex, ey)
     ccw = (theta_e - theta_s) % (2 * math.pi)
     if ccw == 0:
         ccw = 2 * math.pi
@@ -2051,6 +2101,6 @@ def _reflex_for_bulge_toward(
             "chord — can't tell which side of the arc it should bulge toward",
         )
 
-    minor_midpoint = spg.Point2D(cx + hr * math.cos(minor_mid), cy + vr * math.sin(minor_mid))
+    minor_midpoint = spg.Point2D(*frame.point_at(minor_mid))
     minor_side = float(_cross_sign(start, end, minor_midpoint).evalf())
     return not (minor_side * target_side > 0)

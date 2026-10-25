@@ -19,6 +19,7 @@ from sympy.geometry.line import LinearEntity
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
+from .conic_kernel import EllipseFrame
 from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, RotatedEllipse, SymTable
 
 logger = logging.getLogger(__name__)
@@ -660,8 +661,9 @@ def elliptical_arc_params(
     ey = sympy_to_float(arc.end.y)
     hr = sympy_to_float(arc.hradius)
     vr = sympy_to_float(arc.vradius)
-    s_deg = math.degrees(math.atan2((sy - cy) / vr, (sx - cx) / hr)) % 360.0
-    e_deg = math.degrees(math.atan2((ey - cy) / vr, (ex - cx) / hr)) % 360.0
+    frame = EllipseFrame(cx, cy, hr, vr)
+    s_deg = math.degrees(frame.param_of(sx, sy)) % 360.0
+    e_deg = math.degrees(frame.param_of(ex, ey)) % 360.0
     ccw = (e_deg - s_deg) % 360.0
     if ccw == 0:
         ccw = 360.0

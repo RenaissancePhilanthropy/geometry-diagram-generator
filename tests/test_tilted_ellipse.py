@@ -2,8 +2,8 @@
 (docs/specs/2026-10-25-rotated-ellipses-design.md): the ``rotation_deg`` field,
 the ``RotatedEllipse`` compiled marker and its frame, placement, containment,
 the radius checks and measures, canvas bounds, both renderers, and the typed
-errors for what later stages own (tangents, intersections, the tangent check,
-SVG under a non-unit aspect).
+error for SVG under a non-unit aspect. Tangents and intersections are in
+test_tilted_ellipse_intersections.py.
 
 Expected values are derived by hand from the rotation matrix, not from the
 code under test."""
@@ -451,43 +451,6 @@ async def test_stored_tilted_ir_renders_through_the_svg_pipeline_with_the_group_
     assert "rotate(-30" in result.svg
     tikz = ir_to_tikz(diagram, compile_defs(diagram))
     assert "rotate around={30:(1,2)}" in tikz
-
-
-# --- typed errors for what later stages own -------------------------------------
-
-def test_line_tangent_to_a_tilted_ellipse_is_a_typed_error():
-    diagram = _diagram(extra=[
-        ir.PointFixed(id="P", x=9, y=9),
-        ir.LineTangent(id="t", point="P", circle="E", pick=ir.PickIndex(k=0)),
-    ])
-    with pytest.raises(TiltedEllipseUnsupported, match=r"line_tangent.*'E'.*tilted") as exc:
-        compile_defs(diagram)
-    assert exc.value.def_id == "t"
-
-
-@pytest.mark.parametrize("operands", [("L", "E"), ("E", "L"), ("E", "C"), ("C", "E")])
-def test_point_intersection_with_a_tilted_ellipse_is_a_typed_error(operands):
-    diagram = _diagram(extra=[
-        ir.PointFixed(id="P", x=-5, y=2), ir.PointFixed(id="Q", x=5, y=2),
-        ir.LineThrough(id="L", p="P", q="Q"),
-        ir.CircleCenterRadius(id="C", center="O", radius=2),
-        ir.PointIntersection(id="X", obj1=operands[0], obj2=operands[1], pick=ir.PickIndex(k=0)),
-    ])
-    with pytest.raises(TiltedEllipseUnsupported, match=r"point_intersection.*'E'.*tilted") as exc:
-        compile_defs(diagram)
-    assert exc.value.def_id == "X"
-
-
-def test_tangent_check_on_a_tilted_ellipse_fails_with_a_message_naming_it():
-    diagram = _diagram(
-        extra=[ir.PointFixed(id="P", x=-5, y=5), ir.PointFixed(id="Q", x=5, y=5),
-               ir.LineThrough(id="L", p="P", q="Q")],
-        checks=[ir.Tangent(line="L", circle="E")],
-    )
-    (res,) = run_checks(diagram.checks, compile_defs(diagram))
-    assert not res.passed
-    assert "'E'" in res.message and "tilted" in res.message
-    assert not res.message.startswith("Error in")  # a deliberate rejection, not a crash
 
 
 # --- prompt text -----------------------------------------------------------------

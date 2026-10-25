@@ -193,15 +193,14 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.Tangent(line=line, circle=circle):
                 obj = sym[circle]
-                if isinstance(obj, RotatedEllipse):
-                    raise UnsupportedOperand(
-                        f"tangent: {circle!r} is a tilted ellipse (rotation_deg="
-                        f"{obj.rotation_deg:g}); the tangent check does not support tilted "
-                        f"ellipses yet"
-                    )
                 lin = _as_line(sym[line])
                 cx, cy, hr, vr = _conic_frame(obj, "tangent", circle)
                 a, b, c0 = (float(v.evalf()) for v in lin.coefficients)
+                if isinstance(obj, RotatedEllipse):
+                    # The support function below is for an axis-aligned conic: rewrite
+                    # the line in the ellipse's own frame (origin at its center).
+                    a, b, c0 = obj.frame.line_to_local(a, b, c0)
+                    cx = cy = 0.0
                 norm = math.hypot(a, b)
                 # Distance from the center at which a line of this direction is
                 # tangent: the conic's support function along the line's normal
@@ -470,8 +469,8 @@ _ARC_LIKE = (Arc, Sector, EllipticalArc, EllipticalSector)
 def _conic_frame(obj: Any, kind: str, obj_id: str) -> tuple[float, float, float, float]:
     """(cx, cy, hradius, vradius) of a circle, ellipse (tilted or not), arc,
     sector, elliptical arc or elliptical sector; a circular object has
-    hradius == vradius. The tilt is not part of the return: callers that need
-    the curve's direction (the tangent check) reject a tilted ellipse first.
+    hradius == vradius. The tilt is not part of the return: a caller that needs
+    the curve's direction (the tangent check) reads the ellipse's frame.
     Anything else is an UnsupportedOperand naming `kind` and `obj_id`."""
     if isinstance(obj, (Arc, Sector)):
         r = float(obj.radius.evalf())
