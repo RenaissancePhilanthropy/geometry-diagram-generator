@@ -222,9 +222,12 @@ def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
     return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
 
 
-def point_on_arc(point: spg.Point, arc: Arc | Sector, tol: float) -> bool:
-    """Is `point` on the curved edge of a circular arc/sector — at its radius
-    (within `tol`) and within its sweep?
+def point_on_arc(
+    point: spg.Point, arc: Arc | Sector | EllipticalArc | EllipticalSector, tol: float,
+) -> bool:
+    """Is `point` on the curved edge of an arc/sector (circular or elliptical)
+    — on its circle (within `tol` of the radius) or ellipse (the normalized
+    ellipse equation within `tol` of 1) and within its sweep?
 
     A sector's two straight radii and its filled interior are deliberately not
     part of this: a model that needs those has them as ordinary segments from
@@ -232,6 +235,12 @@ def point_on_arc(point: spg.Point, arc: Arc | Sector, tol: float) -> bool:
     this point lie on this arc" — the `pick_on_object` rule below and
     ``checks.py``'s containment check.
     """
+    if isinstance(arc, (EllipticalArc, EllipticalSector)):
+        cx, cy = float(arc.center.x.evalf()), float(arc.center.y.evalf())
+        hr, vr = float(arc.hradius.evalf()), float(arc.vradius.evalf())
+        px, py = float(point.x.evalf()), float(point.y.evalf())
+        on_curve = abs(((px - cx) / hr) ** 2 + ((py - cy) / vr) ** 2 - 1.0) < tol
+        return on_curve and _point_in_arc_sweep(point, arc)
     radius_error = abs(float(point.distance(arc.center).evalf()) - float(arc.radius.evalf()))
     return radius_error < tol and _point_within_arc_sweep(point, arc)
 
@@ -669,18 +678,11 @@ def _compile_one(
                 raise IRCompileError(did, f"cannot intersect '{obj1_id}' with itself — use two distinct objects")
             obj1, obj2 = ref(obj1_id), ref(obj2_id)
             operands = ((obj1_id, obj1), (obj2_id, obj2))
-            for oid, operand in operands:
-                if isinstance(operand, (EllipticalArc, EllipticalSector)):
-                    raise IRCompileError(
-                        did,
-                        f"point_intersection: {oid!r} is an elliptical arc/sector "
-                        f"({type(operand).__name__}); only circular arcs/sectors can be "
-                        f"intersected — intersect the underlying ellipse instead"
-                    )
-            # A circular arc/sector intersects exactly where its underlying full
-            # circle does; the candidates are narrowed to its sweep below.
-            swept = [(oid, o) for oid, o in operands if isinstance(o, (Arc, Sector))]
-            obj1, obj2 = _underlying_circle(obj1), _underlying_circle(obj2)
+            # An arc/sector (circular or elliptical) intersects exactly where
+            # its underlying full circle/ellipse does; the candidates are
+            # narrowed to its sweep below.
+            swept = [(oid, o) for oid, o in operands if isinstance(o, _ARC_LIKE)]
+            obj1, obj2 = _underlying_conic(obj1), _underlying_conic(obj2)
             # Float gap check first: it is cheap, snaps near-tangent pairs, and names
             # disjoint/contained/concentric/identical cases without a SymPy solve.
             points = _tangent_candidates(obj1, obj2, [], did, obj1_id, obj2_id)
@@ -706,7 +708,7 @@ def _compile_one(
             if swept:
                 within = [
                     p for p in points
-                    if all(_point_within_arc_sweep(p, arc) for _, arc in swept)
+                    if all(_point_in_arc_sweep(p, arc) for _, arc in swept)
                 ]
                 if not within:
                     which = " and ".join(repr(oid) for oid, _ in swept)
@@ -1444,16 +1446,9 @@ def _apply_pick(
 
         case ir.PickOnObject(obj=obj_id):
             obj = _resolve(sym, obj_id, def_id=def_id)
-            if isinstance(obj, (EllipticalArc, EllipticalSector)):
-                raise IRCompileError(
-                    def_id,
-                    f"pick_on_object: {obj_id!r} is an elliptical arc/sector "
-                    f"({type(obj).__name__}); only circular arcs/sectors can be used "
-                    f"as a pick target — pick on the underlying ellipse instead"
-                )
-            if isinstance(obj, (Arc, Sector)):
+            if isinstance(obj, _ARC_LIKE):
                 # Marker types have no .contains(); "on" an arc/sector means on
-                # its curved edge, i.e. at its radius and within its sweep.
+                # its curved edge, i.e. on its circle/ellipse and within its sweep.
                 on = [p for p in points if point_on_arc(p, obj, PICK_ON_ARC_TOL)]
             else:
                 on = [p for p in points if _on_object(obj, p)]

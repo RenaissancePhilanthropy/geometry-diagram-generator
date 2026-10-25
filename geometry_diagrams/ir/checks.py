@@ -413,12 +413,7 @@ def _to_bool(expr: Any) -> bool:
 
 def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
     """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
-    if isinstance(obj, (EllipticalArc, EllipticalSector)):
-        raise UnsupportedOperand(
-            f"{type(obj).__name__} (elliptical arc/sector) is not supported as a "
-            f"containment operand; only circular arcs/sectors are"
-        )
-    if isinstance(obj, (Arc, Sector)):
+    if isinstance(obj, _ARC_LIKE):
         # On the curved edge only — see point_on_arc(), which the pick_on_object
         # rule in to_sympy.py shares, so the two can't drift apart.
         return point_on_arc(point, obj, tol)

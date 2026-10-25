@@ -2260,47 +2260,92 @@ class TestArcAsIntersectionOperand:
                 PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="arc2")),
             )
 
-    def test_pick_on_object_rejects_an_elliptical_arc_by_name(self):
-        with pytest.raises(IRCompileError, match="EllipticalArc"):
-            _compile(
-                *self._wide_arc(),
-                PointFixed(id="P", x=1.5, y=-3),
-                PointFixed(id="Q", x=1.5, y=3),
-                LineThrough(id="L", p="P", q="Q"),
-                PointFixed(id="O2", x=3, y=0),
-                PointFixed(id="S2", x=7, y=0),
-                PointFixed(id="E2", x=3, y=2),
-                EllipticalArcCenterStartEnd(
-                    id="ea", center="O2", hradius=4, vradius=2, start="S2", end="E2"
-                ),
-                PointIntersection(id="X", obj1="arc", obj2="L", pick=PickOnObject(obj="ea")),
-            )
+    # -- elliptical arcs/sectors: x^2/16 + y^2/4 = 1, first quadrant (0 -> 90 deg) --
 
-    def test_elliptical_arc_operand_is_rejected_by_name(self):
-        with pytest.raises(IRCompileError, match="EllipticalArc"):
+    def _quarter_ellipse(self, cls):
+        return [
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=2),
+            cls(id="ea", center="O", hradius=4, vradius=2, start="S", end="E"),
+        ]
+
+    @pytest.mark.parametrize("cls", [EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd])
+    def test_elliptical_arc_meets_a_line_inside_its_sweep(self, cls):
+        # y = x meets the ellipse where x^2/16 + x^2/4 = 1, i.e. at
+        # +-(4/sqrt5, 4/sqrt5); only the first-quadrant point is on the arc, so
+        # no pick is needed.
+        sym = _compile(
+            *self._quarter_ellipse(cls),
+            PointFixed(id="P", x=-1, y=-1),
+            PointFixed(id="Q", x=1, y=1),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="ea", obj2="L"),
+        )
+        expected = 4 / math.sqrt(5)
+        assert approx(sym["X"].x, expected, 1e-9) and approx(sym["X"].y, expected, 1e-9)
+
+    def test_elliptical_arc_meets_a_circle(self):
+        # The r = 3 circle about the origin meets the full ellipse in four
+        # points, one per quadrant; only the first-quadrant one is on the arc.
+        sym = _compile(
+            *self._quarter_ellipse(EllipticalArcCenterStartEnd),
+            CircleCenterRadius(id="c", center="O", radius=3),
+            PointIntersection(id="X", obj1="ea", obj2="c"),
+        )
+        x, y = float(sym["X"].x), float(sym["X"].y)
+        assert approx(math.hypot(x, y), 3.0, 1e-9)
+        assert approx((x / 4) ** 2 + (y / 2) ** 2, 1.0, 1e-9)
+        assert x > 0 and y > 0
+
+    def test_elliptical_arc_meets_a_circular_arc(self):
+        sym = _compile(
+            *self._quarter_ellipse(EllipticalArcCenterStartEnd),
+            PointFixed(id="CS", x=3, y=0),
+            PointFixed(id="CE", x=0, y=3),
+            ArcCenterStartEnd(id="ca", center="O", start="CS", end="CE"),
+            PointIntersection(id="X", obj1="ea", obj2="ca"),
+        )
+        assert approx(math.hypot(float(sym["X"].x), float(sym["X"].y)), 3.0, 1e-9)
+
+    def test_elliptical_arc_with_no_intersection_in_its_sweep_names_the_sweep(self):
+        with pytest.raises(IntersectionError, match="sweep"):
             _compile(
-                PointFixed(id="O", x=0, y=0),
-                PointFixed(id="S", x=4, y=0),
-                PointFixed(id="E", x=0, y=2),
-                EllipticalArcCenterStartEnd(id="ea", center="O", hradius=4, vradius=2, start="S", end="E"),
-                PointFixed(id="P", x=-1, y=-1),
-                PointFixed(id="Q", x=1, y=1),
-                LineThrough(id="L", p="P", q="Q"),
+                *self._quarter_ellipse(EllipticalArcCenterStartEnd),
+                PointFixed(id="P", x=1, y=-1),
+                PointFixed(id="Q", x=-1, y=1),
+                LineThrough(id="L", p="P", q="Q"),  # y = -x: second and fourth quadrants only
                 PointIntersection(id="X", obj1="ea", obj2="L"),
             )
 
-    def test_elliptical_sector_operand_is_rejected_by_name(self):
-        with pytest.raises(IRCompileError, match="EllipticalSector"):
-            _compile(
-                PointFixed(id="O", x=0, y=0),
-                PointFixed(id="S", x=4, y=0),
-                PointFixed(id="E", x=0, y=2),
-                EllipticalSectorCenterStartEnd(id="es", center="O", hradius=4, vradius=2, start="S", end="E"),
-                PointFixed(id="P", x=-1, y=-1),
-                PointFixed(id="Q", x=1, y=1),
-                LineThrough(id="L", p="P", q="Q"),
-                PointIntersection(id="X", obj1="es", obj2="L"),
-            )
+    def test_elliptical_arc_intersection_keeps_both_points_when_both_are_on_the_sweep(self):
+        # The vertical line x = 2 meets the ellipse at (2, +-sqrt3). The reflex
+        # arc runs 90 -> 360 degrees, so only the lower point is on it.
+        sym = _compile(
+            PointFixed(id="O", x=0, y=0),
+            PointFixed(id="S", x=4, y=0),
+            PointFixed(id="E", x=0, y=2),
+            EllipticalArcCenterStartEnd(id="ea", center="O", hradius=4, vradius=2, start="S", end="E", reflex=True),
+            PointFixed(id="P", x=2, y=-5),
+            PointFixed(id="Q", x=2, y=5),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="ea", obj2="L"),
+        )
+        assert approx(sym["X"].x, 2.0, 1e-9) and approx(sym["X"].y, -math.sqrt(3), 1e-9)
+
+    @pytest.mark.parametrize("cls", [EllipticalArcCenterStartEnd, EllipticalSectorCenterStartEnd])
+    def test_pick_on_object_can_use_an_elliptical_arc_or_sector(self, cls):
+        # x = 2 meets the full ellipse at (2, +-sqrt3); the first-quadrant
+        # elliptical arc/sector picks the upper point.
+        sym = _compile(
+            *self._quarter_ellipse(cls),
+            EllipseCenterAxes(id="full", center="O", hradius=4, vradius=2),
+            PointFixed(id="P", x=2, y=-5),
+            PointFixed(id="Q", x=2, y=5),
+            LineThrough(id="L", p="P", q="Q"),
+            PointIntersection(id="X", obj1="full", obj2="L", pick=PickOnObject(obj="ea")),
+        )
+        assert approx(sym["X"].x, 2.0, 1e-9) and approx(sym["X"].y, math.sqrt(3), 1e-9)
 
 
 def test_auto_checks_pass_for_an_arc_arc_intersection():
@@ -2856,3 +2901,21 @@ def test_optional_point_field_may_be_absent_or_a_point():
     _compile(*base, ArcCenterStartEnd(id="Z", center="O", start="A", end="B", bulge_toward="P"))
     with pytest.raises(IRCompileError, match="bulge_toward"):
         _compile(*base, ArcCenterStartEnd(id="Z", center="O", start="A", end="B", bulge_toward="L"))
+
+
+@pytest.mark.parametrize("hr,vr", [(4, 2), (4.0, 2.0), (4.13, 2.07)])
+def test_auto_checks_pass_for_an_elliptical_arc_intersection(hr, vr):
+    """The Contains checks auto-generated for a PointIntersection must hold when
+    an operand is an elliptical arc, with integer or float radii."""
+    diag = DiagramIR(define=[
+        PointFixed(id="O", x=0, y=0),
+        PointFixed(id="S", x=hr, y=0),
+        PointFixed(id="E", x=0, y=vr),
+        EllipticalArcCenterStartEnd(id="ea", center="O", hradius=hr, vradius=vr, start="S", end="E"),
+        PointFixed(id="P", x=-1, y=-1),
+        PointFixed(id="Q", x=1, y=1),
+        LineThrough(id="L", p="P", q="Q"),
+        PointIntersection(id="X", obj1="ea", obj2="L"),
+    ])
+    results = run_auto_checks(diag, compile_defs(diag))
+    assert results and all(r.passed for r in results), [r.message for r in results if not r.passed]

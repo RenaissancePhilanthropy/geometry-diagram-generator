@@ -645,28 +645,42 @@ class TestContainsArcOrSector:
         result = _check_one(NotContains(p="OUT", obj="a"), self._sym(), DEFAULT_TOL)
         assert result.passed
 
-    def test_elliptical_arc_is_rejected_by_name(self):
-        """A deliberate, named rejection -- not an AttributeError leaking through."""
-        result = self._contains("ES", elliptical=True)
-        assert not result.passed
-        assert "EllipticalArc" in result.message
-        assert "circular arcs" in result.message
+    # Elliptical arc from (4, 0) to (0, 2): x^2/16 + y^2/4 = 1, first quadrant.
 
-    def test_elliptical_rejection_message_is_direct_not_generically_wrapped(self):
-        """Same message shape as congruent_arcs's elliptical rejection: a clean,
-        direct sentence, not the generic "Error in <kind>:" exception wrapper."""
-        result = self._contains("ES", elliptical=True)
-        assert not result.message.startswith("Error in ")
+    def test_elliptical_arc_contains_a_point_on_its_curve_inside_the_sweep(self):
+        from geometry_diagrams.ir.ir import PointFixed
+        sym = self._sym(elliptical=True)
+        sym["EIN"] = spg.Point2D(2 * 2 ** 0.5, 2 ** 0.5)  # (4 cos 45, 2 sin 45)
+        from geometry_diagrams.ir.ir import Contains
+        assert _check_one(Contains(p="EIN", obj="a"), sym, DEFAULT_TOL).passed
+        assert self._contains("ES", elliptical=True).passed      # start point (4, 0)
 
-    def test_not_contains_on_an_elliptical_arc_is_rejected_too(self):
-        """A rejected operand must not make NotContains vacuously pass."""
-        from geometry_diagrams.ir.ir import NotContains
-        result = _check_one(
-            NotContains(p="ES", obj="a"), self._sym(elliptical=True), DEFAULT_TOL
+    def test_elliptical_arc_does_not_contain_a_point_off_the_ellipse_or_off_the_sweep(self):
+        from geometry_diagrams.ir.ir import Contains
+        sym = self._sym(elliptical=True)
+        sym["EOFF"] = spg.Point2D(-4, 0)    # on the ellipse, outside the sweep
+        sym["EIN2"] = spg.Point2D(1, 1)     # inside the ellipse, not on it
+        off_sweep = _check_one(Contains(p="EOFF", obj="a"), sym, DEFAULT_TOL)
+        assert not off_sweep.passed and "'a'" in off_sweep.message
+        assert not _check_one(Contains(p="EIN2", obj="a"), sym, DEFAULT_TOL).passed
+
+    def test_elliptical_sector_contains_its_curved_edge_only(self):
+        from geometry_diagrams.ir.ir import Contains
+        sym = self._sym(elliptical=True)
+        sym["a"] = EllipticalSector(
+            center=spg.Point2D(0, 0), start=spg.Point2D(4, 0), end=spg.Point2D(0, 2),
+            hradius=sp.Integer(4), vradius=sp.Integer(2),
         )
-        assert not result.passed
-        assert not result.message.startswith("Error in ")
-        assert "EllipticalArc" in result.message
+        sym["EIN"] = spg.Point2D(2 * 2 ** 0.5, 2 ** 0.5)
+        assert _check_one(Contains(p="EIN", obj="a"), sym, DEFAULT_TOL).passed
+        assert not _check_one(Contains(p="NEAR", obj="a"), sym, DEFAULT_TOL).passed
+
+    def test_not_contains_on_an_elliptical_arc_follows_containment(self):
+        from geometry_diagrams.ir.ir import NotContains
+        sym = self._sym(elliptical=True)
+        sym["EOFF"] = spg.Point2D(-4, 0)
+        assert _check_one(NotContains(p="EOFF", obj="a"), sym, DEFAULT_TOL).passed
+        assert not _check_one(NotContains(p="ES", obj="a"), sym, DEFAULT_TOL).passed
 
 
 # ---------------------------------------------------------------------------
