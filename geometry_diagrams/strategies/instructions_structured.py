@@ -436,8 +436,31 @@ Example (a 2 x 2 plan with heights 1, 2 / 3, 0, six cubes, a total label, a colu
 ```
 """
 
+_TILTED_ELLIPSES_FRAGMENT = """
+
+---
+
+## Tilted ellipses
+
+`ellipse_center_axes` and `ellipse_center_eccentricity` take an optional `rotation_deg` (a number \
+or an expression string such as `"angle(X, O, F)"`): degrees counter-clockwise from +x to the \
+`hradius` axis, default 0. `hradius` is the semi-axis along that direction and `vradius` the one \
+perpendicular to it (for the eccentricity form, the whole figure given by `orientation` turns by \
+`rotation_deg`).
+
+- `point_on` with `{"kind": "param", "t": ...}` measures t from the tilted `hradius` axis: t = 0 \
+is the end of that axis, t = pi/2 the end of the `vradius` axis.
+- Not supported on a tilted ellipse yet (each is an error): `line_tangent`, `point_intersection`, \
+the `tangent` check, and a canvas `aspect` other than 1. Build those diagrams with an \
+axis-aligned ellipse instead.
+- `ellipse_bbox`, `ellipse_foci` and elliptical arcs/sectors are always axis-aligned.
+"""
+
 # group -> prompt fragment appended only when that group is enabled.
-GROUPED_FRAGMENTS: "dict[str, str]" = {"solids": _SOLIDS_FRAGMENT + _STACK_FRAGMENT}
+GROUPED_FRAGMENTS: "dict[str, str]" = {
+    "solids": _SOLIDS_FRAGMENT + _STACK_FRAGMENT,
+    "tilted_ellipses": _TILTED_ELLIPSES_FRAGMENT,
+}
 
 
 def build_structured_instructions(features: "frozenset[str] | set[str]" = frozenset()) -> str:

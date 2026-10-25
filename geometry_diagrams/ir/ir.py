@@ -494,11 +494,16 @@ class EllipticalSectorCenterStartEnd(DefBase):
 
 
 class EllipseCenterAxes(DefBase):
-    """Axis-aligned ellipse defined by center and semi-axis lengths."""
+    """Ellipse defined by center and semi-axis lengths. ``hradius`` is the
+    semi-axis along ``rotation_deg`` (degrees counter-clockwise from +x;
+    horizontal when it is 0, the default) and ``vradius`` the one
+    perpendicular to it. A nonzero rotation (a tilted ellipse) belongs to the
+    ``tilted_ellipses`` feature group at generation surfaces."""
     kind: Literal["ellipse_center_axes"] = "ellipse_center_axes"
     center: PointId
-    hradius: Union[int, float, str]  # horizontal semi-axis
-    vradius: Union[int, float, str]  # vertical semi-axis
+    hradius: Union[int, float, str]  # semi-axis along rotation_deg (horizontal at 0)
+    vradius: Union[int, float, str]  # semi-axis perpendicular to it (vertical at 0)
+    rotation_deg: Union[int, float, str] = 0
 
 
 class EllipseBBox(DefBase):
@@ -528,12 +533,17 @@ class EllipseFoci(DefBase):
 
 
 class EllipseCenterEccentricity(DefBase):
-    """Axis-aligned ellipse from center, semi-major axis length, eccentricity, and orientation."""
+    """Ellipse from center, semi-major axis length, eccentricity, and
+    orientation, turned counter-clockwise about its center by
+    ``rotation_deg`` degrees (default 0: axis-aligned, the major axis
+    horizontal or vertical per ``orientation``). A nonzero rotation belongs to
+    the ``tilted_ellipses`` feature group at generation surfaces."""
     kind: Literal["ellipse_center_eccentricity"] = "ellipse_center_eccentricity"
     center: PointId
     semi_major: Union[int, float, str]  # length of the semi-major axis
     eccentricity: Union[int, float, str]  # e in [0, 1)
     orientation: Literal["horizontal", "vertical"] = "horizontal"
+    rotation_deg: Union[int, float, str] = 0
 
 
 class Triangle(DefBase):

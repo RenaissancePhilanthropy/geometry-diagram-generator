@@ -34,6 +34,15 @@ def _prism_diagram() -> ir.DiagramIR:
     )
 
 
+def _tilted_ellipse_diagram(rotation=30, kind="axes") -> ir.DiagramIR:
+    if kind == "axes":
+        ellipse = ir.EllipseCenterAxes(id="E", center="O", hradius=3, vradius=1, rotation_deg=rotation)
+    else:
+        ellipse = ir.EllipseCenterEccentricity(id="E", center="O", semi_major=3, eccentricity=0.5,
+                                               rotation_deg=rotation)
+    return ir.DiagramIR(define=[ir.PointFixed(id="O", x=0, y=0), ellipse], render=[ir.Draw(obj="E")])
+
+
 def _plain_diagram() -> ir.DiagramIR:
     return ir.DiagramIR(define=[ir.PointFixed(id="A", x=0, y=0)], render=[ir.Draw(obj="A")])
 
@@ -103,6 +112,40 @@ def test_require_features_rejects_disabled_prism_with_actionable_message():
 def test_require_features_accepts_enabled_group_and_ungated_kinds():
     require_features(_prism_diagram(), frozenset({"solids"}))
     require_features(_plain_diagram(), frozenset())
+
+
+@pytest.mark.parametrize("kind", ["axes", "eccentricity"])
+@pytest.mark.parametrize("rotation", [30, -15.5, "pi", "angle(A, O, B)", "0.0"])
+def test_require_features_rejects_a_tilted_ellipse_with_the_group_off(kind, rotation):
+    with pytest.raises(FeatureNotEnabledError) as exc:
+        require_features(_tilted_ellipse_diagram(rotation, kind), frozenset())
+    msg = str(exc.value)
+    assert "'E'" in msg and "rotation_deg" in msg and "tilted_ellipses" in msg
+    assert "GEOMETRY_FEATURES" in msg
+    require_features(_tilted_ellipse_diagram(rotation, kind), frozenset({"tilted_ellipses"}))
+
+
+@pytest.mark.parametrize("kind", ["axes", "eccentricity"])
+@pytest.mark.parametrize("rotation", [0, 0.0, "0"])
+def test_require_features_accepts_an_untilted_ellipse_with_the_group_off(kind, rotation):
+    require_features(_tilted_ellipse_diagram(rotation, kind), frozenset())
+    omitted = ir.DiagramIR(define=[
+        ir.PointFixed(id="O", x=0, y=0), ir.EllipseCenterAxes(id="E", center="O", hradius=3, vradius=1),
+    ])
+    require_features(omitted, frozenset())
+
+
+def test_tilted_ellipses_is_registered_and_off_by_default(monkeypatch):
+    monkeypatch.delenv("GEOMETRY_FEATURES", raising=False)
+    assert "tilted_ellipses" in FEATURE_GROUPS
+    assert GeometryConfig.from_env().features == frozenset()
+    assert parse_features("tilted_ellipses, solids") == frozenset({"tilted_ellipses", "solids"})
+
+
+def test_tilted_ellipse_compiles_and_renders_with_the_group_off():
+    diagram = _tilted_ellipse_diagram()
+    sym = compile_defs(diagram)
+    assert "rotate(" in SVGRenderer().render(diagram, sym).output
 
 
 # --- compile and render never gate ------------------------------------------
@@ -354,7 +397,10 @@ def test_child_main_exposes_grouped_name_only_when_request_enables_group():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy_name", ["structured", "recipe", "python_full"])
-async def test_each_ir_strategy_rejects_disabled_prism_before_the_pipeline(strategy_name):
+@pytest.mark.parametrize("group,make_diagram", [
+    ("solids", _prism_diagram), ("tilted_ellipses", _tilted_ellipse_diagram),
+])
+async def test_each_ir_strategy_rejects_a_disabled_group_before_the_pipeline(strategy_name, group, make_diagram):
     """Regression guard for the forgettable gate: whatever the strategy, a
     disabled-group IR must never reach the shared pipeline, and the same IR
     must reach it when the group is enabled."""
@@ -373,15 +419,15 @@ async def test_each_ir_strategy_rejects_disabled_prism_before_the_pipeline(strat
         if strategy_name == "structured":
             with patch.object(st, "_run_ir_pipeline", new=fake_pipeline):
                 out = await st._run_pipeline_node(
-                    {"diagram_ir": _prism_diagram(), "renderer": None, "attempt": 0, "features": features})
+                    {"diagram_ir": make_diagram(), "renderer": None, "attempt": 0, "features": features})
         elif strategy_name == "recipe":
-            with patch.object(rc, "lower_to_ir", return_value=_prism_diagram()), \
+            with patch.object(rc, "lower_to_ir", return_value=make_diagram()), \
                  patch.object(rc, "_run_ir_pipeline", new=fake_pipeline):
                 out = await rc._run_recipe_pipeline_node(
                     {"dsl": MagicMock(), "renderer": None, "recipe_metadata": rc.RecipeMetadata(),
                      "attempt": 1, "features": features})
         else:
-            fake = ScriptResult(diagram_ir=_prism_diagram(), error=None, error_type=None)
+            fake = ScriptResult(diagram_ir=make_diagram(), error=None, error_type=None)
             state = {"script": "x", "renderer": None, "attempt": 0, "features": features,
                      "metadata": pf.PythonFullMetadata(attempt_traces=[pf.PythonFullAttemptTrace(
                          attempt=0, script="x", error=None, stage="generation")])}
@@ -391,8 +437,8 @@ async def test_each_ir_strategy_rejects_disabled_prism_before_the_pipeline(strat
         return out, reached
 
     out, reached = await run(frozenset())
-    assert reached == [] and out["result"] is None and "solids" in out["last_error"]
-    out, reached = await run(frozenset({"solids"}))
+    assert reached == [] and out["result"] is None and group in out["last_error"]
+    out, reached = await run(frozenset({group}))
     assert len(reached) == 1 and out["result"] is not None
 
 
