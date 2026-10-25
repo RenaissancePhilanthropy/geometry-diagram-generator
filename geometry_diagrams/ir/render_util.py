@@ -1228,6 +1228,26 @@ def arc_text_glyph_layout(
     return out
 
 
+# An inside text baseline may sit at most this fraction of the tightest radius
+# of curvature from the ellipse, keeping the offset curve strictly regular.
+_INSIDE_OFFSET_FRACTION = 0.8
+
+
+def _min_curvature_radius(hr: float, vr: float, anchor: float, text_length: float) -> float:
+    """Smallest radius of curvature, speed**3 / (hr * vr), over the parameters
+    a string of ``text_length`` centered at ``anchor`` can touch. The window is
+    found by walking the ellipse itself that far either side of the anchor,
+    with 25% slack because an inside baseline is shorter than the ellipse
+    (so the same string reaches further along it). The four axis vertices,
+    where the extremes sit, are included exactly rather than by sampling."""
+    reach = 0.625 * text_length
+    lo = _offset_curve_param_at(hr, vr, 0.0, anchor, -reach)
+    hi = _offset_curve_param_at(hr, vr, 0.0, anchor, reach)
+    ts = [lo + (hi - lo) * i / 256 for i in range(257)]
+    ts += [k * math.pi / 2 for k in range(math.ceil(lo / (math.pi / 2)), math.floor(hi / (math.pi / 2)) + 1)]
+    return min(math.hypot(-hr * math.sin(t), vr * math.cos(t)) ** 3 / (hr * vr) for t in ts)
+
+
 def elliptical_arc_text_glyph_layout(
     cx: float,
     cy: float,
@@ -1250,23 +1270,25 @@ def elliptical_arc_text_glyph_layout(
     each advance is measured as arc length along THAT curve, so uneven
     curvature never squeezes or stretches the glyph spacing. Rotation is the
     reading direction of the curve's local tangent. An inside offset is
-    clamped to the local radius of curvature at the anchor (the analogue of
-    the circular clamp at the center).
+    capped at a fraction of the smallest radius of curvature over the span the
+    text covers (see _min_curvature_radius), so the inside offset curve never
+    reaches a cusp and reverses its tangent mid-word -- the analogue of the
+    circular clamp at the center.
     """
     if not advances:
         return []
     anchor = math.radians(start_deg + pos * (end_deg - start_deg))
+    total = sum(advances)
     if side == "outside":
         signed = offset
     else:
-        speed = math.hypot(-hr * math.sin(anchor), vr * math.cos(anchor))
-        signed = -min(offset, speed ** 3 / (hr * vr))
+        signed = -min(offset, _INSIDE_OFFSET_FRACTION * _min_curvature_radius(
+            hr, vr, anchor, total))
     if flip is None:
         up_sign = 1.0 if _ellipse_normal(hr, vr, anchor)[1] >= 0.0 else -1.0
     else:
         up_sign = -1.0 if flip else 1.0
     step = -up_sign
-    total = sum(advances)
     cursor = -total / 2.0
     out: "list[tuple[float, float, float]]" = []
     for adv in advances:

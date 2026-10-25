@@ -291,7 +291,7 @@ def test_svg_readable_text_is_upright_on_upper_and_lower_halves():
             assert abs(rot) < 90  # never upside down
 
 
-def test_svg_overlong_text_degrades_like_circular_for_unlayoutable():
+def test_svg_mathtext_subscript_text_falls_back_to_a_single_label():
     d = _diagram(EllipticalArcCenterStartEnd, 4, 3, 100, 200, False,
                  LabelAlongArc(arc="ea", text="P_1"))
     root, _, warnings = _render_svg(d)
@@ -360,3 +360,121 @@ def test_tikz_a_non_arc_still_warns(op):
     d = _diagram(EllipticalArcCenterStartEnd, 4, 3, 100, 200, False, op, calibrate=False)
     tikz, warnings = _render_tikz(d)
     assert any("'cal' is not an arc/sector" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# Inside text through a vertex must not fold (regression)
+# ---------------------------------------------------------------------------
+
+def _assert_unfolded(rots):
+    """The string wraps around the narrow end, which genuinely turns the
+    reading direction through ~150 degrees, but it must do so smoothly: the
+    rotation is monotone (a tangent reversal at a cusp would break that) and
+    no single step turns a glyph more than 120 degrees from its neighbour."""
+    steps = [b - a for a, b in zip(rots, rots[1:])]
+    assert all(st >= -1e-6 for st in steps) or all(st <= 1e-6 for st in steps), rots
+    assert all(abs(st) < 120 for st in steps), rots
+
+
+def _assert_baseline_clear_of_cusp(centers, tip_radius, hr, vr):
+    """Every inside glyph center sits within 0.8 of the tightest radius of
+    curvature of the ellipse (so the offset curve has no cusp)."""
+    for c in centers:
+        # distance from c to the ellipse, by dense sampling
+        t = np.linspace(-0.6, 0.6, 20001)
+        d = np.min(np.hypot(c[0] - hr * np.cos(t), c[1] - vr * np.sin(t)))
+        assert d <= 0.8 * tip_radius + 2e-3, d
+
+
+@pytest.mark.parametrize("sweep,pos", [((-40, 40), 0.5), ((-30, 30), 0.6)])
+def test_svg_inside_text_through_a_vertex_does_not_fold(sweep, pos):
+    d = _diagram(EllipticalArcCenterStartEnd, 10, 1, sweep[0], sweep[1], False,
+                 LabelAlongArc(arc="ea", text="label", side="inside", pos=pos))
+    root, f, _ = _render_svg(d)
+    glyphs = _svg_glyphs(root)
+    _assert_unfolded([r for _, _, r in glyphs])
+    centers = [((p[0] - f.ox) / f.k, (f.oy - p[1]) / f.k) for _, p, _ in glyphs]
+    _assert_baseline_clear_of_cusp(centers, 0.1, 10, 1)
+
+
+@pytest.mark.parametrize("sweep,pos", [((-40, 40), 0.5), ((-30, 30), 0.6)])
+def test_tikz_inside_text_through_a_vertex_does_not_fold(sweep, pos):
+    d = _diagram(EllipticalArcCenterStartEnd, 10, 1, sweep[0], sweep[1], False,
+                 LabelAlongArc(arc="ea", text="label", side="inside", pos=pos), calibrate=False)
+    tikz, _ = _render_tikz(d)
+    nodes = _NODE_RE.findall(tikz)
+    _assert_unfolded([float(rot) for rot, _x, _y, _ch in nodes])
+    _assert_baseline_clear_of_cusp([(float(x), float(y)) for _r, x, y, _c in nodes], 0.1, 10, 1)
+
+
+# ---------------------------------------------------------------------------
+# A string longer than the arc: same behaviour as the circular layout
+# ---------------------------------------------------------------------------
+
+def _circular_overlong(renderer):
+    """The circular reference: same over-long string on a short circular arc."""
+    from geometry_diagrams.ir.ir import ArcCenterStartEnd
+    d = DiagramIR(
+        canvas=Canvas(xmin=-4, xmax=4, ymin=-4, ymax=4),
+        define=[PointFixed(id="O", x=0, y=0), PointFixed(id="S", x=2, y=0),
+                PointFixed(id="E", x=2 * math.cos(0.5), y=2 * math.sin(0.5)),
+                ArcCenterStartEnd(id="ea", center="O", start="S", end="E")],
+        render=[LabelAlongArc(arc="ea", text=LONG)],
+    )
+    return renderer(d)
+
+
+LONG = "a string far longer than the arc"
+
+
+def test_svg_overlong_text_overhangs_the_ends_like_circular():
+    # elliptical arc spanning 20..45 deg of a 4:3 ellipse; text is far longer.
+    d = _diagram(EllipticalArcCenterStartEnd, 4, 3, 20, 45, False,
+                 LabelAlongArc(arc="ea", text=LONG))
+    root, f, warnings = _render_svg(d)
+    glyphs = _svg_glyphs(root)
+    # no crash, no warning, every non-space glyph emitted, in reading order
+    assert [c for c, _, _ in glyphs] == [c for c in LONG if c.strip()]
+    assert not [w for w in warnings if "ea" in w]
+    # matches the independent exact expectation even far past the arc ends
+    exp = [g for g in _text_expectation(4, 3, (20, 45), LONG, _FONT_SIZE / f.k, _ARC_TEXT_OFFSET / f.k,
+                                        "outside", 0.5, None) if g[0].strip()]
+    for (_, p, _r), (_, gp, _g) in zip(glyphs, exp):
+        assert np.linalg.norm(p - f.to_px(gp)) < 0.2
+    # overhang: the string extends past the arc on both ends (same rule as circular)
+    tp = np.array([hp for _, hp, _ in glyphs])
+    ends = [f.to_px(_point(4, 3, math.radians(t))) for t in (20, 45)]
+    span = np.linalg.norm(tp[0] - tp[-1])
+    assert span > 3 * np.linalg.norm(ends[0] - ends[1])
+    # circular reference behaves the same way: all glyphs, no warning
+    croot, _, cw = _circular_overlong(lambda dd: _render_svg_plain(dd))
+    assert len([el for el in _glyph_wrapper(croot)]) == len([c for c in LONG if c.strip()])
+    assert not [w for w in cw if "ea" in w]
+
+
+def _render_svg_plain(diagram):
+    warnings: list[str] = []
+    root = ET.fromstring(ir_to_svg(diagram, compile_defs(diagram), warnings=warnings))
+    return root, None, warnings
+
+
+def _glyph_wrapper(root):
+    return next(el for el in root.iter() if el.get("data-role") == "label-along-arc")
+
+
+def test_tikz_overlong_text_overhangs_the_ends_like_circular():
+    d = _diagram(EllipticalArcCenterStartEnd, 4, 3, 20, 45, False,
+                 LabelAlongArc(arc="ea", text=LONG), calibrate=False)
+    tikz, warnings = _render_tikz(d)
+    got = [(ch, np.array([float(x), float(y)]), float(rot)) for rot, x, y, ch in _NODE_RE.findall(tikz)]
+    exp = [g for g in _text_expectation(4, 3, (20, 45), LONG, TIKZ_TEXT_EM, _tikz_offset(4, 3),
+                                        "outside", 0.5, None) if g[0].strip()]
+    assert [c for c, _, _ in got] == [c for c, _, _ in exp]
+    assert not [w for w in warnings if "ea" in w]
+    for (_, p, _r), (_, gp, _g) in zip(got, exp):
+        assert np.linalg.norm(p - gp) < 5e-3
+    arc_chord = np.linalg.norm(_point(4, 3, math.radians(20)) - _point(4, 3, math.radians(45)))
+    assert np.linalg.norm(got[0][1] - got[-1][1]) > 3 * arc_chord
+    ctikz, cw = _circular_overlong(_render_tikz)
+    assert len(_NODE_RE.findall(ctikz)) == len([c for c in LONG if c.strip()])
+    assert not [w for w in cw if "ea" in w]
