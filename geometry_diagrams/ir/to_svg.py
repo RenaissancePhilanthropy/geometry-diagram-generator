@@ -31,7 +31,8 @@ from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
+from .errors import TiltedEllipseUnsupported
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, RotatedEllipse, Sector, SymTable
 from .render_util import (
     away_label_center,
     away_normal,
@@ -918,6 +919,20 @@ def _emit_svg_op(
                     if drawn_ellipses is not None:
                         drawn_ellipses.append((cx_s, cy_s, rx_s, ry_s))
 
+            elif isinstance(sym_obj, RotatedEllipse):
+                # Not added to drawn_ellipses: label nudging does not treat a
+                # tilted outline as an obstacle yet (rotated-ellipses stage 1b).
+                cx_s, cy_s, rx_s, ry_s, rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
+                ET.SubElement(svg, "ellipse", {
+                    "data-ir-id": obj_id,
+                    "data-type": "ellipse",
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "transform": rotate,
+                    "fill": "none",
+                    **attrs,
+                })
+
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
                 cx_s, cy_s = gxy(cx_g, cy_g)
@@ -1172,6 +1187,19 @@ def _emit_svg_op(
                         "fill-opacity": str(fill_opacity),
                         "stroke": "none",
                     })
+
+            elif isinstance(sym_obj, RotatedEllipse):
+                cx_s, cy_s, rx_s, ry_s, rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
+                ET.SubElement(svg, "ellipse", {
+                    "data-ir-id": obj_id,
+                    "data-role": "fill",
+                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
+                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "transform": rotate,
+                    "fill": fill_color,
+                    "fill-opacity": str(fill_opacity),
+                    "stroke": "none",
+                })
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
@@ -2785,6 +2813,25 @@ def _fill_attrs(
     return "blue", opacity
 
 
+def _tilted_ellipse_screen(
+    obj_id: str, ell: RotatedEllipse, gxy, scale: _Scale,
+) -> tuple[float, float, float, float, str]:
+    """(cx, cy, rx, ry, transform) of a tilted ellipse in SVG pixels at equal
+    axis units; the angle is negated because SVG's y axis points down. A
+    non-unit canvas aspect would turn the screen image into another ellipse
+    with different axes: a typed error until rotated-ellipses stage 1b."""
+    if not scale.iso:
+        raise TiltedEllipseUnsupported(
+            obj_id,
+            f"tilted ellipse {obj_id!r} (rotation_deg={ell.rotation_deg:g}) cannot be drawn on a "
+            f"canvas with a non-unit aspect yet; leave canvas.aspect unset (or 1)",
+        )
+    cx_s, cy_s = gxy(sympy_to_float(ell.center.x), sympy_to_float(ell.center.y))
+    rx_s = sympy_to_float(ell.hradius) * scale.sx
+    ry_s = sympy_to_float(ell.vradius) * scale.sy
+    return cx_s, cy_s, rx_s, ry_s, f"rotate({fmt_num(-ell.rotation_deg)} {cx_s:.2f} {cy_s:.2f})"
+
+
 def _obj_to_svg_subpath(
     obj_id: str,
     sym: dict,
@@ -2796,7 +2843,8 @@ def _obj_to_svg_subpath(
 ) -> str | None:
     """Return an SVG path subpath string (closed with Z) for a single shape.
 
-    Supports Polygon/Triangle, Circle, and Ellipse. Returns None for unsupported types.
+    Supports Polygon/Triangle, Circle, Ellipse (tilted too) and (elliptical)
+    sectors. Returns None for unsupported types.
     """
     sym_obj = sym.get(obj_id)
     if sym_obj is None:
@@ -2824,6 +2872,19 @@ def _obj_to_svg_subpath(
             f"M {cx_s - rx_s:.2f} {cy_s:.2f} "
             f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s + rx_s:.2f} {cy_s:.2f} "
             f"A {rx_s:.2f} {ry_s:.2f} 0 1 0 {cx_s - rx_s:.2f} {cy_s:.2f} Z"
+        )
+
+    if isinstance(sym_obj, RotatedEllipse):
+        # Two half-ellipse arcs between the ends of the tilted hradius axis,
+        # with the tilt in each arc's x-axis-rotation slot.
+        _cx, _cy, rx_s, ry_s, _rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
+        phi = fmt_num(-sym_obj.rotation_deg)
+        x0, y0 = gxy(*sym_obj.to_world(-sympy_to_float(sym_obj.hradius), 0.0))
+        x1, y1 = gxy(*sym_obj.to_world(sympy_to_float(sym_obj.hradius), 0.0))
+        return (
+            f"M {x0:.2f} {y0:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} {phi} 1 0 {x1:.2f} {y1:.2f} "
+            f"A {rx_s:.2f} {ry_s:.2f} {phi} 1 0 {x0:.2f} {y0:.2f} Z"
         )
 
     if isinstance(sym_obj, spg.Ellipse):

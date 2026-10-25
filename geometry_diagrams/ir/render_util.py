@@ -19,7 +19,7 @@ from sympy.geometry.line import LinearEntity
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
-from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, SymTable
+from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, RotatedEllipse, SymTable
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +289,7 @@ def centroid_of_obj(obj: Any) -> tuple[float, float]:
         return registered
     if isinstance(obj, (Arc, Sector, EllipticalArc, EllipticalSector)):
         pts = [obj.center, obj.start, obj.end]
-    elif isinstance(obj, (spg.Circle, spg.Ellipse)):
+    elif isinstance(obj, (spg.Circle, spg.Ellipse, RotatedEllipse)):
         pts = [obj.center]
     elif isinstance(obj, LinearEntity):
         pts = [obj.p1, obj.p2]
@@ -759,6 +759,10 @@ def expand_bounds_for_geometry(
             a = sympy_to_float(obj.hradius)
             b = sympy_to_float(obj.vradius)
             grow(cx - a, cx + a, cy - b, cy + b)
+        elif isinstance(obj, RotatedEllipse):
+            cx, cy = sympy_to_float(obj.center.x), sympy_to_float(obj.center.y)
+            wx, wy = obj.half_widths()
+            grow(cx - wx, cx + wx, cy - wy, cy + wy)
         elif isinstance(obj, (Arc, Sector)):
             cx, cy, r, s_deg, e_deg, _, _ = arc_params(oid, sym)
             grow(*_arc_extent(cx, cy, r, r, s_deg, e_deg))

@@ -10,7 +10,7 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
-from .to_sympy import Arc, EllipticalArc, EllipticalSector, Sector, SymTable
+from .to_sympy import Arc, EllipticalArc, EllipticalSector, RotatedEllipse, Sector, SymTable
 from .render_util import (
     COLOR_STYLE_KEYS,
     away_normal,
@@ -289,6 +289,13 @@ def _obj_to_tikz_path(
             f"({fmt_num(cx)},{fmt_num(cy)}) "
             f"ellipse[x radius={fmt_num(a)},y radius={fmt_num(b)}]"
         )
+    if isinstance(sym_obj, RotatedEllipse):
+        # The inline rotate option turns the ellipse about its own center.
+        cx, cy, a, b = ellipse_params(obj_id, sym)
+        return (
+            f"({fmt_num(cx)},{fmt_num(cy)}) "
+            f"ellipse[x radius={fmt_num(a)},y radius={fmt_num(b)},rotate={fmt_num(sym_obj.rotation_deg)}]"
+        )
     if isinstance(sym_obj, Sector):
         cx, cy, r, start_deg, end_deg, sx, sy = arc_params(obj_id, sym)
         return (
@@ -306,6 +313,12 @@ def _obj_to_tikz_path(
             f"end angle={fmt_num(end_deg)},x radius={fmt_num(hr)},y radius={fmt_num(vr)}] -- cycle"
         )
     return None
+
+
+def _rotate_around(ell: RotatedEllipse, cx: float, cy: float) -> str:
+    """The TikZ option turning a tilted ellipse about its center (TikZ draws
+    equal units only, so a plain rotation is exact)."""
+    return f"rotate around={{{fmt_num(ell.rotation_deg)}:({fmt_num(cx)},{fmt_num(cy)})}}"
 
 
 def _to_latex(text: str) -> str:
@@ -366,6 +379,14 @@ def _emit_op(
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzDrawCircle{sopts}({center},{through})")
+            elif isinstance(sym_obj, RotatedEllipse):
+                cx, cy, a, b = ellipse_params(obj_id, sym)
+                style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
+                opts = ",".join(o for o in (style_inner, _rotate_around(sym_obj, cx, cy)) if o)
+                out.append(
+                    f"\\draw[{opts}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
+                    f"({fmt_num(a)} and {fmt_num(b)});"
+                )
             elif isinstance(sym_obj, spg.Ellipse):
                 cx, cy, a, b = ellipse_params(obj_id, sym)
                 style_inner = sopts[1:-1] if sopts else ""  # strip surrounding []
@@ -493,6 +514,13 @@ def _emit_op(
             elif isinstance(sym_obj, spg.Circle):
                 center, through = _circle_pts(obj_id, stmt_by_id, helpers)
                 out.append(f"\\tkzFillCircle{fill_opts}({center},{through})")
+            elif isinstance(sym_obj, RotatedEllipse):
+                cx, cy, a, b = ellipse_params(obj_id, sym)
+                opts = ",".join(o for o in (style_inner, _rotate_around(sym_obj, cx, cy)) if o)
+                out.append(
+                    f"\\fill[{opts}] ({fmt_num(cx)},{fmt_num(cy)}) ellipse "
+                    f"({fmt_num(a)} and {fmt_num(b)});"
+                )
             elif isinstance(sym_obj, spg.Ellipse):
                 cx, cy, a, b = ellipse_params(obj_id, sym)
                 out.append(
