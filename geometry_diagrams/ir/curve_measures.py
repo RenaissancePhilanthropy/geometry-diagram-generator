@@ -31,6 +31,14 @@ from geometry_diagrams.ir.to_sympy import (
 _DPS = 30
 
 
+def radii_equal(hr: float, vr: float) -> bool:
+    """Are an ellipse's two radii equal (so it is circular)? The one tolerance
+    for that question, shared by the radius checks, ``query_radius`` and
+    ``curve_length``. Lives here (not in ``checks``) because ``checks``
+    imports this module."""
+    return abs(hr - vr) <= 1e-9 * max(hr, vr, 1.0)
+
+
 class CurveMeasureError(ValueError):
     """The object is not a measurable curve (wrong type, or zero/degenerate radius).
 
@@ -76,7 +84,7 @@ def _require_positive(obj: Any, hr: float, vr: float) -> None:
 
 def _ellipse_arc_length(hr: float, vr: float, start: float, end: float) -> float:
     """Arc length over the parametric sweep [start, end] of x = hr cos t, y = vr sin t."""
-    if hr == vr:
+    if radii_equal(hr, vr):
         return hr * (end - start)
     with mpmath.workdps(_DPS):
         if hr > vr:

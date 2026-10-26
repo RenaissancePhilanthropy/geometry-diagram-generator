@@ -125,7 +125,8 @@ def test_screen_ellipse_matches_hand_cases():
     # no tilt: M = diag(sx*hr, sy*vr) = diag(30, 20), so (rx, ry) = (30, 20) along the page x axis
     rx, ry, phi = screen_ellipse(3.0, 1.0, 0.0, 10.0, 20.0)
     assert (rx, ry) == pytest.approx((30.0, 20.0))
-    assert phi % 180.0 == pytest.approx(0.0, abs=1e-9) or phi % 180.0 == pytest.approx(180.0, abs=1e-9)
+    # hand-derived: the axis lies along page x, so phi is 0 mod 180; remainder wraps 179.999.. to ~0
+    assert math.remainder(phi, 180.0) == pytest.approx(0.0, abs=1e-9)
     # 90 degrees on unequal scales: hradius points along construction y, so it spans 3*sy = 60
     # vertically on the page and vradius spans 1*sx = 10 across: rx = 60 on a vertical axis
     rx, ry, phi = screen_ellipse(3.0, 1.0, math.pi / 2, 10.0, 20.0)

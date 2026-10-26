@@ -137,3 +137,44 @@ def test_non_curve_raises_naming_type(bad):
 
 def test_error_is_value_error():
     assert issubclass(CurveMeasureError, ValueError)
+
+
+def _spy_ellipe(monkeypatch):
+    import geometry_diagrams.ir.curve_measures as cm
+
+    calls = []
+    real = cm.mpmath.ellipe
+
+    def spy(*a, **k):
+        calls.append(a)
+        return real(*a, **k)
+
+    monkeypatch.setattr(cm.mpmath, "ellipe", spy)
+    return calls
+
+
+def test_near_equal_radii_take_the_circular_path_like_radii_equal(monkeypatch):
+    # Radii within 1e-12 relative are "equal" under the shared radii_equal (1e-9) helper, so the
+    # closed-form circular length is used and the elliptic integral is never evaluated.
+    calls = _spy_ellipe(monkeypatch)
+    a = 3.0
+    b = a * (1 + 1e-12)
+    ell = spg.Ellipse(spg.Point(0, 0), hradius=a, vradius=b)
+    _close(curve_length(ell), 2 * math.pi * a, 1e-9)
+    arc = EllipticalArc(
+        spg.Point(0, 0),
+        _on_ellipse(0.0, 0.0, a, b, 0.4),
+        _on_ellipse(0.0, 0.0, a, b, 2.9),
+        sympy.Float(a),
+        sympy.Float(b),
+    )
+    _close(curve_length(arc), a * (2.9 - 0.4), 1e-9)
+    assert calls == []
+
+
+def test_radii_differing_by_1e3_relative_still_take_the_elliptic_path(monkeypatch):
+    calls = _spy_ellipe(monkeypatch)
+    a = 3.0
+    ell = spg.Ellipse(spg.Point(0, 0), hradius=a, vradius=a * (1 + 1e-3))
+    curve_length(ell)
+    assert calls

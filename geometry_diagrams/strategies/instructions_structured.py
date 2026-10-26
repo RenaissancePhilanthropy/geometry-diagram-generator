@@ -455,7 +455,7 @@ ellipse, and the `tangent` check all work on a tilted ellipse, and so does a can
 than 1 (SVG renderer only).
 - Still not supported on a tilted ellipse: elliptical arcs and sectors (they have no \
 `rotation_deg`, so they are always axis-aligned), `ellipse_foci` (an error for a tilted ellipse), \
-and `ellipse_bbox` (no `rotation_deg`). The TikZ renderer rejects any canvas `aspect` other than 1 \
+and `ellipse_bbox` (no `rotation_deg`). The TikZ renderer rejects any canvas `aspect` \
 for every diagram.
 """
 

@@ -645,8 +645,7 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
    rotated-ellipses run, blocked by ticket 01).** Rows 14 (`screen_ellipse`) and 15. This lifts the
    stage-1 aspect error and registers tilted ellipses as nudging obstacles.
    It is independent of stage 2.
-2. **Stage 2, tangents and intersections on a tilted full ellipse (draft
-   ticket 02 of the rotated-ellipses run, blocked by ticket 01).** Rows 6 and 7. This builds the numeric kernel
+2. **Stage 2, tangents and intersections on a tilted full ellipse (ticket 02 of the rotated-ellipses run, blocked by ticket 01).** Rows 6 and 7. This builds the numeric kernel
    and the tolerance policy, routes every circle/ellipse intersection that is tilted
    or float-valued, and the tangents of a tilted ellipse, through it (untilted exact ellipses keep SymPy's `tangent_lines`), retires `_count_ellipse_crossings` (and
    with it the float-valued axis-aligned ellipse x ellipse limit), and lifts
@@ -753,6 +752,10 @@ through the numeric kernel.
   gated divergence from ticket 01 criterion 7, left alone on purpose.
 - `rotation_deg` 360 is rejected by the gate even though compile would snap it
   to 0 (see Feature gate).
+- `radii_equal` (1e-9 relative) is shared by `query_radius`, the length-check
+  message and `curve_length`, so an untilted float ellipse whose radii differ
+  by less than 1e-9 relative is treated as a circle by those three; this is
+  consistent with the radius checks.
 - Tilted arcs and sectors, tilted `ellipse_foci`, `ellipse_bbox` rotation and
   a non-unit canvas `aspect` under TikZ remain unsupported.
 

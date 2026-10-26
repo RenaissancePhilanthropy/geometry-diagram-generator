@@ -7,7 +7,7 @@ import sympy.geometry as spg
 from pydantic import BaseModel
 
 from . import ir
-from .curve_measures import CurveMeasureError, curve_length
+from .curve_measures import CurveMeasureError, curve_length, radii_equal
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
@@ -482,12 +482,6 @@ def _conic_frame(obj: Any, kind: str, obj_id: str) -> tuple[float, float, float,
             f"{kind}: {obj_id!r} must be a circle, ellipse, arc or sector, got {type(obj).__name__}"
         )
     return float(obj.center.x.evalf()), float(obj.center.y.evalf()), hr, vr
-
-
-def radii_equal(hr: float, vr: float) -> bool:
-    """Are an ellipse's two radii equal (so it is circular)? The one tolerance
-    for that question, shared by the radius checks and ``query_radius``."""
-    return abs(hr - vr) <= 1e-9 * max(hr, vr, 1.0)
 
 
 def _circular_radius(obj: Any, kind: str, obj_id: str) -> float:
