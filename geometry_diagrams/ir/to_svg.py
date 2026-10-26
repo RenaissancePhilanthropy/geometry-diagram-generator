@@ -930,8 +930,8 @@ def _emit_svg_op(
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-type": "ellipse",
-                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
-                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "cx": f"{cx_s:.3f}", "cy": f"{cy_s:.3f}",
+                    "rx": f"{rx_s:.3f}", "ry": f"{ry_s:.3f}",
                     "transform": _rotate_attr(phi_deg, cx_s, cy_s),
                     "fill": "none",
                     **attrs,
@@ -1199,8 +1199,8 @@ def _emit_svg_op(
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-role": "fill",
-                    "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
-                    "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
+                    "cx": f"{cx_s:.3f}", "cy": f"{cy_s:.3f}",
+                    "rx": f"{rx_s:.3f}", "ry": f"{ry_s:.3f}",
                     "transform": _rotate_attr(phi_deg, cx_s, cy_s),
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
@@ -2835,8 +2835,16 @@ def _tilted_ellipse_screen(
     return cx_s, cy_s, rx_s, ry_s, phi_deg
 
 
+# Tilted ellipses are emitted at finer precision than the 2-decimal pixel grid of
+# everything else: three decimals for lengths and the centre, five for the angle
+# keeps the outline within about 0.002 px of the curve (a 2-decimal field alone
+# can be 0.005 px off, so centre plus radius could reach 0.012 px).
+def _tilt_deg(phi_deg: float) -> str:
+    return f"{phi_deg:.5f}"
+
+
 def _rotate_attr(phi_deg: float, cx_s: float, cy_s: float) -> str:
-    return f"rotate({fmt_num(phi_deg)} {cx_s:.2f} {cy_s:.2f})"
+    return f"rotate({_tilt_deg(phi_deg)} {cx_s:.3f} {cy_s:.3f})"
 
 
 def _obj_to_svg_subpath(
@@ -2885,13 +2893,13 @@ def _obj_to_svg_subpath(
         # Two half-ellipse arcs between the ends of the tilted hradius axis,
         # with the tilt in each arc's x-axis-rotation slot.
         _cx, _cy, rx_s, ry_s, phi_deg = _tilted_ellipse_screen(sym_obj, gxy, scale)
-        phi = fmt_num(phi_deg)
+        phi = _tilt_deg(phi_deg)
         x0, y0 = gxy(*sym_obj.to_world(-sympy_to_float(sym_obj.hradius), 0.0))
         x1, y1 = gxy(*sym_obj.to_world(sympy_to_float(sym_obj.hradius), 0.0))
         return (
-            f"M {x0:.2f} {y0:.2f} "
-            f"A {rx_s:.2f} {ry_s:.2f} {phi} 1 0 {x1:.2f} {y1:.2f} "
-            f"A {rx_s:.2f} {ry_s:.2f} {phi} 1 0 {x0:.2f} {y0:.2f} Z"
+            f"M {x0:.3f} {y0:.3f} "
+            f"A {rx_s:.3f} {ry_s:.3f} {phi} 1 0 {x1:.3f} {y1:.3f} "
+            f"A {rx_s:.3f} {ry_s:.3f} {phi} 1 0 {x0:.3f} {y0:.3f} Z"
         )
 
     if isinstance(sym_obj, spg.Ellipse):
