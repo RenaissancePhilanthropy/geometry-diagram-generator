@@ -1,8 +1,13 @@
 """Numeric conic kernel: circle/ellipse pairs, tilted or not, plus the closed
 forms for line x ellipse and tangents from a point.
 
-numpy only, no SymPy and no imports from the rest of the package (the
-tolerances come in as arguments, so ``to_sympy`` stays their one home). It
+numpy only, no SymPy and no imports from the rest of the package. The
+tolerances that carry geometric meaning come in as arguments (``tangent_tol``
+and ``merge_tol`` for ``intersect_conics``, ``slack`` for
+``line_ellipse_crossings``, ``tol`` for ``tangent_touch_points``), so
+``to_sympy`` stays their one home. The constants below are kernel-local: they
+only steer root finding and classification inside the quartic solve (and the
+coincident-curve test), and are not caller policy. It
 works on ``EllipseFrame``, the float description of an ellipse: center, the
 two semi-axes (``a`` along the rotation, ``b`` across it) and the rotation in
 radians. The frame is the one place the rotation math lives: ``to_local`` /
@@ -29,6 +34,16 @@ _ROOT_GAP = 1e-12        # a polished root with a gap this small (times the scal
 _IMAG_SLACK = 1e-2       # np.roots candidates: |imag| <= this * (1 + |re|)
 _CLUSTER_RAD = 0.05      # real roots closer than this (radians) may be one touching pair
 _COINCIDENT_REL = 1e-9   # normalized implicit coefficients closer than this: the same curve
+_LEADING_REL = 1e-14     # quartic coefficients below this fraction of the largest are rounding zero (a root at t = infinity)
+_NEWTON_ITERS = 60       # cap on root-polishing iterations (converges in a handful; a flat spot just stops)
+_NEWTON_FD_STEP = 1e-7   # central-difference step for f'(theta) when polishing a root (f is smooth, O(h^2) error)
+_NEWTON_STEP_CAP = 0.3   # radians: largest Newton step, so one bad slope cannot throw theta across the curve
+_NEWTON_DONE = 1e-15     # radians: a step this small is at double-precision resolution of theta
+_EXTREMUM_ITERS = 80     # cap on extremum-seeking iterations (a double root converges only linearly at first)
+_EXTREMUM_FD_STEP = 1e-5 # central-difference step for f' and f'' when seeking an extremum (f'' needs a coarser step)
+_EXTREMUM_DONE = 1e-13   # radians: extremum steps are looser than root steps because f'' is differenced twice
+_ROOT_DEDUP_DIGITS = 11  # roots equal to this many decimals (radians) are one root found from two seeds
+_TOUCH_DEDUP_RAD = 1e-6  # radians: a touch point this close to a crossing root is that root, not a second point
 
 Point = tuple[float, float]
 
@@ -170,27 +185,27 @@ def intersect_conics(
         return e2.boundary_gap(*e1.point_at(th))
 
     def newton_root(th: float) -> float:
-        for _ in range(60):
-            fv, h = f(th), 1e-7
+        for _ in range(_NEWTON_ITERS):
+            fv, h = f(th), _NEWTON_FD_STEP
             dv = (f(th + h) - f(th - h)) / (2 * h)
             if dv == 0:
                 break
-            step = max(-0.3, min(0.3, fv / dv))
+            step = max(-_NEWTON_STEP_CAP, min(_NEWTON_STEP_CAP, fv / dv))
             th -= step
-            if abs(step) < 1e-15:
+            if abs(step) < _NEWTON_DONE:
                 break
         return th
 
     def extremum(th: float) -> float:
-        for _ in range(80):
-            h = 1e-5
+        for _ in range(_EXTREMUM_ITERS):
+            h = _EXTREMUM_FD_STEP
             d1 = (f(th + h) - f(th - h)) / (2 * h)
             d2 = (f(th + h) - 2 * f(th) + f(th - h)) / (h * h)
             if d2 == 0:
                 break
-            step = max(-0.3, min(0.3, d1 / d2))
+            step = max(-_NEWTON_STEP_CAP, min(_NEWTON_STEP_CAP, d1 / d2))
             th -= step
-            if abs(step) < 1e-13:
+            if abs(step) < _EXTREMUM_DONE:
                 break
         return th
 
@@ -201,7 +216,7 @@ def intersect_conics(
     # exactly when the curves meet there (the root at t = infinity). Strip every
     # leading near-zero coefficient and solve the rest, so the other roots survive.
     top = np.abs(poly).max() or 1.0
-    live = np.nonzero(np.abs(poly) / top > 1e-14)[0]
+    live = np.nonzero(np.abs(poly) / top > _LEADING_REL)[0]
     if live.size:
         candidates += [
             2 * math.atan(float(r.real))
@@ -217,7 +232,7 @@ def intersect_conics(
             te = extremum(th)
             if abs(gap(te)) <= tol:
                 touches.append(te % _TWO_PI)
-    roots = sorted({round(r, 11) for r in roots})
+    roots = sorted({round(r, _ROOT_DEDUP_DIGITS) for r in roots})
     # Merge clusters: two real roots a hair apart whose in-between extremum is within
     # tolerance are one touching pair (their separation is rounding, not geometry).
     changed = True
@@ -233,7 +248,7 @@ def intersect_conics(
                     changed = True
                     break
     thetas = roots + [
-        t for t in touches if all(abs(math.remainder(t - r, _TWO_PI)) > 1e-6 for r in roots)
+        t for t in touches if all(abs(math.remainder(t - r, _TWO_PI)) > _TOUCH_DEDUP_RAD for r in roots)
     ]
     points: list[Point] = []
     for th in sorted(thetas):
