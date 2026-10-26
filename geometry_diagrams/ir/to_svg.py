@@ -753,6 +753,28 @@ def _emit_implicit_shape(
 # Per-op SVG emitters
 # ---------------------------------------------------------------------------
 
+def _sweep_chords(
+    gxy: Callable[[float, float], tuple[float, float]],
+    cx: float, cy: float, hr: float, vr: float,
+    start_deg: float, end_deg: float,
+) -> list[tuple[float, float, float, float]]:
+    """Screen-space chords approximating an arc's drawn sweep (parametric
+    angle, degrees CCW in geometry space; ``hr == vr`` for a circle).
+
+    The full-circle/ellipse obstacle an arc registers is weak and exempts a
+    label pinned on the ring, so a label for a point on the drawn sweep could
+    land on the stroke; the sweep itself is a real stroke and is registered
+    as ordinary segments."""
+    sweep = end_deg - start_deg
+    n = max(4, min(32, int(abs(sweep) / 10) + 1))
+    pts = [
+        gxy(cx + hr * math.cos(math.radians(start_deg + sweep * i / n)),
+            cy + vr * math.sin(math.radians(start_deg + sweep * i / n)))
+        for i in range(n + 1)
+    ]
+    return [(a[0], a[1], b[0], b[1]) for a, b in zip(pts, pts[1:])]
+
+
 def _emit_svg_op(
     op: Any,
     svg: ET.Element,
@@ -989,6 +1011,9 @@ def _emit_svg_op(
                     # shouldn't demand as much clearance as a real drawn ring.
                     cx_s, cy_s = gxy(cx_g, cy_g)
                     drawn_circles.append((cx_s, cy_s, rx_s, False))
+                if drawn_segments is not None:
+                    drawn_segments.extend(_sweep_chords(
+                        gxy, cx_g, cy_g, r_g, r_g, start_deg, end_deg))
 
             elif isinstance(sym_obj, Sector):
                 cx_g, cy_g, r_g, start_deg, end_deg, sx_g, sy_g = arc_params(obj_id, sym)
@@ -1019,6 +1044,11 @@ def _emit_svg_op(
                     # see _nudge_labels_from_circles's own docstring for why.
                     # full=False: only the wedge is actually visible.
                     drawn_circles.append((cx_s, cy_s, rx_s, False))
+                if drawn_segments is not None:
+                    drawn_segments.extend(_sweep_chords(
+                        gxy, cx_g, cy_g, r_g, r_g, start_deg, end_deg))
+                    drawn_segments.append((cx_s, cy_s, sx_s, sy_s))
+                    drawn_segments.append((cx_s, cy_s, ex_s, ey_s))
 
             elif isinstance(sym_obj, EllipticalArc):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
@@ -1050,6 +1080,9 @@ def _emit_svg_op(
                     # over-approximation convention) for why.
                     cx_s, cy_s = gxy(cx_g, cy_g)
                     drawn_ellipses.append((cx_s, cy_s, hr_s, vr_s))
+                if drawn_segments is not None:
+                    drawn_segments.extend(_sweep_chords(
+                        gxy, cx_g, cy_g, hr_g, vr_g, start_deg, end_deg))
 
             elif isinstance(sym_obj, EllipticalSector):
                 cx_g, cy_g, hr_g, vr_g, start_deg, end_deg, sx_g, sy_g = elliptical_arc_params(obj_id, sym)
@@ -1079,6 +1112,11 @@ def _emit_svg_op(
                 if drawn_ellipses is not None:
                     # The sector's FULL ellipse, not just its drawn sweep.
                     drawn_ellipses.append((cx_s, cy_s, hr_s, vr_s))
+                if drawn_segments is not None:
+                    drawn_segments.extend(_sweep_chords(
+                        gxy, cx_g, cy_g, hr_g, vr_g, start_deg, end_deg))
+                    drawn_segments.append((cx_s, cy_s, sx_s, sy_s))
+                    drawn_segments.append((cx_s, cy_s, ex_s, ey_s))
 
         case ir.DrawPoints(points=points, style=style):
             fill = _color_from_style(style, styles) or "black"

@@ -765,3 +765,42 @@ class TestNudgeFromEllipse:
         to_svg_mod.ir_to_svg(d, sym)
 
         assert len(captured) == 1
+
+
+@pytest.mark.parametrize("kind", ["arc_center_start_end", "sector_center_start_end"])
+def test_point_label_clears_drawn_arc_through_the_point(kind):
+    """A point that sits (almost) on a drawn circular arc's sweep must have its
+    label kept off the arc stroke, not exempted as 'pinned to the ring'."""
+    import re
+
+    from geometry_diagrams.ir import ir as _ir
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+
+    d = _ir.DiagramIR.model_validate({
+        "define": [
+            {"id": "F", "kind": "point_on", "on": "g1", "how": {"kind": "param", "t": 0.15601}},
+            {"id": "p4", "kind": "point_fixed", "x": 216.8338, "y": -14.3307},
+            {"id": "p3", "kind": "point_fixed", "x": 279.75, "y": -13.56},
+            {"id": "p2", "kind": "point_fixed", "x": 174.31, "y": -13.56},
+            {"id": "p1", "kind": "point_fixed", "x": 262.6812, "y": -6.004},
+            {"id": "p5", "kind": "point_fixed", "x": 262.9382, "y": -21.091},
+            {"id": "g1", "kind": "line_through", "p": "p3", "q": "p2"},
+            {"id": "g2", "kind": kind, "center": "p4",
+             "start": "p1", "end": "p5", "reflex": False},
+        ],
+        "render": [
+            {"kind": "draw", "style": "s", "obj": "g1"},
+            {"kind": "draw", "style": "s", "obj": "g2"},
+            {"kind": "draw_points", "style": "s", "points": ["F"]},
+            {"kind": "label_point", "style": "s", "p": "F", "text": "F", "pos": "auto"},
+        ],
+        "styles": {"s": {}},
+    })
+    svg = ir_to_svg(d, compile_defs(d))
+    x0, _, x1, _ = map(float, re.search(r'data-bbox="([^"]+)"', svg).group(1).split(","))
+    # x of the arc's start point: the number just before the " y A ..." command.
+    arc_x = float(re.search(r'data-ir-id="g2"[^>]*d="[^"]*?([\d.]+) [\d.]+ A', svg).group(1))
+    # The arc is near-vertical and bulges ~2.7px right of its endpoints at its
+    # midpoint (where F sits); the label box must be clear of that stroke.
+    assert x0 > arc_x + 4 or x1 < arc_x - 1
