@@ -471,7 +471,7 @@ def test_tilted_prompt_fragment_states_the_true_limits():
     assert "TikZ" in flat and "aspect" in flat
     # to_tikz rejects any non-None aspect, including 1.
     assert "rejects any canvas `aspect` for every diagram" in flat
-    assert "other than 1" not in flat
+    assert "`aspect` other than 1 for every diagram" not in flat
 
 
 # --- rotation guards -------------------------------------------------------------
