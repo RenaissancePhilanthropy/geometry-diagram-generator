@@ -33,10 +33,10 @@ def mark_crossing_arcs(
 
     Each arc's start/end are `point_id` rotated by -+half_angle about its
     center (ir.PointRotate), so every arc passes through point_id exactly
-    regardless of that center's actual distance to it -- ArcCenterStartEnd's
-    radius is derived as center.distance(start), not a free parameter, so
-    picking some other "decorative" radius independent of that distance is
-    what produces a visible miss. Because the endpoints are derived from
+    regardless of that center's actual distance to it -- this construction
+    omits ArcCenterStartEnd's `radius`, so the radius is derived as
+    center.distance(start); giving some other "decorative" radius independent
+    of that distance is what would produce a visible miss. Because the endpoints are derived from
     point_id rather than frozen as fixed coordinates, the arcs stay correct
     if point_id's definition changes later (e.g. a PointIntersection whose
     inputs move).

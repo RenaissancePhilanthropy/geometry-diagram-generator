@@ -1059,6 +1059,10 @@ def _compile_one(
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             if radius is None:
                 r = c.distance(s)
+                # `end` is only a direction: draw to the circle through `start`
+                # (a start at the centre is a zero-radius arc, left as it was).
+                if float(r.evalf()) > 0:
+                    e = _snap_to_circle(c, e, r, did, "arc_center_start_end", "end")
             else:
                 r = _explicit_arc_radius(ev(radius), did, "arc_center_start_end")
                 s = _snap_to_circle(c, s, r, did, "arc_center_start_end", "start")
@@ -1074,6 +1078,10 @@ def _compile_one(
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
             if radius is None:
                 r = c.distance(s)
+                # `end` is only a direction: draw to the circle through `start`
+                # (a start at the centre is a zero-radius arc, left as it was).
+                if float(r.evalf()) > 0:
+                    e = _snap_to_circle(c, e, r, did, "sector_center_start_end", "end")
             else:
                 r = _explicit_arc_radius(ev(radius), did, "sector_center_start_end")
                 s = _snap_to_circle(c, s, r, did, "sector_center_start_end", "start")
@@ -1094,8 +1102,8 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"elliptical_arc_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
                 )
-            s = _snap_to_ellipse(c, s, hr_f, vr_f)
-            e = _snap_to_ellipse(c, e, hr_f, vr_f)
+            s = _snap_to_ellipse(c, s, hr_f, vr_f, did, "elliptical_arc_center_start_end", "start")
+            e = _snap_to_ellipse(c, e, hr_f, vr_f, did, "elliptical_arc_center_start_end", "end")
             if bulge_id is not None:
                 reflex = _reflex_for_bulge_toward(
                     c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_arc_center_start_end"
@@ -1113,8 +1121,8 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"elliptical_sector_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
                 )
-            s = _snap_to_ellipse(c, s, hr_f, vr_f)
-            e = _snap_to_ellipse(c, e, hr_f, vr_f)
+            s = _snap_to_ellipse(c, s, hr_f, vr_f, did, "elliptical_sector_center_start_end", "start")
+            e = _snap_to_ellipse(c, e, hr_f, vr_f, did, "elliptical_sector_center_start_end", "end")
             if bulge_id is not None:
                 reflex = _reflex_for_bulge_toward(
                     c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_sector_center_start_end"
@@ -2076,6 +2084,13 @@ def _explicit_arc_radius(r: sp.Basic, did: str, kind: str) -> sp.Basic:
     return r
 
 
+def _at_center(c: spg.Point, distance: float) -> bool:
+    """Whether a point ``distance`` from center ``c`` is at it, within
+    ``PICK_ON_ARC_TOL`` scaled by the center's coordinate magnitude (float
+    noise, not a genuine direction)."""
+    return distance <= PICK_ON_ARC_TOL * max(1.0, abs(_f(c.x)), abs(_f(c.y)))
+
+
 def _snap_to_circle(c: spg.Point, p: spg.Point, r: sp.Basic, did: str, kind: str, role: str) -> spg.Point:
     """The point of the circle about ``c`` of radius ``r`` in the direction of
     ``p``: ``c + (p - c) * (r / |p - c|)``, exact when the inputs are. A ``p``
@@ -2083,7 +2098,7 @@ def _snap_to_circle(c: spg.Point, p: spg.Point, r: sp.Basic, did: str, kind: str
     same object, so a redundant radius changes nothing."""
     d = c.distance(p)
     d_f = float(d.evalf())
-    if d_f == 0:
+    if _at_center(c, d_f):
         raise IRCompileError(
             did, f"{kind}: '{role}' coincides with the center, so it gives no direction for the arc"
         )
@@ -2092,17 +2107,23 @@ def _snap_to_circle(c: spg.Point, p: spg.Point, r: sp.Basic, did: str, kind: str
     return spg.Point(c.x + (p.x - c.x) * (r / d), c.y + (p.y - c.y) * (r / d))
 
 
-def _snap_to_ellipse(c: spg.Point, p: spg.Point, hr: float, vr: float) -> spg.Point:
+def _snap_to_ellipse(
+    c: spg.Point, p: spg.Point, hr: float, vr: float, did: str, kind: str, role: str,
+) -> spg.Point:
     """The point of the axis-aligned ellipse about ``c`` at ``p``'s parametric
     angle (the convention ``elliptical_arc_params`` reads the sweep in), so an
     off-curve start/end is only a direction. A ``p`` already on the curve
-    (within ``PICK_ON_ARC_TOL``) or at the center (no direction) is returned
-    unchanged."""
+    (within ``PICK_ON_ARC_TOL``) is returned unchanged; one at the center has no
+    direction and is an ``IRCompileError``."""
     frame = EllipseFrame(_f(c.x), _f(c.y), hr, vr)
     px, py = _f(p.x), _f(p.y)
+    if _at_center(c, math.hypot(px - frame.cx, py - frame.cy)):
+        raise IRCompileError(
+            did, f"{kind}: '{role}' coincides with the center, so it gives no direction for the arc"
+        )
     if abs(frame.boundary_gap(px, py)) <= PICK_ON_ARC_TOL:
         return p
-    return _lift(*frame.point_at(frame.param_of(px, py))) if (px, py) != (frame.cx, frame.cy) else p
+    return _lift(*frame.point_at(frame.param_of(px, py)))
 
 
 def _reflex_for_bulge_toward(

@@ -9,6 +9,7 @@ their output (SVG path attributes, emitted TikZ source).
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 
@@ -18,11 +19,12 @@ import sympy as sp
 from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.checks import run_checks
 from geometry_diagrams.ir.errors import ExprEvalError, IRCompileError
-from geometry_diagrams.ir.queries import query_radius
+from geometry_diagrams.ir.queries import query_length, query_radius
 from geometry_diagrams.ir.refs import def_references
 from geometry_diagrams.ir.to_svg import ir_to_svg
 from geometry_diagrams.ir.to_sympy import Arc, Sector, compile_defs
 from geometry_diagrams.ir.to_tikz import ir_to_tikz
+from geometry_diagrams.strategies.structured import dispatch_query
 
 CANVAS = {"xmin": -8, "xmax": 8, "ymin": -8, "ymax": 8}
 
@@ -170,8 +172,9 @@ def test_radius_expression_with_arc_listed_before_its_dependencies(expr, expecte
 
 
 def test_radius_referencing_something_undefined_is_the_usual_error():
-    with pytest.raises(ExprEvalError):
+    with pytest.raises(ExprEvalError) as ei:
         compile_defs(_diagram(BASE + [_arc(radius="radius(NOPE)")]))
+    assert ei.value.def_id == "A" and "NOPE" in str(ei.value)
 
 
 # ---------------------------------------------------------------------------
@@ -333,8 +336,7 @@ def test_arc_tick_and_text_along_arc_render_on_the_corrected_circle():
     svg, svg_ref = ir_to_svg(d, compile_defs(d)), ir_to_svg(d_ref, compile_defs(d_ref))
     assert _svg_arc_paths(svg) == _svg_arc_paths(svg_ref)
     tick_re = re.compile(r"<line[^>]*/>|<text[^>]*>[^<]*</text>")
-    strip = lambda s: [t for t in tick_re.findall(s)]  # noqa: E731
-    assert strip(svg) == strip(svg_ref)
+    assert tick_re.findall(svg) == tick_re.findall(svg_ref)
     def body(tikz):  # the bounds (tkzInit) and point definitions differ by the far start
         return [ln for ln in tikz.splitlines() if not ln.startswith(("\\tkzInit", "\\tkzDefPoint"))]
 
@@ -378,3 +380,84 @@ def test_elliptical_on_curve_start_is_unchanged():
                   _arc("elliptical_arc_center_start_end", hradius=4, vradius=2)])
     sym = compile_defs(d)
     assert sym["A"].start is sym["S"] and sym["A"].end is sym["E"]
+
+
+# ---------------------------------------------------------------------------
+# Length queries (curved edge), through dispatch_query and query_length
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("kind", ["arc_center_start_end", "sector_center_start_end"])
+def test_length_query_is_the_curved_edge_of_the_corrected_circle(kind):
+    sym = compile_defs(_diagram(BASE + [_arc(kind, radius=3)]))
+    expected = 3 * math.pi / 3  # radius 3 times a 60 degree sweep
+    assert json.loads(dispatch_query(sym, "length", {"segment": "A"}))["length"] == pytest.approx(expected)
+    assert query_length(sym, "A")["length"] == pytest.approx(expected)
+
+
+def test_reflex_length_query_is_the_major_arc():
+    sym = compile_defs(_diagram(BASE + [_arc(radius=3, reflex=True)]))
+    assert query_length(sym, "A")["length"] == pytest.approx(3 * (2 * math.pi - math.pi / 3))
+
+
+# ---------------------------------------------------------------------------
+# No radius: `end` is only a direction, even when the sweep swaps endpoints
+# ---------------------------------------------------------------------------
+
+# O=(0,0), S=(0,3) on the circle, E=(7,0) far off it: direction 0 degrees.
+# The CCW sweep from S (90 deg) to E (0 deg) is 270, so the minor arc swaps
+# the endpoints and the raw E used to be drawn from.
+NO_RADIUS = [_pt("O", 0, 0), _pt("S", 0, 3), _pt("E", 7, 0)]
+
+
+@pytest.mark.parametrize("kind", ["arc_center_start_end", "sector_center_start_end"])
+def test_no_radius_off_circle_end_is_snapped_in_compile(kind):
+    sym = compile_defs(_diagram(NO_RADIUS + [_arc(kind)]))
+    assert _xy(sym["A"].end) == pytest.approx((3.0, 0.0))
+    assert sym["A"].start is sym["S"]
+
+
+@pytest.mark.parametrize("kind", ["arc_center_start_end", "sector_center_start_end"])
+def test_no_radius_swapped_endpoints_draw_on_the_circle_in_tikz(kind):
+    d = _diagram(NO_RADIUS + [_arc(kind)], render=[{"kind": "draw", "obj": "A"}])
+    m = re.search(r"\(([-\d.]+),([-\d.]+)\) arc\[start angle=([-\d.]+),end angle=([-\d.]+),radius=([-\d.]+)\]",
+                  ir_to_tikz(d, compile_defs(d)))
+    sx, sy, s_deg, e_deg, r = (float(v) for v in m.groups())
+    assert r == pytest.approx(3.0)
+    assert (sx, sy) == pytest.approx((3.0, 0.0), abs=1e-4)  # the swapped-in end, on the circle
+    assert (s_deg, e_deg) == pytest.approx((0.0, 90.0), abs=1e-3)
+
+
+def test_no_radius_swapped_endpoints_draw_on_the_circle_in_svg():
+    d = _diagram(NO_RADIUS + [_arc()], render=[{"kind": "draw", "obj": "A"}])
+    (path,) = _svg_arc_paths(ir_to_svg(d, compile_defs(d)))
+    sx, sy, rx, ry, _rot, _large, _sweep, ex, ey = _svg_numbers(path)
+    # start is the circle point at angle 0, end the one at 90 degrees (y down)
+    assert (ex, ey) == pytest.approx((sx - rx, sy - ry), abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# Centre-coincident and near-centre endpoints
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("role,pts", [
+    ("start", [_pt("O", 0, 0), _pt("S", 0, 0), _pt("E", 1, 1)]),
+    ("end", [_pt("O", 0, 0), _pt("S", 1, 0), _pt("E", 0, 0)]),
+])
+@pytest.mark.parametrize("kind", [
+    "elliptical_arc_center_start_end", "elliptical_sector_center_start_end"])
+def test_elliptical_endpoint_at_centre_is_a_compile_error(kind, role, pts):
+    with pytest.raises(IRCompileError) as ei:
+        compile_defs(_diagram(pts + [_arc(kind, hradius=4, vradius=2)]))
+    assert ei.value.def_id == "A" and role in str(ei.value)
+
+
+def test_float_start_within_noise_of_the_centre_counts_as_the_centre():
+    d = _diagram([_pt("O", 0, 0), _pt("S", 1e-13, -1e-13), _pt("E", 1, 1), _arc(radius=2)])
+    with pytest.raises(IRCompileError) as ei:
+        compile_defs(d)
+    assert ei.value.def_id == "A" and "start" in str(ei.value)
+
+
+def test_small_but_real_offset_from_the_centre_is_a_direction():
+    d = _diagram([_pt("O", 0, 0), _pt("S", 1e-3, 0), _pt("E", 1, 1), _arc(radius=2)])
+    assert _xy(compile_defs(d)["A"].start) == pytest.approx((2.0, 0.0))

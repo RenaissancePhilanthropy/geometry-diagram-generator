@@ -447,7 +447,7 @@ intersections, tangents, queries and checks all see that one circle.
 
 The elliptical kinds snap an off-curve `start`/`end` onto the ellipse the same
 way, along the parametric angle (`atan2((y - cy) / vradius, (x - cx) / hradius)`),
-and leave an on-curve one unchanged; a point at the centre is left as is.
+and leave an on-curve one unchanged; a `start`/`end` at the centre (no direction) is a compile error naming the definition.
 
 ### Solid Operations
 
