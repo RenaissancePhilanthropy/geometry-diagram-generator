@@ -70,45 +70,61 @@ def horizontal(y, id_="L"):
 
 # --- line, segment, ray x tilted ellipse --------------------------------------------
 
-def test_line_through_the_center_crosses_at_the_hand_derived_points():
+# Each operand order must give the same answer: (line, ellipse) and (ellipse, line).
+BOTH_ORDERS = pytest.mark.parametrize("swap", [False, True], ids=["line_first", "ellipse_first"])
+
+
+def ordered(first, second, swap):
+    return (second, first) if swap else (first, second)
+
+
+@BOTH_ORDERS
+def test_line_through_the_center_crosses_at_the_hand_derived_points(swap):
     defs = base(horizontal(CY))
-    pts = all_points(defs, "L", "E")
+    pts = all_points(defs, *ordered("L", "E", swap))
     assert len(pts) == 2
     assert sorted(pts)[0] == pytest.approx((CX - SQ3, CY), abs=1e-9)
     assert sorted(pts)[1] == pytest.approx((CX + SQ3, CY), abs=1e-9)
 
 
-def test_segment_and_ray_through_a_tilted_ellipse_give_its_two_crossings():
+@BOTH_ORDERS
+def test_segment_and_ray_through_a_tilted_ellipse_give_its_two_crossings(swap):
     extra = [ir.PointFixed(id="A", x=-5, y=CY), ir.PointFixed(id="B", x=7, y=CY),
              ir.Segment(id="S", a="A", b="B"), ir.Ray(id="R", a="A", b="B")]
-    assert len(all_points(base(extra), "S", "E")) == 2
-    assert len(all_points(base(extra), "R", "E")) == 2
+    assert len(all_points(base(extra), *ordered("S", "E", swap))) == 2
+    assert len(all_points(base(extra), *ordered("R", "E", swap))) == 2
 
 
-def test_a_segment_that_stops_short_has_no_intersection():
+@BOTH_ORDERS
+def test_a_segment_that_stops_short_has_no_intersection(swap):
     extra = [ir.PointFixed(id="A", x=-5, y=CY), ir.PointFixed(id="B", x=-2, y=CY), ir.Segment(id="S", a="A", b="B")]
     with pytest.raises(IntersectionError, match="no intersection points"):
-        compile_(*base(extra), ir.PointIntersection(id="X", obj1="S", obj2="E"))
+        o1, o2 = ordered("S", "E", swap)
+        compile_(*base(extra), ir.PointIntersection(id="X", obj1=o1, obj2=o2))
 
 
-def test_a_segment_ending_on_the_curve_keeps_that_end():
+@BOTH_ORDERS
+def test_a_segment_ending_on_the_curve_keeps_that_end(swap):
     extra = [ir.PointFixed(id="A", x=-5, y=CY), ir.PointFixed(id="B", x=CX - SQ3, y=CY), ir.Segment(id="S", a="A", b="B")]
-    (pt,) = all_points(base(extra), "S", "E")
+    (pt,) = all_points(base(extra), *ordered("S", "E", swap))
     assert pt == pytest.approx((CX - SQ3, CY), abs=1e-8)
 
 
+@BOTH_ORDERS
 @pytest.mark.parametrize("sign", [1, -1])
-def test_an_exactly_tangent_line_snaps_to_one_point(sign):
+def test_an_exactly_tangent_line_snaps_to_one_point(sign, swap):
     # y = cy +- sqrt(3) touches the 3 x 1 ellipse at 30 degrees; the touch point is
     # (cx +- 2, cy +- sqrt(3)) by hand: du = (a^2 - b^2) sin cos / half_height = 2.
-    (pt,) = all_points(base(horizontal(CY + sign * SQ3)), "L", "E")
+    (pt,) = all_points(base(horizontal(CY + sign * SQ3)), *ordered("L", "E", swap))
     assert pt == pytest.approx((CX + sign * 2.0, CY + sign * SQ3), abs=1e-7)
     assert abs(implicit(*pt)) < 1e-7
 
 
-def test_a_disjoint_line_names_the_miss():
+@BOTH_ORDERS
+def test_a_disjoint_line_names_the_miss(swap):
+    o1, o2 = ordered("L", "E", swap)
     with pytest.raises(IntersectionError, match=r"the line misses the ellipse \(disjoint\)"):
-        compile_(*base(horizontal(CY + 5)), ir.PointIntersection(id="X", obj1="L", obj2="E"))
+        compile_(*base(horizontal(CY + 5)), ir.PointIntersection(id="X", obj1=o1, obj2=o2))
 
 
 # --- circle, ellipse x tilted ellipse -------------------------------------------------
@@ -275,10 +291,22 @@ def test_external_point_gives_two_tangents_touching_the_curve(k):
     assert _is_tangent(line)
 
 
+def _touch_point(line):
+    """The sampled curve point nearest the line (independent of the kernel)."""
+    a, b, c = (float(v) for v in line.coefficients)
+    t = np.linspace(0, 2 * math.pi, 400_000, endpoint=False)
+    x, y = curve(t)
+    i = int(np.abs(a * x + b * y + c).argmin())
+    return float(x[i]), float(y[i])
+
+
+MIN_TOUCH_SEPARATION = 1.0  # the 3 x 1 ellipse seen from (8, 3): the touch points are several units apart
+
+
 def test_the_two_tangents_are_different_lines():
     a = compile_(*_tangent_defs(pick=ir.PickIndex(k=0)))["t"]
     b = compile_(*_tangent_defs(pick=ir.PickIndex(k=1)))["t"]
-    assert not a.is_parallel(b) or a != b
+    assert math.dist(_touch_point(a), _touch_point(b)) > MIN_TOUCH_SEPARATION
     with pytest.raises(PickError):
         compile_(*_tangent_defs(pick=ir.PickIndex(k=2)))
 

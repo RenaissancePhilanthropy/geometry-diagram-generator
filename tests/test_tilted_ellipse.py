@@ -21,7 +21,7 @@ import sympy.geometry as spg
 from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.checks import run_checks
 from geometry_diagrams.ir.curve_measures import curve_length
-from geometry_diagrams.ir.errors import IRCompileError
+from geometry_diagrams.ir.errors import IRCompileError, PickError
 from geometry_diagrams.ir.queries import query_area, query_length, query_perimeter, query_radius
 from geometry_diagrams.ir.refs import def_references
 from geometry_diagrams.ir.render_util import BOUNDS_PADDING, centroid_of_obj, expand_bounds_for_geometry
@@ -222,7 +222,7 @@ def test_pick_on_object_picks_the_on_curve_candidate():
     twin = spg.Point(sp.Float(_twin_point()[0]), sp.Float(_twin_point()[1]))
     on = sym["A"]
     assert _apply_pick([twin, on], ir.PickOnObject(obj="E"), sym, "X") is on
-    with pytest.raises(Exception, match="no candidate lies on 'E'"):
+    with pytest.raises(PickError, match="no candidate lies on 'E'"):
         _apply_pick([twin], ir.PickOnObject(obj="E"), sym, "X")
 
 
@@ -245,7 +245,7 @@ def test_pick_on_object_tolerance_is_a_length():
     n = math.hypot(nu, nv)
     nx, ny = (nu * C30 - nv * S30) / n, (nu * S30 + nv * C30) / n
     off = spg.Point(sp.Float(float(a.x) + 1e-3 * nx), sp.Float(float(a.y) + 1e-3 * ny))
-    with pytest.raises(Exception, match="no candidate lies on"):
+    with pytest.raises(PickError, match="no candidate lies on"):
         _apply_pick([off], ir.PickOnObject(obj="E"), sym, "X")
 
 

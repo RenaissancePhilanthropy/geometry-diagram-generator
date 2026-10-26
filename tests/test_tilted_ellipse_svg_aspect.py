@@ -122,12 +122,19 @@ def test_fill_with_holes_path_arcs_follow_the_curve(rotation, aspect):
 
 
 def test_screen_ellipse_matches_hand_cases():
-    # no tilt: axes scale by (sx, sy) with no angle
+    # no tilt: M = diag(sx*hr, sy*vr) = diag(30, 20), so (rx, ry) = (30, 20) along the page x axis
     rx, ry, phi = screen_ellipse(3.0, 1.0, 0.0, 10.0, 20.0)
-    assert (rx, ry) == pytest.approx((30.0, 20.0)) or (rx, ry) == pytest.approx((20.0, 30.0))
-    # 90 degrees on unequal scales: hradius points along y, so it spans 3*sy vertically
-    big, small, phi = screen_ellipse(3.0, 1.0, math.pi / 2, 10.0, 20.0)
-    assert sorted([big, small]) == pytest.approx([10.0, 60.0])
+    assert (rx, ry) == pytest.approx((30.0, 20.0))
+    assert phi % 180.0 == pytest.approx(0.0, abs=1e-9) or phi % 180.0 == pytest.approx(180.0, abs=1e-9)
+    # 90 degrees on unequal scales: hradius points along construction y, so it spans 3*sy = 60
+    # vertically on the page and vradius spans 1*sx = 10 across: rx = 60 on a vertical axis
+    rx, ry, phi = screen_ellipse(3.0, 1.0, math.pi / 2, 10.0, 20.0)
+    assert (rx, ry) == pytest.approx((60.0, 10.0))
+    assert phi % 180.0 == pytest.approx(90.0, abs=1e-9)
+    # equal scales, 30 degrees counterclockwise: the SVG angle (y down) is -30, i.e. 150 mod 180
+    rx, ry, phi = screen_ellipse(3.0, 1.0, math.radians(30), 1.0, 1.0)
+    assert (rx, ry) == pytest.approx((3.0, 1.0))
+    assert phi % 180.0 == pytest.approx(150.0, abs=1e-9)
 
 
 @pytest.mark.parametrize("aspect", [None, 1, 2.0])
@@ -197,13 +204,23 @@ def test_clearance_follows_the_tilted_outline_not_the_untilted_twin():
     u, v = 60.0, 20.0 * math.sqrt(1 - 0.36)
     x, y = u * c - v * s, u * s + v * c
     assert _ellipse_clearance(x, y, _lp(x, y), twin) is None
-    dx, dy, deficit = _ellipse_clearance(x, y, _lp(x, y), tilted)
+    # Step 0.5 px outward along the tilted outline's normal (the gradient of the
+    # implicit form, rotated into place): the push must follow that normal, which is
+    # not axis-aligned, so its cosine with the normal is near 1.
+    gu, gv = u / 100.0 ** 2, v / 20.0 ** 2
+    nx, ny = gu * c - gv * s, gu * s + gv * c
+    norm = math.hypot(nx, ny)
+    nx, ny = nx / norm, ny / norm
+    px, py = x + 0.5 * nx, y + 0.5 * ny
+    dx, dy, deficit = _ellipse_clearance(px, py, _lp(px, py), tilted)
     assert deficit > 0
-    # pushed along the tilted outline's outward normal, which is not axis-aligned
-    nx, ny = _brute_nearest(x, y, 0, 0, 100, 20, math.radians(45))
-    assert math.hypot(nx - x, ny - y) < 0.05  # sanity: the point is on the curve
+    assert dx * nx + dy * ny > MIN_PUSH_COSINE
+    assert abs(nx) > 0.3 and abs(ny) > 0.3  # the normal really is slanted
+    bx, by = _brute_nearest(px, py, 0, 0, 100, 20, math.radians(45))
+    assert math.hypot(bx - x, by - y) < 0.05  # sanity: the nearest outline point is the one we left
 
 
+MIN_PUSH_COSINE = 0.999  # the push is the nearest-point direction, which is the normal for a 0.5 px step
 
 
 # --- the 0.01 px criterion as a guarantee ---------------------------------------
