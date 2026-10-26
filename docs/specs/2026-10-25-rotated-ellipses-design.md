@@ -2,11 +2,16 @@
 
 Design for letting the IR represent an ellipse whose axes are not horizontal
 and vertical. Written for ticket 05 of the `curve-measures-and-gaps` effort
-(branch `curve-measures-and-gaps`, after commit c6a32f1). This document
-changes no code. It recommends a representation, inventories every place the
-code assumes axis alignment, and proposes a staged rollout behind a feature gate. The first three
-tickets are drafted for the human to approve; nothing is to be implemented
-before that.
+(branch `curve-measures-and-gaps`, after commit c6a32f1). It recommends a
+representation, inventories every place the code assumes axis alignment, and
+proposes a staged rollout behind a feature gate.
+
+**Implementation status.** Stages 1, 1b and 2 are implemented on branch
+`rotated-ellipses` (tickets 01, 03 and 02 of the `rotated-ellipses` run, in
+that order; the run's tickets and ledger carry the rulings). Stages 3 and 4
+remain, with no tickets drafted. Where the text below says "proposed" or
+"would", read the stage 1, 1b and 2 parts as describing what was built, with
+the deviations listed in the ledger.
 
 Function names below are the ones in the tree at c6a32f1. Line numbers are
 left out on purpose because they drift.
@@ -69,7 +74,7 @@ but closing it is not a goal here.
    lines and intersections. Stage 3 adds tilted elliptical arcs and sectors.
    Stage 4 adds the recipe and pydsl authoring surfaces, lifts the tilted-foci
    restriction, adds the prompts and evals, and removes the gate. Stages 1, 2
-   and 1b are drafted as tickets 06, 07 and 08.
+   and 1b are tickets 01, 02 and 03 of the rotated-ellipses run.
 
 ### Rejected alternatives
 
@@ -250,9 +255,10 @@ angle, circle x ellipse raised `ValueError: Imaginary coordinates are not
 permitted` (also at 37 degrees and with rational snapping), circle x ellipse
 with a float radius took 1.5 to 1.8 s, and float ellipse x ellipse took 1.2 to
 1.3 s. With an exact angle every operation timed out past 25 s. So every
-circle/ellipse pair, tilted or not, including axis-aligned pairs with any float
-coordinate or radius (as built in stage 2: a pair carrying any `sp.Float` atom goes to the kernel,
-because SymPy's float fragility is triggered by a float anywhere in the pair),
+circle/ellipse pair, tilted or not, including axis-aligned pairs carrying a float
+(as built in stage 2: a pair carrying any `sp.Float` atom goes to the kernel,
+because SymPy's float fragility is triggered by a float anywhere in the pair;
+SymPy rationalizes float point coordinates, so in practice that means a float radius or axis),
 goes through one numeric kernel (a new module next to `to_sympy.py`, numpy
 only, about 200 to 250 lines). Line x tilted ellipse and tangents from a point
 use the kernel's closed forms, so there is one code path. SymPy stays only for
@@ -550,7 +556,10 @@ are never gated in compile or render.
   expression counts as tilted unless it is literally `"0"`, because
   `require_features` runs before compile and cannot evaluate an expression.
   Tilted foci are not gated: they stay a compile error until stage 4 (see
-  Representation in the IR).
+  Representation in the IR). The gate is deliberately conservative: it
+  rejects `rotation_deg` 360 (and any value other than a literal 0, or the
+  string `"0"`), while compile snaps an evaluated 360 (or a value that rounds
+  to 360) to 0 and takes the exact axis-aligned path.
 - **Where it is checked:** `features.require_features` is kind-based today. It
   walks `diagram.define` and asks the derived registry for each statement's
   group, and ellipses are not registry kinds. It needs a second, field-level
@@ -622,8 +631,8 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
 
 ## Staged rollout
 
-1. **Stage 1, tilted full ellipse end to end behind the gate (draft ticket
-   06).** Rows 1 (full kinds), 2 (without the foci lift), 4, 5, 9, 11, 12, 13
+1. **Stage 1, tilted full ellipse end to end behind the gate (ticket 01 of
+   the rotated-ellipses run).** Rows 1 (full kinds), 2 (without the foci lift), 4, 5, 9, 11, 12, 13
    (renderer bounds), 14 (equal units), 16 for full ellipses, and 24 (the
    gate). It also adds typed errors for everything later stages own:
    `line_tangent`, intersection and the `tangent` check on a rotated ellipse
@@ -632,14 +641,14 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
    on a canvas with a non-unit `aspect`; TikZ already rejects `aspect`. Label
    nudging does not yet treat a tilted ellipse as an obstacle. From here on,
    only a run with `tilted_ellipses` enabled can generate the field.
-1b. **Stage 1b, SVG under a non-unit aspect, and label nudging (draft ticket
-   08, blocked by 06).** Rows 14 (`screen_ellipse`) and 15. This lifts the
+1b. **Stage 1b, SVG under a non-unit aspect, and label nudging (ticket 03 of the
+   rotated-ellipses run, blocked by ticket 01).** Rows 14 (`screen_ellipse`) and 15. This lifts the
    stage-1 aspect error and registers tilted ellipses as nudging obstacles.
    It is independent of stage 2.
 2. **Stage 2, tangents and intersections on a tilted full ellipse (draft
-   ticket 07, blocked by 06).** Rows 6 and 7. This builds the numeric kernel
-   and the tolerance policy, routes every circle/ellipse intersection and
-   every ellipse tangent through it, retires `_count_ellipse_crossings` (and
+   ticket 02 of the rotated-ellipses run, blocked by ticket 01).** Rows 6 and 7. This builds the numeric kernel
+   and the tolerance policy, routes every circle/ellipse intersection that is tilted
+   or float-valued, and the tangents of a tilted ellipse, through it (untilted exact ellipses keep SymPy's `tangent_lines`), retires `_count_ellipse_crossings` (and
    with it the float-valued axis-aligned ellipse x ellipse limit), and lifts
    the stage-1 typed errors.
 3. **Stage 3, tilted elliptical arcs and sectors.** Rows 1 (arc kinds), 3, 4,
@@ -734,6 +743,18 @@ Conclusion: carry the rotation as a float. Exact symbolic angles are fast
 only when they simplify to surds (pi/6), and they are unusable otherwise.
 Even with a float angle, SymPy fails or is slow for conic pairs, so those go
 through the numeric kernel.
+
+## Known limitations (as built)
+
+- An equal-radii tilted ellipse stays a `RotatedEllipse` marker, while its
+  untilted twin compiles to an `spg.Circle`. `query_radius` and the length
+  check answer for it as for the circle (a single `radius`, the "full circle"
+  message), but `circle_tangent_at` still rejects the marker. That is a known,
+  gated divergence from ticket 01 criterion 7, left alone on purpose.
+- `rotation_deg` 360 is rejected by the gate even though compile would snap it
+  to 0 (see Feature gate).
+- Tilted arcs and sectors, tilted `ellipse_foci`, `ellipse_bbox` rotation and
+  a non-unit canvas `aspect` under TikZ remain unsupported.
 
 ## Open questions for the human
 

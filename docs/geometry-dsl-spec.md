@@ -407,7 +407,7 @@ Tilted ellipses belong to the `tilted_ellipses` feature group (off by
 default): with it off, a generated diagram whose ellipse has a `rotation_deg`
 that is not a literal 0 (an expression string counts as tilted unless it is
 `"0"`) is rejected at the generation surfaces, naming the definition and the
-group. Stored diagrams always compile and render. Supported on a tilted
+group (conservatively, a literal 360 is rejected too, although compile snaps an evaluated 360 to 0). Stored diagrams always compile and render. Supported on a tilted
 ellipse: draw and fill (also with holes) in both renderers, canvas bounds,
 `point_on` (param and random), `pick_on_object`, `contains`, the radius
 checks and the length/radius/area/perimeter queries (all as for the untilted
@@ -419,7 +419,7 @@ their touch point; two copies of one curve are an error naming both ids),
 `line_tangent` from an external point (two tangent lines, `pick` chooses by
 the touch point; a point inside is "no tangent lines"; a point on the curve
 has exactly one tangent) and the `tangent` check. The kernel also solves
-ellipse x ellipse and circle x ellipse pairs with any float coordinate or radius (SymPy rationalizes float points, so in practice a float radius), which SymPy
+ellipse x ellipse and circle x ellipse pairs carrying any float (SymPy rationalizes float point coordinates, so in practice a float radius or axis), which SymPy
 cannot, so those no longer fail; untilted pairs with all-exact coordinates and radii keep the
 exact SymPy result. SVG also draws and fills a tilted ellipse on a canvas with a
 non-unit `aspect`: its screen image is another ellipse, whose axes and angle
