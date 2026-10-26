@@ -597,6 +597,28 @@ def ellipse_params(
     )
 
 
+def screen_ellipse(
+    hr: float, vr: float, rotation: float, sx: float, sy: float,
+) -> tuple[float, float, float]:
+    """Screen image of a tilted ellipse under unequal axis scales:
+    ``(rx, ry, phi_deg)`` with ``rx >= ry`` and ``phi_deg`` the SVG
+    ``rotate()`` angle (degrees, y down) of the ``rx`` axis. ``rotation`` is
+    radians counterclockwise in construction space (y up).
+
+    The curve is ``M (cos t, sin t)`` for ``M = diag(sx, -sy) . R(rotation) .
+    diag(hr, vr)`` (the minus flips y for the page). Its principal axes are
+    the singular values and the left singular direction of the 2x2 ``M``,
+    taken in closed form from the sum and difference of its entries."""
+    cr, sr = math.cos(rotation), math.sin(rotation)
+    a, b = sx * hr * cr, -sx * vr * sr
+    c, d = -sy * hr * sr, -sy * vr * cr
+    e, f, g, h = (a + d) / 2, (a - d) / 2, (c + b) / 2, (c - b) / 2
+    q, r = math.hypot(e, h), math.hypot(f, g)
+    phi = (math.atan2(h, e) + math.atan2(g, f)) / 2
+    # A negative minor singular value only records a reflection (the y flip).
+    return q + r, abs(q - r), math.degrees(phi)
+
+
 def arc_params(
     arc_id: str,
     sym: "SymTable",

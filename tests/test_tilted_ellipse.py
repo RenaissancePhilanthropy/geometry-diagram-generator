@@ -1,8 +1,8 @@
 """Tilted (rotated) full ellipses, stage 1 of the rotated-ellipses design
 (docs/specs/2026-10-25-rotated-ellipses-design.md): the ``rotation_deg`` field,
 the ``RotatedEllipse`` compiled marker and its frame, placement, containment,
-the radius checks and measures, canvas bounds, both renderers, and the typed
-error for SVG under a non-unit aspect. Tangents and intersections are in
+the radius checks and measures, canvas bounds, and both renderers (SVG
+under a non-unit aspect: test_tilted_ellipse_svg_aspect.py). Tangents and intersections are in
 test_tilted_ellipse_intersections.py.
 
 Expected values are derived by hand from the rotation matrix, not from the
@@ -21,7 +21,7 @@ import sympy.geometry as spg
 from geometry_diagrams.ir import ir
 from geometry_diagrams.ir.checks import run_checks
 from geometry_diagrams.ir.curve_measures import curve_length
-from geometry_diagrams.ir.errors import IRCompileError, TiltedEllipseUnsupported
+from geometry_diagrams.ir.errors import IRCompileError
 from geometry_diagrams.ir.queries import query_area, query_length, query_perimeter, query_radius
 from geometry_diagrams.ir.refs import def_references
 from geometry_diagrams.ir.render_util import BOUNDS_PADDING, centroid_of_obj, expand_bounds_for_geometry
@@ -382,19 +382,6 @@ def test_svg_fill_with_holes_uses_the_rotation_in_the_arc_commands():
 def test_svg_untilted_ellipse_has_no_transform():
     root = _svg_root(_diagram(0, render=[ir.Draw(obj="E"), ir.Fill(obj="E")]))
     assert all(e.get("transform") is None for e in _by(root, **{"data-ir-id": "E"}))
-
-
-@pytest.mark.parametrize("render", [
-    [ir.Draw(obj="E")], [ir.Fill(obj="E")], [ir.Fill(obj="X", holes=["E"])],
-])
-def test_svg_non_unit_aspect_is_a_typed_error_naming_the_ellipse(render):
-    diagram = _diagram(
-        extra=[ir.CircleCenterRadius(id="X", center="O", radius=5)],
-        render=render, canvas=ir.Canvas(xmin=-5, xmax=7, ymin=-4, ymax=8, aspect=2),
-    )
-    with pytest.raises(TiltedEllipseUnsupported, match=r"'E'.*aspect") as exc:
-        ir_to_svg(diagram, compile_defs(diagram))
-    assert exc.value.def_id == "E"
 
 
 def test_svg_aspect_one_draws_the_tilted_ellipse():

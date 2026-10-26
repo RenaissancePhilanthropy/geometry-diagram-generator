@@ -31,9 +31,9 @@ from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
 from .font import FontConfig, FONT_VARIANTS, default_font_config
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
-from .errors import TiltedEllipseUnsupported
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, RotatedEllipse, Sector, SymTable
 from .render_util import (
+    screen_ellipse,
     away_label_center,
     away_normal,
     bare_color_key,
@@ -138,6 +138,12 @@ class _Scale(NamedTuple):
     @property
     def iso(self) -> bool:
         return self.sx == self.sy
+
+
+# A drawn ellipse as a label-nudging obstacle: (cx, cy, rx, ry) on the page, axis
+# aligned, plus an optional fifth entry, the screen angle (radians) of the rx axis
+# for a tilted one.
+_DrawnEllipse = tuple[float, ...]
 
 
 def _visual_angle(angle: float, scale: _Scale) -> float:
@@ -424,7 +430,7 @@ def _ir_to_svg_impl(
     # Likewise for drawn ellipses/elliptical arcs/sectors (SVG pixel coords:
     # cx, cy, rx, ry) -- same full-shape-not-just-sweep convention as
     # drawn_circles above.
-    drawn_ellipses: list[tuple[float, float, float, float]] = []
+    drawn_ellipses: list[_DrawnEllipse] = []
     # Axis tick label bounding boxes — fixed obstacles other labels must avoid
     # (tick labels are drawn immediately below, not through pending_labels).
     tick_label_boxes: list[tuple[float, float, float, float]] = []
@@ -774,7 +780,7 @@ def _emit_svg_op(
     seen_angle_triples: set[tuple[str, str, str, str | None]] | None = None,
     drawn_segments: list[tuple[float, float, float, float]] | None = None,
     drawn_circles: list[tuple[float, float, float, bool]] | None = None,
-    drawn_ellipses: list[tuple[float, float, float, float]] | None = None,
+    drawn_ellipses: list[_DrawnEllipse] | None = None,
     font_family: str = "serif",
 ) -> None:
     match op:
@@ -920,18 +926,18 @@ def _emit_svg_op(
                         drawn_ellipses.append((cx_s, cy_s, rx_s, ry_s))
 
             elif isinstance(sym_obj, RotatedEllipse):
-                # Not added to drawn_ellipses: label nudging does not treat a
-                # tilted outline as an obstacle yet (rotated-ellipses stage 1b).
-                cx_s, cy_s, rx_s, ry_s, rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
+                cx_s, cy_s, rx_s, ry_s, phi_deg = _tilted_ellipse_screen(sym_obj, gxy, scale)
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-type": "ellipse",
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
                     "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
-                    "transform": rotate,
+                    "transform": _rotate_attr(phi_deg, cx_s, cy_s),
                     "fill": "none",
                     **attrs,
                 })
+                if drawn_ellipses is not None:
+                    drawn_ellipses.append((cx_s, cy_s, rx_s, ry_s, math.radians(phi_deg)))
 
             elif isinstance(sym_obj, spg.Ellipse):
                 cx_g, cy_g, a_g, b_g = ellipse_params(obj_id, sym)
@@ -1189,13 +1195,13 @@ def _emit_svg_op(
                     })
 
             elif isinstance(sym_obj, RotatedEllipse):
-                cx_s, cy_s, rx_s, ry_s, rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
+                cx_s, cy_s, rx_s, ry_s, phi_deg = _tilted_ellipse_screen(sym_obj, gxy, scale)
                 ET.SubElement(svg, "ellipse", {
                     "data-ir-id": obj_id,
                     "data-role": "fill",
                     "cx": f"{cx_s:.2f}", "cy": f"{cy_s:.2f}",
                     "rx": f"{rx_s:.2f}", "ry": f"{ry_s:.2f}",
-                    "transform": rotate,
+                    "transform": _rotate_attr(phi_deg, cx_s, cy_s),
                     "fill": fill_color,
                     "fill-opacity": str(fill_opacity),
                     "stroke": "none",
@@ -2814,22 +2820,23 @@ def _fill_attrs(
 
 
 def _tilted_ellipse_screen(
-    obj_id: str, ell: RotatedEllipse, gxy, scale: _Scale,
-) -> tuple[float, float, float, float, str]:
-    """(cx, cy, rx, ry, transform) of a tilted ellipse in SVG pixels at equal
-    axis units; the angle is negated because SVG's y axis points down. A
-    non-unit canvas aspect would turn the screen image into another ellipse
-    with different axes: a typed error until rotated-ellipses stage 1b."""
-    if not scale.iso:
-        raise TiltedEllipseUnsupported(
-            obj_id,
-            f"tilted ellipse {obj_id!r} (rotation_deg={ell.rotation_deg:g}) cannot be drawn on a "
-            f"canvas with a non-unit aspect yet; leave canvas.aspect unset (or 1)",
-        )
+    ell: RotatedEllipse, gxy, scale: _Scale,
+) -> tuple[float, float, float, float, float]:
+    """(cx, cy, rx, ry, phi_deg) of a tilted ellipse in SVG pixels; ``phi_deg``
+    is the SVG ``rotate()`` angle of the ``rx`` axis. At equal axis units the
+    axes are hradius/vradius times the scale and the angle is negated because
+    SVG's y axis points down; under unequal units the screen image has
+    different axes and angle (``screen_ellipse``)."""
     cx_s, cy_s = gxy(sympy_to_float(ell.center.x), sympy_to_float(ell.center.y))
-    rx_s = sympy_to_float(ell.hradius) * scale.sx
-    ry_s = sympy_to_float(ell.vradius) * scale.sy
-    return cx_s, cy_s, rx_s, ry_s, f"rotate({fmt_num(-ell.rotation_deg)} {cx_s:.2f} {cy_s:.2f})"
+    hr, vr = sympy_to_float(ell.hradius), sympy_to_float(ell.vradius)
+    if scale.iso:
+        return cx_s, cy_s, hr * scale.sx, vr * scale.sy, -ell.rotation_deg
+    rx_s, ry_s, phi_deg = screen_ellipse(hr, vr, ell.rotation, scale.sx, scale.sy)
+    return cx_s, cy_s, rx_s, ry_s, phi_deg
+
+
+def _rotate_attr(phi_deg: float, cx_s: float, cy_s: float) -> str:
+    return f"rotate({fmt_num(phi_deg)} {cx_s:.2f} {cy_s:.2f})"
 
 
 def _obj_to_svg_subpath(
@@ -2877,8 +2884,8 @@ def _obj_to_svg_subpath(
     if isinstance(sym_obj, RotatedEllipse):
         # Two half-ellipse arcs between the ends of the tilted hradius axis,
         # with the tilt in each arc's x-axis-rotation slot.
-        _cx, _cy, rx_s, ry_s, _rotate = _tilted_ellipse_screen(obj_id, sym_obj, gxy, scale)
-        phi = fmt_num(-sym_obj.rotation_deg)
+        _cx, _cy, rx_s, ry_s, phi_deg = _tilted_ellipse_screen(sym_obj, gxy, scale)
+        phi = fmt_num(phi_deg)
         x0, y0 = gxy(*sym_obj.to_world(-sympy_to_float(sym_obj.hradius), 0.0))
         x1, y1 = gxy(*sym_obj.to_world(sympy_to_float(sym_obj.hradius), 0.0))
         return (
@@ -3631,10 +3638,13 @@ def _newton_refine_ellipse_param(qx: float, qy: float, hr: float, vr: float, t: 
 
 def _nearest_point_on_ellipse(
     px: float, py: float, cx: float, cy: float, hr: float, vr: float,
-    max_iterations: int = 20,
+    max_iterations: int = 20, phi: float = 0.0,
 ) -> tuple[float, float]:
-    """The closest point on an axis-aligned ellipse (center (cx, cy),
-    semi-axes hr, vr) to (px, py).
+    """The closest point on an ellipse (center (cx, cy), semi-axes hr, vr,
+    the hr axis at screen angle ``phi`` radians; 0 is axis-aligned) to
+    (px, py). A tilt rotates the point into the ellipse's own frame, solves
+    there, and rotates the answer back; phi == 0 takes the arithmetic below
+    unchanged.
 
     Unlike a circle, there's no closed form: minimizing squared distance to
     (px, py) over the parametric angle t (the boundary point at parameter t
@@ -3652,6 +3662,13 @@ def _nearest_point_on_ellipse(
     is actually closest to (px, py), not just whichever root Newton found
     first.
     """
+    if phi:
+        cos_p, sin_p = math.cos(phi), math.sin(phi)
+        dx, dy = px - cx, py - cy
+        lx, ly = _nearest_point_on_ellipse(
+            dx * cos_p + dy * sin_p, -dx * sin_p + dy * cos_p, 0.0, 0.0, hr, vr, max_iterations,
+        )
+        return cx + lx * cos_p - ly * sin_p, cy + lx * sin_p + ly * cos_p
     qx, qy = px - cx, py - cy
     if hr < 1e-9 or vr < 1e-9:
         t = math.atan2(qy, qx)  # degenerate axis; nothing to converge toward
@@ -3671,7 +3688,7 @@ def _nearest_point_on_ellipse(
 
 
 def _ellipse_clearance(
-    cx: float, cy: float, lp: _LabelPlacement, ellipse: tuple[float, float, float, float],
+    cx: float, cy: float, lp: _LabelPlacement, ellipse: _DrawnEllipse,
 ) -> tuple[float, float, float] | None:
     """One drawn ellipse's clearance verdict for a label currently centered
     at (cx, cy) -- the non-circular counterpart to _circle_clearance.
@@ -3683,8 +3700,8 @@ def _ellipse_clearance(
     direction, since a circle's nearest point always lies along the
     center-point line -- the general ellipse case needs the actual nearest
     point because that's no longer true once hr != vr)."""
-    ecx, ecy, hr, vr = ellipse
-    nx, ny = _nearest_point_on_ellipse(cx, cy, ecx, ecy, hr, vr)
+    ecx, ecy, hr, vr, *tilt = ellipse
+    nx, ny = _nearest_point_on_ellipse(cx, cy, ecx, ecy, hr, vr, phi=tilt[0] if tilt else 0.0)
     dx_raw, dy_raw = cx - nx, cy - ny
     dist_to_ring = math.hypot(dx_raw, dy_raw)
     if dist_to_ring < 1e-6:
@@ -3707,7 +3724,7 @@ def _ellipse_clearance(
 
 def _nudge_labels_from_ellipses(
     labels: list[_LabelPlacement],
-    drawn_ellipses: list[tuple[float, float, float, float]],
+    drawn_ellipses: list[_DrawnEllipse],
 ) -> None:
     """Nudge labels whose bbox overlaps or is too close to a drawn ellipse's
     boundary -- the non-circular counterpart to _nudge_labels_from_circles,
@@ -4028,7 +4045,7 @@ def _label_clear_of_obstacles(
     lp: _LabelPlacement,
     drawn_segments: list[tuple[float, float, float, float]],
     drawn_circles: list[tuple[float, float, float, bool]],
-    drawn_ellipses: list[tuple[float, float, float, float]],
+    drawn_ellipses: list[_DrawnEllipse],
     fixed_boxes: list[tuple[float, float, float, float]],
     other_labels: list[_LabelPlacement],
 ) -> bool:
@@ -4069,7 +4086,7 @@ def _gravitate_to_ideal_axis(
     labels: list[_LabelPlacement],
     drawn_segments: list[tuple[float, float, float, float]],
     drawn_circles: list[tuple[float, float, float, bool]],
-    drawn_ellipses: list[tuple[float, float, float, float]],
+    drawn_ellipses: list[_DrawnEllipse],
     fixed_boxes: list[tuple[float, float, float, float]],
     steps: int = 6,
 ) -> None:
