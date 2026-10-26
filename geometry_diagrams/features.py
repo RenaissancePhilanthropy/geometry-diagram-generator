@@ -26,7 +26,7 @@ kind stays visible to those models even with its group off; the
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, NamedTuple
 
 # Registered groups. A group is added here and tagged onto registry kinds
 # (``DerivedConstruction.feature``), field rules (``FIELD_RULES``), prompt
@@ -34,22 +34,41 @@ from typing import Any, Callable, Iterable
 FEATURE_GROUPS: frozenset[str] = frozenset({"solids", "tilted_ellipses"})
 
 
-def _tilted_rotation(stmt: Any) -> "str | None":
-    """``"rotation_deg"`` when the statement's rotation is not a literal 0.
-    A string expression counts as tilted unless it is exactly ``"0"``: this
-    runs before compile, so it cannot evaluate the expression."""
+class FieldRule(NamedTuple):
+    """A group-owned field on an ungated kind: ``applies(stmt)`` is True when
+    the statement sets ``field`` to a value the group owns; ``hint`` finishes
+    the sentence "Leave ..." in the rejection text."""
+
+    field: str
+    applies: "Callable[[Any], bool]"
+    group: str
+    hint: str
+
+
+def _tilted_rotation(stmt: Any) -> bool:
+    """True when the statement's rotation is not a literal 0. A string
+    expression counts as tilted unless it is exactly ``"0"``: this runs before
+    compile, so it cannot evaluate the expression. Conservative on purpose: a
+    literal 360 (or an expression that evaluates to 360) is rejected here even
+    though compile snaps it to 0."""
     value = getattr(stmt, "rotation_deg", 0)
     if isinstance(value, str):
-        return None if value == "0" else "rotation_deg"
-    return None if value == 0 else "rotation_deg"
+        return value != "0"
+    return value != 0
 
 
 # Field-level rules for kinds that are not gated as a whole (ellipses are not
-# registry kinds): kind -> (predicate returning the offending field name or
-# None, group). Consulted by ``require_features`` next to the registry.
-FIELD_RULES: "dict[str, tuple[Callable[[Any], str | None], str]]" = {
-    "ellipse_center_axes": (_tilted_rotation, "tilted_ellipses"),
-    "ellipse_center_eccentricity": (_tilted_rotation, "tilted_ellipses"),
+# registry kinds): kind -> rule. Consulted by ``require_features`` next to the
+# registry.
+FIELD_RULES: "dict[str, FieldRule]" = {
+    "ellipse_center_axes": FieldRule(
+        "rotation_deg", _tilted_rotation, "tilted_ellipses",
+        "rotation_deg at 0 (an axis-aligned ellipse)",
+    ),
+    "ellipse_center_eccentricity": FieldRule(
+        "rotation_deg", _tilted_rotation, "tilted_ellipses",
+        "rotation_deg at 0 (an axis-aligned ellipse)",
+    ),
 }
 
 
@@ -120,15 +139,13 @@ def require_features(diagram: Any, enabled: "frozenset[str] | set[str]") -> None
                 f"{entry.kind!r}: build the diagram without it. {_how_to_enable(entry.feature)}"
             )
         rule = FIELD_RULES.get(getattr(stmt, "kind", None))
-        if rule is None or rule[1] in enabled:
+        if rule is None or rule.group in enabled or not rule.applies(stmt):
             continue
-        field = rule[0](stmt)
-        if field is not None:
-            raise FeatureNotEnabledError(
-                f"Definition {sid!r} ({stmt.kind}) sets {field}={getattr(stmt, field)!r}, which "
-                f"belongs to the {rule[1]!r} feature group; that group is not enabled. Leave "
-                f"{field} at 0 (an axis-aligned ellipse). {_how_to_enable(rule[1])}"
-            )
+        raise FeatureNotEnabledError(
+            f"Definition {sid!r} ({stmt.kind}) sets {rule.field}={getattr(stmt, rule.field)!r}, which "
+            f"belongs to the {rule.group!r} feature group; that group is not enabled. Leave "
+            f"{rule.hint}. {_how_to_enable(rule.group)}"
+        )
 
 
 def _how_to_enable(group: str) -> str:
