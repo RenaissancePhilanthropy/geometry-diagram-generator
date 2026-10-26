@@ -486,3 +486,20 @@ def test_rotation_that_snaps_to_a_full_turn_takes_the_axis_aligned_path(rotation
     sym = compile_defs(_diagram(rotation))
     assert not isinstance(sym["E"], RotatedEllipse)
     assert isinstance(sym["E"], spg.Ellipse)
+
+
+def test_equal_radii_tilted_ellipse_answers_like_its_circle_twin():
+    sym = _tilted_and_twin(2, 2)
+    assert query_radius(sym, "U") == {"radius": 2.0}  # the untilted twin is a circle
+    assert query_radius(sym, "T") == {"radius": 2.0}
+    t = run_checks([ir.DistanceEquals(seg="T", expected=1)], sym)[0]
+    u = run_checks([ir.DistanceEquals(seg="U", expected=1)], sym)[0]
+    assert not t.passed and t.message == u.message.replace("'U'", "'T'")
+    assert "radii differ" not in t.message
+
+
+def test_differing_radii_tilted_ellipse_still_reports_two_radii():
+    sym = _tilted_and_twin()
+    assert query_radius(sym, "T") == {"hradius": 3.0, "vradius": 1.0}
+    t = run_checks([ir.DistanceEquals(seg="T", expected=1)], sym)[0]
+    assert "radii differ" in t.message

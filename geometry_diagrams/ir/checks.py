@@ -484,11 +484,17 @@ def _conic_frame(obj: Any, kind: str, obj_id: str) -> tuple[float, float, float,
     return float(obj.center.x.evalf()), float(obj.center.y.evalf()), hr, vr
 
 
+def radii_equal(hr: float, vr: float) -> bool:
+    """Are an ellipse's two radii equal (so it is circular)? The one tolerance
+    for that question, shared by the radius checks and ``query_radius``."""
+    return abs(hr - vr) <= 1e-9 * max(hr, vr, 1.0)
+
+
 def _circular_radius(obj: Any, kind: str, obj_id: str) -> float:
     """The single radius of a circular object. An ellipse has two radii, so a
     check that compares one radius cannot evaluate it: UnsupportedOperand."""
     _cx, _cy, hr, vr = _conic_frame(obj, kind, obj_id)
-    if abs(hr - vr) > 1e-9 * max(hr, vr, 1.0):
+    if not radii_equal(hr, vr):
         raise UnsupportedOperand(
             f"{kind}: {obj_id!r} is an ellipse with two radii (hradius={hr:.4f}, "
             f"vradius={vr:.4f}), not a circle"
@@ -593,7 +599,9 @@ def _length_of(obj: Any, obj_id: str) -> float:
             return curve_length(obj)
         except CurveMeasureError as exc:
             raise UnsupportedOperand(f"length: {obj_id!r}: {exc}") from exc
-    if isinstance(obj, spg.Circle):
+    if isinstance(obj, spg.Circle) or (
+        isinstance(obj, FULL_ELLIPSE_TYPES) and radii_equal(float(obj.hradius.evalf()), float(obj.vradius.evalf()))
+    ):
         raise UnsupportedOperand(
             f"length: {obj_id!r} is a full circle, which has no single length here; "
             f"use a radius check (radius_equals / equal_radius)"

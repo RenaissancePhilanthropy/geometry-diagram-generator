@@ -12,7 +12,7 @@ from typing import Any
 
 import sympy.geometry as spg
 
-from .checks import _angle_at
+from .checks import _angle_at, radii_equal
 from .curve_measures import CurveMeasureError, curve_length
 from .derived import REGISTRY as DERIVED_REGISTRY
 from .to_sympy import FULL_ELLIPSE_TYPES, Arc, EllipticalArc, EllipticalSector, Sector, SymTable, arc_param_frame
@@ -105,14 +105,17 @@ def query_length(sym: SymTable, segment_id: str) -> dict:
 def query_radius(sym: SymTable, circle_id: str) -> dict:
     """``radius`` of a circle or a circular arc/sector; an ellipse or an
     elliptical arc/sector has two radii, returned as ``hradius`` and
-    ``vradius``."""
+    ``vradius`` (an ellipse whose radii are equal, such as a tilted one, is
+    circular and returns the single ``radius``)."""
     obj = _get(sym, circle_id)
     if not isinstance(obj, FULL_ELLIPSE_TYPES + _CURVED):
         raise TypeError(
             f"{circle_id!r} is not a Circle, Ellipse, arc or sector (got {type(obj).__name__})"
         )
     hr, vr = _radii(obj)
-    if isinstance(obj, (spg.Circle, Arc, Sector)):
+    if isinstance(obj, (spg.Circle, Arc, Sector)) or (
+        isinstance(obj, FULL_ELLIPSE_TYPES) and radii_equal(hr, vr)
+    ):
         return {"radius": hr}
     return {"hradius": hr, "vradius": vr}
 
