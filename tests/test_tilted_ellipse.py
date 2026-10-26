@@ -469,3 +469,20 @@ def test_tilted_prompt_fragment_states_the_true_limits():
     assert "arcs" in flat and "sectors" in flat
     assert "ellipse_foci" in flat and "ellipse_bbox" in flat
     assert "TikZ" in flat and "aspect" in flat
+
+
+# --- rotation guards -------------------------------------------------------------
+
+@pytest.mark.parametrize("rotation", ["sqrt(-1)", "1/0", float("inf"), float("nan")])
+def test_non_real_or_non_finite_rotation_is_a_compile_error_naming_the_definition(rotation):
+    with pytest.raises(IRCompileError) as exc:
+        compile_defs(_diagram(rotation))
+    assert exc.value.def_id == "E"
+    assert "rotation" in str(exc.value)
+
+
+@pytest.mark.parametrize("rotation", [-1e-20, 360, 360.0, -360, "720", "-1e-20"])
+def test_rotation_that_snaps_to_a_full_turn_takes_the_axis_aligned_path(rotation):
+    sym = compile_defs(_diagram(rotation))
+    assert not isinstance(sym["E"], RotatedEllipse)
+    assert isinstance(sym["E"], spg.Ellipse)

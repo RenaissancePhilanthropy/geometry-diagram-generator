@@ -1110,7 +1110,7 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"ellipse_center_axes: hradius and vradius must be positive, got {hr}, {vr}"
                 )
-            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev))
+            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev, did))
 
         case ir.EllipseBBox(corner1=c1_id, corner2=c2_id):
             p1, p2 = ref(c1_id), ref(c2_id)
@@ -1161,7 +1161,7 @@ def _compile_one(
             b = a * (1 - e ** 2) ** 0.5
             # A rotation turns today's figure (vertical keeps hradius = b).
             hr, vr = (sp.S(a), sp.S(b)) if orientation == "horizontal" else (sp.S(b), sp.S(a))
-            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev))
+            return _ellipse_or_tilted(ref(center_id), hr, vr, _rotation_rad(rotation_deg, ev, did))
 
         # --- Higher-order shapes ---
         case ir.Triangle(a=a_id, b=b_id, c=c_id):
@@ -1294,13 +1294,22 @@ def _compile_one(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _rotation_rad(raw: int | float | str, ev: Callable[[int | float | str], sp.Basic]) -> float:
+def _rotation_rad(
+    raw: int | float | str, ev: Callable[[int | float | str], sp.Basic], def_id: str = "?"
+) -> float:
     """An ellipse's ``rotation_deg`` as float radians in [0, 2 pi). 0.0 (a
-    literal 0, or a value that is exactly 0 after ``% 360``) selects the
-    exact axis-aligned path; nothing else is snapped to 0."""
+    literal 0, or a value that is 0 after ``% 360``, including a result that
+    rounds up to 360) selects the exact axis-aligned path; nothing else is
+    snapped to 0. A non-real or non-finite value is an ``IRCompileError``."""
     if isinstance(raw, (int, float)) and raw == 0:
         return 0.0
-    return math.radians(float(sp.N(ev(raw))) % 360.0)
+    value = sp.N(ev(raw))
+    if not (value.is_real and value.is_finite):
+        raise IRCompileError(def_id, f"ellipse rotation_deg must be a finite real number, got {raw!r}")
+    degrees = float(value) % 360.0
+    if degrees == 360.0:  # a tiny negative value: x % 360.0 rounds up to 360.0
+        return 0.0
+    return math.radians(degrees)
 
 
 def _ellipse_or_tilted(center: spg.Point, hr: Any, vr: Any, rotation: float) -> Any:
