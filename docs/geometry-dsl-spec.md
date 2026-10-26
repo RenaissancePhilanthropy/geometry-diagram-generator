@@ -427,6 +427,28 @@ non-unit `aspect`: its screen image is another ellipse, whose axes and angle
 as for every diagram), and label nudging treats the tilted ellipse as an
 obstacle at its true screen angle.
 
+### Circular arcs and sectors (`radius`)
+
+IR kinds `arc_center_start_end` and `sector_center_start_end` take `center`,
+`start`, `end`, optional `reflex` / `bulge_toward` and an optional `radius`
+(a number or an expression string such as `radius(K)` or `length(P, Q)`, like
+every other radius field; it is a dependency, so it may name definitions listed
+later). Without `radius` the circle is the one about `center` through `start`
+and `end` is only a direction, as always. With `radius` the circle is the one
+about `center` with that radius and **both** `start` and `end` are only
+directions from `center`: the compiled arc/sector runs between the points of
+that circle in those directions, wherever the given points lie. A `start` or
+`end` already on the circle (within 1e-9) is used unchanged, so a redundant
+`radius` changes nothing; a non-positive radius, or a `start`/`end` at the
+centre (no direction), is a compile error naming the definition. `reflex` and
+`bulge_toward` act on the corrected circle. The compiled marker carries the
+explicit radius and on-circle endpoints, so renderers, `point_on`, `contains`,
+intersections, tangents, queries and checks all see that one circle.
+
+The elliptical kinds snap an off-curve `start`/`end` onto the ellipse the same
+way, along the parametric angle (`atan2((y - cy) / vradius, (x - cx) / hradius)`),
+and leave an on-curve one unchanged; a point at the centre is left as is.
+
 ### Solid Operations
 
 Solids belong to the `solids` feature group (off by default for generation;

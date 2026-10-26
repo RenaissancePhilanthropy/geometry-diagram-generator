@@ -76,6 +76,8 @@ segments, c_ for circles, T or poly_ for triangles/polygons.
 | `circle_center_point` | `center: PointId, through: PointId` | Circle with given center and through-point |
 | `circle_center_radius` | `center: PointId, radius: float or str` | Circle with explicit radius |
 | `circle_through3` | `a, b, c: PointId` | Circumscribed circle through 3 points |
+| `arc_center_start_end` | `center, start, end: PointId, radius: float or str?, reflex: bool?, bulge_toward: PointId?` | Circular arc about `center` between `start` and `end` (the minor arc by default; `reflex: true` for the major one, or `bulge_toward` a point on the side it should bulge to, needed when `start` and `end` are opposite). Without `radius` the radius is the distance from `center` to `start` and `end` is only a direction. With `radius` (a number or an expression such as `radius(K)` or `length(P, Q)`) the arc is drawn on the circle about `center` of that radius, and `start` and `end` are only directions from `center`: the arc runs between the points of that circle in those directions, wherever the given points lie |
+| `sector_center_start_end` | `center, start, end: PointId, radius: float or str?, reflex: bool?, bulge_toward: PointId?` | Closed pie-slice sector bounded by two radii and the arc; same fields and meaning as `arc_center_start_end` (including the optional `radius` and `start`/`end` being directions), and fillable |
 
 ### Polygon / Triangle kinds
 

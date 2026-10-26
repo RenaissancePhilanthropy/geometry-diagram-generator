@@ -1053,17 +1053,31 @@ def _compile_one(
             return spg.Circle(center, r_new)
 
         # --- Arcs ---
-        case ir.ArcCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):
+        case ir.ArcCenterStartEnd(
+            center=center_id, start=start_id, end=end_id, radius=radius, reflex=reflex, bulge_toward=bulge_id
+        ):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
-            r = c.distance(s)
+            if radius is None:
+                r = c.distance(s)
+            else:
+                r = _explicit_arc_radius(ev(radius), did, "arc_center_start_end")
+                s = _snap_to_circle(c, s, r, did, "arc_center_start_end", "start")
+                e = _snap_to_circle(c, e, r, did, "arc_center_start_end", "end")
             if bulge_id is not None:
                 r_f = float(r.evalf())
                 reflex = _reflex_for_bulge_toward(c, s, e, r_f, r_f, ref(bulge_id), did, "arc_center_start_end")
             return Arc(center=c, start=s, end=e, radius=r, reflex=reflex)
 
-        case ir.SectorCenterStartEnd(center=center_id, start=start_id, end=end_id, reflex=reflex, bulge_toward=bulge_id):
+        case ir.SectorCenterStartEnd(
+            center=center_id, start=start_id, end=end_id, radius=radius, reflex=reflex, bulge_toward=bulge_id
+        ):
             c, s, e = ref(center_id), ref(start_id), ref(end_id)
-            r = c.distance(s)
+            if radius is None:
+                r = c.distance(s)
+            else:
+                r = _explicit_arc_radius(ev(radius), did, "sector_center_start_end")
+                s = _snap_to_circle(c, s, r, did, "sector_center_start_end", "start")
+                e = _snap_to_circle(c, e, r, did, "sector_center_start_end", "end")
             if bulge_id is not None:
                 r_f = float(r.evalf())
                 reflex = _reflex_for_bulge_toward(c, s, e, r_f, r_f, ref(bulge_id), did, "sector_center_start_end")
@@ -1080,6 +1094,8 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"elliptical_arc_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
                 )
+            s = _snap_to_ellipse(c, s, hr_f, vr_f)
+            e = _snap_to_ellipse(c, e, hr_f, vr_f)
             if bulge_id is not None:
                 reflex = _reflex_for_bulge_toward(
                     c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_arc_center_start_end"
@@ -1097,6 +1113,8 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"elliptical_sector_center_start_end: hradius and vradius must be positive, got {hr}, {vr}"
                 )
+            s = _snap_to_ellipse(c, s, hr_f, vr_f)
+            e = _snap_to_ellipse(c, e, hr_f, vr_f)
             if bulge_id is not None:
                 reflex = _reflex_for_bulge_toward(
                     c, s, e, hr_f, vr_f, ref(bulge_id), did, "elliptical_sector_center_start_end"
@@ -2049,6 +2067,42 @@ def _cross_sign(a: spg.Point2D, b: spg.Point2D, p: spg.Point2D) -> sp.Basic:
     ab_x, ab_y = b.x - a.x, b.y - a.y
     ap_x, ap_y = p.x - a.x, p.y - a.y
     return ab_x * ap_y - ab_y * ap_x
+
+
+def _explicit_arc_radius(r: sp.Basic, did: str, kind: str) -> sp.Basic:
+    """The evaluated explicit radius of a circular arc/sector, which must be positive."""
+    if float(r.evalf()) <= 0:
+        raise IRCompileError(did, f"{kind}: 'radius' must be positive, got {r}")
+    return r
+
+
+def _snap_to_circle(c: spg.Point, p: spg.Point, r: sp.Basic, did: str, kind: str, role: str) -> spg.Point:
+    """The point of the circle about ``c`` of radius ``r`` in the direction of
+    ``p``: ``c + (p - c) * (r / |p - c|)``, exact when the inputs are. A ``p``
+    already on the circle (within ``PICK_ON_ARC_TOL``) is returned as the very
+    same object, so a redundant radius changes nothing."""
+    d = c.distance(p)
+    d_f = float(d.evalf())
+    if d_f == 0:
+        raise IRCompileError(
+            did, f"{kind}: '{role}' coincides with the center, so it gives no direction for the arc"
+        )
+    if d == r or abs(d_f - float(r.evalf())) <= PICK_ON_ARC_TOL:
+        return p
+    return spg.Point(c.x + (p.x - c.x) * (r / d), c.y + (p.y - c.y) * (r / d))
+
+
+def _snap_to_ellipse(c: spg.Point, p: spg.Point, hr: float, vr: float) -> spg.Point:
+    """The point of the axis-aligned ellipse about ``c`` at ``p``'s parametric
+    angle (the convention ``elliptical_arc_params`` reads the sweep in), so an
+    off-curve start/end is only a direction. A ``p`` already on the curve
+    (within ``PICK_ON_ARC_TOL``) or at the center (no direction) is returned
+    unchanged."""
+    frame = EllipseFrame(_f(c.x), _f(c.y), hr, vr)
+    px, py = _f(p.x), _f(p.y)
+    if abs(frame.boundary_gap(px, py)) <= PICK_ON_ARC_TOL:
+        return p
+    return _lift(*frame.point_at(frame.param_of(px, py))) if (px, py) != (frame.cx, frame.cy) else p
 
 
 def _reflex_for_bulge_toward(

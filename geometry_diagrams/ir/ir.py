@@ -403,17 +403,32 @@ class CircleTangentAt(DefBase):
         return self
 
 
+def _check_numeric_radius_positive(kind: str, radius: Union[int, float, str, None]) -> None:
+    """A literal radius must be positive; a string is an expression, re-checked
+    by the compiler once evaluated."""
+    if isinstance(radius, (int, float)) and radius <= 0:
+        raise ValueError(f"{kind}: 'radius' must be positive, got {radius}")
+
+
 class ArcCenterStartEnd(DefBase):
     """Circular arc between `start` and `end` around `center`.
     Draws the minor (≤180°) arc by default; set `reflex=True` for the >180°
     arc. When `start`/`end` are exactly antipodal (a diameter), both arcs
     are 180° and `reflex` can't disambiguate which one you get — pass
     `bulge_toward` (a point on whichever side you want the arc to bulge
-    toward) instead; give at most one of `reflex`/`bulge_toward`."""
+    toward) instead; give at most one of `reflex`/`bulge_toward`.
+
+    `radius` (optional; a number or an expression like `radius(K)` or
+    `length(P, Q)`) makes the arc's circle the one about `center` with that
+    radius, and `start`/`end` mere directions from `center`: the arc runs
+    between the points of that circle in those directions, wherever the given
+    points lie. Without it the radius is |center - start| and `end` is only a
+    direction."""
     kind: Literal["arc_center_start_end"] = "arc_center_start_end"
     center: PointId
     start: PointId
     end: PointId
+    radius: Optional[Union[int, float, str]] = None
     reflex: bool = False
     bulge_toward: Optional[PointId] = None
 
@@ -421,6 +436,11 @@ class ArcCenterStartEnd(DefBase):
     def _check_reflex_xor_bulge(self) -> "ArcCenterStartEnd":
         if self.reflex and self.bulge_toward is not None:
             raise ValueError("arc_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
+
+    @model_validator(mode="after")
+    def _check_radius_positive(self) -> "ArcCenterStartEnd":
+        _check_numeric_radius_positive("arc_center_start_end", self.radius)
         return self
 
 
@@ -435,11 +455,16 @@ class SectorCenterStartEnd(DefBase):
     half-discs and `reflex` can't disambiguate which one you get — pass
     `bulge_toward` (a point on whichever side you want the sector to
     bulge toward) instead; give at most one of `reflex`/`bulge_toward`.
+
+    `radius` (optional; a number or an expression like `radius(K)` or
+    `length(P, Q)`) works as for ArcCenterStartEnd: the sector's circle is the
+    one about `center` with that radius and `start`/`end` are only directions.
     """
     kind: Literal["sector_center_start_end"] = "sector_center_start_end"
     center: PointId
     start: PointId
     end: PointId
+    radius: Optional[Union[int, float, str]] = None
     reflex: bool = False
     bulge_toward: Optional[PointId] = None
 
@@ -447,6 +472,11 @@ class SectorCenterStartEnd(DefBase):
     def _check_reflex_xor_bulge(self) -> "SectorCenterStartEnd":
         if self.reflex and self.bulge_toward is not None:
             raise ValueError("sector_center_start_end: give at most one of 'reflex' or 'bulge_toward'")
+        return self
+
+    @model_validator(mode="after")
+    def _check_radius_positive(self) -> "SectorCenterStartEnd":
+        _check_numeric_radius_positive("sector_center_start_end", self.radius)
         return self
 
 
