@@ -1859,7 +1859,7 @@ def _tilted_tangent_lines(ell: RotatedEllipse, point: spg.Point) -> list[spg.Lin
 
 
 def _tangent_touch_point(t_line: Any, conic: Any) -> spg.Point | None:
-    """Where a tangent line touches a circle/ellipse (tilted ones through the kernel).
+    """Where a tangent line touches a circle/ellipse (through the kernel's frame).
 
     Computed from the line's normal rather than ``t_line.intersection(conic)``:
     with float radii SymPy sees a tangent line as just missing (or just
@@ -1870,18 +1870,7 @@ def _tangent_touch_point(t_line: Any, conic: Any) -> spg.Point | None:
     a, b, c = (float(v.evalf()) for v in t_line.coefficients)
     if a == 0 and b == 0:
         return None
-    if isinstance(conic, RotatedEllipse):
-        return _lift(*touch_point_for_line(conic.frame, a, b, c))
-    cx, cy = float(conic.center.x.evalf()), float(conic.center.y.evalf())
-    hr, vr = float(conic.hradius.evalf()), float(conic.vradius.evalf())
-    theta0 = math.atan2(vr * b, hr * a)
-    best = None
-    for theta in (theta0, theta0 + math.pi):
-        x, y = cx + hr * math.cos(theta), cy + vr * math.sin(theta)
-        miss = abs(a * x + b * y + c)
-        if best is None or miss < best[0]:
-            best = (miss, x, y)
-    return _lift(best[1], best[2])
+    return _lift(*touch_point_for_line(_frame_of(conic), a, b, c))
 
 
 def _underlying_conic(obj: Any) -> Any:
