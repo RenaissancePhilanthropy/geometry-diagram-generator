@@ -175,6 +175,10 @@ def test_near_equal_radii_take_the_circular_path_like_radii_equal(monkeypatch):
 def test_radii_differing_by_1e3_relative_still_take_the_elliptic_path(monkeypatch):
     calls = _spy_ellipe(monkeypatch)
     a = 3.0
-    ell = spg.Ellipse(spg.Point(0, 0), hradius=a, vradius=a * (1 + 1e-3))
-    curve_length(ell)
+    b = a * (1 + 1e-3)
+    ell = spg.Ellipse(spg.Point(0, 0), hradius=a, vradius=b)
+    length = curve_length(ell)
     assert calls
+    # The elliptic result matches independent quadrature and is measurably not the circle's 2*pi*a.
+    _close(length, _ref_length(a, b, 0.0, TAU), 1e-9)
+    assert abs(length - TAU * a) / (TAU * a) > 1e-4

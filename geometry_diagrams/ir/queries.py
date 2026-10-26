@@ -12,8 +12,8 @@ from typing import Any
 
 import sympy.geometry as spg
 
-from .checks import _angle_at, radii_equal
-from .curve_measures import CurveMeasureError, curve_length
+from .checks import _angle_at
+from .curve_measures import CurveMeasureError, curve_length, radii_equal
 from .derived import REGISTRY as DERIVED_REGISTRY
 from .to_sympy import FULL_ELLIPSE_TYPES, Arc, EllipticalArc, EllipticalSector, Sector, SymTable, arc_param_frame
 
