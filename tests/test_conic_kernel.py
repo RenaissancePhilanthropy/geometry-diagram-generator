@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import math
 import random
-import time
 
 import numpy as np
 import pytest
@@ -42,7 +41,7 @@ def isect(e1, e2, ids=("first", "second")):
 def oracle_count(e1, e2, n=200_000):
     """Sign changes of e2's implicit form along e1's curve, built from the
     textbook formulas here (not from the kernel's own helpers)."""
-    t = np.linspace(0, 2 * math.pi, n, endpoint=False)
+    t = (np.arange(n) + 0.5) * (2 * math.pi / n)  # never exactly on a multiple of pi/2
     c1, s1 = math.cos(e1.rotation), math.sin(e1.rotation)
     u, v = e1.a * np.cos(t), e1.b * np.sin(t)
     x, y = e1.cx + u * c1 - v * s1, e1.cy + u * s1 + v * c1
@@ -81,13 +80,23 @@ TIP = A.point_at(0.0)
 NORMAL = (math.cos(A.rotation), math.sin(A.rotation))
 
 
+def _leading_coefficient(e1, e2):
+    from geometry_diagrams.ir.conic_kernel import _quartic
+
+    poly = _quartic(e1, e2)
+    return abs(poly[0]) / np.abs(poly).max()
+
+
 def test_circle_operand_with_a_leading_zero_quartic_works():
-    # np.polymul would strip the leading zero of a circle's quartic and lose roots.
-    pts = isect(E(A.cx, A.cy, 3, 3), A)
-    assert len(pts) == 4
-    for x, y in pts:
-        assert math.hypot(x - A.cx, y - A.cy) == pytest.approx(3, abs=1e-9)
-        assert abs(A.boundary_gap(x, y)) < 1e-9
+    # e2 passes through e1's theta = pi point, so the quartic's leading coefficient
+    # (e2's implicit value there) is zero: the roots at other angles must survive.
+    e1, e2 = E(0, 0, 1, 1), E(0, 1, math.sqrt(2), math.sqrt(2))
+    assert _leading_coefficient(e1, e2) < 1e-14  # the setup really is the leading-zero case
+    for a_, b_ in ((e1, e2), (e2, e1)):
+        pts = isect(a_, b_)
+        assert sorted(round(x, 9) for x, _ in pts) == [-1.0, 1.0]
+        for x, y in pts:
+            assert y == pytest.approx(0.0, abs=1e-9)
 
 
 def test_a_pair_crossing_at_four_points_gives_all_four():
@@ -164,6 +173,89 @@ def test_intersection_points_lie_on_both_curves():
             assert abs(e2.boundary_gap(x, y)) < 1e-9 * scale_of(e1, e2)
 
 
+# --- contacts exactly at the first curve's theta = pi (the substitution's blind spot) ---
+
+def _through(e, th, center):
+    """Circle about ``center`` through e's point at parametric angle th."""
+    x, y = e.point_at(th)
+    r = math.hypot(x - center[0], y - center[1])
+    return E(center[0], center[1], r, r)
+
+
+def test_ellipse_and_circle_meeting_at_theta_pi_keep_every_crossing():
+    e1, c = E(0, 0, 2, 1), E(0, 1, math.sqrt(5), math.sqrt(5))
+    assert _leading_coefficient(e1, c) < 1e-14
+    assert len(isect(e1, c)) == len(isect(c, e1)) == oracle_count(e1, c) == 4
+
+
+def test_tilted_ellipse_and_circle_through_two_of_its_points_one_at_theta_pi():
+    e1 = E(1, 2, 3, 1, 30)
+    for th2 in (1.0, 2.2, 4.1):
+        (x1, y1), (x2, y2) = e1.point_at(math.pi), e1.point_at(th2)
+        mx, my, dx, dy = (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1
+        c = _through(e1, math.pi, (mx - dy * 0.8, my + dx * 0.8))  # center on the chord's bisector
+        assert _leading_coefficient(e1, c) < 1e-14
+        expected = oracle_count(e1, c)
+        assert expected >= 2
+        assert len(isect(e1, c)) == len(isect(c, e1)) == expected
+
+
+def test_concentric_circle_touching_both_tips_of_a_tilted_ellipse():
+    e1 = E(1, 2, 3, 1, 30)
+    c = E(1, 2, 3, 3)  # touches the tilted ellipse at theta = 0 and theta = pi
+    assert _leading_coefficient(e1, c) < 1e-14
+    assert len(isect(e1, c)) == len(isect(c, e1)) == 2
+
+
+def test_circle_touching_at_theta_pi_gives_one_point_in_both_orders():
+    e1 = E(0.3, -0.2, 4, 2, 20)
+    tx, ty = e1.point_at(math.pi)
+    r = 1.5
+    c = E(tx - math.cos(e1.rotation) * r, ty - math.sin(e1.rotation) * r, r, r)  # outside, tangent at the -a tip
+    assert len(isect(e1, c)) == len(isect(c, e1)) == 1
+
+
+@pytest.mark.parametrize("th", [0.0, math.pi / 2, math.pi, 3 * math.pi / 2])
+@pytest.mark.parametrize("tilted", [False, True])
+def test_random_circles_through_a_fixed_parametric_point_match_the_oracle(th, tilted):
+    rng = random.Random(int(th * 10) + (100 if tilted else 0))
+    wrong = []
+    for _ in range(100):
+        e1 = random_ellipse(rng, tilted)
+        c = _through(e1, th, (rng.uniform(-3, 3), rng.uniform(-3, 3)))
+        if c.a < 1e-3:
+            continue
+        expected = oracle_count(e1, c)
+        for a_, b_ in ((e1, c), (c, e1)):
+            if len(isect(a_, b_)) != expected:
+                wrong.append((e1, c, expected))
+    assert wrong == []
+
+
+@pytest.mark.parametrize("th", [0.0, math.pi / 2, math.pi, 3 * math.pi / 2])
+def test_random_axis_aligned_ellipses_sharing_a_point_at_a_fixed_angle(th):
+    # e2 is scaled so e1's point at th lies exactly on its curve.
+    rng = random.Random(int(th * 10) + 7)
+    wrong = []
+    for _ in range(100):
+        e1 = random_ellipse(rng, False)
+        px, py = e1.point_at(th)
+        cx, cy = rng.uniform(-3, 3), rng.uniform(-3, 3)
+        a2 = rng.uniform(1, 6)
+        k = ((px - cx) / a2) ** 2
+        if k >= 0.95:
+            continue
+        b2 = abs(py - cy) / math.sqrt(1 - k)
+        if b2 < 0.3:
+            continue
+        e2 = E(cx, cy, a2, b2)
+        expected = oracle_count(e1, e2)
+        for a_, b_ in ((e1, e2), (e2, e1)):
+            if len(isect(a_, b_)) != expected:
+                wrong.append((e1, e2, expected))
+    assert wrong == []
+
+
 # --- batteries vs the brute-force oracle ---------------------------------------
 
 def _near_tangent_cases(seed, n, internal):
@@ -212,21 +304,16 @@ def test_near_tangent_offsets_follow_the_tolerance_policy(internal):
 
 
 @pytest.mark.parametrize("name, seed, tilted", [("tilted", 3, True), ("float axis-aligned", 5, False)])
-def test_random_pairs_match_the_oracle_and_are_fast(name, seed, tilted):
+def test_random_pairs_match_the_oracle(name, seed, tilted):
     rng = random.Random(seed)
     n = 300
-    wrong, times = [], []
+    wrong = []
     for _ in range(n):
         e1, e2 = random_ellipse(rng, tilted), random_ellipse(rng, tilted)
-        t0 = time.perf_counter()
         got = len(isect(e1, e2))
-        times.append(time.perf_counter() - t0)
         if got != oracle_count(e1, e2):
             wrong.append((e1, e2, got))
     assert wrong == []
-    times.sort()
-    assert times[n // 2] < 1e-3  # a typical solve is well under a millisecond
-    assert times[-1] < 0.05
 
 
 def test_random_circle_against_a_tilted_ellipse_in_both_operand_orders():

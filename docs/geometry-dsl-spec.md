@@ -419,8 +419,8 @@ their touch point; two copies of one curve are an error naming both ids),
 `line_tangent` from an external point (two tangent lines, `pick` chooses by
 the touch point; a point inside is "no tangent lines"; a point on the curve
 has exactly one tangent) and the `tangent` check. The kernel also solves
-ellipse x ellipse and circle x ellipse pairs with float radii, which SymPy
-cannot, so those no longer fail; pairs with exact radii and no tilt keep the
+ellipse x ellipse and circle x ellipse pairs with any float coordinate or radius (SymPy rationalizes float points, so in practice a float radius), which SymPy
+cannot, so those no longer fail; untilted pairs with all-exact coordinates and radii keep the
 exact SymPy result. Not yet supported, an error naming the ellipse: SVG
 drawing on a canvas with an `aspect` other than 1. Labels are not yet nudged
 away from a tilted outline.

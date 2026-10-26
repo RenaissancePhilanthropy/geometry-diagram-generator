@@ -428,3 +428,59 @@ def test_figure_tikz_points_sit_on_the_tilted_outline_at_equal_units():
     # the drawn tangent line (P to its helper point) passes through the touch point Z
     (px, py), (qx, qy), (zx, zy) = pts["P"], pts["_lp_T"], pts["Z"]
     assert abs((qx - px) * (zy - py) - (qy - py) * (zx - px)) < 1e-3
+
+
+# --- contacts at the first operand's theta = pi survive through compile_defs, both orders ----
+
+@pytest.mark.parametrize("o1, o2", [("E", "C"), ("C", "E")])
+def test_float_axis_aligned_ellipse_and_circle_meeting_at_the_ellipse_theta_pi(o1, o2):
+    # E(2.0, 1.0) at the origin and the circle about (0, 1) with r = sqrt(5) meet at
+    # (-2, 0) = E's theta = pi point, and at (2, 0) and (+-sqrt(20/9), -2/3).
+    defs = [
+        ir.PointFixed(id="O", x=0, y=0), ir.PointFixed(id="K", x=0, y=1),
+        ir.EllipseCenterAxes(id="E", center="O", hradius=2.0, vradius=1.0),
+        ir.CircleCenterRadius(id="C", center="K", radius=math.sqrt(5)),
+    ]
+    pts = all_points(defs, o1, o2)
+    r = math.sqrt(20 / 9)
+    expected = [(-2.0, 0.0), (2.0, 0.0), (-r, -2 / 3), (r, -2 / 3)]
+    assert len(pts) == 4
+    for e in expected:
+        assert min(math.dist(e, p) for p in pts) < 1e-7
+
+
+@pytest.mark.parametrize("o1, o2", [("E", "C"), ("C", "E")])
+def test_concentric_circle_touching_both_tips_of_a_tilted_ellipse_gives_two_points(o1, o2):
+    defs = base([ir.CircleCenterRadius(id="C", center="O", radius=3)])
+    pts = all_points(defs, o1, o2)
+    tips = [(CX + 3 * C30, CY + 3 * S30), (CX - 3 * C30, CY - 3 * S30)]
+    assert len(pts) == 2
+    for t in tips:
+        assert min(math.dist(t, p) for p in pts) < 1e-6
+
+
+# --- routing: exact pairs keep SymPy; float-derived centers are rationalized by SymPy -------
+
+@pytest.mark.parametrize("o1, o2", [("e1", "e2"), ("e2", "e1")])
+def test_all_exact_pair_takes_the_sympy_route_with_unchanged_results(o1, o2):
+    defs = _plain_ellipses(3, 1, (0, 0), 2, 2)
+    pts = []
+    for k in range(4):
+        sym = compile_(*defs, ir.PointIntersection(id="X", obj1=o1, obj2=o2, pick=ir.PickIndex(k=k)))
+        assert not sym["X"].has(sp.Float)
+        pts.append(xy(sym["X"]))
+    for sx in (1, -1):
+        for sy in (1, -1):
+            assert min(math.dist((sx * math.sqrt(27 / 8), sy * math.sqrt(5 / 8)), p) for p in pts) < 1e-9
+
+
+@pytest.mark.parametrize("o1, o2", [("e1", "e2"), ("e2", "e1")])
+def test_float_center_with_exact_radii_returns_the_right_points(o1, o2):
+    # SymPy rationalizes float point coordinates, so this pair is exact to the router;
+    # the points must still be right whichever engine solves it.
+    defs = _plain_ellipses(3, 2, (1.5, 0.5), 2, 2)
+    pts = all_points(defs, o1, o2)
+    assert len(pts) >= 2
+    for x, y in pts:
+        assert (x / 3) ** 2 + (y / 2) ** 2 == pytest.approx(1.0, abs=1e-9)
+        assert (x - 1.5) ** 2 + (y - 0.5) ** 2 == pytest.approx(4.0, abs=1e-9)

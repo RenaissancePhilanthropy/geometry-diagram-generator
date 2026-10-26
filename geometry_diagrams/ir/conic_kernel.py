@@ -197,9 +197,15 @@ def intersect_conics(
     # theta = pi (t = infinity) is unreachable by the substitution: always probe it.
     candidates = [math.pi]
     poly = _quartic(e1, e2)
-    if abs(poly[0]) / (np.abs(poly).max() or 1.0) > 1e-14:
+    # The leading coefficient is e2's implicit value at theta = pi, so it vanishes
+    # exactly when the curves meet there (the root at t = infinity). Strip every
+    # leading near-zero coefficient and solve the rest, so the other roots survive.
+    top = np.abs(poly).max() or 1.0
+    live = np.nonzero(np.abs(poly) / top > 1e-14)[0]
+    if live.size:
         candidates += [
-            2 * math.atan(float(r.real)) for r in np.roots(poly) if abs(r.imag) <= _IMAG_SLACK * (1 + abs(r.real))
+            2 * math.atan(float(r.real))
+            for r in np.roots(poly[live[0]:]) if abs(r.imag) <= _IMAG_SLACK * (1 + abs(r.real))
         ]
     roots: list[float] = []
     touches: list[float] = []

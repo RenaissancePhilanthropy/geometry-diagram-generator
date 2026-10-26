@@ -250,7 +250,9 @@ angle, circle x ellipse raised `ValueError: Imaginary coordinates are not
 permitted` (also at 37 degrees and with rational snapping), circle x ellipse
 with a float radius took 1.5 to 1.8 s, and float ellipse x ellipse took 1.2 to
 1.3 s. With an exact angle every operation timed out past 25 s. So every
-circle/ellipse pair, tilted or not, including float-radius axis-aligned pairs,
+circle/ellipse pair, tilted or not, including axis-aligned pairs with any float
+coordinate or radius (as built in stage 2: a pair carrying any `sp.Float` atom goes to the kernel,
+because SymPy's float fragility is triggered by a float anywhere in the pair),
 goes through one numeric kernel (a new module next to `to_sympy.py`, numpy
 only, about 200 to 250 lines). Line x tilted ellipse and tangents from a point
 use the kernel's closed forms, so there is one code path. SymPy stays only for
@@ -638,7 +640,7 @@ ellipse entries), `util/svg_checks.py` (counts `<ellipse>` tags only),
    ticket 07, blocked by 06).** Rows 6 and 7. This builds the numeric kernel
    and the tolerance policy, routes every circle/ellipse intersection and
    every ellipse tangent through it, retires `_count_ellipse_crossings` (and
-   with it the float-radius axis-aligned ellipse x ellipse limit), and lifts
+   with it the float-valued axis-aligned ellipse x ellipse limit), and lifts
    the stage-1 typed errors.
 3. **Stage 3, tilted elliptical arcs and sectors.** Rows 1 (arc kinds), 3, 4,
    5, 8, 10, 13 (`_arc_extent`), 14, 16, 17 and 18 for arcs, plus pydsl's
