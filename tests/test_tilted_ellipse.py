@@ -449,3 +449,23 @@ def test_structured_prompt_gets_tilted_guidance_only_with_the_group_on():
     on = build_structured_instructions(frozenset({"tilted_ellipses"}))
     assert "rotation_deg" not in off
     assert on.startswith(off) and "rotation_deg" in on and "Tilted ellipses" in on
+
+
+def test_tilted_prompt_fragment_states_the_true_limits():
+    """The gated fragment must not call supported operations errors, and must
+    name what is still unsupported (stale text came back once)."""
+    from geometry_diagrams.strategies.instructions_structured import _TILTED_ELLIPSES_FRAGMENT as frag
+
+    flat = " ".join(frag.split())
+    assert "Not supported on a tilted ellipse yet" not in flat
+    # The four operations tickets 02 and 03 built are not listed as errors.
+    for op in ("line_tangent", "point_intersection", "`tangent`"):
+        for line in frag.splitlines():
+            if "not supported" in line.lower() or "error" in line.lower():
+                assert op not in line, (op, line)
+    assert "all work on a tilted ellipse" in flat
+    assert "Build those diagrams with an axis-aligned ellipse" not in flat
+    # The real limits are named.
+    assert "arcs" in flat and "sectors" in flat
+    assert "ellipse_foci" in flat and "ellipse_bbox" in flat
+    assert "TikZ" in flat and "aspect" in flat

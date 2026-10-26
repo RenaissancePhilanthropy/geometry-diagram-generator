@@ -450,10 +450,13 @@ perpendicular to it (for the eccentricity form, the whole figure given by `orien
 
 - `point_on` with `{"kind": "param", "t": ...}` measures t from the tilted `hradius` axis: t = 0 \
 is the end of that axis, t = pi/2 the end of the `vradius` axis.
-- Not supported on a tilted ellipse yet (each is an error): `line_tangent`, `point_intersection`, \
-the `tangent` check, and a canvas `aspect` other than 1. Build those diagrams with an \
-axis-aligned ellipse instead.
-- `ellipse_bbox`, `ellipse_foci` and elliptical arcs/sectors are always axis-aligned.
+- `line_tangent` from a point, `point_intersection` with a line, segment, ray, circle or another \
+ellipse, and the `tangent` check all work on a tilted ellipse, and so does a canvas `aspect` other \
+than 1 (SVG renderer only).
+- Still not supported on a tilted ellipse: elliptical arcs and sectors (they have no \
+`rotation_deg`, so they are always axis-aligned), `ellipse_foci` (an error for a tilted ellipse), \
+and `ellipse_bbox` (no `rotation_deg`). The TikZ renderer rejects any canvas `aspect` other than 1 \
+for every diagram.
 """
 
 # group -> prompt fragment appended only when that group is enabled.
