@@ -421,9 +421,11 @@ the touch point; a point inside is "no tangent lines"; a point on the curve
 has exactly one tangent) and the `tangent` check. The kernel also solves
 ellipse x ellipse and circle x ellipse pairs with any float coordinate or radius (SymPy rationalizes float points, so in practice a float radius), which SymPy
 cannot, so those no longer fail; untilted pairs with all-exact coordinates and radii keep the
-exact SymPy result. Not yet supported, an error naming the ellipse: SVG
-drawing on a canvas with an `aspect` other than 1. Labels are not yet nudged
-away from a tilted outline.
+exact SymPy result. SVG also draws and fills a tilted ellipse on a canvas with a
+non-unit `aspect`: its screen image is another ellipse, whose axes and angle
+`render_util.screen_ellipse` computes in closed form (TikZ rejects any `aspect`,
+as for every diagram), and label nudging treats the tilted ellipse as an
+obstacle at its true screen angle.
 
 ### Solid Operations
 
