@@ -4,17 +4,17 @@
 
 \documentclass{article}
 
-\usepackage[dblblindworkshop,nonatbib]{style/neurips_2026}
+\usepackage[dblblindworkshop,final,nonatbib]{style/neurips_2026}
 \workshoptitle{The 6th Workshop on Mathematical Reasoning and AI}
 
 \input{preamble}
 
-\title{GeoGenBench: Symbolically Verified Generation \\ of Geometry Diagrams}
+\title{GeoGenBench: Symbolically Verified \\ Generation of Geometry Diagrams}
 
 \author{%
-  Anonymous Authors\\
-  Affiliation\\
-  \texttt{anon@example.org}
+  Mei Chen \quad Gordon Stein \\
+  Renaissance Philanthropy \\
+  \texttt{\{mei.chen, gordon.stein\}@renphil.org}
 }
 
 \begin{document}
@@ -22,18 +22,19 @@
 \maketitle
 
 \begin{abstract}
-Geometry benchmarks ask a model to read a diagram.
-None asks it to draw one.
-\GeoGenBench does.
-It has 801 prompts, each asking for a plane-geometry construction and each paired with the checks a correct drawing must pass.
+Typically, geometry benchmarks ask models to read and interpret diagrams.
+In \GeoGenBench, we ask the models to draw.
+Each of the 801 prompts describes a plane-geometry construction and comes with the checks a correct drawing has to pass.
 The model writes TikZ.
-We compile it, recover the coordinates, and run every check exactly.
-No human grades and no vision model judges.
+We compile the code, read the coordinates back out, and run every check exactly, so no person and no vision model has to judge the drawing.
 We test six frontier models.
-Asking for a typed intermediate representation instead of raw TikZ lifts every model, by 2 to 25 points, most for the weakest.
-Under that scaffold the three best models tie within one point at a $7\times$ cost spread.
-A human check of 200 outputs finds the grader lenient in one direction only: it never fails a correct drawing.
+Asking for a typed intermediate representation instead of raw TikZ helps every one of them, by 2 to 25 points, and helps the weakest the most.
+With that scaffold, the three best models land within a point of each other at prices that differ sevenfold.
+The grader has one known gap.
+Every check it runs is exact, but the checks do not always cover everything a prompt asks for.
+When two people graded 200 outputs by hand, the grader never failed a correct drawing, but it passed about one drawing in six that a person would not.
 We release the dataset, the templates, the grader, and the leaderboard.
+The remaining work is making each template's checks cover every requirement in its prompt.
 \end{abstract}
 
 \section{Introduction}
@@ -41,8 +42,8 @@ We release the dataset, the templates, the grader, and the leaderboard.
 
 A language model asked to draw a geometry diagram will usually produce something that looks right.
 Looking right is not the same as being right.
-Every geometry benchmark so far tests reading: here is a diagram, answer a question.
-None tests drawing, because grading a drawing has been the hard part.
+Geometry benchmarks have tested reading: here is a diagram, answer a question.
+Drawing has gone untested, because grading a drawing has been the hard part.
 
 Take the prompt \textit{``Draw an acute triangle $EFG$ with angles $60^\circ$ and $70^\circ$ at $E$ and $F$. Construct the altitude from $G$ meeting $EF$ at $H$.''}
 A correct drawing has those two angles, a right angle at $H$, $H$ on the segment $EF$ and not beyond it, and no obtuse angle.
@@ -68,7 +69,11 @@ The rest of the paper follows one question after another.
 Geometry3K~\citep{lu2021intergps}, GeoQA~\citep{chen2021geoqa}, UniGeo~\citep{chen2022unigeo}, MathVista~\citep{lu2024mathvista}, GeoEval~\citep{zhang2024geoeval}, and GeoBench~\citep{geobench2026} test diagram reading.
 T2I-CompBench++~\citep{huang2025t2icompbenchpp} and GenExam~\citep{wang2025genexam} grade generated images with a model as judge.
 AlphaGeometry~\citep{trinh2024alphageometry} and the Lean corpora machine-check proofs.
-\GeoGenBench machine-checks drawings.
+GeoSDF~\citep{zhang2025geosdf} draws a diagram from symbolic constraints by optimizing a signed distance field.
+Geoint-R1~\citep{wei2025geointr1} checks auxiliary constructions in Lean 4.
+Both build the drawing themselves.
+\GeoGenBench grades a drawing a language model built from a sentence.
+It could grade a drawing from GeoSDF the same way.
 
 \section{How a drawing is graded}
 \label{sec:design}
@@ -96,7 +101,7 @@ A reviewer worried about contamination can re-roll the template with a fresh see
     \scriptsize ``Draw an acute triangle $ABC$ with $\angle A = 60^{\circ}$, $\angle B = 70^{\circ}$.
     Construct the altitude from $C$ meeting $AB$ at $H$.''};
   \node[outbox, anchor=north] (rubric) at ($(fn.south)+(4.0,-1.2)$) {%
-    \textbf{Property list (rubric)}\\[2pt]
+    \textbf{Check list}\\[2pt]
     \scriptsize\ttfamily right\_angle($C, H, A$)\\
     point\_on\_segment($H, A, B$)\\
     angle\_equal($\angle BAC$, $60^\circ$)};
@@ -105,7 +110,7 @@ A reviewer worried about contamination can re-roll the template with a fresh see
   \node[role, below=0.5mm of prompt, text width=53mm] {shown to the model};
   \node[role, below=0.5mm of rubric, text width=53mm] {used to grade (never shown to the model)};
 \end{tikzpicture}
-\caption{Procedural co-generation: one Python template emits both the prompt and the rubric, guaranteeing they stay mutually consistent.}
+\caption{Procedural co-generation: one Python template emits both the prompt and the checks, so the two cannot disagree.}
 \label{fig:cogen}
 \end{figure}
 
@@ -123,7 +128,7 @@ It gets a soft pass if nothing fails but a check was skipped.
 Otherwise it fails, or it never rendered.
 
 \paragraph{What is in the benchmark.}
-600 of the 801 prompts come from 30 templates, 200 per tier: \tone is a single shape, \ttwo adds one construction, \tthree combines several.
+600 of the 801 prompts come from 30 templates, 200 per tier: \textbf{\tone} is a single shape, \textbf{\ttwo} adds one construction, \textbf{\tthree} combines several.
 The other 201 were extracted by a language model from a state K--12 curriculum~\citep{bluebonnet2024}.
 We report the two sources separately and treat the templated 600 as the anchor.
 
@@ -151,6 +156,14 @@ Two raters, a PhD mathematician and an engineer who has taught mathematics, judg
 Grader and raters agree moderately ($\kappa = 0.455$), below the 0.70 we had pre-registered, while the raters agree well with each other.
 The disagreement runs one way.
 The raters overturned 18\% of the grader's passes and none of its fails.
+Where do those overturned passes live?
+We split the 200 outputs by tier.
+On \tone and \tthree, the grader and the raters agree almost every time.
+On \ttwo they barely agree, at $\kappa = 0.16$.
+\ttwo is the tier that adds one construction, an altitude or a median, to a triangle whose angles the prompt states.
+The raters saw that a drawing did not have those angles and failed it.
+The grader never measured them, because the template wrote no check for them.
+Two hundred outputs spread over six models leave too few per model to correct each score on its own, so we report the tier instead.
 \Cref{sec:discussion} says what that means for the leaderboard.
 
 \section{Results}
@@ -165,13 +178,13 @@ The checks run before rendering, so the model gets up to three retries.
 Every model-by-strategy cell runs on the 600 templated prompts three times (\cref{tab:headline}).
 
 \begin{table}[t]
-\caption{Headline leaderboard ($600$ scenarios $\times$ $3$ repeats, post-hardening). Strict $=$ \texttt{pass}; loose adds \texttt{soft\_pass}. $^*$ marginally partial coverage; $^\dagger$ blocked at the API layer (\cref{sec:results}).}
+\caption{Headline leaderboard ($600$ prompts $\times$ $3$ repeats, post-hardening). Strict $=$ \texttt{pass}; loose adds \texttt{soft\_pass}. $^*$ marginally partial coverage; $^\dagger$ blocked at the API layer (\cref{sec:results}).}
 \label{tab:headline}
 \centering
 \small
 \begin{tabular}{llrrrrr}
 \toprule
-\textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/scen.} & \textbf{Latency} \\
+\textbf{Model} & \textbf{Strategy} & \textbf{N} & \textbf{Strict} & \textbf{Loose} & \textbf{\$/prompt} & \textbf{Latency} \\
 \midrule
 \gpt & \structured & $2{,}304^*$ & \textbf{94.1\%} & 94.1\% & \dollars{0.075} & 33.6\,s \\
 \sonnet & \structured & $2{,}861$ & 93.4\% & 93.4\% & \dollars{0.088} & 19.0\,s \\
@@ -193,6 +206,12 @@ Every model-by-strategy cell runs on the 600 templated prompts three times (\cre
 \paragraph{The scaffold lifts every model.}
 \structured helps each model: \gpt by 2 points, \haiku by 5, \sonnet by 12, \opus by 22, and \geminipro by 25.
 The weaker a model is at raw TikZ, the more it gains.
+The scaffold changes three things at once.
+The model writes a typed list instead of drawing code.
+Our code compiles that list.
+And the model may retry, up to three times, when its own checks fail.
+Raw TikZ gets none of these.
+We have not separated them, so the gain belongs to the scaffold as a whole, not to any one part of it.
 
 \paragraph{The frontier converges.}
 With the scaffold, \gpt, \sonnet, and \opus finish at 94\%, 93\%, and 93\%, within one point of each other.
@@ -236,11 +255,19 @@ Numeric checks for those templates are the planned fix.
 \GeoGenBench tests whether a model can turn a sentence into a consistent plane drawing.
 It does not test proofs, solids, or teaching.
 A third of the templates accept any drawing that meets the stated constraints, not one canonical drawing.
-The curriculum prompts are harder for every model than the templated ones, and the headline numbers are templated numbers.
+The headline numbers are templated numbers.
+On \tone and \ttwo the top three models are near the ceiling, and a test every model passes stops telling them apart.
+The curriculum prompts are far from the ceiling.
+We ran three model-and-strategy cells on them, and every score roughly halved.
+\haiku under raw TikZ fell from 82\% to 36\%.
+Thirty templates is a small set.
+Each is one Python function that writes its prompts and its checks together, so a new template is cheap to add.
+The next two steps are to run every model on the curriculum prompts and to write more templates.
 
 \paragraph{Takeaway.}
-A geometry drawing can be graded exactly, from its coordinates, with no judge.
-Graded that way, the scaffold matters more than the model.
+Each requirement on a geometry drawing can be checked exactly, from its coordinates, with no judge.
+The remaining work is making sure each template's checks cover every requirement in the prompt.
+Graded this way, the scaffold matters more than the model.
 We release everything needed to run it.
 
 \bibliographystyle{plainnat}
