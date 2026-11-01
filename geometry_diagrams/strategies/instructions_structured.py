@@ -426,7 +426,8 @@ them all with correct hidden faces. Limit: at most 400 cubes and at most 20 cell
 - Draw the stack with `{"kind": "draw", "obj": "<stack id>"}`. Set colors on the definition \
 (`front_color`, `side_color`, `top_color`): a `fill` of the stack id is an error.
 - For a stack's total set `count_label` on the definition (verbatim text, the number with its unit, \
-e.g. `"6 cubes"`): it lands above the stack, once, when the stack is drawn (draw it once). Do not add a \
+e.g. `"6 cubes"`), but only when the request states that total or asks for it on the figure: a figure \
+for a "how many cubes" question shows the stack, not the count. The label lands above the stack, once, when the stack is drawn (draw it once). Do not add a \
 free-text label for the total.
 - Column top faces `{id}_top_{x}_{z}` (columns of height 0 have none) are the way to label a \
 column: `label_free_text` with `centroid_of` that id. `centroid_of` the stack id lands at the \

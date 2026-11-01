@@ -123,7 +123,9 @@ _SOLIDS_FRAGMENT = """
   flat instead of standing up.
 - Never draw individual cubes by hand (no per-cube polygons or segments): one `stack` draws them all
   with correct hidden faces. Limit: at most 400 cubes and at most 20 cells along any axis.
-- For a stack's total use `count_label=` (verbatim text, the number with its unit, e.g. "6 cubes"): it lands
+- For a stack's total use `count_label=` (verbatim text, the number with its unit, e.g. "6 cubes"), but only when
+  the request states that total or asks for it on the figure: a figure for a "how many cubes" question shows the
+  stack, not the count. The label lands
   above the stack, once, when the stack is drawn. `stack(...)` does not draw by itself: `draw(s)` once.
   `count_label=` is preferred over `s.label(text)`, which lands at the middle of the bounding box.
 - Draw the stack handle (`draw(s)`). Color faces with front_color/side_color/top_color on `stack`.

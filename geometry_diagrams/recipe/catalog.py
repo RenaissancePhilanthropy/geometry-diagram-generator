@@ -787,8 +787,9 @@ _STACK_GUIDANCE_DOC = """\
 - Draw the stack id (auto_draw_all does this). Color faces with front_color/side_color/top_color on the op.
 - For isometric requests set view:"isometric" on the stack op (no depth_angle/depth_scale).
   Example: """ + _SX["isometric_op"] + """
-- For a stack's total use count_label on the stack op (verbatim text, number with its unit, e.g. "6 cubes"): it
-  lands above the stack, once, when the stack is drawn (draw it once). Example: """ + _SX["count_label_op"] + """
+- For a stack's total use count_label on the stack op (verbatim text, number with its unit, e.g. "6 cubes"), but
+  only when the request states that total or asks for it on the figure: a figure for a "how many cubes" question
+  shows the stack, not the count. The label lands above the stack, once, when the stack is drawn (draw it once). Example: """ + _SX["count_label_op"] + """
 - Label a column with a free-text label centered on its top face. Example: """ + _SX["column_label"] + """
   A label centered on the stack id itself lands at the middle of the bounding box, which can fall in a notch.
 - When the prompt states the number of cubes, assert it: """ + _SX["cube_count"] + """"""
