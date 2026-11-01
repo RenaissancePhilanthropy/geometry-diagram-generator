@@ -209,7 +209,7 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001 — must report every failure kind to the parent
         message = str(exc)
         error_type = classify_failure(message)
-        retry_message = build_retry_message(message, script)
+        retry_message = build_retry_message(message, script, features, enable_cookbook)
         _send("error", [message, error_type, retry_message])
 
 
