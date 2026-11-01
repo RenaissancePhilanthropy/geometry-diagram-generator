@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -27,6 +28,8 @@ from .to_sympy import (
     point_on_arc,
 )
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TOL = 5e-3
 # Default relative tolerance of the solid measure checks (prism volume_equals
@@ -70,7 +73,7 @@ def run_checks(
     prism's projection warning: a generic 2D length check measured a prism
     segment's drawn projection, not its true length).
     """
-    results = [_check_one(c, sym, tol) for c in checks]
+    results = [_check_one(c, sym, tol, warnings) for c in checks]
     if warnings is not None:
         for check in checks:
             warnings.extend(DERIVED_REGISTRY.check_warnings(check, sym))
@@ -81,7 +84,9 @@ def run_checks(
 # Internal dispatcher
 # ---------------------------------------------------------------------------
 
-def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
+def _check_one(
+    check: Any, sym: SymTable, default_tol: float, warnings: list[str] | None = None
+) -> CheckResult:
     t = check.tol if check.tol is not None else default_tol
     try:
         match check:
@@ -362,6 +367,8 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True
                 msg = f"(unrecognized check kind {check.kind!r}, skipped)"
+                if warnings is not None:
+                    warnings.append(f"unrecognized check kind {check.kind!r} was not evaluated")
 
         if not ok and check.source:
             msg = f"[{check.source}] {msg}"
@@ -375,8 +382,24 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             msg = f"[{check.source}] {msg}"
         return CheckResult(check=check, passed=False, message=msg)
 
+    except KeyError as exc:
+        # An id the check names is not in the compiled symbol table.
+        missing = exc.args[0] if exc.args else "?"
+        return CheckResult(
+            check=check,
+            passed=False,
+            message=f"Error in {check.kind!r}: unknown id {missing!r} (not defined in this diagram)",
+        )
+
     except Exception as exc:
-        return CheckResult(check=check, passed=False, message=f"Error in {check.kind!r}: {exc}")
+        # An internal failure, not a verdict: keep it visible in the logs while
+        # still reporting the check as failed.
+        logger.warning("check %r raised %s", check.kind, type(exc).__name__, exc_info=True)
+        return CheckResult(
+            check=check,
+            passed=False,
+            message=f"Error in {check.kind!r}: {type(exc).__name__}: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
