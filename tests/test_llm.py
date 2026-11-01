@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from pydantic import BaseModel
 
 from geometry_diagrams.strategies.llm import (
@@ -320,3 +321,19 @@ def test_bind_structured_output_auto_tool_choice_takes_priority_over_openai_flag
     )
     mock_llm.bind_tools.assert_called_once()
     mock_llm.with_structured_output.assert_not_called()
+
+
+@pytest.mark.parametrize("model_id,module,extra", [
+    ("google:gemini-3-pro", "langchain_google_genai", "google"),
+    ("openai:gpt-5", "langchain_openai", "openai"),
+])
+def test_missing_provider_package_names_the_extra_to_install(monkeypatch, model_id, module, extra):
+    """The provider packages are optional extras; a bare ModuleNotFoundError
+    does not say which one to install."""
+    import sys
+
+    from geometry_diagrams.strategies.llm import get_chat_model
+
+    monkeypatch.setitem(sys.modules, module, None)  # makes `import module` fail
+    with pytest.raises(ImportError, match=rf"geometry-diagrams\[{extra}\]"):
+        get_chat_model(model_id)

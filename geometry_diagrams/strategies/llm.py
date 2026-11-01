@@ -272,6 +272,19 @@ def _construct(factory, model_id: str, kwargs: dict) -> BaseChatModel:
         raise
 
 
+def _import_provider(module: str, attr: str, extra: str):
+    """Import an optional provider class, naming the extra to install if absent."""
+    import importlib
+
+    try:
+        return getattr(importlib.import_module(module), attr)
+    except ImportError as e:
+        raise ImportError(
+            f"{module} is not installed; install it with `pip install 'geometry-diagrams[{extra}]'` "
+            f"(or `uv sync --extra {extra}`) to use this model provider."
+        ) from e
+
+
 def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseChatModel:
     """Return a LangChain chat model for the given model ID.
 
@@ -302,11 +315,13 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
         return ChatAnthropic(model=model_name, **kwargs)
 
     if backend == "google":
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        ChatGoogleGenerativeAI = _import_provider(
+            "langchain_google_genai", "ChatGoogleGenerativeAI", "google",
+        )
         return _construct(lambda: ChatGoogleGenerativeAI(model=model_name, **kwargs), model_id, kwargs)
 
     # backend == "openai": every OpenAI-compatible provider funnels through ChatOpenAI.
-    from langchain_openai import ChatOpenAI
+    ChatOpenAI = _import_provider("langchain_openai", "ChatOpenAI", "openai")
     base_url = provider.get("base_url")
     if base_url:
         if "{region}" in base_url:
