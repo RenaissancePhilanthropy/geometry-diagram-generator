@@ -10,6 +10,7 @@ dependencies = [
     "langchain-anthropic>=1.4.4",
     "langgraph>=1.2.0",
     "matplotlib>=3.10.9",
+    "mpmath>=1.3.0",
     "numpy>=2.4",
     "pydantic>=2.0",
     "pyyaml>=6.0.3",
@@ -17,6 +18,19 @@ dependencies = [
     "sympy>=1.14.0",
     "xxhash>=3.7.0",
 ]
+
+[project.optional-dependencies]
+# Providers other than Anthropic (strategies/llm.py imports them lazily).
+openai = ["langchain-openai>=1.3.0"]
+google = ["langchain-google-genai>=4.2.5"]
+# main.py (the demo server) and the eval viewer.
+server = [
+    "python-dotenv>=1.2.2",
+    "starlette>=1.0.1",
+    "uvicorn>=0.49.0",
+]
+# paper/scripts only.
+paper = ["mlcroissant>=1.1.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,8 +45,6 @@ dev = [
     "langchain-google-genai>=4.2.5",
     "langchain-openai>=1.3.0",
     "langfuse>=4.0,<5",
-    "mlcroissant>=1.1.0",
-    "pymupdf>=1.27.2.3",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24",
     "pytest-timeout>=2.3.1",
@@ -43,3 +55,8 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+timeout = 300
+markers = [
+    "renderer: needs the TikZ renderer container on localhost:8001",
+    "llm: calls a live LLM (needs RUN_LLM_TESTS=true and an API key)",
+]
