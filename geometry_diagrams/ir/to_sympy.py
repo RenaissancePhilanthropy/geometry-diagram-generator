@@ -625,11 +625,17 @@ def compile_defs(
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
     # correctly places that statement before any statement that uses them.
-    graph: dict[str, set[str]] = {}
+    # Predecessors are ordered by definition index (not set order) so the
+    # compile order, and with it the shared RNG's consumption, is identical
+    # across processes regardless of PYTHONHASHSEED.
+    def_index: dict[str, int] = {}
+    for i, stmt in enumerate(defs):
+        def_index.setdefault(stmt.id, i)
+    graph: dict[str, list[str]] = {}
     for stmt in defs:
         raw_refs = def_references(stmt)
-        resolved = {derived_point_owner.get(r, r) for r in raw_refs}
-        graph[stmt.id] = resolved & all_ids
+        resolved = {derived_point_owner.get(r, r) for r in raw_refs} & all_ids
+        graph[stmt.id] = sorted(resolved, key=lambda r: def_index[r])
 
     try:
         order = list(TopologicalSorter(graph).static_order())
