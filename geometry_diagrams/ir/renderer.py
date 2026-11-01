@@ -1,10 +1,9 @@
 """Renderer abstraction for the IR pipeline.
 
-Defines the Renderer ABC and RenderResult dataclass. TikZRenderer is the
-default implementation that wraps ir_to_tikz() + render_tikz().
-
-Future implementations (direct SVG, JSXGraph) implement the Renderer ABC
-and are injected at the call site (evals, eval_viewer, main.py).
+Defines the Renderer ABC and RenderResult dataclass. TikZRenderer wraps
+ir_to_tikz() + render_tikz() (HTTP to the renderer container); SVGRenderer
+wraps ir_to_svg() in-process with no container. Any other implementation of
+the Renderer ABC is injected at the call site (evals, eval_viewer, main.py).
 """
 from __future__ import annotations
 

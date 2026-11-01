@@ -23,8 +23,9 @@ makes this checker correct for both -- a checker that only looked for
 `<text>` elements would silently miss every math/LaTeX label.
 
 Caveat: `data-bbox` is only as accurate as `to_svg.py`'s own width estimate
-for the label (a matplotlib-derived box for math labels, a char-count
-heuristic -- `_estimate_text_width` -- for plain text). This checker cannot
+for the label (a matplotlib-derived box for math labels, the bundled font's
+real glyph advances -- `_estimate_text_width` -- for plain text, with a flat
+per-character fallback when the font cannot be loaded). This checker cannot
 be more precise than that estimate; it inherits the same false-positive/
 false-negative risk the label-nudging system already has today.
 """
