@@ -92,6 +92,10 @@ class GeometryConfig:
     # Enabled feature groups (see geometry_diagrams/features.py); empty = every
     # opt-in group off. Env: GEOMETRY_FEATURES, comma-separated (e.g. "solids").
     features: frozenset[str] = frozenset()
+    # Application-supplied text appended to every strategy's generation system
+    # prompt (never to the user's description) as a delimited trailing section.
+    # None or empty leaves the prompts unchanged.
+    extra_instructions: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -127,6 +131,7 @@ def resolve_config(
     hash_algorithm: Optional[str] = None,
     sandbox_timeout_seconds: Optional[float] = None,
     features: "Optional[frozenset[str] | set[str] | str]" = None,
+    extra_instructions: Optional[str] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -150,4 +155,5 @@ def resolve_config(
         ),
         features=frozenset(features) if features is not None and not isinstance(features, str)
         else (parse_features(features) if features is not None else cfg.features),
+        extra_instructions=extra_instructions if extra_instructions is not None else cfg.extra_instructions,
     )

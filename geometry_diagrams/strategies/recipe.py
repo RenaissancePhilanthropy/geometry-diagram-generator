@@ -19,7 +19,7 @@ from langchain_core.exceptions import OutputParserException
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, run_sync
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, append_extra_instructions, run_sync
 from .structured import QUERY_TOOL_SOLIDS_INSERTIONS, dispatch_query
 from .ir_pipeline import (
     StructuredRunResult,
@@ -229,6 +229,7 @@ class RecipePipelineState(TypedDict):
     renderer: Optional[Any]
     selection_done: bool
     features: frozenset  # enabled feature groups; absent/empty = none enabled
+    extra_instructions: Optional[str]  # appended to the generation system prompt; absent/empty = none
 
 
 @dataclass
@@ -389,7 +390,10 @@ async def _generate_dsl_node(
         human_content = user_message
 
     messages = [
-        make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache, model_id=model_id),
+        make_system_message(
+            append_extra_instructions(RECIPE_GENERATION_SYSTEM, state.get("extra_instructions")),
+            enable_cache=enable_cache, model_id=model_id,
+        ),
         HumanMessage(content=human_content),
     ]
 
@@ -661,7 +665,10 @@ class RecipeStrategy(SubstanceStrategy):
         callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
         previous_dsl: Optional[dict] = None,
         features: "frozenset[str] | None" = None,
+        extra_instructions: Optional[str] = None,
     ) -> StructuredRunResult:
+        """extra_instructions: application text appended to the DSL-generation
+        system prompt (not the selector's, not the user's request)."""
         graph = _build_recipe_graph()
         effective_prompt = prompt
         if previous_dsl is not None:
@@ -690,6 +697,7 @@ class RecipeStrategy(SubstanceStrategy):
             "renderer": renderer,
             "selection_done": False,
             "features": self.features if features is None else frozenset(features),
+            "extra_instructions": extra_instructions,
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 

@@ -18,6 +18,16 @@ DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
 
 _T = TypeVar("_T")
 
+EXTRA_INSTRUCTIONS_HEADING = "## Additional instructions from the application"
+
+
+def append_extra_instructions(text: str, extra: "str | None") -> str:
+    """`text` with the application's extra instructions appended as a delimited
+    trailing section; `text` itself, unchanged, when there are none."""
+    if not extra or not extra.strip():
+        return text
+    return f"{text.rstrip(chr(10))}\n\n{EXTRA_INSTRUCTIONS_HEADING}\n{extra.strip()}\n"
+
 
 def run_sync(coro: "Awaitable[_T]") -> _T:
     """Run a coroutine to completion from synchronous code.

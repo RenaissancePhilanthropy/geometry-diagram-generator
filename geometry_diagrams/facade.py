@@ -109,6 +109,7 @@ async def render_geometry_diagram(
     previous_ir: Optional[dict] = None,
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
+    extra_instructions: Optional[str] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -147,6 +148,12 @@ async def render_geometry_diagram(
             python_full previous_script edit.
         callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
             Same scope as run_config above.
+        extra_instructions: Application-specific text appended, as a delimited
+            "Additional instructions from the application" section, to the system
+            prompt of the generation call(s) of every strategy (not to the user's
+            prompt, and not to the recipe selector). Overrides
+            config.extra_instructions; None falls back to it, and None or empty
+            leaves the prompts unchanged.
     """
     cfg = resolve_config(
         config,
@@ -156,8 +163,11 @@ async def render_geometry_diagram(
         selector_model=selector_model,
         renderer_url=renderer_url,
         font_family=font_family,
+        extra_instructions=extra_instructions,
     )
     strategy_obj = _make_strategy(cfg)
+    # Passed on only when set, so strategy calls keep their shape without it.
+    extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
 
     _check_previous_state(
         cfg.strategy,
@@ -176,6 +186,7 @@ async def render_geometry_diagram(
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
                 config=run_config,
                 callbacks=callbacks,
+                **extra,
             )
         else:
             result = await strategy_obj.run(
@@ -185,6 +196,7 @@ async def render_geometry_diagram(
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
                 config=run_config,
                 callbacks=callbacks,
+                **extra,
             )
     elif cfg.strategy == "structured":
         result = await strategy_obj.run(
@@ -194,6 +206,7 @@ async def render_geometry_diagram(
             previous_ir=previous_ir,
             config=run_config,
             callbacks=callbacks,
+            **extra,
         )
     else:
         result = await strategy_obj.run(
@@ -203,6 +216,7 @@ async def render_geometry_diagram(
             previous_dsl=previous_dsl,
             config=run_config,
             callbacks=callbacks,
+            **extra,
         )
 
     # Extract structured artifacts if available
@@ -357,6 +371,7 @@ async def edit_geometry_diagram(
     font_family: Optional[str] = None,
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
+    extra_instructions: Optional[str] = None,
 ) -> DiagramResult:
     """Edit an existing geometry diagram by applying the described changes.
 
@@ -386,6 +401,7 @@ async def edit_geometry_diagram(
         font_family=font_family,
         run_config=run_config,
         callbacks=callbacks,
+        extra_instructions=extra_instructions,
     )
 
 

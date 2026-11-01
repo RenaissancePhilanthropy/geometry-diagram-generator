@@ -10,7 +10,7 @@ from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, append_extra_instructions
 from .llm import (
     get_chat_model, bind_structured_output_for_model, config_kwargs, extract_cost, extract_usage,
     make_system_message,
@@ -154,6 +154,7 @@ class StructuredPipelineState(TypedDict):
     cost_usd: float  # provider-reported cost summed over attempts; 0.0 = none reported
     renderer: Optional[Any]
     features: frozenset  # enabled feature groups; absent/empty = none enabled
+    extra_instructions: Optional[str]  # appended to the system prompt; absent/empty = none
 
 
 async def _generate_ir_node(
@@ -174,7 +175,13 @@ async def _generate_ir_node(
 
     from langchain_core.messages import HumanMessage
     messages = [
-        make_system_message(build_structured_instructions(state.get("features") or frozenset()), enable_cache=enable_cache, model_id=model_id),
+        make_system_message(
+            append_extra_instructions(
+                build_structured_instructions(state.get("features") or frozenset()),
+                state.get("extra_instructions"),
+            ),
+            enable_cache=enable_cache, model_id=model_id,
+        ),
         HumanMessage(content=prompt),
     ]
 
@@ -291,8 +298,12 @@ class StructureStrategy(SubstanceStrategy):
         previous_ir: "DiagramIR | dict | None" = None,
         config: "dict | None" = None,
         callbacks: "list | None" = None,
+        extra_instructions: "str | None" = None,
     ) -> StructuredRunResult:
-        """config / callbacks: a LangChain RunnableConfig and extra callback
+        """extra_instructions: application text appended to the generation
+        system prompt (not the user's request).
+
+        config / callbacks: a LangChain RunnableConfig and extra callback
         handlers for the graph's LLM calls, merged with the package's
         env-driven tracing handler (same contract as RecipeStrategy.run).
 
@@ -321,6 +332,7 @@ class StructureStrategy(SubstanceStrategy):
             "cost_usd": 0.0,
             "renderer": renderer,
             "features": self.features if features is None else frozenset(features),
+            "extra_instructions": extra_instructions,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
