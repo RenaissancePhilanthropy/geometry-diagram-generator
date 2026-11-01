@@ -26,7 +26,11 @@ from .to_sympy import SymTable, _cross_sign
 def _side(v1: spg.Point2D, v2: spg.Point2D, p: spg.Point2D) -> int:
     """Which side of line v1->v2 point p is on. Raises if p is on the line."""
     cross_val = float(_cross_sign(v1, v2, p).evalf())
-    if abs(cross_val) < 1e-9:
+    # Compare the point's distance from the line, relative to the larger of
+    # |v1 v2| and |v1 p|, so the test does not depend on the diagram's scale.
+    line_len = math.hypot(float(v2.x - v1.x), float(v2.y - v1.y))
+    reach = max(line_len, math.hypot(float(p.x - v1.x), float(p.y - v1.y)))
+    if line_len == 0.0 or abs(cross_val) < 1e-9 * line_len * reach:
         raise ValueError(f"point {p} is collinear with the reference line — cannot determine side")
     return 1 if cross_val > 0 else -1
 

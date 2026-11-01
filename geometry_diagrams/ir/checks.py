@@ -85,7 +85,9 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
         match check:
             case ir.DistinctPoints(a=a, b=b):
                 d = float(sym[a].distance(sym[b]).evalf())
-                ok = d > t
+                # Relative to the points' own coordinate magnitude, so the
+                # verdict does not depend on the diagram's scale.
+                ok = d > t * max(abs(v) for v in (*_xy(sym[a]), *_xy(sym[b])))
                 msg = "" if ok else f"Points {a!r} and {b!r} coincide (distance={d:.2e})"
 
             case ir.DistinctObjects(a=a, b=b):
@@ -158,7 +160,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.EqualLength(segs=segs):
                 lengths = [_length_of(sym[s], s) for s in segs]
-                ok = all(abs(l - lengths[0]) < t for l in lengths[1:])
+                ok = all(_rel_close(l, lengths[0], t) for l in lengths[1:])
                 if ok:
                     msg = ""
                 else:
@@ -228,10 +230,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 la = sym[line_a]
                 lb = sym[line_b]
                 # cross product sign: (lb - la) x (pt - la)
-                dx = float((lb.x - la.x).evalf())
-                dy = float((lb.y - la.y).evalf())
-                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
-                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                cross_p, cross_q = _side_ratios(pa, qa, la, lb)
                 ok = cross_p * cross_q < -t
                 msg = "" if ok else (
                     f"Points {p!r} and {q!r} are not on opposite sides of line {line_a!r}-{line_b!r}"
@@ -242,10 +241,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 qa = sym[q]
                 la = sym[line_a]
                 lb = sym[line_b]
-                dx = float((lb.x - la.x).evalf())
-                dy = float((lb.y - la.y).evalf())
-                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
-                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                cross_p, cross_q = _side_ratios(pa, qa, la, lb)
                 ok = cross_p * cross_q > t
                 msg = "" if ok else (
                     f"Points {p!r} and {q!r} are not on the same side of line {line_a!r}-{line_b!r}"
@@ -293,7 +289,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 tri1, tri2 = sym[t1], sym[t2]
                 lengths1 = sorted(float(s.length.evalf()) for s in tri1.sides)
                 lengths2 = sorted(float(s.length.evalf()) for s in tri2.sides)
-                ok = all(abs(a - b) < t for a, b in zip(lengths1, lengths2))
+                ok = all(_rel_close(a, b, t) for a, b in zip(lengths1, lengths2))
                 len1 = [f"{l:.4f}" for l in lengths1]
                 len2 = [f"{l:.4f}" for l in lengths2]
                 msg = "" if ok else f"Triangles not congruent: {len1} vs {len2}"
@@ -303,7 +299,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 # circle and a genuine ellipse are simply unequal.
                 radii = [_conic_frame(sym[c], "equal_radius", c)[2:] for c in circles]
                 ok = all(
-                    abs(hr - radii[0][0]) < t and abs(vr - radii[0][1]) < t
+                    _rel_close(hr, radii[0][0], t) and _rel_close(vr, radii[0][1], t)
                     for hr, vr in radii[1:]
                 )
                 if ok:
@@ -384,6 +380,29 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _rel_close(a: float, b: float, tol: float) -> bool:
+    """``a`` and ``b`` agree to within ``tol`` of the larger magnitude (equal
+    values, including two zeros, always agree), so the verdict does not depend
+    on the diagram's scale."""
+    return a == b or abs(a - b) < tol * max(abs(a), abs(b))
+
+
+def _side_ratios(p: Any, q: Any, la: Any, lb: Any) -> tuple[float, float]:
+    """Signed offsets of ``p`` and ``q`` from the line la->lb, each as a
+    fraction of |la lb| (the cross product divided by |la lb|^2), so the
+    product of the two is dimensionless and scale-free."""
+    (ax, ay), (bx, by) = _xy(la), _xy(lb)
+    dx, dy = bx - ax, by - ay
+    norm2 = dx * dx + dy * dy
+    if norm2 == 0.0:
+        return 0.0, 0.0
+    out = []
+    for pt in (p, q):
+        x, y = _xy(pt)
+        out.append((dx * (y - ay) - dy * (x - ax)) / norm2)
+    return out[0], out[1]
+
 
 def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     """Relative comparison for the prism measure checks: ``tol`` (the check's
