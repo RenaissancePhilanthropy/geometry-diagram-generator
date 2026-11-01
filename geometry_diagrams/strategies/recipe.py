@@ -32,6 +32,7 @@ from .llm import (
     extract_text,
     make_system_message,
     bind_structured_output_for_model,
+    is_anthropic_model,
 )
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
@@ -319,7 +320,9 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     static_block = build_generation_prompt_static_block(
         dsl_docs_for(state.get("features") or frozenset())
     )
-    if enable_cache and user_message.startswith(static_block):
+    # cache_control content blocks are an Anthropic extension; other providers
+    # (e.g. Fireworks) reject a list-form message content outright.
+    if enable_cache and is_anthropic_model(model_id) and user_message.startswith(static_block):
         dynamic_part = user_message[len(static_block):].lstrip("\n")
         human_content = [
             {"type": "text", "text": static_block, "cache_control": {"type": "ephemeral"}},
