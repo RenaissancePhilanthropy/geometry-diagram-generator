@@ -75,6 +75,11 @@ def _load_all_recipes(catalog: str = "default") -> dict[str, Recipe]:
         with path.open() as f:
             data = yaml.safe_load(f)
         recipe = Recipe.model_validate(data)
+        if recipe.name in recipes:
+            raise ValueError(
+                f"Duplicate recipe name {recipe.name!r} in catalog {catalog!r} "
+                f"(second definition in {path.name})"
+            )
         recipes[recipe.name] = recipe
     return recipes
 
@@ -124,11 +129,12 @@ def load_recipe(name: str, catalog: str = "default") -> Recipe:
     """Load a full recipe by name from one or more catalogs (comma-separated).
 
     Searches catalogs in order; raises KeyError if not found in any.
+    Returns a deep copy, so callers may mutate it without corrupting the cache.
     """
     for cat in _parse_catalogs(catalog):
         cache = _get_cache(cat)
         if name in cache:
-            return cache[name]
+            return cache[name].model_copy(deep=True)
     all_names = sorted(
         n for cat in _parse_catalogs(catalog) for n in _get_cache(cat)
     )
