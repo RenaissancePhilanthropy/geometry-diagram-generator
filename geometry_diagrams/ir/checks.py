@@ -666,7 +666,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
         frames.append((hr, vr, start, end))
 
     def circular(f: tuple[float, float, float, float]) -> bool:
-        return abs(f[0] - f[1]) <= 1e-9 * max(f[0], f[1], 1.0)
+        return radii_equal(f[0], f[1])
 
     def congruent(f: tuple[float, float, float, float], g: tuple[float, float, float, float]) -> bool:
         if circular(f) != circular(g):
