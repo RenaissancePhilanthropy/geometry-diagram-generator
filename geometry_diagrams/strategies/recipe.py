@@ -30,6 +30,7 @@ from .ir_pipeline import (
 from .llm import (
     get_chat_model,
     extract_usage,
+    extract_cost,
     extract_text,
     make_system_message,
     bind_structured_output_for_model,
@@ -128,6 +129,8 @@ class RecipeSelectionResult:
     is_geometry_request: bool
     input_tokens: int
     output_tokens: int
+    # Provider-reported USD cost of the selector call; None = not reported.
+    cost_usd: Optional[float] = None
 
 
 @dataclass
@@ -220,6 +223,7 @@ class RecipePipelineState(TypedDict):
     result: Optional[StructuredRunResult]
     input_tokens: int
     output_tokens: int
+    cost_usd: float  # provider-reported cost summed over calls; 0.0 = none reported
     recipe_metadata: RecipeMetadata
     renderer: Optional[Any]
     selection_done: bool
@@ -275,11 +279,12 @@ def _parse_selection(raw_text: str) -> _ParsedSelection:
 
 async def _run_selection(
     prompt: str, selector_model: str,
-) -> "tuple[_ParsedSelection, list[Recipe], int, int]":
+) -> "tuple[_ParsedSelection, list[Recipe], int, int, float | None]":
     """One selector call, shared by the graph node and the standalone entrypoint.
 
     Returns the parsed selection (its `selected_recipes` filtered to ids that
-    load), the loaded recipes, and the call's (input, output) token counts."""
+    load), the loaded recipes, and the call's input tokens, output tokens and
+    provider-reported cost (None when not reported)."""
     catalog = load_catalog()
     selection_prompt = build_selection_prompt(prompt, catalog)
 
@@ -292,6 +297,7 @@ async def _run_selection(
     response = await llm.ainvoke(messages)
     raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
     in_tok, out_tok = extract_usage(response)
+    cost = extract_cost(response)
 
     selection = _parse_selection(raw_text)
     recipes: list[Recipe] = []
@@ -303,7 +309,7 @@ async def _run_selection(
         except Exception:
             pass
     selection.selected_recipes = valid_ids
-    return selection, recipes, in_tok, out_tok
+    return selection, recipes, in_tok, out_tok, cost
 
 
 async def _select_recipes_node(state: RecipePipelineState) -> dict:
@@ -311,7 +317,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     # The selector sees the user's own request, not the generation prompt that
     # edits augment with the previous DSL (cheap model, irrelevant tokens).
     selector_request = state.get("raw_prompt") or state["prompt"]
-    selection, recipes, in_tok, out_tok = await _run_selection(
+    selection, recipes, in_tok, out_tok, cost = await _run_selection(
         selector_request, state.get("selector_model") or _SELECTOR_MODEL,
     )
 
@@ -333,6 +339,7 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
         "recipe_metadata": metadata,
         "input_tokens": state.get("input_tokens", 0) + in_tok,
         "output_tokens": state.get("output_tokens", 0) + out_tok,
+        "cost_usd": state.get("cost_usd", 0.0) + (cost or 0.0),
         "selection_done": True,
     }
 
@@ -393,12 +400,14 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
 
     raw_content: str | None = None
     in_tok = out_tok = 0
+    cost = 0.0
     try:
         # include_raw=True makes ainvoke return a dict at runtime, not BaseModel
         response: Any = await structured.ainvoke(messages)
         raw_msg = response.get("raw")
         dsl = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+        cost = (extract_cost(raw_msg) if raw_msg else None) or 0.0
 
         # Capture raw content for failure diagnostics
         if raw_msg is not None:
@@ -424,6 +433,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
     except (OutputParserException, pydantic.ValidationError) as exc:
         error_msg = str(exc)
@@ -444,6 +454,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
     except Exception as exc:
         error_msg = str(exc)
@@ -462,6 +473,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
 
 
@@ -591,7 +603,7 @@ async def select_recipes(
     # Same precedence as the graph path (GeometryConfig.from_env): explicit
     # argument, then GEOMETRY_SELECTOR_MODEL, then the package default.
     selector_model = model or os.environ.get("GEOMETRY_SELECTOR_MODEL") or _SELECTOR_MODEL
-    selection, _recipes, in_tok, out_tok = await _run_selection(prompt, selector_model)
+    selection, _recipes, in_tok, out_tok, cost = await _run_selection(prompt, selector_model)
     return RecipeSelectionResult(
         selected_recipes=selection.selected_recipes,
         unmatched_concepts=selection.unmatched_concepts,
@@ -599,6 +611,7 @@ async def select_recipes(
         is_geometry_request=selection.is_geometry_request,
         input_tokens=in_tok,
         output_tokens=out_tok,
+        cost_usd=cost,
     )
 
 
@@ -622,6 +635,7 @@ class RecipeStrategy(SubstanceStrategy):
     _partial_recipe_metadata: RecipeMetadata | None = None
     _partial_input_tokens: int = 0
     _partial_output_tokens: int = 0
+    _partial_cost_usd: "float | None" = None
 
     def __init__(
         self,
@@ -665,6 +679,7 @@ class RecipeStrategy(SubstanceStrategy):
             "result": None,
             "input_tokens": 0,
             "output_tokens": 0,
+            "cost_usd": 0.0,
             "recipe_metadata": RecipeMetadata(),
             "renderer": renderer,
             "selection_done": False,
@@ -676,6 +691,8 @@ class RecipeStrategy(SubstanceStrategy):
         self._partial_recipe_metadata = final_state.get("recipe_metadata")
         self._partial_input_tokens = final_state.get("input_tokens", 0)
         self._partial_output_tokens = final_state.get("output_tokens", 0)
+        # None (not 0.0) when no call reported a cost: 0.0 would read as "confirmed free".
+        self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
             raise RuntimeError(
@@ -686,6 +703,7 @@ class RecipeStrategy(SubstanceStrategy):
         result.recipe_metadata = final_state.get("recipe_metadata")
         result.input_tokens = final_state.get("input_tokens", 0)
         result.output_tokens = final_state.get("output_tokens", 0)
+        result.cost_usd = self._partial_cost_usd
         return result
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):

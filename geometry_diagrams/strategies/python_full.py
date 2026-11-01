@@ -71,6 +71,21 @@ def _config_kwargs(config: "dict | None") -> dict:
     return {"config": config} if config else {}
 
 
+class _EditGenerationError(ValueError):
+    """An edit's generation step failed (unparseable or invalid model output),
+    as opposed to the apply step rejecting well-formed output. Still a
+    ValueError for callers; retry_on_apply_failure ignores it."""
+
+
+async def _generation_step(awaitable):
+    """Await an edit-generation call, re-raising its ValueErrors (parse and
+    validation failures) as _EditGenerationError."""
+    try:
+        return await awaitable
+    except ValueError as exc:
+        raise _EditGenerationError(str(exc)) from exc
+
+
 def _text_or_none(content: Any) -> "str | None":
     """Text of a message's .content when it is a string or a list of content
     blocks (thinking + text, ...); None for anything else."""
@@ -864,7 +879,13 @@ async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
     )
 
     new_prompt = f"{request}\n\n{advisory_text}" if advisory_text else request
-    return {"prompt": new_prompt}
+    # The pre-step's own model call(s) are billed work: fold them into the run's usage.
+    return {
+        "prompt": new_prompt,
+        "input_tokens": state.get("input_tokens", 0) + result.input_tokens,
+        "output_tokens": state.get("output_tokens", 0) + result.output_tokens,
+        "cost_usd": state.get("cost_usd", 0.0) + (result.cost_usd or 0.0),
+    }
 
 
 async def _generate_script_node(state: PythonFullPipelineState) -> dict:
@@ -1489,7 +1510,9 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_patch(req: str) -> StructuredRunResult:
             patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
-            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
+            patch_text, in_tok, out_tok, cost = await _generation_step(_generate_patch(
+                patch_prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config),
+            ))
             patched_script = apply_script_patch(top["script"], patch_text)
             return await _run_from_script(
                 patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1498,7 +1521,9 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_search_replace(req: str) -> StructuredRunResult:
             prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
+            blocks, in_tok, out_tok, cost = await _generation_step(generate_search_replace(
+                prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config),
+            ))
             new_script = apply_search_replace(top["script"], blocks)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1508,7 +1533,9 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_hashline(req: str) -> StructuredRunResult:
             hashline_view = render_hashline_view(top["script"], hash_algorithm)
             prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
+            ops, in_tok, out_tok, cost = await _generation_step(_generate_hashline_ops(
+                prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config),
+            ))
             new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1518,7 +1545,9 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_line_number(req: str) -> StructuredRunResult:
             view = render_line_number_view(top["script"])
             prompt = build_line_number_request_prompt(req, view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
+            ops, in_tok, out_tok, cost = await _generation_step(_generate_line_number_ops(
+                prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config),
+            ))
             delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
             # Written before apply_line_number_ops runs, so a
             # failed apply still leaves this readable (see
@@ -1552,7 +1581,11 @@ class PythonFullStrategy(SubstanceStrategy):
             # a not-found/ambiguous search_replace block, or
             # apply_script_patch's context mismatch), never a
             # generation/API/sandbox error, and only once.
-            if not retry_on_apply_failure or edit_generation_mode == "full_rewrite":
+            if (
+                not retry_on_apply_failure
+                or edit_generation_mode == "full_rewrite"
+                or isinstance(e, _EditGenerationError)
+            ):
                 raise
             retry_request = (
                 f"{request}\n\n---\nYour previous attempt at this edit "

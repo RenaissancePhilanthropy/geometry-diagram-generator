@@ -586,6 +586,16 @@ def extract_cost(response: AIMessage) -> "float | None":
     in _GENERIC_DEFAULT_KWARGS, surfaced as response_metadata["token_usage"]
     ["cost"]) — other providers (e.g. Bedrock) return None since they don't
     report cost at the API level at all."""
-    token_usage = response.response_metadata.get("token_usage") or {}
-    cost = token_usage.get("cost")
-    return float(cost) if cost is not None else None
+    metadata = getattr(response, "response_metadata", None)
+    token_usage = metadata.get("token_usage") if isinstance(metadata, dict) else None
+    cost = token_usage.get("cost") if isinstance(token_usage, dict) else None
+    if isinstance(cost, bool):
+        return None
+    if isinstance(cost, (int, float)):
+        return float(cost)
+    if isinstance(cost, str):
+        try:
+            return float(cost)
+        except ValueError:
+            return None
+    return None

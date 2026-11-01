@@ -35,7 +35,8 @@ class DiagramResult:
     script: Optional[str] = None        # pydsl script source; python_full strategy only
     # Provider-reported USD cost of this call's LLM usage, summed over attempts (and, for a
     # python_full edit, the edit-generation call; a retry_on_apply_failure redo does not count
-    # the failed first call). None = not reported (e.g. recipe, some providers): unknown, not free.
+    # the failed first call). Includes the recipe selector and the pre-assert step calls.
+    # None = not reported (some providers): unknown, not free.
     cost_usd: Optional[float] = None
     # Non-fatal pipeline notes from the final successful run (renderer warnings, failed
     # `prefer` checks, solid projection/label/overlap warnings, ...). Never fails a run.
