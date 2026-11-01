@@ -302,7 +302,10 @@ async function send() {
               try {
                 const data = JSON.parse(evt.content);
                 if (data.svg) {
-                  document.getElementById("penrose").innerHTML = data.svg;
+                  document.getElementById("penrose").innerHTML = DOMPurify.sanitize(data.svg, {
+                    USE_PROFILES: { svg: true, svgFilters: true },
+                    ADD_TAGS: ["style"],
+                  });
                 }
               } catch (e) {
                 console.error("Failed to parse render result:", e);

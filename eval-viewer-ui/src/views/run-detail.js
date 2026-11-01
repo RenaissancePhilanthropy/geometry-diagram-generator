@@ -1,4 +1,5 @@
 import { gateBadge } from '../components/badges.js'
+import { escapeHtml } from '../components/html.js'
 
 export async function renderRunDetail(container, { runId, navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading…</p>'
@@ -9,7 +10,7 @@ export async function renderRunDetail(container, { runId, navigate }) {
     if (!res.ok) { container.innerHTML = `<p style="color:#f87171;padding:20px">Run not found.</p>`; return }
     records = await res.json()
   } catch (e) {
-    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${e.message}</p>`
+    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${escapeHtml(e.message)}</p>`
     return
   }
 
@@ -34,11 +35,11 @@ export async function renderRunDetail(container, { runId, navigate }) {
       const failures = (r.gate_failures || []).slice(0, 3).join(', ')
       return `
         <tr class="clickable" data-idx="${idx}">
-          <td>${r.scenario_id || '—'}</td>
-          <td style="color:#aaa;font-size:12px">${r.strategy || '—'}</td>
+          <td>${escapeHtml(r.scenario_id || '—')}</td>
+          <td style="color:#aaa;font-size:12px">${escapeHtml(r.strategy || '—')}</td>
           <td style="color:#888">${r.repeat_index ?? '—'}</td>
           <td>${gateBadge(r.gate_status)}</td>
-          <td style="color:#888;font-size:11px">${failures || ''}</td>
+          <td style="color:#888;font-size:11px">${escapeHtml(failures || '')}</td>
           <td style="color:#aaa">${llm}</td>
           <td style="color:#aaa">${vis}</td>
           <td style="color:#888">${dur}</td>
@@ -55,12 +56,12 @@ export async function renderRunDetail(container, { runId, navigate }) {
   }
 
   container.innerHTML = `
-    <h2>Run: ${runId} <span style="font-size:14px;color:#888;font-weight:400">(${records.length} records)</span></h2>
+    <h2>Run: ${escapeHtml(runId)} <span style="font-size:14px;color:#888;font-weight:400">(${records.length} records)</span></h2>
     <div class="filters">
       <label>Strategy
         <select id="filter-strategy">
           <option value="">All</option>
-          ${strategies.map(s => `<option value="${s}">${s}</option>`).join('')}
+          ${strategies.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
         </select>
       </label>
       <label>Gate

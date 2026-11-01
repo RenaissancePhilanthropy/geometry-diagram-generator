@@ -1,5 +1,6 @@
 import { gateBadge, checkBadge } from '../components/badges.js'
 import { renderDiff } from '../components/diff.js'
+import { sanitizeSvg } from '../components/html.js'
 
 export async function renderRecordDetail(container, { runId, index, navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading…</p>'
@@ -15,7 +16,7 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
     const allRecords = await runRes.json()
     totalRecords = allRecords.length
   } catch (e) {
-    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${e.message}</p>`
+    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load: ${escapeHtml(e.message)}</p>`
     return
   }
 
@@ -29,9 +30,9 @@ export async function renderRecordDetail(container, { runId, index, navigate }) 
   // Build layout
   container.innerHTML = `
     <div class="record-nav">
-      ${index > 0 ? `<a href="#/runs/${runId}/records/${index - 1}" class="btn btn-primary" style="padding:4px 12px;font-size:12px">← Prev</a>` : ''}
+      ${index > 0 ? `<a href="#/runs/${escapeHtml(runId)}/records/${index - 1}" class="btn btn-primary" style="padding:4px 12px;font-size:12px">← Prev</a>` : ''}
       <span class="nav-info">Record ${index + 1} of ${totalRecords}</span>
-      ${index < totalRecords - 1 ? `<a href="#/runs/${runId}/records/${index + 1}" class="btn btn-primary" style="padding:4px 12px;font-size:12px">Next →</a>` : ''}
+      ${index < totalRecords - 1 ? `<a href="#/runs/${escapeHtml(runId)}/records/${index + 1}" class="btn btn-primary" style="padding:4px 12px;font-size:12px">Next →</a>` : ''}
     </div>
 
     <div class="record-layout">
@@ -391,7 +392,7 @@ function setSvgContent(svgString, sourceLabel) {
     container.innerHTML = '<span class="svg-placeholder">No SVG</span>'
     return
   }
-  container.innerHTML = svgString
+  container.innerHTML = sanitizeSvg(svgString)
   const svgEl = container.querySelector('svg')
   if (svgEl) {
     svgEl.style.maxWidth = '100%'
