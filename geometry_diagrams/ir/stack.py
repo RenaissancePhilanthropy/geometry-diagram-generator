@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import math
 from functools import lru_cache
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 import sympy as sp
 import sympy.geometry as spg
@@ -61,7 +62,7 @@ class Stack:
         extents: tuple[int, int, int],
         projection: Projection,
         lattice: dict[Cube, spg.Point],
-        lattice_ids: dict[Cube, str],
+        lattice_ids: Mapping[Cube, str],
     ) -> None:
         self.cubes = cubes
         self.extents = extents  # (length, height, width)
@@ -169,8 +170,26 @@ def _extents(grid: tuple[tuple[int, ...], ...]) -> tuple[int, int, int]:
 
 
 def _cube_set(stmt: ir.BlockStack) -> tuple[frozenset[Cube], tuple[int, int, int]]:
-    """The validated cube set and its bounding extents. Raises IRCompileError."""
-    did, raw = stmt.id, stmt.cubes
+    """The validated cube set and its bounding extents. Raises IRCompileError.
+
+    Every registry hook resolves the statement again, so a successful
+    validation is cached by the exact cube list (entry types included: ``True``
+    and ``1.0`` hash like ``1`` but validate differently). A failure is never
+    cached and a list that cannot be a key is validated directly."""
+    try:
+        key = tuple(tuple((type(v), v) for v in triple) for triple in stmt.cubes or ())
+        hash(key)
+    except TypeError:
+        return _validate_cube_set(stmt.id, stmt.cubes)
+    return _cached_cube_set(stmt.id, key)
+
+
+@lru_cache(maxsize=64)
+def _cached_cube_set(did: str, key: tuple) -> tuple[frozenset[Cube], tuple[int, int, int]]:
+    return _validate_cube_set(did, [[v for _t, v in triple] for triple in key])
+
+
+def _validate_cube_set(did: str, raw: Any) -> tuple[frozenset[Cube], tuple[int, int, int]]:
     if not raw:
         raise IRCompileError(did, "block_stack cubes is empty: give at least one [x, y, z] cube")
     if len(raw) > MAX_CUBES:
@@ -236,17 +255,18 @@ def _corners(cubes: frozenset[Cube]) -> list[Cube]:
 
 
 @lru_cache(maxsize=64)
-def _lattice_names(stack_id: str, cubes: frozenset[Cube]) -> dict[Cube, str]:
-    return {p: lattice_id(stack_id, p) for p in _corners(cubes)}
+def _lattice_names(stack_id: str, cubes: frozenset[Cube]) -> Mapping[Cube, str]:
+    return MappingProxyType({p: lattice_id(stack_id, p) for p in _corners(cubes)})
 
 
-def lattice_names(stmt: ir.BlockStack) -> dict[Cube, str]:
+def lattice_names(stmt: ir.BlockStack) -> Mapping[Cube, str]:
     """Lattice coordinates -> hidden point id, for every cube corner; empty
-    for an invalid statement. Cached per (id, cube set); callers must not
-    mutate the result."""
+    for an invalid statement. Cached per (id, cube set), so the mapping is
+    read-only (a caller mutating a shared dict would corrupt every later
+    compile of the same stack)."""
     cubes = _valid_cubes(stmt)
     if cubes is None:
-        return {}
+        return MappingProxyType({})
     return _lattice_names(stmt.id, cubes)
 
 
