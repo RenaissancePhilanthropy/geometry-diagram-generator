@@ -1,6 +1,7 @@
 import { renderRunList } from './views/run-list.js'
 import { renderRunDetail } from './views/run-detail.js'
 import { renderRecordDetail } from './views/record-detail.js'
+import { escapeHtml } from './components/html.js'
 
 const app = document.getElementById('app')
 const breadcrumb = document.getElementById('breadcrumb')
@@ -9,9 +10,9 @@ function setBreadcrumb(parts) {
   // parts: [{label, href?}, ...]
   breadcrumb.innerHTML = parts.map((p, i) => {
     if (p.href && i < parts.length - 1) {
-      return `<a href="${p.href}">${p.label}</a>`
+      return `<a href="${escapeHtml(p.href)}">${escapeHtml(p.label)}</a>`
     }
-    return `<span style="color:#ccc">${p.label}</span>`
+    return `<span style="color:#ccc">${escapeHtml(p.label)}</span>`
   }).join(' <span style="color:#555">›</span> ')
 }
 

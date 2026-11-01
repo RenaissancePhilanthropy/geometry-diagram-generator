@@ -1,3 +1,5 @@
+import { escapeHtml } from '../components/html.js'
+
 export async function renderRunList(container, { navigate }) {
   container.innerHTML = '<p style="color:#888;padding:20px">Loading runs…</p>'
 
@@ -6,7 +8,7 @@ export async function renderRunList(container, { navigate }) {
     const res = await fetch('/api/runs')
     runs = await res.json()
   } catch (e) {
-    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load runs: ${e.message}</p>`
+    container.innerHTML = `<p style="color:#f87171;padding:20px">Failed to load runs: ${escapeHtml(e.message)}</p>`
     return
   }
 
@@ -35,10 +37,10 @@ export async function renderRunList(container, { navigate }) {
           const soft = gc['soft_pass'] || 0
           const fail = gc['fail'] || 0
           return `
-            <tr class="clickable" data-run="${run.run_id}">
-              <td><a href="#/runs/${run.run_id}">${run.run_id}</a></td>
+            <tr class="clickable" data-run="${escapeHtml(run.run_id)}">
+              <td><a href="#/runs/${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</a></td>
               <td>${run.record_count}</td>
-              <td style="color:#aaa;font-size:12px">${(run.strategies || []).join(', ')}</td>
+              <td style="color:#aaa;font-size:12px">${escapeHtml((run.strategies || []).join(', '))}</td>
               <td>${pass > 0 ? `<span class="badge badge-pass">${pass}</span>` : '<span style="color:#555">—</span>'}</td>
               <td>${soft > 0 ? `<span class="badge badge-soft_pass">${soft}</span>` : '<span style="color:#555">—</span>'}</td>
               <td>${fail > 0 ? `<span class="badge badge-fail">${fail}</span>` : '<span style="color:#555">—</span>'}</td>

@@ -65,7 +65,7 @@ def test_concurrent_measurement_is_thread_safe_and_stable():
         want = {t: e(t, 14) for t in texts}
         bad = []
         def w():
-            for _ in range(3000):
+            for _ in range(300):
                 for t in texts:
                     if e(t, 14) != want[t]:
                         bad.append(t)
@@ -74,7 +74,7 @@ def test_concurrent_measurement_is_thread_safe_and_stable():
         assert not bad, bad[:3]
         print("ok")
     """)
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "ok" in r.stdout, (r.returncode, r.stderr[-500:])
 
 

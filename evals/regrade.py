@@ -110,6 +110,8 @@ def _regrade_record(rec: dict, scenario: dict | None) -> tuple[dict, str]:
         passed = r.get("passed")
         if passed is False:
             failures.append(n)
+        elif passed is not True and r.get("error"):
+            failures.append(f"{n}:error")
         elif r.get("skipped") is True or passed is None:
             skipped.append(n)
 

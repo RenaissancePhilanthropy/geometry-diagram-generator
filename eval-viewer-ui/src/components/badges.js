@@ -1,6 +1,8 @@
+import { escapeHtml } from './html.js'
+
 export function gateBadge(status) {
-  const cls = status ? `badge-${status}` : 'badge-null'
-  return `<span class="badge ${cls}">${status || 'unknown'}</span>`
+  const cls = status ? `badge-${escapeHtml(status)}` : 'badge-null'
+  return `<span class="badge ${cls}">${escapeHtml(status || 'unknown')}</span>`
 }
 
 export function checkBadge(passed, skipped) {

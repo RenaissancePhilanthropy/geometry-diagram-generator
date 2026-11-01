@@ -22,8 +22,27 @@ def _externalize_traces(record: dict, traces_dir: Path) -> None:
 
 def _append_jsonl(path: Path, record: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        line = json.dumps(record, default=str)
+    except (TypeError, ValueError) as exc:
+        # Never drop a record: keep its identity and fail the gate.
+        repeat = record.get("repeat_index")
+        line = json.dumps(
+            {
+                "scenario_id": str(record.get("scenario_id", "?")),
+                "strategy": str(record.get("strategy", "")),
+                "model": str(record.get("model", "")),
+                "repeat_index": repeat if isinstance(repeat, int) else None,
+                "run_id": str(record.get("run_id", "")),
+                "error": f"record not serializable: {type(exc).__name__}: {exc}",
+                "gate_status": "fail",
+                "gate_failures": ["unserializable_record"],
+                "warnings": [],
+            },
+            default=str,
+        )
     with path.open("a") as f:
-        f.write(json.dumps(record) + "\n")
+        f.write(line + "\n")
 
 
 def _tikz_check_summary(record: dict) -> str:
