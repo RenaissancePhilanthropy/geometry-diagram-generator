@@ -17,7 +17,7 @@ from langchain_core.tools import tool
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, append_extra_instructions, run_sync
 from .structured import QUERY_TOOL_SOLIDS_INSERTIONS, dispatch_query
@@ -775,4 +775,4 @@ class RecipeStrategy(SubstanceStrategy):
         query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)
+        return create_agent(llm, tools=[render_diagram, query_diagram], system_prompt=_BUILD_AGENT_INSTRUCTIONS)

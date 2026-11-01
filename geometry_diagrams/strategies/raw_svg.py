@@ -3,7 +3,7 @@ import json
 import logging
 
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import get_chat_model
@@ -74,7 +74,7 @@ def make_svg_render_tool():
 class RawSVGStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[make_svg_render_tool()], prompt=DRAFT_INSTRUCTIONS)
+        return create_agent(llm, tools=[make_svg_render_tool()], system_prompt=DRAFT_INSTRUCTIONS)
 
     async def run(
         self,

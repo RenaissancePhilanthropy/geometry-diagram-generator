@@ -10,7 +10,7 @@ from typing import Any, Optional, TypedDict
 
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
@@ -1945,4 +1945,4 @@ class PythonFullStrategy(SubstanceStrategy):
         query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)
+        return create_agent(llm, tools=[render_diagram, query_diagram], system_prompt=_BUILD_AGENT_INSTRUCTIONS)

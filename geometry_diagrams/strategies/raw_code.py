@@ -2,7 +2,7 @@ import json
 import logging
 
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from ..util.tikz_renderer import render_tikz
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
@@ -44,7 +44,7 @@ class RawCodeStrategy(SubstanceStrategy):
                 logger.warning("render_diagram failed: %s", e)
                 return json.dumps({"error": str(e)})
 
-        return create_react_agent(llm, tools=[render_diagram], prompt=INSTRUCTIONS)
+        return create_agent(llm, tools=[render_diagram], system_prompt=INSTRUCTIONS)
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:
         from ..util.message_helpers import count_tool_calls, extract_tool_call_args

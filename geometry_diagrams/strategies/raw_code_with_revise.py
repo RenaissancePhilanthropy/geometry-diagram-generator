@@ -9,7 +9,7 @@ run()         orchestrates both stages programmatically via message history.
 """
 import logging
 
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import get_chat_model
@@ -26,7 +26,7 @@ class RawCodeWithReviseStrategy(SubstanceStrategy):
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
         """Return the draft agent (single-pass) for web app use."""
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[make_render_tool()], prompt=DRAFT_INSTRUCTIONS)
+        return create_agent(llm, tools=[make_render_tool()], system_prompt=DRAFT_INSTRUCTIONS)
 
     async def run(self, prompt: str, model: str = DEFAULT_AGENT_MODEL, renderer=None) -> RawRunResult:
         """Run draft then mandatory revision via message history chaining."""
