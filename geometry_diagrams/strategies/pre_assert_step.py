@@ -71,7 +71,7 @@ from geometry_diagrams.ir.pre_assert_filter import (
     random_point_defs,
     run_lints,
 )
-from .llm import extract_cost, extract_text, get_chat_model, make_system_message
+from .llm import config_kwargs, extract_cost, extract_text, get_chat_model, make_system_message
 
 # ---------------------------------------------------------------------------
 # Prompt construction
@@ -186,6 +186,7 @@ def _response_usage(response) -> "tuple[int, int, float | None]":
 async def call_pre_step_model(
     request: str, model_id: str, features: "frozenset[str] | set[str]" = frozenset(),
     usage_sink: "list | None" = None,
+    config: "dict | None" = None,
 ) -> str:
     """The pre-step's primary call: propose checks for `request`. A separate call from
     script generation (per spec.md's Implementation Decisions), never folded into the
@@ -195,7 +196,7 @@ async def call_pre_step_model(
         make_system_message(build_pre_step_system_prompt(features), model_id=model_id),
         HumanMessage(content=f"Construction request:\n{request}"),
     ]
-    response = await llm.ainvoke(messages)
+    response = await llm.ainvoke(messages, **config_kwargs(config))
     if usage_sink is not None:
         usage_sink.append(_response_usage(response))
     return _content_to_text(response.content)
@@ -205,6 +206,7 @@ async def call_pre_step_retry_model(
     request: str, model_id: str, original_response: str, correction_message: str,
     features: "frozenset[str] | set[str]" = frozenset(),
     usage_sink: "list | None" = None,
+    config: "dict | None" = None,
 ) -> str:
     """The one mechanical retry validated in the prototype: replay the original exchange,
     then hand the model `correction_message` (from
@@ -218,7 +220,7 @@ async def call_pre_step_retry_model(
         AIMessage(content=original_response),
         HumanMessage(content=correction_message),
     ]
-    response = await llm.ainvoke(messages)
+    response = await llm.ainvoke(messages, **config_kwargs(config))
     if usage_sink is not None:
         usage_sink.append(_response_usage(response))
     return _content_to_text(response.content)
@@ -835,6 +837,7 @@ class PreAssertProposalResult:
 async def propose_and_filter_checks(
     request: str, model_id: str, rng: Random | None = None,
     features: "frozenset[str] | set[str]" = frozenset(),
+    config: "dict | None" = None,
 ) -> PreAssertProposalResult:
     """The full pre-step, end to end: call the model, run stage 1 (API-name
     validation) on the raw response text with its one mechanical retry if
@@ -848,14 +851,16 @@ async def propose_and_filter_checks(
     enabled feature groups) selects the assert_* vocabulary shown and accepted.
     """
     usage: list = []
-    raw_text = await call_pre_step_model(request, model_id, features=features, usage_sink=usage)
+    raw_text = await call_pre_step_model(
+        request, model_id, features=features, usage_sink=usage, config=config,
+    )
     unknown = find_unknown_assert_names(raw_text, features)
     retried = False
     if unknown:
         correction_message = build_name_correction_message(unknown, features)
         raw_text = await call_pre_step_retry_model(
             request, model_id, raw_text, correction_message, features=features,
-            usage_sink=usage,
+            usage_sink=usage, config=config,
         )
         retried = True
         find_unknown_assert_names_after_retry(raw_text, features)  # surfaced per-check via stage "api_name"

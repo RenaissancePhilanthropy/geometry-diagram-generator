@@ -5,12 +5,16 @@ import logging
 from typing import Any, Optional, TypedDict
 
 import pydantic
+from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
 from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .llm import get_chat_model, bind_structured_output_for_model, extract_cost, extract_usage, make_system_message
+from .llm import (
+    get_chat_model, bind_structured_output_for_model, config_kwargs, extract_cost, extract_usage,
+    make_system_message,
+)
 from .instructions import build_structured_instructions
 from .ir_pipeline import (
     StructuredRunResult,
@@ -152,7 +156,9 @@ class StructuredPipelineState(TypedDict):
     features: frozenset  # enabled feature groups; absent/empty = none enabled
 
 
-async def _generate_ir_node(state: StructuredPipelineState) -> dict:
+async def _generate_ir_node(
+    state: StructuredPipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Call LLM to generate a DiagramIR from the prompt."""
     model_id = state["model_id"]
     enable_cache = state.get("enable_cache", False)
@@ -182,7 +188,7 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
             llm, DiagramIR, model_id, include_raw=True, force_function_calling_for_openai=True,
         )
 
-        response = await structured.ainvoke(messages)
+        response = await structured.ainvoke(messages, **config_kwargs(config))
         # include_raw=True returns {"raw": AIMessage, "parsed": DiagramIR|None, "parsing_error": ...}
         raw_msg = response.get("raw")
         diagram_ir = response.get("parsed")

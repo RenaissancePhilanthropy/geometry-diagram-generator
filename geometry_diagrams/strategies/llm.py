@@ -550,6 +550,15 @@ def is_openai_model(model_id: str) -> bool:
     return provider is not None and provider["backend"] == "openai"
 
 
+def config_kwargs(config: "dict | None") -> dict:
+    """`config=` kwarg for a direct LLM call, only when there is a config to pass.
+
+    Strategy nodes pass their LangGraph run config down explicitly so callbacks
+    (tracing, cost tracking) reach each LLM call whether or not the runtime
+    propagates context to the call site."""
+    return {"config": config} if config else {}
+
+
 def extract_text(content) -> str:
     """Return the text of a LangChain message .content, regardless of whether it's
     a plain string or a list of content blocks.

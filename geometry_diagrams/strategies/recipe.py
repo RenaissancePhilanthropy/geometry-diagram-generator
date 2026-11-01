@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict, Union
 
 if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackManager
-    from langchain_core.runnables import RunnableConfig
 
 import pydantic
+from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
@@ -35,6 +35,7 @@ from .llm import (
     make_system_message,
     bind_structured_output_for_model,
     is_anthropic_model,
+    config_kwargs,
 )
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
@@ -278,7 +279,7 @@ def _parse_selection(raw_text: str) -> _ParsedSelection:
 
 
 async def _run_selection(
-    prompt: str, selector_model: str,
+    prompt: str, selector_model: str, config: "Optional[RunnableConfig]" = None,
 ) -> "tuple[_ParsedSelection, list[Recipe], int, int, float | None]":
     """One selector call, shared by the graph node and the standalone entrypoint.
 
@@ -294,7 +295,7 @@ async def _run_selection(
         SystemMessage(content=RECIPE_SELECTION_SYSTEM),
         HumanMessage(content=selection_prompt),
     ]
-    response = await llm.ainvoke(messages)
+    response = await llm.ainvoke(messages, **config_kwargs(config))
     raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
     in_tok, out_tok = extract_usage(response)
     cost = extract_cost(response)
@@ -312,13 +313,15 @@ async def _run_selection(
     return selection, recipes, in_tok, out_tok, cost
 
 
-async def _select_recipes_node(state: RecipePipelineState) -> dict:
+async def _select_recipes_node(
+    state: RecipePipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Run the cheap selector model to pick relevant recipes."""
     # The selector sees the user's own request, not the generation prompt that
     # edits augment with the previous DSL (cheap model, irrelevant tokens).
     selector_request = state.get("raw_prompt") or state["prompt"]
     selection, recipes, in_tok, out_tok, cost = await _run_selection(
-        selector_request, state.get("selector_model") or _SELECTOR_MODEL,
+        selector_request, state.get("selector_model") or _SELECTOR_MODEL, config,
     )
 
     generation_prompt = build_generation_prompt(
@@ -344,7 +347,9 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     }
 
 
-async def _generate_dsl_node(state: RecipePipelineState) -> dict:
+async def _generate_dsl_node(
+    state: RecipePipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Call main LLM to generate RecipeDSL structured output."""
     model_id = state["model_id"]
     enable_cache = state.get("enable_cache", False)
@@ -403,7 +408,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     cost = 0.0
     try:
         # include_raw=True makes ainvoke return a dict at runtime, not BaseModel
-        response: Any = await structured.ainvoke(messages)
+        response: Any = await structured.ainvoke(messages, **config_kwargs(config))
         raw_msg = response.get("raw")
         dsl = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)

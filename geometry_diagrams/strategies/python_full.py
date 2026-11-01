@@ -11,6 +11,7 @@ from typing import Any, Optional, TypedDict
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
+from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 
@@ -18,6 +19,7 @@ from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
 from .llm import (
     get_chat_model, requires_raw_text_generation, bind_structured_output_for_model,
     extract_usage, extract_cost, extract_text, make_system_message,
+    config_kwargs as _config_kwargs,
 )
 from .instructions_python_full import build_python_full_instructions
 from .ir_pipeline import (
@@ -64,11 +66,6 @@ rendered, using the previous script as context. Call query_diagram for \
 read-only geometric facts (coordinates, distances, angles, lengths, \
 areas, perimeters) about the most recently rendered diagram. Briefly \
 explain what you did after each render_diagram call."""
-
-
-def _config_kwargs(config: "dict | None") -> dict:
-    """`config=` kwarg for a direct LLM call, only when there is a config to pass."""
-    return {"config": config} if config else {}
 
 
 class _EditGenerationError(ValueError):
@@ -846,7 +843,9 @@ class PythonFullPipelineState(TypedDict):
     features: frozenset
 
 
-async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
+async def _pre_assert_step_node(
+    state: PythonFullPipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Ticket 04's new node, present in the graph only when
     `use_pre_assert_step=True` (see `_build_python_full_graph`). Runs the
     pre-assert pre-step call and 4-stage pre-filter
@@ -866,7 +865,7 @@ async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
     request = state["prompt"]
     model_id = state["model_id"]
     result = await propose_and_filter_checks(
-        request, model_id, features=state.get("features") or frozenset(),
+        request, model_id, features=state.get("features") or frozenset(), config=config,
     )
     advisory_text = _advisory_text_for_model(result.filtered_checks, model_id)
 
@@ -888,7 +887,9 @@ async def _pre_assert_step_node(state: PythonFullPipelineState) -> dict:
     }
 
 
-async def _generate_script_node(state: PythonFullPipelineState) -> dict:
+async def _generate_script_node(
+    state: PythonFullPipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Call the LLM to generate a pydsl script from the prompt."""
     model_id = state["model_id"]
     enable_cache = state.get("enable_cache", False)
@@ -924,7 +925,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             # pipeline supports (see llm.py's _RAW_TEXT_ONLY_MODELS) — skip
             # structured output entirely and salvage from plain text, the
             # ONLY viable path here, not a fallback used only on parse failure.
-            raw_msg = await llm.ainvoke(messages)
+            raw_msg = await llm.ainvoke(messages, **_config_kwargs(config))
             in_tok, out_tok = extract_usage(raw_msg)
             cost = extract_cost(raw_msg)
             cost_usd = state["cost_usd"] + (cost or 0.0)
@@ -957,7 +958,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
 
         structured = bind_structured_output_for_model(llm, PydslScriptOutput, model_id, include_raw=True)
 
-        response = await structured.ainvoke(messages)
+        response = await structured.ainvoke(messages, **_config_kwargs(config))
         raw_msg = response.get("raw")
         parsed = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
