@@ -48,7 +48,10 @@ def apply_script_patch(previous_script: str, patch_text: str) -> str:
             i += 1
             continue
         applied_any_hunk = True
-        old_start = int(header.group(1)) - 1
+        old_count = int(header.group(2)) if header.group(2) is not None else 1
+        # A zero-length old range ("-N,0", e.g. an insert-only hunk) names the
+        # line AFTER which to insert, so N is already the 0-indexed position.
+        old_start = int(header.group(1)) if old_count == 0 else int(header.group(1)) - 1
         if old_start < 0:
             raise ValueError(
                 f"invalid hunk header line number: {header.group(0)!r}"
@@ -65,6 +68,10 @@ def apply_script_patch(previous_script: str, patch_text: str) -> str:
         while i < len(patch_lines) and not _HUNK_HEADER_RE.match(patch_lines[i]):
             hline = patch_lines[i]
             tag, content = hline[:1], hline[1:]
+            if hline == "\n":
+                # A blank context line whose leading space was stripped in
+                # transit: still an empty context line.
+                tag, content = " ", "\n"
             if tag == "-" or tag == " ":
                 if old_index >= len(old_lines) or old_lines[old_index] != content:
                     actual = old_lines[old_index] if old_index < len(old_lines) else "<eof>"
