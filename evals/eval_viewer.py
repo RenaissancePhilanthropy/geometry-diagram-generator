@@ -53,22 +53,34 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 # JSONL loading — lazy, cached in memory
 # ---------------------------------------------------------------------------
 
-_run_cache: dict[str, list[dict]] = {}
+# run_id -> ((mtime_ns, size), records); a still-growing JSONL is re-read.
+_run_cache: dict[str, tuple[tuple[int, int], list[dict]]] = {}
 
 
 def _load_run(run_id: str) -> list[dict] | None:
-    if run_id in _run_cache:
-        return _run_cache[run_id]
     path = RESULTS_DIR / f"{run_id}.jsonl"
-    if not path.exists():
+    try:
+        st = path.stat()
+    except OSError:
         return None
+    key = (st.st_mtime_ns, st.st_size)
+    cached = _run_cache.get(run_id)
+    if cached is not None and cached[0] == key:
+        return cached[1]
     records = []
     with path.open() as f:
         for line in f:
             line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    _run_cache[run_id] = records
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                # A partially written (truncated) line; skip it.
+                continue
+            if isinstance(rec, dict):
+                records.append(rec)
+    _run_cache[run_id] = (key, records)
     return records
 
 
@@ -111,8 +123,11 @@ async def list_runs(request: Request) -> JSONResponse:
     runs = []
     for path in sorted(RESULTS_DIR.glob("*.jsonl"), reverse=True):
         run_id = path.stem
-        records = _load_run(run_id) or []
-        runs.append(_run_summary(run_id, records))
+        try:
+            records = _load_run(run_id) or []
+            runs.append(_run_summary(run_id, records))
+        except Exception:
+            continue
     return JSONResponse(runs)
 
 
@@ -135,6 +150,26 @@ async def get_record(request: Request) -> JSONResponse:
     return JSONResponse(records[index])
 
 
+def _resolve_svg_path(svg_path: str) -> Path | None:
+    """Resolve a record's svg_path; only an existing file under RESULTS_DIR qualifies."""
+    results_root = RESULTS_DIR.resolve()
+    raw = Path(svg_path)
+    candidates = (
+        [raw]
+        if raw.is_absolute()
+        else [Path.cwd() / raw, results_root.parent.parent / raw]
+    )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(results_root)
+        except (OSError, ValueError):
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
 async def get_svg(request: Request) -> Response:
     run_id = request.path_params["run_id"]
     index = int(request.path_params["index"])
@@ -146,8 +181,8 @@ async def get_svg(request: Request) -> Response:
     svg_path = records[index].get("svg_path")
     if not svg_path:
         return JSONResponse({"error": "No SVG for this record"}, status_code=404)
-    full_path = Path(svg_path)
-    if not full_path.exists():
+    full_path = _resolve_svg_path(str(svg_path))
+    if full_path is None:
         return JSONResponse({"error": "SVG file not found on disk"}, status_code=404)
     svg_content = full_path.read_text()
     return Response(svg_content, media_type="image/svg+xml")
@@ -182,7 +217,13 @@ async def compile_ir(request: Request) -> JSONResponse:
         )
 
     # Run checks
-    check_results = run_checks(diagram.checks, sym)
+    try:
+        check_results = run_checks(diagram.checks, sym)
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"{type(e).__name__}: {e}", "stage": "checks"},
+            status_code=400,
+        )
 
     # Render to SVG
     renderer_name = body.get("renderer", "svg")
@@ -240,7 +281,13 @@ async def compile_recipe(request: Request) -> JSONResponse:
         )
 
     # Run checks
-    check_results = run_checks(diagram.checks, sym)
+    try:
+        check_results = run_checks(diagram.checks, sym)
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"{type(e).__name__}: {e}", "stage": "checks"},
+            status_code=400,
+        )
 
     # Render to SVG
     renderer_name = body.get("renderer", "svg")
@@ -309,4 +356,4 @@ app = Starlette(routes=routes)
 
 
 if __name__ == "__main__":
-    uvicorn.run("evals.eval_viewer:app", host="0.0.0.0", port=8002, reload=True)
+    uvicorn.run("evals.eval_viewer:app", host="127.0.0.1", port=8002, reload=True)
