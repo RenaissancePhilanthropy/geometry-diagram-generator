@@ -1112,7 +1112,9 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         if metadata is not None:
             metadata.attempt_traces[-1].stage = "success"
         return {"result": pipeline_result}
-    except (IRCompileError, RuntimeError) as e:
+    except Exception as e:
+        # Any non-cancellation failure becomes a retry; CancelledError (a
+        # BaseException) still propagates.
         if metadata is not None:
             metadata.attempt_traces[-1].stage = "ir_pipeline"
             metadata.attempt_traces[-1].error = str(e)

@@ -234,7 +234,9 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
         result = await _run_ir_pipeline(diagram_ir, renderer)
         result.retries = state["attempt"]
         return {"result": result}
-    except (IRCompileError, RuntimeError) as e:
+    except Exception as e:
+        # Any non-cancellation failure becomes a retry; CancelledError (a
+        # BaseException) still propagates.
         return {
             "last_error": str(e),
             "warnings": warnings_from_error(e),

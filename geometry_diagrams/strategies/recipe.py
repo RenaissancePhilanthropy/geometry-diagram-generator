@@ -428,7 +428,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
     # lowered-IR gate below stays as the backstop.)
     try:
         reject_disabled_ops(dsl, state.get("features") or frozenset())
-    except RuntimeError as e:
+    except Exception as e:
         error_msg = str(e)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
@@ -466,7 +466,10 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
             "result": result,
             "diagram_ir": diagram_ir,
         }
-    except (IRCompileError, RuntimeError) as e:
+    except Exception as e:
+        # Any non-cancellation failure (a ValueError from a check, a TypeError from
+        # the renderer, ...) becomes a retry; CancelledError is a BaseException and
+        # still propagates.
         error_msg = str(e)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
