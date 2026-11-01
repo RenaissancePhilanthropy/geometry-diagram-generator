@@ -44,6 +44,8 @@ from ..pydsl.sandbox import run_script
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+# build_agent keeps this many prior turns (frames holding full results) in its closure.
+_MAX_STACK_DEPTH = 8
 SANDBOX_TIMEOUT_SECONDS = 2.5  # There's no I/O in the sandbox (no imports, no network) — the
                                 # only real cost is SymPy's symbolic solving. Timed a range of
                                 # advanced constructions (tangent lines, incircle+circumcircle,
@@ -1789,6 +1791,9 @@ class PythonFullStrategy(SubstanceStrategy):
                     "edit_ops_meta": _last_edit_ops_meta["value"],
                     "locality_retry_fired": _last_locality_retry_fired["value"],
                 })
+                # Only the top frame is ever read; bound the history so a
+                # long-lived agent does not retain every turn's full result.
+                del _stack[:-_MAX_STACK_DEPTH]
                 return json.dumps({"svg": result.svg})
             except Exception as e:
                 return json.dumps({"error": str(e)})
