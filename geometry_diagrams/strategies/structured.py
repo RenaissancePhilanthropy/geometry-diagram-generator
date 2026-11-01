@@ -172,8 +172,10 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
         HumanMessage(content=prompt),
     ]
 
+    # Built outside the try: a configuration error (e.g. a missing API key) is not
+    # a transient generation failure and must not be retried.
+    llm = get_chat_model(model_id, enable_cache=enable_cache)
     try:
-        llm = get_chat_model(model_id, enable_cache=enable_cache)
         # force_function_calling_for_openai=True: DiagramIR's schema has a `oneOf`
         # (under `pick`) that OpenAI's strict json_schema mode rejects with a 400.
         structured = bind_structured_output_for_model(

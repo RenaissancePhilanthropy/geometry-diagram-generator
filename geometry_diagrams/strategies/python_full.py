@@ -893,9 +893,11 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
         HumanMessage(content=prompt),
     ]
 
-    try:
-        llm = get_chat_model(model_id, enable_cache=enable_cache)
+    # Built outside the try: a configuration error (e.g. a missing API key) is not
+    # a transient generation failure and must not be retried.
+    llm = get_chat_model(model_id, enable_cache=enable_cache)
 
+    try:
         if requires_raw_text_generation(model_id):
             # This provider rejects both with_structured_output methods this
             # pipeline supports (see llm.py's _RAW_TEXT_ONLY_MODELS) — skip

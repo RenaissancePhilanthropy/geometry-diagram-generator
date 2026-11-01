@@ -234,6 +234,44 @@ def _resolve_provider(model_id: str) -> dict | None:
     return _KNOWN_PROVIDERS.get(prefix) or _generic_openai_provider(prefix)
 
 
+# Environment variables the LangChain SDKs read their credentials from, per
+# provider prefix. Used only to explain a construction failure: anthropic is
+# absent because ChatAnthropic constructs without a key (the failure only
+# shows at request time).
+_SDK_KEY_ENV: dict[str, tuple[str, ...]] = {
+    "openai": ("OPENAI_API_KEY",),
+    "openai-responses": ("OPENAI_API_KEY",),
+    "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+    "gemini": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+}
+_API_KEY_KWARGS = ("api_key", "openai_api_key", "google_api_key")
+
+
+def _missing_key_error(env_var: str, model_id: str) -> RuntimeError:
+    provider = model_id.partition(":")[0]
+    return RuntimeError(
+        f"Missing API key: environment variable {env_var} is not set "
+        f"(required for the {provider!r} provider, model {model_id!r})"
+    )
+
+
+def _construct(factory, model_id: str, kwargs: dict) -> BaseChatModel:
+    """Build a chat model; when that fails and the provider's API key env var is
+    unset (and no key was passed), raise a RuntimeError naming the variable
+    instead of the SDK's own credential error."""
+    try:
+        return factory()
+    except Exception as exc:
+        env_vars = _SDK_KEY_ENV.get(model_id.partition(":")[0], ())
+        if (
+            env_vars
+            and not any(os.environ.get(v) for v in env_vars)
+            and not any(kwargs.get(k) for k in _API_KEY_KWARGS)
+        ):
+            raise _missing_key_error(" or ".join(env_vars), model_id) from exc
+        raise
+
+
 def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseChatModel:
     """Return a LangChain chat model for the given model ID.
 
@@ -265,7 +303,7 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
 
     if backend == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model=model_name, **kwargs)
+        return _construct(lambda: ChatGoogleGenerativeAI(model=model_name, **kwargs), model_id, kwargs)
 
     # backend == "openai": every OpenAI-compatible provider funnels through ChatOpenAI.
     from langchain_openai import ChatOpenAI
@@ -276,7 +314,11 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
         kwargs.setdefault("base_url", base_url)
     api_key_env = provider.get("api_key_env")
     if api_key_env:
-        kwargs.setdefault("api_key", os.environ[api_key_env])
+        key = os.environ.get(api_key_env)
+        if key:
+            kwargs.setdefault("api_key", key)
+        elif not kwargs.get("api_key"):
+            raise _missing_key_error(api_key_env, model_id)
     for key, value in provider.get("default_kwargs", {}).items():
         kwargs.setdefault(key, value)
     for key, value in _MODEL_SPECIFIC_KWARGS.get(model_id, {}).items():
@@ -286,7 +328,7 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
         merged_extra_body = dict(kwargs.get("extra_body") or {})
         merged_extra_body.update(model_extra_body)
         kwargs["extra_body"] = merged_extra_body
-    return ChatOpenAI(model=model_name, **kwargs)
+    return _construct(lambda: ChatOpenAI(model=model_name, **kwargs), model_id, kwargs)
 
 
 def make_system_message(content: str, enable_cache: bool = False, model_id: str = "") -> SystemMessage:
