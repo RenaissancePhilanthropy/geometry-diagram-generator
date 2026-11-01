@@ -563,6 +563,28 @@ async def test_render_diagram_tool_output_includes_dsl_and_tokens(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_render_diagram_tool_output_includes_script_warnings_and_cost(monkeypatch):
+    """python_full results have no dsl; the tool must still hand the agent an
+    edit handle (script) plus the run's warnings and cost. Additive keys only."""
+    fake = DiagramResult(
+        svg="<svg/>", tikz="", input_tokens=1, output_tokens=2,
+        script="a = point(0, 0)\n", cost_usd=0.01, warnings=["label overlaps"],
+    )
+
+    async def fake_render(prompt, **kwargs):
+        return fake
+
+    monkeypatch.setattr("geometry_diagrams.facade.render_geometry_diagram", fake_render)
+    parsed = json.loads(await render_diagram.ainvoke({"prompt": "draw"}))
+
+    assert parsed["script"] == "a = point(0, 0)\n"
+    assert parsed["warnings"] == ["label overlaps"]
+    assert parsed["cost_usd"] == 0.01
+    assert parsed["dsl"] is None
+    assert parsed["svg"] == "<svg/>" and parsed["input_tokens"] == 1
+
+
+@pytest.mark.asyncio
 async def test_render_diagram_tool_error_returns_error_json(monkeypatch):
     """render_diagram @tool returns {"error": ...} on exception."""
     async def raise_error(prompt, **kwargs):

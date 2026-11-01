@@ -268,7 +268,10 @@ async def render_diagram(prompt: str) -> str:
     """Render a geometry diagram from a natural-language description.
 
     Returns a JSON string with keys "svg", "tikz", "dsl", "input_tokens",
-    and "output_tokens" on success, or {"error": "..."} on failure.
+    "output_tokens", "script", "warnings" and "cost_usd" on success, or
+    {"error": "..."} on failure. "dsl" is set by the recipe strategy and
+    "script" (the pydsl source, the edit handle) by python_full; the other is
+    null. "cost_usd" is null when the strategy does not report a cost.
     Configuration (renderer, model, etc.) is read from environment variables
     via GeometryConfig.from_env().
     """
@@ -280,6 +283,9 @@ async def render_diagram(prompt: str) -> str:
             "dsl": result.dsl,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
+            "script": result.script,
+            "warnings": result.warnings,
+            "cost_usd": result.cost_usd,
             # diagram_ir and recipes intentionally omitted (size/utility tradeoff for agent context)
         })
     except Exception as exc:
