@@ -89,7 +89,7 @@ Requires the TikZ renderer Docker container running at `renderer_url` (60 s clie
 | `GEOMETRY_EDIT_MODE` | `search_replace` | python_full edit format: `full_rewrite`, `patch`, `search_replace`, `hashline` or `line_number`; any other value raises `ValueError` |
 | `GEOMETRY_HASH_ALGORITHM` | `blake2s` | Line hash for `hashline` edits: `blake2s` or `xxhash` |
 | `GEOMETRY_SANDBOX_TIMEOUT_SECONDS` | `2.5` | python_full script time limit; must be finite and > 0 |
-| `MATHTEXT_FONTSET` | matplotlib default | matplotlib mathtext font set used for LaTeX-style labels in SVG output |
+| `MATHTEXT_FONTSET` | `cm` | matplotlib mathtext font set for LaTeX-style labels in SVG output (read at import) |
 | `ANTHROPIC_API_KEY` | — | Provider API key (read by LangChain SDK) |
 | `OPENAI_API_KEY` | — | Provider API key (read by LangChain SDK) |
 | `GOOGLE_API_KEY` | — | Provider API key (read by LangChain SDK) |

@@ -387,6 +387,7 @@ async def edit_geometry_diagram(
     DiagramResult.script) or previous_ir (structured; DiagramResult.diagram_ir).
     The prior state anchors the edit — only the properties you describe in prompt
     should change. Passing the wrong one for the strategy raises ValueError.
+    There is no `strategy` argument: the strategy comes from `config` / GEOMETRY_STRATEGY.
 
     Remaining kwargs: same as render_geometry_diagram.
     """

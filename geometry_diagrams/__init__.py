@@ -11,7 +11,8 @@ Public API:
   select_recipes               — async: run only the cheap recipe-selection step
   select_recipes_sync          — sync wrapper for select_recipes
   DiagramResult                — result dataclass (svg, tikz, input_tokens, output_tokens,
-                                 dsl, diagram_ir, recipes)
+                                 dsl [recipe only], diagram_ir, recipes [recipe only],
+                                 retry_count, script [python_full only], cost_usd, warnings)
   RecipeSelectionResult        — result dataclass for select_recipes
   GeometryConfig               — configuration dataclass
 
