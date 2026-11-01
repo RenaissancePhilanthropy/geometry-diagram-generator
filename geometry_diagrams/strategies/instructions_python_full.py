@@ -16,7 +16,7 @@ fill(top, color="#dbe9f6")
 for f in (front, right, top):
     draw(f)
 assert_true_length(segment(box.corner(0, 0, 0), box.corner(1, 0, 1)), 5)
-label_text("V = 24", centroid_of=box)
+# free text goes in label_text(...), e.g. label_text("Box A", centroid_of=box)
 """
 
 # The examples embedded in the stack guidance (tests/test_pydsl_stack.py runs
@@ -91,9 +91,14 @@ _SOLIDS_FRAGMENT = """
   differs from the edge's true length gives a warning; segment labels
   render in math mode, so put words and units in free text: `label_text(text, centroid_of=box)`
   or `box.label(text)`.
+- Label what the request states or clearly implies. A figure that accompanies a question (e.g. "find the
+  volume") shows the given dimensions, not the answer: do not add a volume or base-area label unless the
+  request gives that value or asks for it. The example below shows the fields; use the ones the request
+  calls for.
 - Schematic case: when only a base area and a height are given (no length or width), choose
-  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label and
-  queried volume are what the item asserts; add `assert_volume(box, expected)`.
+  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The base-area label
+  is the given value and the volume is what the item asserts: add `assert_volume(box, expected)`
+  for the stated volume.
 - `assert_volume(box, expected)` checks the true volume; `assert_true_length(seg, expected)` the
   TRUE 3D length of a segment joining two corners of one prism (an edge, face diagonal or space
   diagonal). `assert_distance` on such a segment measures the DRAWN 2D length instead, which is

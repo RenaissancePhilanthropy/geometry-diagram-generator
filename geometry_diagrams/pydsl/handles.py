@@ -579,7 +579,7 @@ class Prism:
         return Polygon(id=face_id(self.id, key), vertices=verts, _builder=self._builder)
 
     def label(self, text: str) -> None:
-        """Place a floating label at this prism's centroid, e.g. box.label("V = 24")."""
+        """Place a floating free-text label at this prism's centroid, e.g. box.label("Box A"); for a dimension use the prism() label fields."""
         from geometry_diagrams.ir.ir import LabelFreeText
 
         text = _sanitize_label_text(text, "label")

@@ -598,6 +598,17 @@ async def run_scenario(
                 tikz_code, required_labels
             )
 
+        forbidden_labels = scenario.get("forbidden_labels", [])
+        if forbidden_labels:
+            # TikZ point-label extraction cannot see dimension labels, so this
+            # check reads the SVG's label text and is skipped without it.
+            if svg and _svg_label_texts(svg):
+                tikz_check_results["forbidden_labels"] = _svg_forbidden_label_checks(
+                    svg, forbidden_labels
+                )
+            else:
+                tikz_check_results["forbidden_labels"] = {"passed": None, "skipped": True}
+
         required_entities = scenario.get("required_entities", [])
         if required_entities:
             tikz_check_results["required_entities"] = validate_required_entities(
@@ -618,12 +629,19 @@ async def run_scenario(
                 tolerance=scenario.get("coordinate_tolerance", _DEFAULT_POINT_TOLERANCE),
             )
 
-    elif scenario.get("required_labels"):
-        # No TikZ source (svg renderer): evaluate required_labels on the SVG's
+    elif scenario.get("required_labels") or scenario.get("forbidden_labels"):
+        # No TikZ source (svg renderer): evaluate the label checks on the SVG's
         # label text instead.
-        record["tikz_checks"] = {
-            "required_labels": _svg_required_label_checks(svg, scenario["required_labels"])
-        }
+        svg_label_checks: dict[str, Any] = {}
+        if scenario.get("required_labels"):
+            svg_label_checks["required_labels"] = _svg_required_label_checks(
+                svg, scenario["required_labels"]
+            )
+        if scenario.get("forbidden_labels"):
+            svg_label_checks["forbidden_labels"] = _svg_forbidden_label_checks(
+                svg, scenario["forbidden_labels"]
+            )
+        record["tikz_checks"] = svg_label_checks
 
     # LLM judge (code review)
     if llm_judge and tikz_code:
@@ -822,6 +840,30 @@ def _svg_label_texts(svg: str) -> list[str]:
     except ET.ParseError:
         return []
     return [el.get("data-label-text") for el in root.iter() if el.get("data-label-text") is not None]
+
+
+def _svg_label_matches(text: str, wanted: str) -> bool:
+    """Whether label ``text`` equals ``wanted`` (prime variants allowed for point
+    names) or contains it as a whole token run."""
+    pattern = re.compile(r"(?<![\w.])" + re.escape(wanted) + r"(?![\w.])")
+    return bool(point_names_match(wanted, text) or pattern.search(text))
+
+
+def _norm_label_text(t: str) -> str:
+    return " ".join(t.replace("$", " ").split())
+
+
+def _svg_forbidden_label_checks(svg: str, forbidden: list[str]) -> dict[str, Any]:
+    """``forbidden_labels`` evaluated on a rendered SVG's label text, with the
+    same whole-token matching as ``required_labels`` (``24`` is found in
+    ``V = 24`` but not in ``240``). Gate on a value a label would repeat (the
+    volume) rather than on a word. Returns ``{"passed": bool, "found": [...]}``."""
+    texts = [_norm_label_text(t) for t in _svg_label_texts(svg)]
+    found = [
+        f for f in forbidden
+        if any(_svg_label_matches(t, _norm_label_text(f)) for t in texts)
+    ]
+    return {"passed": not found, "found": found}
 
 
 def _svg_required_label_checks(svg: str, required: list[str]) -> dict[str, Any]:

@@ -165,3 +165,58 @@
     - name: one_stack_of_5
       type: solid_count
       args: {kind: block_stack, min: 1, cube_count: 5}
+
+# Labelling restraint: a figure for a question shows the givens, not the answer.
+# forbidden_labels are the values a stray volume / base-area label would repeat
+# (matched as whole tokens, so 24 is not found in 240).
+- id: prism-find-volume-no-answer-label
+  tier: 2
+  tags: [solids, prism, oblique, labels, no-extras]
+  requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
+  prompt: "Draw a solid box for a worksheet question that asks students to find its volume. The box is 4 cm long, 3 cm wide and 2 cm tall; label those three measurements."
+  required_labels: ["4", "3", "2"]
+  forbidden_labels: ["24", "12"]
+  expected_properties:
+    - name: prism_dimensions_4_3_2
+      type: prism_dimensions
+      args: ["*", 4, 3, 2]
+  structural_checks:
+    - name: one_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1, length: 4, width: 3, height: 2}
+
+- id: prism-dimension-labels-only
+  tier: 2
+  tags: [solids, prism, oblique, labels, no-extras]
+  requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
+  prompt: "Draw a solid box 7 units long, 5 units wide and 3 units tall, with each of the three dimensions labelled."
+  required_labels: ["7", "5", "3"]
+  forbidden_labels: ["105", "35"]
+  expected_properties:
+    - name: prism_dimensions_7_5_3
+      type: prism_dimensions
+      args: ["*", 7, 5, 3]
+  structural_checks:
+    - name: one_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1, length: 7, width: 5, height: 3}
+
+# Mirror: when the request gives the volume, the label is wanted (guards against
+# the restraint rule over-correcting).
+- id: prism-given-volume-labelled
+  tier: 2
+  tags: [solids, prism, oblique, labels, volume]
+  requires_features: [solids]
+  fail_on_warnings: ["does not match its true length"]
+  prompt: "Draw a solid box 6 units long, 2 units wide and 5 units tall. Label the three dimensions and also label its volume, 60 cubic units."
+  required_labels: ["6", "2", "5", "60"]
+  expected_properties:
+    - name: prism_dimensions_6_2_5
+      type: prism_dimensions
+      args: ["*", 6, 2, 5]
+  structural_checks:
+    - name: one_prism
+      type: solid_count
+      args: {kind: rectangular_prism, min: 1, length: 6, width: 2, height: 5}

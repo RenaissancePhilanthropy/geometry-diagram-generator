@@ -298,7 +298,7 @@ PRISM_EXAMPLE_IR: dict = {
         {"kind": "draw", "obj": "P_front"},
         {"kind": "draw", "obj": "P_right"},
         {"kind": "draw", "obj": "P_top"},
-        {"kind": "label_free_text", "text": "front face", "centroid_of": "P_front"},
+        {"kind": "label_free_text", "text": "Box A", "centroid_of": "P_top"},
     ],
 }
 
@@ -356,9 +356,12 @@ Put a dimension on an edge with `label_segment` on an edge id (or on a segment \
 between two corners of one edge). Segment-label text renders in math mode in TikZ, so words and \
 units belong in `label_free_text` instead: `centroid_of` a face id labels that face, `centroid_of` \
 the prism id centers a label on the prism.
+- **Label what the request states or clearly implies:** a figure for a "find the volume" question \
+shows the given dimensions, not the answer, so add a volume or base-area label only when the request \
+gives that value or asks for it. The example shows the fields; use the ones the request calls for.
 - **Schematic case:** when only a base area and a height are given (no length or width), choose \
-plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label and \
-queried volume are what the item asserts; add a `volume_equals` check for the stated volume.
+plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The base-area label \
+is the given value and the volume is what the item asserts; add a `volume_equals` check for the stated volume.
 - **Checks:** `volume_equals` (`prism`, `expected`: the true volume) and `true_length_equals` \
 (`seg`, `expected`: the TRUE 3D length of a segment joining two corners of one prism: an edge, \
 face diagonal or space diagonal). `distance_equals` on such a segment measures the drawn 2D \

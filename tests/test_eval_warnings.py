@@ -126,6 +126,8 @@ def test_solids_yaml_gates_dimension_scenarios():
     assert gated == {
         "prism-oblique-solid", "prism-oblique-solid-feet", "prism-oblique-wireframe-base-area",
         "prism-oblique-wireframe-base-area-feet", "prism-unit-cubes-isometric",
+        "prism-find-volume-no-answer-label", "prism-dimension-labels-only",
+        "prism-given-volume-labelled",
     }
 
 

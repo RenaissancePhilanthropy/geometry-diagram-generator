@@ -731,9 +731,12 @@ _PRISM_GUIDANCE_DOC = """\
   from the edge's true length gives a warning.
   Words and units go in free-text labels (label_free_text, text or centroid_of:"P"); segment
   labels render in math mode.
+- Label what the request states or clearly implies. A figure for a "find the volume" question shows the
+  given dimensions, not the answer: add a volume or base_area_label only when the request gives that value
+  or asks for it. The examples show the fields; use the ones the request calls for.
 - The schematic case: when only a base area and a height are given (no length or width), choose
-  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The label
-  and queried volume are what the item asserts; add a volume check for the stated volume.
+  plausible dimensions whose product matches (e.g. 10 x 6 for a base area of 60). The base-area label
+  is the given value and the volume is what the item asserts; add a volume check for the stated volume.
 - Draw and label accept the prism id, face ids and edge ids; fill accepts face ids but not the
   prism id (a typed error: fill the three visible face ids instead)."""
 
