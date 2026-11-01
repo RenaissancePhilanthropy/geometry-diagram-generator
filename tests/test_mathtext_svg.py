@@ -311,3 +311,29 @@ class TestLabelNeedsMathtext:
         # The important thing is it doesn't crash.
         result = label_needs_mathtext("$")
         assert isinstance(result, bool)
+
+
+def test_mixed_text_and_math_routes_to_mathtext():
+    from geometry_diagrams.ir.mathtext_svg import label_needs_mathtext, render_math_to_svg
+
+    for text in ("area $A$ of S", "$a$ b", "$x$ and $y$"):
+        assert label_needs_mathtext(text)
+        assert render_math_to_svg(text, 14.0) is not None
+    # an escaped or lone dollar sign stays plain text
+    assert not label_needs_mathtext(r"cost 5 \$")
+    assert not label_needs_mathtext("cost 5$")
+
+
+def test_concurrent_rendering_matches_serial():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from geometry_diagrams.ir.mathtext_svg import render_math_to_svg
+
+    exprs = [rf"\frac{{{i}}}{{{i + 1}}}+x_{i}" for i in range(24)]
+    sizes = [11.0, 13.0, 17.0]
+    jobs = [(e, s) for e in exprs for s in sizes]
+    serial = [render_math_to_svg(e, s) for e, s in jobs]
+    render_math_to_svg.cache_clear()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        parallel = list(pool.map(lambda j: render_math_to_svg(*j), jobs))
+    assert parallel == serial

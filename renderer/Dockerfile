@@ -19,6 +19,12 @@ RUN fc-cache -fv
 WORKDIR /srv
 COPY renderer/app /srv/app
 
+# Run untrusted TikZ as an unprivileged user. Warm the luaotfload font index
+# as that user so the first render does not rebuild it inside the timeout.
+RUN adduser -D -u 10001 renderer
+USER renderer
+RUN luaotfload-tool --update
+
 
 EXPOSE 8001
 ENTRYPOINT ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]

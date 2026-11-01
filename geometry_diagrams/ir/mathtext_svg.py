@@ -31,6 +31,7 @@ from __future__ import annotations
 import functools
 import os
 import re
+import threading
 from dataclasses import dataclass
 
 import matplotlib as mpl
@@ -51,6 +52,9 @@ mpl.rcParams["mathtext.fontset"] = _FONTSET
 
 # Module-level TextToPath instance — reusable, creation is non-trivial.
 _T2P = TextToPath()
+
+# TextToPath shares one FT2Font per instance, which is not thread-safe.
+_T2P_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Public dataclass
@@ -175,8 +179,12 @@ def render_math_to_svg(latex: str, font_size: float) -> MathGlyph | None:
     if not stripped:
         return None
 
-    # Ensure $...$ wrapping for the mathtext call.
+    # Ensure $...$ wrapping for the mathtext call. Mixed text/math with
+    # balanced `$` goes through as-is: mathtext renders the text runs in
+    # the plain font and the `$...$` runs as math.
     if stripped.startswith("$") and stripped.endswith("$") and len(stripped) > 2:
+        mathtext_input = stripped
+    elif _has_balanced_math_segments(stripped):
         mathtext_input = stripped
     else:
         mathtext_input = f"${stripped}$"
@@ -195,7 +203,8 @@ def render_math_to_svg(latex: str, font_size: float) -> MathGlyph | None:
     # --- render via matplotlib mathtext ---
     fp = mfm.FontProperties(size=font_size)
     try:
-        verts, codes = _T2P.get_text_path(fp, mathtext_input, ismath=True)
+        with _T2P_LOCK:
+            verts, codes = _T2P.get_text_path(fp, mathtext_input, ismath=True)
     except Exception:
         return None
 
@@ -275,6 +284,16 @@ _MATHTEXT_COMMANDS = frozenset({
 _NESTED_SCRIPT_RE = re.compile(r"[_^]\{[^}]*[_^]")
 
 
+_UNESCAPED_DOLLAR_RE = re.compile(r"(?<!\\)\$")
+
+
+def _has_balanced_math_segments(text: str) -> bool:
+    """True if *text* holds at least one complete ``$...$`` pair (an even,
+    non-zero count of unescaped ``$``) without being wrapped by it."""
+    n = len(_UNESCAPED_DOLLAR_RE.findall(text))
+    return n >= 2 and n % 2 == 0
+
+
 def label_needs_mathtext(text: str) -> bool:
     """Return True if *text* requires the mathtext engine for correct rendering.
 
@@ -307,6 +326,11 @@ def label_needs_mathtext(text: str) -> bool:
         # font for point names. But for consistency with LaTeX output (italic
         # serif), route to mathtext — this is the geometry convention.
         # Callers may override this decision for purely-plain-text contexts.
+        return True
+
+    # Text mixed with a complete $...$ segment ("area $A$ of S") needs
+    # mathtext too; the brand-font path would print the literal `$`.
+    if _has_balanced_math_segments(stripped):
         return True
 
     # Any LaTeX command triggers mathtext

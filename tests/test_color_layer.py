@@ -501,3 +501,14 @@ def test_bare_non_color_string_unchanged_from_pre_ticket():
     assert _tikz_lines(tikz, "Fill") == ["\\tkzFillPolygon[fill=blue!20,opacity=0.5](A,B,C)"]
     assert _tikz_lines(tikz, "Segment") == ["\\tkzDrawSegment(A,B)"]
     assert warnings == []
+
+
+def test_tikz_color_rejects_injection_string():
+    name, definition = tikz_color("red]; \\input{/etc/passwd} [")
+    assert name == "black"
+    assert definition is None
+
+
+def test_tikz_color_keeps_safe_passthrough():
+    assert tikz_color("blue!30") == ("blue!30", None)
+    assert tikz_color("red") == ("red", None)

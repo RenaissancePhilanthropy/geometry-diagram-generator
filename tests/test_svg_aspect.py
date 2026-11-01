@@ -174,3 +174,12 @@ def test_right_angle_mark_is_a_parallelogram_along_the_pixel_rays():
     assert pts[0] == pytest.approx((ox + size * unit_p[0], oy + size * unit_p[1]), abs=0.02)
     assert pts[2] == pytest.approx((ox + size * unit_q[0], oy + size * unit_q[1]), abs=0.02)
     assert pts[1] == pytest.approx((pts[0][0] + pts[2][0] - ox, pts[0][1] + pts[2][1] - oy), abs=0.02)
+
+
+def test_single_offset_point_renders():
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed
+    from geometry_diagrams.ir.to_sympy import compile_defs
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+
+    diagram = DiagramIR(define=[PointFixed(id="A", x=-5, y=7)])
+    assert ir_to_svg(diagram, compile_defs(diagram)).startswith("<svg")

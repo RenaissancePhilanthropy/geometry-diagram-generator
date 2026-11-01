@@ -804,3 +804,69 @@ def test_point_label_clears_drawn_arc_through_the_point(kind):
     # The arc is near-vertical and bulges ~2.7px right of its endpoints at its
     # midpoint (where F sits); the label box must be clear of that stroke.
     assert x0 > arc_x + 4 or x1 < arc_x - 1
+
+
+def _reference_resolve_label_collisions(labels, svg_w, svg_h):
+    """The per-pair bbox recomputation the optimized resolver replaced."""
+    import math
+
+    from geometry_diagrams.ir.to_svg import (
+        _FONT_SIZE, _bboxes_overlap, _label_bbox,
+    )
+
+    padding = 2.0
+    margin = _FONT_SIZE
+    for _ in range(6):
+        moved = False
+        for i in range(len(labels)):
+            for j in range(i):
+                bb_i = _label_bbox(labels[i])
+                bb_j = _label_bbox(labels[j])
+                bb_j_pad = (bb_j[0] - padding, bb_j[1] - padding,
+                            bb_j[2] + padding, bb_j[3] + padding)
+                if not _bboxes_overlap(bb_i, bb_j_pad):
+                    continue
+                dx = labels[i].x - labels[j].x
+                dy = labels[i].y - labels[j].y
+                dist = math.hypot(dx, dy)
+                if dist < 1e-6:
+                    dx, dy, dist = 0.0, -1.0, 1.0
+                half = _FONT_SIZE * 0.8
+                nx_step = (dx / dist) * half
+                ny_step = (dy / dist) * half
+                labels[i].x += nx_step
+                labels[i].y += ny_step
+                labels[j].x -= nx_step
+                labels[j].y -= ny_step
+                for lp in (labels[i], labels[j]):
+                    lp.x = max(margin, min(svg_w - margin, lp.x))
+                    lp.y = max(margin, min(svg_h - margin, lp.y))
+                moved = True
+                break
+        if not moved:
+            break
+
+
+def test_resolve_label_collisions_matches_reference_on_random_clusters():
+    import copy
+    import random
+
+    from geometry_diagrams.ir.to_svg import _LabelPlacement, _resolve_label_collisions
+
+    rng = random.Random(7)
+    for _ in range(200):
+        n = rng.randint(2, 14)
+        labels = [
+            _LabelPlacement(
+                x=rng.uniform(5, 195), y=rng.uniform(5, 195), text="t", color="black",
+                anchor=rng.choice(["start", "middle", "end"]),
+                width_est=rng.uniform(5, 40), height_est=rng.uniform(8, 20),
+            )
+            for _ in range(n)
+        ]
+        if rng.random() < 0.3:  # coincident labels
+            labels[1].x, labels[1].y = labels[0].x, labels[0].y
+        expected = copy.deepcopy(labels)
+        _reference_resolve_label_collisions(expected, 200.0, 200.0)
+        _resolve_label_collisions(labels, 200.0, 200.0)
+        assert [(l.x, l.y) for l in labels] == [(l.x, l.y) for l in expected]

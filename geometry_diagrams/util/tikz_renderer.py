@@ -4,6 +4,7 @@ Sends TikZ code to the renderer service and returns the rendered SVG.
 """
 
 import os
+import time
 from logging import getLogger
 
 import httpx
@@ -11,6 +12,10 @@ import httpx
 logger = getLogger(__name__)
 
 _DEFAULT_RENDERER_URL = "http://localhost:8001"
+
+# Must cover the server's two 15 s stage timeouts plus time spent queued
+# behind other requests (the server itself gives up on a request at 50 s).
+_RENDER_TIMEOUT_S = 60.0
 
 
 def check_renderer_health(renderer_url: str | None = None) -> bool:
@@ -31,7 +36,6 @@ def check_renderer_health(renderer_url: str | None = None) -> bool:
         except httpx.HTTPError as e:
             last_error = e
         if attempt < 2:
-            import time
             time.sleep(1.0)
     logger.warning("Renderer health check failed after 3 attempts: %s", last_error)
     return False
@@ -68,7 +72,7 @@ def render_tikz(
     logger.debug("Sending TikZ render request to %s", endpoint)
 
     try:
-        response = httpx.post(endpoint, json=payload, timeout=30.0)
+        response = httpx.post(endpoint, json=payload, timeout=_RENDER_TIMEOUT_S)
         response.raise_for_status()
     except httpx.HTTPError as e:
         raise RuntimeError(f"Renderer request failed: {e}") from e

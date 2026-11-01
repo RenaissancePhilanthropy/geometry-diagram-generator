@@ -65,3 +65,31 @@ def test_default_font_config_env_override():
     with patch.dict(os.environ, {"DIAGRAM_FONT_FAMILY": "Roboto"}):
         cfg = default_font_config()
     assert cfg.family == "Roboto"
+
+
+def test_data_uri_is_cached_and_identical():
+    from geometry_diagrams.ir import font as font_mod
+
+    cfg = FontConfig(family="NunitoSans")
+    font_mod._read_data_uri.cache_clear()
+    a = cfg.data_uri("Regular")
+    b = cfg.data_uri("Regular")
+    assert a == b
+    assert font_mod._read_data_uri.cache_info().hits == 1
+    expected = base64.b64encode(cfg.file_path("Regular").read_bytes()).decode("ascii")
+    assert a == f"data:font/ttf;base64,{expected}"
+
+
+def test_invalid_font_family_falls_back_with_warning():
+    from geometry_diagrams.ir.ir import DiagramIR, PointFixed
+    from geometry_diagrams.ir.to_svg import ir_to_svg
+    from geometry_diagrams.ir.to_sympy import compile_defs
+
+    diagram = DiagramIR(define=[PointFixed(id="A", x=0, y=0)])
+    warnings: list[str] = []
+    svg = ir_to_svg(
+        diagram, compile_defs(diagram), warnings,
+        font_config=FontConfig(family="x'); } body { background:url(http://e/"),
+    )
+    assert "background:url" not in svg
+    assert any("Invalid font family" in w for w in warnings)

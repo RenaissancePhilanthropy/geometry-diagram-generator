@@ -308,3 +308,68 @@ def test_one_side_capped_while_another_side_grows():
     assert vb[0] < 0 and vb[2] <= 500 + 30.01 + 200
     flagged = [v.text for v in find_out_of_bounds_labels(svg)]
     assert flagged == ["way off canvas"]
+
+
+# ---------------------------------------------------------------------------
+# Every label's data-bbox lies inside the final viewBox (downstream request #4)
+# ---------------------------------------------------------------------------
+
+import pytest
+
+_POS_RING = ("above", "below", "left", "right", "above left", "above right",
+             "below left", "below right")
+
+
+def _shape_diagram(points, shape_kind, label_math=False, circle=False):
+    from geometry_diagrams.ir import ir as I
+
+    ids = [f"P{i}" for i in range(len(points))]
+    define = [I.PointFixed(id=i, x=x, y=y) for i, (x, y) in zip(ids, points)]
+    if shape_kind == "triangle":
+        define.append(I.Triangle(id="S", a=ids[0], b=ids[1], c=ids[2]))
+    else:
+        define.append(I.Polygon(id="S", points=ids))
+    render = [I.Draw(obj="S")]
+    for n, i in enumerate(ids):
+        text = r"\alpha_{%d}" % n if label_math else chr(65 + n)
+        render.append(I.LabelPoint(p=i, text=text, pos=_POS_RING[n % len(_POS_RING)]))
+    if circle:
+        define.append(I.CircleCenterPoint(id="C", center=ids[0], through=ids[1]))
+        render.append(I.Draw(obj="C"))
+    return I.DiagramIR(define=define, render=render)
+
+
+_DIAGRAMS = {
+    "triangle": lambda: _shape_diagram([(0, 0), (6, 0), (3, 5)], "triangle"),
+    "tall_triangle": lambda: _shape_diagram([(0, 0), (1, 0), (0.5, 9)], "triangle"),
+    "square": lambda: _shape_diagram([(0, 0), (4, 0), (4, 4), (0, 4)], "polygon"),
+    "pentagon_math": lambda: _shape_diagram(
+        [(0, 3), (3, 1), (2, -2), (-2, -2), (-3, 1)], "polygon", label_math=True),
+    "triangle_circle": lambda: _shape_diagram(
+        [(0, 0), (3, 0), (1, 3)], "triangle", circle=True),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_DIAGRAMS))
+def test_every_label_bbox_inside_final_viewbox(name):
+    svg = _render_ir(_DIAGRAMS[name]())
+    assert 'data-bbox="' in svg
+    assert find_out_of_bounds_labels(svg) == []
+    _, vb, _, _ = _root_geometry(svg)
+    for el in ET.fromstring(svg).iter():
+        bbox = el.get("data-bbox")
+        if bbox is None:
+            continue
+        x0, y0, x1, y1 = (float(v) for v in bbox.split(","))
+        tol = 0.01
+        assert x0 >= vb[0] - tol and y0 >= vb[1] - tol
+        assert x1 <= vb[0] + vb[2] + tol and y1 <= vb[1] + vb[3] + tol
+
+
+def test_arc_text_and_mathtext_label_bbox_inside_final_viewbox():
+    from geometry_diagrams.ir import ir as I
+
+    diagram = _arc_text_diagram()
+    diagram.render.append(I.LabelFreeText(text=r"$\frac{a}{b}+\sqrt{x}$", at=[0, 0]))
+    svg = _render_ir(diagram)
+    assert find_out_of_bounds_labels(svg) == []
