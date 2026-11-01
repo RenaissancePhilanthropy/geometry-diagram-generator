@@ -37,7 +37,7 @@ class RenderReq(BaseModel):
     font_family: str | None = Field(default=None, max_length=64)
 
 TEMPLATE = r"""
-\documentclass[border=0pt]{{standalone}}
+\documentclass[dvisvgm,border=0pt]{{standalone}}
 \usepackage{{tikz}}
 \usepackage{{luacode}}
 \usepackage{{tkz-euclide}}
@@ -108,11 +108,13 @@ async def render_svg(req: RenderReq) -> dict:
             with open(tex_path, "w", encoding="utf-8") as f:
                 f.write(tex)
 
-            # 1) lualatex -> PDF
+            # 1) lualatex -> DVI (dvisvgm's native input; fontspec fonts work in LuaTeX's
+            #    DVI mode, verified to render NunitoSans like the PDF route did)
             try:
                 code1, out1 = await run_cmd([
                     "lualatex",
                     "--no-shell-escape",
+                    "--output-format=dvi",
                     "--interaction=nonstopmode",
                     "--halt-on-error",
                     "-file-line-error",
@@ -133,12 +135,11 @@ async def render_svg(req: RenderReq) -> dict:
                 code2, out2 = await run_cmd([
                     "dvisvgm",
                     "--no-fonts",
-                    "--pdf",
                     "--bbox=min",
                     "--exact-bbox",
                     "-Oall",
                     "-o", "out.svg",
-                    "main.pdf",
+                    "main.dvi",
                 ], cwd=td)
             except CommandTimeout as e:
                 logger.warning("dvisvgm timed out")

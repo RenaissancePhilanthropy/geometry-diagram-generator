@@ -137,6 +137,8 @@ With `--no-fonts`, dvisvgm traces all glyph outlines (including NunitoSans) into
 
 Since the default font config is always populated (NunitoSans), the renderer always runs in PDF mode. The DVI code path can be removed.
 
+> **Update 2026-11-01:** the premise above does not hold on TeX Live 2026 / dvisvgm 3.6: `fontspec` loads NunitoSans in LuaTeX's DVI mode and the SVG matches the PDF route (checked for regular, bold, italic and math). The renderer is back on DVI, because current dvisvgm builds cannot read PDFs without `mutool`; see `renderer/app/main.py`.
+
 ### LaTeX template changes
 
 ```latex
