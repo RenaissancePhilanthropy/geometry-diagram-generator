@@ -1514,6 +1514,39 @@ _SAFE_UNARYOPS = {
 }
 
 
+MAX_POW_EXPONENT = 1000
+
+
+def _bounded_pow(base: Any, exponent: Any, *, def_id: str, raw: str) -> Any:
+    """``base ** exponent`` with a numeric exponent capped at ``MAX_POW_EXPONENT``
+    in magnitude (``9**9**9`` would otherwise never return) and a non-finite
+    numeric result rejected."""
+    if getattr(exponent, "is_number", False):
+        try:
+            too_big = abs(float(exponent)) > MAX_POW_EXPONENT
+        except (TypeError, ValueError):
+            too_big = False
+        if too_big:
+            raise ExprEvalError(
+                def_id,
+                f"could not evaluate {raw!r}: exponent larger than {MAX_POW_EXPONENT} in magnitude",
+            )
+    result = operator.pow(base, exponent)
+    if getattr(result, "is_number", False):
+        if result.has(sp.zoo, sp.oo, sp.nan, -sp.oo):
+            finite = False
+        else:
+            try:
+                finite = math.isfinite(float(result.evalf()))
+            except TypeError:
+                finite = True  # complex: not this guard's concern
+            except (ValueError, OverflowError):
+                finite = False
+        if not finite:
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: result is not a finite number")
+    return result
+
+
 def _safe_eval_node(node: ast.AST, locals_map: dict[str, Any], *, def_id: str, raw: str) -> Any:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
@@ -1526,6 +1559,8 @@ def _safe_eval_node(node: ast.AST, locals_map: dict[str, Any], *, def_id: str, r
     if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_BINOPS:
         left = _safe_eval_node(node.left, locals_map, def_id=def_id, raw=raw)
         right = _safe_eval_node(node.right, locals_map, def_id=def_id, raw=raw)
+        if isinstance(node.op, ast.Pow):
+            return _bounded_pow(left, right, def_id=def_id, raw=raw)
         return _SAFE_BINOPS[type(node.op)](left, right)
     if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_UNARYOPS:
         operand = _safe_eval_node(node.operand, locals_map, def_id=def_id, raw=raw)
