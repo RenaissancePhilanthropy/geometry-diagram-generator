@@ -11,7 +11,9 @@ RUN tlmgr update --self && \
 RUN apk add --no-cache python3 py3-pip
 RUN pip install --break-system-packages --no-cache-dir fastapi uvicorn pydantic
 
-RUN apk add --no-cache fontconfig
+# dvisvgm reads the PDF through mutool; current TeX Live builds no longer bundle PDF
+# support, so without this every render fails at the dvisvgm stage.
+RUN apk add --no-cache fontconfig mupdf-tools
 COPY geometry_diagrams/assets/fonts /usr/local/share/fonts/NunitoSans/
 RUN fc-cache -fv
 

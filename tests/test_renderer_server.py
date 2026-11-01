@@ -66,11 +66,6 @@ def test_request_fields_are_size_capped(server):
         server.RenderReq(tikz="x", tkzelements="x" * (server.MAX_FIELD_CHARS + 1))
 
 
-def test_subprocess_env_restricts_tex_file_access(server):
-    assert server.SUBPROCESS_ENV["openin_any"] == "p"
-    assert server.SUBPROCESS_ENV["openout_any"] == "p"
-
-
 def test_run_cmd_does_not_block_and_kills_on_timeout(server, tmp_path, monkeypatch):
     monkeypatch.setattr(server, "TIMEOUT_S", 0.3)
 

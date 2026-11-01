@@ -18,10 +18,12 @@ TIMEOUT_S = int(os.getenv("RENDER_TIMEOUT_S", "15"))
 REQUEST_TIMEOUT_S = int(os.getenv("REQUEST_TIMEOUT_S", "50"))
 MAX_FIELD_CHARS = 200_000
 
-# Paranoid file access for TeX: no dotfiles, no parent directories, no absolute
-# paths outside the TeX trees. Combined with --no-shell-escape this keeps
-# untrusted TikZ from reading or writing arbitrary files.
-SUBPROCESS_ENV = {**os.environ, "openin_any": "p", "openout_any": "p"}
+# Untrusted TikZ can still read any file the renderer user can read (Lua's
+# io.open, \input) and the reply's `log` echoes what TeX prints, so run the
+# container with no secrets in it. Verified not to help here: openin_any /
+# openout_any (ignored for these reads) and --safer (luaotfload, which fontspec
+# needs, refuses to run with it). --no-shell-escape does stop \write18 and
+# os.execute.
 
 # Created in the lifespan so they belong to the running event loop.
 sem: asyncio.Semaphore | None = None
@@ -70,7 +72,6 @@ async def run_cmd(cmd: list[str], cwd: str) -> tuple[int, str]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
-        env=SUBPROCESS_ENV,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,

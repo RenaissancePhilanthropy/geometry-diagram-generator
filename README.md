@@ -60,7 +60,7 @@ uv sync
 #    lualatex with --no-shell-escape as a non-root user and caps request sizes; after
 #    rebuilding, check that a render still works.
 docker build -f renderer/Dockerfile -t tikz-renderer .
-docker run -p 8001:8001 tikz-renderer
+docker run -p 127.0.0.1:8001:8001 tikz-renderer   # see CLAUDE.md for a locked-down run; untrusted TikZ can read files inside the container
 
 # 4. Start the server
 uv run python -m uvicorn main:app
