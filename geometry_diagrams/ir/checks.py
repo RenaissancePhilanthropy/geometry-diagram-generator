@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from . import ir
 from .curve_measures import CurveMeasureError, curve_length, radii_equal
+from .conic_kernel import EllipseFrame
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
@@ -18,6 +19,7 @@ from .to_sympy import (
     Sector,
     SymTable,
     arc_param_frame,
+    ellipse_boundary_gap,
     _point_in_arc_sweep,
     _tangent_touch_point,
     _underlying_conic,
@@ -519,15 +521,16 @@ def _contains(
         return abs(d - r) < tol
     if isinstance(obj, RotatedEllipse):
         # A length-based gap (the tilted marker has no SymPy containment).
-        return abs(obj.boundary_gap(float(point.x.evalf()), float(point.y.evalf()))) < tol
+        gap = ellipse_boundary_gap(obj.frame, float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol
     if isinstance(obj, spg.Ellipse):
-        cx = float(obj.center.x.evalf())
-        cy = float(obj.center.y.evalf())
-        a = float(obj.hradius.evalf())
-        b = float(obj.vradius.evalf())
-        px, py = float(point.x.evalf()), float(point.y.evalf())
-        val = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
-        return abs(val - 1.0) < tol
+        # The same length-based gap as a tilted ellipse (rotation 0).
+        frame = EllipseFrame(
+            float(obj.center.x.evalf()), float(obj.center.y.evalf()),
+            float(obj.hradius.evalf()), float(obj.vradius.evalf()),
+        )
+        gap = ellipse_boundary_gap(frame, float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol
     exact = _to_bool(obj.contains(point))
     if exact or not isinstance(obj, _LINEAR_TYPES):
         return exact

@@ -319,12 +319,26 @@ def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
     return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
 
 
+def ellipse_boundary_gap(frame: EllipseFrame, x: float, y: float) -> float:
+    """``frame.boundary_gap(x, y)`` (a length, positive outside), with a clean
+    ``IRCompileError`` for an ellipse with a zero (or negative) radius instead
+    of a ZeroDivisionError. The one containment metric for axis-aligned and
+    tilted ellipses and elliptical arcs/sectors."""
+    if not (frame.a > 0 and frame.b > 0):
+        raise IRCompileError(
+            "<containment>",
+            f"ellipse has a non-positive radius (hradius={frame.a}, vradius={frame.b}); "
+            "containment is undefined",
+        )
+    return frame.boundary_gap(x, y)
+
+
 def point_on_arc(
     point: spg.Point, arc: Arc | Sector | EllipticalArc | EllipticalSector, tol: float,
 ) -> bool:
     """Is `point` on the curved edge of an arc/sector (circular or elliptical)
-    — on its circle (within `tol` of the radius) or ellipse (the normalized
-    ellipse equation within `tol` of 1) and within its sweep?
+    — on its circle (within `tol` of the radius) or ellipse (within `tol` of
+    it, as ``EllipseFrame.boundary_gap``, a length) and within its sweep?
 
     A sector's two straight radii and its filled interior are deliberately not
     part of this: a model that needs those has them as ordinary segments from
@@ -333,11 +347,8 @@ def point_on_arc(
     ``checks.py``'s containment check.
     """
     if isinstance(arc, (EllipticalArc, EllipticalSector)):
-        cx, cy = float(arc.center.x.evalf()), float(arc.center.y.evalf())
-        hr, vr = float(arc.hradius.evalf()), float(arc.vradius.evalf())
-        px, py = float(point.x.evalf()), float(point.y.evalf())
-        on_curve = abs(((px - cx) / hr) ** 2 + ((py - cy) / vr) ** 2 - 1.0) < tol
-        return on_curve and _point_in_arc_sweep(point, arc)
+        gap = ellipse_boundary_gap(arc_frame(arc), float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol and _point_in_arc_sweep(point, arc)
     radius_error = abs(float(point.distance(arc.center).evalf()) - float(arc.radius.evalf()))
     return radius_error < tol and _point_within_arc_sweep(point, arc)
 
