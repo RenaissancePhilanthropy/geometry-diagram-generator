@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -9,6 +10,46 @@ from .features import parse_features
 # Matches the default in geometry_diagrams/strategies/base.py and recipe.py
 _DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 _DEFAULT_SELECTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
+
+EDIT_GENERATION_MODES: tuple[str, ...] = (
+    "full_rewrite", "patch", "search_replace", "hashline", "line_number",
+)
+
+_TRUE_STRINGS = frozenset({"1", "true", "yes", "on"})
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    """A boolean env var: 1/true/yes/on (any case, surrounding space ignored) is true;
+    unset falls back to `default`; anything else is false."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in _TRUE_STRINGS
+
+
+def validate_edit_generation_mode(mode: str) -> str:
+    """Return `mode` if it is a known edit generation mode, else raise ValueError listing them."""
+    if mode not in EDIT_GENERATION_MODES:
+        raise ValueError(
+            f"Unknown edit_generation_mode: {mode!r} (expected one of: "
+            f"{', '.join(EDIT_GENERATION_MODES)})"
+        )
+    return mode
+
+
+def validate_sandbox_timeout(value: object) -> float:
+    """Return `value` as a float if it is a finite number greater than 0, else raise ValueError."""
+    try:
+        seconds = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"sandbox_timeout_seconds must be a finite number greater than 0, got {value!r}"
+        ) from None
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError(
+            f"sandbox_timeout_seconds must be a finite number greater than 0, got {value!r}"
+        )
+    return seconds
 
 
 @dataclass
@@ -55,6 +96,8 @@ class GeometryConfig:
     @classmethod
     def from_env(cls) -> "GeometryConfig":
         """Build config from environment variables with hardcoded fallbacks."""
+        edit_mode = validate_edit_generation_mode(os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"))
+        timeout = validate_sandbox_timeout(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5"))
         return cls(
             renderer=os.environ.get("GEOMETRY_RENDERER", os.environ.get("RENDERER", "tikz")),  # type: ignore[arg-type]
             strategy=os.environ.get("GEOMETRY_STRATEGY", "recipe"),  # type: ignore[arg-type]
@@ -62,11 +105,11 @@ class GeometryConfig:
             selector_model=os.environ.get("GEOMETRY_SELECTOR_MODEL", _DEFAULT_SELECTOR_MODEL),
             renderer_url=os.environ.get("TIKZ_RENDERER_URL") or None,
             font_family=os.environ.get("DIAGRAM_FONT_FAMILY", "NunitoSans"),
-            embed_fonts=os.environ.get("DIAGRAM_EMBED_FONTS", "0") in ("1", "true", "True"),
-            debug_show_implicit=os.environ.get("DIAGRAM_DEBUG_SHOW_IMPLICIT", "0") in ("1", "true", "True"),
-            edit_generation_mode=os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"),  # type: ignore[arg-type]
+            embed_fonts=env_bool("DIAGRAM_EMBED_FONTS"),
+            debug_show_implicit=env_bool("DIAGRAM_DEBUG_SHOW_IMPLICIT"),
+            edit_generation_mode=edit_mode,  # type: ignore[arg-type]
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
-            sandbox_timeout_seconds=float(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5")),
+            sandbox_timeout_seconds=timeout,
             features=parse_features(os.environ.get("GEOMETRY_FEATURES", "")),
         )
 
@@ -87,6 +130,10 @@ def resolve_config(
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
+    validate_edit_generation_mode(edit_generation_mode or cfg.edit_generation_mode)
+    validate_sandbox_timeout(
+        sandbox_timeout_seconds if sandbox_timeout_seconds is not None else cfg.sandbox_timeout_seconds
+    )
     return GeometryConfig(
         renderer=renderer or cfg.renderer,  # type: ignore[arg-type]
         strategy=strategy or cfg.strategy,  # type: ignore[arg-type]

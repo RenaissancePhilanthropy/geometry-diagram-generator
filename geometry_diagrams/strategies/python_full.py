@@ -28,6 +28,7 @@ from .ir_pipeline import (
 )
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
+from ..config import validate_edit_generation_mode, validate_sandbox_timeout
 from ..features import require_features, tagged_insertions
 from ..ir.edit_diagnostics import check_edit_locality
 from ..ir.errors import IRCompileError
@@ -1025,7 +1026,8 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         # and don't touch the trace it already appended for this attempt.
         return {"last_error": "No script available to run"}
 
-    timeout_seconds = state.get("sandbox_timeout_seconds") or SANDBOX_TIMEOUT_SECONDS
+    timeout_seconds = state.get("sandbox_timeout_seconds")
+    timeout_seconds = SANDBOX_TIMEOUT_SECONDS if timeout_seconds is None else validate_sandbox_timeout(timeout_seconds)
     enable_cookbook = state.get("experimental_diagram_cookbook", False)
     features = state.get("features") or frozenset()
     result = await asyncio.to_thread(
@@ -1379,6 +1381,7 @@ class PythonFullStrategy(SubstanceStrategy):
         line_number/_edit_full_rewrite) -- out of scope for this ticket per
         spec.md's Out of Scope section.
         """
+        validate_sandbox_timeout(sandbox_timeout_seconds)
         if use_pre_assert_step and precomputed_advisory_context is not None:
             raise ValueError(
                 "use_pre_assert_step and precomputed_advisory_context are mutually "
@@ -1529,12 +1532,14 @@ class PythonFullStrategy(SubstanceStrategy):
             )
 
         _edit_handlers = {
+            "full_rewrite": _edit_full_rewrite,
             "patch": _edit_patch,
             "search_replace": _edit_search_replace,
             "hashline": _edit_hashline,
             "line_number": _edit_line_number,
         }
-        handler = _edit_handlers.get(edit_generation_mode, _edit_full_rewrite)
+        validate_edit_generation_mode(edit_generation_mode)
+        handler = _edit_handlers[edit_generation_mode]
         try:
             result = await handler(request)
         except ValueError as e:
@@ -1652,6 +1657,8 @@ class PythonFullStrategy(SubstanceStrategy):
         edit-generation LLM call(s)."""
         if not previous_script or not previous_script.strip():
             raise ValueError("previous_script must be a non-empty pydsl script")
+        validate_edit_generation_mode(edit_generation_mode)
+        validate_sandbox_timeout(sandbox_timeout_seconds)
         _renderer = renderer if renderer is not None else SVGRenderer()
         try:
             baseline = await _run_from_script(
@@ -1717,6 +1724,8 @@ class PythonFullStrategy(SubstanceStrategy):
         judge intent rather than blindly reverting. Never applies to
         full_rewrite (locality is only a soft, trend-level signal there
         per edit_diagnostics.py's own docstring, not a per-turn one)."""
+        validate_edit_generation_mode(edit_generation_mode)
+        validate_sandbox_timeout(sandbox_timeout_seconds)
         _renderer = renderer if renderer is not None else SVGRenderer()
         _stack: list[dict] = []
         # Mutable box (not a plain variable) so it survives an apply-step
