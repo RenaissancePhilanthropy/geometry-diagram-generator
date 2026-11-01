@@ -4049,20 +4049,24 @@ def _dedup_coincident_labels(labels: list[_LabelPlacement]) -> None:
 def _resolve_label_collisions(labels: list[_LabelPlacement], svg_w: float, svg_h: float) -> None:
     """Nudge overlapping labels apart in-place. O(n²) per pass, up to 6 passes.
 
-    Both colliding labels are displaced symmetrically so no label is
-    permanently anchored (the previous code only moved label i, leaving j fixed).
+    The first overlapping earlier label j found for each label i displaces both
+    of them symmetrically (so no label is permanently anchored), then the scan
+    moves on to the next i. Bounding boxes are computed once and refreshed only
+    for the two labels a nudge moved.
     """
     padding = 2.0
     margin = _FONT_SIZE
+    bboxes = [_label_bbox(lp) for lp in labels]
+    padded = [
+        (bb[0] - padding, bb[1] - padding, bb[2] + padding, bb[3] + padding)
+        for bb in bboxes
+    ]
     for _ in range(6):
         moved = False
         for i in range(len(labels)):
+            bb_i = bboxes[i]
             for j in range(i):
-                bb_i = _label_bbox(labels[i])
-                bb_j = _label_bbox(labels[j])
-                bb_j_pad = (bb_j[0] - padding, bb_j[1] - padding,
-                            bb_j[2] + padding, bb_j[3] + padding)
-                if not _bboxes_overlap(bb_i, bb_j_pad):
+                if not _bboxes_overlap(bb_i, padded[j]):
                     continue
                 dx = labels[i].x - labels[j].x
                 dy = labels[i].y - labels[j].y
@@ -4077,11 +4081,16 @@ def _resolve_label_collisions(labels: list[_LabelPlacement], svg_w: float, svg_h
                 labels[i].y += ny_step
                 labels[j].x -= nx_step
                 labels[j].y -= ny_step
-                for lp in (labels[i], labels[j]):
+                for k in (i, j):
+                    lp = labels[k]
                     lp.x = max(margin, min(svg_w - margin, lp.x))
                     lp.y = max(margin, min(svg_h - margin, lp.y))
+                    bb = _label_bbox(lp)
+                    bboxes[k] = bb
+                    padded[k] = (bb[0] - padding, bb[1] - padding,
+                                 bb[2] + padding, bb[3] + padding)
                 moved = True
-                break  # recompute bboxes after each move
+                break  # label i moved; continue with the next label
         if not moved:
             break
 
