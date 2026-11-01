@@ -507,7 +507,7 @@ async def test_render_geometry_diagram_python_full_populates_script(monkeypatch)
     assert result.script == "p1 = point(0, 0)\n"
     assert result.dsl is None
     assert result.recipes is None
-    assert result.retry_count == 0
+    assert result.retry_count == 1  # one generation attempt, no retries
     assert result.svg == "<svg/>"
     assert result.input_tokens == 7
     assert result.output_tokens == 3

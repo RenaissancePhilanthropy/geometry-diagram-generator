@@ -31,7 +31,7 @@ class DiagramResult:
     dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump()); recipe strategy only
     diagram_ir: Optional[dict] = None   # serialized DiagramIR (ir.model_dump())
     recipes: Optional[list[str]] = None # selected recipe IDs; recipe strategy only
-    retry_count: int = 0 # number of generation attempts (len of attempt_traces)
+    retry_count: int = 0 # number of generation attempts (successful one included)
     script: Optional[str] = None        # pydsl script source; python_full strategy only
     # Provider-reported USD cost of this call's LLM usage, summed over attempts (and, for a
     # python_full edit, the edit-generation call; a retry_on_apply_failure redo does not count
@@ -217,6 +217,12 @@ async def render_geometry_diagram(
                 _dsl = trace.dsl_json  # already a plain dict
                 break
     _diagram_ir = result.diagram_ir.model_dump()
+    retry_count = len(traces)
+    if result.recipe_metadata is None and cfg.strategy != "recipe":
+        # structured / python_full carry no attempt traces on the result; `retries` is
+        # the number of failed attempts before the successful one.
+        retries = getattr(result, "retries", 0)
+        retry_count = (retries if isinstance(retries, int) else 0) + 1
     return DiagramResult(
         svg=result.svg,
         tikz=result.tikz,
@@ -225,7 +231,7 @@ async def render_geometry_diagram(
         dsl=_dsl,
         diagram_ir=_diagram_ir,
         recipes=_recipes,
-        retry_count=len(traces),
+        retry_count=retry_count,
         script=getattr(result, "script", "") or None,
         cost_usd=getattr(result, "cost_usd", None),
         warnings=list(getattr(result, "warnings", None) or []),
