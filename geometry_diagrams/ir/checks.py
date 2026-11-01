@@ -98,7 +98,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.Collinear(points=points):
                 pts = [sym[p] for p in points]
-                ok = _to_bool(spg.Point.is_collinear(*pts))
+                ok = _to_bool(spg.Point.is_collinear(*pts)) or _numerically_collinear(pts, t)
                 ids = ", ".join(repr(p) for p in points)
                 msg = "" if ok else f"Points {ids} are not collinear"
 
@@ -107,11 +107,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Object {obj!r} does not contain point {p!r}"
 
             case ir.NotContains(p=p, obj=obj):
-                ok = not _contains(sym[obj], sym[p], t)
+                ok = not _contains(sym[obj], sym[p], t, linear_tol=_EXACT_LINEAR_TOL)
                 msg = "" if ok else f"Object {obj!r} unexpectedly contains point {p!r}"
 
             case ir.Parallel(l1=l1, l2=l2):
-                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
+                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]), t)
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not parallel"
 
             case ir.NotParallel(l1=l1, l2=l2):
@@ -119,7 +119,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are unexpectedly parallel"
 
             case ir.Perpendicular(l1=l1, l2=l2):
-                ok = _to_bool(_as_linear(sym[l1]).is_perpendicular(_as_linear(sym[l2])))
+                ok = _is_perpendicular(_as_linear(sym[l1]), _as_linear(sym[l2]), t)
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not perpendicular"
 
             case ir.RightAngle(angle=angle):
@@ -392,7 +392,70 @@ def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     return abs(actual - expected) <= t * max(abs(expected), 1.0)
 
 
-def _is_parallel(obj1, obj2, tol: float = 1e-9) -> bool:
+_EXACT_LINEAR_TOL = 1e-9
+
+
+def _xy(p: Any) -> tuple[float, float]:
+    return float(p.x.evalf()), float(p.y.evalf())
+
+
+def _numerically_collinear(pts: list, tol: float) -> bool:
+    """Float-coordinate fallback for ``collinear``: every point lies within
+    ``tol`` times the set's extent of the line through its two farthest-apart
+    points (SymPy's exact test rejects float coordinates that are collinear
+    only up to rounding, however large ``tol`` is)."""
+    try:
+        xy = [_xy(p) for p in pts]
+    except (TypeError, ValueError, AttributeError):
+        return False
+    best = max(
+        ((math.dist(a, b), a, b) for i, a in enumerate(xy) for b in xy[i + 1:]),
+        default=(0.0, None, None),
+    )
+    extent, a, b = best
+    if extent == 0.0:
+        return True
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    return all(abs(dx * (y - a[1]) - dy * (x - a[0])) / extent <= tol * extent for x, y in xy)
+
+
+def _linear_contains(obj: Any, point: spg.Point, tol: float) -> bool:
+    """Float-coordinate fallback for ``contains`` on a line, ray or segment:
+    the point is within ``tol`` times max(|p1p2|, |p1 point|) of the object
+    (clamped to the ray / segment extent)."""
+    try:
+        (x1, y1), (x2, y2), (px, py) = _xy(obj.p1), _xy(obj.p2), _xy(point)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    if length == 0.0:
+        return False
+    u = ((px - x1) * dx + (py - y1) * dy) / (length * length)
+    if isinstance(obj, spg.Segment):
+        u = min(max(u, 0.0), 1.0)
+    elif isinstance(obj, spg.Ray):
+        u = max(u, 0.0)
+    gap = math.hypot(px - (x1 + u * dx), py - (y1 + u * dy))
+    return gap <= tol * max(length, math.hypot(px - x1, py - y1))
+
+
+def _is_perpendicular(obj1, obj2, tol: float) -> bool:
+    """Exact SymPy test, then a numeric fallback: the unit directions' dot
+    product is below ``tol`` (the cosine of the angle, so scale-free)."""
+    if _to_bool(obj1.is_perpendicular(obj2)):
+        return True
+    try:
+        (a1, b1), (a2, b2) = (_xy(obj1.p1), _xy(obj1.p2)), (_xy(obj2.p1), _xy(obj2.p2))
+        d1 = (b1[0] - a1[0], b1[1] - a1[1])
+        d2 = (b2[0] - a2[0], b2[1] - a2[1])
+        n = math.hypot(*d1) * math.hypot(*d2)
+        return n > 0 and abs(d1[0] * d2[0] + d1[1] * d2[1]) <= tol * n
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _is_parallel(obj1, obj2, tol: float = _EXACT_LINEAR_TOL) -> bool:
     """Check parallelism symbolically, falling back to numerical cross-product for float coords."""
     try:
         result = _to_bool(obj1.is_parallel(obj2))
@@ -420,8 +483,13 @@ def _to_bool(expr: Any) -> bool:
         return False
 
 
-def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
-    """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
+def _contains(
+    obj: Any, point: spg.Point, tol: float, linear_tol: float | None = None
+) -> bool:
+    """Check whether obj contains point, using distance-based tolerance for circles/ellipses.
+
+    A line, ray or segment is tested exactly first, then numerically within
+    ``linear_tol`` (default ``tol``, relative to the object's size)."""
     if isinstance(obj, _ARC_LIKE):
         # On the curved edge only — see point_on_arc(), which the pick_on_object
         # rule in to_sympy.py shares, so the two can't drift apart.
@@ -441,7 +509,10 @@ def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
         px, py = float(point.x.evalf()), float(point.y.evalf())
         val = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
         return abs(val - 1.0) < tol
-    return _to_bool(obj.contains(point))
+    exact = _to_bool(obj.contains(point))
+    if exact or not isinstance(obj, _LINEAR_TYPES):
+        return exact
+    return _linear_contains(obj, point, tol if linear_tol is None else linear_tol)
 
 
 _LINEAR_TYPES = (spg.Line, spg.Segment, spg.Ray)
