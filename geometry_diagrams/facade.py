@@ -15,7 +15,7 @@ from .config import GeometryConfig, resolve_config
 from .features import parse_features, tagged_insertions
 from .ir.font import FontConfig
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
-from .strategies.base import SubstanceStrategy
+from .strategies.base import SubstanceStrategy, run_sync
 from .strategies.python_full import PythonFullStrategy
 from .strategies.recipe import RecipeStrategy
 from .strategies.structured import StructureStrategy
@@ -242,10 +242,11 @@ async def render_geometry_diagram(
 def render_geometry_diagram_sync(prompt: str, **kwargs) -> DiagramResult:
     """Synchronous wrapper around render_geometry_diagram.
 
-    Note: Will raise RuntimeError if called from within a running event loop.
-    Async callers should use render_geometry_diagram directly.
+    Also works when called from inside a running event loop (the call then runs
+    on a worker thread and blocks the caller until it finishes); async callers
+    should still prefer render_geometry_diagram.
     """
-    return asyncio.run(render_geometry_diagram(prompt, **kwargs))
+    return run_sync(render_geometry_diagram(prompt, **kwargs))
 
 
 @tool
@@ -391,9 +392,9 @@ async def edit_geometry_diagram(
 def edit_geometry_diagram_sync(prompt: str, previous_dsl: Optional[dict] = None, **kwargs) -> DiagramResult:
     """Synchronous wrapper around edit_geometry_diagram.
 
-    Note: Will raise RuntimeError if called from within a running event loop.
+    Also works inside a running event loop, like render_geometry_diagram_sync.
     """
-    return asyncio.run(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
+    return run_sync(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
 
 
 def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:

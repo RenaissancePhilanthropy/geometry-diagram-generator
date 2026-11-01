@@ -19,7 +19,7 @@ from langchain_core.exceptions import OutputParserException
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, run_sync
 from .structured import QUERY_TOOL_SOLIDS_INSERTIONS, dispatch_query
 from .ir_pipeline import (
     StructuredRunResult,
@@ -622,9 +622,10 @@ def select_recipes_sync(
 ) -> RecipeSelectionResult:
     """Synchronous wrapper around :func:`select_recipes`.
 
-    Not usable inside a running event loop (use ``await select_recipes()`` there).
+    Also works inside a running event loop (it then runs on a worker thread and
+    blocks the caller); async callers should ``await select_recipes()``.
     """
-    return asyncio.run(select_recipes(prompt, model=model))
+    return run_sync(select_recipes(prompt, model=model))
 
 
 # ── strategy class ────────────────────────────────────────────────────────────

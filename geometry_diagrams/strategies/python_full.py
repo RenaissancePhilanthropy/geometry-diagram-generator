@@ -1140,8 +1140,8 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         # unambiguous line 1.
         pipeline_result.script = script.strip("\n") + "\n"
         pipeline_result.variable_ids = result.variable_ids
-        pipeline_result.entity_manifest = build_entity_manifest(
-            diagram_ir, pipeline_result.sym_full, result.variable_ids,
+        pipeline_result.entity_manifest = await asyncio.to_thread(
+            build_entity_manifest, diagram_ir, pipeline_result.sym_full, result.variable_ids,
         )
         if metadata is not None:
             metadata.attempt_traces[-1].stage = "success"
@@ -1595,7 +1595,8 @@ class PythonFullStrategy(SubstanceStrategy):
             result = await handler(retry_request)
 
         try:
-            locality_diagnostic = check_edit_locality(
+            locality_diagnostic = await asyncio.to_thread(
+                check_edit_locality,
                 top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
                 result.entity_manifest, result.diagram_ir, result.sym_full,
             )  # diagnostic only, per Global Constraints — never gates the turn
@@ -1627,7 +1628,8 @@ class PythonFullStrategy(SubstanceStrategy):
             retry_fired["value"] = True
             try:
                 retried_result = await handler(retry_request)
-                retried_diagnostic = check_edit_locality(
+                retried_diagnostic = await asyncio.to_thread(
+                    check_edit_locality,
                     top["manifest"], top["result"].diagram_ir, top["result"].sym_full,
                     retried_result.entity_manifest, retried_result.diagram_ir,
                     retried_result.sym_full,

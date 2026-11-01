@@ -93,7 +93,7 @@ async def run_ir_pipeline(
     results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym, warnings=warnings)
     # Registered kinds' warnings that need render ops and geometry (a prism's
     # dimension label contradicting its true length).
-    warnings.extend(DERIVED_REGISTRY.pipeline_warnings(diagram_ir, sym))
+    warnings.extend(await asyncio.to_thread(DERIVED_REGISTRY.pipeline_warnings, diagram_ir, sym))
     for r in results:
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)
