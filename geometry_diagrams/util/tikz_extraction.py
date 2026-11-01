@@ -13,11 +13,15 @@ from typing import Any
 # Point name normalization (A' <-> Aprime)
 # ---------------------------------------------------------------------------
 
-def _prime_variants(name: str) -> set[str]:
+def _prime_variants(name: str, strict: bool = False) -> set[str]:
     """Return the set of plausible TikZ point-name variants for *name*.
 
     Handles the many ways LLMs encode primes: A', Ap, A2, A_prime,
     Aprime, etc.  The returned set always includes the original name.
+
+    ``strict`` keeps only the spellings that unambiguously denote the same
+    point (tick marks, ``Aprime``, ``A_prime``); ``Ap``/``A1``/``Ad`` are
+    plausible names of other points, so they are dropped.
     """
     variants: set[str] = {name}
 
@@ -41,13 +45,16 @@ def _prime_variants(name: str) -> set[str]:
 
     tick = "'" * n
     spelled = {1: "prime", 2: "primeprime", 3: "tripleprime"}[n]
-    p_suffix = "p" * n          # Ap, App, Appp
     pp_suffix = {1: "p", 2: "pp", 3: "ppp"}[n]
 
     variants.update([
         f"{base}{tick}",            # A'  A''  A'''
         f"{base}{spelled}",         # Aprime  Aprimeprime  Atripleprime
         f"{base}_{spelled}",        # A_prime  A_primeprime
+    ])
+    if strict:
+        return variants
+    variants.update([
         f"{base}{pp_suffix}",       # Ap  App  Appp
         f"{base}{n}",               # A1  A2  A3
         f"{base}d" * 1 if n == 1 else f"{base}{'d' * n}",  # Ad, Add, Addd (rare)
@@ -70,12 +77,15 @@ def normalize_point_name(name: str) -> str:
     return name
 
 
-def point_names_match(expected: str, actual: str) -> bool:
+def point_names_match(expected: str, actual: str, *, strict: bool = False) -> bool:
     """Return True if *expected* and *actual* refer to the same point,
-    accounting for the many prime-notation variants LLMs produce."""
+    accounting for the many prime-notation variants LLMs produce.
+
+    ``strict=True`` (used for rendered-label text, where the text is what a
+    reader sees) accepts only tick/``prime``/``_prime`` spellings."""
     if expected == actual:
         return True
-    return actual in _prime_variants(expected)
+    return actual in _prime_variants(expected, strict=strict)
 
 # ---------------------------------------------------------------------------
 # Point extraction

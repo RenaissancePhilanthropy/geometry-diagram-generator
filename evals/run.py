@@ -874,7 +874,7 @@ def _svg_label_matches(text: str, wanted: str) -> bool:
     """Whether label ``text`` equals ``wanted`` (prime variants allowed for point
     names) or contains it as a whole token run."""
     pattern = re.compile(r"(?<![\w.])" + re.escape(wanted) + r"(?![\w.])")
-    return bool(point_names_match(wanted, text) or pattern.search(text))
+    return bool(point_names_match(wanted, text, strict=True) or pattern.search(text))
 
 
 def _norm_label_text(t: str) -> str:
@@ -907,8 +907,7 @@ def _svg_required_label_checks(svg: str, required: list[str]) -> dict[str, Any]:
     missing = []
     for req in required:
         nreq = norm(req)
-        pattern = re.compile(r"(?<![\w.])" + re.escape(nreq) + r"(?![\w.])")
-        if not any(point_names_match(nreq, t) or pattern.search(t) for t in texts):
+        if not any(_svg_label_matches(t, nreq) for t in texts):
             missing.append(req)
     return {"passed": not missing, "missing": missing}
 
@@ -926,6 +925,10 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
         passed = result.get("passed")
         if passed is False:
             failures.append(name)
+        elif passed is not True and result.get("error"):
+            # The check could not be evaluated (it raised): a broken check is
+            # not a deliberate skip, so it must not soft-pass the gate.
+            failures.append(f"{name}:error")
         elif result.get("skipped") is True or passed is None:
             skipped.append(name)
 
