@@ -311,3 +311,14 @@ class TestLabelNeedsMathtext:
         # The important thing is it doesn't crash.
         result = label_needs_mathtext("$")
         assert isinstance(result, bool)
+
+
+def test_mixed_text_and_math_routes_to_mathtext():
+    from geometry_diagrams.ir.mathtext_svg import label_needs_mathtext, render_math_to_svg
+
+    for text in ("area $A$ of S", "$a$ b", "$x$ and $y$"):
+        assert label_needs_mathtext(text)
+        assert render_math_to_svg(text, 14.0) is not None
+    # an escaped or lone dollar sign stays plain text
+    assert not label_needs_mathtext(r"cost 5 \$")
+    assert not label_needs_mathtext("cost 5$")

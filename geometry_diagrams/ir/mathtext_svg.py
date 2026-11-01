@@ -175,8 +175,12 @@ def render_math_to_svg(latex: str, font_size: float) -> MathGlyph | None:
     if not stripped:
         return None
 
-    # Ensure $...$ wrapping for the mathtext call.
+    # Ensure $...$ wrapping for the mathtext call. Mixed text/math with
+    # balanced `$` goes through as-is: mathtext renders the text runs in
+    # the plain font and the `$...$` runs as math.
     if stripped.startswith("$") and stripped.endswith("$") and len(stripped) > 2:
+        mathtext_input = stripped
+    elif _has_balanced_math_segments(stripped):
         mathtext_input = stripped
     else:
         mathtext_input = f"${stripped}$"
@@ -275,6 +279,16 @@ _MATHTEXT_COMMANDS = frozenset({
 _NESTED_SCRIPT_RE = re.compile(r"[_^]\{[^}]*[_^]")
 
 
+_UNESCAPED_DOLLAR_RE = re.compile(r"(?<!\\)\$")
+
+
+def _has_balanced_math_segments(text: str) -> bool:
+    """True if *text* holds at least one complete ``$...$`` pair (an even,
+    non-zero count of unescaped ``$``) without being wrapped by it."""
+    n = len(_UNESCAPED_DOLLAR_RE.findall(text))
+    return n >= 2 and n % 2 == 0
+
+
 def label_needs_mathtext(text: str) -> bool:
     """Return True if *text* requires the mathtext engine for correct rendering.
 
@@ -307,6 +321,11 @@ def label_needs_mathtext(text: str) -> bool:
         # font for point names. But for consistency with LaTeX output (italic
         # serif), route to mathtext — this is the geometry convention.
         # Callers may override this decision for purely-plain-text contexts.
+        return True
+
+    # Text mixed with a complete $...$ segment ("area $A$ of S") needs
+    # mathtext too; the brand-font path would print the literal `$`.
+    if _has_balanced_math_segments(stripped):
         return True
 
     # Any LaTeX command triggers mathtext

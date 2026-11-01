@@ -307,12 +307,8 @@ def _ir_to_svg_impl(
             coords, helpers, sym, drawn_object_ids(diagram)
         )
 
-    geo_w = xmin if xmin == xmax else xmax - xmin
-    geo_h = ymin if ymin == ymax else ymax - ymin
-    if geo_w == 0:
-        geo_w = 1.0
-    if geo_h == 0:
-        geo_h = 1.0
+    geo_w = (xmax - xmin) or 1.0
+    geo_h = (ymax - ymin) or 1.0
 
     # Scale: map geometry units → SVG pixels
     # Keep aspect ratio; add a small pixel margin
