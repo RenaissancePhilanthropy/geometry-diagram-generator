@@ -71,7 +71,7 @@ from geometry_diagrams.ir.pre_assert_filter import (
     random_point_defs,
     run_lints,
 )
-from .llm import get_chat_model, make_system_message
+from .llm import extract_text, get_chat_model, make_system_message
 
 # ---------------------------------------------------------------------------
 # Prompt construction
@@ -168,7 +168,7 @@ no code fences, no imports, no other statements.
 
 
 def _content_to_text(content) -> str:
-    return content if isinstance(content, str) else str(content)
+    return extract_text(content)
 
 
 async def call_pre_step_model(

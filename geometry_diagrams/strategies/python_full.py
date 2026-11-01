@@ -68,6 +68,14 @@ def _config_kwargs(config: "dict | None") -> dict:
     return {"config": config} if config else {}
 
 
+def _text_or_none(content: Any) -> "str | None":
+    """Text of a message's .content when it is a string or a list of content
+    blocks (thinking + text, ...); None for anything else."""
+    if isinstance(content, (str, list)):
+        return extract_text(content)
+    return None
+
+
 class PydslScriptPatchOutput(BaseModel):
     patch: str = Field(description="A unified diff patch to apply to the previous script.")
 
@@ -894,7 +902,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             in_tok, out_tok = extract_usage(raw_msg)
             cost = extract_cost(raw_msg)
             cost_usd = state["cost_usd"] + (cost or 0.0)
-            raw_content = raw_msg.content if isinstance(raw_msg.content, str) else None
+            raw_content = _text_or_none(raw_msg.content)
             salvaged = _clean_script(_extract_script_from_raw_text(raw_content))
             if salvaged is not None:
                 metadata.attempt_traces.append(PythonFullAttemptTrace(
@@ -934,9 +942,7 @@ async def _generate_script_node(state: PythonFullPipelineState) -> dict:
             # Some models don't honor the structured-output/tool-calling contract and
             # just write plain or markdown-fenced code instead of JSON — salvage that
             # rather than treating it as an unrecoverable parse failure.
-            raw_content = getattr(raw_msg, "content", None) if raw_msg else None
-            if not isinstance(raw_content, str):
-                raw_content = None
+            raw_content = _text_or_none(getattr(raw_msg, "content", None) if raw_msg else None)
             salvaged = _clean_script(_extract_script_from_raw_text(raw_content))
             if salvaged is not None:
                 metadata.attempt_traces.append(PythonFullAttemptTrace(
