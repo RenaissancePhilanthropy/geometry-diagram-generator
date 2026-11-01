@@ -13,10 +13,14 @@ from __future__ import annotations
 import base64
 import re
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from ..strategies.llm import get_chat_model
+from ..strategies.llm import (
+    bind_structured_output_for_model,
+    extract_text,
+    get_chat_model,
+)
 
 _CODE_REVIEW_SYSTEM = """\
 You are an expert geometry teacher and TikZ/tkz-euclide code reviewer.
@@ -63,6 +67,18 @@ Also give an overall score (1-5) and a one-sentence reasoning string.
 """
 
 
+def _clamp_score(value):
+    """Bound a judge score to [1, 5] without putting bounds in the LLM-facing schema.
+
+    Some providers reject min/max in strict structured-output schemas, so the
+    bound is applied after parsing instead.
+    """
+    try:
+        return max(1, min(5, int(round(float(value)))))
+    except (TypeError, ValueError):
+        return value
+
+
 class _JudgeResult(BaseModel):
     geometric_accuracy: int
     labeling: int
@@ -70,6 +86,11 @@ class _JudgeResult(BaseModel):
     likely_renders: int
     score: int
     reasoning: str
+
+    _bound = field_validator(
+        "geometric_accuracy", "labeling", "completeness", "likely_renders", "score",
+        mode="before",
+    )(_clamp_score)
 
 
 class _VisualJudgeResult(BaseModel):
@@ -80,12 +101,19 @@ class _VisualJudgeResult(BaseModel):
     score: int
     reasoning: str
 
+    _bound = field_validator(
+        "geometric_accuracy", "labeling", "completeness", "visual_quality", "score",
+        mode="before",
+    )(_clamp_score)
+
 
 _LABEL_TO_KEY = {
     "geometric accuracy": "geometric_accuracy",
     "labeling": "labeling",
     "completeness": "completeness",
     "visual quality": "visual_quality",
+    "likely renders": "likely_renders",
+    "likely_renders": "likely_renders",
     "overall score": "score",
 }
 
@@ -117,11 +145,33 @@ def _parse_visual_response(text: str) -> dict:
     return scores
 
 
+async def _invoke_judge(llm, schema, messages, model: str) -> BaseModel:
+    """Run a structured judge call; fall back to parsing the raw text on a parse miss.
+
+    The raw message content may be a list of blocks (thinking + text), so it is
+    flattened with extract_text before the regex fallback.
+    """
+    chain = bind_structured_output_for_model(llm, schema, model, include_raw=True)
+    out = await chain.ainvoke(messages)
+    if isinstance(out, schema):
+        return out
+    parsed = out.get("parsed") if isinstance(out, dict) else None
+    if parsed is not None:
+        return parsed
+    raw = out.get("raw") if isinstance(out, dict) else None
+    text = extract_text(getattr(raw, "content", ""))
+    scores = _parse_visual_response(text)
+    fields = {k: v for k, v in scores.items() if k in schema.model_fields}
+    if "likely_renders" in schema.model_fields:
+        fields.setdefault("likely_renders", 3)
+    return schema.model_validate(fields)
+
+
 async def judge_tikz_code(
     prompt: str,
     tikz_code: str,
     model: str = "anthropic:claude-sonnet-4-6",
-    enable_cache: bool = False,
+    enable_cache: bool = False,  # accepted for compatibility; unused
 ) -> dict:
     """
     Ask an LLM to judge whether the TikZ code correctly implements the
@@ -130,7 +180,7 @@ async def judge_tikz_code(
     Returns a dict with keys:
       score, geometric_accuracy, labeling, completeness, likely_renders, reasoning
     """
-    llm = get_chat_model(model).with_structured_output(_JudgeResult)
+    llm = get_chat_model(model)
 
     parts = [f"User prompt: {prompt}\n\nTikZ code:\n```\n{tikz_code}\n```"]
 
@@ -138,7 +188,7 @@ async def judge_tikz_code(
         SystemMessage(content=_CODE_REVIEW_SYSTEM),
         HumanMessage(content="\n".join(parts)),
     ]
-    data: _JudgeResult = await llm.ainvoke(messages)
+    data: _JudgeResult = await _invoke_judge(llm, _JudgeResult, messages, model)
 
     return {
         "score": data.score,
@@ -180,7 +230,7 @@ async def judge_rendered_diagram(
 
     b64_image = base64.b64encode(png_data).decode("utf-8")
 
-    llm = get_chat_model(model).with_structured_output(_VisualJudgeResult)
+    llm = get_chat_model(model)
 
     text_parts: list = [f"User prompt: {prompt}"]
     if tikz_code:
@@ -198,7 +248,7 @@ async def judge_rendered_diagram(
         SystemMessage(content=_VISUAL_REVIEW_SYSTEM),
         HumanMessage(content=human_content),
     ]
-    data: _VisualJudgeResult = await llm.ainvoke(messages)
+    data: _VisualJudgeResult = await _invoke_judge(llm, _VisualJudgeResult, messages, model)
 
     return {
         "score": data.score,
