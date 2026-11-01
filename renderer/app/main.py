@@ -1,11 +1,12 @@
 import asyncio
 import os
 import re
-import subprocess
 import tempfile
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from contextlib import asynccontextmanager
 from logging import getLogger
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 logger = getLogger(__name__)
 
@@ -13,15 +14,25 @@ logger = getLogger(__name__)
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "2"))
 QUEUE_SIZE = int(os.getenv("QUEUE_SIZE", "64"))
 TIMEOUT_S = int(os.getenv("RENDER_TIMEOUT_S", "15"))
+# Longest a request may wait for its result (queue wait plus both stages).
+REQUEST_TIMEOUT_S = int(os.getenv("REQUEST_TIMEOUT_S", "50"))
+MAX_FIELD_CHARS = 200_000
 
-app = FastAPI()
-sem = asyncio.Semaphore(MAX_CONCURRENT)
-queue = asyncio.Queue(maxsize=QUEUE_SIZE)
+# Paranoid file access for TeX: no dotfiles, no parent directories, no absolute
+# paths outside the TeX trees. Combined with --no-shell-escape this keeps
+# untrusted TikZ from reading or writing arbitrary files.
+SUBPROCESS_ENV = {**os.environ, "openin_any": "p", "openout_any": "p"}
+
+# Created in the lifespan so they belong to the running event loop.
+sem: asyncio.Semaphore | None = None
+queue: asyncio.Queue | None = None
+
 
 class RenderReq(BaseModel):
-    tikz: str
-    tkzelements: str | None = None  # optional block for tkz-elements
-    font_family: str | None = None
+    tikz: str = Field(max_length=MAX_FIELD_CHARS)
+    # optional block for tkz-elements
+    tkzelements: str | None = Field(default=None, max_length=MAX_FIELD_CHARS)
+    font_family: str | None = Field(default=None, max_length=64)
 
 TEMPLATE = r"""
 \documentclass[border=0pt]{{standalone}}
@@ -47,15 +58,33 @@ TEMPLATE = r"""
 \end{{document}}
 """.lstrip()
 
-def run_cmd(cmd: list[str], cwd: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        cmd,
+
+class CommandTimeout(Exception):
+    """A subprocess exceeded TIMEOUT_S and was killed."""
+
+
+async def run_cmd(cmd: list[str], cwd: str) -> tuple[int, str]:
+    """Run ``cmd`` without blocking the event loop; return (returncode, output).
+
+    Raises CommandTimeout (after killing the process) past TIMEOUT_S."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
         cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=TIMEOUT_S,
+        env=SUBPROCESS_ENV,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
     )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=TIMEOUT_S)
+    except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+        proc.kill()
+        await proc.wait()
+        if isinstance(e, asyncio.CancelledError):
+            raise
+        raise CommandTimeout(f"{cmd[0]} timed out after {TIMEOUT_S}s") from e
+    return proc.returncode, out.decode("utf-8", errors="replace")
+
 
 async def render_svg(req: RenderReq) -> dict:
     async with sem:
@@ -79,42 +108,89 @@ async def render_svg(req: RenderReq) -> dict:
                 f.write(tex)
 
             # 1) lualatex -> PDF
-            p1 = run_cmd([
-                "lualatex",
-                "--interaction=nonstopmode",
-                "--halt-on-error",
-                "-file-line-error",
-                "main.tex",
-            ], cwd=td)
+            try:
+                code1, out1 = await run_cmd([
+                    "lualatex",
+                    "--no-shell-escape",
+                    "--interaction=nonstopmode",
+                    "--halt-on-error",
+                    "-file-line-error",
+                    "main.tex",
+                ], cwd=td)
+            except CommandTimeout as e:
+                logger.warning("lualatex timed out")
+                return {"ok": False, "stage": "lualatex", "log": str(e)}
 
-            if p1.returncode != 0:
-                logger.warning("lualatex failed: %s", p1.stdout)
-                return {"ok": False, "stage": "lualatex", "log": p1.stdout}
+            if code1 != 0:
+                logger.warning("lualatex failed: %s", out1)
+                return {"ok": False, "stage": "lualatex", "log": out1}
 
-            logger.info("lualatex succeeded: %s", p1.stdout)
+            logger.info("lualatex succeeded: %s", out1)
 
             # 2) dvisvgm -> SVG
-            p2 = run_cmd([
-                "dvisvgm",
-                "--no-fonts",
-                "--pdf",
-                "--bbox=min",
-                "--exact-bbox",
-                "-Oall",
-                "-o", "out.svg",
-                "main.pdf",
-            ], cwd=td)
+            try:
+                code2, out2 = await run_cmd([
+                    "dvisvgm",
+                    "--no-fonts",
+                    "--pdf",
+                    "--bbox=min",
+                    "--exact-bbox",
+                    "-Oall",
+                    "-o", "out.svg",
+                    "main.pdf",
+                ], cwd=td)
+            except CommandTimeout as e:
+                logger.warning("dvisvgm timed out")
+                return {"ok": False, "stage": "dvisvgm", "log": str(e)}
 
-            if p2.returncode != 0 or not os.path.exists(os.path.join(td, "out.svg")):
-                logger.warning("dvisvgm failed: %s", p2.stdout)
-                return {"ok": False, "stage": "dvisvgm", "log": p2.stdout}
+            if code2 != 0 or not os.path.exists(os.path.join(td, "out.svg")):
+                logger.warning("dvisvgm failed: %s", out2)
+                return {"ok": False, "stage": "dvisvgm", "log": out2}
 
-            logger.info("dvisvgm succeeded: %s", p2.stdout)
-            
+            logger.info("dvisvgm succeeded: %s", out2)
+
             with open(os.path.join(td, "out.svg"), "r", encoding="utf-8") as f:
                 svg = f.read()
 
-            return {"ok": True, "svg": svg, "log": p1.stdout + "\n" + p2.stdout}
+            return {"ok": True, "svg": svg, "log": out1 + "\n" + out2}
+
+
+async def worker() -> None:
+    """Pull queued requests forever and resolve their futures."""
+    while True:
+        req, fut = await queue.get()
+        try:
+            if fut.done():
+                # The handler gave up (timeout or disconnect) while it queued.
+                continue
+            try:
+                res = await render_svg(req)
+            except Exception as e:
+                res = {"ok": False, "stage": "exception", "log": repr(e)}
+            if not fut.done():
+                fut.set_result(res)
+        finally:
+            queue.task_done()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global sem, queue
+    sem = asyncio.Semaphore(MAX_CONCURRENT)
+    queue = asyncio.Queue(maxsize=QUEUE_SIZE)
+    # Strong references: the loop keeps only weak ones to tasks, and a
+    # cancelled request handler must never take a worker down with it.
+    app.state.workers = [asyncio.create_task(worker()) for _ in range(MAX_CONCURRENT)]
+    try:
+        yield
+    finally:
+        for task in app.state.workers:
+            task.cancel()
+        await asyncio.gather(*app.state.workers, return_exceptions=True)
+
+
+app = FastAPI(lifespan=lifespan)
+
 
 @app.post("/render")
 async def render(req: RenderReq):
@@ -123,24 +199,12 @@ async def render(req: RenderReq):
 
     fut = asyncio.get_running_loop().create_future()
     await queue.put((req, fut))
-    return await fut
+    try:
+        return await asyncio.wait_for(fut, timeout=REQUEST_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Render timed out")
+
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-@app.on_event("startup")
-async def _startup():
-    async def worker():
-        while True:
-            req, fut = await queue.get()
-            try:
-                res = await render_svg(req)
-                fut.set_result(res)
-            except Exception as e:
-                fut.set_result({"ok": False, "stage": "exception", "log": repr(e)})
-            finally:
-                queue.task_done()
-
-    # One dispatcher; concurrency is handled by the semaphore
-    asyncio.create_task(worker())
