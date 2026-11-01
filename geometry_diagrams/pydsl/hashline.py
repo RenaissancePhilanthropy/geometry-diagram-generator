@@ -26,6 +26,12 @@ from __future__ import annotations
 
 import hashlib
 
+from geometry_diagrams.pydsl._line_splice import (
+    check_and_splice,
+    require_op_fields,
+    split_script_lines,
+)
+
 _TAG_HEX_CHARS = 2  # visible hash-tag length, matching the reference hashline tool
 
 
@@ -44,7 +50,7 @@ def _compute_hash(line: str, hash_algorithm: str) -> str:
 
 def _tag_map(script: str, hash_algorithm: str) -> dict[str, int]:
     """tag -> 1-indexed line number, computed against `script` as given."""
-    lines = script.splitlines()
+    lines, _eol, _trailing = split_script_lines(script)
     return {
         f"{i}:{_compute_hash(line, hash_algorithm)}": i
         for i, line in enumerate(lines, start=1)
@@ -54,11 +60,19 @@ def _tag_map(script: str, hash_algorithm: str) -> dict[str, int]:
 def render_hashline_view(script: str, hash_algorithm: str = "blake2s") -> str:
     """The annotated view shown to the model: one line per source line,
     prefixed with its tag, e.g. "3:a1| c = point(0, 1)"."""
-    lines = script.splitlines()
+    lines, _eol, _trailing = split_script_lines(script)
     return "\n".join(
         f"{i}:{_compute_hash(line, hash_algorithm)}| {line}"
         for i, line in enumerate(lines, start=1)
     )
+
+
+_REQUIRED_FIELDS = {
+    "insert": ("after", "content"),
+    "delete": ("tag",),
+    "replace": ("tag", "content"),
+    "block_replace": ("start_tag", "end_tag", "content"),
+}
 
 
 def apply_hashline_ops(script: str, ops: list[dict], hash_algorithm: str = "blake2s") -> str:
@@ -69,7 +83,7 @@ def apply_hashline_ops(script: str, ops: list[dict], hash_algorithm: str = "blak
     a single batch. Raises HashlineError naming exactly what went wrong
     (stale tag / invalid order / unknown kind) if any check fails — the
     whole turn fails, never a partial application."""
-    lines = script.splitlines()
+    lines, eol, had_trailing = split_script_lines(script)
     tag_to_line = _tag_map(script, hash_algorithm)
 
     def resolve(tag: str) -> int:
@@ -83,6 +97,9 @@ def apply_hashline_ops(script: str, ops: list[dict], hash_algorithm: str = "blak
     resolved: list[tuple[int, "int | None", dict]] = []
     for op in ops:
         kind = op.get("kind")
+        required = _REQUIRED_FIELDS.get(kind)
+        if required:
+            require_op_fields(op, required, HashlineError, "hashline")
         if kind == "insert":
             after = op["after"]
             start_line = 0 if after == "start" else resolve(after)
@@ -105,47 +122,4 @@ def apply_hashline_ops(script: str, ops: list[dict], hash_algorithm: str = "blak
         else:
             raise HashlineError(f"unknown hashline op kind: {kind!r}")
 
-    # Non-decreasing, non-overlapping order (mirrors apply_script_patch's
-    # backward-hunk check — same principle, same rationale).
-    ops_by_start = sorted(resolved, key=lambda r: r[0])
-    previous_end = -1
-    for start_line, end_line, _op in ops_by_start:
-        if start_line <= previous_end:
-            raise HashlineError(
-                f"hashline ops overlap or are out of order at line {start_line} "
-                f"(previous op ended at line {previous_end}); "
-                "ops must reference non-overlapping, non-decreasing line ranges"
-            )
-        # An insert's end_line is None (it doesn't consume an original
-        # line, just anchors after one) — but its start_line still
-        # occupies that anchor position and must block any other op
-        # (insert/delete/replace/block_replace) touching the same line,
-        # regardless of the ops' order in the input list. Without this,
-        # Python's stable sort would make the outcome depend on list
-        # order for ties at the same line.
-        previous_end = end_line if end_line is not None else start_line
-
-    # Single batch pass over the original lines, splicing in each op's
-    # effect at its resolved (pre-turn) position.
-    result_lines: list[str] = []
-    cursor = 0  # 0-indexed position into `lines` already emitted
-    for start_line, end_line, op in ops_by_start:
-        kind = op["kind"]
-        if kind == "insert":
-            result_lines.extend(lines[cursor:start_line])
-            result_lines.append(op["content"])
-            cursor = start_line
-        elif kind == "delete":
-            result_lines.extend(lines[cursor : start_line - 1])
-            cursor = start_line
-        elif kind == "replace":
-            result_lines.extend(lines[cursor : start_line - 1])
-            result_lines.append(op["content"])
-            cursor = start_line
-        elif kind == "block_replace":
-            result_lines.extend(lines[cursor : start_line - 1])
-            result_lines.append(op["content"])
-            cursor = end_line
-
-    result_lines.extend(lines[cursor:])
-    return "\n".join(result_lines) + "\n"
+    return check_and_splice(lines, eol, had_trailing, resolved, HashlineError, "hashline")

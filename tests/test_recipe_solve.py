@@ -181,10 +181,12 @@ def test_overdefined_3_angles_bad_sum():
         solve_triangle(["A","B","C"], {"angle_A": 70, "angle_B": 70, "angle_C": 70, "side_AB": 3})
 
 def test_overdefined_sss_with_extra_angle():
-    # SSS + redundant angle → uses SSS
-    coords = solve_triangle(["A","B","C"], {"side_AB": 3, "side_BC": 4, "side_CA": 5, "angle_A": 90})
-    # Should solve (it's a right triangle)
+    # SSS + consistent redundant angle → uses SSS. The right angle of a 3-4-5
+    # triangle with CA=5 is at B (opposite the hypotenuse), not A.
+    coords = solve_triangle(["A","B","C"], {"side_AB": 3, "side_BC": 4, "side_CA": 5, "angle_B": 90})
     assert all(k in coords for k in ["A","B","C"])
+    with pytest.raises(SpecError):
+        solve_triangle(["A","B","C"], {"side_AB": 3, "side_BC": 4, "side_CA": 5, "angle_A": 90})
 
 def test_aaa_no_sides():
     with pytest.raises(SpecError):

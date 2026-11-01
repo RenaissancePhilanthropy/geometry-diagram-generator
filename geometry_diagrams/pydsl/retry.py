@@ -16,6 +16,7 @@ from __future__ import annotations
 import difflib
 import inspect
 import re
+from collections.abc import Iterable
 
 import geometry_diagrams.pydsl as pydsl_module
 from geometry_diagrams.pydsl.builder import GeometricAssertionError, OpCapExceededError
@@ -87,12 +88,33 @@ def _extract_bad_name(message: str) -> "str | None":
     return match.group(1) if match else None
 
 
-def build_retry_message(exc_or_message: "Exception | str", script: str) -> str:
+def _candidate_pool(features: "Iterable[str]", enable_cookbook: bool) -> list[str]:
+    """Core API function names plus those an enabled feature group (and the
+    cookbook, when enabled) adds to the sandbox namespace. Functions only,
+    for the same reason as PUBLIC_API_FUNCTION_NAMES."""
+    pool = list(PUBLIC_API_FUNCTION_NAMES)
+    extra: list[str] = []
+    for group in sorted(features):
+        extra += pydsl_module.GROUPED_NAMES.get(group, [])
+    if enable_cookbook:
+        extra += pydsl_module.COOKBOOK_NAMES
+    for name in extra:
+        if name not in pool and inspect.isfunction(getattr(pydsl_module, name, None)):
+            pool.append(name)
+    return pool
+
+
+def build_retry_message(
+    exc_or_message: "Exception | str",
+    script: str,
+    features: "Iterable[str]" = (),
+    enable_cookbook: bool = False,
+) -> str:
     message = str(exc_or_message)
     if classify_failure(exc_or_message) in ("hallucinated_api", "dangerous_call"):
         bad_name = _extract_bad_name(message)
         if bad_name:
-            suggestion = suggest_name(bad_name, PUBLIC_API_FUNCTION_NAMES)
+            suggestion = suggest_name(bad_name, _candidate_pool(features, enable_cookbook))
             if suggestion:
                 message = f"{message} — did you mean '{suggestion}'?"
     return message

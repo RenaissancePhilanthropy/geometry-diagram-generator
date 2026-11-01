@@ -74,6 +74,35 @@ _DEFAULT_CHILD_ARGV = [sys.executable, "-m", "geometry_diagrams.pydsl._sandbox_c
 _EOF = object()  # sentinel placed on the message queue when the child's stdout closes
 
 
+# Environment variables the sandboxed child may inherit. Everything else
+# (API keys, tokens, cloud credentials, tracing config) is withheld, since the
+# child runs untrusted, model-written code. PYTHONPATH is always rebuilt from
+# sys.path rather than inherited.
+_CHILD_ENV_ALLOWED = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TZ",
+    "TMPDIR", "TMP", "TEMP", "MPLCONFIGDIR", "MPLBACKEND", "XDG_CACHE_HOME",
+    "PYTHONHASHSEED", "PYTHONHOME", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE",
+    "PYTHONNOUSERSITE", "VIRTUAL_ENV", "LD_LIBRARY_PATH", "SYSTEMROOT",
+    "LAMBDA_TASK_ROOT", "LAMBDA_RUNTIME_DIR",
+    "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+})
+_CHILD_ENV_ALLOWED_PREFIXES = ("LC_",)
+_CHILD_ENV_SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "LANGFUSE", "AWS_")
+
+
+def _build_child_env(environ: "dict[str, str] | None" = None) -> dict:
+    """Minimal environment for the sandbox child: an allowlist of what Python,
+    matplotlib, sympy and smolagents need, minus anything secret-looking."""
+    source = os.environ if environ is None else environ
+    env = {}
+    for name, value in source.items():
+        if name in _CHILD_ENV_ALLOWED or name.startswith(_CHILD_ENV_ALLOWED_PREFIXES):
+            if not any(marker in name.upper() for marker in _CHILD_ENV_SECRET_MARKERS):
+                env[name] = value
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    return env
+
+
 def _child_rss_bytes(pid: int) -> "int | None":
     """Resident set size of `pid` in bytes, or None if it can't be read
     (already exited, `ps` unavailable, etc.) — treated as "no reading
@@ -213,8 +242,7 @@ def run_script(
     # to sys.path at runtime rather than via an actual PYTHONPATH env var. A
     # plain subprocess.Popen has no such protocol, so this replicates it
     # explicitly rather than silently losing it.
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    env = _build_child_env()
 
     proc = subprocess.Popen(
         argv,
@@ -225,16 +253,26 @@ def run_script(
     # populates these (they're typed Optional only because Popen supports
     # not redirecting a given stream at all).
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
-    proc.stdin.write(
-        json.dumps({
-            "script": script,
-            "timeout_seconds": timeout_seconds,
-            "enable_cookbook": enable_cookbook,
-            "features": sorted(features),
-        }) + "\n"
-    )
-    proc.stdin.flush()
-    proc.stdin.close()
+    try:
+        proc.stdin.write(
+            json.dumps({
+                "script": script,
+                "timeout_seconds": timeout_seconds,
+                "enable_cookbook": enable_cookbook,
+                "features": sorted(features),
+            }) + "\n"
+        )
+        proc.stdin.flush()
+    except BrokenPipeError:
+        # The child died before reading its request. Fall through: the
+        # bootstrap wait below sees the dead process and reports a
+        # sandbox_setup_error with the exit code and stderr tail.
+        logger.warning("sandbox: pid=%s closed stdin before the request was written", proc.pid)
+    finally:
+        try:
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
     logger.info("sandbox: spawned pid=%s for a %.1fs script timeout", proc.pid, timeout_seconds)
 
     msg_queue: "queue.Queue" = queue.Queue()

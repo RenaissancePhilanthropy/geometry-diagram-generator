@@ -204,6 +204,8 @@ def solve_triangle(
                 "Supported: AAS, SAS, SSS, ASA, right_angle_at+two_sides."
             )
 
+    _verify_spec_against_result(vertices, spec, result)
+
     # Apply custom centroid placement if requested
     if center is not None:
         cx_target, cy_target = float(center[0]), float(center[1])
@@ -219,6 +221,44 @@ def solve_triangle(
 # ---------------------------------------------------------------------------
 # Solvers
 # ---------------------------------------------------------------------------
+
+_VERIFY_ANGLE_TOL_DEG = 1.0  # matches the 3-angle sum tolerance above
+_VERIFY_SIDE_REL_TOL = 5e-3
+
+
+def _verify_spec_against_result(
+    vertices: list[str],
+    spec: dict[str, Any],
+    result: dict[str, tuple[float, float]],
+) -> None:
+    """Raise SpecError if any angle_X / side_XY in `spec` — including ones the
+    solver dropped as redundant — disagrees with the solved triangle."""
+    for key, value in spec.items():
+        if key.startswith("angle_") and key[len("angle_"):] in vertices:
+            vertex = key[len("angle_"):]
+            others = [v for v in vertices if v != vertex]
+            px, py = result[vertex]
+            ax, ay = result[others[0]][0] - px, result[others[0]][1] - py
+            bx, by = result[others[1]][0] - px, result[others[1]][1] - py
+            cos_a = (ax * bx + ay * by) / (math.hypot(ax, ay) * math.hypot(bx, by))
+            actual = math.degrees(math.acos(max(-1.0, min(1.0, cos_a))))
+            if abs(actual - float(value)) > _VERIFY_ANGLE_TOL_DEG:
+                raise SpecError(
+                    f"{key}={value} contradicts the other constraints "
+                    f"(they give {actual:.2f}°)"
+                )
+        elif key.startswith("side_"):
+            try:
+                sv0, sv1 = _split_side_key(key[len("side_"):], vertices)
+            except SpecError:
+                continue
+            actual = math.dist(result[sv0], result[sv1])
+            expected = float(value)
+            if abs(actual - expected) > _VERIFY_SIDE_REL_TOL * max(expected, actual, 1e-12):
+                raise SpecError(
+                    f"{key}={value} contradicts the other constraints "
+                    f"(they give {actual:.4g})"
+                )
 
 def _layout(v0: str, v1: str, v2: str, A: tuple, B: tuple, C: tuple) -> dict:
     """Translate so centroid ≈ (2, 2)."""
