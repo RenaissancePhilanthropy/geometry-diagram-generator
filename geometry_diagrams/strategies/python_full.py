@@ -1475,7 +1475,7 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_patch(req: str) -> StructuredRunResult:
             patch_prompt = build_patch_request_prompt(req, top["script"], top["manifest"])
-            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model, **_config_kwargs(config))
+            patch_text, in_tok, out_tok, cost = await _generate_patch(patch_prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
             patched_script = apply_script_patch(top["script"], patch_text)
             return await _run_from_script(
                 patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1484,7 +1484,7 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_search_replace(req: str) -> StructuredRunResult:
             prompt = build_search_replace_request_prompt(req, top["script"], top["manifest"])
-            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model, **_config_kwargs(config))
+            blocks, in_tok, out_tok, cost = await generate_search_replace(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
             new_script = apply_search_replace(top["script"], blocks)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1494,7 +1494,7 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_hashline(req: str) -> StructuredRunResult:
             hashline_view = render_hashline_view(top["script"], hash_algorithm)
             prompt = build_hashline_request_prompt(req, hashline_view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model, **_config_kwargs(config))
+            ops, in_tok, out_tok, cost = await _generate_hashline_ops(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
             new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
@@ -1504,7 +1504,7 @@ class PythonFullStrategy(SubstanceStrategy):
         async def _edit_line_number(req: str) -> StructuredRunResult:
             view = render_line_number_view(top["script"])
             prompt = build_line_number_request_prompt(req, view, top["manifest"])
-            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model, **_config_kwargs(config))
+            ops, in_tok, out_tok, cost = await _generate_line_number_ops(prompt, model, enable_cache=self.enable_cache, **_config_kwargs(config))
             delete_replace_ops = [op for op in ops if op.get("kind") in ("delete", "replace")]
             # Written before apply_line_number_ops runs, so a
             # failed apply still leaves this readable (see
