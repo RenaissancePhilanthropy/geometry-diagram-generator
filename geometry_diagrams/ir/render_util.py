@@ -207,8 +207,8 @@ def tikz_color(text: str) -> tuple[str, str | None]:
 
 def unrecognized_color_warning(text: str) -> str:
     return (
-        f"Unrecognized color {text!r}: passed through unchanged, so the two renderers "
-        f"may disagree on it. Use a named color ({', '.join(sorted(NAMED_STYLE_COLORS))}), "
+        f"Unrecognized color {text!r}: SVG passes it through unchanged and TikZ does too "
+        f"unless it has unsafe characters (then black), so the two renderers may disagree on it. Use a named color ({', '.join(sorted(NAMED_STYLE_COLORS))}), "
         f"hex '#rrggbb', 'rgb(r, g, b)' (0-255), 'hsv(h, s, v)' (h 0-360, s and v 0-1) "
         f"or an xcolor mix such as 'blue!30' or 'red!40!blue'."
     )

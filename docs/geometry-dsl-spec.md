@@ -1361,7 +1361,8 @@ Hex, `rgb()` and `hsv()` become `#rrggbb` in SVG and a `\definecolor` (xcolor
 `RGB` model) in TikZ, so the same value paints the same color in both; a mix
 is converted to `#rrggbb` in SVG and passed to xcolor as-is in TikZ. An
 unrecognized string is passed through unchanged with a renderer warning (the
-two renderers may disagree on it). A render op's bare `style` that is not a
+two renderers may disagree on it); in TikZ one with characters outside
+`[A-Za-z0-9!.,#%()\- ]` is replaced by `black`, so it cannot inject TeX. A render op's bare `style` that is not a
 key of `styles` but is itself a recognized color is honored as that color for
 both draw and fill in both renderers; bare `none` is not a color (it is
 accepted only as a value inside a style, e.g. `fill: none`).
