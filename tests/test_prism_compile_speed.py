@@ -1,5 +1,6 @@
-"""Prism compile cost: the six faces are built without SymPy's validating
-polygon constructor (registry ``trusted_faces``) and projections are cached."""
+"""Prism compile cost: projections are cached. The faces keep SymPy's validating
+polygon constructor on purpose: it is what rejects a degenerate (tiny) prism
+with an IRCompileError (tests/test_post_review_fixes.py)."""
 from __future__ import annotations
 
 import time
@@ -37,26 +38,7 @@ def test_custom_oblique_projection_compiles_within_budget():
     assert time.monotonic() - start < BUDGET_SECONDS
 
 
-@pytest.mark.parametrize("kw", [
-    {}, {"view": "isometric"}, {"side": "left"},
-])
-def test_faces_are_trusted_and_match_validated_polygons(kw):
-    diagram = _diagram(**kw)
-    sym = compile_defs(diagram)
-    faces = [s for s in effective_defs(diagram) if s.kind == "polygon"]
-    assert len(faces) == 6
-    for stmt in faces:
-        assert REGISTRY.is_trusted_face(stmt, sym)
-        raw = sym[stmt.id]
-        validated = spg.Polygon(*[sym[p] for p in stmt.points])
-        # the validating constructor prunes nothing: same vertices, same order
-        assert list(raw.vertices) == list(validated.vertices)
-        assert raw.area == validated.area
-
-
 def test_angle_marks_at_prism_corners_still_validate():
-    # Corner angles are carried by the prism's synthesized edge segments, not
-    # by its face polygons, so skipping the faces loses nothing.
     diagram = _diagram(render=[
         ir.MarkRightAngles(angles=[ir.AnglePoints(a="P_v100", o="P_v000", b="P_v010")]),
     ])
