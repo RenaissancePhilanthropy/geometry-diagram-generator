@@ -268,6 +268,20 @@ def angle_within_sweep(
     return offset <= span + tol_deg or offset >= 360.0 - tol_deg
 
 
+SEMICIRCLE_SNAP_DEG = 1e-9
+
+
+def snap_semicircle_deg(ccw_deg: float) -> float:
+    """Snap a counter-clockwise sweep within float noise of 180 to exactly 180,
+    so a diameter chord is a semicircle however its endpoint angles round."""
+    return 180.0 if abs(ccw_deg - 180.0) < SEMICIRCLE_SNAP_DEG else ccw_deg
+
+
+def snap_semicircle_rad(ccw_rad: float) -> float:
+    """Radian twin of ``snap_semicircle_deg``."""
+    return math.pi if abs(ccw_rad - math.pi) < math.radians(SEMICIRCLE_SNAP_DEG) else ccw_rad
+
+
 def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
     """Return (cx, cy, start_deg, end_deg) for a circular arc/sector's CCW sweep.
 
@@ -290,6 +304,7 @@ def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
     ccw = (e_deg - s_deg) % 360.0
     if ccw == 0:
         ccw = 360.0
+    ccw = snap_semicircle_deg(ccw)
     # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
     if (ccw <= 180.0) == bool(arc.reflex):
         s_deg, e_deg = e_deg, s_deg
@@ -1867,7 +1882,7 @@ def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]
     s = frame.param_of(float(obj.start.x.evalf()), float(obj.start.y.evalf()))
     e = frame.param_of(float(obj.end.x.evalf()), float(obj.end.y.evalf()))
     s, e = s % (2 * math.pi), e % (2 * math.pi)
-    ccw = (e - s) % (2 * math.pi) or 2 * math.pi
+    ccw = snap_semicircle_rad((e - s) % (2 * math.pi) or 2 * math.pi)
     if (ccw <= math.pi) == bool(obj.reflex):
         s, e = e, s
     if e <= s:
@@ -2168,6 +2183,7 @@ def _reflex_for_bulge_toward(
     ccw = (theta_e - theta_s) % (2 * math.pi)
     if ccw == 0:
         ccw = 2 * math.pi
+    ccw = snap_semicircle_rad(ccw)
     if ccw <= math.pi:
         minor_mid = theta_s + ccw / 2
     else:
