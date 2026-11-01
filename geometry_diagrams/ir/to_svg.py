@@ -29,7 +29,9 @@ import sympy.geometry as spg
 
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_diagram, lower_render
-from .font import FontConfig, FONT_VARIANTS, default_font_config
+from .font import (
+    DEFAULT_FONT_FAMILY, FONT_FAMILY_RE, FONT_VARIANTS, FontConfig, default_font_config,
+)
 from .mathtext_svg import MathGlyph, label_needs_mathtext, render_math_to_svg
 from .to_sympy import Arc, EllipticalArc, EllipticalSector, RotatedEllipse, Sector, SymTable
 from .render_util import (
@@ -241,6 +243,17 @@ def ir_to_svg(
     family (``default_font_config()`` when none is given)."""
     if font_config is None:
         font_config = default_font_config()
+    if not FONT_FAMILY_RE.fullmatch(font_config.family):
+        # The family is interpolated into the SVG <style>; a name outside the
+        # renderer server's syntax could break out of it.
+        message = (
+            f"Invalid font family {font_config.family!r} (allowed: letters, digits, "
+            f"'_' and '-'); using {DEFAULT_FONT_FAMILY}."
+        )
+        logger.warning(message)
+        if warnings is not None:
+            warnings.append(message)
+        font_config = FontConfig(family=DEFAULT_FONT_FAMILY)
     token = _MEASURE_FAMILY.set(font_config.family)
     try:
         return _ir_to_svg_impl(
