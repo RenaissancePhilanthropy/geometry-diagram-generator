@@ -163,7 +163,7 @@ No.
 [Email at submission time.]
 
 **Is there an erratum?**
-A `CHANGELOG.md` will track version increments and any rolled-back scenarios. Each release is git-tagged.
+There is no separate changelog file yet; version increments and any rolled-back scenarios are recorded in the git history, and each release is git-tagged.
 
 **Will the dataset be updated?**
 Yes — we plan a v1.0 at submission, v1.1 with the hardening pass, and a v2.0 if topic-breadth (3D, transformations, proofs) is added.
@@ -175,4 +175,4 @@ N/A (no people).
 Yes — all versions remain available under their git tags.
 
 **If others want to extend/augment/build on/contribute to the dataset, is there a mechanism for them to do so?**
-A `CONTRIBUTING.md` will document the process for submitting new templates. The template-engine architecture (one Python function per template, one YAML output per scenario) makes contribution straightforward, and `evals/scenarios.py::_validate_scenarios` provides automatic schema enforcement.
+There is no `CONTRIBUTING.md` yet. The template-engine architecture (one Python function per template, one YAML output per scenario) makes contribution straightforward, and `evals/scenarios.py::_validate_scenarios` provides automatic schema enforcement.

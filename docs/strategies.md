@@ -14,6 +14,7 @@ All strategies implement the `SubstanceStrategy` base class (`strategies/base.py
 | `RawSVGWithReviseStrategy` | 2 | No | Mandatory revision pass | SVG format check |
 | `StructureStrategy` | 1 (retried) | Yes | Compile/check/render feedback | SymPy checks |
 | `RecipeStrategy` | 1–2 (optional selector) | Yes | DSL + lowering feedback | SymPy checks |
+| `PythonFullStrategy` | 1 (retried; optional pre-assert step) | Yes | Script execution/compile/check/render feedback (up to `MAX_RETRIES=3`) | SymPy checks |
 
 ---
 
@@ -145,6 +146,29 @@ flowchart TD
 
 ---
 
+### `PythonFullStrategy` (`strategies/python_full.py`)
+
+The LLM writes a plain Python construction script against the `geometry_diagrams/pydsl/` builder API. The script runs in a resource-limited subprocess (`pydsl/sandbox.py`, minimal allowlisted environment, default timeout 2.5 s), its recorded ops become a `DiagramIR`, and the shared IR pipeline compiles, checks and renders it. Sandbox, compile, check and render errors are fed back as retry context (up to `MAX_RETRIES=3`). Edits take the prior script (`previous_script`), rerun it to rebuild its entity manifest, and apply the edit in `edit_generation_mode` (`search_replace` by default).
+
+```mermaid
+flowchart TD
+    A([User Prompt]) --> P[pre_assert_step\noptional: proposes and filters checks]
+    P --> B
+    A --> B[generate_script\nLLM writes pydsl script]
+    B --> C[run_script\nsandboxed execution]
+    C --> D{IR Pipeline\ncompile → checks → render}
+    D -->|success| E([SVG + script + DiagramIR])
+    D -->|failure + error context| B
+    C -->|sandbox error| B
+    B -->|max 3 attempts| F([Failure])
+```
+
+### `pre_assert_step` (`strategies/pre_assert_step.py`)
+
+Not a strategy: an optional LLM call ahead of script generation (`PythonFullStrategy.run(use_pre_assert_step=True)`). It proposes geometric invariants for the request, parses them into `ir.Check` objects, and runs each through the 4-stage pre-filter in `ir/pre_assert_filter.py` (API-name validation, generic-instance grounding, structural lints, request relevance). Survivors become advisory context in the script-writer's prompt.
+
+---
+
 ## Base Class (`strategies/base.py`)
 
 ```mermaid
@@ -161,4 +185,5 @@ classDiagram
     SubstanceStrategy <|-- RawSVGWithReviseStrategy
     SubstanceStrategy <|-- StructureStrategy
     SubstanceStrategy <|-- RecipeStrategy
+    SubstanceStrategy <|-- PythonFullStrategy
 ```

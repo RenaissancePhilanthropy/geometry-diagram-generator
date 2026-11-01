@@ -168,7 +168,7 @@ PILOT_DIR=$REPO_ROOT/evals/results/headline_run \
 ## Decisions deferred to user
 
 1. Budget tier (full / no-Opus-recipe / no-Opus). Default recommendation: **no-Opus-recipe** (≈$1,580) — Opus + recipe was not in the pilot, so we have no evidence it adds Pareto signal; skipping saves ~$540.
-2. Whether to also rerun on `bench_curriculum.yaml` (201 scenarios, mostly LLM-extracted). Currently the paper reports both splits but the curriculum was only run during one earlier pilot. Adds ~$700 at full scope.
+2. Whether to also rerun on `evals/scenarios_geometry_curriculum.yaml` (201 scenarios, mostly LLM-extracted). Currently the paper reports both splits but the curriculum was only run during one earlier pilot. Adds ~$700 at full scope.
 3. LLM-judge: leave off for cost (default). Re-add post-hoc via `evals/regrade.py` only if a reviewer pushes back on the verifier-only verdicts.
 4. **Opus structured**: accept N≪600 as a deployment finding (pilot precedent), or push for a higher Anthropic quota tier first?
 
