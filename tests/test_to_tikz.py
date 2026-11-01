@@ -1648,3 +1648,30 @@ def test_circle_tangent_at_centre_is_addressable_as_a_tikz_point():
     """The compile-time derived centre is emitted like any other named point."""
     tikz = _compile_tikz(_tangent_circle_diagram())
     assert "\\tkzDefPoint(4,0){tc_center}" in tikz
+
+
+def test_free_text_and_brace_labels_escape_tex_specials():
+    from geometry_diagrams.ir.ir import DrawBrace, LabelFreeText
+
+    text = 'a<b & c>d "q" 50% #1 x_1'
+    diagram = DiagramIR(
+        define=[PointFixed(id="A", x=0, y=0)],
+        render=[
+            LabelFreeText(text=text, at=[1, 1]),
+            DrawBrace(p1=[0, 0], p2=[2, 0], label=text),
+        ],
+    )
+    tikz = _compile_tikz(diagram)
+    escaped = r'a<b \& c>d "q" 50\% \#1 x\_1'
+    assert tikz.count("{" + escaped + "}") == 2
+
+
+def test_free_text_latex_input_is_unchanged():
+    from geometry_diagrams.ir.ir import LabelFreeText
+
+    for text in (r"$x_1 & y$", r"\textbf{a_b}"):
+        diagram = DiagramIR(
+            define=[PointFixed(id="A", x=0, y=0)],
+            render=[LabelFreeText(text=text, at=[1, 1])],
+        )
+        assert "{" + text + "}" in _compile_tikz(diagram)

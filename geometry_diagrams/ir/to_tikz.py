@@ -328,6 +328,20 @@ def _to_latex(text: str) -> str:
     return text
 
 
+_TEX_SPECIALS = {
+    "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "#": r"\#", "_": r"\_",
+    "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}",
+}
+
+
+def _escape_text_label(text: str) -> str:
+    """Escape TeX special characters in a plain-text node label. Text holding
+    ``$`` or a backslash is already LaTeX and is returned unchanged."""
+    if "$" in text or "\\" in text:
+        return text
+    return "".join(_TEX_SPECIALS.get(ch, ch) for ch in text)
+
+
 def _emit_op(
     op: Any,
     sym: SymTable,
@@ -763,7 +777,7 @@ def _emit_op(
                         warnings.append(msg)
                     return out
                 x, y = centroid_of_obj(obj)
-            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{text}}};")
+            out.append(f"\\node at ({fmt_num(x)},{fmt_num(y)}) {{{_escape_text_label(text)}}};")
 
         case ir.LabelAlongArc(arc=arc_id, text=text, side=side, pos=pos, flip=flip, style=style):
             if arc_id not in stmt_by_id:
@@ -841,7 +855,7 @@ def _emit_op(
             out.append(f"\\draw{sopts} plot[smooth, tension=0.7] coordinates {{{coords}}};")
             if label:
                 tx, ty = pts["tip"]
-                out.append(f"\\node at ({fmt_num(tx)},{fmt_num(ty)}) {{{label}}};")
+                out.append(f"\\node at ({fmt_num(tx)},{fmt_num(ty)}) {{{_escape_text_label(label)}}};")
 
     return out
 
