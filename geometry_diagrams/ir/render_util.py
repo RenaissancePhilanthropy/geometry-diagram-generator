@@ -180,6 +180,9 @@ def svg_color(text: str) -> str:
     return "#{:02x}{:02x}{:02x}".format(*parsed.rgb)
 
 
+_TIKZ_SAFE_COLOR_RE = re.compile(r"[A-Za-z0-9!.,#%()\- ]*")
+
+
 def tikz_color(text: str) -> tuple[str, str | None]:
     """The TikZ color for a color spec, as ``(name, definition)``.
 
@@ -187,9 +190,13 @@ def tikz_color(text: str) -> tuple[str, str | None]:
     (the same value always gets the same name) and the ``\\definecolor`` line
     (xcolor's ``RGB`` model: integers 0-255) that must precede its first use.
     Named colors, xcolor mixes and unrecognized strings are returned
-    unchanged with no definition."""
+    unchanged with no definition, except that a string with characters outside
+    ``_TIKZ_SAFE_COLOR_RE`` becomes ``black`` so it cannot inject TeX into
+    the option list."""
     parsed = parse_color(text)
     if parsed.form not in ("hex", "rgb", "hsv", "css"):
+        if not _TIKZ_SAFE_COLOR_RE.fullmatch(text):
+            return "black", None
         return text, None
     r, g, b = parsed.rgb  # type: ignore[misc]
     name = f"{_TIKZ_COLOR_PREFIX}{r:02x}{g:02x}{b:02x}"
