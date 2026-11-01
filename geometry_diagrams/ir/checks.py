@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 
 from . import ir
 from .curve_measures import CurveMeasureError, curve_length, radii_equal
+from .conic_kernel import EllipseFrame
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .to_sympy import (
     Arc,
@@ -18,6 +20,7 @@ from .to_sympy import (
     Sector,
     SymTable,
     arc_param_frame,
+    ellipse_boundary_gap,
     _point_in_arc_sweep,
     _tangent_touch_point,
     _underlying_conic,
@@ -25,6 +28,8 @@ from .to_sympy import (
     point_on_arc,
 )
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TOL = 5e-3
 # Default relative tolerance of the solid measure checks (prism volume_equals
@@ -68,7 +73,7 @@ def run_checks(
     prism's projection warning: a generic 2D length check measured a prism
     segment's drawn projection, not its true length).
     """
-    results = [_check_one(c, sym, tol) for c in checks]
+    results = [_check_one(c, sym, tol, warnings) for c in checks]
     if warnings is not None:
         for check in checks:
             warnings.extend(DERIVED_REGISTRY.check_warnings(check, sym))
@@ -79,13 +84,17 @@ def run_checks(
 # Internal dispatcher
 # ---------------------------------------------------------------------------
 
-def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
+def _check_one(
+    check: Any, sym: SymTable, default_tol: float, warnings: list[str] | None = None
+) -> CheckResult:
     t = check.tol if check.tol is not None else default_tol
     try:
         match check:
             case ir.DistinctPoints(a=a, b=b):
                 d = float(sym[a].distance(sym[b]).evalf())
-                ok = d > t
+                # Relative to the points' own coordinate magnitude, so the
+                # verdict does not depend on the diagram's scale.
+                ok = d > t * max(abs(v) for v in (*_xy(sym[a]), *_xy(sym[b])))
                 msg = "" if ok else f"Points {a!r} and {b!r} coincide (distance={d:.2e})"
 
             case ir.DistinctObjects(a=a, b=b):
@@ -98,7 +107,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.Collinear(points=points):
                 pts = [sym[p] for p in points]
-                ok = _to_bool(spg.Point.is_collinear(*pts))
+                ok = _to_bool(spg.Point.is_collinear(*pts)) or _numerically_collinear(pts, t)
                 ids = ", ".join(repr(p) for p in points)
                 msg = "" if ok else f"Points {ids} are not collinear"
 
@@ -107,11 +116,11 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Object {obj!r} does not contain point {p!r}"
 
             case ir.NotContains(p=p, obj=obj):
-                ok = not _contains(sym[obj], sym[p], t)
+                ok = not _contains(sym[obj], sym[p], t, linear_tol=_EXACT_LINEAR_TOL)
                 msg = "" if ok else f"Object {obj!r} unexpectedly contains point {p!r}"
 
             case ir.Parallel(l1=l1, l2=l2):
-                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]))
+                ok = _is_parallel(_as_linear(sym[l1]), _as_linear(sym[l2]), t)
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not parallel"
 
             case ir.NotParallel(l1=l1, l2=l2):
@@ -119,7 +128,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are unexpectedly parallel"
 
             case ir.Perpendicular(l1=l1, l2=l2):
-                ok = _to_bool(_as_linear(sym[l1]).is_perpendicular(_as_linear(sym[l2])))
+                ok = _is_perpendicular(_as_linear(sym[l1]), _as_linear(sym[l2]), t)
                 msg = "" if ok else f"Objects {l1!r} and {l2!r} are not perpendicular"
 
             case ir.RightAngle(angle=angle):
@@ -158,7 +167,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
 
             case ir.EqualLength(segs=segs):
                 lengths = [_length_of(sym[s], s) for s in segs]
-                ok = all(abs(l - lengths[0]) < t for l in lengths[1:])
+                ok = all(_rel_close(l, lengths[0], t) for l in lengths[1:])
                 if ok:
                     msg = ""
                 else:
@@ -228,10 +237,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 la = sym[line_a]
                 lb = sym[line_b]
                 # cross product sign: (lb - la) x (pt - la)
-                dx = float((lb.x - la.x).evalf())
-                dy = float((lb.y - la.y).evalf())
-                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
-                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                cross_p, cross_q = _side_ratios(pa, qa, la, lb)
                 ok = cross_p * cross_q < -t
                 msg = "" if ok else (
                     f"Points {p!r} and {q!r} are not on opposite sides of line {line_a!r}-{line_b!r}"
@@ -242,10 +248,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 qa = sym[q]
                 la = sym[line_a]
                 lb = sym[line_b]
-                dx = float((lb.x - la.x).evalf())
-                dy = float((lb.y - la.y).evalf())
-                cross_p = dx * float((pa.y - la.y).evalf()) - dy * float((pa.x - la.x).evalf())
-                cross_q = dx * float((qa.y - la.y).evalf()) - dy * float((qa.x - la.x).evalf())
+                cross_p, cross_q = _side_ratios(pa, qa, la, lb)
                 ok = cross_p * cross_q > t
                 msg = "" if ok else (
                     f"Points {p!r} and {q!r} are not on the same side of line {line_a!r}-{line_b!r}"
@@ -293,7 +296,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 tri1, tri2 = sym[t1], sym[t2]
                 lengths1 = sorted(float(s.length.evalf()) for s in tri1.sides)
                 lengths2 = sorted(float(s.length.evalf()) for s in tri2.sides)
-                ok = all(abs(a - b) < t for a, b in zip(lengths1, lengths2))
+                ok = all(_rel_close(a, b, t) for a, b in zip(lengths1, lengths2))
                 len1 = [f"{l:.4f}" for l in lengths1]
                 len2 = [f"{l:.4f}" for l in lengths2]
                 msg = "" if ok else f"Triangles not congruent: {len1} vs {len2}"
@@ -303,7 +306,7 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 # circle and a genuine ellipse are simply unequal.
                 radii = [_conic_frame(sym[c], "equal_radius", c)[2:] for c in circles]
                 ok = all(
-                    abs(hr - radii[0][0]) < t and abs(vr - radii[0][1]) < t
+                    _rel_close(hr, radii[0][0], t) and _rel_close(vr, radii[0][1], t)
                     for hr, vr in radii[1:]
                 )
                 if ok:
@@ -364,6 +367,8 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
                 # Unknown check kind — pass through (forward-compatible)
                 ok = True
                 msg = f"(unrecognized check kind {check.kind!r}, skipped)"
+                if warnings is not None:
+                    warnings.append(f"unrecognized check kind {check.kind!r} was not evaluated")
 
         if not ok and check.source:
             msg = f"[{check.source}] {msg}"
@@ -377,13 +382,52 @@ def _check_one(check: Any, sym: SymTable, default_tol: float) -> CheckResult:
             msg = f"[{check.source}] {msg}"
         return CheckResult(check=check, passed=False, message=msg)
 
+    except KeyError as exc:
+        # An id the check names is not in the compiled symbol table.
+        missing = exc.args[0] if exc.args else "?"
+        return CheckResult(
+            check=check,
+            passed=False,
+            message=f"Error in {check.kind!r}: unknown id {missing!r} (not defined in this diagram)",
+        )
+
     except Exception as exc:
-        return CheckResult(check=check, passed=False, message=f"Error in {check.kind!r}: {exc}")
+        # An internal failure, not a verdict: keep it visible in the logs while
+        # still reporting the check as failed.
+        logger.warning("check %r raised %s", check.kind, type(exc).__name__, exc_info=True)
+        return CheckResult(
+            check=check,
+            passed=False,
+            message=f"Error in {check.kind!r}: {type(exc).__name__}: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _rel_close(a: float, b: float, tol: float) -> bool:
+    """``a`` and ``b`` agree to within ``tol`` of the larger magnitude (equal
+    values, including two zeros, always agree), so the verdict does not depend
+    on the diagram's scale."""
+    return a == b or abs(a - b) < tol * max(abs(a), abs(b))
+
+
+def _side_ratios(p: Any, q: Any, la: Any, lb: Any) -> tuple[float, float]:
+    """Signed offsets of ``p`` and ``q`` from the line la->lb, each as a
+    fraction of |la lb| (the cross product divided by |la lb|^2), so the
+    product of the two is dimensionless and scale-free."""
+    (ax, ay), (bx, by) = _xy(la), _xy(lb)
+    dx, dy = bx - ax, by - ay
+    norm2 = dx * dx + dy * dy
+    if norm2 == 0.0:
+        return 0.0, 0.0
+    out = []
+    for pt in (p, q):
+        x, y = _xy(pt)
+        out.append((dx * (y - ay) - dy * (x - ax)) / norm2)
+    return out[0], out[1]
+
 
 def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     """Relative comparison for the prism measure checks: ``tol`` (the check's
@@ -392,7 +436,70 @@ def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     return abs(actual - expected) <= t * max(abs(expected), 1.0)
 
 
-def _is_parallel(obj1, obj2, tol: float = 1e-9) -> bool:
+_EXACT_LINEAR_TOL = 1e-9
+
+
+def _xy(p: Any) -> tuple[float, float]:
+    return float(p.x.evalf()), float(p.y.evalf())
+
+
+def _numerically_collinear(pts: list, tol: float) -> bool:
+    """Float-coordinate fallback for ``collinear``: every point lies within
+    ``tol`` times the set's extent of the line through its two farthest-apart
+    points (SymPy's exact test rejects float coordinates that are collinear
+    only up to rounding, however large ``tol`` is)."""
+    try:
+        xy = [_xy(p) for p in pts]
+    except (TypeError, ValueError, AttributeError):
+        return False
+    best = max(
+        ((math.dist(a, b), a, b) for i, a in enumerate(xy) for b in xy[i + 1:]),
+        default=(0.0, None, None),
+    )
+    extent, a, b = best
+    if extent == 0.0:
+        return True
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    return all(abs(dx * (y - a[1]) - dy * (x - a[0])) / extent <= tol * extent for x, y in xy)
+
+
+def _linear_contains(obj: Any, point: spg.Point, tol: float) -> bool:
+    """Float-coordinate fallback for ``contains`` on a line, ray or segment:
+    the point is within ``tol`` times max(|p1p2|, |p1 point|) of the object
+    (clamped to the ray / segment extent)."""
+    try:
+        (x1, y1), (x2, y2), (px, py) = _xy(obj.p1), _xy(obj.p2), _xy(point)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    if length == 0.0:
+        return False
+    u = ((px - x1) * dx + (py - y1) * dy) / (length * length)
+    if isinstance(obj, spg.Segment):
+        u = min(max(u, 0.0), 1.0)
+    elif isinstance(obj, spg.Ray):
+        u = max(u, 0.0)
+    gap = math.hypot(px - (x1 + u * dx), py - (y1 + u * dy))
+    return gap <= tol * max(length, math.hypot(px - x1, py - y1))
+
+
+def _is_perpendicular(obj1, obj2, tol: float) -> bool:
+    """Exact SymPy test, then a numeric fallback: the unit directions' dot
+    product is below ``tol`` (the cosine of the angle, so scale-free)."""
+    if _to_bool(obj1.is_perpendicular(obj2)):
+        return True
+    try:
+        (a1, b1), (a2, b2) = (_xy(obj1.p1), _xy(obj1.p2)), (_xy(obj2.p1), _xy(obj2.p2))
+        d1 = (b1[0] - a1[0], b1[1] - a1[1])
+        d2 = (b2[0] - a2[0], b2[1] - a2[1])
+        n = math.hypot(*d1) * math.hypot(*d2)
+        return n > 0 and abs(d1[0] * d2[0] + d1[1] * d2[1]) <= tol * n
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def _is_parallel(obj1, obj2, tol: float = _EXACT_LINEAR_TOL) -> bool:
     """Check parallelism symbolically, falling back to numerical cross-product for float coords."""
     try:
         result = _to_bool(obj1.is_parallel(obj2))
@@ -420,8 +527,13 @@ def _to_bool(expr: Any) -> bool:
         return False
 
 
-def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
-    """Check whether obj contains point, using distance-based tolerance for circles/ellipses."""
+def _contains(
+    obj: Any, point: spg.Point, tol: float, linear_tol: float | None = None
+) -> bool:
+    """Check whether obj contains point, using distance-based tolerance for circles/ellipses.
+
+    A line, ray or segment is tested exactly first, then numerically within
+    ``linear_tol`` (default ``tol``, relative to the object's size)."""
     if isinstance(obj, _ARC_LIKE):
         # On the curved edge only — see point_on_arc(), which the pick_on_object
         # rule in to_sympy.py shares, so the two can't drift apart.
@@ -432,16 +544,20 @@ def _contains(obj: Any, point: spg.Point, tol: float) -> bool:
         return abs(d - r) < tol
     if isinstance(obj, RotatedEllipse):
         # A length-based gap (the tilted marker has no SymPy containment).
-        return abs(obj.boundary_gap(float(point.x.evalf()), float(point.y.evalf()))) < tol
+        gap = ellipse_boundary_gap(obj.frame, float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol
     if isinstance(obj, spg.Ellipse):
-        cx = float(obj.center.x.evalf())
-        cy = float(obj.center.y.evalf())
-        a = float(obj.hradius.evalf())
-        b = float(obj.vradius.evalf())
-        px, py = float(point.x.evalf()), float(point.y.evalf())
-        val = ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2
-        return abs(val - 1.0) < tol
-    return _to_bool(obj.contains(point))
+        # The same length-based gap as a tilted ellipse (rotation 0).
+        frame = EllipseFrame(
+            float(obj.center.x.evalf()), float(obj.center.y.evalf()),
+            float(obj.hradius.evalf()), float(obj.vradius.evalf()),
+        )
+        gap = ellipse_boundary_gap(frame, float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol
+    exact = _to_bool(obj.contains(point))
+    if exact or not isinstance(obj, _LINEAR_TYPES):
+        return exact
+    return _linear_contains(obj, point, tol if linear_tol is None else linear_tol)
 
 
 _LINEAR_TYPES = (spg.Line, spg.Segment, spg.Ray)
@@ -550,7 +666,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
         frames.append((hr, vr, start, end))
 
     def circular(f: tuple[float, float, float, float]) -> bool:
-        return abs(f[0] - f[1]) <= 1e-9 * max(f[0], f[1], 1.0)
+        return radii_equal(f[0], f[1])
 
     def congruent(f: tuple[float, float, float, float], g: tuple[float, float, float, float]) -> bool:
         if circular(f) != circular(g):

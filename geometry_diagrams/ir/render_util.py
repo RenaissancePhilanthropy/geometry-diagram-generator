@@ -20,7 +20,9 @@ from sympy.geometry.line import LinearEntity
 from . import ir
 from .derived import REGISTRY as DERIVED_REGISTRY, effective_defs
 from .conic_kernel import EllipseFrame
-from .to_sympy import Arc, EllipticalArc, Sector, EllipticalSector, RotatedEllipse, SymTable
+from .to_sympy import (
+    Arc, EllipticalArc, Sector, EllipticalSector, RotatedEllipse, SymTable, snap_semicircle_deg,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -644,6 +646,7 @@ def arc_params(
     ccw = (e_deg - s_deg) % 360.0
     if ccw == 0:
         ccw = 360.0
+    ccw = snap_semicircle_deg(ccw)
     is_ccw_minor = ccw <= 180.0
     want_reflex = bool(getattr(arc, "reflex", False))
     # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
@@ -689,6 +692,7 @@ def elliptical_arc_params(
     ccw = (e_deg - s_deg) % 360.0
     if ccw == 0:
         ccw = 360.0
+    ccw = snap_semicircle_deg(ccw)
     is_ccw_minor = ccw <= 180.0
     want_reflex = bool(getattr(arc, "reflex", False))
     # Swap endpoints iff the math-CCW traversal does NOT match the requested arc

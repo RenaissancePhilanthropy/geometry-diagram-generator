@@ -15,6 +15,7 @@ into huge rationals there.
 """
 from __future__ import annotations
 
+import functools
 import itertools
 import math
 import re
@@ -64,7 +65,7 @@ class Projection:
     def axes(self) -> tuple[Vec2, Vec2, Vec2]:
         return (self.length, self.height, self.width)
 
-    @property
+    @functools.cached_property
     def viewer(self) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
         """Direction toward the viewer in prism axes (length, height, width):
         the kernel of the map (cross product of its two rows), signed so the
@@ -102,6 +103,7 @@ class Projection:
         return (x, y)
 
 
+@functools.lru_cache(maxsize=128)
 def projection_for(
     view: str = "oblique",
     side: str = "right",

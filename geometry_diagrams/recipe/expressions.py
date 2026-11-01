@@ -5,6 +5,7 @@ and a recipe-layer exception type.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from ..ir.to_sympy import _eval_expr
@@ -37,8 +38,11 @@ def eval_expr(
     """
     try:
         result = _eval_expr(raw, params, def_id="recipe_eval", sym=sym)
-        return float(result.evalf())
+        value = float(result.evalf())
     except ExprEvalError as e:
         raise ExpressionError(str(e)) from e
     except Exception as e:
         raise ExpressionError(f"Expression evaluation failed for {raw!r}: {e}") from e
+    if not math.isfinite(value):
+        raise ExpressionError(f"Expression {raw!r} evaluated to a non-finite value: {value}")
+    return value

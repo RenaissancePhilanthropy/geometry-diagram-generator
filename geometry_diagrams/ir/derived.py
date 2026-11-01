@@ -828,6 +828,7 @@ def _build_default_registry() -> DerivedRegistry:
         pipeline_warnings=_prism.label_dimension_warnings,
         canvas_extent=_prism.canvas_extent,
         screen_bounds=_prism.screen_bounds,
+        trusted_faces=True,
     ))
     reg.register(DerivedConstruction(
         "block_stack", ("{id}_top_{x}_{z}", "__{id}_l{x}_{y}_{z}"),

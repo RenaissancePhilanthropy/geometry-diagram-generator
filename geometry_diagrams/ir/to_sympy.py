@@ -268,6 +268,20 @@ def angle_within_sweep(
     return offset <= span + tol_deg or offset >= 360.0 - tol_deg
 
 
+SEMICIRCLE_SNAP_DEG = 1e-9
+
+
+def snap_semicircle_deg(ccw_deg: float) -> float:
+    """Snap a counter-clockwise sweep within float noise of 180 to exactly 180,
+    so a diameter chord is a semicircle however its endpoint angles round."""
+    return 180.0 if abs(ccw_deg - 180.0) < SEMICIRCLE_SNAP_DEG else ccw_deg
+
+
+def snap_semicircle_rad(ccw_rad: float) -> float:
+    """Radian twin of ``snap_semicircle_deg``."""
+    return math.pi if abs(ccw_rad - math.pi) < math.radians(SEMICIRCLE_SNAP_DEG) else ccw_rad
+
+
 def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
     """Return (cx, cy, start_deg, end_deg) for a circular arc/sector's CCW sweep.
 
@@ -290,6 +304,7 @@ def arc_sweep_degrees(arc: Arc | Sector) -> tuple[float, float, float, float]:
     ccw = (e_deg - s_deg) % 360.0
     if ccw == 0:
         ccw = 360.0
+    ccw = snap_semicircle_deg(ccw)
     # Swap endpoints iff the math-CCW traversal does NOT match the requested arc
     if (ccw <= 180.0) == bool(arc.reflex):
         s_deg, e_deg = e_deg, s_deg
@@ -304,12 +319,26 @@ def _point_within_arc_sweep(point: spg.Point, arc: Arc | Sector) -> bool:
     return angle_within_sweep(angle_about_deg(point, cx, cy), start_deg, end_deg)
 
 
+def ellipse_boundary_gap(frame: EllipseFrame, x: float, y: float) -> float:
+    """``frame.boundary_gap(x, y)`` (a length, positive outside), with a clean
+    ``IRCompileError`` for an ellipse with a zero (or negative) radius instead
+    of a ZeroDivisionError. The one containment metric for axis-aligned and
+    tilted ellipses and elliptical arcs/sectors."""
+    if not (frame.a > 0 and frame.b > 0):
+        raise IRCompileError(
+            "<containment>",
+            f"ellipse has a non-positive radius (hradius={frame.a}, vradius={frame.b}); "
+            "containment is undefined",
+        )
+    return frame.boundary_gap(x, y)
+
+
 def point_on_arc(
     point: spg.Point, arc: Arc | Sector | EllipticalArc | EllipticalSector, tol: float,
 ) -> bool:
     """Is `point` on the curved edge of an arc/sector (circular or elliptical)
-    — on its circle (within `tol` of the radius) or ellipse (the normalized
-    ellipse equation within `tol` of 1) and within its sweep?
+    — on its circle (within `tol` of the radius) or ellipse (within `tol` of
+    it, as ``EllipseFrame.boundary_gap``, a length) and within its sweep?
 
     A sector's two straight radii and its filled interior are deliberately not
     part of this: a model that needs those has them as ordinary segments from
@@ -318,11 +347,8 @@ def point_on_arc(
     ``checks.py``'s containment check.
     """
     if isinstance(arc, (EllipticalArc, EllipticalSector)):
-        cx, cy = float(arc.center.x.evalf()), float(arc.center.y.evalf())
-        hr, vr = float(arc.hradius.evalf()), float(arc.vradius.evalf())
-        px, py = float(point.x.evalf()), float(point.y.evalf())
-        on_curve = abs(((px - cx) / hr) ** 2 + ((py - cy) / vr) ** 2 - 1.0) < tol
-        return on_curve and _point_in_arc_sweep(point, arc)
+        gap = ellipse_boundary_gap(arc_frame(arc), float(point.x.evalf()), float(point.y.evalf()))
+        return abs(gap) < tol and _point_in_arc_sweep(point, arc)
     radius_error = abs(float(point.distance(arc.center).evalf()) - float(arc.radius.evalf()))
     return radius_error < tol and _point_within_arc_sweep(point, arc)
 
@@ -625,11 +651,17 @@ def compile_defs(
     # Build dependency graph and sort topologically so forward references work.
     # Substitute derived point refs with their owning statement so the sort
     # correctly places that statement before any statement that uses them.
-    graph: dict[str, set[str]] = {}
+    # Predecessors are ordered by definition index (not set order) so the
+    # compile order, and with it the shared RNG's consumption, is identical
+    # across processes regardless of PYTHONHASHSEED.
+    def_index: dict[str, int] = {}
+    for i, stmt in enumerate(defs):
+        def_index.setdefault(stmt.id, i)
+    graph: dict[str, list[str]] = {}
     for stmt in defs:
         raw_refs = def_references(stmt)
-        resolved = {derived_point_owner.get(r, r) for r in raw_refs}
-        graph[stmt.id] = resolved & all_ids
+        resolved = {derived_point_owner.get(r, r) for r in raw_refs} & all_ids
+        graph[stmt.id] = sorted(resolved, key=lambda r: def_index[r])
 
     try:
         order = list(TopologicalSorter(graph).static_order())
@@ -1493,6 +1525,39 @@ _SAFE_UNARYOPS = {
 }
 
 
+MAX_POW_EXPONENT = 1000
+
+
+def _bounded_pow(base: Any, exponent: Any, *, def_id: str, raw: str) -> Any:
+    """``base ** exponent`` with a numeric exponent capped at ``MAX_POW_EXPONENT``
+    in magnitude (``9**9**9`` would otherwise never return) and a non-finite
+    numeric result rejected."""
+    if getattr(exponent, "is_number", False):
+        try:
+            too_big = abs(float(exponent)) > MAX_POW_EXPONENT
+        except (TypeError, ValueError):
+            too_big = False
+        if too_big:
+            raise ExprEvalError(
+                def_id,
+                f"could not evaluate {raw!r}: exponent larger than {MAX_POW_EXPONENT} in magnitude",
+            )
+    result = operator.pow(base, exponent)
+    if getattr(result, "is_number", False):
+        if result.has(sp.zoo, sp.oo, sp.nan, -sp.oo):
+            finite = False
+        else:
+            try:
+                finite = math.isfinite(float(result.evalf()))
+            except TypeError:
+                finite = True  # complex: not this guard's concern
+            except (ValueError, OverflowError):
+                finite = False
+        if not finite:
+            raise ExprEvalError(def_id, f"could not evaluate {raw!r}: result is not a finite number")
+    return result
+
+
 def _safe_eval_node(node: ast.AST, locals_map: dict[str, Any], *, def_id: str, raw: str) -> Any:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
@@ -1505,6 +1570,8 @@ def _safe_eval_node(node: ast.AST, locals_map: dict[str, Any], *, def_id: str, r
     if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_BINOPS:
         left = _safe_eval_node(node.left, locals_map, def_id=def_id, raw=raw)
         right = _safe_eval_node(node.right, locals_map, def_id=def_id, raw=raw)
+        if isinstance(node.op, ast.Pow):
+            return _bounded_pow(left, right, def_id=def_id, raw=raw)
         return _SAFE_BINOPS[type(node.op)](left, right)
     if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_UNARYOPS:
         operand = _safe_eval_node(node.operand, locals_map, def_id=def_id, raw=raw)
@@ -1861,7 +1928,7 @@ def arc_param_frame(obj: Any) -> tuple[float, float, float, float, float, float]
     s = frame.param_of(float(obj.start.x.evalf()), float(obj.start.y.evalf()))
     e = frame.param_of(float(obj.end.x.evalf()), float(obj.end.y.evalf()))
     s, e = s % (2 * math.pi), e % (2 * math.pi)
-    ccw = (e - s) % (2 * math.pi) or 2 * math.pi
+    ccw = snap_semicircle_rad((e - s) % (2 * math.pi) or 2 * math.pi)
     if (ccw <= math.pi) == bool(obj.reflex):
         s, e = e, s
     if e <= s:
@@ -2162,6 +2229,7 @@ def _reflex_for_bulge_toward(
     ccw = (theta_e - theta_s) % (2 * math.pi)
     if ccw == 0:
         ccw = 2 * math.pi
+    ccw = snap_semicircle_rad(ccw)
     if ccw <= math.pi:
         minor_mid = theta_s + ccw / 2
     else:

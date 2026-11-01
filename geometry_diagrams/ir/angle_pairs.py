@@ -23,10 +23,24 @@ from .ir import DiagramIR, MarkAngles, AnglePoints
 from .to_sympy import SymTable, _cross_sign
 
 
+_SAME_VERTICES_MSG = "vertices must be two distinct points"
+
+
+def _ray_on_vertex_msg(ray_id: str) -> str:
+    return (
+        f"rays_along point {ray_id!r} coincides with its vertex — "
+        f"name a DIFFERENT point on the other line through that vertex"
+    )
+
+
 def _side(v1: spg.Point2D, v2: spg.Point2D, p: spg.Point2D) -> int:
     """Which side of line v1->v2 point p is on. Raises if p is on the line."""
     cross_val = float(_cross_sign(v1, v2, p).evalf())
-    if abs(cross_val) < 1e-9:
+    # Compare the point's distance from the line, relative to the larger of
+    # |v1 v2| and |v1 p|, so the test does not depend on the diagram's scale.
+    line_len = math.hypot(float(v2.x - v1.x), float(v2.y - v1.y))
+    reach = max(line_len, math.hypot(float(p.x - v1.x), float(p.y - v1.y)))
+    if line_len == 0.0 or abs(cross_val) < 1e-9 * line_len * reach:
         raise ValueError(f"point {p} is collinear with the reference line — cannot determine side")
     return 1 if cross_val > 0 else -1
 
@@ -98,34 +112,21 @@ def resolve_angle_pairs(diagram_ir: DiagramIR, sym: SymTable) -> DiagramIR:
         v1, v2 = _lookup(pending.v1), _lookup(pending.v2)
         r1, r2 = _lookup(pending.ray_ref_v1), _lookup(pending.ray_ref_v2)
 
+        # Id-equality checks first, then the same questions by coordinates
+        # (distinct ids can still be the same point).
         if pending.v1 == pending.v2:
-            raise IRCompileError(def_id, "vertices must be two distinct points")
-        if pending.ray_ref_v1 == pending.v1:
-            raise IRCompileError(
-                def_id,
-                f"rays_along point {pending.ray_ref_v1!r} coincides with its vertex — "
-                f"name a DIFFERENT point on the other line through that vertex",
-            )
-        if pending.ray_ref_v2 == pending.v2:
-            raise IRCompileError(
-                def_id,
-                f"rays_along point {pending.ray_ref_v2!r} coincides with its vertex — "
-                f"name a DIFFERENT point on the other line through that vertex",
-            )
+            raise IRCompileError(def_id, _SAME_VERTICES_MSG)
+        for ray_id, vertex_id in ((pending.ray_ref_v1, pending.v1), (pending.ray_ref_v2, pending.v2)):
+            if ray_id == vertex_id:
+                raise IRCompileError(def_id, _ray_on_vertex_msg(ray_id))
         if _dist(v1, v2) < 1e-9:
-            raise IRCompileError(def_id, "vertices must be two distinct points")
-        if _dist(r1, v1) < 1e-9:
-            raise IRCompileError(
-                def_id,
-                f"rays_along point {pending.ray_ref_v1!r} coincides with its vertex — "
-                f"name a DIFFERENT point on the other line through that vertex",
-            )
-        if _dist(r2, v2) < 1e-9:
-            raise IRCompileError(
-                def_id,
-                f"rays_along point {pending.ray_ref_v2!r} coincides with its vertex — "
-                f"name a DIFFERENT point on the other line through that vertex",
-            )
+            raise IRCompileError(def_id, _SAME_VERTICES_MSG)
+        for ray_id, ray_pt, vertex_pt in (
+            (pending.ray_ref_v1, r1, v1),
+            (pending.ray_ref_v2, r2, v2),
+        ):
+            if _dist(ray_pt, vertex_pt) < 1e-9:
+                raise IRCompileError(def_id, _ray_on_vertex_msg(ray_id))
 
         try:
             s1 = _side(v1, v2, r1)
