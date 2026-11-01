@@ -138,7 +138,7 @@ async def test_python_full_edit_search_replace_applies_blocks_to_previous_script
         seen_scripts.append(script)
         return _result(script)
 
-    async def fake_gen(prompt, model):
+    async def fake_gen(prompt, model, **kw):
         return [{"old_string": "point(0, 0)", "new_string": "point(0, 5)"}], 11, 7, 0.01
 
     monkeypatch.setattr(pf, "_run_from_script", fake_from_script)
@@ -179,7 +179,7 @@ async def test_python_full_edit_baseline_uses_svg_renderer_edit_uses_callers(mon
         renderers.append(renderer)
         return _result(script)
 
-    async def fake_gen(prompt, model):
+    async def fake_gen(prompt, model, **kw):
         return [{"old_string": "point(0, 0)", "new_string": "point(0, 5)"}], 0, 0, None
 
     monkeypatch.setattr(pf, "_run_from_script", fake_from_script)

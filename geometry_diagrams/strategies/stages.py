@@ -211,11 +211,11 @@ async def run_draft(
 ):
     """Draft stage: generate TikZ and render it. Returns final graph state."""
     from .llm import get_chat_model
-    from langgraph.prebuilt import create_react_agent
+    from langchain.agents import create_agent
 
     llm = get_chat_model(model)
     render_tool = make_render_tool()
-    graph = create_react_agent(llm, tools=[render_tool], prompt=DRAFT_INSTRUCTIONS)
+    graph = create_agent(llm, tools=[render_tool], system_prompt=DRAFT_INSTRUCTIONS)
     return await graph.ainvoke({"messages": [("user", prompt)]}, config=run_config or {})
 
 
@@ -250,11 +250,11 @@ async def run_code_from_plan(
 ):
     """Code stage: translate a GeometricPlan into TikZ and render it."""
     from .llm import get_chat_model
-    from langgraph.prebuilt import create_react_agent
+    from langchain.agents import create_agent
 
     llm = get_chat_model(model)
     render_tool = make_render_tool_with_plan_check(plan)
-    graph = create_react_agent(llm, tools=[render_tool], prompt=CODE_FROM_PLAN_INSTRUCTIONS)
+    graph = create_agent(llm, tools=[render_tool], system_prompt=CODE_FROM_PLAN_INSTRUCTIONS)
     user_message = (
         f"Original request: {prompt}\n\n"
         f"Geometric plan:\n{plan.model_dump_json(indent=2)}\n\n"
@@ -279,11 +279,11 @@ async def run_revision(
         force_rerender: If True (default), the revision agent MUST call render_diagram.
     """
     from .llm import get_chat_model
-    from langgraph.prebuilt import create_react_agent
+    from langchain.agents import create_agent
 
     instructions = REVISION_FORCE_INSTRUCTIONS if force_rerender else REVISION_INSTRUCTIONS
     llm = get_chat_model(model)
     render_tool = make_render_tool()
-    graph = create_react_agent(llm, tools=[render_tool], prompt=instructions)
+    graph = create_agent(llm, tools=[render_tool], system_prompt=instructions)
     messages = list(message_history) + [("user", REVISION_PROMPT)]
     return await graph.ainvoke({"messages": messages}, config=run_config or {})

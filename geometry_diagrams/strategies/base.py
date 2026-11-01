@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import contextvars
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, Union
 
 from logging import getLogger
 from langgraph.graph.state import CompiledStateGraph
@@ -12,6 +15,34 @@ if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackManager
 
 DEFAULT_AGENT_MODEL = "anthropic:claude-sonnet-4-6"
+
+_T = TypeVar("_T")
+
+EXTRA_INSTRUCTIONS_HEADING = "## Additional instructions from the application"
+
+
+def append_extra_instructions(text: str, extra: "str | None") -> str:
+    """`text` with the application's extra instructions appended as a delimited
+    trailing section; `text` itself, unchanged, when there are none."""
+    if not extra or not extra.strip():
+        return text
+    return f"{text.rstrip(chr(10))}\n\n{EXTRA_INSTRUCTIONS_HEADING}\n{extra.strip()}\n"
+
+
+def run_sync(coro: "Awaitable[_T]") -> _T:
+    """Run a coroutine to completion from synchronous code.
+
+    Outside an event loop this is asyncio.run. Inside a running loop (a
+    notebook, an async web handler calling a *_sync wrapper) asyncio.run would
+    raise, so the coroutine runs on its own loop in a worker thread, with the
+    caller's contextvars; the calling thread blocks until it finishes."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)  # type: ignore[arg-type]
+    context = contextvars.copy_context()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(context.run, asyncio.run, coro).result()
 
 
 class SubstanceStrategy(ABC):

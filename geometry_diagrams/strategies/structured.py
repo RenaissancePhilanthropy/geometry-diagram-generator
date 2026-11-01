@@ -5,12 +5,16 @@ import logging
 from typing import Any, Optional, TypedDict
 
 import pydantic
+from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
-from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
-from .llm import get_chat_model, bind_structured_output_for_model, extract_cost, extract_usage, make_system_message
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, append_extra_instructions
+from .llm import (
+    get_chat_model, bind_structured_output_for_model, config_kwargs, extract_cost, extract_usage,
+    make_system_message,
+)
 from .instructions import build_structured_instructions
 from .ir_pipeline import (
     StructuredRunResult,
@@ -150,9 +154,12 @@ class StructuredPipelineState(TypedDict):
     cost_usd: float  # provider-reported cost summed over attempts; 0.0 = none reported
     renderer: Optional[Any]
     features: frozenset  # enabled feature groups; absent/empty = none enabled
+    extra_instructions: Optional[str]  # appended to the system prompt; absent/empty = none
 
 
-async def _generate_ir_node(state: StructuredPipelineState) -> dict:
+async def _generate_ir_node(
+    state: StructuredPipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Call LLM to generate a DiagramIR from the prompt."""
     model_id = state["model_id"]
     enable_cache = state.get("enable_cache", False)
@@ -168,19 +175,27 @@ async def _generate_ir_node(state: StructuredPipelineState) -> dict:
 
     from langchain_core.messages import HumanMessage
     messages = [
-        make_system_message(build_structured_instructions(state.get("features") or frozenset()), enable_cache=enable_cache, model_id=model_id),
+        make_system_message(
+            append_extra_instructions(
+                build_structured_instructions(state.get("features") or frozenset()),
+                state.get("extra_instructions"),
+            ),
+            enable_cache=enable_cache, model_id=model_id,
+        ),
         HumanMessage(content=prompt),
     ]
 
+    # Built outside the try: a configuration error (e.g. a missing API key) is not
+    # a transient generation failure and must not be retried.
+    llm = get_chat_model(model_id, enable_cache=enable_cache)
     try:
-        llm = get_chat_model(model_id, enable_cache=enable_cache)
         # force_function_calling_for_openai=True: DiagramIR's schema has a `oneOf`
         # (under `pick`) that OpenAI's strict json_schema mode rejects with a 400.
         structured = bind_structured_output_for_model(
             llm, DiagramIR, model_id, include_raw=True, force_function_calling_for_openai=True,
         )
 
-        response = await structured.ainvoke(messages)
+        response = await structured.ainvoke(messages, **config_kwargs(config))
         # include_raw=True returns {"raw": AIMessage, "parsed": DiagramIR|None, "parsing_error": ...}
         raw_msg = response.get("raw")
         diagram_ir = response.get("parsed")
@@ -234,7 +249,9 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
         result = await _run_ir_pipeline(diagram_ir, renderer)
         result.retries = state["attempt"]
         return {"result": result}
-    except (IRCompileError, RuntimeError) as e:
+    except Exception as e:
+        # Any non-cancellation failure becomes a retry; CancelledError (a
+        # BaseException) still propagates.
         return {
             "last_error": str(e),
             "warnings": warnings_from_error(e),
@@ -281,8 +298,12 @@ class StructureStrategy(SubstanceStrategy):
         previous_ir: "DiagramIR | dict | None" = None,
         config: "dict | None" = None,
         callbacks: "list | None" = None,
+        extra_instructions: "str | None" = None,
     ) -> StructuredRunResult:
-        """config / callbacks: a LangChain RunnableConfig and extra callback
+        """extra_instructions: application text appended to the generation
+        system prompt (not the user's request).
+
+        config / callbacks: a LangChain RunnableConfig and extra callback
         handlers for the graph's LLM calls, merged with the package's
         env-driven tracing handler (same contract as RecipeStrategy.run).
 
@@ -311,6 +332,7 @@ class StructureStrategy(SubstanceStrategy):
             "cost_usd": 0.0,
             "renderer": renderer,
             "features": self.features if features is None else frozenset(features),
+            "extra_instructions": extra_instructions,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
@@ -385,4 +407,4 @@ class StructureStrategy(SubstanceStrategy):
         query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)
+        return create_agent(llm, tools=[render_diagram, query_diagram], system_prompt=_BUILD_AGENT_INSTRUCTIONS)

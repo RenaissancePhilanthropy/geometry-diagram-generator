@@ -3,22 +3,23 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict, Union
 
 if TYPE_CHECKING:
     from langchain_core.callbacks import BaseCallbackManager
-    from langchain_core.runnables import RunnableConfig
 
 import pydantic
+from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.exceptions import OutputParserException
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
-from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy
+from .base import DEFAULT_AGENT_MODEL, SubstanceStrategy, append_extra_instructions, run_sync
 from .structured import QUERY_TOOL_SOLIDS_INSERTIONS, dispatch_query
 from .ir_pipeline import (
     StructuredRunResult,
@@ -29,9 +30,12 @@ from .ir_pipeline import (
 from .llm import (
     get_chat_model,
     extract_usage,
+    extract_cost,
     extract_text,
     make_system_message,
     bind_structured_output_for_model,
+    is_anthropic_model,
+    config_kwargs,
 )
 from .instructions import RECIPE_SELECTION_SYSTEM, RECIPE_GENERATION_SYSTEM
 from ..recipe.catalog import (
@@ -126,6 +130,8 @@ class RecipeSelectionResult:
     is_geometry_request: bool
     input_tokens: int
     output_tokens: int
+    # Provider-reported USD cost of the selector call; None = not reported.
+    cost_usd: Optional[float] = None
 
 
 @dataclass
@@ -205,6 +211,7 @@ def _prepare_recipe_modification_prompt(request: str, previous_dsl: Optional[Rec
 
 class RecipePipelineState(TypedDict):
     prompt: str
+    raw_prompt: str  # the user's request before any previous-DSL augmentation
     model_id: str
     selector_model: str
     enable_cache: bool
@@ -217,67 +224,116 @@ class RecipePipelineState(TypedDict):
     result: Optional[StructuredRunResult]
     input_tokens: int
     output_tokens: int
+    cost_usd: float  # provider-reported cost summed over calls; 0.0 = none reported
     recipe_metadata: RecipeMetadata
     renderer: Optional[Any]
     selection_done: bool
     features: frozenset  # enabled feature groups; absent/empty = none enabled
+    extra_instructions: Optional[str]  # appended to the generation system prompt; absent/empty = none
 
 
-async def _select_recipes_node(state: RecipePipelineState) -> dict:
-    """Run the cheap selector model to pick relevant recipes."""
+@dataclass
+class _ParsedSelection:
+    selected_recipes: list[str]
+    unmatched_concepts: list[str]
+    confidence: Literal["high", "medium", "low"]
+    is_geometry_request: bool
+
+
+def _str_list(value: Any) -> list[str]:
+    """`value` when it is a list, keeping only its string items; [] otherwise."""
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, str)]
+
+
+def _parse_selection(raw_text: str) -> _ParsedSelection:
+    """Parse the selector model's JSON reply, tolerating missing, null or
+    wrongly-typed fields (a selector reply is untrusted model output).
+
+    Unparseable text yields the permissive default: nothing selected,
+    high confidence, a geometry request."""
+    selected: list[str] = []
+    unmatched: list[str] = []
+    confidence: Literal["high", "medium", "low"] = "high"
+    is_geometry_request = True
+    try:
+        json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        parsed = json.loads(json_match.group()) if json_match else None
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
+        parsed = None
+    if isinstance(parsed, dict):
+        selected = _str_list(parsed.get("selected_recipes"))
+        if not selected:
+            selected = _str_list(parsed.get("selected"))
+        unmatched = _str_list(parsed.get("unmatched_concepts"))
+        raw_conf = parsed.get("confidence")
+        if raw_conf in ("high", "medium", "low"):
+            confidence = raw_conf
+        flag = parsed.get("is_geometry_request")
+        if isinstance(flag, bool):
+            is_geometry_request = flag
+        elif isinstance(flag, str) and flag.strip().lower() in ("false", "no", "0"):
+            is_geometry_request = False
+    return _ParsedSelection(selected, unmatched, confidence, is_geometry_request)
+
+
+async def _run_selection(
+    prompt: str, selector_model: str, config: "Optional[RunnableConfig]" = None,
+) -> "tuple[_ParsedSelection, list[Recipe], int, int, float | None]":
+    """One selector call, shared by the graph node and the standalone entrypoint.
+
+    Returns the parsed selection (its `selected_recipes` filtered to ids that
+    load), the loaded recipes, and the call's input tokens, output tokens and
+    provider-reported cost (None when not reported)."""
     catalog = load_catalog()
-    selection_prompt = build_selection_prompt(state["prompt"], catalog)
+    selection_prompt = build_selection_prompt(prompt, catalog)
 
-    llm = get_chat_model(state.get("selector_model") or _SELECTOR_MODEL)
+    llm = get_chat_model(selector_model)
     from langchain_core.messages import SystemMessage, HumanMessage
     messages = [
         SystemMessage(content=RECIPE_SELECTION_SYSTEM),
         HumanMessage(content=selection_prompt),
     ]
-    response = await llm.ainvoke(messages)
+    response = await llm.ainvoke(messages, **config_kwargs(config))
     raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
-
     in_tok, out_tok = extract_usage(response)
+    cost = extract_cost(response)
 
-    # Parse JSON response
-    selected_recipes = []
-    unmatched_concepts = []
-    confidence: Literal["high", "medium", "low"] = "high"
-    is_geometry_request = True
-    try:
-        # Try to find JSON in the response
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
-            unmatched_concepts = parsed.get("unmatched_concepts", [])
-            raw_conf = parsed.get("confidence", "high")
-            if raw_conf in ("high", "medium", "low"):
-                confidence = raw_conf
-            is_geometry_request = bool(parsed.get("is_geometry_request", True))
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
-
-    # Load selected recipes and build generation prompt
-    recipes = []
-    valid_recipe_ids = []
-    for recipe_id in selected_recipes:
+    selection = _parse_selection(raw_text)
+    recipes: list[Recipe] = []
+    valid_ids: list[str] = []
+    for recipe_id in selection.selected_recipes:
         try:
-            recipe = load_recipe(recipe_id)
-            recipes.append(recipe)
-            valid_recipe_ids.append(recipe_id)
+            recipes.append(load_recipe(recipe_id))
+            valid_ids.append(recipe_id)
         except Exception:
             pass
+    selection.selected_recipes = valid_ids
+    return selection, recipes, in_tok, out_tok, cost
+
+
+async def _select_recipes_node(
+    state: RecipePipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
+    """Run the cheap selector model to pick relevant recipes."""
+    # The selector sees the user's own request, not the generation prompt that
+    # edits augment with the previous DSL (cheap model, irrelevant tokens).
+    selector_request = state.get("raw_prompt") or state["prompt"]
+    selection, recipes, in_tok, out_tok, cost = await _run_selection(
+        selector_request, state.get("selector_model") or _SELECTOR_MODEL, config,
+    )
 
     generation_prompt = build_generation_prompt(
         state["prompt"], recipes, dsl_docs_for(state.get("features") or frozenset())
     )
 
     metadata = RecipeMetadata(
-        selected_recipes=valid_recipe_ids,
-        unmatched_concepts=unmatched_concepts,
-        confidence=confidence,
-        is_geometry_request=is_geometry_request,
+        selected_recipes=selection.selected_recipes,
+        unmatched_concepts=selection.unmatched_concepts,
+        confidence=selection.confidence,
+        is_geometry_request=selection.is_geometry_request,
         selection_input_tokens=in_tok,
         selection_output_tokens=out_tok,
     )
@@ -287,11 +343,14 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
         "recipe_metadata": metadata,
         "input_tokens": state.get("input_tokens", 0) + in_tok,
         "output_tokens": state.get("output_tokens", 0) + out_tok,
+        "cost_usd": state.get("cost_usd", 0.0) + (cost or 0.0),
         "selection_done": True,
     }
 
 
-async def _generate_dsl_node(state: RecipePipelineState) -> dict:
+async def _generate_dsl_node(
+    state: RecipePipelineState, config: Optional[RunnableConfig] = None,
+) -> dict:
     """Call main LLM to generate RecipeDSL structured output."""
     model_id = state["model_id"]
     enable_cache = state.get("enable_cache", False)
@@ -303,7 +362,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         hints = _build_retry_hints(last_error)
         user_message = (
             f"{user_message}\n\n"
-            f"Previous attempt failed at stage: {last_error}\n"
+            f"Previous attempt failed: {last_error}\n"
             f"Please correct the issue and try again.\n"
             f"{hints}"
         )
@@ -319,7 +378,9 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
     static_block = build_generation_prompt_static_block(
         dsl_docs_for(state.get("features") or frozenset())
     )
-    if enable_cache and user_message.startswith(static_block):
+    # cache_control content blocks are an Anthropic extension; other providers
+    # (e.g. Fireworks) reject a list-form message content outright.
+    if enable_cache and is_anthropic_model(model_id) and user_message.startswith(static_block):
         dynamic_part = user_message[len(static_block):].lstrip("\n")
         human_content = [
             {"type": "text", "text": static_block, "cache_control": {"type": "ephemeral"}},
@@ -329,7 +390,10 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         human_content = user_message
 
     messages = [
-        make_system_message(RECIPE_GENERATION_SYSTEM, enable_cache=enable_cache, model_id=model_id),
+        make_system_message(
+            append_extra_instructions(RECIPE_GENERATION_SYSTEM, state.get("extra_instructions")),
+            enable_cache=enable_cache, model_id=model_id,
+        ),
         HumanMessage(content=human_content),
     ]
 
@@ -345,12 +409,14 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
 
     raw_content: str | None = None
     in_tok = out_tok = 0
+    cost = 0.0
     try:
         # include_raw=True makes ainvoke return a dict at runtime, not BaseModel
-        response: Any = await structured.ainvoke(messages)
+        response: Any = await structured.ainvoke(messages, **config_kwargs(config))
         raw_msg = response.get("raw")
         dsl = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
+        cost = (extract_cost(raw_msg) if raw_msg else None) or 0.0
 
         # Capture raw content for failure diagnostics
         if raw_msg is not None:
@@ -376,6 +442,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
     except (OutputParserException, pydantic.ValidationError) as exc:
         error_msg = str(exc)
@@ -396,6 +463,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
     except Exception as exc:
         error_msg = str(exc)
@@ -414,6 +482,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
             "attempt": attempt + 1,
             "input_tokens": state.get("input_tokens", 0) + in_tok,
             "output_tokens": state.get("output_tokens", 0) + out_tok,
+            "cost_usd": state.get("cost_usd", 0.0) + cost,
         }
 
 
@@ -428,7 +497,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
     # lowered-IR gate below stays as the backstop.)
     try:
         reject_disabled_ops(dsl, state.get("features") or frozenset())
-    except RuntimeError as e:
+    except Exception as e:
         error_msg = str(e)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
@@ -466,7 +535,10 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
             "result": result,
             "diagram_ir": diagram_ir,
         }
-    except (IRCompileError, RuntimeError) as e:
+    except Exception as e:
+        # Any non-cancellation failure (a ValueError from a check, a TypeError from
+        # the renderer, ...) becomes a retry; CancelledError is a BaseException and
+        # still propagates.
         error_msg = str(e)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
@@ -529,60 +601,26 @@ async def select_recipes(
     Args:
         prompt: Natural-language description of the diagram.
         model: Override the selector model id (e.g. ``"anthropic:claude-haiku-4-5-20251001"``).
-            Defaults to the package-internal Haiku selector model.
+            Defaults to GEOMETRY_SELECTOR_MODEL when set, else the package-internal
+            Haiku selector model.
 
     Returns:
         A :class:`RecipeSelectionResult` with ``is_geometry_request``,
         ``selected_recipes``, ``unmatched_concepts``, ``confidence``, and
         token counts.
     """
-    selector_model = model or _SELECTOR_MODEL
-    catalog = load_catalog()
-    selection_prompt = build_selection_prompt(prompt, catalog)
-
-    llm = get_chat_model(selector_model)
-    from langchain_core.messages import SystemMessage, HumanMessage
-    messages = [
-        SystemMessage(content=RECIPE_SELECTION_SYSTEM),
-        HumanMessage(content=selection_prompt),
-    ]
-    response = await llm.ainvoke(messages)
-    raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
-    in_tok, out_tok = extract_usage(response)
-
-    selected_recipes: list[str] = []
-    unmatched_concepts: list[str] = []
-    confidence: Literal["high", "medium", "low"] = "high"
-    is_geometry_request = True
-    try:
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
-            unmatched_concepts = parsed.get("unmatched_concepts", [])
-            raw_conf = parsed.get("confidence", "high")
-            if raw_conf in ("high", "medium", "low"):
-                confidence = raw_conf
-            is_geometry_request = bool(parsed.get("is_geometry_request", True))
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
-
-    # Filter to valid recipe IDs only (mirrors _select_recipes_node behaviour)
-    valid_ids = []
-    for recipe_id in selected_recipes:
-        try:
-            load_recipe(recipe_id)
-            valid_ids.append(recipe_id)
-        except Exception:
-            pass
-
+    # Same precedence as the graph path (GeometryConfig.from_env): explicit
+    # argument, then GEOMETRY_SELECTOR_MODEL, then the package default.
+    selector_model = model or os.environ.get("GEOMETRY_SELECTOR_MODEL") or _SELECTOR_MODEL
+    selection, _recipes, in_tok, out_tok, cost = await _run_selection(prompt, selector_model)
     return RecipeSelectionResult(
-        selected_recipes=valid_ids,
-        unmatched_concepts=unmatched_concepts,
-        confidence=confidence,
-        is_geometry_request=is_geometry_request,
+        selected_recipes=selection.selected_recipes,
+        unmatched_concepts=selection.unmatched_concepts,
+        confidence=selection.confidence,
+        is_geometry_request=selection.is_geometry_request,
         input_tokens=in_tok,
         output_tokens=out_tok,
+        cost_usd=cost,
     )
 
 
@@ -593,9 +631,10 @@ def select_recipes_sync(
 ) -> RecipeSelectionResult:
     """Synchronous wrapper around :func:`select_recipes`.
 
-    Not usable inside a running event loop (use ``await select_recipes()`` there).
+    Also works inside a running event loop (it then runs on a worker thread and
+    blocks the caller); async callers should ``await select_recipes()``.
     """
-    return asyncio.run(select_recipes(prompt, model=model))
+    return run_sync(select_recipes(prompt, model=model))
 
 
 # ── strategy class ────────────────────────────────────────────────────────────
@@ -606,6 +645,7 @@ class RecipeStrategy(SubstanceStrategy):
     _partial_recipe_metadata: RecipeMetadata | None = None
     _partial_input_tokens: int = 0
     _partial_output_tokens: int = 0
+    _partial_cost_usd: "float | None" = None
 
     def __init__(
         self,
@@ -625,7 +665,10 @@ class RecipeStrategy(SubstanceStrategy):
         callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
         previous_dsl: Optional[dict] = None,
         features: "frozenset[str] | None" = None,
+        extra_instructions: Optional[str] = None,
     ) -> StructuredRunResult:
+        """extra_instructions: application text appended to the DSL-generation
+        system prompt (not the selector's, not the user's request)."""
         graph = _build_recipe_graph()
         effective_prompt = prompt
         if previous_dsl is not None:
@@ -636,6 +679,7 @@ class RecipeStrategy(SubstanceStrategy):
             effective_prompt = _prepare_recipe_modification_prompt(prompt, prior)
         initial_state: RecipePipelineState = {
             "prompt": effective_prompt,
+            "raw_prompt": prompt,
             "model_id": model,
             "selector_model": self.selector_model,
             "enable_cache": self.enable_cache,
@@ -648,10 +692,12 @@ class RecipeStrategy(SubstanceStrategy):
             "result": None,
             "input_tokens": 0,
             "output_tokens": 0,
+            "cost_usd": 0.0,
             "recipe_metadata": RecipeMetadata(),
             "renderer": renderer,
             "selection_done": False,
             "features": self.features if features is None else frozenset(features),
+            "extra_instructions": extra_instructions,
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 
@@ -659,6 +705,8 @@ class RecipeStrategy(SubstanceStrategy):
         self._partial_recipe_metadata = final_state.get("recipe_metadata")
         self._partial_input_tokens = final_state.get("input_tokens", 0)
         self._partial_output_tokens = final_state.get("output_tokens", 0)
+        # None (not 0.0) when no call reported a cost: 0.0 would read as "confirmed free".
+        self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
             raise RuntimeError(
@@ -669,6 +717,7 @@ class RecipeStrategy(SubstanceStrategy):
         result.recipe_metadata = final_state.get("recipe_metadata")
         result.input_tokens = final_state.get("input_tokens", 0)
         result.output_tokens = final_state.get("output_tokens", 0)
+        result.cost_usd = self._partial_cost_usd
         return result
 
     def build_agent(self, model: str = DEFAULT_AGENT_MODEL, renderer=None):
@@ -726,4 +775,4 @@ class RecipeStrategy(SubstanceStrategy):
         query_diagram = tool(query_diagram)
 
         llm = get_chat_model(model)
-        return create_react_agent(llm, tools=[render_diagram, query_diagram], prompt=_BUILD_AGENT_INSTRUCTIONS)
+        return create_agent(llm, tools=[render_diagram, query_diagram], system_prompt=_BUILD_AGENT_INSTRUCTIONS)

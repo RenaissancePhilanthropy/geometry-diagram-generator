@@ -15,7 +15,7 @@ from .config import GeometryConfig, resolve_config
 from .features import parse_features, tagged_insertions
 from .ir.font import FontConfig
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
-from .strategies.base import SubstanceStrategy
+from .strategies.base import SubstanceStrategy, run_sync
 from .strategies.python_full import PythonFullStrategy
 from .strategies.recipe import RecipeStrategy
 from .strategies.structured import StructureStrategy
@@ -31,11 +31,12 @@ class DiagramResult:
     dsl: Optional[dict] = None          # serialized RecipeDSL (dsl.model_dump()); recipe strategy only
     diagram_ir: Optional[dict] = None   # serialized DiagramIR (ir.model_dump())
     recipes: Optional[list[str]] = None # selected recipe IDs; recipe strategy only
-    retry_count: int = 0 # number of generation attempts (len of attempt_traces)
+    retry_count: int = 0 # number of generation attempts (successful one included)
     script: Optional[str] = None        # pydsl script source; python_full strategy only
     # Provider-reported USD cost of this call's LLM usage, summed over attempts (and, for a
     # python_full edit, the edit-generation call; a retry_on_apply_failure redo does not count
-    # the failed first call). None = not reported (e.g. recipe, some providers): unknown, not free.
+    # the failed first call). Includes the recipe selector and the pre-assert step calls.
+    # None = not reported (some providers): unknown, not free.
     cost_usd: Optional[float] = None
     # Non-fatal pipeline notes from the final successful run (renderer warnings, failed
     # `prefer` checks, solid projection/label/overlap warnings, ...). Never fails a run.
@@ -108,6 +109,7 @@ async def render_geometry_diagram(
     previous_ir: Optional[dict] = None,
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
+    extra_instructions: Optional[str] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -146,6 +148,12 @@ async def render_geometry_diagram(
             python_full previous_script edit.
         callbacks: Additional LangChain callback handlers to attach to internal LLM calls.
             Same scope as run_config above.
+        extra_instructions: Application-specific text appended, as a delimited
+            "Additional instructions from the application" section, to the system
+            prompt of the generation call(s) of every strategy (not to the user's
+            prompt, and not to the recipe selector). Overrides
+            config.extra_instructions; None falls back to it, and None or empty
+            leaves the prompts unchanged.
     """
     cfg = resolve_config(
         config,
@@ -155,8 +163,11 @@ async def render_geometry_diagram(
         selector_model=selector_model,
         renderer_url=renderer_url,
         font_family=font_family,
+        extra_instructions=extra_instructions,
     )
     strategy_obj = _make_strategy(cfg)
+    # Passed on only when set, so strategy calls keep their shape without it.
+    extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
 
     _check_previous_state(
         cfg.strategy,
@@ -175,6 +186,7 @@ async def render_geometry_diagram(
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
                 config=run_config,
                 callbacks=callbacks,
+                **extra,
             )
         else:
             result = await strategy_obj.run(
@@ -184,6 +196,7 @@ async def render_geometry_diagram(
                 sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
                 config=run_config,
                 callbacks=callbacks,
+                **extra,
             )
     elif cfg.strategy == "structured":
         result = await strategy_obj.run(
@@ -193,6 +206,7 @@ async def render_geometry_diagram(
             previous_ir=previous_ir,
             config=run_config,
             callbacks=callbacks,
+            **extra,
         )
     else:
         result = await strategy_obj.run(
@@ -202,6 +216,7 @@ async def render_geometry_diagram(
             previous_dsl=previous_dsl,
             config=run_config,
             callbacks=callbacks,
+            **extra,
         )
 
     # Extract structured artifacts if available
@@ -217,6 +232,12 @@ async def render_geometry_diagram(
                 _dsl = trace.dsl_json  # already a plain dict
                 break
     _diagram_ir = result.diagram_ir.model_dump()
+    retry_count = len(traces)
+    if result.recipe_metadata is None and cfg.strategy != "recipe":
+        # structured / python_full carry no attempt traces on the result; `retries` is
+        # the number of failed attempts before the successful one.
+        retries = getattr(result, "retries", 0)
+        retry_count = (retries if isinstance(retries, int) else 0) + 1
     return DiagramResult(
         svg=result.svg,
         tikz=result.tikz,
@@ -225,7 +246,7 @@ async def render_geometry_diagram(
         dsl=_dsl,
         diagram_ir=_diagram_ir,
         recipes=_recipes,
-        retry_count=len(traces),
+        retry_count=retry_count,
         script=getattr(result, "script", "") or None,
         cost_usd=getattr(result, "cost_usd", None),
         warnings=list(getattr(result, "warnings", None) or []),
@@ -235,10 +256,11 @@ async def render_geometry_diagram(
 def render_geometry_diagram_sync(prompt: str, **kwargs) -> DiagramResult:
     """Synchronous wrapper around render_geometry_diagram.
 
-    Note: Will raise RuntimeError if called from within a running event loop.
-    Async callers should use render_geometry_diagram directly.
+    Also works when called from inside a running event loop (the call then runs
+    on a worker thread and blocks the caller until it finishes); async callers
+    should still prefer render_geometry_diagram.
     """
-    return asyncio.run(render_geometry_diagram(prompt, **kwargs))
+    return run_sync(render_geometry_diagram(prompt, **kwargs))
 
 
 @tool
@@ -349,6 +371,7 @@ async def edit_geometry_diagram(
     font_family: Optional[str] = None,
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
+    extra_instructions: Optional[str] = None,
 ) -> DiagramResult:
     """Edit an existing geometry diagram by applying the described changes.
 
@@ -378,15 +401,16 @@ async def edit_geometry_diagram(
         font_family=font_family,
         run_config=run_config,
         callbacks=callbacks,
+        extra_instructions=extra_instructions,
     )
 
 
 def edit_geometry_diagram_sync(prompt: str, previous_dsl: Optional[dict] = None, **kwargs) -> DiagramResult:
     """Synchronous wrapper around edit_geometry_diagram.
 
-    Note: Will raise RuntimeError if called from within a running event loop.
+    Also works inside a running event loop, like render_geometry_diagram_sync.
     """
-    return asyncio.run(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
+    return run_sync(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
 
 
 def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:

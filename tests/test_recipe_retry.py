@@ -205,7 +205,7 @@ async def test_angle_hint_appended_on_retry():
     # Wrap ainvoke to capture the messages argument
     call_count = {"n": 0}
 
-    async def capturing_ainvoke(messages):
+    async def capturing_ainvoke(messages, **kwargs):
         captured_messages.append(messages)
         call_count["n"] += 1
         return _wrap_dsl(valid_dsl)
