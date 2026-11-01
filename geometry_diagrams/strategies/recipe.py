@@ -349,7 +349,7 @@ async def _generate_dsl_node(state: RecipePipelineState) -> dict:
         hints = _build_retry_hints(last_error)
         user_message = (
             f"{user_message}\n\n"
-            f"Previous attempt failed at stage: {last_error}\n"
+            f"Previous attempt failed: {last_error}\n"
             f"Please correct the issue and try again.\n"
             f"{hints}"
         )

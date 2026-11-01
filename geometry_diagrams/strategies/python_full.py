@@ -1058,6 +1058,7 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
             metadata.attempt_traces[-1].error = error_text
         return {
             "last_error": error_text,
+            "warnings": [],  # stale warnings belong to the previous pipeline error
             "attempt": state["attempt"] + 1,
             "result": None,
         }
