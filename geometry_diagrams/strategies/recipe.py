@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict, Union
@@ -206,6 +207,7 @@ def _prepare_recipe_modification_prompt(request: str, previous_dsl: Optional[Rec
 
 class RecipePipelineState(TypedDict):
     prompt: str
+    raw_prompt: str  # the user's request before any previous-DSL augmentation
     model_id: str
     selector_model: str
     enable_cache: bool
@@ -224,12 +226,64 @@ class RecipePipelineState(TypedDict):
     features: frozenset  # enabled feature groups; absent/empty = none enabled
 
 
-async def _select_recipes_node(state: RecipePipelineState) -> dict:
-    """Run the cheap selector model to pick relevant recipes."""
-    catalog = load_catalog()
-    selection_prompt = build_selection_prompt(state["prompt"], catalog)
+@dataclass
+class _ParsedSelection:
+    selected_recipes: list[str]
+    unmatched_concepts: list[str]
+    confidence: Literal["high", "medium", "low"]
+    is_geometry_request: bool
 
-    llm = get_chat_model(state.get("selector_model") or _SELECTOR_MODEL)
+
+def _str_list(value: Any) -> list[str]:
+    """`value` when it is a list, keeping only its string items; [] otherwise."""
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, str)]
+
+
+def _parse_selection(raw_text: str) -> _ParsedSelection:
+    """Parse the selector model's JSON reply, tolerating missing, null or
+    wrongly-typed fields (a selector reply is untrusted model output).
+
+    Unparseable text yields the permissive default: nothing selected,
+    high confidence, a geometry request."""
+    selected: list[str] = []
+    unmatched: list[str] = []
+    confidence: Literal["high", "medium", "low"] = "high"
+    is_geometry_request = True
+    try:
+        json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        parsed = json.loads(json_match.group()) if json_match else None
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
+        parsed = None
+    if isinstance(parsed, dict):
+        selected = _str_list(parsed.get("selected_recipes"))
+        if not selected:
+            selected = _str_list(parsed.get("selected"))
+        unmatched = _str_list(parsed.get("unmatched_concepts"))
+        raw_conf = parsed.get("confidence")
+        if raw_conf in ("high", "medium", "low"):
+            confidence = raw_conf
+        flag = parsed.get("is_geometry_request")
+        if isinstance(flag, bool):
+            is_geometry_request = flag
+        elif isinstance(flag, str) and flag.strip().lower() in ("false", "no", "0"):
+            is_geometry_request = False
+    return _ParsedSelection(selected, unmatched, confidence, is_geometry_request)
+
+
+async def _run_selection(
+    prompt: str, selector_model: str,
+) -> "tuple[_ParsedSelection, list[Recipe], int, int]":
+    """One selector call, shared by the graph node and the standalone entrypoint.
+
+    Returns the parsed selection (its `selected_recipes` filtered to ids that
+    load), the loaded recipes, and the call's (input, output) token counts."""
+    catalog = load_catalog()
+    selection_prompt = build_selection_prompt(prompt, catalog)
+
+    llm = get_chat_model(selector_model)
     from langchain_core.messages import SystemMessage, HumanMessage
     messages = [
         SystemMessage(content=RECIPE_SELECTION_SYSTEM),
@@ -237,48 +291,39 @@ async def _select_recipes_node(state: RecipePipelineState) -> dict:
     ]
     response = await llm.ainvoke(messages)
     raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
-
     in_tok, out_tok = extract_usage(response)
 
-    # Parse JSON response
-    selected_recipes = []
-    unmatched_concepts = []
-    confidence: Literal["high", "medium", "low"] = "high"
-    is_geometry_request = True
-    try:
-        # Try to find JSON in the response
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
-            unmatched_concepts = parsed.get("unmatched_concepts", [])
-            raw_conf = parsed.get("confidence", "high")
-            if raw_conf in ("high", "medium", "low"):
-                confidence = raw_conf
-            is_geometry_request = bool(parsed.get("is_geometry_request", True))
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
-
-    # Load selected recipes and build generation prompt
-    recipes = []
-    valid_recipe_ids = []
-    for recipe_id in selected_recipes:
+    selection = _parse_selection(raw_text)
+    recipes: list[Recipe] = []
+    valid_ids: list[str] = []
+    for recipe_id in selection.selected_recipes:
         try:
-            recipe = load_recipe(recipe_id)
-            recipes.append(recipe)
-            valid_recipe_ids.append(recipe_id)
+            recipes.append(load_recipe(recipe_id))
+            valid_ids.append(recipe_id)
         except Exception:
             pass
+    selection.selected_recipes = valid_ids
+    return selection, recipes, in_tok, out_tok
+
+
+async def _select_recipes_node(state: RecipePipelineState) -> dict:
+    """Run the cheap selector model to pick relevant recipes."""
+    # The selector sees the user's own request, not the generation prompt that
+    # edits augment with the previous DSL (cheap model, irrelevant tokens).
+    selector_request = state.get("raw_prompt") or state["prompt"]
+    selection, recipes, in_tok, out_tok = await _run_selection(
+        selector_request, state.get("selector_model") or _SELECTOR_MODEL,
+    )
 
     generation_prompt = build_generation_prompt(
         state["prompt"], recipes, dsl_docs_for(state.get("features") or frozenset())
     )
 
     metadata = RecipeMetadata(
-        selected_recipes=valid_recipe_ids,
-        unmatched_concepts=unmatched_concepts,
-        confidence=confidence,
-        is_geometry_request=is_geometry_request,
+        selected_recipes=selection.selected_recipes,
+        unmatched_concepts=selection.unmatched_concepts,
+        confidence=selection.confidence,
+        is_geometry_request=selection.is_geometry_request,
         selection_input_tokens=in_tok,
         selection_output_tokens=out_tok,
     )
@@ -535,58 +580,23 @@ async def select_recipes(
     Args:
         prompt: Natural-language description of the diagram.
         model: Override the selector model id (e.g. ``"anthropic:claude-haiku-4-5-20251001"``).
-            Defaults to the package-internal Haiku selector model.
+            Defaults to GEOMETRY_SELECTOR_MODEL when set, else the package-internal
+            Haiku selector model.
 
     Returns:
         A :class:`RecipeSelectionResult` with ``is_geometry_request``,
         ``selected_recipes``, ``unmatched_concepts``, ``confidence``, and
         token counts.
     """
-    selector_model = model or _SELECTOR_MODEL
-    catalog = load_catalog()
-    selection_prompt = build_selection_prompt(prompt, catalog)
-
-    llm = get_chat_model(selector_model)
-    from langchain_core.messages import SystemMessage, HumanMessage
-    messages = [
-        SystemMessage(content=RECIPE_SELECTION_SYSTEM),
-        HumanMessage(content=selection_prompt),
-    ]
-    response = await llm.ainvoke(messages)
-    raw_text = extract_text(response.content) if hasattr(response, "content") else str(response)
-    in_tok, out_tok = extract_usage(response)
-
-    selected_recipes: list[str] = []
-    unmatched_concepts: list[str] = []
-    confidence: Literal["high", "medium", "low"] = "high"
-    is_geometry_request = True
-    try:
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group())
-            selected_recipes = parsed.get("selected_recipes", parsed.get("selected", []))
-            unmatched_concepts = parsed.get("unmatched_concepts", [])
-            raw_conf = parsed.get("confidence", "high")
-            if raw_conf in ("high", "medium", "low"):
-                confidence = raw_conf
-            is_geometry_request = bool(parsed.get("is_geometry_request", True))
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning(f"Failed to parse selector response as JSON: {raw_text[:200]}")
-
-    # Filter to valid recipe IDs only (mirrors _select_recipes_node behaviour)
-    valid_ids = []
-    for recipe_id in selected_recipes:
-        try:
-            load_recipe(recipe_id)
-            valid_ids.append(recipe_id)
-        except Exception:
-            pass
-
+    # Same precedence as the graph path (GeometryConfig.from_env): explicit
+    # argument, then GEOMETRY_SELECTOR_MODEL, then the package default.
+    selector_model = model or os.environ.get("GEOMETRY_SELECTOR_MODEL") or _SELECTOR_MODEL
+    selection, _recipes, in_tok, out_tok = await _run_selection(prompt, selector_model)
     return RecipeSelectionResult(
-        selected_recipes=valid_ids,
-        unmatched_concepts=unmatched_concepts,
-        confidence=confidence,
-        is_geometry_request=is_geometry_request,
+        selected_recipes=selection.selected_recipes,
+        unmatched_concepts=selection.unmatched_concepts,
+        confidence=selection.confidence,
+        is_geometry_request=selection.is_geometry_request,
         input_tokens=in_tok,
         output_tokens=out_tok,
     )
@@ -642,6 +652,7 @@ class RecipeStrategy(SubstanceStrategy):
             effective_prompt = _prepare_recipe_modification_prompt(prompt, prior)
         initial_state: RecipePipelineState = {
             "prompt": effective_prompt,
+            "raw_prompt": prompt,
             "model_id": model,
             "selector_model": self.selector_model,
             "enable_cache": self.enable_cache,
