@@ -11,6 +11,7 @@ from typing import Any, Optional, TypedDict
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.runnables import RunnableConfig  # runtime: LangGraph resolves node annotations
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
@@ -81,6 +82,30 @@ async def _generation_step(awaitable):
         return await awaitable
     except ValueError as exc:
         raise _EditGenerationError(str(exc)) from exc
+
+
+def _with_callback(config: "dict | None", handler: Any) -> dict:
+    """`config` with `handler` added to its callbacks (a list or a callback manager)."""
+    merged = dict(config or {})
+    existing = merged.get("callbacks")
+    if existing is None:
+        merged["callbacks"] = [handler]
+    elif isinstance(existing, list):
+        merged["callbacks"] = [*existing, handler]
+    else:
+        manager = existing.copy()
+        manager.add_handler(handler, inherit=True)
+        merged["callbacks"] = manager
+    return merged
+
+
+def _recorded_tokens(handler: UsageMetadataCallbackHandler) -> "tuple[int, int]":
+    """(input, output) tokens of every model call the handler saw end."""
+    usages = list(handler.usage_metadata.values())
+    return (
+        sum(u.get("input_tokens", 0) for u in usages),
+        sum(u.get("output_tokens", 0) for u in usages),
+    )
 
 
 def _text_or_none(content: Any) -> "str | None":
@@ -919,13 +944,18 @@ async def _generate_script_node(
     # a transient generation failure and must not be retried.
     llm = get_chat_model(model_id, enable_cache=enable_cache)
 
+    # A call that raises after the provider answered (a parse error on the reply)
+    # returns no message to read usage from; this handler still saw it end.
+    usage_recorder = UsageMetadataCallbackHandler()
+    call_config = _with_callback(config, usage_recorder)
+
     try:
         if requires_raw_text_generation(model_id):
             # This provider rejects both with_structured_output methods this
             # pipeline supports (see llm.py's _RAW_TEXT_ONLY_MODELS) — skip
             # structured output entirely and salvage from plain text, the
             # ONLY viable path here, not a fallback used only on parse failure.
-            raw_msg = await llm.ainvoke(messages, **_config_kwargs(config))
+            raw_msg = await llm.ainvoke(messages, **_config_kwargs(call_config))
             in_tok, out_tok = extract_usage(raw_msg)
             cost = extract_cost(raw_msg)
             cost_usd = state["cost_usd"] + (cost or 0.0)
@@ -958,7 +988,7 @@ async def _generate_script_node(
 
         structured = bind_structured_output_for_model(llm, PydslScriptOutput, model_id, include_raw=True)
 
-        response = await structured.ainvoke(messages, **_config_kwargs(config))
+        response = await structured.ainvoke(messages, **_config_kwargs(call_config))
         raw_msg = response.get("raw")
         parsed = response.get("parsed")
         in_tok, out_tok = extract_usage(raw_msg) if raw_msg else (0, 0)
@@ -1015,6 +1045,7 @@ async def _generate_script_node(
         # error's errors()[0]["input"] carries the full, untruncated raw text
         # that failed to parse as JSON (unlike str(exc), which pydantic
         # truncates for display) — salvage from it the same way.
+        failed_in_tok, failed_out_tok = _recorded_tokens(usage_recorder)
         salvaged = None
         if isinstance(exc, ValidationError):
             for err in exc.errors():
@@ -1027,7 +1058,12 @@ async def _generate_script_node(
             metadata.attempt_traces.append(PythonFullAttemptTrace(
                 attempt=attempt + 1, script=salvaged, error=None, stage="generation",
             ))
-            return {"script": salvaged, "last_error": ""}
+            return {
+                "script": salvaged,
+                "last_error": "",
+                "input_tokens": state["input_tokens"] + failed_in_tok,
+                "output_tokens": state["output_tokens"] + failed_out_tok,
+            }
 
         logger.warning(f"_generate_script_node attempt {attempt} failed: {exc}")
         metadata.attempt_traces.append(PythonFullAttemptTrace(
@@ -1038,6 +1074,8 @@ async def _generate_script_node(
             "last_error": str(exc),
             "warnings": [],  # stale warnings belong to the previous pipeline error
             "attempt": attempt + 1,
+            "input_tokens": state["input_tokens"] + failed_in_tok,
+            "output_tokens": state["output_tokens"] + failed_out_tok,
         }
 
 
