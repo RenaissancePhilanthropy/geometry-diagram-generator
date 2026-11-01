@@ -25,6 +25,12 @@ Still fully functional and available for comparison via
 evals/run_edit_chains.py, but no longer recommended for new usage."""
 from __future__ import annotations
 
+from geometry_diagrams.pydsl._line_splice import (
+    check_and_splice,
+    require_op_fields,
+    split_script_lines,
+)
+
 
 class LineNumberError(ValueError):
     pass
@@ -33,7 +39,7 @@ class LineNumberError(ValueError):
 def render_line_number_view(script: str) -> str:
     """The annotated view shown to the model: one line per source line,
     prefixed with its 1-indexed line number, e.g. "3| c = point(0, 1)"."""
-    lines = script.splitlines()
+    lines, _eol, _trailing = split_script_lines(script)
     return "\n".join(f"{i}| {line}" for i, line in enumerate(lines, start=1))
 
 
@@ -68,6 +74,9 @@ def _check_expected_content(lines: list[str], line_number: int, expected_content
         )
 
 
+_CONTENT_KINDS = ("insert", "replace", "block_replace")
+
+
 def apply_line_number_ops(script: str, ops: list[dict]) -> str:
     """Apply `ops` (each a flat dict; kind is one of insert/delete/replace/
     block_replace) to `script`. Validates every op's line reference(s)
@@ -76,7 +85,7 @@ def apply_line_number_ops(script: str, ops: list[dict]) -> str:
     non-overlapping, non-decreasing line ranges, then applies as a single
     batch. Raises LineNumberError naming exactly what went wrong if any
     check fails — the whole turn fails, never a partial application."""
-    lines = script.splitlines()
+    lines, eol, had_trailing = split_script_lines(script)
     max_line = len(lines)
 
     # Resolve every op to (start_line, end_line_or_None) against the
@@ -84,6 +93,8 @@ def apply_line_number_ops(script: str, ops: list[dict]) -> str:
     resolved: list[tuple[int, "int | None", dict]] = []
     for op in ops:
         kind = op.get("kind")
+        if kind in _CONTENT_KINDS:
+            require_op_fields(op, ("content",), LineNumberError, "line_number")
         if kind == "insert":
             after = op.get("after")
             start_line = 0 if after == "start" else _parse_line_ref(after, "after", max_line)
@@ -107,43 +118,4 @@ def apply_line_number_ops(script: str, ops: list[dict]) -> str:
         else:
             raise LineNumberError(f"unknown line_number op kind: {kind!r}")
 
-    # Non-decreasing, non-overlapping order (mirrors hashline.py's check —
-    # same principle, same rationale, including the insert-anchor fix:
-    # an insert's end_line is None, but its start_line still occupies
-    # that anchor position and must block any other op touching the same
-    # line, regardless of list order).
-    ops_by_start = sorted(resolved, key=lambda r: r[0])
-    previous_end = -1
-    for start_line, end_line, _op in ops_by_start:
-        if start_line <= previous_end:
-            raise LineNumberError(
-                f"line_number ops overlap or are out of order at line {start_line} "
-                f"(previous op ended at line {previous_end}); "
-                "ops must reference non-overlapping, non-decreasing line ranges"
-            )
-        previous_end = end_line if end_line is not None else start_line
-
-    # Single batch pass over the original lines, splicing in each op's
-    # effect at its resolved (pre-turn) position.
-    result_lines: list[str] = []
-    cursor = 0  # 0-indexed position into `lines` already emitted
-    for start_line, end_line, op in ops_by_start:
-        kind = op["kind"]
-        if kind == "insert":
-            result_lines.extend(lines[cursor:start_line])
-            result_lines.append(op["content"])
-            cursor = start_line
-        elif kind == "delete":
-            result_lines.extend(lines[cursor : start_line - 1])
-            cursor = start_line
-        elif kind == "replace":
-            result_lines.extend(lines[cursor : start_line - 1])
-            result_lines.append(op["content"])
-            cursor = start_line
-        elif kind == "block_replace":
-            result_lines.extend(lines[cursor : start_line - 1])
-            result_lines.append(op["content"])
-            cursor = end_line
-
-    result_lines.extend(lines[cursor:])
-    return "\n".join(result_lines) + "\n"
+    return check_and_splice(lines, eol, had_trailing, resolved, LineNumberError, "line_number")
