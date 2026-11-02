@@ -8,10 +8,10 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^8.2.1"
+    "vite": "^8.2.4"
   },
   "dependencies": {
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.17",
     "marked": "^18.0.9"
   }
 }
