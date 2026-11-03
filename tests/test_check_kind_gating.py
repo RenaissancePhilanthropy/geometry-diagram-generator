@@ -113,13 +113,14 @@ def _union_members():
 # entry here when a new kind's fields cannot be built from "P"/1/["P","Q"].
 PLACEHOLDER_OVERRIDES: "dict[type, dict]" = {
     ir.ProportionalLengths: {"segs": ["P", "Q"], "values": [1.0, 2.0]},
+    ir.ImageOf: {"transform": ir.DilationTransform(center="P", factor=1.0)},
 }
 
 
 def _placeholder(cls):
     values = {}
     for name, field in cls.model_fields.items():
-        if name in ("level", "tol", "source"):
+        if name in ("level", "tol", "source") or name in PLACEHOLDER_OVERRIDES.get(cls, {}):
             continue
         ann = field.annotation
         if name == "kind":
@@ -144,7 +145,7 @@ def _placeholder(cls):
 
 
 def test_union_is_enumerated():
-    assert len(_union_members()) >= 36 and {ir.Midpoint, ir.ProportionalLengths, ir.Between, ir.LengthMultiple, ir.AngleMultiple, ir.PointAt} <= set(_union_members())
+    assert len(_union_members()) >= 36 and {ir.Midpoint, ir.ProportionalLengths, ir.Between, ir.LengthMultiple, ir.AngleMultiple, ir.PointAt, ir.ImageOf} <= set(_union_members())
 
 
 @pytest.mark.parametrize("cls", _union_members(), ids=lambda c: c.__name__)
@@ -498,3 +499,186 @@ def test_point_at_rejects_non_finite_coordinates(v):
         ir.PointAt(p="P", x=v, y=0.0)
     with pytest.raises(ValidationError):
         ir.PointAt(p="P", x=0.0, y=v)
+
+
+# --- image_of -----------------------------------------------------------------
+
+def _image_diagram(kind="rotation", perturb=(0.0, 0.0), scale=1.0, rot=0.0, tol=None,
+                   wrong_transform=None, use_check=True) -> ir.DiagramIR:
+    """q is built by the matching point DEFINITION, then perturbed; the check
+    states the same transform. The whole figure is scaled and rotated."""
+    base = {"O": (1.0, 2.0), "P": (4.0, 3.0), "A": (0.0, 0.0), "B": (5.0, 1.0)}
+    define = [ir.PointFixed(id=k, x=x, y=y)
+              for k, (x, y) in ((k, _rot(v, scale, rot)) for k, v in base.items())]
+    define += [ir.LineThrough(id="L", p="A", q="B"), ir.Segment(id="S", a="A", b="B")]
+    if kind == "rotation":
+        q = ir.PointRotate(id="Q0", center="O", source="P", angle=0.9)
+        tf = ir.RotationTransform(center="O", angle=0.9)
+    elif kind == "dilation":
+        q = ir.PointDilate(id="Q0", center="O", source="P", ratio=-2.5)
+        tf = ir.DilationTransform(center="O", factor=-2.5)
+    elif kind == "reflect_line":
+        q = ir.PointReflect(id="Q0", source="P", across="L")
+        tf = ir.ReflectionTransform(across="L")
+    elif kind == "reflect_segment":
+        q = ir.PointReflect(id="Q0", source="P", across="S")
+        tf = ir.ReflectionTransform(across="S")
+    elif kind == "reflect_point":
+        q = ir.PointReflect(id="Q0", source="P", across="O")
+        tf = ir.ReflectionTransform(across="O")
+    else:  # translation: Q0 = P + (B - A), built by hand (no definition exists)
+        q = None
+        tf = ir.TranslationTransform(from_point="A", to_point="B")
+    if q is not None:
+        define.append(q)
+        qx, qy = None, None
+    if wrong_transform is not None:
+        tf = wrong_transform
+    d = ir.DiagramIR(define=define, render=[ir.DrawPoints(points=["P"])])
+    sym = compile_defs(d)
+    if q is not None:
+        qx, qy = float(sym["Q0"].x), float(sym["Q0"].y)
+    else:
+        px, py = _rot(base["P"], scale, rot)
+        qx, qy = px + (float(sym["B"].x) - float(sym["A"].x)), py + (float(sym["B"].y) - float(sym["A"].y))
+    d = ir.DiagramIR(
+        define=define + [ir.PointFixed(id="Q", x=qx + perturb[0] * scale, y=qy + perturb[1] * scale)],
+        checks=[ir.ImageOf(q="Q", p="P", transform=tf, tol=tol)],
+        render=[ir.DrawPoints(points=["P", "Q"])],
+    )
+    return d
+
+
+_KINDS = ["rotation", "dilation", "reflect_line", "reflect_segment", "reflect_point", "translation"]
+
+
+def test_image_of_registered_in_rule_table():
+    assert CHECK_RULES["image_of"] == GROUP
+
+
+def test_image_of_gated_off_and_accepted_on():
+    with pytest.raises(FeatureNotEnabledError) as e:
+        require_features(_image_diagram(), frozenset())
+    assert "image_of" in str(e.value) and GROUP in str(e.value)
+    require_features(_image_diagram(), frozenset({GROUP}))
+
+
+def test_image_of_evaluates_and_renders_with_group_off():
+    d = _image_diagram()
+    sym = compile_defs(d)
+    assert run_checks(d.checks, sym)[0].passed
+    assert "<svg" in SVGRenderer().render(d, sym).output
+
+
+def test_image_of_extractor_references():
+    assert set(direct_ids_referenced(_image_diagram("rotation").checks[0])) == {"Q", "P", "O"}
+    assert set(direct_ids_referenced(_image_diagram("reflect_line").checks[0])) == {"Q", "P", "L"}
+    assert set(direct_ids_referenced(_image_diagram("translation").checks[0])) == {"Q", "P", "A", "B"}
+    assert set(direct_ids_referenced(_image_diagram("dilation").checks[0])) == {"Q", "P", "O"}
+
+
+@pytest.mark.parametrize("kind", _KINDS)
+def test_image_of_agrees_with_the_matching_definition(kind):
+    assert _verdict(_image_diagram(kind)).passed
+
+
+@pytest.mark.parametrize("kind", _KINDS)
+def test_image_of_fails_for_a_perturbed_q_and_states_where_q_is_vs_expected(kind):
+    r = _verdict(_image_diagram(kind, perturb=(0.3, 0.2)))
+    assert not r.passed
+    assert "'Q'" in r.message and "should be" in r.message and "'P'" in r.message
+
+
+@pytest.mark.parametrize("kind", _KINDS)
+@pytest.mark.parametrize("scale", [1e-3, 1.0, 1e3])
+@pytest.mark.parametrize("rot", [0.0, 0.7, 2.5])
+def test_image_of_is_scale_and_rotation_invariant(kind, scale, rot):
+    assert _verdict(_image_diagram(kind, scale=scale, rot=rot)).passed
+    assert not _verdict(_image_diagram(kind, perturb=(0.3, 0.2), scale=scale, rot=rot)).passed
+
+
+def test_image_of_wrong_transform_fails():
+    wrong = ir.RotationTransform(center="O", angle=-0.9)
+    assert not _verdict(_image_diagram("rotation", wrong_transform=wrong)).passed
+    assert not _verdict(_image_diagram("dilation", wrong_transform=ir.DilationTransform(center="O", factor=2.5))).passed
+    # a reflection is not a rotation
+    assert not _verdict(_image_diagram("reflect_line", wrong_transform=ir.RotationTransform(center="A", angle=3.14159))).passed
+
+
+def test_rotation_angle_is_radians_counter_clockwise():
+    d = ir.DiagramIR(
+        define=[ir.PointFixed(id="O", x=0, y=0), ir.PointFixed(id="P", x=1, y=0),
+                ir.PointFixed(id="Q", x=0, y=1)],
+        checks=[ir.ImageOf(q="Q", p="P", transform=ir.RotationTransform(center="O", angle=math.pi / 2))],
+    )
+    assert _verdict(d).passed
+    d.checks[0].transform.angle = 90.0  # degrees would be a different point
+    assert not _verdict(d).passed
+
+
+def test_image_of_tol_is_relative_to_anchor_distance_and_own_tol_is_honoured():
+    # |PO| = sqrt(9+1); a 2e-3 * |PO| error passes the default 5e-3, not a 1e-4 tol
+    off = 2e-3 * math.hypot(3.0, 1.0)
+    assert _verdict(_image_diagram("rotation", perturb=(off, 0.0))).passed
+    assert not _verdict(_image_diagram("rotation", perturb=(off, 0.0), tol=1e-4)).passed
+    assert _verdict(_image_diagram("rotation", perturb=(0.2, 0.0), tol=0.5)).passed
+
+
+def test_image_of_is_exact_only_when_the_anchor_distance_is_zero():
+    same = ir.DiagramIR(
+        define=[ir.PointFixed(id="O", x=1, y=1), ir.PointFixed(id="P", x=1, y=1), ir.PointFixed(id="Q", x=1, y=1)],
+        checks=[ir.ImageOf(q="Q", p="P", transform=ir.RotationTransform(center="O", angle=2.0))],
+    )
+    assert _verdict(same).passed
+    near = same.model_copy(deep=True)
+    near.define[2] = ir.PointFixed(id="Q", x=1.000001, y=1)
+    assert not _verdict(near).passed
+
+
+def test_image_of_reflection_of_a_point_on_the_mirror_is_exact_only():
+    d = ir.DiagramIR(
+        define=[ir.PointFixed(id="A", x=0, y=0), ir.PointFixed(id="B", x=1, y=0),
+                ir.LineThrough(id="L", p="A", q="B"),
+                ir.PointFixed(id="P", x=3, y=0), ir.PointFixed(id="Q", x=3, y=0)],
+        checks=[ir.ImageOf(q="Q", p="P", transform=ir.ReflectionTransform(across="L"))],
+    )
+    assert _verdict(d).passed
+
+
+@pytest.mark.parametrize("bad", [0, 0.0, float("nan"), float("inf"), float("-inf")])
+def test_dilation_factor_must_be_finite_and_non_zero(bad):
+    with pytest.raises(ValidationError):
+        ir.DilationTransform(center="O", factor=bad)
+
+
+def test_negative_dilation_factor_is_allowed():
+    assert ir.DilationTransform(center="O", factor=-3).factor == -3
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_rotation_angle_must_be_finite(bad):
+    with pytest.raises(ValidationError):
+        ir.RotationTransform(center="O", angle=bad)
+
+
+def test_transform_discriminator_is_validated_at_parse_time():
+    good = {"kind": "image_of", "q": "Q", "p": "P",
+            "transform": {"kind": "rotation", "center": "O", "angle": 1.0}}
+    assert ir.DiagramIR.model_validate({"define": [], "checks": [good]}).checks[0].transform.kind == "rotation"
+    for bad_tf in ({"kind": "shear", "center": "O"}, {"center": "O", "angle": 1.0},
+                   {"kind": "dilation", "center": "O", "factor": 0}):
+        bad = dict(good, transform=bad_tf)
+        with pytest.raises(ValidationError):
+            ir.DiagramIR.model_validate({"define": [], "checks": [bad]})
+
+
+def test_image_of_json_round_trip_uses_from_to_for_translation():
+    c = ir.ImageOf(q="Q", p="P", transform=ir.TranslationTransform(from_point="A", to_point="B"))
+    assert ir.DiagramIR.model_validate(ir.DiagramIR(define=[], checks=[c]).model_dump(mode="json")).checks[0] == c
+
+
+def test_image_of_non_point_operand_is_a_failed_check_not_a_crash():
+    d = _image_diagram("rotation")
+    d.checks[0].transform = ir.RotationTransform(center="L", angle=1.0)  # a line, not a point
+    r = _verdict(d)
+    assert not r.passed and "center" in r.message

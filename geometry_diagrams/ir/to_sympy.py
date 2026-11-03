@@ -600,6 +600,35 @@ def _intersection_points(obj1: Any, obj2: Any, did: str, id1: str, id2: str) -> 
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def rotate_point(source: spg.Point, center: spg.Point, angle: Any) -> spg.Point:
+    """``source`` rotated about ``center`` by ``angle`` radians, counter-clockwise
+    positive. The one implementation behind ``point_rotate`` and ``image_of``."""
+    return source.rotate(angle, center)
+
+
+def reflect_point(source: spg.Point, across: Any, did: str) -> spg.Point:
+    """``source`` reflected across a point (point symmetry) or a line, segment
+    or ray (mirror). The one implementation behind ``point_reflect`` and
+    ``image_of``."""
+    if isinstance(across, spg.Point):
+        # Point symmetry: 2*center - source
+        return spg.Point(2 * across.x - source.x, 2 * across.y - source.y)
+    if isinstance(across, spg.Line):
+        return source.reflect(across)                  # Point.reflect(Line) — NOT Line.reflect(Point)
+    if isinstance(across, (spg.Segment, spg.Ray)):
+        return source.reflect(spg.Line(across.p1, across.p2))
+    raise IRCompileError(did, f"point_reflect: 'across' must be a point or linear object, got {type(across).__name__}")
+
+
+def dilate_point(source: spg.Point, center: spg.Point, k: Any) -> spg.Point:
+    """``center + k*(source - center)``. The one implementation behind
+    ``point_dilate`` and ``image_of``."""
+    return spg.Point(
+        center.x + k * (source.x - center.x),
+        center.y + k * (source.y - center.y),
+    )
+
+
 def compile_defs(
     diagram: ir.DiagramIR,
     *,
@@ -808,21 +837,10 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"point_rotate: 'center' must be a point, got {type(center).__name__}"
                 )
-            return ref(source_id).rotate(ev(angle), center)
+            return rotate_point(ref(source_id), center, ev(angle))
 
         case ir.PointReflect(source=source_id, across=across_id):
-            source_pt = ref(source_id)
-            across_obj = ref(across_id)
-            if isinstance(across_obj, spg.Point):
-                # Point symmetry: 2*center - source
-                return spg.Point(2 * across_obj.x - source_pt.x, 2 * across_obj.y - source_pt.y)
-            elif isinstance(across_obj, spg.Line):
-                return source_pt.reflect(across_obj)           # Point.reflect(Line) — NOT Line.reflect(Point)
-            elif isinstance(across_obj, (spg.Segment, spg.Ray)):
-                line = spg.Line(across_obj.p1, across_obj.p2)
-                return source_pt.reflect(line)                 # Point.reflect(Line) — NOT Line.reflect(Point)
-            else:
-                raise IRCompileError(did, f"point_reflect: 'across' must be a point or linear object, got {type(across_obj).__name__}")
+            return reflect_point(ref(source_id), ref(across_id), did)
 
         case ir.PointDilate(center=center_id, source=source_id, ratio=ratio):
             center = ref(center_id)
@@ -831,11 +849,7 @@ def _compile_one(
                 raise IRCompileError(
                     did, f"point_dilate: 'center' must be a point, got {type(center).__name__}"
                 )
-            k = ev(ratio)
-            return spg.Point(
-                center.x + k * (source_pt.x - center.x),
-                center.y + k * (source_pt.y - center.y),
-            )
+            return dilate_point(source_pt, center, ev(ratio))
 
         case ir.PointTriangleCenter(tri=tri_id, which=which):
             tri = ref(tri_id)

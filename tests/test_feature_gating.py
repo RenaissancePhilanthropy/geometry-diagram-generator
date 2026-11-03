@@ -89,6 +89,14 @@ def _point_at_check_diagram() -> ir.DiagramIR:
     )
 
 
+def _image_of_check_diagram() -> ir.DiagramIR:
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="A", x=1, y=2), ir.PointFixed(id="O", x=0, y=0), ir.PointFixed(id="B", x=2, y=4)],
+        checks=[ir.ImageOf(q="B", p="A", transform=ir.DilationTransform(center="O", factor=2))],
+        render=[ir.DrawPoints(points=["A", "B"])],
+    )
+
+
 def _plain_diagram() -> ir.DiagramIR:
     return ir.DiagramIR(define=[ir.PointFixed(id="A", x=0, y=0)], render=[ir.Draw(obj="A")])
 
@@ -450,6 +458,7 @@ def test_child_main_exposes_grouped_name_only_when_request_enables_group():
     ("measured_checks", _between_check_diagram),
     ("measured_checks", _multiples_check_diagram),
     ("measured_checks", _point_at_check_diagram),
+    ("measured_checks", _image_of_check_diagram),
 ])
 async def test_each_ir_strategy_rejects_a_disabled_group_before_the_pipeline(strategy_name, group, make_diagram):
     """Regression guard for the forgettable gate: whatever the strategy, a

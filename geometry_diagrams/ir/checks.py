@@ -25,7 +25,10 @@ from .to_sympy import (
     _tangent_touch_point,
     _underlying_conic,
     arc_sweep_degrees,
+    dilate_point,
     point_on_arc,
+    reflect_point,
+    rotate_point,
 )
 
 
@@ -406,6 +409,15 @@ def _check_one(
                     f"Point {p!r} is at ({px:.4f}, {py:.4f}), expected ({ex:.4f}, {ey:.4f})"
                 )
 
+            case ir.ImageOf(q=q, p=p, transform=tf):
+                ex, ey, anchor, how = _image_expected(tf, sym[p], sym)
+                qx, qy = _xy(sym[q])
+                ok = (qx, qy) == (ex, ey) or math.hypot(qx - ex, qy - ey) <= t * anchor
+                msg = "" if ok else (
+                    f"Point {q!r} is at ({qx:.4f}, {qy:.4f}), but the image of {p!r} under "
+                    f"{how} should be at ({ex:.4f}, {ey:.4f})"
+                )
+
             # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this
             # line (before the registry/unknown fallbacks below).
             case ir.CongruentArcs(arcs=arcs):
@@ -524,6 +536,46 @@ def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
 
 
 _EXACT_LINEAR_TOL = 1e-9
+
+
+def _image_expected(tf: Any, src: Any, sym: SymTable) -> tuple[float, float, float, str]:
+    """Where the image of ``src`` under transform ``tf`` should be, as
+    ``(x, y, anchor_distance, description)``. The anchor distance is from the
+    transformation's anchor (centre, mirror, or the translation vector's
+    length) to ``src``: the scale the check's tolerance is relative to. The
+    point maths is shared with the point definitions (``to_sympy``)."""
+    def point(pid: str, role: str) -> spg.Point:
+        obj = sym[pid]
+        if not isinstance(obj, spg.Point):
+            raise ValueError(f"image_of: transform {role} {pid!r} must be a point, got {type(obj).__name__}")
+        return obj
+
+    sx, sy = _xy(src)
+    match tf:
+        case ir.TranslationTransform(from_point=a, to_point=b):
+            pa, pb = point(a, "from_point"), point(b, "to_point")
+            dx, dy = _xy(pb)[0] - _xy(pa)[0], _xy(pb)[1] - _xy(pa)[1]
+            return sx + dx, sy + dy, math.hypot(dx, dy), f"translation by the vector {a!r} to {b!r}"
+        case ir.DilationTransform(center=c, factor=k):
+            ctr = point(c, "center")
+            img = dilate_point(src, ctr, k)
+            return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
+                    f"dilation about {c!r} by factor {k:g}")
+        case ir.RotationTransform(center=c, angle=ang):
+            ctr = point(c, "center")
+            img = rotate_point(src, ctr, ang)
+            return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
+                    f"rotation about {c!r} by {ang:g} rad ({math.degrees(ang):.1f}°)")
+        case ir.ReflectionTransform(across=a):
+            obj = sym[a]
+            img = reflect_point(src, obj, "image_of")
+            if isinstance(obj, spg.Point):
+                anchor = math.hypot(sx - _xy(obj)[0], sy - _xy(obj)[1])
+            else:
+                line = obj if isinstance(obj, spg.Line) else spg.Line(obj.p1, obj.p2)
+                anchor = float(line.distance(src).evalf())
+            return *_xy(img), anchor, f"reflection across {a!r}"
+    raise ValueError(f"image_of: unknown transform {type(tf).__name__}")
 
 
 def _xy(p: Any) -> tuple[float, float]:

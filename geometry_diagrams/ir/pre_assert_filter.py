@@ -456,6 +456,14 @@ def direct_ids_referenced(check: ir.Check) -> list[str]:
             return [a1.a, a1.o, a1.b, a2.a, a2.o, a2.b]
         case ir.PointAt(p=p):
             return [p]
+        case ir.ImageOf(q=q, p=p, transform=tf):
+            match tf:
+                case ir.TranslationTransform(from_point=a, to_point=b):
+                    return [q, p, a, b]
+                case ir.ReflectionTransform(across=across):
+                    return [q, p, across]
+                case _:
+                    return [q, p, tf.center]
         # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this line
         # (the completeness test fails if a union member is missing here).
         case _:

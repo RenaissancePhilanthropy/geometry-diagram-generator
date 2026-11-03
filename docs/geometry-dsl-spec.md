@@ -1589,6 +1589,25 @@ pydsl `assert_*` exists for these kinds.
   a point merely near the origin is compared against the other coordinate's
   magnitude, if any). `x` and `y` must be finite. Compiled coordinates carry
   small rounding, so expect agreement to about 1e-9, not bit equality.
+- `image_of` (IR check, `{kind: "image_of", q, p, transform}`): point `q` is
+  the image of point `p` under `transform`, a tagged union on `kind`:
+  `translation` (`from_point`, `to_point`: shift by the vector between those
+  two points), `dilation` (`center`, `factor`: any finite non-zero number,
+  negatives allowed, the meaning of `point_dilate`'s `ratio`), `rotation`
+  (`center`, `angle` in RADIANS, counter-clockwise positive, the meaning of
+  `point_rotate`'s `angle`; note this differs from a "degrees" convention a
+  downstream request may assume) and `reflection` (`across`: a point, for
+  point symmetry, or a line, segment or ray, exactly the operands of
+  `point_reflect`). The math is shared with the point definitions, so the check
+  and the definitions cannot disagree. `tol` (default 5e-3) is relative to the
+  distance from the transformation's anchor (the centre, the mirror line or
+  point, or the translation vector's length) to `p`; when that distance is 0
+  (e.g. `p` on the mirror) the comparison is exact-only. `factor` and `angle`
+  must be finite (a zero `factor` or an unknown `kind` is rejected at parse
+  time); a transform operand that is not the right object type fails the check
+  with a message. A failure states where `q` is and where the image of `p`
+  should be. This lets a redrawn figure be tested against a stated
+  transformation. Gated by `measured_checks`.
 
 Every `Check` union member is evaluated by a dedicated arm of `run_checks` and
 handled by the pre-assert reference extractor (`direct_ids_referenced`); a

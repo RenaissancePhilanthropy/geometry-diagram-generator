@@ -91,6 +91,7 @@ CHECK_RULES: "dict[str, str]" = {
     "length_multiple": "measured_checks",
     "angle_multiple": "measured_checks",
     "point_at": "measured_checks",
+    "image_of": "measured_checks",
 }
 
 

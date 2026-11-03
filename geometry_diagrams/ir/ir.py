@@ -1249,6 +1249,70 @@ class PointAt(CheckBase):
         return self
 
 
+class TranslationTransform(BaseModel):
+    """Translate by the vector from point ``from_point`` to point ``to_point``."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["translation"] = "translation"
+    from_point: PointId
+    to_point: PointId
+
+
+class DilationTransform(BaseModel):
+    """Scale about ``center`` by ``factor`` (same meaning as ``point_dilate``'s
+    ``ratio``); any finite non-zero number, negatives allowed."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["dilation"] = "dilation"
+    center: PointId
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "DilationTransform":
+        if not math.isfinite(self.factor) or self.factor == 0:
+            raise ValueError("dilation factor must be a finite, non-zero number")
+        return self
+
+
+class RotationTransform(BaseModel):
+    """Rotate about ``center`` by ``angle`` RADIANS, counter-clockwise positive
+    (same meaning as ``point_rotate``'s ``angle``)."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["rotation"] = "rotation"
+    center: PointId
+    angle: float
+
+    @model_validator(mode="after")
+    def _validate_angle(self) -> "RotationTransform":
+        if not math.isfinite(self.angle):
+            raise ValueError("rotation angle must be a finite number (radians)")
+        return self
+
+
+class ReflectionTransform(BaseModel):
+    """Reflect across ``across``: a point (point symmetry) or a line, segment
+    or ray (mirror), the same operands as ``point_reflect``."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["reflection"] = "reflection"
+    across: ObjId
+
+
+ImageTransform = Annotated[
+    Union[TranslationTransform, DilationTransform, RotationTransform, ReflectionTransform],
+    Field(discriminator="kind"),
+]
+
+
+class ImageOf(CheckBase):
+    """Point ``q`` is the image of point ``p`` under ``transform``. ``tol`` is
+    relative to the distance from the transformation's anchor (centre,
+    reflection line or point, or the translation vector's length) to ``p``;
+    when that distance is 0 the comparison is exact-only. Gated by the
+    ``measured_checks`` group."""
+    kind: Literal["image_of"] = "image_of"
+    q: PointId
+    p: PointId
+    transform: ImageTransform
+
+
 # NEW CHECK KINDS: add the class above and list it in this union (the
 # completeness test in tests/test_check_kind_gating.py enumerates the union).
 Check = Annotated[
@@ -1267,7 +1331,7 @@ Check = Annotated[
         Centroid,
         Convex, CCW, MinDistance,
         Midpoint, ProportionalLengths, Between,
-        LengthMultiple, AngleMultiple, PointAt,
+        LengthMultiple, AngleMultiple, PointAt, ImageOf,
     ],
     Field(discriminator="kind")
 ]
