@@ -64,13 +64,12 @@ from .render_util import (
     extract_coords,
     fmt_label_num,
     fmt_num,
+    grid_span,
     label_segment_arc_anchor,
     line_endpoints,
     line_label_endpoints,
     orient_angle,
     poly_verts,
-    round_down_to_step,
-    round_up_to_step,
     second_line_point,
     seg_endpoints,
     synthesize_helpers,
@@ -2428,10 +2427,12 @@ def _append_grid(
     gxy,
 ) -> None:
     x_step, y_step = canvas.grid_steps()
-    gxmin = round_down_to_step(xmin, x_step)
-    gxmax = round_up_to_step(xmax, x_step)
-    gymin = round_down_to_step(ymin, y_step)
-    gymax = round_up_to_step(ymax, y_step)
+    x_span = grid_span(xmin, xmax, x_step)
+    y_span = grid_span(ymin, ymax, y_step)
+    if x_span is None or y_span is None:
+        return
+    gxmin, gxmax = x_span
+    gymin, gymax = y_span
 
     x = gxmin
     while x <= gxmax + 1e-9:

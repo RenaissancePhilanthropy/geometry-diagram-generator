@@ -1510,6 +1510,20 @@ def round_up_to_step(value: float, step: float) -> float:
     return math.ceil(value / step) * step
 
 
+def grid_span(lo: float, hi: float, step: float) -> "tuple[float, float] | None":
+    """First and last multiples of `step` inside [lo, hi], or None if there are none.
+
+    A grid is clipped to the range it was asked for rather than rounded outward,
+    so x_range=(-0.5, 15.5) with step 1 gives lines 0..15, not -1..16.
+    """
+    eps = 1e-9
+    first = math.ceil(lo / step - eps)
+    last = math.floor(hi / step + eps)
+    if first > last:
+        return None
+    return first * step, last * step
+
+
 # ---------------------------------------------------------------------------
 # Entity manifest building
 # ---------------------------------------------------------------------------
