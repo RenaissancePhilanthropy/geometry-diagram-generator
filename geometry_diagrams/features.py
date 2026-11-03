@@ -86,6 +86,8 @@ FIELD_RULES: "dict[str, FieldRule]" = {
 # it. A kind absent here is ungated.
 CHECK_RULES: "dict[str, str]" = {
     "midpoint": "measured_checks",
+    "proportional_lengths": "measured_checks",
+    "between": "measured_checks",
 }
 
 

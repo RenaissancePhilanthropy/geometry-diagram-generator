@@ -343,6 +343,44 @@ def _check_one(
                     f"({ex:.4f}, {ey:.4f}), got ({mx:.4f}, {my:.4f})"
                 )
 
+            case ir.ProportionalLengths(segs=segs, values=values):
+                lengths = [_length_of(sym[sid], sid) for sid in segs]
+                if lengths[0] <= 0:
+                    ok, msg = False, f"{segs[0]!r} has zero length; cannot compare length ratios to it"
+                else:
+                    got = [l / lengths[0] for l in lengths]
+                    want = [v / values[0] for v in values]
+                    ok = all(abs(g - w) <= t * w for g, w in zip(got[1:], want[1:]))
+                    msg = "" if ok else (
+                        "Lengths are not proportional: measured length ratios "
+                        + ":".join(f"{g:.4f}" for g in got)
+                        + " vs claimed value ratios "
+                        + ":".join(f"{w:.4f}" for w in want)
+                        + f" for {', '.join(repr(sid) for sid in segs)}"
+                    )
+
+            case ir.Between(p=p, a=a, b=b):
+                (px, py), (ax, ay), (bx, by) = _xy(sym[p]), _xy(sym[a]), _xy(sym[b])
+                dx, dy = bx - ax, by - ay
+                seg_len = math.hypot(dx, dy)
+                if seg_len == 0:
+                    ok, msg = False, f"{a!r} and {b!r} coincide, so there is no segment for {p!r} to lie between"
+                else:
+                    eps = t * seg_len
+                    u = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (seg_len * seg_len)))
+                    off_seg = math.hypot(px - (ax + u * dx), py - (ay + u * dy))
+                    d_a, d_b = math.hypot(px - ax, py - ay), math.hypot(px - bx, py - by)
+                    ok = off_seg <= eps and d_a > eps and d_b > eps
+                    if ok:
+                        msg = ""
+                    elif off_seg > eps:
+                        msg = (f"Point {p!r} is not on segment {a!r}{b!r}: it is {off_seg:.4f} from it "
+                               f"(allowed {eps:.4f})")
+                    else:
+                        end = a if d_a <= eps else b
+                        msg = (f"Point {p!r} is at an end of segment {a!r}{b!r}: it is "
+                               f"{min(d_a, d_b):.4f} from {end!r} (must be farther than {eps:.4f})")
+
             # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this
             # line (before the registry/unknown fallbacks below).
             case ir.CongruentArcs(arcs=arcs):

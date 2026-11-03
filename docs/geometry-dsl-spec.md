@@ -1551,6 +1551,24 @@ pydsl `assert_*` exists for these kinds.
   existing points, unlike the `point_midpoint` definition (which constructs a
   point) and the eval-format `midpoint(M, A, B)` entry listed above.
 
+- `proportional_lengths` (IR check, `{kind: "proportional_lengths", segs, values}`):
+  the listed segments' lengths are proportional to `values` at any scale: for
+  every i, `|len_i/len_0 - v_i/v_0| <= tol * (v_i/v_0)`. `segs` has two or more
+  entries and `values` the same count, every value finite and > 0; violations
+  are rejected at parse time (DiagramIR validation). Lengths are measured as by
+  `equal_length` (arcs and sectors by their curved edge). A failure states the
+  measured length ratios against the claimed value ratios; a zero-length first
+  segment fails (no ratio to compare).
+- `between` (IR check, `{kind: "between", p, a, b}`): point `p` lies strictly
+  inside segment `ab`: within `tol * |ab|` of the segment and farther than
+  `tol * |ab|` from each end (same `tol`, default 5e-3). Not the `between` pick
+  rule (`{kind: "between", a, b}` in a definition's `pick` list, which selects
+  among candidate points while constructing); the two live in different unions
+  (`Check` versus the pick rules) and never collide. Coincident `a` and `b` have
+  no segment, so the check fails (it cannot hold). A failure distinguishes "not
+  on segment" (too far from the segment) from "at an end" (too close to `a` or
+  `b`).
+
 Every `Check` union member is evaluated by a dedicated arm of `run_checks` and
 handled by the pre-assert reference extractor (`direct_ids_referenced`); a
 completeness test enumerates the union so a kind cannot be added to one and not

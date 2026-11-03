@@ -446,6 +446,10 @@ def direct_ids_referenced(check: ir.Check) -> list[str]:
             return [stack]
         case ir.Midpoint(m=m, a=a, b=b):
             return [m, a, b]
+        case ir.ProportionalLengths(segs=segs):
+            return list(segs)
+        case ir.Between(p=p, a=a, b=b):
+            return [p, a, b]
         # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this line
         # (the completeness test fails if a union member is missing here).
         case _:

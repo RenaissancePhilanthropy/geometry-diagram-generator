@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Dict, List, Literal, Optional, Union
+import math
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, model_validator
 
 # -----------------------
@@ -1157,6 +1158,42 @@ class Midpoint(CheckBase):
     b: PointId
 
 
+class ProportionalLengths(CheckBase):
+    """The listed segments' lengths are proportional to ``values``, at any
+    scale: for every i, |len_i/len_0 - v_i/v_0| <= tol * (v_i/v_0). ``segs``
+    has two or more entries, ``values`` the same count, every value finite and
+    > 0 (validated at parse time). Gated by the ``measured_checks`` group."""
+    kind: Literal["proportional_lengths"] = "proportional_lengths"
+    segs: List[SegmentId]
+    values: List[float]
+
+    @model_validator(mode="after")
+    def _validate_lists(self) -> "ProportionalLengths":
+        if len(self.segs) < 2:
+            raise ValueError("proportional_lengths needs at least two segs")
+        if len(self.values) != len(self.segs):
+            raise ValueError(
+                f"proportional_lengths needs the same number of values as segs "
+                f"(got {len(self.segs)} segs, {len(self.values)} values)"
+            )
+        if not all(math.isfinite(v) and v > 0 for v in self.values):
+            raise ValueError("proportional_lengths values must all be positive finite numbers")
+        return self
+
+
+class Between(CheckBase):
+    """Point p lies strictly between a and b on segment ab: p is within
+    ``tol * |ab|`` of the segment and farther than ``tol * |ab|`` from each end
+    (same tol). A check kind with its own kind ``"between"``, distinct from the
+    ``between`` pick rule (``PickBetween``) that selects among candidates in a
+    definition. Coincident a and b have no segment, so the check fails. Gated by
+    the ``measured_checks`` group."""
+    kind: Literal["between"] = "between"
+    p: PointId
+    a: PointId
+    b: PointId
+
+
 # NEW CHECK KINDS: add the class above and list it in this union (the
 # completeness test in tests/test_check_kind_gating.py enumerates the union).
 Check = Annotated[
@@ -1174,7 +1211,7 @@ Check = Annotated[
         OppositeSide, SameSide,
         Centroid,
         Convex, CCW, MinDistance,
-        Midpoint,
+        Midpoint, ProportionalLengths, Between,
     ],
     Field(discriminator="kind")
 ]
