@@ -216,7 +216,7 @@ def _check_one(
                 # (the radius, for a circle).
                 d = abs(a * cx + b * cy + c0) / norm
                 r = math.hypot(hr * a, vr * b) / norm
-                ok = abs(d - r) < t
+                ok = _rel_close(d, r, t)
                 msg = "" if ok else (
                     f"Line {line!r} not tangent to {circle!r}: dist={d:.4f}, r={r:.4f}"
                 )
@@ -263,7 +263,14 @@ def _check_one(
                 cy = (float(aa.y.evalf()) + float(ba.y.evalf()) + float(ca.y.evalf())) / 3.0
                 dx = float(ga.x.evalf()) - cx
                 dy = float(ga.y.evalf()) - cy
-                ok = max(abs(dx), abs(dy)) <= t
+                # Relative to the triangle's size (its longest side), so the
+                # verdict does not depend on the diagram's scale.
+                size = max(
+                    math.hypot(float(p.x.evalf()) - float(q.x.evalf()),
+                               float(p.y.evalf()) - float(q.y.evalf()))
+                    for p, q in ((aa, ba), (ba, ca), (ca, aa))
+                )
+                ok = max(abs(dx), abs(dy)) <= t * size
                 msg = "" if ok else (
                     f"Point {g!r} is not the centroid of triangle "
                     f"{a!r}{b!r}{c!r}: expected ({cx:.4f}, {cy:.4f}), "
@@ -348,9 +355,12 @@ def _check_one(
                 d = float(circ1.center.distance(circ2.center).evalf())
                 r1 = _circular_radius(circ1, "circles_tangent", c1)
                 r2 = _circular_radius(circ2, "circles_tangent", c2)
-                identical = d < t and abs(r1 - r2) < t
-                externally_tangent = abs(d - (r1 + r2)) < t
-                internally_tangent = abs(d - abs(r1 - r2)) < t
+                # Relative to the figure's own scale (the larger radius or the
+                # center distance), not an absolute length.
+                scale = t * max(r1, r2, d)
+                identical = d < scale and abs(r1 - r2) < scale
+                externally_tangent = abs(d - (r1 + r2)) < scale
+                internally_tangent = abs(d - abs(r1 - r2)) < scale
                 ok = (externally_tangent or internally_tangent) and not identical
                 msg = "" if ok else (
                     f"Circles {c1!r} and {c2!r} are not tangent: "
@@ -531,30 +541,36 @@ def _to_bool(expr: Any) -> bool:
 def _contains(
     obj: Any, point: spg.Point, tol: float, linear_tol: float | None = None
 ) -> bool:
-    """Check whether obj contains point, using distance-based tolerance for circles/ellipses.
+    """Check whether obj contains point.
 
-    A line, ray or segment is tested exactly first, then numerically within
-    ``linear_tol`` (default ``tol``, relative to the object's size)."""
+    A circle, ellipse, arc or sector (any curved object) is tested to within
+    ``tol`` times its radius (the smaller semi-axis, for an ellipse, so a long
+    thin ellipse keeps a meaningful tolerance), so the
+    verdict does not depend on scale. A line, ray or segment is tested exactly
+    first, then numerically within ``linear_tol`` (default ``tol``, relative
+    to the object's size)."""
     if isinstance(obj, _ARC_LIKE):
         # On the curved edge only — see point_on_arc(), which the pick_on_object
-        # rule in to_sympy.py shares, so the two can't drift apart.
-        return point_on_arc(point, obj, tol)
+        # rule in to_sympy.py shares, so the two can't drift apart. The check
+        # passes its own radius-scaled tolerance; pick keeps its tight one.
+        _cx, _cy, hr, vr = _conic_frame(obj, "contains", "object")
+        return point_on_arc(point, obj, tol * min(hr, vr))
     if isinstance(obj, spg.Circle):
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())
-        return abs(d - r) < tol
+        return abs(d - r) < tol * r
     if isinstance(obj, RotatedEllipse):
         # A length-based gap (the tilted marker has no SymPy containment).
         gap = ellipse_boundary_gap(obj.frame, float(point.x.evalf()), float(point.y.evalf()))
-        return abs(gap) < tol
+        return abs(gap) < tol * min(obj.frame.a, obj.frame.b)
     if isinstance(obj, spg.Ellipse):
         # The same length-based gap as a tilted ellipse (rotation 0).
+        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
         frame = EllipseFrame(
-            float(obj.center.x.evalf()), float(obj.center.y.evalf()),
-            float(obj.hradius.evalf()), float(obj.vradius.evalf()),
+            float(obj.center.x.evalf()), float(obj.center.y.evalf()), hr, vr,
         )
         gap = ellipse_boundary_gap(frame, float(point.x.evalf()), float(point.y.evalf()))
-        return abs(gap) < tol
+        return abs(gap) < tol * min(hr, vr)
     exact = _to_bool(obj.contains(point))
     if exact or not isinstance(obj, _LINEAR_TYPES):
         return exact
@@ -632,8 +648,10 @@ def _ellipse_arcs_congruent(a: tuple, b: tuple, tol: float) -> bool:
     """
     a_hr, a_vr, a_s, a_e = a
     b_hr, b_vr, b_s, b_e = b
-    same = abs(a_hr - b_hr) < tol and abs(a_vr - b_vr) < tol
-    swapped = abs(a_hr - b_vr) < tol and abs(a_vr - b_hr) < tol
+    # Radii compare relatively (tol is a fraction of the radius); the span and
+    # positions below are angles in radians, so tol stays absolute for them.
+    same = _rel_close(a_hr, b_hr, tol) and _rel_close(a_vr, b_vr, tol)
+    swapped = _rel_close(a_hr, b_vr, tol) and _rel_close(a_vr, b_hr, tol)
     if not (same or swapped) or abs((a_e - a_s) - (b_e - b_s)) >= tol:
         return False
     base = 0.0 if same else math.pi / 2
@@ -673,7 +691,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
         if circular(f) != circular(g):
             return False
         if circular(f):
-            return abs(f[0] - g[0]) < tol and abs((f[3] - f[2]) - (g[3] - g[2])) < tol
+            return _rel_close(f[0], g[0], tol) and abs((f[3] - f[2]) - (g[3] - g[2])) < tol
         return _ellipse_arcs_congruent(f, g, tol)
 
     if all(congruent(frames[0], f) for f in frames[1:]):

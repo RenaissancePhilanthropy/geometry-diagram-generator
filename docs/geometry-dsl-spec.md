@@ -1513,5 +1513,21 @@ overrides it) for floating point comparisons.
    measured) value has no scale, so the comparison is exact-only: a tiny
    nonzero value never matches an expected 0. Use a different check
    (e.g. `distinct_points`, `min_distance`) for a "zero length" claim.
+
+   **Relative curve and tangency tolerances.** `contains` on a circle, ellipse,
+   arc or sector accepts a point within `tol * radius` of the curve (the smaller
+   semi-axis, for an ellipse, so a long thin ellipse keeps a meaningful tolerance); `not_contains` follows on its curved branches
+   (its linear branch stays exact). `tangent` compares the center-to-line
+   distance with the radius (the support distance, for an ellipse) relatively;
+   `circles_tangent` compares the center distance with `r1 + r2` or `|r1 - r2|`
+   within `tol * max(r1, r2, center distance)`; `centroid` compares within
+   `tol * the triangle's longest side`; and `congruent_arcs` compares radii (and
+   semi-axes) relatively, while sweeps and positions are angles in radians and
+   keep an absolute `tol`. Compile-time `pick: on_object` on an arc is not
+   affected: it keeps its own fixed tight tolerance (1e-9). Behaviour change:
+   these checks were absolute distances, so figures above unit scale now get
+   *looser* verdicts (a radius-10 circle tolerates 0.05 instead of 0.005) and
+   sub-unit figures get stricter ones. Angle checks and `min_distance` stay
+   absolute by design, and the `not_*` linear checks stay exact.
 On failure, error messages are suitable for feeding back to the LLM in a
 retry loop if desired.
