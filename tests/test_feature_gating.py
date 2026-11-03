@@ -43,6 +43,15 @@ def _tilted_ellipse_diagram(rotation=30, kind="axes") -> ir.DiagramIR:
     return ir.DiagramIR(define=[ir.PointFixed(id="O", x=0, y=0), ellipse], render=[ir.Draw(obj="E")])
 
 
+def _midpoint_check_diagram() -> ir.DiagramIR:
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="A", x=0, y=0), ir.PointFixed(id="B", x=2, y=0),
+                ir.PointFixed(id="M", x=1, y=0)],
+        checks=[ir.Midpoint(m="M", a="A", b="B")],
+        render=[ir.DrawPoints(points=["A", "B", "M"])],
+    )
+
+
 def _plain_diagram() -> ir.DiagramIR:
     return ir.DiagramIR(define=[ir.PointFixed(id="A", x=0, y=0)], render=[ir.Draw(obj="A")])
 
@@ -399,6 +408,7 @@ def test_child_main_exposes_grouped_name_only_when_request_enables_group():
 @pytest.mark.parametrize("strategy_name", ["structured", "recipe", "python_full"])
 @pytest.mark.parametrize("group,make_diagram", [
     ("solids", _prism_diagram), ("tilted_ellipses", _tilted_ellipse_diagram),
+    ("measured_checks", _midpoint_check_diagram),
 ])
 async def test_each_ir_strategy_rejects_a_disabled_group_before_the_pipeline(strategy_name, group, make_diagram):
     """Regression guard for the forgettable gate: whatever the strategy, a

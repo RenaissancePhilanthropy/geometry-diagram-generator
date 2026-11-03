@@ -1144,6 +1144,21 @@ class CirclesTangent(CheckBase):
     c2: CircleId
 
 
+class Midpoint(CheckBase):
+    """Point m is the midpoint of segment ab: |m - (a + b)/2| <= tol * |ab|
+    (relative to the segment's own length, so the verdict is scale-free; when
+    a and b coincide there is no scale and m must equal them exactly). Gated by
+    the ``measured_checks`` feature group at generation surfaces only. Not the
+    ``point_midpoint`` definition, which constructs a midpoint rather than
+    asserting one."""
+    kind: Literal["midpoint"] = "midpoint"
+    m: PointId
+    a: PointId
+    b: PointId
+
+
+# NEW CHECK KINDS: add the class above and list it in this union (the
+# completeness test in tests/test_check_kind_gating.py enumerates the union).
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -1159,6 +1174,7 @@ Check = Annotated[
         OppositeSide, SameSide,
         Centroid,
         Convex, CCW, MinDistance,
+        Midpoint,
     ],
     Field(discriminator="kind")
 ]

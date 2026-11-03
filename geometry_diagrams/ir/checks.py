@@ -332,6 +332,19 @@ def _check_one(
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
                 )
 
+            case ir.Midpoint(m=m, a=a, b=b):
+                (mx, my), (ax, ay), (bx, by) = _xy(sym[m]), _xy(sym[a]), _xy(sym[b])
+                ex, ey = (ax + bx) / 2.0, (ay + by) / 2.0
+                # Relative to |ab|; coincident endpoints have no scale, so the
+                # comparison is then exact-only (0 <= 0 holds only on equality).
+                ok = math.hypot(mx - ex, my - ey) <= t * math.hypot(bx - ax, by - ay)
+                msg = "" if ok else (
+                    f"Point {m!r} is not the midpoint of {a!r}{b!r}: expected "
+                    f"({ex:.4f}, {ey:.4f}), got ({mx:.4f}, {my:.4f})"
+                )
+
+            # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this
+            # line (before the registry/unknown fallbacks below).
             case ir.CongruentArcs(arcs=arcs):
                 ok, msg = _check_congruent_arcs(arcs, sym, t)
 

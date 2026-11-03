@@ -1468,7 +1468,7 @@ After execution, the system checks:
 2. **Geometric properties**: Configurable checks matching eval format:
    - `right_angle(A, B, C)`: angle at B is 90°
    - `parallel([A,B], [C,D])`: lines are parallel
-   - `midpoint(M, A, B)`: M is the midpoint of AB
+   - `midpoint(M, A, B)`: M is the midpoint of AB (eval format; the IR check kind `midpoint` is gated and documented under "Measured checks" below)
    - `point_on_line(P, A, B)`: P lies on line AB
    - `point_on_circle(P, center, radius_point)`: P is on the circle
    - `equal_lengths([[A,B], [C,D]])`: segments have equal length
@@ -1529,5 +1529,32 @@ overrides it) for floating point comparisons.
    *looser* verdicts (a radius-10 circle tolerates 0.05 instead of 0.005) and
    sub-unit figures get stricter ones. Angle checks and `min_distance` stay
    absolute by design, and the `not_*` linear checks stay exact.
+### Measured checks (`measured_checks` feature group)
+
+`measured_checks` is an opt-in feature group (off by default; enable with
+`GEOMETRY_FEATURES=measured_checks` or `GeometryConfig(features=...)`) for
+check kinds that assert a numerically measured relation. A generated diagram
+whose `checks` use a kind owned by a disabled group is rejected after parsing
+by `require_features` (message: the kind, the group, how to enable), using the
+rule table `CHECK_RULES` in `geometry_diagrams/features.py`. This is
+generation-time only: stored IR with such a check always compiles, is checked
+and renders with the group off. The structured strategy binds `DiagramIR` as its
+output schema, so the kinds stay visible to that model; the post-parse
+rejection is the gate (as for the other groups). No prompt text, recipe op or
+pydsl `assert_*` exists for these kinds.
+
+- `midpoint` (IR check, `{kind: "midpoint", m, a, b}`): point `m` lies within
+  `tol * |ab|` of the midpoint of `a` and `b` (relative to the segment's own
+  length, so the verdict is scale-free; default `tol` 5e-3). When `a` and `b`
+  coincide there is no scale and `m` must equal them exactly. A failure states
+  the expected and the measured coordinates. This is an assertion about
+  existing points, unlike the `point_midpoint` definition (which constructs a
+  point) and the eval-format `midpoint(M, A, B)` entry listed above.
+
+Every `Check` union member is evaluated by a dedicated arm of `run_checks` and
+handled by the pre-assert reference extractor (`direct_ids_referenced`); a
+completeness test enumerates the union so a kind cannot be added to one and not
+the other. Unknown kinds (stored by a newer version) still warn and pass.
+
 On failure, error messages are suitable for feeding back to the LLM in a
 retry loop if desired.

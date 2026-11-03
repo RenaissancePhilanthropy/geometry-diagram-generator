@@ -428,6 +428,26 @@ def direct_ids_referenced(check: ir.Check) -> list[str]:
             return [g, a, b, c]
         case ir.Convex(polygon=polygon) | ir.CCW(polygon=polygon):
             return [polygon]
+        case ir.EqualRadius(circles=circles):
+            return list(circles)
+        case ir.RadiusEquals(circle=circle):
+            return [circle]
+        case ir.CongruentArcs(arcs=arcs):
+            return list(arcs)
+        case ir.AngleValue(angle=angle):
+            return [angle.a, angle.o, angle.b]
+        case ir.CirclesTangent(c1=c1, c2=c2):
+            return [c1, c2]
+        case ir.VolumeEquals(prism=prism):
+            return [prism]
+        case ir.TrueLengthEquals(seg=seg):
+            return [seg]
+        case ir.CubeCountEquals(stack=stack):
+            return [stack]
+        case ir.Midpoint(m=m, a=a, b=b):
+            return [m, a, b]
+        # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this line
+        # (the completeness test fails if a union member is missing here).
         case _:
             raise TypeError(
                 f"Unhandled Check type for request-relevance extraction: {type(check).__name__}"
