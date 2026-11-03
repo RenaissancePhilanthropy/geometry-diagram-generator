@@ -597,7 +597,7 @@ def _intersection_points(obj1: Any, obj2: Any, did: str, id1: str, id2: str) -> 
 
 
 # ---------------------------------------------------------------------------
-# Public entry point
+# Point transforms (shared by the point definitions and the image_of check)
 # ---------------------------------------------------------------------------
 
 def rotate_point(source: spg.Point, center: spg.Point, angle: Any) -> spg.Point:

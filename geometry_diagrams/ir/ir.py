@@ -1109,8 +1109,8 @@ class CongruentArcs(CheckBase):
     """Two or more circular arcs/sectors are congruent: equal radius AND equal
     central-angle sweep. The sweep comparison is reflex-aware — a minor arc
     and a reflex arc sharing the same two endpoints are not congruent. `tol`
-    applies to the radius term in length units and to the sweep term in
-    radians. Arcs must be circular (`arc_center_start_end` /
+    is relative for the radius term and absolute, in radians, for the sweep
+    term. Arcs must be circular (`arc_center_start_end` /
     `sector_center_start_end`); an elliptical arc/sector is rejected with a
     clear error rather than an opaque attribute error.
     """

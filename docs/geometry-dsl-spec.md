@@ -1483,7 +1483,7 @@ After execution, the system checks:
    - `congruent_triangles(T1, T2)`: triangles T1 and T2 are congruent (SSS: matching sorted side lengths, no required vertex correspondence)
    - `equal_radius([C1, C2, ...])`: all listed circles have the same radius — the circle-family counterpart of `equal_lengths` (requires at least two circles; "length" means nothing for a circle, so these stay separate check kinds)
    - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(actual, expected)`, no absolute floor)
-   - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` applies to the radius term in length units and to the sweep term in radians. Elliptical arcs/sectors are congruent when their axes match (or are swapped) and one arc is a symmetry image of the other: a reflection across either axis or a half turn of the ellipse, possibly reversed. Equal span alone is not enough, because an ellipse's curvature varies along it. A circle and a genuine ellipse (two different radii) are never congruent; an elliptical arc with two equal radii counts as a circular arc.
+   - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` is relative for the radius term (a fraction of the radius, as for `radius_equals`) and absolute, in radians, for the sweep term. Elliptical arcs/sectors are congruent when their axes match (or are swapped) and one arc is a symmetry image of the other: a reflection across either axis or a half turn of the ellipse, possibly reversed. Equal span alone is not enough, because an ellipse's curvature varies along it. A circle and a genuine ellipse (two different radii) are never congruent; an elliptical arc with two equal radii counts as a circular arc.
    - `angle_value(A, O, B, expected_deg)`: the angle at O equals `expected_deg` degrees — complements `right_angle` (a fixed 90°) and `angle_equal` (two angles compared to each other, never to an absolute value). `tol` is in radians.
    - `circles_tangent(C1, C2)`: circles C1 and C2 are tangent to each other, externally (centers separated by the sum of the radii) or internally (by the difference). Distinct from `tangent`, whose `line` field is explicitly a line/segment/ray; two identical circles are not considered tangent.
 
@@ -1529,6 +1529,7 @@ overrides it) for floating point comparisons.
    *looser* verdicts (a radius-10 circle tolerates 0.05 instead of 0.005) and
    sub-unit figures get stricter ones. Angle checks and `min_distance` stay
    absolute by design, and the `not_*` linear checks stay exact.
+
 ### Measured checks (`measured_checks` feature group)
 
 `measured_checks` is an opt-in feature group (off by default; enable with

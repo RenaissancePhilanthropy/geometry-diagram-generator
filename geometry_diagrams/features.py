@@ -170,7 +170,6 @@ def require_features(diagram: Any, enabled: "frozenset[str] | set[str]") -> None
             f"{rule.hint}. {_how_to_enable(rule.group)}"
         )
 
-
     for check in getattr(diagram, "checks", None) or []:
         group = CHECK_RULES.get(getattr(check, "kind", None))
         if group is None or group in enabled:

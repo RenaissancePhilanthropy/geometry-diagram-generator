@@ -682,3 +682,34 @@ def test_image_of_non_point_operand_is_a_failed_check_not_a_crash():
     d.checks[0].transform = ir.RotationTransform(center="L", angle=1.0)  # a line, not a point
     r = _verdict(d)
     assert not r.passed and "center" in r.message
+
+
+# --- image_of: a wrong operand type fails the check cleanly --------------------
+
+def _bad_operand_diagram(transform, src="P") -> ir.DiagramIR:
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="P", x=3, y=0), ir.PointFixed(id="Q", x=3, y=1),
+                ir.PointFixed(id="A", x=0, y=0), ir.PointFixed(id="B", x=1, y=0),
+                ir.CircleCenterPoint(id="C", center="A", through="B"),
+                ir.LineThrough(id="L", p="A", q="B")],
+        checks=[ir.ImageOf(q="Q", p=src, transform=transform)],
+    )
+
+
+@pytest.mark.parametrize("transform,src", [
+    (ir.ReflectionTransform(across="C"), "P"),
+    (ir.RotationTransform(center="C", angle=1.0), "P"),
+    (ir.DilationTransform(center="L", factor=2.0), "P"),
+    (ir.TranslationTransform(from_point="A", to_point="C"), "P"),
+    (ir.DilationTransform(center="A", factor=2.0), "C"),
+], ids=["reflect_circle", "rotation_centre", "dilation_centre", "translation_vector", "source_not_point"])
+def test_image_of_wrong_operand_type_fails_cleanly(transform, src, caplog):
+    import logging
+    d = _bad_operand_diagram(transform, src)
+    sym = compile_defs(d)
+    with caplog.at_level(logging.WARNING):
+        result = _check_one(d.checks[0], sym, 5e-3)
+    assert not result.passed
+    assert "image_of" in result.message
+    assert "Error in" not in result.message and "IRCompileError" not in result.message
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]

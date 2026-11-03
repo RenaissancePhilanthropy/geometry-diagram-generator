@@ -547,27 +547,37 @@ def _image_expected(tf: Any, src: Any, sym: SymTable) -> tuple[float, float, flo
     def point(pid: str, role: str) -> spg.Point:
         obj = sym[pid]
         if not isinstance(obj, spg.Point):
-            raise ValueError(f"image_of: transform {role} {pid!r} must be a point, got {type(obj).__name__}")
+            raise UnsupportedOperand(f"image_of: {role} {pid!r} must be a point, got {type(obj).__name__}")
         return obj
 
+    if not isinstance(src, spg.Point):
+        raise UnsupportedOperand(f"image_of: the source must be a point, got {type(src).__name__}")
     sx, sy = _xy(src)
     match tf:
         case ir.TranslationTransform(from_point=a, to_point=b):
-            pa, pb = point(a, "from_point"), point(b, "to_point")
+            pa, pb = point(a, "translation from_point"), point(b, "translation to_point")
             dx, dy = _xy(pb)[0] - _xy(pa)[0], _xy(pb)[1] - _xy(pa)[1]
             return sx + dx, sy + dy, math.hypot(dx, dy), f"translation by the vector {a!r} to {b!r}"
         case ir.DilationTransform(center=c, factor=k):
-            ctr = point(c, "center")
+            ctr = point(c, "dilation center")
             img = dilate_point(src, ctr, k)
             return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
                     f"dilation about {c!r} by factor {k:g}")
         case ir.RotationTransform(center=c, angle=ang):
-            ctr = point(c, "center")
+            ctr = point(c, "rotation center")
             img = rotate_point(src, ctr, ang)
             return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
                     f"rotation about {c!r} by {ang:g} rad ({math.degrees(ang):.1f}°)")
         case ir.ReflectionTransform(across=a):
             obj = sym[a]
+            if not isinstance(obj, spg.Point):
+                try:
+                    _as_linear(obj)
+                except TypeError:
+                    raise UnsupportedOperand(
+                        f"image_of: reflection 'across' {a!r} must be a point or a line, segment or ray, "
+                        f"got {type(obj).__name__}"
+                    ) from None
             img = reflect_point(src, obj, "image_of")
             if isinstance(obj, spg.Point):
                 anchor = math.hypot(sx - _xy(obj)[0], sy - _xy(obj)[1])

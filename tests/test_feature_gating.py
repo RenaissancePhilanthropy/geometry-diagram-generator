@@ -81,6 +81,16 @@ def _multiples_check_diagram() -> ir.DiagramIR:
     )
 
 
+def _angle_multiple_check_diagram() -> ir.DiagramIR:
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="O", x=0, y=0), ir.PointFixed(id="A", x=1, y=0),
+                ir.PointFixed(id="B", x=0, y=1), ir.PointFixed(id="C", x=-1, y=0)],
+        checks=[ir.AngleMultiple(a1=ir.AnglePoints(a="A", o="O", b="C"),
+                                 a2=ir.AnglePoints(a="A", o="O", b="B"), factor=2)],
+        render=[ir.DrawPoints(points=["A", "B", "C"])],
+    )
+
+
 def _point_at_check_diagram() -> ir.DiagramIR:
     return ir.DiagramIR(
         define=[ir.PointFixed(id="A", x=1, y=2)],
@@ -457,6 +467,7 @@ def test_child_main_exposes_grouped_name_only_when_request_enables_group():
     ("measured_checks", _proportional_check_diagram),
     ("measured_checks", _between_check_diagram),
     ("measured_checks", _multiples_check_diagram),
+    ("measured_checks", _angle_multiple_check_diagram),
     ("measured_checks", _point_at_check_diagram),
     ("measured_checks", _image_of_check_diagram),
 ])

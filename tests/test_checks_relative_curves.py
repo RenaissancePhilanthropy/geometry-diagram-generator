@@ -87,15 +87,14 @@ def test_tangent_is_relative_to_the_radius(s, name):
     obj = {
         "circle": spg.Circle(o, s),
         "ellipse": spg.Ellipse(o, 2 * s, s),
-        "arc": Arc(center=o, start=_p(-s, 0), end=_p(s, 0), radius=sp.Float(s)),
+        # the arc's top half; the touch point (0, s) is on its sweep
+        "arc": Arc(center=o, start=_p(s, 0), end=_p(-s, 0), radius=sp.Float(s)),
     }[name]
     sym = {
         "c": obj,
         "near": spg.Line(_p(-1, s * NEAR), _p(1, s * NEAR)),
         "far": spg.Line(_p(-1, s * FAR), _p(1, s * FAR)),
     }
-    if name == "arc":  # the arc's top half; the touch point (0, s) is on its sweep
-        sym["c"] = Arc(center=o, start=_p(s, 0), end=_p(-s, 0), radius=sp.Float(s))
     assert _check(sym, kind="tangent", line="near", circle="c").passed
     assert not _check(sym, kind="tangent", line="far", circle="c").passed
 
