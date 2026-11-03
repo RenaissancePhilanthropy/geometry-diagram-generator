@@ -625,7 +625,8 @@ Euclidean combination).
 | `volume_equals` | `prism`, `expected` | The prism's true volume equals `expected` |
 | `true_length_equals` | `seg`, `expected` | The true 3D length of a segment joining two corners of one prism equals `expected` (any other segment fails, naming `distance_equals`) |
 
-Both are near-exact: `|actual - expected| <= tol * max(|expected|, 1)` with a
+Both are near-exact: `|actual - expected| <= tol * max(|actual|, |expected|)` (no absolute
+floor) with a
 default `tol` of 1e-9 (an off-by-one volume fails); an explicit `tol` on the
 check overrides it. Every other check keeps the default tolerance (5e-3).
 `distance_equals`, `equal_length` and `ratio_equal` on a segment joining two
@@ -1471,7 +1472,7 @@ After execution, the system checks:
    - `point_on_line(P, A, B)`: P lies on line AB
    - `point_on_circle(P, center, radius_point)`: P is on the circle
    - `equal_lengths([[A,B], [C,D]])`: segments have equal length
-   - `equal_length` / `distance_equals` / `ratio_equal` (IR check kinds) measure segments and also circular and elliptical arcs and sectors, mixed freely. An arc's length is its curved length (the minor arc between its endpoints, or the major arc when `reflex` is set, whichever order start and end are given in; computed by `ir/curve_measures.py`'s `curve_length`); a sector's length is its curved edge only, not its two straight radii. A full circle or ellipse has no single length here: such an operand fails with a message naming its id: a circle is pointed at `radius_equals` / `equal_radius`, an ellipse (two radii, which `radius_equals` rejects) at `equal_radius`. Tolerances are unchanged (absolute for `equal_length`, relative for `distance_equals`); elliptical lengths are computed numerically to about 1e-9, far inside the default tolerance.
+   - `equal_length` / `distance_equals` / `ratio_equal` (IR check kinds) measure segments and also circular and elliptical arcs and sectors, mixed freely. An arc's length is its curved length (the minor arc between its endpoints, or the major arc when `reflex` is set, whichever order start and end are given in; computed by `ir/curve_measures.py`'s `curve_length`); a sector's length is its curved edge only, not its two straight radii. A full circle or ellipse has no single length here: such an operand fails with a message naming its id: a circle is pointed at `radius_equals` / `equal_radius`, an ellipse (two radii, which `radius_equals` rejects) at `equal_radius`. Tolerances are all relative (see the tolerance contract below); elliptical lengths are computed numerically to about 1e-9, far inside the default tolerance.
    - `collinear(P, Q, R)`: points are collinear
    - `angle_bisector(D, A, B, C)`: AD bisects angle BAC
    - `perpendicular([A,B], [C,D])`: lines are perpendicular
@@ -1481,7 +1482,7 @@ After execution, the system checks:
    - `min_distance(A, B, min_dist)`: points A and B are at least min_dist apart
    - `congruent_triangles(T1, T2)`: triangles T1 and T2 are congruent (SSS: matching sorted side lengths, no required vertex correspondence)
    - `equal_radius([C1, C2, ...])`: all listed circles have the same radius — the circle-family counterpart of `equal_lengths` (requires at least two circles; "length" means nothing for a circle, so these stay separate check kinds)
-   - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(expected, 1.0)`)
+   - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(actual, expected)`, no absolute floor)
    - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` applies to the radius term in length units and to the sweep term in radians. Elliptical arcs/sectors are congruent when their axes match (or are swapped) and one arc is a symmetry image of the other: a reflection across either axis or a half turn of the ellipse, possibly reversed. Equal span alone is not enough, because an ellipse's curvature varies along it. A circle and a genuine ellipse (two different radii) are never congruent; an elliptical arc with two equal radii counts as a circular arc.
    - `angle_value(A, O, B, expected_deg)`: the angle at O equals `expected_deg` degrees — complements `right_angle` (a fixed 90°) and `angle_equal` (two angles compared to each other, never to an absolute value). `tol` is in radians.
    - `circles_tangent(C1, C2)`: circles C1 and C2 are tangent to each other, externally (centers separated by the sum of the radii) or internally (by the difference). Distinct from `tangent`, whose `line` field is explicitly a line/segment/ray; two identical circles are not considered tangent.
@@ -1495,6 +1496,22 @@ After execution, the system checks:
 
 4. **Structural checks**: polygon counts, entity counts, etc.
 
-Validation uses tolerance (default 1e-6) for floating point comparisons.
+Validation uses tolerance (default 5e-3, relative; a check's own `tol`
+overrides it) for floating point comparisons.
+
+   **Relative measure tolerances.** `equal_length`, `distance_equals`,
+   `ratio_equal` and `radius_equals` compare purely relatively: the values
+   agree when `|a - b| < tol * max(|a|, |b|)` (for `ratio_equal`, the two cross
+   products `l1*l4` and `l2*l3`, i.e. lengths squared). `distance_equals` covers
+   arc and sector operands by their curve length. The prism `volume_equals` and
+   `true_length_equals` use the same shape with their near-exact default. There
+   is no absolute floor, so the same figure at any uniform scale gets the same
+   verdict. Behaviour change: earlier versions floored the scale at 1.0 for
+   `distance_equals`, `ratio_equal`, `radius_equals` and the prism checks, so
+   figures whose expected values are below 1 now get a stricter (truly
+   relative) verdict; figures at or above 1 are unchanged. A zero expected (or
+   measured) value has no scale, so the comparison is exact-only: a tiny
+   nonzero value never matches an expected 0. Use a different check
+   (e.g. `distinct_points`, `min_distance`) for a "zero length" claim.
 On failure, error messages are suitable for feeding back to the LLM in a
 retry loop if desired.

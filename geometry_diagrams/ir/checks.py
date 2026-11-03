@@ -176,7 +176,7 @@ def _check_one(
 
             case ir.DistanceEquals(seg=seg, expected=expected):
                 length = _length_of(sym[seg], seg)
-                ok = abs(length - expected) < t * max(expected, 1.0)
+                ok = _rel_close(length, expected, t)
                 msg = "" if ok else f"{seg!r} length {length:.4f} ≠ expected {expected:.4f}"
 
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
@@ -186,7 +186,7 @@ def _check_one(
                 l4 = _length_of(sym[s4], s4)
                 # Cross-multiply to avoid division: l1*l4 == l2*l3
                 lhs, rhs = l1 * l4, l2 * l3
-                ok = abs(lhs - rhs) < t * max(abs(lhs), abs(rhs), 1.0)
+                ok = _rel_close(lhs, rhs, t)
                 msg = "" if ok else (
                     f"Ratios not equal: {l1:.4f}/{l2:.4f}≠{l3:.4f}/{l4:.4f}"
                 )
@@ -320,7 +320,7 @@ def _check_one(
 
             case ir.RadiusEquals(circle=circle, expected=expected):
                 radius = _circular_radius(sym[circle], "radius_equals", circle)
-                ok = abs(radius - expected) < t * max(expected, 1.0)
+                ok = _rel_close(radius, expected, t)
                 msg = "" if ok else (
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
                 )
@@ -431,9 +431,10 @@ def _side_ratios(p: Any, q: Any, la: Any, lb: Any) -> tuple[float, float]:
 
 def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     """Relative comparison for the prism measure checks: ``tol`` (the check's
-    own) or EXACT_MEASURE_TOL, scaled by max(|expected|, 1)."""
+    own) or EXACT_MEASURE_TOL, scaled by the larger magnitude (no absolute
+    floor; an expected or measured 0 is exact-only)."""
     t = EXACT_MEASURE_TOL if tol is None else tol
-    return abs(actual - expected) <= t * max(abs(expected), 1.0)
+    return actual == expected or abs(actual - expected) <= t * max(abs(actual), abs(expected))
 
 
 _EXACT_LINEAR_TOL = 1e-9

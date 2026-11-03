@@ -1068,7 +1068,7 @@ class EqualRadius(CheckBase):
 
 class RadiusEquals(CheckBase):
     """A circle's radius equals an expected value. Same relative-tolerance
-    convention as DistanceEquals: |actual - expected| < tol * max(expected, 1.0).
+    convention as DistanceEquals: |actual - expected| < tol * max(actual, expected) (no absolute floor).
     """
     kind: Literal["radius_equals"] = "radius_equals"
     circle: CircleId
@@ -1078,7 +1078,7 @@ class RadiusEquals(CheckBase):
 class VolumeEquals(CheckBase):
     """A rectangular prism's true volume (length x width x height) equals an
     expected value. Prism dimensions are exact, so the default tolerance is
-    near-exact: |actual - expected| <= tol * max(|expected|, 1.0) with tol
+    near-exact: |actual - expected| <= tol * max(|actual|, |expected|) with tol
     1e-9 unless ``tol`` is given (an off-by-one volume fails)."""
     kind: Literal["volume_equals"] = "volume_equals"
     prism: ObjId
