@@ -144,7 +144,7 @@ def _placeholder(cls):
 
 
 def test_union_is_enumerated():
-    assert len(_union_members()) >= 33 and {ir.Midpoint, ir.ProportionalLengths, ir.Between} <= set(_union_members())
+    assert len(_union_members()) >= 36 and {ir.Midpoint, ir.ProportionalLengths, ir.Between, ir.LengthMultiple, ir.AngleMultiple, ir.PointAt} <= set(_union_members())
 
 
 @pytest.mark.parametrize("cls", _union_members(), ids=lambda c: c.__name__)
@@ -322,3 +322,179 @@ def test_between_honours_own_tol():
 def test_between_coincident_endpoints_fail_sensibly():
     v = _verdict(_between_diagram(t=0.5, a=(1.0, 1.0), b=(1.0, 1.0)))
     assert not v.passed and ("coincide" in v.message or "at an end" in v.message)
+
+
+# --- length_multiple, angle_multiple, point_at ------------------------------------
+
+from pydantic import ValidationError  # noqa: E402
+
+_BAD_FACTORS = [0, 0.0, -2.0, float("nan"), float("inf"), float("-inf")]
+
+
+def _len_diagram(l1=4.0, l2=2.0, factor=2.0, scale=1.0, rot=0.0, tol=None) -> ir.DiagramIR:
+    a0, b0 = _rot((0.0, 0.0), scale, rot), _rot((l1, 0.0), scale, rot)
+    a1, b1 = _rot((0.0, 1.0), scale, rot), _rot((l2, 1.0), scale, rot)
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="A", x=a0[0], y=a0[1]), ir.PointFixed(id="B", x=b0[0], y=b0[1]),
+                ir.PointFixed(id="C", x=a1[0], y=a1[1]), ir.PointFixed(id="D", x=b1[0], y=b1[1]),
+                ir.Segment(id="s1", a="A", b="B"), ir.Segment(id="s2", a="C", b="D")],
+        checks=[ir.LengthMultiple(s1="s1", s2="s2", factor=factor, tol=tol)],
+        render=[ir.Draw(obj="s1")],
+    )
+
+
+def _ang_diagram(deg1=60.0, deg2=30.0, factor=2.0, scale=1.0, rot=0.0, tol=None) -> ir.DiagramIR:
+    pts = {"O1": (0, 0), "P1": (1, 0), "Q1": (math.cos(math.radians(deg1)), math.sin(math.radians(deg1))),
+           "O2": (5, 0), "P2": (6, 0), "Q2": (5 + math.cos(math.radians(deg2)), math.sin(math.radians(deg2)))}
+    define = []
+    for k, v in pts.items():
+        x, y = _rot(v, scale, rot)
+        define.append(ir.PointFixed(id=k, x=x, y=y))
+    return ir.DiagramIR(
+        define=define,
+        checks=[ir.AngleMultiple(a1=ir.AnglePoints(a="P1", o="O1", b="Q1"),
+                                 a2=ir.AnglePoints(a="P2", o="O2", b="Q2"), factor=factor, tol=tol)],
+        render=[ir.DrawPoints(points=list(pts))],
+    )
+
+
+def _at_diagram(px=3.0, py=4.0, x=3.0, y=4.0, scale=1.0, tol=None) -> ir.DiagramIR:
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id="P", x=px * scale, y=py * scale)],
+        checks=[ir.PointAt(p="P", x=x * scale, y=y * scale, tol=tol)],
+        render=[ir.DrawPoints(points=["P"])],
+    )
+
+
+def _circle_diagram(central_deg=80.0, inscribed_factor=2.0) -> ir.DiagramIR:
+    def on(deg):
+        return (math.cos(math.radians(deg)), math.sin(math.radians(deg)))
+    pts = {"O": (0, 0), "A": on(0), "B": on(central_deg), "C": on(200)}
+    return ir.DiagramIR(
+        define=[ir.PointFixed(id=k, x=v[0], y=v[1]) for k, v in pts.items()],
+        checks=[ir.AngleMultiple(a1=ir.AnglePoints(a="A", o="O", b="B"),
+                                 a2=ir.AnglePoints(a="A", o="C", b="B"), factor=inscribed_factor)],
+        render=[ir.DrawPoints(points=list(pts))],
+    )
+
+
+def test_multiple_kinds_registered_in_rule_table():
+    for k in ("length_multiple", "angle_multiple", "point_at"):
+        assert CHECK_RULES[k] == GROUP
+
+
+@pytest.mark.parametrize("make", [_len_diagram, _ang_diagram, _at_diagram])
+def test_multiple_kinds_gated_off_and_accepted_on(make):
+    with pytest.raises(FeatureNotEnabledError) as e:
+        require_features(make(), frozenset())
+    assert GROUP in str(e.value) and "GEOMETRY_FEATURES=measured_checks" in str(e.value)
+    require_features(make(), frozenset({GROUP}))
+
+
+@pytest.mark.parametrize("make", [_len_diagram, _ang_diagram, _at_diagram])
+def test_multiple_kinds_evaluate_and_render_with_group_off(make):
+    d = make()
+    sym = compile_defs(d)
+    assert run_checks(d.checks, sym)[0].passed
+    assert "<svg" in SVGRenderer().render(d, sym).output
+
+
+def test_extractor_references():
+    d = _len_diagram()
+    assert set(direct_ids_referenced(d.checks[0])) == {"s1", "s2"}
+    assert set(direct_ids_referenced(_ang_diagram().checks[0])) == {"O1", "P1", "Q1", "O2", "P2", "Q2"}
+    assert direct_ids_referenced(_at_diagram().checks[0]) == ["P"]
+
+
+@pytest.mark.parametrize("scale", [1e-3, 1.0, 1e3])
+@pytest.mark.parametrize("rot", [0.0, 0.7, 2.5])
+def test_length_multiple_pass_fail_boundary_across_scale_and_rotation(scale, rot):
+    kw = dict(scale=scale, rot=rot)
+    assert _verdict(_len_diagram(**kw)).passed
+    assert _verdict(_len_diagram(l1=4.0 * 1.004, **kw)).passed
+    bad = _verdict(_len_diagram(l1=4.0 * 1.02, **kw))
+    assert not bad.passed and "'s1'" in bad.message and "'s2'" in bad.message
+    assert _verdict(_len_diagram(l1=1.0, l2=2.0, factor=0.5, **kw)).passed   # fractional factor
+
+
+def test_length_multiple_honours_own_tol_and_is_not_equal_length():
+    assert not _verdict(_len_diagram(l1=4.0 * 1.004, tol=1e-4)).passed
+    assert _verdict(_len_diagram(l1=4.0 * 1.004, tol=1e-2)).passed
+    assert _verdict(_len_diagram(l1=2.0, l2=2.0, factor=1.0)).passed
+    assert not _verdict(_len_diagram(l1=2.0, l2=2.0, factor=2.0)).passed
+
+
+@pytest.mark.parametrize("scale", [1e-3, 1.0, 1e3])
+@pytest.mark.parametrize("rot", [0.0, 0.7, 2.5])
+def test_angle_multiple_pass_fail_boundary_across_scale_and_rotation(scale, rot):
+    kw = dict(scale=scale, rot=rot)
+    assert _verdict(_ang_diagram(**kw)).passed
+    assert _verdict(_ang_diagram(deg1=60.0 + 0.1, **kw)).passed          # 0.1 deg ~ 1.7e-3 rad < 5e-3
+    bad = _verdict(_ang_diagram(deg1=65.0, **kw))
+    assert not bad.passed
+    assert "65.0" in bad.message and "30.0" in bad.message and "2" in bad.message
+
+
+def test_angle_multiple_honours_own_tol_and_factor_one_matches_angle_equal():
+    assert not _verdict(_ang_diagram(deg1=60.1, tol=1e-4)).passed
+    assert _verdict(_ang_diagram(deg1=60.1, tol=1e-2)).passed
+    assert _verdict(_ang_diagram(deg1=40.0, deg2=40.0, factor=1.0)).passed
+    assert _verdict(_ang_diagram(deg1=20.0, deg2=40.0, factor=0.5)).passed
+
+
+def test_angle_multiple_central_versus_inscribed_is_x_and_2x():
+    assert _verdict(_circle_diagram()).passed                       # 80 deg central, 40 deg inscribed
+    assert not _verdict(_circle_diagram(inscribed_factor=1.0)).passed
+    assert not _verdict(_circle_diagram(inscribed_factor=3.0)).passed
+
+
+@pytest.mark.parametrize("make", [
+    lambda f: ir.LengthMultiple(s1="a", s2="b", factor=f),
+    lambda f: ir.AngleMultiple(a1=ir.AnglePoints(a="P", o="Q", b="R"), a2=ir.AnglePoints(a="P", o="Q", b="R"), factor=f),
+])
+@pytest.mark.parametrize("factor", _BAD_FACTORS)
+def test_multiple_factor_validation(make, factor):
+    with pytest.raises(ValidationError) as e:
+        make(factor)
+    assert "factor" in str(e.value) and "positive" in str(e.value)
+
+
+def test_multiple_factor_validation_through_diagram_ir():
+    for factor in (0, -1):
+        with pytest.raises(ValidationError):
+            ir.DiagramIR.model_validate({"checks": [{"kind": "length_multiple", "s1": "a", "s2": "b", "factor": factor}]})
+
+
+@pytest.mark.parametrize("scale", [1e-6, 1e-3, 1.0, 1e3, 1e6])
+def test_point_at_pass_fail_boundary_across_magnitudes(scale):
+    assert _verdict(_at_diagram(scale=scale)).passed
+    assert _verdict(_at_diagram(px=3.0 * 1.004, scale=scale)).passed      # within 5e-3 of max(|x|,|y|)
+    bad = _verdict(_at_diagram(px=3.5, scale=scale))
+    assert not bad.passed and "'P'" in bad.message
+
+
+def test_point_at_is_in_construction_units_and_has_own_tol():
+    assert not _verdict(_at_diagram(px=3.0 * 1.004, tol=1e-4)).passed
+    assert _verdict(_at_diagram(px=3.0 * 1.004, tol=1e-2)).passed
+    assert _verdict(_at_diagram(px=-3.0, py=-4.0, x=-3.0, y=-4.0)).passed
+
+
+def test_point_at_origin_is_exact_only():
+    assert _verdict(_at_diagram(px=0.0, py=0.0, x=0.0, y=0.0)).passed
+    assert not _verdict(_at_diagram(px=1e-9, py=0.0, x=0.0, y=0.0)).passed
+    assert not _verdict(_at_diagram(px=0.0, py=0.0, x=1e-9, y=0.0)).passed
+    # one coordinate zero while the other sets the scale: relative to that scale
+    assert _verdict(_at_diagram(px=1e-6, py=1.0, x=0.0, y=1.0)).passed
+
+
+def test_point_at_message_states_measured_and_expected():
+    bad = _verdict(_at_diagram(px=3.5, py=4.0, x=3.0, y=4.0))
+    assert "(3.5000, 4.0000)" in bad.message and "(3.0000, 4.0000)" in bad.message
+
+
+@pytest.mark.parametrize("v", [float("nan"), float("inf")])
+def test_point_at_rejects_non_finite_coordinates(v):
+    with pytest.raises(ValidationError):
+        ir.PointAt(p="P", x=v, y=0.0)
+    with pytest.raises(ValidationError):
+        ir.PointAt(p="P", x=0.0, y=v)

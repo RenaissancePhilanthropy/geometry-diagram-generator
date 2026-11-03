@@ -1568,6 +1568,27 @@ pydsl `assert_*` exists for these kinds.
   no segment, so the check fails (it cannot hold). A failure distinguishes "not
   on segment" (too far from the segment) from "at an end" (too close to `a` or
   `b`).
+- `length_multiple` (IR check, `{kind: "length_multiple", s1, s2, factor}`):
+  `|s1|` equals `factor` times `|s2|`, compared relative to the larger of the
+  two magnitudes (`tol`, default 5e-3), so the verdict is scale-free. Lengths
+  are measured as by `equal_length` (arcs and sectors by their curved edge).
+  `factor` must be positive and finite (rejected at parse time). Unlike
+  `ratio_equal`, it relates exactly two segments to a stated multiple.
+- `angle_multiple` (IR check, `{kind: "angle_multiple", a1, a2, factor}`):
+  angle `a1` equals `factor` times angle `a2`, each measured as `angle_equal`
+  measures it (unsigned interior angle in radians). `tol` is absolute, in
+  radians, applied to `|a1 - factor * a2|`. `factor` must be positive and
+  finite. A central angle versus an inscribed angle on the same arc is
+  `factor: 2`. A failure reports both angles in degrees.
+- `point_at` (IR check, `{kind: "point_at", p, x, y}`): the compiled
+  coordinates of point `p`, in construction units (independent of the canvas),
+  equal `(x, y)`. `tol` (default 5e-3) is relative to
+  `max(|x|, |y|, |p.x|, |p.y|)`. At the origin there is no scale: when the
+  expected point and `p` are both exactly `(0, 0)` the check passes, and any
+  difference there is exact-only (no tolerance applies when that maximum is 0;
+  a point merely near the origin is compared against the other coordinate's
+  magnitude, if any). `x` and `y` must be finite. Compiled coordinates carry
+  small rounding, so expect agreement to about 1e-9, not bit equality.
 
 Every `Check` union member is evaluated by a dedicated arm of `run_checks` and
 handled by the pre-assert reference extractor (`direct_ids_referenced`); a

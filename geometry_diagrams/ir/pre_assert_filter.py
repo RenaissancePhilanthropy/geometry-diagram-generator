@@ -450,6 +450,12 @@ def direct_ids_referenced(check: ir.Check) -> list[str]:
             return list(segs)
         case ir.Between(p=p, a=a, b=b):
             return [p, a, b]
+        case ir.LengthMultiple(s1=s1, s2=s2):
+            return [s1, s2]
+        case ir.AngleMultiple(a1=a1, a2=a2):
+            return [a1.a, a1.o, a1.b, a2.a, a2.o, a2.b]
+        case ir.PointAt(p=p):
+            return [p]
         # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this line
         # (the completeness test fails if a union member is missing here).
         case _:

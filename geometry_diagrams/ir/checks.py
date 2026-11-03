@@ -381,6 +381,31 @@ def _check_one(
                         msg = (f"Point {p!r} is at an end of segment {a!r}{b!r}: it is "
                                f"{min(d_a, d_b):.4f} from {end!r} (must be farther than {eps:.4f})")
 
+            case ir.LengthMultiple(s1=s1, s2=s2, factor=factor):
+                l1, l2 = _length_of(sym[s1], s1), _length_of(sym[s2], s2)
+                ok = _rel_close(l1, factor * l2, t)
+                msg = "" if ok else (
+                    f"Length of {s1!r} is {l1:.4f} but {factor:g} x length of {s2!r} "
+                    f"is {factor * l2:.4f} ({l2:.4f} x {factor:g})"
+                )
+
+            case ir.AngleMultiple(a1=a1, a2=a2, factor=factor):
+                v1 = _angle_at(sym[a1.a], sym[a1.o], sym[a1.b])
+                v2 = _angle_at(sym[a2.a], sym[a2.o], sym[a2.b])
+                ok = abs(v1 - factor * v2) < t
+                msg = "" if ok else (
+                    f"Angle {a1.a}-{a1.o}-{a1.b} = {math.degrees(v1):.1f}° but {factor:g} x angle "
+                    f"{a2.a}-{a2.o}-{a2.b} = {factor:g} x {math.degrees(v2):.1f}° = {math.degrees(factor * v2):.1f}°"
+                )
+
+            case ir.PointAt(p=p, x=ex, y=ey):
+                px, py = _xy(sym[p])
+                scale = max(abs(ex), abs(ey), abs(px), abs(py))
+                ok = (px, py) == (ex, ey) or max(abs(px - ex), abs(py - ey)) <= t * scale
+                msg = "" if ok else (
+                    f"Point {p!r} is at ({px:.4f}, {py:.4f}), expected ({ex:.4f}, {ey:.4f})"
+                )
+
             # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this
             # line (before the registry/unknown fallbacks below).
             case ir.CongruentArcs(arcs=arcs):

@@ -1194,6 +1194,61 @@ class Between(CheckBase):
     b: PointId
 
 
+def _positive_finite_factor(kind: str, factor: float) -> float:
+    if not (math.isfinite(factor) and factor > 0):
+        raise ValueError(f"{kind} factor must be a positive finite number (got {factor!r})")
+    return factor
+
+
+class LengthMultiple(CheckBase):
+    """|s1| equals ``factor`` times |s2| (compared relative to the larger
+    length). ``factor`` must be positive and finite. Gated by the
+    ``measured_checks`` group."""
+    kind: Literal["length_multiple"] = "length_multiple"
+    s1: SegmentId
+    s2: SegmentId
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "LengthMultiple":
+        _positive_finite_factor(self.kind, self.factor)
+        return self
+
+
+class AngleMultiple(CheckBase):
+    """Angle ``a1`` equals ``factor`` times angle ``a2``, both measured as
+    ``angle_equal`` measures them (unsigned interior angle, radians); ``tol`` is
+    absolute, in radians, on |a1 - factor * a2|. ``factor`` must be positive
+    and finite. Gated by the ``measured_checks`` group."""
+    kind: Literal["angle_multiple"] = "angle_multiple"
+    a1: AngleSpec
+    a2: AngleSpec
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "AngleMultiple":
+        _positive_finite_factor(self.kind, self.factor)
+        return self
+
+
+class PointAt(CheckBase):
+    """Point ``p`` has compiled coordinates (``x``, ``y``) in construction
+    units (independent of the canvas). ``tol`` is relative to
+    max(|x|, |y|, |p.x|, |p.y|); when that is 0 (expected and actual both at
+    the origin) the comparison is exact-only. ``x`` and ``y`` must be finite.
+    Gated by the ``measured_checks`` group."""
+    kind: Literal["point_at"] = "point_at"
+    p: PointId
+    x: float
+    y: float
+
+    @model_validator(mode="after")
+    def _validate_coords(self) -> "PointAt":
+        if not (math.isfinite(self.x) and math.isfinite(self.y)):
+            raise ValueError("point_at x and y must be finite numbers")
+        return self
+
+
 # NEW CHECK KINDS: add the class above and list it in this union (the
 # completeness test in tests/test_check_kind_gating.py enumerates the union).
 Check = Annotated[
@@ -1212,6 +1267,7 @@ Check = Annotated[
         Centroid,
         Convex, CCW, MinDistance,
         Midpoint, ProportionalLengths, Between,
+        LengthMultiple, AngleMultiple, PointAt,
     ],
     Field(discriminator="kind")
 ]

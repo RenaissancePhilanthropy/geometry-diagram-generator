@@ -88,6 +88,9 @@ CHECK_RULES: "dict[str, str]" = {
     "midpoint": "measured_checks",
     "proportional_lengths": "measured_checks",
     "between": "measured_checks",
+    "length_multiple": "measured_checks",
+    "angle_multiple": "measured_checks",
+    "point_at": "measured_checks",
 }
 
 
