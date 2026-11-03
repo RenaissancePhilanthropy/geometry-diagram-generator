@@ -11,7 +11,15 @@ only -- what a model is told about and allowed to produce:
   field a group owns on an ungated kind (``FIELD_RULES``: a nonzero
   ``rotation_deg`` on an ellipse belongs to ``tilted_ellipses``), is rejected
   after parsing (``require_features``), with an error the retry loops feed
-  back to the model.
+  back to the model,
+* an IR diagram whose ``checks`` use a check kind owned by a disabled group
+  (``CHECK_RULES``: ``midpoint`` belongs to ``measured_checks``), rejected by
+  the same gate with the same style of message.
+
+Registered groups: ``solids`` (rectangular prisms, block stacks),
+``tilted_ellipses`` (a nonzero ellipse ``rotation_deg``) and
+``measured_checks`` (check kinds that measure a relation numerically, e.g.
+``midpoint``; each new gated check kind is one line in ``CHECK_RULES``).
 
 CONTRACT: any strategy that produces a DiagramIR must call
 ``require_features(diagram, self.features)`` after parsing/lowering and before
@@ -31,7 +39,7 @@ from typing import Any, Callable, Iterable, NamedTuple
 # Registered groups. A group is added here and tagged onto registry kinds
 # (``DerivedConstruction.feature``), field rules (``FIELD_RULES``), prompt
 # fragments and grouped names.
-FEATURE_GROUPS: frozenset[str] = frozenset({"solids", "tilted_ellipses"})
+FEATURE_GROUPS: frozenset[str] = frozenset({"solids", "tilted_ellipses", "measured_checks"})
 
 
 class FieldRule(NamedTuple):
@@ -69,6 +77,21 @@ FIELD_RULES: "dict[str, FieldRule]" = {
         "rotation_deg", _tilted_rotation, "tilted_ellipses",
         "rotation_deg at 0 (an axis-aligned ellipse)",
     ),
+}
+
+
+# Check-kind rule table: ``Check.kind`` -> the group that owns it. THE one place
+# a gated check kind is declared for gating (consulted by ``require_features``
+# over ``diagram.checks``). Compile, check evaluation and render never consult
+# it. A kind absent here is ungated.
+CHECK_RULES: "dict[str, str]" = {
+    "midpoint": "measured_checks",
+    "proportional_lengths": "measured_checks",
+    "between": "measured_checks",
+    "length_multiple": "measured_checks",
+    "angle_multiple": "measured_checks",
+    "point_at": "measured_checks",
+    "image_of": "measured_checks",
 }
 
 
@@ -126,7 +149,7 @@ def require_features(diagram: Any, enabled: "frozenset[str] | set[str]") -> None
     from a feature group that is not in ``enabled``. The one post-parse gate,
     run at generation surfaces only (never in compile or render). Raises
     FeatureNotEnabledError naming the first offending kind or field, its
-    definition id, its group and how to enable it."""
+    definition id (or check kind), its group and how to enable it."""
     from .ir.derived import REGISTRY
 
     for stmt in getattr(diagram, "define", None) or []:
@@ -145,6 +168,16 @@ def require_features(diagram: Any, enabled: "frozenset[str] | set[str]") -> None
             f"Definition {sid!r} ({stmt.kind}) sets {rule.field}={getattr(stmt, rule.field)!r}, which "
             f"belongs to the {rule.group!r} feature group; that group is not enabled. Leave "
             f"{rule.hint}. {_how_to_enable(rule.group)}"
+        )
+
+    for check in getattr(diagram, "checks", None) or []:
+        group = CHECK_RULES.get(getattr(check, "kind", None))
+        if group is None or group in enabled:
+            continue
+        raise FeatureNotEnabledError(
+            f"Check kind {check.kind!r} belongs to the {group!r} feature group; that group is not "
+            f"enabled. Do not use {check.kind!r}: check the diagram with the other check kinds or "
+            f"omit the check. {_how_to_enable(group)}"
         )
 
 

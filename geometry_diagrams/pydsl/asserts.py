@@ -327,7 +327,7 @@ def assert_radius(circle, expected: float, *, tol: float | None = None) -> None:
     """Assert that a circle's radius equals a specific expected value.
 
     Uses the same relative-tolerance convention as assert_distance:
-    |actual - expected| < tol * max(expected, 1.0).
+    |actual - expected| < tol * max(actual, expected) (no absolute floor).
     """
     builder = get_builder()
     check = ir.RadiusEquals(circle=circle.id, expected=expected, tol=tol)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Dict, List, Literal, Optional, Union
+import math
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, model_validator
 
 # -----------------------
@@ -1068,7 +1069,7 @@ class EqualRadius(CheckBase):
 
 class RadiusEquals(CheckBase):
     """A circle's radius equals an expected value. Same relative-tolerance
-    convention as DistanceEquals: |actual - expected| < tol * max(expected, 1.0).
+    convention as DistanceEquals: |actual - expected| < tol * max(actual, expected) (no absolute floor).
     """
     kind: Literal["radius_equals"] = "radius_equals"
     circle: CircleId
@@ -1078,7 +1079,7 @@ class RadiusEquals(CheckBase):
 class VolumeEquals(CheckBase):
     """A rectangular prism's true volume (length x width x height) equals an
     expected value. Prism dimensions are exact, so the default tolerance is
-    near-exact: |actual - expected| <= tol * max(|expected|, 1.0) with tol
+    near-exact: |actual - expected| <= tol * max(|actual|, |expected|) with tol
     1e-9 unless ``tol`` is given (an off-by-one volume fails)."""
     kind: Literal["volume_equals"] = "volume_equals"
     prism: ObjId
@@ -1108,8 +1109,8 @@ class CongruentArcs(CheckBase):
     """Two or more circular arcs/sectors are congruent: equal radius AND equal
     central-angle sweep. The sweep comparison is reflex-aware — a minor arc
     and a reflex arc sharing the same two endpoints are not congruent. `tol`
-    applies to the radius term in length units and to the sweep term in
-    radians. Arcs must be circular (`arc_center_start_end` /
+    is relative for the radius term and absolute, in radians, for the sweep
+    term. Arcs must be circular (`arc_center_start_end` /
     `sector_center_start_end`); an elliptical arc/sector is rejected with a
     clear error rather than an opaque attribute error.
     """
@@ -1144,6 +1145,176 @@ class CirclesTangent(CheckBase):
     c2: CircleId
 
 
+class Midpoint(CheckBase):
+    """Point m is the midpoint of segment ab: |m - (a + b)/2| <= tol * |ab|
+    (relative to the segment's own length, so the verdict is scale-free; when
+    a and b coincide there is no scale and m must equal them exactly). Gated by
+    the ``measured_checks`` feature group at generation surfaces only. Not the
+    ``point_midpoint`` definition, which constructs a midpoint rather than
+    asserting one."""
+    kind: Literal["midpoint"] = "midpoint"
+    m: PointId
+    a: PointId
+    b: PointId
+
+
+class ProportionalLengths(CheckBase):
+    """The listed segments' lengths are proportional to ``values``, at any
+    scale: for every i, |len_i/len_0 - v_i/v_0| <= tol * (v_i/v_0). ``segs``
+    has two or more entries, ``values`` the same count, every value finite and
+    > 0 (validated at parse time). Gated by the ``measured_checks`` group."""
+    kind: Literal["proportional_lengths"] = "proportional_lengths"
+    segs: List[SegmentId]
+    values: List[float]
+
+    @model_validator(mode="after")
+    def _validate_lists(self) -> "ProportionalLengths":
+        if len(self.segs) < 2:
+            raise ValueError("proportional_lengths needs at least two segs")
+        if len(self.values) != len(self.segs):
+            raise ValueError(
+                f"proportional_lengths needs the same number of values as segs "
+                f"(got {len(self.segs)} segs, {len(self.values)} values)"
+            )
+        if not all(math.isfinite(v) and v > 0 for v in self.values):
+            raise ValueError("proportional_lengths values must all be positive finite numbers")
+        return self
+
+
+class Between(CheckBase):
+    """Point p lies strictly between a and b on segment ab: p is within
+    ``tol * |ab|`` of the segment and farther than ``tol * |ab|`` from each end
+    (same tol). A check kind with its own kind ``"between"``, distinct from the
+    ``between`` pick rule (``PickBetween``) that selects among candidates in a
+    definition. Coincident a and b have no segment, so the check fails. Gated by
+    the ``measured_checks`` group."""
+    kind: Literal["between"] = "between"
+    p: PointId
+    a: PointId
+    b: PointId
+
+
+def _positive_finite_factor(kind: str, factor: float) -> float:
+    if not (math.isfinite(factor) and factor > 0):
+        raise ValueError(f"{kind} factor must be a positive finite number (got {factor!r})")
+    return factor
+
+
+class LengthMultiple(CheckBase):
+    """|s1| equals ``factor`` times |s2| (compared relative to the larger
+    length). ``factor`` must be positive and finite. Gated by the
+    ``measured_checks`` group."""
+    kind: Literal["length_multiple"] = "length_multiple"
+    s1: SegmentId
+    s2: SegmentId
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "LengthMultiple":
+        _positive_finite_factor(self.kind, self.factor)
+        return self
+
+
+class AngleMultiple(CheckBase):
+    """Angle ``a1`` equals ``factor`` times angle ``a2``, both measured as
+    ``angle_equal`` measures them (unsigned interior angle, radians); ``tol`` is
+    absolute, in radians, on |a1 - factor * a2|. ``factor`` must be positive
+    and finite. Gated by the ``measured_checks`` group."""
+    kind: Literal["angle_multiple"] = "angle_multiple"
+    a1: AngleSpec
+    a2: AngleSpec
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "AngleMultiple":
+        _positive_finite_factor(self.kind, self.factor)
+        return self
+
+
+class PointAt(CheckBase):
+    """Point ``p`` has compiled coordinates (``x``, ``y``) in construction
+    units (independent of the canvas). ``tol`` is relative to
+    max(|x|, |y|, |p.x|, |p.y|); when that is 0 (expected and actual both at
+    the origin) the comparison is exact-only. ``x`` and ``y`` must be finite.
+    Gated by the ``measured_checks`` group."""
+    kind: Literal["point_at"] = "point_at"
+    p: PointId
+    x: float
+    y: float
+
+    @model_validator(mode="after")
+    def _validate_coords(self) -> "PointAt":
+        if not (math.isfinite(self.x) and math.isfinite(self.y)):
+            raise ValueError("point_at x and y must be finite numbers")
+        return self
+
+
+class TranslationTransform(BaseModel):
+    """Translate by the vector from point ``from_point`` to point ``to_point``."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["translation"] = "translation"
+    from_point: PointId
+    to_point: PointId
+
+
+class DilationTransform(BaseModel):
+    """Scale about ``center`` by ``factor`` (same meaning as ``point_dilate``'s
+    ``ratio``); any finite non-zero number, negatives allowed."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["dilation"] = "dilation"
+    center: PointId
+    factor: float
+
+    @model_validator(mode="after")
+    def _validate_factor(self) -> "DilationTransform":
+        if not math.isfinite(self.factor) or self.factor == 0:
+            raise ValueError("dilation factor must be a finite, non-zero number")
+        return self
+
+
+class RotationTransform(BaseModel):
+    """Rotate about ``center`` by ``angle`` RADIANS, counter-clockwise positive
+    (same meaning as ``point_rotate``'s ``angle``)."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["rotation"] = "rotation"
+    center: PointId
+    angle: float
+
+    @model_validator(mode="after")
+    def _validate_angle(self) -> "RotationTransform":
+        if not math.isfinite(self.angle):
+            raise ValueError("rotation angle must be a finite number (radians)")
+        return self
+
+
+class ReflectionTransform(BaseModel):
+    """Reflect across ``across``: a point (point symmetry) or a line, segment
+    or ray (mirror), the same operands as ``point_reflect``."""
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["reflection"] = "reflection"
+    across: ObjId
+
+
+ImageTransform = Annotated[
+    Union[TranslationTransform, DilationTransform, RotationTransform, ReflectionTransform],
+    Field(discriminator="kind"),
+]
+
+
+class ImageOf(CheckBase):
+    """Point ``q`` is the image of point ``p`` under ``transform``. ``tol`` is
+    relative to the distance from the transformation's anchor (centre,
+    reflection line or point, or the translation vector's length) to ``p``;
+    when that distance is 0 the comparison is exact-only. Gated by the
+    ``measured_checks`` group."""
+    kind: Literal["image_of"] = "image_of"
+    q: PointId
+    p: PointId
+    transform: ImageTransform
+
+
+# NEW CHECK KINDS: add the class above and list it in this union (the
+# completeness test in tests/test_check_kind_gating.py enumerates the union).
 Check = Annotated[
     Union[
         DistinctPoints, DistinctObjects,
@@ -1159,6 +1330,8 @@ Check = Annotated[
         OppositeSide, SameSide,
         Centroid,
         Convex, CCW, MinDistance,
+        Midpoint, ProportionalLengths, Between,
+        LengthMultiple, AngleMultiple, PointAt, ImageOf,
     ],
     Field(discriminator="kind")
 ]

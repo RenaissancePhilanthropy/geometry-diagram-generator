@@ -25,7 +25,10 @@ from .to_sympy import (
     _tangent_touch_point,
     _underlying_conic,
     arc_sweep_degrees,
+    dilate_point,
     point_on_arc,
+    reflect_point,
+    rotate_point,
 )
 
 
@@ -176,7 +179,7 @@ def _check_one(
 
             case ir.DistanceEquals(seg=seg, expected=expected):
                 length = _length_of(sym[seg], seg)
-                ok = abs(length - expected) < t * max(expected, 1.0)
+                ok = _rel_close(length, expected, t)
                 msg = "" if ok else f"{seg!r} length {length:.4f} ≠ expected {expected:.4f}"
 
             case ir.RatioEqual(s1=s1, s2=s2, s3=s3, s4=s4):
@@ -186,7 +189,7 @@ def _check_one(
                 l4 = _length_of(sym[s4], s4)
                 # Cross-multiply to avoid division: l1*l4 == l2*l3
                 lhs, rhs = l1 * l4, l2 * l3
-                ok = abs(lhs - rhs) < t * max(abs(lhs), abs(rhs), 1.0)
+                ok = _rel_close(lhs, rhs, t)
                 msg = "" if ok else (
                     f"Ratios not equal: {l1:.4f}/{l2:.4f}≠{l3:.4f}/{l4:.4f}"
                 )
@@ -216,7 +219,7 @@ def _check_one(
                 # (the radius, for a circle).
                 d = abs(a * cx + b * cy + c0) / norm
                 r = math.hypot(hr * a, vr * b) / norm
-                ok = abs(d - r) < t
+                ok = _rel_close(d, r, t)
                 msg = "" if ok else (
                     f"Line {line!r} not tangent to {circle!r}: dist={d:.4f}, r={r:.4f}"
                 )
@@ -263,7 +266,14 @@ def _check_one(
                 cy = (float(aa.y.evalf()) + float(ba.y.evalf()) + float(ca.y.evalf())) / 3.0
                 dx = float(ga.x.evalf()) - cx
                 dy = float(ga.y.evalf()) - cy
-                ok = max(abs(dx), abs(dy)) <= t
+                # Relative to the triangle's size (its longest side), so the
+                # verdict does not depend on the diagram's scale.
+                size = max(
+                    math.hypot(float(p.x.evalf()) - float(q.x.evalf()),
+                               float(p.y.evalf()) - float(q.y.evalf()))
+                    for p, q in ((aa, ba), (ba, ca), (ca, aa))
+                )
+                ok = max(abs(dx), abs(dy)) <= t * size
                 msg = "" if ok else (
                     f"Point {g!r} is not the centroid of triangle "
                     f"{a!r}{b!r}{c!r}: expected ({cx:.4f}, {cy:.4f}), "
@@ -320,11 +330,96 @@ def _check_one(
 
             case ir.RadiusEquals(circle=circle, expected=expected):
                 radius = _circular_radius(sym[circle], "radius_equals", circle)
-                ok = abs(radius - expected) < t * max(expected, 1.0)
+                ok = _rel_close(radius, expected, t)
                 msg = "" if ok else (
                     f"Circle {circle!r} radius {radius:.4f} ≠ expected {expected:.4f}"
                 )
 
+            case ir.Midpoint(m=m, a=a, b=b):
+                (mx, my), (ax, ay), (bx, by) = _xy(sym[m]), _xy(sym[a]), _xy(sym[b])
+                ex, ey = (ax + bx) / 2.0, (ay + by) / 2.0
+                # Relative to |ab|; coincident endpoints have no scale, so the
+                # comparison is then exact-only (0 <= 0 holds only on equality).
+                ok = math.hypot(mx - ex, my - ey) <= t * math.hypot(bx - ax, by - ay)
+                msg = "" if ok else (
+                    f"Point {m!r} is not the midpoint of {a!r}{b!r}: expected "
+                    f"({ex:.4f}, {ey:.4f}), got ({mx:.4f}, {my:.4f})"
+                )
+
+            case ir.ProportionalLengths(segs=segs, values=values):
+                lengths = [_length_of(sym[sid], sid) for sid in segs]
+                if lengths[0] <= 0:
+                    ok, msg = False, f"{segs[0]!r} has zero length; cannot compare length ratios to it"
+                else:
+                    got = [l / lengths[0] for l in lengths]
+                    want = [v / values[0] for v in values]
+                    ok = all(abs(g - w) <= t * w for g, w in zip(got[1:], want[1:]))
+                    msg = "" if ok else (
+                        "Lengths are not proportional: measured length ratios "
+                        + ":".join(f"{g:.4f}" for g in got)
+                        + " vs claimed value ratios "
+                        + ":".join(f"{w:.4f}" for w in want)
+                        + f" for {', '.join(repr(sid) for sid in segs)}"
+                    )
+
+            case ir.Between(p=p, a=a, b=b):
+                (px, py), (ax, ay), (bx, by) = _xy(sym[p]), _xy(sym[a]), _xy(sym[b])
+                dx, dy = bx - ax, by - ay
+                seg_len = math.hypot(dx, dy)
+                if seg_len == 0:
+                    ok, msg = False, f"{a!r} and {b!r} coincide, so there is no segment for {p!r} to lie between"
+                else:
+                    eps = t * seg_len
+                    u = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (seg_len * seg_len)))
+                    off_seg = math.hypot(px - (ax + u * dx), py - (ay + u * dy))
+                    d_a, d_b = math.hypot(px - ax, py - ay), math.hypot(px - bx, py - by)
+                    ok = off_seg <= eps and d_a > eps and d_b > eps
+                    if ok:
+                        msg = ""
+                    elif off_seg > eps:
+                        msg = (f"Point {p!r} is not on segment {a!r}{b!r}: it is {off_seg:.4f} from it "
+                               f"(allowed {eps:.4f})")
+                    else:
+                        end = a if d_a <= eps else b
+                        msg = (f"Point {p!r} is at an end of segment {a!r}{b!r}: it is "
+                               f"{min(d_a, d_b):.4f} from {end!r} (must be farther than {eps:.4f})")
+
+            case ir.LengthMultiple(s1=s1, s2=s2, factor=factor):
+                l1, l2 = _length_of(sym[s1], s1), _length_of(sym[s2], s2)
+                ok = _rel_close(l1, factor * l2, t)
+                msg = "" if ok else (
+                    f"Length of {s1!r} is {l1:.4f} but {factor:g} x length of {s2!r} "
+                    f"is {factor * l2:.4f} ({l2:.4f} x {factor:g})"
+                )
+
+            case ir.AngleMultiple(a1=a1, a2=a2, factor=factor):
+                v1 = _angle_at(sym[a1.a], sym[a1.o], sym[a1.b])
+                v2 = _angle_at(sym[a2.a], sym[a2.o], sym[a2.b])
+                ok = abs(v1 - factor * v2) < t
+                msg = "" if ok else (
+                    f"Angle {a1.a}-{a1.o}-{a1.b} = {math.degrees(v1):.1f}° but {factor:g} x angle "
+                    f"{a2.a}-{a2.o}-{a2.b} = {factor:g} x {math.degrees(v2):.1f}° = {math.degrees(factor * v2):.1f}°"
+                )
+
+            case ir.PointAt(p=p, x=ex, y=ey):
+                px, py = _xy(sym[p])
+                scale = max(abs(ex), abs(ey), abs(px), abs(py))
+                ok = (px, py) == (ex, ey) or max(abs(px - ex), abs(py - ey)) <= t * scale
+                msg = "" if ok else (
+                    f"Point {p!r} is at ({px:.4f}, {py:.4f}), expected ({ex:.4f}, {ey:.4f})"
+                )
+
+            case ir.ImageOf(q=q, p=p, transform=tf):
+                ex, ey, anchor, how = _image_expected(tf, sym[p], sym)
+                qx, qy = _xy(sym[q])
+                ok = (qx, qy) == (ex, ey) or math.hypot(qx - ex, qy - ey) <= t * anchor
+                msg = "" if ok else (
+                    f"Point {q!r} is at ({qx:.4f}, {qy:.4f}), but the image of {p!r} under "
+                    f"{how} should be at ({ex:.4f}, {ey:.4f})"
+                )
+
+            # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this
+            # line (before the registry/unknown fallbacks below).
             case ir.CongruentArcs(arcs=arcs):
                 ok, msg = _check_congruent_arcs(arcs, sym, t)
 
@@ -348,9 +443,12 @@ def _check_one(
                 d = float(circ1.center.distance(circ2.center).evalf())
                 r1 = _circular_radius(circ1, "circles_tangent", c1)
                 r2 = _circular_radius(circ2, "circles_tangent", c2)
-                identical = d < t and abs(r1 - r2) < t
-                externally_tangent = abs(d - (r1 + r2)) < t
-                internally_tangent = abs(d - abs(r1 - r2)) < t
+                # Relative to the figure's own scale (the larger radius or the
+                # center distance), not an absolute length.
+                scale = t * max(r1, r2, d)
+                identical = d < scale and abs(r1 - r2) < scale
+                externally_tangent = abs(d - (r1 + r2)) < scale
+                internally_tangent = abs(d - abs(r1 - r2)) < scale
                 ok = (externally_tangent or internally_tangent) and not identical
                 msg = "" if ok else (
                     f"Circles {c1!r} and {c2!r} are not tangent: "
@@ -431,12 +529,63 @@ def _side_ratios(p: Any, q: Any, la: Any, lb: Any) -> tuple[float, float]:
 
 def _near_exact(actual: float, expected: float, tol: float | None) -> bool:
     """Relative comparison for the prism measure checks: ``tol`` (the check's
-    own) or EXACT_MEASURE_TOL, scaled by max(|expected|, 1)."""
+    own) or EXACT_MEASURE_TOL, scaled by the larger magnitude (no absolute
+    floor; an expected or measured 0 is exact-only)."""
     t = EXACT_MEASURE_TOL if tol is None else tol
-    return abs(actual - expected) <= t * max(abs(expected), 1.0)
+    return actual == expected or abs(actual - expected) <= t * max(abs(actual), abs(expected))
 
 
 _EXACT_LINEAR_TOL = 1e-9
+
+
+def _image_expected(tf: Any, src: Any, sym: SymTable) -> tuple[float, float, float, str]:
+    """Where the image of ``src`` under transform ``tf`` should be, as
+    ``(x, y, anchor_distance, description)``. The anchor distance is from the
+    transformation's anchor (centre, mirror, or the translation vector's
+    length) to ``src``: the scale the check's tolerance is relative to. The
+    point maths is shared with the point definitions (``to_sympy``)."""
+    def point(pid: str, role: str) -> spg.Point:
+        obj = sym[pid]
+        if not isinstance(obj, spg.Point):
+            raise UnsupportedOperand(f"image_of: {role} {pid!r} must be a point, got {type(obj).__name__}")
+        return obj
+
+    if not isinstance(src, spg.Point):
+        raise UnsupportedOperand(f"image_of: the source must be a point, got {type(src).__name__}")
+    sx, sy = _xy(src)
+    match tf:
+        case ir.TranslationTransform(from_point=a, to_point=b):
+            pa, pb = point(a, "translation from_point"), point(b, "translation to_point")
+            dx, dy = _xy(pb)[0] - _xy(pa)[0], _xy(pb)[1] - _xy(pa)[1]
+            return sx + dx, sy + dy, math.hypot(dx, dy), f"translation by the vector {a!r} to {b!r}"
+        case ir.DilationTransform(center=c, factor=k):
+            ctr = point(c, "dilation center")
+            img = dilate_point(src, ctr, k)
+            return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
+                    f"dilation about {c!r} by factor {k:g}")
+        case ir.RotationTransform(center=c, angle=ang):
+            ctr = point(c, "rotation center")
+            img = rotate_point(src, ctr, ang)
+            return (*_xy(img), math.hypot(sx - _xy(ctr)[0], sy - _xy(ctr)[1]),
+                    f"rotation about {c!r} by {ang:g} rad ({math.degrees(ang):.1f}°)")
+        case ir.ReflectionTransform(across=a):
+            obj = sym[a]
+            if not isinstance(obj, spg.Point):
+                try:
+                    _as_linear(obj)
+                except TypeError:
+                    raise UnsupportedOperand(
+                        f"image_of: reflection 'across' {a!r} must be a point or a line, segment or ray, "
+                        f"got {type(obj).__name__}"
+                    ) from None
+            img = reflect_point(src, obj, "image_of")
+            if isinstance(obj, spg.Point):
+                anchor = math.hypot(sx - _xy(obj)[0], sy - _xy(obj)[1])
+            else:
+                line = obj if isinstance(obj, spg.Line) else spg.Line(obj.p1, obj.p2)
+                anchor = float(line.distance(src).evalf())
+            return *_xy(img), anchor, f"reflection across {a!r}"
+    raise ValueError(f"image_of: unknown transform {type(tf).__name__}")
 
 
 def _xy(p: Any) -> tuple[float, float]:
@@ -530,30 +679,36 @@ def _to_bool(expr: Any) -> bool:
 def _contains(
     obj: Any, point: spg.Point, tol: float, linear_tol: float | None = None
 ) -> bool:
-    """Check whether obj contains point, using distance-based tolerance for circles/ellipses.
+    """Check whether obj contains point.
 
-    A line, ray or segment is tested exactly first, then numerically within
-    ``linear_tol`` (default ``tol``, relative to the object's size)."""
+    A circle, ellipse, arc or sector (any curved object) is tested to within
+    ``tol`` times its radius (the smaller semi-axis, for an ellipse, so a long
+    thin ellipse keeps a meaningful tolerance), so the
+    verdict does not depend on scale. A line, ray or segment is tested exactly
+    first, then numerically within ``linear_tol`` (default ``tol``, relative
+    to the object's size)."""
     if isinstance(obj, _ARC_LIKE):
         # On the curved edge only — see point_on_arc(), which the pick_on_object
-        # rule in to_sympy.py shares, so the two can't drift apart.
-        return point_on_arc(point, obj, tol)
+        # rule in to_sympy.py shares, so the two can't drift apart. The check
+        # passes its own radius-scaled tolerance; pick keeps its tight one.
+        _cx, _cy, hr, vr = _conic_frame(obj, "contains", "object")
+        return point_on_arc(point, obj, tol * min(hr, vr))
     if isinstance(obj, spg.Circle):
         d = float(point.distance(obj.center).evalf())
         r = float(obj.radius.evalf())
-        return abs(d - r) < tol
+        return abs(d - r) < tol * r
     if isinstance(obj, RotatedEllipse):
         # A length-based gap (the tilted marker has no SymPy containment).
         gap = ellipse_boundary_gap(obj.frame, float(point.x.evalf()), float(point.y.evalf()))
-        return abs(gap) < tol
+        return abs(gap) < tol * min(obj.frame.a, obj.frame.b)
     if isinstance(obj, spg.Ellipse):
         # The same length-based gap as a tilted ellipse (rotation 0).
+        hr, vr = float(obj.hradius.evalf()), float(obj.vradius.evalf())
         frame = EllipseFrame(
-            float(obj.center.x.evalf()), float(obj.center.y.evalf()),
-            float(obj.hradius.evalf()), float(obj.vradius.evalf()),
+            float(obj.center.x.evalf()), float(obj.center.y.evalf()), hr, vr,
         )
         gap = ellipse_boundary_gap(frame, float(point.x.evalf()), float(point.y.evalf()))
-        return abs(gap) < tol
+        return abs(gap) < tol * min(hr, vr)
     exact = _to_bool(obj.contains(point))
     if exact or not isinstance(obj, _LINEAR_TYPES):
         return exact
@@ -631,8 +786,10 @@ def _ellipse_arcs_congruent(a: tuple, b: tuple, tol: float) -> bool:
     """
     a_hr, a_vr, a_s, a_e = a
     b_hr, b_vr, b_s, b_e = b
-    same = abs(a_hr - b_hr) < tol and abs(a_vr - b_vr) < tol
-    swapped = abs(a_hr - b_vr) < tol and abs(a_vr - b_hr) < tol
+    # Radii compare relatively (tol is a fraction of the radius); the span and
+    # positions below are angles in radians, so tol stays absolute for them.
+    same = _rel_close(a_hr, b_hr, tol) and _rel_close(a_vr, b_vr, tol)
+    swapped = _rel_close(a_hr, b_vr, tol) and _rel_close(a_vr, b_hr, tol)
     if not (same or swapped) or abs((a_e - a_s) - (b_e - b_s)) >= tol:
         return False
     base = 0.0 if same else math.pi / 2
@@ -672,7 +829,7 @@ def _check_congruent_arcs(arcs: list[str], sym: SymTable, tol: float) -> tuple[b
         if circular(f) != circular(g):
             return False
         if circular(f):
-            return abs(f[0] - g[0]) < tol and abs((f[3] - f[2]) - (g[3] - g[2])) < tol
+            return _rel_close(f[0], g[0], tol) and abs((f[3] - f[2]) - (g[3] - g[2])) < tol
         return _ellipse_arcs_congruent(f, g, tol)
 
     if all(congruent(frames[0], f) for f in frames[1:]):

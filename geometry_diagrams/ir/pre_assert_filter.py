@@ -428,6 +428,44 @@ def direct_ids_referenced(check: ir.Check) -> list[str]:
             return [g, a, b, c]
         case ir.Convex(polygon=polygon) | ir.CCW(polygon=polygon):
             return [polygon]
+        case ir.EqualRadius(circles=circles):
+            return list(circles)
+        case ir.RadiusEquals(circle=circle):
+            return [circle]
+        case ir.CongruentArcs(arcs=arcs):
+            return list(arcs)
+        case ir.AngleValue(angle=angle):
+            return [angle.a, angle.o, angle.b]
+        case ir.CirclesTangent(c1=c1, c2=c2):
+            return [c1, c2]
+        case ir.VolumeEquals(prism=prism):
+            return [prism]
+        case ir.TrueLengthEquals(seg=seg):
+            return [seg]
+        case ir.CubeCountEquals(stack=stack):
+            return [stack]
+        case ir.Midpoint(m=m, a=a, b=b):
+            return [m, a, b]
+        case ir.ProportionalLengths(segs=segs):
+            return list(segs)
+        case ir.Between(p=p, a=a, b=b):
+            return [p, a, b]
+        case ir.LengthMultiple(s1=s1, s2=s2):
+            return [s1, s2]
+        case ir.AngleMultiple(a1=a1, a2=a2):
+            return [a1.a, a1.o, a1.b, a2.a, a2.o, a2.b]
+        case ir.PointAt(p=p):
+            return [p]
+        case ir.ImageOf(q=q, p=p, transform=tf):
+            match tf:
+                case ir.TranslationTransform(from_point=a, to_point=b):
+                    return [q, p, a, b]
+                case ir.ReflectionTransform(across=across):
+                    return [q, p, across]
+                case _:
+                    return [q, p, tf.center]
+        # NEW CHECK KINDS: add one `case ir.<Kind>(...)` arm above this line
+        # (the completeness test fails if a union member is missing here).
         case _:
             raise TypeError(
                 f"Unhandled Check type for request-relevance extraction: {type(check).__name__}"

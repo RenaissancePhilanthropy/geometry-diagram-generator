@@ -625,7 +625,8 @@ Euclidean combination).
 | `volume_equals` | `prism`, `expected` | The prism's true volume equals `expected` |
 | `true_length_equals` | `seg`, `expected` | The true 3D length of a segment joining two corners of one prism equals `expected` (any other segment fails, naming `distance_equals`) |
 
-Both are near-exact: `|actual - expected| <= tol * max(|expected|, 1)` with a
+Both are near-exact: `|actual - expected| <= tol * max(|actual|, |expected|)` (no absolute
+floor) with a
 default `tol` of 1e-9 (an off-by-one volume fails); an explicit `tol` on the
 check overrides it. Every other check keeps the default tolerance (5e-3).
 `distance_equals`, `equal_length` and `ratio_equal` on a segment joining two
@@ -1467,11 +1468,11 @@ After execution, the system checks:
 2. **Geometric properties**: Configurable checks matching eval format:
    - `right_angle(A, B, C)`: angle at B is 90°
    - `parallel([A,B], [C,D])`: lines are parallel
-   - `midpoint(M, A, B)`: M is the midpoint of AB
+   - `midpoint(M, A, B)`: M is the midpoint of AB (eval format; the IR check kind `midpoint` is gated and documented under "Measured checks" below)
    - `point_on_line(P, A, B)`: P lies on line AB
    - `point_on_circle(P, center, radius_point)`: P is on the circle
    - `equal_lengths([[A,B], [C,D]])`: segments have equal length
-   - `equal_length` / `distance_equals` / `ratio_equal` (IR check kinds) measure segments and also circular and elliptical arcs and sectors, mixed freely. An arc's length is its curved length (the minor arc between its endpoints, or the major arc when `reflex` is set, whichever order start and end are given in; computed by `ir/curve_measures.py`'s `curve_length`); a sector's length is its curved edge only, not its two straight radii. A full circle or ellipse has no single length here: such an operand fails with a message naming its id: a circle is pointed at `radius_equals` / `equal_radius`, an ellipse (two radii, which `radius_equals` rejects) at `equal_radius`. Tolerances are unchanged (absolute for `equal_length`, relative for `distance_equals`); elliptical lengths are computed numerically to about 1e-9, far inside the default tolerance.
+   - `equal_length` / `distance_equals` / `ratio_equal` (IR check kinds) measure segments and also circular and elliptical arcs and sectors, mixed freely. An arc's length is its curved length (the minor arc between its endpoints, or the major arc when `reflex` is set, whichever order start and end are given in; computed by `ir/curve_measures.py`'s `curve_length`); a sector's length is its curved edge only, not its two straight radii. A full circle or ellipse has no single length here: such an operand fails with a message naming its id: a circle is pointed at `radius_equals` / `equal_radius`, an ellipse (two radii, which `radius_equals` rejects) at `equal_radius`. Tolerances are all relative (see the tolerance contract below); elliptical lengths are computed numerically to about 1e-9, far inside the default tolerance.
    - `collinear(P, Q, R)`: points are collinear
    - `angle_bisector(D, A, B, C)`: AD bisects angle BAC
    - `perpendicular([A,B], [C,D])`: lines are perpendicular
@@ -1481,8 +1482,8 @@ After execution, the system checks:
    - `min_distance(A, B, min_dist)`: points A and B are at least min_dist apart
    - `congruent_triangles(T1, T2)`: triangles T1 and T2 are congruent (SSS: matching sorted side lengths, no required vertex correspondence)
    - `equal_radius([C1, C2, ...])`: all listed circles have the same radius — the circle-family counterpart of `equal_lengths` (requires at least two circles; "length" means nothing for a circle, so these stay separate check kinds)
-   - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(expected, 1.0)`)
-   - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` applies to the radius term in length units and to the sweep term in radians. Elliptical arcs/sectors are congruent when their axes match (or are swapped) and one arc is a symmetry image of the other: a reflection across either axis or a half turn of the ellipse, possibly reversed. Equal span alone is not enough, because an ellipse's curvature varies along it. A circle and a genuine ellipse (two different radii) are never congruent; an elliptical arc with two equal radii counts as a circular arc.
+   - `radius_equals(C, expected)`: circle C's radius equals `expected`, using the same relative-tolerance convention as `distance_equals` (`|actual - expected| < tol * max(actual, expected)`, no absolute floor)
+   - `congruent_arcs([A1, A2, ...])`: the listed circular arcs/sectors are congruent — equal radius AND equal central-angle sweep (requires at least two). The sweep comparison is reflex-aware, so a minor arc and a reflex arc sharing the same two endpoints are never congruent; `tol` is relative for the radius term (a fraction of the radius, as for `radius_equals`) and absolute, in radians, for the sweep term. Elliptical arcs/sectors are congruent when their axes match (or are swapped) and one arc is a symmetry image of the other: a reflection across either axis or a half turn of the ellipse, possibly reversed. Equal span alone is not enough, because an ellipse's curvature varies along it. A circle and a genuine ellipse (two different radii) are never congruent; an elliptical arc with two equal radii counts as a circular arc.
    - `angle_value(A, O, B, expected_deg)`: the angle at O equals `expected_deg` degrees — complements `right_angle` (a fixed 90°) and `angle_equal` (two angles compared to each other, never to an absolute value). `tol` is in radians.
    - `circles_tangent(C1, C2)`: circles C1 and C2 are tangent to each other, externally (centers separated by the sum of the radii) or internally (by the difference). Distinct from `tangent`, whose `line` field is explicitly a line/segment/ray; two identical circles are not considered tangent.
 
@@ -1495,6 +1496,124 @@ After execution, the system checks:
 
 4. **Structural checks**: polygon counts, entity counts, etc.
 
-Validation uses tolerance (default 1e-6) for floating point comparisons.
+Validation uses tolerance (default 5e-3, relative; a check's own `tol`
+overrides it) for floating point comparisons.
+
+   **Relative measure tolerances.** `equal_length`, `distance_equals`,
+   `ratio_equal` and `radius_equals` compare purely relatively: the values
+   agree when `|a - b| < tol * max(|a|, |b|)` (for `ratio_equal`, the two cross
+   products `l1*l4` and `l2*l3`, i.e. lengths squared). `distance_equals` covers
+   arc and sector operands by their curve length. The prism `volume_equals` and
+   `true_length_equals` use the same shape with their near-exact default. There
+   is no absolute floor, so the same figure at any uniform scale gets the same
+   verdict. Behaviour change: earlier versions floored the scale at 1.0 for
+   `distance_equals`, `ratio_equal`, `radius_equals` and the prism checks, so
+   figures whose expected values are below 1 now get a stricter (truly
+   relative) verdict; figures at or above 1 are unchanged. A zero expected (or
+   measured) value has no scale, so the comparison is exact-only: a tiny
+   nonzero value never matches an expected 0. Use a different check
+   (e.g. `distinct_points`, `min_distance`) for a "zero length" claim.
+
+   **Relative curve and tangency tolerances.** `contains` on a circle, ellipse,
+   arc or sector accepts a point within `tol * radius` of the curve (the smaller
+   semi-axis, for an ellipse, so a long thin ellipse keeps a meaningful tolerance); `not_contains` follows on its curved branches
+   (its linear branch stays exact). `tangent` compares the center-to-line
+   distance with the radius (the support distance, for an ellipse) relatively;
+   `circles_tangent` compares the center distance with `r1 + r2` or `|r1 - r2|`
+   within `tol * max(r1, r2, center distance)`; `centroid` compares within
+   `tol * the triangle's longest side`; and `congruent_arcs` compares radii (and
+   semi-axes) relatively, while sweeps and positions are angles in radians and
+   keep an absolute `tol`. Compile-time `pick: on_object` on an arc is not
+   affected: it keeps its own fixed tight tolerance (1e-9). Behaviour change:
+   these checks were absolute distances, so figures above unit scale now get
+   *looser* verdicts (a radius-10 circle tolerates 0.05 instead of 0.005) and
+   sub-unit figures get stricter ones. Angle checks and `min_distance` stay
+   absolute by design, and the `not_*` linear checks stay exact.
+
+### Measured checks (`measured_checks` feature group)
+
+`measured_checks` is an opt-in feature group (off by default; enable with
+`GEOMETRY_FEATURES=measured_checks` or `GeometryConfig(features=...)`) for
+check kinds that assert a numerically measured relation. A generated diagram
+whose `checks` use a kind owned by a disabled group is rejected after parsing
+by `require_features` (message: the kind, the group, how to enable), using the
+rule table `CHECK_RULES` in `geometry_diagrams/features.py`. This is
+generation-time only: stored IR with such a check always compiles, is checked
+and renders with the group off. The structured strategy binds `DiagramIR` as its
+output schema, so the kinds stay visible to that model; the post-parse
+rejection is the gate (as for the other groups). No prompt text, recipe op or
+pydsl `assert_*` exists for these kinds.
+
+- `midpoint` (IR check, `{kind: "midpoint", m, a, b}`): point `m` lies within
+  `tol * |ab|` of the midpoint of `a` and `b` (relative to the segment's own
+  length, so the verdict is scale-free; default `tol` 5e-3). When `a` and `b`
+  coincide there is no scale and `m` must equal them exactly. A failure states
+  the expected and the measured coordinates. This is an assertion about
+  existing points, unlike the `point_midpoint` definition (which constructs a
+  point) and the eval-format `midpoint(M, A, B)` entry listed above.
+
+- `proportional_lengths` (IR check, `{kind: "proportional_lengths", segs, values}`):
+  the listed segments' lengths are proportional to `values` at any scale: for
+  every i, `|len_i/len_0 - v_i/v_0| <= tol * (v_i/v_0)`. `segs` has two or more
+  entries and `values` the same count, every value finite and > 0; violations
+  are rejected at parse time (DiagramIR validation). Lengths are measured as by
+  `equal_length` (arcs and sectors by their curved edge). A failure states the
+  measured length ratios against the claimed value ratios; a zero-length first
+  segment fails (no ratio to compare).
+- `between` (IR check, `{kind: "between", p, a, b}`): point `p` lies strictly
+  inside segment `ab`: within `tol * |ab|` of the segment and farther than
+  `tol * |ab|` from each end (same `tol`, default 5e-3). Not the `between` pick
+  rule (`{kind: "between", a, b}` in a definition's `pick` list, which selects
+  among candidate points while constructing); the two live in different unions
+  (`Check` versus the pick rules) and never collide. Coincident `a` and `b` have
+  no segment, so the check fails (it cannot hold). A failure distinguishes "not
+  on segment" (too far from the segment) from "at an end" (too close to `a` or
+  `b`).
+- `length_multiple` (IR check, `{kind: "length_multiple", s1, s2, factor}`):
+  `|s1|` equals `factor` times `|s2|`, compared relative to the larger of the
+  two magnitudes (`tol`, default 5e-3), so the verdict is scale-free. Lengths
+  are measured as by `equal_length` (arcs and sectors by their curved edge).
+  `factor` must be positive and finite (rejected at parse time). Unlike
+  `ratio_equal`, it relates exactly two segments to a stated multiple.
+- `angle_multiple` (IR check, `{kind: "angle_multiple", a1, a2, factor}`):
+  angle `a1` equals `factor` times angle `a2`, each measured as `angle_equal`
+  measures it (unsigned interior angle in radians). `tol` is absolute, in
+  radians, applied to `|a1 - factor * a2|`. `factor` must be positive and
+  finite. A central angle versus an inscribed angle on the same arc is
+  `factor: 2`. A failure reports both angles in degrees.
+- `point_at` (IR check, `{kind: "point_at", p, x, y}`): the compiled
+  coordinates of point `p`, in construction units (independent of the canvas),
+  equal `(x, y)`. `tol` (default 5e-3) is relative to
+  `max(|x|, |y|, |p.x|, |p.y|)`. At the origin there is no scale: when the
+  expected point and `p` are both exactly `(0, 0)` the check passes, and any
+  difference there is exact-only (no tolerance applies when that maximum is 0;
+  a point merely near the origin is compared against the other coordinate's
+  magnitude, if any). `x` and `y` must be finite. Compiled coordinates carry
+  small rounding, so expect agreement to about 1e-9, not bit equality.
+- `image_of` (IR check, `{kind: "image_of", q, p, transform}`): point `q` is
+  the image of point `p` under `transform`, a tagged union on `kind`:
+  `translation` (`from_point`, `to_point`: shift by the vector between those
+  two points), `dilation` (`center`, `factor`: any finite non-zero number,
+  negatives allowed, the meaning of `point_dilate`'s `ratio`), `rotation`
+  (`center`, `angle` in RADIANS, counter-clockwise positive, the meaning of
+  `point_rotate`'s `angle`; note this differs from a "degrees" convention a
+  downstream request may assume) and `reflection` (`across`: a point, for
+  point symmetry, or a line, segment or ray, exactly the operands of
+  `point_reflect`). The math is shared with the point definitions, so the check
+  and the definitions cannot disagree. `tol` (default 5e-3) is relative to the
+  distance from the transformation's anchor (the centre, the mirror line or
+  point, or the translation vector's length) to `p`; when that distance is 0
+  (e.g. `p` on the mirror) the comparison is exact-only. `factor` and `angle`
+  must be finite (a zero `factor` or an unknown `kind` is rejected at parse
+  time); a transform operand that is not the right object type fails the check
+  with a message. A failure states where `q` is and where the image of `p`
+  should be. This lets a redrawn figure be tested against a stated
+  transformation. Gated by `measured_checks`.
+
+Every `Check` union member is evaluated by a dedicated arm of `run_checks` and
+handled by the pre-assert reference extractor (`direct_ids_referenced`); a
+completeness test enumerates the union so a kind cannot be added to one and not
+the other. Unknown kinds (stored by a newer version) still warn and pass.
+
 On failure, error messages are suitable for feeding back to the LLM in a
 retry loop if desired.
