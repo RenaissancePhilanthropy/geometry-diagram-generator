@@ -369,7 +369,16 @@ def _f(v: Any) -> float:
 
 
 def _lift(x: float, y: float) -> spg.Point:
-    return spg.Point(sp.Float(x, 17), sp.Float(y, 17))
+    """A SymPy point at float coordinates, kept as Floats.
+
+    evaluate=False: the default would rationalize each Float through nsimplify (an
+    mpmath pslq search, ~25 ms a point) into a plain base-10 Rational. Float() of
+    either form is identical, but a lifted point is now a Float point, so a circle
+    centred on one goes through the numeric kernel (_kernel_conic_pair) and exact
+    predicates see Floats. A tangent point can differ by ~1e-8 from the rational
+    route, far inside the tolerances the checks use.
+    """
+    return spg.Point(sp.Float(x, 17), sp.Float(y, 17), evaluate=False)
 
 
 def _identity(x: float, y: float) -> tuple[float, float]:
