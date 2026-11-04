@@ -88,3 +88,32 @@ def test_tikz_grid_and_ticks_use_each_axis_own_step():
 
 def test_tikz_equal_grid_steps_keep_the_scalar_form():
     assert "step=5]" in _tikz(_diagram(grid=True, grid_step=5))
+
+
+def _grid_diagram(**canvas_kwargs):
+    base = dict(xmin=-0.5, xmax=15.5, ymin=-0.5, ymax=15.5, grid=True)
+    base.update(canvas_kwargs)
+    return DiagramIR(
+        canvas=Canvas(**base),
+        define=[PointFixed(id="A", x=0.5, y=0.5)],
+        render=[DrawPoints(points=["A"])],
+    )
+
+
+def test_svg_grid_is_clipped_to_the_canvas_range_not_rounded_outward():
+    # x_range=(-0.5, 15.5): lines 0..15 (a 15x15 grid), not -1..16.
+    assert _grid_line_counts(_svg(_grid_diagram())) == (16, 16)
+
+
+def test_svg_grid_on_an_integer_range_is_unchanged():
+    assert _grid_line_counts(_svg(_grid_diagram(xmin=0, xmax=15, ymin=0, ymax=15))) == (16, 16)
+
+
+def test_tikz_grid_is_clipped_to_the_canvas_range_not_rounded_outward():
+    assert "(0,0) grid (15,15);" in _tikz(_grid_diagram())
+
+
+def test_grid_with_no_multiple_of_step_in_range_draws_nothing():
+    d = _grid_diagram(xmin=0.2, xmax=0.8, ymin=0.2, ymax=0.8)
+    assert _grid_line_counts(_svg(d)) == (0, 0)
+    assert "grid" not in _tikz(d)

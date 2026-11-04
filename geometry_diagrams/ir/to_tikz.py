@@ -39,13 +39,12 @@ from .render_util import (
     extract_coords,
     fmt_label_num,
     fmt_num,
+    grid_span,
     label_segment_arc_anchor,
     line_endpoints,
     line_label_endpoints,
     orient_angle,
     poly_verts,
-    round_down_to_step,
-    round_up_to_step,
     second_line_point,
     seg_endpoints,
     synthesize_helpers,
@@ -83,8 +82,6 @@ _seg_pts = seg_endpoints
 _line_pts = line_endpoints
 _circle_pts = circle_center_through
 _tick_values = tick_values
-_round_down_to_step = round_down_to_step
-_round_up_to_step = round_up_to_step
 
 _BOUNDS_PADDING = BOUNDS_PADDING
 _TICK_HALF_LENGTH = 0.05
@@ -973,10 +970,12 @@ def _emit_grid(
     ymax: float,
 ) -> list[str]:
     x_step, y_step = canvas.grid_steps()
-    grid_xmin = _round_down_to_step(xmin, x_step)
-    grid_xmax = _round_up_to_step(xmax, x_step)
-    grid_ymin = _round_down_to_step(ymin, y_step)
-    grid_ymax = _round_up_to_step(ymax, y_step)
+    x_span = grid_span(xmin, xmax, x_step)
+    y_span = grid_span(ymin, ymax, y_step)
+    if x_span is None or y_span is None:
+        return []
+    grid_xmin, grid_xmax = x_span
+    grid_ymin, grid_ymax = y_span
     step = _fmt_num(x_step) if x_step == y_step else f"{{({_fmt_num(x_step)},{_fmt_num(y_step)})}}"
     return [
         (
