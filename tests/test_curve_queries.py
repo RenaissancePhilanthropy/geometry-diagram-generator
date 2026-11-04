@@ -37,7 +37,9 @@ def _quad_length(a, b, t0, t1):
 
 
 def _pt(cx, cy, a, b, t):
-    return spg.Point(cx + a * math.cos(t), cy + b * math.sin(t))
+    # evaluate=False: the default would nsimplify each float to a rational (an
+    # mpmath pslq search, ~25 ms a point); the queries only read float values.
+    return spg.Point(cx + a * math.cos(t), cy + b * math.sin(t), evaluate=False)
 
 
 def _radial(a, b, t):
@@ -63,8 +65,8 @@ ELL_CASES = {
 }
 
 
-@pytest.fixture
-def sym():
+@pytest.fixture(scope="module")
+def sym():  # read-only: no test mutates it, and building it is the slow part
     A, B, C = spg.Point(0, 0), spg.Point(3, 0), spg.Point(3, 4)
     s = {
         "seg": spg.Segment(A, B),
