@@ -5,6 +5,7 @@ compile/check/render pipeline run for real (SVGRenderer, no Docker needed).
 """
 from __future__ import annotations
 
+import copy
 import json
 
 import pytest
@@ -44,6 +45,38 @@ b = point(4, 0)
 c = point(0, 3)
 t = triangle(a, b, c)
 """
+
+
+# Each real sandbox start costs ~0.6 s (the child imports sympy/numpy/matplotlib),
+# and this file reruns a handful of scripts many times (retries, metadata, edits).
+# Run each distinct (script, settings) once per module and hand every later call a
+# deep copy; the child, the did-you-mean text and the manifest all stay real.
+# Sandbox-infrastructure failures are never cached, so a loaded machine cannot turn
+# one flaky start into a failure for every later test that runs the same script.
+_SCRIPT_RESULTS: dict = {}
+_UNCACHEABLE_ERROR_TYPES = {"timeout", "sandbox_setup_error", "memory_limit", "syntax_or_timeout"}
+
+
+@pytest.fixture(autouse=True)
+def _reuse_sandbox_results(monkeypatch):
+    from geometry_diagrams.strategies import python_full
+
+    real_run_script = python_full.run_script
+
+    def cached_run_script(script, timeout_seconds=5.0, _child_argv=None, enable_cookbook=False,
+                          features=frozenset()):
+        key = (script, timeout_seconds, tuple(_child_argv or ()), enable_cookbook, frozenset(features))
+        if key not in _SCRIPT_RESULTS:
+            result = real_run_script(
+                script, timeout_seconds=timeout_seconds, _child_argv=_child_argv,
+                enable_cookbook=enable_cookbook, features=features,
+            )
+            if result.error_type in _UNCACHEABLE_ERROR_TYPES:
+                return result
+            _SCRIPT_RESULTS[key] = result
+        return copy.deepcopy(_SCRIPT_RESULTS[key])
+
+    monkeypatch.setattr(python_full, "run_script", cached_run_script)
 
 
 def _make_script_response(script: str) -> dict:

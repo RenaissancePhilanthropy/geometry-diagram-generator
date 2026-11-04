@@ -19,6 +19,10 @@ source .venv/bin/activate
 # Run tests (per-test timeout 300 s; markers: `renderer` needs the container on :8001, `llm` needs RUN_LLM_TESTS=true and an API key)
 .venv/bin/python -m pytest tests/
 
+# Same suite in parallel (pytest-xdist, in the dev group). On an 8-core laptop (4 performance + 4 efficiency) -n 6 cut the full suite
+# from 8.5 to 5 minutes; tests/conftest.py pins BLAS to one thread per process so workers don't oversubscribe the cores
+.venv/bin/python -m pytest tests/ -n 6
+
 # Run a single test file
 .venv/bin/python -m pytest tests/test_compile_defs.py -v
 
