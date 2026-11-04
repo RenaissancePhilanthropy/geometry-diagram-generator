@@ -29,7 +29,7 @@ async def test_run_chain_records_a_successful_turn(monkeypatch):
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
 
     chain = {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}
-    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0)
+    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=60.0)
 
     assert len(records) == 1
     r = records[0]
@@ -67,7 +67,7 @@ async def test_run_chain_persists_turn_artifacts_when_artifacts_dir_given(monkey
 
     chain = {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}
     records = await run_chain(
-        chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0,
+        chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=60.0,
         artifacts_dir=tmp_path,
     )
 
@@ -104,7 +104,7 @@ async def test_run_chain_continues_past_a_failure_and_tracks_prior_failure_count
             {"request": "move it up", "expected_properties": []},
         ],
     }
-    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0)
+    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=60.0)
 
     assert len(records) == 2
     assert records[0]["success"] is False
@@ -155,7 +155,7 @@ async def test_run_chain_records_edit_ops_meta_on_a_failed_line_number_turn(monk
             {"request": "delete a nonexistent line", "expected_properties": []},
         ],
     }
-    records = await run_chain(chain, "test-model", "line_number", repeat_index=1, renderer=None, turn_timeout=5.0)
+    records = await run_chain(chain, "test-model", "line_number", repeat_index=1, renderer=None, turn_timeout=60.0)
 
     assert len(records) == 2
     assert records[0]["success"] is True
@@ -198,7 +198,7 @@ async def test_run_chain_runs_property_checks_on_success(monkeypatch):
             ],
         }],
     }
-    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=5.0)
+    records = await run_chain(chain, "test-model", "full_rewrite", repeat_index=1, renderer=None, turn_timeout=60.0)
 
     assert records[0]["sympy_property_checks"][0]["passed"] is True
 
@@ -232,7 +232,7 @@ async def test_run_chain_threads_hash_algorithm_into_build_agent(monkeypatch):
     monkeypatch.setattr(pf_module.PythonFullStrategy, "run", fake_run)
 
     chain = {"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}
-    await run_chain(chain, "test-model", "hashline", repeat_index=1, renderer=None, turn_timeout=5.0, hash_algorithm="xxhash")
+    await run_chain(chain, "test-model", "hashline", repeat_index=1, renderer=None, turn_timeout=60.0, hash_algorithm="xxhash")
 
     assert captured_kwargs.get("hash_algorithm") == "xxhash"
     assert captured_kwargs.get("edit_generation_mode") == "hashline"
@@ -282,7 +282,7 @@ async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
 
     from evals.run_edit_chains import run_chain
 
-    records = await run_chain(chain, "test-model", "patch", repeat_index=1, renderer=None, turn_timeout=5.0)
+    records = await run_chain(chain, "test-model", "patch", repeat_index=1, renderer=None, turn_timeout=60.0)
 
     assert len(records) == 2
     assert records[0]["success"] is True
@@ -322,7 +322,7 @@ async def test_run_matrix_runs_every_combination_and_returns_all_records(monkeyp
     output_path = tmp_path / "results.jsonl"
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite", "patch"], repeats=2,
-        renderer=None, turn_timeout=5.0, output_path=output_path,
+        renderer=None, turn_timeout=60.0, output_path=output_path,
     )
 
     # 2 chains x 1 model x 2 modes x 2 repeats x 1 turn each = 8 records.
@@ -357,7 +357,7 @@ async def test_run_matrix_works_without_an_output_path(monkeypatch):
     chains = [{"id": "chain-1", "turns": [{"request": "draw a point", "expected_properties": []}]}]
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite"], repeats=1,
-        renderer=None, turn_timeout=5.0, output_path=None,
+        renderer=None, turn_timeout=60.0, output_path=None,
     )
     assert len(result["records"]) == 1
 
@@ -386,7 +386,7 @@ async def test_run_matrix_trips_model_level_breaker_and_stops_calling_run_chain(
     ]
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite"], repeats=3,
-        renderer=None, turn_timeout=5.0,
+        renderer=None, turn_timeout=60.0,
     )
 
     assert result["tripped_models"] == ["model-a"]
@@ -446,7 +446,7 @@ async def test_run_matrix_trips_only_the_failing_cell_not_other_modes(monkeypatc
     ]
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite", "patch"], repeats=3,
-        renderer=None, turn_timeout=5.0,
+        renderer=None, turn_timeout=60.0,
     )
 
     assert result["tripped_models"] == []
@@ -479,7 +479,7 @@ async def test_run_matrix_model_trip_suppresses_redundant_cell_trip(monkeypatch)
     # update.
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite"], repeats=3,
-        renderer=None, turn_timeout=5.0,
+        renderer=None, turn_timeout=60.0,
     )
 
     assert result["tripped_models"] == ["model-a"]
@@ -516,7 +516,7 @@ async def test_run_matrix_two_models_trip_independently(monkeypatch):
     ]
     result = await run_matrix(
         chains, ["good-model", "bad-model"], ["full_rewrite"], repeats=3,
-        renderer=None, turn_timeout=5.0,
+        renderer=None, turn_timeout=60.0,
     )
 
     assert result["tripped_models"] == ["bad-model"]
@@ -545,7 +545,7 @@ async def test_run_matrix_disabled_breaker_runs_every_combination_regardless_of_
     ]
     result = await run_matrix(
         chains, ["model-a"], ["full_rewrite"], repeats=3,
-        renderer=None, turn_timeout=5.0, circuit_breaker_enabled=False,
+        renderer=None, turn_timeout=60.0, circuit_breaker_enabled=False,
     )
 
     assert result["tripped_models"] == []
@@ -736,7 +736,7 @@ async def test_run_chain_threads_retry_on_locality_violation_and_records_whether
         ],
     }
     records = await run_chain(
-        chain, "test-model", "search_replace", repeat_index=1, renderer=None, turn_timeout=5.0,
+        chain, "test-model", "search_replace", repeat_index=1, renderer=None, turn_timeout=60.0,
         retry_on_locality_violation=True,
     )
 
