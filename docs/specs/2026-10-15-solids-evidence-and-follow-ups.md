@@ -10,8 +10,9 @@ and the deferred minor items. Schema and behavior: `docs/geometry-dsl-spec.md`
 [`block_stack`](../geometry-dsl-spec.md#block_stack),
 [Pipeline warnings](../geometry-dsl-spec.md#pipeline-warnings)).
 
-Status: `solids` is OFF by default and the branch is unmerged. Nothing in the
-evidence below supports enabling it yet.
+Status: merged to master (2026-10-15/16); `solids` is still OFF by default.
+Nothing in the evidence below supports enabling it yet. The text below was
+written while the work was on branch `feat/solids-prisms`.
 
 ## Eval history
 

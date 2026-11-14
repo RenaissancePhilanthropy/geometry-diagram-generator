@@ -93,10 +93,15 @@ examples in context) are YAML.
     "auto_mark_right_angles": true,
     "auto_label_points": true,
     "marks": [],
-    "styles": []
+    "styles": {}
   }
 }
 ```
+
+The top-level object (`RecipeDSL`, `geometry_diagrams/recipe/dsl.py`) has
+`mode` (`"abstract"` default, `"grid"` or `"mixed"`), `construction` (required),
+`annotations` and `checks` (see [Recipe checks](#recipe-checks)). Unknown
+top-level keys are rejected.
 
 ---
 
@@ -106,6 +111,11 @@ Every operation takes named inputs and produces named outputs.
 No operation requires a solver — all results are computed analytically.
 Operations execute sequentially; each step can reference any previously
 created object by name.
+
+Every operation also takes `visible` (bool, default `true`): `false` keeps the
+object out of `annotations.auto_draw_all`. An `id` must not start with `__`
+(reserved for lowering intermediates; rejected at parse time). Unknown fields
+on an operation are rejected.
 
 ### Foundation Operations
 
@@ -118,7 +128,8 @@ Create a triangle from a property specification.
 |------------|-------------------|----------------------------------------|
 | `id`       | string            | Name for the triangle object           |
 | `vertices` | [string, string, string] | Names for the three vertices    |
-| `spec`     | object            | Properties (see below)                 |
+| `spec`     | object            | Properties (see below); values are numbers (default `{}`) |
+| `center`   | [number, number]  | Optional: target position of the triangle's centroid (default `(2, 2)`) |
 
 Spec keys always use this triangle's own vertex IDs from `vertices` (e.g. for
 `vertices: ["P","Q","R"]`, use `side_PQ`/`angle_P`, not fixed letters). Accepts
@@ -130,6 +141,13 @@ any sufficient combination of:
 - `right_angle_at` — the vertex name with a right angle (shorthand for setting
   that angle to 90)
 
+Supported forms: SSS, SAS, ASA/AAS and `right_angle_at` plus at least two
+other constraints. Defaults: `right_angle_at` alone gives a 3-4-5 triangle
+(legs adjacent to the right angle); one side plus 60-degree (or no) angles gives
+an equilateral triangle; two or more angles and no side default one side
+(`vertices[0]`-`vertices[1]`) to 4. Angles alone with no side at all is
+otherwise an error (AAA is underdetermined).
+
 The system computes all unspecified values and chooses a realization.
 Layout convention: base edge horizontal, triangle above the base.
 
@@ -139,11 +157,27 @@ Create a circle.
 | Field    | Type          | Description                              |
 |----------|---------------|------------------------------------------|
 | `id`     | string        | Name for the circle object               |
-| `center` | string or expr | A named point or expression             |
+| `center` | string         | Name of an existing point                |
 | `radius` | number or expr | Radius value or expression              |
 | `through`| string        | Alternative to radius: point on circle   |
 
-Provide either `radius` or `through`, not both.
+Provide `radius` or `through` (at least one is required).
+
+#### `oval`
+An axis-aligned non-circular ellipse (a plain circle should use `circle`).
+`ellipse` is accepted as a deprecated alias for the op name. Exactly one of
+four forms must be given:
+
+| Form          | Fields                                              |
+|---------------|-----------------------------------------------------|
+| center + axes | `center`, `hradius`, `vradius` (number or expr)     |
+| bounding box  | `bbox`: `[corner1, corner2]` (two point ids)        |
+| foci          | `foci`: `[focus1, focus2]` plus `major_axis` (total length 2a, number or expr) or `through` (a point on the ellipse) |
+| eccentricity  | `center`, `semi_major`, `eccentricity` (number or expr), optional `orientation`: `"horizontal"` or `"vertical"` (the IR default, `"horizontal"`, applies when omitted) |
+
+`id` must be a new name, not the id of the center point. The recipe op has no
+`rotation_deg`; tilted ellipses are an IR-level feature (see
+[Tilted ellipses](#tilted-ellipses-rotation_deg)).
 
 #### `polygon`
 Create a polygon from existing vertices.
@@ -159,10 +193,11 @@ Create a regular polygon.
 | Field      | Type      | Description                               |
 |------------|-----------|-------------------------------------------|
 | `id`       | string    | Name for the polygon object               |
-| `vertices` | [string]  | Names for the vertices                    |
+| `vertices` | [string]  | Names for the vertices (exactly N, one per vertex) |
 | `center`   | string    | Center point name                         |
-| `radius`   | number    | Circumradius                              |
-| `start_angle` | number | Angle in degrees of first vertex from east (default: 90) |
+| `radius`   | number or expr | Circumradius                         |
+| `start_angle` | number or expr | Angle in degrees of first vertex from east (default: 0, the rightmost point) |
+| `star`     | bool      | Default false; true connects every second vertex (a star polygon such as the pentagram {5/2}); requires an odd number of vertices, at least 5 |
 
 #### `point` (grid mode)
 Place a point at explicit coordinates.
@@ -172,6 +207,86 @@ Place a point at explicit coordinates.
 | `id`     | string    | Point name          |
 | `coords` | [number, number] | (x, y)      |
 
+#### `canvas`
+Set the canvas bounds and grid/axis styling (it maps to the diagram's canvas,
+not to a definition). See [Grid Mode Details](#grid-mode-details).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `x_range`, `y_range` | [number, number] | `[min, max]` of each axis (required) |
+| `grid` | bool | Draw gridlines (default false) |
+| `axes` | bool | Draw axes (default false) |
+| `show_ticks`, `show_tick_labels`, `show_axis_labels` | bool | Each default false |
+| `grid_step`, `tick_step` | number > 0 | Shared spacing; unset uses the canvas default (1) |
+| `x_tick_step`, `y_tick_step`, `x_grid_step`, `y_grid_step` | number > 0 | Optional per-axis overrides of the shared steps |
+| `aspect` | number > 0 | Visual length of one y unit relative to one x unit (default: equal units); the plot box must stay between 1:20 and 20:1 |
+
+#### `rectangle`
+A rectangle from adjacent side lengths.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Name for the rectangle |
+| `vertices` | [string x4] | Distinct corner names in perimeter order; with `rotation` 0 the first is top-left, then top-right, bottom-right, bottom-left |
+| `spec` | object | `side_XY` (or `side_YX`) keyed by this rectangle's own vertex letters; at least two ADJACENT sides (opposite sides do not fix the other dimension) |
+| `rotation` | number | Degrees counter-clockwise (default 0) |
+| `center` | [number, number] | Optional position of the rectangle's centroid (default `(2, 2)`) |
+
+#### `polygon_from_sides`
+A polygon from consecutive side lengths, laid out as the maximum-area polygon.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Name for the polygon |
+| `vertices` | [string] | At least 3 names |
+| `side_lengths` | [number] | `side_lengths[i]` is the distance from `vertices[i]` to `vertices[(i+1) % N]`; same length as `vertices` |
+| `center` | [number, number] | Optional position of the centroid |
+
+#### `polygon_from_angles_and_sides`
+A polygon from consecutive side lengths and interior angles (turtle placement:
+`vertices[0]` at the origin heading east, turning left by each exterior angle).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Name for the polygon |
+| `vertices` | [string] | At least 3 names |
+| `side_lengths` | [number] | N entries, or N-1 with the last side inferred from closure |
+| `angles` | [number] | Interior angle in degrees at `vertices[i]`; N entries (must sum to (N-2)*180) or N-1 (the last inferred) |
+| `center`, `rotation` | [number, number], number | Standalone placement only (degrees CCW, default 0) |
+| `base` | [string, string] | Optional edge anchor: `vertices[0:2]` must equal `base`; then `side_lengths` is N-1 (base edge omitted) or N; excludes `center` and a nonzero `rotation` |
+| `ref_point` | string | Required with `base` (and only then): the polygon is placed on the opposite side of `base` from this point |
+
+#### `arc`
+A circular arc from `start`, counter-clockwise, to the ray through `end`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Name for the arc |
+| `center`, `start`, `end` | string | Existing point ids; the radius is `|center start|` and only the direction of `end` from `center` is used |
+| `reflex` | bool | Default false; true selects the major arc |
+
+Use `circle` for a full sweep. The IR kind has an optional `radius`
+(see [Circular arcs and sectors](#circular-arcs-and-sectors-radius)); the
+recipe op does not expose it.
+
+#### `sector`
+A closed, fillable circular sector (pie slice): the two radii plus the arc.
+Fields as for `arc` (`center`, `start`, `end`, `reflex` default false).
+
+#### `regular_sectors`
+Divide a circle into N equal sectors.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Prefix of the derived ids |
+| `center` | string | Center point id (coordinates must be known at lowering time) |
+| `radius` | number | Radius (a literal number) |
+| `n` | integer | Number of sectors |
+| `start_angle` | number | Degrees of the first spoke (default 0, east) |
+
+Emits spoke-endpoint points `{id}__r0` ... `{id}__r{N-1}` and sectors
+`{id}__0` ... `{id}__{N-1}`, all drawable.
+
 #### `point_external`
 Place a point outside a circle at a relative position.
 
@@ -179,7 +294,7 @@ Place a point outside a circle at a relative position.
 |-----------------|-----------|------------------------------------------|
 | `id`            | string    | Point name                               |
 | `relative_to`   | string    | Circle ID                                |
-| `direction`     | string    | "right", "left", "above", "below"        |
+| `direction`     | string or number | "right", "left", "above", "below", or an angle in degrees |
 | `distance_ratio`| number    | Multiple of radius for distance from center |
 
 
@@ -227,7 +342,7 @@ deterministic computation.
 |------------|----------|---------------------------------------|
 | `id`       | string   | Name for intersection point           |
 | `of`       | [string, string] | Two object IDs (lines, circles) |
-| `selector` | Selector | Required when multiple results exist  |
+| `selector` | Selector (see [Selectors](#selectors)) | Required when multiple results exist |
 
 Returns a point. For line-line: no selector needed (0 or 1 result).
 For line-circle and circle-circle: selector required.
@@ -255,8 +370,11 @@ Line parallel to a given line, through a given point.
 |--------|-------------------|--------------------------------|
 | `id`   | string            | Name for the bisector line     |
 | `of`   | [string, string]  | Two endpoint names             |
+| `mid`  | string            | Name for the midpoint (required) |
+| `point_on_line` | string   | Optional name for a point on the bisector line (useful for `mark_right_angle`) |
 
-Also creates the midpoint (accessible as `{id}_mid` if needed).
+Also creates the midpoint, named by `mid`, and draws the base segment unless
+one between those two points is already defined.
 
 #### `angle_bisector`
 Bisects the interior angle at a vertex.
@@ -276,42 +394,96 @@ Drop altitude from a vertex to the opposite side of a triangle.
 | Field        | Type   | Description                     |
 |--------------|--------|---------------------------------|
 | `id`         | string | Name for the altitude line      |
-| `triangle`   | string | Triangle ID                     |
+| `triangle`   | string | Triangle ID (preferred; the opposite side is inferred) |
+| `to_side`    | [string, string] | Alternative to `triangle`: explicit base points |
 | `from_vertex`| string | Vertex to drop from             |
 | `foot`       | string | Name for the foot point         |
 
-Produces both the line and the foot point.
+Give exactly one of `triangle` and `to_side`. Produces both the line and the
+foot point.
+
+#### `median`
+Median from a vertex to the midpoint of the opposite side.
+
+| Field        | Type   | Description                     |
+|--------------|--------|---------------------------------|
+| `id`         | string | Name for the median line        |
+| `triangle`   | string | Triangle ID (preferred)         |
+| `to_side`    | [string, string] | Alternative to `triangle`: explicit base points |
+| `from_vertex`| string | Vertex the median starts from   |
+| `mid`        | string | Name for the midpoint of the opposite side |
+
+Give exactly one of `triangle` and `to_side`.
+
+#### `point_foot`
+Foot of the perpendicular from a point onto a line, without constructing a
+named altitude line.
+
+| Field    | Type   | Description                         |
+|----------|--------|-------------------------------------|
+| `id`     | string | Name for the foot point             |
+| `source` | string | Point to project                    |
+| `onto`   | string | Line or segment ID                  |
+
+#### `polygon_exterior`
+A regular polygon built on an edge, on the side opposite a reference point
+(e.g. a square on a triangle side).
+
+| Field      | Type     | Description                                   |
+|------------|----------|-----------------------------------------------|
+| `id`       | string   | Name for the polygon                          |
+| `base`     | [string, string] | The edge                               |
+| `ref_point`| string   | The polygon is placed on the opposite side of `base` from this point |
+| `n`        | integer  | Number of sides (3 = equilateral triangle, 4 = square) |
+| `vertices` | [string] | Names for the computed vertices, either all `n` or only the new ones (default `[]`); omitted entries are named `{id}_v{k}` |
+
+#### `circle_through_3`
+The circle through three arbitrary points (no named triangle needed).
+
+| Field    | Type     | Description                           |
+|----------|----------|---------------------------------------|
+| `id`     | string   | Name for the circle                   |
+| `through`| [string, string, string] | Three point IDs       |
+| `center` | string   | Name for the circumcenter point       |
 
 #### `centroid`
 | Field | Type   | Description              |
 |-------|--------|--------------------------|
 | `id`  | string | Name for the centroid    |
-| `of`  | string | Triangle or polygon ID   |
+| `of`  | string | Triangle ID              |
 
 #### `circumcircle`
 | Field      | Type   | Description                       |
 |------------|--------|-----------------------------------|
 | `id`       | string | Name for the circle               |
 | `of`       | string | Triangle ID                       |
+| `points`   | [string, string, string] | Alternative to `of`: three point IDs |
 | `center`   | string | Name for the circumcenter point   |
+
+Give exactly one of `of` and `points`.
 
 #### `incircle`
 | Field      | Type   | Description                       |
 |------------|--------|-----------------------------------|
 | `id`       | string | Name for the circle               |
 | `of`       | string | Triangle ID                       |
+| `points`   | [string, string, string] | Alternative to `of`: three point IDs |
 | `center`   | string | Name for the incenter point       |
 
+Give exactly one of `of` and `points`.
+
 #### `point_along`
-Place a point at a distance along a line or ray from a given point.
+Place a point at a distance from a given point, in the direction of another point.
 
 | Field     | Type          | Description                         |
 |-----------|---------------|-------------------------------------|
 | `id`      | string        | Name for the new point              |
 | `from`    | string        | Starting point                      |
-| `on`      | string        | Line or ray ID                      |
-| `distance`| number or expr| Distance from starting point        |
-| `direction`| Selector     | Which direction along the line      |
+| `on`      | string        | Line, segment or ray ID (context; the lowering does not use it for the position) |
+| `distance`| number        | Distance from starting point (a number or an expression such as `"length(A, B) / 2"`, evaluated against the points placed so far) |
+| `toward`  | string        | Point giving the direction of travel (must differ from `from`) |
+
+The new point is `from + distance * unit(toward - from)`.
 
 #### `point_on_segment`
 Place a point on a segment at a given ratio.
@@ -320,7 +492,7 @@ Place a point on a segment at a given ratio.
 |---------|---------------|---------------------------------------|
 | `id`    | string        | Name for the new point                |
 | `segment`| [string, string] | Endpoint names                   |
-| `ratio` | number or expr| Ratio from first to second endpoint (0–1) |
+| `ratio` | number or string | Optional. Fraction from first to second endpoint (0–1), or a string `"m:n"` (m parts from the first endpoint, n parts toward the second); default 0.5 (the midpoint) |
 
 #### `reflection`
 Reflect a point across a line or through a point.
@@ -342,13 +514,17 @@ Rotate a point around a center.
 | `angle`  | number or expr| Rotation in degrees, CCW positive|
 
 #### `tangent_line`
-Tangent to a circle at a point on the circle.
+Tangent to a circle, either at a point on it or from an external point.
 
 | Field    | Type   | Description                              |
 |----------|--------|------------------------------------------|
 | `id`     | string | Name for the tangent line                |
 | `circle` | string | Circle ID                                |
-| `at`     | string | Point on the circle (must be on circle)  |
+| `at`     | string | Point on the circle (must be on circle); tangent at that point |
+| `from_point` | string | External point; tangent lines through it |
+| `selector` | Selector | Chooses between the two tangents from an external point (see [Selectors](#selectors)) |
+
+Give exactly one of `at` and `from_point`.
 
 #### `circle_tangent_at`
 A new circle of a given radius, tangent to an existing circle at a point on
@@ -384,8 +560,8 @@ Extend a segment beyond one of its endpoints.
 |-----------|---------------|--------------------------------------|
 | `id`      | string        | Name for the new endpoint            |
 | `segment` | [string, string] | Original segment endpoints        |
-| `beyond`  | string        | Which endpoint to extend beyond      |
-| `distance`| number or expr| Distance beyond the endpoint         |
+| `beyond`  | string        | Which endpoint to extend beyond (must be one of the two) |
+| `by`      | number        | Extra distance beyond the endpoint (a number or expression, evaluated as for `point_along`) |
 
 ### Tilted ellipses (`rotation_deg`)
 
@@ -457,7 +633,8 @@ always compiles and renders, whatever the feature setting.
 
 #### `rectangular_prism`
 A right rectangular prism (box) drawn as a parallel projection. The
-IR-level definition is `ir.RectangularPrism`.
+IR-level definition is `ir.RectangularPrism`; the recipe DSL op of the same
+fields is named `prism` (`recipe.dsl.PrismOp`).
 
 | Field          | Type            | Description |
 |----------------|-----------------|-------------|
@@ -637,7 +814,8 @@ pipeline warning saying a projection was measured and naming
 #### `block_stack`
 An irregular stack of unit cubes drawn as a parallel projection: the
 building-plan "how many cubes?" figure. The IR-level definition is
-`ir.BlockStack` (compiled by `geometry_diagrams/ir/stack.py`). Like the prism
+`ir.BlockStack` (compiled by `geometry_diagrams/ir/stack.py`; the recipe DSL op
+of the same fields is named `stack`, `recipe.dsl.StackOp`). Like the prism
 it belongs to the `solids` group.
 
 | Field          | Type            | Description |
@@ -898,78 +1076,79 @@ definition and check:
 
 Selectors resolve ambiguity when an operation has multiple valid results.
 Every selector uses named geometric objects as references — never absolute
-coordinates or screen positions.
+coordinates or screen positions. A selector is an object tagged by `kind` (the
+IR `PickRule` union in `geometry_diagrams/ir/ir.py`), and is the `selector`
+field of `intersection` and `tangent_line` (the same rules are the `pick` field
+of IR definitions):
 
-Selectors can be composed as a filter chain (array) when needed:
 ```json
-"selector": [
-  {"between": ["A", "B"]},
-  {"nearest_to": "C"}
-]
+{"kind": "closest_to", "p": "C"}
 ```
-Each selector narrows the candidate set. For most operations a single
-selector suffices.
 
-### Proximity Selectors
+Rules compose as a filter chain with the `chain` kind, each rule narrowing the
+candidate set in order. For most operations a single selector suffices.
+```json
+"selector": {"kind": "chain", "rules": [
+  {"kind": "between", "a": "A", "b": "B"},
+  {"kind": "closest_to", "p": "C"}
+]}
+```
 
-| Selector               | Meaning                                |
-|------------------------|----------------------------------------|
-| `nearest_to: P`        | Closest to point P                     |
-| `farthest_from: P`     | Farthest from point P                  |
+### Index and object selectors
 
-Use when one solution is "closer" to a point the problem cares about.
+| Selector                          | Meaning                                  |
+|-----------------------------------|------------------------------------------|
+| `{kind: "index", k: 0}`           | The k-th candidate in compile order (`k` defaults to 0) |
+| `{kind: "on_object", obj: O}`     | The candidate lying on object `O` (a segment, ray, line or circle) |
+
+### Proximity Selector
+
+| Selector                          | Meaning                                  |
+|-----------------------------------|------------------------------------------|
+| `{kind: "closest_to", p: P}`      | Closest to point `P`                     |
+
+Use when one solution is "closer" to a point the problem cares about. There is
+no farthest-from selector.
 
 ### Side-of-Line Selectors
 
-| Selector                                     | Meaning                              |
-|----------------------------------------------|--------------------------------------|
-| `same_side_as: {line: [A,B], point: C}`      | On the same side of line AB as C     |
-| `opposite_side_of: {line: [A,B], point: C}`  | On the opposite side of line AB from C|
-| `upper_of_line: [A,B]`                       | Left side walking A→B (fallback)     |
-| `lower_of_line: [A,B]`                       | Right side walking A→B (fallback)    |
+| Selector                                              | Meaning                              |
+|-------------------------------------------------------|--------------------------------------|
+| `{kind: "same_side", line: [A,B], ref_point: C}`      | On the same side of line AB as C     |
+| `{kind: "opposite_side", line_through: [A,B], ref_point: C}` | On the opposite side of line AB from C |
+| `{kind: "upper_of_line", a: A, b: B}`                 | Left side walking A→B (positive cross product; fallback) |
+| `{kind: "lower_of_line", a: A, b: B}`                 | Right side walking A→B (negative cross product; fallback) |
 
-Prefer `same_side_as`/`opposite_side_of` whenever a reference point
-exists. Use `upper_of_line`/`lower_of_line` only when no third point
-is available yet. Convention: "upper" = left side of directed line A→B
-(equivalently, the side reached by rotating A→B by +90°).
+Prefer `same_side`/`opposite_side` whenever a reference point exists. Use
+`upper_of_line`/`lower_of_line` only when no third point is available yet.
+Convention: "upper" = left side of directed line A→B (equivalently, the side
+reached by rotating A→B by +90°).
 
 ### Betweenness Selectors
 
-| Selector                           | Meaning                          |
-|------------------------------------|----------------------------------|
-| `between: [A, B]`                  | Lies on the segment AB           |
-| `beyond: {from: A, past: B}`      | On the far side of B from A      |
+| Selector                                   | Meaning                          |
+|--------------------------------------------|----------------------------------|
+| `{kind: "between", a: A, b: B}`            | Lies strictly between A and B (on segment AB) |
+| `{kind: "beyond", from_point: A, past_point: B}` | On the far side of B from A |
 
-Use when intersection points are collinear with known points.
+Use when intersection points are collinear with known points. (Not to be
+confused with the `between` *check* kind under [Measured checks](#measured-checks-measured_checks-feature-group).)
 
 ### Interior/Exterior Selectors
 
-| Selector               | Meaning                                      |
-|------------------------|----------------------------------------------|
-| `interior_of: polygon` | Inside the polygon's interior                |
-| `exterior_of: polygon` | Outside the polygon's interior               |
+| Selector                              | Meaning                                      |
+|---------------------------------------|----------------------------------------------|
+| `{kind: "interior", polygon: P}`      | Inside the polygon's interior                |
+| `{kind: "exterior", polygon: P}`      | Outside the polygon's interior               |
+| `{kind: "inside_triangle", tri: T}`   | Inside triangle `T`                          |
 
 Use for constructions involving auxiliary circles or lines that cross
 polygon boundaries.
 
-### Parametric Selectors (use sparingly)
+### Direction
 
-| Selector                                        | Meaning                         |
-|-------------------------------------------------|---------------------------------|
-| `clockwise_from: {on: circle, reference: P}`    | First point CW from P on circle |
-| `counterclockwise_from: {on: circle, reference: P}` | First point CCW from P     |
-
-Avoid in LLM-composed output. Acceptable in pre-verified recipes.
-
-### Direction Selectors (for `point_along`)
-
-| Selector         | Meaning                            |
-|------------------|------------------------------------|
-| `toward: P`      | In the direction of P              |
-| `away_from: P`   | In the opposite direction from P   |
-
-Side-of-line and interior/exterior selectors also work for direction
-when combined with `point_along`.
+`point_along` takes no selector: its direction is the `toward` point (see
+`point_along` above).
 
 ---
 
@@ -982,7 +1161,7 @@ expressions.
 ### Values
 ```
 42, 3.5                  literal numbers
-pi                       constant (π)
+pi, E                    constants (π, e)
 length(A, B)             distance between two points
 radius(c)                radius of a named circle
 angle(A, B, C)           non-reflex angle at B in degrees
@@ -990,19 +1169,20 @@ angle(A, B, C)           non-reflex angle at B in degrees
 
 ### Arithmetic
 ```
-+  -  *  /               basic operators
++  -  *  /  **  %       basic operators (unary + and - too); `**` exponents are capped at 1000 in magnitude
 sqrt(x)                  square root
 ```
 
-### Trigonometry (degrees)
+### Trigonometry (radians)
 ```
-sin(x)  cos(x)  tan(x)
+sin(x)  cos(x)  tan(x)   argument in RADIANS (sin(30) is not 0.5; write sin(pi/6) or sin(radians(30)))
+asin(x) acos(x) atan(x)  result in radians
+radians(x)  degrees(x)   convert between the two
 ```
 
 ### Usage in operations
 ```json
-{"op": "point_along", "id": "D", "from": "A", "on": "perp_A",
- "distance": "length(A, B)", "direction": {"toward": "B"}}
+{"op": "circle", "id": "c1", "center": "A", "radius": "length(A, B)"}
 
 {"op": "circle", "id": "c2", "center": "O",
  "radius": "radius(c1) * 2"}
@@ -1025,78 +1205,90 @@ explicitly requests them in a separate block.
 
 | Flag                     | Default | Effect when true                      |
 |--------------------------|---------|---------------------------------------|
+| `auto_draw_all`          | true    | Draw every drawable construction object (except ops with `visible: false`) |
 | `auto_mark_right_angles` | false   | Mark every 90° angle in construction  |
 | `auto_label_points`      | true    | Label every named point               |
 
+The other `annotations` keys are `draws`, `marks`, `labels` and `styles`
+(described below); extra keys are tolerated for future use.
+
 ### Marks
 
+Each entry of `annotations.marks` is an object tagged by `kind`. Angle marks
+and angle labels name their angle in exactly one of two forms: explicit
+`a`, `vertex`, `b` (the angle at `vertex` between the rays toward `a` and `b`),
+or the shorthand `at` (a vertex name) with `of` (a triangle id).
+
 #### `mark_angle`
-Mark a single angle.
+Mark a single angle (`kind: "mark_angle"`).
 
 | Field         | Type   | Description                            |
 |---------------|--------|----------------------------------------|
-| `vertex`      | string | Vertex point                           |
-| `ray1_toward` | string | Point on first ray                     |
-| `ray2_toward` | string | Point on second ray                    |
-| `label`       | string | Optional label (e.g. "α", "1", "60°") |
-| `reflex`      | bool   | If true, mark the reflex angle (default false) |
+| `a`, `vertex`, `b` | string | Explicit form: point on first ray, vertex, point on second ray |
+| `at`, `of`    | string | Shorthand form: vertex name within triangle `of` |
+| `group`       | integer | Optional: angles sharing a group get matching arcs |
+| `expected`    | number or `"acute"` \| `"right"` \| `"obtuse"` | Optional: validated against the constructed geometry (it is never drawn as text) |
 
-Default: marks the non-reflex angle between the two rays.
+Marks the non-reflex angle between the two rays. There is no `label` field
+here; use `label_angle`.
 
 #### `mark_right_angle`
-Mark a right angle with the standard square symbol.
-
-| Field         | Type   | Description              |
-|---------------|--------|--------------------------|
-| `vertex`      | string | Vertex point             |
-| `ray1_toward` | string | Point on first ray       |
-| `ray2_toward` | string | Point on second ray      |
-
-#### `mark_angle_group`
-Mark multiple angles as visually matching (same number of arcs, same label).
-
-| Field    | Type      | Description                                |
-|----------|-----------|--------------------------------------------|
-| `angles` | array     | Each: {vertex, ray1_toward, ray2_toward}   |
-| `arcs`   | integer   | Number of arc strokes (1, 2, or 3)         |
-| `label`  | string    | Optional shared label                      |
+Mark a right angle with the standard square symbol (`kind: "mark_right_angle"`).
+Takes the same explicit (`a`, `vertex`, `b`) or shorthand (`at`, `of`) forms as
+`mark_angle`, and nothing else.
 
 #### `mark_equal_lengths`
-Mark segments as equal with tick marks.
-
-> **Note:** this section predates the current implementation and its
-> `{segments: [[P,Q],...], ticks: n}` shape does not match any real schema
-> today. The actual IR-level render op is `ir.MarkSegments` (see
-> `geometry_diagrams/ir/ir.py`): it takes `segs` (a list of already-defined
-> segment ids, not raw point pairs) plus either a `group` string (an
-> equal-length group name; a "tickN" name or first-encounter order decides
-> the count, capped at 6 by the renderers' mark-symbol palette) or an
-> explicit `ticks: int` field with no upper bound. `ticks` is IR/renderer-only
-> — the recipe DSL and pydsl surfaces don't expose it yet. `group` is a
-> namespace shared with `ir.MarkArcs` below — a segment and an arc marked
-> with the same group name resolve to the same tick count.
+Mark segments as equal with tick marks (`kind: "mark_equal_lengths"`).
 
 | Field      | Type    | Description                               |
 |------------|---------|-------------------------------------------|
-| `groups`   | array   | Each group: {segments: [[P,Q],...], ticks: n} |
+| `segments` | [[string, string], ...] | Point-pair endpoints of each segment in the group |
+| `group`    | integer | Optional group number; segments sharing a group share a tick count |
 
-Each group shares a tick count. Different groups get different counts.
+Call once per group; different groups get different tick counts.
 ```json
-{"op": "mark_equal_lengths",
- "groups": [
-   {"segments": [["A","B"], ["A","C"]], "ticks": 1},
-   {"segments": [["B","C"]], "ticks": 2}
- ]}
+{"kind": "mark_equal_lengths", "segments": [["A","B"], ["A","C"]], "group": 1}
 ```
 
-#### `mark_parallel`
-Mark lines as parallel with arrow marks.
+> **Note on the IR level:** the IR render op is `ir.MarkSegments`
+> (see `geometry_diagrams/ir/ir.py`): it takes `segs` (a list of
+> already-defined segment ids, not raw point pairs) plus either a `group` string
+> (an equal-length group name; a "tickN" name or first-encounter order decides
+> the count, capped at 6 by the renderers' mark-symbol palette) or an explicit
+> `ticks: int` field with no upper bound. `ticks` is IR/renderer-only — the
+> recipe DSL and pydsl surfaces don't expose it yet. `group` is a namespace
+> shared with `ir.MarkArcs` below — a segment and an arc marked with the same
+> group name resolve to the same tick count.
 
-| Field    | Type    | Description                                  |
-|----------|---------|----------------------------------------------|
-| `groups` | array   | Each group: {lines: [[P,Q],...], arrows: n}  |
+#### `mark_parallel`
+Mark segments as parallel with arrow marks (`kind: "mark_parallel"`).
+
+| Field      | Type    | Description                                  |
+|------------|---------|----------------------------------------------|
+| `segments` | [[string, string], ...] | Point-pair endpoints of each segment |
+| `group`    | integer | Optional group number                        |
 
 Same grouping logic as equal lengths.
+
+#### `mark_proportional`
+Mark corresponding segments that are proportional but not equal (for example
+the sides of similar triangles) with tick marks (`kind: "mark_proportional"`).
+Fields as for `mark_parallel` (`segments`, optional `group`); the lowering
+verifies that the ratio between consecutive pairs is constant.
+
+#### `mark_angle_pair`
+Mark two angles related by a named relation between two vertices, without
+choosing the rays (`kind: "mark_angle_pair"`).
+
+| Field        | Type   | Description                                         |
+|--------------|--------|-----------------------------------------------------|
+| `relation`   | `"corresponding"` \| `"alternate_interior"` \| `"alternate_exterior"` | The relation (`co_interior` is deliberately not supported: those angles are supplementary) |
+| `vertices`   | [string, string] | The two vertices `[v1, v2]`                |
+| `rays_along` | [string, string] | At each vertex, any one point on the "other" line through it |
+| `group`      | integer | Optional group number                              |
+
+The ray directions are resolved after coordinates are known (the IR carries a
+`pending_angle_pair` until then).
 
 #### `mark_arcs`
 
@@ -1106,8 +1298,8 @@ arc-space counterpart of `mark_equal_lengths`.
 The IR-level render op is `ir.MarkArcs` (see `geometry_diagrams/ir/ir.py`),
 with `arcs`, `group`, `ticks` fields as below. The recipe DSL surface
 (`geometry_diagrams.recipe.dsl.MarkArcs`, `{"kind": "mark_arcs", ...}` in
-`annotations.marks`) exposes `arcs` and `group` only — `ticks` (an explicit,
-uncapped count) is IR/renderer-only, same as `mark_equal_lengths`. The
+`annotations.marks`) exposes `arcs` and an integer `group` only — `ticks` (an
+explicit, uncapped count) is IR/renderer-only, same as `mark_equal_lengths`. The
 pydsl surface (`geometry_diagrams.pydsl.api.mark_equal`) dispatches to this
 op automatically when passed a curved handle.
 
@@ -1134,30 +1326,55 @@ equivalent — an arc always draws N plain radial ticks regardless.
 
 ### Labels
 
+Each entry of `annotations.labels` is an object tagged by `kind`.
+
 #### `label_segment`
-Add a text label to a segment (e.g. side length name).
+Add a text label to a segment (e.g. side length name) (`kind: "label_segment"`).
 
 | Field     | Type   | Description                               |
 |-----------|--------|-------------------------------------------|
-| `segment` | [string, string] | Segment endpoints               |
+| `endpoints` | [string, string] | Segment endpoints               |
 | `text`    | string | Label text (e.g. "a", "5", "c²")         |
-| `position`| string | "midpoint" (default), "near_start", "near_end" |
+| `pos`     | string | `"auto"` (default), `"above"`, `"below"`, `"left"`, `"right"`, `"above left"`, `"above right"`, `"below left"` or `"below right"` |
 
-#### `label_line`
-Add a text label to a line.
+(The IR op `ir.LabelSegment` instead takes a segment id `seg` and a numeric
+`pos`.) There are no `label_line` or `label_circle` operations; use
+`label_free_text` or `label_point` for those.
 
-| Field  | Type   | Description                |
-|--------|--------|----------------------------|
-| `line` | string | Line ID                    |
-| `text` | string | Label text                 |
+#### `label_point`
+Place or override the label of a point (`kind: "label_point"`).
 
-#### `label_circle`
-Add a text label to a circle.
+| Field         | Type   | Description                               |
+|---------------|--------|-------------------------------------------|
+| `point`       | string | Point id                                  |
+| `text`        | string | Optional; omitted uses the point id       |
+| `pos`         | string | `"auto"` (default), `"above"`, `"below"`, `"left"`, `"right"`, `"above left"`, `"above right"`, `"below left"` or `"below right"` |
+| `show_coords` | bool   | Default false; true appends the point's compiled (x, y) coordinates to the text |
 
-| Field   | Type   | Description                |
-|---------|--------|----------------------------|
-| `circle`| string | Circle ID                  |
-| `text`  | string | Label text                 |
+A matching entry overrides the auto-generated label (`auto_label_points`).
+
+#### `label_angle`
+Place a text label inside an angle (`kind: "label_angle"`). The angle is named
+as for `mark_angle` (explicit `a`/`vertex`/`b`, or shorthand `at`/`of`); pair it
+with a `mark_angle` if the arc should also be drawn.
+
+| Field   | Type   | Description                                         |
+|---------|--------|-----------------------------------------------------|
+| `text`  | string | Optional. Omitted derives the measure from the constructed geometry (e.g. "72°"), the recommended default. A numeric-degree string (e.g. "70°") is also validated against the geometry (5° tolerance); any other text ("x°", "1") passes through unvalidated |
+| `given` | bool   | Default false; true skips validating a numeric-degree `text` (a stated given that need not reproduce exactly) |
+| `pos`   | string | `"auto"` (default), `"above"`, `"below"`, `"left"`, `"right"`, `"above left"`, `"above right"`, `"below left"` or `"below right"` |
+
+#### `label_free_text`
+Place arbitrary text at explicit coordinates or at a polygon/triangle centroid
+(`kind: "label_free_text"`).
+
+| Field         | Type   | Description                               |
+|---------------|--------|-------------------------------------------|
+| `text`        | string | Label text; supports LaTeX notation such as `^{2}`, `_{n}`, `\pi`, `\sqrt{3}` |
+| `at`          | [number, number] | Explicit position                |
+| `centroid_of` | string | Id of a polygon, triangle, prism, stack or other registered solid (or one of their face ids) to center on |
+
+Give exactly one of `at` and `centroid_of`.
 
 #### `label_along_arc`
 
@@ -1196,20 +1413,18 @@ part (e.g. flattening a subscript).
 
 ### Style
 
-#### `style`
-Apply visual styling to an object.
-
-| Field    | Type   | Description                              |
-|----------|--------|------------------------------------------|
-| `target` | string | Object ID                                |
-| `stroke` | string | "solid" (default), "dashed", "dotted"    |
-| `fill`   | string | "none" (default), "light", "accent_light"|
-| `weight` | string | "normal" (default), "thin", "thick"      |
+There is no `style` operation. Named styles live in `annotations.styles`, an
+object mapping a style name to a property dict (the keys listed under
+[Draws and arrowheads](#draws-and-arrowheads)), e.g.
+`"styles": {"dashed_red": {"color": "red", "dashed": true}}`. A draw's, fill's
+or render op's `style` refers to a name there, or is a bare color, or an inline
+dict (see below).
 
 ### Draws and arrowheads
 
 `annotations.draws` is a list of explicit draw directives, each targeting an
-existing object (`obj`) or a vertex-pair shorthand (`endpoints`):
+existing object (`obj`) or a vertex-pair shorthand (`endpoints`), exactly one
+of the two:
 
 ```json
 {"obj": "ray1", "style": {"color": "blue", "->": true}}
@@ -1240,6 +1455,23 @@ arrowhead, not a black one, so line color remains a reliable cue on its own
 {"obj": "r1", "style": {"color": "red", "->": true}}
 ```
 
+### Fill
+
+`fill` is a construction-list operation (like the others, with `id`), not an
+annotation: it shades a closed shape.
+
+| Field     | Type     | Description                                       |
+|-----------|----------|---------------------------------------------------|
+| `id`      | string   | Name for the fill                                 |
+| `obj`     | string   | The closed shape to fill (polygon, circle, triangle, sector id; a prism face id)|
+| `holes`   | [string] | Shape ids cut out of `obj` with the even-odd rule (default `[]`) |
+| `opacity` | number   | Fill opacity, 0.0–1.0 (default 1.0)               |
+| `style`   | string or object | Named style key, bare color or inline dict, as for `draws` |
+
+```json
+{"op": "fill", "id": "shade", "obj": "circ", "holes": ["quad"], "opacity": 0.3}
+```
+
 ---
 
 ## Recipe Format
@@ -1250,47 +1482,35 @@ them and writes adapted JSON — recipes are not black-box invocations.
 
 ```yaml
 name: square_on_segment
-description: >
-  Construct a square on a given segment, on the exterior of a reference
-  polygon. The segment becomes one side of the square.
-
-example:
-  # Given: points A and B forming a side, triangle T as reference
-  - op: perpendicular
-    id: perp_A
-    to_line: [A, B]
-    through: A
-  - op: point_along
-    id: D
-    from: A
-    on: perp_A
-    distance: length(A, B)
-    direction:
-      opposite_side_of:
-        line: [A, B]
-        point: centroid(T)
-  - op: perpendicular
-    id: perp_B
-    to_line: [A, B]
-    through: B
-  - op: point_along
-    id: C
-    from: B
-    on: perp_B
-    distance: length(A, B)
-    direction:
-      opposite_side_of:
-        line: [A, B]
-        point: centroid(T)
-  - op: polygon
-    id: sq_AB
-    vertices: [A, B, C, D]
-
-properties:
-  - ABCD is a square with side length equal to AB
-  - The square is on the opposite side of AB from the centroid of T
-  - D is adjacent to A; C is adjacent to B
+description: "Square constructed on the exterior of a triangle edge"
+tags: [polygon, square, exterior, intermediate]
+context: "Given a triangle T with vertices A, B, C."
+setup:            # DSL ops giving the background figure; NOT sent to the LLM
+  - op: triangle
+    id: T
+    vertices: [A, B, C]
+    spec: {angle_A: 60, angle_B: 70, side_AB: 4}
+example:          # a RecipeDSL fragment (mode, construction, annotations); sent to the LLM
+  mode: abstract
+  construction:
+    - op: triangle          # self-contained: must define every point it uses
+      id: T_ex
+      vertices: [A, B, C]
+      spec: {angle_A: 60, angle_B: 70, side_AB: 4}
+    - op: polygon_exterior
+      id: sq
+      base: [A, B]
+      ref_point: C
+      n: 4
+      vertices: [sq_v2, sq_v3]
+notes:
+  - "ref_point C tells the lowering which side is 'interior'; the square is placed on the opposite side"
 ```
+
+Fields (`geometry_diagrams/recipe/catalog.py`, `Recipe`): `name`, `description`,
+`context` (required text), `example` (required), `tags`, `setup` and `notes`
+(optional lists). `setup` ids and `example` ids must be disjoint, since `setup`
+is background context only and is never shown to the model.
 
 ### Recipe catalog entry (for selection model)
 ```yaml
@@ -1310,9 +1530,15 @@ properties:
 {
   "selected_recipes": ["square_on_segment"],
   "unmatched_concepts": [],
-  "confidence": "high"
+  "confidence": "high",
+  "is_geometry_request": true
 }
 ```
+
+`is_geometry_request` (default true) is the scope-gate signal: false means the
+request is not asking for a geometric diagram at all, and the selected and
+unmatched lists are then empty. It is independent of catalog coverage, and
+`confidence` is not a reliable domain-relevance signal.
 
 Confidence levels:
 - `high`: all concepts matched, straightforward problem
@@ -1326,10 +1552,13 @@ Confidence levels:
 ### Canvas setup
 ```json
 {"op": "canvas", "x_range": [-5, 8], "y_range": [-3, 6],
- "grid": true, "axes": true, "tick_interval": 1}
+ "grid": true, "axes": true, "show_ticks": true, "tick_step": 1}
 ```
 
-The system auto-computes range if not specified, with padding.
+See [`canvas`](#canvas) for every field. `x_range` and `y_range` are required
+on the op; the grid, axes, ticks and tick labels are each off unless asked for.
+Without a `canvas` op the lowerer computes the canvas from the solved
+coordinates with 1 unit of padding.
 
 ### Explicit point placement
 ```json
@@ -1491,6 +1720,59 @@ After execution, the system checks:
    an `assert_*` function (`assert_equal_radius`, `assert_radius`,
    `assert_congruent_arcs`, `assert_angle_value`, `assert_circles_tangent` —
    see `geometry_diagrams/pydsl/asserts.py`).
+
+   **IR check kinds.** The checks above are named in the eval format. The
+   IR `Check` union (`geometry_diagrams/ir/ir.py`) uses the following kinds and
+   fields; every check also takes `level` (`"must"`, default, or `"prefer"`: a
+   failed `prefer` check only produces a warning), `tol` (optional, overrides the
+   default) and `source` (optional provenance text). An angle is
+   `{a, o, b}` (the angle at `o`).
+
+   | Kind | Fields |
+   |------|--------|
+   | `distinct_points` | `a`, `b` |
+   | `distinct_objects` | `a`, `b` |
+   | `non_collinear` | `a`, `b`, `c` |
+   | `collinear` | `points` (list) |
+   | `contains`, `not_contains` | `p`, `obj` |
+   | `parallel`, `not_parallel`, `perpendicular` | `l1`, `l2` |
+   | `angle_equal` | `a1`, `a2` (angles) |
+   | `right_angle` | `angle` |
+   | `angle_value` | `angle`, `expected_deg` |
+   | `similar_triangles` | `t1`, `t2`, optional `correspond` (list of `[t1_vertex, t2_vertex]`) |
+   | `congruent_triangles` | `t1`, `t2` |
+   | `ratio_equal` | `s1`, `s2`, `s3`, `s4` |
+   | `equal_length` | `segs` (list) |
+   | `distance_equals` | `seg`, `expected` |
+   | `tangent` | `line`, `circle` |
+   | `circles_tangent` | `c1`, `c2` |
+   | `opposite_side`, `same_side` | `p`, `q`, `line_a`, `line_b` |
+   | `centroid` | `g`, `a`, `b`, `c` |
+   | `convex`, `ccw` | `polygon` |
+   | `min_distance` | `a`, `b`, `min_dist` |
+   | `equal_radius` | `circles` (list) |
+   | `radius_equals` | `circle`, `expected` |
+   | `congruent_arcs` | `arcs` (list) |
+   | `volume_equals`, `cube_count_equals`, `true_length_equals` | see the solid sections |
+   | `midpoint`, `proportional_lengths`, `between`, `length_multiple`, `angle_multiple`, `point_at`, `image_of` | see [Measured checks](#measured-checks-measured_checks-feature-group) |
+
+   <a id="recipe-checks"></a>
+   **Recipe checks.** The recipe DSL's top-level `checks` list takes its own,
+   smaller set of kinds (tagged by `check`), lowered to the IR checks above:
+
+   | `check` | Fields |
+   |---------|--------|
+   | `distance` | `points` `[A, B]`, `expected` (number) |
+   | `parallel`, `perpendicular` | `seg1`, `seg2` (each `[P, Q]`) |
+   | `angle_equals` | `points` `[a, vertex, b]`, `expected` (degrees) |
+   | `collinear` | `points` (3 or more) |
+   | `on_circle` | `point`, `circle` |
+   | `tangent` | `obj1`, `obj2` |
+   | `volume` | `prism`, `expected` (`solids` group) |
+   | `true_length` | `points` `[corner, corner]`, `expected` (`solids` group) |
+   | `cube_count` | `stack`, `expected` (integer; `solids` group) |
+
+   `circle_tangent_at` additionally emits its own `circles_tangent` check.
 
 3. **Annotation completeness**: All requested marks are present.
 

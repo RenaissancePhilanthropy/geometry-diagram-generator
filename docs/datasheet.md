@@ -66,7 +66,7 @@ Known issues (also documented in Section 3.9):
 The hardening pass (Section 4.5) reduces these issues; we report pre/post numbers in Appendix B.
 
 **Is the dataset self-contained?**
-Yes. The YAML files plus the verification toolkit (`evals/sympy_checks.py`, `util/tikz_geometry.py`) are sufficient to run the benchmark. The only external dependencies are: a working SymPy install, and either a local LuaLaTeX install or our published Docker container `tikz-renderer` (the latter is part of the release).
+Yes. The YAML files plus the verification toolkit (`evals/sympy_checks.py`, `geometry_diagrams/util/tikz_geometry.py`) are sufficient to run the benchmark. The only external dependencies are: a working SymPy install, and either a local LuaLaTeX install or our published Docker container `tikz-renderer` (the latter is part of the release).
 
 **Does the dataset contain confidential information?**
 No.
