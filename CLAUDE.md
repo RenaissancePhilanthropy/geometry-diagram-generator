@@ -181,7 +181,7 @@ A Python-native DSL surface: a public builder-shim API plus the sandboxed execut
 
 ### Docs (`docs/`)
 
-- **`geometry-dsl-spec.md`**: Formal specification of the geometry DSL/IR schema, including the rectangular prism, the block stack, `OrderedPolygon`, the color-forms contract, SVG label `viewBox` growth, and the pipeline warnings list.
+- **`geometry-dsl-spec.md`**: Contracts reference, not a schema: tilted ellipses and arc/sector `radius` semantics, the rectangular prism and block stack, `OrderedPolygon`, the color-forms contract, SVG label `viewBox` growth, the pipeline warnings list, and the check kinds. The recipe ops, selectors, expressions and annotations are documented by `recipe/dsl.py`, `ir/ir.py` and the model-facing `DSL_DOCS` in `recipe/catalog.py`, not here. No test reads it, so keep it in sync by hand.
 - **`gen_examples.py`**: Script to regenerate example SVGs in `docs/examples/`.
 - **`examples/`**: Pre-rendered SVG examples used for documentation, including `diagram_kinds/attempts/` and `diagram_kinds/attempt_scripts/`, which hold per-attempt generation artifacts (SVGs/scripts) for `assemble_diagram_kinds_manifest.py`'s fresh-generation kinds.
 - **`retrospective-template.md`**: Optional post-ticket step for `subagent-execution`-style work in this repo — after an implementer subagent closes a ticket (especially one that struggled or hit a known gap), resume it and ask what tooling/information would have made the task easier. See `docs/specs/2026-09-04-diagram-kinds-retrospective-findings.md` for a worked example where this surfaced a convergent, actionable finding across unrelated tickets.

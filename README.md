@@ -122,7 +122,7 @@ renderer/                  Docker container: FastAPI server wrapping lualatex + 
 evals/                     Benchmark harness, scenarios, result viewer (see evals/README.md)
 demo-ui/                   Vite frontend (served from / by main.py once built)
 eval-viewer-ui/            Vite frontend for browsing eval results
-docs/                      DSL specification (geometry-dsl-spec.md), strategy diagrams, dataset datasheet, eval reports, study protocols, specs, and rendered examples
+docs/                      Behavior contracts (geometry-dsl-spec.md), strategy diagrams, dataset datasheet, eval reports, study protocols, specs, and rendered examples
 curriculum/                Scripts that extract textbook curriculum structure and generate student-style prompts
 benchmark/                 Benchmark data attribution (Bluebonnet Learning textbook-derived material)
 paper/                     LaTeX source of the GeoGenBench paper
@@ -133,7 +133,7 @@ tests/                     Unit and integration tests
 ## Architecture notes
 
 - See [CLAUDE.md](CLAUDE.md) for the full pipeline description and design rationale.
-- See [docs/geometry-dsl-spec.md](docs/geometry-dsl-spec.md) for the IR schema specification.
+- See [docs/geometry-dsl-spec.md](docs/geometry-dsl-spec.md) for the solids, curve, rendering and check contracts; the schema itself is `geometry_diagrams/ir/ir.py` and `geometry_diagrams/recipe/dsl.py`.
 - See [docs/strategies.md](docs/strategies.md) for a flowchart of each strategy.
 - See [evals/README.md](evals/README.md) for the scenario sets and eval scripts.
 - The renderer container exposes `POST /render` (TikZ → SVG) and `GET /health` on port 8001.
