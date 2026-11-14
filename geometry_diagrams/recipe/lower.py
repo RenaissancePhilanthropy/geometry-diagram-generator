@@ -35,6 +35,7 @@ from ..ir.ir import (
     RectangularPrism, VolumeEquals, TrueLengthEquals, BlockStack, CubeCountEquals,
 )
 from ..ir import prism as _prism
+from .expressions import ExpressionError, eval_expr
 from .dsl import (
     RecipeDSL, DSLAnnotations,
     CheckDistance, CheckParallel, CheckPerpendicular, CheckAngleEquals,
@@ -313,7 +314,7 @@ class _Lowerer:
                         f"produces the same point — use a different source point "
                         f"(e.g. a point on a circle) or place the point with coordinates"
                     )
-                angle_rad = float(op.angle) * _DEG_TO_RAD
+                angle_rad = self._num(op.angle, f"RotationOp '{op.id}' angle") * _DEG_TO_RAD
                 self._add(PointRotate(id=op.id, center=op.center, source=op.point, angle=angle_rad))
                 self._point_ids.append(op.id)
                 # Rotating a point with an already-known coordinate around an
@@ -609,7 +610,7 @@ class _Lowerer:
                 "Define the center point before this op."
             )
         cx, cy = self._coord_floats[op.center]
-        r = float(op.radius)
+        r = self._num(op.radius, f"regular_sectors '{op.id}' radius")
         n = op.n
         if n < 2:
             raise LoweringError(f"regular_sectors '{op.id}': n must be ≥ 2, got {n}")
@@ -673,8 +674,8 @@ class _Lowerer:
 
     def _lower_regular_polygon(self, op: RegularPolygonOp) -> None:
         n = len(op.vertices)
-        radius = float(op.radius)
-        start_rad = math.radians(float(op.start_angle))
+        radius = self._num(op.radius, f"regular_polygon '{op.id}' radius")
+        start_rad = math.radians(self._num(op.start_angle, f"regular_polygon '{op.id}' start_angle"))
         if op.center in self._coord_floats:
             cx, cy = self._coord_floats[op.center]
         else:
@@ -705,13 +706,28 @@ class _Lowerer:
                 f"point_external: center of {op.relative_to!r} not in coord table"
             )
         cx, cy = self._coord_floats[center_id]
-        # Get radius — try literal from the circle def, or from coord table
+        # Radius: an authored radius (number or expression), or the distance to
+        # the `through` point for a center-and-point circle.
+        what = f"point_external '{op.id}': radius of {op.relative_to!r}"
         raw_r = getattr(circle_def, "radius", None)
-        try:
-            r = float(raw_r)
-        except (TypeError, ValueError):
+        through = getattr(circle_def, "through", None)
+        if raw_r is not None:
+            r = self._num(raw_r, what)
+        elif through in self._coord_floats:
+            tx, ty = self._coord_floats[through]
+            r = math.hypot(tx - cx, ty - cy)
+        else:
             raise LoweringError(
                 f"point_external: cannot resolve radius of {op.relative_to!r} numerically"
+            )
+        if op.distance_ratio < 1:
+            import warnings
+            warnings.warn(
+                f"point_external '{op.id}': distance_ratio {op.distance_ratio} puts the "
+                f"point inside the circle {op.relative_to!r}; use a ratio of at least 1 "
+                "for a point on or outside it",
+                UserWarning,
+                stacklevel=2,
             )
         # Parse direction: numeric degrees or named cardinal
         _DIRECTIONS = {"right": 0.0, "left": 180.0, "above": 90.0, "below": 270.0}
@@ -959,7 +975,7 @@ class _Lowerer:
         if mag < 1e-12:
             raise LoweringError(f"point_along: from and toward points are coincident")
         ux, uy = dx / mag, dy / mag
-        dist = float(op.distance)
+        dist = self._num(op.distance, f"point_along '{op.id}' distance")
         px = round(fx + dist * ux, 10)
         py = round(fy + dist * uy, 10)
         self._defs.append(PointFixed(id=op.id, x=px, y=py))
@@ -971,6 +987,19 @@ class _Lowerer:
         # having to separately draw a decorative segment. See checks.py's
         # _build_linear_pairs geometric fallback, which this feeds.
         self._add(LineThrough(id=f"__{op.id}_line", p=from_id, q=toward_id))
+
+    def _num(self, raw: Any, what: str) -> float:
+        """A numeric DSL field as a float. A string is an expression and is
+        evaluated against the points placed so far (so ``length(A, B)`` works);
+        a failure is a LoweringError naming the field."""
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        import sympy.geometry as spg
+        sym = {pid: spg.Point(x, y) for pid, (x, y) in self._coord_floats.items()}
+        try:
+            return eval_expr(raw, {}, sym=sym)
+        except ExpressionError as e:
+            raise LoweringError(f"{what}: {e}") from e
 
     def _lower_extend_segment(self, op: ExtendSegmentOp) -> None:
         a_id, b_id = op.segment[0], op.segment[1]
@@ -992,7 +1021,7 @@ class _Lowerer:
         if mag < 1e-12:
             raise LoweringError(f"extend_segment: endpoints are coincident")
         ux, uy = dx / mag, dy / mag
-        dist = float(op.by)
+        dist = self._num(op.by, f"extend_segment '{op.id}' by")
         px = round(bx + dist * ux, 10)
         py = round(by + dist * uy, 10)
         self._defs.append(PointFixed(id=op.id, x=px, y=py))

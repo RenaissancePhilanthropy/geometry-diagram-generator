@@ -62,8 +62,6 @@ def test_request_fields_are_size_capped(server):
     server.RenderReq(tikz="x" * server.MAX_FIELD_CHARS)
     with pytest.raises(ValidationError):
         server.RenderReq(tikz="x" * (server.MAX_FIELD_CHARS + 1))
-    with pytest.raises(ValidationError):
-        server.RenderReq(tikz="x", tkzelements="x" * (server.MAX_FIELD_CHARS + 1))
 
 
 def test_run_cmd_does_not_block_and_kills_on_timeout(server, tmp_path, monkeypatch):

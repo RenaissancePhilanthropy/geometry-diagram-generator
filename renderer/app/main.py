@@ -32,8 +32,6 @@ queue: asyncio.Queue | None = None
 
 class RenderReq(BaseModel):
     tikz: str = Field(max_length=MAX_FIELD_CHARS)
-    # optional block for tkz-elements
-    tkzelements: str | None = Field(default=None, max_length=MAX_FIELD_CHARS)
     font_family: str | None = Field(default=None, max_length=64)
 
 TEMPLATE = r"""
@@ -41,7 +39,6 @@ TEMPLATE = r"""
 \usepackage{{tikz}}
 \usepackage{{luacode}}
 \usepackage{{tkz-euclide}}
-\usepackage{{tkz-elements}}
 \usepackage{{amsmath}}
 \usepackage{{fontspec}}
 \setmainfont{{{font_family}}}[
@@ -53,7 +50,6 @@ TEMPLATE = r"""
   Path           = {font_path}
 ]
 \begin{{document}}
-{tkzelements_block}
 \begin{{tikzpicture}}
 {tikz}
 \end{{tikzpicture}}
@@ -90,10 +86,6 @@ async def run_cmd(cmd: list[str], cwd: str) -> tuple[int, str]:
 async def render_svg(req: RenderReq) -> dict:
     async with sem:
         with tempfile.TemporaryDirectory() as td:
-            tkze = ""
-            if req.tkzelements:
-                tkze = "\\begin{tkzelements}\n" + req.tkzelements + "\n\\end{tkzelements}\n"
-
             family = req.font_family or "NunitoSans"
             if not re.fullmatch(r"[A-Za-z0-9_-]+", family):
                 return {"ok": False, "stage": "validation", "log": f"Invalid font_family: {family!r}"}
@@ -101,7 +93,6 @@ async def render_svg(req: RenderReq) -> dict:
             tex = TEMPLATE.format(
                 font_family=family,
                 font_path=font_path,
-                tkzelements_block=tkze,
                 tikz=req.tikz,
             )
             tex_path = os.path.join(td, "main.tex")

@@ -55,7 +55,7 @@ The generator emits scenarios using these check types from
 `equidistant_from_sides`, `centroid`.
 
 All check argument shapes match the signatures expected by
-`evals/sympy_checks.py` and `util/tikz_geometry.py`.
+`evals/sympy_checks.py` and `geometry_diagrams/util/tikz_geometry.py`.
 
 ## Usage
 
@@ -153,4 +153,4 @@ etc.) before the YAML is written.
 - `evals/scenarios_generated.yaml` — generated output (600 scenarios)
 - `evals/scenarios.py` — schema validation (shared with all scenario files)
 - `evals/sympy_checks.py` — geometric check implementations
-- `util/tikz_geometry.py` — `mark_present` / `label_present` validators
+- `geometry_diagrams/util/tikz_geometry.py` — `mark_present` / `label_present` validators

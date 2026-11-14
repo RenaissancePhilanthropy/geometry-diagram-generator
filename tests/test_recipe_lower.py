@@ -2644,3 +2644,96 @@ def test_canvas_op_bad_aspect_is_a_lowering_error():
     )
     with pytest.raises(LoweringError, match="canvas 'canvas'"):
         lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# Expression-typed numeric fields are evaluated at lowering time
+# ---------------------------------------------------------------------------
+
+def _fixed(ir, pid):
+    return next(d for d in ir.define if getattr(d, "id", None) == pid)
+
+
+def test_point_along_distance_accepts_a_length_expression():
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[3.0, 4.0]),
+        SegmentOp(id="s1", endpoints=["A", "B"]),
+        PointAlongOp(id="P", on="s1", **{"from": "A"}, toward="B", distance="length(A, B) / 5"),
+    ])
+    p = _fixed(lower_to_ir(dsl), "P")
+    assert (p.x, p.y) == pytest.approx((0.6, 0.8))
+
+
+def test_extend_segment_by_accepts_a_length_expression():
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[2.0, 0.0]),
+        ExtendSegmentOp(id="E", segment=["A", "B"], beyond="B", by="length(A, B) * 2"),
+    ])
+    p = _fixed(lower_to_ir(dsl), "E")
+    assert (p.x, p.y) == pytest.approx((6.0, 0.0))
+
+
+def test_rotation_angle_accepts_an_expression():
+    dsl = _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="A", coords=[1.0, 0.0]),
+        RotationOp(id="R", point="A", center="O", angle="90/2 + 45"),
+    ])
+    r = _fixed(lower_to_ir(dsl), "R")
+    assert r.angle == pytest.approx(math.pi / 2)
+
+
+def test_bad_distance_expression_is_a_lowering_error():
+    dsl = _dsl([
+        PointOp(id="A", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[1.0, 0.0]),
+        SegmentOp(id="s1", endpoints=["A", "B"]),
+        PointAlongOp(id="P", on="s1", **{"from": "A"}, toward="B", distance="length(A, Z)"),
+    ])
+    with pytest.raises(LoweringError, match="distance"):
+        lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# point_external: radius resolution and the inside-the-circle warning
+# ---------------------------------------------------------------------------
+
+def _external(circle, ratio=2.0):
+    return _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[3.0, 4.0]),
+        circle,
+        PointExternalOp(id="Q", relative_to="c1", direction=0.0, distance_ratio=ratio),
+    ])
+
+
+def test_point_external_with_an_expression_radius():
+    ir = lower_to_ir(_external(CircleOp(id="c1", center="O", radius="length(O, B) / 5")))
+    q = _fixed(ir, "Q")
+    assert (q.x, q.y) == pytest.approx((2.0, 0.0))
+
+
+def test_point_external_with_a_center_and_through_circle():
+    ir = lower_to_ir(_external(CircleOp(id="c1", center="O", through="B")))
+    q = _fixed(ir, "Q")
+    assert (q.x, q.y) == pytest.approx((10.0, 0.0))
+
+
+def test_point_external_with_an_unresolvable_radius_names_the_circle():
+    dsl = _external(CircleOp(id="c1", center="O", radius="length(O, Z)"))
+    with pytest.raises(LoweringError, match="c1"):
+        lower_to_ir(dsl)
+
+
+@pytest.mark.parametrize("ratio", [0.5, 0.99])
+def test_point_external_inside_the_circle_warns(ratio):
+    with pytest.warns(UserWarning, match="inside the circle"):
+        lower_to_ir(_external(CircleOp(id="c1", center="O", radius=2.0), ratio))
+
+
+@pytest.mark.parametrize("ratio", [1.0, 2.5])
+def test_point_external_on_or_outside_the_circle_does_not_warn(ratio, recwarn):
+    lower_to_ir(_external(CircleOp(id="c1", center="O", radius=2.0), ratio))
+    assert not [w for w in recwarn if "inside the circle" in str(w.message)]

@@ -104,7 +104,7 @@ Full docstrings are in `__init__.py`. Summary:
 | Symbol | Description |
 |---|---|
 | `render_geometry_diagram(prompt, *, config=None, renderer=None, strategy=None, model=None, selector_model=None, renderer_url=None, font_family=None, previous_dsl=None, previous_script=None, previous_ir=None, run_config=None, callbacks=None, extra_instructions=None)` | Main async entry point; at most one `previous_*`, matching the strategy |
-| `render_geometry_diagram_sync(prompt, ...)` | Sync wrapper — same keyword args as above (raises if called inside a running event loop) |
+| `render_geometry_diagram_sync(prompt, ...)` | Sync wrapper — same keyword args as above. Inside a running event loop it runs on a worker thread and blocks the caller; async callers should prefer `render_geometry_diagram` |
 | `edit_geometry_diagram(prompt, previous_dsl=None, *, previous_script=None, previous_ir=None, ...)` | Async convenience wrapper for iterative edits; exactly one of `previous_dsl` (recipe), `previous_script` (python_full) or `previous_ir` (structured) is required. It takes no `strategy` argument: the strategy comes from `config` / `GEOMETRY_STRATEGY` |
 | `edit_geometry_diagram_sync(prompt, previous_dsl=None, **kwargs)` | Sync version of the above |
 | `render_diagram` | LangChain `@tool`, reads config from environment; returns JSON with `svg`, `tikz`, `dsl`, `input_tokens`, `output_tokens`, `script`, `warnings`, `cost_usd` (or `{"error": ...}`) |

@@ -106,6 +106,8 @@ flowchart LR
     D --> SVG([SVG])
 ```
 
+The diagram shows the `tikz` renderer. With `renderer="svg"` the last two steps collapse into one in-process step (`to_svg.py`, no Docker, no TikZ output). Non-fatal findings (failed `prefer` checks, renderer and solid-projection warnings) are returned as `warnings` and appended to the next retry prompt; they never fail a run by themselves. Opt-in feature groups (`solids`, `tilted_ellipses`, `measured_checks`) change what the model is told and what the strategies accept, not what compiles; see `features.py`.
+
 ---
 
 ### `StructureStrategy` (`strategies/structured.py`)

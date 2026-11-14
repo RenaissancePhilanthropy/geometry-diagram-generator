@@ -25,6 +25,8 @@ User request
   → SVG
 ```
 
+With `renderer=svg` the TikZ/LaTeX steps are skipped: the compiled SymPy objects are drawn to SVG in-process.
+
 The LLM avoids picking coordinates directly. It describes *what* to construct (midpoints, intersections, circumcenters, etc.); the compiler resolves positions from SymPy.
 
 ## Strategies
@@ -70,6 +72,23 @@ cd demo-ui && pnpm install && pnpm dev
 # Open http://localhost:5173
 ```
 
+## Using it as a library
+
+`geometry_diagrams` is importable on its own. With the in-process SVG renderer no Docker is needed:
+
+```python
+from geometry_diagrams import render_geometry_diagram_sync, edit_geometry_diagram_sync, GeometryConfig
+
+config = GeometryConfig(renderer="svg")
+result = render_geometry_diagram_sync("Draw a right triangle with legs 3 and 4", config=config)
+print(result.svg[:100], result.warnings)
+
+# Edits pass back the prior result's matching field (`dsl` for recipe)
+edited = edit_geometry_diagram_sync("Label the hypotenuse c", previous_dsl=result.dsl, config=config)
+```
+
+[geometry_diagrams/VENDORING.md](geometry_diagrams/VENDORING.md) has the full API, `DiagramResult` fields, environment variables and the dependency list.
+
 ## Development
 
 ```bash
@@ -100,10 +119,10 @@ geometry_diagrams/        Core package (also the unit copied into other projects
   pydsl/                     Python-native DSL: builder-shim API + sandboxed script execution
   util/                      Shared utilities (renderer client, SVG/TikZ checks, LLM judge)
 renderer/                  Docker container: FastAPI server wrapping lualatex + dvisvgm
-evals/                     Benchmark harness, scenarios, result viewer
+evals/                     Benchmark harness, scenarios, result viewer (see evals/README.md)
 demo-ui/                   Vite frontend (served from / by main.py once built)
 eval-viewer-ui/            Vite frontend for browsing eval results
-docs/                      DSL specification (geometry-dsl-spec.md), strategy diagrams, dataset datasheet, eval reports, study protocols, specs, and rendered examples
+docs/                      Behavior contracts (geometry-dsl-spec.md), strategy diagrams, dataset datasheet, eval reports, study protocols, specs, and rendered examples
 curriculum/                Scripts that extract textbook curriculum structure and generate student-style prompts
 benchmark/                 Benchmark data attribution (Bluebonnet Learning textbook-derived material)
 paper/                     LaTeX source of the GeoGenBench paper
@@ -114,6 +133,8 @@ tests/                     Unit and integration tests
 ## Architecture notes
 
 - See [CLAUDE.md](CLAUDE.md) for the full pipeline description and design rationale.
-- See [docs/geometry-dsl-spec.md](docs/geometry-dsl-spec.md) for the IR schema specification.
+- See [docs/geometry-dsl-spec.md](docs/geometry-dsl-spec.md) for the solids, curve, rendering and check contracts; the schema itself is `geometry_diagrams/ir/ir.py` and `geometry_diagrams/recipe/dsl.py`.
+- See [docs/strategies.md](docs/strategies.md) for a flowchart of each strategy.
+- See [evals/README.md](evals/README.md) for the scenario sets and eval scripts.
 - The renderer container exposes `POST /render` (TikZ → SVG) and `GET /health` on port 8001.
 - **LangGraph** and **LangChain** are used for LLM agent orchestration, with Anthropic, OpenAI, and Google backends.
