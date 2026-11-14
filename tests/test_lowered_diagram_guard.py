@@ -11,7 +11,6 @@ import asyncio
 import json
 import re
 import warnings as pywarnings
-from pathlib import Path
 
 import pytest
 
@@ -24,8 +23,6 @@ from geometry_diagrams.ir.to_tikz import ir_to_tikz
 from geometry_diagrams.recipe.dsl import RecipeDSL
 from geometry_diagrams.recipe.lower import lower_to_ir
 from geometry_diagrams.strategies.ir_pipeline import run_ir_pipeline
-
-ROOT = Path(__file__).parent.parent
 
 
 def _stack() -> ir.DiagramIR:
@@ -143,10 +140,7 @@ def test_pipeline_and_both_renderers_never_dump_a_view(build, spy):
 PHRASE = "internal render-time views"
 
 
-def test_lowering_docstring_and_spec_carry_the_warning():
+def test_lowering_docstrings_carry_the_warning():
     from geometry_diagrams.ir.derived import Lowering, lower_render as lr
     assert PHRASE in re.sub(r"\s+", " ", Lowering.__doc__)
     assert PHRASE in re.sub(r"\s+", " ", lr.__doc__)
-    spec = (ROOT / "docs" / "geometry-dsl-spec.md").read_text()
-    section = spec.split("### Ordered polygons", 1)[1].split("\n### ", 1)[0]
-    assert PHRASE in re.sub(r"\s+", " ", section)

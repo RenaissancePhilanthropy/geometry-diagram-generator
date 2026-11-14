@@ -991,7 +991,6 @@ of 1 and 2 cubes, the back row 3 and 0.
 }
 ```
 
-<!-- stack-example-result: heights -->
 ```json
 {"cube_count": 6, "volume": 6, "length": 2, "width": 2, "height": 3, "is_height_map": true}
 ```
@@ -1014,7 +1013,6 @@ cube at height y = 1 over the empty cell between them (all at depth z = 0).
 }
 ```
 
-<!-- stack-example-result: arch -->
 ```json
 {"cube_count": 5, "volume": 5, "length": 3, "width": 1, "height": 2, "is_height_map": false}
 ```
