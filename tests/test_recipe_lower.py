@@ -2694,3 +2694,46 @@ def test_bad_distance_expression_is_a_lowering_error():
     ])
     with pytest.raises(LoweringError, match="distance"):
         lower_to_ir(dsl)
+
+
+# ---------------------------------------------------------------------------
+# point_external: radius resolution and the inside-the-circle warning
+# ---------------------------------------------------------------------------
+
+def _external(circle, ratio=2.0):
+    return _dsl([
+        PointOp(id="O", coords=[0.0, 0.0]),
+        PointOp(id="B", coords=[3.0, 4.0]),
+        circle,
+        PointExternalOp(id="Q", relative_to="c1", direction=0.0, distance_ratio=ratio),
+    ])
+
+
+def test_point_external_with_an_expression_radius():
+    ir = lower_to_ir(_external(CircleOp(id="c1", center="O", radius="length(O, B) / 5")))
+    q = _fixed(ir, "Q")
+    assert (q.x, q.y) == pytest.approx((2.0, 0.0))
+
+
+def test_point_external_with_a_center_and_through_circle():
+    ir = lower_to_ir(_external(CircleOp(id="c1", center="O", through="B")))
+    q = _fixed(ir, "Q")
+    assert (q.x, q.y) == pytest.approx((10.0, 0.0))
+
+
+def test_point_external_with_an_unresolvable_radius_names_the_circle():
+    dsl = _external(CircleOp(id="c1", center="O", radius="length(O, Z)"))
+    with pytest.raises(LoweringError, match="c1"):
+        lower_to_ir(dsl)
+
+
+@pytest.mark.parametrize("ratio", [0.5, 0.99])
+def test_point_external_inside_the_circle_warns(ratio):
+    with pytest.warns(UserWarning, match="inside the circle"):
+        lower_to_ir(_external(CircleOp(id="c1", center="O", radius=2.0), ratio))
+
+
+@pytest.mark.parametrize("ratio", [1.0, 2.5])
+def test_point_external_on_or_outside_the_circle_does_not_warn(ratio, recwarn):
+    lower_to_ir(_external(CircleOp(id="c1", center="O", radius=2.0), ratio))
+    assert not [w for w in recwarn if "inside the circle" in str(w.message)]

@@ -706,13 +706,28 @@ class _Lowerer:
                 f"point_external: center of {op.relative_to!r} not in coord table"
             )
         cx, cy = self._coord_floats[center_id]
-        # Get radius — try literal from the circle def, or from coord table
+        # Radius: an authored radius (number or expression), or the distance to
+        # the `through` point for a center-and-point circle.
+        what = f"point_external '{op.id}': radius of {op.relative_to!r}"
         raw_r = getattr(circle_def, "radius", None)
-        try:
-            r = float(raw_r)
-        except (TypeError, ValueError):
+        through = getattr(circle_def, "through", None)
+        if raw_r is not None:
+            r = self._num(raw_r, what)
+        elif through in self._coord_floats:
+            tx, ty = self._coord_floats[through]
+            r = math.hypot(tx - cx, ty - cy)
+        else:
             raise LoweringError(
                 f"point_external: cannot resolve radius of {op.relative_to!r} numerically"
+            )
+        if op.distance_ratio < 1:
+            import warnings
+            warnings.warn(
+                f"point_external '{op.id}': distance_ratio {op.distance_ratio} puts the "
+                f"point inside the circle {op.relative_to!r}; use a ratio of at least 1 "
+                "for a point on or outside it",
+                UserWarning,
+                stacklevel=2,
             )
         # Parse direction: numeric degrees or named cardinal
         _DIRECTIONS = {"right": 0.0, "left": 180.0, "above": 90.0, "below": 270.0}
