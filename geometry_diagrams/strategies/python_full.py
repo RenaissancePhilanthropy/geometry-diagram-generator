@@ -31,6 +31,7 @@ from .ir_pipeline import (
 )
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
+from ..errors import GenerationFailedError
 from ..config import validate_edit_generation_mode, validate_sandbox_timeout
 from ..features import require_features, tagged_insertions
 from ..ir.edit_diagnostics import check_edit_locality
@@ -1529,9 +1530,10 @@ class PythonFullStrategy(SubstanceStrategy):
         self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
-            raise RuntimeError(
-                f"PythonFullStrategy failed after {MAX_RETRIES} attempts. "
-                f"Last error: {final_state.get('last_error', 'unknown')}"
+            raise GenerationFailedError(
+                "PythonFullStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
+                cost_usd=self._partial_cost_usd,
             )
         result = final_state["result"]
         result.python_full_metadata = final_state.get("metadata")

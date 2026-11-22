@@ -25,6 +25,7 @@ from .ir_pipeline import (
 from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
+from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.queries import (
     query_coordinate, query_distance, query_angle,
@@ -345,9 +346,10 @@ class StructureStrategy(SubstanceStrategy):
         self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
-            raise RuntimeError(
-                f"StructureStrategy failed after {MAX_RETRIES} attempts. "
-                f"Last error: {final_state.get('last_error', 'unknown')}"
+            raise GenerationFailedError(
+                "StructureStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
+                cost_usd=self._partial_cost_usd,
             )
         result = final_state["result"]
         result.input_tokens = self._partial_input_tokens

@@ -15,6 +15,8 @@ Public API:
                                  retry_count, script [python_full only], cost_usd, warnings)
   RecipeSelectionResult        — result dataclass for select_recipes
   GeometryConfig               — configuration dataclass
+  GenerationFailedError        — RuntimeError subclass raised when a strategy exhausts its
+                                 attempts; carries input_tokens, output_tokens, cost_usd
 
 Resolved lazily (PEP 562 module __getattr__), not imported eagerly here:
 `.facade` and `.strategies.recipe` transitively pull in LangGraph/LangChain
@@ -43,6 +45,7 @@ _LAZY_EXPORTS = {
     "query_geometry_diagram": ".facade",
     "DiagramResult": ".facade",
     "GeometryConfig": ".config",
+    "GenerationFailedError": ".errors",
     "RecipeSelectionResult": ".strategies.recipe",
     "select_recipes": ".strategies.recipe",
     "select_recipes_sync": ".strategies.recipe",

@@ -50,6 +50,7 @@ from ..recipe.catalog import (
 from ..recipe.dsl import RecipeDSL, reject_disabled_ops
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
+from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.renderer import TikZRenderer, Renderer
 
@@ -709,9 +710,10 @@ class RecipeStrategy(SubstanceStrategy):
         self._partial_cost_usd = final_state.get("cost_usd") or None
 
         if final_state.get("result") is None:
-            raise RuntimeError(
-                f"RecipeStrategy failed after {MAX_RETRIES} attempts. "
-                f"Last error: {final_state.get('last_error', 'unknown')}"
+            raise GenerationFailedError(
+                "RecipeStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
+                cost_usd=self._partial_cost_usd,
             )
         result = final_state["result"]
         result.recipe_metadata = final_state.get("recipe_metadata")
