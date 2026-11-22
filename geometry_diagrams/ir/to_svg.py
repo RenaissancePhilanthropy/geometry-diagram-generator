@@ -590,11 +590,15 @@ def _ir_to_svg_impl(
     _nudge_labels_from_circles(pending_labels, drawn_circles)
     _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
     _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
-    _resolve_label_collisions(pending_labels, svg_w, svg_h)
-    _nudge_labels_from_lines(pending_labels, drawn_segments, axis_segments)
-    _nudge_labels_from_circles(pending_labels, drawn_circles)
-    _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
-    _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
+    for _ in range(4):
+        _resolve_label_collisions(pending_labels, svg_w, svg_h)
+        _nudge_labels_from_lines(pending_labels, drawn_segments, axis_segments)
+        _nudge_labels_from_circles(pending_labels, drawn_circles)
+        _nudge_labels_from_ellipses(pending_labels, drawn_ellipses)
+        _nudge_labels_from_fixed_boxes(pending_labels, tick_label_boxes)
+        boxes = [_label_bbox(lp) for lp in pending_labels]
+        if not any(_bboxes_overlap(boxes[i], boxes[j]) for i in range(len(boxes)) for j in range(i)):
+            break
     # Aesthetic-only: pull labels with a known ideal axis (currently
     # LabelAngle's bisector) back toward it, never past what the obstacle
     # passes above already established as clear.
