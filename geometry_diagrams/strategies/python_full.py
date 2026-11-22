@@ -32,6 +32,7 @@ from .ir_pipeline import (
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
 from ..config import validate_max_attempts
+from ..ir.angle_audit import AnglePolicy
 from ..errors import GenerationFailedError
 from ..config import validate_edit_generation_mode, validate_sandbox_timeout
 from ..features import require_features, tagged_insertions
@@ -891,7 +892,7 @@ class PythonFullPipelineState(TypedDict):
     # Application text appended to the generation system prompt; absent/empty = none.
     extra_instructions: Optional[str]
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
-    retry_on_angle_mismatch: bool  # a contradicting angle mark/label fails the attempt; absent = warn only
+    angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
 
 
 async def _pre_assert_step_node(
@@ -1162,7 +1163,7 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         require_features(diagram_ir, features)
         # Passed on only when set, so the call shape is unchanged without it.
 
-        angle_kwargs = {"fail_on_angle_mismatch": True} if state.get("retry_on_angle_mismatch") else {}
+        angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
 
         pipeline_result = await run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
 
@@ -1238,7 +1239,7 @@ async def _run_from_script(
     cost_usd: "float | None" = None,
     sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     features: "frozenset[str]" = frozenset(),
-    retry_on_angle_mismatch: bool = False,
+    angle_policy: "AnglePolicy | None" = None,
 ) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
@@ -1257,10 +1258,10 @@ async def _run_from_script(
     state.get("verify_labels_in_canvas", False) falls back to False for
     every edit-mode rerun.
 
-    retry_on_angle_mismatch is the exception: an angle mark or label that
-    contradicts the drawn angle fails the edit (the caller sees the error, as for
-    any failure here). Callers pass it for the edited script only, never for the
-    baseline rerun of a stored script."""
+    angle_policy is the exception: with mode "retry", an angle mark or label that
+    contradicts the drawn angle by more than the policy's fail threshold fails the edit
+    (the caller sees the error, as for any failure here). Callers pass it for the edited
+    script only, never for the baseline rerun of a stored script."""
     state: PythonFullPipelineState = {
         "prompt": "", "model_id": "", "enable_cache": False,
         "attempt": 0, "last_error": "", "script": script, "result": None,
@@ -1272,7 +1273,7 @@ async def _run_from_script(
         ]),
         "sandbox_timeout_seconds": sandbox_timeout_seconds,
         "features": frozenset(features),
-        "retry_on_angle_mismatch": retry_on_angle_mismatch,
+        "angle_policy": angle_policy,
     }
     update = await _run_script_node(state)
     result = update.get("result")
@@ -1399,7 +1400,7 @@ class PythonFullStrategy(SubstanceStrategy):
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
-        retry_on_angle_mismatch: bool = False,
+        angle_policy: "AnglePolicy | None" = None,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the generation
         system prompt (never to the user's request); None/empty leaves the
@@ -1532,7 +1533,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
-            "retry_on_angle_mismatch": retry_on_angle_mismatch,
+            "angle_policy": angle_policy,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
@@ -1577,7 +1578,7 @@ class PythonFullStrategy(SubstanceStrategy):
         config: "dict | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
-        retry_on_angle_mismatch: bool = False,
+        angle_policy: "AnglePolicy | None" = None,
     ) -> "tuple[StructuredRunResult, Any]":
         """One edit turn against `top` (a dict with the previous turn's
         "script", "manifest" and "result"): generate the edit in
@@ -1597,14 +1598,14 @@ class PythonFullStrategy(SubstanceStrategy):
         if self.features:
             extra_kwargs["features"] = self.features
         # Likewise the angle-audit failure flag, for the edited script's own pipeline run.
-        angle_kwargs = {"retry_on_angle_mismatch": True} if retry_on_angle_mismatch else {}
+        angle_kwargs = {"angle_policy": angle_policy} if angle_policy else {}
 
         async def _edit_full_rewrite(req: str) -> StructuredRunResult:
             full_request = build_edit_prompt(req, top["script"], top["manifest"])
             # Only a full rewrite loops; the other modes are one generation call each.
             attempts = {"max_attempts": max_attempts} if max_attempts else {}
-            if retry_on_angle_mismatch:
-                attempts["retry_on_angle_mismatch"] = True
+            if angle_policy:
+                attempts["angle_policy"] = angle_policy
             return await self.run(
                 full_request, model=model, renderer=renderer,
                 sandbox_timeout_seconds=sandbox_timeout_seconds,
@@ -1758,7 +1759,7 @@ class PythonFullStrategy(SubstanceStrategy):
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
-        retry_on_angle_mismatch: bool = False,
+        angle_policy: "AnglePolicy | None" = None,
     ) -> StructuredRunResult:
         """Stateless edit of a previously generated pydsl script.
 
@@ -1831,7 +1832,7 @@ class PythonFullStrategy(SubstanceStrategy):
             config=run_config,
             extra_instructions=extra_instructions,
             max_attempts=max_attempts,
-            retry_on_angle_mismatch=retry_on_angle_mismatch,
+            angle_policy=angle_policy,
         )
         return result
 

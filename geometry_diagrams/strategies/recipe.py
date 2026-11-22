@@ -51,6 +51,7 @@ from ..recipe.dsl import RecipeDSL, reject_disabled_ops
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
 from ..config import validate_max_attempts
+from ..ir.angle_audit import AnglePolicy
 from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.renderer import TikZRenderer, Renderer
@@ -233,7 +234,7 @@ class RecipePipelineState(TypedDict):
     features: frozenset  # enabled feature groups; absent/empty = none enabled
     extra_instructions: Optional[str]  # appended to the generation system prompt; absent/empty = none
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
-    retry_on_angle_mismatch: bool  # a contradicting angle mark/label fails the attempt; absent = warn only
+    angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
 
 
 @dataclass
@@ -533,7 +534,7 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
         require_features(diagram_ir, state.get("features") or frozenset())
         # Passed on only when set, so the call shape is unchanged without it.
 
-        angle_kwargs = {"fail_on_angle_mismatch": True} if state.get("retry_on_angle_mismatch") else {}
+        angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
 
         result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
         metadata = state["recipe_metadata"]
@@ -675,7 +676,7 @@ class RecipeStrategy(SubstanceStrategy):
         features: "frozenset[str] | None" = None,
         extra_instructions: Optional[str] = None,
         max_attempts: Optional[int] = None,
-        retry_on_angle_mismatch: bool = False,
+        angle_policy: "AnglePolicy | None" = None,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the DSL-generation
         system prompt (not the selector's, not the user's request).
@@ -711,7 +712,7 @@ class RecipeStrategy(SubstanceStrategy):
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
-            "retry_on_angle_mismatch": retry_on_angle_mismatch,
+            "angle_policy": angle_policy,
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 

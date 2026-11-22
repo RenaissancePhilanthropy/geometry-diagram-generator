@@ -17,7 +17,7 @@ import sympy.geometry as spg
 from ..ir.ir import DiagramIR
 from ..ir.to_sympy import compile_defs
 from ..ir.checks import run_checks, check_render_angles
-from ..ir.angle_audit import audit_angles
+from ..ir.angle_audit import AnglePolicy, audit_angles
 from ..ir.angle_pairs import resolve_angle_pairs
 from ..ir.derived import REGISTRY as DERIVED_REGISTRY
 from ..ir.renderer import Renderer, TikZRenderer
@@ -79,7 +79,9 @@ class IRDiagnostics:
     angle_findings: list
 
 
-def collect_diagnostics(diagram_ir: DiagramIR, sym: dict) -> IRDiagnostics:
+def collect_diagnostics(
+    diagram_ir: DiagramIR, sym: dict, angle_policy: "AnglePolicy | None" = None,
+) -> IRDiagnostics:
     """Run the diagram's checks and the warning producers against compiled geometry.
 
     The one place that decides what counts as a warning (check-stage notes, a registered
@@ -95,7 +97,8 @@ def collect_diagnostics(diagram_ir: DiagramIR, sym: dict) -> IRDiagnostics:
         if not r.passed and r.check.level == "prefer":
             logger.warning("Preferred check not satisfied: %s", r.message)
             warnings.append(f"Preferred check not satisfied: {r.message}")
-    angle_findings = audit_angles(diagram_ir, sym)
+    policy = angle_policy or AnglePolicy()
+    angle_findings = [] if policy.mode == "off" else audit_angles(diagram_ir, sym, policy.tolerance_deg)
     warnings.extend(f.message for f in angle_findings)
     return IRDiagnostics(results, warnings, angle_findings)
 
@@ -103,7 +106,7 @@ def collect_diagnostics(diagram_ir: DiagramIR, sym: dict) -> IRDiagnostics:
 async def run_ir_pipeline(
     diagram_ir: DiagramIR,
     renderer: Renderer | None = None,
-    fail_on_angle_mismatch: bool = False,
+    angle_policy: "AnglePolicy | None" = None,
 ) -> StructuredRunResult:
     """Compile DiagramIR -> SymPy -> checks -> TikZ/SVG. Raises RuntimeError on failure.
 
@@ -112,8 +115,10 @@ async def run_ir_pipeline(
     the warnings gathered before the failure.
 
     A right-angle mark or angle label that disagrees with the drawn angle
-    (ir/angle_audit.py) is always a warning. With `fail_on_angle_mismatch` it is
-    a PipelineError instead, so the calling strategy retries.
+    (ir/angle_audit.py) is a warning, per `angle_policy` (default: warn above 1°; mode
+    "off" skips the audit). With mode "retry" a mismatch above the policy's
+    `fail_tolerance_deg` is a PipelineError instead, so the calling strategy retries; smaller
+    ones stay warnings.
     """
     if renderer is None:
         renderer = TikZRenderer()
@@ -124,7 +129,7 @@ async def run_ir_pipeline(
 
     diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
-    diagnostics = await asyncio.to_thread(collect_diagnostics, diagram_ir, sym)
+    diagnostics = await asyncio.to_thread(collect_diagnostics, diagram_ir, sym, angle_policy)
     warnings, results, angle_findings = diagnostics.warnings, diagnostics.check_results, diagnostics.angle_findings
 
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
@@ -132,11 +137,13 @@ async def run_ir_pipeline(
         msgs = "; ".join(r.message for r in must_failures)
         raise PipelineError(f"Geometric checks failed: {msgs}", warnings)
 
-    if angle_findings and fail_on_angle_mismatch:
-        raise PipelineError(
-            "Angle marks or labels contradict the drawn angles: " + "; ".join(f.message for f in angle_findings),
-            warnings,
-        )
+    if angle_policy is not None and angle_policy.mode == "retry":
+        gross = [f for f in angle_findings if f.error_deg > angle_policy.fail_tolerance_deg]
+        if gross:
+            raise PipelineError(
+                "Angle marks or labels contradict the drawn angles: " + "; ".join(f.message for f in gross),
+                warnings,
+            )
 
     angle_failures = await asyncio.to_thread(check_render_angles, diagram_ir, sym)
     if angle_failures:

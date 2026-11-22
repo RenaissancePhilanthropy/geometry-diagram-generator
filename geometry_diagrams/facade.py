@@ -115,7 +115,7 @@ async def render_geometry_diagram(
     verify_labels_in_canvas: Optional[bool] = None,
     model_options: Optional[dict] = None,
     max_attempts: Optional[int] = None,
-    retry_on_angle_mismatch: Optional[bool] = None,
+    angle_check: Optional[str] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -173,12 +173,15 @@ async def render_geometry_diagram(
         max_attempts: Generation attempts before GenerationFailedError, replacing the
             strategy default of 3 (None keeps it). For a python_full edit only the
             full_rewrite mode loops; the other modes are one generation call.
-        retry_on_angle_mismatch: Every strategy. A right-angle mark or angle label that
-            contradicts the angle actually drawn is always reported in DiagramResult.warnings;
-            with this True it instead fails the attempt, so the strategy retries with the
-            finding in its prompt. Overrides config.retry_on_angle_mismatch. An edit turn
-            is held to it for the edited script only (a full_rewrite edit retries; the
-            single-call modes fail the edit), never for the stored script it starts from.
+        angle_check: Every strategy. What to do about a right-angle mark or angle label that
+            contradicts the angle actually drawn: "off" (no audit), "warn" (the default: a
+            mismatch above config.angle_tolerance_deg, 1 degree, is reported in
+            DiagramResult.warnings) or "retry" (the same, and a mismatch above
+            config.angle_fail_tolerance_deg, 5 degrees, fails the attempt so the strategy
+            retries with the finding in its prompt; smaller ones stay warnings). Overrides
+            config.angle_check. An edit turn is held to "retry" for the edited script only (a
+            full_rewrite edit retries, the single-call modes fail the edit), never for the stored
+            script it starts from. Arc marks (mark_angle groups) are never audited.
         Neither option applies to an edit (previous_script) turn, which ignores them, and
         either one set True for the recipe or structured strategy raises ValueError.
     """
@@ -195,7 +198,7 @@ async def render_geometry_diagram(
         verify_labels_in_canvas=verify_labels_in_canvas,
         model_options=model_options,
         max_attempts=max_attempts,
-        retry_on_angle_mismatch=retry_on_angle_mismatch,
+        angle_check=angle_check,
     )
     if cfg.strategy != "python_full":
         for name in ("use_pre_assert_step", "verify_labels_in_canvas"):
@@ -206,7 +209,8 @@ async def render_geometry_diagram(
     extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
     if cfg.max_attempts:
         extra["max_attempts"] = cfg.max_attempts
-    run_only = {"retry_on_angle_mismatch": True} if cfg.retry_on_angle_mismatch else {}
+    angle_policy = cfg.angle_policy()
+    run_only = {"angle_policy": angle_policy} if angle_policy else {}
 
     _check_previous_state(
         cfg.strategy,
@@ -559,12 +563,14 @@ def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict
     return resolved
 
 
-def verify_geometry_diagram(diagram_ir: dict) -> dict:
+def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.0) -> dict:
     """Audit a finished diagram's geometry (no LLM call, no I/O): the same checks and warnings
     a render run applies, reported instead of acted on.
 
     Args:
         diagram_ir: DiagramResult.diagram_ir, from any strategy.
+        angle_tolerance_deg: an angle mark or label counts as contradicting the drawing when it
+            is off by more than this many degrees.
 
     Returns:
         A JSON-serializable dict:
@@ -582,6 +588,7 @@ def verify_geometry_diagram(diagram_ir: dict) -> dict:
         On input that does not validate or compile: {"ok": False, "error": "..."}.
     """
     import pydantic
+    from .ir.angle_audit import AnglePolicy
     from .ir.angle_pairs import resolve_angle_pairs
     from .ir.checks import check_render_angles
     from .ir.errors import IRCompileError
@@ -595,7 +602,9 @@ def verify_geometry_diagram(diagram_ir: dict) -> dict:
         diagram = resolve_angle_pairs(diagram, sym)
     except (pydantic.ValidationError, IRCompileError) as e:
         return {"ok": False, "error": str(e)}
-    diagnostics = collect_diagnostics(diagram, sym)
+    diagnostics = collect_diagnostics(
+        diagram, sym, AnglePolicy(tolerance_deg=angle_tolerance_deg, fail_tolerance_deg=max(5.0, angle_tolerance_deg)),
+    )
     invalid_triples = check_render_angles(diagram, sym)
     checks = [
         {"kind": r.check.kind, "level": r.check.level, "passed": r.passed, "message": r.message}

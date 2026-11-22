@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from geometry_diagrams.ir.angle_audit import audit_angles, parse_angle_text
+from geometry_diagrams.ir.angle_audit import AnglePolicy, audit_angles, parse_angle_text
 from geometry_diagrams.ir.renderer import SVGRenderer
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.pydsl.sandbox import run_script
@@ -103,14 +103,61 @@ def test_a_clean_figure_adds_no_angle_warning():
     assert not any("angle" in w.lower() for w in result.warnings)
 
 
-def test_fail_on_angle_mismatch_raises_with_the_findings():
+def test_retry_mode_raises_on_a_gross_mismatch_with_the_findings():
     with pytest.raises(PipelineError, match="drawn at") as info:
-        _run(TRI + 't.angle_at(c).label("50°")', fail_on_angle_mismatch=True)
+        _run(TRI + 't.angle_at(c).label("50°")', angle_policy=AnglePolicy("retry"))  # 13 degrees off
     assert any('"50°"' in w for w in info.value.warnings)
 
 
-def test_fail_on_angle_mismatch_passes_a_clean_figure():
-    assert _run(TRI + 'mark_right_angle(t.angle_at(b))', fail_on_angle_mismatch=True).svg
+def test_retry_mode_passes_a_clean_figure():
+    assert _run(TRI + 'mark_right_angle(t.angle_at(b))', angle_policy=AnglePolicy("retry")).svg
+
+
+def test_retry_mode_only_warns_below_the_fail_threshold():
+    """40 degrees on a 36.87 degree angle is 3.1 degrees off: above the 1 degree warning
+    threshold, below the 5 degree one that fails an attempt."""
+    result = _run(TRI + 't.angle_at(c).label("40°")', angle_policy=AnglePolicy("retry"))
+    assert any('"40°"' in w for w in result.warnings) and result.svg
+
+
+def test_warn_mode_never_fails_however_far_off():
+    result = _run(TRI + 't.angle_at(c).label("80°")', angle_policy=AnglePolicy("warn"))
+    assert any('"80°"' in w for w in result.warnings)
+
+
+def test_off_mode_does_not_audit_at_all():
+    result = _run(TRI + 't.angle_at(c).label("80°"); mark_right_angle(t.angle_at(c))', angle_policy=AnglePolicy("off"))
+    assert not any("angle" in w.lower() for w in result.warnings)
+
+
+def test_the_thresholds_are_configurable():
+    script = TRI + 't.angle_at(c).label("40°")'  # 3.1 degrees off
+    assert not any('"40°"' in w for w in _run(script, angle_policy=AnglePolicy("warn", tolerance_deg=4)).warnings)
+    with pytest.raises(PipelineError):
+        _run(script, angle_policy=AnglePolicy("retry", tolerance_deg=1, fail_tolerance_deg=2))
+
+
+def test_arc_marks_and_their_groups_are_never_audited():
+    """A group on mark_angle is a rendering tag; a figure may use it to mean something other
+    than "these angles are equal", so unequal angles in one group are not a finding."""
+    script = TRI + "mark_angle(t.angle_at(a), 1); mark_angle(t.angle_at(c), 1)"  # 53.13 and 36.87
+    assert _audit(script) == []
+    assert not any("angle" in w.lower() for w in _run(script, angle_policy=AnglePolicy("retry")).warnings)
+
+
+def test_a_finding_reports_how_far_off_it_is():
+    (finding,) = _audit(TRI + 't.angle_at(c).label("50°")')
+    assert finding.error_deg == pytest.approx(13.13, abs=0.01)
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"mode": "loud"}, {"tolerance_deg": 0}, {"tolerance_deg": -1}, {"tolerance_deg": float("nan")},
+    {"fail_tolerance_deg": float("inf")}, {"tolerance_deg": True},
+    {"tolerance_deg": 6, "fail_tolerance_deg": 5},
+])
+def test_a_bad_policy_is_rejected(kwargs):
+    with pytest.raises(ValueError):
+        AnglePolicy(**kwargs)
 
 
 # --- the opt-in retry, through the facade ----------------------------------------------
@@ -124,12 +171,33 @@ from geometry_diagrams.strategies.recipe import RecipeStrategy  # noqa: E402
 from geometry_diagrams.strategies.structured import StructureStrategy  # noqa: E402
 
 
-def test_config_field_env_and_resolve(monkeypatch):
-    assert GeometryConfig.from_env().retry_on_angle_mismatch is False
-    monkeypatch.setenv("GEOMETRY_RETRY_ON_ANGLE_MISMATCH", "true")
-    assert GeometryConfig.from_env().retry_on_angle_mismatch is True
-    assert resolve_config(GeometryConfig(), retry_on_angle_mismatch=True).retry_on_angle_mismatch is True
-    assert resolve_config(GeometryConfig(retry_on_angle_mismatch=True)).retry_on_angle_mismatch is True
+def test_config_fields_env_and_resolve(monkeypatch):
+    for name in ("GEOMETRY_ANGLE_CHECK", "GEOMETRY_ANGLE_TOLERANCE_DEG", "GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG"):
+        monkeypatch.delenv(name, raising=False)
+    cfg = GeometryConfig.from_env()
+    assert (cfg.angle_check, cfg.angle_tolerance_deg, cfg.angle_fail_tolerance_deg) == ("warn", 1.0, 5.0)
+    assert cfg.angle_policy() is None  # all defaults: strategy calls keep their shape
+    monkeypatch.setenv("GEOMETRY_ANGLE_CHECK", "RETRY")
+    monkeypatch.setenv("GEOMETRY_ANGLE_TOLERANCE_DEG", "2")
+    monkeypatch.setenv("GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG", "8.5")
+    assert GeometryConfig.from_env().angle_policy() == AnglePolicy("retry", 2.0, 8.5)
+    assert resolve_config(GeometryConfig(), angle_check="off").angle_policy() == AnglePolicy("off")
+    assert resolve_config(GeometryConfig(angle_check="retry")).angle_policy() == AnglePolicy("retry")
+
+
+@pytest.mark.parametrize("name,value", [
+    ("GEOMETRY_ANGLE_CHECK", "loud"), ("GEOMETRY_ANGLE_TOLERANCE_DEG", "abc"),
+    ("GEOMETRY_ANGLE_TOLERANCE_DEG", "0"), ("GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG", "0.5"),
+])
+def test_a_bad_env_value_fails_where_the_environment_is_read(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError):
+        GeometryConfig.from_env()
+
+
+def test_resolve_config_rejects_a_bad_value_early():
+    with pytest.raises(ValueError, match="angle_check"):
+        resolve_config(GeometryConfig(), angle_check="loud")
 
 
 @pytest.mark.asyncio
@@ -140,12 +208,18 @@ async def test_facade_passes_the_flag_to_every_strategy_only_when_set(name, cls)
     with patch.object(cls, "run", run):
         with pytest.raises(RuntimeError, match="stop"):
             await render_geometry_diagram("a triangle", config=GeometryConfig(strategy=name, renderer="svg"))
-        assert "retry_on_angle_mismatch" not in run.call_args.kwargs
+        assert "angle_policy" not in run.call_args.kwargs
         with pytest.raises(RuntimeError, match="stop"):
             await render_geometry_diagram(
-                "a triangle", config=GeometryConfig(strategy=name, renderer="svg", retry_on_angle_mismatch=True),
+                "a triangle", config=GeometryConfig(strategy=name, renderer="svg", angle_check="retry"),
             )
-        assert run.call_args.kwargs["retry_on_angle_mismatch"] is True
+        assert run.call_args.kwargs["angle_policy"] == AnglePolicy("retry")
+        with pytest.raises(RuntimeError, match="stop"):  # the per-call kwarg overrides the config
+            await render_geometry_diagram(
+                "a triangle", config=GeometryConfig(strategy=name, renderer="svg", angle_check="retry"),
+                angle_check="off",
+            )
+        assert run.call_args.kwargs["angle_policy"] == AnglePolicy("off")
 
 
 @pytest.mark.asyncio
@@ -161,7 +235,7 @@ async def test_python_full_retries_with_the_finding_in_the_next_prompt():
     with patch("geometry_diagrams.strategies.python_full.get_chat_model", return_value=llm):
         result = await PythonFullStrategy().run(
             "a right triangle with its acute angle labeled", model="anthropic:claude-sonnet-4-6",
-            renderer=SVGRenderer(), retry_on_angle_mismatch=True,
+            renderer=SVGRenderer(), angle_policy=AnglePolicy("retry"),
         )
     assert result.retries == 1 and "37°" in result.script
 
@@ -194,7 +268,7 @@ def test_a_mismatch_introduced_by_a_single_call_edit_is_a_warning_by_default(mon
 def test_the_flag_fails_a_single_call_edit_that_introduces_a_mismatch(monkeypatch):
     # Like any failure of the edited script: a RuntimeError, no retry, nothing stored.
     with pytest.raises(RuntimeError, match='contradict the drawn angles.*"50°"'):
-        _edit_with(monkeypatch, "search_replace", EDIT_WRONG, retry_on_angle_mismatch=True)
+        _edit_with(monkeypatch, "search_replace", EDIT_WRONG, angle_policy=AnglePolicy("retry"))
 
 
 def test_the_flag_does_not_block_an_edit_of_a_figure_that_was_already_wrong(monkeypatch):
@@ -205,7 +279,7 @@ def test_the_flag_does_not_block_an_edit_of_a_figure_that_was_already_wrong(monk
 
     monkeypatch.setattr(pf, "generate_search_replace", fake_gen)
     result = asyncio.run(PythonFullStrategy().edit(
-        "fix the label", EDIT_WRONG, model="m", renderer=SVGRenderer(), retry_on_angle_mismatch=True))
+        "fix the label", EDIT_WRONG, model="m", renderer=SVGRenderer(), angle_policy=AnglePolicy("retry")))
     assert "37°" in result.script and not any("angle" in w.lower() for w in result.warnings)
 
 
@@ -224,18 +298,18 @@ def test_full_rewrite_edits_pass_the_flag_to_the_loop(monkeypatch):
     monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
     with pytest.raises(RuntimeError, match="stop"):
         asyncio.run(PythonFullStrategy().edit(
-            "relabel", EDIT_BASE, model="m", edit_generation_mode="full_rewrite", retry_on_angle_mismatch=True))
-    assert seen["retry_on_angle_mismatch"] is True
+            "relabel", EDIT_BASE, model="m", edit_generation_mode="full_rewrite", angle_policy=AnglePolicy("retry")))
+    assert seen["angle_policy"] == AnglePolicy("retry")
 
 
 @pytest.mark.asyncio
 async def test_facade_passes_the_flag_to_a_python_full_edit():
     edit = AsyncMock(side_effect=RuntimeError("stop"))
     with patch.object(PythonFullStrategy, "edit", edit):
-        for flag, expected in ((False, False), (True, True)):
+        for check, expected in (("warn", None), ("retry", AnglePolicy("retry")), ("off", AnglePolicy("off"))):
             with pytest.raises(RuntimeError, match="stop"):
                 await render_geometry_diagram(
                     "relabel", previous_script=EDIT_BASE,
-                    config=GeometryConfig(strategy="python_full", renderer="svg", retry_on_angle_mismatch=flag),
+                    config=GeometryConfig(strategy="python_full", renderer="svg", angle_check=check),
                 )
-            assert edit.call_args.kwargs.get("retry_on_angle_mismatch", False) is expected
+            assert edit.call_args.kwargs.get("angle_policy") == expected

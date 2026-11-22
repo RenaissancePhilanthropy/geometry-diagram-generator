@@ -125,3 +125,10 @@ def test_verify_reports_an_uncompilable_ir_as_error():
 
 def test_the_report_is_json_serializable(ir_dict):
     json.dumps(verify_geometry_diagram(ir_dict))
+
+
+def test_verify_takes_an_angle_tolerance():
+    near = _ir_dict(SCRIPT + 't.angle_at(c).label("40°")')  # 3.1 degrees off
+    assert [f["stated_deg"] for f in verify_geometry_diagram(near)["angle_findings"]] == [40]
+    assert verify_geometry_diagram(near, angle_tolerance_deg=4)["angle_findings"] == []
+    assert verify_geometry_diagram(near, angle_tolerance_deg=4)["ok"] is True

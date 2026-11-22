@@ -27,6 +27,16 @@ def env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in _TRUE_STRINGS
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number, got {raw!r}") from None
+
+
 def validate_edit_generation_mode(mode: str) -> str:
     """Return `mode` if it is a known edit generation mode, else raise ValueError listing them."""
     if mode not in EDIT_GENERATION_MODES:
@@ -117,18 +127,33 @@ class GeometryConfig:
     # Generation attempts per run, replacing each strategy's default of 3. None = the default.
     # Env: GEOMETRY_MAX_ATTEMPTS. An edit turn in a mode other than full_rewrite is always one attempt.
     max_attempts: Optional[int] = None
-    # A right-angle mark or angle label that contradicts the drawn angle is always a warning
-    # (ir/angle_audit.py); with this on it also fails the attempt so the strategy retries.
-    # Every strategy. Env: GEOMETRY_RETRY_ON_ANGLE_MISMATCH. On a python_full edit it holds the
-    # edited script to it (full_rewrite retries, the other modes fail the edit), not the stored one.
-    retry_on_angle_mismatch: bool = False
+    # What to do about a right-angle mark or angle label that contradicts the drawn angle
+    # (ir/angle_audit.py). Every strategy; env GEOMETRY_ANGLE_CHECK.
+    #   "off":   do not audit.
+    #   "warn":  report a mismatch above angle_tolerance_deg as a warning (the default).
+    #   "retry": the same, and a mismatch above angle_fail_tolerance_deg also fails the attempt,
+    #            so the strategy retries with it in the prompt; smaller ones stay warnings.
+    # On a python_full edit "retry" holds the edited script to it (full_rewrite retries, the
+    # single-call modes fail the edit), never the stored script the edit starts from.
+    # Tolerances are degrees; env GEOMETRY_ANGLE_TOLERANCE_DEG / GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG.
+    angle_check: str = "warn"
+    angle_tolerance_deg: float = 1.0
+    angle_fail_tolerance_deg: float = 5.0
+
+    def angle_policy(self):
+        """The ir.angle_audit.AnglePolicy for these fields, or None when they are all the
+        defaults (so strategy calls keep their shape). Raises ValueError on a bad value."""
+        from .ir.angle_audit import AnglePolicy
+
+        policy = AnglePolicy(self.angle_check, self.angle_tolerance_deg, self.angle_fail_tolerance_deg)
+        return None if policy == AnglePolicy() else policy
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
         """Build config from environment variables with hardcoded fallbacks."""
         edit_mode = validate_edit_generation_mode(os.environ.get("GEOMETRY_EDIT_MODE", "search_replace"))
         timeout = validate_sandbox_timeout(os.environ.get("GEOMETRY_SANDBOX_TIMEOUT_SECONDS", "2.5"))
-        return cls(
+        cfg = cls(
             renderer=os.environ.get("GEOMETRY_RENDERER", os.environ.get("RENDERER", "tikz")),  # type: ignore[arg-type]
             strategy=os.environ.get("GEOMETRY_STRATEGY", "recipe"),  # type: ignore[arg-type]
             model=os.environ.get("GEOMETRY_MODEL", os.environ.get("MODEL", _DEFAULT_MODEL)),
@@ -146,8 +171,12 @@ class GeometryConfig:
             max_attempts=validate_max_attempts(
                 int(os.environ["GEOMETRY_MAX_ATTEMPTS"]) if os.environ.get("GEOMETRY_MAX_ATTEMPTS") else None
             ),
-            retry_on_angle_mismatch=env_bool("GEOMETRY_RETRY_ON_ANGLE_MISMATCH"),
+            angle_check=os.environ.get("GEOMETRY_ANGLE_CHECK", "warn").strip().lower(),
+            angle_tolerance_deg=_env_float("GEOMETRY_ANGLE_TOLERANCE_DEG", 1.0),
+            angle_fail_tolerance_deg=_env_float("GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG", 5.0),
         )
+        cfg.angle_policy()  # fail on a bad value here, where the environment is read
+        return cfg
 
 
 def resolve_config(
@@ -168,7 +197,9 @@ def resolve_config(
     verify_labels_in_canvas: Optional[bool] = None,
     model_options: Optional[dict] = None,
     max_attempts: Optional[int] = None,
-    retry_on_angle_mismatch: Optional[bool] = None,
+    angle_check: Optional[str] = None,
+    angle_tolerance_deg: Optional[float] = None,
+    angle_fail_tolerance_deg: Optional[float] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -176,7 +207,7 @@ def resolve_config(
     validate_sandbox_timeout(
         sandbox_timeout_seconds if sandbox_timeout_seconds is not None else cfg.sandbox_timeout_seconds
     )
-    return GeometryConfig(
+    resolved = GeometryConfig(
         renderer=renderer or cfg.renderer,  # type: ignore[arg-type]
         strategy=strategy or cfg.strategy,  # type: ignore[arg-type]
         model=model or cfg.model,
@@ -199,7 +230,11 @@ def resolve_config(
         ),
         model_options=dict(model_options) if model_options is not None else dict(cfg.model_options),
         max_attempts=validate_max_attempts(max_attempts if max_attempts is not None else cfg.max_attempts),
-        retry_on_angle_mismatch=(
-            retry_on_angle_mismatch if retry_on_angle_mismatch is not None else cfg.retry_on_angle_mismatch
+        angle_check=angle_check if angle_check is not None else cfg.angle_check,
+        angle_tolerance_deg=angle_tolerance_deg if angle_tolerance_deg is not None else cfg.angle_tolerance_deg,
+        angle_fail_tolerance_deg=(
+            angle_fail_tolerance_deg if angle_fail_tolerance_deg is not None else cfg.angle_fail_tolerance_deg
         ),
     )
+    resolved.angle_policy()  # a bad angle_check or tolerance raises here, not mid-run
+    return resolved

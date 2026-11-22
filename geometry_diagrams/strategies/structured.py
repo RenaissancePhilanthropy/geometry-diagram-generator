@@ -26,6 +26,7 @@ from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
 from ..config import validate_max_attempts
+from ..ir.angle_audit import AnglePolicy
 from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.queries import (
@@ -158,7 +159,7 @@ class StructuredPipelineState(TypedDict):
     features: frozenset  # enabled feature groups; absent/empty = none enabled
     extra_instructions: Optional[str]  # appended to the system prompt; absent/empty = none
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
-    retry_on_angle_mismatch: bool  # a contradicting angle mark/label fails the attempt; absent = warn only
+    angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
 
 
 async def _generate_ir_node(
@@ -252,7 +253,7 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
         require_features(diagram_ir, state.get("features") or frozenset())
         # Passed on only when set, so the call shape is unchanged without it.
 
-        angle_kwargs = {"fail_on_angle_mismatch": True} if state.get("retry_on_angle_mismatch") else {}
+        angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
 
         result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
         result.retries = state["attempt"]
@@ -308,7 +309,7 @@ class StructureStrategy(SubstanceStrategy):
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
-        retry_on_angle_mismatch: bool = False,
+        angle_policy: "AnglePolicy | None" = None,
     ) -> StructuredRunResult:
         """max_attempts: generation attempts (default MAX_RETRIES).
 
@@ -346,7 +347,7 @@ class StructureStrategy(SubstanceStrategy):
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
-            "retry_on_angle_mismatch": retry_on_angle_mismatch,
+            "angle_policy": angle_policy,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
