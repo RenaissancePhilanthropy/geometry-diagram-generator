@@ -17,6 +17,7 @@ import sympy.geometry as spg
 from ..ir.ir import DiagramIR
 from ..ir.to_sympy import compile_defs
 from ..ir.checks import run_checks, check_render_angles
+from ..ir.angle_audit import audit_angles
 from ..ir.angle_pairs import resolve_angle_pairs
 from ..ir.derived import REGISTRY as DERIVED_REGISTRY
 from ..ir.renderer import Renderer, TikZRenderer
@@ -73,12 +74,17 @@ def format_warnings_for_retry(warnings: list[str]) -> str:
 async def run_ir_pipeline(
     diagram_ir: DiagramIR,
     renderer: Renderer | None = None,
+    fail_on_angle_mismatch: bool = False,
 ) -> StructuredRunResult:
     """Compile DiagramIR -> SymPy -> checks -> TikZ/SVG. Raises RuntimeError on failure.
 
     Collects a single `warnings` list (see StructuredRunResult.warnings for
     the stages that feed it and how to extend it); a PipelineError carries
     the warnings gathered before the failure.
+
+    A right-angle mark or angle label that disagrees with the drawn angle
+    (ir/angle_audit.py) is always a warning. With `fail_on_angle_mismatch` it is
+    a PipelineError instead, so the calling strategy retries.
     """
     if renderer is None:
         renderer = TikZRenderer()
@@ -99,10 +105,19 @@ async def run_ir_pipeline(
             logger.warning("Preferred check not satisfied: %s", r.message)
             warnings.append(f"Preferred check not satisfied: {r.message}")
 
+    angle_findings = await asyncio.to_thread(audit_angles, diagram_ir, sym)
+    warnings.extend(f.message for f in angle_findings)
+
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
     if must_failures:
         msgs = "; ".join(r.message for r in must_failures)
         raise PipelineError(f"Geometric checks failed: {msgs}", warnings)
+
+    if angle_findings and fail_on_angle_mismatch:
+        raise PipelineError(
+            "Angle marks or labels contradict the drawn angles: " + "; ".join(f.message for f in angle_findings),
+            warnings,
+        )
 
     angle_failures = await asyncio.to_thread(check_render_angles, diagram_ir, sym)
     if angle_failures:

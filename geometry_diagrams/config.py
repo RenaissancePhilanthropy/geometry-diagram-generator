@@ -117,6 +117,10 @@ class GeometryConfig:
     # Generation attempts per run, replacing each strategy's default of 3. None = the default.
     # Env: GEOMETRY_MAX_ATTEMPTS. An edit turn in a mode other than full_rewrite is always one attempt.
     max_attempts: Optional[int] = None
+    # A right-angle mark or angle label that contradicts the drawn angle is always a warning
+    # (ir/angle_audit.py); with this on it also fails the attempt so the strategy retries.
+    # Every strategy. Env: GEOMETRY_RETRY_ON_ANGLE_MISMATCH. No effect on an edit turn.
+    retry_on_angle_mismatch: bool = False
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -141,6 +145,7 @@ class GeometryConfig:
             max_attempts=validate_max_attempts(
                 int(os.environ["GEOMETRY_MAX_ATTEMPTS"]) if os.environ.get("GEOMETRY_MAX_ATTEMPTS") else None
             ),
+            retry_on_angle_mismatch=env_bool("GEOMETRY_RETRY_ON_ANGLE_MISMATCH"),
         )
 
 
@@ -162,6 +167,7 @@ def resolve_config(
     verify_labels_in_canvas: Optional[bool] = None,
     model_options: Optional[dict] = None,
     max_attempts: Optional[int] = None,
+    retry_on_angle_mismatch: Optional[bool] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -192,4 +198,7 @@ def resolve_config(
         ),
         model_options=dict(model_options) if model_options is not None else dict(cfg.model_options),
         max_attempts=validate_max_attempts(max_attempts if max_attempts is not None else cfg.max_attempts),
+        retry_on_angle_mismatch=(
+            retry_on_angle_mismatch if retry_on_angle_mismatch is not None else cfg.retry_on_angle_mismatch
+        ),
     )

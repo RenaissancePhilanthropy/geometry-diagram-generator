@@ -891,6 +891,7 @@ class PythonFullPipelineState(TypedDict):
     # Application text appended to the generation system prompt; absent/empty = none.
     extra_instructions: Optional[str]
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
+    retry_on_angle_mismatch: bool  # a contradicting angle mark/label fails the attempt; absent = warn only
 
 
 async def _pre_assert_step_node(
@@ -1159,7 +1160,11 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         # Generation-surface gate (defense in depth: the sandbox namespace
         # already withholds a disabled group's names from the script).
         require_features(diagram_ir, features)
-        pipeline_result = await run_ir_pipeline(diagram_ir, renderer)
+        # Passed on only when set, so the call shape is unchanged without it.
+
+        angle_kwargs = {"fail_on_angle_mismatch": True} if state.get("retry_on_angle_mismatch") else {}
+
+        pipeline_result = await run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
 
         # Ticket 02 (pydsl-authoring-quality): verify_labels_in_canvas gate.
         # The checker parses SVG stamped by to_svg.py's own label-emission
@@ -1387,6 +1392,7 @@ class PythonFullStrategy(SubstanceStrategy):
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
+        retry_on_angle_mismatch: bool = False,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the generation
         system prompt (never to the user's request); None/empty leaves the
@@ -1519,6 +1525,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
+            "retry_on_angle_mismatch": retry_on_angle_mismatch,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),

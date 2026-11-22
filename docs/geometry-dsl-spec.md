@@ -694,6 +694,14 @@ Sources:
 - a prism on a canvas with unequal axis scales (the projection is skewed);
 - a prism dimension label whose first number does not match the true length of the edge it labels: a `label_segment` on a prism edge, or a `length_label` / `width_label` / `height_label` field (substring `does not match its true length`; see [Label fields](#prism-label-fields));
 - an unrecognized color string (see [Color forms](#color-forms));
+- a right-angle mark on an angle that is not drawn at 90° (more than 1° off), or an angle label
+  whose text states a different value than the drawn angle (`Right-angle mark on ∠ABC, which is
+  drawn at 72.5°, not 90°`; `Angle label "35°" is on ∠ABC, which is drawn at 41.3°`). Only a label
+  that is exactly one angle value is read: `35°`, `35 deg`, `∠B = 60°`, `θ = 2π/3`, `π/3 rad`,
+  `1.047 rad`. `x`, `?`, a bare `35`, a derivation such as `∠A = 180° − 40° − 40° = 100°` and any
+  text with several numbers state no single value and are skipped. With
+  `GeometryConfig.retry_on_angle_mismatch` the same findings fail the attempt instead of warning
+  (`ir/angle_audit.py`, `run_ir_pipeline(fail_on_angle_mismatch=True)`);
 - a `unit_cubes` prism whose id is never drawn (no gridlines).
 - a `block_stack` cube set with a cube above an empty cell (not a height map);
 - an authored `block_stack` when the canvas has unequal axis scales (the
