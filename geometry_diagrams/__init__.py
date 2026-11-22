@@ -15,6 +15,7 @@ Public API:
                                  retry_count, script [python_full only], cost_usd, warnings)
   RecipeSelectionResult        — result dataclass for select_recipes
   GeometryConfig               — configuration dataclass
+  register_model_options       — add default chat-model kwargs / extra_body for one "provider:model" id
   GenerationFailedError        — RuntimeError subclass raised when a strategy exhausts its
                                  attempts; carries input_tokens, output_tokens, cost_usd
 
@@ -46,6 +47,7 @@ _LAZY_EXPORTS = {
     "DiagramResult": ".facade",
     "GeometryConfig": ".config",
     "GenerationFailedError": ".errors",
+    "register_model_options": ".strategies.llm",
     "RecipeSelectionResult": ".strategies.recipe",
     "select_recipes": ".strategies.recipe",
     "select_recipes_sync": ".strategies.recipe",

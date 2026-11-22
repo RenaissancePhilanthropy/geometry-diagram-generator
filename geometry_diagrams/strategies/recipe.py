@@ -50,6 +50,7 @@ from ..recipe.catalog import (
 from ..recipe.dsl import RecipeDSL, reject_disabled_ops
 from ..recipe.lower import lower_to_ir, LoweringError
 from ..ir.errors import IRCompileError
+from ..config import validate_max_attempts
 from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.renderer import TikZRenderer, Renderer
@@ -231,6 +232,7 @@ class RecipePipelineState(TypedDict):
     selection_done: bool
     features: frozenset  # enabled feature groups; absent/empty = none enabled
     extra_instructions: Optional[str]  # appended to the generation system prompt; absent/empty = none
+    max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
 
 
 @dataclass
@@ -558,7 +560,7 @@ def _after_generate_dsl_router(state: RecipePipelineState) -> str:
     """Route after DSL generation: to pipeline if success, retry or end if failure."""
     if state.get("dsl") is not None:
         return "run_recipe_pipeline"
-    if state["attempt"] < MAX_RETRIES:
+    if state["attempt"] < (state.get("max_attempts") or MAX_RETRIES):
         return "generate_dsl"
     return END
 
@@ -567,7 +569,7 @@ def _after_pipeline_router(state: RecipePipelineState) -> str:
     """Route after pipeline: end if success, retry or end if failure."""
     if state.get("result") is not None:
         return END
-    if state["attempt"] < MAX_RETRIES:
+    if state["attempt"] < (state.get("max_attempts") or MAX_RETRIES):
         return "generate_dsl"
     return END
 
@@ -667,9 +669,12 @@ class RecipeStrategy(SubstanceStrategy):
         previous_dsl: Optional[dict] = None,
         features: "frozenset[str] | None" = None,
         extra_instructions: Optional[str] = None,
+        max_attempts: Optional[int] = None,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the DSL-generation
-        system prompt (not the selector's, not the user's request)."""
+        system prompt (not the selector's, not the user's request).
+
+        max_attempts: generation attempts (default MAX_RETRIES)."""
         graph = _build_recipe_graph()
         effective_prompt = prompt
         if previous_dsl is not None:
@@ -699,6 +704,7 @@ class RecipeStrategy(SubstanceStrategy):
             "selection_done": False,
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
+            "max_attempts": validate_max_attempts(max_attempts),
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 
@@ -711,7 +717,7 @@ class RecipeStrategy(SubstanceStrategy):
 
         if final_state.get("result") is None:
             raise GenerationFailedError(
-                "RecipeStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                "RecipeStrategy", max_attempts or MAX_RETRIES, final_state.get("last_error", "unknown"),
                 input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
                 cost_usd=self._partial_cost_usd,
             )

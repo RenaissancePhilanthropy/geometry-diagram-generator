@@ -31,6 +31,7 @@ from .ir_pipeline import (
 )
 from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_filter_checks
 from .structured import dispatch_query
+from ..config import validate_max_attempts
 from ..errors import GenerationFailedError
 from ..config import validate_edit_generation_mode, validate_sandbox_timeout
 from ..features import require_features, tagged_insertions
@@ -889,6 +890,7 @@ class PythonFullPipelineState(TypedDict):
     features: frozenset
     # Application text appended to the generation system prompt; absent/empty = none.
     extra_instructions: Optional[str]
+    max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
 
 
 async def _pre_assert_step_node(
@@ -1277,7 +1279,7 @@ async def _run_from_script(
 def _pipeline_router(state: PythonFullPipelineState) -> str:
     if state.get("result") is not None:
         return END
-    if state["attempt"] < MAX_RETRIES:
+    if state["attempt"] < (state.get("max_attempts") or MAX_RETRIES):
         return "generate_script"
     return END
 
@@ -1384,6 +1386,7 @@ class PythonFullStrategy(SubstanceStrategy):
         config: "dict | None" = None,
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
+        max_attempts: "int | None" = None,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the generation
         system prompt (never to the user's request); None/empty leaves the
@@ -1515,6 +1518,7 @@ class PythonFullStrategy(SubstanceStrategy):
             "verify_labels_in_canvas": verify_labels_in_canvas,
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
+            "max_attempts": validate_max_attempts(max_attempts),
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
@@ -1531,7 +1535,7 @@ class PythonFullStrategy(SubstanceStrategy):
 
         if final_state.get("result") is None:
             raise GenerationFailedError(
-                "PythonFullStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                "PythonFullStrategy", max_attempts or MAX_RETRIES, final_state.get("last_error", "unknown"),
                 input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
                 cost_usd=self._partial_cost_usd,
             )
@@ -1558,6 +1562,7 @@ class PythonFullStrategy(SubstanceStrategy):
         retry_fired: "dict | None" = None,
         config: "dict | None" = None,
         extra_instructions: "str | None" = None,
+        max_attempts: "int | None" = None,
     ) -> "tuple[StructuredRunResult, Any]":
         """One edit turn against `top` (a dict with the previous turn's
         "script", "manifest" and "result"): generate the edit in
@@ -1579,10 +1584,12 @@ class PythonFullStrategy(SubstanceStrategy):
 
         async def _edit_full_rewrite(req: str) -> StructuredRunResult:
             full_request = build_edit_prompt(req, top["script"], top["manifest"])
+            # Only a full rewrite loops; the other modes are one generation call each.
+            attempts = {"max_attempts": max_attempts} if max_attempts else {}
             return await self.run(
                 full_request, model=model, renderer=renderer,
                 sandbox_timeout_seconds=sandbox_timeout_seconds,
-                **_config_kwargs(config), **extra_kwargs,
+                **_config_kwargs(config), **extra_kwargs, **attempts,
             )
 
         async def _edit_patch(req: str) -> StructuredRunResult:
@@ -1731,6 +1738,7 @@ class PythonFullStrategy(SubstanceStrategy):
         config: "dict | None" = None,
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
+        max_attempts: "int | None" = None,
     ) -> StructuredRunResult:
         """Stateless edit of a previously generated pydsl script.
 
@@ -1802,6 +1810,7 @@ class PythonFullStrategy(SubstanceStrategy):
             sandbox_timeout_seconds=sandbox_timeout_seconds,
             config=run_config,
             extra_instructions=extra_instructions,
+            max_attempts=max_attempts,
         )
         return result
 

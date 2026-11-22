@@ -1,6 +1,8 @@
 """LangChain model factory — maps pydantic-ai-style model IDs to LangChain chat models."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 
 from langchain_core.language_models import BaseChatModel
@@ -198,6 +200,12 @@ _MODEL_SPECIFIC_EXTRA_BODY: dict[str, dict] = {
 # models served by that provider and actively hurts others (mantle/mantle-oa
 # serve many unrelated models — see the "mantle" entry's comment above).
 _MODEL_SPECIFIC_KWARGS: dict[str, dict] = {
+    # langchain-anthropic (1.4.6) has no entry for these, so ChatAnthropic falls back to
+    # max_tokens=4096, which can truncate a python_full script mid-way (the 4.x models get
+    # 64000 from the same table). 16000 is the headroom the other entries here use.
+    "anthropic:claude-sonnet-5-5": {"max_tokens": 16000},
+    "anthropic:claude-opus-5-5": {"max_tokens": 16000},
+    "anthropic:claude-fable-5-1": {"max_tokens": 16000},
     # Both spend part of their output budget on a hidden reasoning channel
     # before the actual answer (gpt-oss-20b's "reasoning" field; glm-4.7-flash
     # truncating mid-JSON with "length limit was reached" on ~10% of
@@ -285,6 +293,80 @@ def _import_provider(module: str, attr: str, extra: str):
         ) from e
 
 
+_AMBIENT_MODEL_OPTIONS: ContextVar["dict | None"] = ContextVar("geometry_model_options", default=None)
+
+
+@contextmanager
+def model_options_context(options: "dict | None"):
+    """Make `options` (chat-model constructor kwargs such as temperature, timeout or
+    max_tokens) the defaults of every get_chat_model call made inside the block, in this
+    task and the ones it starts. GeometryConfig.model_options is applied this way, so the
+    strategies need not thread it through each call site. An explicit kwarg to
+    get_chat_model still wins, and these win over register_model_options defaults."""
+    token = _AMBIENT_MODEL_OPTIONS.set(dict(options) if options else None)
+    try:
+        yield
+    finally:
+        _AMBIENT_MODEL_OPTIONS.reset(token)
+
+
+def register_model_options(
+    model_id: str, *, kwargs: "dict | None" = None, extra_body: "dict | None" = None,
+) -> None:
+    """Add default chat-model options for one model, keyed "provider:model" like every id here.
+
+    kwargs are constructor kwargs for the model class (e.g. {"max_tokens": 8000},
+    {"temperature": 0}); extra_body is merged into the request body and is only for
+    OpenAI-compatible providers, including OpenRouter (e.g. {"provider": {"zdr": True}} to
+    pin zero data retention). Merged over any built-in entry for the model, later calls
+    over earlier ones, and below GeometryConfig.model_options and explicit get_chat_model
+    kwargs. Process-wide: call it once at startup."""
+    provider_name, sep, _ = model_id.partition(":")
+    if not sep:
+        raise ValueError(f"model_id must be 'provider:model', got {model_id!r}")
+    if extra_body:
+        provider = _resolve_provider(model_id)
+        if provider is None or provider["backend"] != "openai":
+            raise ValueError(
+                f"extra_body is only for OpenAI-compatible providers, and {provider_name!r} is not a known "
+                f"one (set {provider_name.upper().replace('-', '_')}_BASE_URL to declare it)"
+            )
+        merged = dict(_MODEL_SPECIFIC_EXTRA_BODY.get(model_id, {}))
+        merged.update(extra_body)
+        _MODEL_SPECIFIC_EXTRA_BODY[model_id] = merged
+    if kwargs:
+        _MODEL_SPECIFIC_KWARGS[model_id] = {**_MODEL_SPECIFIC_KWARGS.get(model_id, {}), **kwargs}
+
+
+def registered_model_options(model_id: str) -> dict:
+    """The built-in and registered options for a model id: {"kwargs": {...}, "extra_body": {...}}."""
+    return {
+        "kwargs": dict(_MODEL_SPECIFIC_KWARGS.get(model_id, {})),
+        "extra_body": dict(_MODEL_SPECIFIC_EXTRA_BODY.get(model_id, {})),
+    }
+
+
+def _apply_model_options(model_id: str, kwargs: dict, provider_defaults: "dict | None" = None) -> None:
+    """Fill `kwargs` in place: explicit values stay, then GeometryConfig.model_options, then
+    the registered per-model defaults. extra_body is merged key by key in the same order,
+    over the provider's own default extra_body (e.g. OpenRouter's usage opt-in)."""
+    ambient = _AMBIENT_MODEL_OPTIONS.get() or {}
+    registered = _MODEL_SPECIFIC_KWARGS.get(model_id, {})
+    for source in (ambient, registered):
+        for key, value in source.items():
+            if key != "extra_body":
+                kwargs.setdefault(key, value)
+    bodies = [
+        (provider_defaults or {}).get("extra_body"), _MODEL_SPECIFIC_EXTRA_BODY.get(model_id),
+        ambient.get("extra_body"), kwargs.get("extra_body"),
+    ]
+    if any(bodies):
+        merged: dict = {}
+        for body in bodies:  # later wins
+            merged.update(body or {})
+        kwargs["extra_body"] = merged
+
+
 def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseChatModel:
     """Return a LangChain chat model for the given model ID.
 
@@ -297,6 +379,7 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
     provider = _resolve_provider(model_id)
     if provider is None:
         from langchain_anthropic import ChatAnthropic
+        _apply_model_options(f"anthropic:{model_id}", kwargs)
         return ChatAnthropic(model=model_id, **kwargs)
 
     model_name = model_id.split(":", 1)[1]
@@ -304,6 +387,7 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
 
     if backend == "anthropic":
         from langchain_anthropic import ChatAnthropic
+        _apply_model_options(model_id, kwargs)
         if enable_cache:
             # Enable Anthropic prompt caching beta via model_kwargs to avoid
             # LangChain warning about extra_headers being a non-standard parameter.
@@ -315,6 +399,7 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
         return ChatAnthropic(model=model_name, **kwargs)
 
     if backend == "google":
+        _apply_model_options(model_id, kwargs)
         ChatGoogleGenerativeAI = _import_provider(
             "langchain_google_genai", "ChatGoogleGenerativeAI", "google",
         )
@@ -334,15 +419,9 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
             kwargs.setdefault("api_key", key)
         elif not kwargs.get("api_key"):
             raise _missing_key_error(api_key_env, model_id)
+    _apply_model_options(model_id, kwargs, provider.get("default_kwargs"))
     for key, value in provider.get("default_kwargs", {}).items():
         kwargs.setdefault(key, value)
-    for key, value in _MODEL_SPECIFIC_KWARGS.get(model_id, {}).items():
-        kwargs.setdefault(key, value)
-    model_extra_body = _MODEL_SPECIFIC_EXTRA_BODY.get(model_id)
-    if model_extra_body:
-        merged_extra_body = dict(kwargs.get("extra_body") or {})
-        merged_extra_body.update(model_extra_body)
-        kwargs["extra_body"] = merged_extra_body
     return _construct(lambda: ChatOpenAI(model=model_name, **kwargs), model_id, kwargs)
 
 

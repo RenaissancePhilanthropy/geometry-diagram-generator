@@ -25,6 +25,7 @@ from .ir_pipeline import (
 from ..ir.ir import DiagramIR
 from ..ir.renderer import Renderer, TikZRenderer
 from ..ir.errors import IRCompileError
+from ..config import validate_max_attempts
 from ..errors import GenerationFailedError
 from ..features import require_features, tagged_insertions
 from ..ir.queries import (
@@ -156,6 +157,7 @@ class StructuredPipelineState(TypedDict):
     renderer: Optional[Any]
     features: frozenset  # enabled feature groups; absent/empty = none enabled
     extra_instructions: Optional[str]  # appended to the system prompt; absent/empty = none
+    max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
 
 
 async def _generate_ir_node(
@@ -264,7 +266,7 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
 def _pipeline_router(state: StructuredPipelineState) -> str:
     if state.get("result") is not None:
         return END
-    if state["attempt"] < MAX_RETRIES:
+    if state["attempt"] < (state.get("max_attempts") or MAX_RETRIES):
         return "generate_ir"
     return END
 
@@ -300,8 +302,11 @@ class StructureStrategy(SubstanceStrategy):
         config: "dict | None" = None,
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
+        max_attempts: "int | None" = None,
     ) -> StructuredRunResult:
-        """extra_instructions: application text appended to the generation
+        """max_attempts: generation attempts (default MAX_RETRIES).
+
+        extra_instructions: application text appended to the generation
         system prompt (not the user's request).
 
         config / callbacks: a LangChain RunnableConfig and extra callback
@@ -334,6 +339,7 @@ class StructureStrategy(SubstanceStrategy):
             "renderer": renderer,
             "features": self.features if features is None else frozenset(features),
             "extra_instructions": extra_instructions,
+            "max_attempts": validate_max_attempts(max_attempts),
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
@@ -347,7 +353,7 @@ class StructureStrategy(SubstanceStrategy):
 
         if final_state.get("result") is None:
             raise GenerationFailedError(
-                "StructureStrategy", MAX_RETRIES, final_state.get("last_error", "unknown"),
+                "StructureStrategy", max_attempts or MAX_RETRIES, final_state.get("last_error", "unknown"),
                 input_tokens=self._partial_input_tokens, output_tokens=self._partial_output_tokens,
                 cost_usd=self._partial_cost_usd,
             )

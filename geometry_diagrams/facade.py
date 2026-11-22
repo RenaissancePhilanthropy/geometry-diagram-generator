@@ -16,6 +16,7 @@ from .features import parse_features, tagged_insertions
 from .ir.font import FontConfig
 from .ir.renderer import Renderer, SVGRenderer, TikZRenderer
 from .strategies.base import SubstanceStrategy, run_sync
+from .strategies.llm import model_options_context
 from .strategies.python_full import PythonFullStrategy
 from .strategies.recipe import RecipeStrategy
 from .strategies.structured import StructureStrategy
@@ -112,6 +113,8 @@ async def render_geometry_diagram(
     extra_instructions: Optional[str] = None,
     use_pre_assert_step: Optional[bool] = None,
     verify_labels_in_canvas: Optional[bool] = None,
+    model_options: Optional[dict] = None,
+    max_attempts: Optional[int] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -162,6 +165,13 @@ async def render_geometry_diagram(
         verify_labels_in_canvas: python_full only. Retry the generation when a rendered
             label extends past the SVG viewBox. A no-op under renderer="tikz". Overrides
             config.verify_labels_in_canvas.
+        model_options: Chat-model constructor kwargs (temperature, timeout, max_tokens, ...)
+            applied to every model this call builds, including the recipe selector. Overrides
+            config.model_options as a whole. An option a model class does not accept raises
+            when the model is built.
+        max_attempts: Generation attempts before GenerationFailedError, replacing the
+            strategy default of 3 (None keeps it). For a python_full edit only the
+            full_rewrite mode loops; the other modes are one generation call.
         Neither option applies to an edit (previous_script) turn, which ignores them, and
         either one set True for the recipe or structured strategy raises ValueError.
     """
@@ -176,6 +186,8 @@ async def render_geometry_diagram(
         extra_instructions=extra_instructions,
         use_pre_assert_step=use_pre_assert_step,
         verify_labels_in_canvas=verify_labels_in_canvas,
+        model_options=model_options,
+        max_attempts=max_attempts,
     )
     if cfg.strategy != "python_full":
         for name in ("use_pre_assert_step", "verify_labels_in_canvas"):
@@ -184,61 +196,64 @@ async def render_geometry_diagram(
     strategy_obj = _make_strategy(cfg)
     # Passed on only when set, so strategy calls keep their shape without it.
     extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
+    if cfg.max_attempts:
+        extra["max_attempts"] = cfg.max_attempts
 
     _check_previous_state(
         cfg.strategy,
         previous_dsl=previous_dsl, previous_script=previous_script, previous_ir=previous_ir,
     )
 
-    if cfg.strategy == "python_full":
-        if previous_script is not None:
-            result = await strategy_obj.edit(
+    with model_options_context(cfg.model_options):
+        if cfg.strategy == "python_full":
+            if previous_script is not None:
+                result = await strategy_obj.edit(
+                    prompt,
+                    previous_script,
+                    model=cfg.model,
+                    renderer=_make_renderer(cfg),
+                    edit_generation_mode=cfg.edit_generation_mode,
+                    hash_algorithm=cfg.hash_algorithm,
+                    sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                    config=run_config,
+                    callbacks=callbacks,
+                    **extra,
+                )
+            else:
+                # Passed on only when set, so the call shape is unchanged without them.
+                quality = {
+                    name: True for name in ("use_pre_assert_step", "verify_labels_in_canvas") if getattr(cfg, name)
+                }
+                result = await strategy_obj.run(
+                    prompt,
+                    model=cfg.model,
+                    renderer=_make_renderer(cfg),
+                    sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                    config=run_config,
+                    callbacks=callbacks,
+                    **extra,
+                    **quality,
+                )
+        elif cfg.strategy == "structured":
+            result = await strategy_obj.run(
                 prompt,
-                previous_script,
                 model=cfg.model,
                 renderer=_make_renderer(cfg),
-                edit_generation_mode=cfg.edit_generation_mode,
-                hash_algorithm=cfg.hash_algorithm,
-                sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                previous_ir=previous_ir,
                 config=run_config,
                 callbacks=callbacks,
                 **extra,
             )
         else:
-            # Passed on only when set, so the call shape is unchanged without them.
-            quality = {
-                name: True for name in ("use_pre_assert_step", "verify_labels_in_canvas") if getattr(cfg, name)
-            }
             result = await strategy_obj.run(
                 prompt,
                 model=cfg.model,
                 renderer=_make_renderer(cfg),
-                sandbox_timeout_seconds=cfg.sandbox_timeout_seconds,
+                previous_dsl=previous_dsl,
                 config=run_config,
                 callbacks=callbacks,
                 **extra,
-                **quality,
             )
-    elif cfg.strategy == "structured":
-        result = await strategy_obj.run(
-            prompt,
-            model=cfg.model,
-            renderer=_make_renderer(cfg),
-            previous_ir=previous_ir,
-            config=run_config,
-            callbacks=callbacks,
-            **extra,
-        )
-    else:
-        result = await strategy_obj.run(
-            prompt,
-            model=cfg.model,
-            renderer=_make_renderer(cfg),
-            previous_dsl=previous_dsl,
-            config=run_config,
-            callbacks=callbacks,
-            **extra,
-        )
 
     # Extract structured artifacts if available
     _recipes = None

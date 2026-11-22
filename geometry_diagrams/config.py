@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional
 
 from .features import parse_features
 
@@ -50,6 +50,12 @@ def validate_sandbox_timeout(value: object) -> float:
             f"sandbox_timeout_seconds must be a finite number greater than 0, got {value!r}"
         )
     return seconds
+
+def validate_max_attempts(max_attempts: "int | None") -> "int | None":
+    """None (the strategy default) or an int >= 1; anything else raises ValueError."""
+    if max_attempts is not None and (isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1):
+        raise ValueError(f"max_attempts must be an integer >= 1 or None, got {max_attempts!r}")
+    return max_attempts
 
 
 @dataclass
@@ -104,6 +110,13 @@ class GeometryConfig:
     #   Only meaningful with renderer="svg" (a no-op under tikz). Env: GEOMETRY_VERIFY_LABELS_IN_CANVAS.
     use_pre_assert_step: bool = False
     verify_labels_in_canvas: bool = False
+    # Chat-model constructor kwargs (e.g. {"temperature": 0, "timeout": 60, "max_tokens": 8000})
+    # applied to every model a run builds, below an explicit kwarg and above the per-model
+    # defaults from register_model_options. No env var: it is a dict.
+    model_options: dict[str, Any] = field(default_factory=dict)
+    # Generation attempts per run, replacing each strategy's default of 3. None = the default.
+    # Env: GEOMETRY_MAX_ATTEMPTS. An edit turn in a mode other than full_rewrite is always one attempt.
+    max_attempts: Optional[int] = None
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -125,6 +138,9 @@ class GeometryConfig:
             features=parse_features(os.environ.get("GEOMETRY_FEATURES", "")),
             use_pre_assert_step=env_bool("GEOMETRY_USE_PRE_ASSERT_STEP"),
             verify_labels_in_canvas=env_bool("GEOMETRY_VERIFY_LABELS_IN_CANVAS"),
+            max_attempts=validate_max_attempts(
+                int(os.environ["GEOMETRY_MAX_ATTEMPTS"]) if os.environ.get("GEOMETRY_MAX_ATTEMPTS") else None
+            ),
         )
 
 
@@ -144,6 +160,8 @@ def resolve_config(
     extra_instructions: Optional[str] = None,
     use_pre_assert_step: Optional[bool] = None,
     verify_labels_in_canvas: Optional[bool] = None,
+    model_options: Optional[dict] = None,
+    max_attempts: Optional[int] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -172,4 +190,6 @@ def resolve_config(
         verify_labels_in_canvas=(
             verify_labels_in_canvas if verify_labels_in_canvas is not None else cfg.verify_labels_in_canvas
         ),
+        model_options=dict(model_options) if model_options is not None else dict(cfg.model_options),
+        max_attempts=validate_max_attempts(max_attempts if max_attempts is not None else cfg.max_attempts),
     )
