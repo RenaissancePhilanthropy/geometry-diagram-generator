@@ -123,6 +123,7 @@ class PydslScriptPatchOutput(BaseModel):
 async def _generate_patch(
     prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None,
     extra_instructions: "str | None" = None,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> "tuple[str, int, int, float | None]":
     """Single direct LLM call requesting a unified-diff patch (patch mode's
     generation step) — deliberately NOT the multi-attempt generate_script
@@ -146,7 +147,7 @@ async def _generate_patch(
     structured = bind_structured_output_for_model(llm, PydslScriptPatchOutput, model, include_raw=True)
     messages = [
         make_system_message(
-            append_extra_instructions(build_python_full_instructions(), extra_instructions),
+            append_extra_instructions(build_python_full_instructions(features=features), extra_instructions),
             enable_cache=enable_cache, model_id=model,
         ),
         HumanMessage(content=prompt),
@@ -228,6 +229,7 @@ def _parse_search_replace_blocks(text: str) -> list[dict]:
 async def generate_search_replace(
     prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None,
     extra_instructions: "str | None" = None,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting SEARCH/REPLACE marker blocks as
     plain text (search_replace mode's generation step) — no structured
@@ -248,7 +250,7 @@ async def generate_search_replace(
     llm = get_chat_model(model, enable_cache=enable_cache)
     messages = [
         make_system_message(
-            append_extra_instructions(build_python_full_instructions(), extra_instructions),
+            append_extra_instructions(build_python_full_instructions(features=features), extra_instructions),
             enable_cache=enable_cache, model_id=model,
         ),
         HumanMessage(content=prompt),
@@ -304,6 +306,7 @@ class PydslHashlineOutput(BaseModel):
 async def _generate_hashline_ops(
     prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None,
     extra_instructions: "str | None" = None,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting hashline ops (hashline mode's
     generation step) — mirrors _generate_patch/generate_search_replace's
@@ -315,7 +318,7 @@ async def _generate_hashline_ops(
     structured = bind_structured_output_for_model(llm, PydslHashlineOutput, model, include_raw=True)
     messages = [
         make_system_message(
-            append_extra_instructions(build_python_full_instructions(), extra_instructions),
+            append_extra_instructions(build_python_full_instructions(features=features), extra_instructions),
             enable_cache=enable_cache, model_id=model,
         ),
         HumanMessage(content=prompt),
@@ -378,6 +381,7 @@ class PydslLineNumberOutput(BaseModel):
 async def _generate_line_number_ops(
     prompt: str, model: str, enable_cache: bool = False, config: "dict | None" = None,
     extra_instructions: "str | None" = None,
+    features: "frozenset[str] | set[str]" = frozenset(),
 ) -> "tuple[list[dict], int, int, float | None]":
     """Single direct LLM call requesting line_number ops (line_number
     mode's generation step) — mirrors _generate_hashline_ops's shape,
@@ -389,7 +393,7 @@ async def _generate_line_number_ops(
     structured = bind_structured_output_for_model(llm, PydslLineNumberOutput, model, include_raw=True)
     messages = [
         make_system_message(
-            append_extra_instructions(build_python_full_instructions(), extra_instructions),
+            append_extra_instructions(build_python_full_instructions(features=features), extra_instructions),
             enable_cache=enable_cache, model_id=model,
         ),
         HumanMessage(content=prompt),
@@ -1567,6 +1571,9 @@ class PythonFullStrategy(SubstanceStrategy):
         retry_fired = retry_fired if retry_fired is not None else {"value": False}
         # Passed on only when set, so the call shape is unchanged without it.
         extra_kwargs = {"extra_instructions": extra_instructions} if extra_instructions else {}
+        # Likewise the enabled feature groups, so the edit prompt documents their API.
+        if self.features:
+            extra_kwargs["features"] = self.features
 
         async def _edit_full_rewrite(req: str) -> StructuredRunResult:
             full_request = build_edit_prompt(req, top["script"], top["manifest"])
