@@ -96,6 +96,14 @@ class GeometryConfig:
     # prompt (never to the user's description) as a delimited trailing section.
     # None or empty leaves the prompts unchanged.
     extra_instructions: Optional[str] = None
+    # python_full only (a ValueError for other strategies; no effect on edit turns).
+    # use_pre_assert_step: one extra LLM call before generation proposes geometric
+    #   invariants, filtered into advisory context for the script writer (costs tokens).
+    #   Env: GEOMETRY_USE_PRE_ASSERT_STEP.
+    # verify_labels_in_canvas: retry when a rendered label extends past the viewBox.
+    #   Only meaningful with renderer="svg" (a no-op under tikz). Env: GEOMETRY_VERIFY_LABELS_IN_CANVAS.
+    use_pre_assert_step: bool = False
+    verify_labels_in_canvas: bool = False
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -115,6 +123,8 @@ class GeometryConfig:
             hash_algorithm=os.environ.get("GEOMETRY_HASH_ALGORITHM", "blake2s"),  # type: ignore[arg-type]
             sandbox_timeout_seconds=timeout,
             features=parse_features(os.environ.get("GEOMETRY_FEATURES", "")),
+            use_pre_assert_step=env_bool("GEOMETRY_USE_PRE_ASSERT_STEP"),
+            verify_labels_in_canvas=env_bool("GEOMETRY_VERIFY_LABELS_IN_CANVAS"),
         )
 
 
@@ -132,6 +142,8 @@ def resolve_config(
     sandbox_timeout_seconds: Optional[float] = None,
     features: "Optional[frozenset[str] | set[str] | str]" = None,
     extra_instructions: Optional[str] = None,
+    use_pre_assert_step: Optional[bool] = None,
+    verify_labels_in_canvas: Optional[bool] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -156,4 +168,8 @@ def resolve_config(
         features=frozenset(features) if features is not None and not isinstance(features, str)
         else (parse_features(features) if features is not None else cfg.features),
         extra_instructions=extra_instructions if extra_instructions is not None else cfg.extra_instructions,
+        use_pre_assert_step=use_pre_assert_step if use_pre_assert_step is not None else cfg.use_pre_assert_step,
+        verify_labels_in_canvas=(
+            verify_labels_in_canvas if verify_labels_in_canvas is not None else cfg.verify_labels_in_canvas
+        ),
     )

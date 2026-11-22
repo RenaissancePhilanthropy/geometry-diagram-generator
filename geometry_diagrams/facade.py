@@ -110,6 +110,8 @@ async def render_geometry_diagram(
     run_config: Optional[dict] = None,
     callbacks: "Optional[Union[list, BaseCallbackManager]]" = None,
     extra_instructions: Optional[str] = None,
+    use_pre_assert_step: Optional[bool] = None,
+    verify_labels_in_canvas: Optional[bool] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -154,6 +156,14 @@ async def render_geometry_diagram(
             prompt, and not to the recipe selector). Overrides
             config.extra_instructions; None falls back to it, and None or empty
             leaves the prompts unchanged.
+        use_pre_assert_step: python_full only. Run one extra LLM call before generation
+            that proposes geometric invariants, filtered into advisory context for the
+            script writer. Costs tokens; overrides config.use_pre_assert_step.
+        verify_labels_in_canvas: python_full only. Retry the generation when a rendered
+            label extends past the SVG viewBox. A no-op under renderer="tikz". Overrides
+            config.verify_labels_in_canvas.
+        Neither option applies to an edit (previous_script) turn, which ignores them, and
+        either one set True for the recipe or structured strategy raises ValueError.
     """
     cfg = resolve_config(
         config,
@@ -164,7 +174,13 @@ async def render_geometry_diagram(
         renderer_url=renderer_url,
         font_family=font_family,
         extra_instructions=extra_instructions,
+        use_pre_assert_step=use_pre_assert_step,
+        verify_labels_in_canvas=verify_labels_in_canvas,
     )
+    if cfg.strategy != "python_full":
+        for name in ("use_pre_assert_step", "verify_labels_in_canvas"):
+            if getattr(cfg, name):
+                raise ValueError(f"{name} applies to the python_full strategy only, not {cfg.strategy!r}")
     strategy_obj = _make_strategy(cfg)
     # Passed on only when set, so strategy calls keep their shape without it.
     extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
@@ -189,6 +205,10 @@ async def render_geometry_diagram(
                 **extra,
             )
         else:
+            # Passed on only when set, so the call shape is unchanged without them.
+            quality = {
+                name: True for name in ("use_pre_assert_step", "verify_labels_in_canvas") if getattr(cfg, name)
+            }
             result = await strategy_obj.run(
                 prompt,
                 model=cfg.model,
@@ -197,6 +217,7 @@ async def render_geometry_diagram(
                 config=run_config,
                 callbacks=callbacks,
                 **extra,
+                **quality,
             )
     elif cfg.strategy == "structured":
         result = await strategy_obj.run(
