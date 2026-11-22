@@ -1,5 +1,7 @@
 """Prompt templates for the recipe-based strategy."""
 
+from .instructions_common import ANSWER_LABEL_RULE
+
 RECIPE_SELECTION_SYSTEM = """\
 You select geometry construction recipes relevant to a user's diagram request.
 
@@ -66,6 +68,7 @@ Key rules:
 - If recipe examples are provided, follow their patterns closely.
 - If no recipes are provided, reason from the DSL reference in the user message.
 - Keep diagrams compact and legible.
+- """ + ANSWER_LABEL_RULE + """
 - Colors (a style string, or "color"/"fill" in a style dict): a named color (e.g. "red", "blue", "teal", "lightgray"), hex "#9ec5ea", "rgb(158, 197, 234)" (0-255), "hsv(210, 0.5, 0.8)" (h in degrees, s and v 0-1), or an xcolor mix "blue!30" (30% blue, rest white) / "red!40!blue".
 - Points used only to define lines (not labeled intersections) should have visible: false.
 - When marking angle pairs (corresponding, alternate interior, etc.), always assign the same

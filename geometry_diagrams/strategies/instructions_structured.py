@@ -1,6 +1,8 @@
 """Prompt template for the structured IR strategy."""
 import json
 
+from .instructions_common import ANSWER_LABEL_RULE
+
 STRUCTURED_STRATEGY_IR_INSTRUCTIONS = """\
 You are a geometry diagram assistant. Given a user request, produce a DiagramIR \
 JSON object that fully describes the diagram. The system will compile your output \
@@ -271,7 +273,7 @@ for the initial anchor points of a construction. Derive everything else.
 12. **Label key points** in the render section.
 13. **Use a line object when the diagram semantically requires an infinite line.**
 14. **Point names must match the names required by the prompt** — do not rename required points.
-"""
+15. """ + ANSWER_LABEL_RULE + "\n"
 
 
 # The example embedded in the solids guidance. tests/test_structured_prism.py

@@ -1,6 +1,8 @@
 """Prompt template for the python_full strategy (pydsl script generation)."""
 from __future__ import annotations
 
+from .instructions_common import ANSWER_LABEL_RULE
+
 
 # The example embedded in the solids guidance. tests/test_pydsl_prism.py runs
 # it through the real sandbox and pipeline, so the prompt text cannot drift
@@ -243,6 +245,7 @@ works if you prefer to write it explicitly, but it isn't required.
   π, ...), not LaTeX-style backslash commands (`\angle`, `\perp`) — a
   backslash followed by a letter is a Python string escape, so
   `"\angle ABD"` does not mean what it looks like.
+- {ANSWER_LABEL_RULE}
 - Call `canvas(x_range=(xmin, xmax), y_range=(ymin, ymax), grid=True)` if the
   request needs a coordinate grid or axes — do NOT hand-draw a grid out of
   individual `segment()`/`line_through()` calls, since those would render in

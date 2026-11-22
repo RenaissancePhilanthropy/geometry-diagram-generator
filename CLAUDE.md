@@ -121,6 +121,8 @@ Multiple LLM-based approaches implementing `SubstanceStrategy` base class (`base
 
 **`stages.py`**: Shared rendering tool helpers used by raw strategies.
 
+The "label the givens, not the answer" rule (`ANSWER_LABEL_RULE`, `instructions_common.py`) is in the python_full, structured and recipe base prompts, so it covers 2D figures with solids off; changing it means regenerating `tests/python_full_prompt_pre_solids.json` and `tests/structured_prompt_pre_solids.json`.
+
 Prompt templates are split across `instructions_structured.py`, `instructions_recipe.py`, `instructions_tikz.py`, `instructions_python_full.py` (the `python_full.py` prompt, embedding the live pydsl API stub text), `instructions.py` (shared fragments reused across templates), and related files.
 
 **Feature-gated prompt text:** guidance for an opt-in feature group (today only `solids`) is appended through `features.tagged_fragment`/`tagged_insertions` (structured, python_full, recipe docs, query-tool descriptions), so with the group disabled every prompt is byte-identical to the ungated one. That identity is pinned by fixture-equality tests against `tests/*_pre_solids.json`; if you intentionally change default prompt text, regenerate the fixture in the same commit and say why. Each strategy that produces IR must call `features.require_features` before the shared pipeline (the structured and recipe schemas are static and cannot hide a kind, so rejection plus prompt text is the gate).
