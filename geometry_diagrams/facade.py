@@ -37,7 +37,10 @@ class DiagramResult:
     # Provider-reported USD cost of this call's LLM usage, summed over attempts (and, for a
     # python_full edit, the edit-generation call; a retry_on_apply_failure redo does not count
     # the failed first call). Includes the recipe selector and the pre-assert step calls.
-    # None = not reported (some providers): unknown, not free.
+    # None = not reported (some providers): unknown, not free. Only OpenRouter reports a cost, and
+    # it is what the provider billed, so it includes surcharges that a price computed from the
+    # token counts misses: one openrouter:openai/gpt-6.1-terra call reported $0.01121 against
+    # $0.00925 from its tokens at list price (1.21x). Prefer this field to token-based costing.
     cost_usd: Optional[float] = None
     # Non-fatal pipeline notes from the final successful run (renderer warnings, failed
     # `prefer` checks, solid projection/label/overlap warnings, ...). Never fails a run.
