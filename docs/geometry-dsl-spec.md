@@ -708,6 +708,20 @@ Sources:
   `retry` also fails the attempt for a finding above `angle_fail_tolerance_deg` (5° by default),
   so the strategy retries with it in the prompt; findings between `angle_tolerance_deg` and that
   stay warnings (`ir/angle_audit.py`, `AnglePolicy`);
+- a segment, angle, free-text or along-arc label that shows a number the request does not state,
+  which in practice is a computed answer written onto the figure: `Label "AC = 10" shows a number
+  the request does not state. A figure shows what the request gives and names the unknown (x or ?);
+  remove it unless the question asks for it`. The numbers in the request text are the givens; point
+  names (`A1`), sub/superscripts and the unknown (`x`, `?`) are never read, a digit directly before π
+  counts as a multiple of π when the request has no π, and a few numbers the request implies without
+  writing them are allowed (90 for "right angle", "perpendicular", "square", "rectangle", "altitude" or
+  "tangent"; 180 for "straight", "supplementary", "linear pair", "collinear", "semicircle" or "diameter";
+  60 for "equilateral"). Numbers written as words are not read from the request. It is a heuristic and
+  knows nothing about what the question asks, so it needs the request text and does not run without it.
+  `GeometryConfig.answer_check` (`GEOMETRY_ANSWER_CHECK`, or per call): `off` skips it, `warn` (the
+  default) reports it, `retry` also fails the attempt so the strategy retries with it in the prompt
+  (`ir/answer_audit.py`). On a python_full edit the request is the edit request plus the labels the
+  stored figure already shows;
 - a `unit_cubes` prism whose id is never drawn (no gridlines).
 - a `block_stack` cube set with a cube above an empty cell (not a height map);
 - an authored `block_stack` when the canvas has unequal axis scales (the

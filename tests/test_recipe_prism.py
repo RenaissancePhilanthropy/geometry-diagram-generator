@@ -288,7 +288,7 @@ async def test_strategy_with_solids_on_lowers_and_renders_the_prism():
     p = _common_patches(mock_llm)
     seen = {}
 
-    async def fake_pipeline(diagram_ir, renderer):
+    async def fake_pipeline(diagram_ir, renderer, **kwargs):
         seen["ir"] = diagram_ir
         return MagicMock()
 

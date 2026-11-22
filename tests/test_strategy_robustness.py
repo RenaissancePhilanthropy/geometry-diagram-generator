@@ -56,7 +56,7 @@ VALID_SCRIPT = (
 def _flaky_pipeline(exc: Exception):
     calls = {"n": 0}
 
-    async def pipeline(diagram_ir, renderer=None):
+    async def pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise exc

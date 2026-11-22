@@ -33,7 +33,7 @@ async def test_python_full_nothing_drawn_does_not_resend_stale_warnings():
     ])
     calls = {"n": 0}
 
-    async def pipeline(diagram_ir, renderer=None):
+    async def pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("checks failed", ["STALE-WARNING"])
@@ -57,7 +57,7 @@ async def test_recipe_retry_prompt_does_not_claim_error_text_is_a_stage():
     llm = _structured_llm([RecipeDSL(construction=[]), RecipeDSL(construction=[])])
     calls = {"n": 0}
 
-    async def pipeline(diagram_ir, renderer=None):
+    async def pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("Geometric checks failed: x")

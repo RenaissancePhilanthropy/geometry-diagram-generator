@@ -269,7 +269,7 @@ async def test_recipe_retry_prompt_includes_warnings_and_warnings_alone_never_re
     mock_llm = _make_mock_llm([valid, valid])
     calls = {"n": 0}
 
-    async def pipeline(diagram_ir, renderer=None):
+    async def pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
@@ -297,7 +297,7 @@ async def test_stale_warnings_not_in_prompt_after_generation_failure_recipe():
     mock_llm = _make_mock_llm([valid, OutputParserException("bad"), valid])
     calls = {"n": 0}
 
-    async def pipeline(diagram_ir, renderer=None):
+    async def pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["STALE-WARNING"])

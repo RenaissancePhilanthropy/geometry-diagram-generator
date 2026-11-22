@@ -139,6 +139,13 @@ class GeometryConfig:
     angle_check: str = "warn"
     angle_tolerance_deg: float = 1.0
     angle_fail_tolerance_deg: float = 5.0
+    # What to do about a label that shows a number the request does not state, in practice a
+    # computed answer on the figure (ir/answer_audit.py). Every strategy; env GEOMETRY_ANSWER_CHECK.
+    #   "off": do not audit. "warn": report it as a warning (the default).
+    #   "retry": also fail the attempt, so the strategy retries with it in the prompt.
+    # On a python_full edit the request is the edit request plus the labels the stored figure
+    # already shows, so numbers already on the figure count as stated.
+    answer_check: str = "warn"
 
     def angle_policy(self):
         """The ir.angle_audit.AnglePolicy for these fields, or None when they are all the
@@ -147,6 +154,16 @@ class GeometryConfig:
 
         policy = AnglePolicy(self.angle_check, self.angle_tolerance_deg, self.angle_fail_tolerance_deg)
         return None if policy == AnglePolicy() else policy
+
+    def validate_answer_check(self) -> str:
+        """The answer_check mode, or ValueError listing the valid ones."""
+        from .ir.answer_audit import ANSWER_CHECK_MODES
+
+        if self.answer_check not in ANSWER_CHECK_MODES:
+            raise ValueError(
+                f"answer_check must be one of {', '.join(ANSWER_CHECK_MODES)}, got {self.answer_check!r}"
+            )
+        return self.answer_check
 
     @classmethod
     def from_env(cls) -> "GeometryConfig":
@@ -174,8 +191,10 @@ class GeometryConfig:
             angle_check=os.environ.get("GEOMETRY_ANGLE_CHECK", "warn").strip().lower(),
             angle_tolerance_deg=_env_float("GEOMETRY_ANGLE_TOLERANCE_DEG", 1.0),
             angle_fail_tolerance_deg=_env_float("GEOMETRY_ANGLE_FAIL_TOLERANCE_DEG", 5.0),
+            answer_check=os.environ.get("GEOMETRY_ANSWER_CHECK", "warn").strip().lower(),
         )
         cfg.angle_policy()  # fail on a bad value here, where the environment is read
+        cfg.validate_answer_check()
         return cfg
 
 
@@ -200,6 +219,7 @@ def resolve_config(
     angle_check: Optional[str] = None,
     angle_tolerance_deg: Optional[float] = None,
     angle_fail_tolerance_deg: Optional[float] = None,
+    answer_check: Optional[str] = None,
 ) -> GeometryConfig:
     """Merge explicit kwargs on top of a base config (or env defaults)."""
     cfg = base if base is not None else GeometryConfig.from_env()
@@ -235,6 +255,8 @@ def resolve_config(
         angle_fail_tolerance_deg=(
             angle_fail_tolerance_deg if angle_fail_tolerance_deg is not None else cfg.angle_fail_tolerance_deg
         ),
+        answer_check=answer_check if answer_check is not None else cfg.answer_check,
     )
+    resolved.validate_answer_check()
     resolved.angle_policy()  # a bad angle_check or tolerance raises here, not mid-run
     return resolved

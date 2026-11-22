@@ -172,7 +172,7 @@ async def test_recipe_strategy_retries_on_ir_compile_error():
 
     pipeline_calls = {"n": 0}
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         pipeline_calls["n"] += 1
         if pipeline_calls["n"] == 1:
             raise IRCompileError("seg_AB", "references undefined id 'A'")

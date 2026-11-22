@@ -70,7 +70,7 @@ async def test_ir_gen_failure_costs_one_attempt():
 
     pipeline_calls = {"n": 0}
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         pipeline_calls["n"] += 1
         return fake_result
 
@@ -106,7 +106,7 @@ async def test_ir_gen_failure_leaves_two_pipeline_attempts():
 
     pipeline_calls = {"n": 0}
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         pipeline_calls["n"] += 1
         if pipeline_calls["n"] < 2:
             raise RuntimeError("Geometric checks failed: some property")
@@ -314,7 +314,7 @@ async def test_retry_prompt_includes_warnings_from_failed_pipeline_attempt():
     mock_llm = _make_mock_llm([_make_raw_ir_response(fake_ir), _make_raw_ir_response(fake_ir)])
     calls = {"n": 0}
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
@@ -341,7 +341,7 @@ async def test_warnings_alone_do_not_retry_structured():
     warned = _make_fake_result()
     warned.warnings = ["a warning"]
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         return warned
 
     with (
@@ -367,7 +367,7 @@ async def test_stale_warnings_not_in_prompt_after_generation_failure_structured(
     ])
     calls = {"n": 0}
 
-    async def mock_pipeline(diagram_ir, renderer=None):
+    async def mock_pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["STALE-WARNING"])

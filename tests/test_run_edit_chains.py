@@ -15,7 +15,7 @@ async def test_run_chain_records_a_successful_turn(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -52,7 +52,7 @@ async def test_run_chain_persists_turn_artifacts_when_artifacts_dir_given(monkey
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>fake</svg>",
@@ -120,7 +120,7 @@ async def test_run_chain_records_edit_ops_meta_on_a_failed_line_number_turn(monk
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -171,7 +171,7 @@ async def test_run_chain_runs_property_checks_on_success(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -217,7 +217,7 @@ async def test_run_chain_threads_hash_algorithm_into_build_agent(monkeypatch):
 
     monkeypatch.setattr(pf_module.PythonFullStrategy, "build_agent", spying_build_agent)
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
         from geometry_diagrams.ir.ir import DiagramIR
         return StructuredRunResult(
@@ -250,7 +250,7 @@ async def test_run_chain_end_to_end_against_patch_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -301,7 +301,7 @@ async def test_run_matrix_runs_every_combination_and_returns_all_records(monkeyp
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -342,7 +342,7 @@ async def test_run_matrix_works_without_an_output_path(monkeypatch):
     from geometry_diagrams.ir.ir import DiagramIR
     from evals.run_edit_chains import run_matrix
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg></svg>",
@@ -403,7 +403,7 @@ async def test_run_matrix_trips_only_the_failing_cell_not_other_modes(monkeypatc
 
     call_counts = {"fake_run": 0, "fake_generate_patch": 0}
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         call_counts["fake_run"] += 1
         from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
         from geometry_diagrams.ir.ir import DiagramIR
@@ -495,7 +495,7 @@ async def test_run_matrix_two_models_trip_independently(monkeypatch):
 
     call_counts = {"good-model": 0, "bad-model": 0}
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         call_counts[model] += 1
         if model == "bad-model":
             raise RuntimeError("PythonFullStrategy failed after 3 attempts. Last error: boom")
@@ -708,7 +708,7 @@ async def test_run_chain_threads_retry_on_locality_violation_and_records_whether
             retries=0,
         )
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return make_result()
 
     attempts = []

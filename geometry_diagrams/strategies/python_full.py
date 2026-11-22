@@ -33,6 +33,7 @@ from .pre_assert_step import FilteredCheck, assemble_advisory_text, propose_and_
 from .structured import dispatch_query
 from ..config import validate_max_attempts
 from ..ir.angle_audit import AnglePolicy
+from ..ir.answer_audit import label_texts
 from ..errors import GenerationFailedError
 from ..config import validate_edit_generation_mode, validate_sandbox_timeout
 from ..features import require_features, tagged_insertions
@@ -893,6 +894,8 @@ class PythonFullPipelineState(TypedDict):
     extra_instructions: Optional[str]
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
     angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
+    answer_check: str  # off | warn | retry for labels showing a number the request does not state; absent = warn
+    request_text: Optional[str]  # the request itself (not the advisory-extended prompt), for the answer audit
 
 
 async def _pre_assert_step_node(
@@ -1164,8 +1167,9 @@ async def _run_script_node(state: PythonFullPipelineState) -> dict:
         # Passed on only when set, so the call shape is unchanged without it.
 
         angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
+        answer_kwargs = {"answer_check": state.get("answer_check", "warn"), "request_text": state.get("request_text")}
 
-        pipeline_result = await run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
+        pipeline_result = await run_ir_pipeline(diagram_ir, renderer, **angle_kwargs, **answer_kwargs)
 
         # Ticket 02 (pydsl-authoring-quality): verify_labels_in_canvas gate.
         # The checker parses SVG stamped by to_svg.py's own label-emission
@@ -1240,6 +1244,8 @@ async def _run_from_script(
     sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     features: "frozenset[str]" = frozenset(),
     angle_policy: "AnglePolicy | None" = None,
+    answer_check: str = "warn",
+    request_text: "str | None" = None,
 ) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
@@ -1274,6 +1280,8 @@ async def _run_from_script(
         "sandbox_timeout_seconds": sandbox_timeout_seconds,
         "features": frozenset(features),
         "angle_policy": angle_policy,
+        "answer_check": answer_check,
+        "request_text": request_text,
     }
     update = await _run_script_node(state)
     result = update.get("result")
@@ -1401,6 +1409,8 @@ class PythonFullStrategy(SubstanceStrategy):
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
         angle_policy: "AnglePolicy | None" = None,
+        answer_check: str = "warn",
+        request_text: "str | None" = None,
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the generation
         system prompt (never to the user's request); None/empty leaves the
@@ -1534,6 +1544,8 @@ class PythonFullStrategy(SubstanceStrategy):
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
             "angle_policy": angle_policy,
+            "answer_check": answer_check,
+            "request_text": request_text if request_text is not None else prompt,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),
@@ -1579,6 +1591,7 @@ class PythonFullStrategy(SubstanceStrategy):
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
         angle_policy: "AnglePolicy | None" = None,
+        answer_check: str = "warn",
     ) -> "tuple[StructuredRunResult, Any]":
         """One edit turn against `top` (a dict with the previous turn's
         "script", "manifest" and "result"): generate the edit in
@@ -1598,7 +1611,14 @@ class PythonFullStrategy(SubstanceStrategy):
         if self.features:
             extra_kwargs["features"] = self.features
         # Likewise the angle-audit failure flag, for the edited script's own pipeline run.
-        angle_kwargs = {"angle_policy": angle_policy} if angle_policy else {}
+        audit_kwargs = {"angle_policy": angle_policy} if angle_policy else {}
+        # The answer audit reads numbers the request states; on an edit that is the edit request
+        # plus the labels the stored figure already shows (not its coordinates, which hold
+        # plenty of numbers that are not on the figure).
+        stored = getattr(top.get("result"), "diagram_ir", None)
+        edit_request_text = "\n".join([request, *(label_texts(stored) if hasattr(stored, "render") else [])])
+        audit_kwargs["answer_check"] = answer_check
+        audit_kwargs["request_text"] = edit_request_text
 
         async def _edit_full_rewrite(req: str) -> StructuredRunResult:
             full_request = build_edit_prompt(req, top["script"], top["manifest"])
@@ -1606,6 +1626,9 @@ class PythonFullStrategy(SubstanceStrategy):
             attempts = {"max_attempts": max_attempts} if max_attempts else {}
             if angle_policy:
                 attempts["angle_policy"] = angle_policy
+            attempts["request_text"] = edit_request_text
+            if answer_check != "warn":
+                attempts["answer_check"] = answer_check
             return await self.run(
                 full_request, model=model, renderer=renderer,
                 sandbox_timeout_seconds=sandbox_timeout_seconds,
@@ -1620,7 +1643,7 @@ class PythonFullStrategy(SubstanceStrategy):
             patched_script = apply_script_patch(top["script"], patch_text)
             return await _run_from_script(
                 patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features, **angle_kwargs,
+                features=self.features, **audit_kwargs,
             )
 
         async def _edit_search_replace(req: str) -> StructuredRunResult:
@@ -1631,7 +1654,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_search_replace(top["script"], blocks)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features, **angle_kwargs,
+                features=self.features, **audit_kwargs,
             )
 
         async def _edit_hashline(req: str) -> StructuredRunResult:
@@ -1643,7 +1666,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features, **angle_kwargs,
+                features=self.features, **audit_kwargs,
             )
 
         async def _edit_line_number(req: str) -> StructuredRunResult:
@@ -1665,7 +1688,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_line_number_ops(top["script"], ops)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features, **angle_kwargs,
+                features=self.features, **audit_kwargs,
             )
 
         _edit_handlers = {
@@ -1760,6 +1783,7 @@ class PythonFullStrategy(SubstanceStrategy):
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
         angle_policy: "AnglePolicy | None" = None,
+        answer_check: str = "warn",
     ) -> StructuredRunResult:
         """Stateless edit of a previously generated pydsl script.
 
@@ -1833,6 +1857,7 @@ class PythonFullStrategy(SubstanceStrategy):
             extra_instructions=extra_instructions,
             max_attempts=max_attempts,
             angle_policy=angle_policy,
+            answer_check=answer_check,
         )
         return result
 

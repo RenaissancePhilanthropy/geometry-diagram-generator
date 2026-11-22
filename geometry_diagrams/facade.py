@@ -119,6 +119,7 @@ async def render_geometry_diagram(
     model_options: Optional[dict] = None,
     max_attempts: Optional[int] = None,
     angle_check: Optional[str] = None,
+    answer_check: Optional[str] = None,
 ) -> DiagramResult:
     """Render a geometry diagram from a natural-language prompt.
 
@@ -185,6 +186,14 @@ async def render_geometry_diagram(
             config.angle_check. An edit turn is held to "retry" for the edited script only (a
             full_rewrite edit retries, the single-call modes fail the edit), never for the stored
             script it starts from. Arc marks (mark_angle groups) are never audited.
+        answer_check: Every strategy. What to do about a label that shows a number the request
+            does not state (in practice a computed answer written onto the figure; point names
+            and the numbers and implied values of the request are never flagged): "off" (no
+            audit), "warn" (the default: reported in DiagramResult.warnings) or "retry" (also
+            fails the attempt, so the strategy retries with the finding in its prompt). A
+            heuristic: it cannot tell a result the question wants shown from one it does not.
+            Overrides config.answer_check. On a python_full edit, numbers in the labels the stored
+            figure already shows count as stated.
         Neither option applies to an edit (previous_script) turn, which ignores them, and
         either one set True for the recipe or structured strategy raises ValueError.
     """
@@ -202,6 +211,7 @@ async def render_geometry_diagram(
         model_options=model_options,
         max_attempts=max_attempts,
         angle_check=angle_check,
+        answer_check=answer_check,
     )
     if cfg.strategy != "python_full":
         for name in ("use_pre_assert_step", "verify_labels_in_canvas"):
@@ -214,6 +224,8 @@ async def render_geometry_diagram(
         extra["max_attempts"] = cfg.max_attempts
     angle_policy = cfg.angle_policy()
     run_only = {"angle_policy": angle_policy} if angle_policy else {}
+    if cfg.answer_check != "warn":
+        run_only["answer_check"] = cfg.answer_check
 
     _check_previous_state(
         cfg.strategy,
@@ -566,7 +578,9 @@ def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict
     return resolved
 
 
-def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.0) -> dict:
+def verify_geometry_diagram(
+    diagram_ir: dict, *, angle_tolerance_deg: float = 1.0, request: Optional[str] = None,
+) -> dict:
     """Audit a finished diagram's geometry (no LLM call, no I/O): the same checks and warnings
     a render run applies, reported instead of acted on.
 
@@ -574,6 +588,8 @@ def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.
         diagram_ir: DiagramResult.diagram_ir, from any strategy.
         angle_tolerance_deg: an angle mark or label counts as contradicting the drawing when it
             is off by more than this many degrees.
+        request: the request the diagram answers. When given, labels that show a number it does
+            not state are reported too (see answer_findings); without it that audit does not run.
 
     Returns:
         A JSON-serializable dict:
@@ -586,6 +602,9 @@ def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.
         - "angle_findings": each right-angle mark or angle label that disagrees with the
           drawn angle, as {"kind", "angle" [a, vertex, b point ids], "stated_deg",
           "drawn_deg", "message"} (see ir/angle_audit.py for which labels are read).
+        - "answer_findings": with `request`, each label showing a number the request does not
+          state, as {"kind", "text", "numbers", "message"} (ir/answer_audit.py). A heuristic, so
+          it does not affect "ok"; [] when no request was given.
         - "invalid_angle_triples": angle marks whose arms are not on lines through the vertex.
         - "warnings": every pipeline warning the diagram produces without rendering it.
         On input that does not validate or compile: {"ok": False, "error": "..."}.
@@ -607,6 +626,7 @@ def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.
         return {"ok": False, "error": str(e)}
     diagnostics = collect_diagnostics(
         diagram, sym, AnglePolicy(tolerance_deg=angle_tolerance_deg, fail_tolerance_deg=max(5.0, angle_tolerance_deg)),
+        "warn" if request else "off", request,
     )
     invalid_triples = check_render_angles(diagram, sym)
     checks = [
@@ -618,11 +638,15 @@ def verify_geometry_diagram(diagram_ir: dict, *, angle_tolerance_deg: float = 1.
          "message": f.message}
         for f in diagnostics.angle_findings
     ]
+    answers = [
+        {"kind": f.kind, "text": f.text, "numbers": list(f.numbers), "message": f.message}
+        for f in diagnostics.answer_findings
+    ]
     ok = (
         all(c["passed"] or c["level"] != "must" for c in checks)
         and not invalid_triples and not findings
     )
     return {
-        "ok": ok, "checks": checks, "angle_findings": findings,
+        "ok": ok, "checks": checks, "angle_findings": findings, "answer_findings": answers,
         "invalid_angle_triples": [str(t) for t in invalid_triples], "warnings": diagnostics.warnings,
     }

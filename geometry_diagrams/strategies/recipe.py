@@ -235,6 +235,7 @@ class RecipePipelineState(TypedDict):
     extra_instructions: Optional[str]  # appended to the generation system prompt; absent/empty = none
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
     angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
+    answer_check: str  # off | warn | retry for labels showing a number the request does not state; absent = warn
 
 
 @dataclass
@@ -535,8 +536,9 @@ async def _run_recipe_pipeline_node(state: RecipePipelineState) -> dict:
         # Passed on only when set, so the call shape is unchanged without it.
 
         angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
+        answer_kwargs = {"answer_check": state.get("answer_check", "warn"), "request_text": state.get("prompt")}
 
-        result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
+        result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs, **answer_kwargs)
         metadata = state["recipe_metadata"]
         if metadata.attempt_traces:
             metadata.attempt_traces[-1].stage = "success"
@@ -677,6 +679,7 @@ class RecipeStrategy(SubstanceStrategy):
         extra_instructions: Optional[str] = None,
         max_attempts: Optional[int] = None,
         angle_policy: "AnglePolicy | None" = None,
+        answer_check: str = "warn",
     ) -> StructuredRunResult:
         """extra_instructions: application text appended to the DSL-generation
         system prompt (not the selector's, not the user's request).
@@ -713,6 +716,7 @@ class RecipeStrategy(SubstanceStrategy):
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
             "angle_policy": angle_policy,
+            "answer_check": answer_check,
         }
         final_state = await graph.ainvoke(initial_state, config=self._build_run_config(config, callbacks))
 

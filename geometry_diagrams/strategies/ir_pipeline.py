@@ -18,6 +18,7 @@ from ..ir.ir import DiagramIR
 from ..ir.to_sympy import compile_defs
 from ..ir.checks import run_checks, check_render_angles
 from ..ir.angle_audit import AnglePolicy, audit_angles
+from ..ir.answer_audit import audit_answer_labels
 from ..ir.angle_pairs import resolve_angle_pairs
 from ..ir.derived import REGISTRY as DERIVED_REGISTRY
 from ..ir.renderer import Renderer, TikZRenderer
@@ -77,10 +78,12 @@ class IRDiagnostics:
     check_results: list
     warnings: list[str]
     angle_findings: list
+    answer_findings: list = field(default_factory=list)
 
 
 def collect_diagnostics(
     diagram_ir: DiagramIR, sym: dict, angle_policy: "AnglePolicy | None" = None,
+    answer_check: str = "warn", request_text: "str | None" = None,
 ) -> IRDiagnostics:
     """Run the diagram's checks and the warning producers against compiled geometry.
 
@@ -100,13 +103,20 @@ def collect_diagnostics(
     policy = angle_policy or AnglePolicy()
     angle_findings = [] if policy.mode == "off" else audit_angles(diagram_ir, sym, policy.tolerance_deg)
     warnings.extend(f.message for f in angle_findings)
-    return IRDiagnostics(results, warnings, angle_findings)
+    # Labels showing a number the request does not state (ir/answer_audit.py); needs the request.
+    answer_findings = (
+        audit_answer_labels(diagram_ir, request_text) if answer_check != "off" and request_text else []
+    )
+    warnings.extend(f.message for f in answer_findings)
+    return IRDiagnostics(results, warnings, angle_findings, answer_findings)
 
 
 async def run_ir_pipeline(
     diagram_ir: DiagramIR,
     renderer: Renderer | None = None,
     angle_policy: "AnglePolicy | None" = None,
+    answer_check: str = "warn",
+    request_text: "str | None" = None,
 ) -> StructuredRunResult:
     """Compile DiagramIR -> SymPy -> checks -> TikZ/SVG. Raises RuntimeError on failure.
 
@@ -119,6 +129,10 @@ async def run_ir_pipeline(
     "off" skips the audit). With mode "retry" a mismatch above the policy's
     `fail_tolerance_deg` is a PipelineError instead, so the calling strategy retries; smaller
     ones stay warnings.
+
+    Given the request's text, a label showing a number the request does not state is a
+    warning too (ir/answer_audit.py); `answer_check` "off" skips that and "retry" makes it a
+    PipelineError. Without `request_text` the answer audit does not run.
     """
     if renderer is None:
         renderer = TikZRenderer()
@@ -129,7 +143,9 @@ async def run_ir_pipeline(
 
     diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
-    diagnostics = await asyncio.to_thread(collect_diagnostics, diagram_ir, sym, angle_policy)
+    diagnostics = await asyncio.to_thread(
+        collect_diagnostics, diagram_ir, sym, angle_policy, answer_check, request_text,
+    )
     warnings, results, angle_findings = diagnostics.warnings, diagnostics.check_results, diagnostics.angle_findings
 
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
@@ -144,6 +160,13 @@ async def run_ir_pipeline(
                 "Angle marks or labels contradict the drawn angles: " + "; ".join(f.message for f in gross),
                 warnings,
             )
+
+    if answer_check == "retry" and diagnostics.answer_findings:
+        raise PipelineError(
+            "Labels show numbers the request does not state: "
+            + "; ".join(f.message for f in diagnostics.answer_findings),
+            warnings,
+        )
 
     angle_failures = await asyncio.to_thread(check_render_angles, diagram_ir, sym)
     if angle_failures:

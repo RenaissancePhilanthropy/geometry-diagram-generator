@@ -998,7 +998,7 @@ async def test_render_diagram_tool_edits_using_previous_script_context(monkeypat
 
     prompts_seen: list[str] = []
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         prompts_seen.append(prompt)
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
@@ -1046,7 +1046,7 @@ async def test_render_diagram_survives_a_locality_diagnostic_crash(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1096,7 +1096,7 @@ async def test_render_diagram_attaches_locality_diagnostic_to_stack_frame():
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1352,7 +1352,7 @@ async def test_render_diagram_edits_via_search_replace_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1501,7 +1501,7 @@ async def test_render_diagram_edits_via_hashline_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1543,7 +1543,7 @@ async def test_render_diagram_edits_via_line_number_mode(monkeypatch):
 
     call_count = 0
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         nonlocal call_count
         call_count += 1
         return StructuredRunResult(
@@ -1593,7 +1593,7 @@ async def test_render_diagram_line_number_edit_ops_meta_counts_missing_expected_
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1650,7 +1650,7 @@ async def test_render_diagram_line_number_edit_ops_meta_survives_apply_failure(m
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1703,7 +1703,7 @@ async def test_render_diagram_retries_once_on_apply_failure_when_enabled(monkeyp
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1749,7 +1749,7 @@ async def test_render_diagram_does_not_retry_when_disabled(monkeypatch):
     from geometry_diagrams.strategies.ir_pipeline import StructuredRunResult
     from geometry_diagrams.ir.ir import DiagramIR
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return StructuredRunResult(
             diagram_ir=DiagramIR(define=[], render=[]),
             tikz="", svg="<svg>1</svg>",
@@ -1821,7 +1821,7 @@ async def test_render_diagram_retries_once_on_locality_violation_when_enabled(mo
 
     initial_script = "a = point(0, 0)\nb = point(1, 0)\ndraw_points(a, b)\n"
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return _make_two_point_result(initial_script)
 
     attempts = []
@@ -1869,7 +1869,7 @@ async def test_render_diagram_does_not_retry_on_locality_violation_when_disabled
 
     initial_script = "a = point(0, 0)\nb = point(1, 0)\ndraw_points(a, b)\n"
 
-    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5):
+    async def fake_run(self, prompt, model="test", renderer=None, sandbox_timeout_seconds=2.5, **kwargs):
         return _make_two_point_result(initial_script)
 
     attempts = []
@@ -2197,7 +2197,7 @@ async def test_retry_prompt_includes_warnings_and_warnings_alone_never_retry():
 
     calls = {"n": 0}
 
-    async def flaky_pipeline(diagram_ir, renderer=None):
+    async def flaky_pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["Skipping Draw for undefined object 'Q'"])
@@ -2233,7 +2233,7 @@ async def test_stale_warnings_not_in_prompt_after_generation_failure_python_full
 
     calls = {"n": 0}
 
-    async def flaky_pipeline(diagram_ir, renderer=None):
+    async def flaky_pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise PipelineError("Geometric checks failed: x", ["STALE-WARNING"])

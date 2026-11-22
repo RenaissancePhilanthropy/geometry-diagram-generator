@@ -103,7 +103,8 @@ def _mock_llm(responses):
 async def test_structured_end_to_end_renders_a_stack_with_solids_on():
     llm, _ = _mock_llm([_raw(_example())])
     with patch("geometry_diagrams.strategies.structured.get_chat_model", return_value=llm):
-        res = await StructureStrategy(features=SOLIDS).run("a block stack", renderer=SVGRenderer())
+        # The figure labels a column "2"; the request states it, so the answer audit has nothing to say.
+        res = await StructureStrategy(features=SOLIDS).run("a block stack with a column of 2 cubes", renderer=SVGRenderer())
     assert res.retries == 0 and res.warnings == [] and "<svg" in res.svg
 
 

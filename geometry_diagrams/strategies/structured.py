@@ -160,6 +160,7 @@ class StructuredPipelineState(TypedDict):
     extra_instructions: Optional[str]  # appended to the system prompt; absent/empty = none
     max_attempts: Optional[int]  # generation attempts; absent/None = MAX_RETRIES
     angle_policy: Optional[AnglePolicy]  # what to do with angle-audit findings; absent/None = warn at 1 degree
+    answer_check: str  # off | warn | retry for labels showing a number the request does not state; absent = warn
 
 
 async def _generate_ir_node(
@@ -254,8 +255,9 @@ async def _run_pipeline_node(state: StructuredPipelineState) -> dict:
         # Passed on only when set, so the call shape is unchanged without it.
 
         angle_kwargs = {"angle_policy": state["angle_policy"]} if state.get("angle_policy") else {}
+        answer_kwargs = {"answer_check": state.get("answer_check", "warn"), "request_text": state.get("prompt")}
 
-        result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs)
+        result = await _run_ir_pipeline(diagram_ir, renderer, **angle_kwargs, **answer_kwargs)
         result.retries = state["attempt"]
         return {"result": result}
     except Exception as e:
@@ -310,6 +312,7 @@ class StructureStrategy(SubstanceStrategy):
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
         angle_policy: "AnglePolicy | None" = None,
+        answer_check: str = "warn",
     ) -> StructuredRunResult:
         """max_attempts: generation attempts (default MAX_RETRIES).
 
@@ -348,6 +351,7 @@ class StructureStrategy(SubstanceStrategy):
             "extra_instructions": extra_instructions,
             "max_attempts": validate_max_attempts(max_attempts),
             "angle_policy": angle_policy,
+            "answer_check": answer_check,
         }
         final_state = await graph.ainvoke(
             initial_state, config=self._build_run_config(config, callbacks),

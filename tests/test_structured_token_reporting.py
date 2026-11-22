@@ -54,7 +54,7 @@ def _fake_result() -> StructuredRunResult:
 
 
 async def _run(responses, pipeline=None):
-    async def ok_pipeline(diagram_ir, renderer=None):
+    async def ok_pipeline(diagram_ir, renderer=None, **kwargs):
         return _fake_result()
 
     strategy = StructureStrategy()
@@ -118,7 +118,7 @@ async def test_cost_stays_none_when_the_provider_reports_none():
 async def test_state_for_a_retry_after_pipeline_failure_keeps_counting():
     calls = {"n": 0}
 
-    async def flaky_pipeline(diagram_ir, renderer=None):
+    async def flaky_pipeline(diagram_ir, renderer=None, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("Geometric checks failed")

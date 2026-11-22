@@ -483,7 +483,7 @@ async def test_each_ir_strategy_rejects_a_disabled_group_before_the_pipeline(str
     async def run(features):
         reached = []
 
-        async def fake_pipeline(diagram_ir, renderer=None):
+        async def fake_pipeline(diagram_ir, renderer=None, **kwargs):
             reached.append(diagram_ir)
             return StructuredRunResult(diagram_ir=diagram_ir, tikz="", svg="<svg/>", sym_table={}, sym_full={})
 
