@@ -570,8 +570,21 @@ def config_kwargs(config: "dict | None") -> dict:
 
     Strategy nodes pass their LangGraph run config down explicitly so callbacks
     (tracing, cost tracking) reach each LLM call whether or not the runtime
-    propagates context to the call site."""
+    propagates context to the call site.
+
+    The caller's `configurable` is dropped (see `inner_run_config`)."""
+    config = inner_run_config(config)
     return {"config": config} if config else {}
+
+
+def inner_run_config(config: "dict | None") -> dict:
+    """A copy of a caller's RunnableConfig without `configurable`.
+
+    `configurable` carries the caller's LangGraph state (thread_id, checkpoint
+    ids, a checkpointer), which addresses the caller's graph. Inheriting it makes
+    our own inner graphs, which have no checkpointer, try to use the caller's
+    (e.g. a SqliteSaver error). Callbacks, tags, metadata and run_name still flow."""
+    return {k: v for k, v in config.items() if k != "configurable"} if config else {}
 
 
 def extract_text(content) -> str:

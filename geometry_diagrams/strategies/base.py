@@ -68,8 +68,9 @@ class SubstanceStrategy(ABC):
         from langchain_core.callbacks import BaseCallbackManager
 
         from ..util.tracing import get_callback_handler
+        from .llm import inner_run_config
 
-        result = dict(config) if config else {}
+        result = inner_run_config(config)
 
         existing_callbacks = result.get("callbacks")
 
