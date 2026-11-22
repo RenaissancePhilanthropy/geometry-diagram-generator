@@ -102,6 +102,11 @@ _RA_SIZE = 8               # px — size of right-angle square leg
 _ANGLE_ARC_R = 20          # px — radius of angle arc marks
 _FONT_SIZE = 14            # px
 _LABEL_OFFSET = 12         # px — label distance from geometry
+
+# Version of the data-* attribute contract (docs/geometry-dsl-spec.md, "SVG data attributes"),
+# stamped on the root <svg> as data-contract. Bump it when an attribute is renamed, removed or
+# changes meaning; adding an attribute or role is not a bump.
+SVG_DATA_CONTRACT_VERSION = 1
 _ANGLE_LABEL_R = _ANGLE_ARC_R + _LABEL_OFFSET  # px — angle label beyond arc (ceiling)
 _ANGLE_LABEL_R_MIN = _ANGLE_ARC_R + 4  # px — floor, just clear of the arc mark
 _ANGLE_RAY_MARGIN = 2.0  # px — min gap between an angle label's box and its own bounding rays
@@ -371,6 +376,7 @@ def _ir_to_svg_impl(
         "width": fmt_num(svg_w),
         "height": fmt_num(svg_h),
         "viewBox": f"0 0 {fmt_num(svg_w)} {fmt_num(svg_h)}",
+        "data-contract": str(SVG_DATA_CONTRACT_VERSION),
     })
 
     # Arrow marker definitions (referenced by stroke attrs when "->" or "<->" style is used)

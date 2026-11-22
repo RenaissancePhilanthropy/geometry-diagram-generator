@@ -610,6 +610,74 @@ reserved). Both are `derived.RenderTimeDiagram` instances whose `model_dump`
 and `model_dump_json` raise `TypeError` ("dump the authored DiagramIR
 instead"); the authored `DiagramIR` serializes exactly as before.
 
+### SVG data attributes
+
+The SVG renderer (`to_svg.py`) tags what it draws with `data-*` attributes so
+that tools reading the SVG (checks, viewers, the eval gates) do not have to
+guess from geometry. The root `<svg>` carries `data-contract="N"`, the version
+of this contract (`SVG_DATA_CONTRACT_VERSION`). Renaming or removing an
+attribute, or changing what one means, bumps `N`; adding an attribute or a role
+does not, so read what you need and ignore the rest. The TikZ renderer emits
+none of this.
+
+Values that name an object are **IR ids**, not script variable names. A pydsl
+point that was never named in the IR has an id like `__pydsl_pt_3`; recover the
+mapping from the run's variable manifest, not from the SVG.
+
+Drawn objects (`Draw` and `DrawPoints`; `data-ir-id` is the id of the drawn object):
+
+| Element | Attributes | Notes |
+|---------|------------|-------|
+| `polygon` | `data-ir-id`, `data-type` (`triangle` or `polygon`), `data-vertices` | `data-vertices` is a comma-separated list of point ids, in order |
+| `polyline` | `data-ir-id`, `data-type="polyline"`, `data-vertices` | |
+| `line` | `data-ir-id`, `data-type` (`segment`, `line` or `ray`), `data-endpoints` | `data-endpoints` is `a,b` (point ids) |
+| `circle` | `data-ir-id`, `data-type="circle"`, `data-center` | `data-center` is omitted when the circle has no named center |
+| `circle` (point) | `data-ir-id`, `data-type="point"` | one per drawn point |
+| `ellipse` | `data-ir-id`, `data-type="ellipse"` | |
+| `path` | `data-ir-id`, `data-type` (`arc` or `sector`) | |
+
+Marks and fills, identified by `data-role`:
+
+| `data-role` | Other attributes | Notes |
+|-------------|------------------|-------|
+| `fill` | `data-ir-id` | the filled object |
+| `ordered-polygon` | (none) | see [Ordered polygons](#ordered-polygons) |
+| `mark-right-angle` | `data-angle` | `a,o,b`: point ids, `o` the vertex |
+| `mark-angle` | `data-angle`, optional `data-group` | `a,o,b` as above; `data-group` is the mark's group |
+| `mark-segment` | `data-segment`, optional `data-group`, optional `data-ticks` | tick or slash marks on one segment; `data-ticks` is present only when the count was given explicitly |
+| `mark-arc` | `data-arc`, optional `data-group`, optional `data-ticks` | tick marks on one arc or sector |
+| `brace` | (none) | |
+
+Labels (on a `<text>` element, or a `<g>` of glyph paths when the text needs
+math layout; the same attributes either way):
+
+| `data-role` | `data-for` | Notes |
+|-------------|------------|-------|
+| `label-point` | the point id | |
+| `label-angle` | `a,o,b` | |
+| `label-segment` | the segment, line, ray or arc id | |
+| `label-along-arc` | the arc id | |
+| `label-free-text` | (absent) | |
+| `label-brace` | (absent) | |
+
+Every label element also carries `data-label-text`, the text as authored
+(before any math layout), and `data-bbox`, `x0,y0,x1,y1` in SVG pixels: the
+renderer's estimate of the label's box, from the bundled font's glyph advances.
+It is an estimate, not a measurement of the painted glyphs.
+
+A label's position is the label element's own coordinates (`x`/`y` on a `<text>`).
+For `data-role="label-segment"` that is the label's own placement, not the
+segment's midpoint: compare it with the segment's `data-endpoints` coordinates
+to see where on the segment the label sits.
+
+With `debug_show_implicit=True` the renderer also emits an invisible
+(`opacity="0"`) element for every object that a mark references but that was
+never drawn on its own (a triangle side that carries a tick mark, say). These
+carry `data-ir-id` and `data-implicit="true"`, plus the attributes of their
+shape in the table above. They are absent by default.
+
+`tests/test_svg_data_contract.py` pins the roles and attributes above.
+
 ### Pipeline warnings
 
 A run collects a list of non-fatal `warnings` (on the result, and on a
