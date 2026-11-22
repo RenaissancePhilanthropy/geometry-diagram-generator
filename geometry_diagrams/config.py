@@ -119,7 +119,8 @@ class GeometryConfig:
     max_attempts: Optional[int] = None
     # A right-angle mark or angle label that contradicts the drawn angle is always a warning
     # (ir/angle_audit.py); with this on it also fails the attempt so the strategy retries.
-    # Every strategy. Env: GEOMETRY_RETRY_ON_ANGLE_MISMATCH. No effect on an edit turn.
+    # Every strategy. Env: GEOMETRY_RETRY_ON_ANGLE_MISMATCH. On a python_full edit it holds the
+    # edited script to it (full_rewrite retries, the other modes fail the edit), not the stored one.
     retry_on_angle_mismatch: bool = False
 
     @classmethod

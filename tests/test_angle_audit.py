@@ -164,3 +164,78 @@ async def test_python_full_retries_with_the_finding_in_the_next_prompt():
             renderer=SVGRenderer(), retry_on_angle_mismatch=True,
         )
     assert result.retries == 1 and "37°" in result.script
+
+
+# --- edit turns ------------------------------------------------------------------------
+
+from geometry_diagrams.strategies import python_full as pf  # noqa: E402
+
+EDIT_BASE = TRI + 't.angle_at(c).label("37°")\n'
+EDIT_WRONG = TRI + 't.angle_at(c).label("50°")\n'
+
+
+def _edit_with(monkeypatch, mode: str, new_script: str, **flags):
+    """Run a stateless python_full edit whose generator returns `new_script`."""
+    async def fake_gen(prompt, model, **kw):
+        if mode == "search_replace":
+            return [{"old_string": EDIT_BASE, "new_string": new_script}], 1, 1, None
+        raise AssertionError(mode)
+
+    monkeypatch.setattr(pf, "generate_search_replace", fake_gen)
+    return asyncio.run(PythonFullStrategy().edit(
+        "relabel", EDIT_BASE, model="m", renderer=SVGRenderer(), **flags))
+
+
+def test_a_mismatch_introduced_by_a_single_call_edit_is_a_warning_by_default(monkeypatch):
+    result = _edit_with(monkeypatch, "search_replace", EDIT_WRONG)
+    assert any('"50°"' in w for w in result.warnings)
+
+
+def test_the_flag_fails_a_single_call_edit_that_introduces_a_mismatch(monkeypatch):
+    # Like any failure of the edited script: a RuntimeError, no retry, nothing stored.
+    with pytest.raises(RuntimeError, match='contradict the drawn angles.*"50°"'):
+        _edit_with(monkeypatch, "search_replace", EDIT_WRONG, retry_on_angle_mismatch=True)
+
+
+def test_the_flag_does_not_block_an_edit_of_a_figure_that_was_already_wrong(monkeypatch):
+    """The baseline rerun of previous_script must not apply the flag, or a stored figure with a
+    bad mark could never be edited; only the edited script is held to it."""
+    async def fake_gen(prompt, model, **kw):
+        return [{"old_string": "50°", "new_string": "37°"}], 1, 1, None
+
+    monkeypatch.setattr(pf, "generate_search_replace", fake_gen)
+    result = asyncio.run(PythonFullStrategy().edit(
+        "fix the label", EDIT_WRONG, model="m", renderer=SVGRenderer(), retry_on_angle_mismatch=True))
+    assert "37°" in result.script and not any("angle" in w.lower() for w in result.warnings)
+
+
+def test_full_rewrite_edits_pass_the_flag_to_the_loop(monkeypatch):
+    seen = {}
+
+    async def fake_run(self, prompt, **kw):
+        seen.update(kw)
+        raise RuntimeError("stop")
+
+    async def baseline(script, renderer, *a, **kw):
+        from tests.test_stateless_edit import _result
+        return _result(script)
+
+    monkeypatch.setattr(pf, "_run_from_script", baseline)
+    monkeypatch.setattr(PythonFullStrategy, "run", fake_run)
+    with pytest.raises(RuntimeError, match="stop"):
+        asyncio.run(PythonFullStrategy().edit(
+            "relabel", EDIT_BASE, model="m", edit_generation_mode="full_rewrite", retry_on_angle_mismatch=True))
+    assert seen["retry_on_angle_mismatch"] is True
+
+
+@pytest.mark.asyncio
+async def test_facade_passes_the_flag_to_a_python_full_edit():
+    edit = AsyncMock(side_effect=RuntimeError("stop"))
+    with patch.object(PythonFullStrategy, "edit", edit):
+        for flag, expected in ((False, False), (True, True)):
+            with pytest.raises(RuntimeError, match="stop"):
+                await render_geometry_diagram(
+                    "relabel", previous_script=EDIT_BASE,
+                    config=GeometryConfig(strategy="python_full", renderer="svg", retry_on_angle_mismatch=flag),
+                )
+            assert edit.call_args.kwargs.get("retry_on_angle_mismatch", False) is expected

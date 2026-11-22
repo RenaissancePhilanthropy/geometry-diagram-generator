@@ -176,8 +176,9 @@ async def render_geometry_diagram(
         retry_on_angle_mismatch: Every strategy. A right-angle mark or angle label that
             contradicts the angle actually drawn is always reported in DiagramResult.warnings;
             with this True it instead fails the attempt, so the strategy retries with the
-            finding in its prompt. Overrides config.retry_on_angle_mismatch. Not applied to
-            an edit turn.
+            finding in its prompt. Overrides config.retry_on_angle_mismatch. An edit turn
+            is held to it for the edited script only (a full_rewrite edit retries; the
+            single-call modes fail the edit), never for the stored script it starts from.
         Neither option applies to an edit (previous_script) turn, which ignores them, and
         either one set True for the recipe or structured strategy raises ValueError.
     """
@@ -205,7 +206,6 @@ async def render_geometry_diagram(
     extra = {"extra_instructions": cfg.extra_instructions} if cfg.extra_instructions else {}
     if cfg.max_attempts:
         extra["max_attempts"] = cfg.max_attempts
-    # Run calls only: a python_full edit turn does not take it.
     run_only = {"retry_on_angle_mismatch": True} if cfg.retry_on_angle_mismatch else {}
 
     _check_previous_state(
@@ -227,6 +227,7 @@ async def render_geometry_diagram(
                     config=run_config,
                     callbacks=callbacks,
                     **extra,
+                    **run_only,
                 )
             else:
                 # Passed on only when set, so the call shape is unchanged without them.

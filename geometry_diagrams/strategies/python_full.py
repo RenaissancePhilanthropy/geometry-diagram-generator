@@ -1238,6 +1238,7 @@ async def _run_from_script(
     cost_usd: "float | None" = None,
     sandbox_timeout_seconds: float = SANDBOX_TIMEOUT_SECONDS,
     features: "frozenset[str]" = frozenset(),
+    retry_on_angle_mismatch: bool = False,
 ) -> StructuredRunResult:
     """Run the sandbox/compile/check/render pipeline directly on an
     already-final script (patch mode's output after apply_script_patch),
@@ -1254,7 +1255,12 @@ async def _run_from_script(
     same precedent as experimental_diagram_cookbook/use_pre_assert_step:
     the state dict below never sets that key, so _run_script_node's
     state.get("verify_labels_in_canvas", False) falls back to False for
-    every edit-mode rerun."""
+    every edit-mode rerun.
+
+    retry_on_angle_mismatch is the exception: an angle mark or label that
+    contradicts the drawn angle fails the edit (the caller sees the error, as for
+    any failure here). Callers pass it for the edited script only, never for the
+    baseline rerun of a stored script."""
     state: PythonFullPipelineState = {
         "prompt": "", "model_id": "", "enable_cache": False,
         "attempt": 0, "last_error": "", "script": script, "result": None,
@@ -1266,6 +1272,7 @@ async def _run_from_script(
         ]),
         "sandbox_timeout_seconds": sandbox_timeout_seconds,
         "features": frozenset(features),
+        "retry_on_angle_mismatch": retry_on_angle_mismatch,
     }
     update = await _run_script_node(state)
     result = update.get("result")
@@ -1570,6 +1577,7 @@ class PythonFullStrategy(SubstanceStrategy):
         config: "dict | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
+        retry_on_angle_mismatch: bool = False,
     ) -> "tuple[StructuredRunResult, Any]":
         """One edit turn against `top` (a dict with the previous turn's
         "script", "manifest" and "result"): generate the edit in
@@ -1588,11 +1596,15 @@ class PythonFullStrategy(SubstanceStrategy):
         # Likewise the enabled feature groups, so the edit prompt documents their API.
         if self.features:
             extra_kwargs["features"] = self.features
+        # Likewise the angle-audit failure flag, for the edited script's own pipeline run.
+        angle_kwargs = {"retry_on_angle_mismatch": True} if retry_on_angle_mismatch else {}
 
         async def _edit_full_rewrite(req: str) -> StructuredRunResult:
             full_request = build_edit_prompt(req, top["script"], top["manifest"])
             # Only a full rewrite loops; the other modes are one generation call each.
             attempts = {"max_attempts": max_attempts} if max_attempts else {}
+            if retry_on_angle_mismatch:
+                attempts["retry_on_angle_mismatch"] = True
             return await self.run(
                 full_request, model=model, renderer=renderer,
                 sandbox_timeout_seconds=sandbox_timeout_seconds,
@@ -1607,7 +1619,7 @@ class PythonFullStrategy(SubstanceStrategy):
             patched_script = apply_script_patch(top["script"], patch_text)
             return await _run_from_script(
                 patched_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features,
+                features=self.features, **angle_kwargs,
             )
 
         async def _edit_search_replace(req: str) -> StructuredRunResult:
@@ -1618,7 +1630,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_search_replace(top["script"], blocks)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features,
+                features=self.features, **angle_kwargs,
             )
 
         async def _edit_hashline(req: str) -> StructuredRunResult:
@@ -1630,7 +1642,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_hashline_ops(top["script"], ops, hash_algorithm)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features,
+                features=self.features, **angle_kwargs,
             )
 
         async def _edit_line_number(req: str) -> StructuredRunResult:
@@ -1652,7 +1664,7 @@ class PythonFullStrategy(SubstanceStrategy):
             new_script = apply_line_number_ops(top["script"], ops)
             return await _run_from_script(
                 new_script, renderer, in_tok, out_tok, cost, sandbox_timeout_seconds,
-                features=self.features,
+                features=self.features, **angle_kwargs,
             )
 
         _edit_handlers = {
@@ -1746,6 +1758,7 @@ class PythonFullStrategy(SubstanceStrategy):
         callbacks: "list | None" = None,
         extra_instructions: "str | None" = None,
         max_attempts: "int | None" = None,
+        retry_on_angle_mismatch: bool = False,
     ) -> StructuredRunResult:
         """Stateless edit of a previously generated pydsl script.
 
@@ -1818,6 +1831,7 @@ class PythonFullStrategy(SubstanceStrategy):
             config=run_config,
             extra_instructions=extra_instructions,
             max_attempts=max_attempts,
+            retry_on_angle_mismatch=retry_on_angle_mismatch,
         )
         return result
 
