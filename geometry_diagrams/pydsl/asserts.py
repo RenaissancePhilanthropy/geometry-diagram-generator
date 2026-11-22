@@ -82,6 +82,9 @@ def _run_assertion(builder: Builder, check: "ir.CheckBase", point_ids: list[str]
     builder._advance_sym()
     result = checks._check_one(check, builder._sym, checks.DEFAULT_TOL)
     if result.passed:
+        # Kept in the IR so it can be re-checked (the pipeline re-evaluates it on the final
+        # geometry, which is what is rendered).
+        builder._add_check(check)
         return
     msg = result.message
     # Longest id first: hidden ids share a common prefix and an incrementing

@@ -572,9 +572,8 @@ def verify_geometry_diagram(diagram_ir: dict) -> dict:
           mark or label contradicts the drawn angle. Failed `prefer` checks and other
           warnings do not make it False.
         - "checks": one {"kind", "level", "passed", "message"} per check the diagram
-          carries (message is empty on a pass). A python_full script's assert_* calls run
-          while the script executes and are not kept in the IR, so they do not appear here;
-          structured and recipe diagrams carry theirs.
+          carries (message is empty on a pass): for python_full, its passing assert_* calls,
+          which the builder keeps in the IR; for structured and recipe, the authored checks.
         - "angle_findings": each right-angle mark or angle label that disagrees with the
           drawn angle, as {"kind", "angle" [a, vertex, b point ids], "stated_deg",
           "drawn_deg", "message"} (see ir/angle_audit.py for which labels are read).

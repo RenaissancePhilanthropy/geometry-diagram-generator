@@ -92,28 +92,16 @@ def test_query_still_works_from_a_recipe_dsl():
 
 # --- verify -----------------------------------------------------------------------------
 
-def _with_distance_check(ir_dict: dict, expected: float) -> dict:
-    """The IR of a recipe/structured result carries its checks; a python_full one does not
-    (its asserts ran while the script did), so add the distance A-C by hand."""
-    with_check = copy.deepcopy(ir_dict)
-    segment = {"kind": "segment", "id": "ac_seg", "a": _point_id(ir_dict, "A"), "b": _point_id(ir_dict, "C")}
-    with_check["define"].append(segment)
-    with_check["checks"].append({"kind": "distance_equals", "seg": "ac_seg", "expected": expected})
-    return with_check
-
-
-def test_verify_a_clean_figure(ir_dict):
-    report = verify_geometry_diagram(_with_distance_check(ir_dict, 10))
+def test_verify_a_clean_figure_reports_the_scripts_own_asserts(ir_dict):
+    report = verify_geometry_diagram(ir_dict)
     assert report["ok"] is True and report["angle_findings"] == [] and report["invalid_angle_triples"] == []
-    assert [(c["kind"], c["passed"], c["level"]) for c in report["checks"]] == [("distance_equals", True, "must")]
-
-
-def test_a_python_full_ir_carries_no_checks(ir_dict):
-    assert ir_dict["checks"] == [] and verify_geometry_diagram(ir_dict)["checks"] == []
+    assert [(c["kind"], c["passed"], c["level"]) for c in report["checks"]] == [("distance_equals", True, "must")] * 2
 
 
 def test_verify_reports_a_failing_check(ir_dict):
-    report = verify_geometry_diagram(_with_distance_check(ir_dict, 7))
+    broken = copy.deepcopy(ir_dict)
+    broken["checks"][0]["expected"] = 7  # no longer holds
+    report = verify_geometry_diagram(broken)
     assert report["ok"] is False
     (failed,) = [c for c in report["checks"] if not c["passed"]]
     assert failed["message"] and failed["level"] == "must"

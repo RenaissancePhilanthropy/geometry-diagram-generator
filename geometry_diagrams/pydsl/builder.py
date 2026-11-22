@@ -29,6 +29,8 @@ class Builder:
     def __init__(self, op_cap: int = DEFAULT_OP_CAP) -> None:
         self._defs: list[DefStmt] = []
         self._render: list = []
+        # Checks of the assert_* calls that passed while the script ran; see _add_check.
+        self._checks: list = []
         self._coord_floats: dict[str, tuple[float, float]] = {}
         self._segment_cache: dict[frozenset, str] = {}
         # Prism id -> its bits -> corner id map, for segment edge reuse.
@@ -87,6 +89,15 @@ class Builder:
             )
         self._render.append(render_op)
 
+    def _add_check(self, check) -> None:
+        """Keep a passing assert_* check in the IR (it counts toward the op cap)."""
+        if len(self._defs) + len(self._render) + len(self._checks) >= self._op_cap:
+            raise OpCapExceededError(
+                f"script recorded more than {self._op_cap} ops "
+                "(this is a size cap, not a security boundary)"
+            )
+        self._checks.append(check)
+
     def _fresh_hidden_id(self, prefix: str) -> str:
         self._hidden_id_counter += 1
         return f"__pydsl_{prefix}_{self._hidden_id_counter}"
@@ -113,7 +124,10 @@ class Builder:
         return f"{kind}_{self._mark_group_counter}"
 
     def build(self) -> DiagramIR:
-        return DiagramIR(define=list(self._defs), render=list(self._render), canvas=self._canvas, styles=dict(self._styles))
+        return DiagramIR(
+            define=list(self._defs), render=list(self._render), checks=list(self._checks),
+            canvas=self._canvas, styles=dict(self._styles),
+        )
 
     def _get_or_create_segment(self, p_id: str, q_id: str) -> "Segment":
         from geometry_diagrams.ir.ir import Segment as SegmentDef
