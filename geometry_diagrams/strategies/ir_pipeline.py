@@ -71,6 +71,35 @@ def format_warnings_for_retry(warnings: list[str]) -> str:
     return f"Warnings from the previous attempt (not errors, but worth fixing):\n{bullets}"
 
 
+@dataclass
+class IRDiagnostics:
+    """Everything the pipeline learns about a compiled diagram before rendering it."""
+    check_results: list
+    warnings: list[str]
+    angle_findings: list
+
+
+def collect_diagnostics(diagram_ir: DiagramIR, sym: dict) -> IRDiagnostics:
+    """Run the diagram's checks and the warning producers against compiled geometry.
+
+    The one place that decides what counts as a warning (check-stage notes, a registered
+    kind's warnings, failed `prefer` checks, angle marks/labels contradicting the drawn
+    angle), shared by run_ir_pipeline and verify_geometry_diagram so they cannot drift.
+    CPU-bound; callers off the event loop thread use asyncio.to_thread."""
+    warnings: list[str] = []
+    results = run_checks(diagram_ir.checks, sym, warnings=warnings)
+    # Registered kinds' warnings that need render ops and geometry (a prism's
+    # dimension label contradicting its true length).
+    warnings.extend(DERIVED_REGISTRY.pipeline_warnings(diagram_ir, sym))
+    for r in results:
+        if not r.passed and r.check.level == "prefer":
+            logger.warning("Preferred check not satisfied: %s", r.message)
+            warnings.append(f"Preferred check not satisfied: {r.message}")
+    angle_findings = audit_angles(diagram_ir, sym)
+    warnings.extend(f.message for f in angle_findings)
+    return IRDiagnostics(results, warnings, angle_findings)
+
+
 async def run_ir_pipeline(
     diagram_ir: DiagramIR,
     renderer: Renderer | None = None,
@@ -95,18 +124,8 @@ async def run_ir_pipeline(
 
     diagram_ir = await asyncio.to_thread(resolve_angle_pairs, diagram_ir, sym)
 
-    warnings: list[str] = []
-    results = await asyncio.to_thread(run_checks, diagram_ir.checks, sym, warnings=warnings)
-    # Registered kinds' warnings that need render ops and geometry (a prism's
-    # dimension label contradicting its true length).
-    warnings.extend(await asyncio.to_thread(DERIVED_REGISTRY.pipeline_warnings, diagram_ir, sym))
-    for r in results:
-        if not r.passed and r.check.level == "prefer":
-            logger.warning("Preferred check not satisfied: %s", r.message)
-            warnings.append(f"Preferred check not satisfied: {r.message}")
-
-    angle_findings = await asyncio.to_thread(audit_angles, diagram_ir, sym)
-    warnings.extend(f.message for f in angle_findings)
+    diagnostics = await asyncio.to_thread(collect_diagnostics, diagram_ir, sym)
+    warnings, results, angle_findings = diagnostics.warnings, diagnostics.check_results, diagnostics.angle_findings
 
     must_failures = [r for r in results if not r.passed and r.check.level == "must"]
     if must_failures:

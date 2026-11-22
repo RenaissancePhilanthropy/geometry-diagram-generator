@@ -468,36 +468,149 @@ def edit_geometry_diagram_sync(prompt: str, previous_dsl: Optional[dict] = None,
     return run_sync(edit_geometry_diagram(prompt, previous_dsl, **kwargs))
 
 
-def query_geometry_diagram(dsl: dict, query_type: str, params: Optional[dict] = None) -> str:
-    """Query geometric properties of a diagram from its DSL (no LLM call, no I/O).
+def query_geometry_diagram(
+    dsl: Optional[dict],
+    query_type: str,
+    params: Optional[dict] = None,
+    *,
+    diagram_ir: Optional[dict] = None,
+) -> str:
+    """Query geometric properties of a diagram (no LLM call, no I/O).
 
-    Recompiles sym from dsl via the same deterministic pipeline the render path uses
-    (RecipeDSL.model_validate -> lower_to_ir -> compile_defs with the default Random(42)
-    seed), then dispatches through dispatch_query. Safe to call from a fresh process
-    each time — recompilation is bit-identical given the same dsl.
+    Give exactly one source. `dsl` is a recipe DSL: sym is recompiled from it via the same
+    deterministic pipeline the render path uses (RecipeDSL.model_validate -> lower_to_ir ->
+    compile_defs with the default Random(42) seed). `diagram_ir` is a serialized DiagramIR,
+    i.e. DiagramResult.diagram_ir, from any strategy (python_full and structured results
+    have no dsl): it is validated and compiled directly, with no model call and no sandbox
+    rerun. Either way sym goes through dispatch_query, and a fresh process gets bit-identical
+    answers for the same input.
 
     Args:
-        dsl: A dsl dict from a prior DiagramResult.dsl.
+        dsl: A dsl dict from a prior DiagramResult.dsl, or None when diagram_ir is given.
         query_type: One of "list_objects", "coordinate", "distance", "angle",
             "length", "radius", "area", "perimeter" (same vocabulary as
             RecipeStrategy.build_agent()'s query_diagram tool).
         params: Query arguments; see dispatch_query() for the shape per query_type.
+        diagram_ir: A DiagramResult.diagram_ir dict, or None when dsl is given. Object ids
+            are IR ids, which for python_full are opaque (`__pydsl_pt_3`). On this path
+            list_objects includes those ids, and a point can be named by its label text
+            instead ("A", "C") when the text labels exactly one point; a text that labels
+            several points is an error naming them.
 
     Returns:
         JSON string with the query result, or {"error": "..."} on failure
-        (e.g. malformed dsl, unresolvable definition, unknown object id).
+        (e.g. malformed input, unresolvable definition, unknown object id).
+
+    Raises:
+        ValueError: if not exactly one of dsl and diagram_ir is given.
     """
+    if (dsl is None) == (diagram_ir is None):
+        raise ValueError("query_geometry_diagram needs exactly one of dsl and diagram_ir")
     import pydantic
+    from .ir.errors import IRCompileError
+    from .ir.ir import DiagramIR
+    from .ir.to_sympy import compile_defs
     from .recipe.dsl import RecipeDSL
     from .recipe.lower import lower_to_ir, LoweringError
-    from .ir.to_sympy import compile_defs
-    from .ir.errors import IRCompileError
     from .strategies.structured import dispatch_query
 
     try:
-        parsed = RecipeDSL.model_validate(dsl)
-        diagram_ir = lower_to_ir(parsed)
-        sym = compile_defs(diagram_ir)
+        if diagram_ir is not None:
+            diagram = DiagramIR.model_validate(diagram_ir)
+            sym = compile_defs(diagram)
+        else:
+            sym = compile_defs(lower_to_ir(RecipeDSL.model_validate(dsl)))
     except (pydantic.ValidationError, LoweringError, IRCompileError) as e:
         return json.dumps({"error": str(e)})
-    return dispatch_query(sym, query_type, params or {})
+    if diagram_ir is None:
+        return dispatch_query(sym, query_type, params or {})
+    # A python_full figure has only opaque `__pydsl_*` ids, so on this path list_objects
+    # includes them and a point may be named by the text of its label.
+    if query_type == "list_objects":
+        return json.dumps({
+            obj_id: type(obj).__name__.removesuffix("2D") for obj_id, obj in sym.items()
+            if not obj_id.startswith("__") or obj_id.startswith("__pydsl_")
+        })
+    try:
+        resolved = _resolve_point_labels(diagram, sym, params or {})
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+    return dispatch_query(sym, query_type, resolved)
+
+
+def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict:
+    """`params` with every string that is not an object id but is the text of exactly one
+    point label replaced by that point's id. ValueError when a text labels several points."""
+    from .ir.ir import LabelPoint
+
+    labeled: dict[str, set[str]] = {}
+    for op in diagram.render:
+        if isinstance(op, LabelPoint) and op.text:
+            labeled.setdefault(op.text, set()).add(op.p)
+    resolved = {}
+    for key, value in params.items():
+        if isinstance(value, str) and value not in sym and value in labeled:
+            ids = sorted(labeled[value])
+            if len(ids) > 1:
+                raise ValueError(f"label {value!r} is on several points ({', '.join(ids)}); use one of those ids")
+            value = ids[0]
+        resolved[key] = value
+    return resolved
+
+
+def verify_geometry_diagram(diagram_ir: dict) -> dict:
+    """Audit a finished diagram's geometry (no LLM call, no I/O): the same checks and warnings
+    a render run applies, reported instead of acted on.
+
+    Args:
+        diagram_ir: DiagramResult.diagram_ir, from any strategy.
+
+    Returns:
+        A JSON-serializable dict:
+        - "ok": True when no `must` check failed, no angle triple is invalid and no angle
+          mark or label contradicts the drawn angle. Failed `prefer` checks and other
+          warnings do not make it False.
+        - "checks": one {"kind", "level", "passed", "message"} per check the diagram
+          carries (message is empty on a pass). A python_full script's assert_* calls run
+          while the script executes and are not kept in the IR, so they do not appear here;
+          structured and recipe diagrams carry theirs.
+        - "angle_findings": each right-angle mark or angle label that disagrees with the
+          drawn angle, as {"kind", "angle" [a, vertex, b point ids], "stated_deg",
+          "drawn_deg", "message"} (see ir/angle_audit.py for which labels are read).
+        - "invalid_angle_triples": angle marks whose arms are not on lines through the vertex.
+        - "warnings": every pipeline warning the diagram produces without rendering it.
+        On input that does not validate or compile: {"ok": False, "error": "..."}.
+    """
+    import pydantic
+    from .ir.angle_pairs import resolve_angle_pairs
+    from .ir.checks import check_render_angles
+    from .ir.errors import IRCompileError
+    from .ir.ir import DiagramIR
+    from .ir.to_sympy import compile_defs
+    from .strategies.ir_pipeline import collect_diagnostics
+
+    try:
+        diagram = DiagramIR.model_validate(diagram_ir)
+        sym = compile_defs(diagram)
+        diagram = resolve_angle_pairs(diagram, sym)
+    except (pydantic.ValidationError, IRCompileError) as e:
+        return {"ok": False, "error": str(e)}
+    diagnostics = collect_diagnostics(diagram, sym)
+    invalid_triples = check_render_angles(diagram, sym)
+    checks = [
+        {"kind": r.check.kind, "level": r.check.level, "passed": r.passed, "message": r.message}
+        for r in diagnostics.check_results
+    ]
+    findings = [
+        {"kind": f.kind, "angle": list(f.angle), "stated_deg": f.stated_deg, "drawn_deg": f.drawn_deg,
+         "message": f.message}
+        for f in diagnostics.angle_findings
+    ]
+    ok = (
+        all(c["passed"] or c["level"] != "must" for c in checks)
+        and not invalid_triples and not findings
+    )
+    return {
+        "ok": ok, "checks": checks, "angle_findings": findings,
+        "invalid_angle_triples": [str(t) for t in invalid_triples], "warnings": diagnostics.warnings,
+    }

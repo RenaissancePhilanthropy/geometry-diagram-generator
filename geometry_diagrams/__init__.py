@@ -7,7 +7,8 @@ Public API:
   edit_geometry_diagram        — async convenience wrapper for editing an existing diagram
   edit_geometry_diagram_sync   — sync wrapper for edit_geometry_diagram
   query_diagram                — LangChain @tool to query a diagram from its dsl (no LLM call)
-  query_geometry_diagram       — plain function backing query_diagram
+  query_geometry_diagram       — plain function backing query_diagram; takes a dsl or a diagram_ir
+  verify_geometry_diagram      — audit DiagramResult.diagram_ir: checks, angle findings, warnings (no LLM call)
   select_recipes               — async: run only the cheap recipe-selection step
   select_recipes_sync          — sync wrapper for select_recipes
   DiagramResult                — result dataclass (svg, tikz, input_tokens, output_tokens,
@@ -44,6 +45,7 @@ _LAZY_EXPORTS = {
     "edit_geometry_diagram_sync": ".facade",
     "query_diagram": ".facade",
     "query_geometry_diagram": ".facade",
+    "verify_geometry_diagram": ".facade",
     "DiagramResult": ".facade",
     "GeometryConfig": ".config",
     "GenerationFailedError": ".errors",
