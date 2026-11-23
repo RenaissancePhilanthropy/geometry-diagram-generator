@@ -32,6 +32,88 @@ def test_extract_cost_ignores_non_numeric_values():
     assert extract_cost(AIMessage(content="x")) is None
 
 
+def _gemini(model: str, in_tok: int, out_tok: int, **meta) -> AIMessage:
+    return AIMessage(
+        content="x",
+        response_metadata={"model_name": model, "model_provider": "google_genai", **meta},
+        usage_metadata={"input_tokens": in_tok, "output_tokens": out_tok, "total_tokens": in_tok + out_tok},
+    )
+
+
+def test_extract_cost_prices_google_usage_from_genai_prices():
+    pytest.importorskip("genai_prices")
+    # gemini-4-hydrogen is $1.50/M input, $7.50/M output (genai-prices data).
+    cost = extract_cost(_gemini("gemini-4-hydrogen", 1_000_000, 100_000))
+    assert cost == pytest.approx(1.5 + 0.75)
+
+
+def test_extract_cost_prefers_provider_reported_cost_over_estimate():
+    msg = _gemini("gemini-4-hydrogen", 1000, 1000, token_usage={"cost": 0.25})
+    assert extract_cost(msg) == 0.25
+
+
+def test_extract_cost_is_none_for_unknown_google_model_or_missing_usage():
+    pytest.importorskip("genai_prices")
+    assert extract_cost(_gemini("gemini-99-nonexistent", 10, 10)) is None
+    no_usage = AIMessage(content="x", response_metadata={"model_name": "gemini-4-hydrogen", "model_provider": "google_genai"})
+    assert extract_cost(no_usage) is None
+
+
+def _claude(model: str, in_tok: int, out_tok: int, **details) -> AIMessage:
+    return AIMessage(
+        content="x",
+        response_metadata={"model_name": model, "model_provider": "anthropic"},
+        usage_metadata={
+            "input_tokens": in_tok, "output_tokens": out_tok, "total_tokens": in_tok + out_tok,
+            "input_token_details": details,
+        },
+    )
+
+
+def test_extract_cost_prices_anthropic_usage_including_cache_tokens():
+    pytest.importorskip("genai_prices")
+    plain = extract_cost(_claude("claude-sonnet-5-5", 10_000, 1_000))
+    cached = extract_cost(_claude("claude-sonnet-5-5", 10_000, 1_000, cache_read=8_000, cache_creation=1_000))
+    assert plain == pytest.approx(0.03)
+    # input_tokens already includes the cache tokens; cache reads are cheaper than fresh input.
+    assert cached is not None and cached < plain
+
+
+def test_extract_cost_sums_anthropic_ttl_specific_cache_writes():
+    pytest.importorskip("genai_prices")
+    split = extract_cost(_claude(
+        "claude-sonnet-5-5", 10_000, 1_000,
+        cache_creation=0, ephemeral_5m_input_tokens=600, ephemeral_1h_input_tokens=400,
+    ))
+    generic = extract_cost(_claude("claude-sonnet-5-5", 10_000, 1_000, cache_creation=1_000))
+    assert split == pytest.approx(generic)
+
+
+def test_extract_cost_does_not_estimate_for_openai_compatible_endpoints():
+    # ChatOpenAI reports model_provider "openai" for every OpenAI-compatible endpoint
+    # (Baseten, Tinker, Mantle, ...), so a bare name like gpt-oss-120b would be priced
+    # at OpenAI's rates even when another host served it.
+    msg = AIMessage(
+        content="x",
+        response_metadata={"model_name": "gpt-oss-120b", "model_provider": "openai"},
+        usage_metadata={"input_tokens": 1000, "output_tokens": 1000, "total_tokens": 2000},
+    )
+    assert extract_cost(msg) is None
+
+
+def test_extract_cost_is_none_when_genai_prices_is_not_installed(monkeypatch):
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *a, **k):
+        if name.split(".")[0] == "genai_prices":
+            raise ImportError(name)
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert extract_cost(_gemini("gemini-4-hydrogen", 1000, 1000)) is None
+
+
 # --- pre-assert step usage ---------------------------------------------------
 
 
@@ -154,3 +236,51 @@ async def test_retry_on_apply_failure_still_fires_on_apply_failure():
     llm, err = await _edit_with_replies([_NOT_FOUND, _GOOD])
     assert err is None
     assert llm.ainvoke.await_count == 2
+
+
+# --- real-OpenAI estimate (flagged by DirectChatOpenAI) -----------------------
+
+
+def _openai(model: str, in_tok: int, out_tok: int, details=None, **meta) -> AIMessage:
+    return AIMessage(
+        content="x",
+        response_metadata={"model_name": model, "model_provider": "openai", **meta},
+        usage_metadata={
+            "input_tokens": in_tok, "output_tokens": out_tok, "total_tokens": in_tok + out_tok,
+            "input_token_details": details or {},
+        },
+    )
+
+
+def test_extract_cost_prices_flagged_openai_with_snapshot_name_and_cache_reads():
+    pytest.importorskip("genai_prices")
+    plain = extract_cost(_openai("gpt-5-2025-08-07", 10_000, 1_000, openai_direct=True))
+    cached = extract_cost(_openai("gpt-5-2025-08-07", 10_000, 1_000, {"cache_read": 8_000}, openai_direct=True))
+    assert plain == pytest.approx(0.0225)
+    assert cached == pytest.approx(0.0035 + 0.01)  # 8k cached at 0.125/M, 2k at 1.25/M, 1k out at 10/M
+
+
+def test_extract_cost_applies_openai_service_tier_to_price_and_cache_reads():
+    pytest.importorskip("genai_prices")
+    default = extract_cost(_openai("gpt-5-2025-08-07", 10_000, 1_000, {"cache_read": 8_000}, openai_direct=True))
+    flex = extract_cost(_openai(
+        "gpt-5-2025-08-07", 10_000, 1_000, {"flex_cache_read": 8_000},
+        openai_direct=True, service_tier="flex",
+    ))
+    priority = extract_cost(_openai(
+        "gpt-5-2025-08-07", 10_000, 1_000, {"priority_cache_read": 8_000},
+        openai_direct=True, service_tier="priority",
+    ))
+    assert flex == pytest.approx(default / 2)
+    assert priority == pytest.approx(default * 2)
+
+
+def test_extract_cost_is_none_for_flagged_openai_model_genai_prices_cannot_price():
+    pytest.importorskip("genai_prices")
+    assert extract_cost(_openai("ft:gpt-4o:acme::abc", 10, 10, openai_direct=True)) is None
+    # cache_read > input_tokens is inconsistent usage; genai-prices raises ValueError
+    assert extract_cost(_openai("gpt-5-2025-08-07", 10, 10, {"cache_read": 99}, openai_direct=True)) is None
+
+
+def test_extract_cost_ignores_a_non_true_openai_direct_flag():
+    assert extract_cost(_openai("gpt-5-2025-08-07", 10, 10, openai_direct="yes")) is None

@@ -178,7 +178,10 @@ def test_model_specific_kwargs_applies_reasoning_effort_none_to_gpt_6_luna_only(
     /v1/chat/completions with the model's default reasoning_effort ("Function
     tools with reasoning_effort are not supported ... set reasoning_effort to
     'none'."). gpt-5.6-luna has the same requirement (next test)."""
-    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+    # Real-OpenAI ids build DirectChatOpenAI, so route the factory to the mock too.
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai, patch(
+        "geometry_diagrams.strategies.llm._direct_openai_class", return_value=mock_chat_openai,
+    ):
         get_chat_model("openai:gpt-6-luna")
         _, kwargs = mock_chat_openai.call_args
     assert kwargs["reasoning_effort"] == "none"
@@ -189,7 +192,10 @@ def test_model_specific_kwargs_gpt_5_6_luna_uses_reasoning_effort_none():
     reasoning_effort ("Function tools with reasoning_effort are not supported
     ... set reasoning_effort to 'none'."), same as gpt-6-luna; its old "low"
     latency tuning 400'd RecipeStrategy's forced tool call."""
-    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai:
+    # Real-OpenAI ids build DirectChatOpenAI, so route the factory to the mock too.
+    with patch("langchain_openai.ChatOpenAI") as mock_chat_openai, patch(
+        "geometry_diagrams.strategies.llm._direct_openai_class", return_value=mock_chat_openai,
+    ):
         get_chat_model("openai:gpt-5.6-luna")
         _, kwargs = mock_chat_openai.call_args
     assert kwargs["reasoning_effort"] == "none"
@@ -337,3 +343,113 @@ def test_missing_provider_package_names_the_extra_to_install(monkeypatch, model_
     monkeypatch.setitem(sys.modules, module, None)  # makes `import module` fail
     with pytest.raises(ImportError, match=rf"geometry-diagrams\[{extra}\]"):
         get_chat_model(model_id)
+
+
+# --- DirectChatOpenAI: real OpenAI responses carry an `openai_direct` flag ----
+
+import asyncio as _asyncio
+from types import SimpleNamespace as _NS
+
+
+def _openai_model(monkeypatch, model_id: str = "openai:gpt-5", **env):
+    for var in ("OPENAI_API_BASE", "OPENAI_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("TESTHOST_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("TESTHOST_API_KEY", "k")
+    return get_chat_model(model_id)
+
+
+def _is_direct(llm) -> bool:
+    return type(llm).__name__ == "DirectChatOpenAI"
+
+
+@pytest.mark.parametrize("model_id", ["openai:gpt-5", "openai-responses:gpt-5"])
+def test_real_openai_routes_to_the_flagging_subclass(monkeypatch, model_id):
+    assert _is_direct(_openai_model(monkeypatch, model_id))
+
+
+@pytest.mark.parametrize("model_id,env", [
+    ("testhost:gpt-oss-120b", {}),
+    ("baseten:gpt-oss-120b", {"BASETEN_API_KEY": "k"}),
+    ("openai:gpt-5", {"OPENAI_BASE_URL": "https://example.test/v1"}),
+    ("openai:gpt-5", {"OPENAI_API_BASE": "https://example.test/v1"}),
+])
+def test_other_openai_compatible_hosts_stay_plain_chatopenai(monkeypatch, model_id, env):
+    assert not _is_direct(_openai_model(monkeypatch, model_id, **env))
+
+
+def test_openai_with_explicit_base_url_stays_plain_chatopenai(monkeypatch):
+    for var in ("OPENAI_API_BASE", "OPENAI_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    assert not _is_direct(get_chat_model("openai:gpt-5", base_url="https://example.test/v1"))
+
+
+_CHAT_COMPLETION = {
+    "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "gpt-5-2025-08-07",
+    "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "hi"}}],
+    "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15,
+              "prompt_tokens_details": {"cached_tokens": 4}},
+}
+
+
+def _chat_client(payload):
+    raw = _NS(parse=lambda: _NS(model_dump=lambda: payload, **payload), headers={})
+    return _NS(with_raw_response=_NS(create=lambda **kw: raw), create=lambda **kw: _NS(model_dump=lambda: payload))
+
+
+def test_flag_survives_invoke_and_keeps_model_provider_and_usage(monkeypatch):
+    llm = _openai_model(monkeypatch)
+    llm.client = SimpleNamespaceCreate(_CHAT_COMPLETION)
+    msg = llm.invoke("hello")
+    assert msg.response_metadata["openai_direct"] is True
+    assert msg.response_metadata["model_provider"] == "openai"  # content_blocks translation keys off this
+    assert msg.response_metadata["model_name"] == "gpt-5-2025-08-07"
+    assert msg.usage_metadata["input_token_details"]["cache_read"] == 4
+    assert msg.content_blocks  # translator still resolves
+
+
+def SimpleNamespaceCreate(payload):
+    from openai.types.chat import ChatCompletion
+    completion = ChatCompletion.model_validate(payload)
+    raw = _NS(parse=lambda: completion, headers={})
+    return _NS(with_raw_response=_NS(create=lambda **kw: raw), create=lambda **kw: completion)
+
+
+def test_flag_survives_async_invoke(monkeypatch):
+    from openai.types.chat import ChatCompletion
+    llm = _openai_model(monkeypatch)
+    completion = ChatCompletion.model_validate(_CHAT_COMPLETION)
+
+    async def create(**kw):
+        return _NS(parse=lambda: completion, headers={})
+
+    llm.async_client = _NS(with_raw_response=_NS(create=create), create=create)
+    msg = _asyncio.run(llm.ainvoke("hello"))
+    assert msg.response_metadata["openai_direct"] is True
+
+
+def test_flag_survives_streaming_and_merges_once(monkeypatch):
+    from openai.types.chat import ChatCompletionChunk
+    llm = _openai_model(monkeypatch)
+    base = {"id": "c1", "object": "chat.completion.chunk", "created": 0, "model": "gpt-5-2025-08-07"}
+    chunks = [
+        ChatCompletionChunk.model_validate({**base, "choices": [{"index": 0, "delta": {"role": "assistant", "content": "a"}}]}),
+        ChatCompletionChunk.model_validate({**base, "choices": [{"index": 0, "delta": {"content": "b"}}]}),
+        ChatCompletionChunk.model_validate({**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                                            "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}}),
+    ]
+
+    class _Stream:
+        response = _NS(headers={})
+        def __enter__(self): return iter(chunks)
+        def __exit__(self, *a): return False
+
+    llm.client = _NS(create=lambda **kw: _Stream())
+    merged = None
+    for chunk in llm.stream("hello", stream_usage=True):
+        merged = chunk if merged is None else merged + chunk
+    assert merged.response_metadata["openai_direct"] is True

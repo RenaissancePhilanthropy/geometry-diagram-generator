@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import functools
 from contextvars import ContextVar
 import os
 
@@ -422,7 +423,71 @@ def get_chat_model(model_id: str, enable_cache: bool = False, **kwargs) -> BaseC
     _apply_model_options(model_id, kwargs, provider.get("default_kwargs"))
     for key, value in provider.get("default_kwargs", {}).items():
         kwargs.setdefault(key, value)
+    if _is_real_openai(model_id, provider, kwargs):
+        ChatOpenAI = _direct_openai_class()
     return _construct(lambda: ChatOpenAI(model=model_name, **kwargs), model_id, kwargs)
+
+
+def _is_real_openai(model_id: str, provider: dict, kwargs: dict) -> bool:
+    """True when the OpenAI backend talks to api.openai.com itself: the plain
+    `openai:`/`openai-responses:` prefixes with no base URL from the provider
+    entry, the kwargs, or the two env vars langchain-openai and the openai SDK
+    read. Every other OpenAI-compatible host (baseten, tinker, mantle, vercel,
+    a {PREFIX}_BASE_URL provider, OPENAI_BASE_URL pointing elsewhere) is False."""
+    return (
+        model_id.split(":", 1)[0] in ("openai", "openai-responses")
+        and not provider.get("base_url")
+        and not kwargs.get("base_url") and not kwargs.get("openai_api_base")
+        and not os.environ.get("OPENAI_API_BASE") and not os.environ.get("OPENAI_BASE_URL")
+    )
+
+
+def _direct_openai_class():
+    """The ChatOpenAI subclass for api.openai.com (see _build_direct_openai_class)."""
+    from langchain_openai import ChatOpenAI
+    return _build_direct_openai_class(ChatOpenAI)
+
+
+@functools.cache
+def _build_direct_openai_class(ChatOpenAI):
+    """A ChatOpenAI that marks every response it gets from api.openai.com with
+    response_metadata["openai_direct"] = True. ChatOpenAI reports model_provider
+    "openai" for every OpenAI-compatible host, so without this mark a response
+    cannot be priced as OpenAI's. The mark is a bool under its own key, not a new
+    model_provider value: content_blocks picks its translator from model_provider,
+    and merge_dicts concatenates equal strings when streamed chunks are summed
+    but merges equal bools cleanly. The four _generate/_stream hooks are the
+    documented override points; the Responses API path goes through them too
+    (it does not go through _create_chat_result). Built lazily, keyed on the base
+    class, because langchain-openai is an optional dependency."""
+
+    def mark(message) -> None:
+        message.response_metadata["openai_direct"] = True
+
+    class DirectChatOpenAI(ChatOpenAI):
+        def _generate(self, *args, **kwargs):
+            result = super()._generate(*args, **kwargs)
+            for generation in result.generations:
+                mark(generation.message)
+            return result
+
+        async def _agenerate(self, *args, **kwargs):
+            result = await super()._agenerate(*args, **kwargs)
+            for generation in result.generations:
+                mark(generation.message)
+            return result
+
+        def _stream(self, *args, **kwargs):
+            for chunk in super()._stream(*args, **kwargs):
+                mark(chunk.message)
+                yield chunk
+
+        async def _astream(self, *args, **kwargs):
+            async for chunk in super()._astream(*args, **kwargs):
+                mark(chunk.message)
+                yield chunk
+
+    return DirectChatOpenAI
 
 
 def make_system_message(content: str, enable_cache: bool = False, model_id: str = "") -> SystemMessage:
@@ -696,12 +761,25 @@ def extract_usage(response: AIMessage) -> tuple[int, int]:
     return usage.get("input_tokens", 0), usage.get("output_tokens", 0)
 
 
+# LangChain's response_metadata["model_provider"] -> genai-prices provider_id,
+# for the providers whose responses carry no cost but whose model_provider names
+# exactly one pricing source. "openai" is deliberately absent: ChatOpenAI reports
+# it for every OpenAI-compatible endpoint (Baseten, Tinker, Mantle, ...), so a bare
+# name like gpt-oss-120b would be priced at OpenAI's rates whichever host served it.
+# A response from api.openai.com itself is told apart by the openai_direct mark
+# that _direct_openai_class() stamps on it.
+_GENAI_PRICES_PROVIDERS = {"anthropic": "anthropic", "google_genai": "google"}
+
+
 def extract_cost(response: AIMessage) -> "float | None":
-    """Extract real per-request cost (USD) from an AIMessage, if the provider
-    reported one. Currently only OpenRouter does (via the extra_body opt-in
-    in _GENERIC_DEFAULT_KWARGS, surfaced as response_metadata["token_usage"]
-    ["cost"]) — other providers (e.g. Bedrock) return None since they don't
-    report cost at the API level at all."""
+    """Extract per-request cost (USD) from an AIMessage. A cost the provider
+    reported is used as is: currently only OpenRouter does (via the extra_body
+    opt-in in _GENERIC_DEFAULT_KWARGS, surfaced as response_metadata
+    ["token_usage"]["cost"]). Anthropic, Google and OpenAI report tokens only, so their
+    responses are priced from token usage with the optional `genai-prices`
+    package (an estimate), as is a response from api.openai.com itself (see
+    _direct_openai_class); other providers (e.g. Bedrock, OpenAI-compatible
+    endpoints) return None."""
     metadata = getattr(response, "response_metadata", None)
     token_usage = metadata.get("token_usage") if isinstance(metadata, dict) else None
     cost = token_usage.get("cost") if isinstance(token_usage, dict) else None
@@ -714,4 +792,52 @@ def extract_cost(response: AIMessage) -> "float | None":
             return float(cost)
         except ValueError:
             return None
-    return None
+    return _estimate_cost(response)
+
+
+def _estimate_cost(response: AIMessage) -> "float | None":
+    """Price a response from its token usage (output_tokens already includes
+    thinking tokens, which both providers bill as output; input_tokens already
+    includes cached tokens, as genai-prices expects). None when the provider is
+    not in _GENAI_PRICES_PROVIDERS, the response has no usage, `genai-prices` is
+    not installed, or it does not know the model."""
+    metadata = getattr(response, "response_metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    if metadata.get("openai_direct") is True:
+        provider_id = "openai"
+    else:
+        provider_id = _GENAI_PRICES_PROVIDERS.get(metadata.get("model_provider"))
+    model_name = metadata.get("model_name")
+    usage = getattr(response, "usage_metadata", None)
+    if provider_id is None or not isinstance(model_name, str) or not usage:
+        return None
+    try:
+        from genai_prices import Usage, calc_price
+    except ImportError:
+        return None
+    details = usage.get("input_token_details") or {}
+    # OpenAI prefixes the cache key with the service tier ("flex_cache_read"); reading
+    # only "cache_read" would bill those cached tokens at the full input rate.
+    tier = metadata.get("service_tier")
+    tier = tier if tier in ("flex", "priority") else None
+    cache_read = details.get(f"{tier}_cache_read" if tier else "cache_read", 0)
+    # Anthropic splits cache writes by TTL and zeroes the generic key when it does.
+    cache_write = details.get("cache_creation", 0) or (
+        details.get("ephemeral_5m_input_tokens", 0) + details.get("ephemeral_1h_input_tokens", 0)
+    )
+    try:
+        price = calc_price(
+            Usage(
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                cache_read_tokens=cache_read,
+                cache_write_tokens=cache_write,
+            ),
+            model_name, provider_id=provider_id,
+            # Without this a flex/priority request is silently priced as the default tier.
+            price_context={"service_tier": tier} if tier else None,
+        )
+    except (LookupError, ValueError):  # unknown model; inconsistent usage (cache > input)
+        return None
+    return float(price.total_price)

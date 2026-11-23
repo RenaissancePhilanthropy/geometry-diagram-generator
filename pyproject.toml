@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 # Providers other than Anthropic (strategies/llm.py imports them lazily).
 openai = ["langchain-openai>=1.3.0"]
-google = ["langchain-google-genai>=4.2.5"]
+google = ["langchain-google-genai>=4.2.5", "genai-prices>=0.2.5"]
 # main.py (the demo server) and the eval viewer.
 server = [
     "python-dotenv>=1.2.2",
@@ -43,6 +43,7 @@ packages = ["geometry_diagrams"]
 dev = [
     "cairosvg>=2.9.0",
     "langchain-google-genai>=4.2.5",
+    "genai-prices>=0.2.5",
     "langchain-openai>=1.3.0",
     "langfuse>=4.0,<5",
     "pytest>=9.0.3",
