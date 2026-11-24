@@ -19,6 +19,7 @@ from .render_util import (
     parallel_chevron_flips,
     tikz_color,
     translate_style_colors,
+    unused_style_warnings,
     BOUNDS_PADDING,
     ARC_STMT_TYPES,
     arc_params,
@@ -190,6 +191,7 @@ def ir_to_tikz(diagram: ir.DiagramIR, sym: SymTable, warnings: list[str] | None 
     # \definecolor'd at the top of the body (before any use), named colors and
     # xcolor mixes pass through; unrecognized ones warn and pass through.
     tikz_styles = translate_style_colors(_styles, lambda v: tikz_color(v)[0], warnings)
+    unused_style_warnings(_styles, diagram.render, warnings)
     color_definitions = _tikz_color_definitions(_styles, diagram.render)
     seg_groups: list[str] = []
     for op in sorted_ops:

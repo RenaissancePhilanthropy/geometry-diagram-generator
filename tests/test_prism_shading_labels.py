@@ -81,10 +81,10 @@ def _solid_render(side: str = "right") -> list:
     ]
 
 
-def _tint_styles() -> dict:
-    return {f"tint_{face}": {"fill": color} for face, color in TINTS.items()} | {
-        "tint_left": {"fill": TINTS["right"]}
-    }
+def _tint_styles(side: str = "right") -> dict:
+    """Tint styles for the faces `_solid_render` fills from ``side``: an entry
+    no op names is reported as an unused style."""
+    return {f"tint_{face}": {"fill": TINTS[face]} for face in VISIBLE[side] if face in TINTS}
 
 
 def _svg(d: ir.DiagramIR, warnings: list[str] | None = None) -> str:
@@ -228,7 +228,7 @@ def test_label_centered_on_the_prism_sits_at_the_silhouette_center(view):
     d = _diagram(
         prism=_prism(**kwargs),
         render=[*_solid_render(side), ir.LabelFreeText(text="X", centroid_of="P")],
-        styles=_tint_styles(),
+        styles=_tint_styles(side),
     )
     sym = compile_defs(d)
     root = ET.fromstring(ir_to_svg(d, sym))
@@ -579,7 +579,7 @@ def test_tikz_compile_smoke_shaded_labeled_prism(view):
             ir.LabelFreeText(text="33 square units", centroid_of="P_bottom"),
             ir.LabelFreeText(text="V", centroid_of="P"),
         ],
-        styles=_tint_styles(),
+        styles=_tint_styles(side),
     )
     warnings: list[str] = []
     result = TikZRenderer().render(d, compile_defs(d), warnings=warnings)

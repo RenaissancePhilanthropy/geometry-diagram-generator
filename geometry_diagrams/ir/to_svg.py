@@ -44,6 +44,8 @@ from .render_util import (
     parallel_chevron_flips,
     svg_color,
     translate_style_colors,
+    unused_style_warnings,
+    SVG_STYLE_KEYS,
     BOUNDS_PADDING,
     ARC_STMT_TYPES,
     arc_params,
@@ -496,6 +498,7 @@ def _ir_to_svg_impl(
     # Color values are parsed once here and emitted as SVG paints (hex for
     # hex/rgb/hsv/xcolor-mix forms); unrecognized ones warn and pass through.
     _styles = translate_style_colors(diagram.styles or {}, svg_color, warnings)
+    unused_style_warnings(diagram.styles or {}, diagram.render, warnings, SVG_STYLE_KEYS)
     seg_groups: list[str] = []
     for op in sorted_ops:
         if not isinstance(op, (ir.MarkSegments, ir.MarkArcs)):

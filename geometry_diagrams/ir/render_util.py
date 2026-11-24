@@ -265,6 +265,42 @@ def translate_style_colors(
     return out
 
 
+# Style-dict keys the SVG renderer reads (color keys included).
+SVG_STYLE_KEYS = frozenset(COLOR_STYLE_KEYS) | {
+    "thick", "thin", "line_width", "dashed", "dotted", "opacity",
+    "->", "<->", "<-", "font-size", "clip",
+}
+
+
+def unused_style_warnings(
+    styles: dict[str, dict[str, Any]],
+    ops: Any,
+    warnings: list[str] | None,
+    known_keys: frozenset[str] | None = None,
+) -> None:
+    """Warn about a ``styles`` entry no render op names (as its ``style`` or
+    ``group``), which has no effect, and, when ``known_keys`` is given, about
+    keys in an entry that the renderer ignores (a model guessing
+    ``{"dash": "dashed"}`` for ``{"dashed": true}``)."""
+    if warnings is None:
+        return
+    named = {n for op in ops for n in (getattr(op, "style", None), getattr(op, "group", None)) if n}
+    for name, style in styles.items():
+        if name not in named:
+            warnings.append(
+                f"styles entry {name!r} is not used by any render op, so it has no effect; "
+                "set it as the `style` of the op that should use it"
+            )
+        if known_keys is not None:
+            bad = sorted(k for k in style if k not in known_keys)
+            if bad:
+                warnings.append(
+                    f"styles entry {name!r} has keys the renderer ignores: {', '.join(bad)} "
+                    "(use e.g. {\"dashed\": true}, {\"dotted\": true}, {\"thick\": true}, "
+                    "{\"color\": ...})"
+                )
+
+
 # ---------------------------------------------------------------------------
 # Coordinate extraction and helper-point synthesis
 # ---------------------------------------------------------------------------
