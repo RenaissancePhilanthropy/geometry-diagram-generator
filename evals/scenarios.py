@@ -1,9 +1,12 @@
 """Scenario YAML loading and validation for eval runner."""
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import Any, Callable
 
 from geometry_diagrams.features import parse_features
+
+logger = logging.getLogger(__name__)
 
 # Kept in sync with the `match ptype` cases in evals/sympy_checks.py's
 # _check_sympy_property BY HAND — the two are not derived from a single
@@ -13,6 +16,7 @@ from geometry_diagrams.features import parse_features
 # "angle_equal" went unchecked across dozens of existing scenarios for an
 # unknown period — this file called it supported while sympy_checks.py had
 # no case for it. When adding a type to one file, add it to the other too.
+_PROPERTY_ARG_VALIDATORS: dict[str, Callable[[list, str], None]] = {}
 _SUPPORTED_PROPERTY_TYPES = {
     "right_angle",
     "midpoint",
@@ -51,8 +55,26 @@ _SUPPORTED_PROPERTY_TYPES = {
 
 # Structural check types and what each one counts. polygon_count counts
 # authored 2D plane polygons only (prisms never count); solid_count counts
-# authored solids (e.g. rectangular_prism).
-_SUPPORTED_STRUCTURAL_TYPES = ("polygon_count", "solid_count")
+# authored solids (e.g. rectangular_prism). Each maps to an optional
+# ``validate_args(args, where)`` run at load time; the evaluators live in
+# evals/run.py (_STRUCTURAL_EVALUATORS), and tests/test_eval_check_types.py
+# fails if the two sides drift. Add a type with register_structural_type.
+_STRUCTURAL_ARG_VALIDATORS: dict[str, Callable[[dict, str], None] | None] = {}
+
+
+def register_structural_type(
+    name: str, validate_args: Callable[[dict, str], None] | None = None
+) -> None:
+    """Make ``name`` a loadable structural check type. ``validate_args(args,
+    where)`` raises ValueError for malformed args (optional)."""
+    _STRUCTURAL_ARG_VALIDATORS[name] = validate_args
+
+
+def register_property_type(name: str) -> None:
+    """Make ``name`` a loadable expected_properties type (its evaluator must be
+    added to evals/sympy_checks.py by hand; see the note above)."""
+    _SUPPORTED_PROPERTY_TYPES.add(name)
+
 
 _CANVAS_FEATURES = {"grid", "axes"}
 
@@ -128,6 +150,30 @@ def _validate_stack_is_height_map_args(args: list, where: str) -> None:
         )
 
 
+register_structural_type("polygon_count")
+register_structural_type("solid_count", _validate_solid_count_args)
+for _ptype, _validator in (
+    ("stack_cube_count", _validate_stack_cube_count_args),
+    ("stack_extents", _validate_stack_extents_args),
+    ("stack_is_height_map", _validate_stack_is_height_map_args),
+):
+    _PROPERTY_ARG_VALIDATORS[_ptype] = _validator
+
+
+def _note_unsupported_check_type(kind: str, name: str, where: str, strict: bool, seen: set) -> None:
+    """A check ``type`` this build does not know (e.g. one added on another
+    branch): an error when ``strict``, else one warning per distinct type. The
+    check still loads, marked ``unsupported``, and runs as skipped."""
+    if strict:
+        raise ValueError(f"{where}: unsupported {kind} 'type'={name!r}")
+    if (kind, name) not in seen:
+        seen.add((kind, name))
+        logger.warning(
+            "%s: unknown %s type %r; it will be skipped (not counted as passed or failed)",
+            where, kind, name,
+        )
+
+
 def split_by_required_features(
     scenarios: list[dict[str, Any]], enabled: "frozenset[str] | set[str]"
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
@@ -148,8 +194,13 @@ def split_by_required_features(
     return runnable, skipped
 
 
-def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
-    """Validate scenario YAML shape and return normalized list of scenarios."""
+def _validate_scenarios(raw_scenarios: Any, strict: bool = False) -> list[dict[str, Any]]:
+    """Validate scenario YAML shape and return normalized list of scenarios.
+
+    A check whose ``type`` is not registered does not fail the file: it loads
+    with ``"unsupported": True`` (the runner skips it) and a warning is logged.
+    ``strict`` makes it a ValueError instead."""
+    unknown_seen: set[tuple[str, str]] = set()
     if not isinstance(raw_scenarios, list):
         raise ValueError("Scenario file must be a YAML list of scenario objects")
 
@@ -193,25 +244,22 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
 
             if not isinstance(name, str) or not name.strip():
                 raise ValueError(f"{prop_where}: 'name' must be a non-empty string")
-            if not isinstance(prop_type, str) or prop_type not in _SUPPORTED_PROPERTY_TYPES:
-                supported = ", ".join(sorted(_SUPPORTED_PROPERTY_TYPES))
-                raise ValueError(
-                    f"{prop_where}: unsupported 'type'={prop_type!r}; supported: {supported}"
-                )
+            if not isinstance(prop_type, str) or not prop_type.strip():
+                raise ValueError(f"{prop_where}: 'type' must be a non-empty string")
             if not isinstance(args, list):
                 raise ValueError(f"{prop_where}: 'args' must be a list")
-            if prop_type == "stack_cube_count":
-                _validate_stack_cube_count_args(args, prop_where)
-            elif prop_type == "stack_extents":
-                _validate_stack_extents_args(args, prop_where)
-            elif prop_type == "stack_is_height_map":
-                _validate_stack_is_height_map_args(args, prop_where)
+            unsupported = prop_type not in _SUPPORTED_PROPERTY_TYPES
+            if unsupported:
+                _note_unsupported_check_type("property", prop_type, prop_where, strict, unknown_seen)
+            elif prop_type in _PROPERTY_ARG_VALIDATORS:
+                _PROPERTY_ARG_VALIDATORS[prop_type](args, prop_where)
 
             normalized_props.append(
                 {
                     "name": name,
                     "type": prop_type,
                     "args": args,
+                    **({"unsupported": True} if unsupported else {}),
                 }
             )
 
@@ -355,17 +403,19 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
             sc_args = sc.get("args", {})
             if not isinstance(sc_name, str) or not sc_name.strip():
                 raise ValueError(f"{sc_where}: 'name' must be a non-empty string")
-            if sc_type not in _SUPPORTED_STRUCTURAL_TYPES:
-                raise ValueError(
-                    f"{sc_where}: unsupported 'type'={sc_type!r}; supported: "
-                    "polygon_count (authored 2D plane polygons only; prisms never "
-                    "count), solid_count"
-                )
+            if not isinstance(sc_type, str) or not sc_type.strip():
+                raise ValueError(f"{sc_where}: 'type' must be a non-empty string")
             if not isinstance(sc_args, dict):
                 raise ValueError(f"{sc_where}: 'args' must be an object")
-            if sc_type == "solid_count":
-                _validate_solid_count_args(sc_args, sc_where)
-            normalized_structural.append({"name": sc_name, "type": sc_type, "args": sc_args})
+            sc_unsupported = sc_type not in _STRUCTURAL_ARG_VALIDATORS
+            if sc_unsupported:
+                _note_unsupported_check_type("structural", sc_type, sc_where, strict, unknown_seen)
+            elif _STRUCTURAL_ARG_VALIDATORS[sc_type] is not None:
+                _STRUCTURAL_ARG_VALIDATORS[sc_type](sc_args, sc_where)
+            normalized_structural.append({
+                "name": sc_name, "type": sc_type, "args": sc_args,
+                **({"unsupported": True} if sc_unsupported else {}),
+            })
 
         # queries: optional list of follow-up questions for query_diagram eval
         queries = raw.get("queries", [])
@@ -432,10 +482,11 @@ def _validate_scenarios(raw_scenarios: Any) -> list[dict[str, Any]]:
     return normalized
 
 
-def load_scenarios(path: str) -> list[dict]:
-    """Load and validate scenarios from a YAML file path."""
+def load_scenarios(path: str, strict: bool = False) -> list[dict]:
+    """Load and validate scenarios from a YAML file path (``strict``: an
+    unregistered check type is an error, see ``_validate_scenarios``)."""
     import yaml
     from pathlib import Path
     with Path(path).open() as f:
         raw = yaml.safe_load(f)
-    return _validate_scenarios(raw)
+    return _validate_scenarios(raw, strict=strict)

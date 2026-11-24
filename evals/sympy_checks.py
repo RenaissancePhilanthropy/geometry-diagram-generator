@@ -144,7 +144,7 @@ def _validate_properties_sympy(
     return results
 
 
-def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -> tuple[bool, str]:
+def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -> tuple[bool | None, str]:
     import math
 
     def pt(name: str) -> tuple[float, float]:
@@ -398,4 +398,5 @@ def _check_sympy_property(ptype: str, args: list, sym_float: dict, tol: float) -
             return True, "(skipped: rendering-only check)"
 
         case _:
-            return True, f"(skipped: unsupported type {ptype!r})"
+            # Not evaluated: None (skipped), never a pass; the gate reports it.
+            return None, f"(skipped: unsupported type {ptype!r})"

@@ -94,9 +94,11 @@ def test_validator_accepts_solid_count_and_rejects_unknown_types():
     out = _validate_scenarios(_scenario(structural_checks=[
         {"name": "n", "type": "solid_count", "args": {"kind": "rectangular_prism", "min": 1}}]))
     assert out[0]["structural_checks"][0]["type"] == "solid_count"
-    with pytest.raises(ValueError, match="supported: polygon_count") as ei:
-        _validate_scenarios(_scenario(structural_checks=[{"name": "n", "type": "bogus"}]))
-    assert "authored 2D plane polygons only" in str(ei.value)
+    with pytest.raises(ValueError, match="bogus"):
+        _validate_scenarios(_scenario(structural_checks=[{"name": "n", "type": "bogus"}]), strict=True)
+    # Not strict: an unknown type loads as an unsupported (skipped) check.
+    out = _validate_scenarios(_scenario(structural_checks=[{"name": "n", "type": "bogus"}]))
+    assert out[0]["structural_checks"][0]["unsupported"] is True
 
 
 def test_validator_rejects_bad_solid_count_args():

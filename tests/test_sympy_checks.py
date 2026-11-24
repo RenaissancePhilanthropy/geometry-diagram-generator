@@ -125,5 +125,5 @@ def test_equal_lengths_catches_mismatch_beyond_first_pair():
 
 def test_unsupported_type_is_skipped_not_failed():
     r = _check_one("not_a_real_check", [], {})
-    assert r["passed"]
+    assert r["passed"] is None  # skipped: neither a pass nor a failure
     assert "skipped" in r["message"]
