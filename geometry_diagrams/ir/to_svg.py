@@ -1636,6 +1636,11 @@ def _emit_svg_op(
                 attrs={"data-role": "label-segment", "data-for": seg_id},
             )
             if pending_labels is not None:
+                if drawn_segments is not None:
+                    _pick_segment_label_slot(
+                        lp, (ax, ay, bx, by), (nx, ny), side,
+                        drawn_segments, drawn_circles or [], pending_labels,
+                    )
                 pending_labels.append(lp)
             else:
                 _append_label(svg, lp.x, lp.y, lp.text, lp.color, anchor=lp.anchor, extra_attrs=lp.attrs,
@@ -3855,6 +3860,79 @@ def _bisector_angle(da: float, db: float) -> float:
     """
     diff = (db - da) % (2 * math.pi)
     return da + diff / 2
+
+
+# Spots along a segment, as fractions of its length, a crowded label may slide to
+# (the midpoint is tried first); each is tried on both sides of the segment.
+_SEGMENT_LABEL_SLOTS = (0.5, 0.35, 0.65, 0.25, 0.75)
+
+
+def _pick_segment_label_slot(
+    lp: _LabelPlacement,
+    segment: tuple[float, float, float, float],
+    normal: tuple[float, float],
+    side: float,
+    drawn_segments: list[tuple[float, float, float, float]],
+    drawn_circles: list[tuple[float, float, float, bool]],
+    placed_labels: list[_LabelPlacement],
+) -> None:
+    """Move ``lp``, a straight segment's label, to the least crowded spot that
+    keeps it attached to the segment, in place.
+
+    ``lp`` starts at the segment's midpoint, one label offset to the side the
+    point-count vote prefers (``side``, ``normal`` the unit perpendicular). If
+    an obstacle (another drawn line or circle, or a label already placed)
+    would push it there, the later nudge passes move it away from the obstacle
+    by whatever distance it takes, which can leave it floating in a
+    neighbouring wedge, far from its segment. So first try the other slots
+    along the segment and both sides, always one label offset from the
+    segment: the side with less obstruction overall first, the midpoint first
+    within a side. The first unobstructed spot wins, else the least obstructed
+    one. A label whose default spot is already unobstructed is not moved."""
+    ax, ay, bx, by = segment
+    nx, ny = normal
+    own = {(ax, ay, bx, by), (bx, by, ax, ay)}
+    obstacles = [seg for seg in drawn_segments if seg not in own]
+
+    def crowding(x: float, y: float) -> float:
+        lp.x, lp.y = x, y
+        total = 0.0
+        for seg in obstacles:
+            verdict = _segment_clearance(x, y, lp, seg)
+            if verdict is not None:
+                total += verdict[2]
+        for circle in drawn_circles:
+            verdict = _circle_clearance(x, y, lp, circle)
+            if verdict is not None:
+                total += verdict[2]
+        box = _label_bbox(lp)
+        for other in placed_labels:
+            ob = _label_bbox(other)
+            if _bboxes_overlap(box, ob):
+                total += 1.0 + min(box[2], ob[2]) - max(box[0], ob[0]) + min(box[3], ob[3]) - max(box[1], ob[1])
+        return total
+
+    default_xy = (lp.x, lp.y)
+    if crowding(*default_xy) == 0:
+        lp.x, lp.y = default_xy
+        return
+    spots = {
+        sgn: [
+            (ax + (bx - ax) * t + nx * _LABEL_OFFSET * sgn, ay + (by - ay) * t + ny * _LABEL_OFFSET * sgn)
+            for t in _SEGMENT_LABEL_SLOTS
+        ]
+        for sgn in (side, -side)
+    }
+    scores = {sgn: [crowding(x, y) for x, y in xy] for sgn, xy in spots.items()}
+    sides = sorted((side, -side), key=lambda sgn: sum(scores[sgn]))  # stable: ties keep ``side`` first
+    best, best_xy = None, default_xy
+    for k in range(len(_SEGMENT_LABEL_SLOTS)):
+        for sgn in sides:
+            if best is None or scores[sgn][k] < best:
+                best, best_xy = scores[sgn][k], spots[sgn][k]
+        if best == 0:
+            break
+    lp.x, lp.y = best_xy
 
 
 def _segment_label_side(
