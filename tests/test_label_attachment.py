@@ -152,7 +152,7 @@ def test_a_re_seated_point_label_is_clear_when_a_clear_slot_exists():
     assert T._label_crowding(lp, lp.x, lp.y, _obs(segments=lines, labels=[lp])) == 0
 
 
-def _segment_label(x: float, y: float, slots=(0.5, 0.35, 0.65, 0.25, 0.75)) -> T._LabelPlacement:
+def _segment_label(x: float, y: float, slots=T._SEGMENT_LABEL_SLOTS) -> T._LabelPlacement:
     lp = _label("8 cm", x, y, role="label-segment")
     lp.attach_segment, lp.attach_normal, lp.attach_slots = (0.0, 0.0, 200.0, 0.0), (0.0, -1.0), slots
     return lp

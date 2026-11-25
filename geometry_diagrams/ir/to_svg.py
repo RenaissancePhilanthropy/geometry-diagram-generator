@@ -3882,9 +3882,14 @@ def _bisector_angle(da: float, db: float) -> float:
     return da + diff / 2
 
 
-# Spots along a segment, as fractions of its length, a crowded label may slide to
-# (the midpoint is tried first); each is tried on both sides of the segment.
-_SEGMENT_LABEL_SLOTS = (0.5, 0.35, 0.65, 0.25, 0.75)
+# Spots along a segment, as fractions of its length, a crowded label may slide to, nearest the
+# midpoint first (it is tried first); each is tried on both sides of the segment. They stop short
+# of a quarter and three quarters: on a diameter those are a radius's midpoint, where a label reads
+# as the radius's. The fine steps let it stay as close to the middle as the clutter allows.
+_SEGMENT_LABEL_SLOTS = (0.5,) + tuple(
+    0.5 + sign * 0.03 * k for k in range(1, 7) for sign in (-1, 1))
+# A farther slot replaces a nearer one only if it is this much (px of push) less crowded.
+_SLOT_MIN_GAIN = 0.5
 
 
 @dataclass
@@ -3982,7 +3987,7 @@ def _pick_segment_label_slot(
     best, best_xy = None, default_xy
     for k in range(len(slots)):
         for sgn in sides:
-            if best is None or scores[sgn][k] < best:
+            if best is None or scores[sgn][k] < best - _SLOT_MIN_GAIN:
                 best, best_xy = scores[sgn][k], spots[sgn][k]
         if best == 0:
             break

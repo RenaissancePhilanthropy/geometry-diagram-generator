@@ -71,3 +71,19 @@ def test_diameter_label_does_not_overlap_the_angle_label_or_radii():
     assert "label-segment" in boxes and "label-angle" in boxes
     a, b = boxes["label-segment"], boxes["label-angle"]
     assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]
+
+
+@pytest.mark.parametrize("name", list(SCRIPTS))
+def test_diameter_label_never_reaches_a_radius_midpoint(name):
+    """On a diameter, 0.25 and 0.75 are where a radius's label would sit: a slid label stays
+    between 0.3 and 0.7, and as near the middle as the clutter allows."""
+    svg = _render(SCRIPTS[name])
+    segs = {m.group(1): tuple(map(float, m.groups()[1:])) for m in re.finditer(SEG, svg)}
+    (m,) = [m for m in re.finditer(BBOX, svg) if m.group(1) in segs and
+            (segs[m.group(1)][2] - segs[m.group(1)][0]) ** 2 + (segs[m.group(1)][3] - segs[m.group(1)][1]) ** 2 > 1e4
+            and abs(segs[m.group(1)][3] - segs[m.group(1)][1]) < 1e-6]
+    x0, y0, x1, y1 = map(float, m.group(2).split(","))
+    ax, _, bx, _ = segs[m.group(1)]
+    t = (((x0 + x1) / 2) - ax) / (bx - ax)
+    assert 0.3 <= t <= 0.7
+    assert abs(t - 0.5) <= 0.14
