@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from evals import run as eval_run
+from evals import check_types as ct
 from evals import scenarios as sc
 from evals.run import _build_arg_parser, _collect_check_outcomes, _finalize_gate_status
 from evals.sympy_checks import _figure_scale, _validate_properties_sympy, property_tolerance
@@ -147,7 +147,7 @@ def test_loader_rejects_tolerances_on_types_that_ignore_them():
 
 
 def test_every_property_with_a_tolerance_dimension_is_a_supported_type():
-    assert set(sc.PROPERTY_TOL_DIMENSION) <= sc._SUPPORTED_PROPERTY_TYPES
+    assert {t for t in ct.property_type_names() if ct.tolerance_dimension(t) is not None} == ct.property_type_names("geometry")
 
 
 def test_a_bad_tolerance_is_recorded_as_an_error_not_raised():
@@ -158,7 +158,7 @@ def test_a_bad_tolerance_is_recorded_as_an_error_not_raised():
 
 
 # Near-miss figures per length-scaling family: the verdict at a given rel_tol must
-# be the same at every figure scale (a wrong dimension in PROPERTY_TOL_DIMENSION
+# be the same at every figure scale (a wrong dimension in the check's registration
 # flips it). distance_equals' expected length is filled in as the true 10 * k.
 _SCALED = {
     "midpoint": (lambda k: {"A": (0.0, 0.0), "B": (10 * k, 0.0), "M": (5.01 * k, 0.0)}, ["M", "A", "B"]),
@@ -195,7 +195,7 @@ def test_relative_tolerance_is_scale_invariant_for_every_scaling_family(ptype, r
 
 
 def test_scaling_families_not_covered_above_are_the_ones_listed():
-    scaling = {t for t, d in sc.PROPERTY_TOL_DIMENSION.items() if d > 0}
+    scaling = {t for t in ct.property_type_names("geometry") if ct.tolerance_dimension(t) > 0}
     assert scaling - set(_SCALED) == {
         "point_on_segment", "point_on_circle", "tangent", "intersects", "equidistant_from_sides", "centroid",
     }

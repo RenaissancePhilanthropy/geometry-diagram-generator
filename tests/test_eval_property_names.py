@@ -226,6 +226,7 @@ async def test_run_scenario_resolves_names_and_gates_on_the_marker(monkeypatch, 
         return await run_scenario(sc, "structured", "m", 1, tmp_path, "b", **kw)
 
     ok = await run({"name": "m", "type": "midpoint", "args": ["M", "A", "B"]})
+    assert ok["variable_ids"] == {}  # the record carries python_full's variable names (none for this strategy)
     assert ok["sympy_property_checks"][0]["passed"] is True
     assert ok["sympy_property_checks"][0]["resolved_names"] == {"M": "pm", "A": "pa", "B": "pb"}
     assert ok["gate_status"] == "pass"

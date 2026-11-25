@@ -45,6 +45,10 @@ class DiagramResult:
     # Non-fatal pipeline notes from the final successful run (renderer warnings, failed
     # `prefer` checks, solid projection/label/overlap warnings, ...). Never fails a run.
     warnings: list[str] = field(default_factory=list)
+    # python_full only: the script's variable name -> the opaque IR id of the object it
+    # holds (`A` -> `__pydsl_pt_3`; objects built in a loop or never assigned have none).
+    # Pass it to query_geometry_diagram(variable_ids=) to ask about `A` by name.
+    variable_ids: dict[str, str] = field(default_factory=dict)
     # Each strategy's stateless edit input is the matching field of its own prior result:
     # recipe -> dsl (previous_dsl), python_full -> script (previous_script),
     # structured -> diagram_ir (previous_ir).
@@ -318,6 +322,7 @@ async def render_geometry_diagram(
         script=getattr(result, "script", "") or None,
         cost_usd=getattr(result, "cost_usd", None),
         warnings=list(getattr(result, "warnings", None) or []),
+        variable_ids=dict(getattr(result, "variable_ids", None) or {}),
     )
 
 
@@ -494,6 +499,7 @@ def query_geometry_diagram(
     params: Optional[dict] = None,
     *,
     diagram_ir: Optional[dict] = None,
+    variable_ids: Optional[dict] = None,
 ) -> str:
     """Query geometric properties of a diagram (no LLM call, no I/O).
 
@@ -516,6 +522,8 @@ def query_geometry_diagram(
             list_objects includes those ids, and a point can be named by its label text
             instead ("A", "C") when the text labels exactly one point; a text that labels
             several points is an error naming them.
+        variable_ids: DiagramResult.variable_ids (python_full), with diagram_ir: a name that
+            is neither an id nor a label text is looked up as a script variable name.
 
     Returns:
         JSON string with the query result, or {"error": "..."} on failure
@@ -552,7 +560,7 @@ def query_geometry_diagram(
             if not obj_id.startswith("__") or obj_id.startswith("__pydsl_")
         })
     try:
-        resolved = _resolve_point_labels(diagram, sym, params or {})
+        resolved = _resolve_point_labels(diagram, sym, params or {}, variable_ids)
     except ValueError as e:
         return json.dumps({"error": str(e)})
     return dispatch_query(sym, query_type, resolved)
@@ -572,17 +580,25 @@ def labeled_point_ids(diagram: "DiagramIR", *, untexted_show_id: bool = False) -
     return labeled
 
 
-def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict:
+def _resolve_point_labels(
+    diagram: "DiagramIR", sym: dict, params: dict, variable_ids: Optional[dict] = None,
+) -> dict:
     """`params` with every string that is not an object id but is the text of exactly one
-    point label replaced by that point's id. ValueError when a text labels several points."""
+    point label replaced by that point's id (else, a script variable name in
+    `variable_ids` replaced by the id it holds). ValueError when a text labels several
+    points."""
     labeled = labeled_point_ids(diagram)
+    variable_ids = variable_ids or {}
     resolved = {}
     for key, value in params.items():
-        if isinstance(value, str) and value not in sym and value in labeled:
-            ids = sorted(labeled[value])
-            if len(ids) > 1:
-                raise ValueError(f"label {value!r} is on several points ({', '.join(ids)}); use one of those ids")
-            value = ids[0]
+        if isinstance(value, str) and value not in sym:
+            if value in labeled:
+                ids = sorted(labeled[value])
+                if len(ids) > 1:
+                    raise ValueError(f"label {value!r} is on several points ({', '.join(ids)}); use one of those ids")
+                value = ids[0]
+            elif variable_ids.get(value) in sym:
+                value = variable_ids[value]
         resolved[key] = value
     return resolved
 

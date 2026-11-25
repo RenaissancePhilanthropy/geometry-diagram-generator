@@ -21,7 +21,7 @@ Result fields:
   deterministic_pass, gate_status, gate_failures,
   tool_calls, retries, warnings, input_tokens,
   output_tokens, duration_s, error,
-  query_results,
+  query_results, variable_ids,
   llm_judge_score, llm_judge_reasoning,
   human_score, human_notes
 """
@@ -31,14 +31,13 @@ import argparse
 import asyncio
 import json
 import logging
-import math
 import os
 import re
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,9 @@ _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 from evals.ir_diagnostics import classify_ir
+from evals.check_types import structural_type
 from evals.property_names import NameResolver, property_gate_failures
-from evals.scenarios import _validate_scenarios, split_by_required_features
+from evals.scenarios import _validate_scenarios, count_unsupported_checks, split_by_required_features
 from evals.sympy_checks import (
     PRISM_PROPERTY_TYPES,
     _validate_prism_properties,
@@ -434,6 +434,7 @@ async def run_scenario(
         "error": None,
         "ir_diagnostics": None,
         "sympy_property_checks": [],
+        "variable_ids": {},
         "prism_property_checks": [],
         "stack_property_checks": [],
         "structural_checks": None,
@@ -490,6 +491,9 @@ async def run_scenario(
         record["input_tokens"] = result.input_tokens
         record["output_tokens"] = result.output_tokens
         record["cost_usd"] = result.cost_usd
+        # python_full's script variable name -> opaque id, so a regrade can resolve the
+        # scenario's names the way this run did.
+        record["variable_ids"] = dict(result.variable_ids or {})
 
         sympy_property_checks: list[dict] = []
         if result.sym_table is not None and scenario.get("expected_properties"):
@@ -732,120 +736,7 @@ async def run_scenario(
 # Gate helpers
 # ---------------------------------------------------------------------------
 
-# IR def kinds that are solids (counted by solid_count, never by polygon_count).
-_SOLID_KINDS = frozenset({"rectangular_prism", "block_stack"})
-
-
-def _authored_cube_count(defn: dict) -> int | None:
-    """Cube count of an authored block_stack def, from its literal heights
-    (sum of non-negative integers) or cubes (number of triples). Literal-only,
-    like the solid_count dimensions: it reads the authored IR, so the check
-    needs no compile, and an expression/ragged/non-integer value is None
-    (never matches). The compiled Stack's count is checked separately by the
-    stack_cube_count property."""
-    heights, cubes = defn.get("heights"), defn.get("cubes")
-    def is_int(v):
-        # Same integer-entry rule as ir.stack._integer_entry: ints and integral
-        # finite floats (2.0) are accepted; bools and non-integral values are not.
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            return False
-        return math.isfinite(v) and float(v) == int(v)
-    if defn.get("kind") != "block_stack":
-        return None
-    if isinstance(heights, list) and cubes is None:
-        if all(isinstance(r, list) and all(is_int(v) and v >= 0 for v in r) for r in heights):
-            return sum(int(v) for r in heights for v in r)
-        return None
-    if isinstance(cubes, list) and heights is None:
-        return len(cubes)
-    return None
-
-
 _UNSUPPORTED_MESSAGE = "(skipped: check type not supported by this build)"
-
-
-def _eval_polygon_count(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
-    """polygon_count — at least N authored 2D plane polygons (polygon,
-    polygon_exterior, triangle defs) with a given side count. Prisms never
-    count: a prism is one rectangular_prism def, its derived faces never
-    appear in the authored IR."""
-    min_count = int(args.get("min", 1))
-    sides = args.get("sides")  # None means any polygon
-    count = 0
-    if diagram_ir is not None:
-        # Count Polygon, PolygonExterior, and Triangle defs in IR
-        for defn in diagram_ir.get("define", []):
-            kind = defn.get("kind")
-            if kind == "polygon":
-                n = len(defn.get("points", []))
-            elif kind == "polygon_exterior":
-                n = defn.get("sides", 4)
-            elif kind == "triangle":
-                n = 3
-            else:
-                continue
-            if sides is None or n == sides:
-                count += 1
-    elif tikz_code is not None:
-        # Fallback: count \tkzDrawPolygon / \tkzFillPolygon in TikZ
-        import re as _re
-        for m in _re.finditer(r'\\tkz(?:Draw|Fill)Polygon\(([^)]*)\)', tikz_code):
-            pts = [p.strip() for p in m.group(1).split(",") if p.strip()]
-            if sides is None or len(pts) == sides:
-                count += 1
-    ok = count >= min_count
-    msg = "" if ok else (
-        f"expected at least {min_count} polygon(s) with "
-        f"{'any' if sides is None else sides} sides, found {count}"
-    )
-    return {"passed": ok, "message": msg}
-
-
-def _eval_solid_count(args: dict, diagram_ir: dict | None, tikz_code: str | None) -> dict:
-    """solid_count — at least ``min`` (default 1) authored solids, optionally
-    only those of ``kind`` (e.g. rectangular_prism) and whose literal
-    length/width/height equal the given values (an expression-valued
-    dimension never matches) and, for block_stack, whose literal cube
-    count (sum of heights or number of cubes) equals ``cube_count``.
-    Needs the authored IR."""
-    min_count = int(args.get("min", 1))
-    kind = args.get("kind")
-    dims = {d: args[d] for d in ("length", "width", "height") if d in args}
-    want_cubes = args.get("cube_count")
-    if diagram_ir is None:
-        return {"passed": False, "message": "solid_count needs the authored IR (none available)"}
-    count = 0
-    for defn in diagram_ir.get("define", []):
-        dkind = defn.get("kind")
-        if dkind not in _SOLID_KINDS or (kind is not None and dkind != kind):
-            continue
-        if want_cubes is not None and _authored_cube_count(defn) != want_cubes:
-            continue
-        if all(
-            isinstance(defn.get(d), (int, float))
-            and not isinstance(defn.get(d), bool)
-            and defn[d] == v
-            for d, v in dims.items()
-        ):
-            count += 1
-    ok = count >= min_count
-    desc = (kind or "any kind") + (f" {dims}" if dims else "") + (
-        f" cube_count={want_cubes}" if want_cubes is not None else ""
-    )
-    return {
-        "passed": ok,
-        "message": "" if ok else f"expected at least {min_count} solid(s) ({desc}), found {count}",
-    }
-
-
-# Structural check type -> evaluator(args, diagram_ir, tikz_code) returning
-# {"passed": bool, "message": str}. A new type is one entry here plus a
-# register_structural_type(...) in evals/scenarios.py (tests/test_eval_check_types.py
-# fails if the two disagree).
-_STRUCTURAL_EVALUATORS: dict[str, Callable[[dict, dict | None, str | None], dict]] = {
-    "polygon_count": _eval_polygon_count,
-    "solid_count": _eval_solid_count,
-}
 
 
 def _run_structural_checks(
@@ -854,14 +745,16 @@ def _run_structural_checks(
     tikz_code: str | None,
 ) -> dict[str, dict]:
     """Run structural checks against the IR (preferred) or TikZ code, through
-    ``_STRUCTURAL_EVALUATORS`` (see each ``_eval_*`` for what it counts).
+    the check-type registry (evals/check_types.py; see each structural evaluator there for
+    what it counts).
     A check of an unsupported type is skipped (``passed`` None), never passed.
     Returns a dict mapping check name -> {"passed": bool | None, "message": str}.
     """
     results: dict[str, dict] = {}
     for check in structural_checks:
         name = check["name"]
-        evaluator = _STRUCTURAL_EVALUATORS.get(check["type"])
+        known = structural_type(check["type"])
+        evaluator = known.evaluate if known is not None else None
         if evaluator is None:
             results[name] = {"passed": None, "skipped": True, "message": _UNSUPPORTED_MESSAGE}
             continue
@@ -1298,6 +1191,13 @@ async def main() -> None:
     scenarios, skipped_scenarios = split_by_required_features(scenarios, args.features)
     if args.features:
         print(f"Features enabled: {', '.join(sorted(args.features))}")
+    unsupported = count_unsupported_checks(scenarios)
+    if unsupported:
+        listed = ", ".join(f"{t} ({k}) x{n}" for (k, t), n in sorted(unsupported.items()))
+        print(
+            f"WARNING: {sum(unsupported.values())} check(s) of unsupported type will run as skipped "
+            f"(the run can soft_pass without them; a misspelt type looks the same): {listed}"
+        )
     for skipped_id, reason in skipped_scenarios:
         print(f"SKIPPED {skipped_id}: {reason}")
     if skipped_scenarios:

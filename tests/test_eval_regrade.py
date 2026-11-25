@@ -93,3 +93,21 @@ def test_tikz_records_still_regrade_their_tikz_checks_and_the_gate_uses_both():
     # the tikz check (tolerance 0.01) now fails too; the property is counted once
     assert new["tikz_checks"]["m"]["passed"] is False
     assert new["gate_failures"] == ["m"] and new["gate_status"] == "fail"
+
+
+def _unlabelled_record(**extra) -> dict:
+    """A python_full-like record: opaque ids and no labels, names only in variable_ids."""
+    d = ir.DiagramIR(
+        canvas=ir.Canvas(xmin=-1, xmax=5, ymin=-1, ymax=1),
+        define=[ir.PointFixed(id="__pydsl_pt_1", x=0.0, y=0.0), ir.PointFixed(id="__pydsl_pt_2", x=4.0, y=0.0),
+                ir.PointFixed(id="__pydsl_pt_3", x=2.0, y=0.0)],
+    )
+    return {**_record(**extra), "diagram_ir": d.model_dump(mode="json")}
+
+
+def test_regrade_resolves_names_through_the_stored_variable_ids():
+    ids = {"A": "__pydsl_pt_1", "B": "__pydsl_pt_2", "M": "__pydsl_pt_3", "seg": "__pydsl_seg_9"}
+    ok, _ = _regrade_record(_unlabelled_record(variable_ids=ids), _scenario(MIDPOINT))
+    assert ok["sympy_property_checks"][0]["passed"] is True and ok["gate_status"] == "pass"
+    old, _ = _regrade_record(_unlabelled_record(), _scenario(MIDPOINT))  # a record from before they were stored
+    assert old["gate_failures"] == ["property:m:unresolved"]

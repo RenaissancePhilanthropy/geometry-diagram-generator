@@ -9,8 +9,8 @@ For each record we re-extract coordinates from the stored ``tikz_code``
 predicate type is implemented by ``util.tikz_geometry.validate_geometric_property``,
 re-run the scenario's ``expected_properties`` on the figure recompiled from the
 stored ``diagram_ir`` (every record, SVG-only ones included; point names resolve
-through ``evals/property_names.py`` without ``variable_ids``, which records do not
-store), and recompute ``gate_status`` with ``evals/run.py``'s own
+through ``evals/property_names.py``, with the record's ``variable_ids`` when it has
+them: records from before they were stored resolve by label only), and recompute ``gate_status`` with ``evals/run.py``'s own
 ``_finalize_gate_status``. Edit-chain records are left alone.
 
 Usage:
@@ -30,6 +30,7 @@ from pathlib import Path
 from evals.property_names import NameResolver
 from evals.run import _finalize_gate_status
 from evals.sympy_checks import _validate_properties_sympy
+from geometry_diagrams.strategies.ir_pipeline import float_point_table
 from geometry_diagrams.ir.ir import DiagramIR
 from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.util.tikz_geometry import resolve_all_coordinates, validate_geometric_property
@@ -60,8 +61,10 @@ def _recompute_properties(rec: dict, scenario: dict | None) -> list[dict] | None
         sym = compile_defs(diagram)
     except Exception:
         return None
-    points = {k: (float(v.x), float(v.y)) for k, v in sym.items() if hasattr(v, "x") and hasattr(v, "y")}
-    return _validate_properties_sympy(props, points, resolver=NameResolver(points, diagram))
+    points = float_point_table(sym)
+    return _validate_properties_sympy(
+        props, points, resolver=NameResolver(points, diagram, rec.get("variable_ids")),
+    )
 
 
 def _regrade_record(

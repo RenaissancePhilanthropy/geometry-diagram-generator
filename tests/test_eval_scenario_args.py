@@ -51,8 +51,26 @@ def test_degenerate_or_malformed_arguments_are_rejected(ptype, args):
 
 
 @pytest.mark.parametrize("path", _FILES)
-def test_every_scenario_file_loads(path):
-    assert sc.load_scenarios(path)
+def test_every_scenario_file_loads_strictly(path):
+    """Strict: a misspelt check type in a committed file is an error here (the lenient
+    load is for scenario files from another branch), not a check that silently skips."""
+    assert sc.load_scenarios(path, strict=True)
+
+
+def test_unsupported_checks_are_counted_for_the_run_summary():
+    scenarios = sc._validate_scenarios([{
+        "id": "s", "prompt": "p",
+        "expected_properties": [{"name": "a", "type": "right_angel", "args": []},
+                                {"name": "b", "type": "right_angel", "args": []}],
+        "structural_checks": [{"name": "c", "type": "future_count", "args": {}}],
+    }])
+    assert sc.count_unsupported_checks(scenarios) == {("property", "right_angel"): 2, ("structural", "future_count"): 1}
+    assert sc.count_unsupported_checks(_validate_clean()) == {}
+
+
+def _validate_clean():
+    return sc._validate_scenarios([{"id": "s", "prompt": "p", "expected_properties": [
+        {"name": "a", "type": "midpoint", "args": ["M", "A", "B"]}]}])
 
 
 def test_the_two_other_schema_files_are_the_only_ones_excluded():

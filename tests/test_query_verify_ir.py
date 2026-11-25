@@ -132,3 +132,38 @@ def test_verify_takes_an_angle_tolerance():
     assert [f["stated_deg"] for f in verify_geometry_diagram(near)["angle_findings"]] == [40]
     assert verify_geometry_diagram(near, angle_tolerance_deg=4)["angle_findings"] == []
     assert verify_geometry_diagram(near, angle_tolerance_deg=4)["ok"] is True
+
+
+# --- script variable names ------------------------------------------------------------
+
+UNLABELLED = "canvas((-2, 12), (-2, 10))\na = point(0, 6); b = point(0, 0); c = point(8, 0)\ndraw(triangle(a, b, c))\n"
+
+
+def _built(script: str):
+    built = run_script(script, timeout_seconds=60)
+    assert built.error is None, built.error
+    ir = asyncio.run(run_ir_pipeline(built.diagram_ir, SVGRenderer())).diagram_ir.model_dump()
+    return ir, built.variable_ids
+
+
+def test_a_point_without_a_label_can_be_named_by_its_script_variable():
+    ir, variable_ids = _built(UNLABELLED)
+    assert variable_ids["a"].startswith("__pydsl_pt")
+    by_name = json.loads(query_geometry_diagram(None, "distance", {"a": "a", "b": "c"}, diagram_ir=ir, variable_ids=variable_ids))
+    assert by_name["distance"] == pytest.approx(10.0, abs=1e-6)
+    no_names = json.loads(query_geometry_diagram(None, "distance", {"a": "a", "b": "c"}, diagram_ir=ir))
+    assert "error" in no_names  # without variable_ids the name means nothing
+
+
+def test_a_label_text_beats_a_variable_name_and_unknown_names_stay_unknown():
+    ir, variable_ids = _built(UNLABELLED + 'a.label("X"); b.label("Y")')
+    swapped = dict(variable_ids, X=variable_ids["c"])  # a variable named like a label
+    d = json.loads(query_geometry_diagram(None, "distance", {"a": "X", "b": "Y"}, diagram_ir=ir, variable_ids=swapped))
+    assert d["distance"] == pytest.approx(6.0, abs=1e-6)  # the label X is point a (0,6), Y is b (0,0)
+    bad = json.loads(query_geometry_diagram(None, "distance", {"a": "nope", "b": "Y"}, diagram_ir=ir, variable_ids=variable_ids))
+    assert "error" in bad
+
+
+def test_diagram_result_carries_variable_ids_for_python_full_only():
+    from geometry_diagrams.facade import DiagramResult
+    assert DiagramResult(svg="", tikz="", input_tokens=0, output_tokens=0).variable_ids == {}

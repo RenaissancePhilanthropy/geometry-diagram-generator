@@ -51,6 +51,13 @@ class StructuredRunResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def float_point_table(sym: dict) -> dict[str, tuple[float, float]]:
+    """Every SymPy point of a compiled symbol table as id -> (x, y) floats: the table
+    ``StructuredRunResult.sym_table`` holds and the evals' property checks read (hidden
+    ``__`` helpers included)."""
+    return {k: (float(v.x), float(v.y)) for k, v in sym.items() if isinstance(v, spg.Point)}
+
+
 class PipelineError(RuntimeError):
     """A pipeline failure that also carries the warnings collected before it."""
 
@@ -179,7 +186,7 @@ async def run_ir_pipeline(
         renderer.render, diagram_ir, sym, warnings=warnings
     )
 
-    sym_table = {k: (float(v.x), float(v.y)) for k, v in sym.items() if isinstance(v, spg.Point)}
+    sym_table = float_point_table(sym)
 
     return StructuredRunResult(
         diagram_ir=diagram_ir,

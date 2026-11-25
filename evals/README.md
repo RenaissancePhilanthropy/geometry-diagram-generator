@@ -40,11 +40,13 @@ Scenario fields (gates, property checks, `requires_features`, `fail_on_warnings`
 |---|---|
 | `run.py` | Main runner: scenarios x strategies x repeats |
 | `compare.py` | Diff results across runs |
-| `regrade.py` | Re-grade stored records against the current verifier, without regenerating |
+| `regrade.py` | Re-grade stored records against the current verifier, without regenerating: TikZ checks, expected properties (recomputed from the stored `diagram_ir`) and the gate; `--no-property-gate`, `--keep-recorded-properties` |
 | `sample_scenarios.py` | Deterministic stratified sample from a scenarios YAML |
 | `generate_scenarios.py` | Build `scenarios_generated.yaml` from templates (see [docs/templated-scenarios.md](../docs/templated-scenarios.md)) |
 | `ir_diagnostics.py` | Static analysis of a `DiagramIR` to classify failure modes |
-| `sympy_checks.py` | SymPy-based property validation used by the gate |
+| `check_types.py` | The registry of check types (properties and structural): arguments, tolerance dimension and evaluator in one place; add a type here |
+| `property_names.py` | Resolves a scenario's point names ("A") to figure ids: id, label text, primed spelling, `variable_ids` |
+| `sympy_checks.py` | Property validation used by the gate: tolerances, name resolution, prism/stack queries |
 | `reporting.py` | Result formatting and JSONL I/O |
 | `leaderboard_launch.sh`, `leaderboard_analyze.py`, `leaderboard_plot.py` | Run, tabulate and plot the model x strategy leaderboard ([docs/headline_run_plan.md](../docs/headline_run_plan.md)) |
 | `run_edit_chains.py`, `edit_chain_metrics.py`, `scenarios_editing_chains.py` | Multi-turn pydsl edit-chain reliability eval |
