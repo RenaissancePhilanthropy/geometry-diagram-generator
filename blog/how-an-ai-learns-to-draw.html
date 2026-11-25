@@ -1,0 +1,620 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagram Recipes</title>
+<style>
+  :root{
+    /* graph paper (light) */
+    --paper:#FBFAF5; --card:#FFFFFF; --ink:#262A31; --muted:#6D7380; --faint:#98A0AC;
+    --grid:#DCE6F2; --grid-bold:#C7D6E9; --rule:#E4E2D9;
+    --pencil:#2B5FB8; --pencil-wash:#E7EEF9;
+    --redpen:#D6493B; --redpen-wash:#FBEAE7;
+    --pass:#2F8A57; --pass-wash:#E6F3EB;
+    --display:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN","Arial Rounded MT Bold",system-ui,sans-serif;
+    --body:"Charter","Iowan Old Style",Georgia,"Times New Roman",serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 1px 3px rgba(38,42,49,.08),0 8px 28px rgba(38,42,49,.07);
+  }
+  @media (prefers-color-scheme: dark){:root{
+    /* chalkboard (dark) */
+    --paper:#1C221F; --card:#232B27; --ink:#EAECE5; --muted:#A9B2A9; --faint:#7C857D;
+    --grid:#28312C; --grid-bold:#2F3A34; --rule:#333D37;
+    --pencil:#92BFF0; --pencil-wash:#1F3049;
+    --redpen:#F49B90; --redpen-wash:#43241F;
+    --pass:#7CC99A; --pass-wash:#1E3A2A;
+    --shadow:0 1px 3px rgba(0,0,0,.35),0 8px 28px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="dark"]{
+    --paper:#1C221F; --card:#232B27; --ink:#EAECE5; --muted:#A9B2A9; --faint:#7C857D;
+    --grid:#28312C; --grid-bold:#2F3A34; --rule:#333D37;
+    --pencil:#92BFF0; --pencil-wash:#1F3049;
+    --redpen:#F49B90; --redpen-wash:#43241F;
+    --pass:#7CC99A; --pass-wash:#1E3A2A;
+    --shadow:0 1px 3px rgba(0,0,0,.35),0 8px 28px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"]{
+    --paper:#FBFAF5; --card:#FFFFFF; --ink:#262A31; --muted:#6D7380; --faint:#98A0AC;
+    --grid:#DCE6F2; --grid-bold:#C7D6E9; --rule:#E4E2D9;
+    --pencil:#2B5FB8; --pencil-wash:#E7EEF9;
+    --redpen:#D6493B; --redpen-wash:#FBEAE7;
+    --pass:#2F8A57; --pass-wash:#E6F3EB;
+    --shadow:0 1px 3px rgba(38,42,49,.08),0 8px 28px rgba(38,42,49,.07);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);
+    font-size:18px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+  .prose{max-width:620px;margin:0 auto}
+  p{margin:1em 0}
+  a{color:var(--pencil)}
+  ::selection{background:var(--pencil-wash)}
+
+  /* header */
+  header{padding:56px 0 0;background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:28px 28px;border-bottom:1px solid var(--rule)}
+  .hero{display:flex;gap:28px;align-items:center;flex-wrap:wrap;max-width:900px;margin:0 auto;padding-bottom:34px}
+  .hero-words{flex:1 1 340px}
+  .hero-fig{flex:0 1 300px;min-width:240px}
+  .hero-fig svg{width:100%;height:auto}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--redpen);margin:0 0 18px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,5.4vw,54px);
+    line-height:1.06;letter-spacing:-.015em;margin:0 0 16px;text-wrap:balance;max-width:17ch}
+  h1 .pen{color:var(--pencil)}
+  .dek{font-size:21px;line-height:1.5;color:var(--muted);max-width:32ch;margin:0 0 22px;text-wrap:pretty}
+  .byline{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+
+  h2{font-family:var(--display);font-weight:800;font-size:27px;letter-spacing:-.01em;
+    margin:2em 0 .4em;line-height:1.2;text-wrap:balance}
+  h2 .no{color:var(--redpen);margin-right:.35em}
+
+  /* worksheet cards (interactives) */
+  .worksheet{background:var(--card);border:1px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);margin:34px auto;max-width:860px;overflow:hidden}
+  .ws-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    padding:16px 22px 12px;border-bottom:1px dashed var(--rule)}
+  .ws-head .try{font-family:var(--display);font-weight:800;font-size:14px;color:#fff;
+    background:var(--redpen);border-radius:999px;padding:3px 12px;letter-spacing:.02em}
+  .ws-head h3{font-family:var(--display);font-weight:700;font-size:19px;margin:0}
+  .ws-head .hint{font-size:14px;color:var(--muted);font-family:var(--body);font-style:italic}
+  .ws-body{padding:20px 22px 22px}
+  @media (max-width:620px){.ws-body{padding:14px 12px 16px}}
+
+  /* figure area gets its own grid */
+  .figpane{background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:24px 24px;border:1px solid var(--rule);border-radius:10px}
+  svg{display:block;width:100%;height:auto}
+  svg text{font-family:var(--display);font-weight:700;font-size:15px;fill:var(--ink)}
+  .pt{fill:var(--ink)}
+  .stroke-pencil{stroke:var(--pencil);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .stroke-faint{stroke:var(--faint);fill:none;stroke-width:1.6;stroke-dasharray:5 5}
+  .redink{fill:var(--redpen)} .redstroke{stroke:var(--redpen);fill:none;stroke-width:2}
+
+  /* controls */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  button{font-family:var(--display);font-weight:700;font-size:15px;color:var(--ink);
+    background:var(--card);border:1.5px solid var(--ink);border-radius:10px;
+    padding:8px 16px;cursor:pointer;transition:transform .08s ease,background .15s ease}
+  button:hover{background:var(--pencil-wash)}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:3px solid var(--pencil);outline-offset:2px}
+  button.primary{background:var(--pencil);border-color:var(--pencil);color:#fff}
+  button.primary:hover{filter:brightness(1.08)}
+  button[disabled]{opacity:.4;cursor:default}
+  .stepdots{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-left:auto}
+
+  /* recipe json */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  @media (max-width:720px){.duo{grid-template-columns:1fr}}
+  pre.recipe{margin:0;background:var(--paper);border:1px solid var(--rule);border-radius:10px;
+    padding:14px 16px;font-family:var(--mono);font-size:12.8px;line-height:1.75;overflow-x:auto}
+  pre.recipe .ln{display:block;border-radius:6px;padding:0 8px;margin:0 -8px;
+    transition:background .25s ease,opacity .25s ease}
+  pre.recipe .ln.dim{opacity:.35}
+  pre.recipe .ln.hot{background:var(--pencil-wash);opacity:1}
+  pre.recipe .k{color:var(--pencil)} pre.recipe .s{color:var(--redpen)}
+
+  /* check chips */
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{font-family:var(--display);font-weight:700;font-size:13.5px;border-radius:999px;
+    padding:5px 13px;border:1.5px solid var(--rule);color:var(--muted);background:var(--card);
+    transition:all .2s ease}
+  .chip.pass{background:var(--pass-wash);border-color:var(--pass);color:var(--pass)}
+  .chip.fail{background:var(--redpen-wash);border-color:var(--redpen);color:var(--redpen)}
+
+  /* toggle switch */
+  .switch{display:inline-flex;border:1.5px solid var(--ink);border-radius:12px;overflow:hidden}
+  .switch button{border:0;border-radius:0;margin:0}
+  .switch button.on{background:var(--pencil);color:#fff}
+  .scribble{font-family:var(--body);font-style:italic;font-size:15px;fill:var(--redpen)}
+
+  /* the team: three workers */
+  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:860px;margin:26px auto}
+  @media (max-width:720px){.cards3{grid-template-columns:1fr}}
+  .card3{background:var(--card);border:1.5px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px 18px 16px;text-align:center}
+  .card3 .glyph{height:44px;margin-bottom:8px}
+  .card3 .glyph svg{height:44px;width:auto;margin:0 auto}
+  .card3 b{font-family:var(--display);font-size:17px;display:block;margin-bottom:4px}
+  .card3 p{font-size:15px;color:var(--muted);margin:0;line-height:1.5}
+  .card3.c-red{border-top:4px solid var(--redpen)}
+  .card3.c-blue{border-top:4px solid var(--pencil)}
+  .card3.c-green{border-top:4px solid var(--pass)}
+
+  /* big numbers */
+  .bignums{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:860px;margin:26px auto}
+  @media (max-width:720px){.bignums{grid-template-columns:1fr}}
+  .bignum{background:var(--card);border:1.5px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px;text-align:center}
+  .bignum .n{font-family:var(--display);font-weight:800;font-size:44px;line-height:1;color:var(--pencil);display:block}
+  .bignum.red .n{color:var(--redpen)} .bignum.green .n{color:var(--pass)}
+  .bignum p{font-size:14.5px;color:var(--muted);margin:8px 0 0;line-height:1.45}
+
+  /* pipeline map */
+  .line{display:flex;gap:0;align-items:stretch;flex-wrap:wrap;justify-content:center;margin:6px 0 4px}
+  .station{flex:1 1 120px;min-width:118px;max-width:170px;background:var(--card);
+    border:1.5px solid var(--rule);border-radius:12px;padding:12px 10px 10px;margin:6px;
+    text-align:center;cursor:pointer;transition:all .15s ease;position:relative}
+  .station:hover{border-color:var(--pencil)}
+  .station:focus-visible{outline:3px solid var(--pencil);outline-offset:2px}
+  .station.active{border-color:var(--pencil);background:var(--pencil-wash);box-shadow:var(--shadow)}
+  .station .glyph{height:34px;margin-bottom:6px}
+  .station .glyph svg{height:34px;width:auto;margin:0 auto}
+  .station b{font-family:var(--display);font-size:14.5px;display:block}
+  .station i{font-family:var(--mono);font-style:normal;font-size:10.5px;color:var(--faint);
+    letter-spacing:.08em;text-transform:uppercase}
+  .stagecard{background:var(--paper);border:1px solid var(--rule);border-left:4px solid var(--pencil);
+    border-radius:10px;padding:14px 18px;margin-top:12px;font-size:15.5px;min-height:5.2em}
+  .stagecard b{font-family:var(--display)}
+  .loopnote{text-align:center;font-family:var(--mono);font-size:12px;color:var(--redpen);margin-top:4px}
+
+  .aside{border-left:4px solid var(--pencil);background:var(--pencil-wash);
+    border-radius:0 10px 10px 0;padding:12px 18px;margin:1.4em 0;font-size:16px}
+  .redline{border-left-color:var(--redpen);background:var(--redpen-wash)}
+
+  /* under-the-hood fold */
+  details.hood{background:var(--card);border:1px solid var(--rule);border-radius:14px;
+    box-shadow:var(--shadow);margin:34px auto;max-width:860px;padding:0 22px}
+  details.hood summary{cursor:pointer;list-style:none;padding:18px 0;
+    font-family:var(--display);font-weight:800;font-size:19px}
+  details.hood summary::-webkit-details-marker{display:none}
+  details.hood summary::before{content:"▸";color:var(--redpen);margin-right:10px;
+    display:inline-block;transition:transform .15s ease}
+  details.hood[open] summary::before{transform:rotate(90deg)}
+  details.hood summary .sub{font-family:var(--body);font-style:italic;font-weight:400;
+    font-size:14px;color:var(--muted);margin-left:8px}
+  details.hood .hood-body{padding:0 0 22px;font-size:16.5px}
+
+  footer{margin:70px 0 40px;padding-top:22px;border-top:1px solid var(--rule);
+    font-family:var(--mono);font-size:13px;color:var(--faint)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important}
+  }
+  .drawn{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw 1s ease forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .fade{opacity:0;animation:fadein .5s ease forwards}
+  @keyframes fadein{to{opacity:1}}
+  .hero-draw{stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 1.6s ease .2s forwards}
+  .hero-late{opacity:0;animation:fadein .6s ease 1.6s forwards}
+</style>
+
+<header>
+  <div class="wrap hero">
+    <div class="hero-words">
+      <p class="eyebrow">From the workshop · how the diagrams get made</p>
+      <h1>Diagram <span class="pen">Recipes</span></h1>
+      <p class="dek">Generating accurate diagrams with AI</p>
+      <p class="byline">how our geometry diagram maker works</p>
+    </div>
+    <div class="hero-fig" aria-hidden="true">
+      <svg viewBox="0 0 300 250">
+        <path class="stroke-pencil hero-draw" d="M60 55 L60 195 L260 195 Z"></path>
+        <path class="stroke-pencil hero-draw" d="M60 180 h15 v15" stroke-width="1.6"></path>
+        <circle class="stroke-pencil hero-draw" cx="160" cy="125" r="122"></circle>
+        <g class="hero-late">
+          <circle class="pt" cx="60" cy="55" r="4"></circle><text x="42" y="52">A</text>
+          <circle class="pt" cx="60" cy="195" r="4"></circle><text x="42" y="214">B</text>
+          <circle class="pt" cx="260" cy="195" r="4"></circle><text x="270" y="214">C</text>
+          <circle cx="160" cy="125" r="4.5" fill="var(--pass)"></circle>
+          <text x="170" y="118" fill="var(--pass)">M</text>
+          <text x="178" y="34" fill="var(--pass)" font-size="13">✓ checked</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="prose">
+    <h2 style="margin-top:1.6em"><span class="no">1.</span>The problem: close is not correct</h2>
+    <p>Math class runs on pictures. Every geometry problem needs one. And every student needs lots of problems to practice on.</p>
+    <p>But those pictures are still drawn by hand. A person places every point. A person checks every angle. That is slow, careful work. So good practice problems are rare.</p>
+    <p>Why not just ask an AI to draw one? Try it. Ask for <i>“a right triangle with a circle through all three corners.”</i> You get something that looks close. But look again. One side is bent. The circle misses a corner.</p>
+    <p>In art class, close is fine. In math class, close is wrong. A kid who practices on a “right angle” of 78° is learning something false.</p>
+    <p>See it for yourself:</p>
+  </div>
+
+  <!-- ── TRY IT 1: guess vs recipe ───────────────────────────── -->
+  <section class="worksheet" id="ws2">
+    <div class="ws-head"><span class="try">Try it №1</span><h3>Spot the mistakes</h3>
+      <span class="hint">flip between the two ways of asking</span></div>
+    <div class="ws-body">
+      <div class="controls" style="margin:0 0 14px">
+        <div class="switch" role="group" aria-label="Choose generation mode">
+          <button id="t-guess" class="on" aria-pressed="true">The AI draws by itself</button>
+          <button id="t-recipe" aria-pressed="false">The AI writes a recipe</button>
+        </div>
+      </div>
+      <div class="figpane"><svg viewBox="0 0 360 290" id="fig2" role="img" aria-label="Comparison of a guessed diagram with errors versus an exact constructed diagram">
+        <g id="f2-guess">
+          <path class="stroke-pencil" d="M78 78 L64 228 L306 218 Z"></path>
+          <circle class="stroke-pencil" cx="176" cy="132" r="128"></circle>
+          <circle class="pt" cx="78" cy="78" r="4"></circle><text x="60" y="74">A</text>
+          <circle class="pt" cx="64" cy="228" r="4"></circle><text x="46" y="247">B</text>
+          <circle class="pt" cx="306" cy="218" r="4"></circle><text x="318" y="237">C</text>
+          <circle class="pt" cx="172" cy="140" r="4.5" fill="var(--redpen)"></circle>
+          <text x="182" y="133" fill="var(--redpen)">M</text>
+          <g id="f2-marks">
+            <path class="redstroke" d="M52 210 q14 -18 34 -6" ></path>
+            <text class="scribble" x="18" y="196" transform="rotate(-8 18 196)">this is 84°, not 90°</text>
+            <path class="redstroke" d="M196 118 q10 14 -2 26"></path>
+            <text class="scribble" x="206" y="112" transform="rotate(6 206 112)">M is not the middle</text>
+            <path class="redstroke" d="M296 196 q6 10 -4 18"></path>
+            <text class="scribble" x="204" y="272" transform="rotate(-4 204 272)">the circle misses C</text>
+          </g>
+        </g>
+        <g id="f2-recipe" style="display:none">
+          <path class="stroke-pencil" d="M70 70 L70 230 L310 230 Z"></path>
+          <path class="stroke-pencil" d="M70 212 h18 v18" stroke-width="1.6"></path>
+          <circle class="stroke-pencil" cx="190" cy="150" r="144.2"></circle>
+          <circle class="pt" cx="70" cy="70" r="4"></circle><text x="52" y="66">A</text>
+          <circle class="pt" cx="70" cy="230" r="4"></circle><text x="52" y="249">B</text>
+          <circle class="pt" cx="310" cy="230" r="4"></circle><text x="322" y="249">C</text>
+          <circle class="pt" cx="190" cy="150" r="4.5" fill="var(--pass)"></circle>
+          <text x="200" y="143" fill="var(--pass)">M</text>
+          <text class="scribble" x="228" y="60" fill="var(--pass)">nothing to mark ✓</text>
+        </g>
+      </svg></div>
+      <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">The left picture is what guessing looks like. Everything is there. Nothing is exact. A person can spot the mistakes. Can a <i>computer</i> catch them? Keep reading.</p>
+    </div>
+  </section>
+
+  <div class="prose">
+    <h2><span class="no">2.</span>Our fix: ask for the recipe, not the picture</h2>
+    <p>Think about giving a friend directions to your house. You would not paint a picture of the whole trip. You would write steps. <i>Turn left at the bakery. Take the second right. Look for the gray door.</i></p>
+    <p>Steps are short. Steps are easy to check. And anyone careful can follow them exactly.</p>
+    <p>That is our whole trick. The AI never draws. It writes a <b>construction recipe</b>, the same kind of step-by-step build you would do with a compass and ruler. <i>Make a triangle with a square corner at B. Find M, the exact middle of side AC. Draw a circle around M that touches A.</i></p>
+    <p>Then a math program follows the recipe perfectly. Watch it happen:</p>
+  </div>
+
+  <!-- ── TRY IT 2: recipe player ─────────────────────────────── -->
+  <section class="worksheet" id="ws1">
+    <div class="ws-head"><span class="try">Try it №2</span><h3>Play the recipe</h3>
+      <span class="hint">the AI wrote the steps on the left. Press ▸ to watch the math follow them</span></div>
+    <div class="ws-body"><div class="duo">
+      <pre class="recipe" id="rj"><span class="ln" data-s="1">{ <span class="k">"op"</span>: <span class="s">"triangle"</span>, <span class="k">"corners"</span>: [<span class="s">"A"</span>,<span class="s">"B"</span>,<span class="s">"C"</span>],</span><span class="ln" data-s="1">  <span class="k">"right_angle_at"</span>: <span class="s">"B"</span> }</span><span class="ln" data-s="2">{ <span class="k">"op"</span>: <span class="s">"midpoint"</span>, <span class="k">"name"</span>: <span class="s">"M"</span>, <span class="k">"of"</span>: [<span class="s">"A"</span>,<span class="s">"C"</span>] }</span><span class="ln" data-s="3">{ <span class="k">"op"</span>: <span class="s">"circle"</span>, <span class="k">"center"</span>: <span class="s">"M"</span>, <span class="k">"through"</span>: <span class="s">"A"</span> }</span><span class="ln" data-s="4">checks:</span><span class="ln" data-s="4">  distance(M,A) = distance(M,B) = distance(M,C)</span><span class="ln" data-s="4">  angle(A,B,C) = 90°</span></pre>
+      <div>
+        <div class="figpane"><svg viewBox="0 0 360 280" id="fig1" role="img" aria-label="Construction of a right triangle with circumscribed circle, drawn step by step">
+          <g id="f1-tri" style="visibility:hidden">
+            <path class="stroke-pencil" d="M70 65 L70 225 L310 225 Z"></path>
+            <path class="stroke-pencil" d="M70 207 h18 v18" stroke-width="1.6"></path>
+            <circle class="pt" cx="70" cy="65" r="4"></circle><text x="52" y="62">A</text>
+            <circle class="pt" cx="70" cy="225" r="4"></circle><text x="52" y="244">B</text>
+            <circle class="pt" cx="310" cy="225" r="4"></circle><text x="322" y="244">C</text>
+          </g>
+          <g id="f1-mid" style="visibility:hidden">
+            <circle class="pt" cx="190" cy="145" r="4.5" fill="var(--redpen)"></circle>
+            <text x="200" y="138" fill="var(--redpen)">M</text>
+          </g>
+          <g id="f1-circ" style="visibility:hidden">
+            <circle class="stroke-pencil" cx="190" cy="145" r="144.2" stroke-dasharray="none"></circle>
+          </g>
+          <g id="f1-checks" style="visibility:hidden">
+            <line class="stroke-faint" x1="190" y1="145" x2="70" y2="65"></line>
+            <line class="stroke-faint" x1="190" y1="145" x2="70" y2="225"></line>
+            <line class="stroke-faint" x1="190" y1="145" x2="310" y2="225"></line>
+          </g>
+        </svg></div>
+        <div class="chips" id="f1-chips" style="visibility:hidden">
+          <span class="chip pass">✓ M is the exact middle of AC</span>
+          <span class="chip pass">✓ circle touches A, B and C</span>
+          <span class="chip pass">✓ the corner at B is 90.000°</span>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <button id="s-back">◂ back</button>
+      <button id="s-next" class="primary">play a step ▸</button>
+      <span class="stepdots" id="s-dots">step 0 of 4</span>
+    </div>
+    <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0">The circle touches all three corners. That is not luck. A 2,300 year old math rule (Thales' theorem) says it <i>must</i> happen. The recipe made it certain. The checks proved it anyway.</p>
+    </div>
+  </section>
+
+  <div class="prose">
+    <p>So three workers share the job. Each one does what it is best at, and nothing else:</p>
+  </div>
+
+  <!-- ── the team ────────────────────────────────────────────── -->
+  <div class="cards3">
+    <div class="card3 c-blue">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pencil)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6 h20 v28 h-20 z M14 13 h12 M14 19 h12 M14 25 h7"/></g></svg></div>
+      <b>The AI plans</b>
+      <p>It writes the recipe. It says <i>what</i> to build. It never says where the dots go.</p>
+    </div>
+    <div class="card3 c-green">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pass)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 L20 16 M20 16 L10 34 M20 16 L30 34 M13 27 a11 11 0 0 0 14 0"/></g></svg></div>
+      <b>The math builds</b>
+      <p>It follows the steps exactly. It computes every point. It never guesses.</p>
+    </div>
+    <div class="card3 c-red">
+      <div class="glyph"><svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--redpen)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M30 8 L14 30 l-4 -3 z M10 33 l4 3"/><path d="M8 20 l6 6 L26 12"/></g></svg></div>
+      <b>The red pen checks</b>
+      <p>It measures every promise. One failed check, and nobody sees the picture.</p>
+    </div>
+  </div>
+
+  <div class="prose">
+    <div class="aside"><b>The AI supplies the plan.</b> The math supplies the precision. Neither one is asked to do the other's job.</div>
+
+    <h2><span class="no">3.</span>Every picture is graded first</h2>
+    <p>A geometry problem makes promises. <i>M is the middle. The corner is 90°. The circle touches all three corners.</i></p>
+    <p>Here is the key: a computer can <b>measure</b> every one of those promises.</p>
+    <p>So before any picture ships, we measure them all. We call it what your teacher called it: <b style="color:var(--redpen)">the red pen</b>. If a check fails, the picture is rejected. The recipe goes back to the AI with a note: <i>here is what was wrong, try again.</i> The AI gets three tries. If the checks still fail, nothing ships at all.</p>
+    <p>Now you hold the red pen. Drag M and watch the checks:</p>
+  </div>
+
+  <!-- ── TRY IT 3: drag the midpoint ─────────────────────────── -->
+  <section class="worksheet" id="ws3">
+    <div class="ws-head"><span class="try">Try it №3</span><h3>Be the checker</h3>
+      <span class="hint">drag M along the slanted side (or use ← → arrow keys)</span></div>
+    <div class="ws-body">
+      <div class="figpane"><svg viewBox="0 0 360 300" id="fig3" aria-label="Interactive figure: drag point M along segment AC and watch the checks pass or fail">
+        <path class="stroke-pencil" d="M70 75 L70 235 L310 235 Z"></path>
+        <path class="stroke-pencil" d="M70 217 h18 v18" stroke-width="1.6"></path>
+        <circle id="d-circle" class="stroke-pencil" cx="190" cy="155" r="144.2" style="stroke:var(--redpen)"></circle>
+        <circle class="pt" cx="70" cy="75" r="4"></circle><text x="52" y="71">A</text>
+        <circle id="d-B" class="pt" cx="70" cy="235" r="5"></circle><text x="50" y="254">B</text>
+        <circle id="d-C" class="pt" cx="310" cy="235" r="5"></circle><text x="322" y="254">C</text>
+        <g id="d-handle" tabindex="0" role="slider" aria-label="Position of point M along segment AC"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="cursor:grab;outline:none">
+          <circle cx="190" cy="155" r="16" fill="transparent"></circle>
+          <circle id="d-M" cx="190" cy="155" r="7" fill="var(--redpen)"></circle>
+          <text id="d-Mlab" x="200" y="147" fill="var(--redpen)">M</text>
+        </g>
+      </svg></div>
+      <div class="chips">
+        <span class="chip" id="c-mid">AM = 5.0 · MC = 5.0 (M is the middle)</span>
+        <span class="chip" id="c-circ">circle through A also touches B and C</span>
+      </div>
+      <p style="font-size:14.5px;color:var(--muted);margin:12px 0 0" id="d-note"></p>
+    </div>
+  </section>
+
+  <div class="prose">
+    <h2><span class="no">4.</span>The whole assembly line</h2>
+    <p>One request rides through five stations. A failed check gets sent back, like a returned draft. Tap each station:</p>
+  </div>
+
+  <!-- ── pipeline map ────────────────────────────────────────── -->
+  <section class="worksheet" id="ws4">
+    <div class="ws-body">
+      <div class="line" id="pline"></div>
+      <p class="loopnote">↺ fail a check? the work goes back to station 2 with notes</p>
+      <div class="stagecard" id="stagecard"></div>
+    </div>
+  </section>
+
+  <!-- ── under the hood ──────────────────────────────────────── -->
+  <details class="hood">
+    <summary>A peek under the hood <span class="sub">for curious readers: the real files behind Try it №2</span></summary>
+    <div class="hood-body">
+    <p><b>Step 1 · The ask.</b> Plain words go in:</p>
+    <pre class="recipe">Draw triangle ABC with a right angle at B. M is the midpoint
+of AC. Draw the circle centered at M through A.</pre>
+
+    <p><b>Step 2 · The recipe becomes data a computer can read.</b> Every step gets a type. Every promise gets listed. This is the AI's whole job. Notice: it never says <i>where</i> M is. It only says what M <i>means</i>.</p>
+    <pre class="recipe">{<span class="k">"id"</span>:<span class="s">"B"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:0, <span class="k">"y"</span>:0}
+{<span class="k">"id"</span>:<span class="s">"A"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:0, <span class="k">"y"</span>:3}
+{<span class="k">"id"</span>:<span class="s">"C"</span>, <span class="k">"kind"</span>:<span class="s">"point_fixed"</span>, <span class="k">"x"</span>:4, <span class="k">"y"</span>:0}
+{<span class="k">"id"</span>:<span class="s">"T"</span>, <span class="k">"kind"</span>:<span class="s">"triangle"</span>, <span class="k">"a"</span>:<span class="s">"A"</span>, <span class="k">"b"</span>:<span class="s">"B"</span>, <span class="k">"c"</span>:<span class="s">"C"</span>}
+{<span class="k">"id"</span>:<span class="s">"M"</span>, <span class="k">"kind"</span>:<span class="s">"point_midpoint"</span>, <span class="k">"p"</span>:<span class="s">"A"</span>, <span class="k">"q"</span>:<span class="s">"C"</span>}
+{<span class="k">"id"</span>:<span class="s">"k"</span>, <span class="k">"kind"</span>:<span class="s">"circle_center_point"</span>, <span class="k">"center"</span>:<span class="s">"M"</span>, <span class="k">"through"</span>:<span class="s">"A"</span>}
+{<span class="k">"id"</span>:<span class="s">"MA"</span>, <span class="k">"kind"</span>:<span class="s">"segment"</span>, <span class="k">"a"</span>:<span class="s">"M"</span>, <span class="k">"b"</span>:<span class="s">"A"</span>}
+{<span class="k">"id"</span>:<span class="s">"MB"</span>, <span class="k">"kind"</span>:<span class="s">"segment"</span>, <span class="k">"a"</span>:<span class="s">"M"</span>, <span class="k">"b"</span>:<span class="s">"B"</span>}
+{<span class="k">"id"</span>:<span class="s">"MC"</span>, <span class="k">"kind"</span>:<span class="s">"segment"</span>, <span class="k">"a"</span>:<span class="s">"M"</span>, <span class="k">"b"</span>:<span class="s">"C"</span>}
+
+checks:
+{<span class="k">"kind"</span>:<span class="s">"right_angle"</span>, <span class="k">"angle"</span>:{<span class="k">"a"</span>:<span class="s">"A"</span>, <span class="k">"o"</span>:<span class="s">"B"</span>, <span class="k">"b"</span>:<span class="s">"C"</span>}}
+{<span class="k">"kind"</span>:<span class="s">"equal_length"</span>, <span class="k">"segs"</span>:[<span class="s">"MA"</span>,<span class="s">"MB"</span>,<span class="s">"MC"</span>]}</pre>
+
+    <p><b>Step 3 · The math engine computes the exact points.</b> We use <a href="https://www.sympy.org">SymPy</a>, a free math library. Look at the numbers: M lands at (2, 3/2) and the radius is exactly 5/2. Fractions, not rounded guesses. Harder builds use high-precision numbers, then get verified. Either way, nothing is eyeballed.</p>
+    <pre class="recipe">A = Point2D(0, 3)    B = Point2D(0, 0)    C = Point2D(4, 0)
+M = Point2D(2, 3/2)               <span class="k"># the midpoint, computed</span>
+k = Circle(Point2D(2, 3/2), 5/2)  <span class="k"># radius = |MA|, exact</span></pre>
+
+    <p><b>Step 4 · The red pen runs.</b> Every promise becomes a test:</p>
+    <pre class="recipe">✓ right_angle   angle A-B-C measures 90°
+✓ equal_length  |MA| = |MB| = |MC| = 5/2</pre>
+    <p>Each test must pass within a very tight margin. Any failure rejects the picture and sends the notes back to the AI. Three failed tries, and the system gives up rather than ship.</p>
+
+    <p><b>Step 5 · Only now is anything drawn.</b> The verified points go to TikZ, a drawing language, which renders the final image. The drawing layer never invents a point. It inherits checked ones.</p>
+    <pre class="recipe">\tkzDefPoint(0,3){A}   \tkzDefPoint(0,0){B}
+\tkzDefPoint(4,0){C}   \tkzDefPoint(2,1.5){M}
+\tkzDrawPolygon(A,B,C)
+\tkzDrawCircle(M,A)</pre>
+    </div>
+  </details>
+
+  <div class="prose">
+    <h2><span class="no">5.</span>Why it matters</h2>
+  </div>
+
+  <div class="bignums">
+    <div class="bignum red"><span class="n">0</span><p>pictures ship without passing every check. “Looks fine” is never enough.</p></div>
+    <div class="bignum"><span class="n">3</span><p>tries the AI gets. Then the system gives up instead of shipping a bad picture.</p></div>
+    <div class="bignum green"><span class="n">801</span><p>problems in <b>GeoGenBench</b>, our public test of how well AIs draw geometry.</p></div>
+  </div>
+
+  <div class="prose">
+    <p><b>You can trust the pictures.</b> Every diagram comes with a receipt: the promises it made, and the measurements that prove it kept them. A teacher never has to proofread it. The proofreading already ran.</p>
+    <p><b>Practice gets cheap.</b> A checked picture used to take expert minutes. Now it takes machine seconds. A whole course of fresh problems, with a different version for every student, can be built in an afternoon.</p>
+    <p><b>And anyone can keep score.</b> Our public test, GeoGenBench, has 801 diagram problems (600 built from templates, 201 taken from real K-12 textbooks). Each one can be checked by a machine. So anyone can <i>measure</i> how well an AI draws, instead of eyeballing it.</p>
+    <p>The big idea travels beyond geometry:</p>
+    <div class="aside redline"><b>Let the AI plan. Let the math measure.</b> Check every promise before a student sees it.</div>
+    <p>That is the whole story. The AI writes the recipe. The math follows it exactly. And the red pen grades everything, every time, for every student.</p>
+  </div>
+
+  <footer class="prose">
+    <span>© the geometry diagram project · every picture on this page was made the same way it describes: computed, then checked</span>
+  </footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── Try it 2: recipe player ── */
+  var step = 0, MAX = 4;
+  var groups = ["f1-tri","f1-mid","f1-circ","f1-checks"];
+  var next = document.getElementById("s-next"), back = document.getElementById("s-back"),
+      dots = document.getElementById("s-dots"), chips1 = document.getElementById("f1-chips");
+  var lines = Array.prototype.slice.call(document.querySelectorAll("#rj .ln"));
+  function render1(){
+    groups.forEach(function(id, i){
+      var el = document.getElementById(id);
+      var show = step >= i + 1;
+      el.style.visibility = show ? "visible" : "hidden";
+      if (show && !reduced && !el.dataset.drawn){
+        el.dataset.drawn = "1";
+        el.querySelectorAll("path,circle").forEach(function(s){
+          if (s.classList.contains("stroke-pencil")) s.classList.add("drawn");
+          else s.classList.add("fade");
+        });
+      }
+      if (!show) {
+        delete el.dataset.drawn;
+        el.querySelectorAll(".drawn,.fade").forEach(function(s){ s.classList.remove("drawn","fade"); });
+      }
+    });
+    chips1.style.visibility = step >= 4 ? "visible" : "hidden";
+    lines.forEach(function(l){
+      var s = +l.dataset.s;
+      l.classList.toggle("hot", s === step);
+      l.classList.toggle("dim", s > step);
+    });
+    dots.textContent = "step " + step + " of " + MAX;
+    next.disabled = step >= MAX; back.disabled = step <= 0;
+    next.textContent = step >= MAX ? "all checks pass ✓" : "play a step ▸";
+  }
+  next.addEventListener("click", function(){ if (step < MAX){ step++; render1(); } });
+  back.addEventListener("click", function(){ if (step > 0){ step--; render1(); } });
+  render1();
+
+  /* ── Try it 1: guess vs recipe toggle ── */
+  var bG = document.getElementById("t-guess"), bR = document.getElementById("t-recipe");
+  function mode(guess){
+    document.getElementById("f2-guess").style.display = guess ? "" : "none";
+    document.getElementById("f2-recipe").style.display = guess ? "none" : "";
+    bG.classList.toggle("on", guess); bR.classList.toggle("on", !guess);
+    bG.setAttribute("aria-pressed", guess); bR.setAttribute("aria-pressed", !guess);
+  }
+  bG.addEventListener("click", function(){ mode(true); });
+  bR.addEventListener("click", function(){ mode(false); });
+
+  /* ── Try it 3: drag the midpoint ── */
+  var A = {x:70, y:75}, B = {x:70, y:235}, C = {x:310, y:235};
+  var t = 0.5, TOL = 0.018;
+  var svg3 = document.getElementById("fig3"),
+      handle = document.getElementById("d-handle"),
+      dM = document.getElementById("d-M"), dMl = document.getElementById("d-Mlab"),
+      dCircle = document.getElementById("d-circle"),
+      cMid = document.getElementById("c-mid"), cCirc = document.getElementById("c-circ"),
+      dB = document.getElementById("d-B"), dC = document.getElementById("d-C"),
+      note = document.getElementById("d-note");
+  function dist(p, q){ return Math.hypot(p.x - q.x, p.y - q.y); }
+  var LAC = dist(A, C); // 10 "units"
+  function render3(){
+    var M = { x: A.x + t*(C.x - A.x), y: A.y + t*(C.y - A.y) };
+    var r = dist(M, A);
+    dM.setAttribute("cx", M.x); dM.setAttribute("cy", M.y);
+    handle.firstElementChild.setAttribute("cx", M.x);
+    handle.firstElementChild.setAttribute("cy", M.y);
+    dMl.setAttribute("x", M.x + 10); dMl.setAttribute("y", M.y - 8);
+    dCircle.setAttribute("cx", M.x); dCircle.setAttribute("cy", M.y);
+    dCircle.setAttribute("r", r);
+    handle.setAttribute("aria-valuenow", Math.round(t * 100));
+    var am = (10 * t).toFixed(1), mc = (10 * (1 - t)).toFixed(1);
+    var midOK = Math.abs(t - 0.5) < TOL;
+    var onB = Math.abs(dist(M, B) - r) < 0.02 * LAC,
+        onC = Math.abs(dist(M, C) - r) < 0.02 * LAC;
+    cMid.textContent = (midOK ? "✓" : "✗") + " AM = " + am + " · MC = " + mc +
+        (midOK ? " (M is the middle)" : " (M is not the middle)");
+    cMid.className = "chip " + (midOK ? "pass" : "fail");
+    cCirc.textContent = (onB && onC ? "✓ circle through A also touches B and C"
+        : "✗ circle through A misses " + (!onB && !onC ? "B and C" : (!onB ? "B" : "C")));
+    cCirc.className = "chip " + (onB && onC ? "pass" : "fail");
+    dB.setAttribute("fill", onB ? "var(--pass)" : "var(--ink)");
+    dC.setAttribute("fill", onC ? "var(--pass)" : "var(--ink)");
+    dCircle.style.stroke = (midOK && onB && onC) ? "var(--pass)" : "var(--redpen)";
+    note.textContent = midOK
+      ? "Both checks pass only in the exact middle. Our real checker is far pickier than your mouse. But the idea is just this."
+      : "The red pen says no. This picture would go back to the AI with these two notes attached.";
+  }
+  function setFromEvent(ev){
+    var pt = svg3.createSVGPoint();
+    pt.x = ev.clientX; pt.y = ev.clientY;
+    var p = pt.matrixTransform(svg3.getScreenCTM().inverse());
+    var nt = ((p.x - A.x) * (C.x - A.x) + (p.y - A.y) * (C.y - A.y)) / (LAC * LAC);
+    t = Math.max(0.06, Math.min(0.94, nt));
+    render3();
+  }
+  var dragging = false;
+  handle.addEventListener("pointerdown", function(ev){
+    dragging = true; handle.setPointerCapture(ev.pointerId);
+    handle.style.cursor = "grabbing"; ev.preventDefault();
+  });
+  handle.addEventListener("pointermove", function(ev){ if (dragging) setFromEvent(ev); });
+  handle.addEventListener("pointerup", function(){ dragging = false; handle.style.cursor = "grab"; });
+  handle.addEventListener("keydown", function(ev){
+    if (ev.key === "ArrowLeft" || ev.key === "ArrowDown"){ t = Math.max(0.06, t - 0.01); render3(); ev.preventDefault(); }
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp"){ t = Math.min(0.94, t + 0.01); render3(); ev.preventDefault(); }
+  });
+  render3();
+
+  /* ── pipeline map ── */
+  var g = function(d){ return '<svg viewBox="0 0 40 40" aria-hidden="true"><g fill="none" stroke="var(--pencil)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + d + "</g></svg>"; };
+  var stations = [
+    { t: "The ask", i: "a person", g: g('<path d="M8 10 h24 M8 17 h24 M8 24 h15"/>'),
+      d: "<b>A person asks in plain words.</b> “Draw triangle ABC with a square corner at B. M is the middle of AC. Draw the circle through all three corners.” No math code. Just words." },
+    { t: "The recipe", i: "the AI", g: g('<path d="M10 6 h20 v28 h-20 z M14 13 h12 M14 19 h12 M14 25 h7"/>'),
+      d: "<b>The AI turns the words into steps.</b> This is the AI's only job. If it wants a midpoint, it must <i>say</i> “midpoint.” It never points at a spot." },
+    { t: "The build", i: "the math engine", g: g('<path d="M20 6 L20 16 M20 16 L10 34 M20 16 L30 34 M13 27 a11 11 0 0 0 14 0"/>'),
+      d: "<b>A math program follows the steps.</b> The middle is the exact middle. The square corner is exactly 90°. Every point in the final picture is computed here. None are guessed." },
+    { t: "The red pen", i: "the checks", g: g('<path d="M30 8 L14 30 l-4 -3 z M10 33 l4 3"/><path d="M8 20 l6 6 L26 12" stroke="var(--redpen)"/>'),
+      d: "<b>Every promise gets measured.</b> One failure and the picture is rejected. The notes go back to station 2. After three failed tries, the system gives up. It never ships a bad picture." },
+    { t: "The diagram", i: "drawn + proven", g: g('<rect x="7" y="7" width="26" height="26" rx="2"/><path d="M12 27 L20 13 L28 27 z"/>'),
+      d: "<b>Only checked math gets drawn.</b> The picture ships with its report card: the list of checks it passed. That is why a teacher can trust it." }
+  ];
+  var line = document.getElementById("pline"), card = document.getElementById("stagecard");
+  stations.forEach(function(s, i){
+    var b = document.createElement("button");
+    b.className = "station"; b.type = "button";
+    b.innerHTML = '<div class="glyph">' + s.g + "</div><b>" + (i + 1) + ". " + s.t + "</b><i>" + s.i + "</i>";
+    b.addEventListener("click", function(){ select(i); });
+    line.appendChild(b);
+  });
+  function select(i){
+    Array.prototype.forEach.call(line.children, function(el, j){
+      el.classList.toggle("active", i === j);
+    });
+    card.innerHTML = stations[i].d;
+  }
+  select(0);
+})();
+</script>
