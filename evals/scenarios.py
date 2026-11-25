@@ -53,6 +53,50 @@ _SUPPORTED_PROPERTY_TYPES = {
     "stack_is_height_map",
 }
 
+# Tolerance dimension of each sympy-evaluated property type: the power of the
+# figure's length scale its compared quantity carries, so a ``rel_tol`` (a
+# fraction of the figure's size) becomes ``rel_tol * scale ** dimension`` in the
+# check's own units. 0 = only an absolute ``tol`` applies: angles (radians) and a
+# fraction along a segment are dimensionless, and the side checks use ``tol`` as a
+# required margin (raising it makes them stricter), so a figure-scaled slack
+# would be meaningless. A type missing from this table
+# (prism/stack, rendering-only, unsupported) takes neither field.
+PROPERTY_TOL_DIMENSION: dict[str, int] = {
+    "midpoint": 1, "equal_lengths": 1, "point_on_line": 1, "point_on_segment": 1,
+    "point_on_circle": 1, "tangent": 1, "distance_equals": 1, "intersects": 1,
+    "equidistant_from_sides": 1, "centroid": 1,
+    "collinear": 2, "parallel": 2, "perpendicular": 2,
+    "opposite_side": 0, "same_side": 0,
+    "right_angle": 0, "angle_equal": 0, "angle_value": 0, "angle_bisector": 0,
+    "not_between": 0,
+}
+
+
+def _validate_property_tolerances(prop: dict, prop_type: str, where: str) -> dict[str, float]:
+    """The optional ``tol`` (absolute, in the check's units; radians for an angle
+    check) and ``rel_tol`` (a fraction of the figure's size) of one property:
+    positive finite numbers, ``rel_tol`` only where the compared quantity
+    scales with the figure. Returns just the fields that were given."""
+    import math
+    out: dict[str, float] = {}
+    for key in ("tol", "rel_tol"):
+        if key not in prop:
+            continue
+        value = prop[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{where}: '{key}' must be a positive finite number")
+        if prop_type in _SUPPORTED_PROPERTY_TYPES and prop_type not in PROPERTY_TOL_DIMENSION:
+            raise ValueError(f"{where}: '{key}' is not supported for type {prop_type!r}")
+        if key == "rel_tol" and PROPERTY_TOL_DIMENSION.get(prop_type) == 0:
+            raise ValueError(
+                f"{where}: 'rel_tol' does not apply to {prop_type!r} (an angle, a fraction "
+                "or a required margin does not scale with the figure); use 'tol'"
+            )
+        out[key] = float(value)
+    return out
+
+
 # Structural check types and what each one counts. polygon_count counts
 # authored 2D plane polygons only (prisms never count); solid_count counts
 # authored solids (e.g. rectangular_prism). Each maps to an optional
@@ -149,6 +193,60 @@ def _validate_stack_is_height_map_args(args: list, where: str) -> None:
             f"{where}: stack_is_height_map args must be [stack id or \"*\", true/false]"
         )
 
+
+def _is_name(x: Any) -> bool:
+    return isinstance(x, str) and bool(x.strip())
+
+
+def _distinct_names(items: Any, count: int | None, where: str, what: str) -> None:
+    if not isinstance(items, list) or not all(_is_name(i) for i in items):
+        raise ValueError(f"{where}: {what} must be a list of point names, got {items!r}")
+    if (count is not None and len(items) != count) or len(set(items)) != len(items):
+        need = f"{count} " if count is not None else ""
+        raise ValueError(f"{where}: {what} must be {need}distinct points, got {items!r}")
+
+
+def _validate_angle_args(args: list, where: str) -> None:
+    """right_angle [a, o, b]; angle_value [a, o, b, degrees]: three distinct points."""
+    _distinct_names(args[:3], 3, where, "the angle's points [a, o, b]")
+
+
+def _validate_angle_pair_args(args: list, where: str) -> None:
+    """angle_equal [[a1, o1, b1], [a2, o2, b2]]: two angles of three distinct points each
+    (an angle named by a number, "angle 1", is not a point triple)."""
+    if len(args) != 2:
+        raise ValueError(f"{where}: needs two angles [[a, o, b], [a, o, b]], got {len(args)} argument(s)")
+    for triple in args:
+        _distinct_names(triple, 3, where, "an angle [a, o, b]")
+
+
+def _validate_segment_args(args: list, where: str) -> None:
+    """equal_lengths / parallel / perpendicular [[p, q], ...]: segments of two distinct points."""
+    if not args or not all(isinstance(seg, list) for seg in args):
+        raise ValueError(f"{where}: needs a list of segments [[p, q], ...], got {args!r}")
+    for seg in args:
+        _distinct_names(seg, 2, where, "a segment [p, q]")
+
+
+def _validate_distinct_points_args(count: int | None, minimum: int = 0):
+    def validate(args: list, where: str) -> None:
+        _distinct_names(args[:count] if count else args, count, where, "the points")
+        if len(args) < minimum:
+            raise ValueError(f"{where}: needs at least {minimum} points, got {len(args)}")
+    return validate
+
+
+for _ptype, _validator in (
+    ("right_angle", _validate_angle_args),
+    ("angle_value", _validate_angle_args),
+    ("angle_equal", _validate_angle_pair_args),
+    ("equal_lengths", _validate_segment_args),
+    ("parallel", _validate_segment_args),
+    ("perpendicular", _validate_segment_args),
+    ("collinear", _validate_distinct_points_args(None, 3)),
+    ("midpoint", _validate_distinct_points_args(3)),
+):
+    _PROPERTY_ARG_VALIDATORS[_ptype] = _validator
 
 register_structural_type("polygon_count")
 register_structural_type("solid_count", _validate_solid_count_args)
@@ -249,6 +347,7 @@ def _validate_scenarios(raw_scenarios: Any, strict: bool = False) -> list[dict[s
             if not isinstance(args, list):
                 raise ValueError(f"{prop_where}: 'args' must be a list")
             unsupported = prop_type not in _SUPPORTED_PROPERTY_TYPES
+            tolerances = _validate_property_tolerances(prop, prop_type, prop_where)
             if unsupported:
                 _note_unsupported_check_type("property", prop_type, prop_where, strict, unknown_seen)
             elif prop_type in _PROPERTY_ARG_VALIDATORS:
@@ -259,6 +358,7 @@ def _validate_scenarios(raw_scenarios: Any, strict: bool = False) -> list[dict[s
                     "name": name,
                     "type": prop_type,
                     "args": args,
+                    **tolerances,
                     **({"unsupported": True} if unsupported else {}),
                 }
             )

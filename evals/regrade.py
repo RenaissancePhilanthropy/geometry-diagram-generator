@@ -4,10 +4,14 @@ Use this after a hardening pass that improves coordinate resolution or
 predicate semantics, to quantify how many soft_pass / fail records now
 promote to strict pass without re-running any LLM calls.
 
-For each record we re-extract coordinates from the stored ``tikz_code``,
-re-evaluate every property in ``tikz_checks`` whose predicate type is
-implemented by ``util.tikz_geometry.validate_geometric_property``, and
-recompute ``gate_status`` using the same logic as ``evals/run.py``.
+For each record we re-extract coordinates from the stored ``tikz_code``
+(records with TikZ), re-evaluate every property in ``tikz_checks`` whose
+predicate type is implemented by ``util.tikz_geometry.validate_geometric_property``,
+re-run the scenario's ``expected_properties`` on the figure recompiled from the
+stored ``diagram_ir`` (every record, SVG-only ones included; point names resolve
+through ``evals/property_names.py`` without ``variable_ids``, which records do not
+store), and recompute ``gate_status`` with ``evals/run.py``'s own
+``_finalize_gate_status``. Edit-chain records are left alone.
 
 Usage:
     python evals/regrade.py \\
@@ -23,6 +27,11 @@ import yaml
 from collections import Counter
 from pathlib import Path
 
+from evals.property_names import NameResolver
+from evals.run import _finalize_gate_status
+from evals.sympy_checks import _validate_properties_sympy
+from geometry_diagrams.ir.ir import DiagramIR
+from geometry_diagrams.ir.to_sympy import compile_defs
 from geometry_diagrams.util.tikz_geometry import resolve_all_coordinates, validate_geometric_property
 
 # Match the production tolerance from evals/run.py
@@ -40,11 +49,59 @@ def _scenario_index(yaml_paths: list[Path]) -> dict[str, dict]:
     return out
 
 
-def _regrade_record(rec: dict, scenario: dict | None) -> tuple[dict, str]:
+def _recompute_properties(rec: dict, scenario: dict | None) -> list[dict] | None:
+    """The scenario's expected_properties re-run on the figure recompiled from the
+    record's ``diagram_ir``; None when that is not possible (the recorded results stay)."""
+    props = (scenario or {}).get("expected_properties") or []
+    if not props or not rec.get("diagram_ir"):
+        return None
+    try:
+        diagram = DiagramIR.model_validate(rec["diagram_ir"])
+        sym = compile_defs(diagram)
+    except Exception:
+        return None
+    points = {k: (float(v.x), float(v.y)) for k, v in sym.items() if hasattr(v, "x") and hasattr(v, "y")}
+    return _validate_properties_sympy(props, points, resolver=NameResolver(points, diagram))
+
+
+def _regrade_record(
+    rec: dict, scenario: dict | None, *, recompute_properties: bool = True, gate_properties: bool = True,
+) -> tuple[dict, str]:
     """Return (new_record, change_summary)."""
+    if "chain_id" in rec:
+        return rec, "edit-chain"
+    rec = dict(rec)
+    promoted = demoted = 0
+    if rec.get("tikz_code"):
+        rec, promoted, demoted = _regrade_tikz_checks(rec, scenario)
+
+    props_changed = 0
+    new_props = _recompute_properties(rec, scenario) if recompute_properties else None
+    if new_props is not None:
+        old = {r.get("name"): r.get("passed") for r in rec.get("sympy_property_checks") or []}
+        props_changed = sum(1 for r in new_props if old.get(r["name"]) != r["passed"])
+        rec["sympy_property_checks"] = new_props
+
+    old_gate = rec.get("gate_status")
+    _finalize_gate_status(rec, (scenario or {}).get("fail_on_warnings") or [], gate_properties)
+    new_gate = rec["gate_status"]
+
+    summary = ""
+    if old_gate != new_gate:
+        summary = f"gate: {old_gate} -> {new_gate}"
+    if promoted:
+        summary += f" promoted={promoted}"
+    if demoted:
+        summary += f" demoted={demoted}"
+    if props_changed:
+        summary += f" properties_changed={props_changed}"
+    return rec, summary.strip() or "unchanged"
+
+
+def _regrade_tikz_checks(rec: dict, scenario: dict | None) -> tuple[dict, int, int]:
+    """Re-evaluate the record's tikz_checks from its stored TikZ. Returns
+    (record with the new tikz_checks, promoted, demoted)."""
     tikz = rec.get("tikz_code") or ""
-    if not tikz:
-        return rec, "no-tikz"
 
     coords = resolve_all_coordinates(tikz)
     new_checks: dict[str, dict] = {}
@@ -100,48 +157,8 @@ def _regrade_record(rec: dict, scenario: dict | None) -> tuple[dict, str]:
         elif old_pass is False and new_pass is True:
             promoted += 1
 
-    rec = dict(rec)
     rec["tikz_checks"] = new_checks
-
-    # Recompute gate_status (mirrors evals/run.py::_finalize_gate_status)
-    failures: list[str] = []
-    skipped: list[str] = []
-    for n, r in new_checks.items():
-        passed = r.get("passed")
-        if passed is False:
-            failures.append(n)
-        elif passed is not True and r.get("error"):
-            failures.append(f"{n}:error")
-        elif r.get("skipped") is True or passed is None:
-            skipped.append(n)
-
-    canvas = rec.get("canvas_checks")
-    if isinstance(canvas, dict):
-        for cname, c in canvas.items():
-            if isinstance(c, dict) and c.get("passed") is False:
-                failures.append(f"canvas:{cname}")
-
-    if failures:
-        new_gate = "fail"
-    elif skipped:
-        new_gate = "soft_pass"
-    elif rec.get("svg_rendered") or rec.get("svg_path"):
-        new_gate = "pass"
-    else:
-        new_gate = rec.get("gate_status", "fail")
-
-    old_gate = rec.get("gate_status")
-    rec["gate_status"] = new_gate
-    rec["gate_failures"] = failures
-
-    summary = ""
-    if old_gate != new_gate:
-        summary = f"gate: {old_gate} -> {new_gate}"
-    if promoted:
-        summary += f" promoted={promoted}"
-    if demoted:
-        summary += f" demoted={demoted}"
-    return rec, summary or "unchanged"
+    return rec, promoted, demoted
 
 
 def main() -> None:
@@ -153,6 +170,14 @@ def main() -> None:
         type=Path,
         nargs="+",
         default=[Path("evals/scenarios_pilot.yaml"), Path("evals/scenarios_pilot_t3.yaml")],
+    )
+    parser.add_argument(
+        "--no-property-gate", action="store_true",
+        help="record expected_properties failures without failing the gate (as before they gated)",
+    )
+    parser.add_argument(
+        "--keep-recorded-properties", action="store_true",
+        help="do not re-run expected_properties from the stored diagram_ir; keep the recorded verdicts",
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
@@ -177,7 +202,11 @@ def main() -> None:
                     continue
                 scenario = scenario_index.get(rec.get("scenario_id"))
                 old_gate = rec.get("gate_status", "?")
-                new_rec, summary = _regrade_record(rec, scenario)
+                new_rec, summary = _regrade_record(
+                    rec, scenario,
+                    recompute_properties=not args.keep_recorded_properties,
+                    gate_properties=not args.no_property_gate,
+                )
                 new_gate = new_rec.get("gate_status", "?")
                 transitions[(old_gate, new_gate)] += 1
                 n_total += 1

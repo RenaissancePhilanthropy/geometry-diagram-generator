@@ -343,7 +343,9 @@ _GEOMETRIC_PREDICATE_TYPES = {
 }
 
 
-def _failure_bucket(rec: dict, failure_name: str) -> str:
+def _failure_bucket(rec: dict, failure_name: str, failure: str = "") -> str:
+    if failure_name == "property" and failure.endswith((":unresolved", ":ambiguous")):
+        return "point naming"
     checks = rec.get("tikz_checks") or {}
     check = checks.get(failure_name)
     if isinstance(check, dict):
@@ -378,7 +380,7 @@ def plot_failure_modes(records: list[dict], out_path: Path) -> None:
             if r.get("gate_status") != "fail":
                 continue
             for f in r.get("gate_failures", []):
-                bucket = _failure_bucket(r, f.split(":", 1)[0])
+                bucket = _failure_bucket(r, f.split(":", 1)[0], f)
                 c[bucket] += 1
         bucketed[k] = c
         bucket_set.update(c.keys())

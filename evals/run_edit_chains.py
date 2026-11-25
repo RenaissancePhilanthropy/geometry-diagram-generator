@@ -213,6 +213,7 @@ async def run_chain(
         if turn.get("expected_properties"):
             sympy_checks = resolve_and_validate_properties(
                 turn["expected_properties"], result.variable_ids, result.sym_table,
+                diagram_ir=result.diagram_ir,
             )
 
         record.update({

@@ -162,6 +162,8 @@ def _failure_modes(recs: list[dict]) -> collections.Counter:
         if _gate_pass(r) is False:
             for f in r.get("gate_failures", []):
                 bucket = f.split(":", 1)[0]
+                if bucket == "property" and f.endswith((":unresolved", ":ambiguous")):
+                    bucket = "property:naming"  # a point name, not the geometry
                 c[bucket] += 1
     return c
 

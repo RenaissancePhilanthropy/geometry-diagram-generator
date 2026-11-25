@@ -129,6 +129,49 @@ def test_resolve_and_validate_properties_handles_a_mix():
     assert results[1]["passed"] is None
 
 
+def _labelled_figure():
+    from geometry_diagrams.ir import ir
+    d = ir.DiagramIR(
+        canvas=ir.Canvas(xmin=-1, xmax=5, ymin=-1, ymax=1),
+        define=[ir.PointFixed(id="pt1", x=0.0, y=0.0), ir.PointFixed(id="pt2", x=4.0, y=0.0),
+                ir.PointFixed(id="pt3", x=0.0, y=3.0)],
+        render=[ir.LabelPoint(p="pt1", text="A"), ir.LabelPoint(p="pt2", text="B"),
+                ir.LabelPoint(p="pt3", text="C")],
+    )
+    return d, {"pt1": (0.0, 0.0), "pt2": (4.0, 0.0), "pt3": (0.0, 3.0)}
+
+
+def test_resolve_and_validate_properties_uses_point_labels_when_given_the_diagram():
+    d, sym = _labelled_figure()
+    props = [{"name": "ra", "type": "right_angle", "args": ["B", "A", "C"]}]
+    skipped = resolve_and_validate_properties(props, {}, sym)
+    assert skipped[0]["passed"] is None  # no variable_ids and no labels to go by
+    (r,) = resolve_and_validate_properties(props, {}, sym, diagram_ir=d)
+    assert r["passed"] is True and r["resolved_names"] == {"B": "pt2", "A": "pt1", "C": "pt3"}
+
+
+def test_resolve_and_validate_properties_handles_nested_and_numeric_arguments():
+    d, sym = _labelled_figure()
+    props = [
+        {"name": "eq", "type": "equal_lengths", "args": [["A", "B"], ["A", "B"]]},
+        {"name": "ang", "type": "angle_value", "args": ["B", "A", "C", 90]},
+    ]
+    results = resolve_and_validate_properties(props, {}, sym, diagram_ir=d)
+    assert [r["passed"] for r in results] == [True, True]
+
+
+def test_resolve_and_validate_properties_skips_an_ambiguous_name_too():
+    from geometry_diagrams.ir import ir
+    d = ir.DiagramIR(
+        canvas=ir.Canvas(xmin=-1, xmax=5, ymin=-1, ymax=1),
+        define=[ir.PointFixed(id="p1", x=0.0, y=0.0), ir.PointFixed(id="p2", x=1.0, y=0.0)],
+        render=[ir.LabelPoint(p="p1", text="A"), ir.LabelPoint(p="p2", text="A")],
+    )
+    props = [{"name": "m", "type": "midpoint", "args": ["A", "A", "A"]}]
+    (r,) = resolve_and_validate_properties(props, {}, {"p1": (0.0, 0.0), "p2": (1.0, 0.0)}, diagram_ir=d)
+    assert r["passed"] is None and r["message"].startswith("skipped:") and r["resolution"] == "ambiguous"
+
+
 def _record(**overrides):
     base = {
         "model": "test-model",

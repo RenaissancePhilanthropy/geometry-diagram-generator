@@ -1083,7 +1083,7 @@
     type: right_angle
     args:
     - A
-    - A
+    - B
     - A'
   structural_checks: []
   required_labels:
@@ -1431,19 +1431,6 @@
     args:
     - M
     - R
-    - B
-  - name: perpendicular_bisector_at_M
-    type: perpendicular
-    args:
-    - - R
-      - B
-    - - M
-      - M
-  - name: right_angle_at_M
-    type: right_angle
-    args:
-    - R
-    - M
     - B
   - name: equal_lengths_RM_MB
     type: equal_lengths
@@ -5582,25 +5569,7 @@
     on a straight line. For the second pair, label them as angle 3 and angle 2 — same angle 2! — also on a straight line.
     Mark angle 1 and angle 3 with a single arc each to show they''re congruent. This is to prove the congruent supplements
     theorem: if angle 1 and angle 3 are both supplementary to angle 2, then angle 1 equals angle 3.'
-  expected_properties:
-  - name: angles_1_2_supplementary
-    type: angle_equal
-    args:
-    - - '1'
-      - vertex1
-      - '2'
-    - - '3'
-      - vertex2
-      - '2'
-  - name: angle1_congruent_angle3
-    type: angle_equal
-    args:
-    - - '1'
-      - vertex1
-      - ref1
-    - - '3'
-      - vertex2
-      - ref2
+  expected_properties: []
   structural_checks: []
   required_labels:
   - '1'
@@ -5707,15 +5676,6 @@
     4 going around the intersection. I want to see which angles are vertical pairs and which ones form linear pairs. Mark
     angles 1 and 3 with one tick mark to show they're equal, and mark angles 2 and 4 with two tick marks to show they're equal.
   expected_properties:
-  - name: angle_1_and_3_vertical
-    type: angle_equal
-    args:
-    - - '2'
-      - O
-      - '4'
-    - - '1'
-      - O
-      - '3'
   - name: mark_angle1
     type: mark_present
     args:
@@ -10700,12 +10660,6 @@
     type: label_present
     args:
     - P
-  - name: F_same_height_as_C
-    type: collinear
-    args:
-    - C
-    - F
-    - C
   structural_checks: []
   required_labels:
   - C

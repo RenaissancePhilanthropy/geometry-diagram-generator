@@ -5,6 +5,9 @@ float-coordinate symbol table produced by the structured strategy.
 """
 from __future__ import annotations
 
+from evals.property_names import NameResolutionError, NameResolver
+from evals.scenarios import PROPERTY_TOL_DIMENSION
+
 
 # Prism property types resolve through query_prism on the FULL compiled symbol
 # table (the Prism object), never on the 2D projected float coordinates.
@@ -120,27 +123,80 @@ def _validate_stack_properties(expected_properties: list[dict], sym_full: dict) 
     return results
 
 
+def _figure_scale(sym_float: dict) -> float:
+    """The figure's length scale: the diagonal of the bounding box of its
+    points (1.0 when there are fewer than two distinct ones)."""
+    import math
+    pts = [p for p in sym_float.values() if isinstance(p, tuple) and len(p) == 2]
+    if len(pts) < 2:
+        return 1.0
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return math.hypot(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
+
+
+def property_tolerance(prop: dict, default: float, scale: float) -> float:
+    """The tolerance for one expected property, in its check's own units.
+
+    ``tol`` is absolute, ``rel_tol`` a fraction of the figure's size
+    (``rel_tol * scale ** dimension``, see PROPERTY_TOL_DIMENSION); with both
+    the larger wins (like ``math.isclose``), with neither it is ``default``."""
+    tol, rel_tol = prop.get("tol"), prop.get("rel_tol")
+    if tol is None and rel_tol is None:
+        return default
+    candidates = [tol or 0.0]
+    if rel_tol is not None:
+        candidates.append(rel_tol * scale ** PROPERTY_TOL_DIMENSION.get(prop.get("type", ""), 1))
+    return max(candidates)
+
+
 def _validate_properties_sympy(
     expected_properties: list[dict],
     sym_float: dict,
     tol: float = 5e-3,
+    resolver: NameResolver | None = None,
 ) -> list[dict]:
     """Validate scenario expected_properties against a float-coords symbol table.
-    sym_float maps point_id -> (x, y) float tuples.
-    Returns list of {name, type, passed, message} dicts.
+    sym_float maps point_id -> (x, y) float tuples. ``tol`` is the default
+    tolerance; a property's own ``tol``/``rel_tol`` override it. With a
+    ``resolver`` the scenario's point names are resolved to ids first (see
+    evals/property_names.py); a name it cannot resolve fails the property with
+    ``resolution`` set to ``"unresolved"``/``"ambiguous"``, kept apart from a
+    geometry failure.
+    Returns list of {name, type, passed, message} dicts (plus ``tol``, the
+    tolerance used, when the property set its own, and ``resolved_names``, the
+    names that needed resolving).
     """
     results = []
+    scale = _figure_scale(sym_float)
     for prop in expected_properties:
         if prop.get("type") in PRISM_PROPERTY_TYPES | STACK_PROPERTY_TYPES:
             continue  # evaluated on the full symbol table by the prism/stack validators
         name = prop.get("name", "")
         ptype = prop.get("type", "")
         args = prop.get("args", [])
+        used = tol
+        resolution = None
+        if resolver is not None:
+            resolver.resolved = {}
         try:
-            passed, msg = _check_sympy_property(ptype, args, sym_float, tol)
+            used = property_tolerance(prop, tol, scale)
+            if resolver is not None and ptype in PROPERTY_TOL_DIMENSION:
+                args = resolver.resolve_args(args)  # geometry types only: others take text args
+            passed, msg = _check_sympy_property(ptype, args, sym_float, used)
+        except NameResolutionError as exc:
+            passed, msg, resolution = False, f"Error: {exc}", exc.kind
         except Exception as exc:
             passed, msg = False, f"Error: {exc}"
-        results.append({"name": name, "type": ptype, "passed": passed, "message": msg})
+        result = {"name": name, "type": ptype, "passed": passed, "message": msg}
+        if resolution is not None:
+            result["resolution"] = resolution
+        if resolver is not None and resolver.resolved:
+            result["resolved_names"] = dict(resolver.resolved)
+            if passed is False:  # the message names ids, not the scenario's names
+                result["message"] += " [names: " + ", ".join(f"{k} -> {v}" for k, v in resolver.resolved.items()) + "]"
+        if used != tol:
+            result["tol"] = used
+        results.append(result)
     return results
 
 

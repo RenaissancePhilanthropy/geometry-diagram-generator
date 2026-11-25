@@ -54,6 +54,7 @@ _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 from evals.ir_diagnostics import classify_ir
+from evals.property_names import NameResolver, property_gate_failures
 from evals.scenarios import _validate_scenarios, split_by_required_features
 from evals.sympy_checks import (
     PRISM_PROPERTY_TYPES,
@@ -377,8 +378,12 @@ async def run_scenario(
     experimental_diagram_cookbook: bool = False,
     verify_labels_in_canvas: bool = False,
     features: "frozenset[str] | set[str]" = frozenset(),
+    gate_properties: bool = True,
 ) -> dict:
     """Run one scenario against one strategy. Returns a result dict.
+
+    gate_properties: a failed expected property on the compiled geometry fails
+    the gate (``property:<name>``); False records it without gating.
 
     use_pre_assert_step is only meaningful for the "python_full" strategy
     (PythonFullStrategy.run()'s pre-assert pre-step, see spec.md's Graph
@@ -491,6 +496,7 @@ async def run_scenario(
             sympy_property_checks = _validate_properties_sympy(
                 scenario["expected_properties"],
                 result.sym_table,
+                resolver=NameResolver(result.sym_table, result.diagram_ir, result.variable_ids),
             )
         record["sympy_property_checks"] = sympy_property_checks
 
@@ -718,7 +724,7 @@ async def run_scenario(
             record.get("tikz_code"),
         )
 
-    _finalize_gate_status(record, scenario.get("fail_on_warnings") or [])
+    _finalize_gate_status(record, scenario.get("fail_on_warnings") or [], gate_properties)
     return record
 
 
@@ -920,8 +926,15 @@ def _svg_required_label_checks(svg: str, required: list[str]) -> dict[str, Any]:
     return {"passed": not missing, "missing": missing}
 
 
-def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
-    """Return (failures, skipped, had_checks) across deterministic checks."""
+def _collect_check_outcomes(
+    record: dict, gate_properties: bool = True
+) -> tuple[list[str], list[str], bool]:
+    """Return (failures, skipped, had_checks) across deterministic checks.
+
+    ``gate_properties``: a failed ``expected_properties`` check on the compiled
+    geometry (``sympy_property_checks``) adds a ``property:<name>`` failure;
+    off, such a failure is recorded but does not gate (the behaviour before the
+    flag, used to compare old runs)."""
     failures: list[str] = []
     skipped: list[str] = []
     had_checks = False
@@ -966,10 +979,12 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
                 skipped.append(f"structural:{name}")
 
     # Property checks of an unsupported type: not evaluated, so never a pass.
-    for r in record.get("sympy_property_checks") or []:
-        if r.get("passed") is None:
-            had_checks = True
-            skipped.append(f"property:{r.get('name', '')}")
+    property_results = record.get("sympy_property_checks") or []
+    prop_failures, prop_skipped = property_gate_failures(property_results, set(failures), gate_properties)
+    failures.extend(prop_failures)
+    skipped.extend(prop_skipped)
+    if property_results and (gate_properties or prop_skipped):
+        had_checks = True
 
     prism_checks = record.get("prism_property_checks")
     if prism_checks:
@@ -995,13 +1010,16 @@ def _collect_check_outcomes(record: dict) -> tuple[list[str], list[str], bool]:
     return failures, skipped, had_checks
 
 
-def _finalize_gate_status(record: dict, fail_on_warnings: list[str] | None = None) -> None:
+def _finalize_gate_status(
+    record: dict, fail_on_warnings: list[str] | None = None, gate_properties: bool = True,
+) -> None:
     """Populate deterministic_pass, gate_status, and gate_failures.
 
     ``fail_on_warnings``: scenario substrings; each one found (case-sensitive)
     in any recorded warning adds one ``warning:<substring>`` gate failure.
+    ``gate_properties``: see ``_collect_check_outcomes``.
     """
-    failures, skipped, had_checks = _collect_check_outcomes(record)
+    failures, skipped, had_checks = _collect_check_outcomes(record, gate_properties)
 
     if failures:
         record["deterministic_pass"] = False
@@ -1092,6 +1110,12 @@ def _load_retry_timeout_counts(results_path: Path) -> dict[str, int]:
 def _build_arg_parser() -> argparse.ArgumentParser:
     """The eval CLI argument parser (extracted from main() so it is testable)."""
     parser = argparse.ArgumentParser(description="Run geometry diagram evals")
+    parser.add_argument(
+        "--no-property-gate",
+        action="store_true",
+        help="Record failed expected_properties on the compiled geometry without "
+        "failing the gate (the old behaviour; default: they fail it as property:<name>)",
+    )
     parser.add_argument(
         "--strict-checks",
         action="store_true",
@@ -1387,6 +1411,7 @@ async def main() -> None:
                         experimental_diagram_cookbook=args.experimental_diagram_cookbook,
                         verify_labels_in_canvas=args.verify_labels_in_canvas,
                         features=args.features,
+                        gate_properties=not args.no_property_gate,
                     ),
                     timeout=args.scenario_timeout,
                 )

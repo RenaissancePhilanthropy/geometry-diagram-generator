@@ -558,15 +558,24 @@ def query_geometry_diagram(
     return dispatch_query(sym, query_type, resolved)
 
 
-def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict:
-    """`params` with every string that is not an object id but is the text of exactly one
-    point label replaced by that point's id. ValueError when a text labels several points."""
+def labeled_point_ids(diagram: "DiagramIR", *, untexted_show_id: bool = False) -> dict[str, set[str]]:
+    """Each explicit point-label text of ``diagram`` -> the ids of the points it labels
+    (usually one; a text on several points is ambiguous). A label without text shows the
+    point's own id: it adds nothing here unless ``untexted_show_id``, which lists the id
+    as that label's text."""
     from .ir.ir import LabelPoint
 
     labeled: dict[str, set[str]] = {}
     for op in diagram.render:
-        if isinstance(op, LabelPoint) and op.text:
-            labeled.setdefault(op.text, set()).add(op.p)
+        if isinstance(op, LabelPoint) and (op.text or untexted_show_id):
+            labeled.setdefault(op.text or op.p, set()).add(op.p)
+    return labeled
+
+
+def _resolve_point_labels(diagram: "DiagramIR", sym: dict, params: dict) -> dict:
+    """`params` with every string that is not an object id but is the text of exactly one
+    point label replaced by that point's id. ValueError when a text labels several points."""
+    labeled = labeled_point_ids(diagram)
     resolved = {}
     for key, value in params.items():
         if isinstance(value, str) and value not in sym and value in labeled:

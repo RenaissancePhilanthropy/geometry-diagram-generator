@@ -5,6 +5,9 @@ harness script so each is independently testable without spinning up a
 build_agent()."""
 from __future__ import annotations
 
+from typing import Any
+
+from evals.property_names import NameResolver
 from evals.sympy_checks import _validate_properties_sympy
 
 
@@ -18,38 +21,25 @@ def resolve_and_validate_properties(
     expected_properties: list[dict],
     variable_ids: dict,
     sym_table: dict,
+    diagram_ir: Any = None,
 ) -> list[dict]:
-    """Resolve each property's point-name args through variable_ids (script
-    variable name -> internal id) before validating against sym_table
-    (keyed by internal id — see StructuredRunResult.sym_table). A property
-    referencing a name absent from variable_ids is recorded as SKIPPED
-    (passed=None), never as a failure: the model may have named the entity
-    differently than the scenario assumed, or an earlier turn's failure
-    means it was never created — neither is evidence the edit itself was
-    unreliable (see design doc, Component A, "Required resolution shim")."""
-    results: list[dict] = []
-    for prop in expected_properties:
-        args = prop.get("args", [])
-        resolved_args = []
-        unresolved = None
-        for name in args:
-            resolved_id = variable_ids.get(name)
-            if resolved_id is None:
-                unresolved = name
-                break
-            resolved_args.append(resolved_id)
-
-        if unresolved is not None:
-            results.append({
-                "name": prop.get("name", ""),
-                "type": prop.get("type", ""),
-                "passed": None,
-                "message": f"skipped: {unresolved!r} not in variable_ids",
-            })
-            continue
-
-        resolved_prop = {**prop, "args": resolved_args}
-        results.extend(_validate_properties_sympy([resolved_prop], sym_table))
+    """Resolve each property's point names (see evals/property_names.py: figure id,
+    the text of the point's label, a primed spelling, then ``variable_ids``, the
+    script variable name -> internal id) and validate against sym_table (keyed by
+    internal id; see StructuredRunResult.sym_table). Pass ``diagram_ir`` so labels
+    can resolve a name; without it only ids, primed spellings and ``variable_ids``
+    do. A property whose name resolves to no point, or to several, is recorded as
+    SKIPPED (passed=None), never as a failure: the model may have named the entity
+    differently than the scenario assumed, or an earlier turn's failure means it
+    was never created, and neither is evidence the edit itself was unreliable (see
+    design doc, Component A, "Required resolution shim")."""
+    results = _validate_properties_sympy(
+        expected_properties, sym_table, resolver=NameResolver(sym_table, diagram_ir, variable_ids),
+    )
+    for r in results:
+        if r.get("resolution"):
+            r["passed"] = None
+            r["message"] = "skipped: " + r["message"].removeprefix("Error: ")
     return results
 
 
